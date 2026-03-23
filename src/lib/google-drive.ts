@@ -38,6 +38,13 @@ export type ProvNoteDocument = {
   derivedFromNoteId?: string;
   /** このノートの派生元ブロック ID */
   derivedFromBlockId?: string;
+  /** AI エージェントによる生成メタデータ */
+  generatedBy?: {
+    agent: string;
+    sessionId: string;
+    model?: string;
+    tokenUsage?: { input_tokens: number; output_tokens: number; total_tokens: number };
+  };
   createdAt: string;
   modifiedAt: string;
 };
