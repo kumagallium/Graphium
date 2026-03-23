@@ -83,8 +83,11 @@ export function LabelBadgeLayer() {
       const elRect = el.getBoundingClientRect();
       if (elRect.height === 0) continue;
 
-      // ラッパー内の相対 y 位置（スクロール位置を加味）
-      const top = elRect.top - wrapperRect.top + wrapper.scrollTop + elRect.height / 2;
+      // ブロックの先頭行に合わせる（ネストしたブロックでもずれない）
+      // blockOuter 内の最初のテキスト要素を探して、その位置を使う
+      const firstContent = el.querySelector("h1, h2, h3, p, li, td") as HTMLElement | null;
+      const targetRect = firstContent ? firstContent.getBoundingClientRect() : elRect;
+      const top = targetRect.top - wrapperRect.top + wrapper.scrollTop + targetRect.height / 2;
       next.push({ blockId, label, top });
     }
     setBadges(next);
