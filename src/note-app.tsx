@@ -626,6 +626,8 @@ export function NoteApp() {
   const savingRef = useRef(false);
   // エディタを強制的にリマウントするためのキー
   const [editorKey, setEditorKey] = useState(0);
+  // ノートキャッシュ（Drive API 呼び出しを削減）
+  const docCacheRef = useRef<Map<string, ProvNoteDocument>>(new Map());
 
   // ファイル一覧を取得
   const refreshFiles = useCallback(async () => {
@@ -640,10 +642,21 @@ export function NoteApp() {
     }
   }, []);
 
-  // ファイルを開く
+  // ファイルを開く（キャッシュ優先）
   const handleOpenFile = useCallback(async (fileId: string) => {
     try {
+      // キャッシュにあれば即座に表示
+      const cached = docCacheRef.current.get(fileId);
+      if (cached) {
+        setActiveFileId(fileId);
+        setActiveDoc(cached);
+        setEditorKey((k) => k + 1);
+        // バックグラウンドで最新を取得してキャッシュ更新
+        loadFile(fileId).then((doc) => docCacheRef.current.set(fileId, doc)).catch(() => {});
+        return;
+      }
       const doc = await loadFile(fileId);
+      docCacheRef.current.set(fileId, doc);
       setActiveFileId(fileId);
       setActiveDoc(doc);
       setEditorKey((k) => k + 1);
@@ -694,6 +707,8 @@ export function NoteApp() {
         if (currentFileId) {
           // 既存ファイルを上書き
           await saveFile(currentFileId, doc);
+          // キャッシュも更新
+          docCacheRef.current.set(currentFileId, doc);
           // ローカルのファイル一覧を即座に更新
           setFiles((prev) =>
             prev.map((f) =>
@@ -705,6 +720,7 @@ export function NoteApp() {
         } else {
           // 新規作成
           const newId = await createFile(doc.title, doc);
+          docCacheRef.current.set(newId, doc);
           setActiveFileId(newId);
           // 新規ファイルを一覧に追加
           setFiles((prev) => [
