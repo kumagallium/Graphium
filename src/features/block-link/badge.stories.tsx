@@ -3,6 +3,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+import { Link } from "lucide-react";
 import { LINK_TYPE_CONFIG, CREATED_BY_LABELS, type LinkType, type CreatedBy } from "./link-types";
 
 // ── Crucible デザイントークン ──
@@ -54,7 +55,7 @@ function LinkBadge({ count, onClick }: { count: number; onClick?: () => void }) 
         fontFamily: tokens.font,
       }}
     >
-      🔗 {count}
+      <Link size={10} strokeWidth={2.5} /> {count}
     </button>
   );
 }

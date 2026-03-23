@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "lucide-react";
 import { useLinkStore } from "./store";
 import { CREATED_BY_LABELS, LINK_TYPE_CONFIG, type BlockLink } from "./link-types";
 
@@ -127,7 +128,7 @@ export function LinkBadgeLayer() {
                 pointerEvents: "auto",
               }}
             >
-              🔗 {count}
+              <Link size={10} strokeWidth={2.5} /> {count}
             </button>
 
             {/* 展開パネル */}
