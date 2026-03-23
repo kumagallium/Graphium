@@ -4,7 +4,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { Link } from "lucide-react";
+import { Bot, Link } from "lucide-react";
 import { CORE_LABELS } from "./labels";
 
 // ── Crucible デザイントークン ──
@@ -63,6 +63,7 @@ function SideMenu({ label }: { label?: string }) {
         : <button title="ラベルを付ける" style={{ ...btn, border: `1px dashed ${tokens.border}`, fontSize: 12 }}>#</button>
       }
       <button title="リンク" style={{ ...btn, border: "1px dashed #bfdbfe", color: "#93c5fd", fontSize: 11 }}><Link size={11} strokeWidth={2.5} /></button>
+      <button title="AI アシスタント" style={{ ...btn, border: "1px dashed #c4b5fd", color: "#a78bfa" }}><Bot size={13} /></button>
       <button style={{ ...btn, fontSize: 16 }}>+</button>
       <button style={{ ...btn, cursor: "grab", fontSize: 10, letterSpacing: 1 }}>⠿</button>
     </div>

@@ -14,12 +14,55 @@ export type NoteNode = {
 export type NoteEdge = {
   source: string;
   target: string;
+  /** 引用元ブロックのテキスト（派生元ブロック内容） */
+  sourceBlockLabel?: string;
 };
 
 export type NoteGraphData = {
   nodes: NoteNode[];
   edges: NoteEdge[];
 };
+
+/**
+ * ドキュメント内のブロックからテキストを抽出する
+ */
+function extractBlockText(
+  doc: ProvNoteDocument | undefined,
+  blockId: string | undefined,
+): string | undefined {
+  if (!doc || !blockId) return undefined;
+  const MAX_LEN = 30;
+
+  // 全ページのブロックを再帰探索
+  for (const page of doc.pages) {
+    const text = findBlockText(page.blocks, blockId);
+    if (text) return text.length > MAX_LEN ? text.slice(0, MAX_LEN) + "…" : text;
+  }
+  return undefined;
+}
+
+/** ブロック配列から指定IDのブロックを探してテキストを返す */
+function findBlockText(blocks: any[], targetId: string): string | undefined {
+  for (const block of blocks) {
+    if (block.id === targetId) {
+      // テキスト系ブロック
+      if (Array.isArray(block.content)) {
+        const text = block.content
+          .map((c: any) => (c.type === "text" ? c.text : ""))
+          .join("")
+          .trim();
+        if (text) return text;
+      }
+      return block.type ?? "";
+    }
+    // 子ブロックを再帰探索
+    if (Array.isArray(block.children) && block.children.length > 0) {
+      const found = findBlockText(block.children, targetId);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
 
 /**
  * 全ノートの派生関係から2ホップのネットワークグラフを構築
@@ -36,8 +79,8 @@ export function buildNoteGraph(
   // 隣接リスト（双方向）
   const adjacency = new Map<string, Set<string>>();
 
-  const addEdge = (from: string, to: string) => {
-    allEdges.push({ source: from, target: to });
+  const addEdge = (from: string, to: string, sourceBlockLabel?: string) => {
+    allEdges.push({ source: from, target: to, sourceBlockLabel });
     if (!adjacency.has(from)) adjacency.set(from, new Set());
     if (!adjacency.has(to)) adjacency.set(to, new Set());
     adjacency.get(from)!.add(to);
@@ -50,13 +93,19 @@ export function buildNoteGraph(
   for (const [fileId, doc] of docs) {
     // derivedFromNoteId: このノートの親（存在チェック）
     if (doc.derivedFromNoteId && fileIds.has(doc.derivedFromNoteId)) {
-      addEdge(doc.derivedFromNoteId, fileId);
+      // 派生元ブロックのテキストを取得
+      const blockLabel = extractBlockText(
+        docs.get(doc.derivedFromNoteId),
+        doc.derivedFromBlockId,
+      );
+      addEdge(doc.derivedFromNoteId, fileId, blockLabel);
     }
     // noteLinks: このノートの子（存在チェック）
     if (doc.noteLinks) {
       for (const link of doc.noteLinks) {
         if (fileIds.has(link.targetNoteId)) {
-          addEdge(fileId, link.targetNoteId);
+          const blockLabel = extractBlockText(doc, link.sourceBlockId);
+          addEdge(fileId, link.targetNoteId, blockLabel);
         }
       }
     }

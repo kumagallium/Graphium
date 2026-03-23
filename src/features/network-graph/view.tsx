@@ -180,6 +180,7 @@ export function NetworkGraphPanel({
           id: `${edge.source}->${edge.target}`,
           source: edge.source,
           target: edge.target,
+          label: edge.sourceBlockLabel ?? "",
         },
       });
     }

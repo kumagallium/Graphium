@@ -1,12 +1,42 @@
 [
   {
-    "sha": "888c2bb",
+    "sha": "6c7b005",
+    "message": "Merge origin/main into feat/ai-assistant",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "015bf3a",
+    "message": "[fix] Add Bot icon to SideMenu mock in LabelBadge stories",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "20ca5e1",
+    "message": "[fix] Use lucide Bot icon in Storybook modal story",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "c7e4dd4",
+    "message": "[refactor] Replace emoji with lucide Bot icon in AI assistant",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "69ceb92",
+    "message": "Merge pull request #13 from kumagallium/fix/replace-emoji-with-lucide-icons",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "01b877a",
     "message": "Merge origin/main into fix/replace-emoji-with-lucide-icons",
     "date": "2026-03-23"
   },
   {
     "sha": "a184828",
     "message": "[fix] Replace emoji icons with lucide-react SVG icons",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "42a8381",
+    "message": "[feat] Add AI assistant integration with crucible-agent",
     "date": "2026-03-23"
   },
   {
@@ -217,36 +247,6 @@
   {
     "sha": "94a8e9d",
     "message": "Show full label text with enough left padding (160px)",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "1c7b3ff",
-    "message": "Truncate long label badges to prevent sidebar overlap",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "1730b7f",
-    "message": "Fix SideMenu hidden behind sidebar",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "d903169",
-    "message": "Apply A-style labels: badge in SideMenu, remove gutter",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "7350493",
-    "message": "Apply Crucible design guidelines to stories and add Design Guide",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "a18d585",
-    "message": "Fix stories: anchor + drag at content edge, labels extend left",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "8845259",
-    "message": "Fix stories: SideMenu x-position fixed at editor left edge",
     "date": "2026-03-23"
   }
 ]

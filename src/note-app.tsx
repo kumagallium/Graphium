@@ -29,6 +29,14 @@ import {
   type NoteGraphData,
 } from "./features/network-graph";
 import { ReleaseNotesPanel } from "./features/release-notes";
+import {
+  AiAssistantProvider,
+  AiAssistantModal,
+  useAiAssistant,
+  runAgent,
+  generateTitle,
+  buildAiDerivedDocument,
+} from "./features/ai-assistant";
 import { useGoogleAuth } from "./lib/use-google-auth";
 import { PROV_TEMPLATE } from "./lib/prov-template";
 import {
@@ -50,6 +58,7 @@ import {
   useExtensionState,
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
+import { Bot } from "lucide-react";
 
 // ── ノート間リンクバッジ ──
 // 派生元・派生先のリンクをヘッダー下にバッジ表示
@@ -217,7 +226,7 @@ function FileSidebar({
               onClick={() => onSelect(file.id)}
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate">
+                <div className="break-words">
                   {file.name.replace(/\.provnote\.json$/, "")}
                 </div>
                 <div className="text-[10px] text-muted-foreground">
@@ -272,9 +281,41 @@ function NoteSideMenu() {
     <SideMenu>
       <LabelSideMenuButton />
       <NoteLinkSideMenuButton />
+      <AiSideMenuButton />
       <AddBlockButton />
       <DragHandleButton />
     </SideMenu>
+  );
+}
+
+// AI アシスタントボタン（SideMenu 内）
+function AiSideMenuButton() {
+  const editor = useBlockNoteEditor<any, any, any>();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+  const aiAssistant = useAiAssistant();
+
+  if (!block) return null;
+
+  const handleClick = async () => {
+    // 対象ブロックの Markdown を取得
+    const markdown = await editor.blocksToMarkdownLossy([block]);
+    aiAssistant.open({
+      sourceBlockIds: [block.id],
+      quotedMarkdown: markdown,
+    });
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      title="AI アシスタントに聞く"
+      className="inline-flex items-center justify-center w-[22px] h-[22px] rounded border border-dashed border-violet-400/40 bg-transparent cursor-pointer text-violet-400/60 hover:border-violet-500 hover:text-violet-500 transition-colors"
+    >
+      <Bot size={13} />
+    </button>
   );
 }
 
@@ -366,6 +407,7 @@ type NoteEditorProps = {
   initialDoc: ProvNoteDocument | null;
   onSave: (doc: ProvNoteDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
+  onAiDeriveNote: (doc: ProvNoteDocument) => Promise<void>;
   onNavigateNote: (noteId: string) => void;
   saving: boolean;
   files: ProvNoteFile[];
@@ -376,7 +418,9 @@ function NoteEditor(props: NoteEditorProps) {
   return (
     <LabelStoreProvider>
       <LinkStoreProvider>
-        <NoteEditorInner {...props} />
+        <AiAssistantProvider>
+          <NoteEditorInner {...props} />
+        </AiAssistantProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
   );
@@ -387,6 +431,7 @@ function NoteEditorInner({
   initialDoc,
   onSave,
   onDeriveNote,
+  onAiDeriveNote,
   onNavigateNote,
   saving,
   files,
@@ -394,6 +439,7 @@ function NoteEditorInner({
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
+  const aiAssistant = useAiAssistant();
   const editorRef = useRef<any>(null);
   const [provDoc, setProvDoc] = useState<ProvDocument | null>(null);
   const [title, setTitle] = useState(initialDoc?.title || "新しいノート");
@@ -406,6 +452,55 @@ function NoteEditorInner({
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
   }, []);
+
+  // AI アシスタント実行ハンドラー
+  const handleAiSubmit = useCallback(
+    async (question: string) => {
+      if (!fileId || !editorRef.current) return;
+
+      aiAssistant.setLoading(true);
+      try {
+        const userMessage = [
+          "以下の内容について質問があります。",
+          "",
+          "---",
+          aiAssistant.quotedMarkdown,
+          "---",
+          "",
+          question,
+        ].join("\n");
+
+        // AI 回答を取得
+        const response = await runAgent({
+          message: userMessage,
+          profile: "science",
+          options: { max_turns: 5 },
+        });
+
+        // 回答をベースにタイトルを生成（回答の方が要約しやすい）
+        const title = await generateTitle(response.message);
+
+        // 派生ノートを構築
+        const doc = buildAiDerivedDocument({
+          title,
+          quotedMarkdown: aiAssistant.quotedMarkdown,
+          question,
+          agentResponse: response,
+          sourceNoteId: fileId,
+          sourceBlockIds: aiAssistant.sourceBlockIds,
+          parseMarkdown: (md) => editorRef.current.tryParseMarkdownToBlocks(md),
+        });
+
+        await onAiDeriveNote(doc);
+        aiAssistant.close();
+      } catch (err) {
+        aiAssistant.setError(
+          err instanceof Error ? err.message : "AI 実行に失敗しました",
+        );
+      }
+    },
+    [fileId, aiAssistant, onAiDeriveNote],
+  );
 
   // 初期データの復元
   const initializedRef = useRef(false);
@@ -583,6 +678,7 @@ function NoteEditorInner({
     <>
       <LabelDropdownPortal />
       <LinkBadgeLayer />
+      <AiAssistantModal onSubmit={handleAiSubmit} />
 
       {/* ヘッダー */}
       <div className="px-4 py-2 border-b border-border flex items-center gap-3 shrink-0">
@@ -590,8 +686,9 @@ function NoteEditorInner({
           type="text"
           value={title}
           onChange={handleTitleChange}
-          className="flex-1 text-sm font-medium bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
+          className="flex-1 min-w-0 text-sm font-medium bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
           placeholder="ノートのタイトル"
+          title={title}
         />
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? "保存中..." : dirty ? "未保存" : "保存済み"}
@@ -923,6 +1020,45 @@ export function NoteApp() {
     [activeDoc, handleOpenFile, setActiveFileId]
   );
 
+  // AI 派生ノートを作成（構築済みの ProvNoteDocument を受け取って保存）
+  const handleAiDeriveNote = useCallback(
+    async (doc: ProvNoteDocument) => {
+      setDeriving(true);
+      try {
+        const newFileId = await createFile(doc.title, doc);
+        const now = new Date().toISOString();
+
+        // 元ノートに noteLinks を追加して保存
+        if (activeFileIdRef.current && activeDoc && doc.derivedFromBlockId) {
+          const noteLinks = activeDoc.noteLinks ?? [];
+          noteLinks.push({
+            targetNoteId: newFileId,
+            sourceBlockId: doc.derivedFromBlockId,
+            type: "derived_from",
+          });
+          const updatedDoc = { ...activeDoc, noteLinks, modifiedAt: now };
+          await saveFile(activeFileIdRef.current, updatedDoc);
+          setActiveDoc(updatedDoc);
+        }
+
+        // ファイル一覧を更新
+        setFiles((prev) => [
+          { id: newFileId, name: `${doc.title}.provnote.json`, modifiedTime: now, createdTime: now },
+          ...prev,
+        ]);
+
+        // 派生先ノートを開く
+        handleOpenFile(newFileId);
+      } catch (err) {
+        console.error("AI 派生ノートの作成に失敗:", err);
+        throw err; // モーダル側でエラー表示
+      } finally {
+        setDeriving(false);
+      }
+    },
+    [activeDoc, handleOpenFile, setActiveFileId],
+  );
+
   // 削除（関連ノートのリンク情報もクリーンアップ）
   const handleDelete = useCallback(
     async (fileId: string) => {
@@ -1018,6 +1154,7 @@ export function NoteApp() {
           initialDoc={activeDoc}
           onSave={handleSave}
           onDeriveNote={handleDeriveNote}
+          onAiDeriveNote={handleAiDeriveNote}
           onNavigateNote={handleOpenFile}
           saving={saving}
           files={files}
