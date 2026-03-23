@@ -1,0 +1,252 @@
+[
+  {
+    "sha": "0fa6241",
+    "message": "Merge pull request #8 from kumagallium/feat/derived-note-title",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "4ab3e59",
+    "message": "Merge pull request #7 from kumagallium/feat/network-graph",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a021dda",
+    "message": "[feat] Use block content as derived note title instead of generic label",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "f8b9654",
+    "message": "[feat] Add Obsidian-like network graph for note derivation relationships",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "287a4c6",
+    "message": "Merge pull request #6 from kumagallium/feat/design-theme-unification",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "de4b3e4",
+    "message": "Merge main into feat/design-theme-unification",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a2092b3",
+    "message": "Merge pull request #5 from kumagallium/feat/google-drive-integration",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "567346a",
+    "message": "Add storybook-static/ to .gitignore",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "28863ca",
+    "message": "Re-add NoteLinkBadges component lost in file revert",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a4d3237",
+    "message": "Re-apply: remove tabs, add cache, preserve noteLinks on save",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a44f6f6",
+    "message": "Merge pull request #4 from kumagallium/feat/design-theme-unification",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "fbf171d",
+    "message": "[feat] Unify color palette with forest green theme and add Storybook stories",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "39efabf",
+    "message": "Cache loaded notes for instant switching",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "7f72e1c",
+    "message": "Preserve noteLinks and derivedFrom metadata on save",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "76b9823",
+    "message": "Remove multi-page tabs from note editor",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "f3f6c93",
+    "message": "Add note link badges for derived note navigation",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "2bf1fb7",
+    "message": "Add loading overlay during derived note creation",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "cd6f55f",
+    "message": "Merge pull request #3 from kumagallium/feat/google-drive-integration",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "912e710",
+    "message": "Derive pages as separate Google Drive files",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "baf3f58",
+    "message": "[infra] Pass VITE_GOOGLE_CLIENT_ID from github-pages environment to build",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "4c4c2d2",
+    "message": "Move left padding from wrapper to editor content only",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "90a4b2e",
+    "message": "Merge pull request #2 from kumagallium/feat/google-drive-integration",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "5a6cd5a",
+    "message": "[docs] Add privacy policy HTML for GitHub Pages",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "28c0262",
+    "message": "Merge pull request #1 from kumagallium/feat/google-drive-integration",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a3f42dd",
+    "message": "Restore last opened note on page load",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "62bd314",
+    "message": "Trigger auto-save on label and link changes",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "f7dba08",
+    "message": "Add real-time PROV generation with 500ms debounce",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "7fcc13c",
+    "message": "Fix auto-save: prevent duplicate saves with saving guard",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "372a0f2",
+    "message": "Rename [条件] to [属性] with parent-child property binding",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "6f00542",
+    "message": "[docs] Add privacy policy for Google OAuth consent screen",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "4f23d7b",
+    "message": "Add PROV template with all features (table, labels, links)",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "94a8e9d",
+    "message": "Show full label text with enough left padding (160px)",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "1c7b3ff",
+    "message": "Truncate long label badges to prevent sidebar overlap",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "1730b7f",
+    "message": "Fix SideMenu hidden behind sidebar",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "d903169",
+    "message": "Apply A-style labels: badge in SideMenu, remove gutter",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "7350493",
+    "message": "Apply Crucible design guidelines to stories and add Design Guide",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a18d585",
+    "message": "Fix stories: anchor + drag at content edge, labels extend left",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "8845259",
+    "message": "Fix stories: SideMenu x-position fixed at editor left edge",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "0bad1bd",
+    "message": "Fix stories: label badge inside SideMenu, left of + button",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "ca6cdc3",
+    "message": "Update stories to placement A with block handle simulation",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "2f34b4d",
+    "message": "Fix stories to match actual block-level label data structure",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "1de386c",
+    "message": "Add placement-C (above) stories with bullet list and table patterns",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a7f4b2a",
+    "message": "Add Storybook for component-level design discussion",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "8f89b20",
+    "message": "Switch labels to gutter badges beside block handle",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "1113964",
+    "message": "Switch label badges from gutter to inline injection",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "cc2f0d5",
+    "message": "Fix label badges not scrolling with content",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "cc6324b",
+    "message": "Fix label badge vertical alignment on nested blocks",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "948994f",
+    "message": "Fix Cmd+S: capture on both document and window with stopPropagation",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "2115d9a",
+    "message": "Fix Cmd+S being intercepted by browser save dialog",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "fe61953",
+    "message": "Fix stale activeFileId in save callback using ref",
+    "date": "2026-03-23"
+  }
+]

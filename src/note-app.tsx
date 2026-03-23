@@ -28,6 +28,7 @@ import {
   buildNoteGraph,
   type NoteGraphData,
 } from "./features/network-graph";
+import { ReleaseNotesPanel } from "./features/release-notes";
 import { useGoogleAuth } from "./lib/use-google-auth";
 import { PROV_TEMPLATE } from "./lib/prov-template";
 import {
@@ -142,6 +143,7 @@ function FileSidebar({
   onRefresh,
   userName,
   onSignOut,
+  onShowReleaseNotes,
 }: {
   files: ProvNoteFile[];
   activeFileId: string | null;
@@ -153,6 +155,7 @@ function FileSidebar({
   onRefresh: () => void;
   userName?: string;
   onSignOut: () => void;
+  onShowReleaseNotes: () => void;
 }) {
   return (
     <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col">
@@ -231,8 +234,14 @@ function FileSidebar({
         )}
       </div>
 
-      {/* ユーザー情報 */}
-      <div className="p-3 border-t border-sidebar-border">
+      {/* フッター */}
+      <div className="p-3 border-t border-sidebar-border space-y-1">
+        <button
+          onClick={onShowReleaseNotes}
+          className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Release Notes
+        </button>
         <button
           onClick={onSignOut}
           className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -675,6 +684,7 @@ function NoteEditorInner({
 // ── メインアプリ ──
 export function NoteApp() {
   const { authenticated, loading: authLoading, signIn, signOut } = useGoogleAuth();
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [files, setFiles] = useState<ProvNoteFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [activeFileId, _setActiveFileId] = useState<string | null>(null);
@@ -940,6 +950,7 @@ export function NoteApp() {
         onDelete={handleDelete}
         onRefresh={refreshFiles}
         onSignOut={signOut}
+        onShowReleaseNotes={() => setShowReleaseNotes(true)}
       />
       <main className="flex-1 overflow-hidden flex flex-col relative">
         <NoteEditor
@@ -963,6 +974,9 @@ export function NoteApp() {
           </div>
         )}
       </main>
+      {showReleaseNotes && (
+        <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
+      )}
     </div>
   );
 }
