@@ -533,8 +533,6 @@ function NoteEditorInner({
             minWidth: 0,
             overflow: "auto",
             position: "relative",
-            // SideMenu（ラベルバッジ + 🔗 + ⠿）が収まるよう左に余白を確保
-            paddingLeft: 160,
           }}
         >
           <LabelBadgeLayer />
@@ -546,7 +544,7 @@ function NoteEditorInner({
             onRemovePage={removePage}
           >
             {(pageId) => (
-              <div style={{ padding: "16px 0" }}>
+              <div style={{ padding: "16px 0", paddingLeft: 160 }}>
                 <SandboxEditor
                   key={`${fileId || "new"}-${pageId}`}
                   blocks={[]}
