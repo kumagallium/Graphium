@@ -1,0 +1,698 @@
+// ノートアプリのメイン画面
+// Google Drive と連携してノートの作成・保存・読み込みを行う
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { SandboxEditor } from "./base/editor";
+import { MultiPageLayout, useMultiPage } from "./base/multipage";
+import {
+  LabelBadgeLayer,
+  LabelDropdownPortal,
+  LabelSideMenuButton,
+  LabelStoreProvider,
+  useLabelStore,
+  LABEL_GUTTER_WIDTH,
+} from "./features/context-label";
+import { setOnPrevStepLinkSelected } from "./features/context-label/ui";
+import {
+  LinkStoreProvider,
+  LinkBadgeLayer,
+  useLinkStore,
+} from "./features/block-link";
+import {
+  generateProvDocument,
+  ProvGraphPanel,
+  type ProvDocument,
+} from "./features/prov-generator";
+import { useGoogleAuth } from "./lib/use-google-auth";
+import {
+  listFiles,
+  loadFile,
+  createFile,
+  saveFile,
+  deleteFile,
+  type ProvNoteFile,
+  type ProvNoteDocument,
+} from "./lib/google-drive";
+import { cn } from "./lib/utils";
+import {
+  AddBlockButton,
+  DragHandleButton,
+  SideMenu,
+  useBlockNoteEditor,
+  useExtensionState,
+} from "@blocknote/react";
+import { SideMenuExtension } from "@blocknote/core/extensions";
+
+// ── ログイン画面 ──
+function LoginScreen({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <div className="flex items-center justify-center h-screen bg-background">
+      <div className="text-center space-y-6 max-w-sm">
+        <h1 className="text-3xl font-bold text-foreground">provnote</h1>
+        <p className="text-muted-foreground text-sm">
+          PROV-DM プロヴェナンス追跡付きブロックエディタ
+        </p>
+        <button
+          onClick={onSignIn}
+          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18">
+            <path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+            <path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+            <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+          </svg>
+          Google でサインイン
+        </button>
+        <p className="text-xs text-muted-foreground">
+          ノートは Google Drive の ProvNote フォルダに保存されます
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── ファイル一覧サイドバー ──
+function FileSidebar({
+  files,
+  activeFileId,
+  loading,
+  onSelect,
+  onNewNote,
+  onDelete,
+  onRefresh,
+  userName,
+  onSignOut,
+}: {
+  files: ProvNoteFile[];
+  activeFileId: string | null;
+  loading: boolean;
+  onSelect: (fileId: string) => void;
+  onNewNote: () => void;
+  onDelete: (fileId: string) => void;
+  onRefresh: () => void;
+  userName?: string;
+  onSignOut: () => void;
+}) {
+  return (
+    <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col">
+      {/* ヘッダー */}
+      <div className="p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-sidebar-foreground/60 tracking-wide">
+            provnote
+          </h2>
+          <button
+            onClick={onRefresh}
+            title="再読み込み"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            &#8635;
+          </button>
+        </div>
+        <button
+          onClick={onNewNote}
+          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+        >
+          + 新しいノート
+        </button>
+      </div>
+
+      {/* ファイル一覧 */}
+      <div className="flex-1 overflow-y-auto p-2">
+        {loading ? (
+          <p className="text-xs text-muted-foreground px-2 py-4 text-center">
+            読み込み中...
+          </p>
+        ) : files.length === 0 ? (
+          <p className="text-xs text-muted-foreground px-2 py-4 text-center">
+            ノートがありません
+          </p>
+        ) : (
+          files.map((file) => (
+            <div
+              key={file.id}
+              className={cn(
+                "group flex items-center justify-between rounded-md px-2 py-1.5 mb-0.5 text-sm transition-colors cursor-pointer",
+                activeFileId === file.id
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
+              )}
+              onClick={() => onSelect(file.id)}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate">
+                  {file.name.replace(/\.provnote\.json$/, "")}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {new Date(file.modifiedTime).toLocaleDateString("ja-JP")}
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm("このノートを削除しますか？")) {
+                    onDelete(file.id);
+                  }
+                }}
+                className="opacity-0 group-hover:opacity-100 text-xs text-muted-foreground hover:text-destructive px-1 transition-opacity"
+                title="削除"
+              >
+                &#128465;
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ユーザー情報 */}
+      <div className="p-3 border-t border-sidebar-border">
+        <button
+          onClick={onSignOut}
+          className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          サインアウト
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ── リンク付き SideMenu ──
+let openLinkDropdownFn: ((params: {
+  type: "prevStep" | "general";
+  sourceBlockId: string;
+  anchorRect: { top: number; left: number };
+}) => void) | null = null;
+
+function NoteSideMenu() {
+  return (
+    <SideMenu>
+      <LabelSideMenuButton />
+      <NoteLinkSideMenuButton />
+      <AddBlockButton />
+      <DragHandleButton />
+    </SideMenu>
+  );
+}
+
+function NoteLinkSideMenuButton() {
+  const editor = useBlockNoteEditor<any, any, any>();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block) return null;
+
+  const handleClick = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    openLinkDropdownFn?.({
+      type: "general",
+      sourceBlockId: block.id,
+      anchorRect: { top: rect.bottom + 4, left: rect.left },
+    });
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      title="このブロックから新ページを派生"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 22,
+        height: 22,
+        borderRadius: 4,
+        border: "1px dashed #bfdbfe",
+        background: "none",
+        cursor: "pointer",
+        color: "#93c5fd",
+        fontSize: 11,
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "#3b82f6";
+        e.currentTarget.style.color = "#3b82f6";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "#bfdbfe";
+        e.currentTarget.style.color = "#93c5fd";
+      }}
+    >
+      &#128279;
+    </button>
+  );
+}
+
+// ── エディタ本体 ──
+function NoteEditor({
+  fileId,
+  initialDoc,
+  onSave,
+  saving,
+}: {
+  fileId: string | null;
+  initialDoc: ProvNoteDocument | null;
+  onSave: (doc: ProvNoteDocument) => void;
+  saving: boolean;
+}) {
+  return (
+    <LabelStoreProvider>
+      <LinkStoreProvider>
+        <NoteEditorInner
+          fileId={fileId}
+          initialDoc={initialDoc}
+          onSave={onSave}
+          saving={saving}
+        />
+      </LinkStoreProvider>
+    </LabelStoreProvider>
+  );
+}
+
+function NoteEditorInner({
+  fileId,
+  initialDoc,
+  onSave,
+  saving,
+}: {
+  fileId: string | null;
+  initialDoc: ProvNoteDocument | null;
+  onSave: (doc: ProvNoteDocument) => void;
+  saving: boolean;
+}) {
+  const { pages, activePageId, setActivePageId, addPage, removePage } =
+    useMultiPage(initialDoc?.title || "新しいノート");
+  const labelStore = useLabelStore();
+  const linkStore = useLinkStore();
+  const editorRef = useRef<any>(null);
+  const [provDoc, setProvDoc] = useState<ProvDocument | null>(null);
+  const [title, setTitle] = useState(initialDoc?.title || "新しいノート");
+  const [dirty, setDirty] = useState(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // エディタ参照を保持
+  const handleEditorReady = useCallback((editor: any) => {
+    editorRef.current = editor;
+  }, []);
+
+  // 初期データの復元
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current || !initialDoc) return;
+    initializedRef.current = true;
+
+    // ラベルとリンクを復元
+    if (initialDoc.pages.length > 0) {
+      const page = initialDoc.pages[0];
+      if (page.labels) {
+        for (const [blockId, label] of Object.entries(page.labels)) {
+          labelStore.setLabel(blockId, label);
+        }
+      }
+      if (page.links) {
+        linkStore.restoreLinks(page.links);
+      }
+    }
+  }, [initialDoc, labelStore, linkStore]);
+
+  // 保存
+  const handleSave = useCallback(() => {
+    const blocks = editorRef.current?.document || [];
+    const labelSnapshot = labelStore.getSnapshot();
+    const labelsObj: Record<string, string> = {};
+    for (const [k, v] of labelSnapshot.labels) {
+      labelsObj[k] = v;
+    }
+
+    const doc: ProvNoteDocument = {
+      version: 1,
+      title,
+      pages: [
+        {
+          id: pages[0]?.id || "main",
+          title,
+          blocks,
+          labels: labelsObj,
+          links: linkStore.getAllLinks(),
+        },
+      ],
+      createdAt: initialDoc?.createdAt || new Date().toISOString(),
+      modifiedAt: new Date().toISOString(),
+    };
+    onSave(doc);
+    setDirty(false);
+  }, [title, pages, labelStore, linkStore, initialDoc, onSave]);
+
+  // 変更をマーク → 3秒後に自動保存
+  const markDirty = useCallback(() => {
+    setDirty(true);
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      handleSave();
+    }, 3000);
+  }, [handleSave]);
+
+  // タイマーのクリーンアップ
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
+
+  // タイトル変更時に自動保存トリガー
+  const handleTitleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setTitle(e.target.value);
+      markDirty();
+    },
+    [markDirty]
+  );
+
+  // Ctrl+S / Cmd+S で保存
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleSave]);
+
+  // 前手順リンク
+  useEffect(() => {
+    setOnPrevStepLinkSelected((sourceBlockId: string, targetBlockId: string) => {
+      linkStore.addLink({
+        sourceBlockId,
+        targetBlockId,
+        type: "informed_by",
+        createdBy: "human",
+      });
+    });
+    return () => { setOnPrevStepLinkSelected(null); };
+  }, [linkStore]);
+
+  // スコープ派生ボタン
+  useEffect(() => {
+    openLinkDropdownFn = (params) => {
+      const sourceBlockId = params.sourceBlockId;
+      const el = document.querySelector(
+        `[data-id="${sourceBlockId}"][data-node-type="blockOuter"]`
+      );
+      const heading = el?.querySelector("h1, h2, h3");
+      const derivedTitle = heading?.textContent || "派生ページ";
+
+      const newPageId = addPage(`↳ ${derivedTitle}`, {
+        pageId: activePageId,
+        blockId: sourceBlockId,
+      });
+
+      linkStore.addLink({
+        sourceBlockId,
+        targetBlockId: newPageId ?? "",
+        type: "derived_from",
+        createdBy: "system",
+        targetPageId: newPageId,
+      });
+    };
+    return () => { openLinkDropdownFn = null; };
+  }, [activePageId, addPage, linkStore]);
+
+  // PROV 生成
+  const handleGenerateProv = () => {
+    if (!editorRef.current) return;
+    const blocks = editorRef.current.document;
+    const doc = generateProvDocument({
+      blocks,
+      labels: labelStore.labels,
+      links: linkStore.links,
+    });
+    setProvDoc(doc);
+  };
+
+  // 初期コンテンツ（既存ファイルの場合はブロックを復元）
+  const initialContent =
+    initialDoc?.pages?.[0]?.blocks?.length
+      ? initialDoc.pages[0].blocks
+      : undefined;
+
+  return (
+    <>
+      <LabelDropdownPortal />
+      <LinkBadgeLayer />
+
+      {/* ヘッダー */}
+      <div className="px-4 py-2 border-b border-border flex items-center gap-3 shrink-0">
+        <input
+          type="text"
+          value={title}
+          onChange={handleTitleChange}
+          className="flex-1 text-sm font-medium bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
+          placeholder="ノートのタイトル"
+        />
+        <span className="text-[10px] text-muted-foreground shrink-0">
+          {saving ? "保存中..." : dirty ? "未保存" : "保存済み"}
+        </span>
+        <button
+          onClick={() => {
+            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+            handleSave();
+          }}
+          disabled={saving}
+          className={cn(
+            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
+            saving
+              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
+              : "border-primary text-primary bg-primary/5 hover:bg-primary/10"
+          )}
+        >
+          保存
+        </button>
+      </div>
+
+      <div style={{ display: "flex", height: "100%", width: "100%", gap: 0, overflow: "hidden" }}>
+        {/* 左: エディタ */}
+        <div
+          data-label-wrapper
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "auto",
+            position: "relative",
+            paddingLeft: LABEL_GUTTER_WIDTH,
+          }}
+        >
+          <LabelBadgeLayer />
+          <MultiPageLayout
+            pages={pages}
+            activePageId={activePageId}
+            onSelectPage={setActivePageId}
+            onAddPage={(t) => addPage(t)}
+            onRemovePage={removePage}
+          >
+            {(pageId) => (
+              <div style={{ padding: "16px 0" }}>
+                <SandboxEditor
+                  key={`${fileId || "new"}-${pageId}`}
+                  blocks={[]}
+                  initialContent={pageId === pages[0]?.id ? initialContent : undefined}
+                  sideMenu={NoteSideMenu}
+                  onEditorReady={handleEditorReady}
+                  onChange={markDirty}
+                />
+              </div>
+            )}
+          </MultiPageLayout>
+        </div>
+
+        {/* 右: PROV パネル */}
+        <div
+          style={{
+            width: 480,
+            flexShrink: 0,
+            borderLeft: "1px solid #e5e7eb",
+            background: "#fafbfc",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid #e5e7eb",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#6b7280",
+                letterSpacing: "0.05em",
+              }}
+            >
+              PROV
+            </span>
+            <button
+              onClick={handleGenerateProv}
+              style={{
+                padding: "3px 10px",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 4,
+                border: "1px solid #3b82f6",
+                background: "#eff6ff",
+                color: "#3b82f6",
+                cursor: "pointer",
+              }}
+            >
+              生成
+            </button>
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <ProvGraphPanel doc={provDoc} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── メインアプリ ──
+export function NoteApp() {
+  const { authenticated, loading: authLoading, signIn, signOut } = useGoogleAuth();
+  const [files, setFiles] = useState<ProvNoteFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const [activeDoc, setActiveDoc] = useState<ProvNoteDocument | null>(null);
+  const [saving, setSaving] = useState(false);
+  // エディタを強制的にリマウントするためのキー
+  const [editorKey, setEditorKey] = useState(0);
+
+  // ファイル一覧を取得
+  const refreshFiles = useCallback(async () => {
+    setFilesLoading(true);
+    try {
+      const result = await listFiles();
+      setFiles(result);
+    } catch (err) {
+      console.error("ファイル一覧の取得に失敗:", err);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, []);
+
+  // 認証完了後にファイル一覧を取得
+  useEffect(() => {
+    if (authenticated) {
+      refreshFiles();
+    }
+  }, [authenticated, refreshFiles]);
+
+  // ファイルを開く
+  const handleOpenFile = useCallback(async (fileId: string) => {
+    try {
+      const doc = await loadFile(fileId);
+      setActiveFileId(fileId);
+      setActiveDoc(doc);
+      setEditorKey((k) => k + 1);
+    } catch (err) {
+      console.error("ファイルの読み込みに失敗:", err);
+    }
+  }, []);
+
+  // 新しいノートを作成
+  const handleNewNote = useCallback(() => {
+    setActiveFileId(null);
+    setActiveDoc(null);
+    setEditorKey((k) => k + 1);
+  }, []);
+
+  // 保存
+  const handleSave = useCallback(
+    async (doc: ProvNoteDocument) => {
+      setSaving(true);
+      try {
+        if (activeFileId) {
+          // 既存ファイルを上書き
+          await saveFile(activeFileId, doc);
+        } else {
+          // 新規作成
+          const newId = await createFile(doc.title, doc);
+          setActiveFileId(newId);
+        }
+        await refreshFiles();
+      } catch (err) {
+        console.error("保存に失敗:", err);
+        alert("保存に失敗しました。再度お試しください。");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [activeFileId, refreshFiles]
+  );
+
+  // 削除
+  const handleDelete = useCallback(
+    async (fileId: string) => {
+      try {
+        await deleteFile(fileId);
+        if (activeFileId === fileId) {
+          setActiveFileId(null);
+          setActiveDoc(null);
+          setEditorKey((k) => k + 1);
+        }
+        await refreshFiles();
+      } catch (err) {
+        console.error("削除に失敗:", err);
+      }
+    },
+    [activeFileId, refreshFiles]
+  );
+
+  // 認証読み込み中
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <p className="text-sm text-muted-foreground">読み込み中...</p>
+      </div>
+    );
+  }
+
+  // 未認証
+  if (!authenticated) {
+    return <LoginScreen onSignIn={signIn} />;
+  }
+
+  return (
+    <div className="flex h-screen font-sans antialiased bg-background text-foreground">
+      <FileSidebar
+        files={files}
+        activeFileId={activeFileId}
+        loading={filesLoading}
+        onSelect={handleOpenFile}
+        onNewNote={handleNewNote}
+        onDelete={handleDelete}
+        onRefresh={refreshFiles}
+        onSignOut={signOut}
+      />
+      <main className="flex-1 overflow-hidden flex flex-col">
+        <NoteEditor
+          key={editorKey}
+          fileId={activeFileId}
+          initialDoc={activeDoc}
+          onSave={handleSave}
+          saving={saving}
+        />
+      </main>
+    </div>
+  );
+}

@@ -21,6 +21,8 @@ type SandboxEditorProps = {
   sideMenu?: FC<SideMenuProps> | false;
   /** エディタインスタンスを外部に公開するコールバック */
   onEditorReady?: (editor: any) => void;
+  /** エディタの内容が変更されたときのコールバック */
+  onChange?: () => void;
 };
 
 // サンドボックス共通エディタ
@@ -30,6 +32,7 @@ export function SandboxEditor({
   initialContent,
   sideMenu,
   onEditorReady,
+  onChange,
 }: SandboxEditorProps) {
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
@@ -60,6 +63,7 @@ export function SandboxEditor({
       editor={editor as any}
       theme="light"
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
+      onChange={onChange}
     >
       {usesCustomSideMenu && (
         <SideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
