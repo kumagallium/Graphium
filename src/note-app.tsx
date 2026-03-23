@@ -624,12 +624,29 @@ export function NoteApp() {
         if (activeFileId) {
           // 既存ファイルを上書き
           await saveFile(activeFileId, doc);
+          // ローカルのファイル一覧を即座に更新（API ラグを回避）
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === activeFileId
+                ? { ...f, name: `${doc.title}.provnote.json`, modifiedTime: new Date().toISOString() }
+                : f
+            )
+          );
         } else {
           // 新規作成
           const newId = await createFile(doc.title, doc);
           setActiveFileId(newId);
+          // 新規ファイルを一覧に追加
+          setFiles((prev) => [
+            {
+              id: newId,
+              name: `${doc.title}.provnote.json`,
+              modifiedTime: new Date().toISOString(),
+              createdTime: new Date().toISOString(),
+            },
+            ...prev,
+          ]);
         }
-        await refreshFiles();
       } catch (err) {
         console.error("保存に失敗:", err);
         alert("保存に失敗しました。再度お試しください。");
@@ -637,7 +654,7 @@ export function NoteApp() {
         setSaving(false);
       }
     },
-    [activeFileId, refreshFiles]
+    [activeFileId]
   );
 
   // 削除
