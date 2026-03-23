@@ -601,6 +601,7 @@ export function NoteApp() {
   }, []);
   const [activeDoc, setActiveDoc] = useState<ProvNoteDocument | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   // エディタを強制的にリマウントするためのキー
   const [editorKey, setEditorKey] = useState(0);
 
@@ -657,6 +658,9 @@ export function NoteApp() {
   // 保存（ref 経由で常に最新の activeFileId を使用）
   const handleSave = useCallback(
     async (doc: ProvNoteDocument) => {
+      // 保存中なら二重実行しない
+      if (savingRef.current) return;
+      savingRef.current = true;
       setSaving(true);
       try {
         const currentFileId = activeFileIdRef.current;
@@ -690,6 +694,7 @@ export function NoteApp() {
         console.error("保存に失敗:", err);
         alert("保存に失敗しました。再度お試しください。");
       } finally {
+        savingRef.current = false;
         setSaving(false);
       }
     },
