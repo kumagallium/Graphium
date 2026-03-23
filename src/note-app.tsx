@@ -393,6 +393,10 @@ function NoteEditorInner({
           links: linkStore.getAllLinks(),
         },
       ],
+      // ノート間リンクを保持
+      noteLinks: initialDoc?.noteLinks,
+      derivedFromNoteId: initialDoc?.derivedFromNoteId,
+      derivedFromBlockId: initialDoc?.derivedFromBlockId,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
