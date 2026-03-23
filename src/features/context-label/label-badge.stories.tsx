@@ -1,12 +1,25 @@
 // ラベルバッジのストーリー
 // A方式: SideMenu 内（+ の左側）にラベルバッジを配置
-// 制約: + ⠿ はコンテンツのすぐ左に固定。ラベルはさらに左に伸びる。
+// デザイン: Crucible デザインガイドラインに準拠
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { CORE_LABELS } from "./labels";
 
-// ── 色定義 ──
+// ── Crucible デザイントークン ──
+const tokens = {
+  bg: "#fafdf7",
+  fg: "#1a2e1d",
+  border: "#d5e0d7",
+  muted: "#f0f5ef",
+  mutedFg: "#6b7f6e",
+  primary: "#4B7A52",
+  primaryFg: "#ffffff",
+  accent: "#e8f0e8",
+  font: "'Inter', system-ui, sans-serif",
+};
+
+// ラベル色
 const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#3b82f6",
   "[使用したもの]": "#10b981",
@@ -15,19 +28,19 @@ const LABEL_COLORS: Record<string, string> = {
   "[結果]": "#ef4444",
 };
 function getLabelColor(label: string): string {
-  return LABEL_COLORS[label] ?? "#6b7280";
+  return LABEL_COLORS[label] ?? tokens.mutedFg;
 }
 
-// ── バッジ ──
+// ── バッジ（rounded-full, text-xs 準拠） ──
 function LabelBadge({ label, onClick }: { label: string; onClick?: () => void }) {
   const color = getLabelColor(label);
   return (
     <span onClick={onClick} style={{
       display: "inline-flex", alignItems: "center",
-      padding: "0px 5px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+      padding: "0px 6px", borderRadius: 9999, fontSize: 11, fontWeight: 600,
       backgroundColor: color + "18", color, border: `1px solid ${color}38`,
       cursor: onClick ? "pointer" : "default", userSelect: "none",
-      lineHeight: 1.6, whiteSpace: "nowrap",
+      lineHeight: 1.6, whiteSpace: "nowrap", fontFamily: tokens.font,
     }}>
       {label}
     </span>
@@ -37,23 +50,18 @@ function LabelBadge({ label, onClick }: { label: string; onClick?: () => void })
 // ── SideMenu ボタン ──
 const btn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: 20, height: 20, borderRadius: 4, border: "none",
-  background: "none", cursor: "pointer", color: "#9ca3af", padding: 0,
+  width: 20, height: 20, borderRadius: 8, border: "none",
+  background: "none", cursor: "pointer", color: tokens.mutedFg, padding: 0,
 };
 
-// ── SideMenu: 右寄せで [ラベル] [🔗] [+] [⠿] ──
-// + ⠿ はコンテンツのすぐ左に固定。ラベルはその左に伸びる。
 function SideMenu({ label }: { label?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2, justifyContent: "flex-end" }}>
-      {/* ラベル or # ボタン（左に伸びる部分） */}
       {label
         ? <LabelBadge label={label} />
-        : <button title="ラベルを付ける" style={{ ...btn, border: "1px dashed #d1d5db", fontSize: 12 }}>#</button>
+        : <button title="ラベルを付ける" style={{ ...btn, border: `1px dashed ${tokens.border}`, fontSize: 12 }}>#</button>
       }
-      {/* リンクボタン */}
       <button title="リンク" style={{ ...btn, border: "1px dashed #bfdbfe", color: "#93c5fd", fontSize: 11 }}>🔗</button>
-      {/* + ⠿ は常に固定位置 */}
       <button style={{ ...btn, fontSize: 16 }}>+</button>
       <button style={{ ...btn, cursor: "grab", fontSize: 10, letterSpacing: 1 }}>⠿</button>
     </div>
@@ -61,52 +69,22 @@ function SideMenu({ label }: { label?: string }) {
 }
 
 // ── エディタ模擬ブロック ──
-// BlockNote の実際の動作:
-//   - コンテンツの左端は固定（エディタの padding で決まる）
-//   - + ⠿ はコンテンツのすぐ左に配置（Floating UI, placement: "left-start"）
-//   - ラベルバッジはさらに左に伸びる
-// → SideMenu を right-aligned で配置し、右端がコンテンツ左端に揃うようにする
+const CONTENT_LEFT = 160;
 
-const CONTENT_LEFT = 160; // コンテンツの左端位置（px）
-
-function EditorBlock({
-  label,
-  children,
-  indent = 0,
-  visible = true,
-}: {
-  label?: string;
-  children: React.ReactNode;
-  indent?: number;
-  visible?: boolean;
+function EditorBlock({ label, children, indent = 0, visible = true }: {
+  label?: string; children: React.ReactNode; indent?: number; visible?: boolean;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", minHeight: 28 }}>
-      {/* SideMenu 領域: 固定幅、右寄せ。右端がコンテンツ左端に揃う */}
-      <div style={{
-        width: CONTENT_LEFT,
-        flexShrink: 0,
-        display: "flex",
-        justifyContent: "flex-end",
-        paddingTop: 2,
-        paddingRight: 4,
-        visibility: visible ? "visible" : "hidden",
-      }}>
+      <div style={{ width: CONTENT_LEFT, flexShrink: 0, display: "flex", justifyContent: "flex-end", paddingTop: 2, paddingRight: 4, visibility: visible ? "visible" : "hidden" }}>
         <SideMenu label={label} />
       </div>
-      {/* コンテンツ: インデントはここで適用 */}
-      <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>
-        {children}
-      </div>
+      <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>{children}</div>
     </div>
   );
 }
 
-// ── ホバー対応版 ──
-function HoverBlock({
-  id, label, children, indent = 0,
-  hoveredId, setHoveredId,
-}: {
+function HoverBlock({ id, label, children, indent = 0, hoveredId, setHoveredId }: {
   id: string; label?: string; children: React.ReactNode; indent?: number;
   hoveredId: string | null; setHoveredId: (id: string | null) => void;
 }) {
@@ -117,22 +95,14 @@ function HoverBlock({
       onMouseLeave={() => setHoveredId(null)}
       style={{
         display: "flex", alignItems: "flex-start", minHeight: 28,
-        borderRadius: 4,
-        background: isHovered ? "#f9fafb" : "transparent",
-        transition: "background 0.1s",
+        borderRadius: 12, background: isHovered ? tokens.muted : "transparent",
+        transition: "background 0.2s",
       }}
     >
-      <div style={{
-        width: CONTENT_LEFT, flexShrink: 0,
-        display: "flex", justifyContent: "flex-end",
-        paddingTop: 2, paddingRight: 4,
-        visibility: isHovered ? "visible" : "hidden",
-      }}>
+      <div style={{ width: CONTENT_LEFT, flexShrink: 0, display: "flex", justifyContent: "flex-end", paddingTop: 2, paddingRight: 4, visibility: isHovered ? "visible" : "hidden" }}>
         <SideMenu label={label} />
       </div>
-      <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>
-        {children}
-      </div>
+      <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>{children}</div>
     </div>
   );
 }
@@ -140,10 +110,11 @@ function HoverBlock({
 // テーブルスタイル
 const th: React.CSSProperties = {
   padding: "6px 12px", textAlign: "left", fontSize: 13, fontWeight: 600,
-  borderBottom: "2px solid #d1d5db", color: "#374151",
+  borderBottom: `2px solid ${tokens.border}`, color: tokens.fg, fontFamily: tokens.font,
 };
 const td: React.CSSProperties = {
-  padding: "6px 12px", fontSize: 13, borderBottom: "1px solid #e5e7eb", color: "#374151",
+  padding: "6px 12px", fontSize: 13, borderBottom: `1px solid ${tokens.border}`,
+  color: tokens.fg, fontFamily: tokens.font,
 };
 
 // ── Meta ──
@@ -153,7 +124,7 @@ export default meta;
 // 全ラベル一覧
 export const AllLabels: StoryObj = {
   render: () => (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontFamily: tokens.font }}>
       {CORE_LABELS.map((l) => <LabelBadge key={l} label={l} />)}
     </div>
   ),
@@ -163,11 +134,11 @@ export const AllLabels: StoryObj = {
 export const SideMenuVariants: StoryObj = {
   name: "SideMenu 表示パターン",
   render: () => (
-    <div style={{ fontFamily: "Inter, sans-serif", display: "flex", flexDirection: "column", gap: 12 }}>
-      <p style={{ fontSize: 12, color: "#6b7280" }}>+ ⠿ の位置は固定。ラベルバッジは左に伸びる。</p>
-      <div><span style={{ fontSize: 11, color: "#9ca3af", marginRight: 8 }}>未設定:</span><SideMenu /></div>
+    <div style={{ fontFamily: tokens.font, display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ fontSize: 13, color: tokens.mutedFg }}>+ ⠿ の位置は固定。ラベルバッジは左に伸びる。</p>
+      <div><span style={{ fontSize: 12, color: tokens.mutedFg, marginRight: 8 }}>未設定:</span><SideMenu /></div>
       {CORE_LABELS.map((l) => (
-        <div key={l}><span style={{ fontSize: 11, color: "#9ca3af", marginRight: 8 }}>{l}:</span><SideMenu label={l} /></div>
+        <div key={l}><span style={{ fontSize: 12, color: tokens.mutedFg, marginRight: 8 }}>{l}:</span><SideMenu label={l} /></div>
       ))}
     </div>
   ),
@@ -177,25 +148,15 @@ export const SideMenuVariants: StoryObj = {
 export const NoteStatic: StoryObj = {
   name: "ノート風（静的表示）",
   render: () => (
-    <div style={{ maxWidth: 900, fontFamily: "Inter, sans-serif" }}>
+    <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
       <EditorBlock><h1 style={{ fontSize: 28, fontWeight: 700 }}>Cu粉末アニール実験</h1></EditorBlock>
 
-      <EditorBlock label="[手順]">
-        <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3>
-      </EditorBlock>
-      <EditorBlock label="[使用したもの]" indent={24}>
-        <p>Cu粉末 1g</p>
-      </EditorBlock>
-      <EditorBlock label="[使用したもの]" indent={24}>
-        <p>シリカ管</p>
-      </EditorBlock>
-      <EditorBlock label="[結果]" indent={24}>
-        <p>封入されたCu粉末</p>
-      </EditorBlock>
+      <EditorBlock label="[手順]"><h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3></EditorBlock>
+      <EditorBlock label="[使用したもの]" indent={24}><p>Cu粉末 1g</p></EditorBlock>
+      <EditorBlock label="[使用したもの]" indent={24}><p>シリカ管</p></EditorBlock>
+      <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
-      <EditorBlock label="[手順]">
-        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3>
-      </EditorBlock>
+      <EditorBlock label="[手順]"><h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3></EditorBlock>
       <EditorBlock label="[試料]" indent={24}>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead><tr><th style={th}>試料名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
@@ -209,9 +170,7 @@ export const NoteStatic: StoryObj = {
       <EditorBlock label="[条件]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
       <EditorBlock label="[条件]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
 
-      <EditorBlock label="[手順]">
-        <h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3>
-      </EditorBlock>
+      <EditorBlock label="[手順]"><h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3></EditorBlock>
       <EditorBlock label="[結果]" indent={24}><p>XRD測定により相同定を行う。</p></EditorBlock>
     </div>
   ),
@@ -224,32 +183,18 @@ export const NoteHoverDemo: StoryObj = {
     function Demo() {
       const [h, setH] = useState<string | null>(null);
       return (
-        <div style={{ maxWidth: 900, fontFamily: "Inter, sans-serif" }}>
-          <p style={{ fontSize: 11, color: "#6b7280", marginBottom: 12, background: "#f3f4f6", padding: "8px 12px", borderRadius: 6 }}>
+        <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
+          <p style={{ fontSize: 12, color: tokens.mutedFg, marginBottom: 12, background: tokens.muted, padding: "8px 12px", borderRadius: 8, border: `1px solid ${tokens.border}` }}>
             ホバーで SideMenu 表示。ラベル未設定ブロック（4行目）は # ボタン。
           </p>
 
-          <HoverBlock id="t" hoveredId={h} setHoveredId={setH}>
-            <h1 style={{ fontSize: 28, fontWeight: 700 }}>Cu粉末アニール実験</h1>
-          </HoverBlock>
-          <HoverBlock id="s1" label="[手順]" hoveredId={h} setHoveredId={setH}>
-            <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3>
-          </HoverBlock>
-          <HoverBlock id="u1" label="[使用したもの]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p>Cu粉末 1g</p>
-          </HoverBlock>
-          <HoverBlock id="u2" label="[使用したもの]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p>シリカ管</p>
-          </HoverBlock>
-          <HoverBlock id="p1" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p style={{ color: "#6b7280" }}>真空封入管内で封入する。（ラベルなし）</p>
-          </HoverBlock>
-          <HoverBlock id="r1" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p>封入されたCu粉末</p>
-          </HoverBlock>
-          <HoverBlock id="s2" label="[手順]" hoveredId={h} setHoveredId={setH}>
-            <h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3>
-          </HoverBlock>
+          <HoverBlock id="t" hoveredId={h} setHoveredId={setH}><h1 style={{ fontSize: 28, fontWeight: 700 }}>Cu粉末アニール実験</h1></HoverBlock>
+          <HoverBlock id="s1" label="[手順]" hoveredId={h} setHoveredId={setH}><h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3></HoverBlock>
+          <HoverBlock id="u1" label="[使用したもの]" indent={24} hoveredId={h} setHoveredId={setH}><p>Cu粉末 1g</p></HoverBlock>
+          <HoverBlock id="u2" label="[使用したもの]" indent={24} hoveredId={h} setHoveredId={setH}><p>シリカ管</p></HoverBlock>
+          <HoverBlock id="p1" indent={24} hoveredId={h} setHoveredId={setH}><p style={{ color: tokens.mutedFg }}>真空封入管内で封入する。（ラベルなし）</p></HoverBlock>
+          <HoverBlock id="r1" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>封入されたCu粉末</p></HoverBlock>
+          <HoverBlock id="s2" label="[手順]" hoveredId={h} setHoveredId={setH}><h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3></HoverBlock>
           <HoverBlock id="st" label="[試料]" indent={24} hoveredId={h} setHoveredId={setH}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr><th style={th}>試料名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
@@ -260,18 +205,10 @@ export const NoteHoverDemo: StoryObj = {
               </tbody>
             </table>
           </HoverBlock>
-          <HoverBlock id="c1" label="[条件]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p>昇温速度: 5℃/min</p>
-          </HoverBlock>
-          <HoverBlock id="c2" label="[条件]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p>冷却: 炉冷</p>
-          </HoverBlock>
-          <HoverBlock id="s3" label="[手順]" hoveredId={h} setHoveredId={setH}>
-            <h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3>
-          </HoverBlock>
-          <HoverBlock id="r2" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <p>XRD測定により相同定を行う。</p>
-          </HoverBlock>
+          <HoverBlock id="c1" label="[条件]" indent={24} hoveredId={h} setHoveredId={setH}><p>昇温速度: 5℃/min</p></HoverBlock>
+          <HoverBlock id="c2" label="[条件]" indent={24} hoveredId={h} setHoveredId={setH}><p>冷却: 炉冷</p></HoverBlock>
+          <HoverBlock id="s3" label="[手順]" hoveredId={h} setHoveredId={setH}><h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3></HoverBlock>
+          <HoverBlock id="r2" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>XRD測定により相同定を行う。</p></HoverBlock>
         </div>
       );
     }
