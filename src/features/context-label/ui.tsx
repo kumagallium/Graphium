@@ -34,9 +34,11 @@ import { useLabelStore } from "./store";
 const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#3b82f6",
   "[使用したもの]": "#10b981",
-  "[条件]": "#f59e0b",
+  "[属性]": "#f59e0b",
   "[試料]": "#8b5cf6",
   "[結果]": "#ef4444",
+  // 後方互換
+  "[条件]": "#f59e0b",
 };
 
 function getLabelColor(label: string): string {
@@ -44,138 +46,17 @@ function getLabelColor(label: string): string {
 }
 
 // ──────────────────────────────────
-// LabelBadgeLayer（マージン埋め込み方式）
+// LabelBadgeLayer
 //
-// エディタのラッパーに padding-left を確保し、
-// その左マージン領域に position:absolute でバッジを配置する。
-// DOMフローに乗るためスクロール追従が自動で、はみ出しが構造的に不可能。
+// A方式: ラベルバッジは SideMenu 内に統合。
+// LabelBadgeLayer は互換性のため空コンポーネントとして維持。
 // ──────────────────────────────────
 
-/** エディタラッパー用の定数 */
-export const LABEL_GUTTER_WIDTH = 100; // px: ラベル表示領域の幅
-
-type BadgeInfo = {
-  blockId: string;
-  label: string;
-  top: number;   // ラッパー内の offsetTop
-};
+/** ガター幅（A方式: SideMenu 内表示のためガター不要） */
+export const LABEL_GUTTER_WIDTH = 0;
 
 export function LabelBadgeLayer() {
-  const { labels, openDropdown } = useLabelStore();
-  const [badges, setBadges] = useState<BadgeInfo[]>([]);
-  const wrapperRef = useRef<HTMLElement | null>(null);
-
-  const compute = useCallback(() => {
-    // ラッパー要素を取得（data-label-wrapper 属性で識別）
-    const wrapper = document.querySelector("[data-label-wrapper]") as HTMLElement | null;
-    if (!wrapper) return;
-    wrapperRef.current = wrapper;
-
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const next: BadgeInfo[] = [];
-
-    for (const [blockId, label] of labels) {
-      const el = wrapper.querySelector(
-        `[data-id="${blockId}"][data-node-type="blockOuter"]`
-      ) as HTMLElement | null;
-      if (!el) continue;
-
-      const elRect = el.getBoundingClientRect();
-      if (elRect.height === 0) continue;
-
-      // ラッパー内の相対 y 位置（スクロール位置を加味）
-      const top = elRect.top - wrapperRect.top + wrapper.scrollTop + elRect.height / 2;
-      next.push({ blockId, label, top });
-    }
-    setBadges(next);
-  }, [labels]);
-
-  // labels 変化時に再計算
-  useEffect(() => {
-    const raf = requestAnimationFrame(compute);
-    return () => cancelAnimationFrame(raf);
-  }, [compute]);
-
-  // エディタ内のDOM変更で再計算
-  useEffect(() => {
-    const wrapper = document.querySelector("[data-label-wrapper]");
-    if (!wrapper) return;
-
-    let rafId: number | null = null;
-    const observer = new MutationObserver(() => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(compute);
-    });
-    observer.observe(wrapper, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    // スクロール時も再計算（ラッパー自体のスクロール）
-    wrapper.addEventListener("scroll", compute);
-
-    return () => {
-      observer.disconnect();
-      wrapper.removeEventListener("scroll", compute);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [compute]);
-
-  if (badges.length === 0) return null;
-
-  // ラッパー内にポータルで描画（ラッパーが position:relative なので absolute が効く）
-  const wrapper = wrapperRef.current ?? document.querySelector("[data-label-wrapper]");
-  if (!wrapper) return null;
-
-  return createPortal(
-    <>
-      {badges.map(({ blockId, label, top }) => {
-        return (
-          <div
-            key={blockId}
-            style={{
-              position: "absolute",
-              top,
-              left: 4,
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              gap: 3,
-              pointerEvents: "auto",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {/* ラベルバッジ本体 */}
-            <span
-              data-prov-label-anchor={blockId}
-              onClick={() => openDropdown(blockId)}
-              title={`${label} — クリックで変更`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                padding: "1px 6px",
-                borderRadius: 4,
-                fontSize: 11,
-                fontWeight: 600,
-                backgroundColor: getLabelColor(label) + "18",
-                color: getLabelColor(label),
-                border: `1px solid ${getLabelColor(label)}38`,
-                cursor: "pointer",
-                userSelect: "none",
-                lineHeight: 1.6,
-              }}
-            >
-              {label}
-            </span>
-          </div>
-        );
-      })}
-    </>,
-    wrapper
-  );
+  return null;
 }
 
 // ──────────────────────────────────
@@ -198,33 +79,30 @@ export function LabelDropdownPortal() {
   const [headingCandidates, setHeadingCandidates] = useState<{ blockId: string; text: string; level: number }[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
-  // ドロップダウンが開いたとき、バッジ要素の位置に合わせる
+  // ドロップダウンが開いたとき、アンカー要素の位置に合わせる
+  // position: fixed でビューポート座標を使い、画面外に切れないよう調整
   useEffect(() => {
     if (!openBlockId) return;
-    const anchor = document.querySelector(
-      `[data-prov-label-anchor="${openBlockId}"]`
-    );
-    if (anchor) {
-      const rect = anchor.getBoundingClientRect();
-      // ドロップダウンは position:absolute (document座標)
-      setPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-      });
-    } else {
-      // バッジが非表示の場合（ラベル未設定 = SideMenuボタンがアンカー）
-      // SideMenuボタンの位置を使う
-      const sideAnchor = document.querySelector(
-        `[data-prov-label-anchor="${openBlockId}"]`
-      );
-      if (sideAnchor) {
-        const rect = sideAnchor.getBoundingClientRect();
-        setPos({
-          top: rect.bottom + window.scrollY + 4,
-          left: rect.left + window.scrollX,
-        });
-      }
+    const anchor =
+      document.querySelector(`[data-prov-label-anchor="${openBlockId}"]`);
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    let left = rect.left;
+
+    // ビューポート下端に収まらない場合は上に表示
+    const dropdownHeight = 400; // 推定最大高さ
+    if (top + dropdownHeight > window.innerHeight) {
+      top = Math.max(8, rect.top - dropdownHeight - 4);
     }
+    // 左端がはみ出す場合
+    if (left + 220 > window.innerWidth) {
+      left = window.innerWidth - 228;
+    }
+    if (left < 4) left = 4;
+
+    setPos({ top, left });
     setFreeInput("");
     setPrevStepMode(false);
   }, [openBlockId]);
@@ -254,7 +132,7 @@ export function LabelDropdownPortal() {
     <div
       ref={ref}
       style={{
-        position: "absolute",
+        position: "fixed",
         top: pos.top,
         left: pos.left,
         zIndex: 9999,
@@ -264,6 +142,8 @@ export function LabelDropdownPortal() {
         boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
         padding: "6px 0",
         minWidth: 200,
+        maxHeight: "80vh",
+        overflowY: "auto",
       }}
     >
       {/* コアラベル */}
@@ -461,8 +341,9 @@ export function LabelDropdownPortal() {
 
 // ──────────────────────────────────
 // LabelSideMenuButton
-// ラベル未設定ブロックに「#」ボタンを表示する。
-// ラベル設定済みは LabelBadgeLayer が常時表示するのでここには出さない。
+// A方式: SideMenu 内にラベルバッジ or # ボタンを表示。
+// ラベル設定済み → バッジ表示（クリックで変更）
+// ラベル未設定 → # ボタン（クリックで付与）
 // ──────────────────────────────────
 export function LabelSideMenuButton() {
   const editor = useBlockNoteEditor<any, any, any>();
@@ -477,63 +358,65 @@ export function LabelSideMenuButton() {
 
   const label = getLabel(block.id);
 
-  // 見出しブロックのロールヒント
-  const headingRole =
-    block.type === "heading" && label
-      ? getHeadingLabelRole((block.props as any).level, label)
-      : null;
+  if (label) {
+    // ラベル設定済み: バッジ表示（Crucible デザインガイドライン準拠: rounded-full）
+    const color = getLabelColor(label);
+    return (
+      <span
+        onClick={() => openDropdown(block.id)}
+        data-prov-label-anchor={block.id}
+        title={`${label} — クリックで変更`}
+        style={{
+          display: "inline-block",
+          padding: "0px 6px",
+          borderRadius: 9999,
+          fontSize: 11,
+          fontWeight: 600,
+          backgroundColor: color + "18",
+          color: color,
+          border: `1px solid ${color}38`,
+          cursor: "pointer",
+          userSelect: "none",
+          lineHeight: 1.6,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
 
+  // ラベル未設定: # ボタン
   return (
-    <div
+    <button
+      onClick={() => openDropdown(block.id)}
+      data-prov-label-anchor={block.id}
+      title="ラベルを付ける"
       style={{
-        position: "relative",
-        display: "flex",
+        display: "inline-flex",
         alignItems: "center",
-        gap: 4,
+        justifyContent: "center",
+        width: 22,
+        height: 22,
+        borderRadius: 8,
+        border: "1px dashed #d5e0d7",
+        background: "none",
+        cursor: "pointer",
+        color: "#6b7f6e",
+        fontSize: 12,
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "#4B7A52";
+        e.currentTarget.style.color = "#4B7A52";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "#d5e0d7";
+        e.currentTarget.style.color = "#6b7f6e";
       }}
     >
-      {!label && (
-        // ラベル未設定: #ボタンを表示、アンカー属性でドロップダウンの位置合わせ用
-        <button
-          onClick={() => openDropdown(block.id)}
-          data-prov-label-anchor={block.id}
-          title="ラベルを付ける"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: 4,
-            border: "1px dashed #d1d5db",
-            background: "none",
-            cursor: "pointer",
-            color: "#9ca3af",
-            fontSize: 12,
-            lineHeight: 1,
-          }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget;
-            el.style.borderColor = "#3b82f6";
-            el.style.color = "#3b82f6";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget;
-            el.style.borderColor = "#d1d5db";
-            el.style.color = "#9ca3af";
-          }}
-        >
-          #
-        </button>
-      )}
-
-      {/* 見出しロールのヒント（ラベル設定済み時のみ） */}
-      {headingRole && (
-        <span style={{ fontSize: 9, color: "#9ca3af", whiteSpace: "nowrap" }}>
-          {headingRole === "section-marker" ? "§" : "▶"}
-        </span>
-      )}
-    </div>
+      #
+    </button>
   );
 }
 

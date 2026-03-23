@@ -22,6 +22,7 @@ import {
   ProvGraphPanel,
   type ProvDocument,
 } from "./features/prov-generator";
+import { NoteApp } from "./note-app";
 import type { CustomBlockEntry } from "./base/schema";
 import { cn } from "./lib/utils";
 import {
@@ -34,8 +35,12 @@ import {
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import "./app.css";
 
-// ── 実験の登録 ──────────────────────────────
-// 新しい実験を追加するときはここに追加するだけ
+// ── モード判定 ──
+// ?sandbox パラメータがある場合はサンドボックスモード
+const isSandboxMode = new URLSearchParams(window.location.search).has("sandbox");
+
+// ── サンドボックスモード（既存の実験環境） ──────────
+
 type Experiment = {
   id: string;
   name: string;
@@ -43,15 +48,9 @@ type Experiment = {
   layer: "blocks" | "features" | "scenarios";
   blocks: CustomBlockEntry[];
   initialContent?: any[];
-  /**
-   * カスタムレンダラー（Provider・カスタムUIが必要な場合）
-   * 定義した場合は blocks/initialContent の代わりに使われる
-   */
   renderEditor?: (key: string) => ReactNode;
 };
 
-// コンテキストラベル実験の初期コンテンツ（理想的なラベル付き）
-// 各ブロックに固定IDを付与し、初期ラベル・リンクをプリセットする
 const contextLabelInitialContent = [
   {
     id: "block-title",
@@ -131,7 +130,6 @@ const contextLabelInitialContent = [
   },
 ];
 
-// 初期ラベル（理想状態）
 const initialLabels: [string, string][] = [
   ["block-step1", "[手順]"],
   ["block-used1", "[使用したもの]"],
@@ -142,10 +140,9 @@ const initialLabels: [string, string][] = [
   ["block-result3", "[結果]"],
 ];
 
-// 初期リンク（前手順リンク）
 const initialLinks: { sourceBlockId: string; targetBlockId: string }[] = [
-  { sourceBlockId: "block-step2", targetBlockId: "block-step1" }, // アニール←封入
-  { sourceBlockId: "block-step3", targetBlockId: "block-step2" }, // 評価←アニール
+  { sourceBlockId: "block-step2", targetBlockId: "block-step1" },
+  { sourceBlockId: "block-step3", targetBlockId: "block-step2" },
 ];
 
 const experiments: Experiment[] = [
@@ -173,14 +170,12 @@ const experiments: Experiment[] = [
   },
 ];
 
-// リンクドロップダウンを開くためのグローバルコールバック（サンドボックス用簡易実装）
 let openLinkDropdownFn: ((params: {
   type: "prevStep" | "general";
   sourceBlockId: string;
   anchorRect: { top: number; left: number };
 }) => void) | null = null;
 
-// リンクボタン付きSideMenu
 function LinkSideMenu() {
   return (
     <SideMenu>
@@ -192,7 +187,6 @@ function LinkSideMenu() {
   );
 }
 
-// SideMenu内のリンクボタン
 function LinkSideMenuButton() {
   const editor = useBlockNoteEditor<any, any, any>();
   const block = useExtensionState(SideMenuExtension, {
@@ -238,12 +232,11 @@ function LinkSideMenuButton() {
         e.currentTarget.style.color = "#93c5fd";
       }}
     >
-      🔗
+      &#128279;
     </button>
   );
 }
 
-// ── コンテキストラベル実験（マルチページ + テンプレート + リンク対応） ──
 function ContextLabelExperiment() {
   return (
     <LabelStoreProvider>
@@ -262,78 +255,44 @@ function ContextLabelExperimentInner() {
   const [provDoc, setProvDoc] = useState<ProvDocument | null>(null);
   const initializedRef = useRef(false);
 
-  // エディタ参照を保持
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
   }, []);
 
-  // 初期ラベル・リンクを適用（1回のみ）
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-
-    // ラベル設定
     for (const [blockId, label] of initialLabels) {
       labelStore.setLabel(blockId, label);
     }
-    // 前手順リンク設定
     for (const { sourceBlockId, targetBlockId } of initialLinks) {
-      linkStore.addLink({
-        sourceBlockId,
-        targetBlockId,
-        type: "informed_by",
-        createdBy: "system",
-      });
+      linkStore.addLink({ sourceBlockId, targetBlockId, type: "informed_by", createdBy: "system" });
     }
   }, [labelStore, linkStore]);
 
-  // PROV生成
   const handleGenerateProv = () => {
     if (!editorRef.current) return;
     const blocks = editorRef.current.document;
-    const doc = generateProvDocument({
-      blocks,
-      labels: labelStore.labels,
-      links: linkStore.links,
-    });
+    const doc = generateProvDocument({ blocks, labels: labelStore.labels, links: linkStore.links });
     setProvDoc(doc);
   };
 
-  // [前手順]リンク選択時のコールバック → linkStoreにinformed_byリンクを追加
   useEffect(() => {
     setOnPrevStepLinkSelected((sourceBlockId: string, targetBlockId: string) => {
-      linkStore.addLink({
-        sourceBlockId,
-        targetBlockId,
-        type: "informed_by",
-        createdBy: "human",
-      });
+      linkStore.addLink({ sourceBlockId, targetBlockId, type: "informed_by", createdBy: "human" });
     });
     return () => { setOnPrevStepLinkSelected(null); };
   }, [linkStore]);
 
-  // 🔗ボタンからの「スコープ派生で新ページ作成」コールバック
   useEffect(() => {
     openLinkDropdownFn = (params) => {
-      // params.sourceBlockId のコンテキストを継承した新ページを作る
       const sourceBlockId = params.sourceBlockId;
-      // ブロックのテキストを取得してページタイトルにする
-      const el = document.querySelector(
-        `[data-id="${sourceBlockId}"][data-node-type="blockOuter"]`
-      );
+      const el = document.querySelector(`[data-id="${sourceBlockId}"][data-node-type="blockOuter"]`);
       const heading = el?.querySelector("h1, h2, h3");
       const title = heading?.textContent || "派生ページ";
-
-      // 新ページ追加（派生元情報付き）
       const newPageId = addPage(`↳ ${title}`, { pageId: activePageId, blockId: sourceBlockId });
-
-      // 暗黙的リンクを自動生成（created_by: 'system'）
       linkStore.addLink({
-        sourceBlockId,
-        targetBlockId: newPageId ?? "",
-        type: "derived_from",
-        createdBy: "system",
-        targetPageId: newPageId,
+        sourceBlockId, targetBlockId: newPageId ?? "", type: "derived_from", createdBy: "system", targetPageId: newPageId,
       });
     };
     return () => { openLinkDropdownFn = null; };
@@ -341,86 +300,25 @@ function ContextLabelExperimentInner() {
 
   return (
     <>
-      {/* ドロップダウン（body レベルポータル、SideMenu に依存しない） */}
       <LabelDropdownPortal />
-      {/* リンクバッジ（リンクを持つブロックの右側に表示） */}
       <LinkBadgeLayer />
-
       <div style={{ display: "flex", height: "100%", width: "100%", gap: 0, overflow: "hidden" }}>
-        {/* 左: エディタ（ラベルガター付き） */}
-        <div
-          data-label-wrapper
-          style={{
-            flex: 1,
-            minWidth: 0,
-            overflow: "auto",
-            position: "relative",
-            paddingLeft: LABEL_GUTTER_WIDTH,
-          }}
-        >
-          {/* バッジレイヤー（このラッパー内に absolute 配置される） */}
+        <div data-label-wrapper style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", paddingLeft: LABEL_GUTTER_WIDTH }}>
           <LabelBadgeLayer />
-
-          <MultiPageLayout
-            pages={pages}
-            activePageId={activePageId}
-            onSelectPage={setActivePageId}
-            onAddPage={(title) => addPage(title)}
-            onRemovePage={removePage}
-          >
+          <MultiPageLayout pages={pages} activePageId={activePageId} onSelectPage={setActivePageId} onAddPage={(title) => addPage(title)} onRemovePage={removePage}>
             {(pageId) => (
               <div style={{ padding: "16px 0" }}>
-                <SandboxEditor
-                  key={pageId}
-                  blocks={[]}
-                  initialContent={pageId === pages[0]?.id ? contextLabelInitialContent : undefined}
-                  sideMenu={LinkSideMenu}
-                  onEditorReady={handleEditorReady}
-                />
+                <SandboxEditor key={pageId} blocks={[]} initialContent={pageId === pages[0]?.id ? contextLabelInitialContent : undefined} sideMenu={LinkSideMenu} onEditorReady={handleEditorReady} />
               </div>
             )}
           </MultiPageLayout>
         </div>
-
-        {/* 右サイドバー: PROV */}
-        <div style={{
-          width: 480,
-          flexShrink: 0,
-          borderLeft: "1px solid #e5e7eb",
-          background: "#fafbfc",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}>
-          <div style={{
-            padding: "8px 12px",
-            borderBottom: "1px solid #e5e7eb",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em" }}>
-              PROV
-            </span>
-            <button
-              onClick={handleGenerateProv}
-              style={{
-                padding: "3px 10px",
-                fontSize: 11,
-                fontWeight: 600,
-                borderRadius: 4,
-                border: "1px solid #3b82f6",
-                background: "#eff6ff",
-                color: "#3b82f6",
-                cursor: "pointer",
-              }}
-            >
-              生成
-            </button>
+        <div style={{ width: 480, flexShrink: 0, borderLeft: "1px solid #e5e7eb", background: "#fafbfc", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em" }}>PROV</span>
+            <button onClick={handleGenerateProv} style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, borderRadius: 4, border: "1px solid #3b82f6", background: "#eff6ff", color: "#3b82f6", cursor: "pointer" }}>生成</button>
           </div>
-          <div style={{ flex: 1, overflow: "auto" }}>
-            <ProvGraphPanel doc={provDoc} />
-          </div>
+          <div style={{ flex: 1, overflow: "auto" }}><ProvGraphPanel doc={provDoc} /></div>
         </div>
       </div>
     </>
@@ -433,43 +331,27 @@ const layerLabels: Record<string, string> = {
   scenarios: "Scenarios",
 };
 
-// ── UI ──────────────────────────────────────
-function App() {
+function SandboxApp() {
   const [selected, setSelected] = useState<string>("context-label");
   const current = experiments.find((e) => e.id === selected)!;
 
   return (
     <div className="flex h-screen font-sans antialiased bg-background text-foreground">
-      {/* サイドバー */}
       <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background overflow-y-auto">
         <div className="p-4">
           <h2 className="text-sm font-semibold text-sidebar-foreground/60 mb-4 tracking-wide">
-            provnote
+            provnote <span className="text-[10px] font-normal text-muted-foreground">(sandbox)</span>
           </h2>
-
           {(["blocks", "features", "scenarios"] as const).map((layer) => {
             const items = experiments.filter((e) => e.layer === layer);
             if (items.length === 0) return null;
             return (
               <div key={layer} className="mb-5">
-                <div className="text-[11px] font-semibold uppercase text-muted-foreground/70 mb-1.5 tracking-wider px-2">
-                  {layerLabels[layer]}
-                </div>
+                <div className="text-[11px] font-semibold uppercase text-muted-foreground/70 mb-1.5 tracking-wider px-2">{layerLabels[layer]}</div>
                 {items.map((exp) => (
-                  <button
-                    key={exp.id}
-                    onClick={() => setSelected(exp.id)}
-                    className={cn(
-                      "w-full text-left rounded-md px-2 py-1.5 mb-0.5 text-sm transition-colors",
-                      selected === exp.id
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
-                    )}
-                  >
+                  <button key={exp.id} onClick={() => setSelected(exp.id)} className={cn("w-full text-left rounded-md px-2 py-1.5 mb-0.5 text-sm transition-colors", selected === exp.id ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50")}>
                     {exp.name}
-                    <span className="block text-[11px] text-muted-foreground mt-0.5">
-                      {exp.description}
-                    </span>
+                    <span className="block text-[11px] text-muted-foreground mt-0.5">{exp.description}</span>
                   </button>
                 ))}
               </div>
@@ -477,8 +359,6 @@ function App() {
           })}
         </div>
       </aside>
-
-      {/* メイン */}
       <main className="flex-1 overflow-hidden flex flex-col">
         <div className="px-6 py-3 border-b border-border text-sm text-muted-foreground shrink-0">
           <span>{current.layer}</span>
@@ -486,18 +366,10 @@ function App() {
           <span className="font-medium text-foreground">{current.name}</span>
         </div>
         {current.renderEditor ? (
-          // renderEditor がある場合: max-width 制限なし、高さ全体を使う
-          <div className="flex-1 overflow-hidden">
-            {current.renderEditor(current.id)}
-          </div>
+          <div className="flex-1 overflow-hidden">{current.renderEditor(current.id)}</div>
         ) : (
-          // 通常実験: 読みやすい幅に制限
           <div className="max-w-3xl mx-auto w-full px-4 py-6 overflow-auto">
-            <SandboxEditor
-              key={current.id}
-              blocks={current.blocks}
-              initialContent={current.initialContent}
-            />
+            <SandboxEditor key={current.id} blocks={current.blocks} initialContent={current.initialContent} />
           </div>
         )}
       </main>
@@ -505,8 +377,9 @@ function App() {
   );
 }
 
+// ── エントリーポイント ──
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    {isSandboxMode ? <SandboxApp /> : <NoteApp />}
   </StrictMode>
 );

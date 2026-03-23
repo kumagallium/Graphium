@@ -3,6 +3,7 @@ dist/
 .DS_Store
 *.local
 .vite/
+.env
 
 # Claude Code (private config — managed in parent repo)
 CLAUDE.md

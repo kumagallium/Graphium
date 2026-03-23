@@ -44,3 +44,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* BlockNote SideMenu がサイドバーに隠れないようにする */
+.bn-side-menu {
+  z-index: 30 !important;
+}
