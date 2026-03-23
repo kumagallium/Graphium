@@ -99,7 +99,7 @@ export function LabelBadgeLayer() {
     return () => cancelAnimationFrame(raf);
   }, [compute]);
 
-  // エディタ内のDOM変更で再計算
+  // エディタ内のDOM変更で再計算（スクロールでは再計算しない）
   useEffect(() => {
     const wrapper = document.querySelector("[data-label-wrapper]");
     if (!wrapper) return;
@@ -115,12 +115,16 @@ export function LabelBadgeLayer() {
       characterData: true,
     });
 
-    // スクロール時も再計算（ラッパー自体のスクロール）
-    wrapper.addEventListener("scroll", compute);
+    // ウィンドウリサイズ時のみ再計算
+    const onResize = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(compute);
+    };
+    window.addEventListener("resize", onResize);
 
     return () => {
       observer.disconnect();
-      wrapper.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", onResize);
       if (rafId) cancelAnimationFrame(rafId);
     };
   }, [compute]);
