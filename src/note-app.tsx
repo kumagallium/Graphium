@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SandboxEditor } from "./base/editor";
-import { MultiPageLayout, useMultiPage } from "./base/multipage";
+// MultiPageLayout は派生ノートが別ファイルになったため不要
 import {
   LabelBadgeLayer,
   LabelDropdownPortal,
@@ -34,6 +34,7 @@ import {
   type ProvNoteFile,
   type ProvNoteDocument,
 } from "./lib/google-drive";
+import type { NoteLink } from "./lib/google-drive";
 import { cn } from "./lib/utils";
 import {
   AddBlockButton,
@@ -43,6 +44,57 @@ import {
   useExtensionState,
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
+
+// ── ノート間リンクバッジ ──
+// 派生元・派生先のリンクをヘッダー下にバッジ表示
+function NoteLinkBadges({
+  initialDoc,
+  files,
+  onNavigate,
+}: {
+  initialDoc: ProvNoteDocument | null;
+  files: ProvNoteFile[];
+  onNavigate: (noteId: string) => void;
+}) {
+  if (!initialDoc) return null;
+
+  const derivedFrom = initialDoc.derivedFromNoteId;
+  const noteLinks = initialDoc.noteLinks ?? [];
+
+  if (!derivedFrom && noteLinks.length === 0) return null;
+
+  // ファイル ID からタイトルを取得
+  const getTitle = (noteId: string) => {
+    const f = files.find((f) => f.id === noteId);
+    return f ? f.name.replace(/\.provnote\.json$/, "") : "ノート";
+  };
+
+  return (
+    <div className="px-4 py-1.5 border-b border-border flex items-center gap-2 flex-wrap shrink-0 text-xs">
+      {/* 派生元 */}
+      {derivedFrom && (
+        <button
+          onClick={() => onNavigate(derivedFrom)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+        >
+          <span>&#8592;</span>
+          <span>派生元: {getTitle(derivedFrom)}</span>
+        </button>
+      )}
+      {/* 派生先 */}
+      {noteLinks.map((link, i) => (
+        <button
+          key={i}
+          onClick={() => onNavigate(link.targetNoteId)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 transition-colors cursor-pointer"
+        >
+          <span>&#8594;</span>
+          <span>派生: {getTitle(link.targetNoteId)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ── ログイン画面 ──
 function LoginScreen({ onSignIn }: { onSignIn: () => void }) {
@@ -240,13 +292,17 @@ function NoteEditor({
   initialDoc,
   onSave,
   onDeriveNote,
+  onNavigateNote,
   saving,
+  files,
 }: {
   fileId: string | null;
   initialDoc: ProvNoteDocument | null;
   onSave: (doc: ProvNoteDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
+  onNavigateNote: (noteId: string) => void;
   saving: boolean;
+  files: ProvNoteFile[];
 }) {
   return (
     <LabelStoreProvider>
@@ -256,7 +312,9 @@ function NoteEditor({
           initialDoc={initialDoc}
           onSave={onSave}
           onDeriveNote={onDeriveNote}
+          onNavigateNote={onNavigateNote}
           saving={saving}
+          files={files}
         />
       </LinkStoreProvider>
     </LabelStoreProvider>
@@ -268,16 +326,18 @@ function NoteEditorInner({
   initialDoc,
   onSave,
   onDeriveNote,
+  onNavigateNote,
   saving,
+  files,
 }: {
   fileId: string | null;
   initialDoc: ProvNoteDocument | null;
   onSave: (doc: ProvNoteDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
+  onNavigateNote: (noteId: string) => void;
   saving: boolean;
+  files: ProvNoteFile[];
 }) {
-  const { pages, activePageId, setActivePageId, addPage, removePage } =
-    useMultiPage(initialDoc?.title || "新しいノート");
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const editorRef = useRef<any>(null);
@@ -326,19 +386,23 @@ function NoteEditorInner({
       title,
       pages: [
         {
-          id: pages[0]?.id || "main",
+          id: "main",
           title,
           blocks,
           labels: labelsObj,
           links: linkStore.getAllLinks(),
         },
       ],
+      // ノート間リンクを保持
+      noteLinks: initialDoc?.noteLinks,
+      derivedFromNoteId: initialDoc?.derivedFromNoteId,
+      derivedFromBlockId: initialDoc?.derivedFromBlockId,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
     onSave(doc);
     setDirty(false);
-  }, [title, pages, labelStore, linkStore, initialDoc, onSave]);
+  }, [title, labelStore, linkStore, initialDoc, onSave]);
 
   // 常に最新の handleSave を ref に保持
   useEffect(() => {
@@ -496,30 +560,27 @@ function NoteEditorInner({
         </button>
       </div>
 
+      {/* ノート間リンクバッジ */}
+      <NoteLinkBadges
+        initialDoc={initialDoc}
+        files={files}
+        onNavigate={onNavigateNote}
+      />
+
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
           <LabelBadgeLayer />
-          <MultiPageLayout
-            pages={pages}
-            activePageId={activePageId}
-            onSelectPage={setActivePageId}
-            onAddPage={(t) => addPage(t)}
-            onRemovePage={removePage}
-          >
-            {(pageId) => (
-              <div style={{ padding: "16px 0", paddingLeft: 160 }}>
-                <SandboxEditor
-                  key={`${fileId || "new"}-${pageId}`}
-                  blocks={[]}
-                  initialContent={pageId === pages[0]?.id ? initialContent : undefined}
-                  sideMenu={NoteSideMenu}
-                  onEditorReady={handleEditorReady}
-                  onChange={handleContentChange}
-                />
-              </div>
-            )}
-          </MultiPageLayout>
+          <div style={{ padding: "16px 0", paddingLeft: 160 }}>
+            <SandboxEditor
+              key={fileId || "new"}
+              blocks={[]}
+              initialContent={initialContent}
+              sideMenu={NoteSideMenu}
+              onEditorReady={handleEditorReady}
+              onChange={handleContentChange}
+            />
+          </div>
         </div>
 
         {/* 右: PROV パネル */}
@@ -565,6 +626,8 @@ export function NoteApp() {
   const savingRef = useRef(false);
   // エディタを強制的にリマウントするためのキー
   const [editorKey, setEditorKey] = useState(0);
+  // ノートキャッシュ（Drive API 呼び出しを削減）
+  const docCacheRef = useRef<Map<string, ProvNoteDocument>>(new Map());
 
   // ファイル一覧を取得
   const refreshFiles = useCallback(async () => {
@@ -579,10 +642,21 @@ export function NoteApp() {
     }
   }, []);
 
-  // ファイルを開く
+  // ファイルを開く（キャッシュ優先）
   const handleOpenFile = useCallback(async (fileId: string) => {
     try {
+      // キャッシュにあれば即座に表示
+      const cached = docCacheRef.current.get(fileId);
+      if (cached) {
+        setActiveFileId(fileId);
+        setActiveDoc(cached);
+        setEditorKey((k) => k + 1);
+        // バックグラウンドで最新を取得してキャッシュ更新
+        loadFile(fileId).then((doc) => docCacheRef.current.set(fileId, doc)).catch(() => {});
+        return;
+      }
       const doc = await loadFile(fileId);
+      docCacheRef.current.set(fileId, doc);
       setActiveFileId(fileId);
       setActiveDoc(doc);
       setEditorKey((k) => k + 1);
@@ -633,6 +707,8 @@ export function NoteApp() {
         if (currentFileId) {
           // 既存ファイルを上書き
           await saveFile(currentFileId, doc);
+          // キャッシュも更新
+          docCacheRef.current.set(currentFileId, doc);
           // ローカルのファイル一覧を即座に更新
           setFiles((prev) =>
             prev.map((f) =>
@@ -644,6 +720,7 @@ export function NoteApp() {
         } else {
           // 新規作成
           const newId = await createFile(doc.title, doc);
+          docCacheRef.current.set(newId, doc);
           setActiveFileId(newId);
           // 新規ファイルを一覧に追加
           setFiles((prev) => [
@@ -668,8 +745,10 @@ export function NoteApp() {
   );
 
   // 派生ノートを別ファイルとして作成
+  const [deriving, setDeriving] = useState(false);
   const handleDeriveNote = useCallback(
     async (derivedTitle: string, sourceBlockId: string) => {
+      setDeriving(true);
       try {
         // 派生先ノートを作成
         const now = new Date().toISOString();
@@ -707,6 +786,8 @@ export function NoteApp() {
         handleOpenFile(newFileId);
       } catch (err) {
         console.error("派生ノートの作成に失敗:", err);
+      } finally {
+        setDeriving(false);
       }
     },
     [activeDoc, handleOpenFile, setActiveFileId]
@@ -757,15 +838,26 @@ export function NoteApp() {
         onRefresh={refreshFiles}
         onSignOut={signOut}
       />
-      <main className="flex-1 overflow-hidden flex flex-col">
+      <main className="flex-1 overflow-hidden flex flex-col relative">
         <NoteEditor
           key={editorKey}
           fileId={activeFileId}
           initialDoc={activeDoc}
           onSave={handleSave}
           onDeriveNote={handleDeriveNote}
+          onNavigateNote={handleOpenFile}
           saving={saving}
+          files={files}
         />
+        {/* 派生ノート作成中のオーバーレイ */}
+        {deriving && (
+          <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
+            <div className="text-center space-y-2">
+              <div className="text-sm font-medium text-foreground">派生ノートを作成中...</div>
+              <div className="text-xs text-muted-foreground">Google Drive に保存しています</div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

@@ -4,6 +4,7 @@ dist/
 *.local
 .vite/
 .env
+storybook-static/
 
 # Claude Code (private config — managed in parent repo)
 CLAUDE.md
