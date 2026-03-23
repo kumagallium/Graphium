@@ -303,7 +303,7 @@ function ContextLabelExperimentInner() {
       <LabelDropdownPortal />
       <LinkBadgeLayer />
       <div style={{ display: "flex", height: "100%", width: "100%", gap: 0, overflow: "hidden" }}>
-        <div data-label-wrapper style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", paddingLeft: 0 }}>
+        <div data-label-wrapper style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", paddingLeft: LABEL_GUTTER_WIDTH }}>
           <LabelBadgeLayer />
           <MultiPageLayout pages={pages} activePageId={activePageId} onSelectPage={setActivePageId} onAddPage={(title) => addPage(title)} onRemovePage={removePage}>
             {(pageId) => (

@@ -44,18 +44,22 @@ function getLabelColor(label: string): string {
 }
 
 // ──────────────────────────────────
-// LabelBadgeLayer（インライン挿入方式）
+// LabelBadgeLayer（ブロックハンドル右側方式）
 //
-// ラベルが付いたブロックの content 要素にバッジを直接挿入する。
-// DOM フローに乗るためスクロール追従・位置ずれが構造的に起きない。
+// 各ブロックの blockOuter にバッジ要素を挿入し、
+// CSS absolute でブロック左マージンに配置する。
+// DOM に乗るためスクロール追従は自動。
 // ──────────────────────────────────
 
-/** ガター幅（互換性のためエクスポートを維持、値は0） */
-export const LABEL_GUTTER_WIDTH = 0;
+/** エディタラッパー用の定数（ラベルバッジ表示領域の幅） */
+export const LABEL_GUTTER_WIDTH = 90; // px
 
-// バッジのスタイルを生成
+// バッジのスタイル（blockOuter 内に absolute 配置）
 function badgeStyle(color: string): string {
   return [
+    "position:absolute",
+    "left:0",
+    "top:2px",
     "display:inline-flex",
     "align-items:center",
     "gap:3px",
@@ -69,44 +73,37 @@ function badgeStyle(color: string): string {
     "cursor:pointer",
     "user-select:none",
     "line-height:1.6",
-    "margin-right:6px",
-    "vertical-align:middle",
     "white-space:nowrap",
+    "z-index:1",
   ].join(";");
 }
 
 export function LabelBadgeLayer() {
   const { labels, openDropdown } = useLabelStore();
 
-  // ラベルバッジをブロック DOM に直接挿入・更新
+  // ラベルバッジを各ブロックの blockOuter に挿入
   useEffect(() => {
     const inject = () => {
       const wrapper = document.querySelector("[data-label-wrapper]");
       if (!wrapper) return;
 
       // 既存のバッジをすべて削除
-      wrapper.querySelectorAll("[data-inline-label]").forEach((el) => el.remove());
+      wrapper.querySelectorAll("[data-gutter-label]").forEach((el) => el.remove());
 
       // 各ラベル付きブロックにバッジを挿入
       for (const [blockId, label] of labels) {
         const blockOuter = wrapper.querySelector(
           `[data-id="${blockId}"][data-node-type="blockOuter"]`
-        );
+        ) as HTMLElement | null;
         if (!blockOuter) continue;
 
-        // content 要素を探す（見出し・段落・リスト等）
-        const contentEl = blockOuter.querySelector(
-          "[data-content-type] h1, [data-content-type] h2, [data-content-type] h3, " +
-          "[data-content-type] p, [data-content-type] > div"
-        );
-        if (!contentEl) continue;
+        // blockOuter を relative にしてバッジの基準にする
+        blockOuter.style.position = "relative";
 
         // バッジ要素を作成
         const badge = document.createElement("span");
-        badge.setAttribute("data-inline-label", blockId);
+        badge.setAttribute("data-gutter-label", blockId);
         badge.setAttribute("data-prov-label-anchor", blockId);
-        badge.setAttribute("contenteditable", "false");
-        badge.setAttribute("title", `${label} — クリックで変更`);
         badge.style.cssText = badgeStyle(getLabelColor(label));
         badge.textContent = label;
 
@@ -117,15 +114,14 @@ export function LabelBadgeLayer() {
           openDropdown(blockId);
         });
 
-        // テキストの先頭に挿入
-        contentEl.insertBefore(badge, contentEl.firstChild);
+        // blockOuter の先頭に挿入（content の外側なので編集に影響しない）
+        blockOuter.insertBefore(badge, blockOuter.firstChild);
       }
     };
 
-    // 初回挿入（DOM が準備できるのを待つ）
     const rafId = requestAnimationFrame(inject);
 
-    // DOM 変化時に再挿入（ProseMirror がバッジを消す場合の対策）
+    // DOM 変化時に再挿入（ProseMirror の再描画対策）
     const wrapper = document.querySelector("[data-label-wrapper]");
     let observer: MutationObserver | null = null;
     if (wrapper) {
@@ -143,12 +139,10 @@ export function LabelBadgeLayer() {
     return () => {
       cancelAnimationFrame(rafId);
       observer?.disconnect();
-      // クリーンアップ: バッジを削除
-      document.querySelectorAll("[data-inline-label]").forEach((el) => el.remove());
+      document.querySelectorAll("[data-gutter-label]").forEach((el) => el.remove());
     };
   }, [labels, openDropdown]);
 
-  // DOM 挿入方式のため、React レンダリングは不要
   return null;
 }
 
@@ -172,33 +166,30 @@ export function LabelDropdownPortal() {
   const [headingCandidates, setHeadingCandidates] = useState<{ blockId: string; text: string; level: number }[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
-  // ドロップダウンが開いたとき、バッジ要素の位置に合わせる
+  // ドロップダウンが開いたとき、アンカー要素の位置に合わせる
+  // position: fixed でビューポート座標を使い、画面外に切れないよう調整
   useEffect(() => {
     if (!openBlockId) return;
-    const anchor = document.querySelector(
-      `[data-prov-label-anchor="${openBlockId}"]`
-    );
-    if (anchor) {
-      const rect = anchor.getBoundingClientRect();
-      // ドロップダウンは position:absolute (document座標)
-      setPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-      });
-    } else {
-      // バッジが非表示の場合（ラベル未設定 = SideMenuボタンがアンカー）
-      // SideMenuボタンの位置を使う
-      const sideAnchor = document.querySelector(
-        `[data-prov-label-anchor="${openBlockId}"]`
-      );
-      if (sideAnchor) {
-        const rect = sideAnchor.getBoundingClientRect();
-        setPos({
-          top: rect.bottom + window.scrollY + 4,
-          left: rect.left + window.scrollX,
-        });
-      }
+    const anchor =
+      document.querySelector(`[data-prov-label-anchor="${openBlockId}"]`);
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    let left = rect.left;
+
+    // ビューポート下端に収まらない場合は上に表示
+    const dropdownHeight = 400; // 推定最大高さ
+    if (top + dropdownHeight > window.innerHeight) {
+      top = Math.max(8, rect.top - dropdownHeight - 4);
     }
+    // 左端がはみ出す場合
+    if (left + 220 > window.innerWidth) {
+      left = window.innerWidth - 228;
+    }
+    if (left < 4) left = 4;
+
+    setPos({ top, left });
     setFreeInput("");
     setPrevStepMode(false);
   }, [openBlockId]);
@@ -228,7 +219,7 @@ export function LabelDropdownPortal() {
     <div
       ref={ref}
       style={{
-        position: "absolute",
+        position: "fixed",
         top: pos.top,
         left: pos.left,
         zIndex: 9999,
@@ -238,6 +229,8 @@ export function LabelDropdownPortal() {
         boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
         padding: "6px 0",
         minWidth: 200,
+        maxHeight: "80vh",
+        overflowY: "auto",
       }}
     >
       {/* コアラベル */}

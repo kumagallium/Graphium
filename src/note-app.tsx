@@ -10,6 +10,7 @@ import {
   LabelSideMenuButton,
   LabelStoreProvider,
   useLabelStore,
+  LABEL_GUTTER_WIDTH,
 } from "./features/context-label";
 import { setOnPrevStepLinkSelected } from "./features/context-label/ui";
 import {
@@ -495,7 +496,7 @@ function NoteEditorInner({
             minWidth: 0,
             overflow: "auto",
             position: "relative",
-            paddingLeft: 0,
+            paddingLeft: LABEL_GUTTER_WIDTH,
           }}
         >
           <LabelBadgeLayer />
