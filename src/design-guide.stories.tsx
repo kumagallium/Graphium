@@ -37,7 +37,7 @@ const semantic = [
 const labelColors = [
   { name: "[手順]", color: "#3b82f6" },
   { name: "[使用したもの]", color: "#10b981" },
-  { name: "[条件]", color: "#f59e0b" },
+  { name: "[属性]", color: "#f59e0b" },
   { name: "[試料]", color: "#8b5cf6" },
   { name: "[結果]", color: "#ef4444" },
 ];

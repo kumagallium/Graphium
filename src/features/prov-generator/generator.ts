@@ -125,7 +125,7 @@ export function generateProvDocument(input: GeneratorInput): ProvDocument {
 
   // [条件] と [試料] の共存チェック
   const conditionBlockIds = new Set(
-    labeledBlocks.filter((lb) => lb.coreLabel === "[条件]").map((lb) => lb.block.id)
+    labeledBlocks.filter((lb) => lb.coreLabel === "[属性]").map((lb) => lb.block.id)
   );
 
   const branchMap = new Map<string, BranchExpansion>();
@@ -288,18 +288,30 @@ export function generateProvDocument(input: GeneratorInput): ProvDocument {
     }
   }
 
-  // ── [条件] → Parameter + 関係 ──
+  // ── [属性] → Property（親ノードに紐づく末端ノード） ──
+  // 親ブロック（ネスト上の親）のラベルに応じて紐づけ先を決定:
+  //   親が [使用したもの]/[結果] → その Entity の property
+  //   親が [試料] → 試料 Entity の property（テーブルの場合は列で処理済み）
+  //   親が [手順] or 親なし → スコープ Activity の property
   for (const lb of labeledBlocks) {
-    if (lb.coreLabel === "[条件]") {
-      const entityId = `param_${lb.block.id}`;
+    if (lb.coreLabel === "[属性]") {
+      const paramId = `param_${lb.block.id}`;
       nodes.push({
-        "@id": entityId,
+        "@id": paramId,
         "@type": "matprov:Parameter",
         label: getBlockText(lb.block),
         blockId: lb.block.id,
       });
-      for (const actId of getActivityIdsForScope(lb.block.id)) {
-        relations.push({ "@type": "matprov:parameter", from: actId, to: entityId });
+
+      // 親ブロックのラベルを確認
+      const parentNodeId = findParentLabeledNodeId(lb.block.id, blocks, labels, labeledBlocks);
+      if (parentNodeId) {
+        relations.push({ "@type": "matprov:parameter", from: parentNodeId, to: paramId });
+      } else {
+        // 親が見つからない場合はスコープの Activity に紐づける
+        for (const actId of getActivityIdsForScope(lb.block.id)) {
+          relations.push({ "@type": "matprov:parameter", from: actId, to: paramId });
+        }
       }
     }
   }
@@ -447,7 +459,7 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
       return "prov:Activity";
     }
     case "[使用したもの]": return "prov:Entity";
-    case "[条件]": return "matprov:Parameter";
+    case "[属性]": return "matprov:Parameter"; // 末端ノード: 親の property
     case "[試料]": return null; // 分岐展開のデータソース（ノード自体は生成しない）
     case "[結果]": return "prov:Entity";
     default: return null;
@@ -476,6 +488,55 @@ function flattenBlocks(blocks: any[]): any[] {
     }
   }
   return result;
+}
+
+/**
+ * [属性] ブロックの親ラベル付きブロックの PROV ノード ID を探す。
+ * BlockNote の children ツリーを辿り、直近の親ラベル付きブロックを特定する。
+ */
+function findParentLabeledNodeId(
+  blockId: string,
+  blocks: any[],
+  labels: Map<string, string>,
+  labeledBlocks: { block: any; coreLabel: string | null }[]
+): string | null {
+  // ブロックツリー内で blockId の親チェーンを辿る
+  const parentId = findParentBlockId(blocks, blockId);
+  if (!parentId) return null;
+
+  const parentLabel = labels.get(parentId);
+  if (!parentLabel) {
+    // 親にラベルがなければさらに上を辿る
+    return findParentLabeledNodeId(parentId, blocks, labels, labeledBlocks);
+  }
+
+  const normalized = normalizeLabel(parentLabel);
+
+  // 親の PROV ノード ID を特定
+  switch (normalized) {
+    case "[使用したもの]":
+      return `entity_${parentId}`;
+    case "[結果]":
+      return `result_${parentId}`;
+    case "[手順]":
+      return null; // Activity はスコープで処理するので null を返す
+    default:
+      return null;
+  }
+}
+
+/** ブロックツリー内で指定ブロックの親ブロック ID を探す */
+function findParentBlockId(blocks: any[], targetId: string): string | null {
+  for (const block of blocks) {
+    if (block.children && Array.isArray(block.children)) {
+      for (const child of block.children) {
+        if (child.id === targetId) return block.id;
+        const found = findParentBlockId([child], targetId);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
 }
 
 /** ブロックツリーからIDで検索 */

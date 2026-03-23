@@ -23,7 +23,7 @@ const tokens = {
 const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#3b82f6",
   "[使用したもの]": "#10b981",
-  "[条件]": "#f59e0b",
+  "[属性]": "#f59e0b",
   "[試料]": "#8b5cf6",
   "[結果]": "#ef4444",
 };
@@ -167,8 +167,8 @@ export const NoteStatic: StoryObj = {
           </tbody>
         </table>
       </EditorBlock>
-      <EditorBlock label="[条件]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
-      <EditorBlock label="[条件]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
+      <EditorBlock label="[属性]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
+      <EditorBlock label="[属性]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
 
       <EditorBlock label="[手順]"><h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3></EditorBlock>
       <EditorBlock label="[結果]" indent={24}><p>XRD測定により相同定を行う。</p></EditorBlock>
@@ -205,8 +205,8 @@ export const NoteHoverDemo: StoryObj = {
               </tbody>
             </table>
           </HoverBlock>
-          <HoverBlock id="c1" label="[条件]" indent={24} hoveredId={h} setHoveredId={setH}><p>昇温速度: 5℃/min</p></HoverBlock>
-          <HoverBlock id="c2" label="[条件]" indent={24} hoveredId={h} setHoveredId={setH}><p>冷却: 炉冷</p></HoverBlock>
+          <HoverBlock id="c1" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>昇温速度: 5℃/min</p></HoverBlock>
+          <HoverBlock id="c2" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>冷却: 炉冷</p></HoverBlock>
           <HoverBlock id="s3" label="[手順]" hoveredId={h} setHoveredId={setH}><h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3></HoverBlock>
           <HoverBlock id="r2" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>XRD測定により相同定を行う。</p></HoverBlock>
         </div>

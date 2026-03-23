@@ -60,7 +60,7 @@ const curryLabels = new Map([
   ["h2-cut", "[手順]"],
   ["used-vegs", "[使用したもの]"],
   ["h2-fry", "[手順]"],
-  ["cond-fire", "[条件]"],
+  ["cond-fire", "[属性]"],
   ["h2-simmer", "[手順]"],
   ["result-curry", "[結果]"],
 ]);
@@ -260,7 +260,7 @@ const scopeLabels = new Map([
   // h2-note にはラベルなし
   ["used-memo", "[使用したもの]"],
   ["h2-fry", "[手順]"],
-  ["cond-fire", "[条件]"],
+  ["cond-fire", "[属性]"],
 ]);
 
 describe("スコープ境界テスト", () => {

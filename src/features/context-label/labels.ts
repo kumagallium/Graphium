@@ -7,14 +7,14 @@
 export type CoreLabel =
   | "[手順]"
   | "[使用したもの]"
-  | "[条件]"
+  | "[属性]"
   | "[試料]"
   | "[結果]";
 
 export const CORE_LABELS: CoreLabel[] = [
   "[手順]",
   "[使用したもの]",
-  "[条件]",
+  "[属性]",
   "[試料]",
   "[結果]",
 ];
@@ -23,7 +23,7 @@ export const CORE_LABELS: CoreLabel[] = [
 export const CORE_LABEL_PROV: Record<CoreLabel, string> = {
   "[手順]": "prov:Activity",
   "[使用したもの]": "prov:used",
-  "[条件]": "matprov:parameter",
+  "[属性]": "property",       // 親ノード（Activity/Entity）の属性
   "[試料]": "prov:Activity×N",
   "[結果]": "prov:wasGeneratedBy",
 };
@@ -36,6 +36,10 @@ export const ALIAS_MAP: Record<string, CoreLabel> = {
   "[output]": "[結果]",
   "[サンプル]": "[試料]",
   "[Reagents]": "[使用したもの]",
+  // [条件] は [属性] のエイリアスとして後方互換
+  "[条件]": "[属性]",
+  "[パラメータ]": "[属性]",
+  "[仕様]": "[属性]",
 };
 
 // 構造ラベル（リンク生成に使う特殊ラベル）
@@ -52,6 +56,9 @@ export const FREE_LABEL_EXAMPLES: string[] = [
   "[参照]",
   "[感想]",
 ];
+
+// [属性] は常に末端ノード（子にラベル付きブロックを持てない）
+export const LEAF_ONLY_LABELS: CoreLabel[] = ["[属性]"];
 
 // ラベルの分類
 export type LabelLayer = "core" | "alias" | "free";

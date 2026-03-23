@@ -34,9 +34,11 @@ import { useLabelStore } from "./store";
 const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#3b82f6",
   "[使用したもの]": "#10b981",
-  "[条件]": "#f59e0b",
+  "[属性]": "#f59e0b",
   "[試料]": "#8b5cf6",
   "[結果]": "#ef4444",
+  // 後方互換
+  "[条件]": "#f59e0b",
 };
 
 function getLabelColor(label: string): string {

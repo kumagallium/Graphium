@@ -121,8 +121,8 @@ const labels: Record<string, string> = {
   [ids.result1]: "[結果]",
   [ids.step2]: "[手順]",
   [ids.sampleTable]: "[試料]",
-  [ids.cond2a]: "[条件]",
-  [ids.cond2b]: "[条件]",
+  [ids.cond2a]: "[属性]",
+  [ids.cond2b]: "[属性]",
   [ids.step3]: "[手順]",
   [ids.result3]: "[結果]",
 };
