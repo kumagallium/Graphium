@@ -304,7 +304,7 @@ function CytoscapeGraph({ doc, height = 450 }: { doc: ProvDocument; height?: num
       style={{
         width: "100%",
         height,
-        background: "#fafbfc",
+        background: "#fafdf7",
       }}
     />
   );
@@ -341,8 +341,8 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
             onClick={() => setTab(t)}
             style={{
               ...tabStyle,
-              borderBottom: tab === t ? "2px solid #3b82f6" : "2px solid transparent",
-              color: tab === t ? "#3b82f6" : "#6b7280",
+              borderBottom: tab === t ? "2px solid #4B7A52" : "2px solid transparent",
+              color: tab === t ? "#4B7A52" : "#6b7f6e",
               fontWeight: tab === t ? 600 : 400,
             }}
           >
@@ -353,7 +353,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
 
       {/* 凡例 + 表示切替 */}
       {tab === "graph" && (
-        <div style={{ display: "flex", gap: 12, padding: "6px 12px", borderBottom: "1px solid #f3f4f6", fontSize: 10, color: "#6b7280", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 12, padding: "6px 12px", borderBottom: "1px solid #f0f5ef", fontSize: 10, color: "#6b7f6e", alignItems: "center" }}>
           <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#91BF6D", marginRight: 3, verticalAlign: "middle" }} />Activity</span>
           <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: "#8ECAE6", marginRight: 3, verticalAlign: "middle" }} />Entity</span>
           <span><span style={{ display: "inline-block", width: 10, height: 10, transform: "rotate(45deg)", background: "#F4A361", marginRight: 3, verticalAlign: "middle" }} />Parameter</span>
@@ -367,8 +367,8 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
                   onClick={() => setViewMode("all")}
                   style={{
                     ...toggleBtnStyle,
-                    background: viewMode === "all" ? "#3b82f6" : "#f3f4f6",
-                    color: viewMode === "all" ? "#fff" : "#6b7280",
+                    background: viewMode === "all" ? "#4B7A52" : "#f0f5ef",
+                    color: viewMode === "all" ? "#fff" : "#6b7f6e",
                   }}
                 >
                   全体
@@ -377,8 +377,8 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
                   onClick={() => setViewMode("split")}
                   style={{
                     ...toggleBtnStyle,
-                    background: viewMode === "split" ? "#3b82f6" : "#f3f4f6",
-                    color: viewMode === "split" ? "#fff" : "#6b7280",
+                    background: viewMode === "split" ? "#4B7A52" : "#f0f5ef",
+                    color: viewMode === "split" ? "#fff" : "#6b7f6e",
                   }}
                 >
                   試料別
@@ -417,7 +417,7 @@ function JsonView({ doc }: { doc: ProvDocument }) {
   return (
     <pre style={{
       padding: 12, fontSize: 10, overflow: "auto",
-      maxHeight: 400, background: "#f9fafb", margin: 0,
+      maxHeight: 400, background: "#f0f5ef", margin: 0,
       fontFamily: "monospace", lineHeight: 1.5,
     }}>
       {JSON.stringify(doc, null, 2)}
@@ -432,7 +432,7 @@ function WarningsView({ warnings }: { warnings: ProvWarning[] }) {
   return (
     <div style={{ padding: 12 }}>
       {warnings.map((w, i) => (
-        <div key={i} style={{ fontSize: 11, padding: "4px 0", borderBottom: "1px solid #f3f4f6" }}>
+        <div key={i} style={{ fontSize: 11, padding: "4px 0", borderBottom: "1px solid #f0f5ef" }}>
           <span style={{
             fontSize: 9, padding: "1px 4px", borderRadius: 3,
             background: "#fef3c7", color: "#b45309", marginRight: 6, fontWeight: 600,
@@ -448,16 +448,16 @@ function WarningsView({ warnings }: { warnings: ProvWarning[] }) {
 
 // スタイル定数
 const panelStyle: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
+  border: "1px solid #d5e0d7",
   borderRadius: 8,
-  background: "#fff",
+  background: "#fafdf7",
   overflow: "hidden",
 };
 
 const tabBarStyle: React.CSSProperties = {
   display: "flex",
-  borderBottom: "1px solid #e5e7eb",
-  background: "#f9fafb",
+  borderBottom: "1px solid #d5e0d7",
+  background: "#f0f5ef",
 };
 
 const tabStyle: React.CSSProperties = {
@@ -492,14 +492,14 @@ const sampleHeaderStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 600,
   color: "#374151",
-  background: "#f9fafb",
-  borderTop: "1px solid #e5e7eb",
-  borderBottom: "1px solid #f3f4f6",
+  background: "#f0f5ef",
+  borderTop: "1px solid #d5e0d7",
+  borderBottom: "1px solid #f0f5ef",
 };
 
 const sampleDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
   borderRadius: "50%",
-  background: "#8b5cf6",
+  background: "#8b7ab5",
 };

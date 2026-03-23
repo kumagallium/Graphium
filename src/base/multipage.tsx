@@ -87,7 +87,7 @@ function TabBar({
                   width: 6,
                   height: 6,
                   borderRadius: "50%",
-                  background: "#3b82f6",
+                  background: "#4B7A52",
                   flexShrink: 0,
                 }}
               />
@@ -123,7 +123,7 @@ function TabBar({
                   lineHeight: 1,
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.color = "#ef4444";
+                  (e.currentTarget as HTMLButtonElement).style.color = "#c26356";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.color = "#9ca3af";
@@ -151,7 +151,7 @@ function TabBar({
           lineHeight: 1,
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.color = "#3b82f6";
+          (e.currentTarget as HTMLButtonElement).style.color = "#4B7A52";
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLButtonElement).style.color = "#9ca3af";

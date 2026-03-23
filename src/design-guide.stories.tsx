@@ -35,11 +35,11 @@ const semantic = [
   { name: "警告", bg: "#fffbeb", fg: "#b45309", border: "#fde68a" },
 ];
 const labelColors = [
-  { name: "[手順]", color: "#3b82f6" },
-  { name: "[使用したもの]", color: "#10b981" },
-  { name: "[属性]", color: "#f59e0b" },
-  { name: "[試料]", color: "#8b5cf6" },
-  { name: "[結果]", color: "#ef4444" },
+  { name: "[手順]", color: "#5b8fb9" },
+  { name: "[使用したもの]", color: "#4B7A52" },
+  { name: "[属性]", color: "#c08b3e" },
+  { name: "[試料]", color: "#8b7ab5" },
+  { name: "[結果]", color: "#c26356" },
 ];
 
 function Swatch({ color, size = 40 }: { color: string; size?: number }) {
@@ -149,22 +149,26 @@ export const Typography: StoryObj = {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>スケール</h2>
+        <h2 style={h2Style}>スケール（Notion 準拠）</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
-            <span style={labelStyle}>text-lg font-semibold — セクション見出し</span>
-            <p style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 0" }}>Cu粉末アニール実験</p>
+            <span style={labelStyle}>H1 — 30px bold — ページタイトル</span>
+            <p style={{ fontSize: 30, fontWeight: 700, margin: "4px 0 0", lineHeight: 1.3 }}>Cu粉末アニール実験</p>
           </div>
           <div>
-            <span style={labelStyle}>text-sm font-semibold — カードタイトル</span>
-            <p style={{ fontSize: 14, fontWeight: 600, margin: "4px 0 0" }}>sample_A (600℃, 24h)</p>
+            <span style={labelStyle}>H2 — 24px semibold — セクション見出し</span>
+            <p style={{ fontSize: 24, fontWeight: 600, margin: "4px 0 0", lineHeight: 1.3 }}>1. 封入する</p>
           </div>
           <div>
-            <span style={labelStyle}>text-sm — 本文</span>
+            <span style={labelStyle}>H3 — 20px semibold — サブ見出し</span>
+            <p style={{ fontSize: 20, fontWeight: 600, margin: "4px 0 0", lineHeight: 1.4 }}>材料の準備</p>
+          </div>
+          <div>
+            <span style={labelStyle}>text-sm — 本文 (14px)</span>
             <p style={{ fontSize: 14, margin: "4px 0 0" }}>XRD測定により相同定を行う。じゃがいもは変色しやすいので、炒めるまで時間がかかる場合は水にさらしておきます。</p>
           </div>
           <div>
-            <span style={labelStyle}>text-xs — Badge・補足テキスト</span>
+            <span style={labelStyle}>text-xs — Badge・補足テキスト (12px)</span>
             <p style={{ fontSize: 12, margin: "4px 0 0" }}>作成日付: 2026-03-20  作成者: 熊谷 将也</p>
           </div>
         </div>

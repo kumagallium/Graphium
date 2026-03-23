@@ -33,12 +33,12 @@ export const LINK_TYPE_CONFIG: Record<LinkType, {
   provDM: string;
   color: string;
 }> = {
-  derived_from: { label: "派生元", provDM: "wasDerivedFrom", color: "#8b5cf6" },
-  used: { label: "使用", provDM: "used", color: "#10b981" },
-  generated: { label: "生成", provDM: "wasGeneratedBy", color: "#ef4444" },
-  related_to: { label: "関連", provDM: "(custom)", color: "#6b7280" },
-  reproduction_of: { label: "再現", provDM: "wasDerivedFrom", color: "#f59e0b" },
-  informed_by: { label: "前手順", provDM: "wasInformedBy", color: "#3b82f6" },
+  derived_from: { label: "派生元", provDM: "wasDerivedFrom", color: "#8b7ab5" },
+  used: { label: "使用", provDM: "used", color: "#4B7A52" },
+  generated: { label: "生成", provDM: "wasGeneratedBy", color: "#c26356" },
+  related_to: { label: "関連", provDM: "(custom)", color: "#6b7f6e" },
+  reproduction_of: { label: "再現", provDM: "wasDerivedFrom", color: "#c08b3e" },
+  informed_by: { label: "前手順", provDM: "wasInformedBy", color: "#5b8fb9" },
 };
 
 // createdBy の表示名
