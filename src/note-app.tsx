@@ -23,6 +23,11 @@ import {
   ProvGraphPanel,
   type ProvDocument,
 } from "./features/prov-generator";
+import {
+  NetworkGraphPanel,
+  buildNoteGraph,
+  type NoteGraphData,
+} from "./features/network-graph";
 import { useGoogleAuth } from "./lib/use-google-auth";
 import { PROV_TEMPLATE } from "./lib/prov-template";
 import {
@@ -287,15 +292,7 @@ function NoteLinkSideMenuButton() {
 }
 
 // ── エディタ本体 ──
-function NoteEditor({
-  fileId,
-  initialDoc,
-  onSave,
-  onDeriveNote,
-  onNavigateNote,
-  saving,
-  files,
-}: {
+type NoteEditorProps = {
   fileId: string | null;
   initialDoc: ProvNoteDocument | null;
   onSave: (doc: ProvNoteDocument) => void;
@@ -303,19 +300,14 @@ function NoteEditor({
   onNavigateNote: (noteId: string) => void;
   saving: boolean;
   files: ProvNoteFile[];
-}) {
+  noteGraphData: NoteGraphData;
+};
+
+function NoteEditor(props: NoteEditorProps) {
   return (
     <LabelStoreProvider>
       <LinkStoreProvider>
-        <NoteEditorInner
-          fileId={fileId}
-          initialDoc={initialDoc}
-          onSave={onSave}
-          onDeriveNote={onDeriveNote}
-          onNavigateNote={onNavigateNote}
-          saving={saving}
-          files={files}
-        />
+        <NoteEditorInner {...props} />
       </LinkStoreProvider>
     </LabelStoreProvider>
   );
@@ -329,20 +321,14 @@ function NoteEditorInner({
   onNavigateNote,
   saving,
   files,
-}: {
-  fileId: string | null;
-  initialDoc: ProvNoteDocument | null;
-  onSave: (doc: ProvNoteDocument) => void;
-  onDeriveNote: (title: string, sourceBlockId: string) => void;
-  onNavigateNote: (noteId: string) => void;
-  saving: boolean;
-  files: ProvNoteFile[];
-}) {
+  noteGraphData,
+}: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const editorRef = useRef<any>(null);
   const [provDoc, setProvDoc] = useState<ProvDocument | null>(null);
   const [title, setTitle] = useState(initialDoc?.title || "新しいノート");
+  const [rightTab, setRightTab] = useState<"prov" | "graph">("prov");
   const [dirty, setDirty] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSaveRef = useRef<() => void>(() => {});
@@ -583,22 +569,51 @@ function NoteEditorInner({
           </div>
         </div>
 
-        {/* 右: PROV パネル */}
+        {/* 右: PROV / Graph パネル */}
         <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-            <span className="text-xs font-bold text-muted-foreground tracking-wide">
-              PROV
-            </span>
+            {/* タブ切り替え */}
             <button
-              onClick={generateProv}
-              title="手動で再生成"
-              className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors"
+              onClick={() => setRightTab("prov")}
+              className={cn(
+                "text-xs font-bold tracking-wide px-1.5 py-0.5 rounded transition-colors",
+                rightTab === "prov"
+                  ? "text-foreground bg-background"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              生成
+              PROV
             </button>
+            <button
+              onClick={() => setRightTab("graph")}
+              className={cn(
+                "text-xs font-bold tracking-wide px-1.5 py-0.5 rounded transition-colors",
+                rightTab === "graph"
+                  ? "text-foreground bg-background"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Graph
+            </button>
+            {rightTab === "prov" && (
+              <button
+                onClick={generateProv}
+                title="手動で再生成"
+                className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto"
+              >
+                生成
+              </button>
+            )}
           </div>
           <div className="flex-1 overflow-auto">
-            <ProvGraphPanel doc={provDoc} />
+            {rightTab === "prov" ? (
+              <ProvGraphPanel doc={provDoc} />
+            ) : (
+              <NetworkGraphPanel
+                data={noteGraphData}
+                onNavigate={onNavigateNote}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -628,6 +643,8 @@ export function NoteApp() {
   const [editorKey, setEditorKey] = useState(0);
   // ノートキャッシュ（Drive API 呼び出しを削減）
   const docCacheRef = useRef<Map<string, ProvNoteDocument>>(new Map());
+  // ネットワークグラフデータ
+  const [noteGraphData, setNoteGraphData] = useState<NoteGraphData>({ nodes: [], edges: [] });
 
   // ファイル一覧を取得
   const refreshFiles = useCallback(async () => {
@@ -641,6 +658,34 @@ export function NoteApp() {
       setFilesLoading(false);
     }
   }, []);
+
+  // ネットワークグラフを構築（全ノートの派生関係を取得）
+  const rebuildGraph = useCallback(
+    async (currentId: string | null, fileList: ProvNoteFile[]) => {
+      if (!currentId || fileList.length === 0) {
+        setNoteGraphData({ nodes: [], edges: [] });
+        return;
+      }
+      // 未取得のノートをバックグラウンドで読み込み
+      const missing = fileList.filter((f) => !docCacheRef.current.has(f.id));
+      if (missing.length > 0) {
+        const results = await Promise.allSettled(
+          missing.map(async (f) => {
+            const doc = await loadFile(f.id);
+            docCacheRef.current.set(f.id, doc);
+          })
+        );
+        // エラーは無視（削除済みファイルなど）
+        results.forEach((r, i) => {
+          if (r.status === "rejected") {
+            console.warn(`ノート読み込みスキップ: ${missing[i].name}`);
+          }
+        });
+      }
+      setNoteGraphData(buildNoteGraph(currentId, fileList, docCacheRef.current));
+    },
+    []
+  );
 
   // ファイルを開く（キャッシュ優先）
   const handleOpenFile = useCallback(async (fileId: string) => {
@@ -676,6 +721,13 @@ export function NoteApp() {
       }
     })();
   }, [authenticated, refreshFiles, handleOpenFile]);
+
+  // activeFileId や files が変わったらグラフを再構築
+  useEffect(() => {
+    if (activeFileId && files.length > 0) {
+      rebuildGraph(activeFileId, files);
+    }
+  }, [activeFileId, files, rebuildGraph]);
 
   // 新しいノートを作成
   const handleNewNote = useCallback(() => {
@@ -848,6 +900,7 @@ export function NoteApp() {
           onNavigateNote={handleOpenFile}
           saving={saving}
           files={files}
+          noteGraphData={noteGraphData}
         />
         {/* 派生ノート作成中のオーバーレイ */}
         {deriving && (
