@@ -34,6 +34,7 @@ import {
   type ProvNoteFile,
   type ProvNoteDocument,
 } from "./lib/google-drive";
+import type { NoteLink } from "./lib/google-drive";
 import { cn } from "./lib/utils";
 import {
   AddBlockButton,
@@ -43,6 +44,57 @@ import {
   useExtensionState,
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
+
+// ── ノート間リンクバッジ ──
+// 派生元・派生先のリンクをヘッダー下にバッジ表示
+function NoteLinkBadges({
+  initialDoc,
+  files,
+  onNavigate,
+}: {
+  initialDoc: ProvNoteDocument | null;
+  files: ProvNoteFile[];
+  onNavigate: (noteId: string) => void;
+}) {
+  if (!initialDoc) return null;
+
+  const derivedFrom = initialDoc.derivedFromNoteId;
+  const noteLinks = initialDoc.noteLinks ?? [];
+
+  if (!derivedFrom && noteLinks.length === 0) return null;
+
+  // ファイル ID からタイトルを取得
+  const getTitle = (noteId: string) => {
+    const f = files.find((f) => f.id === noteId);
+    return f ? f.name.replace(/\.provnote\.json$/, "") : "ノート";
+  };
+
+  return (
+    <div className="px-4 py-1.5 border-b border-border flex items-center gap-2 flex-wrap shrink-0 text-xs">
+      {/* 派生元 */}
+      {derivedFrom && (
+        <button
+          onClick={() => onNavigate(derivedFrom)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+        >
+          <span>&#8592;</span>
+          <span>派生元: {getTitle(derivedFrom)}</span>
+        </button>
+      )}
+      {/* 派生先 */}
+      {noteLinks.map((link, i) => (
+        <button
+          key={i}
+          onClick={() => onNavigate(link.targetNoteId)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 transition-colors cursor-pointer"
+        >
+          <span>&#8594;</span>
+          <span>派生: {getTitle(link.targetNoteId)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ── ログイン画面 ──
 function LoginScreen({ onSignIn }: { onSignIn: () => void }) {
@@ -240,13 +292,17 @@ function NoteEditor({
   initialDoc,
   onSave,
   onDeriveNote,
+  onNavigateNote,
   saving,
+  files,
 }: {
   fileId: string | null;
   initialDoc: ProvNoteDocument | null;
   onSave: (doc: ProvNoteDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
+  onNavigateNote: (noteId: string) => void;
   saving: boolean;
+  files: ProvNoteFile[];
 }) {
   return (
     <LabelStoreProvider>
@@ -256,7 +312,9 @@ function NoteEditor({
           initialDoc={initialDoc}
           onSave={onSave}
           onDeriveNote={onDeriveNote}
+          onNavigateNote={onNavigateNote}
           saving={saving}
+          files={files}
         />
       </LinkStoreProvider>
     </LabelStoreProvider>
@@ -268,13 +326,17 @@ function NoteEditorInner({
   initialDoc,
   onSave,
   onDeriveNote,
+  onNavigateNote,
   saving,
+  files,
 }: {
   fileId: string | null;
   initialDoc: ProvNoteDocument | null;
   onSave: (doc: ProvNoteDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
+  onNavigateNote: (noteId: string) => void;
   saving: boolean;
+  files: ProvNoteFile[];
 }) {
   const { pages, activePageId, setActivePageId, addPage, removePage } =
     useMultiPage(initialDoc?.title || "新しいノート");
@@ -495,6 +557,13 @@ function NoteEditorInner({
           保存
         </button>
       </div>
+
+      {/* ノート間リンクバッジ */}
+      <NoteLinkBadges
+        initialDoc={initialDoc}
+        files={files}
+        onNavigate={onNavigateNote}
+      />
 
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
@@ -768,7 +837,9 @@ export function NoteApp() {
           initialDoc={activeDoc}
           onSave={handleSave}
           onDeriveNote={handleDeriveNote}
+          onNavigateNote={handleOpenFile}
           saving={saving}
+          files={files}
         />
         {/* 派生ノート作成中のオーバーレイ */}
         {deriving && (
