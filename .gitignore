@@ -3,3 +3,8 @@ dist/
 .DS_Store
 *.local
 .vite/
+
+# Claude Code (private config — managed in parent repo)
+CLAUDE.md
+.claude/
+docs/internal/
