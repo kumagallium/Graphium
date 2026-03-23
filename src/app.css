@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* BlockNoteのshadcnテーマCSSをTailwindに認識させる */
+@source "../node_modules/@blocknote/shadcn";
+@source "../node_modules/@blocknote/core";
+@source "../node_modules/@blocknote/react";
+
+@theme {
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.145 0.004 285.823);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.145 0.004 285.823);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.145 0.004 285.823);
+  --color-primary: oklch(0.205 0.042 265.755);
+  --color-primary-foreground: oklch(0.985 0.002 247.858);
+  --color-secondary: oklch(0.97 0.001 286.375);
+  --color-secondary-foreground: oklch(0.205 0.042 265.755);
+  --color-muted: oklch(0.97 0.001 286.375);
+  --color-muted-foreground: oklch(0.556 0.019 286.04);
+  --color-accent: oklch(0.97 0.001 286.375);
+  --color-accent-foreground: oklch(0.205 0.042 265.755);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  --color-border: oklch(0.922 0.004 286.32);
+  --color-input: oklch(0.922 0.004 286.32);
+  --color-ring: oklch(0.708 0.165 254.624);
+  --color-sidebar-background: oklch(0.985 0.002 247.858);
+  --color-sidebar-foreground: oklch(0.145 0.004 285.823);
+  --color-sidebar-primary: oklch(0.205 0.042 265.755);
+  --color-sidebar-primary-foreground: oklch(0.985 0.002 247.858);
+  --color-sidebar-accent: oklch(0.97 0.001 286.375);
+  --color-sidebar-accent-foreground: oklch(0.205 0.042 265.755);
+  --color-sidebar-border: oklch(0.922 0.004 286.32);
+  --color-sidebar-ring: oklch(0.708 0.165 254.624);
+  --radius: 0.625rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
