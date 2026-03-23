@@ -1,10 +1,11 @@
 // ラベルバッジのストーリー
-// デザイン議論用: 配置方式・サイズ・色のバリエーションを確認
+// A方式（ガター）: ブロックハンドルの右側にラベルバッジを配置
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { CORE_LABELS } from "./labels";
 
-// ラベルの色定義（ui.tsx と同じ）
+// ── 色定義 ──
 const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#3b82f6",
   "[使用したもの]": "#10b981",
@@ -17,22 +18,20 @@ function getLabelColor(label: string): string {
   return LABEL_COLORS[label] ?? "#6b7280";
 }
 
-// ── バッジコンポーネント（単体表示用） ──
+// ── バッジコンポーネント ──
 function LabelBadge({
   label,
   size = "default",
   onClick,
 }: {
   label: string;
-  size?: "small" | "default" | "large";
+  size?: "small" | "default";
   onClick?: () => void;
 }) {
   const color = getLabelColor(label);
-  const sizeStyles = {
-    small: { fontSize: 10, padding: "0px 4px" },
-    default: { fontSize: 11, padding: "1px 6px" },
-    large: { fontSize: 13, padding: "2px 8px" },
-  };
+  const s = size === "small"
+    ? { fontSize: 10, padding: "0px 4px" }
+    : { fontSize: 11, padding: "1px 6px" };
 
   return (
     <span
@@ -40,7 +39,6 @@ function LabelBadge({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 3,
         borderRadius: 4,
         fontWeight: 600,
         backgroundColor: color + "18",
@@ -50,7 +48,7 @@ function LabelBadge({
         userSelect: "none",
         lineHeight: 1.6,
         whiteSpace: "nowrap",
-        ...sizeStyles[size],
+        ...s,
       }}
     >
       {label}
@@ -58,174 +56,123 @@ function LabelBadge({
   );
 }
 
-// ── ブロック内での配置シミュレーション ──
-function BlockWithLabel({
-  label,
-  text,
-  blockType = "heading",
-  placement = "gutter",
+// ── ブロックハンドル（BlockNote SideMenu 模擬） ──
+// ホバーで表示される: # ラベルボタン | + 追加 | ⠿ ドラッグ
+function BlockHandle({
+  hasLabel,
+  onLabelClick,
 }: {
-  label: string;
-  text: string;
-  blockType?: "heading" | "paragraph" | "list";
-  placement: "gutter" | "inline" | "above";
+  hasLabel: boolean;
+  onLabelClick?: () => void;
 }) {
-  const gutterWidth = 90;
-
-  // ガター方式: ブロック左マージンにバッジ
-  if (placement === "gutter") {
-    return (
-      <div style={{ position: "relative", paddingLeft: gutterWidth, minHeight: 32 }}>
-        <div style={{ position: "absolute", left: 0, top: 2 }}>
-          <LabelBadge label={label} />
-        </div>
-        <BlockContent type={blockType} text={text} />
-      </div>
-    );
-  }
-
-  // インライン方式: テキスト先頭にバッジ
-  if (placement === "inline") {
-    return (
-      <div>
-        <BlockContent type={blockType} text={text} badge={<LabelBadge label={label} />} />
-      </div>
-    );
-  }
-
-  // 上方配置: ブロック上部にバッジ
   return (
-    <div>
-      <div style={{ marginBottom: 2 }}>
-        <LabelBadge label={label} size="small" />
-      </div>
-      <BlockContent type={blockType} text={text} />
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        opacity: 0.4,
+      }}
+    >
+      {/* ラベルボタン（ラベル未設定時のみ表示） */}
+      {!hasLabel && (
+        <button
+          onClick={onLabelClick}
+          title="ラベルを付ける"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 20,
+            height: 20,
+            borderRadius: 4,
+            border: "1px dashed #d1d5db",
+            background: "none",
+            cursor: "pointer",
+            color: "#9ca3af",
+            fontSize: 12,
+          }}
+        >
+          #
+        </button>
+      )}
+      {/* 追加ボタン */}
+      <button
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 20,
+          height: 20,
+          borderRadius: 4,
+          border: "none",
+          background: "none",
+          cursor: "pointer",
+          color: "#9ca3af",
+          fontSize: 16,
+        }}
+      >
+        +
+      </button>
+      {/* ドラッグハンドル */}
+      <button
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 20,
+          height: 20,
+          borderRadius: 4,
+          border: "none",
+          background: "none",
+          cursor: "grab",
+          color: "#9ca3af",
+          fontSize: 10,
+          letterSpacing: 1,
+        }}
+      >
+        ⠿
+      </button>
     </div>
   );
 }
 
-function BlockContent({
-  type,
-  text,
-  badge,
-}: {
-  type: "heading" | "paragraph" | "list";
-  text: string;
-  badge?: React.ReactNode;
-}) {
-  if (type === "heading") {
-    return <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{badge}{text}</h3>;
-  }
-  if (type === "list") {
-    return (
-      <ul style={{ margin: 0, paddingLeft: 20 }}>
-        <li>{badge}{text}</li>
-      </ul>
-    );
-  }
-  return <p style={{ margin: 0 }}>{badge}{text}</p>;
-}
+// ── A方式ブロック: ハンドル | ガター（ラベル） | コンテンツ ──
+const GUTTER_WIDTH = 90;
+const HANDLE_WIDTH = 70;
 
-// ── ストーリー定義 ──
-
-const meta: Meta = {
-  title: "ContextLabel/LabelBadge",
-  parameters: {
-    layout: "padded",
-  },
-};
-export default meta;
-
-// 全ラベル一覧
-export const AllLabels: StoryObj = {
-  render: () => (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      {CORE_LABELS.map((label) => (
-        <LabelBadge key={label} label={label} onClick={() => alert(label)} />
-      ))}
-    </div>
-  ),
-};
-
-// サイズバリエーション
-export const Sizes: StoryObj = {
-  render: () => (
-    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-      <LabelBadge label="[手順]" size="small" />
-      <LabelBadge label="[手順]" size="default" />
-      <LabelBadge label="[手順]" size="large" />
-    </div>
-  ),
-};
-
-// 配置方式の比較（メインの議論ポイント）
-export const PlacementComparison: StoryObj = {
-  name: "配置方式の比較",
-  render: () => (
-    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: "#374151" }}>
-        配置方式の比較
-      </h2>
-
-      {/* ガター方式 */}
-      <section style={{ marginBottom: 32, padding: 16, border: "1px solid #e5e7eb", borderRadius: 8 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "#6b7280", marginBottom: 12 }}>
-          A. ガター方式（ブロックハンドル右側）
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <BlockWithLabel label="[手順]" text="2.1 切る" blockType="heading" placement="gutter" />
-          <BlockWithLabel label="[使用したもの]" text="玉ねぎ 中 2個（400g）" blockType="paragraph" placement="gutter" />
-          <BlockWithLabel label="[条件]" text="くし切り、縦半分に切る" blockType="paragraph" placement="gutter" />
-        </div>
-      </section>
-
-      {/* インライン方式 */}
-      <section style={{ marginBottom: 32, padding: 16, border: "1px solid #e5e7eb", borderRadius: 8 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "#6b7280", marginBottom: 12 }}>
-          B. インライン方式（テキスト先頭）
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <BlockWithLabel label="[手順]" text="2.1 切る" blockType="heading" placement="inline" />
-          <BlockWithLabel label="[使用したもの]" text="玉ねぎ 中 2個（400g）" blockType="paragraph" placement="inline" />
-          <BlockWithLabel label="[条件]" text="くし切り、縦半分に切る" blockType="paragraph" placement="inline" />
-        </div>
-      </section>
-
-      {/* 上方配置 */}
-      <section style={{ marginBottom: 32, padding: 16, border: "1px solid #e5e7eb", borderRadius: 8 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: "#6b7280", marginBottom: 12 }}>
-          C. 上方配置（ブロック上部）
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <BlockWithLabel label="[手順]" text="2.1 切る" blockType="heading" placement="above" />
-          <BlockWithLabel label="[使用したもの]" text="玉ねぎ 中 2個（400g）" blockType="paragraph" placement="above" />
-          <BlockWithLabel label="[条件]" text="くし切り、縦半分に切る" blockType="paragraph" placement="above" />
-        </div>
-      </section>
-    </div>
-  ),
-};
-
-// ── ブロック単位ラベル付きコンテンツ（実データ構造に準拠） ──
-// 各ブロック（段落・リスト項目・テーブル・見出し）に 1:1 でラベルが付く
-function LabeledBlock({
+function GutterBlock({
   label,
   children,
+  showHandle = true,
+  indent = 0,
 }: {
-  label: string;
+  label?: string;
   children: React.ReactNode;
+  showHandle?: boolean;
+  indent?: number;
 }) {
   return (
-    <div style={{ marginBottom: 4 }}>
-      <LabelBadge label={label} size="small" />
-      <div style={{ marginTop: 2 }}>{children}</div>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        minHeight: 28,
+        paddingLeft: indent,
+      }}
+    >
+      {/* ブロックハンドル領域 */}
+      <div style={{ width: HANDLE_WIDTH, flexShrink: 0, paddingTop: 2 }}>
+        {showHandle && <BlockHandle hasLabel={!!label} />}
+      </div>
+      {/* ガター: ラベルバッジ */}
+      <div style={{ width: GUTTER_WIDTH, flexShrink: 0, paddingTop: 3 }}>
+        {label && <LabelBadge label={label} size="small" />}
+      </div>
+      {/* コンテンツ */}
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>
   );
-}
-
-// ラベルなしブロック
-function PlainBlock({ children }: { children: React.ReactNode }) {
-  return <div style={{ marginBottom: 4 }}>{children}</div>;
 }
 
 // テーブルスタイル
@@ -244,227 +191,194 @@ const tdStyle: React.CSSProperties = {
   color: "#374151",
 };
 
-// C方式（上方配置）— ブロック単位ラベル、基本パターン
-export const AboveNote: StoryObj = {
-  name: "C方式: ノート風（基本）",
+// ── Meta ──
+const meta: Meta = {
+  title: "ContextLabel/LabelBadge",
+  parameters: { layout: "padded" },
+};
+export default meta;
+
+// 全ラベル一覧
+export const AllLabels: StoryObj = {
   render: () => (
-    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>カレーの作り方</h1>
-      <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 24 }}>
-        作成日付: 2026-01-16&nbsp;&nbsp;タグ: 料理、カレー&nbsp;&nbsp;作成者: 熊谷 将也
-      </p>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {CORE_LABELS.map((label) => (
+        <LabelBadge key={label} label={label} onClick={() => alert(label)} />
+      ))}
+    </div>
+  ),
+};
 
-      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>1. 目的</h2></PlainBlock>
-      <PlainBlock><p>当日に食べたカレーと1晩寝かしたカレーがどちらのほうが美味しいか</p></PlainBlock>
+// A方式: ブロックハンドル + ガターラベル — 基本
+export const GutterNote: StoryObj = {
+  name: "A方式: ノート風（基本）",
+  render: () => (
+    <div style={{ maxWidth: 800, fontFamily: "Inter, sans-serif" }}>
+      <div style={{ marginLeft: HANDLE_WIDTH + GUTTER_WIDTH }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>カレーの作り方</h1>
+        <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 20 }}>
+          作成日付: 2026-01-16&nbsp;&nbsp;タグ: 料理、カレー&nbsp;&nbsp;作成者: 熊谷 将也
+        </p>
+      </div>
 
-      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>2. 作り方</h2></PlainBlock>
+      <GutterBlock>
+        <h2 style={{ fontSize: 22, fontWeight: 700 }}>1. 目的</h2>
+      </GutterBlock>
+      <GutterBlock>
+        <p>当日に食べたカレーと1晩寝かしたカレーがどちらのほうが美味しいか</p>
+      </GutterBlock>
 
-      {/* 手順 2.1 — 見出しブロックに[手順] */}
-      <LabeledBlock label="[手順]">
+      <GutterBlock>
+        <h2 style={{ fontSize: 22, fontWeight: 700 }}>2. 作り方</h2>
+      </GutterBlock>
+
+      <GutterBlock label="[手順]">
         <h3 style={{ fontSize: 18, fontWeight: 600 }}>2.1 切る</h3>
-      </LabeledBlock>
+      </GutterBlock>
+      <GutterBlock label="[使用したもの]" indent={16}>
+        <p>玉ねぎ 中 2個（400g）</p>
+      </GutterBlock>
+      <GutterBlock label="[使用したもの]" indent={16}>
+        <p>じゃがいも 中 1・1/2個（230g）</p>
+      </GutterBlock>
+      <GutterBlock label="[使用したもの]" indent={16}>
+        <p>にんじん 中 1/2本（100g）</p>
+      </GutterBlock>
+      <GutterBlock label="[条件]" indent={16}>
+        <p>くし切り、6〜8等分、乱切り</p>
+      </GutterBlock>
 
-      {/* 各リストアイテムが独立ブロック、それぞれに[使用したもの] */}
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[使用したもの]">
-          <p>玉ねぎ 中 2個（400g）</p>
-        </LabeledBlock>
-        <LabeledBlock label="[使用したもの]">
-          <p>じゃがいも 中 1・1/2個（230g）</p>
-        </LabeledBlock>
-        <LabeledBlock label="[使用したもの]">
-          <p>にんじん 中 1/2本（100g）</p>
-        </LabeledBlock>
-      </div>
-
-      {/* 条件ブロック */}
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[条件]">
-          <p>玉ねぎ — くし切り、じゃがいも — 6〜8等分、にんじん — 乱切り</p>
-        </LabeledBlock>
-      </div>
-
-      {/* 手順 2.2 */}
-      <LabeledBlock label="[手順]">
+      <GutterBlock label="[手順]">
         <h3 style={{ fontSize: 18, fontWeight: 600 }}>2.2 炒める</h3>
-      </LabeledBlock>
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[条件]">
-          <p>鍋にサラダ油を熱し、玉ねぎを中火で炒める。しんなりしたら肉を加え、色が変わるまで炒める。</p>
-        </LabeledBlock>
-      </div>
+      </GutterBlock>
+      <GutterBlock label="[条件]" indent={16}>
+        <p>サラダ油を熱し、玉ねぎを中火で炒める。しんなりしたら肉を加える。</p>
+      </GutterBlock>
 
-      {/* 手順 2.3 */}
-      <LabeledBlock label="[手順]">
+      <GutterBlock label="[手順]">
         <h3 style={{ fontSize: 18, fontWeight: 600 }}>2.3 煮込む</h3>
-      </LabeledBlock>
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[条件]">
-          <p>水850mlを加え、沸騰したらアクを取り、弱火〜中火で約20分煮込む。</p>
-        </LabeledBlock>
-        <LabeledBlock label="[結果]">
-          <p>じゃがいもに竹串がスッと通れば完成。</p>
-        </LabeledBlock>
-      </div>
+      </GutterBlock>
+      <GutterBlock label="[条件]" indent={16}>
+        <p>水850mlを加え、弱火〜中火で約20分煮込む。</p>
+      </GutterBlock>
+      <GutterBlock label="[結果]" indent={16}>
+        <p>じゃがいもに竹串がスッと通れば完成。</p>
+      </GutterBlock>
     </div>
   ),
 };
 
-// C方式 — 箇条書きブロック単位ラベル
-export const AboveWithBulletList: StoryObj = {
-  name: "C方式: 箇条書きパターン",
+// A方式: テーブル（試料）+ 箇条書き
+export const GutterWithTable: StoryObj = {
+  name: "A方式: テーブル（試料）パターン",
   render: () => (
-    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>Cu粉末アニール実験</h2></PlainBlock>
-
-      {/* 手順 1 — 見出しブロック */}
-      <LabeledBlock label="[手順]">
-        <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3>
-      </LabeledBlock>
-
-      {/* 各アイテムが独立ブロック */}
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[使用したもの]">
-          <p>Cu粉末 1g</p>
-        </LabeledBlock>
-        <LabeledBlock label="[使用したもの]">
-          <p>シリカ管（内径8mm）</p>
-        </LabeledBlock>
-        <LabeledBlock label="[使用したもの]">
-          <p>真空ポンプ</p>
-        </LabeledBlock>
+    <div style={{ maxWidth: 800, fontFamily: "Inter, sans-serif" }}>
+      <div style={{ marginLeft: HANDLE_WIDTH + GUTTER_WIDTH }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Cu粉末アニール実験</h1>
+        <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 20 }}>
+          作成日付: 2026-03-20&nbsp;&nbsp;作成者: 熊谷 将也
+        </p>
       </div>
-
-      {/* 条件 — 各条件が独立ブロック */}
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[条件]">
-          <p>真空度: 10⁻³ Pa 以下</p>
-        </LabeledBlock>
-        <LabeledBlock label="[条件]">
-          <p>封入時のバーナー温度: 約1200℃</p>
-        </LabeledBlock>
-      </div>
-
-      {/* 結果 */}
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[結果]">
-          <p>封入されたCu粉末（目視で管内に粉末が均一に分布していることを確認）</p>
-        </LabeledBlock>
-      </div>
-    </div>
-  ),
-};
-
-// C方式 — テーブル（試料ラベル）パターン
-// テーブルブロック全体に1つの[試料]ラベルが付く
-export const AboveWithTable: StoryObj = {
-  name: "C方式: テーブル（試料）パターン",
-  render: () => (
-    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>Cu粉末アニール実験</h2></PlainBlock>
-
-      <LabeledBlock label="[手順]">
-        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3>
-      </LabeledBlock>
-
-      {/* テーブルブロック全体に[試料]ラベル */}
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[試料]">
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr><th style={thStyle}>試料名</th><th style={thStyle}>温度</th><th style={thStyle}>時間</th></tr>
-            </thead>
-            <tbody>
-              <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
-              <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
-              <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
-            </tbody>
-          </table>
-        </LabeledBlock>
-
-        <LabeledBlock label="[条件]">
-          <p>昇温速度: 5℃/min</p>
-        </LabeledBlock>
-        <LabeledBlock label="[条件]">
-          <p>雰囲気: 真空封入管内</p>
-        </LabeledBlock>
-        <LabeledBlock label="[条件]">
-          <p>冷却: 炉冷</p>
-        </LabeledBlock>
-      </div>
-
-      <LabeledBlock label="[手順]">
-        <h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3>
-      </LabeledBlock>
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[結果]">
-          <p>XRD測定により相同定を行う。</p>
-        </LabeledBlock>
-      </div>
-    </div>
-  ),
-};
-
-// C方式 — 全要素フルノート
-export const AboveFullNote: StoryObj = {
-  name: "C方式: フルノート（全要素）",
-  render: () => (
-    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Cu粉末アニール実験</h1>
-      <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 24 }}>
-        作成日付: 2026-03-20&nbsp;&nbsp;作成者: 熊谷 将也
-      </p>
 
       {/* 手順 1 */}
-      <LabeledBlock label="[手順]">
+      <GutterBlock label="[手順]">
         <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3>
-      </LabeledBlock>
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[使用したもの]">
-          <p>Cu粉末 1g</p>
-        </LabeledBlock>
-        <LabeledBlock label="[使用したもの]">
-          <p>シリカ管</p>
-        </LabeledBlock>
-        <LabeledBlock label="[結果]">
-          <p>封入されたCu粉末</p>
-        </LabeledBlock>
-      </div>
+      </GutterBlock>
+      <GutterBlock label="[使用したもの]" indent={16}>
+        <p>Cu粉末 1g</p>
+      </GutterBlock>
+      <GutterBlock label="[使用したもの]" indent={16}>
+        <p>シリカ管</p>
+      </GutterBlock>
+      <GutterBlock label="[結果]" indent={16}>
+        <p>封入されたCu粉末</p>
+      </GutterBlock>
 
       {/* 手順 2 */}
-      <LabeledBlock label="[手順]">
+      <GutterBlock label="[手順]">
         <h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3>
-      </LabeledBlock>
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[試料]">
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr><th style={thStyle}>試料名</th><th style={thStyle}>温度</th><th style={thStyle}>時間</th></tr>
-            </thead>
-            <tbody>
-              <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
-              <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
-              <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
-            </tbody>
-          </table>
-        </LabeledBlock>
-        <LabeledBlock label="[条件]">
-          <p>昇温速度: 5℃/min</p>
-        </LabeledBlock>
-        <LabeledBlock label="[条件]">
-          <p>冷却: 炉冷</p>
-        </LabeledBlock>
-      </div>
+      </GutterBlock>
+      <GutterBlock label="[試料]" indent={16}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead>
+            <tr><th style={thStyle}>試料名</th><th style={thStyle}>温度</th><th style={thStyle}>時間</th></tr>
+          </thead>
+          <tbody>
+            <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
+            <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
+            <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
+          </tbody>
+        </table>
+      </GutterBlock>
+      <GutterBlock label="[条件]" indent={16}>
+        <p>昇温速度: 5℃/min</p>
+      </GutterBlock>
+      <GutterBlock label="[条件]" indent={16}>
+        <p>冷却: 炉冷</p>
+      </GutterBlock>
 
       {/* 手順 3 */}
-      <LabeledBlock label="[手順]">
+      <GutterBlock label="[手順]">
         <h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3>
-      </LabeledBlock>
-      <div style={{ marginLeft: 16 }}>
-        <LabeledBlock label="[結果]">
-          <p>XRD測定により相同定を行う。</p>
-        </LabeledBlock>
-      </div>
+      </GutterBlock>
+      <GutterBlock label="[結果]" indent={16}>
+        <p>XRD測定により相同定を行う。</p>
+      </GutterBlock>
     </div>
   ),
+};
+
+// A方式: ホバー操作のシミュレーション
+export const GutterHoverDemo: StoryObj = {
+  name: "A方式: ホバー操作デモ",
+  render: () => {
+    function Demo() {
+      const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
+
+      const blocks = [
+        { id: "s1", label: "[手順]", content: <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3> },
+        { id: "u1", label: "[使用したもの]", content: <p>Cu粉末 1g</p>, indent: 16 },
+        { id: "u2", label: "[使用したもの]", content: <p>シリカ管</p>, indent: 16 },
+        { id: "c1", label: undefined, content: <p>真空封入管内で封入する。</p>, indent: 16 },
+        { id: "r1", label: "[結果]", content: <p>封入されたCu粉末</p>, indent: 16 },
+      ];
+
+      return (
+        <div style={{ maxWidth: 800, fontFamily: "Inter, sans-serif" }}>
+          <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, background: "#f3f4f6", padding: "8px 12px", borderRadius: 6 }}>
+            各ブロックにホバーするとブロックハンドルが表示されます。<br />
+            ラベル未設定のブロックには # ボタンが表示されます（4行目）。
+          </p>
+          {blocks.map((b) => (
+            <div
+              key={b.id}
+              onMouseEnter={() => setHoveredBlock(b.id)}
+              onMouseLeave={() => setHoveredBlock(null)}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                minHeight: 28,
+                paddingLeft: b.indent ?? 0,
+                borderRadius: 4,
+                background: hoveredBlock === b.id ? "#f9fafb" : "transparent",
+                transition: "background 0.1s",
+              }}
+            >
+              {/* ハンドル: ホバー時のみ表示 */}
+              <div style={{ width: HANDLE_WIDTH, flexShrink: 0, paddingTop: 2, visibility: hoveredBlock === b.id ? "visible" : "hidden" }}>
+                <BlockHandle hasLabel={!!b.label} />
+              </div>
+              {/* ガター */}
+              <div style={{ width: GUTTER_WIDTH, flexShrink: 0, paddingTop: 3 }}>
+                {b.label && <LabelBadge label={b.label} size="small" />}
+              </div>
+              {/* コンテンツ */}
+              <div style={{ flex: 1, minWidth: 0 }}>{b.content}</div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <Demo />;
+  },
 };
