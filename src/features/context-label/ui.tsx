@@ -44,105 +44,16 @@ function getLabelColor(label: string): string {
 }
 
 // ──────────────────────────────────
-// LabelBadgeLayer（ブロックハンドル右側方式）
+// LabelBadgeLayer
 //
-// 各ブロックの blockOuter にバッジ要素を挿入し、
-// CSS absolute でブロック左マージンに配置する。
-// DOM に乗るためスクロール追従は自動。
+// A方式: ラベルバッジは SideMenu 内に統合。
+// LabelBadgeLayer は互換性のため空コンポーネントとして維持。
 // ──────────────────────────────────
 
-/** エディタラッパー用の定数（ラベルバッジ表示領域の幅） */
-export const LABEL_GUTTER_WIDTH = 90; // px
-
-// バッジのスタイル（blockOuter 内に absolute 配置）
-function badgeStyle(color: string): string {
-  return [
-    "position:absolute",
-    "left:0",
-    "top:2px",
-    "display:inline-flex",
-    "align-items:center",
-    "gap:3px",
-    "padding:1px 6px",
-    "border-radius:4px",
-    "font-size:11px",
-    "font-weight:600",
-    `background-color:${color}18`,
-    `color:${color}`,
-    `border:1px solid ${color}38`,
-    "cursor:pointer",
-    "user-select:none",
-    "line-height:1.6",
-    "white-space:nowrap",
-    "z-index:1",
-  ].join(";");
-}
+/** ガター幅（A方式: SideMenu 内表示のためガター不要） */
+export const LABEL_GUTTER_WIDTH = 0;
 
 export function LabelBadgeLayer() {
-  const { labels, openDropdown } = useLabelStore();
-
-  // ラベルバッジを各ブロックの blockOuter に挿入
-  useEffect(() => {
-    const inject = () => {
-      const wrapper = document.querySelector("[data-label-wrapper]");
-      if (!wrapper) return;
-
-      // 既存のバッジをすべて削除
-      wrapper.querySelectorAll("[data-gutter-label]").forEach((el) => el.remove());
-
-      // 各ラベル付きブロックにバッジを挿入
-      for (const [blockId, label] of labels) {
-        const blockOuter = wrapper.querySelector(
-          `[data-id="${blockId}"][data-node-type="blockOuter"]`
-        ) as HTMLElement | null;
-        if (!blockOuter) continue;
-
-        // blockOuter を relative にしてバッジの基準にする
-        blockOuter.style.position = "relative";
-
-        // バッジ要素を作成
-        const badge = document.createElement("span");
-        badge.setAttribute("data-gutter-label", blockId);
-        badge.setAttribute("data-prov-label-anchor", blockId);
-        badge.style.cssText = badgeStyle(getLabelColor(label));
-        badge.textContent = label;
-
-        // クリックでドロップダウンを開く
-        badge.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openDropdown(blockId);
-        });
-
-        // blockOuter の先頭に挿入（content の外側なので編集に影響しない）
-        blockOuter.insertBefore(badge, blockOuter.firstChild);
-      }
-    };
-
-    const rafId = requestAnimationFrame(inject);
-
-    // DOM 変化時に再挿入（ProseMirror の再描画対策）
-    const wrapper = document.querySelector("[data-label-wrapper]");
-    let observer: MutationObserver | null = null;
-    if (wrapper) {
-      let debounceId: number | null = null;
-      observer = new MutationObserver(() => {
-        if (debounceId) cancelAnimationFrame(debounceId);
-        debounceId = requestAnimationFrame(inject);
-      });
-      observer.observe(wrapper, {
-        childList: true,
-        subtree: true,
-      });
-    }
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      observer?.disconnect();
-      document.querySelectorAll("[data-gutter-label]").forEach((el) => el.remove());
-    };
-  }, [labels, openDropdown]);
-
   return null;
 }
 
@@ -428,8 +339,9 @@ export function LabelDropdownPortal() {
 
 // ──────────────────────────────────
 // LabelSideMenuButton
-// ラベル未設定ブロックに「#」ボタンを表示する。
-// ラベル設定済みは LabelBadgeLayer が常時表示するのでここには出さない。
+// A方式: SideMenu 内にラベルバッジ or # ボタンを表示。
+// ラベル設定済み → バッジ表示（クリックで変更）
+// ラベル未設定 → # ボタン（クリックで付与）
 // ──────────────────────────────────
 export function LabelSideMenuButton() {
   const editor = useBlockNoteEditor<any, any, any>();
@@ -444,63 +356,66 @@ export function LabelSideMenuButton() {
 
   const label = getLabel(block.id);
 
-  // 見出しブロックのロールヒント
-  const headingRole =
-    block.type === "heading" && label
-      ? getHeadingLabelRole((block.props as any).level, label)
-      : null;
+  if (label) {
+    // ラベル設定済み: バッジ表示（Crucible デザインガイドライン準拠: rounded-full）
+    const color = getLabelColor(label);
+    return (
+      <span
+        onClick={() => openDropdown(block.id)}
+        data-prov-label-anchor={block.id}
+        title={`${label} — クリックで変更`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          padding: "0px 6px",
+          borderRadius: 9999,
+          fontSize: 11,
+          fontWeight: 600,
+          backgroundColor: color + "18",
+          color: color,
+          border: `1px solid ${color}38`,
+          cursor: "pointer",
+          userSelect: "none",
+          lineHeight: 1.6,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
 
+  // ラベル未設定: # ボタン
   return (
-    <div
+    <button
+      onClick={() => openDropdown(block.id)}
+      data-prov-label-anchor={block.id}
+      title="ラベルを付ける"
       style={{
-        position: "relative",
-        display: "flex",
+        display: "inline-flex",
         alignItems: "center",
-        gap: 4,
+        justifyContent: "center",
+        width: 22,
+        height: 22,
+        borderRadius: 8,
+        border: "1px dashed #d5e0d7",
+        background: "none",
+        cursor: "pointer",
+        color: "#6b7f6e",
+        fontSize: 12,
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "#4B7A52";
+        e.currentTarget.style.color = "#4B7A52";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "#d5e0d7";
+        e.currentTarget.style.color = "#6b7f6e";
       }}
     >
-      {!label && (
-        // ラベル未設定: #ボタンを表示、アンカー属性でドロップダウンの位置合わせ用
-        <button
-          onClick={() => openDropdown(block.id)}
-          data-prov-label-anchor={block.id}
-          title="ラベルを付ける"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: 4,
-            border: "1px dashed #d1d5db",
-            background: "none",
-            cursor: "pointer",
-            color: "#9ca3af",
-            fontSize: 12,
-            lineHeight: 1,
-          }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget;
-            el.style.borderColor = "#3b82f6";
-            el.style.color = "#3b82f6";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget;
-            el.style.borderColor = "#d1d5db";
-            el.style.color = "#9ca3af";
-          }}
-        >
-          #
-        </button>
-      )}
-
-      {/* 見出しロールのヒント（ラベル設定済み時のみ） */}
-      {headingRole && (
-        <span style={{ fontSize: 9, color: "#9ca3af", whiteSpace: "nowrap" }}>
-          {headingRole === "section-marker" ? "§" : "▶"}
-        </span>
-      )}
-    </div>
+      #
+    </button>
   );
 }
 
