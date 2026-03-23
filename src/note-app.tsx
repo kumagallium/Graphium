@@ -496,8 +496,8 @@ function NoteEditorInner({
             minWidth: 0,
             overflow: "auto",
             position: "relative",
-            // SideMenu（ラベルバッジ含む）がサイドバーに隠れないよう左に余白を確保
-            paddingLeft: Math.max(LABEL_GUTTER_WIDTH, 56),
+            // SideMenu（ラベルバッジ + 🔗 + ⠿）が収まるよう左に余白を確保
+            paddingLeft: 160,
           }}
         >
           <LabelBadgeLayer />

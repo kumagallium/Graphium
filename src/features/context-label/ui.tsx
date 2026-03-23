@@ -377,9 +377,6 @@ export function LabelSideMenuButton() {
           userSelect: "none",
           lineHeight: 1.6,
           whiteSpace: "nowrap",
-          maxWidth: 48,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
         }}
       >
         {label}
