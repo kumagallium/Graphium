@@ -444,8 +444,9 @@ function NoteEditorInner({
     return () => { openLinkDropdownFn = null; };
   }, [activePageId, addPage, linkStore]);
 
-  // PROV 生成
-  const handleGenerateProv = () => {
+  // PROV リアルタイム生成（デバウンス 500ms）
+  const provTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generateProv = useCallback(() => {
     if (!editorRef.current) return;
     const blocks = editorRef.current.document;
     const doc = generateProvDocument({
@@ -454,7 +455,23 @@ function NoteEditorInner({
       links: linkStore.links,
     });
     setProvDoc(doc);
-  };
+  }, [labelStore.labels, linkStore.links]);
+
+  // ラベル・リンク変更時に自動再生成
+  useEffect(() => {
+    if (provTimerRef.current) clearTimeout(provTimerRef.current);
+    provTimerRef.current = setTimeout(generateProv, 500);
+    return () => {
+      if (provTimerRef.current) clearTimeout(provTimerRef.current);
+    };
+  }, [generateProv]);
+
+  // エディタ内容変更時にも再生成をトリガー
+  const handleContentChange = useCallback(() => {
+    markDirty();
+    if (provTimerRef.current) clearTimeout(provTimerRef.current);
+    provTimerRef.current = setTimeout(generateProv, 500);
+  }, [markDirty, generateProv]);
 
   // 初期コンテンツ（既存ファイルの場合はブロックを復元）
   const initialContent =
@@ -525,7 +542,7 @@ function NoteEditorInner({
                   initialContent={pageId === pages[0]?.id ? initialContent : undefined}
                   sideMenu={NoteSideMenu}
                   onEditorReady={handleEditorReady}
-                  onChange={markDirty}
+                  onChange={handleContentChange}
                 />
               </div>
             )}
@@ -564,7 +581,8 @@ function NoteEditorInner({
               PROV
             </span>
             <button
-              onClick={handleGenerateProv}
+              onClick={generateProv}
+              title="手動で再生成"
               style={{
                 padding: "3px 10px",
                 fontSize: 11,
