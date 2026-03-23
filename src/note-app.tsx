@@ -24,6 +24,7 @@ import {
   type ProvDocument,
 } from "./features/prov-generator";
 import { useGoogleAuth } from "./lib/use-google-auth";
+import { PROV_TEMPLATE } from "./lib/prov-template";
 import {
   listFiles,
   loadFile,
@@ -79,6 +80,7 @@ function FileSidebar({
   loading,
   onSelect,
   onNewNote,
+  onNewFromTemplate,
   onDelete,
   onRefresh,
   userName,
@@ -89,6 +91,7 @@ function FileSidebar({
   loading: boolean;
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
+  onNewFromTemplate: () => void;
   onDelete: (fileId: string) => void;
   onRefresh: () => void;
   userName?: string;
@@ -112,9 +115,15 @@ function FileSidebar({
         </div>
         <button
           onClick={onNewNote}
-          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          className="w-full text-left rounded-md px-3 py-2 mb-1.5 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
           + 新しいノート
+        </button>
+        <button
+          onClick={onNewFromTemplate}
+          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium border border-border text-sidebar-foreground/80 hover:bg-sidebar-accent transition-colors"
+        >
+          + PROV テンプレート
         </button>
       </div>
 
@@ -634,6 +643,17 @@ export function NoteApp() {
     setEditorKey((k) => k + 1);
   }, []);
 
+  // PROV テンプレートから作成
+  const handleNewFromTemplate = useCallback(() => {
+    setActiveFileId(null);
+    setActiveDoc({
+      ...PROV_TEMPLATE,
+      createdAt: new Date().toISOString(),
+      modifiedAt: new Date().toISOString(),
+    });
+    setEditorKey((k) => k + 1);
+  }, []);
+
   // 保存（ref 経由で常に最新の activeFileId を使用）
   const handleSave = useCallback(
     async (doc: ProvNoteDocument) => {
@@ -716,6 +736,7 @@ export function NoteApp() {
         loading={filesLoading}
         onSelect={handleOpenFile}
         onNewNote={handleNewNote}
+        onNewFromTemplate={handleNewFromTemplate}
         onDelete={handleDelete}
         onRefresh={refreshFiles}
         onSignOut={signOut}
