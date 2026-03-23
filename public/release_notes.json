@@ -1,5 +1,30 @@
 [
   {
+    "sha": "94a4438",
+    "message": "[fix] Clean up orphan links when deleting derived notes",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "3fd9077",
+    "message": "Merge pull request #10 from kumagallium/feat/graph-theme-animation",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "c0ef9b6",
+    "message": "[feat] Unify graph colors with design.md theme and add smooth interactions",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "3869d89",
+    "message": "Merge pull request #9 from kumagallium/feat/release-notes",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "d8759fd",
+    "message": "[feat] Add auto-generated release notes with git hook and modal UI",
+    "date": "2026-03-23"
+  },
+  {
     "sha": "0fa6241",
     "message": "Merge pull request #8 from kumagallium/feat/derived-note-title",
     "date": "2026-03-23"
@@ -222,31 +247,6 @@
   {
     "sha": "1113964",
     "message": "Switch label badges from gutter to inline injection",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "cc2f0d5",
-    "message": "Fix label badges not scrolling with content",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "cc6324b",
-    "message": "Fix label badge vertical alignment on nested blocks",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "948994f",
-    "message": "Fix Cmd+S: capture on both document and window with stopPropagation",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "2115d9a",
-    "message": "Fix Cmd+S being intercepted by browser save dialog",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "fe61953",
-    "message": "Fix stale activeFileId in save callback using ref",
     "date": "2026-03-23"
   }
 ]

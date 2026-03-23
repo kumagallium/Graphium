@@ -906,10 +906,52 @@ export function NoteApp() {
     [activeDoc, handleOpenFile, setActiveFileId]
   );
 
-  // 削除
+  // 削除（関連ノートのリンク情報もクリーンアップ）
   const handleDelete = useCallback(
     async (fileId: string) => {
       try {
+        // 削除対象のドキュメントを取得
+        const targetDoc = docCacheRef.current.get(fileId);
+
+        if (targetDoc) {
+          // 1. 派生元ノートの noteLinks から削除対象への参照を除去
+          if (targetDoc.derivedFromNoteId) {
+            const parentDoc = docCacheRef.current.get(targetDoc.derivedFromNoteId);
+            if (parentDoc?.noteLinks) {
+              const filtered = parentDoc.noteLinks.filter(
+                (link) => link.targetNoteId !== fileId
+              );
+              const updatedParent = {
+                ...parentDoc,
+                noteLinks: filtered.length > 0 ? filtered : undefined,
+                modifiedAt: new Date().toISOString(),
+              };
+              await saveFile(targetDoc.derivedFromNoteId, updatedParent);
+              docCacheRef.current.set(targetDoc.derivedFromNoteId, updatedParent);
+            }
+          }
+
+          // 2. 派生先ノートの derivedFromNoteId を除去
+          if (targetDoc.noteLinks) {
+            for (const link of targetDoc.noteLinks) {
+              const childDoc = docCacheRef.current.get(link.targetNoteId);
+              if (childDoc?.derivedFromNoteId === fileId) {
+                const updatedChild = {
+                  ...childDoc,
+                  derivedFromNoteId: undefined,
+                  derivedFromBlockId: undefined,
+                  modifiedAt: new Date().toISOString(),
+                };
+                await saveFile(link.targetNoteId, updatedChild);
+                docCacheRef.current.set(link.targetNoteId, updatedChild);
+              }
+            }
+          }
+        }
+
+        // キャッシュから削除
+        docCacheRef.current.delete(fileId);
+
         await deleteFile(fileId);
         if (activeFileId === fileId) {
           setActiveFileId(null);
