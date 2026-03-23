@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SandboxEditor } from "./base/editor";
-import { MultiPageLayout, useMultiPage } from "./base/multipage";
+// MultiPageLayout は派生ノートが別ファイルになったため不要
 import {
   LabelBadgeLayer,
   LabelDropdownPortal,
@@ -276,8 +276,6 @@ function NoteEditorInner({
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   saving: boolean;
 }) {
-  const { pages, activePageId, setActivePageId, addPage, removePage } =
-    useMultiPage(initialDoc?.title || "新しいノート");
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const editorRef = useRef<any>(null);
@@ -326,19 +324,22 @@ function NoteEditorInner({
       title,
       pages: [
         {
-          id: pages[0]?.id || "main",
+          id: "main",
           title,
           blocks,
           labels: labelsObj,
           links: linkStore.getAllLinks(),
         },
       ],
+      noteLinks: initialDoc?.noteLinks,
+      derivedFromNoteId: initialDoc?.derivedFromNoteId,
+      derivedFromBlockId: initialDoc?.derivedFromBlockId,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
     onSave(doc);
     setDirty(false);
-  }, [title, pages, labelStore, linkStore, initialDoc, onSave]);
+  }, [title, labelStore, linkStore, initialDoc, onSave]);
 
   // 常に最新の handleSave を ref に保持
   useEffect(() => {
@@ -500,26 +501,16 @@ function NoteEditorInner({
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
           <LabelBadgeLayer />
-          <MultiPageLayout
-            pages={pages}
-            activePageId={activePageId}
-            onSelectPage={setActivePageId}
-            onAddPage={(t) => addPage(t)}
-            onRemovePage={removePage}
-          >
-            {(pageId) => (
-              <div style={{ padding: "16px 0", paddingLeft: 160 }}>
-                <SandboxEditor
-                  key={`${fileId || "new"}-${pageId}`}
-                  blocks={[]}
-                  initialContent={pageId === pages[0]?.id ? initialContent : undefined}
-                  sideMenu={NoteSideMenu}
-                  onEditorReady={handleEditorReady}
-                  onChange={handleContentChange}
-                />
-              </div>
-            )}
-          </MultiPageLayout>
+          <div style={{ padding: "16px 0", paddingLeft: 160 }}>
+            <SandboxEditor
+              key={fileId || "new"}
+              blocks={[]}
+              initialContent={initialContent}
+              sideMenu={NoteSideMenu}
+              onEditorReady={handleEditorReady}
+              onChange={handleContentChange}
+            />
+          </div>
         </div>
 
         {/* 右: PROV パネル */}
@@ -565,6 +556,8 @@ export function NoteApp() {
   const savingRef = useRef(false);
   // エディタを強制的にリマウントするためのキー
   const [editorKey, setEditorKey] = useState(0);
+  // ノートキャッシュ
+  const docCacheRef = useRef<Map<string, ProvNoteDocument>>(new Map());
 
   // ファイル一覧を取得
   const refreshFiles = useCallback(async () => {
@@ -579,10 +572,19 @@ export function NoteApp() {
     }
   }, []);
 
-  // ファイルを開く
+  // ファイルを開く（キャッシュ優先）
   const handleOpenFile = useCallback(async (fileId: string) => {
     try {
+      const cached = docCacheRef.current.get(fileId);
+      if (cached) {
+        setActiveFileId(fileId);
+        setActiveDoc(cached);
+        setEditorKey((k) => k + 1);
+        loadFile(fileId).then((doc) => docCacheRef.current.set(fileId, doc)).catch(() => {});
+        return;
+      }
       const doc = await loadFile(fileId);
+      docCacheRef.current.set(fileId, doc);
       setActiveFileId(fileId);
       setActiveDoc(doc);
       setEditorKey((k) => k + 1);
@@ -633,6 +635,7 @@ export function NoteApp() {
         if (currentFileId) {
           // 既存ファイルを上書き
           await saveFile(currentFileId, doc);
+          docCacheRef.current.set(currentFileId, doc);
           // ローカルのファイル一覧を即座に更新
           setFiles((prev) =>
             prev.map((f) =>
@@ -644,6 +647,7 @@ export function NoteApp() {
         } else {
           // 新規作成
           const newId = await createFile(doc.title, doc);
+          docCacheRef.current.set(newId, doc);
           setActiveFileId(newId);
           // 新規ファイルを一覧に追加
           setFiles((prev) => [
