@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SandboxEditor } from "./base/editor";
-import { MultiPageLayout, useMultiPage } from "./base/multipage";
+// MultiPageLayout は派生ノートが別ファイルになったため不要
 import {
   LabelBadgeLayer,
   LabelDropdownPortal,
@@ -338,8 +338,6 @@ function NoteEditorInner({
   saving: boolean;
   files: ProvNoteFile[];
 }) {
-  const { pages, activePageId, setActivePageId, addPage, removePage } =
-    useMultiPage(initialDoc?.title || "新しいノート");
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const editorRef = useRef<any>(null);
@@ -388,7 +386,7 @@ function NoteEditorInner({
       title,
       pages: [
         {
-          id: pages[0]?.id || "main",
+          id: "main",
           title,
           blocks,
           labels: labelsObj,
@@ -400,7 +398,7 @@ function NoteEditorInner({
     };
     onSave(doc);
     setDirty(false);
-  }, [title, pages, labelStore, linkStore, initialDoc, onSave]);
+  }, [title, labelStore, linkStore, initialDoc, onSave]);
 
   // 常に最新の handleSave を ref に保持
   useEffect(() => {
@@ -569,26 +567,16 @@ function NoteEditorInner({
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
           <LabelBadgeLayer />
-          <MultiPageLayout
-            pages={pages}
-            activePageId={activePageId}
-            onSelectPage={setActivePageId}
-            onAddPage={(t) => addPage(t)}
-            onRemovePage={removePage}
-          >
-            {(pageId) => (
-              <div style={{ padding: "16px 0", paddingLeft: 160 }}>
-                <SandboxEditor
-                  key={`${fileId || "new"}-${pageId}`}
-                  blocks={[]}
-                  initialContent={pageId === pages[0]?.id ? initialContent : undefined}
-                  sideMenu={NoteSideMenu}
-                  onEditorReady={handleEditorReady}
-                  onChange={handleContentChange}
-                />
-              </div>
-            )}
-          </MultiPageLayout>
+          <div style={{ padding: "16px 0", paddingLeft: 160 }}>
+            <SandboxEditor
+              key={fileId || "new"}
+              blocks={[]}
+              initialContent={initialContent}
+              sideMenu={NoteSideMenu}
+              onEditorReady={handleEditorReady}
+              onChange={handleContentChange}
+            />
+          </div>
         </div>
 
         {/* 右: PROV パネル */}
