@@ -58,6 +58,7 @@ import {
   useExtensionState,
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
+import { Bot } from "lucide-react";
 
 // ── ノート間リンクバッジ ──
 // 派生元・派生先のリンクをヘッダー下にバッジ表示
@@ -311,9 +312,9 @@ function AiSideMenuButton() {
     <button
       onClick={handleClick}
       title="AI アシスタントに聞く"
-      className="inline-flex items-center justify-center w-[22px] h-[22px] rounded border border-dashed border-violet-400/40 bg-transparent cursor-pointer text-violet-400/60 text-[11px] leading-none hover:border-violet-500 hover:text-violet-500 transition-colors"
+      className="inline-flex items-center justify-center w-[22px] h-[22px] rounded border border-dashed border-violet-400/40 bg-transparent cursor-pointer text-violet-400/60 hover:border-violet-500 hover:text-violet-500 transition-colors"
     >
-      🤖
+      <Bot size={13} />
     </button>
   );
 }

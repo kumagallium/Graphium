@@ -3,6 +3,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Bot } from "lucide-react";
 import { useAiAssistant } from "./store";
 
 type AiAssistantModalProps = {
@@ -60,7 +61,7 @@ export function AiAssistantModal({ onSubmit }: AiAssistantModalProps) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
-            <span className="text-base">🤖</span>
+            <Bot size={16} className="text-violet-500" />
             <h2 className="text-sm font-medium text-foreground">
               AI アシスタント
             </h2>

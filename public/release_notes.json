@@ -1,6 +1,11 @@
 [
   {
-    "sha": "b713aec",
+    "sha": "4b7726f",
+    "message": "[refactor] Replace emoji with lucide Bot icon in AI assistant",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "42a8381",
     "message": "[feat] Add AI assistant integration with crucible-agent",
     "date": "2026-03-23"
   },
@@ -242,11 +247,6 @@
   {
     "sha": "2f34b4d",
     "message": "Fix stories to match actual block-level label data structure",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "1de386c",
-    "message": "Add placement-C (above) stories with bullet list and table patterns",
     "date": "2026-03-23"
   }
 ]
