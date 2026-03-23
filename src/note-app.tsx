@@ -377,6 +377,17 @@ function NoteEditorInner({
     };
   }, []);
 
+  // ラベル・リンク変更時に自動保存トリガー
+  const prevLabelsRef = useRef(labelStore.labels);
+  const prevLinksRef = useRef(linkStore.links);
+  useEffect(() => {
+    if (prevLabelsRef.current !== labelStore.labels || prevLinksRef.current !== linkStore.links) {
+      prevLabelsRef.current = labelStore.labels;
+      prevLinksRef.current = linkStore.links;
+      markDirty();
+    }
+  }, [labelStore.labels, linkStore.links, markDirty]);
+
   // タイトル変更時に自動保存トリガー
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
