@@ -627,6 +627,10 @@ export function NoteApp() {
   const setActiveFileId = useCallback((id: string | null) => {
     activeFileIdRef.current = id;
     _setActiveFileId(id);
+    // 最後に開いたファイルを記録
+    if (id) {
+      localStorage.setItem("provnote_last_file", id);
+    }
   }, []);
   const [activeDoc, setActiveDoc] = useState<ProvNoteDocument | null>(null);
   const [saving, setSaving] = useState(false);
@@ -647,13 +651,6 @@ export function NoteApp() {
     }
   }, []);
 
-  // 認証完了後にファイル一覧を取得
-  useEffect(() => {
-    if (authenticated) {
-      refreshFiles();
-    }
-  }, [authenticated, refreshFiles]);
-
   // ファイルを開く
   const handleOpenFile = useCallback(async (fileId: string) => {
     try {
@@ -664,7 +661,19 @@ export function NoteApp() {
     } catch (err) {
       console.error("ファイルの読み込みに失敗:", err);
     }
-  }, []);
+  }, [setActiveFileId]);
+
+  // 認証完了後にファイル一覧を取得し、最後に開いたファイルを復元
+  useEffect(() => {
+    if (!authenticated) return;
+    (async () => {
+      await refreshFiles();
+      const lastFileId = localStorage.getItem("provnote_last_file");
+      if (lastFileId && !activeFileIdRef.current) {
+        handleOpenFile(lastFileId);
+      }
+    })();
+  }, [authenticated, refreshFiles, handleOpenFile]);
 
   // 新しいノートを作成
   const handleNewNote = useCallback(() => {
