@@ -295,7 +295,7 @@ export function AddLinkDropdown({
           <button
             onClick={() => setSelectedType(null)}
             style={{
-              padding: "3px 12px", fontSize: 11, color: "#3b82f6",
+              padding: "3px 12px", fontSize: 11, color: "#5b8fb9",
               background: "none", border: "none", cursor: "pointer",
             }}
           >

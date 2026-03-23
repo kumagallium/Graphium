@@ -216,20 +216,20 @@ function LinkSideMenuButton() {
         width: 22,
         height: 22,
         borderRadius: 4,
-        border: "1px dashed #bfdbfe",
+        border: "1px dashed #b8d4bb",
         background: "none",
         cursor: "pointer",
-        color: "#93c5fd",
+        color: "#8db899",
         fontSize: 11,
         lineHeight: 1,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "#3b82f6";
-        e.currentTarget.style.color = "#3b82f6";
+        e.currentTarget.style.borderColor = "#4B7A52";
+        e.currentTarget.style.color = "#4B7A52";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "#bfdbfe";
-        e.currentTarget.style.color = "#93c5fd";
+        e.currentTarget.style.borderColor = "#b8d4bb";
+        e.currentTarget.style.color = "#8db899";
       }}
     >
       &#128279;
@@ -316,7 +316,7 @@ function ContextLabelExperimentInner() {
         <div style={{ width: 480, flexShrink: 0, borderLeft: "1px solid #e5e7eb", background: "#fafbfc", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em" }}>PROV</span>
-            <button onClick={handleGenerateProv} style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, borderRadius: 4, border: "1px solid #3b82f6", background: "#eff6ff", color: "#3b82f6", cursor: "pointer" }}>生成</button>
+            <button onClick={handleGenerateProv} style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, borderRadius: 4, border: "1px solid #4B7A52", background: "#edf5ee", color: "#4B7A52", cursor: "pointer" }}>生成</button>
           </div>
           <div style={{ flex: 1, overflow: "auto" }}><ProvGraphPanel doc={provDoc} /></div>
         </div>

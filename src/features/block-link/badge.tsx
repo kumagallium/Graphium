@@ -120,7 +120,7 @@ export function LinkBadgeLayer() {
                 fontSize: 10,
                 fontWeight: 600,
                 background: "#eff6ff",
-                color: "#3b82f6",
+                color: "#5b8fb9",
                 border: "1px solid #bfdbfe",
                 cursor: "pointer",
                 userSelect: "none",
@@ -195,7 +195,7 @@ function LinkDetailPanel({
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       // ハイライトエフェクト
-      (el as HTMLElement).style.outline = "2px solid #3b82f6";
+      (el as HTMLElement).style.outline = "2px solid #5b8fb9";
       setTimeout(() => {
         (el as HTMLElement).style.outline = "";
       }, 1500);

@@ -45,7 +45,7 @@ export const EXECUTOR_LABELS: Record<ExecutorType, string> = {
 // ステータスの表示名と色
 export const STATUS_CONFIG: Record<StepStatus, { label: string; color: string }> = {
   planned: { label: "予定", color: "#6b7280" },
-  "in-progress": { label: "実行中", color: "#3b82f6" },
-  done: { label: "完了", color: "#10b981" },
+  "in-progress": { label: "実行中", color: "#5b8fb9" },
+  done: { label: "完了", color: "#4B7A52" },
   skipped: { label: "スキップ", color: "#9ca3af" },
 };

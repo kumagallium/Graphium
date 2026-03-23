@@ -32,13 +32,13 @@ import { useLabelStore } from "./store";
 // 色定義
 // ──────────────────────────────────
 const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "#3b82f6",
-  "[使用したもの]": "#10b981",
-  "[属性]": "#f59e0b",
-  "[試料]": "#8b5cf6",
-  "[結果]": "#ef4444",
+  "[手順]": "#5b8fb9",
+  "[使用したもの]": "#4B7A52",
+  "[属性]": "#c08b3e",
+  "[試料]": "#8b7ab5",
+  "[結果]": "#c26356",
   // 後方互換
-  "[条件]": "#f59e0b",
+  "[条件]": "#c08b3e",
 };
 
 function getLabelColor(label: string): string {
@@ -183,7 +183,7 @@ export function LabelDropdownPortal() {
 
       {/* 前手順リンク */}
       <div style={dividerStyle} />
-      <div style={{ ...sectionHeaderStyle, color: "#3b82f6" }}>前手順リンク（wasInformedBy）</div>
+      <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>前手順リンク（wasInformedBy）</div>
       <button
         onClick={() => {
           // 見出し候補を取得してモード切替
@@ -201,7 +201,7 @@ export function LabelDropdownPortal() {
         }}
         style={{
           ...menuItemStyle,
-          color: "#3b82f6",
+          color: "#5b8fb9",
           background: "#eff6ff",
           borderRadius: 4,
           margin: "2px 6px",
@@ -215,7 +215,7 @@ export function LabelDropdownPortal() {
       {/* 前手順: 見出し選択サブメニュー */}
       {prevStepMode && (
         <div style={{ padding: "4px 0", background: "#f0f9ff", borderTop: "1px solid #e0f2fe" }}>
-          <div style={{ ...sectionHeaderStyle, color: "#3b82f6" }}>
+          <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>
             リンク先の見出しを選択
           </div>
           {headingCandidates.length === 0 && (
@@ -310,7 +310,7 @@ export function LabelDropdownPortal() {
             style={{
               padding: "3px 8px",
               fontSize: 12,
-              background: "#3b82f6",
+              background: "#5b8fb9",
               color: "#fff",
               border: "none",
               borderRadius: 4,
@@ -328,7 +328,7 @@ export function LabelDropdownPortal() {
           <div style={dividerStyle} />
           <button
             onClick={() => select(null)}
-            style={{ ...menuItemStyle, color: "#ef4444" }}
+            style={{ ...menuItemStyle, color: "#c26356" }}
           >
             ラベルを外す
           </button>
