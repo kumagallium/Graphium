@@ -8,15 +8,11 @@
 //   Parameter = ダイヤ・落ち着いたアンバー (#c08b3e)
 // ──────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
-import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
-import type { ProvDocument, ProvNode, ProvRelation } from "./generator";
-import type { ProvWarning } from "./errors";
-
-// fcose レイアウト登録（重複防止）
-ensureCytoscapePlugins();
+import type { ProvDocument, ProvNode } from "./generator";
 
 // ── design.md ラベル色パレット ──
 
@@ -376,16 +372,12 @@ function setupHoverEffects(cy: cytoscape.Core) {
 
 // ── グラフコンポーネント ──
 
-type LayoutMode = "layered" | "force";
-
 function CytoscapeGraph({
   doc,
   height = 450,
-  layoutMode = "layered",
 }: {
   doc: ProvDocument;
   height?: number;
-  layoutMode?: LayoutMode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
@@ -417,44 +409,21 @@ function CytoscapeGraph({
 
     let cancelled = false;
 
-    if (layoutMode === "force") {
-      // fcose: アニメーション付き力学レイアウト
-      const layout = cy.layout({
-        name: "fcose",
-        animate: true,
-        animationDuration: 800,
-        animationEasing: "ease-out-cubic" as any,
-        quality: "default",
-        randomize: true,
-        nodeRepulsion: 6000,
-        idealEdgeLength: 120,
-        edgeElasticity: 0.45,
-        gravity: 0.25,
-        gravityRange: 3.8,
-        nodeSeparation: 80,
-        padding: 20,
-      } as any);
-      layout.on("layoutstop", () => {
-        if (!cancelled) cy.fit(undefined, 20);
-      });
-      layout.run();
-    } else {
-      // layered: breadthfirst → ELK
-      cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.5 } as any).run();
-      cy.fit(undefined, 20);
-      applyElkLayout(cy).then(() => {
-        if (!cancelled) cy.fit(undefined, 20);
-      }).catch((err) => {
-        console.warn("[PROV] ELK レイアウト失敗（breadthfirst を維持）:", err);
-      });
-    }
+    // 階層レイアウト: breadthfirst → ELK
+    cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.5 } as any).run();
+    cy.fit(undefined, 20);
+    applyElkLayout(cy).then(() => {
+      if (!cancelled) cy.fit(undefined, 20);
+    }).catch((err) => {
+      console.warn("[PROV] ELK レイアウト失敗（breadthfirst を維持）:", err);
+    });
 
     return () => {
       cancelled = true;
       cy.destroy();
       cyRef.current = null;
     };
-  }, [doc, layoutMode]);
+  }, [doc]);
 
   return (
     <div
@@ -470,15 +439,38 @@ function CytoscapeGraph({
 
 /**
  * PROVドキュメントの可視化パネル
+ *
+ * 試料ごとにタブで切り替え、階層レイアウトで表示する。
+ * 試料が1つだけの場合はタブバーを非表示にする。
  */
 export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
-  const [tab, setTab] = useState<"graph" | "json" | "warnings">("graph");
-  const [viewMode, setViewMode] = useState<"all" | "split">("all");
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("layered");
+  const [activeSample, setActiveSample] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   // 試料分離（メモ化）
   const sampleSplits = useMemo(() => (doc ? splitDocBySample(doc) : []), [doc]);
-  const hasSamples = sampleSplits.length > 0;
+
+  // アクティブ試料が無効になったら最初の試料にリセット
+  useEffect(() => {
+    if (sampleSplits.length > 0) {
+      const ids = sampleSplits.map((s) => s.sampleId);
+      if (!activeSample || !ids.includes(activeSample)) {
+        setActiveSample(ids[0]);
+      }
+    } else {
+      setActiveSample(null);
+    }
+  }, [sampleSplits, activeSample]);
+
+  // Escape キーでモーダルを閉じる
+  useEffect(() => {
+    if (!expanded) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [expanded]);
 
   if (!doc) {
     return (
@@ -490,116 +482,73 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
     );
   }
 
+  // 表示する ProvDocument を決定
+  const activeDoc = activeSample
+    ? sampleSplits.find((s) => s.sampleId === activeSample)?.doc ?? doc
+    : doc;
+  const showTabs = sampleSplits.length > 1;
+
+  const sampleTabs = showTabs ? (
+    <div style={tabBarStyle}>
+      {sampleSplits.map(({ sampleId }) => (
+        <button
+          key={sampleId}
+          onClick={() => setActiveSample(sampleId)}
+          style={{
+            ...tabStyle,
+            borderBottom: activeSample === sampleId ? `2px solid ${THEME.primary}` : "2px solid transparent",
+            color: activeSample === sampleId ? THEME.primary : THEME.mutedFg,
+            fontWeight: activeSample === sampleId ? 600 : 400,
+          }}
+        >
+          {sampleId}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const legendBar = (
+    <div style={legendBarStyle}>
+      <LegendDot color={THEME.activity.bg} shape="circle" label="手順" />
+      <LegendDot color={THEME.entity.bg} shape="square" label="使用" />
+      <LegendDot color={THEME.result.bg} shape="square" label="結果" />
+      <LegendDot color={THEME.parameter.bg} shape="diamond" label="属性" />
+
+      <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+        <span style={{ color: "#9ca3af" }}>
+          {activeDoc["@graph"].length} ノード · {activeDoc.relations.length} リレーション
+        </span>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={expandBtnStyle}
+          title={expanded ? "閉じる" : "拡大表示"}
+        >
+          {expanded ? "✕" : "⤢"}
+        </button>
+      </span>
+    </div>
+  );
+
   return (
-    <div style={panelStyle}>
-      {/* タブ */}
-      <div style={tabBarStyle}>
-        {(["graph", "json", "warnings"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              ...tabStyle,
-              borderBottom: tab === t ? `2px solid ${THEME.primary}` : "2px solid transparent",
-              color: tab === t ? THEME.primary : THEME.mutedFg,
-              fontWeight: tab === t ? 600 : 400,
-            }}
-          >
-            {t === "graph" ? "グラフ" : t === "json" ? "JSON-LD" : `警告 (${doc.warnings.length})`}
-          </button>
-        ))}
+    <>
+      <div style={panelStyle}>
+        {sampleTabs}
+        {legendBar}
+        <CytoscapeGraph doc={activeDoc} />
       </div>
 
-      {/* 凡例 + 表示切替 */}
-      {tab === "graph" && (
-        <div style={legendBarStyle}>
-          {/* ノード凡例 */}
-          <LegendDot color={THEME.activity.bg} shape="circle" label="手順" />
-          <LegendDot color={THEME.entity.bg} shape="square" label="使用" />
-          <LegendDot color={THEME.result.bg} shape="square" label="結果" />
-          <LegendDot color={THEME.parameter.bg} shape="diamond" label="属性" />
-
-          {/* 右側: レイアウト切替 + 統計 + 表示切替 */}
-          <span style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
-            <span style={{ color: "#9ca3af", marginRight: 4 }}>
-              {doc["@graph"].length} ノード · {doc.relations.length} リレーション
-            </span>
-
-            {/* レイアウトモード切替 */}
-            <button
-              onClick={() => setLayoutMode("layered")}
-              style={{
-                ...toggleBtnStyle,
-                background: layoutMode === "layered" ? THEME.primary : THEME.muted,
-                color: layoutMode === "layered" ? "#fff" : THEME.mutedFg,
-              }}
-              title="階層レイアウト（実験フロー順）"
-            >
-              階層
-            </button>
-            <button
-              onClick={() => setLayoutMode("force")}
-              style={{
-                ...toggleBtnStyle,
-                background: layoutMode === "force" ? THEME.primary : THEME.muted,
-                color: layoutMode === "force" ? "#fff" : THEME.mutedFg,
-              }}
-              title="力学レイアウト（自由探索）"
-            >
-              力学
-            </button>
-
-            {/* 試料分割切替 */}
-            {hasSamples && (
-              <>
-                <span style={{ width: 1, height: 14, background: THEME.border, margin: "0 2px" }} />
-                <button
-                  onClick={() => setViewMode("all")}
-                  style={{
-                    ...toggleBtnStyle,
-                    background: viewMode === "all" ? THEME.primary : THEME.muted,
-                    color: viewMode === "all" ? "#fff" : THEME.mutedFg,
-                  }}
-                >
-                  全体
-                </button>
-                <button
-                  onClick={() => setViewMode("split")}
-                  style={{
-                    ...toggleBtnStyle,
-                    background: viewMode === "split" ? THEME.primary : THEME.muted,
-                    color: viewMode === "split" ? "#fff" : THEME.mutedFg,
-                  }}
-                >
-                  試料別
-                </button>
-              </>
-            )}
-          </span>
-        </div>
+      {/* 拡大モーダル */}
+      {expanded && createPortal(
+        <div style={modalOverlayStyle} onClick={() => setExpanded(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            {sampleTabs}
+            {legendBar}
+            <CytoscapeGraph doc={activeDoc} height={window.innerHeight - 120} />
+          </div>
+        </div>,
+        document.body,
       )}
-
-      {/* コンテンツ */}
-      {tab === "graph" && viewMode === "all" && <CytoscapeGraph doc={doc} layoutMode={layoutMode} />}
-      {tab === "graph" && viewMode === "split" && (
-        <div style={{ overflow: "auto", maxHeight: 900 }}>
-          {sampleSplits.map(({ sampleId, doc: splitDoc }) => (
-            <div key={sampleId}>
-              <div style={sampleHeaderStyle}>
-                <span style={sampleDotStyle} />
-                {sampleId}
-                <span style={{ marginLeft: 8, color: "#9ca3af", fontWeight: 400 }}>
-                  {splitDoc["@graph"].length} ノード
-                </span>
-              </div>
-              <CytoscapeGraph doc={splitDoc} height={320} layoutMode={layoutMode} />
-            </div>
-          ))}
-        </div>
-      )}
-      {tab === "json" && <JsonView doc={doc} />}
-      {tab === "warnings" && <WarningsView warnings={doc.warnings} />}
-    </div>
+    </>
   );
 }
 
@@ -623,41 +572,6 @@ function LegendDot({ color, shape, label }: { color: string; shape: "circle" | "
       <span style={dotStyle} />
       {label}
     </span>
-  );
-}
-
-// ── サブビュー ──
-
-function JsonView({ doc }: { doc: ProvDocument }) {
-  return (
-    <pre style={{
-      padding: 12, fontSize: 10, overflow: "auto",
-      maxHeight: 400, background: THEME.muted, margin: 0,
-      fontFamily: "monospace", lineHeight: 1.5,
-    }}>
-      {JSON.stringify(doc, null, 2)}
-    </pre>
-  );
-}
-
-function WarningsView({ warnings }: { warnings: ProvWarning[] }) {
-  if (warnings.length === 0) {
-    return <div style={emptyStyle}>警告なし</div>;
-  }
-  return (
-    <div style={{ padding: 12 }}>
-      {warnings.map((w, i) => (
-        <div key={i} style={{ fontSize: 11, padding: "4px 0", borderBottom: `1px solid ${THEME.muted}` }}>
-          <span style={{
-            fontSize: 9, padding: "1px 4px", borderRadius: 3,
-            background: "#fef3c7", color: "#b45309", marginRight: 6, fontWeight: 600,
-          }}>
-            {w.type}
-          </span>
-          {w.message}
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -694,38 +608,35 @@ const legendBarStyle: React.CSSProperties = {
   alignItems: "center",
 };
 
-const emptyStyle: React.CSSProperties = {
-  padding: 16,
-  fontSize: 12,
-  color: "#9ca3af",
-  textAlign: "center",
-};
-
-const toggleBtnStyle: React.CSSProperties = {
-  padding: "2px 8px",
-  fontSize: 10,
-  fontWeight: 600,
+const expandBtnStyle: React.CSSProperties = {
+  padding: "2px 6px",
+  fontSize: 14,
+  lineHeight: 1,
+  background: THEME.muted,
+  border: `1px solid ${THEME.border}`,
   borderRadius: 4,
-  border: "none",
   cursor: "pointer",
+  color: THEME.mutedFg,
 };
 
-const sampleHeaderStyle: React.CSSProperties = {
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 9999,
+  background: "rgba(0, 0, 0, 0.5)",
   display: "flex",
   alignItems: "center",
-  gap: 6,
-  padding: "6px 12px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#374151",
-  background: THEME.muted,
-  borderTop: `1px solid ${THEME.border}`,
-  borderBottom: `1px solid ${THEME.muted}`,
+  justifyContent: "center",
 };
 
-const sampleDotStyle: React.CSSProperties = {
-  width: 8,
-  height: 8,
-  borderRadius: "50%",
-  background: THEME.sample.bg,
+const modalContentStyle: React.CSSProperties = {
+  width: "calc(100vw - 64px)",
+  height: "calc(100vh - 64px)",
+  background: THEME.background,
+  borderRadius: 12,
+  border: `1px solid ${THEME.border}`,
+  overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
 };
+

@@ -1,7 +1,27 @@
 [
   {
-    "sha": "a7ca6ea",
+    "sha": "888c2bb",
+    "message": "Merge origin/main into fix/replace-emoji-with-lucide-icons",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a184828",
     "message": "[fix] Replace emoji icons with lucide-react SVG icons",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "d6bb518",
+    "message": "Merge pull request #12 from kumagallium/refactor/prov-sample-tabs",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "a40ba08",
+    "message": "[feat] Add expand button to open PROV graph in fullscreen modal",
+    "date": "2026-03-23"
+  },
+  {
+    "sha": "3a1366a",
+    "message": "[refactor] Replace PROV panel tabs with per-sample tab navigation",
     "date": "2026-03-23"
   },
   {
@@ -227,26 +247,6 @@
   {
     "sha": "8845259",
     "message": "Fix stories: SideMenu x-position fixed at editor left edge",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "0bad1bd",
-    "message": "Fix stories: label badge inside SideMenu, left of + button",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "ca6cdc3",
-    "message": "Update stories to placement A with block handle simulation",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "2f34b4d",
-    "message": "Fix stories to match actual block-level label data structure",
-    "date": "2026-03-23"
-  },
-  {
-    "sha": "1de386c",
-    "message": "Add placement-C (above) stories with bullet list and table patterns",
     "date": "2026-03-23"
   }
 ]
