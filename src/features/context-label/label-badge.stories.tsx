@@ -206,279 +206,265 @@ export const PlacementComparison: StoryObj = {
   ),
 };
 
-// C方式（上方配置）ノート風 — 基本パターン
+// ── ブロック単位ラベル付きコンテンツ（実データ構造に準拠） ──
+// 各ブロック（段落・リスト項目・テーブル・見出し）に 1:1 でラベルが付く
+function LabeledBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <LabelBadge label={label} size="small" />
+      <div style={{ marginTop: 2 }}>{children}</div>
+    </div>
+  );
+}
+
+// ラベルなしブロック
+function PlainBlock({ children }: { children: React.ReactNode }) {
+  return <div style={{ marginBottom: 4 }}>{children}</div>;
+}
+
+// テーブルスタイル
+const thStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  textAlign: "left",
+  fontSize: 13,
+  fontWeight: 600,
+  borderBottom: "2px solid #d1d5db",
+  color: "#374151",
+};
+const tdStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  fontSize: 13,
+  borderBottom: "1px solid #e5e7eb",
+  color: "#374151",
+};
+
+// C方式（上方配置）— ブロック単位ラベル、基本パターン
 export const AboveNote: StoryObj = {
   name: "C方式: ノート風（基本）",
   render: () => (
     <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>カレーの作り方</h1>
       <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 24 }}>
-        作成日付: 2026-01-16&nbsp;&nbsp;最終編集日付: 2026-01-17&nbsp;&nbsp;タグ: 料理、カレー&nbsp;&nbsp;作成者: 熊谷 将也
+        作成日付: 2026-01-16&nbsp;&nbsp;タグ: 料理、カレー&nbsp;&nbsp;作成者: 熊谷 将也
       </p>
 
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>1. 目的</h2>
-      <p style={{ marginBottom: 20, color: "#374151" }}>
-        当日に食べたカレーと1晩寝かしたカレーがどちらのほうが美味しいか
-      </p>
+      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>1. 目的</h2></PlainBlock>
+      <PlainBlock><p>当日に食べたカレーと1晩寝かしたカレーがどちらのほうが美味しいか</p></PlainBlock>
 
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>2. 作り方</h2>
+      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>2. 作り方</h2></PlainBlock>
 
-      {/* 手順 2.1 */}
-      <div style={{ marginBottom: 20 }}>
-        <LabelBadge label="[手順]" size="small" />
-        <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>2.1 切る</h3>
+      {/* 手順 2.1 — 見出しブロックに[手順] */}
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2.1 切る</h3>
+      </LabeledBlock>
 
-        <div style={{ marginLeft: 8, marginBottom: 8 }}>
-          <LabelBadge label="[使用したもの]" size="small" />
-          <ul style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-            <li>玉ねぎ
-              <ul><li>中</li><li>2個（400g）</li></ul>
-            </li>
-            <li>じゃがいも
-              <ul><li>中</li><li>1・1/2個（230g）</li></ul>
-            </li>
-            <li>にんじん
-              <ul><li>中</li><li>1/2本（100g）</li></ul>
-            </li>
-          </ul>
-        </div>
+      {/* 各リストアイテムが独立ブロック、それぞれに[使用したもの] */}
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[使用したもの]">
+          <p>玉ねぎ 中 2個（400g）</p>
+        </LabeledBlock>
+        <LabeledBlock label="[使用したもの]">
+          <p>じゃがいも 中 1・1/2個（230g）</p>
+        </LabeledBlock>
+        <LabeledBlock label="[使用したもの]">
+          <p>にんじん 中 1/2本（100g）</p>
+        </LabeledBlock>
+      </div>
 
-        <div style={{ marginLeft: 8 }}>
-          <LabelBadge label="[条件]" size="small" />
-          <ol style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-            <li>玉ねぎ — 縦半分に切り、放射線状のくし切りにする</li>
-            <li>じゃがいも — 半分に切り、6〜8等分に切る</li>
-            <li>にんじん — 乱切りにする</li>
-          </ol>
-        </div>
+      {/* 条件ブロック */}
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[条件]">
+          <p>玉ねぎ — くし切り、じゃがいも — 6〜8等分、にんじん — 乱切り</p>
+        </LabeledBlock>
       </div>
 
       {/* 手順 2.2 */}
-      <div style={{ marginBottom: 20 }}>
-        <LabelBadge label="[手順]" size="small" />
-        <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>2.2 炒める</h3>
-        <div style={{ marginLeft: 8 }}>
-          <LabelBadge label="[条件]" size="small" />
-          <p style={{ margin: "2px 0", color: "#374151" }}>
-            鍋にサラダ油を熱し、玉ねぎを中火で炒める。しんなりしたら肉を加え、色が変わるまで炒める。
-          </p>
-        </div>
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2.2 炒める</h3>
+      </LabeledBlock>
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[条件]">
+          <p>鍋にサラダ油を熱し、玉ねぎを中火で炒める。しんなりしたら肉を加え、色が変わるまで炒める。</p>
+        </LabeledBlock>
       </div>
 
       {/* 手順 2.3 */}
-      <div style={{ marginBottom: 20 }}>
-        <LabelBadge label="[手順]" size="small" />
-        <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>2.3 煮込む</h3>
-        <div style={{ marginLeft: 8, marginBottom: 8 }}>
-          <LabelBadge label="[条件]" size="small" />
-          <p style={{ margin: "2px 0", color: "#374151" }}>
-            水850mlを加え、沸騰したらアクを取り、弱火〜中火で約20分煮込む。
-          </p>
-        </div>
-        <div style={{ marginLeft: 8 }}>
-          <LabelBadge label="[結果]" size="small" />
-          <p style={{ margin: "2px 0", color: "#374151" }}>
-            じゃがいもに竹串がスッと通れば完成。
-          </p>
-        </div>
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2.3 煮込む</h3>
+      </LabeledBlock>
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[条件]">
+          <p>水850mlを加え、沸騰したらアクを取り、弱火〜中火で約20分煮込む。</p>
+        </LabeledBlock>
+        <LabeledBlock label="[結果]">
+          <p>じゃがいもに竹串がスッと通れば完成。</p>
+        </LabeledBlock>
       </div>
     </div>
   ),
 };
 
-// C方式 — 箇条書きブロックにラベル
+// C方式 — 箇条書きブロック単位ラベル
 export const AboveWithBulletList: StoryObj = {
   name: "C方式: 箇条書きパターン",
   render: () => (
     <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Cu粉末アニール実験</h2>
+      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>Cu粉末アニール実験</h2></PlainBlock>
 
-      <div style={{ marginBottom: 20 }}>
-        <LabelBadge label="[手順]" size="small" />
-        <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>1. 封入する</h3>
+      {/* 手順 1 — 見出しブロック */}
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3>
+      </LabeledBlock>
 
-        <div style={{ marginLeft: 8, marginBottom: 8 }}>
-          <LabelBadge label="[使用したもの]" size="small" />
-          <ul style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-            <li>Cu粉末 1g</li>
-            <li>シリカ管（内径8mm）</li>
-            <li>真空ポンプ</li>
-          </ul>
-        </div>
-
-        <div style={{ marginLeft: 8 }}>
-          <LabelBadge label="[条件]" size="small" />
-          <ul style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-            <li>真空度: 10⁻³ Pa 以下</li>
-            <li>封入時のバーナー温度: 約1200℃</li>
-          </ul>
-        </div>
+      {/* 各アイテムが独立ブロック */}
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[使用したもの]">
+          <p>Cu粉末 1g</p>
+        </LabeledBlock>
+        <LabeledBlock label="[使用したもの]">
+          <p>シリカ管（内径8mm）</p>
+        </LabeledBlock>
+        <LabeledBlock label="[使用したもの]">
+          <p>真空ポンプ</p>
+        </LabeledBlock>
       </div>
 
-      <div style={{ marginBottom: 20 }}>
-        <LabelBadge label="[結果]" size="small" />
-        <p style={{ margin: "2px 0", color: "#374151" }}>封入されたCu粉末（目視で管内に粉末が均一に分布していることを確認）</p>
+      {/* 条件 — 各条件が独立ブロック */}
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[条件]">
+          <p>真空度: 10⁻³ Pa 以下</p>
+        </LabeledBlock>
+        <LabeledBlock label="[条件]">
+          <p>封入時のバーナー温度: 約1200℃</p>
+        </LabeledBlock>
+      </div>
+
+      {/* 結果 */}
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[結果]">
+          <p>封入されたCu粉末（目視で管内に粉末が均一に分布していることを確認）</p>
+        </LabeledBlock>
       </div>
     </div>
   ),
 };
 
 // C方式 — テーブル（試料ラベル）パターン
+// テーブルブロック全体に1つの[試料]ラベルが付く
 export const AboveWithTable: StoryObj = {
   name: "C方式: テーブル（試料）パターン",
-  render: () => {
-    const thStyle: React.CSSProperties = {
-      padding: "6px 12px",
-      textAlign: "left",
-      fontSize: 13,
-      fontWeight: 600,
-      borderBottom: "2px solid #d1d5db",
-      color: "#374151",
-    };
-    const tdStyle: React.CSSProperties = {
-      padding: "6px 12px",
-      fontSize: 13,
-      borderBottom: "1px solid #e5e7eb",
-      color: "#374151",
-    };
+  render: () => (
+    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
+      <PlainBlock><h2 style={{ fontSize: 22, fontWeight: 700 }}>Cu粉末アニール実験</h2></PlainBlock>
 
-    return (
-      <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Cu粉末アニール実験</h2>
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3>
+      </LabeledBlock>
 
-        <div style={{ marginBottom: 20 }}>
-          <LabelBadge label="[手順]" size="small" />
-          <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>2. アニールする</h3>
+      {/* テーブルブロック全体に[試料]ラベル */}
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[試料]">
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr><th style={thStyle}>試料名</th><th style={thStyle}>温度</th><th style={thStyle}>時間</th></tr>
+            </thead>
+            <tbody>
+              <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
+              <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
+              <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
+            </tbody>
+          </table>
+        </LabeledBlock>
 
-          <div style={{ marginLeft: 8, marginBottom: 12 }}>
-            <LabelBadge label="[試料]" size="small" />
-            <table style={{ margin: "4px 0 0", borderCollapse: "collapse", width: "100%" }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>試料名</th>
-                  <th style={thStyle}>温度</th>
-                  <th style={thStyle}>時間</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
-                <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
-                <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ marginLeft: 8 }}>
-            <LabelBadge label="[条件]" size="small" />
-            <ul style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-              <li>昇温速度: 5℃/min</li>
-              <li>雰囲気: 真空封入管内</li>
-              <li>冷却: 炉冷</li>
-            </ul>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <LabelBadge label="[手順]" size="small" />
-          <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>3. 評価する</h3>
-          <div style={{ marginLeft: 8 }}>
-            <LabelBadge label="[結果]" size="small" />
-            <p style={{ margin: "2px 0", color: "#374151" }}>XRD測定により相同定を行う。</p>
-          </div>
-        </div>
+        <LabeledBlock label="[条件]">
+          <p>昇温速度: 5℃/min</p>
+        </LabeledBlock>
+        <LabeledBlock label="[条件]">
+          <p>雰囲気: 真空封入管内</p>
+        </LabeledBlock>
+        <LabeledBlock label="[条件]">
+          <p>冷却: 炉冷</p>
+        </LabeledBlock>
       </div>
-    );
-  },
+
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3>
+      </LabeledBlock>
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[結果]">
+          <p>XRD測定により相同定を行う。</p>
+        </LabeledBlock>
+      </div>
+    </div>
+  ),
 };
 
-// C方式 — 全要素を含むフルノート
+// C方式 — 全要素フルノート
 export const AboveFullNote: StoryObj = {
   name: "C方式: フルノート（全要素）",
-  render: () => {
-    const thStyle: React.CSSProperties = {
-      padding: "6px 12px",
-      textAlign: "left",
-      fontSize: 13,
-      fontWeight: 600,
-      borderBottom: "2px solid #d1d5db",
-      color: "#374151",
-    };
-    const tdStyle: React.CSSProperties = {
-      padding: "6px 12px",
-      fontSize: 13,
-      borderBottom: "1px solid #e5e7eb",
-      color: "#374151",
-    };
+  render: () => (
+    <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
+      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Cu粉末アニール実験</h1>
+      <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 24 }}>
+        作成日付: 2026-03-20&nbsp;&nbsp;作成者: 熊谷 将也
+      </p>
 
-    return (
-      <div style={{ maxWidth: 700, fontFamily: "Inter, sans-serif" }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Cu粉末アニール実験</h1>
-        <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 24 }}>
-          作成日付: 2026-03-20&nbsp;&nbsp;作成者: 熊谷 将也
-        </p>
-
-        {/* 手順 1 */}
-        <div style={{ marginBottom: 24 }}>
-          <LabelBadge label="[手順]" size="small" />
-          <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>1. 封入する</h3>
-
-          <div style={{ marginLeft: 8, marginBottom: 8 }}>
-            <LabelBadge label="[使用したもの]" size="small" />
-            <ul style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-              <li>Cu粉末 1g</li>
-              <li>シリカ管</li>
-            </ul>
-          </div>
-
-          <div style={{ marginLeft: 8 }}>
-            <LabelBadge label="[結果]" size="small" />
-            <p style={{ margin: "2px 0", color: "#374151" }}>封入されたCu粉末</p>
-          </div>
-        </div>
-
-        {/* 手順 2 */}
-        <div style={{ marginBottom: 24 }}>
-          <LabelBadge label="[手順]" size="small" />
-          <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>2. アニールする</h3>
-
-          <div style={{ marginLeft: 8, marginBottom: 12 }}>
-            <LabelBadge label="[試料]" size="small" />
-            <table style={{ margin: "4px 0 0", borderCollapse: "collapse", width: "100%" }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>試料名</th>
-                  <th style={thStyle}>温度</th>
-                  <th style={thStyle}>時間</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
-                <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
-                <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ marginLeft: 8 }}>
-            <LabelBadge label="[条件]" size="small" />
-            <ul style={{ margin: "2px 0 0 12px", lineHeight: 1.8 }}>
-              <li>昇温速度: 5℃/min</li>
-              <li>冷却: 炉冷</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* 手順 3 */}
-        <div style={{ marginBottom: 24 }}>
-          <LabelBadge label="[手順]" size="small" />
-          <h3 style={{ fontSize: 18, fontWeight: 600, margin: "2px 0 8px" }}>3. 評価する</h3>
-
-          <div style={{ marginLeft: 8 }}>
-            <LabelBadge label="[結果]" size="small" />
-            <p style={{ margin: "2px 0", color: "#374151" }}>XRD測定により相同定を行う。</p>
-          </div>
-        </div>
+      {/* 手順 1 */}
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>1. 封入する</h3>
+      </LabeledBlock>
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[使用したもの]">
+          <p>Cu粉末 1g</p>
+        </LabeledBlock>
+        <LabeledBlock label="[使用したもの]">
+          <p>シリカ管</p>
+        </LabeledBlock>
+        <LabeledBlock label="[結果]">
+          <p>封入されたCu粉末</p>
+        </LabeledBlock>
       </div>
-    );
-  },
+
+      {/* 手順 2 */}
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>2. アニールする</h3>
+      </LabeledBlock>
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[試料]">
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr><th style={thStyle}>試料名</th><th style={thStyle}>温度</th><th style={thStyle}>時間</th></tr>
+            </thead>
+            <tbody>
+              <tr><td style={tdStyle}>sample_A</td><td style={tdStyle}>600℃</td><td style={tdStyle}>24h</td></tr>
+              <tr><td style={tdStyle}>sample_B</td><td style={tdStyle}>700℃</td><td style={tdStyle}>24h</td></tr>
+              <tr><td style={tdStyle}>sample_C</td><td style={tdStyle}>800℃</td><td style={tdStyle}>24h</td></tr>
+            </tbody>
+          </table>
+        </LabeledBlock>
+        <LabeledBlock label="[条件]">
+          <p>昇温速度: 5℃/min</p>
+        </LabeledBlock>
+        <LabeledBlock label="[条件]">
+          <p>冷却: 炉冷</p>
+        </LabeledBlock>
+      </div>
+
+      {/* 手順 3 */}
+      <LabeledBlock label="[手順]">
+        <h3 style={{ fontSize: 18, fontWeight: 600 }}>3. 評価する</h3>
+      </LabeledBlock>
+      <div style={{ marginLeft: 16 }}>
+        <LabeledBlock label="[結果]">
+          <p>XRD測定により相同定を行う。</p>
+        </LabeledBlock>
+      </div>
+    </div>
+  ),
 };
