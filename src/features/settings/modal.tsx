@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Settings as SettingsIcon } from "lucide-react";
-import { loadSettings, saveSettings, type Settings } from "./store";
+import { loadSettings, saveSettings, getAgentUrl, type Settings } from "./store";
 
 type SettingsModalProps = {
   isOpen: boolean;
@@ -14,11 +14,16 @@ type SettingsModalProps = {
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [agentUrl, setAgentUrl] = useState("");
   const [saved, setSaved] = useState(false);
+  const [fromEnv, setFromEnv] = useState(false);
 
+  // 現在の有効な URL を表示（localStorage → 環境変数の優先順）
   useEffect(() => {
     if (isOpen) {
       const settings = loadSettings();
-      setAgentUrl(settings.agentUrl);
+      const effectiveUrl = getAgentUrl();
+      setAgentUrl(effectiveUrl);
+      // localStorage に値がなく環境変数から取得した場合
+      setFromEnv(!settings.agentUrl && !!effectiveUrl);
       setSaved(false);
     }
   }, [isOpen]);
@@ -93,6 +98,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               autoFocus
               className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/50"
             />
+            {fromEnv && (
+              <p className="text-[11px] text-emerald-600 mt-1.5">
+                環境変数から設定されています。上書きする場合は新しい URL を入力してください。
+              </p>
+            )}
             <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
               AI アシスタント機能を使うには{" "}
               <a
