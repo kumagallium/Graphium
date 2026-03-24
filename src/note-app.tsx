@@ -1022,6 +1022,7 @@ export function NoteApp() {
           // 新規作成
           const newId = await createFile(doc.title, doc);
           docCacheRef.current.set(newId, doc);
+          setActiveDoc(doc);
           setActiveFileId(newId);
           // 新規ファイルを一覧に追加
           setFiles((prev) => [
