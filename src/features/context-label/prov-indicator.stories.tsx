@@ -3,7 +3,6 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { Link } from "lucide-react";
 import { CORE_LABELS, FREE_LABEL_EXAMPLES } from "./labels";
 import type { LinkType } from "../block-link/link-types";
 import { LINK_TYPE_CONFIG, CREATED_BY_LABELS } from "../block-link/link-types";
@@ -67,41 +66,28 @@ const dividerStyle: React.CSSProperties = {
   margin: "4px 0",
 };
 
-// ── インジケータバッジ ──
-function IndicatorBadge({ label, linkCount }: { label?: string; linkCount?: number }) {
-  const color = label ? getLabelColor(label) : undefined;
+// ── ラベルバッジ ──
+function LabelBadge({ label }: { label: string }) {
+  const color = getLabelColor(label);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: tokens.font }}>
-      {label && (
-        <span style={{
-          display: "inline-block", padding: "0px 6px", borderRadius: 9999,
-          fontSize: 11, fontWeight: 600,
-          backgroundColor: color + "18", color: color,
-          border: `1px solid ${color}38`,
-          cursor: "pointer", userSelect: "none", lineHeight: 1.6, whiteSpace: "nowrap",
-        }}>
-          {label}
-        </span>
-      )}
-      {(linkCount ?? 0) > 0 && (
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: 2,
-          padding: "1px 5px", borderRadius: 10, fontSize: 10, fontWeight: 600,
-          background: "#eff6ff", color: "#5b8fb9",
-          border: "1px solid #bfdbfe", cursor: "pointer", userSelect: "none",
-        }}>
-          <Link size={10} strokeWidth={2.5} /> {linkCount}
-        </span>
-      )}
-    </div>
+    <span style={{
+      display: "inline-block", padding: "0px 6px", borderRadius: 9999,
+      fontSize: 11, fontWeight: 600,
+      backgroundColor: color + "18", color: color,
+      border: `1px solid ${color}38`,
+      cursor: "pointer", userSelect: "none", lineHeight: 1.6, whiteSpace: "nowrap",
+      fontFamily: tokens.font,
+    }}>
+      {label}
+    </span>
   );
 }
 
 // ── エディタ模擬ブロック（右側にインジケータ表示） ──
 const CONTENT_LEFT = 120;
 
-function EditorBlock({ label, linkCount, children, indent = 0 }: {
-  label?: string; linkCount?: number; children: React.ReactNode; indent?: number;
+function EditorBlock({ label, children, indent = 0 }: {
+  label?: string; children: React.ReactNode; indent?: number;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", minHeight: 28 }}>
@@ -114,9 +100,9 @@ function EditorBlock({ label, linkCount, children, indent = 0 }: {
       </div>
       {/* 中央: コンテンツ */}
       <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>{children}</div>
-      {/* 右: PROV インジケータ */}
-      <div style={{ flexShrink: 0, paddingLeft: 12, paddingTop: 2 }}>
-        {(label || (linkCount ?? 0) > 0) && <IndicatorBadge label={label} linkCount={linkCount} />}
+      {/* 右: ラベルバッジ */}
+      <div style={{ flexShrink: 0, paddingLeft: 12, paddingTop: 2, minWidth: 90, textAlign: "right" }}>
+        {label && <LabelBadge label={label} />}
       </div>
     </div>
   );
@@ -136,16 +122,16 @@ const td: React.CSSProperties = {
 const meta: Meta = { title: "ContextLabel/ProvIndicator", parameters: { layout: "padded" } };
 export default meta;
 
-// インジケータバッジ一覧
+// ラベルバッジ一覧
 export const AllIndicators: StoryObj = {
-  name: "インジケータ一覧",
+  name: "ラベルバッジ一覧",
   render: () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: tokens.font }}>
-      <div><span style={{ fontSize: 12, color: tokens.mutedFg, width: 120, display: "inline-block" }}>ラベルのみ:</span><IndicatorBadge label="[手順]" /></div>
-      <div><span style={{ fontSize: 12, color: tokens.mutedFg, width: 120, display: "inline-block" }}>リンクのみ:</span><IndicatorBadge linkCount={3} /></div>
-      <div><span style={{ fontSize: 12, color: tokens.mutedFg, width: 120, display: "inline-block" }}>両方:</span><IndicatorBadge label="[手順]" linkCount={2} /></div>
       {CORE_LABELS.map((l) => (
-        <div key={l}><span style={{ fontSize: 12, color: tokens.mutedFg, width: 120, display: "inline-block" }}>{l}:</span><IndicatorBadge label={l} linkCount={1} /></div>
+        <div key={l}>
+          <span style={{ fontSize: 12, color: tokens.mutedFg, width: 120, display: "inline-block" }}>{l}:</span>
+          <LabelBadge label={l} />
+        </div>
       ))}
     </div>
   ),
@@ -158,13 +144,13 @@ export const NoteWithIndicators: StoryObj = {
     <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
       <EditorBlock><h1 style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.3 }}>Cu粉末アニール実験</h1></EditorBlock>
 
-      <EditorBlock label="[手順]" linkCount={1}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></EditorBlock>
+      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></EditorBlock>
       <EditorBlock label="[使用したもの]" indent={24}><p>Cu粉末 1g</p></EditorBlock>
       <EditorBlock label="[使用したもの]" indent={24}><p>シリカ管</p></EditorBlock>
       <EditorBlock indent={24}><p style={{ color: tokens.mutedFg }}>真空封入管内で封入する。（ラベルなし）</p></EditorBlock>
       <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
-      <EditorBlock label="[手順]" linkCount={2}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
+      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
       <EditorBlock label="[試料]" indent={24}>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead><tr><th style={th}>試料名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
