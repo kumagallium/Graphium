@@ -1,0 +1,66 @@
+# provnote + Crucible Agent — all-in-one setup
+#
+# Usage:
+#   docker compose up -d
+#   http://localhost:5174/provnote/   — provnote editor
+#   http://localhost:8090             — Crucible Agent Chat UI
+#   http://localhost:8090/docs        — Agent API docs (Swagger)
+
+services:
+  provnote:
+    build: .
+    ports:
+      - "5174:80"
+    depends_on:
+      - agent
+    restart: unless-stopped
+
+  agent:
+    image: ghcr.io/kumagallium/crucible-agent:latest
+    build:
+      context: https://github.com/kumagallium/crucible-agent.git
+    ports:
+      - "8090:8090"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://agent:agent@postgres:5432/crucible_agent
+      - LITELLM_API_BASE=http://litellm:4000
+      - CORS_ORIGINS=http://localhost:5174,http://127.0.0.1:5174
+      - CHAT_UI_ENABLED=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+    restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./docker/litellm_config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      - DATABASE_URL=postgresql://agent:agent@postgres:5432/crucible_agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: crucible_agent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

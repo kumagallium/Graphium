@@ -1,0 +1,27 @@
+# LiteLLM Proxy — minimal config for provnote
+# Models can be added dynamically via Crucible Agent Chat UI.
+#
+# To pre-configure models, uncomment below and set API keys:
+#
+# model_list:
+#   - model_name: claude-sonnet
+#     litellm_params:
+#       model: anthropic/claude-sonnet-4-20250514
+#       api_key: sk-ant-...
+#       supports_function_calling: true
+#
+#   - model_name: gpt-4o
+#     litellm_params:
+#       model: gpt-4o
+#       api_key: sk-...
+#       supports_function_calling: true
+
+model_list: []
+
+general_settings:
+  master_key: sk-crucible-dev
+  store_model_in_db: true
+
+litellm_settings:
+  drop_params: true
+  modify_params: true

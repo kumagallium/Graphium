@@ -25,7 +25,30 @@ Visit **https://kumagallium.github.io/provnote/** and start writing. Your notes 
 
 To sync with Google Drive, sign in with your Google account from the sidebar.
 
-### Option 2: Run locally
+### Option 2: Run with Docker (recommended for local use)
+
+Run provnote with AI assistant — no Node.js or Python required. Just Docker.
+
+```bash
+git clone https://github.com/kumagallium/provnote.git
+cd provnote
+docker compose up -d
+```
+
+| URL | What it is |
+|-----|------------|
+| http://localhost:5174/provnote/ | provnote editor |
+| http://localhost:8090 | Crucible Agent Chat UI |
+
+#### Set up your AI model
+
+1. Open **http://localhost:8090** (Crucible Agent Chat UI)
+2. Add your LLM model (e.g., Claude, GPT-4o) with your API key from the UI
+3. Go to **http://localhost:5174/provnote/** and start using the AI assistant
+
+No `.env` editing required — everything is configured from the browser.
+
+### Option 3: Run for development
 
 ```bash
 git clone https://github.com/kumagallium/provnote.git
@@ -35,17 +58,7 @@ pnpm install
 pnpm dev --port 5174   # → http://localhost:5174/provnote/
 ```
 
-### Option 3: With AI assistant
-
-provnote's AI assistant lets you derive new notes from AI responses — with full provenance tracking of what was generated and from what context.
-
-To enable AI features, you need an **AI agent server** (e.g., [crucible-agent](https://github.com/kumagallium/crucible-agent)):
-
-1. Set up and start your agent server
-2. In provnote, click the **⚙ Settings** icon in the sidebar
-3. Enter the agent server URL (e.g., `http://localhost:8090`)
-
-See [Architecture & AI integration](#architecture--ai-integration) for details.
+To enable AI features in dev mode, you need a separate [crucible-agent](https://github.com/kumagallium/crucible-agent) server. Click the **⚙ Settings** icon in the sidebar to configure the agent URL.
 
 ## Features
 
