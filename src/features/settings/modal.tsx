@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Settings as SettingsIcon } from "lucide-react";
-import { loadSettings, saveSettings, getAgentUrl, type Settings } from "./store";
+import { loadSettings, saveSettings, getAgentUrl, getAgentApiKey, type Settings } from "./store";
 
 type SettingsModalProps = {
   isOpen: boolean;
@@ -13,17 +13,21 @@ type SettingsModalProps = {
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [agentUrl, setAgentUrl] = useState("");
+  const [agentApiKey, setAgentApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [fromEnv, setFromEnv] = useState(false);
+  const [apiKeyFromEnv, setApiKeyFromEnv] = useState(false);
 
-  // 現在の有効な URL を表示（localStorage → 環境変数の優先順）
+  // 現在の有効な値を表示（localStorage → 環境変数の優先順）
   useEffect(() => {
     if (isOpen) {
       const settings = loadSettings();
       const effectiveUrl = getAgentUrl();
+      const effectiveApiKey = getAgentApiKey();
       setAgentUrl(effectiveUrl);
-      // localStorage に値がなく環境変数から取得した場合
+      setAgentApiKey(effectiveApiKey);
       setFromEnv(!settings.agentUrl && !!effectiveUrl);
+      setApiKeyFromEnv(!settings.agentApiKey && !!effectiveApiKey);
       setSaved(false);
     }
   }, [isOpen]);
@@ -32,11 +36,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const trimmed = agentUrl.trim();
     // 末尾スラッシュを除去
     const normalized = trimmed.replace(/\/+$/, "");
-    const settings: Settings = { agentUrl: normalized };
+    const settings: Settings = { agentUrl: normalized, agentApiKey: agentApiKey.trim() };
     saveSettings(settings);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [agentUrl, onClose]);
+  }, [agentUrl, agentApiKey, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -114,6 +118,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 crucible-agent
               </a>{" "}
               を起動し、そのアドレスを入力してください。
+            </p>
+          </div>
+
+          {/* API キー */}
+          <div>
+            <label className="text-xs font-medium text-foreground mb-1.5 block">
+              API キー
+            </label>
+            <input
+              type="password"
+              value={agentApiKey}
+              onChange={(e) => {
+                setAgentApiKey(e.target.value);
+                setSaved(false);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="未設定（認証なし）"
+              className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/50 font-mono"
+            />
+            {apiKeyFromEnv && (
+              <p className="text-[11px] text-emerald-600 mt-1.5">
+                環境変数から設定されています。上書きする場合は新しいキーを入力してください。
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+              crucible-agent の AGENT_API_KEY と同じ値を設定してください。未設定の場合は認証なしで接続します。
             </p>
           </div>
         </div>

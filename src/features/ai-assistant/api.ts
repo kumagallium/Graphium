@@ -1,14 +1,13 @@
 // crucible-agent API クライアント
 // POST /agent/run を呼び出して AI 回答を取得する
 
-import { getAgentUrl } from "../settings";
+import { getAgentUrl, getAgentApiKey } from "../settings";
 
-// API キー認証（環境変数で設定、未設定なら省略）
-const AGENT_API_KEY = import.meta.env.VITE_CRUCIBLE_AGENT_API_KEY ?? "";
-
+// API キー認証ヘッダーを含む共通ヘッダーを生成
 function agentHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (AGENT_API_KEY) h["X-API-Key"] = AGENT_API_KEY;
+  const apiKey = getAgentApiKey();
+  if (apiKey) h["X-API-Key"] = apiKey;
   return h;
 }
 

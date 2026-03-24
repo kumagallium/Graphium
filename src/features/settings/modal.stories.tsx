@@ -18,12 +18,15 @@ const tokens = {
 // ── モーダル静的モック ──
 function MockSettingsModal({
   initialUrl = "",
+  initialApiKey = "",
   saved = false,
 }: {
   initialUrl?: string;
+  initialApiKey?: string;
   saved?: boolean;
 }) {
   const [agentUrl, setAgentUrl] = useState(initialUrl);
+  const [agentApiKey, setAgentApiKey] = useState(initialApiKey);
 
   return (
     <div
@@ -113,6 +116,34 @@ function MockSettingsModal({
               を起動し、そのアドレスを入力してください。
             </div>
           </div>
+
+          {/* API キー */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: tokens.fg, marginBottom: 6 }}>
+              API キー
+            </div>
+            <input
+              type="password"
+              value={agentApiKey}
+              onChange={(e) => setAgentApiKey(e.target.value)}
+              placeholder="未設定（認証なし）"
+              style={{
+                width: "100%",
+                background: tokens.bg,
+                border: `1px solid ${tokens.border}`,
+                borderRadius: 4,
+                padding: "8px 12px",
+                fontSize: 13,
+                color: tokens.fg,
+                outline: "none",
+                boxSizing: "border-box",
+                fontFamily: "monospace",
+              }}
+            />
+            <div style={{ fontSize: 11, color: tokens.mutedFg, marginTop: 6, lineHeight: 1.5 }}>
+              crucible-agent の AGENT_API_KEY と同じ値を設定してください。未設定の場合は認証なしで接続します。
+            </div>
+          </div>
         </div>
 
         {/* フッター */}
@@ -181,10 +212,19 @@ export const WithUrl: Story = {
   },
 };
 
+export const WithApiKey: Story = {
+  name: "URL + API キー入力済み",
+  args: {
+    initialUrl: "http://localhost:8090",
+    initialApiKey: "my-secret-key",
+  },
+};
+
 export const Saved: Story = {
   name: "保存完了",
   args: {
     initialUrl: "http://localhost:8090",
+    initialApiKey: "my-secret-key",
     saved: true,
   },
 };

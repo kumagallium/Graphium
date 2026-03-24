@@ -6,10 +6,13 @@ const STORAGE_KEY = "provnote-settings";
 export type Settings = {
   /** AI エージェントの接続先 URL（例: http://localhost:8090） */
   agentUrl: string;
+  /** AI エージェントの API キー（X-API-Key ヘッダーで送信） */
+  agentApiKey: string;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   agentUrl: "",
+  agentApiKey: "",
 };
 
 /** localStorage から設定を読み込む */
@@ -34,6 +37,13 @@ export function getAgentUrl(): string {
   const settings = loadSettings();
   if (settings.agentUrl) return settings.agentUrl;
   return import.meta.env.VITE_CRUCIBLE_AGENT_URL ?? "";
+}
+
+/** AI エージェント API キーを取得する（localStorage → 環境変数 → 空文字） */
+export function getAgentApiKey(): string {
+  const settings = loadSettings();
+  if (settings.agentApiKey) return settings.agentApiKey;
+  return import.meta.env.VITE_CRUCIBLE_AGENT_API_KEY ?? "";
 }
 
 /** AI エージェントが設定済みかどうか */
