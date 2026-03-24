@@ -600,7 +600,8 @@ function ProvPanel({
         </>
       )}
 
-      {/* ── 前手順リンク追加 ── */}
+      {/* ── 前手順リンク追加（[手順] ラベルのみ） ── */}
+      {label === "[手順]" && <>
       <div style={dividerStyle} />
       <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>
         前手順リンク（wasInformedBy）
@@ -698,6 +699,7 @@ function ProvPanel({
           </button>
         </div>
       )}
+      </>}
     </div>,
     document.body
   );
