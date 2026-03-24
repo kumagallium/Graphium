@@ -1,10 +1,8 @@
-// ラベルバッジのストーリー
-// A方式: SideMenu 内（+ の左側）にラベルバッジを配置
-// デザイン: Crucible デザインガイドラインに準拠
+// ラベルバッジ + 右側インジケータ レイアウトのストーリー
+// 新レイアウト: 左 SideMenu(+ ⠿) / 中央 コンテンツ / 右 ラベルバッジ
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { Bot, Link } from "lucide-react";
 import { CORE_LABELS } from "./labels";
 
 // ── Crucible デザイントークン ──
@@ -15,8 +13,6 @@ const tokens = {
   muted: "#f0f5ef",
   mutedFg: "#6b7f6e",
   primary: "#4B7A52",
-  primaryFg: "#ffffff",
-  accent: "#e8f0e8",
   font: "'Inter', system-ui, sans-serif",
 };
 
@@ -32,56 +28,56 @@ function getLabelColor(label: string): string {
   return LABEL_COLORS[label] ?? tokens.mutedFg;
 }
 
-// ── バッジ（rounded-full, text-xs 準拠） ──
-function LabelBadge({ label, onClick }: { label: string; onClick?: () => void }) {
+// ── バッジ ──
+function LabelBadge({ label }: { label: string }) {
   const color = getLabelColor(label);
   return (
-    <span onClick={onClick} style={{
+    <span style={{
       display: "inline-flex", alignItems: "center",
       padding: "0px 6px", borderRadius: 9999, fontSize: 11, fontWeight: 600,
       backgroundColor: color + "18", color, border: `1px solid ${color}38`,
-      cursor: onClick ? "pointer" : "default", userSelect: "none",
-      lineHeight: 1.6, whiteSpace: "nowrap", fontFamily: tokens.font,
+      userSelect: "none", lineHeight: 1.6, whiteSpace: "nowrap", fontFamily: tokens.font,
     }}>
       {label}
     </span>
   );
 }
 
-// ── SideMenu ボタン ──
+// ── 簡素化 SideMenu（+ ⠿ のみ） ──
 const btn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
   width: 20, height: 20, borderRadius: 8, border: "none",
   background: "none", cursor: "pointer", color: tokens.mutedFg, padding: 0,
 };
 
-function SideMenu({ label }: { label?: string }) {
+function SideMenu() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2, justifyContent: "flex-end" }}>
-      {label
-        ? <LabelBadge label={label} />
-        : <button title="ラベルを付ける" style={{ ...btn, border: `1px dashed ${tokens.border}`, fontSize: 12 }}>#</button>
-      }
-      <button title="リンク" style={{ ...btn, border: "1px dashed #bfdbfe", color: "#93c5fd", fontSize: 11 }}><Link size={11} strokeWidth={2.5} /></button>
-      <button title="AI アシスタント" style={{ ...btn, border: "1px dashed #c4b5fd", color: "#a78bfa" }}><Bot size={13} /></button>
       <button style={{ ...btn, fontSize: 16 }}>+</button>
       <button style={{ ...btn, cursor: "grab", fontSize: 10, letterSpacing: 1 }}>⠿</button>
     </div>
   );
 }
 
-// ── エディタ模擬ブロック ──
-const CONTENT_LEFT = 160;
+// ── エディタ模擬ブロック（左: SideMenu / 中央: コンテンツ / 右: ラベル） ──
+const CONTENT_LEFT = 100;
 
-function EditorBlock({ label, children, indent = 0, visible = true }: {
-  label?: string; children: React.ReactNode; indent?: number; visible?: boolean;
+// ホバーハイライト色
+const HOVER_BG = "rgba(75, 122, 82, 0.05)";
+const HOVER_BORDER = "rgba(75, 122, 82, 0.15)";
+
+function EditorBlock({ label, children, indent = 0 }: {
+  label?: string; children: React.ReactNode; indent?: number;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", minHeight: 28 }}>
-      <div style={{ width: CONTENT_LEFT, flexShrink: 0, display: "flex", justifyContent: "flex-end", paddingTop: 2, paddingRight: 4, visibility: visible ? "visible" : "hidden" }}>
-        <SideMenu label={label} />
+      <div style={{ width: CONTENT_LEFT, flexShrink: 0, display: "flex", justifyContent: "flex-end", paddingTop: 2, paddingRight: 4, visibility: "hidden" }}>
+        <SideMenu />
       </div>
       <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>{children}</div>
+      <div style={{ flexShrink: 0, paddingLeft: 12, paddingTop: 2, minWidth: 90, textAlign: "right" }}>
+        {label && <LabelBadge label={label} />}
+      </div>
     </div>
   );
 }
@@ -95,16 +91,23 @@ function HoverBlock({ id, label, children, indent = 0, hoveredId, setHoveredId }
     <div
       onMouseEnter={() => setHoveredId(id)}
       onMouseLeave={() => setHoveredId(null)}
-      style={{
-        display: "flex", alignItems: "flex-start", minHeight: 28,
-        borderRadius: 12, background: isHovered ? tokens.muted : "transparent",
-        transition: "background 0.2s",
-      }}
+      style={{ display: "flex", alignItems: "flex-start", minHeight: 28 }}
     >
       <div style={{ width: CONTENT_LEFT, flexShrink: 0, display: "flex", justifyContent: "flex-end", paddingTop: 2, paddingRight: 4, visibility: isHovered ? "visible" : "hidden" }}>
-        <SideMenu label={label} />
+        <SideMenu />
       </div>
-      <div style={{ flex: 1, minWidth: 0, paddingLeft: indent }}>{children}</div>
+      <div style={{
+        flex: 1, minWidth: 0, paddingLeft: indent,
+        borderRadius: 4,
+        background: isHovered ? HOVER_BG : "transparent",
+        outline: isHovered ? `1.5px solid ${HOVER_BORDER}` : "none",
+        transition: "background 0.15s, outline 0.15s",
+      }}>
+        {children}
+      </div>
+      <div style={{ flexShrink: 0, paddingLeft: 12, paddingTop: 2, minWidth: 90, textAlign: "right" }}>
+        {label && <LabelBadge label={label} />}
+      </div>
     </div>
   );
 }
@@ -132,23 +135,20 @@ export const AllLabels: StoryObj = {
   ),
 };
 
-// SideMenu バリエーション
-export const SideMenuVariants: StoryObj = {
-  name: "SideMenu 表示パターン",
+// SideMenu（簡素化版）
+export const SideMenuSimplified: StoryObj = {
+  name: "SideMenu（+ ⠿ のみ）",
   render: () => (
     <div style={{ fontFamily: tokens.font, display: "flex", flexDirection: "column", gap: 12 }}>
-      <p style={{ fontSize: 13, color: tokens.mutedFg }}>+ ⠿ の位置は固定。ラベルバッジは左に伸びる。</p>
-      <div><span style={{ fontSize: 12, color: tokens.mutedFg, marginRight: 8 }}>未設定:</span><SideMenu /></div>
-      {CORE_LABELS.map((l) => (
-        <div key={l}><span style={{ fontSize: 12, color: tokens.mutedFg, marginRight: 8 }}>{l}:</span><SideMenu label={l} /></div>
-      ))}
+      <p style={{ fontSize: 13, color: tokens.mutedFg }}>SideMenu は + と ⠿ のみ。ラベルは右側に表示。</p>
+      <SideMenu />
     </div>
   ),
 };
 
-// 静的表示
+// 静的表示（新レイアウト）
 export const NoteStatic: StoryObj = {
-  name: "ノート風（静的表示）",
+  name: "ノート風（右側ラベル・静的）",
   render: () => (
     <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
       <EditorBlock><h1 style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.3 }}>Cu粉末アニール実験</h1></EditorBlock>
@@ -178,16 +178,16 @@ export const NoteStatic: StoryObj = {
   ),
 };
 
-// ホバー操作デモ
+// ホバー操作デモ（新レイアウト）
 export const NoteHoverDemo: StoryObj = {
-  name: "ノート風（ホバー操作デモ）",
+  name: "ノート風（ホバーデモ）",
   render: () => {
     function Demo() {
       const [h, setH] = useState<string | null>(null);
       return (
         <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
           <p style={{ fontSize: 12, color: tokens.mutedFg, marginBottom: 12, background: tokens.muted, padding: "8px 12px", borderRadius: 8, border: `1px solid ${tokens.border}` }}>
-            ホバーで SideMenu 表示。ラベル未設定ブロック（4行目）は # ボタン。
+            ホバーでブロックをハイライト + 左に SideMenu 表示。ラベルは常に右に表示。
           </p>
 
           <HoverBlock id="t" hoveredId={h} setHoveredId={setH}><h1 style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.3 }}>Cu粉末アニール実験</h1></HoverBlock>
