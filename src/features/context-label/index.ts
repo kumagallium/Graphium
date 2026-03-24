@@ -5,6 +5,10 @@ export {
   LabelSideMenuButton,
   LabelBadgeLayer,
   LabelDropdownPortal,
-  setOnPrevStepLinkSelected,
   LABEL_GUTTER_WIDTH,
 } from "./ui";
+export {
+  ProvIndicatorLayer,
+  ProvIndicatorHoverHint,
+  setOnPrevStepLinkSelected,
+} from "./prov-indicator";

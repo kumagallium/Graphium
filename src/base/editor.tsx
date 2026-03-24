@@ -1,13 +1,26 @@
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
-import { useCreateBlockNote } from "@blocknote/react";
-import { SideMenuController } from "@blocknote/react";
+import {
+  useCreateBlockNote,
+  SideMenuController,
+  SuggestionMenuController,
+  getDefaultReactSlashMenuItems,
+} from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
-import { FC, useEffect } from "react";
+import { filterSuggestionItems } from "@blocknote/core/extensions";
+import { FC, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SideMenuProps } from "@blocknote/react";
+
+type SlashMenuItem = {
+  title: string;
+  subtext?: string;
+  group: string;
+  aliases?: string[];
+  onItemClick: (editor: any) => void;
+};
 
 type SandboxEditorProps = {
   blocks?: CustomBlockEntry[];
@@ -19,6 +32,8 @@ type SandboxEditorProps = {
    * - FC: カスタムSideMenuコンポーネント
    */
   sideMenu?: FC<SideMenuProps> | false;
+  /** 追加のスラッシュメニューアイテム */
+  extraSlashMenuItems?: SlashMenuItem[];
   /** エディタインスタンスを外部に公開するコールバック */
   onEditorReady?: (editor: any) => void;
   /** エディタの内容が変更されたときのコールバック */
@@ -31,6 +46,7 @@ export function SandboxEditor({
   blocks = [],
   initialContent,
   sideMenu,
+  extraSlashMenuItems,
   onEditorReady,
   onChange,
 }: SandboxEditorProps) {
@@ -57,16 +73,35 @@ export function SandboxEditor({
 
   // カスタムSideMenuを渡した場合: デフォルトを無効にして手動レンダリング
   const usesCustomSideMenu = sideMenu !== undefined && sideMenu !== false;
+  const hasExtraSlash = extraSlashMenuItems && extraSlashMenuItems.length > 0;
+
+  // スラッシュメニューのカスタム getItems
+  const getSlashItems = useMemo(() => {
+    if (!hasExtraSlash) return undefined;
+    return async (query: string) => {
+      const defaultItems = getDefaultReactSlashMenuItems(editor as any);
+      const allItems = [...defaultItems, ...extraSlashMenuItems];
+      return filterSuggestionItems(allItems as any, query) as any;
+    };
+  }, [editor, hasExtraSlash, extraSlashMenuItems]);
 
   return (
     <BlockNoteView
       editor={editor as any}
       theme="light"
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
+      slashMenu={hasExtraSlash ? false : undefined}
       onChange={onChange}
     >
       {usesCustomSideMenu && (
         <SideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
+      )}
+      {hasExtraSlash && (
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={getSlashItems as any}
+          {...({} as any)}
+        />
       )}
     </BlockNoteView>
   );
