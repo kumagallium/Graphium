@@ -120,7 +120,7 @@ export async function getOrCreateFolder(): Promise<string> {
 // ProvNote フォルダ内のファイル一覧を取得
 export async function listFiles(): Promise<ProvNoteFile[]> {
   const folderId = await getOrCreateFolder();
-  const query = `'${folderId}' in parents and trashed=false`;
+  const query = `'${folderId}' in parents and mimeType!='${MIME_FOLDER}' and trashed=false`;
   const fields = "files(id,name,modifiedTime,createdTime)";
 
   const res = await authedFetch(
@@ -249,31 +249,8 @@ async function getOrCreateUploadFolder(): Promise<string> {
   return cachedUploadFolderId!;
 }
 
-// ファイルを data URL に変換
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
-    reader.readAsDataURL(file);
-  });
-}
-
-// メディアファイルを Google Drive にアップロードし、表示用 data URL を返す
+// メディアファイルを Google Drive にアップロードし、公開 URL を返す
 export async function uploadMediaFile(file: File): Promise<string> {
-  // 表示用の data URL を先に生成（アップロード完了を待たずに表示可能にする）
-  const dataUrl = await fileToDataUrl(file);
-
-  // Google Drive へのアップロードはバックグラウンドで実行
-  uploadToDriveBackground(file).catch((err) => {
-    console.error("Drive へのバックアップに失敗:", err);
-  });
-
-  return dataUrl;
-}
-
-// Google Drive へのアップロード（バックグラウンド）
-async function uploadToDriveBackground(file: File): Promise<void> {
   const uploadFolderId = await getOrCreateUploadFolder();
 
   // ファイル名にタイムスタンプを付与して一意にする
@@ -311,6 +288,19 @@ async function uploadToDriveBackground(file: File): Promise<void> {
     const body = await res.text().catch(() => "");
     throw new Error(`メディアアップロードエラー (${res.status}): ${body}`);
   }
+
+  const data = await res.json();
+  const fileId = data.id;
+
+  // 「リンクを知っている全員が閲覧可」に権限設定
+  await authedFetch(`${DRIVE_API}/files/${fileId}/permissions`, {
+    method: "POST",
+    headers: { "Content-Type": MIME_JSON },
+    body: JSON.stringify({ role: "reader", type: "anyone" }),
+  });
+
+  // Google の画像配信 CDN URL（公開ファイルの直接表示用）
+  return `https://lh3.googleusercontent.com/d/${fileId}=s0`;
 }
 
 // フォルダIDキャッシュをクリア（サインアウト時に呼ぶ）
