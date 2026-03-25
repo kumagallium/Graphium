@@ -16,7 +16,6 @@ services:
     restart: unless-stopped
 
   agent:
-    image: ghcr.io/kumagallium/crucible-agent:latest
     build:
       context: https://github.com/kumagallium/crucible-agent.git
     ports:
