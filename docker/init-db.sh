@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Create separate database for LiteLLM
 # (crucible_agent is created automatically via POSTGRES_DB)
 set -e
