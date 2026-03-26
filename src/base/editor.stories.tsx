@@ -32,7 +32,7 @@ function Safe({ children }: { children: ReactNode }) {
 }
 
 const meta: Meta = {
-  title: "Base/SandboxEditor",
+  title: "Organisms/Editor",
   parameters: { layout: "padded" },
 };
 export default meta;

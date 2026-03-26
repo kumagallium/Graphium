@@ -5,11 +5,12 @@
 // クリックでリンク一覧を展開し、ターゲットへの遷移や削除ができる。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "lucide-react";
 import { useLinkStore } from "./store";
 import { CREATED_BY_LABELS, LINK_TYPE_CONFIG, type BlockLink } from "./link-types";
+import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 
 type LinkBadgeInfo = {
   blockId: string;
@@ -107,25 +108,15 @@ export function LinkBadgeLayer() {
             <button
               onClick={() => setExpandedBlockId(isExpanded ? null : blockId)}
               title={`${count} リンク`}
+              className="fixed z-[9997] inline-flex items-center gap-0.5 rounded-lg text-[10px] font-semibold cursor-pointer select-none pointer-events-auto"
               style={{
-                position: "fixed",
                 top,
                 left,
                 transform: "translateY(-50%)",
-                zIndex: 9997,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 2,
                 padding: "1px 5px",
-                borderRadius: 10,
-                fontSize: 10,
-                fontWeight: 600,
-                background: "#eff6ff",
+                backgroundColor: "#eff6ff",
                 color: "#5b8fb9",
                 border: "1px solid #bfdbfe",
-                cursor: "pointer",
-                userSelect: "none",
-                pointerEvents: "auto",
               }}
             >
               <Link size={10} strokeWidth={2.5} /> {count}
@@ -171,24 +162,6 @@ function LinkDetailPanel({
   onRemove: (id: string) => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    // 少し遅延させてバッジ自体のクリックイベントと競合しないようにする
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handler);
-    }, 50);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handler);
-    };
-  }, [onClose]);
-
   const scrollToBlock = (targetId: string) => {
     const el = document.querySelector(
       `[data-id="${targetId}"][data-node-type="blockOuter"]`
@@ -203,58 +176,48 @@ function LinkDetailPanel({
     }
   };
 
-  return createPortal(
-    <div
-      ref={ref}
-      style={{
-        position: "fixed",
-        top,
-        left,
-        zIndex: 9999,
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 8,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
-        padding: "6px 0",
-        minWidth: 240,
-        maxHeight: 300,
-        overflowY: "auto",
-      }}
+  return (
+    <Dropdown
+      position={{ top, left }}
+      onClose={onClose}
+      minWidth={240}
+      maxHeight="300px"
     >
-      {/* 出力リンク */}
-      {outgoing.length > 0 && (
-        <>
-          <div style={sectionStyle}>→ 出力リンク</div>
-          {outgoing.map((link) => (
-            <LinkRow
-              key={link.id}
-              link={link}
-              label={getBlockText(link.targetBlockId)}
-              onClick={() => scrollToBlock(link.targetBlockId)}
-              onRemove={() => onRemove(link.id)}
-            />
-          ))}
-        </>
-      )}
+      <div className="py-1.5">
+        {/* 出力リンク */}
+        {outgoing.length > 0 && (
+          <>
+            <DropdownSectionHeader>→ 出力リンク</DropdownSectionHeader>
+            {outgoing.map((link) => (
+              <LinkRow
+                key={link.id}
+                link={link}
+                label={getBlockText(link.targetBlockId)}
+                onClick={() => scrollToBlock(link.targetBlockId)}
+                onRemove={() => onRemove(link.id)}
+              />
+            ))}
+          </>
+        )}
 
-      {/* 入力リンク */}
-      {incoming.length > 0 && (
-        <>
-          {outgoing.length > 0 && <div style={divStyle} />}
-          <div style={sectionStyle}>← 入力リンク</div>
-          {incoming.map((link) => (
-            <LinkRow
-              key={link.id}
-              link={link}
-              label={getBlockText(link.sourceBlockId)}
-              onClick={() => scrollToBlock(link.sourceBlockId)}
-              onRemove={() => onRemove(link.id)}
-            />
-          ))}
-        </>
-      )}
-    </div>,
-    document.body,
+        {/* 入力リンク */}
+        {incoming.length > 0 && (
+          <>
+            {outgoing.length > 0 && <DropdownDivider />}
+            <DropdownSectionHeader>← 入力リンク</DropdownSectionHeader>
+            {incoming.map((link) => (
+              <LinkRow
+                key={link.id}
+                link={link}
+                label={getBlockText(link.sourceBlockId)}
+                onClick={() => scrollToBlock(link.sourceBlockId)}
+                onRemove={() => onRemove(link.id)}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    </Dropdown>
   );
 }
 
@@ -271,61 +234,34 @@ function LinkRow({
 }) {
   const conf = LINK_TYPE_CONFIG[link.type];
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "3px 10px",
-        fontSize: 12,
-      }}
-    >
+    <div className="flex items-center gap-1 px-2.5 py-1 text-xs">
       <span
-        style={{
-          width: 6, height: 6, borderRadius: "50%",
-          background: conf.color, flexShrink: 0,
-        }}
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ backgroundColor: conf.color }}
       />
-      <span style={{ fontSize: 10, color: conf.color, fontWeight: 600, minWidth: 40 }}>
+      <span
+        className="text-[10px] font-semibold min-w-[40px]"
+        style={{ color: conf.color }}
+      >
         {conf.label}
       </span>
       <button
         onClick={onClick}
-        style={{
-          flex: 1, textAlign: "left", background: "none",
-          border: "none", cursor: "pointer", color: "#374151",
-          fontSize: 12, padding: 0,
-        }}
+        className="flex-1 text-left bg-transparent border-none cursor-pointer text-foreground text-xs p-0 hover:underline"
         title="クリックで移動"
       >
         {label}
       </button>
-      <span style={{ fontSize: 9, color: "#9ca3af" }}>
+      <span className="text-[9px] text-muted-foreground">
         {CREATED_BY_LABELS[link.createdBy]}
       </span>
       <button
         onClick={onRemove}
         title="リンクを削除"
-        style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "#9ca3af", fontSize: 11, padding: "0 2px",
-        }}
+        className="bg-transparent border-none cursor-pointer text-muted-foreground text-xs px-0.5 hover:text-destructive"
       >
         ×
       </button>
     </div>
   );
 }
-
-const sectionStyle: React.CSSProperties = {
-  padding: "2px 10px",
-  fontSize: 10,
-  fontWeight: 700,
-  color: "#9ca3af",
-  letterSpacing: "0.05em",
-};
-
-const divStyle: React.CSSProperties = {
-  borderTop: "1px solid #f3f4f6",
-  margin: "4px 0",
-};

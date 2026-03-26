@@ -190,7 +190,7 @@ function MockSettingsModal({
 }
 
 const meta = {
-  title: "Features/Settings/Modal",
+  title: "Organisms/SettingsModal",
   component: MockSettingsModal,
   parameters: {
     layout: "centered",

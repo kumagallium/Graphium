@@ -123,7 +123,7 @@ const td: React.CSSProperties = {
 };
 
 // ── Meta ──
-const meta: Meta = { title: "ContextLabel/LabelBadge", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/LabelBadge", parameters: { layout: "padded" } };
 export default meta;
 
 // 全ラベル一覧

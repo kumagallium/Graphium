@@ -56,7 +56,7 @@ const menuItemStyle: React.CSSProperties = {
   color: "#374151",
 };
 
-const meta: Meta = { title: "BlockLink/LinkDropdown", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/LinkDropdown", parameters: { layout: "padded" } };
 export default meta;
 
 // 前手順リンク選択

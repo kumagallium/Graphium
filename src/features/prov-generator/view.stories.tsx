@@ -31,7 +31,7 @@ function Safe({ children }: { children: ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
 }
 
-const meta: Meta = { title: "ProvGenerator/ProvGraphPanel", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/ProvGenerator", parameters: { layout: "padded" } };
 export default meta;
 
 // ── @context 共通 ──

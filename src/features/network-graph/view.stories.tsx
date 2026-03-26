@@ -32,7 +32,7 @@ function Safe({ children }: { children: ReactNode }) {
 }
 
 const meta: Meta = {
-  title: "NetworkGraph/NetworkGraphPanel",
+  title: "Organisms/NetworkGraph",
   parameters: { layout: "padded" },
 };
 export default meta;

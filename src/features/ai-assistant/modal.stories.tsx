@@ -221,7 +221,7 @@ function MockModal({
 }
 
 const meta = {
-  title: "Features/AI Assistant/Modal",
+  title: "Organisms/AIAssistantModal",
   component: MockModal,
   parameters: {
     layout: "centered",

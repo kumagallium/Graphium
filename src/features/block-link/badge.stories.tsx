@@ -102,7 +102,7 @@ function LinkDetailPanel({ outgoing, incoming }: { outgoing: MockLink[]; incomin
 }
 
 // ── Meta ──
-const meta: Meta = { title: "BlockLink/LinkBadge", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/LinkBadge", parameters: { layout: "padded" } };
 export default meta;
 
 // リンクタイプ一覧

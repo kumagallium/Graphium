@@ -65,7 +65,7 @@ const dividerStyle: React.CSSProperties = {
   margin: "4px 0",
 };
 
-const meta: Meta = { title: "ContextLabel/LabelDropdown", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/LabelDropdown", parameters: { layout: "padded" } };
 export default meta;
 
 // ドロップダウン（初期状態）

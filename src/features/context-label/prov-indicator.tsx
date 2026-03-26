@@ -6,7 +6,7 @@
 // クリックで統合パネル（ラベル変更 + リンク一覧 + リンク追加）を開く。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLabelStore } from "./store";
 import { useLinkStore } from "../block-link/store";
@@ -19,6 +19,10 @@ import {
   CREATED_BY_LABELS,
   type BlockLink,
 } from "../block-link/link-types";
+import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
+import { MenuItem } from "@ui/menu-item";
+import { Button } from "@ui/button";
+import { Input } from "@ui/form-field";
 
 // ──────────────────────────────────
 // 色定義
@@ -185,25 +189,16 @@ export function ProvIndicatorLayer() {
               }
               data-prov-label-anchor={blockId}
               title={`${label} — クリックで詳細`}
+              className="fixed z-[9997] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
               style={{
-                position: "fixed",
                 top,
                 right: window.innerWidth - left,
                 transform: "translateY(-50%)",
-                zIndex: 9997,
-                display: "inline-block",
                 padding: "0px 6px",
-                borderRadius: 9999,
-                fontSize: 11,
-                fontWeight: 600,
                 backgroundColor: color + "18",
                 color: color,
                 border: `1px solid ${color}38`,
-                cursor: "pointer",
-                userSelect: "none",
                 lineHeight: 1.6,
-                whiteSpace: "nowrap",
-                pointerEvents: "auto",
               }}
             >
               {label}
@@ -261,29 +256,12 @@ function ProvPanel({
 }) {
   const { labels: allLabels } = useLabelStore();
   const useLabelStoreRef = { current: allLabels };
-  const ref = useRef<HTMLDivElement>(null);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [prevStepMode, setPrevStepMode] = useState(false);
   const [headingCandidates, setHeadingCandidates] = useState<
     { blockId: string; text: string }[]
   >([]);
   const [freeInput, setFreeInput] = useState("");
-
-  // 外側クリックで閉じる
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handler);
-    }, 50);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handler);
-    };
-  }, [onClose]);
 
   // パネル位置の調整（画面端対応）
   const adjustedTop = Math.min(top, window.innerHeight - 400);
@@ -305,339 +283,248 @@ function ProvPanel({
     }
   };
 
-  return createPortal(
-    <div
-      ref={ref}
-      style={{
-        position: "fixed",
-        top: adjustedTop,
-        left: adjustedLeft,
-        zIndex: 9999,
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 8,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
-        padding: "6px 0",
-        minWidth: 240,
-        maxHeight: "70vh",
-        overflowY: "auto",
-      }}
+  return (
+    <Dropdown
+      position={{ top: adjustedTop, left: adjustedLeft }}
+      onClose={onClose}
+      minWidth={240}
+      maxHeight="70vh"
     >
-      {/* ── 現在のラベル表示 + 変更ボタン ── */}
-      <div
-        style={{
-          padding: "6px 12px 4px",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {label ? (
-          <span
-            style={{
-              display: "inline-block",
-              padding: "0px 6px",
-              borderRadius: 9999,
-              fontSize: 11,
-              fontWeight: 600,
-              backgroundColor: color + "18",
-              color: color,
-              border: `1px solid ${color}38`,
-              lineHeight: 1.6,
-            }}
-          >
-            {label}
-          </span>
-        ) : (
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>ラベルなし</span>
-        )}
-        <button
-          onClick={() => setShowLabelPicker(!showLabelPicker)}
-          style={{
-            marginLeft: "auto",
-            fontSize: 10,
-            color: "#5b8fb9",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            textDecoration: "underline",
-          }}
-        >
-          {showLabelPicker ? "閉じる" : "変更"}
-        </button>
-      </div>
-
-      {/* ── ラベル選択（展開時） ── */}
-      {showLabelPicker && (
-        <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: 4 }}>
-          <div style={sectionHeaderStyle}>コアラベル（PROV-DM）</div>
-          {CORE_LABELS.map((l) => {
-            const active = label === l;
-            const c = getLabelColor(l);
-            return (
-              <button
-                key={l}
-                onClick={() => {
-                  onLabelChange(active ? null : l);
-                  setShowLabelPicker(false);
-                }}
-                style={{
-                  ...menuItemStyle,
-                  background: active ? c + "15" : "none",
-                  color: active ? c : "#374151",
-                  fontWeight: active ? 600 : 400,
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: c,
-                    marginRight: 6,
-                    flexShrink: 0,
-                  }}
-                />
-                {l}
-                {active && (
-                  <span style={{ marginLeft: "auto", fontSize: 11 }}>✓</span>
-                )}
-              </button>
-            );
-          })}
-
-          {/* フリーラベル例 */}
-          <div style={dividerStyle} />
-          <div style={sectionHeaderStyle}>フリーラベル（例）</div>
-          {FREE_LABEL_EXAMPLES.slice(0, 4).map((l) => {
-            const active = label === l;
-            return (
-              <button
-                key={l}
-                onClick={() => {
-                  onLabelChange(active ? null : l);
-                  setShowLabelPicker(false);
-                }}
-                style={{
-                  ...menuItemStyle,
-                  color: "#6b7280",
-                  fontWeight: active ? 600 : 400,
-                }}
-              >
-                {l}
-                {active && (
-                  <span style={{ marginLeft: "auto", fontSize: 11 }}>✓</span>
-                )}
-              </button>
-            );
-          })}
-
-          {/* カスタム入力 */}
-          <div style={dividerStyle} />
-          <div style={{ padding: "4px 10px 6px" }}>
-            <div style={sectionHeaderStyle}>カスタム</div>
-            <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-              <input
-                value={freeInput}
-                onChange={(e) => setFreeInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && freeInput.trim()) {
-                    const v = freeInput.trim();
-                    onLabelChange(v.startsWith("[") ? v : `[${v}]`);
-                    setShowLabelPicker(false);
-                  }
-                  if (e.key === "Escape") setShowLabelPicker(false);
-                }}
-                placeholder="[ラベル名]"
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  padding: "3px 6px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 4,
-                  outline: "none",
-                }}
-              />
-              <button
-                onClick={() => {
-                  if (freeInput.trim()) {
-                    const v = freeInput.trim();
-                    onLabelChange(v.startsWith("[") ? v : `[${v}]`);
-                    setShowLabelPicker(false);
-                  }
-                }}
-                style={{
-                  padding: "3px 8px",
-                  fontSize: 12,
-                  background: "#5b8fb9",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                }}
-              >
-                追加
-              </button>
-            </div>
-          </div>
-
-          {/* ラベル削除 */}
-          {label && (
-            <>
-              <div style={dividerStyle} />
-              <button
-                onClick={() => {
-                  onLabelChange(null);
-                  setShowLabelPicker(false);
-                }}
-                style={{ ...menuItemStyle, color: "#c26356" }}
-              >
-                ラベルを外す
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── リンク一覧 ── */}
-      {linkCount > 0 && (
-        <>
-          <div style={dividerStyle} />
-          {outgoing.length > 0 && (
-            <>
-              <div style={sectionHeaderStyle}>→ 出力リンク</div>
-              {outgoing.map((link) => (
-                <LinkRow
-                  key={link.id}
-                  link={link}
-                  label={getBlockText(link.targetBlockId)}
-                  onClick={() => scrollToBlock(link.targetBlockId)}
-                  onRemove={() => onRemoveLink(link.id)}
-                />
-              ))}
-            </>
-          )}
-          {incoming.length > 0 && (
-            <>
-              {outgoing.length > 0 && <div style={dividerStyle} />}
-              <div style={sectionHeaderStyle}>← 入力リンク</div>
-              {incoming.map((link) => (
-                <LinkRow
-                  key={link.id}
-                  link={link}
-                  label={getBlockText(link.sourceBlockId)}
-                  onClick={() => scrollToBlock(link.sourceBlockId)}
-                  onRemove={() => onRemoveLink(link.id)}
-                />
-              ))}
-            </>
-          )}
-        </>
-      )}
-
-      {/* ── 前手順リンク追加（[手順] ラベルのみ） ── */}
-      {label === "[手順]" && <>
-      <div style={dividerStyle} />
-      <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>
-        前手順リンク（wasInformedBy）
-      </div>
-      <button
-        onClick={() => {
-          const candidates: {
-            blockId: string;
-            text: string;
-          }[] = [];
-          // [手順] ラベルが付いたブロックのみをリンク先候補にする
-          const labelMap = useLabelStoreRef.current;
-          document
-            .querySelectorAll('[data-node-type="blockOuter"]')
-            .forEach((el) => {
-              const bid = el.getAttribute("data-id");
-              if (!bid || bid === blockId) return;
-              if (labelMap.get(bid) !== "[手順]") return;
-              // テキストを取得
-              const heading = el.querySelector("h1, h2, h3");
-              const text = heading?.textContent
-                || el.querySelector("[data-content-type]")?.textContent
-                || "";
-              candidates.push({
-                blockId: bid,
-                text: text || "(空)",
-              });
-            });
-          setHeadingCandidates(candidates);
-          setPrevStepMode(true);
-        }}
-        style={{
-          ...menuItemStyle,
-          color: "#5b8fb9",
-          background: "#eff6ff",
-          borderRadius: 4,
-          margin: "2px 6px",
-          width: "calc(100% - 12px)",
-        }}
-      >
-        <span style={{ marginRight: 4 }}>→</span>
-        前の手順を選択してリンク
-      </button>
-
-      {/* 前手順: 見出し選択 */}
-      {prevStepMode && (
-        <div
-          style={{
-            padding: "4px 0",
-            background: "#f0f9ff",
-            borderTop: "1px solid #e0f2fe",
-          }}
-        >
-          <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>
-            リンク先の [手順] を選択
-          </div>
-          {headingCandidates.length === 0 && (
-            <div
-              style={{ padding: "6px 12px", fontSize: 12, color: "#9ca3af" }}
-            >
-              見出しがありません
-            </div>
-          )}
-          {headingCandidates.map((c) => (
-            <button
-              key={c.blockId}
-              onClick={() => {
-                _onPrevStepLinkSelected?.(blockId, c.blockId);
-                onClose();
-              }}
+      <div className="py-1.5">
+        {/* ── 現在のラベル表示 + 変更ボタン ── */}
+        <div className="flex items-center gap-1.5 px-3 py-1">
+          {label ? (
+            <span
+              className="inline-block rounded-full text-xs font-semibold"
               style={{
-                ...menuItemStyle,
-                color: "#1e40af",
-                fontSize: 12,
+                padding: "0px 6px",
+                backgroundColor: color + "18",
+                color: color,
+                border: `1px solid ${color}38`,
+                lineHeight: 1.6,
               }}
             >
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#5b8fb9",
-                  fontWeight: 600,
-                  marginRight: 4,
-                }}
-              >
-                [手順]
-              </span>
-              {c.text || "(空)"}
-            </button>
-          ))}
+              {label}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">ラベルなし</span>
+          )}
           <button
-            onClick={() => setPrevStepMode(false)}
-            style={{ ...menuItemStyle, fontSize: 11, color: "#9ca3af" }}
+            onClick={() => setShowLabelPicker(!showLabelPicker)}
+            className="ml-auto text-[10px] text-[#5b8fb9] bg-transparent border-none cursor-pointer underline"
           >
-            ← 戻る
+            {showLabelPicker ? "閉じる" : "変更"}
           </button>
         </div>
-      )}
-      </>}
-    </div>,
-    document.body
+
+        {/* ── ラベル選択（展開時） ── */}
+        {showLabelPicker && (
+          <div className="border-t border-border pt-1">
+            <DropdownSectionHeader>コアラベル（PROV-DM）</DropdownSectionHeader>
+            {CORE_LABELS.map((l) => {
+              const active = label === l;
+              const c = getLabelColor(l);
+              return (
+                <MenuItem
+                  key={l}
+                  active={active}
+                  dotColor={c}
+                  onClick={() => {
+                    onLabelChange(active ? null : l);
+                    setShowLabelPicker(false);
+                  }}
+                  style={{ color: active ? c : undefined }}
+                >
+                  {l}
+                </MenuItem>
+              );
+            })}
+
+            {/* フリーラベル例 */}
+            <DropdownDivider />
+            <DropdownSectionHeader>フリーラベル（例）</DropdownSectionHeader>
+            {FREE_LABEL_EXAMPLES.slice(0, 4).map((l) => {
+              const active = label === l;
+              return (
+                <MenuItem
+                  key={l}
+                  active={active}
+                  onClick={() => {
+                    onLabelChange(active ? null : l);
+                    setShowLabelPicker(false);
+                  }}
+                  className="text-muted-foreground"
+                >
+                  {l}
+                </MenuItem>
+              );
+            })}
+
+            {/* カスタム入力 */}
+            <DropdownDivider />
+            <div className="px-2.5 py-1.5">
+              <DropdownSectionHeader>カスタム</DropdownSectionHeader>
+              <div className="flex gap-1 mt-0.5">
+                <Input
+                  value={freeInput}
+                  onChange={(e) => setFreeInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && freeInput.trim()) {
+                      const v = freeInput.trim();
+                      onLabelChange(v.startsWith("[") ? v : `[${v}]`);
+                      setShowLabelPicker(false);
+                    }
+                    if (e.key === "Escape") setShowLabelPicker(false);
+                  }}
+                  placeholder="[ラベル名]"
+                  className="text-xs py-1 px-1.5"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (freeInput.trim()) {
+                      const v = freeInput.trim();
+                      onLabelChange(v.startsWith("[") ? v : `[${v}]`);
+                      setShowLabelPicker(false);
+                    }
+                  }}
+                  className="text-xs shrink-0"
+                >
+                  追加
+                </Button>
+              </div>
+            </div>
+
+            {/* ラベル削除 */}
+            {label && (
+              <>
+                <DropdownDivider />
+                <MenuItem
+                  onClick={() => {
+                    onLabelChange(null);
+                    setShowLabelPicker(false);
+                  }}
+                  className="text-destructive"
+                >
+                  ラベルを外す
+                </MenuItem>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── リンク一覧 ── */}
+        {linkCount > 0 && (
+          <>
+            <DropdownDivider />
+            {outgoing.length > 0 && (
+              <>
+                <DropdownSectionHeader>→ 出力リンク</DropdownSectionHeader>
+                {outgoing.map((link) => (
+                  <LinkRow
+                    key={link.id}
+                    link={link}
+                    label={getBlockText(link.targetBlockId)}
+                    onClick={() => scrollToBlock(link.targetBlockId)}
+                    onRemove={() => onRemoveLink(link.id)}
+                  />
+                ))}
+              </>
+            )}
+            {incoming.length > 0 && (
+              <>
+                {outgoing.length > 0 && <DropdownDivider />}
+                <DropdownSectionHeader>← 入力リンク</DropdownSectionHeader>
+                {incoming.map((link) => (
+                  <LinkRow
+                    key={link.id}
+                    link={link}
+                    label={getBlockText(link.sourceBlockId)}
+                    onClick={() => scrollToBlock(link.sourceBlockId)}
+                    onRemove={() => onRemoveLink(link.id)}
+                  />
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── 前手順リンク追加（[手順] ラベルのみ） ── */}
+        {label === "[手順]" && <>
+        <DropdownDivider />
+        <DropdownSectionHeader className="text-[#5b8fb9]">
+          前手順リンク（wasInformedBy）
+        </DropdownSectionHeader>
+        <button
+          onClick={() => {
+            const candidates: {
+              blockId: string;
+              text: string;
+            }[] = [];
+            // [手順] ラベルが付いたブロックのみをリンク先候補にする
+            const labelMap = useLabelStoreRef.current;
+            document
+              .querySelectorAll('[data-node-type="blockOuter"]')
+              .forEach((el) => {
+                const bid = el.getAttribute("data-id");
+                if (!bid || bid === blockId) return;
+                if (labelMap.get(bid) !== "[手順]") return;
+                const heading = el.querySelector("h1, h2, h3");
+                const text = heading?.textContent
+                  || el.querySelector("[data-content-type]")?.textContent
+                  || "";
+                candidates.push({
+                  blockId: bid,
+                  text: text || "(空)",
+                });
+              });
+            setHeadingCandidates(candidates);
+            setPrevStepMode(true);
+          }}
+          className="flex items-center w-full text-left px-3 py-1.5 text-sm bg-info/10 text-[#5b8fb9] rounded mx-1.5 cursor-pointer border-none"
+          style={{ width: "calc(100% - 12px)" }}
+        >
+          <span className="mr-1">→</span>
+          前の手順を選択してリンク
+        </button>
+
+        {/* 前手順: 見出し選択 */}
+        {prevStepMode && (
+          <div className="py-1 bg-info/5 border-t border-info/20">
+            <DropdownSectionHeader className="text-[#5b8fb9]">
+              リンク先の [手順] を選択
+            </DropdownSectionHeader>
+            {headingCandidates.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-muted-foreground">
+                見出しがありません
+              </div>
+            )}
+            {headingCandidates.map((c) => (
+              <MenuItem
+                key={c.blockId}
+                onClick={() => {
+                  _onPrevStepLinkSelected?.(blockId, c.blockId);
+                  onClose();
+                }}
+                className="text-xs"
+              >
+                <span className="text-[10px] text-[#5b8fb9] font-semibold mr-1">
+                  [手順]
+                </span>
+                {c.text || "(空)"}
+              </MenuItem>
+            ))}
+            <MenuItem
+              onClick={() => setPrevStepMode(false)}
+              className="text-xs text-muted-foreground"
+            >
+              ← 戻る
+            </MenuItem>
+          </div>
+        )}
+        </>}
+      </div>
+    </Dropdown>
   );
 }
 
@@ -657,64 +544,31 @@ function LinkRow({
 }) {
   const conf = LINK_TYPE_CONFIG[link.type];
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "3px 10px",
-        fontSize: 12,
-      }}
-    >
+    <div className="flex items-center gap-1 px-2.5 py-1 text-xs">
       <span
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: conf.color,
-          flexShrink: 0,
-        }}
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ backgroundColor: conf.color }}
       />
       <span
-        style={{
-          fontSize: 10,
-          color: conf.color,
-          fontWeight: 600,
-          minWidth: 40,
-        }}
+        className="text-[10px] font-semibold min-w-[40px]"
+        style={{ color: conf.color }}
       >
         {conf.label}
       </span>
       <button
         onClick={onClick}
-        style={{
-          flex: 1,
-          textAlign: "left",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#374151",
-          fontSize: 12,
-          padding: 0,
-        }}
+        className="flex-1 text-left bg-transparent border-none cursor-pointer text-foreground text-xs p-0 hover:underline"
         title="クリックで移動"
       >
         {label}
       </button>
-      <span style={{ fontSize: 9, color: "#9ca3af" }}>
+      <span className="text-[9px] text-muted-foreground">
         {CREATED_BY_LABELS[link.createdBy]}
       </span>
       <button
         onClick={onRemove}
         title="リンクを削除"
-        style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#9ca3af",
-          fontSize: 11,
-          padding: "0 2px",
-        }}
+        className="bg-transparent border-none cursor-pointer text-muted-foreground text-xs px-0.5 hover:text-destructive"
       >
         ×
       </button>
@@ -797,25 +651,11 @@ export function ProvIndicatorHoverHint() {
     <button
       onClick={() => openDropdown(hoverBlock.blockId)}
       data-prov-label-anchor={hoverBlock.blockId}
+      className="fixed z-[9996] inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary transition-colors duration-200"
       style={{
-        position: "fixed",
         top: hoverBlock.top,
         right: window.innerWidth - hoverBlock.left,
         transform: "translateY(-50%)",
-        zIndex: 9996,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 20,
-        height: 20,
-        borderRadius: 6,
-        border: "1px dashed #d5e0d7",
-        background: "none",
-        cursor: "pointer",
-        color: "#6b7f6e",
-        fontSize: 11,
-        opacity: 0.5,
-        pointerEvents: "auto",
       }}
     >
       #
@@ -823,36 +663,6 @@ export function ProvIndicatorHoverHint() {
     document.body
   );
 }
-
-// ──────────────────────────────────
-// スタイル定数
-// ──────────────────────────────────
-const sectionHeaderStyle: React.CSSProperties = {
-  padding: "2px 10px",
-  fontSize: 10,
-  fontWeight: 700,
-  color: "#9ca3af",
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-};
-
-const menuItemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  width: "100%",
-  textAlign: "left",
-  padding: "5px 12px",
-  fontSize: 13,
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  color: "#374151",
-};
-
-const dividerStyle: React.CSSProperties = {
-  borderTop: "1px solid #f3f4f6",
-  margin: "4px 0",
-};
 
 // ──────────────────────────────────
 // BlockHoverHighlight
@@ -906,17 +716,14 @@ export function BlockHoverHighlight() {
 
   return createPortal(
     <div
+      className="fixed rounded-lg pointer-events-none z-[9996]"
       style={{
-        position: "fixed",
         top: rect.top - 2,
         left: rect.left - 4,
         width: rect.width + 8,
         height: rect.height + 4,
-        borderRadius: 6,
         background: "rgba(75, 122, 82, 0.05)",
         border: "1.5px solid rgba(75, 122, 82, 0.15)",
-        pointerEvents: "none",
-        zIndex: 9996,
       }}
     />,
     document.body

@@ -119,7 +119,7 @@ const td: React.CSSProperties = {
 };
 
 // ── Meta ──
-const meta: Meta = { title: "ContextLabel/ProvIndicator", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/ProvIndicator", parameters: { layout: "padded" } };
 export default meta;
 
 // ラベルバッジ一覧

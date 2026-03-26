@@ -60,7 +60,7 @@ function TabBarMock({ pages, activeId, onSelect, onRemove, onAdd }: {
   );
 }
 
-const meta: Meta = { title: "Base/MultiPageLayout", parameters: { layout: "padded" } };
+const meta: Meta = { title: "Organisms/MultiPage", parameters: { layout: "padded" } };
 export default meta;
 
 // 1ページ（追加ボタンあり）
