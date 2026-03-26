@@ -44,10 +44,12 @@ export default defineConfig({
   plugins: [releaseNotesPlugin(), tailwindcss(), react()],
   resolve: {
     alias: {
+      "@": path.resolve(__dirname, "src"),
       "@base": path.resolve(__dirname, "src/base"),
       "@blocks": path.resolve(__dirname, "src/blocks"),
       "@features": path.resolve(__dirname, "src/features"),
       "@scenarios": path.resolve(__dirname, "src/scenarios"),
+      "@ui": path.resolve(__dirname, "src/ui"),
     },
   },
 });

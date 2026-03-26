@@ -24,7 +24,7 @@
   --color-accent: #e8f0e8;
   --color-accent-foreground: #2d4a32;
   --color-destructive: #dc2626;
-  --color-destructive-foreground: #dc2626;
+  --color-destructive-foreground: #ffffff;  /* 破壊的ボタン上のテキスト色 */
   --color-border: #d5e0d7;              /* 淡いグリーングレー */
   --color-input: #d5e0d7;
   --color-ring: #4B7A52;

@@ -16,10 +16,12 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@/*": ["./src/*"],
       "@base/*": ["./src/base/*"],
       "@blocks/*": ["./src/blocks/*"],
       "@features/*": ["./src/features/*"],
-      "@scenarios/*": ["./src/scenarios/*"]
+      "@scenarios/*": ["./src/scenarios/*"],
+      "@ui/*": ["./src/ui/*"]
     }
   },
   "include": ["src"]

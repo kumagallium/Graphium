@@ -17,7 +17,6 @@ import {
   useExtensionState,
 } from "@blocknote/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   CORE_LABELS,
   FREE_LABEL_EXAMPLES,
@@ -27,6 +26,10 @@ import {
 } from "./labels";
 // label-attributes は将来のステータス機能で再利用
 import { useLabelStore } from "./store";
+import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
+import { MenuItem } from "@ui/menu-item";
+import { Button } from "@ui/button";
+import { Input } from "@ui/form-field";
 
 // ──────────────────────────────────
 // 色定義
@@ -61,7 +64,7 @@ export function LabelBadgeLayer() {
 
 // ──────────────────────────────────
 // LabelDropdownPortal
-// document.body にポータルで出すドロップダウン。
+// Dropdown + MenuItem で構成。
 // SideMenu の hover 状態に依存しないため消えない。
 // ──────────────────────────────────
 // 前手順リンク追加用のグローバルコールバック（main.tsx側で登録）
@@ -77,7 +80,6 @@ export function LabelDropdownPortal() {
   const [freeInput, setFreeInput] = useState("");
   const [prevStepMode, setPrevStepMode] = useState(false);
   const [headingCandidates, setHeadingCandidates] = useState<{ blockId: string; text: string; level: number }[]>([]);
-  const ref = useRef<HTMLDivElement>(null);
 
   // ドロップダウンが開いたとき、アンカー要素の位置に合わせる
   // position: fixed でビューポート座標を使い、画面外に切れないよう調整
@@ -107,18 +109,6 @@ export function LabelDropdownPortal() {
     setPrevStepMode(false);
   }, [openBlockId]);
 
-  // 外側クリックで閉じる
-  useEffect(() => {
-    if (!openBlockId) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        closeDropdown();
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [openBlockId, closeDropdown]);
-
   if (!openBlockId) return null;
 
   const currentLabel = labels.get(openBlockId);
@@ -128,214 +118,154 @@ export function LabelDropdownPortal() {
     closeDropdown();
   };
 
-  return createPortal(
-    <div
-      ref={ref}
-      style={{
-        position: "fixed",
-        top: pos.top,
-        left: pos.left,
-        zIndex: 9999,
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 8,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
-        padding: "6px 0",
-        minWidth: 200,
-        maxHeight: "80vh",
-        overflowY: "auto",
-      }}
-    >
-      {/* コアラベル */}
-      <div style={sectionHeaderStyle}>コアラベル（PROV-DM）</div>
-      {CORE_LABELS.map((label) => {
-        const active = currentLabel === label;
-        const color = getLabelColor(label);
-        return (
-          <button
-            key={label}
-            onClick={() => select(active ? null : label)}
-            style={{
-              ...menuItemStyle,
-              background: active ? color + "15" : "none",
-              color: active ? color : "#374151",
-              fontWeight: active ? 600 : 400,
-            }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: color,
-                marginRight: 6,
-                flexShrink: 0,
-              }}
-            />
-            {label}
-            {active && (
-              <span style={{ marginLeft: "auto", fontSize: 11 }}>✓</span>
-            )}
-          </button>
-        );
-      })}
-
-      {/* 前手順リンク */}
-      <div style={dividerStyle} />
-      <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>前手順リンク（wasInformedBy）</div>
-      <button
-        onClick={() => {
-          // 見出し候補を取得してモード切替
-          const candidates: { blockId: string; text: string; level: number }[] = [];
-          document.querySelectorAll('[data-node-type="blockOuter"]').forEach((el) => {
-            const blockId = el.getAttribute("data-id");
-            if (!blockId || blockId === openBlockId) return;
-            const h2 = el.querySelector("h2");
-            const h1 = el.querySelector("h1");
-            if (h2) candidates.push({ blockId, text: h2.textContent || "", level: 2 });
-            else if (h1) candidates.push({ blockId, text: h1.textContent || "", level: 1 });
-          });
-          setHeadingCandidates(candidates);
-          setPrevStepMode(true);
-        }}
-        style={{
-          ...menuItemStyle,
-          color: "#5b8fb9",
-          background: "#eff6ff",
-          borderRadius: 4,
-          margin: "2px 6px",
-          width: "calc(100% - 12px)",
-        }}
-      >
-        <span style={{ marginRight: 4 }}>→</span>
-        前の手順を選択してリンク
-      </button>
-
-      {/* 前手順: 見出し選択サブメニュー */}
-      {prevStepMode && (
-        <div style={{ padding: "4px 0", background: "#f0f9ff", borderTop: "1px solid #e0f2fe" }}>
-          <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>
-            リンク先の見出しを選択
-          </div>
-          {headingCandidates.length === 0 && (
-            <div style={{ padding: "6px 12px", fontSize: 12, color: "#9ca3af" }}>見出しがありません</div>
-          )}
-          {headingCandidates.map((c) => (
-            <button
-              key={c.blockId}
-              onClick={() => {
-                if (openBlockId) {
-                  _onPrevStepLinkSelected?.(openBlockId, c.blockId);
-                }
-                closeDropdown();
-              }}
-              style={{
-                ...menuItemStyle,
-                color: "#1e40af",
-                fontSize: 12,
-              }}
+  return (
+    <Dropdown position={pos} onClose={closeDropdown} minWidth={200}>
+      <div className="py-1.5">
+        {/* コアラベル */}
+        <DropdownSectionHeader>コアラベル（PROV-DM）</DropdownSectionHeader>
+        {CORE_LABELS.map((label) => {
+          const active = currentLabel === label;
+          const color = getLabelColor(label);
+          return (
+            <MenuItem
+              key={label}
+              active={active}
+              dotColor={color}
+              onClick={() => select(active ? null : label)}
+              style={{ color: active ? color : undefined }}
             >
-              <span style={{ fontSize: 10, color: "#60a5fa", fontWeight: 700, marginRight: 4 }}>
-                H{c.level}
-              </span>
-              {c.text || "(空の見出し)"}
-            </button>
-          ))}
-          <button
-            onClick={() => setPrevStepMode(false)}
-            style={{ ...menuItemStyle, fontSize: 11, color: "#9ca3af" }}
-          >
-            ← 戻る
-          </button>
-        </div>
-      )}
+              {label}
+            </MenuItem>
+          );
+        })}
 
-      {/* フリーラベル例 */}
-      <div style={dividerStyle} />
-      <div style={sectionHeaderStyle}>フリーラベル（例）</div>
-      {FREE_LABEL_EXAMPLES.slice(0, 4).map((label) => {
-        const active = currentLabel === label;
-        return (
-          <button
-            key={label}
-            onClick={() => select(active ? null : label)}
-            style={{
-              ...menuItemStyle,
-              color: "#6b7280",
-              fontWeight: active ? 600 : 400,
-            }}
-          >
-            {label}
-            {active && (
-              <span style={{ marginLeft: "auto", fontSize: 11 }}>✓</span>
+        {/* 前手順リンク */}
+        <DropdownDivider />
+        <DropdownSectionHeader className="text-[#5b8fb9]">
+          前手順リンク（wasInformedBy）
+        </DropdownSectionHeader>
+        <button
+          onClick={() => {
+            // 見出し候補を取得してモード切替
+            const candidates: { blockId: string; text: string; level: number }[] = [];
+            document.querySelectorAll('[data-node-type="blockOuter"]').forEach((el) => {
+              const blockId = el.getAttribute("data-id");
+              if (!blockId || blockId === openBlockId) return;
+              const h2 = el.querySelector("h2");
+              const h1 = el.querySelector("h1");
+              if (h2) candidates.push({ blockId, text: h2.textContent || "", level: 2 });
+              else if (h1) candidates.push({ blockId, text: h1.textContent || "", level: 1 });
+            });
+            setHeadingCandidates(candidates);
+            setPrevStepMode(true);
+          }}
+          className="flex items-center w-full text-left px-3 py-1.5 text-sm bg-info/10 text-[#5b8fb9] rounded mx-1.5 cursor-pointer border-none"
+          style={{ width: "calc(100% - 12px)" }}
+        >
+          <span className="mr-1">→</span>
+          前の手順を選択してリンク
+        </button>
+
+        {/* 前手順: 見出し選択サブメニュー */}
+        {prevStepMode && (
+          <div className="py-1 bg-info/5 border-t border-info/20">
+            <DropdownSectionHeader className="text-[#5b8fb9]">
+              リンク先の見出しを選択
+            </DropdownSectionHeader>
+            {headingCandidates.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-muted-foreground">見出しがありません</div>
             )}
-          </button>
-        );
-      })}
+            {headingCandidates.map((c) => (
+              <MenuItem
+                key={c.blockId}
+                onClick={() => {
+                  if (openBlockId) {
+                    _onPrevStepLinkSelected?.(openBlockId, c.blockId);
+                  }
+                  closeDropdown();
+                }}
+                className="text-xs"
+              >
+                <span className="text-[10px] text-[#60a5fa] font-bold mr-1">
+                  H{c.level}
+                </span>
+                {c.text || "(空の見出し)"}
+              </MenuItem>
+            ))}
+            <MenuItem
+              onClick={() => setPrevStepMode(false)}
+              className="text-xs text-muted-foreground"
+            >
+              ← 戻る
+            </MenuItem>
+          </div>
+        )}
 
-      {/* カスタム入力 */}
-      <div style={dividerStyle} />
-      <div style={{ padding: "4px 10px 6px" }}>
-        <div style={sectionHeaderStyle}>カスタム</div>
-        <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-          <input
-            autoFocus
-            value={freeInput}
-            onChange={(e) => setFreeInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && freeInput.trim()) {
-                const v = freeInput.trim();
-                select(v.startsWith("[") ? v : `[${v}]`);
-              }
-              if (e.key === "Escape") closeDropdown();
-            }}
-            placeholder="[ラベル名]"
-            style={{
-              flex: 1,
-              fontSize: 12,
-              padding: "3px 6px",
-              border: "1px solid #d1d5db",
-              borderRadius: 4,
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={() => {
-              if (freeInput.trim()) {
-                const v = freeInput.trim();
-                select(v.startsWith("[") ? v : `[${v}]`);
-              }
-            }}
-            style={{
-              padding: "3px 8px",
-              fontSize: 12,
-              background: "#5b8fb9",
-              color: "#fff",
-              border: "none",
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
-          >
-            追加
-          </button>
+        {/* フリーラベル例 */}
+        <DropdownDivider />
+        <DropdownSectionHeader>フリーラベル（例）</DropdownSectionHeader>
+        {FREE_LABEL_EXAMPLES.slice(0, 4).map((label) => {
+          const active = currentLabel === label;
+          return (
+            <MenuItem
+              key={label}
+              active={active}
+              onClick={() => select(active ? null : label)}
+              className="text-muted-foreground"
+            >
+              {label}
+            </MenuItem>
+          );
+        })}
+
+        {/* カスタム入力 */}
+        <DropdownDivider />
+        <div className="px-2.5 py-1.5">
+          <DropdownSectionHeader>カスタム</DropdownSectionHeader>
+          <div className="flex gap-1 mt-0.5">
+            <Input
+              autoFocus
+              value={freeInput}
+              onChange={(e) => setFreeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && freeInput.trim()) {
+                  const v = freeInput.trim();
+                  select(v.startsWith("[") ? v : `[${v}]`);
+                }
+                if (e.key === "Escape") closeDropdown();
+              }}
+              placeholder="[ラベル名]"
+              className="text-xs py-1 px-1.5"
+            />
+            <Button
+              size="sm"
+              onClick={() => {
+                if (freeInput.trim()) {
+                  const v = freeInput.trim();
+                  select(v.startsWith("[") ? v : `[${v}]`);
+                }
+              }}
+              className="text-xs shrink-0"
+            >
+              追加
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* ラベル削除 */}
-      {currentLabel && (
-        <>
-          <div style={dividerStyle} />
-          <button
-            onClick={() => select(null)}
-            style={{ ...menuItemStyle, color: "#c26356" }}
-          >
-            ラベルを外す
-          </button>
-        </>
-      )}
-    </div>,
-    document.body
+        {/* ラベル削除 */}
+        {currentLabel && (
+          <>
+            <DropdownDivider />
+            <MenuItem
+              onClick={() => select(null)}
+              className="text-destructive"
+            >
+              ラベルを外す
+            </MenuItem>
+          </>
+        )}
+      </div>
+    </Dropdown>
   );
 }
 
@@ -366,19 +296,13 @@ export function LabelSideMenuButton() {
         onClick={() => openDropdown(block.id)}
         data-prov-label-anchor={block.id}
         title={`${label} — クリックで変更`}
+        className="inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap"
         style={{
-          display: "inline-block",
           padding: "0px 6px",
-          borderRadius: 9999,
-          fontSize: 11,
-          fontWeight: 600,
           backgroundColor: color + "18",
           color: color,
           border: `1px solid ${color}38`,
-          cursor: "pointer",
-          userSelect: "none",
           lineHeight: 1.6,
-          whiteSpace: "nowrap",
         }}
       >
         {label}
@@ -392,28 +316,7 @@ export function LabelSideMenuButton() {
       onClick={() => openDropdown(block.id)}
       data-prov-label-anchor={block.id}
       title="ラベルを付ける"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 22,
-        height: 22,
-        borderRadius: 8,
-        border: "1px dashed #d5e0d7",
-        background: "none",
-        cursor: "pointer",
-        color: "#6b7f6e",
-        fontSize: 12,
-        lineHeight: 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "#4B7A52";
-        e.currentTarget.style.color = "#4B7A52";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "#d5e0d7";
-        e.currentTarget.style.color = "#6b7f6e";
-      }}
+      className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs leading-none hover:border-primary hover:text-primary transition-colors duration-200"
     >
       #
     </button>
@@ -430,33 +333,3 @@ export function LabelSideMenu() {
     </SideMenu>
   );
 }
-
-// ──────────────────────────────────
-// スタイル定数
-// ──────────────────────────────────
-const sectionHeaderStyle: React.CSSProperties = {
-  padding: "2px 10px",
-  fontSize: 10,
-  fontWeight: 700,
-  color: "#9ca3af",
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-};
-
-const menuItemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  width: "100%",
-  textAlign: "left",
-  padding: "5px 12px",
-  fontSize: 13,
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  color: "#374151",
-};
-
-const dividerStyle: React.CSSProperties = {
-  borderTop: "1px solid #f3f4f6",
-  margin: "4px 0",
-};

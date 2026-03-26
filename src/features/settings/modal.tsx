@@ -2,8 +2,10 @@
 // AI エージェントの接続先 URL を設定する
 
 import { useCallback, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { Settings as SettingsIcon } from "lucide-react";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
+import { Button } from "@ui/button";
+import { Input } from "@ui/form-field";
 import { loadSettings, saveSettings, getAgentUrl, getAgentApiKey, type Settings } from "./store";
 
 type SettingsModalProps = {
@@ -48,123 +50,90 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         e.preventDefault();
         handleSave();
       }
-      if (e.key === "Escape") {
-        onClose();
-      }
     },
-    [handleSave, onClose],
+    [handleSave],
   );
 
-  if (!isOpen) return null;
+  return (
+    <Modal open={isOpen} onClose={onClose}>
+      <ModalHeader onClose={onClose}>
+        <span className="flex items-center gap-2">
+          <SettingsIcon size={16} className="text-muted-foreground" />
+          設定
+        </span>
+      </ModalHeader>
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {/* 背景オーバーレイ */}
-      <div className="absolute inset-0 bg-black/40" />
-
-      {/* モーダル本体 */}
-      <div className="relative bg-background border border-border rounded-lg shadow-xl w-full max-w-md mx-4 flex flex-col">
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <SettingsIcon size={16} className="text-muted-foreground" />
-            <h2 className="text-sm font-medium text-foreground">設定</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-lg leading-none"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* コンテンツ */}
-        <div className="px-4 py-4 space-y-4">
-          {/* AI エージェント URL */}
-          <div>
-            <label className="text-xs font-medium text-foreground mb-1.5 block">
-              AI エージェント URL
-            </label>
-            <input
-              type="url"
-              value={agentUrl}
-              onChange={(e) => {
-                setAgentUrl(e.target.value);
-                setSaved(false);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="http://localhost:8090"
-              autoFocus
-              className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/50"
-            />
-            {fromEnv && (
-              <p className="text-[11px] text-emerald-600 mt-1.5">
-                環境変数から設定されています。上書きする場合は新しい URL を入力してください。
-              </p>
-            )}
-            <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
-              AI アシスタント機能を使うには{" "}
-              <a
-                href="https://github.com/kumagallium/crucible-agent"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-foreground"
-              >
-                crucible-agent
-              </a>{" "}
-              を起動し、そのアドレスを入力してください。
+      <ModalBody className="space-y-4 w-full max-w-md">
+        {/* AI エージェント URL */}
+        <div>
+          <label className="text-xs font-semibold text-foreground mb-1 block">
+            AI エージェント URL
+          </label>
+          <Input
+            type="url"
+            value={agentUrl}
+            onChange={(e) => {
+              setAgentUrl(e.target.value);
+              setSaved(false);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="http://localhost:8090"
+            autoFocus
+          />
+          {fromEnv && (
+            <p className="text-xs text-primary mt-1.5">
+              環境変数から設定されています。上書きする場合は新しい URL を入力してください。
             </p>
-          </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+            AI アシスタント機能を使うには{" "}
+            <a
+              href="https://github.com/kumagallium/crucible-agent"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              crucible-agent
+            </a>{" "}
+            を起動し、そのアドレスを入力してください。
+          </p>
+        </div>
 
-          {/* API キー */}
-          <div>
-            <label className="text-xs font-medium text-foreground mb-1.5 block">
-              API キー
-            </label>
-            <input
-              type="password"
-              value={agentApiKey}
-              onChange={(e) => {
-                setAgentApiKey(e.target.value);
-                setSaved(false);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="未設定（認証なし）"
-              className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/50 font-mono"
-            />
-            {apiKeyFromEnv && (
-              <p className="text-[11px] text-emerald-600 mt-1.5">
-                環境変数から設定されています。上書きする場合は新しいキーを入力してください。
-              </p>
-            )}
-            <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
-              crucible-agent の AGENT_API_KEY と同じ値を設定してください。未設定の場合は認証なしで接続します。
+        {/* API キー */}
+        <div>
+          <label className="text-xs font-semibold text-foreground mb-1 block">
+            API キー
+          </label>
+          <Input
+            type="password"
+            value={agentApiKey}
+            onChange={(e) => {
+              setAgentApiKey(e.target.value);
+              setSaved(false);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="未設定（認証なし）"
+            className="font-mono"
+          />
+          {apiKeyFromEnv && (
+            <p className="text-xs text-primary mt-1.5">
+              環境変数から設定されています。上書きする場合は新しいキーを入力してください。
             </p>
-          </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+            crucible-agent の AGENT_API_KEY と同じ値を設定してください。未設定の場合は認証なしで接続します。
+          </p>
         </div>
+      </ModalBody>
 
-        {/* フッター */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            キャンセル
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center gap-1.5"
-          >
-            {saved ? "保存しました" : "保存"}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+      <ModalFooter>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          キャンセル
+        </Button>
+        <Button size="sm" onClick={handleSave}>
+          {saved ? "保存しました" : "保存"}
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 }

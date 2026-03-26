@@ -1,10 +1,10 @@
-// Crucible デザインガイドライン — Storybook で閲覧可能
-// design.md の内容をビジュアルで確認
+// Crucible デザイントークン — Storybook で閲覧可能
+// MASTER.md のトークン定義をビジュアルカタログとして表示
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const meta: Meta = {
-  title: "Design Guide",
+  title: "Atoms/Tokens",
   parameters: { layout: "padded" },
 };
 export default meta;
@@ -177,13 +177,73 @@ export const Typography: StoryObj = {
   ),
 };
 
-// 角丸・影・スペーシング
-export const Components: StoryObj = {
-  name: "角丸・影・スペーシング",
+// スペーシング
+export const Spacing: StoryObj = {
+  name: "スペーシング",
+  render: () => {
+    const spacings = [
+      { name: "gap-1.5", px: 6, usage: "バッジグループ・フィルターチップ" },
+      { name: "gap-3 / mb-3", px: 12, usage: "フォームグリッド内・見出し→コンテンツ" },
+      { name: "space-y-4 / gap-4", px: 16, usage: "セクション間・カードグリッド" },
+      { name: "space-y-6 / mb-6", px: 24, usage: "フォームフィールド間・説明→コンテンツ" },
+    ];
+    const paddings = [
+      { name: "px-4 pt-2.5 pb-2.5", usage: "カード本体" },
+      { name: "p-6", usage: "カードセクション" },
+      { name: "px-3.5 py-2", usage: "カードフッター・バナー" },
+      { name: "px-4 py-3", usage: "コードブロック" },
+      { name: "p-3", usage: "ログ表示" },
+      { name: "p-4", usage: "アラートボックス" },
+    ];
+    return (
+      <div style={{ maxWidth: 700, fontFamily: font, color: "#1a2e1d" }}>
+        <section style={sectionStyle}>
+          <h2 style={h2Style}>間隔（Gap / Margin）</h2>
+          <p style={{ fontSize: 12, color: "#6b7f6e", marginBottom: 16 }}>基本単位: 4px（Tailwind の 1 = 0.25rem = 4px）</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {spacings.map((s) => (
+              <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: s.px, height: 32, backgroundColor: "#4B7A52",
+                  borderRadius: 4, flexShrink: 0, opacity: 0.7,
+                }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name} <span style={{ fontWeight: 400, color: "#6b7f6e" }}>({s.px}px)</span></div>
+                  <div style={{ fontSize: 12, color: "#6b7f6e" }}>{s.usage}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <h2 style={h2Style}>パディング</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {paddings.map((p) => (
+              <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <code style={{
+                  fontSize: 11, fontFamily: "ui-monospace, 'SF Mono', monospace",
+                  backgroundColor: "#f0f5ef", padding: "2px 6px", borderRadius: 4,
+                  whiteSpace: "nowrap",
+                }}>{p.name}</code>
+                <span style={{ fontSize: 12, color: "#6b7f6e" }}>{p.usage}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  },
+};
+
+// 角丸・影
+export const RadiusAndShadow: StoryObj = {
+  name: "角丸・影",
   render: () => (
     <div style={{ maxWidth: 700, fontFamily: font, color: "#1a2e1d" }}>
       <section style={sectionStyle}>
         <h2 style={h2Style}>角丸</h2>
+        <p style={{ fontSize: 12, color: "#6b7f6e", marginBottom: 16 }}>rounded-md は使用しない。rounded-lg 以上を使用する。</p>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           {[
             { label: "カード (rounded-xl)", radius: 12 },
@@ -193,7 +253,7 @@ export const Components: StoryObj = {
             <div key={r.label} style={{ textAlign: "center" }}>
               <div style={{
                 width: 80, height: 50, borderRadius: r.radius,
-                border: `2px solid #4B7A52`, backgroundColor: "#edf5ee",
+                border: "2px solid #4B7A52", backgroundColor: "#edf5ee",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 10, color: "#4B7A52", fontWeight: 600,
               }}>
@@ -226,22 +286,21 @@ export const Components: StoryObj = {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>ブランドカラー適用例</h2>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button style={{
-            padding: "8px 16px", borderRadius: 8, border: "none",
-            backgroundColor: "#4B7A52", color: "#ffffff",
-            fontSize: 14, fontWeight: 600, cursor: "pointer",
-          }}>
-            プライマリーボタン
-          </button>
-          <button style={{
-            padding: "8px 16px", borderRadius: 8,
-            border: "1px solid #d5e0d7", backgroundColor: "#f0f5ef",
-            color: "#2d4a32", fontSize: 14, fontWeight: 600, cursor: "pointer",
-          }}>
-            セカンダリーボタン
-          </button>
+        <h2 style={h2Style}>トランジション</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[
+            { cls: "transition-colors duration-200", usage: "色変化" },
+            { cls: "transition-all duration-200", usage: "全プロパティ" },
+            { cls: "transition-opacity", usage: "透明度（コピーボタン等）" },
+          ].map((t) => (
+            <div key={t.cls} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <code style={{
+                fontSize: 11, fontFamily: "ui-monospace, 'SF Mono', monospace",
+                backgroundColor: "#f0f5ef", padding: "2px 6px", borderRadius: 4,
+              }}>{t.cls}</code>
+              <span style={{ fontSize: 12, color: "#6b7f6e" }}>{t.usage}</span>
+            </div>
+          ))}
         </div>
       </section>
     </div>
