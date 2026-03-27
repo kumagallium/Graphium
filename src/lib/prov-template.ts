@@ -127,13 +127,14 @@ const labels: Record<string, string> = {
   [ids.result3]: "[結果]",
 };
 
-// 前手順リンク
-const links = [
+// 前手順リンク（PROV 層）
+const provLinks = [
   {
     id: "tpl-link-1",
     sourceBlockId: ids.step2,
     targetBlockId: ids.step1,
     type: "informed_by" as const,
+    layer: "prov" as const,
     createdBy: "system" as const,
   },
   {
@@ -141,13 +142,14 @@ const links = [
     sourceBlockId: ids.step3,
     targetBlockId: ids.step2,
     type: "informed_by" as const,
+    layer: "prov" as const,
     createdBy: "system" as const,
   },
 ];
 
 // テンプレートドキュメント
 export const PROV_TEMPLATE: ProvNoteDocument = {
-  version: 1,
+  version: 2,
   title: "Cu粉末アニール実験",
   pages: [
     {
@@ -155,7 +157,8 @@ export const PROV_TEMPLATE: ProvNoteDocument = {
       title: "Cu粉末アニール実験",
       blocks,
       labels,
-      links,
+      provLinks,
+      knowledgeLinks: [],
     },
   ],
   createdAt: new Date().toISOString(),

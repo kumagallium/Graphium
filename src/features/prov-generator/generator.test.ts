@@ -66,8 +66,8 @@ const curryLabels = new Map([
 ]);
 
 const curryLinks = [
-  { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, createdBy: "human" as const },
-  { id: "link-2", sourceBlockId: "h2-simmer", targetBlockId: "h2-fry", type: "informed_by" as const, createdBy: "human" as const },
+  { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+  { id: "link-2", sourceBlockId: "h2-simmer", targetBlockId: "h2-fry", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
 ];
 
 describe("カレー実験シナリオ（基本形）", () => {
@@ -88,10 +88,11 @@ describe("カレー実験シナリオ（基本形）", () => {
     expect(entities.some((e) => e.label === "にんじん、じゃがいも")).toBe(true);
   });
 
-  it("[条件] が Parameter として生成される", () => {
+  it("[条件] が prov:Entity（属性）として生成される", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
-    const params = doc["@graph"].filter((n) => n["@type"] === "matprov:Parameter");
+    const params = doc["@graph"].filter((n) => n["@id"].startsWith("param_"));
     expect(params).toHaveLength(1);
+    expect(params[0]["@type"]).toBe("prov:Entity");
     expect(params[0].label).toBe("中火 5分");
   });
 
@@ -197,8 +198,8 @@ const annealLabels = new Map([
 ]);
 
 const annealLinks = [
-  { id: "link-a1", sourceBlockId: "h2-anneal", targetBlockId: "h2-seal", type: "informed_by" as const, createdBy: "human" as const },
-  { id: "link-a2", sourceBlockId: "h2-eval", targetBlockId: "h2-anneal", type: "informed_by" as const, createdBy: "human" as const },
+  { id: "link-a1", sourceBlockId: "h2-anneal", targetBlockId: "h2-seal", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+  { id: "link-a2", sourceBlockId: "h2-eval", targetBlockId: "h2-anneal", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
 ];
 
 // ──────────────────────────────────
@@ -284,7 +285,7 @@ describe("スコープ境界テスト", () => {
   it("[条件] は新しいH2 [手順] のスコープに紐づく", () => {
     const doc = generateProvDocument({ blocks: scopeBlocks, labels: scopeLabels, links: [] });
     const paramRels = doc.relations.filter(
-      (r) => r["@type"] === "matprov:parameter" && r.to === "param_cond-fire"
+      (r) => r["@type"] === "provnote:hasAttribute" && r.to === "param_cond-fire"
     );
     expect(paramRels).toHaveLength(1);
     expect(paramRels[0].from).toBe("activity_h2-fry");
@@ -517,7 +518,7 @@ describe("見出しレベル階層スコープ", () => {
   it("[属性] は H3 サブActivity にスコープされる", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
     const paramRels = doc.relations.filter(
-      (r) => r["@type"] === "matprov:parameter" && r.to === "param_param-a2"
+      (r) => r["@type"] === "provnote:hasAttribute" && r.to === "param_param-a2"
     );
     expect(paramRels).toHaveLength(1);
     expect(paramRels[0].from).toBe("activity_h3-a2");

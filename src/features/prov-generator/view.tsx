@@ -76,6 +76,7 @@ function splitDocBySample(doc: ProvDocument): SampleSplit[] {
  */
 function getNodeSubtype(node: ProvNode): string {
   if (node["@type"] === "prov:Entity") {
+    if (node["@id"].startsWith("param_")) return "parameter";
     return node["@id"].startsWith("result_") ? "result" : "entity";
   }
   return node["@type"];
@@ -115,7 +116,7 @@ function provToCytoscapeElements(doc: ProvDocument): cytoscape.ElementDefinition
   const nodeIds = new Set(elements.map((e) => e.data.id));
   for (let i = 0; i < doc.relations.length; i++) {
     const rel = doc.relations[i];
-    const relLabel = rel["@type"].replace("prov:", "").replace("matprov:", "");
+    const relLabel = rel["@type"].replace("prov:", "").replace("provnote:", "").replace("matprov:", "");
     if (!nodeIds.has(rel.from) || !nodeIds.has(rel.to)) {
       console.warn(`[PROV] エッジ無視: ${rel.from} → ${rel.to}（ノード不在）`);
       continue;
@@ -144,7 +145,7 @@ function provToCytoscapeElements(doc: ProvDocument): cytoscape.ElementDefinition
 const NODE_SIZES: Record<string, { width: number; height: number }> = {
   "prov:Activity": { width: 150, height: 60 },
   "prov:Entity": { width: 150, height: 50 },
-  "matprov:Parameter": { width: 130, height: 50 },
+  // [属性] ノード（param_ prefix で識別）
 };
 const DEFAULT_NODE_SIZE = { width: 140, height: 50 };
 
@@ -245,9 +246,9 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       shape: "round-rectangle",
     },
   },
-  // Parameter ノード（ダイヤ・落ち着いたアンバー）
+  // [属性] ノード（ダイヤ・落ち着いたアンバー）
   {
-    selector: 'node[subtype = "matprov:Parameter"]',
+    selector: 'node[subtype = "parameter"]',
     style: {
       ...commonNodeStyle,
       "background-color": THEME.parameter.bg,

@@ -6,7 +6,7 @@
 // クリックで統合パネル（ラベル変更 + リンク一覧 + リンク追加）を開く。
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLabelStore } from "./store";
 import { useLinkStore } from "../block-link/store";
@@ -588,32 +588,60 @@ export function ProvIndicatorHoverHint() {
     top: number;
     left: number;
   } | null>(null);
+  // # ボタンにマウスが乗っている間は hoverBlock を維持する
+  const hintHoveredRef = useRef(false);
 
   useEffect(() => {
-    const handleMouseOver = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const blockOuter = target.closest(
+    // wrapper 内の mousemove でマウス Y 座標から最も近いブロックを判定
+    // パディング領域にマウスがあっても対応するブロックの # が表示される
+    const handleMouseMove = (e: MouseEvent) => {
+      // # ボタンにマウスが乗っている間は更新しない
+      if (hintHoveredRef.current) return;
+      const wrapper = document.querySelector("[data-label-wrapper]");
+      if (!wrapper) return;
+
+      const blockOuters = wrapper.querySelectorAll(
         '[data-node-type="blockOuter"]'
-      ) as HTMLElement | null;
-      if (!blockOuter) {
+      );
+
+      let matched: HTMLElement | null = null;
+      let matchedDist = Infinity;
+
+      blockOuters.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const centerY = rect.top + rect.height / 2;
+        const dist = Math.abs(e.clientY - centerY);
+        if (e.clientY >= rect.top && e.clientY <= rect.bottom && dist < matchedDist) {
+          matchedDist = dist;
+          matched = el as HTMLElement;
+        }
+      });
+
+      if (!matched) {
         setHoverBlock(null);
         return;
       }
 
-      const blockId = blockOuter.getAttribute("data-id");
+      const matchedEl = matched as HTMLElement;
+      const blockId = matchedEl.getAttribute("data-id");
       if (!blockId) return;
 
       // 既にラベルまたはリンクがあるブロックはスキップ
-      if (labels.has(blockId)) return;
+      if (labels.has(blockId)) {
+        setHoverBlock(null);
+        return;
+      }
       const hasLink = links.some(
         (l) => l.sourceBlockId === blockId || l.targetBlockId === blockId
       );
-      if (hasLink) return;
+      if (hasLink) {
+        setHoverBlock(null);
+        return;
+      }
 
-      const wrapper = document.querySelector("[data-label-wrapper]");
-      if (!wrapper) return;
       const wrapperRect = wrapper.getBoundingClientRect();
-      const rect = blockOuter.getBoundingClientRect();
+      const content = matchedEl.querySelector(".bn-block-content") as HTMLElement | null;
+      const rect = content ? content.getBoundingClientRect() : matchedEl.getBoundingClientRect();
 
       setHoverBlock({
         blockId,
@@ -622,44 +650,63 @@ export function ProvIndicatorHoverHint() {
       });
     };
 
-    const handleMouseOut = (e: MouseEvent) => {
-      const related = e.relatedTarget as HTMLElement | null;
-      if (!related?.closest('[data-node-type="blockOuter"]')) {
-        setHoverBlock(null);
-      }
+    const handleMouseLeave = () => {
+      if (hintHoveredRef.current) return;
+      setHoverBlock(null);
     };
 
     const wrapper = document.querySelector("[data-label-wrapper]");
     if (!wrapper) return;
-    wrapper.addEventListener("mouseover", handleMouseOver as EventListener);
-    wrapper.addEventListener("mouseout", handleMouseOut as EventListener);
+    wrapper.addEventListener("mousemove", handleMouseMove as EventListener);
+    wrapper.addEventListener("mouseleave", handleMouseLeave as EventListener);
     return () => {
-      wrapper.removeEventListener(
-        "mouseover",
-        handleMouseOver as EventListener
-      );
-      wrapper.removeEventListener(
-        "mouseout",
-        handleMouseOut as EventListener
-      );
+      wrapper.removeEventListener("mousemove", handleMouseMove as EventListener);
+      wrapper.removeEventListener("mouseleave", handleMouseLeave as EventListener);
     };
   }, [labels, links]);
 
   if (!hoverBlock) return null;
 
+  // 対象ブロックのハイライト用 rect を取得
+  const targetOuter = document.querySelector(
+    `[data-id="${hoverBlock.blockId}"][data-node-type="blockOuter"]`
+  ) as HTMLElement | null;
+  const targetContent = targetOuter?.querySelector(".bn-block-content") as HTMLElement | null;
+  const highlightRect = (targetContent || targetOuter)?.getBoundingClientRect();
+
   return createPortal(
-    <button
-      onClick={() => openDropdown(hoverBlock.blockId)}
-      data-prov-label-anchor={hoverBlock.blockId}
-      className="fixed z-[9996] inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary transition-colors duration-200"
-      style={{
-        top: hoverBlock.top,
-        right: window.innerWidth - hoverBlock.left,
-        transform: "translateY(-50%)",
-      }}
-    >
-      #
-    </button>,
+    <>
+      {/* 対象ブロックのハイライト */}
+      {highlightRect && (
+        <div
+          className="fixed rounded-lg pointer-events-none z-[9995]"
+          style={{
+            top: highlightRect.top - 2,
+            left: highlightRect.left - 4,
+            width: highlightRect.width + 8,
+            height: highlightRect.height + 4,
+            background: "rgba(75, 122, 82, 0.05)",
+            border: "1.5px solid rgba(75, 122, 82, 0.15)",
+          }}
+        />
+      )}
+      {/* # ボタン */}
+      <button
+        onClick={() => openDropdown(hoverBlock.blockId)}
+        onMouseEnter={() => { hintHoveredRef.current = true; }}
+        onMouseLeave={() => { hintHoveredRef.current = false; setHoverBlock(null); }}
+        data-prov-label-anchor={hoverBlock.blockId}
+        data-prov-hover-hint="true"
+        className="fixed z-[9996] inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary hover:opacity-100 transition-colors duration-200"
+        style={{
+          top: hoverBlock.top,
+          right: window.innerWidth - hoverBlock.left,
+          transform: "translateY(-50%)",
+        }}
+      >
+        #
+      </button>
+    </>,
     document.body
   );
 }

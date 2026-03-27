@@ -37,8 +37,7 @@ export default meta;
 // ── @context 共通 ──
 const ctx = {
   prov: "http://www.w3.org/ns/prov#",
-  matprov: "http://example.org/matprov#",
-  eureco: "http://example.org/eureco#",
+  provnote: "https://provnote.app/ns#",
 };
 
 // ── モック ProvDocument ──
@@ -52,13 +51,13 @@ const simpleProv: ProvDocument = {
     { "@id": "activity_b2", "@type": "prov:Activity", label: "アニールする", blockId: "b2" },
     { "@id": "entity_b3", "@type": "prov:Entity", label: "Cu粉末", blockId: "b3" },
     { "@id": "result_b4", "@type": "prov:Entity", label: "封入されたCu粉末", blockId: "b4" },
-    { "@id": "param_b5", "@type": "matprov:Parameter", label: "昇温速度", blockId: "b5", params: { value: "5℃/min" } },
+    { "@id": "param_b5", "@type": "prov:Entity", label: "昇温速度", blockId: "b5", params: { value: "5℃/min" } },
   ],
   relations: [
     { "@type": "prov:used", from: "activity_b1", to: "entity_b3" },
     { "@type": "prov:wasGeneratedBy", from: "result_b4", to: "activity_b1" },
     { "@type": "prov:wasInformedBy", from: "activity_b2", to: "activity_b1" },
-    { "@type": "matprov:parameter", from: "activity_b2", to: "param_b5" },
+    { "@type": "provnote:hasAttribute", from: "activity_b2", to: "param_b5" },
   ],
   warnings: [],
 };

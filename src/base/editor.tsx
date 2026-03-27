@@ -11,9 +11,10 @@ import {
 import { BlockNoteView } from "@blocknote/shadcn";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
-import { FC, useEffect, useMemo } from "react";
+import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
+import { buildSuggestionList, getDisplayName } from "@features/context-label/hashtag-menu";
 
 type SlashMenuItem = {
   title: string;
@@ -47,6 +48,12 @@ type SandboxEditorProps = {
   onChange?: () => void;
   /** メディアファイルアップロードハンドラ（File → URL を返す） */
   uploadFile?: (file: File) => Promise<string>;
+  /** # ラベルオートコンプリートで選択されたときのコールバック */
+  onHashtagSelect?: (blockId: string, label: string) => void;
+  /** @ 参照リンクで選択されたときのコールバック */
+  onMentionSelect?: (sourceBlockId: string, suggestion: import("@features/block-link/mention-menu").ReferenceSuggestion) => void;
+  /** @ 参照リンクの候補を取得する関数（外部から注入） */
+  getMentionSuggestions?: () => import("@features/block-link/mention-menu").ReferenceSuggestion[];
 };
 
 // サンドボックス共通エディタ
@@ -60,6 +67,9 @@ export function SandboxEditor({
   onEditorReady,
   onChange,
   uploadFile,
+  onHashtagSelect,
+  onMentionSelect,
+  getMentionSuggestions,
 }: SandboxEditorProps) {
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
@@ -97,6 +107,44 @@ export function SandboxEditor({
     };
   }, [editor, hasExtraSlash, extraSlashMenuItems]);
 
+  // # ラベルオートコンプリート
+  const labelSuggestions = useMemo(() => buildSuggestionList(), []);
+  const getHashtagItems = useCallback(
+    async (query: string) => {
+      const items = labelSuggestions.map((s) => ({
+        title: s.displayName,
+        group: s.group === "core" ? "コアラベル" : s.group === "alias" ? "エイリアス" : "フリーラベル",
+        onItemClick: () => {
+          const block = (editor as any).getTextCursorPosition?.()?.block;
+          if (block && onHashtagSelect) {
+            onHashtagSelect(block.id, s.label);
+          }
+        },
+      }));
+      return filterSuggestionItems(items as any, query) as any;
+    },
+    [editor, labelSuggestions, onHashtagSelect],
+  );
+
+  // @ 参照リンクオートコンプリート
+  const getMentionItems = useCallback(
+    async (query: string) => {
+      const suggestions = getMentionSuggestions?.() ?? [];
+      const items = suggestions.map((s) => ({
+        title: s.label,
+        group: s.group,
+        onItemClick: () => {
+          const block = (editor as any).getTextCursorPosition?.()?.block;
+          if (block && onMentionSelect) {
+            onMentionSelect(block.id, s);
+          }
+        },
+      }));
+      return filterSuggestionItems(items as any, query) as any;
+    },
+    [editor, getMentionSuggestions, onMentionSelect],
+  );
+
   return (
     <BlockNoteView
       editor={editor as any}
@@ -116,6 +164,20 @@ export function SandboxEditor({
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={getSlashItems as any}
+          {...({} as any)}
+        />
+      )}
+      {onHashtagSelect && (
+        <SuggestionMenuController
+          triggerCharacter="#"
+          getItems={getHashtagItems as any}
+          {...({} as any)}
+        />
+      )}
+      {onMentionSelect && (
+        <SuggestionMenuController
+          triggerCharacter="@"
+          getItems={getMentionItems as any}
           {...({} as any)}
         />
       )}

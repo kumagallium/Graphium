@@ -151,6 +151,7 @@ describe("propagateBranches", () => {
       sourceBlockId: "block-step-3",
       targetBlockId: "block-step-2",
       type: "informed_by" as const,
+      layer: "prov" as const,
       createdBy: "human" as const,
     }];
 
@@ -168,6 +169,7 @@ describe("propagateBranches", () => {
       sourceBlockId: "block-step-3",
       targetBlockId: "block-step-2",
       type: "informed_by" as const,
+      layer: "prov" as const,
       createdBy: "human" as const,
     }];
 

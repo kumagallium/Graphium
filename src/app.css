@@ -54,6 +54,13 @@
   z-index: 30 !important;
 }
 
+/* ラベルドロップダウンが開いている間、SideMenu を強制表示 */
+body[data-label-dropdown-open="true"] .bn-side-menu {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
 /* BlockNote エディタ背景を Crucible テーマに統一 */
 .bn-editor,
 .bn-container {

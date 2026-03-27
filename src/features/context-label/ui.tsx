@@ -81,6 +81,18 @@ export function LabelDropdownPortal() {
   const [prevStepMode, setPrevStepMode] = useState(false);
   const [headingCandidates, setHeadingCandidates] = useState<{ blockId: string; text: string; level: number }[]>([]);
 
+  // ドロップダウンが開いている間、SideMenu を強制表示する
+  useEffect(() => {
+    if (openBlockId) {
+      document.body.setAttribute("data-label-dropdown-open", "true");
+    } else {
+      document.body.removeAttribute("data-label-dropdown-open");
+    }
+    return () => {
+      document.body.removeAttribute("data-label-dropdown-open");
+    };
+  }, [openBlockId]);
+
   // ドロップダウンが開いたとき、アンカー要素の位置に合わせる
   // position: fixed でビューポート座標を使い、画面外に切れないよう調整
   useEffect(() => {

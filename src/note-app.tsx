@@ -7,6 +7,7 @@ import { SandboxEditor } from "./base/editor";
 import {
   LabelStoreProvider,
   useLabelStore,
+  LabelDropdownPortal,
 } from "./features/context-label";
 import {
   ProvIndicatorLayer,
@@ -23,6 +24,11 @@ import {
   LinkStoreProvider,
   useLinkStore,
 } from "./features/block-link";
+import {
+  getHeadingSuggestions,
+  getNoteSuggestions,
+  type ReferenceSuggestion,
+} from "./features/block-link/mention-menu";
 import {
   generateProvDocument,
   ProvGraphPanel,
@@ -73,63 +79,6 @@ import { SideMenuExtension } from "@blocknote/core/extensions";
 import { Bot } from "lucide-react";
 import type { FormattingToolbarProps } from "@blocknote/react";
 
-// ── ノート間リンクバッジ ──
-// 派生元・派生先のリンクをヘッダー下にバッジ表示
-function NoteLinkBadges({
-  initialDoc,
-  files,
-  onNavigate,
-}: {
-  initialDoc: ProvNoteDocument | null;
-  files: ProvNoteFile[];
-  onNavigate: (noteId: string) => void;
-}) {
-  if (!initialDoc) return null;
-
-  // 存在するファイル ID のセット（孤児リンクをフィルタリング）
-  const fileIds = new Set(files.map((f) => f.id));
-
-  const derivedFrom = initialDoc.derivedFromNoteId;
-  // 存在しないノートへのリンクを除外
-  const noteLinks = (initialDoc.noteLinks ?? []).filter((link) =>
-    fileIds.has(link.targetNoteId)
-  );
-  const showDerivedFrom = derivedFrom && fileIds.has(derivedFrom);
-
-  if (!showDerivedFrom && noteLinks.length === 0) return null;
-
-  // ファイル ID からタイトルを取得
-  const getTitle = (noteId: string) => {
-    const f = files.find((f) => f.id === noteId);
-    return f ? f.name.replace(/\.provnote\.json$/, "") : "ノート";
-  };
-
-  return (
-    <div className="px-4 py-1.5 border-b border-border flex items-center gap-2 flex-wrap shrink-0 text-xs">
-      {/* 派生元 */}
-      {showDerivedFrom && (
-        <button
-          onClick={() => onNavigate(derivedFrom)}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
-        >
-          <span>&#8592;</span>
-          <span>派生元: {getTitle(derivedFrom)}</span>
-        </button>
-      )}
-      {/* 派生先 */}
-      {noteLinks.map((link, i) => (
-        <button
-          key={i}
-          onClick={() => onNavigate(link.targetNoteId)}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 transition-colors cursor-pointer"
-        >
-          <span>&#8594;</span>
-          <span>派生: {getTitle(link.targetNoteId)}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // ── ログイン画面 ──
 function LoginScreen({ onSignIn }: { onSignIn: () => void }) {
@@ -668,8 +617,14 @@ function NoteEditorInner({
           labelStore.setLabel(blockId, label);
         }
       }
-      if (page.links) {
-        linkStore.restoreLinks(page.links);
+      // v2: provLinks + knowledgeLinks、v1 互換: links
+      const allLinks = [
+        ...(page.provLinks ?? []),
+        ...(page.knowledgeLinks ?? []),
+        ...(page.links ?? []),
+      ];
+      if (allLinks.length > 0) {
+        linkStore.restoreLinks(allLinks);
       }
     }
   }, [initialDoc, labelStore, linkStore]);
@@ -683,8 +638,12 @@ function NoteEditorInner({
       labelsObj[k] = v;
     }
 
+    const allLinks = linkStore.getAllLinks();
+    const provLinks = allLinks.filter((l) => l.layer === "prov");
+    const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
+
     const doc: ProvNoteDocument = {
-      version: 1,
+      version: 2,
       title,
       pages: [
         {
@@ -692,7 +651,8 @@ function NoteEditorInner({
           title,
           blocks,
           labels: labelsObj,
-          links: linkStore.getAllLinks(),
+          provLinks,
+          knowledgeLinks,
         },
       ],
       // ノート間リンクを保持
@@ -841,6 +801,7 @@ function NoteEditorInner({
       <ProvIndicatorLayer />
       <ProvIndicatorHoverHint />
       <BlockHoverHighlight />
+      <LabelDropdownPortal />
       <AiAssistantModal onSubmit={handleAiSubmit} />
 
       {/* ヘッダー */}
@@ -888,6 +849,31 @@ function NoteEditorInner({
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}
               uploadFile={uploadMediaFile}
+              onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
+              getMentionSuggestions={() => [
+                ...getHeadingSuggestions(),
+                ...getNoteSuggestions(files, fileId ?? undefined),
+              ]}
+              onMentionSelect={(sourceBlockId, suggestion) => {
+                if (suggestion.type === "heading") {
+                  // 同ノート内見出しへの知識層リンク
+                  linkStore.addLink({
+                    sourceBlockId,
+                    targetBlockId: suggestion.id,
+                    type: "reference",
+                    createdBy: "human",
+                  });
+                } else if (suggestion.type === "note") {
+                  // 他ノートへの知識層リンク
+                  linkStore.addLink({
+                    sourceBlockId,
+                    targetBlockId: "",
+                    targetNoteId: suggestion.id,
+                    type: "reference",
+                    createdBy: "human",
+                  });
+                }
+              }}
             />
           </div>
         </div>
@@ -1141,9 +1127,9 @@ export function NoteApp() {
         // 派生先ノートを作成
         const now = new Date().toISOString();
         const newDoc: ProvNoteDocument = {
-          version: 1,
+          version: 2,
           title: `↳ ${derivedTitle}`,
-          pages: [{ id: "main", title: `↳ ${derivedTitle}`, blocks: [], labels: {}, links: [] }],
+          pages: [{ id: "main", title: `↳ ${derivedTitle}`, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
           derivedFromNoteId: activeFileIdRef.current ?? undefined,
           derivedFromBlockId: sourceBlockId,
           createdAt: now,

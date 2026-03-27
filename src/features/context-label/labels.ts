@@ -23,7 +23,7 @@ export const CORE_LABELS: CoreLabel[] = [
 export const CORE_LABEL_PROV: Record<CoreLabel, string> = {
   "[手順]": "prov:Activity",
   "[使用したもの]": "prov:used",
-  "[属性]": "property",       // 親ノード（Activity/Entity）の属性
+  "[属性]": "prov:Entity",     // 親ノードの属性（prov:Entity として出力）
   "[試料]": "prov:Activity×N",
   "[結果]": "prov:wasGeneratedBy",
 };
@@ -40,6 +40,16 @@ export const ALIAS_MAP: Record<string, CoreLabel> = {
   "[条件]": "[属性]",
   "[パラメータ]": "[属性]",
   "[仕様]": "[属性]",
+  // 汎用化: 試料の別名
+  "[パターン]": "[試料]",
+  "[ケース]": "[試料]",
+  "[条件群]": "[試料]",
+  // 英語短縮
+  "[step]": "[手順]",
+  "[mat]": "[使用したもの]",
+  "[result]": "[結果]",
+  "[attr]": "[属性]",
+  "[sample]": "[試料]",
 };
 
 // 構造ラベル（リンク生成に使う特殊ラベル）

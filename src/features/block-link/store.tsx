@@ -12,23 +12,28 @@ import {
   useContext,
   useState,
 } from "react";
-import type { BlockLink, CreatedBy, LinkType } from "./link-types";
+import type { BlockLink, CreatedBy, LinkLayer, LinkType } from "./link-types";
+import { isProvLink } from "./link-types";
 
 let linkIdCounter = 0;
 function generateLinkId() {
   return `link-${Date.now()}-${linkIdCounter++}`;
 }
 
+export type AddLinkResult = { error: null; link: BlockLink } | { error: "cycle_detected"; link: null };
+
 export type LinkStore = {
   links: BlockLink[];
-  /** リンクを追加 */
+  /** リンクを追加（PROV 層は循環検出あり） */
   addLink: (params: {
     sourceBlockId: string;
     targetBlockId: string;
     type: LinkType;
     createdBy: CreatedBy;
     targetPageId?: string;
-  }) => BlockLink;
+    targetNoteId?: string;
+    layer?: LinkLayer;
+  }) => AddLinkResult;
   /** リンクを削除 */
   removeLink: (linkId: string) => void;
   /** 特定ブロックから出るリンク（正参照） */
@@ -53,15 +58,33 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
       type: LinkType;
       createdBy: CreatedBy;
       targetPageId?: string;
-    }): BlockLink => {
+      targetNoteId?: string;
+      layer?: LinkLayer;
+    }): AddLinkResult => {
+      const layer = params.layer ?? (isProvLink(params.type) ? "prov" : "knowledge");
+
+      // PROV 層は DAG 制約: 循環検出
+      if (layer === "prov") {
+        const wouldCycle = detectCycle(links, params.sourceBlockId, params.targetBlockId);
+        if (wouldCycle) {
+          return { error: "cycle_detected", link: null };
+        }
+      }
+
       const link: BlockLink = {
         id: generateLinkId(),
-        ...params,
+        sourceBlockId: params.sourceBlockId,
+        targetBlockId: params.targetBlockId,
+        type: params.type,
+        layer,
+        createdBy: params.createdBy,
+        targetPageId: params.targetPageId,
+        targetNoteId: params.targetNoteId,
       };
       setLinks((prev) => [...prev, link]);
-      return link;
+      return { error: null, link };
     },
-    [],
+    [links],
   );
 
   const removeLink = useCallback((linkId: string) => {
@@ -81,7 +104,14 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
   const getAllLinks = useCallback(() => [...links], [links]);
 
   const restoreLinks = useCallback((restored: BlockLink[]) => {
-    setLinks(restored);
+    // v1 → v2 マイグレーション: layer フィールドがない場合は自動付与
+    const migrated = restored.map((link) => {
+      if (!link.layer) {
+        return { ...link, layer: (isProvLink(link.type) ? "prov" : "knowledge") as LinkLayer };
+      }
+      return link;
+    });
+    setLinks(migrated);
   }, []);
 
   return (
@@ -97,4 +127,43 @@ export function useLinkStore(): LinkStore {
   const ctx = useContext(LinkStoreContext);
   if (!ctx) throw new Error("LinkStoreProvider が見つかりません");
   return ctx;
+}
+
+/**
+ * PROV 層の DAG 循環検出。
+ * source → target の辺を追加した場合に、target から source への経路が存在するかチェック。
+ */
+function detectCycle(
+  links: BlockLink[],
+  sourceBlockId: string,
+  targetBlockId: string,
+): boolean {
+  // target から BFS で source に到達可能か？
+  const provLinks = links.filter((l) => l.layer === "prov");
+  const adjacency = new Map<string, string[]>();
+  for (const link of provLinks) {
+    const targets = adjacency.get(link.sourceBlockId) ?? [];
+    targets.push(link.targetBlockId);
+    adjacency.set(link.sourceBlockId, targets);
+  }
+
+  // 新しい辺を仮追加
+  const fromSource = adjacency.get(sourceBlockId) ?? [];
+  fromSource.push(targetBlockId);
+  adjacency.set(sourceBlockId, fromSource);
+
+  // target から BFS で source に到達可能か
+  const visited = new Set<string>();
+  const queue = [targetBlockId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === sourceBlockId) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const neighbors = adjacency.get(current) ?? [];
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) queue.push(neighbor);
+    }
+  }
+  return false;
 }

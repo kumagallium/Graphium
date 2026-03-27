@@ -60,7 +60,7 @@ export function buildAiDerivedDocument(params: BuildParams): ProvNoteDocument {
   const noteTitle = `🤖 ${title}`;
 
   return {
-    version: 1,
+    version: 2,
     title: noteTitle,
     pages: [
       {
@@ -68,7 +68,8 @@ export function buildAiDerivedDocument(params: BuildParams): ProvNoteDocument {
         title: noteTitle,
         blocks,
         labels: {},
-        links: [],
+        provLinks: [],
+        knowledgeLinks: [],
       },
     ],
     derivedFromNoteId: sourceNoteId,

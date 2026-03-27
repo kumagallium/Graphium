@@ -30,7 +30,7 @@ export type NoteLink = {
 
 // ProvNote ファイルの内容（エディタの完全な状態）
 export type ProvNoteDocument = {
-  version: 1;
+  version: 1 | 2;
   title: string;
   pages: ProvNotePage[];
   /** ノート間リンク（派生先ノートへの参照） */
@@ -55,7 +55,12 @@ export type ProvNotePage = {
   title: string;
   blocks: any[];
   labels: Record<string, string>;
-  links: any[];
+  /** PROV 層リンク（DAG 制約） */
+  provLinks: any[];
+  /** 知識層リンク（循環 OK） */
+  knowledgeLinks: any[];
+  /** @deprecated v1 互換: 旧 links フィールド。読み込み時に provLinks/knowledgeLinks に変換する */
+  links?: any[];
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
 };
@@ -135,7 +140,37 @@ export async function loadFile(fileId: string): Promise<ProvNoteDocument> {
   const res = await authedFetch(
     `${DRIVE_API}/files/${fileId}?alt=media`
   );
-  return res.json();
+  const doc: ProvNoteDocument = await res.json();
+  return migrateDocument(doc);
+}
+
+/** v1 → v2 自動変換: links → provLinks + knowledgeLinks */
+function migrateDocument(doc: ProvNoteDocument): ProvNoteDocument {
+  for (const page of doc.pages) {
+    // 旧 links フィールドが存在し、新フィールドがない場合は変換
+    if (page.links && !page.provLinks) {
+      const provLinks: any[] = [];
+      const knowledgeLinks: any[] = [];
+      for (const link of page.links) {
+        const isProv = !link.type || [
+          "derived_from", "used", "generated", "reproduction_of", "informed_by",
+        ].includes(link.type);
+        if (isProv) {
+          provLinks.push({ ...link, layer: "prov" });
+        } else {
+          knowledgeLinks.push({ ...link, layer: "knowledge" });
+        }
+      }
+      page.provLinks = provLinks;
+      page.knowledgeLinks = knowledgeLinks;
+    }
+    // デフォルト値を保証
+    if (!page.provLinks) page.provLinks = [];
+    if (!page.knowledgeLinks) page.knowledgeLinks = [];
+  }
+  // version を 2 に更新
+  doc.version = 2;
+  return doc;
 }
 
 // 新規ファイルを作成

@@ -9,6 +9,7 @@ import { CORE_LABELS, normalizeLabel, classifyLabel, getHeadingLabelRole, type C
 import { parseSampleTable, validateSampleIds, type SampleTable } from "../sample-branch/parser";
 import { expandSampleBranch, propagateBranches, type BranchExpansion } from "../sample-branch/expander";
 import type { BlockLink } from "../block-link/link-types";
+import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
 
 // ── PROV-JSONLD の型定義 ──
@@ -32,8 +33,7 @@ export type ProvRelation = {
 export type ProvDocument = {
   "@context": {
     prov: string;
-    matprov: string;
-    eureco: string;
+    provnote: string;
   };
   "@graph": ProvNode[];
   relations: ProvRelation[];
@@ -47,14 +47,16 @@ type GeneratorInput = {
   blocks: any[];
   /** blockId → ラベル文字列 */
   labels: Map<string, string>;
-  /** ブロック間リンク */
+  /** ブロック間リンク（全リンク渡し可 — PROV 層のみ使用） */
   links: BlockLink[];
 };
 
 // ── メイン生成関数 ──
 
 export function generateProvDocument(input: GeneratorInput): ProvDocument {
-  const { blocks, labels, links } = input;
+  const { blocks, labels } = input;
+  // PROV 層のリンクのみ使用（知識層は PROV グラフに含めない）
+  const links = input.links.filter((l) => !l.layer || isProvLink(l.type));
   const warnings: ProvWarning[] = [];
   const nodes: ProvNode[] = [];
   const relations: ProvRelation[] = [];
@@ -303,7 +305,7 @@ export function generateProvDocument(input: GeneratorInput): ProvDocument {
       const paramId = `param_${lb.block.id}`;
       nodes.push({
         "@id": paramId,
-        "@type": "matprov:Parameter",
+        "@type": "prov:Entity",
         label: getBlockText(lb.block),
         blockId: lb.block.id,
       });
@@ -311,11 +313,11 @@ export function generateProvDocument(input: GeneratorInput): ProvDocument {
       // 親ブロックのラベルを確認
       const parentNodeId = findParentLabeledNodeId(lb.block.id, blocks, labels, labeledBlocks);
       if (parentNodeId) {
-        relations.push({ "@type": "matprov:parameter", from: parentNodeId, to: paramId });
+        relations.push({ "@type": "provnote:hasAttribute", from: parentNodeId, to: paramId });
       } else {
         // 親が見つからない場合はスコープの Activity に紐づける
         for (const actId of getActivityIdsForScope(lb.block.id)) {
-          relations.push({ "@type": "matprov:parameter", from: actId, to: paramId });
+          relations.push({ "@type": "provnote:hasAttribute", from: actId, to: paramId });
         }
       }
     }
@@ -441,8 +443,7 @@ export function generateProvDocument(input: GeneratorInput): ProvDocument {
   return {
     "@context": {
       prov: "http://www.w3.org/ns/prov#",
-      matprov: "http://matprov.org/ns#",
-      eureco: "http://eureco.app/ns#",
+      provnote: "https://provnote.app/ns#",
     },
     "@graph": nodes,
     relations,
@@ -464,7 +465,7 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
       return "prov:Activity";
     }
     case "[使用したもの]": return "prov:Entity";
-    case "[属性]": return "matprov:Parameter"; // 末端ノード: 親の property
+    case "[属性]": return "prov:Entity"; // 末端ノード: 親の属性
     case "[試料]": return null; // 分岐展開のデータソース（ノード自体は生成しない）
     case "[結果]": return "prov:Entity";
     default: return null;
