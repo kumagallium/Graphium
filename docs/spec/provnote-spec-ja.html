@@ -52,7 +52,7 @@
 
 <p><strong>Zettelkasten 基盤</strong>: あらゆるノートのあらゆるスコープ（見出し配下のブロック群）は、<code>@</code> 参照で相互にリンクできる「Zettel（情報カード）」として機能する。ラベルの有無に関係なく、全ノート・全スコープがこの基盤の上にある。</p>
 
-<p><strong>オプショナル PROV</strong>: <code>#</code> ラベルを付けたスコープだけが、W3C PROV-DM の来歴グラフに登場する。ラベルを付けなければ PROV には一切関与しない。PROV は基盤の上に「上乗せ」される追加機能であり、必須ではない。</p>
+<p><strong>オプショナル PROV</strong>: <code>#</code> ラベルを付けたスコープだけが、W3C PROV-DM の来歴グラフに登場する。ラベルを付けなければ PROV には一切関与しない。PROV は基盤の上に「乗っかる」追加機能であり、必須ではない。</p>
 
 <p>これにより、雑多なメモも、実験記録も、論文の読書メモも、すべて同じエディタで扱える。ラベルを付けた分だけ構造化の恩恵を受けられるが、付けなくても Zettel としてネットワークに参加できる。</p>
 
@@ -103,12 +103,12 @@
 <text x="206" y="175" class="st s11" fill="var(--teal)">S-A   S-B   S-C         比較...</text>
 <rect x="190" y="182" width="298" height="50" fill="var(--bg)" stroke="var(--border)" stroke-width="0.3"/>
 <text x="202" y="200" class="st s12" fill="var(--fg3)">#結果 密度: 8.2 g/cm³</text>
-<text x="202" y="218" class="st s12" fill="var(--fg3)">#属性 SEM画像: ◻</text>
+<text x="202" y="218" class="st s12" fill="var(--fg3)">#属性 SEM画像: ※</text>
 <text x="202" y="252" class="st s12" fill="var(--fg3)">考察: ...</text>
 <!-- Breadcrumb -->
 <rect x="190" y="280" width="298" height="16" rx="2" fill="var(--amber-bg)" stroke="var(--amber)" stroke-width="0.3"/>
 <text x="202" y="292" class="st s11" fill="var(--amber)">元ノート → ## 結果 → 🤖 派生ノート</text>
-<text x="339" y="322" text-anchor="middle" class="st s11" fill="var(--fg3)">パンくずナビ（派生時のみ）</text>
+<text x="339" y="322" text-anchor="middle" class="st s11" fill="var(--fg3)">パンくずリスト（派生時のみ）</text>
 <!-- Right: panel -->
 <rect x="506" y="56" width="222" height="282" rx="0 0 8 0" fill="var(--bg2)" stroke="var(--border)" stroke-width="0.5"/>
 <text x="617" y="78" text-anchor="middle" class="st s12" fill="var(--fg3)">Graph  PROV  Chat  派生元</text>
@@ -122,7 +122,7 @@
 <text x="524" y="248" class="st s12" fill="var(--fg3)">backlink 一覧</text>
 <text x="524" y="268" class="st s12" fill="var(--fg3)">ラベル付きブロック一覧</text>
 </svg>
-<p class="diagram-caption">左: ファイル一覧（Google Drive）。中央: BlockNote エディタ。右: 可視化・AI・派生元の4タブパネル。</p>
+<p class="diagram-caption">左: ファイル一覧（Google Drive）、中央: BlockNote エディタ、右: 可視化・AI・派生元の4タブパネル。</p>
 </div>
 
 <h3>Google Drive 統合</h3>
@@ -133,20 +133,20 @@
 <li><strong>認証</strong>: OAuth 2.0 (Google Identity Services)。スコープは <code>drive.file</code>（アプリが作成したファイルのみアクセス可能）。</li>
 <li><strong>保存</strong>: ファイル内容の更新は Drive API の <code>files.update</code>。自動保存（debounce 付き）。</li>
 <li><strong>読み込み</strong>: <code>files.get</code> + <code>alt=media</code> で JSON を取得し、<code>ProvNoteDocument</code> にパース。</li>
-<li><strong>一覧</strong>: <code>files.list</code> で <code>.provnote.json</code> ファイルを取得。左パネルに表示。</li>
+<li><strong>一覧</strong>: <code>files.list</code> で <code>.provnote.json</code> ファイルを取得、左パネルに表示。</li>
 <li><strong>ノート間リンクの解決</strong>: <code>BlockLink.targetNoteId</code> は Google Drive のファイル ID。リンク先の読み込みは遅延（クリック時）。</li>
 </ul>
 
 <!-- ═══════════════════════════════════════ §3 ═══ -->
 <h2 id="domain">3. 実験科学のドメイン知識</h2>
 
-<p>provnote は実験科学者の日常的なワークフローを主なターゲットにしている。以下の背景知識が設計判断の土台になっている。</p>
+<p>provnote は実験科学者の日常的なワークフローを主なターゲットにしている。以下の背景知識が設計判断の原地になっている。</p>
 
 <h3>実験ノートとは何か</h3>
 
-<p>実験科学（化学、材料科学、生物学など）では、研究者は「実験ノート」に手順・条件・結果を記録する。紙のノートが伝統的だが、近年は電子実験ノート (ELN: Electronic Lab Notebook) も使われる。法的・倫理的に「いつ・誰が・何をしたか」を証明できる記録が求められる。</p>
+<p>実験科学（化学、材料科学、生物学など）では、研究者は「実験ノート」に手順・条件・結果を記録する。紙のノートが伝統的だが、近年は電子実験ノート (ELN: Electronic Lab Notebook) が使われる。法的・倫理的に「いつ・誰が・何をしたか」を証明できる記録が求められる。</p>
 
-<p>provnote が目指すのは、ELN の堅牢性と、自由なメモ帳の気軽さの両立。既存の ELN はフォーム入力が多く「構造化を強制される」ため研究者に嫌われがちで、結局紙のノートに戻るケースが多い。</p>
+<p>provnote が目指すのは、ELN の堅牢性と、自由なメモ帳の気軽さの両立。既存の ELN はフォーム入力が多く、構造化を強制するため、研究者に嫌われがちで、結局紙のノートに戻るケースが多い。</p>
 
 <h3>典型的な実験ワークフロー</h3>
 
@@ -198,12 +198,12 @@
 <h3>用語集</h3>
 <table>
 <tr><th>用語</th><th>意味</th><th>provnote での対応</th></tr>
-<tr><td><strong>試料 (Sample)</strong></td><td>実験の対象物。材料科学なら金属片、化学なら溶液、生物学なら細胞培養など。同じ手順を複数の試料に並行して適用し、条件を変えて比較するのが一般的。</td><td><code>[試料]</code> テーブル → 分岐定義</td></tr>
+<tr><td><strong>試料 (Sample)</strong></td><td>実験の対象物。材料科学なら金属片、化学なら溶液、生物学なら細胞培養など。同じ手順を複数の試料に並行して適用し、条件を変えて比較するのが一般的。</td><td><code>[試料]</code> テーブル → 分割定義</td></tr>
 <tr><td><strong>条件</strong></td><td>手順における変数。温度、圧力、時間、濃度など。同じ手順でも試料ごとに異なる条件を設定する。</td><td>テーブルの列 or <code>[属性]</code></td></tr>
 <tr><td><strong>手順 (Procedure)</strong></td><td>実験操作の1ステップ。「焼結する」「アニールする」「引張試験する」など。</td><td><code>[手順]</code> → prov:Activity</td></tr>
 <tr><td><strong>使用したもの</strong></td><td>手順で使う入力全般。材料（Cu粉末 1g）、装置（SPS装置）、ソフト（ImageJ）のいずれも含む。「材料」より広い概念。</td><td><code>[使用したもの]</code> → prov:Entity (used)</td></tr>
 <tr><td><strong>結果</strong></td><td>手順の出力。数値データ（密度、硬度）、画像（SEM写真）、定性観察（「表面が均一」）など。</td><td><code>[結果]</code> → prov:Entity (wasGeneratedBy)</td></tr>
-<tr><td><strong>SEM画像</strong></td><td>走査型電子顕微鏡の画像。材料の微細構造を観察。ミクロンスケール。</td><td>画像ブロック + <code>[属性]</code></td></tr>
+<tr><td><strong>SEM画像</strong></td><td>走査型電子顕微鏡の画像。材料の微細構造を観察する。ミクロンスケール。</td><td>画像ブロック + <code>[属性]</code></td></tr>
 <tr><td><strong>XRD</strong></td><td>X線回折。結晶構造を特定するためのグラフ。</td><td>画像ブロック + <code>[属性]</code></td></tr>
 <tr><td><strong>焼結 (Sintering)</strong></td><td>粉末を高温・高圧で固める工程。金属やセラミクスの基本的な製造手順。</td><td>—</td></tr>
 <tr><td><strong>アニール (Annealing)</strong></td><td>材料をゆっくり加熱・冷却して内部応力を除去する熱処理。</td><td>—</td></tr>
@@ -214,19 +214,19 @@
 
 <div class="domain-example">
 <strong>実験の概要</strong>
-<p>研究者が「Cu粉末を800℃, 900℃, 1000℃の3条件で焼結して、密度と硬度を比較したい」と考える。手順は共通（焼結→アニール→評価）だが、温度だけが試料ごとに異なる。結果は3試料それぞれについて記録する。</p>
+<p>研究者が「Cu粉末を800℃, 900℃, 1000℃の3条件で焼結して、密度と硬度を比較したい」と考えた。手順は共通（焼結→アニール→評価）だが、温度だけが試料ごとに異なる。結果は3試料それぞれについて記録する。</p>
 </div>
 
 <div class="domain-example">
 <strong>途中脱落のケース</strong>
-<p>焼結中に S-C（1000℃の試料）が割れた場合、アニール以降では S-C は中止。だが「なぜ中止したか」を記録として残す必要がある。タブを削除するのではなくスキップマークを付ける設計はこのため。</p>
+<p>焼結中に S-C（1000℃の試料）が割れた場合、アニール以降では S-C は中断。だが、なぜ中断したかの記録として残す必要がある。タブを削除するのではなくスキップマークを付ける設計はこのため。</p>
 </div>
 
 <!-- ═══════════════════════════════════════ §3 ═══ -->
 <h2 id="principles">4. 設計原則</h2>
 
 <div class="principle">
-<p><strong>書く面は静か、読む面が賢い。</strong> エディタは普通のメモ帳のまま。ユーザーの行為（ラベル付与、テーブル作成など）が機能を「召喚」する。何も書かなければ何も出ない。</p>
+<p><strong>書く面は速く、読む面は賢く。</strong> エディタは普通のメモ帳のまま。ユーザーの行為（ラベル付与、テーブル作成など）が機能を「召喚」する。何も書かなければ何も出ない。</p>
 </div>
 
 <div class="principle">
@@ -265,32 +265,32 @@
 <text x="225" y="162" class="st s12" text-anchor="middle">+</text>
 <text x="350" y="162" text-anchor="middle" class="st s13" fill="var(--accent)">#試料</text>
 <text x="475" y="162" class="st s12" text-anchor="middle">=</text>
-<text x="620" y="162" text-anchor="middle" class="st s13" fill="var(--blue)">分岐定義 + タブ出現</text>
+<text x="620" y="162" text-anchor="middle" class="st s13" fill="var(--blue)">分割定義 + タブ出現</text>
 </svg>
 </div>
 
 <!-- ═══════════════════════════════════════ §4 ═══ -->
 <h2 id="assumptions">5. ドメイン前提</h2>
 
-<p>以下は実験科学の現場の実態から導かれた前提であり、設計判断の土台。</p>
+<p>以下は実験科学の現場の実感から導かれた前提であり、設計判断の原地。</p>
 
 <h4>前提1: 比較したいのは条件と結果、記録は試料ごとに分かれる</h4>
 <p>研究者が試料を並べて比較したいのは「どの条件でどんな結果が出たか」。これはテーブルやチャートで表現できる。一方、各試料の詳細な記録（SEM画像の観察メモ、手順中のトラブル記録など）は試料ごとに個別に書ければよい。横並びレーンではなくタブ方式が適切な根拠。構造化データの比較テーブルやチャートはタブの外（共通スコープ）に置くのが自然。</p>
 
 <h4>前提2: 記録は試料ごとに分かれていることが多い</h4>
-<p>典型的には1つずつ順番に焼結して、1つずつ結果を測定して、1つずつ記録する。ただし、複数試料を同時に処理できる測定装置もある（多チャンネル測定器、バッチ式熱処理炉）。この場合でも記録は試料ごとに分かれていることが多い。全試料共通の操作メモ（「全部同じ炉で同時焼結した」等）はタブの外に書ける。</p>
+<p>典型的には1つずつ順番に焼結して、1つずつ結果を測定して、1つずつ記録する。ただし複数試料を同時に処理できる測定装置もある（多チャンネル測定器、バッチ引張処理等）。その場合でも記録は試料ごとに分かれていることが多い。全試料共通の操作メモ（「全部同じ炉で同時焼結した」等）はタブの外に書けばよい。</p>
 
 <h4>前提3: 比較には構造化データとリッチデータの2種類がある</h4>
-<p><strong>構造化データの比較</strong>（数値結果）はテーブルの列とチャート（棒グラフ、散布図等）で完結する。これらはタブの外（共通スコープ）に置くのが自然。<strong>リッチデータの比較</strong>（SEM画像の横並び等）はテーブルには入らず、比較ビュー（タブゾーン内の2分割表示）で対応する。</p>
+<p><strong>構造化データの比較</strong>（数値結果）はテーブルの列とチャート（棒グラフ、散布図等）で完結する。これはタブの外（共通スコープ部分）に置くのが自然。<strong>リッチデータの比較</strong>（SEM画像の横並び等）はテーブルには入らず、比較ビュー（タブゾーン内の2分割表示）で対応する。</p>
 
 <h4>前提4: 試料セットは実験の最初に決まる</h4>
-<p>研究者は実験の最初に「今回の試料は S-A, S-B, S-C の3つ」と計画する。全手順を通じて共通であり、手順ごとに試料が増えることは基本的にない（脱落はあるが追加はない）。試料定義をノート冒頭に1回置き、全手順に自動適用する設計の根拠。</p>
+<p>研究者は実験の最初に「今回の試料は S-A, S-B, S-C の3つ」と計画する。全手順を通じて共通で、手順ごとに試料が増えることは基本的にない（脱落はある、追加はない）。試料定義をノート冒頭に1回置き、全手順に自動適用する設計の根拠。</p>
 
 <h4>前提5: key:value の入力を強制できない</h4>
-<p>実験の途中で手が汚れていることもあるし、急いでメモすることもある。フォーム入力を強制するとノートとして使われなくなる。漸進的構造化モデル（テキストのままでも動く → テーブルで書けば構造化される）の根拠。構造化の提案はAIチャットの中でのみ行い、エディタ上では割り込まない。</p>
+<p>実験の途中で手が汚れていたり、急いでメモしたいこともある。フォーム入力を強制するとノートとして使われなくなる。漸進的構造化モデル（テキストのままでも動く → テーブルで書けば構造化される）の根拠。構造化の提案はAIチャットの中でのみ行い、エディタ上では割り込まない。</p>
 
-<h4>前提6: 試料間で key を揃える価値はあるが、強制はできない</h4>
-<p>全試料で「密度」「硬度」が揃っていれば比較テーブルやチャートを自動生成できる。しかし「S-A は密度を測ったが S-B は測れなかった」は現実に起こる。スキャフォールド（最初のタブの構造を他タブにプレースホルダー表示）と補完性インジケーター（欠けを可視化）で動機づけするが、強制はしない。</p>
+<h4>前提6: 試料間で key が揃う価値はあるが、強制はできない</h4>
+<p>全試料で「密度」「硬度」を持っていれば比較テーブルやチャートを自動生成できる。しかし、S-A は密度を測ったが S-B は測れなかった、は現実に起きる。スキャフォールド（最初のタブの構造を他タブにプレースホルダー表示）と補完性インジケーター（欠けの可視化）で動機づけはするが、強制はしない。</p>
 
 <!-- ═══════════════════════════════════════ §5 ═══ -->
 <h2 id="concepts">6. コアコンセプト: スコープ・Zettel・MOC</h2>
@@ -301,12 +301,12 @@
 <p>スコープに対する3つの操作:</p>
 <ul>
 <li><strong>入れ子</strong> — H2 の中に H3。見出し階層。</li>
-<li><strong>分岐</strong> — 試料タブ / ノート派生。並行する複数の記録。</li>
+<li><strong>分割</strong> — 試料タブ / ノート派生。並行する複数の記録。</li>
 <li><strong>接続</strong> — PROV リンク / <code>@</code> 参照。スコープ間の関係。</li>
 </ul>
 
 <h3>スコープ = Zettel</h3>
-<p>あらゆるスコープは <code>@</code> 参照で指せる。つまりすべてのスコープが Zettelkasten における Zettel（情報カード）として機能する。</p>
+<p>あらゆるスコープは <code>@</code> 参照で指せる。つまり、すべてのスコープが Zettelkasten における Zettel（情報カード）として機能する。</p>
 
 <p><code>@</code> 参照は階層的なパスで細かい粒度まで指定できる:</p>
 <pre><code>@ノート名                       → ノート全体
@@ -314,12 +314,12 @@
 @ノート名/焼結/S-A              → 試料タブ内
 @ノート名/焼結/S-A/密度         → 特定ブロック</code></pre>
 
-<p>ラベルの有無に関係なく、どのスコープも参照可能。PROV化しない雑多なメモのスコープも、実験ノートの試料タブも、同じように <code>@</code> で指して別のノートから利用できる。</p>
+<p>ラベルの有無に関係なく、どのスコープも参照可能。PROVしない雑多なメモのスコープも、実験ノートの試料タブも、同じように <code>@</code> で指して別のノートから利用できる。</p>
 
 <h3>MOC (Map of Contents)</h3>
-<p>MOC は特別なノート種別ではなく、<code>@</code> 参照が密集したノートが自然に MOC として機能する。典型的な用途:</p>
+<p>MOC は特別なノート種別ではない。<code>@</code> 参照が密集したノートが自然に MOC として機能する。典型的な用途:</p>
 <ul>
-<li>研究テーマ全体の俯瞰（「@実験1 の結果は @実験2 と整合し、@文献A の報告を支持する」）</li>
+<li>研究ノート全体の俯瞰（「@実験1 の結果は @実験2 と整合、@文献A の報告を支持する」）</li>
 <li>複数実験の結果を集約した比較テーブルやチャート</li>
 <li>将来的には、@ 参照先のデータをインラインで引用・集約（トランスクルージョン）できる</li>
 </ul>
@@ -329,9 +329,35 @@
 <tr><th>ラベル密度</th><th>典型的な内容</th><th>動作</th></tr>
 <tr><td>ラベルなし</td><td>雑多なメモ、アイデア、日記</td><td>Zettel のみ（@ 参照可能、PROV なし）</td></tr>
 <tr><td>一部ラベル</td><td>手順だけ構造化したメモ</td><td>Zettel + 部分 PROV</td></tr>
-<tr><td>フルラベル</td><td>実験ノート（試料分岐あり）</td><td>Zettel + 完全 PROV + 試料タブ</td></tr>
-<tr><td>@ 参照主体</td><td>MOC、研究テーマまとめ</td><td>Zettel 集約ビュー</td></tr>
+<tr><td>フルラベル</td><td>実験ノート（試料分割あり）</td><td>Zettel + 完全 PROV + 試料タブ</td></tr>
+<tr><td>@ 参照主体</td><td>MOC、研究ノートまとめ</td><td>Zettel 集約ビュー</td></tr>
 </table>
+
+<h3>メディアレジストリ: 画像・PDF も Zettel</h3>
+
+<p>ノートに挿入した画像やPDFは、そのノートの <code>blocks[]</code> に閉じ込められている。これでは「前に撮ったSEM画像どれだっけ」という横断検索ができない。同じ論文PDFを別ノートで使いたいときに再アップロードが必要になる。</p>
+
+<p>メディアレジストリは、画像・PDF等のメディアファイルにノートとは独立した固有IDを付与し、ノート横断で管理する仕組み。Capacities のメディアデータベースに着想を得ている。</p>
+
+<h4>動作原理</h4>
+<ul>
+<li><strong>アップロード時</strong>: ユーザーがエディタに画像をドロップすると、裏側でメディアレジストリに登録される（ユーザー体験は変わらない）。ファイルは Google Drive に独立保存され、ノート側の画像ブロックには <code>mediaId</code>（参照ID）だけを持つ。</li>
+<li><strong>参照</strong>: 同じメディアを別のノートから <code>@</code> で参照できる。実体は1つ、表示は複数。</li>
+<li><strong>PROV</strong>: メディアに <code>#結果</code> や <code>#属性</code> ラベルを付ければ、PROV Entity として来歴を追える（「このSEM画像は Cu焼結ノート/焼結/S-A の結果として生成された」）。</li>
+</ul>
+
+<h4>メディアの種類と実験科学での活用</h4>
+<table>
+<tr><th>種類</th><th>具体例</th><th>横断的に見る価値</th></tr>
+<tr><td>画像</td><td>SEM画像、光学顕微鏡写真、外観写真</td><td>全実験のSEM画像をギャラリーで一覧表示 → 共通パターンの発見</td></tr>
+<tr><td>グラフ</td><td>XRDパターン、応力-ひずみ曲線</td><td>異なる実験のXRDを重ね合わせ比較</td></tr>
+<tr><td>PDF</td><td>参考文献、装置マニュアル</td><td>1つの論文を複数実験ノートから参照（再アップロード不要）</td></tr>
+<tr><td>データファイル</td><td>CSV、Excel</td><td>生データへの永続的リンク</td></tr>
+</table>
+
+<div class="note">
+<p><strong>「書く面は速い」の原則は変わらない。</strong> ユーザーは画像をドラッグ&ドロップするだけ。メディアレジストリへの登録、固有IDの付与、Google Driveへの保存はすべて裏側で自動的に行われる。</p>
+</div>
 
 <!-- ═══════════════════════════════════════ §6 ═══ -->
 <h2 id="hash-at">7. # と @ — 2つのインライン記法</h2>
@@ -344,14 +370,14 @@
 <rect x="30" y="20" width="340" height="130" rx="12" fill="var(--teal-bg)" stroke="var(--teal)" stroke-width="0.5"/>
 <text x="60" y="50" class="st s18" fill="var(--teal)">#</text>
 <text x="90" y="50" class="st s14" fill="var(--teal)">= 意味を付ける (ラベル)</text>
-<text x="50" y="78" class="st s13" fill="var(--fg2)">このブロックは「何」であるか</text>
+<text x="50" y="78" class="st s13" fill="var(--fg2)">このブロックは「何か」である</text>
 <text x="50" y="100" class="st s12" fill="var(--fg3)">→ #手順 → PROV Activity として認識</text>
 <text x="50" y="120" class="st s12" fill="var(--fg3)">→ #使用したもの → PROV Entity (used)</text>
-<text x="50" y="140" class="st s12" fill="var(--fg3)">→ #試料 → テーブルなら分岐定義に</text>
+<text x="50" y="140" class="st s12" fill="var(--fg3)">→ #試料 → テーブルなら分割定義に</text>
 <rect x="390" y="20" width="340" height="130" rx="12" fill="var(--purple-bg)" stroke="var(--purple)" stroke-width="0.5"/>
 <text x="420" y="50" class="st s18" fill="var(--purple)">@</text>
 <text x="450" y="50" class="st s14" fill="var(--purple)">= 別の何かを指す (参照)</text>
-<text x="410" y="78" class="st s13" fill="var(--fg2)">別のブロックやノートへのリンク</text>
+<text x="410" y="78" class="st s13" fill="var(--fg2)">別のブロック・ノートへのリンク</text>
 <text x="410" y="100" class="st s12" fill="var(--fg3)">→ @前回実験/焼結/S-A → 知識リンク生成</text>
 <text x="410" y="120" class="st s12" fill="var(--fg3)">→ @文献A → ノート間リンク生成</text>
 <text x="410" y="140" class="st s12" fill="var(--fg3)">→ backlink 自動生成</text>
@@ -371,10 +397,30 @@
 <p>3つの入口が等価: (1) <code>#</code> テキスト（主要な入口）、(2) スラッシュメニュー <code>/手順</code>（ブロック+ラベル同時生成）、(3) ドラッグハンドル（後付け）。どれも <code>LabelStore.setLabel(blockId, label)</code> を呼ぶだけ。</p>
 
 <h4>なぜ <code>[]</code> ではなく <code>#</code> か</h4>
-<p><code>[手順]</code> は開き括弧・ラベル名・閉じ括弧の3要素が必要で打鍵コストが高い。<code>#</code> は1文字でトリガーになり、オートコンプリートで「# + 1文字 + Enter」の3打鍵で完結する。Slack / Obsidian で広く知られたパターンで学習コストが低い。</p>
+<p><code>[手順]</code> は閉じ括弧・ラベル名・閉じ括弧の3要素が必要で打鍵コストが高い。<code>#</code> は1文字でトリガーになり、オートコンプリートで「# + 1文字 + Enter」の3打鍵で完結する。Slack / Obsidian で広く知られたパターンで学習コストが低い。</p>
 
-<h3>@ オートコンプリートの動作</h3>
-<p><code>@</code> を打つと参照先候補のドロップダウンが出現する。同ノート内の見出しが先に表示、続いて他ノート名。階層をドリルダウンして試料タブレベルまで指定可能。</p>
+<h3>@ 参照の3つの入口</h3>
+
+<p>「あらゆるスコープが Zettel」「メディアも Zettel」というと、参照可能な対象は膨大になる。しかし全件をドロップダウンに出す必要はない。<strong>アドレス可能（技術的に指せる）</strong>と<strong>発見可能（候補に出る）</strong>は別の概念であり、候補の出し方を工夫すれば爆発しない。</p>
+
+<h4>入口1: ドリルダウン（場所を覚えている場合）</h4>
+<p><code>@Cu焼結/</code> と打つとそのノートの見出し一覧が出る。選ぶと試料タブ一覧 → ラベル付きブロック → と階層を辿れる。各段階で候補は数件〜数十件。最近触ったノートや同ノート内の参照に有効。</p>
+
+<h4>入口2: @ 後キーワード検索（場所を忘れた場合）</h4>
+<p><code>@SEM 800</code> のようにパスではなくキーワードを入力すると、全ノート横断でラベル・ファイル名・テキスト・メディア名を検索し、結果を同じドロップダウン内に表示する。ドリルダウンと検索は同じ入力欄で共存する（<code>/</code> を含めばドリルダウン、含まなければ検索）。エディタを離れずにインラインで完結する。</p>
+
+<h4>入口3: ブラウズ → リンクコピー → ペースト（じっくり探す場合）</h4>
+<p>メディアギャラリーや別ノートで見に行き、目的のブロックやメディアの「リンクをコピー」→ 元のノートにペースト → 自動的に <code>@</code> メンションに変換。コンテキストスイッチは発生するが、画像を一覧ブラウズして偶発的発見を得る場面や、特定のPDFを探す場面で有効。</p>
+
+<h4>候補に出る対象のフィルタリング</h4>
+<table>
+<tr><th>対象</th><th>候補に出るか</th><th>理由</th></tr>
+<tr><td>ノートタイトル / H2・H3 見出し</td><td>常時</td><td>スコープの「入口」である。最も参照される単位</td></tr>
+<tr><td>試料タブ名</td><td>ドリルダウン時</td><td>親スコープを選んだ後に出現</td></tr>
+<tr><td>ラベル付きブロック</td><td>ドリルダウン時 + 検索</td><td>ラベルで名前がつく = 発見可能にする意味がある</td></tr>
+<tr><td>メディア（画像・PDF）</td><td>ドリルダウン時 + 検索</td><td>ファイル名・ラベルで引ける</td></tr>
+<tr><td>ラベルなしの普通の段落</td><td>出ない</td><td>テキスト断片が並んでも選びようがない。リンクコピー(入口3)でのみアドレス取得可</td></tr>
+</table>
 
 <p>リンクタイプは <code>"reference"</code> の1種類のみ。ユーザーにタイプ選択は求めない（Zettelkasten の「リンクはリンク」原則）。「支持する」「矛盾する」はリンク周辺のテキストが伝える。</p>
 
@@ -388,11 +434,11 @@
 <tr><td><code>#使</code></td><td>[使用したもの]</td><td>使用したもの</td><td>prov:Entity + used</td></tr>
 <tr><td><code>#結</code></td><td>[結果]</td><td>結果</td><td>prov:Entity + wasGeneratedBy</td></tr>
 <tr><td><code>#属</code></td><td>[属性]</td><td>属性</td><td>prov:Entity + 親への関係</td></tr>
-<tr><td><code>#試</code></td><td>[試料]</td><td>試料</td><td>分岐定義（テーブル時）</td></tr>
+<tr><td><code>#試</code></td><td>[試料]</td><td>試料</td><td>分割定義（テーブル時）</td></tr>
 </table>
 
 <div class="note">
-<p><strong>「使用したもの」が「材料」ではない理由:</strong> 材料（Cu粉末）だけでなく、装置（SPS装置）、ソフトウェア（ImageJ）も手順の入力になる。PROV の <code>prov:used</code> で紐付く全般を包含する名前。</p>
+<p><strong>「使用したもの」が「材料」ではない理由:</strong> 材料（Cu粉末）だけでなく、装置（SPS装置）やソフトウェア（ImageJ）も手順の入力になる。PROV の <code>prov:used</code> で紐付く全般を包含する名前。</p>
 </div>
 
 <h3>エイリアス</h3>
@@ -402,7 +448,7 @@
 <p>コアラベルにもエイリアスにも一致しないラベル（<code>#目的</code>、<code>#考察</code> 等）はフリーラベルとして登録される。PROV には変換されないが、バッジは表示され、知識ネットワーク上で見出しの意味を示す。</p>
 
 <h3>ラベルの自動継承</h3>
-<p>箇条書きで Enter → 次行に同じラベル。ラベル付き箇条書きをインデント → <code>[属性]</code> に変換。</p>
+<p>箇条書きで Enter → 次行に同じラベル。ラベル付き箇条書きをインデント → <code>[属性]</code> に変化。</p>
 
 <!-- ═══════════════════════════════════════ §8 ═══ -->
 <h2 id="links">9. リンクの二層モデル</h2>
@@ -412,7 +458,7 @@
 <style>.st{font-family:'Noto Sans JP',sans-serif} .s12{font-size:12px} .s13{font-size:13px} .s14{font-size:14px;font-weight:500}</style>
 <rect x="30" y="20" width="340" height="200" rx="12" fill="var(--teal-bg)" stroke="var(--teal)" stroke-width="0.5"/>
 <text x="50" y="48" class="st s14" fill="var(--teal)">PROV 層 (DAG 制約)</text>
-<text x="50" y="72" class="st s12" fill="var(--fg3)">システムが自動生成。ユーザーは直接作らない。</text>
+<text x="50" y="72" class="st s12" fill="var(--fg3)">システムが自動生成、ユーザーは直接作らない。</text>
 <text x="50" y="100" class="st s13" fill="var(--fg2)">ラベルから自動:</text>
 <text x="65" y="118" class="st s12" fill="var(--fg3)">used, wasGeneratedBy, wasInformedBy</text>
 <text x="50" y="142" class="st s13" fill="var(--fg2)">派生アクションから:</text>
@@ -430,7 +476,7 @@
 <text x="410" y="210" class="st s12" fill="var(--purple)">backlink 自動生成</text>
 <rect x="30" y="240" width="700" height="60" rx="10" fill="var(--amber-bg)" stroke="var(--amber)" stroke-width="0.5"/>
 <text x="380" y="266" text-anchor="middle" class="st s14" fill="var(--amber)">PROV 層と知識層を分離する理由</text>
-<text x="380" y="288" text-anchor="middle" class="st s12" fill="var(--amber)">PROV は DAG（循環不可）。Zettelkasten は双方向（循環が自然）。同じ配列に混ぜると DAG 検証が誤発動する。</text>
+<text x="380" y="288" text-anchor="middle" class="st s12" fill="var(--amber)">PROV は DAG（循環不可）、Zettelkasten は双方向（循環が自然）。同じ集合に混ぜると DAG 検証が誤発火する。</text>
 </svg>
 </div>
 
@@ -440,39 +486,39 @@
 <h3>試料はノート（実験）レベルの概念</h3>
 
 <div class="note">
-<p><strong>試料テーブルは特殊なブロックではない。</strong> 普通のテーブルに <code>#試料</code> ラベルを付けることで分岐定義として機能する。ラベルを外せば普通のテーブルに戻る。</p>
+<p><strong>試料テーブルは特殊なブロックではない。</strong> 普通のテーブルに <code>#試料</code> ラベルを付けたことで分割定義として機能する。ラベルを外せば普通のテーブルに戻る。</p>
 </div>
 
-<p>ノート冒頭の <code>[試料]</code> テーブルが全手順の分岐を定義する。各手順に個別のテーブルは不要。</p>
+<p>ノート冒頭の <code>[試料]</code> テーブルが全手順の分割を定義する。各手順に個別のテーブルは不要。</p>
 
 <h3>sampleScope タブ</h3>
 
 <p><code>[試料]</code> テーブルがノート内に存在すると、すべての <code>[手順]</code> スコープ内に試料タブバーが自動出現する。</p>
 
 <pre><code>## 焼結 #手順
-使用したもの: Cu粉末 1g          ← 共通（タブの外）
-属性: 昇温速度 5℃/min           ← 共通（タブの外）
+使用したもの: Cu粉末 1g          → 共通（タブの外）
+属性: 昇温速度 5℃/min           → 共通（タブの外）
 
-┌─[S-A]─[S-B]─[S-C]───比較...─┐  ← タブバー
-│ S-A (800℃)                   │  ← アクティブタブの内容
+──[S-A]─[S-B]─[S-C]───比較...──  → タブバー
+│ S-A (800℃)                   │  → アクティブタブの内容
 │ #結果 密度: 8.2 g/cm³         │
 │ #属性 SEM画像: (画像)          │
-└──────────────────────────────┘
+──────────────────────────────
 
-比較テーブル / チャート            ← 共通（タブの外）
-[考察] 温度の上昇に伴い...        ← 共通（タブの外）</code></pre>
+比較テーブル / チャート            → 共通（タブの外）
+[考察] 温度の上昇に伴い...        → 共通（タブの外）</code></pre>
 
 <h3>共通スコープ部分の活用</h3>
 <p>タブの外（共通スコープ部分）には、全試料を横断するコンテンツを配置できる:</p>
 <ul>
 <li><strong>比較テーブル</strong>: 各試料の数値結果をまとめた表</li>
 <li><strong>チャート</strong>: 温度 vs 密度の散布図、条件ごとの棒グラフなど</li>
-<li><strong>考察</strong>: 全試料を通じた分析や議論</li>
+<li><strong>考察</strong>: 全試料を通した分析、議論</li>
 <li><strong>共通操作メモ</strong>: 試料に依存しない記録</li>
 </ul>
 
 <h3>手順間の試料フロー</h3>
-<p>全 <code>[手順]</code> が同じ試料セットを参照する。試料の脱落はタブを削除せず、スキップマークを付けて理由を記録する（PROV 上は <code>prov:wasInvalidatedBy</code>）。</p>
+<p>全 <code>[手順]</code> が同じ試料セットを参照する。試料の脱落はタブを削除せず「スキップマーク」を付けて理由を記録する（PROV 上は <code>prov:wasInvalidatedBy</code>）。</p>
 
 <h3>タブ連動モード（オプション）</h3>
 <p>デフォルト: 各手順のタブは独立（手順中心の視点）。連動モード ON: 1つ切り替えると全手順が同じ試料に（試料中心の視点 = 「S-A の旅を追う」）。</p>
@@ -480,8 +526,8 @@
 <h3>比較モード</h3>
 <p>タブバーの「比較」ボタンで2つのタブを横並び表示。主にリッチデータ（画像等）の比較に使う。</p>
 
-<h3>分岐の中の分岐は許容しない</h3>
-<p>多因子の条件（素材2種 × 温度3段階）はテーブルの列でフラットに列挙する。PROV-DM の Activity にもネストの概念はない。</p>
+<h3>分割の中の分割は許容しない</h3>
+<p>多因子の条件（素材2種 × 温度3段階）はテーブルの列でフラットに表現する。PROV-DM の Activity にネストの概念はない。</p>
 
 <h3>スキャフォールドと補完性インジケーター</h3>
 <p>2つ目以降のタブに書き始めたときに初めて出現（ステージ4）。最初のタブだけ書いているうちは何も出ない。</p>
@@ -491,7 +537,7 @@
 </ul>
 
 <h3>なぜレーンではなくタブか</h3>
-<p>横並びレーンは3〜4試料で画面幅が破綻し、リッチ編集ができない。タブ方式は試料数に制限がなく、フル幅で編集可能。「記録は試料ごとに分かれている」「比較はテーブル/チャートで対応」という実態（前提1, 2, 3）に合致する。さらに共通コンテキストが上に残るので、ページ切替によるコンテキスト断絶が起きない。</p>
+<p>横並びレーンは3〜4試料で画面幅が破綻し、かつ編集もしにくい。タブ方式は試料数に制限なく、フル幅で編集可能。「記録は試料ごとに分かれている」「比較はテーブル/チャートで対応」という実感（前提1, 2, 3）に合致する。さらに共通コンテキストが上に残るので、ページ切替にともなうコンテキスト断絶が起きない。</p>
 
 <h3>試料タブの中身は Zettel</h3>
 <p>各試料タブの内容は独立した Zettel として <code>@</code> で参照可能。別のノートから <code>@Cu焼結ノート/焼結/S-A</code> のように特定の試料の記録を引用できる。</p>
@@ -500,7 +546,7 @@
 <h2 id="prov">11. PROV 構造化</h2>
 
 <h3>漸進的構造化モデル</h3>
-<p>同じラベルでも入力形式（ブロック型）によって PROV 出力の精度が変わる。</p>
+<p>同じラベルでも、入力形式（ブロック型）によって PROV 出力の精度が変わる。</p>
 <table>
 <tr><th>入力形式</th><th>PROV 出力</th><th>レベル</th></tr>
 <tr><td>段落 <code>Cu粉末 1g</code></td><td>Entity { rdfs:label: "Cu粉末 1g" }</td><td>メモ書き</td></tr>
@@ -509,10 +555,10 @@
 </table>
 
 <h3>key:value のパース</h3>
-<p>テーブルなら確実にパース（ヘッダー = key、セル = value）。自由テキストの <code>key: value</code> パターンは generator.ts 内で最善努力パースするが、ユーザーには知らせない。強制はしない（前提5）。</p>
+<p>テーブルなら確実にパース（ヘッダー = key、セル = value）。自由テキストの <code>key: value</code> パターンは generator.ts 内で最善努力パースするが、ユーザーには知らせない、強制はしない（前提5）。</p>
 
-<h3>[属性] の PROV 型</h3>
-<p><code>prov:Entity</code> として出力。親 Entity/Activity への関係で紐付け。画像・音声・自由記述も扱える。</p>
+<h3>[属性] の PROV 化</h3>
+<p><code>prov:Entity</code> として出力。親 Entity/Activity への関係で紐付く。画像・音声・自由記述を扱える。</p>
 
 <h3>PROV-JSON-LD 準拠出力</h3>
 <p>独自構造を W3C 標準の PROV-JSON-LD に置換。<code>provnote:</code> 名前空間でユーザー定義プロパティを格納（制限なし）。テーブルのヘッダーが <code>provnote:量</code>, <code>provnote:純度</code> になる。</p>
@@ -533,24 +579,24 @@
 
 <h3>回答の活用</h3>
 <ul>
-<li>「ノートに反映」— AI の回答をブロックとしてスコープ内に挿入</li>
-<li>「別ノートとして派生」— AI の回答を新しいノートファイルに変換</li>
+<li>「ノートに反映」→ AI の回答をブロックとしてスコープ内に挿入</li>
+<li>「別ノートとして派生」→ AI の回答を新しいノートファイルに変換</li>
 </ul>
 
 <h3>構造化提案の原則</h3>
-<p>AIによる構造化提案はチャットの中でのみ行う。エディタ上では割り込まない（前提5）。ユーザーが自分でチャットを開いて「これ整理して」と聞いたときに、初めて AI が「テーブルにするとこうなります」と返す。</p>
+<p>AIによる構造化提案はチャットの中でのみ行い、エディタ上では割り込まない（前提5）。ユーザーが自分でチャットを開いて「もう少し整理して」と考えたときに、初めて AI が「テーブルにすると比較しやすくなりますよ」と返す。</p>
 
 <!-- ═══════════════════════════════════════ §12 ═══ -->
 <h2 id="context">13. 派生とコンテキスト保持</h2>
 
 <h3>Split View</h3>
-<p>派生ノート作成時、右パネルを一時的に派生元ノートの読み取り専用表示に切り替える。</p>
+<p>派生ノート作成時、右パネルが一時的に派生元ノートの読み取り専用表示に切り替わる。</p>
 
-<h3>パンくずナビ</h3>
+<h3>パンくずリスト</h3>
 <p>派生チェーンの全パスを常時表示: <code>元ノート → ## 結果 → 🤖 派生ノート (現在)</code></p>
 
 <h3>sampleScope タブとの共通原理</h3>
-<p>ノート派生のコンテキスト断絶と、試料タブの切替時のコンテキスト断絶は、同じ問題の異なるスケール。どちらも「共通コンテキストが上に残る」ことで解決する。</p>
+<p>ノート派生のコンテキスト断絶と、試料タブの切替時のコンテキスト断絶は、同じ問題の異なるスケール。どちらも「共通コンテキストを上に残す」ことで解決する。</p>
 
 <!-- ═══════════════════════════════════════ §13 ═══ -->
 <h2 id="progressive">14. 機能の出現条件</h2>
@@ -561,7 +607,7 @@
 <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
 <style>.st{font-family:'Noto Sans JP',sans-serif} .s12{font-size:12px} .s13{font-size:13px} .s14{font-size:14px;font-weight:500}</style>
 <rect x="30" y="10" width="700" height="42" rx="6" fill="var(--bg)" stroke="var(--border)"/>
-<text x="50" y="36" class="st s13" fill="var(--fg)">ステージ 0: メモだけ書く</text>
+<text x="50" y="36" class="st s13" fill="var(--fg)">ステージ 0: メモを書く</text>
 <text x="500" y="36" class="st s12" fill="var(--fg3)">テキストエディタ + 右パネル(空)</text>
 <rect x="30" y="60" width="700" height="42" rx="6" fill="var(--teal-bg)" stroke="var(--teal)" stroke-width="0.5"/>
 <text x="50" y="86" class="st s13" fill="var(--teal)">ステージ 1: ラベルを付ける (#手順)</text>
@@ -581,28 +627,28 @@
 </div>
 
 <!-- ═══════════════════════════════════════ §14 ═══ -->
-<h2 id="reading-side">15. 右パネルと可視化 —「読む面が賢い」</h2>
+<h2 id="reading-side">15. 右パネルと可視化 —「読む面は賢く」</h2>
 
-<p>設計原則の「書く面は静か、読む面が賢い」において、「読む面」は主に右パネルの4つのタブとエディタ上のインジケーターで実現される。</p>
+<p>設計原則の「書く面は速く、読む面は賢く」において、「読む面」は主に右パネルの4つのタブとエディタ上のインジケーターで実現される。</p>
 
 <h3>右パネルの4タブ</h3>
 
 <div class="card-grid">
 <div class="card">
 <h4><span class="badge badge-purple">Graph</span> ネットワークグラフ</h4>
-<p>現在のノートを中心に、<code>@</code> 参照（知識リンク）とノート間派生（PROV リンク）で繋がるノート群を可視化。Cytoscape.js + fcose レイアウト。2ホップ BFS で近隣ノートを取得し、グラフに表示する。</p>
+<p>現在のノートを中心に、<code>@</code> 参照（知識リンク）とノート間派生（PROV リンク）で繋がるノート群を可視化。Cytoscape.js + fcose レイアウト。2ホップ BFS で近隣ノートを取得、グラフに表示する。</p>
 </div>
 <div class="card">
 <h4><span class="badge badge-teal">PROV</span> 来歴グラフ</h4>
-<p>現在のノート内のラベル付きブロックから生成される PROV グラフを可視化。Activity（手順）→ Entity（使用したもの・結果）の因果関係を DAG として表示。Cytoscape.js + ELK レイアウト。試料分岐がある場合は試料ごとの Activity が並列に表示される。</p>
+<p>現在のノート内のラベル付きブロックから生成された PROV グラフを可視化。Activity（手順）→ Entity（使用したもの・結果）の因果関係を DAG として表示。Cytoscape.js + ELK レイアウト。試料分割がある場合は試料ごとの Activity が並列に表示される。</p>
 </div>
 <div class="card">
 <h4><span class="badge badge-blue">Chat</span> AI 対話</h4>
-<p>見出しスコープに紐づく AI チャット。継続的な複数ターン対話。「ノートに反映」or「別ノートとして派生」の選択式。スコープを選択すると、そのスコープに紐づく ScopeChat が表示される。</p>
+<p>見出しスコープに紐づく AI チャット。継続的な複数ターン対話。「ノートに反映」or「別ノートとして派生」の選択肢。スコープを選択すると、そのスコープに紐づく ScopeChat が表示される。</p>
 </div>
 <div class="card">
 <h4><span class="badge badge-amber">派生元</span> 読み取り専用</h4>
-<p>派生ノート作成時のみ出現。派生元ノートの全体を読み取り専用で表示する。メインエディタで派生先を編集しながら、右パネルで元のノートを参照できる。</p>
+<p>派生ノート作成時のみ出現。派生元ノートの全体を読み取り専用で表示。メインエディタで派生先を編集しながら、右パネルで元のノートを参照できる。</p>
 </div>
 </div>
 
@@ -643,17 +689,17 @@
 
 <h4>エッジ</h4>
 <ul>
-<li><code>prov:used</code> — Entity → Activity（この材料をこの手順が使った）</li>
-<li><code>prov:wasGeneratedBy</code> — Entity → Activity（この結果はこの手順から生まれた）</li>
-<li><code>prov:wasInformedBy</code> — Activity → Activity（この手順は前の手順の結果を使った）</li>
+<li><code>prov:used</code> → Entity → Activity（その材料をその手順が使った）</li>
+<li><code>prov:wasGeneratedBy</code> → Entity → Activity（その結果はその手順から生まれた）</li>
+<li><code>prov:wasInformedBy</code> → Activity → Activity（その手順は前の手順の結果を使った）</li>
 </ul>
 
-<h4>試料分岐の表示</h4>
-<p>試料テーブルが存在する場合、1つの <code>[手順]</code> スコープから複数の Activity ノード（S-A用、S-B用...）が生成される。これらは並列に配置され、試料ごとの因果チェーンが視覚的に追える。</p>
+<h4>試料分割の表示</h4>
+<p>試料テーブルが存在する場合、1つの <code>[手順]</code> スコープから複数の Activity ノード（S-A用、S-B用...）が生成される。これらは並列に配置され、試料ごとの因果チェーンを視覚的に追える。</p>
 
 <h3>エディタ上のインジケーター</h3>
 
-<p>エディタ本体は「静か」を保ちつつ、以下の控えめなインジケーターでリンクやチャットの存在を知らせる。</p>
+<p>エディタ本体は「速い」を保ちつつ、以下の控えめなインジケーターでリンクやチャットの存在を知らせる。</p>
 
 <table>
 <tr><th>インジケーター</th><th>表示条件</th><th>動作</th></tr>
@@ -674,6 +720,18 @@
 <li><strong>自動生成</strong>: <code>@</code> 参照を作成すると、ターゲット側に backlink が自動的に追加される。データとしては <code>knowledgeLinks</code> に逆方向の <code>reference</code> リンクを自動挿入する形になる。</li>
 </ul>
 
+<h3>メディアギャラリービュー</h3>
+
+<p>メディアレジストリに登録されたすべてのメディアを、ノートをまたいで一覧表示するビュー。左パネルのファイル一覧と同階層に「メディア」タブとして配置する。</p>
+
+<ul>
+<li><strong>表示形式</strong>: グリッド形式のサムネイル一覧。画像はプレビュー、PDFはアイコン + ファイル名。</li>
+<li><strong>フィルタ</strong>: ファイル種別（画像 / PDF / データ）、ラベル（#結果 / #属性）、ノート別、日付順。</li>
+<li><strong>操作</strong>: クリックでプレビュー、「リンクをコピー」で内部リンクをクリップボード、ノートにドラッグ&ドロップでエディタにメンション挿入。</li>
+<li><strong>来歴表示</strong>: メディアを選択すると、PROV 上のソース（「このSEM画像は Cu焼結ノート/焼結/S-A の結果として生成された」）が表示される。</li>
+<li><strong>活用場面</strong>: 全実験のSEM画像を一覧で眺めて共通パターンに気づく、特定の論文PDFを探して別ノートに引用する。</li>
+</ul>
+
 <!-- ═══════════════════════════════════════ §15 ═══ -->
 <h2 id="data-model">16. データモデル</h2>
 
@@ -685,28 +743,28 @@
 <defs><marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
 <rect x="30" y="20" width="220" height="100" rx="10" fill="var(--blue-bg)" stroke="var(--blue)" stroke-width="0.5"/>
 <text x="140" y="46" text-anchor="middle" class="st s14" fill="var(--blue)">BlockNote ブロックモデル</text>
-<text x="140" y="66" text-anchor="middle" class="st s12">(UI層)</text>
-<text x="50" y="90" class="st s12" fill="var(--fg3)">Block[] — 木構造</text>
+<text x="140" y="66" text-anchor="middle" class="st s12">(UIレイヤー)</text>
+<text x="50" y="90" class="st s12" fill="var(--fg3)">Block[] → 木構造</text>
 <text x="50" y="108" class="st s12" fill="var(--fg3)">type, props, content, children</text>
 <line x1="250" y1="70" x2="288" y2="70" stroke="var(--fg3)" stroke-width="1" marker-end="url(#ar2)"/>
 <text x="270" y="62" class="st s12" fill="var(--fg3)">保存</text>
 <rect x="290" y="20" width="220" height="100" rx="10" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="0.5"/>
 <text x="400" y="46" text-anchor="middle" class="st s14" fill="var(--accent)">ProvNoteDocument</text>
-<text x="400" y="66" text-anchor="middle" class="st s12">(永続化層)</text>
+<text x="400" y="66" text-anchor="middle" class="st s12">(永続化レイヤー)</text>
 <text x="310" y="90" class="st s12" fill="var(--fg3)">blocks + labels + links + chats</text>
 <text x="310" y="108" class="st s12" fill="var(--fg3)">Google Drive に保存</text>
 <line x1="510" y1="70" x2="548" y2="70" stroke="var(--fg3)" stroke-width="1" marker-end="url(#ar2)"/>
 <text x="530" y="62" class="st s12" fill="var(--fg3)">生成</text>
 <rect x="550" y="20" width="180" height="100" rx="10" fill="var(--purple-bg)" stroke="var(--purple)" stroke-width="0.5"/>
 <text x="640" y="46" text-anchor="middle" class="st s14" fill="var(--purple)">PROV-JSON-LD</text>
-<text x="640" y="66" text-anchor="middle" class="st s12">(出力層・W3C標準)</text>
+<text x="640" y="66" text-anchor="middle" class="st s12">(出力レイヤー・W3C標準)</text>
 <text x="568" y="90" class="st s12" fill="var(--fg3)">Activity, Entity, used...</text>
 <text x="568" y="108" class="st s12" fill="var(--fg3)">保存しない（毎回再生成）</text>
 <rect x="30" y="140" width="700" height="80" rx="8" fill="var(--bg)" stroke="var(--border)"/>
 <text x="50" y="164" class="st s13" fill="var(--blue)">BlockNote</text>
 <text x="200" y="164" class="st s12" fill="var(--fg3)">ブロックの型・内容・ネスト。provnote は触らず、上にラベルを載せる。</text>
 <text x="50" y="188" class="st s13" fill="var(--accent)">ProvNoteDocument</text>
-<text x="200" y="188" class="st s12" fill="var(--fg3)">ラベル・リンク・チャット。BlockNote の blocks をそのまま含む。</text>
+<text x="200" y="188" class="st s12" fill="var(--fg3)">ラベル・リンク・チャットを、BlockNote の blocks をそのまま含む。</text>
 <text x="50" y="212" class="st s13" fill="var(--purple)">PROV-JSON-LD</text>
 <text x="200" y="212" class="st s12" fill="var(--fg3)">blocks + labels + provLinks から生成。knowledgeLinks は含まない。</text>
 </svg>
@@ -764,12 +822,12 @@
 
 <table>
 <tr><th>課題</th><th>解決策</th><th>セクション</th></tr>
-<tr><td><span class="badge badge-coral">U1</span> コンテキスト断絶</td><td>Split View + パンくずナビ。sampleScope タブの「共通コンテキストが上に残る」原理も同じ。</td><td><a href="#context">§13</a>, <a href="#samples">§10</a></td></tr>
-<tr><td><span class="badge badge-coral">U2</span> AIチャット散逸</td><td>ScopeChat でスコープに紐づけて保存。右パネル Chat タブで継続対話。</td><td><a href="#ai-chat">§12</a></td></tr>
+<tr><td><span class="badge badge-coral">U1</span> コンテキスト断絶</td><td>Split View + パンくずリスト。sampleScope タブの「共通コンテキストを上に残す」原理も同じ。</td><td><a href="#context">§13</a>, <a href="#samples">§10</a></td></tr>
+<tr><td><span class="badge badge-coral">U2</span> AIチャット散逸</td><td>ScopeChat でスコープに紐づいて保存。右パネル Chat タブで継続対話。</td><td><a href="#ai-chat">§12</a></td></tr>
 <tr><td><span class="badge badge-purple">L1</span> DAG/循環混在</td><td>provLinks と knowledgeLinks に明示分離。知識リンクは "reference" の1種類のみ。</td><td><a href="#links">§9</a></td></tr>
 <tr><td><span class="badge badge-teal">P1</span> Entity 非構造化</td><td>漸進的構造化モデル。テーブルで書けば構造化、テキストのままでも動作。</td><td><a href="#prov">§11</a></td></tr>
 <tr><td><span class="badge badge-teal">P2</span> 属性紐付け曖昧</td><td>sampleScope タブ内の属性はその試料に空間的に確定。タブ外は全試料共通。</td><td><a href="#samples">§10</a></td></tr>
-<tr><td><span class="badge badge-teal">P4</span> 分岐ロジック複雑</td><td>試料をノートレベルで定義。propagateBranches 不要。generator.ts が大幅簡素化。</td><td><a href="#samples">§10</a></td></tr>
+<tr><td><span class="badge badge-teal">P4</span> 分割ロジック複雑</td><td>試料をノートレベルで定義、propagateBranches 不要。generator.ts が大幅簡素化。</td><td><a href="#samples">§10</a></td></tr>
 </table>
 
 </div>
