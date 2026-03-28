@@ -177,9 +177,9 @@ const annealBlocks = [
       type: "tableContent",
       rows: [
         { cells: [[{ type: "text", text: "パターン名" }], [{ type: "text", text: "温度" }], [{ type: "text", text: "時間" }]] },
-        { cells: [[{ type: "text", text: "sample_A" }], [{ type: "text", text: "600℃" }], [{ type: "text", text: "24h" }]] },
-        { cells: [[{ type: "text", text: "sample_B" }], [{ type: "text", text: "700℃" }], [{ type: "text", text: "24h" }]] },
-        { cells: [[{ type: "text", text: "sample_C" }], [{ type: "text", text: "800℃" }], [{ type: "text", text: "24h" }]] },
+        { cells: [[{ type: "text", text: "パターンA" }], [{ type: "text", text: "600℃" }], [{ type: "text", text: "24h" }]] },
+        { cells: [[{ type: "text", text: "パターンB" }], [{ type: "text", text: "700℃" }], [{ type: "text", text: "24h" }]] },
+        { cells: [[{ type: "text", text: "パターンC" }], [{ type: "text", text: "800℃" }], [{ type: "text", text: "24h" }]] },
       ],
     },
     children: [],
@@ -198,9 +198,9 @@ const annealBlocks = [
       type: "tableContent",
       rows: [
         { cells: [[{ type: "text", text: "パターン名" }], [{ type: "text", text: "観察結果" }]] },
-        { cells: [[{ type: "text", text: "sample_A" }], [{ type: "text", text: "相転移あり" }]] },
-        { cells: [[{ type: "text", text: "sample_B" }], [{ type: "text", text: "変化なし" }]] },
-        { cells: [[{ type: "text", text: "sample_C" }], [{ type: "text", text: "微小変化" }]] },
+        { cells: [[{ type: "text", text: "パターンA" }], [{ type: "text", text: "相転移あり" }]] },
+        { cells: [[{ type: "text", text: "パターンB" }], [{ type: "text", text: "変化なし" }]] },
+        { cells: [[{ type: "text", text: "パターンC" }], [{ type: "text", text: "微小変化" }]] },
       ],
     },
     children: [],
@@ -600,7 +600,7 @@ describe("複数パターンシナリオ（Cu粉末アニール）", () => {
       (n) => n["@type"] === "prov:Activity" && n["provnote:blockId"] === "h2-anneal"
     );
     expect(annealActivities).toHaveLength(3);
-    expect(annealActivities.map((a) => a["provnote:sampleId"])).toEqual(["sample_A", "sample_B", "sample_C"]);
+    expect(annealActivities.map((a) => a["provnote:sampleId"])).toEqual(["パターンA", "パターンB", "パターンC"]);
   });
 
   it("評価する も3つに伝播する", () => {
@@ -644,7 +644,7 @@ describe("複数パターンシナリオ（Cu粉末アニール）", () => {
         .filter((n) => n["provnote:sampleId"])
         .map((n) => n["provnote:sampleId"] as string)
     )].sort();
-    expect(sampleIds).toEqual(["sample_A", "sample_B", "sample_C"]);
+    expect(sampleIds).toEqual(["パターンA", "パターンB", "パターンC"]);
 
     const commonNodes = doc["@graph"].filter((n) => !n["provnote:sampleId"]);
 

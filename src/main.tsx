@@ -95,21 +95,21 @@ const contextLabelInitialContent = [
         },
         {
           cells: [
-            [{ type: "text", text: "sample_A", styles: {} }],
+            [{ type: "text", text: "パターンA", styles: {} }],
             [{ type: "text", text: "600℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_B", styles: {} }],
+            [{ type: "text", text: "パターンB", styles: {} }],
             [{ type: "text", text: "700℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_C", styles: {} }],
+            [{ type: "text", text: "パターンC", styles: {} }],
             [{ type: "text", text: "800℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],

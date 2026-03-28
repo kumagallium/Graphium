@@ -155,8 +155,8 @@ export const NoteWithIndicators: StoryObj = {
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead><tr><th style={th}>パターン名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
           <tbody>
-            <tr><td style={td}>sample_A</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
-            <tr><td style={td}>sample_B</td><td style={td}>700℃</td><td style={td}>24h</td></tr>
+            <tr><td style={td}>パターンA</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
+            <tr><td style={td}>パターンB</td><td style={td}>700℃</td><td style={td}>24h</td></tr>
           </tbody>
         </table>
       </EditorBlock>
