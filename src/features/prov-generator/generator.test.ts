@@ -1,17 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { generateProvDocument } from "./generator";
+import { generateProvDocument, extractRelations, parseStructuredTable } from "./generator";
+
+// ── ヘルパー: ProvJsonLd から関係をフラットに取得 ──
+function getRelations(doc: ReturnType<typeof generateProvDocument>) {
+  return extractRelations(doc);
+}
+
+function getWarnings(doc: ReturnType<typeof generateProvDocument>) {
+  return doc["provnote:warnings"] ?? [];
+}
 
 // ──────────────────────────────────
 // シナリオ 1: カレー実験（基本形）
-//
-// H2 [手順] 1. 具材を切る
-//   [使用したもの] にんじん、じゃがいも
-// H2 [手順] 2. 炒める
-//   前手順: @1. 具材を切る
-//   [条件] 中火 5分
-// H2 [手順] 3. 煮込む
-//   前手順: @2. 炒める
-//   [結果] カレー完成
 // ──────────────────────────────────
 
 const curryBlocks = [
@@ -75,7 +75,7 @@ describe("カレー実験シナリオ（基本形）", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
     const activities = doc["@graph"].filter((n) => n["@type"] === "prov:Activity");
     expect(activities).toHaveLength(3);
-    expect(activities.map((a) => a.label)).toEqual([
+    expect(activities.map((a) => a["rdfs:label"])).toEqual([
       "1. 具材を切る",
       "2. 炒める",
       "3. 煮込む",
@@ -85,7 +85,7 @@ describe("カレー実験シナリオ（基本形）", () => {
   it("[使用したもの] が Entity として生成される", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
     const entities = doc["@graph"].filter((n) => n["@type"] === "prov:Entity");
-    expect(entities.some((e) => e.label === "にんじん、じゃがいも")).toBe(true);
+    expect(entities.some((e) => e["rdfs:label"] === "にんじん、じゃがいも")).toBe(true);
   });
 
   it("[条件] が prov:Entity（属性）として生成される", () => {
@@ -93,41 +93,54 @@ describe("カレー実験シナリオ（基本形）", () => {
     const params = doc["@graph"].filter((n) => n["@id"].startsWith("param_"));
     expect(params).toHaveLength(1);
     expect(params[0]["@type"]).toBe("prov:Entity");
-    expect(params[0].label).toBe("中火 5分");
+    expect(params[0]["rdfs:label"]).toBe("中火 5分");
   });
 
   it("[結果] が Entity として生成される", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
     const entities = doc["@graph"].filter((n) => n["@type"] === "prov:Entity");
-    expect(entities.some((e) => e.label === "カレー完成")).toBe(true);
+    expect(entities.some((e) => e["rdfs:label"] === "カレー完成")).toBe(true);
   });
 
   it("前手順リンクが結果Entity経由の used として生成される", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
-    // 前手順リンクは wasInformedBy ではなく、結果Entity経由の used になる
-    // 結果がない場合は合成結果ノード + wasGeneratedBy + used が生成される
-    const usedRels = doc.relations.filter((r) => r["@type"] === "prov:used");
+    const relations = getRelations(doc);
+    const usedRels = relations.filter((r) => r["@type"] === "prov:used");
     // [使用したもの] の used 1つ + 前手順リンク由来の used 2つ
     expect(usedRels.length).toBeGreaterThanOrEqual(3);
   });
 
   it("警告が出ない", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
-    expect(doc.warnings).toHaveLength(0);
+    expect(getWarnings(doc)).toHaveLength(0);
+  });
+
+  it("@context に rdfs と xsd が含まれる", () => {
+    const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
+    expect(doc["@context"].rdfs).toBe("http://www.w3.org/2000/01/rdf-schema#");
+    expect(doc["@context"].xsd).toBe("http://www.w3.org/2001/XMLSchema#");
+  });
+
+  it("ノードに rdfs:label と provnote:blockId が含まれる", () => {
+    const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
+    for (const node of doc["@graph"]) {
+      expect(node["rdfs:label"]).toBeDefined();
+      expect(node["provnote:blockId"]).toBeDefined();
+    }
+  });
+
+  it("関係がノードに埋め込まれている（トップレベルの relations がない）", () => {
+    const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
+    // ProvJsonLd にはトップレベルの relations フィールドがない
+    expect((doc as any).relations).toBeUndefined();
+    // 代わりにノードに埋め込み
+    const actCut = doc["@graph"].find((n) => n["@id"] === "activity_h2-cut");
+    expect(actCut?.["prov:used"]).toBeDefined();
   });
 });
 
 // ──────────────────────────────────
 // シナリオ 2: 複数試料（Cu粉末アニール）
-//
-// H2 [手順] 1. 封入する
-//   [使用したもの] Cu粉末テーブル
-// H2 [手順] 2. アニールする
-//   前手順: @1. 封入する
-//   [試料] テーブル（3試料）
-// H2 [手順] 3. 評価する
-//   前手順: @2. アニールする
-//   [結果] テーブル
 // ──────────────────────────────────
 
 const annealBlocks = [
@@ -204,13 +217,6 @@ const annealLinks = [
 
 // ──────────────────────────────────
 // シナリオ 1.5: スコープ境界テスト
-//
-// H2 [手順] 1. 具材を切る
-//   [使用したもの] にんじん      ← スコープ内
-// H2 (ラベルなし) 補足事項
-//   [使用したもの] メモ          ← スコープ外（Activityに紐づかない）
-// H2 [手順] 2. 炒める
-//   [条件] 中火                  ← 新スコープ内
 // ──────────────────────────────────
 
 const scopeBlocks = [
@@ -258,7 +264,6 @@ const scopeBlocks = [
 const scopeLabels = new Map([
   ["h2-cut", "[手順]"],
   ["used-carrot", "[使用したもの]"],
-  // h2-note にはラベルなし
   ["used-memo", "[使用したもの]"],
   ["h2-fry", "[手順]"],
   ["cond-fire", "[属性]"],
@@ -267,16 +272,15 @@ const scopeLabels = new Map([
 describe("スコープ境界テスト", () => {
   it("ラベルなしH2がスコープを切る — [使用したもの] が前のActivityに紐づかない", () => {
     const doc = generateProvDocument({ blocks: scopeBlocks, labels: scopeLabels, links: [] });
+    const relations = getRelations(doc);
 
-    // [使用したもの]「にんじん」は h2-cut の Activity に紐づく
-    const carrotUsed = doc.relations.filter(
+    const carrotUsed = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-carrot"
     );
     expect(carrotUsed).toHaveLength(1);
     expect(carrotUsed[0].from).toBe("activity_h2-cut");
 
-    // [使用したもの]「メモ」はどのActivityにも紐づかない（スコープ外）
-    const memoUsed = doc.relations.filter(
+    const memoUsed = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-memo"
     );
     expect(memoUsed).toHaveLength(0);
@@ -284,7 +288,8 @@ describe("スコープ境界テスト", () => {
 
   it("[条件] は新しいH2 [手順] のスコープに紐づく", () => {
     const doc = generateProvDocument({ blocks: scopeBlocks, labels: scopeLabels, links: [] });
-    const paramRels = doc.relations.filter(
+    const relations = getRelations(doc);
+    const paramRels = relations.filter(
       (r) => r["@type"] === "provnote:hasAttribute" && r.to === "param_cond-fire"
     );
     expect(paramRels).toHaveLength(1);
@@ -327,9 +332,9 @@ describe("スコープ境界テスト", () => {
     ]);
 
     const doc = generateProvDocument({ blocks: blocksWithH1, labels: labelsWithH1, links: [] });
+    const relations = getRelations(doc);
 
-    // H1後の [使用したもの] はスコープ外
-    const orphanUsed = doc.relations.filter(
+    const orphanUsed = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-orphan"
     );
     expect(orphanUsed).toHaveLength(0);
@@ -364,9 +369,9 @@ describe("スコープ境界テスト", () => {
     ]);
 
     const doc = generateProvDocument({ blocks: blocksWithH3, labels: labelsWithH3, links: [] });
+    const relations = getRelations(doc);
 
-    // ラベルなしH3後でもスコープ内 — 親H2 Activity に紐づく
-    const detailUsed = doc.relations.filter(
+    const detailUsed = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-detail-item"
     );
     expect(detailUsed).toHaveLength(1);
@@ -376,17 +381,6 @@ describe("スコープ境界テスト", () => {
 
 // ──────────────────────────────────
 // シナリオ 3: 見出しレベル階層スコープ
-//
-// H2 [手順] Step A
-//   [使用したもの] Material 1       ← Step A スコープ
-//   H3 [手順] Sub-step A.1
-//     [使用したもの] Material 2     ← Sub-step A.1 スコープ
-//     [結果] Result A.1
-//   H3 [手順] Sub-step A.2
-//     [属性] Param A.2
-//     [結果] Result A.2
-// H2 [手順] Step B
-//   [使用したもの] Material 3       ← Step B スコープ
 // ──────────────────────────────────
 
 const hierarchyBlocks = [
@@ -474,7 +468,7 @@ describe("見出しレベル階層スコープ", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
     const activities = doc["@graph"].filter((n) => n["@type"] === "prov:Activity");
     expect(activities).toHaveLength(4);
-    expect(activities.map((a) => a.label)).toEqual([
+    expect(activities.map((a) => a["rdfs:label"])).toEqual([
       "Step A",
       "Sub-step A.1",
       "Sub-step A.2",
@@ -484,7 +478,8 @@ describe("見出しレベル階層スコープ", () => {
 
   it("H2直下の [使用したもの] は H2 Activity にスコープされる", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
-    const mat1Used = doc.relations.filter(
+    const relations = getRelations(doc);
+    const mat1Used = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-mat1"
     );
     expect(mat1Used).toHaveLength(1);
@@ -493,7 +488,8 @@ describe("見出しレベル階層スコープ", () => {
 
   it("H3直下の [使用したもの] は H3 サブActivity にスコープされる", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
-    const mat2Used = doc.relations.filter(
+    const relations = getRelations(doc);
+    const mat2Used = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-mat2"
     );
     expect(mat2Used).toHaveLength(1);
@@ -502,13 +498,14 @@ describe("見出しレベル階層スコープ", () => {
 
   it("[結果] は対応するH3サブActivityにスコープされる", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
-    const resultA1 = doc.relations.filter(
+    const relations = getRelations(doc);
+    const resultA1 = relations.filter(
       (r) => r["@type"] === "prov:wasGeneratedBy" && r.from === "result_result-a1"
     );
     expect(resultA1).toHaveLength(1);
     expect(resultA1[0].to).toBe("activity_h3-a1");
 
-    const resultA2 = doc.relations.filter(
+    const resultA2 = relations.filter(
       (r) => r["@type"] === "prov:wasGeneratedBy" && r.from === "result_result-a2"
     );
     expect(resultA2).toHaveLength(1);
@@ -517,7 +514,8 @@ describe("見出しレベル階層スコープ", () => {
 
   it("[属性] は H3 サブActivity にスコープされる", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
-    const paramRels = doc.relations.filter(
+    const relations = getRelations(doc);
+    const paramRels = relations.filter(
       (r) => r["@type"] === "provnote:hasAttribute" && r.to === "param_param-a2"
     );
     expect(paramRels).toHaveLength(1);
@@ -526,7 +524,8 @@ describe("見出しレベル階層スコープ", () => {
 
   it("次のH2で全スコープがリセットされる", () => {
     const doc = generateProvDocument({ blocks: hierarchyBlocks, labels: hierarchyLabels, links: [] });
-    const mat3Used = doc.relations.filter(
+    const relations = getRelations(doc);
+    const mat3Used = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-mat3"
     );
     expect(mat3Used).toHaveLength(1);
@@ -573,21 +572,19 @@ describe("見出しレベル階層スコープ", () => {
       ["h2-parent", "[手順]"],
       ["h3-sub", "[手順]"],
       ["used-in-sub", "[使用したもの]"],
-      // h3-note にはラベルなし → サブActivityスコープを pop、親H2スコープに戻る
       ["used-after-note", "[使用したもの]"],
     ]);
 
     const doc = generateProvDocument({ blocks: blocksWithUnlabeledH3, labels: labelsWithUnlabeledH3, links: [] });
+    const relations = getRelations(doc);
 
-    // サブステップ内の材料はサブActivityにスコープ
-    const subUsed = doc.relations.filter(
+    const subUsed = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-in-sub"
     );
     expect(subUsed).toHaveLength(1);
     expect(subUsed[0].from).toBe("activity_h3-sub");
 
-    // ラベルなしH3後の材料は親H2 Activityにスコープ
-    const afterNoteUsed = doc.relations.filter(
+    const afterNoteUsed = relations.filter(
       (r) => r["@type"] === "prov:used" && r.to === "entity_used-after-note"
     );
     expect(afterNoteUsed).toHaveLength(1);
@@ -599,67 +596,69 @@ describe("複数試料シナリオ（Cu粉末アニール）", () => {
   it("アニールする が3つのActivityに分岐する", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
     const annealActivities = doc["@graph"].filter(
-      (n) => n["@type"] === "prov:Activity" && n.blockId === "h2-anneal"
+      (n) => n["@type"] === "prov:Activity" && n["provnote:blockId"] === "h2-anneal"
     );
     expect(annealActivities).toHaveLength(3);
-    expect(annealActivities.map((a) => a.sampleId)).toEqual(["sample_A", "sample_B", "sample_C"]);
+    expect(annealActivities.map((a) => a["provnote:sampleId"])).toEqual(["sample_A", "sample_B", "sample_C"]);
   });
 
   it("評価する も3つに伝播する", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
     const evalActivities = doc["@graph"].filter(
-      (n) => n["@type"] === "prov:Activity" && n.blockId === "h2-eval"
+      (n) => n["@type"] === "prov:Activity" && n["provnote:blockId"] === "h2-eval"
     );
     expect(evalActivities).toHaveLength(3);
   });
 
-  it("試料Entityが3つ生成される", () => {
+  it("試料Entityが3つ生成され、構造化属性を持つ", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
     const sampleEntities = doc["@graph"].filter(
-      (n) => n["@type"] === "prov:Entity" && n.blockId === "sample-table"
+      (n) => n["@type"] === "prov:Entity" && n["provnote:blockId"] === "sample-table"
     );
     expect(sampleEntities).toHaveLength(3);
-    expect(sampleEntities[0].params).toEqual({ "温度": "600℃", "時間": "24h" });
+    // 構造化属性が provnote: プレフィックスで埋め込まれている
+    expect(sampleEntities[0]["provnote:温度"]).toBe("600℃");
+    expect(sampleEntities[0]["provnote:時間"]).toBe("24h");
   });
 
   it("used 関係が生成される（試料3 + 使用したもの1）", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
-    const usedRels = doc.relations.filter((r) => r["@type"] === "prov:used");
-    // 試料テーブルから3つ + [使用したもの]→封入するActivity で1つ = 4つ
+    const relations = getRelations(doc);
+    const usedRels = relations.filter((r) => r["@type"] === "prov:used");
     expect(usedRels.length).toBeGreaterThanOrEqual(4);
   });
 
   it("前手順リンクが結果Entity経由で繋がる", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
-    // 前手順リンクは結果Entity経由の used に変換される
-    const usedRels = doc.relations.filter((r) => r["@type"] === "prov:used");
+    const relations = getRelations(doc);
+    const usedRels = relations.filter((r) => r["@type"] === "prov:used");
     expect(usedRels.length).toBeGreaterThanOrEqual(4);
   });
 
   it("試料別分割 — 全試料で同じグラフ構造（ノード数・エッジ数が一致）", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
 
-    // 試料ID一覧を抽出
     const sampleIds = [...new Set(
-      doc["@graph"].filter((n) => n.sampleId).map((n) => n.sampleId!)
+      doc["@graph"]
+        .filter((n) => n["provnote:sampleId"])
+        .map((n) => n["provnote:sampleId"] as string)
     )].sort();
     expect(sampleIds).toEqual(["sample_A", "sample_B", "sample_C"]);
 
-    // 共通ノード（sampleId なし）
-    const commonNodes = doc["@graph"].filter((n) => !n.sampleId);
+    const commonNodes = doc["@graph"].filter((n) => !n["provnote:sampleId"]);
 
-    // 各試料のサブグラフを構築
     const splits = sampleIds.map((sid) => {
-      const sampleNodes = doc["@graph"].filter((n) => n.sampleId === sid);
+      const sampleNodes = doc["@graph"].filter((n) => n["provnote:sampleId"] === sid);
       const graphNodes = [...commonNodes, ...sampleNodes];
       const nodeIdSet = new Set(graphNodes.map((n) => n["@id"]));
-      const filteredRelations = doc.relations.filter(
+      // 埋め込み関係のうち両端が含まれるもののみカウント
+      const allRelations = extractRelations(doc);
+      const filteredRelations = allRelations.filter(
         (r) => nodeIdSet.has(r.from) && nodeIdSet.has(r.to)
       );
       return { sampleId: sid, nodeCount: graphNodes.length, edgeCount: filteredRelations.length };
     });
 
-    // 全試料でノード数・エッジ数が一致するべき
     const first = splits[0];
     for (const s of splits) {
       expect(s.nodeCount).toBe(first.nodeCount);
@@ -671,19 +670,21 @@ describe("複数試料シナリオ（Cu粉末アニール）", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
 
     const sampleIds = [...new Set(
-      doc["@graph"].filter((n) => n.sampleId).map((n) => n.sampleId!)
+      doc["@graph"]
+        .filter((n) => n["provnote:sampleId"])
+        .map((n) => n["provnote:sampleId"] as string)
     )].sort();
-    const commonNodes = doc["@graph"].filter((n) => !n.sampleId);
+    const commonNodes = doc["@graph"].filter((n) => !n["provnote:sampleId"]);
 
     for (const sid of sampleIds) {
-      const sampleNodes = doc["@graph"].filter((n) => n.sampleId === sid);
+      const sampleNodes = doc["@graph"].filter((n) => n["provnote:sampleId"] === sid);
       const graphNodes = [...commonNodes, ...sampleNodes];
       const nodeIdSet = new Set(graphNodes.map((n) => n["@id"]));
-      const filteredRelations = doc.relations.filter(
+      const allRelations = extractRelations(doc);
+      const filteredRelations = allRelations.filter(
         (r) => nodeIdSet.has(r.from) && nodeIdSet.has(r.to)
       );
 
-      // 各ノードが少なくとも1つのエッジに接続しているか
       const connectedIds = new Set<string>();
       for (const r of filteredRelations) {
         connectedIds.add(r.from);
@@ -692,5 +693,191 @@ describe("複数試料シナリオ（Cu粉末アニール）", () => {
       const orphans = graphNodes.filter((n) => !connectedIds.has(n["@id"]));
       expect(orphans.map((n) => `${n["@id"]} (${sid})`)).toEqual([]);
     }
+  });
+});
+
+// ──────────────────────────────────
+// Phase 3: テーブル構造化属性
+// ──────────────────────────────────
+
+describe("Phase 3: テーブル構造化属性", () => {
+  it("[使用したもの] テーブルの行が個別 Entity に展開される", () => {
+    const blocks = [
+      {
+        id: "h2-mix",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "混合する" }],
+        children: [],
+      },
+      {
+        id: "mat-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "名前" }], [{ type: "text", text: "量" }], [{ type: "text", text: "純度" }]] },
+            { cells: [[{ type: "text", text: "Cu粉末" }], [{ type: "text", text: "1g" }], [{ type: "text", text: "99.9%" }]] },
+            { cells: [[{ type: "text", text: "Zn粉末" }], [{ type: "text", text: "0.5g" }], [{ type: "text", text: "99.5%" }]] },
+          ],
+        },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-mix", "[手順]"],
+      ["mat-table", "[使用したもの]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // 2行 → 2つの Entity
+    const cuEntity = doc["@graph"].find((n) => n["@id"] === "entity_mat-table_Cu粉末");
+    expect(cuEntity).toBeDefined();
+    expect(cuEntity!["rdfs:label"]).toBe("Cu粉末");
+    expect(cuEntity!["provnote:量"]).toBe("1g");
+    expect(cuEntity!["provnote:純度"]).toBe("99.9%");
+
+    const znEntity = doc["@graph"].find((n) => n["@id"] === "entity_mat-table_Zn粉末");
+    expect(znEntity).toBeDefined();
+    expect(znEntity!["provnote:量"]).toBe("0.5g");
+
+    // used 関係（Activity → Entity）
+    const relations = getRelations(doc);
+    const usedCu = relations.filter((r) => r.to === "entity_mat-table_Cu粉末" && r["@type"] === "prov:used");
+    expect(usedCu).toHaveLength(1);
+    expect(usedCu[0].from).toBe("activity_h2-mix");
+  });
+
+  it("[結果] テーブルの行が個別 Entity に展開される", () => {
+    const blocks = [
+      {
+        id: "h2-eval",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "評価する" }],
+        children: [],
+      },
+      {
+        id: "res-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "項目" }], [{ type: "text", text: "値" }]] },
+            { cells: [[{ type: "text", text: "密度" }], [{ type: "text", text: "8.96 g/cm³" }]] },
+            { cells: [[{ type: "text", text: "硬度" }], [{ type: "text", text: "HV 120" }]] },
+          ],
+        },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-eval", "[手順]"],
+      ["res-table", "[結果]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const densityEntity = doc["@graph"].find((n) => n["@id"] === "result_res-table_密度");
+    expect(densityEntity).toBeDefined();
+    expect(densityEntity!["rdfs:label"]).toBe("密度");
+    expect(densityEntity!["provnote:値"]).toBe("8.96 g/cm³");
+
+    // wasGeneratedBy 関係
+    const relations = getRelations(doc);
+    const genRels = relations.filter((r) => r.from === "result_res-table_密度" && r["@type"] === "prov:wasGeneratedBy");
+    expect(genRels).toHaveLength(1);
+    expect(genRels[0].to).toBe("activity_h2-eval");
+  });
+
+  it("段落ブロックの [使用したもの] は従来通り1つの Entity になる", () => {
+    const blocks = [
+      {
+        id: "h2-step",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "手順" }],
+        children: [],
+      },
+      {
+        id: "used-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "Cu粉末 1g" }],
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-step", "[手順]"],
+      ["used-para", "[使用したもの]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+    const entity = doc["@graph"].find((n) => n["@id"] === "entity_used-para");
+    expect(entity).toBeDefined();
+    expect(entity!["rdfs:label"]).toBe("Cu粉末 1g");
+  });
+});
+
+// ──────────────────────────────────
+// Phase 3: parseStructuredTable 単体テスト
+// ──────────────────────────────────
+
+describe("parseStructuredTable", () => {
+  it("テーブルをヘッダー=key、セル=value で構造化する", () => {
+    const block = {
+      type: "table",
+      content: {
+        rows: [
+          { cells: [[{ type: "text", text: "名前" }], [{ type: "text", text: "量" }]] },
+          { cells: [[{ type: "text", text: "Cu" }], [{ type: "text", text: "1g" }]] },
+          { cells: [[{ type: "text", text: "Zn" }], [{ type: "text", text: "0.5g" }]] },
+        ],
+      },
+    };
+
+    const result = parseStructuredTable(block);
+    expect(result).not.toBeNull();
+    expect(result!.rows).toHaveLength(2);
+    expect(result!.rows[0]).toEqual({ name: "Cu", attrs: { "量": "1g" } });
+    expect(result!.rows[1]).toEqual({ name: "Zn", attrs: { "量": "0.5g" } });
+  });
+
+  it("テーブル以外のブロックは null を返す", () => {
+    expect(parseStructuredTable({ type: "paragraph" })).toBeNull();
+  });
+
+  it("ヘッダーだけのテーブルは null を返す", () => {
+    const block = {
+      type: "table",
+      content: {
+        rows: [
+          { cells: [[{ type: "text", text: "名前" }]] },
+        ],
+      },
+    };
+    expect(parseStructuredTable(block)).toBeNull();
+  });
+});
+
+// ──────────────────────────────────
+// Phase 3: extractRelations ユーティリティ
+// ──────────────────────────────────
+
+describe("extractRelations", () => {
+  it("埋め込み関係をフラットなリストに展開する", () => {
+    const doc = generateProvDocument({
+      blocks: curryBlocks,
+      labels: curryLabels,
+      links: curryLinks,
+    });
+    const relations = extractRelations(doc);
+    expect(relations.length).toBeGreaterThan(0);
+
+    // used, wasGeneratedBy, hasAttribute がすべて含まれる
+    const types = new Set(relations.map((r) => r["@type"]));
+    expect(types.has("prov:used")).toBe(true);
+    expect(types.has("prov:wasGeneratedBy")).toBe(true);
+    expect(types.has("provnote:hasAttribute")).toBe(true);
   });
 });

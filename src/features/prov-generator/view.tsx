@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────
 // PROVグラフ可視化（Cytoscape.js + ELK レイアウト）
 //
+// Phase 3: ProvJsonLd 埋め込み形式からノード・エッジを抽出
+//
 // design.md ラベル色パレット準拠:
 //   Activity  = 楕円・落ち着いた青 (#5b8fb9)
 //   Entity    = 丸四角・ブランドグリーン (#4B7A52)
@@ -12,7 +14,11 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
-import type { ProvDocument, ProvNode } from "./generator";
+import type { ProvJsonLd, ProvJsonLdNode } from "./generator";
+import { extractRelations, type FlatRelation } from "./generator";
+
+// 後方互換
+type ProvDocument = ProvJsonLd;
 
 // ── design.md ラベル色パレット ──
 
@@ -41,32 +47,31 @@ const THEME = {
 
 // ── 試料ごとのグラフ分離 ──
 
-type SampleSplit = { sampleId: string; doc: ProvDocument };
+type SampleSplit = { sampleId: string; doc: ProvJsonLd };
 
-/** ProvDocument を試料ごとに分離する。共通ノードは各グラフに含める */
-function splitDocBySample(doc: ProvDocument): SampleSplit[] {
+/** ProvJsonLd を試料ごとに分離する。共通ノードは各グラフに含める */
+function splitDocBySample(doc: ProvJsonLd): SampleSplit[] {
   const sampleIds = [...new Set(
-    doc["@graph"].filter((n) => n.sampleId).map((n) => n.sampleId!)
+    doc["@graph"]
+      .filter((n) => n["provnote:sampleId"])
+      .map((n) => n["provnote:sampleId"] as string)
   )].sort();
 
   if (sampleIds.length === 0) return [];
 
   // 共通ノード（sampleId なし）
-  const commonNodes = doc["@graph"].filter((n) => !n.sampleId);
+  const commonNodes = doc["@graph"].filter((n) => !n["provnote:sampleId"]);
 
   return sampleIds.map((sid) => {
-    const sampleNodes = doc["@graph"].filter((n) => n.sampleId === sid);
+    const sampleNodes = doc["@graph"].filter((n) => n["provnote:sampleId"] === sid);
     const graphNodes = [...commonNodes, ...sampleNodes];
     const nodeIdSet = new Set(graphNodes.map((n) => n["@id"]));
 
-    // 両端が含まれるリレーションのみ抽出
-    const filteredRelations = doc.relations.filter(
-      (r) => nodeIdSet.has(r.from) && nodeIdSet.has(r.to)
-    );
-
+    // 埋め込み関係のうち、両端が含まれるもののみ残すようにノードをフィルタ
+    // （埋め込み形式なのでノードを絞ればエッジも自然に絞られる）
     return {
       sampleId: sid,
-      doc: { ...doc, "@graph": graphNodes, relations: filteredRelations },
+      doc: { ...doc, "@graph": graphNodes },
     };
   });
 }
@@ -74,7 +79,7 @@ function splitDocBySample(doc: ProvDocument): SampleSplit[] {
 /**
  * ノードのサブタイプを判定（Entity を [使用したもの] と [結果] に分離）
  */
-function getNodeSubtype(node: ProvNode): string {
+function getNodeSubtype(node: ProvJsonLdNode): string {
   if (node["@type"] === "prov:Entity") {
     if (node["@id"].startsWith("param_")) return "parameter";
     return node["@id"].startsWith("result_") ? "result" : "entity";
@@ -83,18 +88,33 @@ function getNodeSubtype(node: ProvNode): string {
 }
 
 /**
- * PROVドキュメント → Cytoscape elements 変換
+ * ProvJsonLd → Cytoscape elements 変換
+ * Phase 3: 埋め込み関係からエッジを抽出
  */
-function provToCytoscapeElements(doc: ProvDocument): cytoscape.ElementDefinition[] {
+function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefinition[] {
   const elements: cytoscape.ElementDefinition[] = [];
+  const nodeIdSet = new Set(doc["@graph"].map((n) => n["@id"]));
 
   // ノード
   for (const node of doc["@graph"]) {
-    let label = node.label;
-    if (node.sampleId) label += `\n[${node.sampleId}]`;
-    if (node.params) {
-      const paramStr = Object.entries(node.params).map(([k, v]) => `${k}=${v}`).join("\n");
-      label += `\n${paramStr}`;
+    let label = node["rdfs:label"];
+    if (node["provnote:sampleId"]) label += `\n[${node["provnote:sampleId"]}]`;
+
+    // provnote: プロパティからパラメータを表示
+    const paramEntries: string[] = [];
+    for (const key of Object.keys(node)) {
+      if (key.startsWith("provnote:") &&
+          key !== "provnote:blockId" &&
+          key !== "provnote:sampleId" &&
+          key !== "provnote:hasAttribute" &&
+          key !== "provnote:warnings" &&
+          typeof node[key as `provnote:${string}`] === "string") {
+        const shortKey = key.replace("provnote:", "");
+        paramEntries.push(`${shortKey}=${node[key as `provnote:${string}`]}`);
+      }
+    }
+    if (paramEntries.length > 0) {
+      label += `\n${paramEntries.join("\n")}`;
     }
 
     elements.push({
@@ -107,20 +127,17 @@ function provToCytoscapeElements(doc: ProvDocument): cytoscape.ElementDefinition
     });
   }
 
-  // エッジ（実験フロー方向: 原因→結果 に反転して表示）
-  // PROV-DM は来歴方向（結果→原因）だが、可視化は順方向にする
-  //   used:            PROV: Activity→Entity  → 表示: Entity→Activity（材料が手順に入る）
-  //   wasGeneratedBy:  PROV: Entity→Activity  → 表示: Activity→Entity（手順が結果を出す）
-  //   wasInformedBy:   PROV: Act2→Act1        → 表示: Act1→Act2（手順1の後に手順2）
-  //   parameter:       PROV: Activity→Param   → 表示: Param→Activity（条件が手順に入る）
-  const nodeIds = new Set(elements.map((e) => e.data.id));
-  for (let i = 0; i < doc.relations.length; i++) {
-    const rel = doc.relations[i];
-    const relLabel = rel["@type"].replace("prov:", "").replace("provnote:", "").replace("matprov:", "");
-    if (!nodeIds.has(rel.from) || !nodeIds.has(rel.to)) {
-      console.warn(`[PROV] エッジ無視: ${rel.from} → ${rel.to}（ノード不在）`);
+  // エッジ: 埋め込み関係から抽出
+  const relations = extractRelations(doc);
+  let edgeIdx = 0;
+
+  for (const rel of relations) {
+    // 両端のノードが現在のグラフに含まれていることを確認
+    if (!nodeIdSet.has(rel.from) || !nodeIdSet.has(rel.to)) {
       continue;
     }
+
+    const relLabel = rel["@type"].replace("prov:", "").replace("provnote:", "");
 
     // 全リレーションを反転（PROV来歴方向 → 実験フロー順方向）
     const source = rel.to;
@@ -128,7 +145,7 @@ function provToCytoscapeElements(doc: ProvDocument): cytoscape.ElementDefinition
 
     elements.push({
       data: {
-        id: `edge-${i}`,
+        id: `edge-${edgeIdx++}`,
         source,
         target,
         label: relLabel,
@@ -141,18 +158,15 @@ function provToCytoscapeElements(doc: ProvDocument): cytoscape.ElementDefinition
 
 // ── ELK layered レイアウト ──
 
-// ノードタイプ別の固定サイズ（ELK レイアウト計算用）
 const NODE_SIZES: Record<string, { width: number; height: number }> = {
   "prov:Activity": { width: 150, height: 60 },
   "prov:Entity": { width: 150, height: 50 },
-  // [属性] ノード（param_ prefix で識別）
 };
 const DEFAULT_NODE_SIZE = { width: 140, height: 50 };
 
 async function applyElkLayout(cy: cytoscape.Core) {
   const elk = new ELK();
 
-  // Cytoscape → ELK グラフ変換（固定サイズを使用）
   const elkNodes = cy.nodes().map((n) => {
     const size = NODE_SIZES[n.data("type")] ?? DEFAULT_NODE_SIZE;
     return { id: n.id(), width: size.width, height: size.height };
@@ -176,7 +190,6 @@ async function applyElkLayout(cy: cytoscape.Core) {
     edges: elkEdges,
   });
 
-  // ELK 計算結果を Cytoscape にアニメーション付きで反映
   cy.batch(() => {
     for (const elkNode of elkGraph.children ?? []) {
       const node = cy.getElementById(elkNode.id);
@@ -206,14 +219,12 @@ const commonNodeStyle = {
   width: "label",
   height: "label",
   padding: "14px",
-  // スムーズなトランジション
   "transition-property": "background-color, border-color, opacity, width, height" as any,
   "transition-duration": 200,
   "transition-timing-function": "ease-in-out-sine" as any,
 };
 
 const cyStyles: cytoscape.StylesheetStyle[] = [
-  // Activity ノード（楕円・落ち着いた青）
   {
     selector: 'node[subtype = "prov:Activity"]',
     style: {
@@ -224,7 +235,6 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       shape: "ellipse",
     },
   },
-  // Entity ノード — [使用したもの]（丸四角・ブランドグリーン）
   {
     selector: 'node[subtype = "entity"]',
     style: {
@@ -235,7 +245,6 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       shape: "round-rectangle",
     },
   },
-  // Entity ノード — [結果]（丸四角・テラコッタ）
   {
     selector: 'node[subtype = "result"]',
     style: {
@@ -246,7 +255,6 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       shape: "round-rectangle",
     },
   },
-  // [属性] ノード（ダイヤ・落ち着いたアンバー）
   {
     selector: 'node[subtype = "parameter"]',
     style: {
@@ -257,10 +265,7 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       shape: "diamond",
     },
   },
-
   // ── ホバーエフェクト ──
-
-  // ホバー中のノード: 少し明るく + 影（overlay で表現）
   {
     selector: "node.hover",
     style: {
@@ -269,7 +274,6 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       "overlay-color": "#000",
     },
   },
-  // ホバーノードに接続するエッジ: 太く
   {
     selector: "edge.hover-connected",
     style: {
@@ -277,14 +281,12 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       "z-index": 10,
     },
   },
-  // ホバーノードの隣接ノード: そのまま
   {
     selector: "node.hover-neighbor",
     style: {
       opacity: 1,
     },
   },
-  // フェード対象（ホバー時に接続のないノード・エッジ）
   {
     selector: "node.faded",
     style: {
@@ -297,7 +299,6 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       opacity: 0.08,
     },
   },
-
   // ── エッジ（共通） ──
   {
     selector: "edge",
@@ -315,34 +316,28 @@ const cyStyles: cytoscape.StylesheetStyle[] = [
       "target-arrow-color": THEME.edge.default,
       "target-arrow-shape": "triangle",
       "arrow-scale": 0.9,
-      // 同一ノード間の複数エッジを分離して描画
       "curve-style": "unbundled-bezier" as any,
       "control-point-distances": 40,
       "control-point-weights": 0.5,
       width: 2,
       opacity: 1,
-      // スムーズなトランジション
       "transition-property": "opacity, width, line-color, target-arrow-color" as any,
       "transition-duration": 200,
       "transition-timing-function": "ease-in-out-sine" as any,
     },
   },
-  // wasInformedBy エッジ（落ち着いた青 — Activity 間フロー）
   {
     selector: 'edge[label = "wasInformedBy"]',
     style: { "line-color": THEME.edge.wasInformedBy, "target-arrow-color": THEME.edge.wasInformedBy },
   },
-  // used エッジ（ブランドグリーン — Entity→Activity）
   {
     selector: 'edge[label = "used"]',
     style: { "line-color": THEME.edge.used, "target-arrow-color": THEME.edge.used },
   },
-  // wasGeneratedBy エッジ（テラコッタ — Activity→Result）
   {
     selector: 'edge[label = "wasGeneratedBy"]',
     style: { "line-color": THEME.edge.wasGeneratedBy, "target-arrow-color": THEME.edge.wasGeneratedBy },
   },
-  // parameter エッジ（アンバー・点線）
   {
     selector: 'edge[label = "parameter"]',
     style: { "line-color": THEME.edge.parameter, "target-arrow-color": THEME.edge.parameter, "line-style": "dashed" },
@@ -356,10 +351,8 @@ function setupHoverEffects(cy: cytoscape.Core) {
     const node = evt.target;
     const neighborhood = node.neighborhood();
 
-    // 全要素をフェード
     cy.elements().addClass("faded");
 
-    // ホバーノード + 隣接ノード・エッジをハイライト
     node.removeClass("faded").addClass("hover");
     neighborhood.removeClass("faded");
     neighborhood.nodes().addClass("hover-neighbor");
@@ -377,7 +370,7 @@ function CytoscapeGraph({
   doc,
   height = 450,
 }: {
-  doc: ProvDocument;
+  doc: ProvJsonLd;
   height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -389,7 +382,6 @@ function CytoscapeGraph({
     const elements = provToCytoscapeElements(doc);
     if (elements.length === 0) return;
 
-    // 初期レイアウトは preset（位置なし = 原点）で即座に描画
     const cy = cytoscape({
       container: containerRef.current,
       elements,
@@ -405,12 +397,10 @@ function CytoscapeGraph({
 
     cyRef.current = cy;
 
-    // ホバーエフェクト設定
     setupHoverEffects(cy);
 
     let cancelled = false;
 
-    // 階層レイアウト: breadthfirst → ELK
     cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.5 } as any).run();
     cy.fit(undefined, 20);
     applyElkLayout(cy).then(() => {
@@ -440,18 +430,13 @@ function CytoscapeGraph({
 
 /**
  * PROVドキュメントの可視化パネル
- *
- * 試料ごとにタブで切り替え、階層レイアウトで表示する。
- * 試料が1つだけの場合はタブバーを非表示にする。
  */
-export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
+export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
   const [activeSample, setActiveSample] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
-  // 試料分離（メモ化）
   const sampleSplits = useMemo(() => (doc ? splitDocBySample(doc) : []), [doc]);
 
-  // アクティブ試料が無効になったら最初の試料にリセット
   useEffect(() => {
     if (sampleSplits.length > 0) {
       const ids = sampleSplits.map((s) => s.sampleId);
@@ -463,7 +448,6 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
     }
   }, [sampleSplits, activeSample]);
 
-  // Escape キーでモーダルを閉じる
   useEffect(() => {
     if (!expanded) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -483,11 +467,14 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
     );
   }
 
-  // 表示する ProvDocument を決定
+  // 表示する ProvJsonLd を決定
   const activeDoc = activeSample
     ? sampleSplits.find((s) => s.sampleId === activeSample)?.doc ?? doc
     : doc;
   const showTabs = sampleSplits.length > 1;
+
+  // 統計情報の計算
+  const relations = extractRelations(activeDoc);
 
   const sampleTabs = showTabs ? (
     <div style={tabBarStyle}>
@@ -517,7 +504,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvDocument | null }) {
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>
-          {activeDoc["@graph"].length} ノード · {activeDoc.relations.length} リレーション
+          {activeDoc["@graph"].length} ノード · {relations.length} リレーション
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
@@ -640,4 +627,3 @@ const modalContentStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
 };
-

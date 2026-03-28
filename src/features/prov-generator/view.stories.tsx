@@ -1,10 +1,10 @@
 // PROVグラフパネルのストーリー
-// ProvGraphPanel の各状態を確認する
+// ProvGraphPanel の各状態を確認する（Phase 3: ProvJsonLd 形式）
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Component, type ReactNode } from "react";
 import { ProvGraphPanel } from "./view";
-import type { ProvDocument } from "./generator";
+import type { ProvJsonLd } from "./generator";
 
 // ── エラーバウンダリ（Cytoscape/ELK の初期化エラーを吸収） ──
 class ErrorBoundary extends Component<
@@ -36,58 +36,138 @@ export default meta;
 
 // ── @context 共通 ──
 const ctx = {
-  prov: "http://www.w3.org/ns/prov#",
-  provnote: "https://provnote.app/ns#",
+  prov: "http://www.w3.org/ns/prov#" as const,
+  provnote: "https://provnote.app/ns#" as const,
+  rdfs: "http://www.w3.org/2000/01/rdf-schema#" as const,
+  xsd: "http://www.w3.org/2001/XMLSchema#" as const,
 };
 
-// ── モック ProvDocument ──
-// ノード ID の prefix で Entity サブタイプを区別:
-//   entity_ → [使用したもの]（ブランドグリーン）
-//   result_ → [結果]（テラコッタ）
-const simpleProv: ProvDocument = {
+// ── モック ProvJsonLd ──
+const simpleProv: ProvJsonLd = {
   "@context": ctx,
   "@graph": [
-    { "@id": "activity_b1", "@type": "prov:Activity", label: "封入する", blockId: "b1" },
-    { "@id": "activity_b2", "@type": "prov:Activity", label: "アニールする", blockId: "b2" },
-    { "@id": "entity_b3", "@type": "prov:Entity", label: "Cu粉末", blockId: "b3" },
-    { "@id": "result_b4", "@type": "prov:Entity", label: "封入されたCu粉末", blockId: "b4" },
-    { "@id": "param_b5", "@type": "prov:Entity", label: "昇温速度", blockId: "b5", params: { value: "5℃/min" } },
+    {
+      "@id": "activity_b1",
+      "@type": "prov:Activity",
+      "rdfs:label": "封入する",
+      "provnote:blockId": "b1",
+      "prov:used": [{ "@id": "entity_b3" }],
+    },
+    {
+      "@id": "activity_b2",
+      "@type": "prov:Activity",
+      "rdfs:label": "アニールする",
+      "provnote:blockId": "b2",
+      "provnote:hasAttribute": [{ "@id": "param_b5" }],
+    },
+    {
+      "@id": "entity_b3",
+      "@type": "prov:Entity",
+      "rdfs:label": "Cu粉末",
+      "provnote:blockId": "b3",
+    },
+    {
+      "@id": "result_b4",
+      "@type": "prov:Entity",
+      "rdfs:label": "封入されたCu粉末",
+      "provnote:blockId": "b4",
+      "prov:wasGeneratedBy": { "@id": "activity_b1" },
+    },
+    {
+      "@id": "param_b5",
+      "@type": "prov:Entity",
+      "rdfs:label": "昇温速度",
+      "provnote:blockId": "b5",
+      "provnote:value": "5℃/min",
+    },
   ],
-  relations: [
-    { "@type": "prov:used", from: "activity_b1", to: "entity_b3" },
-    { "@type": "prov:wasGeneratedBy", from: "result_b4", to: "activity_b1" },
-    { "@type": "prov:wasInformedBy", from: "activity_b2", to: "activity_b1" },
-    { "@type": "provnote:hasAttribute", from: "activity_b2", to: "param_b5" },
-  ],
-  warnings: [],
 };
 
-const provWithWarnings: ProvDocument = {
+const provWithWarnings: ProvJsonLd = {
   "@context": ctx,
   "@graph": simpleProv["@graph"],
-  relations: simpleProv.relations,
-  warnings: [
+  "provnote:warnings": [
     { type: "unknown-label", message: "ブロック block-5 のラベル [メモ] は未知のラベルです", blockId: "block-5" },
     { type: "broken-link", message: "前手順リンク先 block-9 が見つかりません", blockId: "block-7" },
   ],
 };
 
-const provWithSamples: ProvDocument = {
+const provWithSamples: ProvJsonLd = {
   "@context": ctx,
   "@graph": [
-    { "@id": "entity_b2", "@type": "prov:Entity", label: "Cu粉末", blockId: "b2" },
-    { "@id": "activity_b1__sample_A", "@type": "prov:Activity", label: "アニールする", blockId: "b3", sampleId: "sample_A", params: { temp: "600℃", time: "24h" } },
-    { "@id": "activity_b1__sample_B", "@type": "prov:Activity", label: "アニールする", blockId: "b4", sampleId: "sample_B", params: { temp: "700℃", time: "24h" } },
-    { "@id": "result_b5", "@type": "prov:Entity", label: "アニール品", blockId: "b5", sampleId: "sample_A" },
-    { "@id": "result_b6", "@type": "prov:Entity", label: "アニール品", blockId: "b6", sampleId: "sample_B" },
+    {
+      "@id": "entity_b2",
+      "@type": "prov:Entity",
+      "rdfs:label": "Cu粉末",
+      "provnote:blockId": "b2",
+    },
+    {
+      "@id": "activity_b1__sample_A",
+      "@type": "prov:Activity",
+      "rdfs:label": "アニールする",
+      "provnote:blockId": "b3",
+      "provnote:sampleId": "sample_A",
+      "provnote:temp": "600℃",
+      "provnote:time": "24h",
+      "prov:used": [{ "@id": "entity_b2" }],
+    },
+    {
+      "@id": "activity_b1__sample_B",
+      "@type": "prov:Activity",
+      "rdfs:label": "アニールする",
+      "provnote:blockId": "b4",
+      "provnote:sampleId": "sample_B",
+      "provnote:temp": "700℃",
+      "provnote:time": "24h",
+      "prov:used": [{ "@id": "entity_b2" }],
+    },
+    {
+      "@id": "result_b5",
+      "@type": "prov:Entity",
+      "rdfs:label": "アニール品",
+      "provnote:blockId": "b5",
+      "provnote:sampleId": "sample_A",
+      "prov:wasGeneratedBy": { "@id": "activity_b1__sample_A" },
+    },
+    {
+      "@id": "result_b6",
+      "@type": "prov:Entity",
+      "rdfs:label": "アニール品",
+      "provnote:blockId": "b6",
+      "provnote:sampleId": "sample_B",
+      "prov:wasGeneratedBy": { "@id": "activity_b1__sample_B" },
+    },
   ],
-  relations: [
-    { "@type": "prov:used", from: "activity_b1__sample_A", to: "entity_b2" },
-    { "@type": "prov:used", from: "activity_b1__sample_B", to: "entity_b2" },
-    { "@type": "prov:wasGeneratedBy", from: "result_b5", to: "activity_b1__sample_A" },
-    { "@type": "prov:wasGeneratedBy", from: "result_b6", to: "activity_b1__sample_B" },
+};
+
+// テーブル構造化属性の例
+const provWithStructuredTable: ProvJsonLd = {
+  "@context": ctx,
+  "@graph": [
+    {
+      "@id": "activity_step1",
+      "@type": "prov:Activity",
+      "rdfs:label": "混合する",
+      "provnote:blockId": "step1",
+      "prov:used": [{ "@id": "entity_table1_Cu粉末" }, { "@id": "entity_table1_Zn粉末" }],
+    },
+    {
+      "@id": "entity_table1_Cu粉末",
+      "@type": "prov:Entity",
+      "rdfs:label": "Cu粉末",
+      "provnote:blockId": "table1",
+      "provnote:量": "1g",
+      "provnote:純度": "99.9%",
+    },
+    {
+      "@id": "entity_table1_Zn粉末",
+      "@type": "prov:Entity",
+      "rdfs:label": "Zn粉末",
+      "provnote:blockId": "table1",
+      "provnote:量": "0.5g",
+      "provnote:純度": "99.5%",
+    },
   ],
-  warnings: [],
 };
 
 // 空状態
@@ -127,6 +207,18 @@ export const WithSamples: StoryObj = {
     <Safe>
       <div style={{ maxWidth: 800 }}>
         <ProvGraphPanel doc={provWithSamples} />
+      </div>
+    </Safe>
+  ),
+};
+
+// テーブル構造化属性
+export const WithStructuredTable: StoryObj = {
+  name: "構造化属性テーブル",
+  render: () => (
+    <Safe>
+      <div style={{ maxWidth: 800 }}>
+        <ProvGraphPanel doc={provWithStructuredTable} />
       </div>
     </Safe>
   ),

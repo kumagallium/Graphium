@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { isProvLink, PROV_LINK_TYPES } from "./block-link/link-types";
 import { buildSuggestionList, getDisplayName } from "./context-label/hashtag-menu";
 import { normalizeLabel, classifyLabel, ALIAS_MAP } from "./context-label/labels";
-import { generateProvDocument } from "./prov-generator/generator";
+import { generateProvDocument, extractRelations } from "./prov-generator/generator";
 
 // ──────────────────────────────────
 // 1.3 リンクの二層分離
@@ -33,8 +33,9 @@ describe("リンクの二層分離", () => {
       { id: "ref-1", sourceBlockId: "h2-step", targetBlockId: "some-block", type: "reference" as const, layer: "knowledge" as const, createdBy: "human" as const },
     ];
     const doc = generateProvDocument({ blocks, labels, links });
-    // 知識層リンクは relations に含まれない
-    expect(doc.relations).toHaveLength(0);
+    // 埋め込み形式なので extractRelations で確認
+    const relations = extractRelations(doc);
+    expect(relations).toHaveLength(0);
     // Activity は生成される
     expect(doc["@graph"]).toHaveLength(1);
   });
@@ -65,18 +66,21 @@ describe("[属性] の PROV 名変更", () => {
     const labels = new Map([["h2-step", "[手順]"], ["attr-1", "[属性]"]]);
     const doc = generateProvDocument({ blocks, labels, links: [] });
 
-    const attrRels = doc.relations.filter((r) => r["@type"] === "provnote:hasAttribute");
+    const relations = extractRelations(doc);
+    const attrRels = relations.filter((r) => r["@type"] === "provnote:hasAttribute");
     expect(attrRels.length).toBeGreaterThan(0);
     expect(attrRels[0].to).toBe("param_attr-1");
   });
 
-  it("@context に provnote が含まれる", () => {
+  it("@context に provnote, rdfs, xsd が含まれる", () => {
     const blocks = [
       { id: "h2-step", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順" }], children: [] },
     ];
     const labels = new Map([["h2-step", "[手順]"]]);
     const doc = generateProvDocument({ blocks, labels, links: [] });
     expect(doc["@context"].provnote).toBe("https://provnote.app/ns#");
+    expect(doc["@context"].rdfs).toBe("http://www.w3.org/2000/01/rdf-schema#");
+    expect(doc["@context"].xsd).toBe("http://www.w3.org/2001/XMLSchema#");
     expect((doc["@context"] as any).matprov).toBeUndefined();
   });
 });
@@ -97,7 +101,6 @@ describe("# オートコンプリート候補", () => {
     const suggestions = buildSuggestionList();
     const aliasItems = suggestions.filter((s) => s.group === "alias");
     expect(aliasItems.length).toBeGreaterThan(0);
-    // エイリアスはコアラベルに正規化される
     const matAlias = aliasItems.find((s) => s.query === "材料");
     expect(matAlias?.label).toBe("[使用したもの]");
   });
