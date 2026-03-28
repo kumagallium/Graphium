@@ -88,28 +88,28 @@ const contextLabelInitialContent = [
       rows: [
         {
           cells: [
-            [{ type: "text", text: "試料名", styles: {} }],
+            [{ type: "text", text: "パターン名", styles: {} }],
             [{ type: "text", text: "温度", styles: {} }],
             [{ type: "text", text: "時間", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_A", styles: {} }],
+            [{ type: "text", text: "パターンA", styles: {} }],
             [{ type: "text", text: "600℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_B", styles: {} }],
+            [{ type: "text", text: "パターンB", styles: {} }],
             [{ type: "text", text: "700℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_C", styles: {} }],
+            [{ type: "text", text: "パターンC", styles: {} }],
             [{ type: "text", text: "800℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
@@ -135,7 +135,7 @@ const initialLabels: [string, string][] = [
   ["block-used1", "[使用したもの]"],
   ["block-result1", "[結果]"],
   ["block-step2", "[手順]"],
-  ["block-sample-table", "[試料]"],
+  ["block-sample-table", "[パターン]"],
   ["block-step3", "[手順]"],
   ["block-result3", "[結果]"],
 ];
@@ -315,7 +315,7 @@ function ContextLabelExperimentInner() {
         </div>
         <div style={{ width: 480, flexShrink: 0, borderLeft: "1px solid #e5e7eb", background: "#fafbfc", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em" }}>PROV</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em" }}>手順</span>
             <button onClick={handleGenerateProv} style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, borderRadius: 4, border: "1px solid #4B7A52", background: "#edf5ee", color: "#4B7A52", cursor: "pointer" }}>生成</button>
           </div>
           <div style={{ flex: 1, overflow: "auto" }}><ProvGraphPanel doc={provDoc} /></div>

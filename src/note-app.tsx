@@ -901,7 +901,7 @@ function NoteEditorInner({
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              PROV
+              手順
             </button>
             {rightTab === "prov" && (
               <button

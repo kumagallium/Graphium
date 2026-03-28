@@ -48,14 +48,14 @@ function createLabelSlashItem(
       if (blockType === "heading") {
         newBlock = { type: "heading", props: { level: 2 } };
       } else if (blockType === "table") {
-        // 試料テーブル: 試料名・条件列を持つ 3x2 テーブル
+        // パターンテーブル: パターン名・条件列を持つ 3x2 テーブル
         newBlock = {
           type: "table",
           content: {
             type: "tableContent",
             rows: [
               { cells: [
-                [{ type: "text", text: "試料名", styles: {} }],
+                [{ type: "text", text: "パターン名", styles: {} }],
                 [{ type: "text", text: "条件1", styles: {} }],
                 [{ type: "text", text: "条件2", styles: {} }],
               ]},
@@ -149,11 +149,11 @@ export const labelSlashMenuItems: LabelSlashItem[] = [
     "data",
     "outcome",
   ]),
-  createLabelSlashItem("試料", "[試料]", "table", [
+  createLabelSlashItem("パターン", "[パターン]", "table", [
+    "パターン",
+    "ぱたーん",
     "試料",
-    "しりょう",
     "サンプル",
-    "検体",
     "sample",
     "samples",
     "specimen",
