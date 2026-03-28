@@ -21,7 +21,7 @@ const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#5b8fb9",
   "[使用したもの]": "#4B7A52",
   "[属性]": "#c08b3e",
-  "[試料]": "#8b7ab5",
+  "[パターン]": "#8b7ab5",
   "[結果]": "#c26356",
 };
 function getLabelColor(label: string): string {
@@ -159,9 +159,9 @@ export const NoteStatic: StoryObj = {
       <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
       <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
-      <EditorBlock label="[試料]" indent={24}>
+      <EditorBlock label="[パターン]" indent={24}>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead><tr><th style={th}>試料名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
+          <thead><tr><th style={th}>パターン名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
           <tbody>
             <tr><td style={td}>sample_A</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
             <tr><td style={td}>sample_B</td><td style={td}>700℃</td><td style={td}>24h</td></tr>
@@ -197,9 +197,9 @@ export const NoteHoverDemo: StoryObj = {
           <HoverBlock id="p1" indent={24} hoveredId={h} setHoveredId={setH}><p style={{ color: tokens.mutedFg }}>真空封入管内で封入する。（ラベルなし）</p></HoverBlock>
           <HoverBlock id="r1" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>封入されたCu粉末</p></HoverBlock>
           <HoverBlock id="s2" label="[手順]" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></HoverBlock>
-          <HoverBlock id="st" label="[試料]" indent={24} hoveredId={h} setHoveredId={setH}>
+          <HoverBlock id="st" label="[パターン]" indent={24} hoveredId={h} setHoveredId={setH}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr><th style={th}>試料名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
+              <thead><tr><th style={th}>パターン名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
               <tbody>
                 <tr><td style={td}>sample_A</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
                 <tr><td style={td}>sample_B</td><td style={td}>700℃</td><td style={td}>24h</td></tr>

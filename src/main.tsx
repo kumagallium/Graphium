@@ -88,7 +88,7 @@ const contextLabelInitialContent = [
       rows: [
         {
           cells: [
-            [{ type: "text", text: "試料名", styles: {} }],
+            [{ type: "text", text: "パターン名", styles: {} }],
             [{ type: "text", text: "温度", styles: {} }],
             [{ type: "text", text: "時間", styles: {} }],
           ],
@@ -135,7 +135,7 @@ const initialLabels: [string, string][] = [
   ["block-used1", "[使用したもの]"],
   ["block-result1", "[結果]"],
   ["block-step2", "[手順]"],
-  ["block-sample-table", "[試料]"],
+  ["block-sample-table", "[パターン]"],
   ["block-step3", "[手順]"],
   ["block-result3", "[結果]"],
 ];

@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────
-// 試料分岐展開ロジック
+// パターン分岐展開ロジック
 //
 // [試料] テーブルの行数分だけ Activity を複製し、
-// 各試料固有の条件を Entity として生成する。
+// 各パターン固有の条件を Entity として生成する。
 // 後続ステップへの伝播は informed_by リンク経由で制御する。
 // ──────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ export type ProvActivity = {
   label: string;
   /** 元のブロックID */
   blockId: string;
-  /** 試料IDで分岐した場合の試料ID（未分岐なら undefined） */
+  /** パターンIDで分岐した場合のパターンID（未分岐なら undefined） */
   sampleId?: string;
 };
 
@@ -34,14 +34,14 @@ export type BranchExpansion = {
   sourceBlockId: string;
   /** 展開された Activity 群 */
   activities: ProvActivity[];
-  /** 展開された Entity 群（試料ごとの条件） */
+  /** 展開された Entity 群（パターンごとの条件） */
   entities: ProvEntity[];
 };
 
 /**
  * [試料] テーブルから Activity を分岐展開する
  *
- * 例: 3試料のテーブル → 3つの Activity と 3つの Entity
+ * 例: 3パターンのテーブル → 3つの Activity と 3つの Entity
  */
 export function expandSampleBranch(
   activityBlockId: string,
@@ -52,7 +52,7 @@ export function expandSampleBranch(
   const entities: ProvEntity[] = [];
 
   for (const row of sampleTable.rows) {
-    // Activity × N: 各試料に対して Activity を生成
+    // Activity × N: 各パターンに対して Activity を生成
     const actId = `${activityBlockId}__sample_${row.sampleId}`;
     activities.push({
       id: actId,
@@ -82,7 +82,7 @@ export function expandSampleBranch(
  * 後続ステップへの伝播
  *
  * informed_by リンクで前ステップを参照している Activity が、
- * 前ステップで試料分岐されている場合、
+ * 前ステップでパターン分岐されている場合、
  * 後続ステップも同じ試料分だけ分岐する。
  */
 export function propagateBranches(

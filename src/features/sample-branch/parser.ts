@@ -1,31 +1,31 @@
 // ──────────────────────────────────────────────
-// 試料テーブル解析
+// パターンテーブル解析
 //
 // [試料] ラベルが付いたテーブルブロックを解析し、
-// 1列目を試料ID、2列目以降を試料固有条件として抽出する。
+// 1列目をパターンID、2列目以降を試料固有条件として抽出する。
 // thought-provenance-spec.md § 0-D に準拠
 // ──────────────────────────────────────────────
 
-/** 試料テーブルから抽出された1行分のデータ */
+/** パターンテーブルから抽出された1行分のデータ */
 export type SampleRow = {
-  /** 試料ID（1列目、完全一致・大文字小文字区別） */
+  /** パターンID（1列目、完全一致・大文字小文字区別） */
   sampleId: string;
   /** 列名 → 値 のマップ（2列目以降） */
   params: Record<string, string>;
 };
 
-/** 試料テーブル解析結果 */
+/** パターンテーブル解析結果 */
 export type SampleTable = {
   /** 元のブロックID */
   blockId: string;
-  /** 列ヘッダー（1列目 = 試料ID列名、2列目以降 = パラメータ列名） */
+  /** 列ヘッダー（1列目 = パターンID列名、2列目以降 = パラメータ列名） */
   headers: string[];
   /** 各行の試料データ */
   rows: SampleRow[];
 };
 
 /**
- * BlockNoteのテーブルブロックJSONから試料テーブルを解析する
+ * BlockNoteのテーブルブロックJSONからパターンテーブルを解析する
  *
  * テーブル構造:
  *   content.rows[0] = ヘッダー行
@@ -100,14 +100,14 @@ function extractInlineText(inlines: any[]): string {
 }
 
 /**
- * 試料IDの照合（完全一致、大文字小文字区別）
+ * パターンIDの照合（完全一致、大文字小文字区別）
  */
 export function matchSampleId(id1: string, id2: string): boolean {
   return id1 === id2;
 }
 
 /**
- * 2つのテーブルの試料IDを照合し、不一致を報告する
+ * 2つのテーブルのパターンIDを照合し、不一致を報告する
  */
 export function validateSampleIds(
   sampleTable: SampleTable,

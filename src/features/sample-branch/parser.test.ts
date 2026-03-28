@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseSampleTable, matchSampleId, validateSampleIds } from "./parser";
 import { expandSampleBranch, propagateBranches } from "./expander";
 
-// テスト用テーブルブロック（Cu粉末アニール実験の試料テーブル）
+// テスト用テーブルブロック（Cu粉末アニール実験のパターンテーブル）
 const sampleTableBlock = {
   id: "block-sample-1",
   type: "table",
@@ -11,7 +11,7 @@ const sampleTableBlock = {
     rows: [
       {
         cells: [
-          [{ type: "text", text: "試料名" }],
+          [{ type: "text", text: "パターン名" }],
           [{ type: "text", text: "温度" }],
           [{ type: "text", text: "時間" }],
         ],
@@ -50,7 +50,7 @@ const resultTableBlock = {
     rows: [
       {
         cells: [
-          [{ type: "text", text: "試料名" }],
+          [{ type: "text", text: "パターン名" }],
           [{ type: "text", text: "観察結果" }],
         ],
       },
@@ -77,10 +77,10 @@ const resultTableBlock = {
 };
 
 describe("parseSampleTable", () => {
-  it("3試料のテーブルを正しく解析できる", () => {
+  it("3パターンのテーブルを正しく解析できる", () => {
     const result = parseSampleTable(sampleTableBlock);
     expect(result).not.toBeNull();
-    expect(result!.headers).toEqual(["試料名", "温度", "時間"]);
+    expect(result!.headers).toEqual(["パターン名", "温度", "時間"]);
     expect(result!.rows).toHaveLength(3);
     expect(result!.rows[0].sampleId).toBe("sample_A");
     expect(result!.rows[0].params).toEqual({ "温度": "600℃", "時間": "24h" });
@@ -97,7 +97,7 @@ describe("parseSampleTable", () => {
       id: "x",
       type: "table",
       content: {
-        rows: [{ cells: [[{ type: "text", text: "試料名" }]] }],
+        rows: [{ cells: [[{ type: "text", text: "パターン名" }]] }],
       },
     };
     expect(parseSampleTable(block)).toBeNull();
@@ -125,7 +125,7 @@ describe("validateSampleIds", () => {
 });
 
 describe("expandSampleBranch", () => {
-  it("3試料で3つのActivityに分岐する", () => {
+  it("3パターンで3つのActivityに分岐する", () => {
     const sampleTable = parseSampleTable(sampleTableBlock)!;
     const expansion = expandSampleBranch("block-step-2", "アニールする", sampleTable);
 

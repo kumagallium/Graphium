@@ -178,12 +178,12 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // ── Step 3: 試料分岐の展開 ──
+  // ── Step 3: パターン分岐の展開 ──
 
   const activities = labeledBlocks.filter((lb) => lb.provRole === "prov:Activity");
 
   const sampleTables = labeledBlocks
-    .filter((lb) => lb.coreLabel === "[試料]" && lb.block.type === "table")
+    .filter((lb) => lb.coreLabel === "[パターン]" && lb.block.type === "table")
     .map((lb) => ({ block: lb.block, table: parseSampleTable(lb.block) }))
     .filter((x): x is { block: any; table: SampleTable } => x.table !== null);
 
@@ -219,7 +219,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         warnings.push(createWarning(
           "sample-condition-coexist",
           sampleEntry.block.id,
-          "[試料] と [条件] が共存 — [試料] を優先、[条件] は全試料共通として処理"
+          "[試料] と [条件] が共存 — [試料] を優先、[条件] は全パターン共通として処理"
         ));
       }
 
@@ -400,7 +400,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   // ── [結果] → Entity + wasGeneratedBy 関係 ──
   // Phase 3: テーブルの場合は行ごとに個別 Entity に展開
-  // 行名が試料IDに一致する場合は対応する分岐 Activity のみにリンク
+  // 行名がパターンIDに一致する場合は対応する分岐 Activity のみにリンク
   const knownSampleIds = new Set<string>();
   for (const [, branch] of branchMap) {
     for (const a of branch.activities) {
@@ -415,7 +415,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         if (parsed && parsed.rows.length > 0) {
           for (const row of parsed.rows) {
             const entityId = `result_${lb.block.id}_${row.name}`;
-            // 行名が試料IDに一致するか判定
+            // 行名がパターンIDに一致するか判定
             const matchedSampleId = knownSampleIds.has(row.name) ? row.name : undefined;
             nodes.push({
               "@id": entityId,
@@ -426,7 +426,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               params: Object.keys(row.attrs).length > 0 ? row.attrs : undefined,
             });
             if (matchedSampleId) {
-              // 試料IDに一致 → 対応する分岐 Activity のみにリンク
+              // パターンIDに一致 → 対応する分岐 Activity のみにリンク
               const actIds = getActivityIdsForScope(lb.block.id);
               const matchedActId = actIds.find((id) => id.includes(`__sample_${matchedSampleId}`));
               if (matchedActId) {
@@ -464,7 +464,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         }
       }
 
-      // 結果テーブルの試料ID照合
+      // 結果テーブルのパターンID照合
       if (lb.block.type === "table" && sampleTables.length > 0) {
         const resultTable = parseSampleTable(lb.block);
         if (resultTable) {
@@ -474,7 +474,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               warnings.push(createWarning(
                 "sample-id-mismatch",
                 lb.block.id,
-                `試料ID不一致: ${unmatched.join(", ")}`
+                `パターンID不一致: ${unmatched.join(", ")}`
               ));
             }
           }
@@ -640,7 +640,7 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
     }
     case "[使用したもの]": return "prov:Entity";
     case "[属性]": return null; // 親ノードのプロパティとして埋め込む
-    case "[試料]": return null;
+    case "[パターン]": return null;
     case "[結果]": return "prov:Entity";
     default: return null;
   }

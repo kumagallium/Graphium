@@ -45,11 +45,11 @@ const THEME = {
   primary: "#4B7A52",
 } as const;
 
-// ── 試料ごとのグラフ分離 ──
+// ── パターンごとのグラフ分離 ──
 
 type SampleSplit = { sampleId: string; doc: ProvJsonLd };
 
-/** ProvJsonLd を試料ごとに分離する。共通ノードは各グラフに含める */
+/** ProvJsonLd をパターンごとに分離する。共通ノードは各グラフに含める */
 function splitDocBySample(doc: ProvJsonLd): SampleSplit[] {
   const sampleIds = [...new Set(
     doc["@graph"]

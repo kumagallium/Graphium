@@ -146,7 +146,7 @@ describe("カレー実験シナリオ（基本形）", () => {
 });
 
 // ──────────────────────────────────
-// シナリオ 2: 複数試料（Cu粉末アニール）
+// シナリオ 2: 複数パターン（Cu粉末アニール）
 // ──────────────────────────────────
 
 const annealBlocks = [
@@ -176,7 +176,7 @@ const annealBlocks = [
     content: {
       type: "tableContent",
       rows: [
-        { cells: [[{ type: "text", text: "試料名" }], [{ type: "text", text: "温度" }], [{ type: "text", text: "時間" }]] },
+        { cells: [[{ type: "text", text: "パターン名" }], [{ type: "text", text: "温度" }], [{ type: "text", text: "時間" }]] },
         { cells: [[{ type: "text", text: "sample_A" }], [{ type: "text", text: "600℃" }], [{ type: "text", text: "24h" }]] },
         { cells: [[{ type: "text", text: "sample_B" }], [{ type: "text", text: "700℃" }], [{ type: "text", text: "24h" }]] },
         { cells: [[{ type: "text", text: "sample_C" }], [{ type: "text", text: "800℃" }], [{ type: "text", text: "24h" }]] },
@@ -197,7 +197,7 @@ const annealBlocks = [
     content: {
       type: "tableContent",
       rows: [
-        { cells: [[{ type: "text", text: "試料名" }], [{ type: "text", text: "観察結果" }]] },
+        { cells: [[{ type: "text", text: "パターン名" }], [{ type: "text", text: "観察結果" }]] },
         { cells: [[{ type: "text", text: "sample_A" }], [{ type: "text", text: "相転移あり" }]] },
         { cells: [[{ type: "text", text: "sample_B" }], [{ type: "text", text: "変化なし" }]] },
         { cells: [[{ type: "text", text: "sample_C" }], [{ type: "text", text: "微小変化" }]] },
@@ -211,7 +211,7 @@ const annealLabels = new Map([
   ["h2-seal", "[手順]"],
   ["used-cu", "[使用したもの]"],
   ["h2-anneal", "[手順]"],
-  ["sample-table", "[試料]"],
+  ["sample-table", "[パターン]"],
   ["h2-eval", "[手順]"],
   ["result-table", "[結果]"],
 ]);
@@ -593,7 +593,7 @@ describe("見出しレベル階層スコープ", () => {
   });
 });
 
-describe("複数試料シナリオ（Cu粉末アニール）", () => {
+describe("複数パターンシナリオ（Cu粉末アニール）", () => {
   it("アニールする が3つのActivityに分岐する", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
     const annealActivities = doc["@graph"].filter(
@@ -611,7 +611,7 @@ describe("複数試料シナリオ（Cu粉末アニール）", () => {
     expect(evalActivities).toHaveLength(3);
   });
 
-  it("試料Entityが3つ生成され、構造化属性を持つ", () => {
+  it("パターンEntityが3つ生成され、構造化属性を持つ", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
     const sampleEntities = doc["@graph"].filter(
       (n) => n["@type"] === "prov:Entity" && n["provnote:blockId"] === "sample-table"
@@ -636,7 +636,7 @@ describe("複数試料シナリオ（Cu粉末アニール）", () => {
     expect(usedRels.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("試料別分割 — 全試料で同じグラフ構造（ノード数・エッジ数が一致）", () => {
+  it("パターン別分割 — 全パターンで同じグラフ構造（ノード数・エッジ数が一致）", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
 
     const sampleIds = [...new Set(
@@ -667,7 +667,7 @@ describe("複数試料シナリオ（Cu粉末アニール）", () => {
     }
   });
 
-  it("試料別分割 — 各グラフが連結している（孤立ノードなし）", () => {
+  it("パターン別分割 — 各グラフが連結している（孤立ノードなし）", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
 
     const sampleIds = [...new Set(

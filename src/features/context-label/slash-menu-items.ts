@@ -149,7 +149,7 @@ export const labelSlashMenuItems: LabelSlashItem[] = [
     "data",
     "outcome",
   ]),
-  createLabelSlashItem("パターン", "[試料]", "table", [
+  createLabelSlashItem("パターン", "[パターン]", "table", [
     "パターン",
     "ぱたーん",
     "試料",

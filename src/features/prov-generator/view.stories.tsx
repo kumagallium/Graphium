@@ -195,9 +195,9 @@ export const WithWarnings: StoryObj = {
   ),
 };
 
-// 試料別分離
+// パターン別分離
 export const WithSamples: StoryObj = {
-  name: "試料別グラフ",
+  name: "パターン別グラフ",
   render: () => (
     <Safe>
       <div style={{ maxWidth: 800 }}>
