@@ -1060,7 +1060,7 @@ function NoteEditorInner({
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {tab === "graph" ? "Graph" : tab === "prov" ? "PROV" : tab === "chat" ? "Chat" : "Source"}
+                {tab === "graph" ? "Graph" : tab === "prov" ? "手順" : tab === "chat" ? "Chat" : "Source"}
               </button>
             ))}
             {rightTab === "prov" && (

@@ -131,8 +131,8 @@ export const DerivedPages: StoryObj = {
   render: () => {
     const pages: Page[] = [
       { id: "p1", title: "実験テンプレート" },
-      { id: "p2", title: "sample_A", derivedFromPageId: "p1" },
-      { id: "p3", title: "sample_B", derivedFromPageId: "p1" },
+      { id: "p2", title: "パターンA", derivedFromPageId: "p1" },
+      { id: "p3", title: "パターンB", derivedFromPageId: "p1" },
     ];
     return (
       <div style={{ maxWidth: 700, fontFamily: tokens.font }}>
@@ -142,7 +142,7 @@ export const DerivedPages: StoryObj = {
         <TabBarMock pages={pages} activeId="p2" onSelect={() => {}} onRemove={() => {}} onAdd={() => {}} />
         <div style={{ padding: 16, background: "#fff", border: "1px solid #e5e7eb", borderTop: "none", minHeight: 100 }}>
           <p style={{ fontSize: 13, color: tokens.fg }}>
-            sample_A（実験テンプレートから派生）
+            パターンA（実験テンプレートから派生）
           </p>
         </div>
       </div>

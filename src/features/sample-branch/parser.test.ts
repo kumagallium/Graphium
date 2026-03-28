@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseSampleTable, matchSampleId, validateSampleIds } from "./parser";
 import { expandSampleBranch, propagateBranches } from "./expander";
 
-// テスト用テーブルブロック（Cu粉末アニール実験の試料テーブル）
+// テスト用テーブルブロック（Cu粉末アニール実験のパターンテーブル）
 const sampleTableBlock = {
   id: "block-sample-1",
   type: "table",
@@ -11,28 +11,28 @@ const sampleTableBlock = {
     rows: [
       {
         cells: [
-          [{ type: "text", text: "試料名" }],
+          [{ type: "text", text: "パターン名" }],
           [{ type: "text", text: "温度" }],
           [{ type: "text", text: "時間" }],
         ],
       },
       {
         cells: [
-          [{ type: "text", text: "sample_A" }],
+          [{ type: "text", text: "パターンA" }],
           [{ type: "text", text: "600℃" }],
           [{ type: "text", text: "24h" }],
         ],
       },
       {
         cells: [
-          [{ type: "text", text: "sample_B" }],
+          [{ type: "text", text: "パターンB" }],
           [{ type: "text", text: "700℃" }],
           [{ type: "text", text: "24h" }],
         ],
       },
       {
         cells: [
-          [{ type: "text", text: "sample_C" }],
+          [{ type: "text", text: "パターンC" }],
           [{ type: "text", text: "800℃" }],
           [{ type: "text", text: "24h" }],
         ],
@@ -50,19 +50,19 @@ const resultTableBlock = {
     rows: [
       {
         cells: [
-          [{ type: "text", text: "試料名" }],
+          [{ type: "text", text: "パターン名" }],
           [{ type: "text", text: "観察結果" }],
         ],
       },
       {
         cells: [
-          [{ type: "text", text: "sample_A" }],
+          [{ type: "text", text: "パターンA" }],
           [{ type: "text", text: "相転移あり" }],
         ],
       },
       {
         cells: [
-          [{ type: "text", text: "sample_B" }],
+          [{ type: "text", text: "パターンB" }],
           [{ type: "text", text: "変化なし" }],
         ],
       },
@@ -77,14 +77,14 @@ const resultTableBlock = {
 };
 
 describe("parseSampleTable", () => {
-  it("3試料のテーブルを正しく解析できる", () => {
+  it("3パターンのテーブルを正しく解析できる", () => {
     const result = parseSampleTable(sampleTableBlock);
     expect(result).not.toBeNull();
-    expect(result!.headers).toEqual(["試料名", "温度", "時間"]);
+    expect(result!.headers).toEqual(["パターン名", "温度", "時間"]);
     expect(result!.rows).toHaveLength(3);
-    expect(result!.rows[0].sampleId).toBe("sample_A");
+    expect(result!.rows[0].sampleId).toBe("パターンA");
     expect(result!.rows[0].params).toEqual({ "温度": "600℃", "時間": "24h" });
-    expect(result!.rows[2].sampleId).toBe("sample_C");
+    expect(result!.rows[2].sampleId).toBe("パターンC");
     expect(result!.rows[2].params).toEqual({ "温度": "800℃", "時間": "24h" });
   });
 
@@ -97,7 +97,7 @@ describe("parseSampleTable", () => {
       id: "x",
       type: "table",
       content: {
-        rows: [{ cells: [[{ type: "text", text: "試料名" }]] }],
+        rows: [{ cells: [[{ type: "text", text: "パターン名" }]] }],
       },
     };
     expect(parseSampleTable(block)).toBeNull();
@@ -106,11 +106,11 @@ describe("parseSampleTable", () => {
 
 describe("matchSampleId", () => {
   it("完全一致する", () => {
-    expect(matchSampleId("sample_A", "sample_A")).toBe(true);
+    expect(matchSampleId("パターンA", "パターンA")).toBe(true);
   });
 
   it("大文字小文字を区別する", () => {
-    expect(matchSampleId("sample_A", "sample_a")).toBe(false);
+    expect(matchSampleId("パターンA", "sample_a")).toBe(false);
   });
 });
 
@@ -119,23 +119,23 @@ describe("validateSampleIds", () => {
     const sampleTable = parseSampleTable(sampleTableBlock)!;
     const resultTable = parseSampleTable(resultTableBlock)!;
     const { matched, unmatched } = validateSampleIds(sampleTable, resultTable);
-    expect(matched).toEqual(["sample_A", "sample_B"]);
+    expect(matched).toEqual(["パターンA", "パターンB"]);
     expect(unmatched).toEqual(["sample_X"]);
   });
 });
 
 describe("expandSampleBranch", () => {
-  it("3試料で3つのActivityに分岐する", () => {
+  it("3パターンで3つのActivityに分岐する", () => {
     const sampleTable = parseSampleTable(sampleTableBlock)!;
     const expansion = expandSampleBranch("block-step-2", "アニールする", sampleTable);
 
     expect(expansion.activities).toHaveLength(3);
-    expect(expansion.activities[0].label).toBe("アニールする [sample_A]");
-    expect(expansion.activities[0].sampleId).toBe("sample_A");
-    expect(expansion.activities[2].label).toBe("アニールする [sample_C]");
+    expect(expansion.activities[0].label).toBe("アニールする [パターンA]");
+    expect(expansion.activities[0].sampleId).toBe("パターンA");
+    expect(expansion.activities[2].label).toBe("アニールする [パターンC]");
 
     expect(expansion.entities).toHaveLength(3);
-    expect(expansion.entities[0].sampleId).toBe("sample_A");
+    expect(expansion.entities[0].sampleId).toBe("パターンA");
     expect(expansion.entities[0].params).toEqual({ "温度": "600℃", "時間": "24h" });
   });
 });
@@ -158,8 +158,8 @@ describe("propagateBranches", () => {
     const result = propagateBranches("block-step-3", "評価する", links, branchMap);
     expect(result).not.toBeNull();
     expect(result!.activities).toHaveLength(3);
-    expect(result!.activities[0].label).toBe("評価する [sample_A]");
-    expect(result!.activities[2].label).toBe("評価する [sample_C]");
+    expect(result!.activities[0].label).toBe("評価する [パターンA]");
+    expect(result!.activities[2].label).toBe("評価する [パターンC]");
   });
 
   it("前ステップが分岐していなければnullを返す", () => {

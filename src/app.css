@@ -98,3 +98,10 @@ body[data-label-dropdown-open="true"] .bn-side-menu {
 .bn-side-menu[data-block-type="heading"][data-level="3"] {
   height: 34px !important;
 }
+
+/* テーブルのヘッダー行（1行目）を視覚的に区別 */
+.bn-editor table tr:first-child td {
+  font-weight: 600 !important;
+  background-color: #f0f5ef !important;
+  color: #2d4a32 !important;
+}

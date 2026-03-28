@@ -1,5 +1,5 @@
 // PROV-DM の全機能を示すテンプレート
-// 手順・使用したもの・条件・試料テーブル・結果・前手順リンクを含む
+// 手順・使用したもの・条件・パターンテーブル・結果・前手順リンクを含む
 
 import type { ProvNoteDocument } from "./google-drive";
 
@@ -61,28 +61,28 @@ const blocks = [
       rows: [
         {
           cells: [
-            [{ type: "text", text: "試料名", styles: {} }],
+            [{ type: "text", text: "パターン名", styles: {} }],
             [{ type: "text", text: "温度", styles: {} }],
             [{ type: "text", text: "時間", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_A", styles: {} }],
+            [{ type: "text", text: "パターンA", styles: {} }],
             [{ type: "text", text: "600℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_B", styles: {} }],
+            [{ type: "text", text: "パターンB", styles: {} }],
             [{ type: "text", text: "700℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
         },
         {
           cells: [
-            [{ type: "text", text: "sample_C", styles: {} }],
+            [{ type: "text", text: "パターンC", styles: {} }],
             [{ type: "text", text: "800℃", styles: {} }],
             [{ type: "text", text: "24h", styles: {} }],
           ],
@@ -120,7 +120,7 @@ const labels: Record<string, string> = {
   [ids.used1b]: "[使用したもの]",
   [ids.result1]: "[結果]",
   [ids.step2]: "[手順]",
-  [ids.sampleTable]: "[試料]",
+  [ids.sampleTable]: "[パターン]",
   [ids.cond2a]: "[属性]",
   [ids.cond2b]: "[属性]",
   [ids.step3]: "[手順]",
