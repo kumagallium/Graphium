@@ -134,9 +134,10 @@ describe("expandSampleBranch", () => {
     expect(expansion.activities[0].sampleId).toBe("パターンA");
     expect(expansion.activities[2].label).toBe("アニールする [パターンC]");
 
-    expect(expansion.entities).toHaveLength(3);
-    expect(expansion.entities[0].sampleId).toBe("パターンA");
-    expect(expansion.entities[0].params).toEqual({ "温度": "600℃", "時間": "24h" });
+    // Entity は生成されない（属性は Activity に埋め込み）
+    expect(expansion.entities).toHaveLength(0);
+    // Activity に params が埋め込まれている
+    expect(expansion.activities[0].params).toEqual({ "温度": "600℃", "時間": "24h" });
   });
 });
 

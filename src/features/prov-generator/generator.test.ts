@@ -611,22 +611,36 @@ describe("複数パターンシナリオ（Cu粉末アニール）", () => {
     expect(evalActivities).toHaveLength(3);
   });
 
-  it("パターンEntityが3つ生成され、構造化属性を持つ", () => {
+  it("パターンテーブルの属性が Activity の provnote:attributes に埋め込まれる", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
+    // パターン Entity は生成されない
     const sampleEntities = doc["@graph"].filter(
       (n) => n["@type"] === "prov:Entity" && n["provnote:blockId"] === "sample-table"
     );
-    expect(sampleEntities).toHaveLength(3);
-    // 構造化属性が provnote: プレフィックスで埋め込まれている
-    expect(sampleEntities[0]["provnote:温度"]).toBe("600℃");
-    expect(sampleEntities[0]["provnote:時間"]).toBe("24h");
+    expect(sampleEntities).toHaveLength(0);
+    // テーブルは「アニールする」スコープ内 → アニールの Activity に属性が埋め込まれる
+    const annealA = doc["@graph"].find(
+      (n) => n["@type"] === "prov:Activity" && n["provnote:sampleId"] === "パターンA"
+        && n["provnote:blockId"] === "h2-anneal"
+    );
+    expect(annealA).toBeDefined();
+    expect(annealA!["provnote:attributes"]).toBeDefined();
+    expect(annealA!["provnote:attributes"]!.some((a) => a["rdfs:label"].includes("温度"))).toBe(true);
+
+    // 封入する（テーブルのスコープ外）には属性がない
+    const sealA = doc["@graph"].find(
+      (n) => n["@type"] === "prov:Activity" && n["provnote:sampleId"] === "パターンA"
+        && n["provnote:blockId"] === "h2-seal"
+    );
+    expect(sealA).toBeDefined();
+    expect(sealA!["provnote:attributes"]).toBeUndefined();
   });
 
-  it("used 関係が生成される（試料3 + 使用したもの1）", () => {
+  it("used 関係が生成される（使用したもの分のみ）", () => {
     const doc = generateProvDocument({ blocks: annealBlocks, labels: annealLabels, links: annealLinks });
     const relations = getRelations(doc);
     const usedRels = relations.filter((r) => r["@type"] === "prov:used");
-    expect(usedRels.length).toBeGreaterThanOrEqual(4);
+    expect(usedRels.length).toBeGreaterThanOrEqual(1);
   });
 
   it("前手順リンクが結果Entity経由で繋がる", () => {

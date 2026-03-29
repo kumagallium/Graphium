@@ -17,6 +17,8 @@ export type ProvActivity = {
   blockId: string;
   /** パターンIDで分岐した場合のパターンID（未分岐なら undefined） */
   sampleId?: string;
+  /** パターンテーブルの属性列（条件パラメータ） */
+  params?: Record<string, string>;
 };
 
 /** PROV上の Entity（試料・材料・結果など）を表現 */
@@ -53,21 +55,14 @@ export function expandSampleBranch(
 
   for (const row of sampleTable.rows) {
     // Activity × N: 各パターンに対して Activity を生成
+    // パターンテーブルの2列目以降は Activity の属性（条件パラメータ）
     const actId = `${activityBlockId}__sample_${row.sampleId}`;
     activities.push({
       id: actId,
       label: `${activityLabel} [${row.sampleId}]`,
       blockId: activityBlockId,
       sampleId: row.sampleId,
-    });
-
-    // 試料 Entity を生成
-    entities.push({
-      id: `entity_${sampleTable.blockId}_${row.sampleId}`,
-      label: row.sampleId,
-      blockId: sampleTable.blockId,
-      sampleId: row.sampleId,
-      params: row.params,
+      params: Object.keys(row.params).length > 0 ? row.params : undefined,
     });
   }
 
