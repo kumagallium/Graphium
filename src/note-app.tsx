@@ -36,6 +36,10 @@ import {
   type ProvDocument,
 } from "./features/prov-generator";
 import {
+  SampleScopeProvider,
+  SampleTabBarLayer,
+} from "./features/sample-scope";
+import {
   NetworkGraphPanel,
   buildNoteGraph,
   type NoteGraphData,
@@ -548,7 +552,9 @@ function NoteEditor(props: NoteEditorProps) {
     <LabelStoreProvider>
       <LinkStoreProvider>
         <AiAssistantProvider>
-          <NoteEditorInner {...props} />
+          <SampleScopeProvider>
+            <NoteEditorInner {...props} />
+          </SampleScopeProvider>
         </AiAssistantProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
@@ -972,6 +978,7 @@ function NoteEditorInner({
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       <LabelDropdownPortal />
+      <SampleTabBarLayer />
       {/* ヘッダー */}
       <div className="px-4 py-2 border-b border-border flex items-center gap-3 shrink-0">
         <input

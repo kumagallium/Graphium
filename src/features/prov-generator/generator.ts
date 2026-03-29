@@ -7,7 +7,7 @@
 
 import { CORE_LABELS, normalizeLabel, classifyLabel, getHeadingLabelRole, type CoreLabel } from "../context-label/labels";
 import { parseSampleTable, validateSampleIds, type SampleTable } from "../sample-branch/parser";
-import { expandSampleBranch, propagateBranches, type BranchExpansion } from "../sample-branch/expander";
+import { expandSampleBranch, type BranchExpansion } from "../sample-branch/expander";
 import type { BlockLink } from "../block-link/link-types";
 import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
@@ -178,114 +178,81 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // ── Step 3: パターン分岐の展開 ──
+  // ── Step 3: パターン分岐の展開（Phase 4: ノートレベル検出） ──
+  // ノート全体から [パターン] ラベル付きテーブルを1つ探す
+  // 存在すれば、全 [手順] に対して分岐を適用
 
   const activities = labeledBlocks.filter((lb) => lb.provRole === "prov:Activity");
 
-  const sampleTables = labeledBlocks
-    .filter((lb) => lb.coreLabel === "[パターン]" && lb.block.type === "table")
-    .map((lb) => ({ block: lb.block, table: parseSampleTable(lb.block) }))
-    .filter((x): x is { block: any; table: SampleTable } => x.table !== null);
-
-  const conditionBlockIds = new Set(
-    labeledBlocks.filter((lb) => lb.coreLabel === "[属性]").map((lb) => lb.block.id)
-  );
-
+  const noteLevelSample = findNoteLevelSampleTable(labeledBlocks);
   const branchMap = new Map<string, BranchExpansion>();
-  const usedSampleTables = new Set<string>();
+
+  // テーブルが配置されたスコープの Activity を特定
+  // テーブルの直前の [手順] ブロックが属性の紐付け先
+  let sampleTableScopeBlockId: string | null = null;
+  if (noteLevelSample) {
+    const tableIdx = flatBlocks.findIndex((b) => b.id === noteLevelSample.block.id);
+    for (let i = tableIdx - 1; i >= 0; i--) {
+      const lb = labeledBlocks.find((l) => l.block.id === flatBlocks[i].id);
+      if (lb && lb.provRole === "prov:Activity") {
+        sampleTableScopeBlockId = flatBlocks[i].id;
+        break;
+      }
+    }
+  }
 
   for (const act of activities) {
     const blockId = act.block.id;
     const actLabel = getBlockText(act.block);
 
-    const actIdx = flatBlocks.indexOf(act.block);
-    const actLevel = act.block.props?.level ?? 2;
-    let scopeEnd = flatBlocks.length;
-    for (let i = actIdx + 1; i < flatBlocks.length; i++) {
-      if (flatBlocks[i].type === "heading" && (flatBlocks[i].props?.level ?? 2) <= actLevel) {
-        scopeEnd = i;
-        break;
-      }
-    }
-    const sampleEntry = sampleTables.find((st) => {
-      if (usedSampleTables.has(st.block.id)) return false;
-      const stIdx = flatBlocks.indexOf(st.block);
-      return stIdx > actIdx && stIdx < scopeEnd;
-    });
-
-    if (sampleEntry && sampleEntry.table.rows.length > 0) {
-      usedSampleTables.add(sampleEntry.block.id);
-      if (conditionBlockIds.has(sampleEntry.block.id)) {
-        warnings.push(createWarning(
-          "sample-condition-coexist",
-          sampleEntry.block.id,
-          "[試料] と [条件] が共存 — [試料] を優先、[条件] は全パターン共通として処理"
-        ));
-      }
-
-      const expansion = expandSampleBranch(blockId, actLabel, sampleEntry.table);
+    if (noteLevelSample && noteLevelSample.table.rows.length > 0) {
+      // パターンテーブルで全 [手順] を分割
+      const expansion = expandSampleBranch(blockId, actLabel, noteLevelSample.table);
       branchMap.set(blockId, expansion);
 
+      // 属性はテーブルが配置されたスコープの Activity にのみ埋め込む
+      const isTableScope = blockId === sampleTableScopeBlockId;
+
       for (const a of expansion.activities) {
+        const attributes = (isTableScope && a.params)
+          ? Object.entries(a.params).map(([k, v]) => ({ label: `${k}: ${v}`, blockId: noteLevelSample.block.id }))
+          : undefined;
+
         nodes.push({
           "@id": a.id,
           "@type": "prov:Activity",
           label: a.label,
           blockId: a.blockId,
           sampleId: a.sampleId,
-        });
-      }
-
-      for (const e of expansion.entities) {
-        nodes.push({
-          "@id": e.id,
-          "@type": "prov:Entity",
-          label: e.label,
-          blockId: e.blockId,
-          sampleId: e.sampleId,
-          params: e.params,
-        });
-        relations.push({
-          "@type": "prov:used",
-          from: `${blockId}__sample_${e.sampleId}`,
-          to: e.id,
+          attributes,
         });
       }
     } else {
-      const informedLinks = informedByMap.get(blockId) ?? [];
-      const propagated = propagateBranches(blockId, actLabel, informedLinks, branchMap);
-
-      if (propagated) {
-        branchMap.set(blockId, propagated);
-        for (const a of propagated.activities) {
-          nodes.push({
-            "@id": a.id,
-            "@type": "prov:Activity",
-            label: a.label,
-            blockId: a.blockId,
-            sampleId: a.sampleId,
-          });
-        }
-      } else {
-        nodes.push({
-          "@id": `activity_${blockId}`,
-          "@type": "prov:Activity",
-          label: actLabel,
-          blockId,
-        });
-      }
+      // 試料テーブルなし → 単体 Activity
+      nodes.push({
+        "@id": `activity_${blockId}`,
+        "@type": "prov:Activity",
+        label: actLabel,
+        blockId,
+      });
     }
   }
 
+  // パターンテーブルの blockId リスト（ビュー層で使用）
+  const sampleTables = noteLevelSample ? [{ block: noteLevelSample.block, table: noteLevelSample.table }] : [];
+
   // ── スコープ解決 ──
+  // 見出しレベルに基づくスコープスタック + 非見出し [手順] ブロックもサポート
   const blockToActivityId = new Map<string, string>();
   const scopeStack: { level: number; activityId: string }[] = [];
   for (const block of flatBlocks) {
+    const label = labels.get(block.id);
+    const normalized = label ? normalizeLabel(label) : null;
+
     if (block.type === "heading") {
       const level = block.props?.level ?? 2;
-      const label = labels.get(block.id);
-      const normalized = label ? normalizeLabel(label) : null;
 
+      // 同レベル以上の見出し → そのレベル以深のスコープをすべて pop
       while (scopeStack.length > 0 && scopeStack[scopeStack.length - 1].level >= level) {
         scopeStack.pop();
       }
@@ -300,7 +267,20 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           scopeStack.push({ level, activityId: actId });
         }
       }
+    } else if (normalized === "[手順]") {
+      // 非見出しブロックの [手順] — 最上位スコープとして push
+      // 既存のスコープがなければ level=2 相当で新規スコープ
+      const level = 2;
+      while (scopeStack.length > 0 && scopeStack[scopeStack.length - 1].level >= level) {
+        scopeStack.pop();
+      }
+      const branch = branchMap.get(block.id);
+      const actId = branch
+        ? branch.activities[0]?.id ?? `activity_${block.id}`
+        : `activity_${block.id}`;
+      scopeStack.push({ level, activityId: actId });
     }
+
     const currentActivityId = scopeStack.length > 0
       ? scopeStack[scopeStack.length - 1].activityId
       : null;
@@ -735,6 +715,24 @@ function findParentBlockId(blocks: any[], targetId: string): string | null {
         if (child.id === targetId) return block.id;
         const found = findParentBlockId([child], targetId);
         if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * ノートレベルの [パターン] テーブルを1つ探す（Phase 4）。
+ * ノート全体から最初に見つかった [パターン] ラベル付きテーブルを返す。
+ */
+export function findNoteLevelSampleTable(
+  labeledBlocks: { block: any; coreLabel: CoreLabel | null }[],
+): { block: any; table: SampleTable } | null {
+  for (const lb of labeledBlocks) {
+    if (lb.coreLabel === "[パターン]" && lb.block.type === "table") {
+      const table = parseSampleTable(lb.block);
+      if (table && table.rows.length > 0) {
+        return { block: lb.block, table };
       }
     }
   }
