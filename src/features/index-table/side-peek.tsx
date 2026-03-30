@@ -1,12 +1,16 @@
 // Notion 風サイドピーク
-// 画面右側からスライドインし、リンク先ノートを読み取り専用で表示する
+// 画面右側からスライドインし、リンク先ノートを編集可能な BlockNote で表示する
 // 背景ページは操作可能（薄暗くならない）
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { loadFile, type ProvNoteDocument } from "../../lib/google-drive";
+import {
+  loadFile,
+  saveFile,
+  type ProvNoteDocument,
+} from "../../lib/google-drive";
 
 type SidePeekProps = {
   noteId: string;
@@ -18,6 +22,10 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
   const [doc, setDoc] = useState<ProvNoteDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
+  const docRef = useRef<ProvNoteDocument | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sidePeekRef = useRef<HTMLDivElement>(null);
 
   // ノート読み込み
   useEffect(() => {
@@ -25,11 +33,14 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
     setLoading(true);
     setError(null);
     setDoc(null);
+    setSaveStatus("saved");
+    docRef.current = null;
 
     loadFile(noteId)
       .then((d) => {
         if (!cancelled) {
           setDoc(d);
+          docRef.current = d;
           setLoading(false);
         }
       })
@@ -44,10 +55,13 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
 
     return () => {
       cancelled = true;
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
     };
   }, [noteId]);
 
-  // 読み取り専用 BlockNote エディタ
   const blocks = useMemo(
     () => doc?.pages?.[0]?.blocks ?? [],
     [doc]
@@ -64,8 +78,132 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
     }
   }, [blocks, editor]);
 
+  // 保存処理（直接 Drive API を呼ぶ、状態に依存しない）
+  const doSave = useCallback(async () => {
+    if (!editor || !docRef.current) return;
+
+    const currentBlocks = editor.document;
+    const updatedDoc: ProvNoteDocument = {
+      ...docRef.current,
+      pages: [
+        {
+          ...docRef.current.pages[0],
+          blocks: currentBlocks,
+        },
+      ],
+      modifiedAt: new Date().toISOString(),
+    };
+
+    setSaveStatus("saving");
+    try {
+      await saveFile(noteId, updatedDoc);
+      docRef.current = updatedDoc;
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error("サイドピーク保存に失敗:", err);
+      setSaveStatus("dirty");
+    }
+  }, [noteId, editor]);
+
+  // 最新の doSave を ref に保持
+  const doSaveRef = useRef(doSave);
+  useEffect(() => {
+    doSaveRef.current = doSave;
+  }, [doSave]);
+
+  // 変更検知 → 3秒後に自動保存
+  const handleChange = useCallback(() => {
+    setSaveStatus("dirty");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      doSaveRef.current();
+    }, 3000);
+  }, []);
+
+  // Cmd+S / Ctrl+S — サイドピーク内にフォーカスがあれば即保存
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        const peekEl = sidePeekRef.current;
+        if (peekEl && peekEl.contains(document.activeElement)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+          doSaveRef.current();
+        }
+      }
+    };
+    document.addEventListener("keydown", handler, { capture: true });
+    return () => document.removeEventListener("keydown", handler, { capture: true });
+  }, []);
+
+  // 閉じるときに未保存の変更を保存（完了を待ってから閉じる）
+  const handleClose = useCallback(async () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (saveStatus === "dirty" && editor && docRef.current) {
+      const currentBlocks = editor.document;
+      const updatedDoc: ProvNoteDocument = {
+        ...docRef.current,
+        pages: [
+          {
+            ...docRef.current.pages[0],
+            blocks: currentBlocks,
+          },
+        ],
+        modifiedAt: new Date().toISOString(),
+      };
+      try {
+        await saveFile(noteId, updatedDoc);
+      } catch (err) {
+        console.error("閉じる前の保存に失敗:", err);
+      }
+    }
+    onClose();
+  }, [saveStatus, noteId, editor, onClose]);
+
+  // フルで開くときも未保存の変更を保存
+  const handleNavigate = useCallback(async () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (saveStatus === "dirty" && editor && docRef.current) {
+      const currentBlocks = editor.document;
+      const updatedDoc: ProvNoteDocument = {
+        ...docRef.current,
+        pages: [
+          {
+            ...docRef.current.pages[0],
+            blocks: currentBlocks,
+          },
+        ],
+        modifiedAt: new Date().toISOString(),
+      };
+      try {
+        await saveFile(noteId, updatedDoc);
+      } catch (err) {
+        console.error("遷移前の保存に失敗:", err);
+      }
+    }
+    onNavigate(noteId);
+  }, [saveStatus, noteId, editor, onNavigate]);
+
+  // 保存状態の表示テキスト（親ページと同じ挙動: 常時表示）
+  const statusText = saveStatus === "saving" ? "保存中..."
+    : saveStatus === "dirty" ? "未保存"
+    : "保存済み";
+
+  const statusColor = saveStatus === "dirty" ? "#f59e0b"
+    : saveStatus === "saving" ? "#94a3b8"
+    : "#94a3b8";
+
   return createPortal(
     <div
+      ref={sidePeekRef}
+      data-side-peek
       style={{
         position: "fixed",
         top: 0,
@@ -80,7 +218,6 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
         zIndex: 100,
         display: "flex",
         flexDirection: "column",
-        // スライドインアニメーション
         animation: "sidePeekSlideIn 0.2s ease-out",
       }}
     >
@@ -98,7 +235,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
       >
         {/* >> 閉じるボタン */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           title="サイドピークを閉じる"
           style={{
             display: "flex",
@@ -111,8 +248,6 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             background: "transparent",
             cursor: "pointer",
             color: "#64748b",
-            fontSize: 16,
-            fontWeight: 700,
             transition: "background 0.15s",
           }}
           onMouseEnter={(e) => {
@@ -130,7 +265,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
 
         {/* 拡大（フルで開く）ボタン */}
         <button
-          onClick={() => onNavigate(noteId)}
+          onClick={handleNavigate}
           title="フルスクリーンで開く"
           style={{
             display: "flex",
@@ -143,7 +278,6 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             background: "transparent",
             cursor: "pointer",
             color: "#64748b",
-            fontSize: 14,
             transition: "background 0.15s",
           }}
           onMouseEnter={(e) => {
@@ -175,6 +309,18 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
           }}
         >
           {doc?.title ?? ""}
+        </span>
+
+        {/* 保存状態インジケーター */}
+        <span
+          style={{
+            fontSize: 10,
+            color: statusColor,
+            flexShrink: 0,
+            fontWeight: 500,
+          }}
+        >
+          {statusText}
         </span>
       </div>
 
@@ -212,8 +358,9 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
           <div style={{ padding: "16px 24px" }}>
             <BlockNoteView
               editor={editor}
-              editable={false}
+              editable={true}
               theme="light"
+              onChange={handleChange}
             />
           </div>
         )}

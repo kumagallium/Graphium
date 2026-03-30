@@ -111,6 +111,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           rowIndex,
           callbacks.files,
           store,
+          callbacks.onAddNoteLink,
         );
         if (fileId) {
           callbacks.onRefreshFiles();

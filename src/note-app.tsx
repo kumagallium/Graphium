@@ -604,6 +604,9 @@ function NoteEditorInner({
   const aiAssistant = useAiAssistant();
   const editorRef = useRef<any>(null);
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
+  const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
+  // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
+  const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
   const [provDoc, setProvDoc] = useState<ProvDocument | null>(null);
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "source">(
     sourceDoc ? "source" : "graph"
@@ -745,9 +748,30 @@ function NoteEditorInner({
       if (allLinks.length > 0) {
         linkStore.restoreLinks(allLinks);
       }
-      // インデックステーブルを復元
+      // インデックステーブルを復元 + noteLinks を自動補完
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
+        // indexTables 内のリンク済みノートで noteLinks に未登録のものを追加
+        const existingLinks = noteLinksRef.current;
+        let added = false;
+        for (const [blockId, linkedNotes] of Object.entries(page.indexTables)) {
+          for (const noteId of Object.values(linkedNotes)) {
+            const exists = existingLinks.some(
+              (l) => l.targetNoteId === noteId
+            );
+            if (!exists) {
+              existingLinks.push({
+                targetNoteId: noteId,
+                sourceBlockId: blockId,
+                type: "derived_from",
+              });
+              added = true;
+            }
+          }
+        }
+        if (added) {
+          noteLinksRef.current = [...existingLinks];
+        }
       }
     }
     // チャット履歴を復元
@@ -799,8 +823,8 @@ function NoteEditorInner({
           indexTables: hasIndexTables ? indexTablesSnapshot : undefined,
         },
       ],
-      // ノート間リンクを保持
-      noteLinks: initialDoc?.noteLinks,
+      // ノート間リンクを保持（インデックステーブルからの追加分も含む）
+      noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       chats: savedChats.length > 0 ? savedChats : undefined,
@@ -894,9 +918,14 @@ function NoteEditorInner({
   );
 
   // Ctrl+S / Cmd+S で保存（複数レベルでキャプチャ）
+  // サイドピーク内にフォーカスがある場合はサイドピーク側に任せる
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        const sidePeekEl = document.querySelector("[data-side-peek]");
+        if (sidePeekEl && sidePeekEl.contains(document.activeElement)) {
+          return; // サイドピーク側のハンドラに委譲
+        }
         e.preventDefault();
         e.stopPropagation();
         if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -941,9 +970,23 @@ function NoteEditorInner({
       onNavigateNote,
       onRefreshFiles,
       onOpenSidePeek: (noteId: string) => setSidePeekNoteId(noteId),
+      onAddNoteLink: (targetNoteId: string, sourceBlockId: string) => {
+        // 重複チェック
+        const exists = noteLinksRef.current.some(
+          (l) => l.targetNoteId === targetNoteId && l.sourceBlockId === sourceBlockId
+        );
+        if (!exists) {
+          noteLinksRef.current = [
+            ...noteLinksRef.current,
+            { targetNoteId, sourceBlockId, type: "derived_from" },
+          ];
+          // noteLink 追加後に保存をトリガー
+          markDirty();
+        }
+      },
     });
     return () => { setIndexTableCallbacks(null); };
-  }, [files, fileId, onNavigateNote, onRefreshFiles]);
+  }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -1098,10 +1141,32 @@ function NoteEditorInner({
               onChange={handleContentChange}
               uploadFile={uploadMediaFile}
               onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
-              getMentionSuggestions={() => [
-                ...getHeadingSuggestions(),
-                ...getNoteSuggestions(files, fileId ?? undefined),
-              ]}
+              getMentionSuggestions={() => {
+                // @ 入力時点でカーソル位置を保存（この時点ではまだセル内にいる）
+                mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                const sel = window.getSelection();
+                const focusEl = sel?.focusNode instanceof HTMLElement
+                  ? sel.focusNode
+                  : sel?.focusNode?.parentElement;
+                if (focusEl) {
+                  const cell = focusEl.closest("td");
+                  const row = cell?.closest("tr");
+                  const table = row?.closest("table");
+                  if (row && table) {
+                    const rowIndex = Array.from(table.querySelectorAll("tr")).indexOf(row);
+                    // テーブルブロック ID を取得
+                    const blockOuter = table.closest("[data-node-type='blockOuter']");
+                    const tableBlockId = blockOuter?.getAttribute("data-id") ?? null;
+                    if (tableBlockId && indexTableStore.isIndexTable(tableBlockId)) {
+                      mentionContextRef.current = { tableBlockId, rowIndex };
+                    }
+                  }
+                }
+                return [
+                  ...getHeadingSuggestions(),
+                  ...getNoteSuggestions(files, fileId ?? undefined),
+                ];
+              }}
               onMentionSelect={(sourceBlockId, suggestion) => {
                 if (suggestion.type === "heading") {
                   // 同ノート内見出しへの知識層リンク
@@ -1120,6 +1185,53 @@ function NoteEditorInner({
                     type: "reference",
                     createdBy: "human",
                   });
+
+                  // インデックステーブル内の @ 選択なら linkedNotes を更新
+                  // getMentionSuggestions で保存したコンテキストを使う
+                  const ctx = mentionContextRef.current;
+                  if (ctx.tableBlockId && ctx.rowIndex > 0 && editorRef.current) {
+                    const noteName = suggestion.label;
+                    const tableBlockId = ctx.tableBlockId;
+                    const rowIndex = ctx.rowIndex;
+
+                    // linkedNotes を更新
+                    indexTableStore.setLinkedNote(tableBlockId, noteName, suggestion.id);
+
+                    // セルにノート名を挿入（BlockNote が @テキスト を削除するため）
+                    setTimeout(() => {
+                      const block = editorRef.current?.getBlock(tableBlockId);
+                      if (block?.content?.rows?.[rowIndex]) {
+                        const newRows = block.content.rows.map((r: any, i: number) => {
+                          if (i !== rowIndex) return r;
+                          return {
+                            ...r,
+                            cells: [
+                              [{ type: "text", text: noteName, styles: {} }],
+                              ...r.cells.slice(1),
+                            ],
+                          };
+                        });
+                        editorRef.current.updateBlock(tableBlockId, {
+                          content: { type: "tableContent", rows: newRows },
+                        });
+                      }
+                    }, 100);
+
+                    // noteLink も追加
+                    const exists = noteLinksRef.current.some(
+                      (l) => l.targetNoteId === suggestion.id
+                    );
+                    if (!exists) {
+                      noteLinksRef.current = [
+                        ...noteLinksRef.current,
+                        { targetNoteId: suggestion.id, sourceBlockId: tableBlockId, type: "derived_from" },
+                      ];
+                    }
+                    markDirty();
+
+                    // コンテキストをリセット
+                    mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                  }
                 }
               }}
             />

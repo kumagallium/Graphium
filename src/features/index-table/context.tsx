@@ -15,6 +15,8 @@ type IndexTableContextValue = {
   onRefreshFiles: () => void;
   // サイドピークを開くコールバック
   onOpenSidePeek: (noteId: string) => void;
+  // 親ドキュメントに noteLink を追加するコールバック
+  onAddNoteLink: (targetNoteId: string, sourceBlockId: string) => void;
 };
 
 const IndexTableContext = createContext<IndexTableContextValue | null>(null);
@@ -26,10 +28,11 @@ export function IndexTableProvider({
   onNavigateNote,
   onRefreshFiles,
   onOpenSidePeek,
+  onAddNoteLink,
 }: IndexTableContextValue & { children: ReactNode }) {
   return (
     <IndexTableContext.Provider
-      value={{ files, currentFileId, onNavigateNote, onRefreshFiles, onOpenSidePeek }}
+      value={{ files, currentFileId, onNavigateNote, onRefreshFiles, onOpenSidePeek, onAddNoteLink }}
     >
       {children}
     </IndexTableContext.Provider>

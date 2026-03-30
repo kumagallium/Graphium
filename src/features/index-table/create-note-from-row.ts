@@ -41,6 +41,7 @@ export async function createNoteFromRow(
   rowIndex: number,
   files: ProvNoteFile[],
   store: { setLinkedNote: (blockId: string, sampleName: string, noteId: string) => void },
+  onAddNoteLink?: (targetNoteId: string, sourceBlockId: string) => void,
 ): Promise<string | null> {
   const block = editor.getBlock(tableBlockId);
   if (!block) return null;
@@ -88,6 +89,9 @@ export async function createNoteFromRow(
 
   // ストアの linkedNotes を更新
   store.setLinkedNote(tableBlockId, title, fileId);
+
+  // 親ドキュメントに noteLink を追加（Graph 表示用）
+  onAddNoteLink?.(fileId, tableBlockId);
 
   return fileId;
 }
