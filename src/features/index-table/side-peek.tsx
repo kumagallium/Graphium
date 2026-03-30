@@ -196,9 +196,8 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
     : saveStatus === "dirty" ? "未保存"
     : "保存済み";
 
-  const statusColor = saveStatus === "dirty" ? "#f59e0b"
-    : saveStatus === "saving" ? "#94a3b8"
-    : "#94a3b8";
+  const statusColor = saveStatus === "dirty" ? "var(--color-warning)"
+    : "var(--color-text-tertiary)";
 
   return createPortal(
     <div
@@ -212,8 +211,8 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
         width: "55%",
         minWidth: 400,
         maxWidth: 800,
-        background: "white",
-        borderLeft: "1px solid #e2e8f0",
+        background: "var(--color-card)",
+        borderLeft: "1px solid var(--color-border-subtle)",
         boxShadow: "-4px 0 24px rgba(0,0,0,0.08)",
         zIndex: 100,
         display: "flex",
@@ -228,8 +227,8 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
           alignItems: "center",
           gap: 4,
           padding: "8px 12px",
-          borderBottom: "1px solid #e2e8f0",
-          background: "#fafbfc",
+          borderBottom: "1px solid var(--color-border-subtle)",
+          background: "var(--color-surface)",
           flexShrink: 0,
         }}
       >
@@ -247,11 +246,11 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             border: "none",
             background: "transparent",
             cursor: "pointer",
-            color: "#64748b",
+            color: "var(--color-text-tertiary)",
             transition: "background 0.15s",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "#f1f5f9";
+            (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -277,11 +276,11 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             border: "none",
             background: "transparent",
             cursor: "pointer",
-            color: "#64748b",
+            color: "var(--color-text-tertiary)",
             transition: "background 0.15s",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "#f1f5f9";
+            (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -301,7 +300,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             flex: 1,
             fontSize: 13,
             fontWeight: 600,
-            color: "#1e293b",
+            color: "var(--color-foreground)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -333,7 +332,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
               alignItems: "center",
               justifyContent: "center",
               height: 200,
-              color: "#94a3b8",
+              color: "var(--color-text-tertiary)",
               fontSize: 13,
             }}
           >
@@ -347,7 +346,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
               alignItems: "center",
               justifyContent: "center",
               height: 200,
-              color: "#ef4444",
+              color: "var(--color-destructive)",
               fontSize: 13,
             }}
           >

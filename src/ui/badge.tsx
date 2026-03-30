@@ -22,16 +22,16 @@ const badgeVariants = cva(
           "border-border bg-transparent text-foreground",
         // 成功
         success:
-          "border-[#b8d4bb] bg-[#edf5ee] text-[#2d4a32]",
+          "border-success-border bg-success-bg text-success",
         // エラー
         error:
-          "border-[#fecaca] bg-[#fef2f2] text-[#991b1b]",
+          "border-error-border bg-error-bg text-error",
         // 情報
         info:
-          "border-[#bae6fd] bg-[#f0f9ff] text-[#0369a1]",
+          "border-info-border bg-info-bg text-info",
         // 警告
         warning:
-          "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
+          "border-warning-border bg-warning-bg text-warning",
       },
     },
     defaultVariants: {

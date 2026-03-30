@@ -199,30 +199,31 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
               alignItems: "center",
               justifyContent: "center",
               borderRadius: 4,
-              border: "1px solid #e2e8f0",
-              background: "#f8fafc",
+              border: "1px solid var(--color-border-subtle)",
+              background: "var(--color-surface)",
               cursor: icon.sampleName ? "pointer" : "default",
               opacity: icon.sampleName ? 1 : 0.5,
               fontSize: 14,
               zIndex: 50,
               transition: "all 0.15s",
               boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              color: "var(--color-text-tertiary)",
             }}
             onMouseEnter={(e) => {
               if (icon.sampleName) {
-                (e.currentTarget as HTMLElement).style.borderColor = "#94a3b8";
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--color-text-tertiary)";
                 (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 4px rgba(0,0,0,0.1)";
               }
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0";
+              (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border-subtle)";
               (e.currentTarget as HTMLElement).style.boxShadow = "0 1px 2px rgba(0,0,0,0.05)";
             }}
           >
             {isLoading ? (
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>...</span>
+              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>...</span>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
                 <line x1="12" y1="18" x2="12" y2="12" />
