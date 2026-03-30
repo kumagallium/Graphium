@@ -555,6 +555,23 @@ function NoteEditor(props: NoteEditorProps) {
   );
 }
 
+// BlockNote スキーマに存在しないブロック型を再帰的に除去する
+// 保存済みノートに未登録ブロック（sampleScope 等）が含まれる場合のクラッシュ防止
+const KNOWN_BLOCK_TYPES = new Set([
+  "paragraph", "heading", "bulletListItem", "numberedListItem",
+  "checkListItem", "table", "image", "video", "audio", "file",
+  "codeBlock",
+]);
+
+function sanitizeBlocks(blocks: any[]): any[] {
+  return blocks
+    .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
+    .map((b) => ({
+      ...b,
+      children: b.children?.length ? sanitizeBlocks(b.children) : b.children,
+    }));
+}
+
 function NoteEditorInner({
   fileId,
   initialDoc,
@@ -930,10 +947,12 @@ function NoteEditorInner({
   }, [markDirty, generateProv]);
 
   // 初期コンテンツ（既存ファイルの場合はブロックを復元）
-  const initialContent =
-    initialDoc?.pages?.[0]?.blocks?.length
-      ? initialDoc.pages[0].blocks
-      : undefined;
+  // スキーマに存在しないブロック型を除去（sampleScope 等の未登録ブロック対策）
+  const initialContent = useMemo(() => {
+    const blocks = initialDoc?.pages?.[0]?.blocks;
+    if (!blocks?.length) return undefined;
+    return sanitizeBlocks(blocks);
+  }, [initialDoc]);
 
   // AI アシスタント起動 → Chat タブを開く
   const chatReqRef = useRef(aiAssistant.chatRequestSeq);
