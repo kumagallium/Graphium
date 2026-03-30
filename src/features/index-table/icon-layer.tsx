@@ -90,41 +90,24 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
     };
   }, [compute]);
 
-  // テーブルの1列目セル: クリックでサイドピーク、ホバーでカーソル変更
-  useEffect(() => {
-    // 1列目のリンク済みセルか判定するヘルパー
-    const getLinkedNoteId = (target: HTMLElement): string | null => {
-      const cell = target.closest("td");
-      if (!cell) return null;
-      const row = cell.closest("tr");
+  // リンク済みセルの位置情報（カーソル変更用オーバーレイ）
+  const linkedCellRects = icons
+    .filter((icon) => icon.linkedNoteId)
+    .map((icon) => {
+      const blockEl = document.querySelector(
+        `[data-id="${icon.blockId}"][data-node-type="blockOuter"]`
+      );
+      if (!blockEl) return null;
+      const rows = blockEl.querySelectorAll("tr");
+      const row = rows[icon.rowIndex];
       if (!row) return null;
-      const cellIndex = Array.from(row.cells).indexOf(cell as HTMLTableCellElement);
-      if (cellIndex !== 0) return null;
-      const table = row.closest("table");
-      const blockOuter = table?.closest("[data-node-type='blockOuter']");
-      const blockId = blockOuter?.getAttribute("data-id");
-      if (!blockId) return null;
-      const linkedNotes = store.tables.get(blockId);
-      if (!linkedNotes) return null;
-      const cellText = cell.textContent?.trim() ?? "";
-      return linkedNotes[cellText] ?? linkedNotes[`@${cellText}`] ?? null;
-    };
+      const cell = row.cells[0];
+      if (!cell) return null;
+      const rect = cell.getBoundingClientRect();
+      return { key: `${icon.blockId}:${icon.rowIndex}`, rect, noteId: icon.linkedNoteId! };
+    })
+    .filter(Boolean) as { key: string; rect: DOMRect; noteId: string }[];
 
-    const handleClick = (e: MouseEvent) => {
-      const noteId = getLinkedNoteId(e.target as HTMLElement);
-      if (noteId) {
-        e.preventDefault();
-        e.stopPropagation();
-        const callbacks = getIndexTableCallbacks();
-        callbacks?.onOpenSidePeek(noteId);
-      }
-    };
-
-    document.addEventListener("click", handleClick);
-    return () => {
-      document.removeEventListener("click", handleClick);
-    };
-  }, [store.tables]);
 
   // 未リンク行 → ノート作成
   const handleCreateNote = useCallback(
@@ -150,6 +133,26 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           callbacks.onAddNoteLink,
         );
         if (fileId) {
+          // セルテキストを @ノート名（青文字）に変換
+          const block = editor.getBlock(blockId);
+          if (block?.content?.rows?.[rowIndex]) {
+            const newRows = block.content.rows.map((r: any, i: number) => {
+              if (i !== rowIndex) return r;
+              return {
+                ...r,
+                cells: [
+                  [{ type: "text", text: `@${sampleName}`, styles: { textColor: "blue" } }],
+                  ...r.cells.slice(1),
+                ],
+              };
+            });
+            editor.updateBlock(blockId, {
+              content: { type: "tableContent", rows: newRows },
+            });
+            // linkedNotes のキーを @付きに更新
+            store.setLinkedNote(blockId, `@${sampleName}`, fileId);
+          }
+
           callbacks.onRefreshFiles();
           // 作成直後にサイドピークで開く
           callbacks.onOpenSidePeek(fileId);
@@ -229,6 +232,27 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           </button>
         );
       })}
+
+      {/* リンク済みセルの透明オーバーレイ（cursor: pointer 用） */}
+      {linkedCellRects.map(({ key, rect, noteId }) => (
+        <div
+          key={`link-${key}`}
+          onClick={() => {
+            const callbacks = getIndexTableCallbacks();
+            callbacks?.onOpenSidePeek(noteId);
+          }}
+          style={{
+            position: "fixed",
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+            cursor: "pointer",
+            zIndex: 49,
+            background: "transparent",
+          }}
+        />
+      ))}
     </>,
     document.body
   );
