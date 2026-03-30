@@ -324,7 +324,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
       </div>
 
       {/* コンテンツ */}
-      <div style={{ flex: 1, overflow: "auto" }}>
+      <div style={{ flex: 1, overflow: "auto", background: "var(--color-background)" }}>
         {loading && (
           <div
             style={{
