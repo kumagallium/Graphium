@@ -20,6 +20,11 @@ import {
   labelSlashMenuItems,
   setSlashMenuLabelCallback,
 } from "./features/context-label/slash-menu-items";
+import {
+  indexTableBlock,
+  indexTableSlashItem,
+} from "./features/index-table";
+import { setIndexTableCallbacks } from "./features/index-table/context";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
   LinkStoreProvider,
@@ -535,6 +540,7 @@ type NoteEditorProps = {
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   onAiDeriveNote: (doc: ProvNoteDocument) => Promise<void>;
   onNavigateNote: (noteId: string) => void;
+  onRefreshFiles: () => void;
   saving: boolean;
   files: ProvNoteFile[];
   noteGraphData: NoteGraphData;
@@ -560,7 +566,7 @@ function NoteEditor(props: NoteEditorProps) {
 const KNOWN_BLOCK_TYPES = new Set([
   "paragraph", "heading", "bulletListItem", "numberedListItem",
   "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock",
+  "codeBlock", "indexTable",
 ]);
 
 function sanitizeBlocks(blocks: any[]): any[] {
@@ -579,6 +585,7 @@ function NoteEditorInner({
   onDeriveNote,
   onAiDeriveNote,
   onNavigateNote,
+  onRefreshFiles,
   saving,
   files,
   noteGraphData,
@@ -903,6 +910,17 @@ function NoteEditorInner({
     return () => { setSlashMenuLabelCallback(null); };
   }, [labelStore]);
 
+  // インデックステーブル用のグローバルコールバック登録
+  useEffect(() => {
+    setIndexTableCallbacks({
+      files,
+      currentFileId: fileId,
+      onNavigateNote,
+      onRefreshFiles,
+    });
+    return () => { setIndexTableCallbacks(null); };
+  }, [files, fileId, onNavigateNote, onRefreshFiles]);
+
   // スコープ派生ボタン → 別ノートとして作成
   useEffect(() => {
     openLinkDropdownFn = (params) => {
@@ -1028,10 +1046,10 @@ function NoteEditorInner({
           <div style={{ padding: "16px 0", paddingLeft: 100, paddingRight: 100 }}>
             <SandboxEditor
               key={fileId || "new"}
-              blocks={[]}
+              blocks={[indexTableBlock]}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={labelSlashMenuItems}
+              extraSlashMenuItems={[...labelSlashMenuItems, indexTableSlashItem]}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}
@@ -1498,6 +1516,7 @@ export function NoteApp() {
           onDeriveNote={handleDeriveNote}
           onAiDeriveNote={handleAiDeriveNote}
           onNavigateNote={handleOpenFile}
+          onRefreshFiles={refreshFiles}
           saving={saving}
           files={files}
           noteGraphData={noteGraphData}

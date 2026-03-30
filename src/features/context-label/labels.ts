@@ -3,19 +3,17 @@
 // thought-provenance-spec.md § 0-A に準拠
 // ──────────────────────────────────────────────
 
-// Layer 1: コアラベル（PROV-DM直結）
+// Layer 1: コアラベル（PROV-DM直結、4種）
 export type CoreLabel =
   | "[手順]"
   | "[使用したもの]"
   | "[属性]"
-  | "[パターン]"
   | "[結果]";
 
 export const CORE_LABELS: CoreLabel[] = [
   "[手順]",
   "[使用したもの]",
   "[属性]",
-  "[パターン]",
   "[結果]",
 ];
 
@@ -24,7 +22,6 @@ export const CORE_LABEL_PROV: Record<CoreLabel, string> = {
   "[手順]": "prov:Activity",
   "[使用したもの]": "prov:used",
   "[属性]": "prov:Entity",     // 親ノードの属性（prov:Entity として出力）
-  "[パターン]": "prov:Activity×N",
   "[結果]": "prov:wasGeneratedBy",
 };
 
@@ -34,22 +31,16 @@ export const ALIAS_MAP: Record<string, CoreLabel> = {
   "[操作]": "[手順]",
   "[産物]": "[結果]",
   "[output]": "[結果]",
-  "[サンプル]": "[パターン]",
   "[Reagents]": "[使用したもの]",
   // [条件] は [属性] のエイリアスとして後方互換
   "[条件]": "[属性]",
   "[パラメータ]": "[属性]",
   "[仕様]": "[属性]",
-  // 後方互換: 旧コアラベル [試料] のエイリアス
-  "[試料]": "[パターン]",
-  "[ケース]": "[パターン]",
-  "[条件群]": "[パターン]",
   // 英語短縮
   "[step]": "[手順]",
   "[mat]": "[使用したもの]",
   "[result]": "[結果]",
   "[attr]": "[属性]",
-  "[sample]": "[パターン]",
 };
 
 // 構造ラベル（リンク生成に使う特殊ラベル）

@@ -98,7 +98,7 @@ describe("# オートコンプリート候補", () => {
   it("候補リストにコアラベルが含まれる", () => {
     const suggestions = buildSuggestionList();
     const coreItems = suggestions.filter((s) => s.group === "core");
-    expect(coreItems).toHaveLength(5);
+    expect(coreItems).toHaveLength(4);
     expect(coreItems.map((s) => s.label)).toContain("[手順]");
     expect(coreItems.map((s) => s.label)).toContain("[使用したもの]");
   });
@@ -133,21 +133,14 @@ describe("ラベルエイリアス拡張", () => {
     expect(normalizeLabel("[mat]")).toBe("[使用したもの]");
     expect(normalizeLabel("[result]")).toBe("[結果]");
     expect(normalizeLabel("[attr]")).toBe("[属性]");
-    expect(normalizeLabel("[sample]")).toBe("[パターン]");
-  });
-
-  it("汎用化エイリアスが正規化される", () => {
-    expect(normalizeLabel("[試料]")).toBe("[パターン]");
-    expect(normalizeLabel("[ケース]")).toBe("[パターン]");
-    expect(normalizeLabel("[条件群]")).toBe("[パターン]");
   });
 
   it("エイリアスは alias として分類される", () => {
     expect(classifyLabel("[step]")).toBe("alias");
-    expect(classifyLabel("[試料]")).toBe("alias");
+    expect(classifyLabel("[条件]")).toBe("alias");
   });
 
-  it("[パターン] はコアラベルとして分類される", () => {
-    expect(classifyLabel("[パターン]")).toBe("core");
+  it("[パターン] は廃止されフリーラベルとして分類される", () => {
+    expect(classifyLabel("[パターン]")).toBe("free");
   });
 });

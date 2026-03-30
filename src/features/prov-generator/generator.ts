@@ -137,12 +137,17 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   type LabeledBlock = {
     block: any;
+    rawLabel: string;
     label: string;
     coreLabel: CoreLabel | null;
     provRole: string | null;
   };
 
   const labeledBlocks: LabeledBlock[] = [];
+
+  // 後方互換: [パターン] は廃止されたが、既存データのために free ラベルとして扱いつつ
+  // パターン分岐展開は引き続き動作させる
+  const LEGACY_PATTERN_LABELS = new Set(["[パターン]", "[試料]", "[サンプル]", "[ケース]"]);
 
   for (const block of flatBlocks) {
     const rawLabel = labels.get(block.id);
@@ -151,7 +156,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const normalized = normalizeLabel(rawLabel);
     const layer = classifyLabel(normalized);
 
-    if (layer === "free") {
+    if (layer === "free" && !LEGACY_PATTERN_LABELS.has(rawLabel)) {
       warnings.push(createWarning("unknown-label", block.id, `"${rawLabel}" はフリーラベル — PROVに変換しません`));
       continue;
     }
@@ -159,7 +164,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const coreLabel = (layer === "core" ? normalized : null) as CoreLabel | null;
     const provRole = coreLabel ? coreToProvRole(coreLabel, block) : null;
 
-    labeledBlocks.push({ block, label: normalized, coreLabel, provRole });
+    labeledBlocks.push({ block, rawLabel, label: normalized, coreLabel, provRole });
   }
 
   // ── Step 2: @リンク解析 ──
@@ -182,8 +187,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   const activities = labeledBlocks.filter((lb) => lb.provRole === "prov:Activity");
 
+  // [パターン] ラベルは廃止。パターン分岐展開は既存データの後方互換のため残す
   const sampleTables = labeledBlocks
-    .filter((lb) => lb.coreLabel === "[パターン]" && lb.block.type === "table")
+    .filter((lb) => (lb.rawLabel === "[パターン]" || lb.rawLabel === "[試料]") && lb.block.type === "table")
     .map((lb) => ({ block: lb.block, table: parseSampleTable(lb.block) }))
     .filter((x): x is { block: any; table: SampleTable } => x.table !== null);
 
@@ -640,7 +646,6 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
     }
     case "[使用したもの]": return "prov:Entity";
     case "[属性]": return null; // 親ノードのプロパティとして埋め込む
-    case "[パターン]": return null;
     case "[結果]": return "prov:Entity";
     default: return null;
   }
