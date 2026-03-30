@@ -34,6 +34,12 @@ const semantic = [
   { name: "情報", bg: "#f0f9ff", fg: "#0369a1", border: "#bae6fd" },
   { name: "警告", bg: "#fffbeb", fg: "#b45309", border: "#fde68a" },
 ];
+const neutral = [
+  { name: "surface", value: "#f5f8f5", tailwind: "bg-surface", desc: "サブ背景（ヘッダー・パネル区切り）" },
+  { name: "surface-hover", value: "#edf3ed", tailwind: "bg-surface-hover", desc: "ホバー背景" },
+  { name: "border-subtle", value: "#dce5dd", tailwind: "border-border-subtle", desc: "軽量ボーダー（パネル区切り線）" },
+  { name: "text-tertiary", value: "#8fa394", tailwind: "text-text-tertiary", desc: "第三階層テキスト（アイコン・プレースホルダー）" },
+];
 const labelColors = [
   { name: "[手順]", color: "#5b8fb9" },
   { name: "[使用したもの]", color: "#4B7A52" },
@@ -78,6 +84,30 @@ export const ColorPalette: StoryObj = {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</div>
                 <div style={{ fontSize: 12, color: "#6b7f6e" }}>{c.value} — {c.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={h2Style}>ニュートラルスケール（グリーングレー）</h2>
+        <p style={{ fontSize: 12, color: "#6b7f6e", marginBottom: 12 }}>
+          Slate 系グレーの代替。Crucible パレットと調和するグリーングレー。
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {neutral.map((c) => (
+            <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Swatch color={c.value} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</div>
+                <div style={{ fontSize: 12, color: "#6b7f6e" }}>
+                  {c.value} — {c.desc}
+                  <code style={{
+                    fontSize: 10, marginLeft: 8, padding: "1px 4px", borderRadius: 3,
+                    backgroundColor: "#f0f5ef", fontFamily: "ui-monospace, 'SF Mono', monospace",
+                  }}>{c.tailwind}</code>
+                </div>
               </div>
             </div>
           ))}

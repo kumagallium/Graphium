@@ -28,6 +28,25 @@
   --color-border: #d5e0d7;              /* 淡いグリーングレー */
   --color-input: #d5e0d7;
   --color-ring: #4B7A52;
+  /* ニュートラルスケール（グリーングレー系）
+     Slate 系のハードコード色を排除し、Crucible パレットと調和するグリーングレーに統一 */
+  --color-surface: #f5f8f5;              /* 極薄セージ — サブ背景（ヘッダー・パネル区切り） */
+  --color-surface-hover: #edf3ed;        /* 薄セージ — ホバー背景 */
+  --color-border-subtle: #dce5dd;        /* セージボーダー — 軽量ボーダー（パネル区切り線） */
+  --color-text-tertiary: #8fa394;        /* ミディアムセージ — 第三階層テキスト（アイコン・プレースホルダー） */
+  /* セマンティック色（design.md 準拠） */
+  --color-success: #2d4a32;
+  --color-success-bg: #edf5ee;
+  --color-success-border: #b8d4bb;
+  --color-error: #991b1b;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-info: #0369a1;
+  --color-info-bg: #f0f9ff;
+  --color-info-border: #bae6fd;
+  --color-warning: #b45309;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
   /* サイドバー */
   --color-sidebar-background: #f0f5ef;
   --color-sidebar-foreground: #1a2e1d;

@@ -114,9 +114,9 @@ export function LinkBadgeLayer() {
                 left,
                 transform: "translateY(-50%)",
                 padding: "1px 5px",
-                backgroundColor: "#eff6ff",
+                backgroundColor: "#5b8fb918",
                 color: "#5b8fb9",
-                border: "1px solid #bfdbfe",
+                border: "1px solid #5b8fb938",
               }}
             >
               <Link size={10} strokeWidth={2.5} /> {count}
