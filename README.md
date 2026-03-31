@@ -10,12 +10,23 @@ No installation required — works in your browser. Notes are saved to Google Dr
 
 ## What is provnote?
 
-provnote turns structured notes into traceable provenance graphs. It combines:
+provnote is a **note-taking app** that automatically turns structured notes into traceable provenance graphs.
 
-- **BlockNote.js** — a modern block-based rich text editor
-- **Zettelkasten** — atomic, linked note-taking
-- **PROV-DM** — W3C standard for provenance data model
-- **AI-powered** — AI assistant integration with full provenance tracking
+Every note is a plain block-based document. When you add a **context label** (like `[Procedure]` or `[Result]`) to a block, provnote maps it to a [PROV-DM](https://www.w3.org/TR/prov-dm/) role and builds a provenance graph behind the scenes — no extra effort required.
+
+| Building block | What it does |
+|---------------|-------------|
+| **BlockNote.js** | A modern block-based rich text editor |
+| **Zettelkasten** | Atomic, interlinked note-taking via `@` references |
+| **PROV-DM** | W3C standard for provenance — applied via `#` context labels (optional) |
+| **AI assistant** | AI-powered note derivation with full provenance metadata (optional) |
+
+### Who is this for?
+
+- **Researchers** who want structured, traceable records with provenance — without leaving a familiar note-taking interface
+- **Anyone** who wants a Zettelkasten-style linked note editor with Google Drive sync
+
+PROV-DM labeling is entirely optional. Without labels, provnote works as a standard linked note editor.
 
 ## How to use
 
@@ -25,9 +36,21 @@ Visit **https://kumagallium.github.io/provnote/** and start writing. Your notes 
 
 To sync with Google Drive, sign in with your Google account from the sidebar.
 
-### Option 2: Run with Docker (recommended for local use)
+### Option 2: Run with Docker — editor only
 
-Run provnote with AI assistant — no Node.js or Python required. Just Docker.
+Run provnote as a standalone editor — no AI, no external services. Just the note editor with Google Drive sync.
+
+```bash
+git clone https://github.com/kumagallium/provnote.git
+cd provnote
+docker compose -f docker-compose.standalone.yml up -d
+```
+
+Open **http://localhost:5174/provnote/** and start writing.
+
+### Option 3: Run with Docker — with AI assistant
+
+Run provnote together with [crucible-agent](https://github.com/kumagallium/crucible-agent) for AI-powered features (AI chat, note derivation, provenance-tracked AI responses).
 
 ```bash
 git clone https://github.com/kumagallium/provnote.git
@@ -59,7 +82,7 @@ docker compose up -d --build
 
 The `--build` flag rebuilds images with the latest code changes.
 
-### Option 3: Run for development
+### Option 4: Run for development
 
 ```bash
 git clone https://github.com/kumagallium/provnote.git
@@ -72,39 +95,57 @@ Google Drive sync works without any configuration. To enable AI features, you ne
 
 ## Features
 
-- Context labels (`[手順]`, `[使用したもの]`, `[属性]`, `[試料]`, `[結果]`) mapped to PROV-DM roles
-- Block-to-block linking with provenance semantics (`informed_by`, `derived_from`, `used`)
-- Multi-page tabbed editor with scope derivation
-- Sample branching (table rows → parallel PROV activities)
-- PROV-JSONLD generation from labeled documents
-- Provenance graph visualization (Cytoscape.js + ELK layout)
-- Inter-note network graph (Cytoscape.js + fcose layout)
-- AI assistant — derive notes from AI responses with full provenance metadata
-- Google Drive storage — notes saved as `.provnote.json` files
-- Google OAuth 2.0 authentication
+- **Context labels** — `[Procedure]`, `[Used]`, `[Attribute]`, `[Result]` mapped to PROV-DM roles (`prov:Activity`, `prov:used`, `prov:Entity`, `prov:wasGeneratedBy`)
+- **Block-to-block linking** with provenance semantics (`informed_by`, `derived_from`, `used`)
+- **Multi-page tabbed editor** with scope derivation
+- **Index table** — manage related notes in a tabular view with side-peek preview
+- **PROV-JSON-LD generation** from labeled documents
+- **Provenance graph** visualization (Cytoscape.js + ELK layout)
+- **Inter-note network graph** (Cytoscape.js + fcose layout)
+- **AI assistant** — derive notes from AI responses with full provenance metadata
+- **Google Drive storage** — notes saved as `.provnote.json` files
+- **Google OAuth 2.0** authentication
 
-## Architecture & AI integration
+## Architecture
 
-```mermaid
-graph LR
-    Registry["🔧 Crucible<br/><b>Registry</b><br/><i>Build & deploy<br/>MCP servers</i>"]
-    Agent["🤖 Crucible<br/><b>Agent</b><br/><i>AI agent<br/>runtime</i>"]
-    provnote["📝 <b>provnote</b><br/><i>Provenance<br/>tracking editor</i>"]
+provnote is a **standalone note editor**. It does not require any backend server to function — notes are stored in Google Drive or the browser's local storage.
 
-    Registry -- "tool discovery" --> Agent
-    Agent -- "POST /agent/run" --> provnote
-
-    style Registry fill:#edf5ee,stroke:#4B7A52,stroke-width:2px,color:#2d4a32
-    style Agent fill:#ede8f5,stroke:#8b7ab5,stroke-width:2px,color:#4a3d6e
-    style provnote fill:#e8f0f8,stroke:#5b8fb9,stroke-width:2px,color:#2d4a6e
-```
-
-provnote sends requests to an external agent server. Any server that implements the `POST /agent/run` endpoint can be used:
+AI features are provided by an **optional external agent server**. Any server that implements the `POST /agent/run` endpoint can be used:
 
 | Server | Description |
 |--------|-------------|
 | [crucible-agent](https://github.com/kumagallium/crucible-agent) | Full-featured agent runtime with MCP tool support and LiteLLM multi-model proxy |
-| Any OpenAI-compatible proxy | Must implement `POST /agent/run` with the same request/response format |
+| Any compatible server | Must implement `POST /agent/run` with the same request/response format |
+
+### Crucible ecosystem (optional)
+
+provnote can integrate with the [Crucible](https://github.com/kumagallium/crucible-agent) ecosystem for AI capabilities, but this is entirely optional. The diagram below shows how the components connect when AI features are enabled:
+
+```mermaid
+graph LR
+    provnote["📝 <b>provnote</b><br/><i>Provenance<br/>tracking editor</i>"]
+    Agent["🤖 Crucible<br/><b>Agent</b><br/><i>AI agent<br/>runtime</i>"]
+    Registry["🔧 Crucible<br/><b>Registry</b><br/><i>Build & deploy<br/>MCP servers</i>"]
+
+    provnote -- "POST /agent/run<br/>(optional)" --> Agent
+    Registry -- "tool discovery" --> Agent
+
+    style provnote fill:#e8f0f8,stroke:#5b8fb9,stroke-width:2px,color:#2d4a6e
+    style Agent fill:#ede8f5,stroke:#8b7ab5,stroke-width:2px,color:#4a3d6e
+    style Registry fill:#edf5ee,stroke:#4B7A52,stroke-width:2px,color:#2d4a32
+```
+
+## Language & Internationalization
+
+The provnote UI currently uses **Japanese** for context labels and some interface elements. This reflects the project's origin in a Japanese research group.
+
+| Element | Current language | Planned |
+|---------|-----------------|---------|
+| Context labels | Japanese (`[手順]`, `[結果]`, …) with English aliases (`[step]`, `[result]`, …) | Full i18n — English default, Japanese secondary |
+| UI chrome | Mixed (English + Japanese) | English default |
+| README / docs | English (README), Japanese (design specs) | English for all public-facing docs |
+
+Internationalization (i18n) is on the roadmap. Contributions are welcome.
 
 ## Development
 
@@ -125,7 +166,7 @@ src/
 │   ├── context-label/ # PROV-DM context labels for blocks
 │   ├── block-link/    # Block-to-block provenance links
 │   ├── prov-generator/# PROV-JSONLD generation & graph visualization
-│   ├── sample-branch/ # Sample table → activity branching
+│   ├── index-table/   # Index table for related notes
 │   ├── network-graph/ # Inter-note derivation network (Cytoscape + fcose)
 │   ├── ai-assistant/  # AI derivation via agent server
 │   ├── settings/      # AI agent URL configuration

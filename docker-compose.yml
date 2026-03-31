@@ -1,4 +1,10 @@
-# provnote + Crucible Agent — all-in-one setup
+# provnote + Crucible Agent — full setup (editor + AI)
+#
+# This runs provnote with the Crucible Agent for AI-powered features
+# (AI chat, note derivation, provenance-tracked AI responses).
+#
+# For the editor-only setup without AI, use:
+#   docker compose -f docker-compose.standalone.yml up -d
 #
 # Usage:
 #   docker compose up -d

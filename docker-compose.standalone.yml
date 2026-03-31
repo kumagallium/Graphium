@@ -1,0 +1,21 @@
+# provnote — standalone editor (no AI features)
+#
+# Usage:
+#   docker compose -f docker-compose.standalone.yml up -d
+#   http://localhost:5174/provnote/
+#
+# This runs provnote as a standalone note editor with Google Drive sync.
+# No AI assistant, no agent server, no database required.
+#
+# To enable AI features, use the default docker-compose.yml instead:
+#   docker compose up -d
+
+services:
+  provnote:
+    build:
+      context: .
+      args:
+        - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-}
+    ports:
+      - "5174:80"
+    restart: unless-stopped

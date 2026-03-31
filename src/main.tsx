@@ -248,7 +248,7 @@ function ContextLabelExperiment() {
 }
 
 function ContextLabelExperimentInner() {
-  const { pages, activePageId, setActivePageId, addPage, removePage } = useMultiPage("実験ノート");
+  const { pages, activePageId, setActivePageId, addPage, removePage } = useMultiPage("Untitled");
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const editorRef = useRef<any>(null);
