@@ -958,6 +958,46 @@ function NoteEditorInner({
     return () => { setIndexTableCallbacks(null); };
   }, [files, fileId, onNavigateNote, onRefreshFiles, markDirty]);
 
+  // エディタ内の @ノート名（青色テキスト）クリックでサイドピークを開く
+  // BlockNote は textColor: "blue" を style.color で描画するため、
+  // style.color の有無とテキスト内容で判定する
+  useEffect(() => {
+    const isMentionSpan = (el: HTMLElement): boolean => {
+      // BlockNote は textColor: "blue" を data-style-type="textColor" data-value="blue" で描画する
+      if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
+      if (!el.closest(".bn-editor")) return false;
+      if (el.closest("table")) return false; // インデックステーブルは icon-layer が処理
+      const text = el.textContent?.trim();
+      return !!text && text.startsWith("@") && !text.startsWith("@#");
+    };
+
+    const resolveMentionNoteId = (noteName: string): string | null => {
+      const found = noteIndex?.notes.find((n) => n.title === noteName);
+      if (found) return found.noteId;
+      const file = files.find(
+        (f) => f.name.replace(/\.provnote\.json$/, "") === noteName
+      );
+      return file?.id ?? null;
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!isMentionSpan(target)) return;
+      const noteName = target.textContent!.trim().slice(1);
+      const noteId = resolveMentionNoteId(noteName);
+      if (noteId) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSidePeekNoteId(noteId);
+      }
+    };
+
+    document.addEventListener("click", handleClick, true);
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, [noteIndex, files]);
+
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
     setRegisterIndexTableCallback((blockId: string) => {
@@ -1147,6 +1187,14 @@ function NoteEditorInner({
                     type: "reference",
                     createdBy: "human",
                   });
+                  // カーソル位置に @見出し名 を青色で挿入
+                  setTimeout(() => {
+                    editorRef.current?.insertInlineContent([
+                      { type: "text", text: `@${suggestion.label}`, styles: { textColor: "blue" } },
+                      { type: "text", text: " ", styles: {} },
+                    ]);
+                  }, 100);
+                  markDirty();
                 } else if (suggestion.type === "note") {
                   // 他ノートへの知識層リンク
                   linkStore.addLink({
@@ -1199,10 +1247,30 @@ function NoteEditorInner({
                       ];
                     }
                     markDirty();
+                  } else {
+                    // 通常ブロック: カーソル位置に @ノート名 を青色で挿入
+                    setTimeout(() => {
+                      editorRef.current?.insertInlineContent([
+                        { type: "text", text: `@${suggestion.label}`, styles: { textColor: "blue" } },
+                        { type: "text", text: " ", styles: {} },
+                      ]);
+                    }, 100);
 
-                    // コンテキストをリセット
-                    mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                    // noteLink を追加
+                    const exists = noteLinksRef.current.some(
+                      (l) => l.targetNoteId === suggestion.id
+                    );
+                    if (!exists) {
+                      noteLinksRef.current = [
+                        ...noteLinksRef.current,
+                        { targetNoteId: suggestion.id, sourceBlockId, type: "derived_from" },
+                      ];
+                    }
+                    markDirty();
                   }
+
+                  // コンテキストをリセット
+                  mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
                 }
               }}
             />

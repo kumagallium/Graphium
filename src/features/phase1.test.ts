@@ -119,7 +119,7 @@ describe("# オートコンプリート候補", () => {
 
   it("getDisplayName は [] を除去する", () => {
     expect(getDisplayName("[手順]")).toBe("手順");
-    expect(getDisplayName("[使用したもの]")).toBe("使用したもの");
+    expect(getDisplayName("[使用したもの]")).toBe("使用するもの");
     expect(getDisplayName("[カスタム]")).toBe("カスタム");
   });
 });

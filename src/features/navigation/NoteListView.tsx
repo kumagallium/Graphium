@@ -10,19 +10,27 @@ import type { ProvNoteIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
 import { formatRelativeTime } from "./recent-notes-store";
 
-// ラベル表示名のマッピング
-const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "bg-blue-100 text-blue-700",
-  "[使用するもの]": "bg-amber-100 text-amber-700",
-  "[結果]": "bg-emerald-100 text-emerald-700",
-  "[属性]": "bg-purple-100 text-purple-700",
+// ラベル色マッピング（design.md PROV-DM ラベル色準拠）
+// ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
+const LABEL_HEX: Record<string, string> = {
+  "[手順]": "#5b8fb9",
+  "[使用したもの]": "#4B7A52",
+  "[結果]": "#c26356",
+  "[属性]": "#c08b3e",
+  "[パターン]": "#8b7ab5",
+  "[試料]": "#8b7ab5",
+  "[条件]": "#c08b3e",
 };
 
+// 表示名（「使用するもの」に統一）
 const LABEL_SHORT: Record<string, string> = {
   "[手順]": "手順",
-  "[使用するもの]": "使用",
+  "[使用したもの]": "使用するもの",
   "[結果]": "結果",
   "[属性]": "属性",
+  "[パターン]": "パターン",
+  "[試料]": "試料",
+  "[条件]": "属性",
 };
 
 export function NoteListView({
@@ -158,25 +166,25 @@ export function NoteListView({
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                <th className="py-2 pr-3 font-medium">ノート</th>
+              <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
+                <th className="py-2 px-3">ノート</th>
                 <th
-                  className="py-2 px-2 font-medium w-[56px] cursor-pointer hover:text-foreground text-center"
+                  className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("outgoingLinkCount")}
                   title="参照先（このノートが参照しているノート数）"
                 >
                   参照先{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
-                  className="py-2 px-2 font-medium w-[56px] cursor-pointer hover:text-foreground text-center"
+                  className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("incomingLinkCount")}
                   title="被参照（他ノートから参照されている数）"
                 >
                   被参照{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-3 font-medium w-[140px]">ラベル</th>
+                <th className="py-2 px-3 w-[140px]">ラベル</th>
                 <th
-                  className="py-2 pl-3 font-medium w-[80px] cursor-pointer hover:text-foreground"
+                  className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("modifiedAt")}
                 >
                   更新日{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -190,7 +198,7 @@ export function NoteListView({
                   className="border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer"
                   onClick={() => onOpenNote(entry.noteId)}
                 >
-                  <td className="py-2 pr-3">
+                  <td className="py-2 px-3">
                     <span className="text-foreground hover:text-primary transition-colors">
                       {entry.title}
                     </span>
@@ -198,9 +206,9 @@ export function NoteListView({
                   <td className="py-2 px-2 text-center">
                     {entry.outgoingLinkCount > 0 && (
                       <span
-                        className={`inline-flex items-center justify-center text-xs px-1.5 py-0.5 rounded ${
+                        className={`inline-flex items-center justify-center text-xs px-1.5 py-0.5 rounded-full ${
                           entry.outgoingLinkCount >= 3
-                            ? "bg-blue-100 text-blue-700 font-medium"
+                            ? "bg-info-bg text-info font-medium"
                             : "text-muted-foreground"
                         }`}
                       >
@@ -211,9 +219,9 @@ export function NoteListView({
                   <td className="py-2 px-2 text-center">
                     {entry.incomingLinkCount > 0 && (
                       <span
-                        className={`inline-flex items-center justify-center text-xs px-1.5 py-0.5 rounded ${
+                        className={`inline-flex items-center justify-center text-xs px-1.5 py-0.5 rounded-full ${
                           entry.incomingLinkCount >= 2
-                            ? "bg-purple-100 text-purple-700 font-medium"
+                            ? "bg-label-sample-bg text-label-sample font-medium"
                             : "text-muted-foreground"
                         }`}
                       >
@@ -223,16 +231,24 @@ export function NoteListView({
                   </td>
                   <td className="py-2 px-3">
                     <div className="flex flex-wrap gap-1">
-                      {entry.labels.map((label) => (
-                        <span
-                          key={label}
-                          className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${
-                            LABEL_COLORS[label] || "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {LABEL_SHORT[label] || label.replace(/[[\]]/g, "")}
-                        </span>
-                      ))}
+                      {entry.labels.map((label) => {
+                        const color = LABEL_HEX[label] ?? "#8fa394";
+                        return (
+                          <span
+                            key={label}
+                            className="inline-block text-xs font-semibold rounded-full whitespace-nowrap"
+                            style={{
+                              padding: "0px 6px",
+                              backgroundColor: color + "18",
+                              color,
+                              border: `1px solid ${color}38`,
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            {LABEL_SHORT[label] || label.replace(/[[\]]/g, "")}
+                          </span>
+                        );
+                      })}
                     </div>
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground">

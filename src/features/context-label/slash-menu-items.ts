@@ -111,7 +111,7 @@ export const labelSlashMenuItems: LabelSlashItem[] = [
     "method",
     "protocol",
   ]),
-  createLabelSlashItem("使用したもの", "[使用したもの]", "bulletListItem", [
+  createLabelSlashItem("使用するもの", "[使用したもの]", "bulletListItem", [
     "使用",
     "しよう",
     "材料",

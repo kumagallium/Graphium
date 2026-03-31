@@ -13,10 +13,12 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "title", label: "タイトル" },
 ];
 
-const CORE_LABELS = ["[手順]", "[使用するもの]", "[結果]", "[属性]"];
+// データに保存された内部ラベル名でフィルタリング
+const CORE_LABELS = ["[手順]", "[使用したもの]", "[結果]", "[属性]"];
+// 表示名（「使用するもの」に統一）
 const LABEL_SHORT: Record<string, string> = {
   "[手順]": "手順",
-  "[使用するもの]": "使用するもの",
+  "[使用したもの]": "使用するもの",
   "[結果]": "結果",
   "[属性]": "属性",
 };

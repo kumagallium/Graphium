@@ -47,6 +47,17 @@
   --color-warning: #b45309;
   --color-warning-bg: #fffbeb;
   --color-warning-border: #fde68a;
+  /* PROV-DM ラベル色（design.md 準拠） */
+  --color-label-activity: #5b8fb9;          /* [手順] 落ち着いた青 */
+  --color-label-activity-bg: #eaf1f6;
+  --color-label-entity: #4B7A52;            /* [使用するもの] ブランドグリーン */
+  --color-label-entity-bg: #edf5ee;
+  --color-label-parameter: #c08b3e;         /* [属性] 落ち着いたアンバー */
+  --color-label-parameter-bg: #faf3e6;
+  --color-label-sample: #8b7ab5;            /* [試料/パターン] グレイッシュ紫 */
+  --color-label-sample-bg: #f0edf6;
+  --color-label-result: #c26356;            /* [結果] テラコッタ */
+  --color-label-result-bg: #fbeae8;
   /* サイドバー */
   --color-sidebar-background: #f0f5ef;
   --color-sidebar-foreground: #1a2e1d;
@@ -78,6 +89,14 @@ body[data-label-dropdown-open="true"] .bn-side-menu {
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
+}
+
+/* @メンションテキスト（青色）をクリック可能に見せる */
+.bn-editor [data-style-type="textColor"][data-value="blue"] {
+  cursor: pointer;
+}
+.bn-editor [data-style-type="textColor"][data-value="blue"]:hover {
+  text-decoration: underline;
 }
 
 /* BlockNote エディタ背景を Crucible テーマに統一 */
