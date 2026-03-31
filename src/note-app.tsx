@@ -129,15 +129,11 @@ function LoginScreen({ onSignIn }: { onSignIn: () => void }) {
 
 // ── ファイル一覧サイドバー ──
 function FileSidebar({
-  files,
   activeFileId,
-  loading,
   onSelect,
   onNewNote,
   onNewFromTemplate,
-  onDelete,
   onRefresh,
-  userName,
   onSignOut,
   onShowReleaseNotes,
   onShowSettings,
@@ -145,15 +141,11 @@ function FileSidebar({
   recentNotes,
   onShowNoteList,
 }: {
-  files: ProvNoteFile[];
   activeFileId: string | null;
-  loading: boolean;
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
   onNewFromTemplate: () => void;
-  onDelete: (fileId: string) => void;
   onRefresh: () => void;
-  userName?: string;
   onSignOut: () => void;
   onShowReleaseNotes: () => void;
   onShowSettings: () => void;
@@ -192,58 +184,13 @@ function FileSidebar({
       </div>
 
       {/* 最近のノート */}
-      <RecentNotes
-        notes={recentNotes}
-        activeFileId={activeFileId}
-        onSelect={onSelect}
-        onShowNoteList={onShowNoteList}
-      />
-
-      {/* ファイル一覧 */}
-      <div className="flex-1 overflow-y-auto p-2 border-t border-sidebar-border/50">
-        {loading ? (
-          <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-            読み込み中...
-          </p>
-        ) : files.length === 0 ? (
-          <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-            ノートがありません
-          </p>
-        ) : (
-          files.map((file) => (
-            <div
-              key={file.id}
-              className={cn(
-                "group flex items-center justify-between rounded-md px-2 py-1.5 mb-0.5 text-sm transition-colors cursor-pointer",
-                activeFileId === file.id
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
-              )}
-              onClick={() => onSelect(file.id)}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="break-words">
-                  {file.name.replace(/\.provnote\.json$/, "")}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {new Date(file.modifiedTime).toLocaleDateString("ja-JP")}
-                </div>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm("このノートを削除しますか？")) {
-                    onDelete(file.id);
-                  }
-                }}
-                className="opacity-0 group-hover:opacity-100 text-xs text-muted-foreground hover:text-destructive px-1 transition-opacity"
-                title="削除"
-              >
-                &#128465;
-              </button>
-            </div>
-          ))
-        )}
+      <div className="flex-1 overflow-y-auto">
+        <RecentNotes
+          notes={recentNotes}
+          activeFileId={activeFileId}
+          onSelect={onSelect}
+          onShowNoteList={onShowNoteList}
+        />
       </div>
 
       {/* フッター */}
@@ -1683,13 +1630,10 @@ export function NoteApp() {
   return (
     <div className="flex h-screen font-sans antialiased bg-background text-foreground">
       <FileSidebar
-        files={files}
         activeFileId={activeFileId}
-        loading={filesLoading}
         onSelect={handleOpenFile}
         onNewNote={handleNewNote}
         onNewFromTemplate={handleNewFromTemplate}
-        onDelete={handleDelete}
         onRefresh={refreshFiles}
         onSignOut={signOut}
         onShowReleaseNotes={() => setShowReleaseNotes(true)}
