@@ -543,7 +543,9 @@ type NoteEditorProps = {
   onSave: (doc: ProvNoteDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   onAiDeriveNote: (doc: ProvNoteDocument) => Promise<void>;
-  onNavigateNote: (noteId: string) => void;
+  onNavigateNote: (noteId: string, cachedDoc?: ProvNoteDocument) => void;
+  /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
+  getCachedDoc?: (noteId: string) => ProvNoteDocument | undefined;
   onRefreshFiles: () => void;
   saving: boolean;
   files: ProvNoteFile[];
@@ -597,6 +599,7 @@ function NoteEditorInner({
   noteGraphData,
   sourceDoc,
   onSourceDocChange,
+  getCachedDoc,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -1084,10 +1087,11 @@ function NoteEditorInner({
       {sidePeekNoteId && (
         <SidePeek
           noteId={sidePeekNoteId}
+          cachedDoc={getCachedDoc?.(sidePeekNoteId)}
           onClose={() => setSidePeekNoteId(null)}
-          onNavigate={(noteId) => {
+          onNavigate={(noteId, savedDoc) => {
             setSidePeekNoteId(null);
-            onNavigateNote(noteId);
+            onNavigateNote(noteId, savedDoc);
           }}
         />
       )}
@@ -1363,9 +1367,13 @@ export function NoteApp() {
     []
   );
 
-  // ファイルを開く（キャッシュ優先）
-  const handleOpenFile = useCallback(async (fileId: string) => {
+  // ファイルを開く（キャッシュ優先、cachedDoc が渡された場合はキャッシュを即時更新）
+  const handleOpenFile = useCallback(async (fileId: string, cachedDoc?: ProvNoteDocument) => {
     try {
+      // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新
+      if (cachedDoc) {
+        docCacheRef.current.set(fileId, cachedDoc);
+      }
       // キャッシュにあれば即座に表示
       const cached = docCacheRef.current.get(fileId);
       if (cached) {
@@ -1671,6 +1679,7 @@ export function NoteApp() {
           onDeriveNote={handleDeriveNote}
           onAiDeriveNote={handleAiDeriveNote}
           onNavigateNote={handleOpenFile}
+          getCachedDoc={(noteId) => docCacheRef.current.get(noteId)}
           onRefreshFiles={refreshFiles}
           saving={saving}
           files={files}

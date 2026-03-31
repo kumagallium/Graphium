@@ -1,24 +1,86 @@
 // Notion 風サイドピーク
 // 画面右側からスライドインし、リンク先ノートを編集可能な BlockNote で表示する
 // 背景ページは操作可能（薄暗くならない）
+// ラベル機能（ProvIndicatorLayer + LabelDropdownPortal + #オートコンプリート）対応
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/shadcn";
+import {
+  AddBlockButton,
+  DragHandleButton,
+  RemoveBlockItem,
+  BlockColorsItem,
+  SideMenu,
+} from "@blocknote/react";
 import {
   loadFile,
   saveFile,
   type ProvNoteDocument,
 } from "../../lib/google-drive";
+import { SandboxEditor } from "../../base/editor";
+import { LabelStoreProvider, useLabelStore } from "@features/context-label/store";
+import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
+import { LabelDropdownPortal } from "@features/context-label/ui";
+import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
+import { labelSlashMenuItems } from "@features/context-label/slash-menu-items";
+import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 
 type SidePeekProps = {
   noteId: string;
+  /** キャッシュ済みドキュメント（あれば API 取得をスキップして即表示） */
+  cachedDoc?: ProvNoteDocument;
   onClose: () => void;
-  onNavigate: (noteId: string) => void;
+  onNavigate: (noteId: string, savedDoc?: ProvNoteDocument) => void;
 };
 
-export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
+export function SidePeek(props: SidePeekProps) {
+  return (
+    <LabelStoreProvider>
+      <LinkStoreProvider>
+        <SidePeekInner {...props} />
+      </LinkStoreProvider>
+    </LabelStoreProvider>
+  );
+}
+
+// サイドピーク用の簡易 SideMenu（ラベルは # オートコンプリートで付与）
+function SidePeekSideMenu() {
+  return (
+    <SideMenu>
+      <AddBlockButton />
+      <DragHandleButton>
+        <RemoveBlockItem>削除</RemoveBlockItem>
+        <BlockColorsItem>色</BlockColorsItem>
+      </DragHandleButton>
+    </SideMenu>
+  );
+}
+
+// 既知のブロック型（未登録ブロック除去用）
+const KNOWN_BLOCK_TYPES = new Set([
+  "paragraph", "heading", "bulletListItem", "numberedListItem",
+  "checkListItem", "table", "image", "video", "audio", "file",
+  "codeBlock",
+]);
+
+function sanitizeBlocks(blocks: any[]): any[] {
+  return blocks
+    .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
+    .map((b) => ({
+      ...b,
+      children: b.children?.length ? sanitizeBlocks(b.children) : b.children,
+    }));
+}
+
+function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps) {
+  const labelStore = useLabelStore();
+  const linkStore = useLinkStore();
+  // labelStore/linkStore は毎レンダリング新しいオブジェクトになるため、
+  // ref 経由で最新を参照し、useCallback の依存を安定化する
+  const labelStoreRef = useRef(labelStore);
+  labelStoreRef.current = labelStore;
+  const editorRef = useRef<any>(null);
+  const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<ProvNoteDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +88,20 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
   const docRef = useRef<ProvNoteDocument | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidePeekRef = useRef<HTMLDivElement>(null);
+  const labelAutoRef = useRef<(() => void) | null>(null);
 
-  // ノート読み込み
+  // ノート読み込み（cachedDoc がなければ API 取得）
   useEffect(() => {
+    if (cachedDoc) {
+      // cachedDoc がある場合は API 不要
+      setDoc(cachedDoc);
+      docRef.current = cachedDoc;
+      setLoading(false);
+      setError(null);
+      setSaveStatus("saved");
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -60,35 +133,70 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
         autoSaveTimerRef.current = null;
       }
     };
-  }, [noteId]);
+  }, [noteId, cachedDoc]);
 
-  const blocks = useMemo(
-    () => doc?.pages?.[0]?.blocks ?? [],
-    [doc]
-  );
-
-  const editor = useCreateBlockNote({
-    initialContent: blocks.length > 0 ? blocks : undefined,
-  });
-
-  // noteId が変わったらエディタの内容を差し替え
+  // ドキュメント読み込み後にラベル・リンクを復元
+  // setLabel / restoreLinks は useCallback で安定な参照
+  const { setLabel } = labelStore;
+  const { restoreLinks } = linkStore;
   useEffect(() => {
-    if (blocks.length > 0 && editor) {
-      editor.replaceBlocks(editor.document, blocks);
-    }
-  }, [blocks, editor]);
+    if (!doc) return;
+    const page = doc.pages?.[0];
+    if (!page) return;
 
-  // 保存処理（直接 Drive API を呼ぶ、状態に依存しない）
+    // ラベル復元
+    if (page.labels) {
+      for (const [blockId, label] of Object.entries(page.labels)) {
+        setLabel(blockId, label);
+      }
+    }
+    // リンク復元（provLinks + knowledgeLinks、v1 互換: links）
+    const allLinks = [
+      ...(page.provLinks ?? []),
+      ...(page.knowledgeLinks ?? []),
+      ...((page as any).links ?? []),
+    ];
+    if (allLinks.length > 0) {
+      restoreLinks(allLinks);
+    }
+  }, [doc, setLabel, restoreLinks]);
+
+  // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
+  const handleEditorReady = useCallback((editor: any) => {
+    editorRef.current = editor;
+    labelAutoRef.current = setupLabelAutoAssign(editor, labelStoreRef.current);
+  }, []);
+
+  // 初期コンテンツ（cachedDoc を優先し、レンダリング時に即利用可能にする）
+  const effectiveDoc = cachedDoc ?? doc;
+  const initialContent = effectiveDoc?.pages?.[0]?.blocks?.length
+    ? sanitizeBlocks(effectiveDoc.pages[0].blocks)
+    : undefined;
+
+  // docRef も cachedDoc から即時設定（保存時に必要）
+  if (cachedDoc && !docRef.current) {
+    docRef.current = cachedDoc;
+  }
+
+  // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）
   const doSave = useCallback(async () => {
+    const editor = editorRef.current;
     if (!editor || !docRef.current) return;
 
     const currentBlocks = editor.document;
+    const labelSnapshot = labelStoreRef.current.getSnapshot();
+    const labelsObj: Record<string, string> = {};
+    for (const [k, v] of labelSnapshot.labels) {
+      labelsObj[k] = v;
+    }
+
     const updatedDoc: ProvNoteDocument = {
       ...docRef.current,
       pages: [
         {
           ...docRef.current.pages[0],
           blocks: currentBlocks,
+          labels: labelsObj,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -103,9 +211,8 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
       console.error("サイドピーク保存に失敗:", err);
       setSaveStatus("dirty");
     }
-  }, [noteId, editor]);
+  }, [noteId]);
 
-  // 最新の doSave を ref に保持
   const doSaveRef = useRef(doSave);
   useEffect(() => {
     doSaveRef.current = doSave;
@@ -120,7 +227,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
     }, 3000);
   }, []);
 
-  // Cmd+S / Ctrl+S — サイドピーク内にフォーカスがあれば即保存
+  // Cmd+S / Ctrl+S
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -137,61 +244,39 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
     return () => document.removeEventListener("keydown", handler, { capture: true });
   }, []);
 
-  // 閉じるときに未保存の変更を保存（完了を待ってから閉じる）
+  // 閉じるときに未保存を保存
   const handleClose = useCallback(async () => {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
-    if (saveStatus === "dirty" && editor && docRef.current) {
-      const currentBlocks = editor.document;
-      const updatedDoc: ProvNoteDocument = {
-        ...docRef.current,
-        pages: [
-          {
-            ...docRef.current.pages[0],
-            blocks: currentBlocks,
-          },
-        ],
-        modifiedAt: new Date().toISOString(),
-      };
-      try {
-        await saveFile(noteId, updatedDoc);
-      } catch (err) {
-        console.error("閉じる前の保存に失敗:", err);
+    try {
+      if (saveStatus === "dirty") {
+        await doSaveRef.current();
       }
+    } catch (err) {
+      console.error("閉じる前の保存に失敗:", err);
     }
     onClose();
-  }, [saveStatus, noteId, editor, onClose]);
+  }, [saveStatus, onClose]);
 
-  // フルで開くときも未保存の変更を保存
+  // フルで開くときも保存
   const handleNavigate = useCallback(async () => {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
-    if (saveStatus === "dirty" && editor && docRef.current) {
-      const currentBlocks = editor.document;
-      const updatedDoc: ProvNoteDocument = {
-        ...docRef.current,
-        pages: [
-          {
-            ...docRef.current.pages[0],
-            blocks: currentBlocks,
-          },
-        ],
-        modifiedAt: new Date().toISOString(),
-      };
-      try {
-        await saveFile(noteId, updatedDoc);
-      } catch (err) {
-        console.error("遷移前の保存に失敗:", err);
+    try {
+      if (saveStatus === "dirty") {
+        await doSaveRef.current();
       }
+    } catch (err) {
+      console.error("遷移前の保存に失敗:", err);
     }
-    onNavigate(noteId);
-  }, [saveStatus, noteId, editor, onNavigate]);
+    // 保存済みドキュメントを渡してキャッシュ即時更新（API再取得の遅延を回避）
+    onNavigate(noteId, docRef.current ?? undefined);
+  }, [saveStatus, noteId, onNavigate]);
 
-  // 保存状態の表示テキスト（親ページと同じ挙動: 常時表示）
   const statusText = saveStatus === "saving" ? "保存中..."
     : saveStatus === "dirty" ? "未保存"
     : "保存済み";
@@ -232,7 +317,6 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
           flexShrink: 0,
         }}
       >
-        {/* >> 閉じるボタン */}
         <button
           onClick={handleClose}
           title="サイドピークを閉じる"
@@ -262,7 +346,6 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
           </svg>
         </button>
 
-        {/* 拡大（フルで開く）ボタン */}
         <button
           onClick={handleNavigate}
           title="フルスクリーンで開く"
@@ -294,7 +377,6 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
           </svg>
         </button>
 
-        {/* タイトル */}
         <span
           style={{
             flex: 1,
@@ -307,10 +389,9 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             marginLeft: 4,
           }}
         >
-          {doc?.title ?? ""}
+          {effectiveDoc?.title ?? ""}
         </span>
 
-        {/* 保存状態インジケーター */}
         <span
           style={{
             fontSize: 10,
@@ -324,7 +405,7 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
       </div>
 
       {/* コンテンツ */}
-      <div style={{ flex: 1, overflow: "auto", background: "var(--color-background)" }}>
+      <div ref={setWrapperEl} data-label-wrapper style={{ flex: 1, overflow: "auto", background: "var(--color-background)", position: "relative" }}>
         {loading && (
           <div
             style={{
@@ -353,19 +434,27 @@ export function SidePeek({ noteId, onClose, onNavigate }: SidePeekProps) {
             {error}
           </div>
         )}
-        {!loading && !error && (
-          <div style={{ padding: "16px 24px" }}>
-            <BlockNoteView
-              editor={editor}
-              editable={true}
-              theme="light"
-              onChange={handleChange}
-            />
-          </div>
+        {!loading && !error && initialContent && (
+          <>
+            <ProvIndicatorLayer />
+            <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
+            <ProvIndicatorHoverHint wrapperEl={wrapperEl} zIndex={101} />
+            <LabelDropdownPortal />
+            <div style={{ padding: "16px 24px", paddingRight: 80 }}>
+              <SandboxEditor
+                key={noteId}
+                initialContent={initialContent}
+                sideMenu={SidePeekSideMenu}
+                extraSlashMenuItems={[...labelSlashMenuItems]}
+                onEditorReady={handleEditorReady}
+                onChange={handleChange}
+                onHashtagSelect={(blockId, label) => labelStoreRef.current.setLabel(blockId, label)}
+              />
+            </div>
+          </>
         )}
       </div>
 
-      {/* CSS アニメーション */}
       <style>{`
         @keyframes sidePeekSlideIn {
           from { transform: translateX(100%); }

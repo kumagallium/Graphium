@@ -106,7 +106,21 @@ export function ProvIndicatorLayer() {
     });
 
     // エディタラッパーの右端を取得（サイドバーとの境界）
-    const wrapper = document.querySelector("[data-label-wrapper]");
+    // 複数の data-label-wrapper がある場合（メインエディタ + サイドピーク）、
+    // 自分のブロックを含む wrapper を closest() で特定する
+    let wrapper: Element | null = null;
+    for (const blockId of blockIds) {
+      const outer = document.querySelector(
+        `[data-id="${blockId}"][data-node-type="blockOuter"]`
+      );
+      if (outer) {
+        wrapper = outer.closest("[data-label-wrapper]");
+        if (wrapper) break;
+      }
+    }
+    if (!wrapper) {
+      wrapper = document.querySelector("[data-label-wrapper]");
+    }
     if (!wrapper) return;
     const wrapperRect = wrapper.getBoundingClientRect();
     // サイドバー境界の左にラベルを配置（8px の余白）
@@ -579,7 +593,7 @@ function LinkRow({
 // ホバーで「#」を表示するレイヤー
 // ラベルもリンクもないブロックにホバーすると右端に表示
 // ──────────────────────────────────
-export function ProvIndicatorHoverHint() {
+export function ProvIndicatorHoverHint({ wrapperEl, zIndex }: { wrapperEl?: HTMLElement | null; zIndex?: number } = {}) {
   const { labels, openDropdown } = useLabelStore();
   const { links } = useLinkStore();
   const [hoverBlock, setHoverBlock] = useState<{
@@ -596,7 +610,7 @@ export function ProvIndicatorHoverHint() {
     const handleMouseMove = (e: MouseEvent) => {
       // # ボタンにマウスが乗っている間は更新しない
       if (hintHoveredRef.current) return;
-      const wrapper = document.querySelector("[data-label-wrapper]");
+      const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
       if (!wrapper) return;
 
       const blockOuters = wrapper.querySelectorAll(
@@ -654,7 +668,7 @@ export function ProvIndicatorHoverHint() {
       setHoverBlock(null);
     };
 
-    const wrapper = document.querySelector("[data-label-wrapper]");
+    const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
     if (!wrapper) return;
     wrapper.addEventListener("mousemove", handleMouseMove as EventListener);
     wrapper.addEventListener("mouseleave", handleMouseLeave as EventListener);
@@ -662,7 +676,7 @@ export function ProvIndicatorHoverHint() {
       wrapper.removeEventListener("mousemove", handleMouseMove as EventListener);
       wrapper.removeEventListener("mouseleave", handleMouseLeave as EventListener);
     };
-  }, [labels, links]);
+  }, [labels, links, wrapperEl]);
 
   if (!hoverBlock) return null;
 
@@ -678,8 +692,9 @@ export function ProvIndicatorHoverHint() {
       {/* 対象ブロックのハイライト */}
       {highlightRect && (
         <div
-          className="fixed rounded-lg pointer-events-none z-[9]"
+          className="fixed rounded-lg pointer-events-none"
           style={{
+            zIndex: zIndex ?? 9,
             top: highlightRect.top - 2,
             left: highlightRect.left - 4,
             width: highlightRect.width + 8,
@@ -696,8 +711,9 @@ export function ProvIndicatorHoverHint() {
         onMouseLeave={() => { hintHoveredRef.current = false; setHoverBlock(null); }}
         data-prov-label-anchor={hoverBlock.blockId}
         data-prov-hover-hint="true"
-        className="fixed z-[9996] inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary hover:opacity-100 transition-colors duration-200"
+        className="fixed inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary hover:opacity-100 transition-colors duration-200"
         style={{
+          zIndex: zIndex ? zIndex + 5 : 9996,
           top: hoverBlock.top,
           right: window.innerWidth - hoverBlock.left,
           transform: "translateY(-50%)",
@@ -782,11 +798,11 @@ export function ScopeHighlight({ blockIds }: { blockIds: string[] }) {
 // エディタ内の全ブロックにホバーハイライトを表示する独立コンポーネント。
 // ラベルの有無に関係なく動作する。
 // ──────────────────────────────────
-export function BlockHoverHighlight() {
+export function BlockHoverHighlight({ wrapperEl, zIndex = 9 }: { wrapperEl?: HTMLElement | null; zIndex?: number } = {}) {
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null);
 
   useEffect(() => {
-    const wrapper = document.querySelector("[data-label-wrapper]");
+    const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
     if (!wrapper) return;
 
     const handleOver = (e: Event) => {
@@ -815,7 +831,7 @@ export function BlockHoverHighlight() {
       wrapper.removeEventListener("mouseover", handleOver);
       wrapper.removeEventListener("mouseout", handleOut);
     };
-  }, []);
+  }, [wrapperEl]);
 
   if (!hoveredBlockId) return null;
 
@@ -829,8 +845,9 @@ export function BlockHoverHighlight() {
 
   return createPortal(
     <div
-      className="fixed rounded-lg pointer-events-none z-[9]"
+      className="fixed rounded-lg pointer-events-none"
       style={{
+        zIndex,
         top: rect.top - 2,
         left: rect.left - 4,
         width: rect.width + 8,
