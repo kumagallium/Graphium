@@ -8,6 +8,8 @@ const CLIENT_ID =
 
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const STORAGE_KEY = "provnote_auth";
+// 以前ログインに成功した記録（サイレントリフレッシュ判定用）
+const HAS_CONSENTED_KEY = "provnote_has_consented";
 
 // GIS SDK のグローバル型定義
 declare global {
@@ -46,32 +48,42 @@ type AuthState = {
 
 // トークン期限切れ前に自動更新するまでの余裕（5分）
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+// サイレントリフレッシュのタイムアウト（秒）
+const SILENT_REFRESH_TIMEOUT_MS = 5000;
 
 let tokenClient: TokenClient | null = null;
 let authState: AuthState = loadFromStorage();
 let authListeners: Array<(token: string | null) => void> = [];
 let refreshTimerId: ReturnType<typeof setTimeout> | null = null;
 
-// sessionStorage からトークンを復元
+// 以前ログインに成功したことがあるか
+function hasPreviousConsent(): boolean {
+  return localStorage.getItem(HAS_CONSENTED_KEY) === "true";
+}
+
+// localStorage からトークンを復元
 function loadFromStorage(): AuthState {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { accessToken: null, expiresAt: null };
     const stored = JSON.parse(raw) as AuthState;
     // 期限切れチェック
     if (stored.expiresAt && Date.now() < stored.expiresAt) {
       return stored;
     }
+    // 期限切れ → クリア
+    localStorage.removeItem(STORAGE_KEY);
   } catch {}
   return { accessToken: null, expiresAt: null };
 }
 
-// sessionStorage にトークンを保存
+// localStorage にトークンを保存
 function saveToStorage(state: AuthState) {
   if (state.accessToken) {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(HAS_CONSENTED_KEY, "true");
   } else {
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
   }
 }
 
@@ -92,13 +104,17 @@ function loadGisScript(): Promise<void> {
   });
 }
 
-// 初期化
+// 初期化（トークン期限切れ時はサイレントリフレッシュを試行）
 export async function initGoogleAuth(): Promise<void> {
   if (!CLIENT_ID) {
     console.warn("Google OAuth Client ID が設定されていません");
     return;
   }
   await loadGisScript();
+
+  // サイレントリフレッシュが必要か判定
+  const needsSilentRefresh = !authState.accessToken && hasPreviousConsent();
+  let resolveSilentRefresh: (() => void) | null = null;
 
   tokenClient = window.google!.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
@@ -107,20 +123,36 @@ export async function initGoogleAuth(): Promise<void> {
       if (response.error) {
         console.error("Google 認証エラー:", response.error);
         setAuthState(null, null);
-        return;
+      } else {
+        const expiresAt = Date.now() + response.expires_in * 1000;
+        setAuthState(response.access_token, expiresAt);
       }
-      const expiresAt = Date.now() + response.expires_in * 1000;
-      setAuthState(response.access_token, expiresAt);
+      // サイレントリフレッシュ待ちを解除
+      resolveSilentRefresh?.();
+      resolveSilentRefresh = null;
     },
     error_callback: (error) => {
       console.error("Google 認証エラー:", error);
+      // サイレントリフレッシュ失敗 → ログイン画面へ
+      resolveSilentRefresh?.();
+      resolveSilentRefresh = null;
     },
   });
 
-  // sessionStorage に有効なトークンがあればリスナーに通知 + 自動更新タイマーをセット
   if (authState.accessToken) {
+    // 有効なトークンがある → リスナーに通知 + 自動更新タイマーをセット
     scheduleTokenRefresh(authState.expiresAt);
     authListeners.forEach((fn) => fn(authState.accessToken));
+  } else if (needsSilentRefresh) {
+    // トークン期限切れだが以前ログイン済み → ポップアップなしでトークン再取得
+    const silentRefreshPromise = new Promise<void>((resolve) => {
+      resolveSilentRefresh = resolve;
+    });
+    tokenClient.requestAccessToken({ prompt: "" });
+    await Promise.race([
+      silentRefreshPromise,
+      new Promise<void>((resolve) => setTimeout(resolve, SILENT_REFRESH_TIMEOUT_MS)),
+    ]);
   }
 }
 
@@ -167,6 +199,8 @@ export function signOut(): void {
       method: "POST",
     }).catch(() => {});
   }
+  // 同意済みフラグもクリア（次回起動時にサイレントリフレッシュしない）
+  localStorage.removeItem(HAS_CONSENTED_KEY);
   setAuthState(null, null);
 }
 
