@@ -6,6 +6,7 @@ import { Bot, Send, Trash2, FileDown, FilePlus, List } from "lucide-react";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useAiAssistant } from "./store";
+import { useT } from "../../i18n";
 import type { ChatMessage, ScopeChat } from "../../lib/google-drive";
 
 type AiAssistantPanelProps = {
@@ -26,6 +27,7 @@ export function AiAssistantPanel({
     messages, loading, error, clearMessages, parkChat,
     chats, selectChat, sourceBlockIds, quotedMarkdown,
   } = useAiAssistant();
+  const t = useT();
   const [input, setInput] = useState("");
   // sourceBlockIds がある = openChat で起動された → 新規チャット画面
   // sourceBlockIds が空 + chats あり = 一覧表示
@@ -70,12 +72,12 @@ export function AiAssistantPanel({
       {/* ヘッダー */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2">
         <Bot size={14} className="text-violet-500" />
-        <span className="text-xs font-semibold text-foreground">AI チャット</span>
+        <span className="text-xs font-semibold text-foreground">{t("aiChat.title")}</span>
         <div className="ml-auto flex items-center gap-1">
           {chats.length > 0 && !showChatList && (
             <button
               onClick={() => { parkChat(); setShowChatList(true); }}
-              title="チャット履歴"
+              title={t("aiChat.history")}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <List size={12} />
@@ -84,7 +86,7 @@ export function AiAssistantPanel({
           {messages.length > 0 && (
             <button
               onClick={() => { parkChat(); setShowChatList(true); }}
-              title="会話をクリア"
+              title={t("aiChat.clearChat")}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <Trash2 size={12} />
@@ -96,7 +98,7 @@ export function AiAssistantPanel({
       {/* 引用表示 */}
       {quotedMarkdown && messages.length === 0 && !showChatList && (
         <div className="px-3 py-2 border-b border-border">
-          <div className="text-[10px] text-muted-foreground mb-1">引用</div>
+          <div className="text-[10px] text-muted-foreground mb-1">{t("aiChat.quote")}</div>
           <div className="bg-muted/50 rounded p-2 text-[11px] text-foreground/70 max-h-20 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
             {quotedMarkdown}
           </div>
@@ -116,9 +118,7 @@ export function AiAssistantPanel({
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
             {messages.length === 0 && !loading && (
               <div className="text-xs text-muted-foreground text-center py-8">
-                ブロックを選択して AI に質問できます。
-                <br />
-                Cmd+Enter で送信
+                {t("aiChat.helpText").split("\n").map((line, i) => <span key={i}>{line}<br /></span>)}
               </div>
             )}
             {messages.map((msg, i) => (
@@ -141,7 +141,7 @@ export function AiAssistantPanel({
             {loading && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
                 <span className="inline-block w-3 h-3 border-2 border-violet-400/30 border-t-violet-400 rounded-full animate-spin" />
-                考え中...
+                {t("aiChat.thinking")}
               </div>
             )}
             {error && (
@@ -160,7 +160,7 @@ export function AiAssistantPanel({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="質問を入力..."
+                placeholder={t("aiChat.placeholder")}
                 disabled={loading}
                 rows={2}
                 className="flex-1 text-xs resize-none"
@@ -175,7 +175,7 @@ export function AiAssistantPanel({
               </Button>
             </div>
             <div className="text-[10px] text-muted-foreground mt-1">
-              Cmd+Enter で送信
+              {t("aiChat.sendHint")}
             </div>
           </div>
         </>
@@ -194,6 +194,7 @@ function ChatListView({
   onSelect: (chatId: string) => void;
   onNewChat: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="px-3 py-2">
@@ -201,12 +202,12 @@ function ChatListView({
           onClick={onNewChat}
           className="w-full text-left px-3 py-2 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors mb-2"
         >
-          + 新しいチャット
+          {t("aiChat.newChat")}
         </button>
         {chats.map((chat) => {
           const scopeId = chat.scopeBlockId ? chat.scopeBlockId.slice(0, 8) : "";
           const firstUserMsg = chat.messages.find((m) => m.role === "user");
-          const preview = firstUserMsg?.content.slice(0, 60) || "(空のチャット)";
+          const preview = firstUserMsg?.content.slice(0, 60) || t("aiChat.emptyChat");
           const date = new Date(chat.modifiedAt).toLocaleDateString("ja-JP", {
             month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
           });
@@ -221,7 +222,7 @@ function ChatListView({
                 <span className="text-[10px] text-muted-foreground ml-auto shrink-0">{date}</span>
               </div>
               <div className="text-xs text-foreground/70 truncate">{preview}</div>
-              <div className="text-[10px] text-muted-foreground">{chat.messages.length} メッセージ</div>
+              <div className="text-[10px] text-muted-foreground">{t("aiChat.messageCount", { count: String(chat.messages.length) })}</div>
             </button>
           );
         })}
@@ -240,6 +241,7 @@ function ChatBubble({
   onInsert?: (markdown: string) => void;
   onDerive?: () => void;
 }) {
+  const t = useT();
   const isUser = message.role === "user";
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
@@ -257,21 +259,21 @@ function ChatBubble({
           {onInsert && (
             <button
               onClick={() => onInsert(message.content)}
-              title="ノートに反映"
+              title={t("aiChat.insertToNote")}
               className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
             >
               <FileDown size={10} />
-              ノートに反映
+              {t("aiChat.insertToNote")}
             </button>
           )}
           {onDerive && (
             <button
               onClick={onDerive}
-              title="別ノートとして派生"
+              title={t("aiChat.deriveAsNote")}
               className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
             >
               <FilePlus size={10} />
-              別ノートに派生
+              {t("aiChat.deriveAsNote")}
             </button>
           )}
         </div>

@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { t } from "../../i18n";
 import { useIndexTableStore } from "./store";
 import { getFirstCellText, createNoteFromRow } from "./create-note-from-row";
 import { getIndexTableCallbacks } from "./context";
@@ -117,7 +118,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       if (!callbacks || !editor) return;
 
       if (!sampleName) {
-        alert("1列目にノートのタイトルを入力してからクリックしてください");
+        alert(t("indexTable.enterTitleFirst"));
         return;
       }
 
@@ -159,7 +160,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
         }
       } catch (err) {
         console.error("ノート作成に失敗:", err);
-        alert("ノート作成に失敗しました: " + (err instanceof Error ? err.message : String(err)));
+        alert(t("indexTable.createNoteFailed", { error: err instanceof Error ? err.message : String(err) }));
       } finally {
         setLoading(null);
       }
@@ -185,8 +186,8 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
             }
             title={
               icon.sampleName
-                ? `${icon.sampleName} のノートを作成`
-                : "1列目にノートのタイトルを入力してください"
+                ? t("indexTable.createNoteTitle", { name: icon.sampleName })
+                : t("indexTable.enterTitleHint")
             }
             disabled={isLoading}
             style={{

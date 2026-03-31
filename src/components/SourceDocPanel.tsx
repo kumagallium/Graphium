@@ -1,6 +1,8 @@
 // 派生元ノート読み取り専用パネル + ユーティリティ関数
 
 import type { ProvNoteDocument } from "../lib/google-drive";
+import { useT } from "../i18n";
+import { t as tStatic } from "../i18n";
 
 // ブロック内容からタイトル文字列を抽出する
 // テキスト系ブロック → テキスト内容、画像/動画/ファイル → ファイル名
@@ -66,15 +68,16 @@ function renderBlockText(block: any): string {
   }
   // テーブルの場合
   if (block.type === "table" && block.content?.rows) {
-    return "[テーブル]";
+    return tStatic("common.table");
   }
   return "";
 }
 
 export function SourceDocPanel({ doc }: { doc: ProvNoteDocument }) {
+  const t = useT();
   return (
     <div className="p-4 space-y-3">
-      <div className="text-xs font-semibold text-muted-foreground">派生元ノート</div>
+      <div className="text-xs font-semibold text-muted-foreground">{t("derive.sourceNote")}</div>
       <h3 className="text-sm font-bold text-foreground">{doc.title}</h3>
       <div className="space-y-2">
         {doc.pages[0]?.blocks?.map((block: any, i: number) => (

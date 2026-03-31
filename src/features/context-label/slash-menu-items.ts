@@ -6,6 +6,7 @@
 // ──────────────────────────────────────────────
 
 import type { CoreLabel } from "./labels";
+import { t, getDisplayLabel } from "../../i18n";
 
 // ラベル設定のグローバルコールバック
 // note-app.tsx 側で useLabelStore().setLabel を登録する
@@ -36,8 +37,8 @@ function createLabelSlashItem(
 ): LabelSlashItem {
   return {
     title,
-    subtext: `${label} ラベル付きブロックを挿入`,
-    group: "PROV ラベル",
+    subtext: t("labelUi.insertLabeledBlock", { label: getDisplayLabel(label) }),
+    group: t("slashMenu.group"),
     aliases,
     label,
     blockType,

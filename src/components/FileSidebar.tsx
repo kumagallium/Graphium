@@ -1,6 +1,7 @@
 // ファイル一覧サイドバー
 
 import { RecentNotes, type RecentNote } from "../features/navigation";
+import { useT } from "../i18n";
 
 export type FileSidebarProps = {
   activeFileId: string | null;
@@ -29,6 +30,7 @@ export function FileSidebar({
   recentNotes,
   onShowNoteList,
 }: FileSidebarProps) {
+  const t = useT();
   return (
     <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col">
       {/* ヘッダー */}
@@ -39,7 +41,7 @@ export function FileSidebar({
           </h2>
           <button
             onClick={onRefresh}
-            title="再読み込み"
+            title={t("sidebar.refresh")}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             &#8635;
@@ -49,13 +51,13 @@ export function FileSidebar({
           onClick={onNewNote}
           className="w-full text-left rounded-md px-3 py-2 mb-1.5 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
-          + 新しいノート
+          {t("sidebar.newNote")}
         </button>
         <button
           onClick={onNewFromTemplate}
           className="w-full text-left rounded-md px-3 py-2 text-sm font-medium border border-border text-sidebar-foreground/80 hover:bg-sidebar-accent transition-colors"
         >
-          + PROV テンプレート
+          {t("sidebar.provTemplate")}
         </button>
       </div>
 
@@ -75,24 +77,24 @@ export function FileSidebar({
           onClick={onShowSettings}
           className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
         >
-          設定
+          {t("common.settings")}
           {agentConfigured ? (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" title="AI 接続済み" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" title={t("sidebar.aiConnected")} />
           ) : (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" title="AI 未設定" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400" title={t("sidebar.aiNotConfigured")} />
           )}
         </button>
         <button
           onClick={onShowReleaseNotes}
           className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          Release Notes
+          {t("sidebar.releaseNotes")}
         </button>
         <button
           onClick={onSignOut}
           className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          サインアウト
+          {t("common.signOut")}
         </button>
       </div>
     </aside>

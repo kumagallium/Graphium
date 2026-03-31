@@ -41,6 +41,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   const setLocale = useCallback((newLocale: Locale) => {
     _setLocale(newLocale);
+    syncLocale(newLocale);
     localStorage.setItem(STORAGE_KEY, newLocale);
   }, []);
 

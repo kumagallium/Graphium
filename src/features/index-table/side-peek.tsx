@@ -24,6 +24,7 @@ import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
 import { labelSlashMenuItems } from "@features/context-label/slash-menu-items";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
+import { useT, t as tStatic } from "../../i18n";
 
 type SidePeekProps = {
   noteId: string;
@@ -45,12 +46,13 @@ export function SidePeek(props: SidePeekProps) {
 
 // サイドピーク用の簡易 SideMenu（ラベルは # オートコンプリートで付与）
 function SidePeekSideMenu() {
+  const t = useT();
   return (
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
-        <RemoveBlockItem>削除</RemoveBlockItem>
-        <BlockColorsItem>色</BlockColorsItem>
+        <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
+        <BlockColorsItem>{t("common.color")}</BlockColorsItem>
       </DragHandleButton>
     </SideMenu>
   );
@@ -73,6 +75,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 }
 
 function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps) {
+  const t = useT();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   // labelStore/linkStore は毎レンダリング新しいオブジェクトになるため、
@@ -120,7 +123,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
       .catch((err) => {
         if (!cancelled) {
           setError(
-            err instanceof Error ? err.message : "読み込みに失敗しました"
+            err instanceof Error ? err.message : tStatic("sidePeek.loadError")
           );
           setLoading(false);
         }
@@ -277,9 +280,9 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
     onNavigate(noteId, docRef.current ?? undefined);
   }, [saveStatus, noteId, onNavigate]);
 
-  const statusText = saveStatus === "saving" ? "保存中..."
-    : saveStatus === "dirty" ? "未保存"
-    : "保存済み";
+  const statusText = saveStatus === "saving" ? t("common.saving")
+    : saveStatus === "dirty" ? t("common.unsaved")
+    : t("common.saved");
 
   const statusColor = saveStatus === "dirty" ? "var(--color-warning)"
     : "var(--color-text-tertiary)";
@@ -319,7 +322,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
       >
         <button
           onClick={handleClose}
-          title="サイドピークを閉じる"
+          title={t("sidePeek.close")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -348,7 +351,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
 
         <button
           onClick={handleNavigate}
-          title="フルスクリーンで開く"
+          title={t("sidePeek.fullscreen")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -417,7 +420,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
               fontSize: 13,
             }}
           >
-            読み込み中...
+            {t("common.loading")}
           </div>
         )}
         {error && (

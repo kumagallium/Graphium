@@ -1,27 +1,21 @@
 // ノート一覧のツールバー（ソート・ラベルフィルタ・テキスト検索）
 
 import { useCallback, useRef, useState } from "react";
+import { useT, getDisplayLabelName } from "../../i18n";
 
 export type SortKey = "outgoingLinkCount" | "incomingLinkCount" | "modifiedAt" | "createdAt" | "title";
 export type SortDirection = "asc" | "desc";
 
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "outgoingLinkCount", label: "参照先" },
-  { key: "incomingLinkCount", label: "被参照" },
-  { key: "modifiedAt", label: "更新日" },
-  { key: "createdAt", label: "作成日" },
-  { key: "title", label: "タイトル" },
+const SORT_KEYS: { key: SortKey; labelKey: string }[] = [
+  { key: "outgoingLinkCount", labelKey: "nav.outgoing" },
+  { key: "incomingLinkCount", labelKey: "nav.incoming" },
+  { key: "modifiedAt", labelKey: "nav.modifiedDate" },
+  { key: "createdAt", labelKey: "nav.createdDate" },
+  { key: "title", labelKey: "nav.title" },
 ];
 
 // データに保存された内部ラベル名でフィルタリング
 const CORE_LABELS = ["[手順]", "[使用したもの]", "[結果]", "[属性]"];
-// 表示名（「使用するもの」に統一）
-const LABEL_SHORT: Record<string, string> = {
-  "[手順]": "手順",
-  "[使用したもの]": "使用するもの",
-  "[結果]": "結果",
-  "[属性]": "属性",
-};
 
 export function NoteListToolbar({
   sortKey,
@@ -40,6 +34,7 @@ export function NoteListToolbar({
   searchQuery: string;
   onSearchChange: (query: string) => void;
 }) {
+  const t = useT();
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -64,12 +59,12 @@ export function NoteListToolbar({
           onClick={() => { setShowSortMenu(!showSortMenu); setShowLabelMenu(false); }}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
         >
-          {SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
+          {t(SORT_KEYS.find((o) => o.key === sortKey)?.labelKey ?? "")}
           {sortDir === "desc" ? " ↓" : " ↑"}
         </button>
         {showSortMenu && (
           <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-md shadow-md py-1 z-10 min-w-[120px]">
-            {SORT_OPTIONS.map((opt) => (
+            {SORT_KEYS.map((opt) => (
               <button
                 key={opt.key}
                 onClick={() => {
@@ -80,7 +75,7 @@ export function NoteListToolbar({
                   sortKey === opt.key ? "text-foreground font-medium" : "text-muted-foreground"
                 }`}
               >
-                {opt.label}
+                {t(opt.labelKey)}
                 {sortKey === opt.key && (sortDir === "desc" ? " ↓" : " ↑")}
               </button>
             ))}
@@ -96,7 +91,7 @@ export function NoteListToolbar({
             labelFilter.length > 0 ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          ラベル{labelFilter.length > 0 ? ` (${labelFilter.length})` : ""} &#9662;
+          {t("nav.labelFilter")}{labelFilter.length > 0 ? ` (${labelFilter.length})` : ""} &#9662;
         </button>
         {showLabelMenu && (
           <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-md shadow-md py-1 z-10 min-w-[140px]">
@@ -113,7 +108,7 @@ export function NoteListToolbar({
                 }`}>
                   {labelFilter.includes(label) && "✓"}
                 </span>
-                <span className="text-foreground">{LABEL_SHORT[label] || label}</span>
+                <span className="text-foreground">{getDisplayLabelName(label)}</span>
               </button>
             ))}
             {labelFilter.length > 0 && (
@@ -123,7 +118,7 @@ export function NoteListToolbar({
                   onClick={() => { onLabelFilterChange([]); setShowLabelMenu(false); }}
                   className="w-full text-left text-xs px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
-                  フィルタをクリア
+                  {t("nav.clearFilter")}
                 </button>
               </>
             )}
@@ -137,7 +132,7 @@ export function NoteListToolbar({
         type="text"
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
-        placeholder="検索..."
+        placeholder={t("common.search")}
         className="text-xs px-2.5 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-48 focus:outline-none focus:ring-1 focus:ring-primary/40"
       />
     </div>

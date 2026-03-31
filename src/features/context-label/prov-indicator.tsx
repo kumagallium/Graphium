@@ -23,6 +23,8 @@ import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
+import { useT, getDisplayLabel } from "../../i18n";
+import { t as tStatic } from "../../i18n";
 
 // ──────────────────────────────────
 // 色定義
@@ -48,11 +50,11 @@ function getBlockText(blockId: string): string {
   );
   if (!el) return blockId.slice(0, 8);
   const heading = el.querySelector("h1, h2, h3");
-  if (heading) return heading.textContent || "(空)";
+  if (heading) return heading.textContent || tStatic("common.empty");
   const para = el.querySelector("[data-content-type]");
   if (para) {
     const text = para.textContent || "";
-    return text.length > 30 ? text.slice(0, 30) + "…" : text || "(空)";
+    return text.length > 30 ? text.slice(0, 30) + "…" : text || tStatic("common.empty");
   }
   return blockId.slice(0, 8);
 }
@@ -94,6 +96,7 @@ export function ProvIndicatorLayer() {
   const [indicators, setIndicators] = useState<IndicatorInfo[]>([]);
   const [clipBounds, setClipBounds] = useState<ClipBounds>({ top: 0, bottom: 9999 });
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const t = useT();
 
   // ラベルまたはリンクを持つブロックの位置を計算
   const compute = useCallback(() => {
@@ -214,7 +217,7 @@ export function ProvIndicatorLayer() {
                 lineHeight: 1.6,
               }}
             >
-              {label}
+              {getDisplayLabel(label)}
             </button>
 
             {/* 統合パネル */}
@@ -267,6 +270,7 @@ function ProvPanel({
   onLabelChange: (label: string | null) => void;
   onRemoveLink: (linkId: string) => void;
 }) {
+  const t = useT();
   const { labels: allLabels } = useLabelStore();
   const useLabelStoreRef = { current: allLabels };
   const [showLabelPicker, setShowLabelPicker] = useState(false);
@@ -317,23 +321,23 @@ function ProvPanel({
                 lineHeight: 1.6,
               }}
             >
-              {label}
+              {getDisplayLabel(label)}
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground">ラベルなし</span>
+            <span className="text-xs text-muted-foreground">{t("labelUi.noLabel")}</span>
           )}
           <button
             onClick={() => setShowLabelPicker(!showLabelPicker)}
             className="ml-auto text-[10px] text-[#5b8fb9] bg-transparent border-none cursor-pointer underline"
           >
-            {showLabelPicker ? "閉じる" : "変更"}
+            {showLabelPicker ? t("common.close") : t("common.change")}
           </button>
         </div>
 
         {/* ── ラベル選択（展開時） ── */}
         {showLabelPicker && (
           <div className="border-t border-border pt-1">
-            <DropdownSectionHeader>コアラベル（PROV-DM）</DropdownSectionHeader>
+            <DropdownSectionHeader>{t("labelUi.coreLabels")}</DropdownSectionHeader>
             {CORE_LABELS.map((l) => {
               const active = label === l;
               const c = getLabelColor(l);
@@ -348,14 +352,14 @@ function ProvPanel({
                   }}
                   style={{ color: active ? c : undefined }}
                 >
-                  {l}
+                  {getDisplayLabel(l)}
                 </MenuItem>
               );
             })}
 
             {/* フリーラベル例 */}
             <DropdownDivider />
-            <DropdownSectionHeader>フリーラベル（例）</DropdownSectionHeader>
+            <DropdownSectionHeader>{t("labelUi.freeLabels")}</DropdownSectionHeader>
             {FREE_LABEL_EXAMPLES.slice(0, 4).map((l) => {
               const active = label === l;
               return (
@@ -368,7 +372,7 @@ function ProvPanel({
                   }}
                   className="text-muted-foreground"
                 >
-                  {l}
+                  {getDisplayLabel(l)}
                 </MenuItem>
               );
             })}
@@ -376,7 +380,7 @@ function ProvPanel({
             {/* カスタム入力 */}
             <DropdownDivider />
             <div className="px-2.5 py-1.5">
-              <DropdownSectionHeader>カスタム</DropdownSectionHeader>
+              <DropdownSectionHeader>{t("labelUi.custom")}</DropdownSectionHeader>
               <div className="flex gap-1 mt-0.5">
                 <Input
                   value={freeInput}
@@ -389,7 +393,7 @@ function ProvPanel({
                     }
                     if (e.key === "Escape") setShowLabelPicker(false);
                   }}
-                  placeholder="[ラベル名]"
+                  placeholder={t("labelUi.placeholder")}
                   className="text-xs py-1 px-1.5"
                 />
                 <Button
@@ -403,7 +407,7 @@ function ProvPanel({
                   }}
                   className="text-xs shrink-0"
                 >
-                  追加
+                  {t("common.add")}
                 </Button>
               </div>
             </div>
@@ -419,7 +423,7 @@ function ProvPanel({
                   }}
                   className="text-destructive"
                 >
-                  ラベルを外す
+                  {t("labelUi.removeLabel")}
                 </MenuItem>
               </>
             )}
@@ -432,7 +436,7 @@ function ProvPanel({
             <DropdownDivider />
             {outgoing.length > 0 && (
               <>
-                <DropdownSectionHeader>→ 出力リンク</DropdownSectionHeader>
+                <DropdownSectionHeader>{t("provIndicator.outLinks")}</DropdownSectionHeader>
                 {outgoing.map((link) => (
                   <LinkRow
                     key={link.id}
@@ -447,7 +451,7 @@ function ProvPanel({
             {incoming.length > 0 && (
               <>
                 {outgoing.length > 0 && <DropdownDivider />}
-                <DropdownSectionHeader>← 入力リンク</DropdownSectionHeader>
+                <DropdownSectionHeader>{t("provIndicator.inLinks")}</DropdownSectionHeader>
                 {incoming.map((link) => (
                   <LinkRow
                     key={link.id}
@@ -466,7 +470,7 @@ function ProvPanel({
         {label === "[手順]" && <>
         <DropdownDivider />
         <DropdownSectionHeader className="text-[#5b8fb9]">
-          前手順リンク（wasInformedBy）
+          {t("labelUi.prevStepLink")}
         </DropdownSectionHeader>
         <button
           onClick={() => {
@@ -488,7 +492,7 @@ function ProvPanel({
                   || "";
                 candidates.push({
                   blockId: bid,
-                  text: text || "(空)",
+                  text: text || t("common.empty"),
                 });
               });
             setHeadingCandidates(candidates);
@@ -498,18 +502,18 @@ function ProvPanel({
           style={{ width: "calc(100% - 12px)" }}
         >
           <span className="mr-1">→</span>
-          前の手順を選択してリンク
+          {t("labelUi.selectPrevStep")}
         </button>
 
         {/* 前手順: 見出し選択 */}
         {prevStepMode && (
           <div className="py-1 bg-info/5 border-t border-info/20">
             <DropdownSectionHeader className="text-[#5b8fb9]">
-              リンク先の [手順] を選択
+              {t("provIndicator.selectStep")}
             </DropdownSectionHeader>
             {headingCandidates.length === 0 && (
               <div className="px-3 py-1.5 text-xs text-muted-foreground">
-                見出しがありません
+                {t("provIndicator.noHeadings")}
               </div>
             )}
             {headingCandidates.map((c) => (
@@ -522,16 +526,16 @@ function ProvPanel({
                 className="text-xs"
               >
                 <span className="text-[10px] text-[#5b8fb9] font-semibold mr-1">
-                  [手順]
+                  {getDisplayLabel("[手順]")}
                 </span>
-                {c.text || "(空)"}
+                {c.text || t("common.empty")}
               </MenuItem>
             ))}
             <MenuItem
               onClick={() => setPrevStepMode(false)}
               className="text-xs text-muted-foreground"
             >
-              ← 戻る
+              {t("labelUi.goBack")}
             </MenuItem>
           </div>
         )}
@@ -555,6 +559,7 @@ function LinkRow({
   onClick: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const conf = LINK_TYPE_CONFIG[link.type];
   return (
     <div className="flex items-center gap-1 px-2.5 py-1 text-xs">
@@ -571,7 +576,7 @@ function LinkRow({
       <button
         onClick={onClick}
         className="flex-1 text-left bg-transparent border-none cursor-pointer text-foreground text-xs p-0 hover:underline"
-        title="クリックで移動"
+        title={t("common.clickToNavigate")}
       >
         {label}
       </button>
@@ -580,7 +585,7 @@ function LinkRow({
       </span>
       <button
         onClick={onRemove}
-        title="リンクを削除"
+        title={t("linkBadge.deleteLink")}
         className="bg-transparent border-none cursor-pointer text-muted-foreground text-xs px-0.5 hover:text-destructive"
       >
         ×

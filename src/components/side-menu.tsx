@@ -14,6 +14,7 @@ import {
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { useAiAssistant } from "../features/ai-assistant";
+import { useT } from "../i18n";
 
 // 派生ノート作成用のグローバルコールバック
 let openLinkDropdownFn: ((params: {
@@ -98,6 +99,7 @@ function useFixDropdownPosition() {
 function DeriveNoteMenuItem() {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
   const block = useExtensionState(SideMenuExtension, {
     editor,
     selector: (state) => state?.block,
@@ -116,7 +118,7 @@ function DeriveNoteMenuItem() {
         });
       }}
     >
-      🔗 新ページを派生
+      {t("editor.derive")}
     </Components.Generic.Menu.Item>
   );
 }
@@ -125,6 +127,7 @@ function DeriveNoteMenuItem() {
 function AiAssistantMenuItem() {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
   const block = useExtensionState(SideMenuExtension, {
     editor,
     selector: (state) => state?.block,
@@ -150,19 +153,20 @@ function AiAssistantMenuItem() {
         });
       }}
     >
-      🤖 AI アシスタント
+      {t("editor.aiAssistant")}
     </Components.Generic.Menu.Item>
   );
 }
 
 export function NoteSideMenu() {
+  const t = useT();
   useFixDropdownPosition();
   return (
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
-        <RemoveBlockItem>削除</RemoveBlockItem>
-        <BlockColorsItem>色</BlockColorsItem>
+        <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
+        <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <DeriveNoteMenuItem />
         <AiAssistantMenuItem />
       </DragHandleButton>

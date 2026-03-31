@@ -26,6 +26,7 @@ import {
 } from "./labels";
 // label-attributes は将来のステータス機能で再利用
 import { useLabelStore } from "./store";
+import { useT, getDisplayLabel } from "../../i18n";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
 import { Button } from "@ui/button";
@@ -75,6 +76,7 @@ export function setOnPrevStepLinkSelected(fn: typeof _onPrevStepLinkSelected) {
 }
 
 export function LabelDropdownPortal() {
+  const t = useT();
   const { labels, openBlockId, setLabel, closeDropdown } = useLabelStore();
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [freeInput, setFreeInput] = useState("");
@@ -134,7 +136,7 @@ export function LabelDropdownPortal() {
     <Dropdown position={pos} onClose={closeDropdown} minWidth={200}>
       <div className="py-1.5">
         {/* コアラベル */}
-        <DropdownSectionHeader>コアラベル（PROV-DM）</DropdownSectionHeader>
+        <DropdownSectionHeader>{t("labelUi.coreLabels")}</DropdownSectionHeader>
         {CORE_LABELS.map((label) => {
           const active = currentLabel === label;
           const color = getLabelColor(label);
@@ -146,7 +148,7 @@ export function LabelDropdownPortal() {
               onClick={() => select(active ? null : label)}
               style={{ color: active ? color : undefined }}
             >
-              {label}
+              {getDisplayLabel(label)}
             </MenuItem>
           );
         })}
@@ -154,7 +156,7 @@ export function LabelDropdownPortal() {
         {/* 前手順リンク */}
         <DropdownDivider />
         <DropdownSectionHeader className="text-[#5b8fb9]">
-          前手順リンク（wasInformedBy）
+          {t("labelUi.prevStepLink")}
         </DropdownSectionHeader>
         <button
           onClick={() => {
@@ -175,17 +177,17 @@ export function LabelDropdownPortal() {
           style={{ width: "calc(100% - 12px)" }}
         >
           <span className="mr-1">→</span>
-          前の手順を選択してリンク
+          {t("labelUi.selectPrevStep")}
         </button>
 
         {/* 前手順: 見出し選択サブメニュー */}
         {prevStepMode && (
           <div className="py-1 bg-info/5 border-t border-info/20">
             <DropdownSectionHeader className="text-[#5b8fb9]">
-              リンク先の見出しを選択
+              {t("labelUi.selectHeading")}
             </DropdownSectionHeader>
             {headingCandidates.length === 0 && (
-              <div className="px-3 py-1.5 text-xs text-muted-foreground">見出しがありません</div>
+              <div className="px-3 py-1.5 text-xs text-muted-foreground">{t("provIndicator.noHeadings")}</div>
             )}
             {headingCandidates.map((c) => (
               <MenuItem
@@ -201,21 +203,21 @@ export function LabelDropdownPortal() {
                 <span className="text-[10px] text-[#60a5fa] font-bold mr-1">
                   H{c.level}
                 </span>
-                {c.text || "(空の見出し)"}
+                {c.text || t("labelUi.emptyHeading")}
               </MenuItem>
             ))}
             <MenuItem
               onClick={() => setPrevStepMode(false)}
               className="text-xs text-muted-foreground"
             >
-              ← 戻る
+              {t("labelUi.goBack")}
             </MenuItem>
           </div>
         )}
 
         {/* フリーラベル例 */}
         <DropdownDivider />
-        <DropdownSectionHeader>フリーラベル（例）</DropdownSectionHeader>
+        <DropdownSectionHeader>{t("labelUi.freeLabels")}</DropdownSectionHeader>
         {FREE_LABEL_EXAMPLES.slice(0, 4).map((label) => {
           const active = currentLabel === label;
           return (
@@ -225,7 +227,7 @@ export function LabelDropdownPortal() {
               onClick={() => select(active ? null : label)}
               className="text-muted-foreground"
             >
-              {label}
+              {getDisplayLabel(label)}
             </MenuItem>
           );
         })}
@@ -233,7 +235,7 @@ export function LabelDropdownPortal() {
         {/* カスタム入力 */}
         <DropdownDivider />
         <div className="px-2.5 py-1.5">
-          <DropdownSectionHeader>カスタム</DropdownSectionHeader>
+          <DropdownSectionHeader>{t("labelUi.custom")}</DropdownSectionHeader>
           <div className="flex gap-1 mt-0.5">
             <Input
               autoFocus
@@ -246,7 +248,7 @@ export function LabelDropdownPortal() {
                 }
                 if (e.key === "Escape") closeDropdown();
               }}
-              placeholder="[ラベル名]"
+              placeholder={t("labelUi.placeholder")}
               className="text-xs py-1 px-1.5"
             />
             <Button
@@ -259,7 +261,7 @@ export function LabelDropdownPortal() {
               }}
               className="text-xs shrink-0"
             >
-              追加
+              {t("common.add")}
             </Button>
           </div>
         </div>
@@ -272,7 +274,7 @@ export function LabelDropdownPortal() {
               onClick={() => select(null)}
               className="text-destructive"
             >
-              ラベルを外す
+              {t("labelUi.removeLabel")}
             </MenuItem>
           </>
         )}
@@ -288,6 +290,7 @@ export function LabelDropdownPortal() {
 // ラベル未設定 → # ボタン（クリックで付与）
 // ──────────────────────────────────
 export function LabelSideMenuButton() {
+  const t = useT();
   const editor = useBlockNoteEditor<any, any, any>();
   const { getLabel, openDropdown } = useLabelStore();
 
@@ -307,7 +310,7 @@ export function LabelSideMenuButton() {
       <span
         onClick={() => openDropdown(block.id)}
         data-prov-label-anchor={block.id}
-        title={`${label} — クリックで変更`}
+        title={t("labelUi.clickToChange", { label: getDisplayLabel(label) })}
         className="inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap"
         style={{
           padding: "0px 6px",
@@ -327,7 +330,7 @@ export function LabelSideMenuButton() {
     <button
       onClick={() => openDropdown(block.id)}
       data-prov-label-anchor={block.id}
-      title="ラベルを付ける"
+      title={t("labelUi.addLabel")}
       className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs leading-none hover:border-primary hover:text-primary transition-colors duration-200"
     >
       #

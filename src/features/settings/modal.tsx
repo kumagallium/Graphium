@@ -7,6 +7,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
 import { loadSettings, saveSettings, getAgentUrl, getAgentApiKey, type Settings } from "./store";
+import { useLocale, type Locale } from "../../i18n";
 
 type SettingsModalProps = {
   isOpen: boolean;
@@ -14,6 +15,7 @@ type SettingsModalProps = {
 };
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const { locale, setLocale, t } = useLocale();
   const [agentUrl, setAgentUrl] = useState("");
   const [agentApiKey, setAgentApiKey] = useState("");
   const [saved, setSaved] = useState(false);
@@ -59,15 +61,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       <ModalHeader onClose={onClose}>
         <span className="flex items-center gap-2">
           <SettingsIcon size={16} className="text-muted-foreground" />
-          設定
+          {t("settings.title")}
         </span>
       </ModalHeader>
 
       <ModalBody className="space-y-4 w-full max-w-md">
+        {/* 言語 / Language */}
+        <div>
+          <label className="text-xs font-semibold text-foreground mb-1 block">
+            {t("settings.language")}
+          </label>
+          <div className="flex gap-2">
+            {(["en", "ja"] as Locale[]).map((loc) => (
+              <button
+                key={loc}
+                onClick={() => setLocale(loc)}
+                className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                  locale === loc
+                    ? "border-primary bg-primary/10 text-primary font-medium"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {loc === "en" ? "English" : "日本語"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* AI エージェント URL */}
         <div>
           <label className="text-xs font-semibold text-foreground mb-1 block">
-            AI エージェント URL
+            {t("settings.agentUrl")}
           </label>
           <Input
             type="url"
@@ -82,27 +106,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           />
           {fromEnv && (
             <p className="text-xs text-primary mt-1.5">
-              環境変数から設定されています。上書きする場合は新しい URL を入力してください。
+              {t("settings.envNote")}
             </p>
           )}
           <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-            AI アシスタント機能を使うには{" "}
-            <a
-              href="https://github.com/kumagallium/crucible-agent"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-foreground"
-            >
-              crucible-agent
-            </a>{" "}
-            を起動し、そのアドレスを入力してください。
+            {t("settings.agentHelp")}
           </p>
         </div>
 
         {/* API キー */}
         <div>
           <label className="text-xs font-semibold text-foreground mb-1 block">
-            API キー
+            {t("settings.apiKey")}
           </label>
           <Input
             type="password"
@@ -112,26 +127,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               setSaved(false);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="未設定（認証なし）"
+            placeholder={t("settings.apiKeyPlaceholder")}
             className="font-mono"
           />
           {apiKeyFromEnv && (
             <p className="text-xs text-primary mt-1.5">
-              環境変数から設定されています。上書きする場合は新しいキーを入力してください。
+              {t("settings.apiKeyEnvNote")}
             </p>
           )}
           <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-            crucible-agent の AGENT_API_KEY と同じ値を設定してください。未設定の場合は認証なしで接続します。
+            {t("settings.apiKeyHelp")}
           </p>
         </div>
       </ModalBody>
 
       <ModalFooter>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          キャンセル
+          {t("common.cancel")}
         </Button>
         <Button size="sm" onClick={handleSave}>
-          {saved ? "保存しました" : "保存"}
+          {saved ? t("common.saved") : t("common.save")}
         </Button>
       </ModalFooter>
     </Modal>

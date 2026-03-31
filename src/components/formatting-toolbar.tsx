@@ -7,11 +7,13 @@ import {
 } from "@blocknote/react";
 import { Bot } from "lucide-react";
 import { useAiAssistant } from "../features/ai-assistant";
+import { useT } from "../i18n";
 import type { FormattingToolbarProps } from "@blocknote/react";
 
 export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   const editor = useBlockNoteEditor<any, any, any>();
   const aiAssistant = useAiAssistant();
+  const t = useT();
 
   const handleAiClick = async () => {
     const selectedText = window.getSelection()?.toString()?.trim();
@@ -31,7 +33,7 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
       {getFormattingToolbarItems(props.blockTypeSelectItems)}
       <button
         onClick={handleAiClick}
-        title="選択範囲を AI に聞く"
+        title={t("editor.askAi")}
         className="bn-button inline-flex items-center justify-center rounded hover:bg-violet-100 text-violet-500 transition-colors"
         data-test="aiButton"
       >

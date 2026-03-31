@@ -9,6 +9,7 @@ import {
 import type { ProvNoteIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
 import { formatRelativeTime } from "./recent-notes-store";
+import { useT, getDisplayLabelName } from "../../i18n";
 
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
@@ -48,6 +49,7 @@ export function NoteListView({
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const t = useT();
 
   // インデックスからノート一覧を構築
   useEffect(() => {
@@ -132,11 +134,11 @@ export function NoteListView({
           onClick={onBack}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          &larr; 戻る
+          {t("common.back")}
         </button>
-        <h1 className="text-base font-semibold text-foreground">ノート一覧</h1>
+        <h1 className="text-base font-semibold text-foreground">{t("nav.noteList")}</h1>
         <span className="text-xs text-muted-foreground">
-          {loading ? "読み込み中..." : `${filtered.length} / ${entries.length} 件`}
+          {loading ? t("nav.loadingNotes") : t("nav.noteCount", { filtered: String(filtered.length), total: String(entries.length) })}
         </span>
       </div>
 
@@ -155,39 +157,39 @@ export function NoteListView({
       <div className="flex-1 overflow-auto px-6">
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted-foreground">ノートを読み込んでいます...</p>
+            <p className="text-sm text-muted-foreground">{t("nav.loadingNotes")}</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">
-              {entries.length === 0 ? "ノートがありません" : "一致するノートがありません"}
+              {entries.length === 0 ? t("nav.noNotes") : t("nav.noMatchingNotes")}
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
-                <th className="py-2 px-3">ノート</th>
+                <th className="py-2 px-3">{t("nav.noteColumn")}</th>
                 <th
                   className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("outgoingLinkCount")}
                   title="参照先（このノートが参照しているノート数）"
                 >
-                  参照先{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  {t("nav.outgoing")}{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
                   className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("incomingLinkCount")}
                   title="被参照（他ノートから参照されている数）"
                 >
-                  被参照{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-3 w-[140px]">ラベル</th>
+                <th className="py-2 px-3 w-[140px]">{t("nav.labels")}</th>
                 <th
                   className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("modifiedAt")}
                 >
-                  更新日{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
+                  {t("nav.modifiedDate")}{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
               </tr>
             </thead>
@@ -245,7 +247,7 @@ export function NoteListView({
                               lineHeight: 1.6,
                             }}
                           >
-                            {LABEL_SHORT[label] || label.replace(/[[\]]/g, "")}
+                            {getDisplayLabelName(label)}
                           </span>
                         );
                       })}

@@ -16,6 +16,7 @@ import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
 import { extractRelations, type FlatRelation } from "./generator";
+import { t } from "../../i18n";
 
 // 後方互換
 type ProvDocument = ProvJsonLd;
@@ -500,7 +501,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
     return (
       <div style={panelStyle}>
         <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>
-          エディタにラベルを付けてから「PROV生成」を実行してください
+          {t("provPanel.noLabelsMessage")}
         </div>
       </div>
     );
@@ -544,19 +545,19 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
 
   const legendBar = (
     <div style={legendBarStyle}>
-      <LegendDot color={THEME.activity.bg} shape="circle" label="手順" />
-      <LegendDot color={THEME.entity.bg} shape="square" label="使用" />
-      <LegendDot color={THEME.result.bg} shape="square" label="結果" />
-      <LegendDot color={THEME.parameter.bg} shape="diamond" label="属性" />
+      <LegendDot color={THEME.activity.bg} shape="circle" label={t("provPanel.stepLegend")} />
+      <LegendDot color={THEME.entity.bg} shape="square" label={t("provPanel.usedLegend")} />
+      <LegendDot color={THEME.result.bg} shape="square" label={t("provPanel.resultLegend")} />
+      <LegendDot color={THEME.parameter.bg} shape="diamond" label={t("provPanel.attrLegend")} />
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>
-          {activeDoc["@graph"].length + attrCount} ノード · {relations.length + attrCount} リレーション
+          {t("provPanel.graphStats", { nodes: String(activeDoc["@graph"].length + attrCount), relations: String(relations.length + attrCount) })}
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
           style={expandBtnStyle}
-          title={expanded ? "閉じる" : "拡大表示"}
+          title={expanded ? t("common.close") : t("provPanel.expandView")}
         >
           {expanded ? "✕" : "⤢"}
         </button>

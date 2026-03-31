@@ -11,6 +11,7 @@ import { Link } from "lucide-react";
 import { useLinkStore } from "./store";
 import { CREATED_BY_LABELS, LINK_TYPE_CONFIG, type BlockLink } from "./link-types";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
+import { useT, t as tStatic } from "../../i18n";
 
 type LinkBadgeInfo = {
   blockId: string;
@@ -29,11 +30,11 @@ function getBlockText(blockId: string): string {
   );
   if (!el) return blockId.slice(0, 8);
   const heading = el.querySelector("h1, h2, h3");
-  if (heading) return heading.textContent || "(空)";
+  if (heading) return heading.textContent || tStatic("common.empty");
   const para = el.querySelector("[data-content-type]");
   if (para) {
     const text = para.textContent || "";
-    return text.length > 30 ? text.slice(0, 30) + "…" : text || "(空)";
+    return text.length > 30 ? text.slice(0, 30) + "…" : text || tStatic("common.empty");
   }
   return blockId.slice(0, 8);
 }
@@ -43,6 +44,7 @@ function getBlockText(blockId: string): string {
  * リンクを持つブロックの右側にバッジを表示する
  */
 export function LinkBadgeLayer() {
+  const t = useT();
   const { links, getOutgoing, getIncoming, removeLink } = useLinkStore();
   const [badges, setBadges] = useState<LinkBadgeInfo[]>([]);
   const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
@@ -107,7 +109,7 @@ export function LinkBadgeLayer() {
             {/* バッジ */}
             <button
               onClick={() => setExpandedBlockId(isExpanded ? null : blockId)}
-              title={`${count} リンク`}
+              title={t("linkBadge.linkCount", { count: String(count) })}
               className="fixed z-[9997] inline-flex items-center gap-0.5 rounded-lg text-[10px] font-semibold cursor-pointer select-none pointer-events-auto"
               style={{
                 top,
@@ -162,6 +164,7 @@ function LinkDetailPanel({
   onRemove: (id: string) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const scrollToBlock = (targetId: string) => {
     const el = document.querySelector(
       `[data-id="${targetId}"][data-node-type="blockOuter"]`
@@ -187,7 +190,7 @@ function LinkDetailPanel({
         {/* 出力リンク */}
         {outgoing.length > 0 && (
           <>
-            <DropdownSectionHeader>→ 出力リンク</DropdownSectionHeader>
+            <DropdownSectionHeader>{t("linkBadge.outLinks")}</DropdownSectionHeader>
             {outgoing.map((link) => (
               <LinkRow
                 key={link.id}
@@ -204,7 +207,7 @@ function LinkDetailPanel({
         {incoming.length > 0 && (
           <>
             {outgoing.length > 0 && <DropdownDivider />}
-            <DropdownSectionHeader>← 入力リンク</DropdownSectionHeader>
+            <DropdownSectionHeader>{t("linkBadge.inLinks")}</DropdownSectionHeader>
             {incoming.map((link) => (
               <LinkRow
                 key={link.id}
@@ -232,6 +235,7 @@ function LinkRow({
   onClick: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const conf = LINK_TYPE_CONFIG[link.type];
   return (
     <div className="flex items-center gap-1 px-2.5 py-1 text-xs">
@@ -248,7 +252,7 @@ function LinkRow({
       <button
         onClick={onClick}
         className="flex-1 text-left bg-transparent border-none cursor-pointer text-foreground text-xs p-0 hover:underline"
-        title="クリックで移動"
+        title={t("linkBadge.clickToNavigate")}
       >
         {label}
       </button>
@@ -257,7 +261,7 @@ function LinkRow({
       </span>
       <button
         onClick={onRemove}
-        title="リンクを削除"
+        title={t("linkBadge.deleteLink")}
         className="bg-transparent border-none cursor-pointer text-muted-foreground text-xs px-0.5 hover:text-destructive"
       >
         ×

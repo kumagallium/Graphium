@@ -61,6 +61,7 @@ import {
 import type { NoteLink } from "./lib/google-drive";
 import { cn } from "./lib/utils";
 import { NoteListView, type ProvNoteIndex } from "./features/navigation";
+import { useT, t as tStatic } from "./i18n";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -157,7 +158,8 @@ function NoteEditorInner({
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "source">(
     sourceDoc ? "source" : "graph"
   );
-  const [title, setTitle] = useState(initialDoc?.title || "新しいノート");
+  const t = useT();
+  const [title, setTitle] = useState(initialDoc?.title || tStatic("editor.newNote"));
 
   // ラベル自動設定のコールバック
   const labelAutoRef = useRef<(() => void) | null>(null);
@@ -254,7 +256,7 @@ function NoteEditorInner({
       if (!fileId || !editorRef.current) return;
       if (!isAgentConfigured()) {
         aiAssistant.setError(
-          "AI エージェントの接続先が設定されていません。サイドバーの「設定」から URL を入力してください。",
+          tStatic("settings.aiNotConfigured"),
         );
         return;
       }
@@ -507,7 +509,7 @@ function NoteEditorInner({
     setOpenLinkDropdownFn((params) => {
       const sourceBlockId = params.sourceBlockId;
       const block = editorRef.current?.getBlock(sourceBlockId);
-      const derivedTitle = extractBlockTitle(block) || "派生ノート";
+      const derivedTitle = extractBlockTitle(block) || tStatic("editor.derivedNote");
       onDeriveNote(derivedTitle, sourceBlockId);
     });
     return () => { setOpenLinkDropdownFn(null); };
@@ -588,11 +590,11 @@ function NoteEditorInner({
           value={title}
           onChange={handleTitleChange}
           className="flex-1 min-w-0 text-sm font-medium bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
-          placeholder="ノートのタイトル"
+          placeholder={t("editor.titlePlaceholder")}
           title={title}
         />
         <span className="text-[10px] text-muted-foreground shrink-0">
-          {saving ? "保存中..." : dirty ? "未保存" : "保存済み"}
+          {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
         <button
           onClick={saveNow}
@@ -604,7 +606,7 @@ function NoteEditorInner({
               : "border-primary text-primary bg-primary/5 hover:bg-primary/10"
           )}
         >
-          保存
+          {t("common.save")}
         </button>
       </div>
 
@@ -743,16 +745,16 @@ function NoteEditorInner({
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {tab === "graph" ? "Graph" : tab === "prov" ? "手順" : tab === "chat" ? "Chat" : "Source"}
+                {tab === "graph" ? "Graph" : tab === "prov" ? t("panel.prov") : tab === "chat" ? "Chat" : "Source"}
               </button>
             ))}
             {rightTab === "prov" && (
               <button
                 onClick={generateProv}
-                title="手動で再生成"
+                title={t("panel.generateManual")}
                 className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto"
               >
-                生成
+                {t("panel.generate")}
               </button>
             )}
           </div>
@@ -792,11 +794,13 @@ export function NoteApp() {
 
   const fm = useFileManager(authenticated);
 
+  const t = useT();
+
   // 認証読み込み中
   if (authLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
-        <p className="text-sm text-muted-foreground">読み込み中...</p>
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
       </div>
     );
   }
@@ -851,8 +855,8 @@ export function NoteApp() {
         {fm.deriving && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
             <div className="text-center space-y-2">
-              <div className="text-sm font-medium text-foreground">派生ノートを作成中...</div>
-              <div className="text-xs text-muted-foreground">Google Drive に保存しています</div>
+              <div className="text-sm font-medium text-foreground">{t("derive.creating")}</div>
+              <div className="text-xs text-muted-foreground">{t("derive.savingToDrive")}</div>
             </div>
           </div>
         )}
