@@ -1,7 +1,8 @@
-# provnote + Crucible Agent — full setup (editor + AI)
+# provnote + Crucible — full setup (editor + AI + MCP tools)
 #
-# This runs provnote with the Crucible Agent for AI-powered features
-# (AI chat, note derivation, provenance-tracked AI responses).
+# This runs provnote with the full Crucible stack:
+#   - Crucible Agent: AI chat, note derivation, provenance-tracked AI responses
+#   - Crucible Registry: MCP server management with auto-discovery
 #
 # For the editor-only setup without AI, use:
 #   docker compose -f docker-compose.standalone.yml up -d
@@ -11,8 +12,13 @@
 #   http://localhost:5174/provnote/   — provnote editor
 #   http://localhost:8090             — Crucible Agent Chat UI
 #   http://localhost:8090/docs        — Agent API docs (Swagger)
+#   http://localhost:8080             — Crucible Registry API
+#   http://localhost:8081             — Crucible Registry UI
 
 services:
+  # ============================================================================
+  # provnote — PROV-DM provenance-tracking editor
+  # ============================================================================
   provnote:
     build:
       context: .
@@ -24,12 +30,14 @@ services:
       - agent
     restart: unless-stopped
 
+  # ============================================================================
+  # Crucible Agent — AI backend for provnote
+  # ============================================================================
   agent:
     image: ghcr.io/kumagallium/crucible-agent:latest
     ports:
       - "8090:8090"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./docker/litellm_config.yaml:/app/litellm_config.yaml
     environment:
       - DATABASE_URL=postgresql+asyncpg://agent:agent@postgres:5432/crucible_agent
@@ -38,13 +46,80 @@ services:
       - LITELLM_API_KEY=sk-crucible-dev
       - CORS_ORIGINS=http://localhost:5174,http://127.0.0.1:5174
       - CHAT_UI_ENABLED=true
+      # Crucible Registry 連携（MCP サーバー自動検出）
+      - CRUCIBLE_API_URL=http://crucible-api:8000
+      - CRUCIBLE_API_KEY=${CRUCIBLE_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       litellm:
         condition: service_started
+      crucible-api:
+        condition: service_started
     restart: unless-stopped
 
+  # ============================================================================
+  # Crucible Registry API — MCP server management
+  # ============================================================================
+  crucible-api:
+    image: ghcr.io/kumagallium/crucible-api:latest
+    ports:
+      - "${CRUCIBLE_API_PORT:-8080}:8000"
+    environment:
+      - REGISTRY_FILE=/var/lib/crucible-registry/servers.json
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      - MCP_NETWORK=${COMPOSE_PROJECT_NAME:-provnote}_default
+      - REGISTRY_API_KEY=${CRUCIBLE_API_KEY:-}
+      - CRUCIBLE_HOST=127.0.0.1
+      - CRUCIBLE_HEALTH_HOST=host.docker.internal
+      - CRUCIBLE_BASE_URL=http://localhost
+      - CRUCIBLE_CORS_ORIGINS=http://localhost:8081,http://localhost:5174
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-}
+    volumes:
+      - crucible_data:/var/lib/crucible-registry
+    depends_on:
+      - socket-proxy
+    networks:
+      - default
+      - socket_proxy_net
+    restart: unless-stopped
+
+  # ============================================================================
+  # Crucible Registry UI — MCP server dashboard
+  # ============================================================================
+  crucible-ui:
+    image: ghcr.io/kumagallium/crucible-ui:latest
+    ports:
+      - "${CRUCIBLE_UI_PORT:-8081}:3000"
+    environment:
+      - API_BASE_URL=http://crucible-api:8000
+      - REGISTRY_API_KEY=${CRUCIBLE_API_KEY:-}
+    depends_on:
+      - crucible-api
+    restart: unless-stopped
+
+  # ============================================================================
+  # Docker socket proxy — raw socket 公開を防ぐセキュリティレイヤー
+  # ============================================================================
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      BUILD: 1
+      POST: 1
+      DELETE: 1
+    networks:
+      - socket_proxy_net
+    restart: unless-stopped
+
+  # ============================================================================
+  # LiteLLM — LLM proxy
+  # ============================================================================
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
     ports:
@@ -59,6 +134,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ============================================================================
+  # PostgreSQL — shared database
+  # ============================================================================
   postgres:
     image: postgres:16-alpine
     environment:
@@ -77,3 +155,13 @@ services:
 
 volumes:
   pgdata:
+  crucible_data:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  socket_proxy_net:
+    internal: true

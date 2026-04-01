@@ -7,7 +7,7 @@
 # This runs provnote as a standalone note editor with Google Drive sync.
 # No AI assistant, no agent server, no database required.
 #
-# To enable AI features, use the default docker-compose.yml instead:
+# To enable AI + MCP tools (full Crucible stack), use the default docker-compose.yml:
 #   docker compose up -d
 
 services:
