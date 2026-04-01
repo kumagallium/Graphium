@@ -48,9 +48,9 @@ docker compose -f docker-compose.standalone.yml up -d
 
 Open **http://localhost:5174/provnote/** and start writing.
 
-### Option 3: Run with Docker — with AI assistant
+### Option 3: Run with Docker — full Crucible stack (AI + MCP tools)
 
-Run provnote together with [crucible-agent](https://github.com/kumagallium/crucible-agent) for AI-powered features (AI chat, note derivation, provenance-tracked AI responses).
+Run provnote with the full [Crucible](https://github.com/kumagallium/Crucible) stack: AI chat, note derivation, provenance-tracked AI responses, and MCP tool management.
 
 ```bash
 git clone https://github.com/kumagallium/provnote.git
@@ -61,7 +61,8 @@ docker compose up -d
 | URL | What it is |
 |-----|------------|
 | http://localhost:5174/provnote/ | provnote editor |
-| http://localhost:8090 | Crucible Agent Chat UI |
+| http://localhost:8090 | Crucible Agent — AI Chat UI |
+| http://localhost:8081 | Crucible Registry — MCP server management |
 
 #### Set up your AI model
 
@@ -69,18 +70,29 @@ docker compose up -d
 2. Add your LLM model (e.g., Claude, GPT-4o) with your API key from the UI
 3. Go to **http://localhost:5174/provnote/** and start using the AI assistant
 
+#### Add MCP tools (optional)
+
+1. Open **http://localhost:8081** (Crucible Registry UI)
+2. Register an MCP server from a GitHub repository
+3. The agent automatically discovers and uses registered tools
+
 No `.env` editing required — everything is configured from the browser. Google Drive sync and Google OAuth work out of the box.
 
-> **Note:** In Docker mode, the agent server runs without API key authentication. provnote connects to it directly at `http://localhost:8090` — no API key is needed in the Settings screen. This is safe because the agent is only accessible from your local machine.
+> **Note:** In Docker mode, all services run without API key authentication and are only accessible from your local machine (`localhost`).
 
 #### Updating to the latest version
 
 ```bash
-git pull
-docker compose up -d --build
+./update.sh
 ```
 
-The `--build` flag rebuilds images with the latest code changes.
+Or manually:
+
+```bash
+git pull                      # Get latest provnote code
+docker compose pull           # Pull latest Crucible images
+docker compose up -d --build  # Rebuild provnote and restart all services
+```
 
 ### Option 4: Run for development
 
