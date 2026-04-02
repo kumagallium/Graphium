@@ -52,7 +52,7 @@ import {
   generateTitle,
   buildAiDerivedDocument,
 } from "./features/ai-assistant";
-import { SettingsModal, isAgentConfigured, getSelectedModel } from "./features/settings";
+import { SettingsModal, isAgentConfigured, getSelectedModel, getSelectedProfile } from "./features/settings";
 import { useGoogleAuth } from "./lib/use-google-auth";
 import {
   uploadMediaFile,
@@ -279,7 +279,7 @@ function NoteEditorInner({
         const selectedModel = getSelectedModel();
         const response = await runAgent({
           message: userMessage,
-          profile: "science",
+          profile: getSelectedProfile(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         });
         aiAssistant.addMessage({

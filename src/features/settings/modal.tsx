@@ -7,7 +7,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
 import { loadSettings, saveSettings, getAgentUrl, getAgentApiKey, type Settings } from "./store";
-import { fetchModels, type ModelInfo } from "../ai-assistant/api";
+import { fetchModels, fetchProfiles, type ModelInfo, type ProfileInfo } from "../ai-assistant/api";
 import { useLocale, type Locale } from "../../i18n";
 
 type SettingsModalProps = {
@@ -23,6 +23,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [profile, setProfile] = useState("");
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [fromEnv, setFromEnv] = useState(false);
   const [apiKeyFromEnv, setApiKeyFromEnv] = useState(false);
@@ -36,11 +39,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setAgentUrl(effectiveUrl);
       setAgentApiKey(effectiveApiKey);
       setModel(settings.model);
+      setProfile(settings.profile);
       setFromEnv(!settings.agentUrl && !!effectiveUrl);
       setApiKeyFromEnv(!settings.agentApiKey && !!effectiveApiKey);
       setSaved(false);
 
-      // エージェントが設定済みならモデル一覧を取得
+      // エージェントが設定済みならモデル・プロファイル一覧を取得
       if (effectiveUrl) {
         setModelsLoading(true);
         fetchModels()
@@ -53,6 +57,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             setDefaultModel("");
           })
           .finally(() => setModelsLoading(false));
+
+        setProfilesLoading(true);
+        fetchProfiles()
+          .then((res) => setProfiles(res.profiles))
+          .catch(() => setProfiles([]))
+          .finally(() => setProfilesLoading(false));
       }
     }
   }, [isOpen]);
@@ -61,11 +71,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const trimmed = agentUrl.trim();
     // 末尾スラッシュを除去
     const normalized = trimmed.replace(/\/+$/, "");
-    const settings: Settings = { agentUrl: normalized, agentApiKey: agentApiKey.trim(), model };
+    const settings: Settings = { agentUrl: normalized, agentApiKey: agentApiKey.trim(), model, profile };
     saveSettings(settings);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [agentUrl, agentApiKey, model, onClose]);
+  }, [agentUrl, agentApiKey, model, profile, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -158,6 +168,44 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           )}
           <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
             {t("settings.apiKeyHelp")}
+          </p>
+        </div>
+
+        {/* プロファイル選択 */}
+        <div>
+          <label className="text-xs font-semibold text-foreground mb-1 block">
+            {t("settings.profile")}
+          </label>
+          <div className="relative">
+            <select
+              value={profile}
+              onChange={(e) => {
+                setProfile(e.target.value);
+                setSaved(false);
+              }}
+              disabled={profilesLoading || profiles.length === 0}
+              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+            >
+              <option value="">
+                {profilesLoading
+                  ? t("settings.profileLoading")
+                  : profiles.length === 0
+                    ? t("settings.profileNone")
+                    : t("settings.profileDefault")}
+              </option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name} — {p.description}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={14}
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+            {t("settings.profileHelp")}
           </p>
         </div>
 

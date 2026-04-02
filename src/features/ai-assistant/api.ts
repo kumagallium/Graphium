@@ -71,6 +71,29 @@ export async function fetchModels(): Promise<ModelsResponse> {
   return res.json();
 }
 
+export type ProfileInfo = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type ProfilesResponse = {
+  profiles: ProfileInfo[];
+};
+
+/**
+ * crucible-agent に登録されたプロファイル一覧を取得する
+ */
+export async function fetchProfiles(): Promise<ProfilesResponse> {
+  const res = await fetch(`${getAgentUrl()}/profiles`, {
+    headers: agentHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch profiles: ${res.status}`);
+  }
+  return res.json();
+}
+
 /**
  * AI にセッションタイトル（15文字以内の要約）を生成させる
  */

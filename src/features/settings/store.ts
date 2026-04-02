@@ -10,12 +10,15 @@ export type Settings = {
   agentApiKey: string;
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
+  /** AI プロファイル名（空文字 = "science"） */
+  profile: string;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   agentUrl: "",
   agentApiKey: "",
   model: "",
+  profile: "",
 };
 
 /** localStorage から設定を読み込む */
@@ -52,6 +55,11 @@ export function getAgentApiKey(): string {
 /** 選択中のモデル名を取得する（空文字 = サーバーデフォルト） */
 export function getSelectedModel(): string {
   return loadSettings().model;
+}
+
+/** 選択中のプロファイル名を取得する（空文字なら "science"） */
+export function getSelectedProfile(): string {
+  return loadSettings().profile || "science";
 }
 
 /** AI エージェントが設定済みかどうか */
