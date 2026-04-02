@@ -37,7 +37,7 @@ export function FileSidebar({
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-sidebar-foreground/60 tracking-wide">
-            provnote
+            Graphium
           </h2>
           <button
             onClick={onRefresh}

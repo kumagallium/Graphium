@@ -341,7 +341,7 @@ function SandboxApp() {
       <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background overflow-y-auto">
         <div className="p-4">
           <h2 className="text-sm font-semibold text-sidebar-foreground/60 mb-4 tracking-wide">
-            provnote <span className="text-[10px] font-normal text-muted-foreground">(sandbox)</span>
+            Graphium <span className="text-[10px] font-normal text-muted-foreground">(sandbox)</span>
           </h2>
           {(["blocks", "features", "scenarios"] as const).map((layer) => {
             const items = experiments.filter((e) => e.layer === layer);
