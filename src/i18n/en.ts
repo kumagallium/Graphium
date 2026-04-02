@@ -227,6 +227,15 @@ export const en: Record<string, string> = {
   "nav.title": "Title",
   "nav.labelFilter": "Labels",
   "nav.clearFilter": "Clear filter",
+  "nav.delete": "Delete",
+  "nav.deleteSelected": "Delete {count} notes",
+  "nav.selectAll": "Select all",
+  "nav.deselectAll": "Deselect all",
+  "nav.deleteConfirmTitle": "Delete notes",
+  "nav.deleteConfirmMessage": "Are you sure you want to delete {count} note(s)? This action moves them to trash.",
+  "nav.deleteConfirmOk": "Delete",
+  "nav.deleteConfirmCancel": "Cancel",
+  "nav.deleting": "Deleting...",
 
   // ── サイドピーク追加 ──
   "sidePeek.close": "Close side peek",

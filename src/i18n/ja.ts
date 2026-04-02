@@ -227,6 +227,15 @@ export const ja: Record<string, string> = {
   "nav.title": "タイトル",
   "nav.labelFilter": "ラベル",
   "nav.clearFilter": "フィルタをクリア",
+  "nav.delete": "削除",
+  "nav.deleteSelected": "{count} 件を削除",
+  "nav.selectAll": "すべて選択",
+  "nav.deselectAll": "選択解除",
+  "nav.deleteConfirmTitle": "ノートの削除",
+  "nav.deleteConfirmMessage": "{count} 件のノートを削除しますか？ゴミ箱に移動されます。",
+  "nav.deleteConfirmOk": "削除",
+  "nav.deleteConfirmCancel": "キャンセル",
+  "nav.deleting": "削除中...",
 
   // ── サイドピーク追加 ──
   "sidePeek.close": "サイドピークを閉じる",

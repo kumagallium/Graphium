@@ -832,6 +832,9 @@ export function NoteApp() {
             noteIndex={fm.noteIndex}
             onOpenNote={fm.handleOpenFile}
             onBack={() => fm.setShowNoteList(false)}
+            onDeleteNotes={async (ids) => {
+              for (const id of ids) await fm.handleDelete(id);
+            }}
           />
         ) : (
           <NoteEditor

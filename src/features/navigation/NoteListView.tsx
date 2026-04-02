@@ -1,5 +1,5 @@
 // ノート一覧ビュー（メインエディタ領域に表示）
-// 全ノートをテーブル形式で表示し、ソート・フィルタ・検索に対応
+// 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -34,14 +34,59 @@ const LABEL_SHORT: Record<string, string> = {
   "[条件]": "属性",
 };
 
+// 削除確認ダイアログ
+function DeleteConfirmDialog({
+  count,
+  onConfirm,
+  onCancel,
+  deleting,
+}: {
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  const t = useT();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+        <h3 className="text-sm font-semibold text-foreground mb-2">
+          {t("nav.deleteConfirmTitle")}
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          {t("nav.deleteConfirmMessage", { count: String(count) })}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {t("nav.deleteConfirmCancel")}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+          >
+            {deleting ? t("nav.deleting") : t("nav.deleteConfirmOk")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function NoteListView({
   noteIndex,
   onOpenNote,
   onBack,
+  onDeleteNotes,
 }: {
   noteIndex: ProvNoteIndex | null;
   onOpenNote: (noteId: string) => void;
   onBack: () => void;
+  onDeleteNotes?: (noteIds: string[]) => Promise<void>;
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +94,11 @@ export function NoteListView({
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  // 選択状態
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // 削除確認ダイアログ
+  const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const t = useT();
 
   // インデックスからノート一覧を構築
@@ -126,6 +176,51 @@ export function NoteListView({
     return sorted;
   }, [entries, searchQuery, labelFilter, sortKey, sortDir]);
 
+  // 選択のトグル
+  const toggleSelect = useCallback((noteId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteId)) {
+        next.delete(noteId);
+      } else {
+        next.add(noteId);
+      }
+      return next;
+    });
+  }, []);
+
+  // 全選択 / 全解除（フィルタ後のリストに対して）
+  const toggleSelectAll = useCallback(() => {
+    const filteredIds = filtered.map((e) => e.noteId);
+    const allSelected = filteredIds.every((id) => selectedIds.has(id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredIds));
+    }
+  }, [filtered, selectedIds]);
+
+  const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds.has(e.noteId));
+  const someSelected = selectedIds.size > 0;
+
+  // 削除実行
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget || !onDeleteNotes) return;
+    setDeleting(true);
+    try {
+      await onDeleteNotes(deleteTarget);
+      // 選択状態をクリア
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of deleteTarget) next.delete(id);
+        return next;
+      });
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, onDeleteNotes]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
@@ -140,6 +235,15 @@ export function NoteListView({
         <span className="text-xs text-muted-foreground">
           {loading ? t("nav.loadingNotes") : t("nav.noteCount", { filtered: String(filtered.length), total: String(entries.length) })}
         </span>
+        {/* まとめて削除ボタン */}
+        {someSelected && onDeleteNotes && (
+          <button
+            onClick={() => setDeleteTarget([...selectedIds])}
+            className="ml-auto px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+          >
+            {t("nav.deleteSelected", { count: String(selectedIds.size) })}
+          </button>
+        )}
       </div>
 
       {/* ツールバー */}
@@ -169,6 +273,18 @@ export function NoteListView({
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
+                {/* チェックボックス列 */}
+                {onDeleteNotes && (
+                  <th className="py-2 px-2 w-[36px]">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                      title={allSelected ? t("nav.deselectAll") : t("nav.selectAll")}
+                    />
+                  </th>
+                )}
                 <th className="py-2 px-3">{t("nav.noteColumn")}</th>
                 <th
                   className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
@@ -191,15 +307,30 @@ export function NoteListView({
                 >
                   {t("nav.modifiedDate")}{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
+                {/* 削除ボタン列 */}
+                {onDeleteNotes && <th className="py-2 px-2 w-[40px]" />}
               </tr>
             </thead>
             <tbody>
               {filtered.map((entry) => (
                 <tr
                   key={entry.noteId}
-                  className="border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer"
+                  className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
+                    selectedIds.has(entry.noteId) ? "bg-primary/5" : ""
+                  }`}
                   onClick={() => onOpenNote(entry.noteId)}
                 >
+                  {/* チェックボックス */}
+                  {onDeleteNotes && (
+                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(entry.noteId)}
+                        onChange={() => toggleSelect(entry.noteId)}
+                        className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                      />
+                    </td>
+                  )}
                   <td className="py-2 px-3">
                     <span className="text-foreground hover:text-primary transition-colors">
                       {entry.title}
@@ -256,12 +387,34 @@ export function NoteListView({
                   <td className="py-2 pl-3 text-xs text-muted-foreground">
                     {formatRelativeTime(entry.modifiedAt)}
                   </td>
+                  {/* 個別削除ボタン（ホバーで表示） */}
+                  {onDeleteNotes && (
+                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setDeleteTarget([entry.noteId])}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
+                        title={t("nav.delete")}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* 削除確認ダイアログ */}
+      {deleteTarget && (
+        <DeleteConfirmDialog
+          count={deleteTarget.length}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteTarget(null)}
+          deleting={deleting}
+        />
+      )}
     </div>
   );
 }
