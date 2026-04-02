@@ -183,6 +183,12 @@ export const ja: Record<string, string> = {
   "settings.apiKeyPlaceholder": "未設定（認証なし）",
   "settings.apiKeyEnvNote": "環境変数から設定されています。上書きする場合は新しいキーを入力してください。",
   "settings.apiKeyHelp": "crucible-agent の AGENT_API_KEY と同じ値を設定してください。未設定の場合は認証なしで接続します。",
+  "settings.model": "AI モデル",
+  "settings.modelDefault": "サーバーデフォルト ({name})",
+  "settings.modelDefaultLabel": "デフォルト",
+  "settings.modelLoading": "モデルを読み込み中...",
+  "settings.modelNone": "利用可能なモデルがありません",
+  "settings.modelHelp": "使用する AI モデルを選択します。未指定の場合はサーバーのデフォルトモデルが使われます。",
 
   // ── AI チャット追加 ──
   "aiChat.helpText": "ブロックを選択して AI に質問できます。\nCmd+Enter で送信",

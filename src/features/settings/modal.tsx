@@ -2,11 +2,12 @@
 // AI エージェントの接続先 URL を設定する
 
 import { useCallback, useEffect, useState } from "react";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, ChevronDown } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
 import { loadSettings, saveSettings, getAgentUrl, getAgentApiKey, type Settings } from "./store";
+import { fetchModels, type ModelInfo } from "../ai-assistant/api";
 import { useLocale, type Locale } from "../../i18n";
 
 type SettingsModalProps = {
@@ -18,6 +19,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [agentUrl, setAgentUrl] = useState("");
   const [agentApiKey, setAgentApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [defaultModel, setDefaultModel] = useState("");
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [fromEnv, setFromEnv] = useState(false);
   const [apiKeyFromEnv, setApiKeyFromEnv] = useState(false);
@@ -30,9 +35,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const effectiveApiKey = getAgentApiKey();
       setAgentUrl(effectiveUrl);
       setAgentApiKey(effectiveApiKey);
+      setModel(settings.model);
       setFromEnv(!settings.agentUrl && !!effectiveUrl);
       setApiKeyFromEnv(!settings.agentApiKey && !!effectiveApiKey);
       setSaved(false);
+
+      // エージェントが設定済みならモデル一覧を取得
+      if (effectiveUrl) {
+        setModelsLoading(true);
+        fetchModels()
+          .then((res) => {
+            setModels(res.models);
+            setDefaultModel(res.default);
+          })
+          .catch(() => {
+            setModels([]);
+            setDefaultModel("");
+          })
+          .finally(() => setModelsLoading(false));
+      }
     }
   }, [isOpen]);
 
@@ -40,11 +61,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const trimmed = agentUrl.trim();
     // 末尾スラッシュを除去
     const normalized = trimmed.replace(/\/+$/, "");
-    const settings: Settings = { agentUrl: normalized, agentApiKey: agentApiKey.trim() };
+    const settings: Settings = { agentUrl: normalized, agentApiKey: agentApiKey.trim(), model };
     saveSettings(settings);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [agentUrl, agentApiKey, onClose]);
+  }, [agentUrl, agentApiKey, model, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -137,6 +158,45 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           )}
           <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
             {t("settings.apiKeyHelp")}
+          </p>
+        </div>
+
+        {/* モデル選択 */}
+        <div>
+          <label className="text-xs font-semibold text-foreground mb-1 block">
+            {t("settings.model")}
+          </label>
+          <div className="relative">
+            <select
+              value={model}
+              onChange={(e) => {
+                setModel(e.target.value);
+                setSaved(false);
+              }}
+              disabled={modelsLoading || models.length === 0}
+              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+            >
+              <option value="">
+                {modelsLoading
+                  ? t("settings.modelLoading")
+                  : models.length === 0
+                    ? t("settings.modelNone")
+                    : t("settings.modelDefault", { name: defaultModel })}
+              </option>
+              {models.map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.name}
+                  {m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={14}
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+            {t("settings.modelHelp")}
           </p>
         </div>
       </ModalBody>

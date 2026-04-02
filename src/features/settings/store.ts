@@ -8,11 +8,14 @@ export type Settings = {
   agentUrl: string;
   /** AI エージェントの API キー（X-API-Key ヘッダーで送信） */
   agentApiKey: string;
+  /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
+  model: string;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   agentUrl: "",
   agentApiKey: "",
+  model: "",
 };
 
 /** localStorage から設定を読み込む */
@@ -44,6 +47,11 @@ export function getAgentApiKey(): string {
   const settings = loadSettings();
   if (settings.agentApiKey) return settings.agentApiKey;
   return import.meta.env.VITE_CRUCIBLE_AGENT_API_KEY ?? "";
+}
+
+/** 選択中のモデル名を取得する（空文字 = サーバーデフォルト） */
+export function getSelectedModel(): string {
+  return loadSettings().model;
 }
 
 /** AI エージェントが設定済みかどうか */

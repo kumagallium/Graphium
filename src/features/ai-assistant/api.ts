@@ -45,6 +45,32 @@ export type AgentRunResponse = {
   model: string | null;
 };
 
+export type ModelInfo = {
+  name: string;
+  provider: string;
+  model_id: string;
+  api_base: string;
+  supports_function_calling: boolean;
+};
+
+export type ModelsResponse = {
+  models: ModelInfo[];
+  default: string;
+};
+
+/**
+ * crucible-agent に登録されたモデル一覧を取得する
+ */
+export async function fetchModels(): Promise<ModelsResponse> {
+  const res = await fetch(`${getAgentUrl()}/models`, {
+    headers: agentHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch models: ${res.status}`);
+  }
+  return res.json();
+}
+
 /**
  * AI にセッションタイトル（15文字以内の要約）を生成させる
  */
