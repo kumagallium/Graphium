@@ -40,7 +40,7 @@ function releaseNotesPlugin(): Plugin {
 }
 
 export default defineConfig({
-  base: "/provnote/",
+  base: "/Graphium/",
   plugins: [releaseNotesPlugin(), tailwindcss(), react()],
   resolve: {
     alias: {

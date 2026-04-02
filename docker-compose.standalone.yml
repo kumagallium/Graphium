@@ -1,10 +1,10 @@
-# provnote — standalone editor (no AI features)
+# Graphium — standalone editor (no AI features)
 #
 # Usage:
 #   docker compose -f docker-compose.standalone.yml up -d
-#   http://localhost:5174/provnote/
+#   http://localhost:5174/Graphium/
 #
-# This runs provnote as a standalone note editor with Google Drive sync.
+# This runs Graphium as a standalone note editor with Google Drive sync.
 # No AI assistant, no agent server, no database required.
 #
 # To enable AI + MCP tools (full Crucible stack), use the default docker-compose.yml:

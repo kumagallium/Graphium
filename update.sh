@@ -10,6 +10,6 @@ docker compose up -d --build
 
 echo ""
 echo "Done! Services:"
-echo "  provnote          http://localhost:5174/provnote/"
+echo "  Graphium          http://localhost:5174/Graphium/"
 echo "  Crucible Agent    http://localhost:8090"
 echo "  Crucible Registry http://localhost:8081"

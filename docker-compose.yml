@@ -1,6 +1,6 @@
-# provnote + Crucible — full setup (editor + AI + MCP tools)
+# Graphium + Crucible — full setup (editor + AI + MCP tools)
 #
-# This runs provnote with the full Crucible stack:
+# This runs Graphium with the full Crucible stack:
 #   - Crucible Agent: AI chat, note derivation, provenance-tracked AI responses
 #   - Crucible Registry: MCP server management with auto-discovery
 #
@@ -9,7 +9,7 @@
 #
 # Usage:
 #   docker compose up -d
-#   http://localhost:5174/provnote/   — provnote editor
+#   http://localhost:5174/Graphium/   — Graphium editor
 #   http://localhost:8090             — Crucible Agent Chat UI
 #   http://localhost:8090/docs        — Agent API docs (Swagger)
 #   http://localhost:8080             — Crucible Registry API
