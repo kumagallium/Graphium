@@ -19,6 +19,8 @@ export type AiAssistantState = {
   activeChatId: string | null;
   /** 全チャット（ドキュメントから読み込み） */
   chats: ScopeChat[];
+  /** crucible-agent セッション ID（チャット継続用） */
+  sessionId: string | null;
   /** Chat タブを開くリクエスト（カウンター。変化を検知して rightTab を切り替える） */
   chatRequestSeq: number;
 };
@@ -38,6 +40,8 @@ export type AiAssistantActions = {
   restoreChats: (chats: ScopeChat[]) => void;
   /** 現在のチャットを ScopeChat として取得 */
   getCurrentChat: () => ScopeChat | null;
+  /** セッション ID を設定 */
+  setSessionId: (sessionId: string | null) => void;
   /** メッセージをクリア（新しい会話を開始） */
   clearMessages: () => void;
   /** 現在のチャットを退避して非アクティブにする（リスト表示用） */
@@ -56,8 +60,22 @@ const INITIAL_STATE: AiAssistantState = {
   messages: [],
   activeChatId: null,
   chats: [],
+  sessionId: null,
   chatRequestSeq: 0,
 };
+
+// チャット退避時に generatedBy を構築するヘルパー
+function buildGeneratedBy(
+  prev: AiAssistantState,
+  existing: ScopeChat | null | undefined,
+): ScopeChat["generatedBy"] {
+  return {
+    agent: existing?.generatedBy?.agent ?? "crucible-agent",
+    sessionId: prev.sessionId ?? existing?.generatedBy?.sessionId ?? "",
+    model: existing?.generatedBy?.model,
+    tokenUsage: existing?.generatedBy?.tokenUsage,
+  };
+}
 
 export function AiAssistantProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AiAssistantState>(INITIAL_STATE);
@@ -77,7 +95,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
             scopeBlockId: prev.sourceBlockIds[0] ?? "",
             scopeType: "heading",
             messages: prev.messages,
-            generatedBy: existing?.generatedBy,
+            generatedBy: buildGeneratedBy(prev, existing),
             createdAt: existing?.createdAt ?? now,
             modifiedAt: now,
           };
@@ -95,6 +113,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
           error: null,
           messages: [],
           activeChatId: null,
+          sessionId: null,
           chatRequestSeq: prev.chatRequestSeq + 1,
         };
       });
@@ -117,6 +136,10 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const setSessionId = useCallback((sessionId: string | null) => {
+    setState((prev) => ({ ...prev, sessionId }));
+  }, []);
+
   const selectChat = useCallback((chatId: string) => {
     setState((prev) => {
       const chat = prev.chats.find((c) => c.id === chatId);
@@ -128,6 +151,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         sourceBlockIds: [chat.scopeBlockId],
         quotedMarkdown: "",
         error: null,
+        sessionId: chat.generatedBy?.sessionId ?? null,
       };
     });
   }, []);
@@ -146,7 +170,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
       scopeBlockId: s.sourceBlockIds[0] ?? "",
       scopeType: "heading",
       messages: s.messages,
-      generatedBy: existing?.generatedBy,
+      generatedBy: buildGeneratedBy(s, existing),
       createdAt: existing?.createdAt ?? now,
       modifiedAt: now,
     };
@@ -166,7 +190,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
           scopeBlockId: prev.sourceBlockIds[0] ?? "",
           scopeType: "heading",
           messages: prev.messages,
-          generatedBy: existing?.generatedBy,
+          generatedBy: buildGeneratedBy(prev, existing),
           createdAt: existing?.createdAt ?? now,
           modifiedAt: now,
         };
@@ -180,6 +204,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         chats: updatedChats,
         messages: [],
         activeChatId: null,
+        sessionId: null,
         error: null,
       };
     });
@@ -198,7 +223,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
           scopeBlockId: prev.sourceBlockIds[0] ?? "",
           scopeType: "heading",
           messages: prev.messages,
-          generatedBy: existing?.generatedBy,
+          generatedBy: buildGeneratedBy(prev, existing),
           createdAt: existing?.createdAt ?? now,
           modifiedAt: now,
         };
@@ -212,6 +237,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         chats: updatedChats,
         messages: [],
         activeChatId: null,
+        sessionId: null,
         sourceBlockIds: [],
         quotedMarkdown: "",
         error: null,
@@ -227,6 +253,7 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
         setLoading,
         setError,
         addMessage,
+        setSessionId,
         selectChat,
         restoreChats,
         getCurrentChat,

@@ -279,6 +279,7 @@ function NoteEditorInner({
         const selectedModel = getSelectedModel();
         const response = await runAgent({
           message: userMessage,
+          session_id: aiAssistant.sessionId ?? undefined,
           profile: getSelectedProfile(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         });
@@ -287,6 +288,7 @@ function NoteEditorInner({
           content: response.message,
           timestamp: new Date().toISOString(),
         });
+        aiAssistant.setSessionId(response.session_id);
         aiAssistant.setLoading(false);
       } catch (err) {
         aiAssistant.setError(
