@@ -7,7 +7,10 @@ export function LoginScreen({ onSignIn }: { onSignIn: () => void }) {
   return (
     <div className="flex items-center justify-center h-screen bg-background">
       <div className="text-center space-y-6 max-w-sm">
-        <h1 className="text-3xl font-bold text-foreground">Graphium</h1>
+        <div className="flex flex-col items-center gap-3">
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Graphium" className="w-16 h-16" />
+          <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-8" />
+        </div>
         <p className="text-muted-foreground text-sm">
           {t("login.subtitle")}
         </p>

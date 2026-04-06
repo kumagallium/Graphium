@@ -36,9 +36,10 @@ export function FileSidebar({
       {/* ヘッダー */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-sidebar-foreground/60 tracking-wide">
-            Graphium
-          </h2>
+          <div className="flex items-center gap-2">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-7 h-7" />
+            <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
+          </div>
           <button
             onClick={onRefresh}
             title={t("sidebar.refresh")}
