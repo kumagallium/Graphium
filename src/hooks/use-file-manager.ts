@@ -8,6 +8,7 @@ import {
   createFile,
   saveFile,
   deleteFile,
+  uploadMediaFileWithMeta,
   type ProvNoteFile,
   type ProvNoteDocument,
 } from "../lib/google-drive";
@@ -27,6 +28,23 @@ import {
   type RecentNote,
   type ProvNoteIndex,
 } from "../features/navigation";
+import {
+  saveMediaIndex,
+  createEmptyIndex,
+  addMediaEntry,
+  removeMediaEntry,
+  syncUsedIn,
+  removeNoteFromUsedIn,
+  deleteMediaFile,
+  renameMediaFile,
+  renameMediaEntry,
+  extractMediaFromBlocks,
+  mimeToMediaType,
+  ensureMediaIndex,
+  type MediaIndex,
+  type MediaIndexEntry,
+  type MediaType,
+} from "../features/asset-browser";
 
 export function useFileManager(authenticated: boolean) {
   const [files, setFiles] = useState<ProvNoteFile[]>([]);
@@ -61,6 +79,11 @@ export function useFileManager(authenticated: boolean) {
   const noteIndexRef = useRef<ProvNoteIndex | null>(null);
   // 派生ノート作成中フラグ
   const [deriving, setDeriving] = useState(false);
+  // メディアインデックス（.provnote-media-index.json）
+  const [mediaIndex, setMediaIndex] = useState<MediaIndex | null>(null);
+  const mediaIndexRef = useRef<MediaIndex | null>(null);
+  // アセットギャラリーの表示状態
+  const [activeAssetType, setActiveAssetType] = useState<MediaType | null>(null);
 
   // ファイル一覧を取得
   const refreshFiles = useCallback(async () => {
@@ -162,6 +185,20 @@ export function useFileManager(authenticated: boolean) {
     return () => { cancelled = true; };
   }, [authenticated, files]);
 
+  // メディアインデックスの初期構築（ノートインデックス構築後に実行）
+  useEffect(() => {
+    if (!authenticated || !noteIndex || files.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const idx = await ensureMediaIndex(files, docCacheRef.current, loadFile);
+      if (!cancelled) {
+        mediaIndexRef.current = idx;
+        setMediaIndex(idx);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authenticated, noteIndex, files]);
+
   // activeFileId や files が変わったらグラフを再構築
   useEffect(() => {
     if (activeFileId && files.length > 0) {
@@ -247,6 +284,18 @@ export function useFileManager(authenticated: boolean) {
             noteIndexRef.current = updated;
             setNoteIndex(updated);
             saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          }
+        }
+
+        // メディアインデックスの usedIn を同期
+        if (mediaIndexRef.current) {
+          const savedFileId = currentFileId ?? activeFileIdRef.current;
+          if (savedFileId && doc.pages[0]) {
+            const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+            const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap);
+            mediaIndexRef.current = updated;
+            setMediaIndex(updated);
+            saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
           }
         }
       } catch (err) {
@@ -425,6 +474,13 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
         }
+        // メディアインデックスから usedIn を除去
+        if (mediaIndexRef.current) {
+          const updated = removeNoteFromUsedIn(mediaIndexRef.current, fileId);
+          mediaIndexRef.current = updated;
+          setMediaIndex(updated);
+          saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+        }
         if (activeFileId === fileId) {
           setActiveFileId(null);
           setActiveDoc(null);
@@ -444,6 +500,48 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
+  // メディアアップロード（インデックス自動登録付き）
+  const handleUploadMedia = useCallback(async (file: File): Promise<string> => {
+    const result = await uploadMediaFileWithMeta(file);
+    // メディアインデックスに登録
+    const entry: MediaIndexEntry = {
+      fileId: result.fileId,
+      name: result.name,
+      type: mimeToMediaType(result.mimeType),
+      mimeType: result.mimeType,
+      url: result.url,
+      thumbnailUrl: result.url.replace("=s0", "=s200"),
+      uploadedAt: new Date().toISOString(),
+      usedIn: [],
+    };
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const updated = addMediaEntry(current, entry);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+    return result.url;
+  }, []);
+
+  // メディアリネーム（モーダルから呼ぶ）
+  const handleRenameMedia = useCallback(async (entry: MediaIndexEntry, newName: string) => {
+    await renameMediaFile(entry.fileId, newName);
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const updated = renameMediaEntry(current, entry.fileId, newName);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+  }, []);
+
+  // メディア削除（ギャラリーから呼ぶ）
+  const handleDeleteMedia = useCallback(async (entry: MediaIndexEntry) => {
+    await deleteMediaFile(entry.fileId);
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const updated = removeMediaEntry(current, entry.fileId);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+  }, []);
+
   return {
     // 状態
     files,
@@ -460,6 +558,9 @@ export function useFileManager(authenticated: boolean) {
     setShowNoteList,
     recentNotes,
     noteIndex,
+    mediaIndex,
+    activeAssetType,
+    setActiveAssetType,
     // アクション
     refreshFiles,
     handleOpenFile,
@@ -470,5 +571,8 @@ export function useFileManager(authenticated: boolean) {
     handleAiDeriveNote,
     handleDelete,
     getCachedDoc,
+    handleUploadMedia,
+    handleDeleteMedia,
+    handleRenameMedia,
   };
 }

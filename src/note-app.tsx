@@ -55,12 +55,14 @@ import {
 import { SettingsModal, isAgentConfigured, getSelectedModel, getSelectedProfile } from "./features/settings";
 import { useGoogleAuth } from "./lib/use-google-auth";
 import {
-  uploadMediaFile,
   type ProvNoteDocument,
+  fetchMediaBlobUrl,
+  extractDriveFileId,
 } from "./lib/google-drive";
 import type { NoteLink } from "./lib/google-drive";
 import { cn } from "./lib/utils";
 import { NoteListView, type ProvNoteIndex } from "./features/navigation";
+import { AssetGalleryView } from "./features/asset-browser";
 import { useT, t as tStatic } from "./i18n";
 
 // hooks
@@ -97,6 +99,8 @@ type NoteEditorProps = {
   onSourceDocChange: (doc: ProvNoteDocument | null) => void;
   /** ノートインデックス（@ オートコンプリート用） */
   noteIndex?: ProvNoteIndex | null;
+  /** メディアアップロード関数（メディアインデックス自動登録付き） */
+  uploadFile?: (file: File) => Promise<string>;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -145,6 +149,7 @@ function NoteEditorInner({
   onSourceDocChange,
   getCachedDoc,
   noteIndex,
+  uploadFile,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -518,6 +523,50 @@ function NoteEditorInner({
     return () => { setOpenLinkDropdownFn(null); };
   }, [onDeriveNote]);
 
+  // ── エディタ内 video/audio の Blob URL 差し替え ──
+  // lh3.googleusercontent.com の CDN URL は画像専用。
+  // 動画・音声ブロックの <video>/<audio> src を認証付き Blob URL に差し替えて再生可能にする。
+  useEffect(() => {
+    const container = document.querySelector(".bn-editor");
+    if (!container) return;
+
+    const localBlobUrls: string[] = [];
+
+    const processElement = (el: Element) => {
+      const src = el.getAttribute("src");
+      if (!src || !src.includes("googleusercontent.com") || src.startsWith("blob:")) return;
+      const driveFileId = extractDriveFileId(src);
+      if (!driveFileId) return;
+
+      fetchMediaBlobUrl(driveFileId).then((blobUrl) => {
+        localBlobUrls.push(blobUrl);
+        el.setAttribute("src", blobUrl);
+        if (el instanceof HTMLVideoElement || el instanceof HTMLAudioElement) {
+          el.load();
+        }
+      }).catch(() => {});
+    };
+
+    // 既存の要素を処理
+    container.querySelectorAll("video[src], audio[src]").forEach(processElement);
+
+    // 新しく追加される要素を監視（D&D アップロード等）
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches("video[src], audio[src]")) processElement(node);
+          node.querySelectorAll("video[src], audio[src]").forEach(processElement);
+        }
+      }
+    });
+    observer.observe(container, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [fileId]);
+
   // タイトル変更時に自動保存トリガー
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -626,7 +675,7 @@ function NoteEditorInner({
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}
-              uploadFile={uploadMediaFile}
+              uploadFile={uploadFile}
               onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
               getMentionSuggestions={() => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
@@ -826,13 +875,24 @@ export function NoteApp() {
         onShowSettings={() => setShowSettings(true)}
         agentConfigured={agentConfigured}
         recentNotes={fm.recentNotes}
-        onShowNoteList={() => fm.setShowNoteList(true)}
+        onShowNoteList={() => { fm.setShowNoteList(true); fm.setActiveAssetType(null); }}
+        mediaIndex={fm.mediaIndex}
+        onShowAssetGallery={(type) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); }}
       />
       <main className="flex-1 overflow-hidden flex flex-col relative">
-        {fm.showNoteList ? (
+        {fm.activeAssetType ? (
+          <AssetGalleryView
+            mediaIndex={fm.mediaIndex}
+            mediaType={fm.activeAssetType}
+            onBack={() => fm.setActiveAssetType(null)}
+            onNavigateNote={(noteId) => { fm.setActiveAssetType(null); fm.handleOpenFile(noteId); }}
+            onDeleteMedia={fm.handleDeleteMedia}
+            onRenameMedia={fm.handleRenameMedia}
+          />
+        ) : fm.showNoteList ? (
           <NoteListView
             noteIndex={fm.noteIndex}
-            onOpenNote={fm.handleOpenFile}
+            onOpenNote={(noteId) => { fm.setShowNoteList(false); fm.handleOpenFile(noteId); }}
             onBack={() => fm.setShowNoteList(false)}
             onDeleteNotes={async (ids) => {
               for (const id of ids) await fm.handleDelete(id);
@@ -855,6 +915,7 @@ export function NoteApp() {
             sourceDoc={fm.sourceDoc}
             onSourceDocChange={fm.setSourceDoc}
             noteIndex={fm.noteIndex}
+            uploadFile={fm.handleUploadMedia}
           />
         )}
         {/* 派生ノート作成中のオーバーレイ */}

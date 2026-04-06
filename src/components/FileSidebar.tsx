@@ -2,6 +2,8 @@
 
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT } from "../i18n";
+import type { MediaIndex, MediaType } from "../features/asset-browser";
+import { countByType } from "../features/asset-browser";
 
 export type FileSidebarProps = {
   activeFileId: string | null;
@@ -15,7 +17,17 @@ export type FileSidebarProps = {
   agentConfigured: boolean;
   recentNotes: RecentNote[];
   onShowNoteList: () => void;
+  mediaIndex: MediaIndex | null;
+  onShowAssetGallery: (type: MediaType) => void;
 };
+
+// メディアタイプ別のアイコンと表示順
+const MEDIA_NAV_ITEMS: { type: MediaType; icon: string }[] = [
+  { type: "image", icon: "🖼️" },
+  { type: "pdf", icon: "📄" },
+  { type: "video", icon: "🎥" },
+  { type: "audio", icon: "🔊" },
+];
 
 export function FileSidebar({
   activeFileId,
@@ -29,8 +41,11 @@ export function FileSidebar({
   agentConfigured,
   recentNotes,
   onShowNoteList,
+  mediaIndex,
+  onShowAssetGallery,
 }: FileSidebarProps) {
   const t = useT();
+  const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
   return (
     <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col">
       {/* ヘッダー */}
@@ -61,7 +76,7 @@ export function FileSidebar({
         </button>
       </div>
 
-      {/* 最近のノート */}
+      {/* 最近のノート + データ一覧 */}
       <div className="flex-1 overflow-y-auto">
         <RecentNotes
           notes={recentNotes}
@@ -69,6 +84,32 @@ export function FileSidebar({
           onSelect={onSelect}
           onShowNoteList={onShowNoteList}
         />
+
+        {/* データ一覧セクション */}
+        <div className="px-4 pt-3 pb-2">
+          <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+            {t("asset.dataSection")}
+          </h3>
+          <div className="space-y-0.5">
+            {MEDIA_NAV_ITEMS.map(({ type, icon }) => {
+              const count = mediaCounts?.[type] ?? 0;
+              // カウント 0 でも表示（将来のアップロードに備える）
+              return (
+                <button
+                  key={type}
+                  onClick={() => onShowAssetGallery(type)}
+                  className="w-full flex items-center gap-2 px-2 py-1 rounded text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+                >
+                  <span className="text-sm">{icon}</span>
+                  <span className="flex-1 text-left">{t(`asset.type.${type}`)}</span>
+                  {count > 0 && (
+                    <span className="text-[10px] text-muted-foreground">{count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* フッター */}

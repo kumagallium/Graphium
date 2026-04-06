@@ -311,8 +311,22 @@ async function getOrCreateUploadFolder(): Promise<string> {
   return cachedUploadFolderId!;
 }
 
-// メディアファイルを Google Drive にアップロードし、公開 URL を返す
+/** アップロード結果（URL + メタデータ） */
+export type UploadResult = {
+  url: string;
+  fileId: string;
+  name: string;
+  mimeType: string;
+};
+
+// メディアファイルを Google Drive にアップロードし、公開 URL とメタデータを返す
 export async function uploadMediaFile(file: File): Promise<string> {
+  const result = await uploadMediaFileWithMeta(file);
+  return result.url;
+}
+
+// メディアファイルをアップロードし、メタデータ込みの結果を返す（メディアインデックス登録用）
+export async function uploadMediaFileWithMeta(file: File): Promise<UploadResult> {
   const uploadFolderId = await getOrCreateUploadFolder();
 
   // ファイル名にタイムスタンプを付与して一意にする
@@ -362,11 +376,46 @@ export async function uploadMediaFile(file: File): Promise<string> {
   });
 
   // Google の画像配信 CDN URL（公開ファイルの直接表示用）
-  return `https://lh3.googleusercontent.com/d/${fileId}=s0`;
+  const url = `https://lh3.googleusercontent.com/d/${fileId}=s0`;
+  return { url, fileId, name: uniqueName, mimeType: file.type };
+}
+
+// 認証付きで Drive API からメディアを取得し、Blob URL を返す（動画・音声の再生用）
+// lh3.googleusercontent.com の CDN URL は画像専用のため、動画・音声は Drive API 経由で取得する
+const blobUrlCache = new Map<string, string>();
+
+export async function fetchMediaBlobUrl(driveFileId: string): Promise<string> {
+  const cached = blobUrlCache.get(driveFileId);
+  if (cached) return cached;
+
+  const token = getAccessToken();
+  if (!token) throw new Error("未認証です");
+
+  const res = await fetch(
+    `${DRIVE_API}/files/${driveFileId}?alt=media`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`メディア取得エラー (${res.status})`);
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  blobUrlCache.set(driveFileId, url);
+  return url;
+}
+
+/** CDN URL から Drive ファイル ID を抽出 */
+export function extractDriveFileId(url: string): string | null {
+  const match = url.match(/googleusercontent\.com\/d\/([^=/?]+)/);
+  return match ? match[1] : null;
 }
 
 // フォルダIDキャッシュをクリア（サインアウト時に呼ぶ）
 export function clearCache(): void {
   cachedFolderId = null;
   cachedUploadFolderId = null;
+  // Blob URL を解放
+  for (const url of blobUrlCache.values()) {
+    URL.revokeObjectURL(url);
+  }
+  blobUrlCache.clear();
 }
