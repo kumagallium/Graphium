@@ -269,4 +269,13 @@ export const en: Record<string, string> = {
   "asset.clickToRename": "Click to rename",
   "asset.sortDate": "Date",
   "asset.sortName": "Name",
+  "asset.pickTitle": "Select {type}",
+  "asset.slashGroup": "Existing media",
+  "asset.slashImage": "Image",
+  "asset.slashImageSub": "Upload new or insert existing image",
+  "asset.slashVideo": "Video",
+  "asset.slashVideoSub": "Upload new or insert existing video",
+  "asset.slashAudio": "Audio",
+  "asset.slashAudioSub": "Upload new or insert existing audio",
+  "asset.uploadNew": "Upload from file",
 };

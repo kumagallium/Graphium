@@ -26,3 +26,8 @@ export type {
   MediaType,
   MediaUsage,
 } from "./media-index";
+
+export { MediaPickerModal } from "./MediaPickerModal";
+export type { MediaPickerModalProps } from "./MediaPickerModal";
+
+export { getMediaSlashMenuItems, setMediaPickerCallback, DEFAULT_MEDIA_SLASH_TITLES } from "./slash-menu-items";

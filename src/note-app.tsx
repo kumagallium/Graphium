@@ -62,7 +62,15 @@ import {
 import type { NoteLink } from "./lib/google-drive";
 import { cn } from "./lib/utils";
 import { NoteListView, type ProvNoteIndex } from "./features/navigation";
-import { AssetGalleryView } from "./features/asset-browser";
+import {
+  AssetGalleryView,
+  MediaPickerModal,
+  getMediaSlashMenuItems,
+  setMediaPickerCallback,
+  DEFAULT_MEDIA_SLASH_TITLES,
+  type MediaType,
+  type MediaIndexEntry,
+} from "./features/asset-browser";
 import { useT, t as tStatic } from "./i18n";
 
 // hooks
@@ -101,6 +109,8 @@ type NoteEditorProps = {
   noteIndex?: ProvNoteIndex | null;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
+  /** メディアインデックス（メディアピッカー用） */
+  mediaIndex?: import("./features/asset-browser").MediaIndex | null;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -150,6 +160,7 @@ function NoteEditorInner({
   getCachedDoc,
   noteIndex,
   uploadFile,
+  mediaIndex,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -165,6 +176,48 @@ function NoteEditorInner({
   );
   const t = useT();
   const [title, setTitle] = useState(initialDoc?.title || tStatic("editor.newNote"));
+
+  // ── メディアピッカー ──
+  const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
+
+  // スラッシュメニューからピッカーを開くコールバック登録
+  useEffect(() => {
+    setMediaPickerCallback((type: MediaType) => setPickerMediaType(type));
+    return () => { setMediaPickerCallback(null); };
+  }, []);
+
+  // ピッカーで選択されたメディアをエディタに挿入
+  const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const blockType = entry.type === "video" ? "video"
+      : entry.type === "audio" ? "audio"
+      : "image";
+
+    const currentBlock = editor.getTextCursorPosition()?.block;
+    if (!currentBlock) return;
+
+    const newBlock = {
+      type: blockType,
+      props: { url: entry.url, name: entry.name },
+    };
+    editor.insertBlocks([newBlock], currentBlock, "after");
+
+    // 現在のブロックが空（スラッシュだけ）なら削除
+    const content = currentBlock.content;
+    if (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    ) {
+      editor.removeBlocks([currentBlock]);
+    }
+    // onChange が自動的にトリガーされるので markDirty() は不要
+  }, []);
+
+  // スラッシュメニューアイテム（既存メディアから挿入）
+  const mediaSlashItems = useMemo(() => getMediaSlashMenuItems(), []);
 
   // ラベル自動設定のコールバック
   const labelAutoRef = useRef<(() => void) | null>(null);
@@ -635,6 +688,16 @@ function NoteEditorInner({
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       <LabelDropdownPortal />
+      {/* メディアピッカーモーダル */}
+      {pickerMediaType && (
+        <MediaPickerModal
+          mediaIndex={mediaIndex ?? null}
+          mediaType={pickerMediaType}
+          onSelect={handlePickerSelect}
+          onClose={() => setPickerMediaType(null)}
+          onUpload={uploadFile}
+        />
+      )}
       {/* ヘッダー */}
       <div className="px-4 py-2 border-b border-border flex items-center gap-3 shrink-0">
         <input
@@ -671,7 +734,8 @@ function NoteEditorInner({
               blocks={[]}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...labelSlashMenuItems, indexTableSlashItem]}
+              extraSlashMenuItems={[...labelSlashMenuItems, indexTableSlashItem, ...mediaSlashItems]}
+              excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}
@@ -916,6 +980,7 @@ export function NoteApp() {
             onSourceDocChange={fm.setSourceDoc}
             noteIndex={fm.noteIndex}
             uploadFile={fm.handleUploadMedia}
+            mediaIndex={fm.mediaIndex}
           />
         )}
         {/* 派生ノート作成中のオーバーレイ */}

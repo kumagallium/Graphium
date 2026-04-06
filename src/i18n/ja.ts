@@ -269,4 +269,13 @@ export const ja: Record<string, string> = {
   "asset.clickToRename": "クリックで名前を変更",
   "asset.sortDate": "日付",
   "asset.sortName": "名前",
+  "asset.pickTitle": "{type} を選択",
+  "asset.slashGroup": "既存メディア",
+  "asset.slashImage": "画像",
+  "asset.slashImageSub": "新規アップロードまたは既存の画像から挿入",
+  "asset.slashVideo": "動画",
+  "asset.slashVideoSub": "新規アップロードまたは既存の動画から挿入",
+  "asset.slashAudio": "音声",
+  "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
+  "asset.uploadNew": "ファイルからアップロード",
 };

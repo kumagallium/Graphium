@@ -42,6 +42,8 @@ type SandboxEditorProps = {
   formattingToolbar?: FC<FormattingToolbarProps>;
   /** 追加のスラッシュメニューアイテム */
   extraSlashMenuItems?: SlashMenuItem[];
+  /** デフォルトスラッシュメニューから除外するアイテムの title */
+  excludeDefaultSlashTitles?: string[];
   /** エディタインスタンスを外部に公開するコールバック */
   onEditorReady?: (editor: any) => void;
   /** エディタの内容が変更されたときのコールバック */
@@ -64,6 +66,7 @@ export function SandboxEditor({
   sideMenu,
   formattingToolbar,
   extraSlashMenuItems,
+  excludeDefaultSlashTitles,
   onEditorReady,
   onChange,
   uploadFile,
@@ -98,14 +101,22 @@ export function SandboxEditor({
   const hasExtraSlash = extraSlashMenuItems && extraSlashMenuItems.length > 0;
 
   // スラッシュメニューのカスタム getItems
+  const excludeSet = useMemo(
+    () => new Set(excludeDefaultSlashTitles ?? []),
+    [excludeDefaultSlashTitles],
+  );
   const getSlashItems = useMemo(() => {
     if (!hasExtraSlash) return undefined;
     return async (query: string) => {
-      const defaultItems = getDefaultReactSlashMenuItems(editor as any);
+      let defaultItems = getDefaultReactSlashMenuItems(editor as any);
+      // 指定されたデフォルトアイテムを除外
+      if (excludeSet.size > 0) {
+        defaultItems = defaultItems.filter((item: any) => !excludeSet.has(item.title));
+      }
       const allItems = [...defaultItems, ...extraSlashMenuItems];
       return filterSuggestionItems(allItems as any, query) as any;
     };
-  }, [editor, hasExtraSlash, extraSlashMenuItems]);
+  }, [editor, hasExtraSlash, extraSlashMenuItems, excludeSet]);
 
   // # ラベルオートコンプリート
   const labelSuggestions = useMemo(() => buildSuggestionList(), []);
