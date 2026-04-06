@@ -58,12 +58,28 @@ function DeleteConfirmDialog({
   );
 }
 
-// 動画サムネイル: Blob URL + <video> で最初のフレームを表示
+// 動画サムネイル: Intersection Observer で画面内に入ったときだけ Blob URL を取得
 function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [visible, setVisible] = useState(false);
 
+  // 画面内に入ったら visible = true（200px 手前で先読み）
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // visible になったら Blob URL を取得
+  useEffect(() => {
+    if (!visible) return;
     const fileId = extractDriveFileId(entry.url);
     if (!fileId || !videoRef.current) return;
 
@@ -75,10 +91,10 @@ function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
     }).catch(() => {});
 
     return () => { cancelled = true; };
-  }, [entry.url]);
+  }, [entry.url, visible]);
 
   return (
-    <div className="relative w-full h-32 rounded-t-md bg-muted overflow-hidden">
+    <div ref={containerRef} className="relative w-full h-32 rounded-t-md bg-muted overflow-hidden">
       <video
         ref={videoRef}
         preload="metadata"

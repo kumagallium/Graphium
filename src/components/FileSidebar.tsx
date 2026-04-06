@@ -152,11 +152,15 @@ export function FileSidebar({
         </div>
 
         {/* ラベルセクション */}
-        {labelCounts.size > 0 && (
-          <div className="px-4 pt-1 pb-2">
-            <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
-              {t("label.section")}
-            </h3>
+        <div className="px-4 pt-1 pb-2">
+          <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+            {t("label.section")}
+          </h3>
+          {!noteIndex ? (
+            <p className="text-[10px] text-muted-foreground/50 px-2 py-1">{t("common.loading")}</p>
+          ) : labelCounts.size === 0 ? (
+            <p className="text-[10px] text-muted-foreground/50 px-2 py-1">—</p>
+          ) : (
             <div className="space-y-0.5">
               {[...labelCounts.entries()]
                 .sort((a, b) => b[1] - a[1])
@@ -182,8 +186,8 @@ export function FileSidebar({
                   );
                 })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* フッター */}
