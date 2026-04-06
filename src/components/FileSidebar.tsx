@@ -1,9 +1,11 @@
 // ファイル一覧サイドバー
 
+import { useMemo } from "react";
 import { RecentNotes, type RecentNote } from "../features/navigation";
-import { useT } from "../i18n";
+import { useT, getDisplayLabelName } from "../i18n";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
+import type { ProvNoteIndex } from "../features/navigation/index-file";
 
 export type FileSidebarProps = {
   activeFileId: string | null;
@@ -19,6 +21,23 @@ export type FileSidebarProps = {
   onShowNoteList: () => void;
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
+  noteIndex: ProvNoteIndex | null;
+  onShowLabelGallery: (label: string) => void;
+  /** 現在アクティブなメディアタイプ（ハイライト用） */
+  activeAssetType: MediaType | null;
+  /** 現在アクティブなラベル（ハイライト用） */
+  activeLabel: string | null;
+};
+
+// ラベル色マッピング（NoteListView と同じ）
+const LABEL_HEX: Record<string, string> = {
+  "[手順]": "#5b8fb9",
+  "[使用したもの]": "#4B7A52",
+  "[結果]": "#c26356",
+  "[属性]": "#c08b3e",
+  "[パターン]": "#8b7ab5",
+  "[試料]": "#8b7ab5",
+  "[条件]": "#c08b3e",
 };
 
 // メディアタイプ別のアイコンと表示順
@@ -43,9 +62,25 @@ export function FileSidebar({
   onShowNoteList,
   mediaIndex,
   onShowAssetGallery,
+  noteIndex,
+  onShowLabelGallery,
+  activeAssetType,
+  activeLabel,
 }: FileSidebarProps) {
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
+
+  // ラベルカウント（全ノートから集計）
+  const labelCounts = useMemo(() => {
+    if (!noteIndex) return new Map<string, number>();
+    const counts = new Map<string, number>();
+    for (const note of noteIndex.notes) {
+      for (const l of note.labels) {
+        counts.set(l.label, (counts.get(l.label) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [noteIndex]);
   return (
     <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar-background flex flex-col">
       {/* ヘッダー */}
@@ -99,7 +134,11 @@ export function FileSidebar({
                 <button
                   key={type}
                   onClick={() => onShowAssetGallery(type)}
-                  className="w-full flex items-center gap-2 px-2 py-1 rounded text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                    activeAssetType === type
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  }`}
                 >
                   <span className="text-sm">{icon}</span>
                   <span className="flex-1 text-left">{t(`asset.type.${type}`)}</span>
@@ -111,6 +150,40 @@ export function FileSidebar({
             })}
           </div>
         </div>
+
+        {/* ラベルセクション */}
+        {labelCounts.size > 0 && (
+          <div className="px-4 pt-1 pb-2">
+            <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+              {t("label.section")}
+            </h3>
+            <div className="space-y-0.5">
+              {[...labelCounts.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([label, count]) => {
+                  const color = LABEL_HEX[label] ?? "#8fa394";
+                  return (
+                    <button
+                      key={label}
+                      onClick={() => onShowLabelGallery(label)}
+                      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                        activeLabel === label
+                          ? "bg-primary/10 text-primary font-semibold"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      }`}
+                    >
+                      <span
+                        className="inline-block w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
+                      <span className="text-[10px] text-muted-foreground">{count}</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* フッター */}

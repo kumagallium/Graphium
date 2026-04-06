@@ -30,4 +30,6 @@ export type {
 export { MediaPickerModal } from "./MediaPickerModal";
 export type { MediaPickerModalProps } from "./MediaPickerModal";
 
+export { LabelGalleryView } from "./LabelGalleryView";
+
 export { getMediaSlashMenuItems, setMediaPickerCallback, DEFAULT_MEDIA_SLASH_TITLES } from "./slash-menu-items";

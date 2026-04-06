@@ -278,4 +278,12 @@ export const ja: Record<string, string> = {
   "asset.slashAudio": "音声",
   "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
   "asset.uploadNew": "ファイルからアップロード",
+
+  // ── ラベルギャラリー ──
+  "label.section": "ラベル",
+  "label.search": "ブロックを検索...",
+  "label.noBlocks": "ラベル付きブロックが見つかりません",
+  "label.noteColumn": "ノート",
+  "label.previewColumn": "内容",
+  "label.sortNote": "ノート",
 };

@@ -64,6 +64,7 @@ import { cn } from "./lib/utils";
 import { NoteListView, type ProvNoteIndex } from "./features/navigation";
 import {
   AssetGalleryView,
+  LabelGalleryView,
   MediaPickerModal,
   getMediaSlashMenuItems,
   setMediaPickerCallback,
@@ -939,9 +940,13 @@ export function NoteApp() {
         onShowSettings={() => setShowSettings(true)}
         agentConfigured={agentConfigured}
         recentNotes={fm.recentNotes}
-        onShowNoteList={() => { fm.setShowNoteList(true); fm.setActiveAssetType(null); }}
+        onShowNoteList={() => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); }}
         mediaIndex={fm.mediaIndex}
-        onShowAssetGallery={(type) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); }}
+        onShowAssetGallery={(type) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); }}
+        noteIndex={fm.noteIndex}
+        onShowLabelGallery={(label) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); }}
+        activeAssetType={fm.activeAssetType}
+        activeLabel={fm.activeLabel}
       />
       <main className="flex-1 overflow-hidden flex flex-col relative">
         {fm.activeAssetType ? (
@@ -952,6 +957,13 @@ export function NoteApp() {
             onNavigateNote={(noteId) => { fm.setActiveAssetType(null); fm.handleOpenFile(noteId); }}
             onDeleteMedia={fm.handleDeleteMedia}
             onRenameMedia={fm.handleRenameMedia}
+          />
+        ) : fm.activeLabel ? (
+          <LabelGalleryView
+            noteIndex={fm.noteIndex}
+            label={fm.activeLabel}
+            onBack={() => fm.setActiveLabel(null)}
+            onNavigateNote={(noteId) => { fm.setActiveLabel(null); fm.handleOpenFile(noteId); }}
           />
         ) : fm.showNoteList ? (
           <NoteListView

@@ -11,8 +11,12 @@ import { getAccessToken } from "../../lib/google-auth";
 
 // ── 型定義 ──
 
+// インデックスのスキーマバージョン
+// extractBlockText の改善等、インデックス構築ロジックが変わった場合にインクリメントする
+const INDEX_SCHEMA_VERSION = 3;
+
 export type ProvNoteIndex = {
-  version: 1;
+  version: number;
   updatedAt: string;
   notes: NoteIndexEntry[];
 };
@@ -158,10 +162,12 @@ export function buildIndexEntry(
       }
     }
 
-    // ラベルを収集
+    // ラベルを収集（子ブロックも再帰的に検索、テーブル・子要素のテキストも取得）
+    // ブロックが削除済みでラベルだけ残っている場合はスキップ（ゴーストラベル除去）
     for (const [blockId, label] of Object.entries(page.labels || {})) {
-      const block = (page.blocks || []).find((b: any) => b.id === blockId);
-      const preview = block ? extractInlineText(block.content).slice(0, 50) : "";
+      const block = findBlockById(page.blocks || [], blockId);
+      if (!block) continue;
+      const preview = extractBlockText(block).slice(0, 80);
       labels.push({ blockId, label: label as string, preview });
     }
 
@@ -221,6 +227,18 @@ export function buildIndexEntry(
   };
 }
 
+// ブロック配列から ID で再帰的に検索
+function findBlockById(blocks: any[], id: string): any | undefined {
+  for (const block of blocks) {
+    if (block.id === id) return block;
+    if (block.children?.length) {
+      const found = findBlockById(block.children, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 // BlockNote のインラインコンテンツからテキストを抽出
 function extractInlineText(content: any): string {
   if (!content) return "";
@@ -228,6 +246,47 @@ function extractInlineText(content: any): string {
   if (Array.isArray(content)) {
     return content.map((c: any) => c.text ?? c.content ?? "").join("");
   }
+  // テーブルコンテンツ: { type: "tableContent", rows: [{ cells: [[...]] }] }
+  if (content.type === "tableContent" && Array.isArray(content.rows)) {
+    return content.rows
+      .map((row: any) =>
+        (row.cells ?? [])
+          .map((cell: any) => extractInlineText(cell))
+          .join(" ")
+      )
+      .join(" ")
+      .trim();
+  }
+  return "";
+}
+
+// ブロックとその子ブロックからテキストを抽出
+function extractBlockText(block: any): string {
+  // 1. インラインコンテンツから直接取得
+  let text = extractInlineText(block.content);
+  if (text) return text;
+
+  // 2. props.text (一部のブロック型)
+  if (block.props?.text) return block.props.text;
+
+  // 3. 子ブロックからテキストを再帰的に収集
+  if (block.children?.length) {
+    text = block.children
+      .map((child: any) => extractBlockText(child))
+      .filter(Boolean)
+      .join(", ");
+    if (text) return text;
+  }
+
+  // 4. content が文字列でない構造（フォールバック: JSON を文字列化して中身を探す）
+  if (block.content) {
+    try {
+      const json = JSON.stringify(block.content);
+      const texts = [...json.matchAll(/"text"\s*:\s*"([^"]+)"/g)].map(m => m[1]);
+      if (texts.length > 0) return texts.join(" ");
+    } catch {}
+  }
+
   return "";
 }
 
@@ -240,8 +299,8 @@ export async function ensureIndex(
 ): Promise<ProvNoteIndex> {
   const existing = await readIndexFile();
 
-  // 既存インデックスが最新かチェック（ファイル数一致 + 更新日が全て含まれている）
-  if (existing && isIndexFresh(existing, files)) {
+  // 既存インデックスが最新かチェック（バージョン一致 + ファイル数一致 + 更新日が全て含まれている）
+  if (existing && existing.version === INDEX_SCHEMA_VERSION && isIndexFresh(existing, files)) {
     return existing;
   }
 
@@ -267,7 +326,7 @@ export async function ensureIndex(
   }
 
   const index: ProvNoteIndex = {
-    version: 1,
+    version: INDEX_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     notes: entries,
   };

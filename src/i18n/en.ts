@@ -278,4 +278,12 @@ export const en: Record<string, string> = {
   "asset.slashAudio": "Audio",
   "asset.slashAudioSub": "Upload new or insert existing audio",
   "asset.uploadNew": "Upload from file",
+
+  // ── ラベルギャラリー ──
+  "label.section": "Labels",
+  "label.search": "Search blocks...",
+  "label.noBlocks": "No labeled blocks found",
+  "label.noteColumn": "Note",
+  "label.previewColumn": "Content",
+  "label.sortNote": "Note",
 };

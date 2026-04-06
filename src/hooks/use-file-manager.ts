@@ -84,6 +84,8 @@ export function useFileManager(authenticated: boolean) {
   const mediaIndexRef = useRef<MediaIndex | null>(null);
   // アセットギャラリーの表示状態
   const [activeAssetType, setActiveAssetType] = useState<MediaType | null>(null);
+  // ラベルギャラリーの表示状態
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
 
   // ファイル一覧を取得
   const refreshFiles = useCallback(async () => {
@@ -560,6 +562,8 @@ export function useFileManager(authenticated: boolean) {
     noteIndex,
     mediaIndex,
     activeAssetType,
+    activeLabel,
+    setActiveLabel,
     setActiveAssetType,
     // アクション
     refreshFiles,
