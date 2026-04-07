@@ -10,7 +10,7 @@
 //   Parameter = ダイヤ・落ち着いたアンバー (#c08b3e)
 // ──────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
@@ -29,7 +29,6 @@ const THEME = {
   entity:    { bg: "#4B7A52", border: "#3d6844", text: "#ffffff" },
   result:    { bg: "#c26356", border: "#a8513f", text: "#ffffff" },
   parameter: { bg: "#c08b3e", border: "#a67630", text: "#ffffff" },
-  sample:    { bg: "#8b7ab5", border: "#7466a0", text: "#ffffff" },
   // エッジ色
   edge: {
     wasInformedBy:  "#5b8fb9",
@@ -45,37 +44,6 @@ const THEME = {
   mutedFg: "#6b7f6e",
   primary: "#4B7A52",
 } as const;
-
-// ── パターンごとのグラフ分離 ──
-
-type SampleSplit = { sampleId: string; doc: ProvJsonLd };
-
-/** ProvJsonLd をパターンごとに分離する。共通ノードは各グラフに含める */
-function splitDocBySample(doc: ProvJsonLd): SampleSplit[] {
-  const sampleIds = [...new Set(
-    doc["@graph"]
-      .filter((n) => n["provnote:sampleId"])
-      .map((n) => n["provnote:sampleId"] as string)
-  )].sort();
-
-  if (sampleIds.length === 0) return [];
-
-  // 共通ノード（sampleId なし）
-  const commonNodes = doc["@graph"].filter((n) => !n["provnote:sampleId"]);
-
-  return sampleIds.map((sid) => {
-    const sampleNodes = doc["@graph"].filter((n) => n["provnote:sampleId"] === sid);
-    const graphNodes = [...commonNodes, ...sampleNodes];
-    const nodeIdSet = new Set(graphNodes.map((n) => n["@id"]));
-
-    // 埋め込み関係のうち、両端が含まれるもののみ残すようにノードをフィルタ
-    // （埋め込み形式なのでノードを絞ればエッジも自然に絞られる）
-    return {
-      sampleId: sid,
-      doc: { ...doc, "@graph": graphNodes },
-    };
-  });
-}
 
 /**
  * ノードのサブタイプを判定（Entity を [使用したもの] と [結果] に分離）
@@ -98,7 +66,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
 
   // 予約済み provnote: キー（ビュー表示対象外）
   const RESERVED_KEYS = new Set([
-    "provnote:blockId", "provnote:sampleId", "provnote:attributes", "provnote:warnings",
+    "provnote:blockId", "provnote:attributes", "provnote:warnings",
   ]);
 
   let attrNodeIdx = 0;
@@ -106,8 +74,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
 
   // ノード
   for (const node of doc["@graph"]) {
-    let label = node["rdfs:label"];
-    if (node["provnote:sampleId"]) label += `\n[${node["provnote:sampleId"]}]`;
+    const label = node["rdfs:label"];
 
     elements.push({
       data: {
@@ -472,21 +439,7 @@ function CytoscapeGraph({
  * PROVドキュメントの可視化パネル
  */
 export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
-  const [activeSample, setActiveSample] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-
-  const sampleSplits = useMemo(() => (doc ? splitDocBySample(doc) : []), [doc]);
-
-  useEffect(() => {
-    if (sampleSplits.length > 0) {
-      const ids = sampleSplits.map((s) => s.sampleId);
-      if (!activeSample || !ids.includes(activeSample)) {
-        setActiveSample(ids[0]);
-      }
-    } else {
-      setActiveSample(null);
-    }
-  }, [sampleSplits, activeSample]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -507,41 +460,16 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
     );
   }
 
-  // 表示する ProvJsonLd を決定
-  const activeDoc = activeSample
-    ? sampleSplits.find((s) => s.sampleId === activeSample)?.doc ?? doc
-    : doc;
-  const showTabs = sampleSplits.length > 1;
-
   // 統計情報の計算
-  const relations = extractRelations(activeDoc);
-  const attrCount = activeDoc["@graph"].reduce((sum, n) => {
+  const relations = extractRelations(doc);
+  const attrCount = doc["@graph"].reduce((sum, n) => {
     let count = 0;
     if (n["provnote:attributes"]) count += (n["provnote:attributes"] as ProvAttribute[]).length;
     for (const key of Object.keys(n)) {
-      if (key.startsWith("provnote:") && !["provnote:blockId", "provnote:sampleId", "provnote:attributes", "provnote:warnings"].includes(key) && typeof n[key as `provnote:${string}`] === "string") count++;
+      if (key.startsWith("provnote:") && !["provnote:blockId", "provnote:attributes", "provnote:warnings"].includes(key) && typeof n[key as `provnote:${string}`] === "string") count++;
     }
     return sum + count;
   }, 0);
-
-  const sampleTabs = showTabs ? (
-    <div style={tabBarStyle}>
-      {sampleSplits.map(({ sampleId }) => (
-        <button
-          key={sampleId}
-          onClick={() => setActiveSample(sampleId)}
-          style={{
-            ...tabStyle,
-            borderBottom: activeSample === sampleId ? `2px solid ${THEME.primary}` : "2px solid transparent",
-            color: activeSample === sampleId ? THEME.primary : THEME.mutedFg,
-            fontWeight: activeSample === sampleId ? 600 : 400,
-          }}
-        >
-          {sampleId}
-        </button>
-      ))}
-    </div>
-  ) : null;
 
   const legendBar = (
     <div style={legendBarStyle}>
@@ -552,7 +480,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>
-          {t("provPanel.graphStats", { nodes: String(activeDoc["@graph"].length + attrCount), relations: String(relations.length + attrCount) })}
+          {t("provPanel.graphStats", { nodes: String(doc["@graph"].length + attrCount), relations: String(relations.length + attrCount) })}
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
@@ -568,18 +496,16 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
   return (
     <>
       <div style={panelStyle}>
-        {sampleTabs}
         {legendBar}
-        <CytoscapeGraph doc={activeDoc} />
+        <CytoscapeGraph doc={doc} />
       </div>
 
       {/* 拡大モーダル */}
       {expanded && createPortal(
         <div style={modalOverlayStyle} onClick={() => setExpanded(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
-            {sampleTabs}
             {legendBar}
-            <CytoscapeGraph doc={activeDoc} height={window.innerHeight - 120} />
+            <CytoscapeGraph doc={doc} height={window.innerHeight - 120} />
           </div>
         </div>,
         document.body,
@@ -618,20 +544,6 @@ const panelStyle: React.CSSProperties = {
   borderRadius: 8,
   background: THEME.background,
   overflow: "hidden",
-};
-
-const tabBarStyle: React.CSSProperties = {
-  display: "flex",
-  borderBottom: `1px solid ${THEME.border}`,
-  background: THEME.muted,
-};
-
-const tabStyle: React.CSSProperties = {
-  padding: "6px 14px",
-  fontSize: 12,
-  background: "none",
-  border: "none",
-  cursor: "pointer",
 };
 
 const legendBarStyle: React.CSSProperties = {

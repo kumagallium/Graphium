@@ -140,7 +140,7 @@ describe("ラベルエイリアス拡張", () => {
     expect(classifyLabel("[条件]")).toBe("alias");
   });
 
-  it("[パターン] は廃止されフリーラベルとして分類される", () => {
+  it("[パターン] はフリーラベルとして分類される", () => {
     expect(classifyLabel("[パターン]")).toBe("free");
   });
 });

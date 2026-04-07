@@ -21,7 +21,6 @@ const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#5b8fb9",
   "[使用したもの]": "#4B7A52",
   "[属性]": "#c08b3e",
-  "[パターン]": "#8b7ab5",
   "[結果]": "#c26356",
 };
 function getLabelColor(label: string): string {
@@ -159,16 +158,7 @@ export const NoteStatic: StoryObj = {
       <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
       <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
-      <EditorBlock label="[パターン]" indent={24}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead><tr><th style={th}>パターン名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
-          <tbody>
-            <tr><td style={td}>パターンA</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
-            <tr><td style={td}>パターンB</td><td style={td}>700℃</td><td style={td}>24h</td></tr>
-            <tr><td style={td}>パターンC</td><td style={td}>800℃</td><td style={td}>24h</td></tr>
-          </tbody>
-        </table>
-      </EditorBlock>
+      <EditorBlock label="[属性]" indent={24}><p>温度: 600℃</p></EditorBlock>
       <EditorBlock label="[属性]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
       <EditorBlock label="[属性]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
 
@@ -197,16 +187,7 @@ export const NoteHoverDemo: StoryObj = {
           <HoverBlock id="p1" indent={24} hoveredId={h} setHoveredId={setH}><p style={{ color: tokens.mutedFg }}>真空封入管内で封入する。（ラベルなし）</p></HoverBlock>
           <HoverBlock id="r1" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>封入されたCu粉末</p></HoverBlock>
           <HoverBlock id="s2" label="[手順]" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></HoverBlock>
-          <HoverBlock id="st" label="[パターン]" indent={24} hoveredId={h} setHoveredId={setH}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr><th style={th}>パターン名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
-              <tbody>
-                <tr><td style={td}>パターンA</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
-                <tr><td style={td}>パターンB</td><td style={td}>700℃</td><td style={td}>24h</td></tr>
-                <tr><td style={td}>パターンC</td><td style={td}>800℃</td><td style={td}>24h</td></tr>
-              </tbody>
-            </table>
-          </HoverBlock>
+          <HoverBlock id="st" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>温度: 600℃</p></HoverBlock>
           <HoverBlock id="c1" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>昇温速度: 5℃/min</p></HoverBlock>
           <HoverBlock id="c2" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>冷却: 炉冷</p></HoverBlock>
           <HoverBlock id="s3" label="[手順]" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></HoverBlock>

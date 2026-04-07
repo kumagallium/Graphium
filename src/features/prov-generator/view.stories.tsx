@@ -87,54 +87,6 @@ const provWithWarnings: ProvJsonLd = {
   ],
 };
 
-const provWithSamples: ProvJsonLd = {
-  "@context": ctx,
-  "@graph": [
-    {
-      "@id": "entity_b2",
-      "@type": "prov:Entity",
-      "rdfs:label": "Cu粉末",
-      "provnote:blockId": "b2",
-    },
-    {
-      "@id": "activity_b1__パターンA",
-      "@type": "prov:Activity",
-      "rdfs:label": "アニールする",
-      "provnote:blockId": "b3",
-      "provnote:sampleId": "パターンA",
-      "provnote:temp": "600℃",
-      "provnote:time": "24h",
-      "prov:used": [{ "@id": "entity_b2" }],
-    },
-    {
-      "@id": "activity_b1__パターンB",
-      "@type": "prov:Activity",
-      "rdfs:label": "アニールする",
-      "provnote:blockId": "b4",
-      "provnote:sampleId": "パターンB",
-      "provnote:temp": "700℃",
-      "provnote:time": "24h",
-      "prov:used": [{ "@id": "entity_b2" }],
-    },
-    {
-      "@id": "result_b5",
-      "@type": "prov:Entity",
-      "rdfs:label": "アニール品",
-      "provnote:blockId": "b5",
-      "provnote:sampleId": "パターンA",
-      "prov:wasGeneratedBy": { "@id": "activity_b1__パターンA" },
-    },
-    {
-      "@id": "result_b6",
-      "@type": "prov:Entity",
-      "rdfs:label": "アニール品",
-      "provnote:blockId": "b6",
-      "provnote:sampleId": "パターンB",
-      "prov:wasGeneratedBy": { "@id": "activity_b1__パターンB" },
-    },
-  ],
-};
-
 // テーブル構造化属性の例
 const provWithStructuredTable: ProvJsonLd = {
   "@context": ctx,
@@ -190,18 +142,6 @@ export const WithWarnings: StoryObj = {
     <Safe>
       <div style={{ maxWidth: 800 }}>
         <ProvGraphPanel doc={provWithWarnings} />
-      </div>
-    </Safe>
-  ),
-};
-
-// パターン別分離
-export const WithSamples: StoryObj = {
-  name: "パターン別グラフ",
-  render: () => (
-    <Safe>
-      <div style={{ maxWidth: 800 }}>
-        <ProvGraphPanel doc={provWithSamples} />
       </div>
     </Safe>
   ),

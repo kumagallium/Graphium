@@ -57,7 +57,6 @@ export const WithSections: Story = {
       { name: "[手順]", color: "#5b8fb9" },
       { name: "[使用したもの]", color: "#4B7A52" },
       { name: "[属性]", color: "#c08b3e" },
-      { name: "[パターン]", color: "#8b7ab5" },
       { name: "[結果]", color: "#c26356" },
     ];
 

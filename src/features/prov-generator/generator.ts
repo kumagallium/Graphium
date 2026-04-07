@@ -6,8 +6,6 @@
 // ──────────────────────────────────────────────
 
 import { CORE_LABELS, normalizeLabel, classifyLabel, getHeadingLabelRole, type CoreLabel } from "../context-label/labels";
-import { parseSampleTable, validateSampleIds, type SampleTable } from "../sample-branch/parser";
-import { expandSampleBranch, propagateBranches, type BranchExpansion } from "../sample-branch/expander";
 import type { BlockLink } from "../block-link/link-types";
 import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
@@ -29,7 +27,6 @@ export type ProvJsonLdNode = {
   "prov:wasGeneratedBy"?: { "@id": string };
   "provnote:attributes"?: ProvAttribute[];
   "provnote:blockId"?: string;
-  "provnote:sampleId"?: string;
   [key: `provnote:${string}`]: any;
 };
 
@@ -57,7 +54,6 @@ type InternalNode = {
   "@type": string;
   label: string;
   blockId: string;
-  sampleId?: string;
   params?: Record<string, string>;
   attributes?: { label: string; blockId: string }[];
 };
@@ -150,10 +146,6 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   const labeledBlocks: LabeledBlock[] = [];
 
-  // 後方互換: [パターン] は廃止されたが、既存データのために free ラベルとして扱いつつ
-  // パターン分岐展開は引き続き動作させる
-  const LEGACY_PATTERN_LABELS = new Set(["[パターン]", "[試料]", "[サンプル]", "[ケース]"]);
-
   for (const block of flatBlocks) {
     const rawLabel = labels.get(block.id);
     if (!rawLabel) continue;
@@ -161,7 +153,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const normalized = normalizeLabel(rawLabel);
     const layer = classifyLabel(normalized);
 
-    if (layer === "free" && !LEGACY_PATTERN_LABELS.has(rawLabel)) {
+    if (layer === "free") {
       warnings.push(createWarning("unknown-label", block.id, `"${rawLabel}" はフリーラベル — PROVに変換しません`));
       continue;
     }
@@ -188,104 +180,19 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // ── Step 3: パターン分岐の展開 ──
+  // ── Step 3: Activity ノード生成 ──
 
   const activities = labeledBlocks.filter((lb) => lb.provRole === "prov:Activity");
-
-  // [パターン] ラベルは廃止。パターン分岐展開は既存データの後方互換のため残す
-  const sampleTables = labeledBlocks
-    .filter((lb) => (lb.rawLabel === "[パターン]" || lb.rawLabel === "[試料]") && lb.block.type === "table")
-    .map((lb) => ({ block: lb.block, table: parseSampleTable(lb.block) }))
-    .filter((x): x is { block: any; table: SampleTable } => x.table !== null);
-
-  const conditionBlockIds = new Set(
-    labeledBlocks.filter((lb) => lb.coreLabel === "[属性]").map((lb) => lb.block.id)
-  );
-
-  const branchMap = new Map<string, BranchExpansion>();
-  const usedSampleTables = new Set<string>();
 
   for (const act of activities) {
     const blockId = act.block.id;
     const actLabel = getBlockText(act.block);
-
-    const actIdx = flatBlocks.indexOf(act.block);
-    const actLevel = act.block.props?.level ?? 2;
-    let scopeEnd = flatBlocks.length;
-    for (let i = actIdx + 1; i < flatBlocks.length; i++) {
-      if (flatBlocks[i].type === "heading" && (flatBlocks[i].props?.level ?? 2) <= actLevel) {
-        scopeEnd = i;
-        break;
-      }
-    }
-    const sampleEntry = sampleTables.find((st) => {
-      if (usedSampleTables.has(st.block.id)) return false;
-      const stIdx = flatBlocks.indexOf(st.block);
-      return stIdx > actIdx && stIdx < scopeEnd;
+    nodes.push({
+      "@id": `activity_${blockId}`,
+      "@type": "prov:Activity",
+      label: actLabel,
+      blockId,
     });
-
-    if (sampleEntry && sampleEntry.table.rows.length > 0) {
-      usedSampleTables.add(sampleEntry.block.id);
-      if (conditionBlockIds.has(sampleEntry.block.id)) {
-        warnings.push(createWarning(
-          "sample-condition-coexist",
-          sampleEntry.block.id,
-          "[試料] と [条件] が共存 — [試料] を優先、[条件] は全パターン共通として処理"
-        ));
-      }
-
-      const expansion = expandSampleBranch(blockId, actLabel, sampleEntry.table);
-      branchMap.set(blockId, expansion);
-
-      for (const a of expansion.activities) {
-        nodes.push({
-          "@id": a.id,
-          "@type": "prov:Activity",
-          label: a.label,
-          blockId: a.blockId,
-          sampleId: a.sampleId,
-        });
-      }
-
-      for (const e of expansion.entities) {
-        nodes.push({
-          "@id": e.id,
-          "@type": "prov:Entity",
-          label: e.label,
-          blockId: e.blockId,
-          sampleId: e.sampleId,
-          params: e.params,
-        });
-        relations.push({
-          "@type": "prov:used",
-          from: `${blockId}__sample_${e.sampleId}`,
-          to: e.id,
-        });
-      }
-    } else {
-      const informedLinks = informedByMap.get(blockId) ?? [];
-      const propagated = propagateBranches(blockId, actLabel, informedLinks, branchMap);
-
-      if (propagated) {
-        branchMap.set(blockId, propagated);
-        for (const a of propagated.activities) {
-          nodes.push({
-            "@id": a.id,
-            "@type": "prov:Activity",
-            label: a.label,
-            blockId: a.blockId,
-            sampleId: a.sampleId,
-          });
-        }
-      } else {
-        nodes.push({
-          "@id": `activity_${blockId}`,
-          "@type": "prov:Activity",
-          label: actLabel,
-          blockId,
-        });
-      }
-    }
   }
 
   // ── スコープ解決 ──
@@ -304,11 +211,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       if (normalized === "[手順]") {
         const role = getHeadingLabelRole(level, normalized);
         if (role === "activity") {
-          const branch = branchMap.get(block.id);
-          const actId = branch
-            ? branch.activities[0]?.id ?? `activity_${block.id}`
-            : `activity_${block.id}`;
-          scopeStack.push({ level, activityId: actId });
+          scopeStack.push({ level, activityId: `activity_${block.id}` });
         }
       }
     }
@@ -323,11 +226,6 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   function getActivityIdsForScope(blockId: string): string[] {
     const scopeActId = blockToActivityId.get(blockId);
     if (!scopeActId) return [];
-    for (const [, branch] of branchMap) {
-      if (branch.activities.some((a) => a.id === scopeActId)) {
-        return branch.activities.map((a) => a.id);
-      }
-    }
     return [scopeActId];
   }
 
@@ -411,14 +309,6 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   // ── [結果] → Entity + wasGeneratedBy 関係 ──
   // Phase 3: テーブルの場合は行ごとに個別 Entity に展開
-  // 行名がパターンIDに一致する場合は対応する分岐 Activity のみにリンク
-  const knownSampleIds = new Set<string>();
-  for (const [, branch] of branchMap) {
-    for (const a of branch.activities) {
-      if (a.sampleId) knownSampleIds.add(a.sampleId);
-    }
-  }
-
   for (const lb of labeledBlocks) {
     if (lb.coreLabel === "[結果]") {
       if (lb.block.type === "table") {
@@ -426,28 +316,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         if (parsed && parsed.rows.length > 0) {
           for (const row of parsed.rows) {
             const entityId = `result_${lb.block.id}_${row.name}`;
-            // 行名がパターンIDに一致するか判定
-            const matchedSampleId = knownSampleIds.has(row.name) ? row.name : undefined;
             nodes.push({
               "@id": entityId,
               "@type": "prov:Entity",
               label: row.name,
               blockId: lb.block.id,
-              sampleId: matchedSampleId,
               params: Object.keys(row.attrs).length > 0 ? row.attrs : undefined,
             });
-            if (matchedSampleId) {
-              // パターンIDに一致 → 対応する分岐 Activity のみにリンク
-              const actIds = getActivityIdsForScope(lb.block.id);
-              const matchedActId = actIds.find((id) => id.includes(`__sample_${matchedSampleId}`));
-              if (matchedActId) {
-                relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: matchedActId });
-              }
-            } else {
-              // 一致しない → 全分岐にリンク（従来通り）
-              for (const actId of getActivityIdsForScope(lb.block.id)) {
-                relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
-              }
+            for (const actId of getActivityIdsForScope(lb.block.id)) {
+              relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
             }
           }
         } else {
@@ -474,47 +351,26 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
           relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
         }
       }
-
-      // 結果テーブルのパターンID照合
-      if (lb.block.type === "table" && sampleTables.length > 0) {
-        const resultTable = parseSampleTable(lb.block);
-        if (resultTable) {
-          for (const st of sampleTables) {
-            const { unmatched } = validateSampleIds(st.table, resultTable);
-            if (unmatched.length > 0) {
-              warnings.push(createWarning(
-                "sample-id-mismatch",
-                lb.block.id,
-                `パターンID不一致: ${unmatched.join(", ")}`
-              ));
-            }
-          }
-        }
-      }
     }
   }
 
   // ── informed_by → 前手順の結果を経由してリンク ──
   for (const link of links) {
     if (link.type === "informed_by") {
-      const prevBranch = branchMap.get(link.targetBlockId);
-      const currentBranch = branchMap.get(link.sourceBlockId);
+      const prevActId = `activity_${link.targetBlockId}`;
+      const currentActId = `activity_${link.sourceBlockId}`;
 
-      const prevActIds = prevBranch
-        ? prevBranch.activities.map((a) => ({ id: a.id, sampleId: a.sampleId }))
-        : [{ id: `activity_${link.targetBlockId}`, sampleId: undefined as string | undefined }];
+      // 前手順の結果 Entity を探す
+      const resultNode = nodes.find(
+        (n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === prevActId
+      );
 
-      const currentActIds = currentBranch
-        ? currentBranch.activities.map((a) => ({ id: a.id, sampleId: a.sampleId }))
-        : [{ id: `activity_${link.sourceBlockId}`, sampleId: undefined as string | undefined }];
-
-      const findResultForActivity = (actId: string) =>
-        nodes.find((n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === actId);
-
-      const getOrCreateSynthetic = (prevActId: string, sampleId?: string) => {
-        const suffix = sampleId ? `${link.targetBlockId}__${sampleId}` : link.targetBlockId;
-        const syntheticId = `result_synthetic_${suffix}`;
-
+      let resultId: string;
+      if (resultNode) {
+        resultId = resultNode["@id"];
+      } else {
+        // 結果が明示されていない場合は合成 Entity を生成
+        const syntheticId = `result_synthetic_${link.targetBlockId}`;
         if (!nodes.find((n) => n["@id"] === syntheticId)) {
           const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? "前手順";
           nodes.push({
@@ -522,7 +378,6 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
             "@type": "prov:Entity",
             label: `${prevActLabel} の結果`,
             blockId: link.targetBlockId,
-            sampleId,
           });
           relations.push({
             "@type": "prov:wasGeneratedBy",
@@ -530,31 +385,10 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
             to: prevActId,
           });
         }
-        return syntheticId;
-      };
-
-      if (prevBranch && currentBranch) {
-        for (const curr of currentActIds) {
-          const prev = prevActIds.find((p) => p.sampleId === curr.sampleId);
-          if (!prev) continue;
-          const resultNode = findResultForActivity(prev.id);
-          const resultId = resultNode?.["@id"] ?? getOrCreateSynthetic(prev.id, prev.sampleId);
-          relations.push({ "@type": "prov:used", from: curr.id, to: resultId, linkId: link.id });
-        }
-      } else if (prevBranch && !currentBranch) {
-        for (const prev of prevActIds) {
-          const resultNode = findResultForActivity(prev.id);
-          const resultId = resultNode?.["@id"] ?? getOrCreateSynthetic(prev.id, prev.sampleId);
-          relations.push({ "@type": "prov:used", from: currentActIds[0].id, to: resultId, linkId: link.id });
-        }
-      } else {
-        const prev = prevActIds[0];
-        const resultNode = findResultForActivity(prev.id);
-        const resultId = resultNode?.["@id"] ?? getOrCreateSynthetic(prev.id, prev.sampleId);
-        for (const curr of currentActIds) {
-          relations.push({ "@type": "prov:used", from: curr.id, to: resultId, linkId: link.id });
-        }
+        resultId = syntheticId;
       }
+
+      relations.push({ "@type": "prov:used", from: currentActId, to: resultId, linkId: link.id });
     }
   }
 
@@ -585,9 +419,6 @@ function buildProvJsonLd(
       "rdfs:label": n.label,
       "provnote:blockId": n.blockId,
     };
-    if (n.sampleId) {
-      jsonLdNode["provnote:sampleId"] = n.sampleId;
-    }
     // 構造化属性（テーブルから展開された params）
     if (n.params) {
       for (const [k, v] of Object.entries(n.params)) {
