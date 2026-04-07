@@ -70,14 +70,19 @@ export function FileSidebar({
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
 
-  // ラベルカウント（全ノートから集計）
+  // ラベルカウント（ユニークな preview 数 = ギャラリーの行数）
   const labelCounts = useMemo(() => {
     if (!noteIndex) return new Map<string, number>();
-    const counts = new Map<string, number>();
+    const previewSets = new Map<string, Set<string>>();
     for (const note of noteIndex.notes) {
       for (const l of note.labels) {
-        counts.set(l.label, (counts.get(l.label) ?? 0) + 1);
+        if (!previewSets.has(l.label)) previewSets.set(l.label, new Set());
+        previewSets.get(l.label)!.add(l.preview);
       }
+    }
+    const counts = new Map<string, number>();
+    for (const [label, previews] of previewSets) {
+      counts.set(label, previews.size);
     }
     return counts;
   }, [noteIndex]);
