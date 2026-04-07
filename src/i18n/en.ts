@@ -86,6 +86,19 @@ export const en: Record<string, string> = {
   "panel.prov": "Procedure",
   "panel.generate": "Generate",
   "panel.generateManual": "Regenerate manually",
+  "panel.history": "History",
+
+  // ── 編集履歴パネル ──
+  "history.empty": "No edit history yet. History will be recorded on save.",
+  "history.revisions": "revisions",
+  "history.blocks": "blocks",
+  "history.labels": "labels",
+  "history.type.edit": "Edit",
+  "history.type.derive": "Derive",
+  "history.type.aiGen": "AI Generate",
+  "history.type.aiDerive": "AI Derive",
+  "history.type.template": "Template",
+  "history.type.deriveSource": "Forked",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",

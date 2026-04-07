@@ -11,6 +11,7 @@ import { expandSampleBranch, propagateBranches, type BranchExpansion } from "../
 import type { BlockLink } from "../block-link/link-types";
 import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
+import { buildDocumentProvenanceBundle, type DocumentProvenanceBundle } from "../document-provenance/prov-output";
 
 // ── PROV-JSON-LD の型定義（Phase 3: 埋め込み形式） ──
 
@@ -41,6 +42,8 @@ export type ProvJsonLd = {
   };
   "@graph": ProvJsonLdNode[];
   "provnote:warnings"?: ProvWarning[];
+  /** ドキュメント来歴（Content Provenance とは分離した prov:Bundle） */
+  "provnote:documentProvenance"?: DocumentProvenanceBundle;
 };
 
 // 後方互換: 旧型名をエイリアスとして維持
@@ -75,6 +78,8 @@ type GeneratorInput = {
   labels: Map<string, string>;
   /** ブロック間リンク（全リンク渡し可 — PROV 層のみ使用） */
   links: BlockLink[];
+  /** ドキュメント来歴（オプション） */
+  documentProvenance?: import("../document-provenance/types").DocumentProvenance;
 };
 
 // ── テーブル構造化パーサー ──
@@ -559,7 +564,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   console.groupEnd();
 
   // ── 中間表現 → PROV-JSON-LD 埋め込み形式に変換 ──
-  return buildProvJsonLd(nodes, relations, warnings);
+  return buildProvJsonLd(nodes, relations, warnings, input.documentProvenance);
 }
 
 // ── 中間表現 → PROV-JSON-LD 変換 ──
@@ -568,6 +573,7 @@ function buildProvJsonLd(
   nodes: InternalNode[],
   relations: InternalRelation[],
   warnings: ProvWarning[],
+  documentProvenance?: import("../document-provenance/types").DocumentProvenance,
 ): ProvJsonLd {
   // ノード ID → ProvJsonLdNode マップを構築
   const nodeMap = new Map<string, ProvJsonLdNode>();
@@ -620,6 +626,11 @@ function buildProvJsonLd(
     }
   }
 
+  // DocumentProvenance Bundle（オプション）
+  const docProvBundle = documentProvenance
+    ? buildDocumentProvenanceBundle(documentProvenance)
+    : undefined;
+
   return {
     "@context": {
       prov: "http://www.w3.org/ns/prov#",
@@ -629,6 +640,7 @@ function buildProvJsonLd(
     },
     "@graph": [...nodeMap.values()],
     "provnote:warnings": warnings.length > 0 ? warnings : undefined,
+    "provnote:documentProvenance": docProvBundle,
   };
 }
 
