@@ -1,0 +1,74 @@
+Third-Party Licenses for Graphium
+==================================
+
+This file lists third-party dependencies with non-permissive or
+attribution-required licenses used by Graphium.
+
+Graphium itself is licensed under the MIT License.
+See LICENSE for details.
+
+
+================================================================================
+BlockNote.js (@blocknote/core, @blocknote/react, @blocknote/shadcn)
+================================================================================
+
+License: MPL-2.0 (Mozilla Public License 2.0)
+Source:   https://github.com/TypeCellOS/BlockNote
+Usage:    Used as-is via npm, without modification.
+
+MPL-2.0 is a file-level copyleft license. Using these packages as
+unmodified dependencies does not impose copyleft obligations on
+Graphium's own source code.
+
+Full license text: https://www.mozilla.org/en-US/MPL/2.0/
+
+
+================================================================================
+elkjs
+================================================================================
+
+License: EPL-2.0 (Eclipse Public License 2.0)
+Source:   https://github.com/kieler/elkjs
+Usage:    Used as-is via npm, without modification.
+
+EPL-2.0 is a weak copyleft license. Using elkjs as an unmodified
+dependency does not impose copyleft obligations on Graphium's own
+source code.
+
+Full license text: https://www.eclipse.org/legal/epl-2.0/
+
+
+================================================================================
+lightningcss / lightningcss-darwin-arm64
+================================================================================
+
+License: MPL-2.0 (Mozilla Public License 2.0)
+Source:   https://github.com/nicolo-ribaudo/lightningcss
+Usage:    Build tool for CSS processing. No MPL-licensed code is
+          included in the application output.
+
+Full license text: https://www.mozilla.org/en-US/MPL/2.0/
+
+
+================================================================================
+DOMPurify
+================================================================================
+
+License: MPL-2.0 OR Apache-2.0 (dual license)
+Source:   https://github.com/cure53/DOMPurify
+Usage:    Used under the Apache-2.0 license.
+
+Full license text (Apache-2.0): https://www.apache.org/licenses/LICENSE-2.0
+
+
+================================================================================
+caniuse-lite
+================================================================================
+
+License: CC-BY-4.0 (Creative Commons Attribution 4.0 International)
+Source:   https://github.com/nicolo-ribaudo/caniuse-lite
+Data:     Based on https://caniuse.com/ data by Alexis Deveria
+
+CC-BY-4.0 requires attribution. This notice serves as attribution.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/
