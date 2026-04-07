@@ -1,0 +1,142 @@
+// ドキュメント来歴トラッカー
+// 保存ごとにリビジョンを記録し、DocumentProvenance を管理する
+
+import type {
+  DocumentProvenance,
+  RevisionEntity,
+  EditActivity,
+  EditActivityType,
+} from "./types";
+import { computeRevisionSummary, isEmptySummary } from "./diff";
+import type { ProvNoteDocument, ProvNotePage } from "../../lib/google-drive";
+
+// 既知のエージェント ID
+const HUMAN_AGENT_ID = "agent_human";
+
+/** 連番 ID 生成 */
+function nextId(prefix: string, existing: { id: string }[]): string {
+  let max = 0;
+  for (const item of existing) {
+    const match = item.id.match(new RegExp(`^${prefix}_(\\d+)$`));
+    if (match) {
+      max = Math.max(max, parseInt(match[1], 10));
+    }
+  }
+  return `${prefix}_${String(max + 1).padStart(3, "0")}`;
+}
+
+/** エージェントが存在しなければ追加 */
+function ensureAgent(
+  provenance: DocumentProvenance,
+  type: "human" | "ai",
+  label: string,
+): string {
+  const existing = provenance.agents.find(
+    (a) => a.type === type && a.label === label,
+  );
+  if (existing) return existing.id;
+
+  const id = type === "human" ? HUMAN_AGENT_ID : `agent_ai_${label.replace(/[^a-z0-9]/gi, "_")}`;
+  // 同じ ID が既にあれば既存を返す
+  const byId = provenance.agents.find((a) => a.id === id);
+  if (byId) return byId.id;
+
+  provenance.agents.push({ id, type, label });
+  return id;
+}
+
+/** 空の DocumentProvenance を作成 */
+export function createEmptyProvenance(): DocumentProvenance {
+  return {
+    revisions: [],
+    activities: [],
+    agents: [],
+  };
+}
+
+/** 保存時にリビジョンを追記する */
+export function recordRevision(
+  doc: ProvNoteDocument,
+  prevPage: ProvNotePage | null,
+  activityType: EditActivityType,
+  agentLabel?: string,
+): ProvNoteDocument {
+  const provenance = doc.documentProvenance
+    ? structuredClone(doc.documentProvenance)
+    : createEmptyProvenance();
+
+  const currentPage = doc.pages[0];
+  if (!currentPage) return doc;
+
+  // 差分計算
+  const summary = computeRevisionSummary(prevPage, currentPage);
+
+  // 変更なしならスキップ
+  if (prevPage && isEmptySummary(summary)) return doc;
+
+  const now = new Date().toISOString();
+
+  // エージェント登録
+  const agentType = activityType === "human_edit" ? "human" : "ai";
+  const label = agentLabel ?? (agentType === "human" ? "user" : "ai");
+  const agentId = ensureAgent(provenance, agentType, label);
+
+  // Activity 作成
+  const activityId = nextId("edit", provenance.activities);
+  const activity: EditActivity = {
+    id: activityId,
+    type: activityType,
+    startedAt: now,
+    endedAt: now,
+    wasAssociatedWith: agentId,
+  };
+  provenance.activities.push(activity);
+
+  // Revision 作成
+  const prevRevision = provenance.revisions[provenance.revisions.length - 1];
+  const revisionId = nextId("rev", provenance.revisions);
+  const revision: RevisionEntity = {
+    id: revisionId,
+    savedAt: now,
+    summary,
+    wasDerivedFrom: prevRevision?.id,
+    wasGeneratedBy: activityId,
+  };
+  provenance.revisions.push(revision);
+
+  // 上限チェック: 100件を超えたら古いものを削除
+  if (provenance.revisions.length > 100) {
+    const removeCount = provenance.revisions.length - 100;
+    const removedRevisions = provenance.revisions.splice(0, removeCount);
+
+    // 削除されたリビジョンに紐づく Activity も削除
+    const removedActivityIds = new Set(removedRevisions.map((r) => r.wasGeneratedBy));
+    provenance.activities = provenance.activities.filter(
+      (a) => !removedActivityIds.has(a.id),
+    );
+
+    // 最古リビジョンの wasDerivedFrom をクリア（前リビジョンが削除済み）
+    if (provenance.revisions.length > 0) {
+      provenance.revisions[0].wasDerivedFrom = undefined;
+    }
+  }
+
+  return {
+    ...doc,
+    documentProvenance: provenance,
+  };
+}
+
+/** AI 操作による保存の場合、generatedBy から EditAgent 情報を抽出 */
+export function detectActivityType(
+  doc: ProvNoteDocument,
+): { type: EditActivityType; agentLabel?: string } {
+  if (doc.generatedBy) {
+    const model = doc.generatedBy.model ?? doc.generatedBy.agent;
+    if (doc.derivedFromNoteId) {
+      return { type: "ai_derivation", agentLabel: model };
+    }
+    return { type: "ai_generation", agentLabel: model };
+  }
+  return { type: "human_edit" };
+}

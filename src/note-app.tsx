@@ -58,8 +58,11 @@ import {
   type ProvNoteDocument,
   fetchMediaBlobUrl,
   extractDriveFileId,
+  getLatestRevisionId,
 } from "./lib/google-drive";
 import type { NoteLink } from "./lib/google-drive";
+import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
+import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type ProvNoteIndex } from "./features/navigation";
 import {
@@ -170,9 +173,13 @@ function NoteEditorInner({
   const editorRef = useRef<any>(null);
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
+  // 前回保存時のページ状態（差分計算用）
+  const prevPageRef = useRef<import("./lib/google-drive").ProvNotePage | null>(
+    initialDoc?.pages[0] ?? null,
+  );
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "source">(
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source">(
     sourceDoc ? "source" : "graph"
   );
   const t = useT();
@@ -255,7 +262,7 @@ function NoteEditorInner({
     // インデックステーブルの状態を収集
     const indexTablesSnapshot = indexTableStore.getSnapshot();
     const hasIndexTables = Object.keys(indexTablesSnapshot).length > 0;
-    return {
+    let doc: ProvNoteDocument = {
       version: 2,
       title,
       pages: [
@@ -272,15 +279,35 @@ function NoteEditorInner({
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
+      documentProvenance: initialDoc?.documentProvenance,
       chats: savedChats.length > 0 ? savedChats : undefined,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
+
+    // ドキュメント来歴: リビジョンを追記
+    const { type, agentLabel } = detectActivityType(doc);
+    doc = recordRevision(doc, prevPageRef.current, type, agentLabel);
+    // 前回保存状態を更新
+    prevPageRef.current = structuredClone(doc.pages[0]);
+
+    return doc;
   }, [title, labelStore, linkStore, indexTableStore, aiAssistant, initialDoc]);
 
   const handleSave = useCallback(() => {
-    onSave(buildDocument());
-  }, [onSave, buildDocument]);
+    const doc = buildDocument();
+    onSave(doc);
+    // 保存後に Drive Revision ID を非同期で取得・紐付け
+    if (fileId && doc.documentProvenance) {
+      const revisions = doc.documentProvenance.revisions;
+      const lastRev = revisions[revisions.length - 1];
+      if (lastRev && !lastRev.driveRevisionId) {
+        getLatestRevisionId(fileId).then((driveRevId) => {
+          if (driveRevId) lastRev.driveRevisionId = driveRevId;
+        });
+      }
+    }
+  }, [onSave, buildDocument, fileId]);
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
@@ -290,6 +317,7 @@ function NoteEditorInner({
     editorRef,
     labelStore.labels,
     linkStore.links,
+    initialDoc?.documentProvenance,
   );
 
   // ラベル・リンク・インデックステーブル変更時に自動保存トリガー
@@ -851,7 +879,7 @@ function NoteEditorInner({
         {/* 右: Graph / PROV / Chat / Source パネル */}
         <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-            {(["graph", "prov", "chat", ...(sourceDoc ? ["source" as const] : [])] as const).map((tab) => (
+            {(["graph", "prov", "chat", "history", ...(sourceDoc ? ["source" as const] : [])] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setRightTab(tab)}
@@ -862,7 +890,7 @@ function NoteEditorInner({
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {tab === "graph" ? "Graph" : tab === "prov" ? t("panel.prov") : tab === "chat" ? "Chat" : "Source"}
+                {tab === "graph" ? "Graph" : tab === "prov" ? t("panel.prov") : tab === "chat" ? "Chat" : tab === "history" ? t("panel.history") : "Source"}
               </button>
             ))}
             {rightTab === "prov" && (
@@ -891,6 +919,9 @@ function NoteEditorInner({
                 onInsertToScope={handleInsertToScope}
                 onDeriveNote={handleAiDeriveFromChat}
               />
+            )}
+            {rightTab === "history" && (
+              <DocumentProvenancePanel provenance={initialDoc?.documentProvenance} />
             )}
             {rightTab === "source" && sourceDoc && (
               <SourceDocPanel doc={sourceDoc} />

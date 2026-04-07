@@ -86,6 +86,13 @@ export const ja: Record<string, string> = {
   "panel.prov": "手順",
   "panel.generate": "生成",
   "panel.generateManual": "手動で再生成",
+  "panel.history": "履歴",
+
+  // ── 編集履歴パネル ──
+  "history.empty": "編集履歴はまだありません。保存時に記録されます。",
+  "history.revisions": "リビジョン",
+  "history.blocks": "ブロック",
+  "history.labels": "ラベル",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",

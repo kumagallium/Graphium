@@ -125,6 +125,113 @@ generator.ts は `blocks` + `labels` + `provLinks` から PROV-JSON-LD を計算
 
 ---
 
+## ドキュメント来歴（Document Provenance）
+
+ノート内容の来歴（Content Provenance）とは別に、**ドキュメント自体の編集操作を PROV-DM で記録**する。
+
+### 二重来歴（Dual Provenance）
+
+| 層 | 何を記録 | データ |
+|---|---|---|
+| **Content Provenance** | ノート内容の来歴（手順→結果など） | `provLinks`, `knowledgeLinks` |
+| **Document Provenance** | ドキュメント自体の編集来歴 | `documentProvenance` |
+
+Content Provenance はノートの「意味的な因果関係」、Document Provenance は「誰がいつ何を編集したか」。
+
+### 型定義
+
+```typescript
+type DocumentProvenance = {
+  /** prov:Entity — 各保存状態（リビジョン） */
+  revisions: RevisionEntity[];
+  /** prov:Activity — 編集操作 */
+  activities: EditActivity[];
+  /** prov:Agent — 編集者 */
+  agents: EditAgent[];
+};
+
+type RevisionEntity = {
+  id: string;                    // "rev_001"
+  savedAt: string;               // ISO 8601
+  driveRevisionId?: string;      // Google Drive Revision ID
+  summary: RevisionSummary;      // 変更サマリ
+  wasDerivedFrom?: string;       // 前リビジョン ID → prov:wasDerivedFrom
+  wasGeneratedBy: string;        // EditActivity ID → prov:wasGeneratedBy
+};
+
+type EditActivity = {
+  id: string;                    // "edit_001"
+  type: "human_edit" | "ai_generation" | "ai_derivation" | "template_create";
+  startedAt: string;
+  endedAt: string;
+  wasAssociatedWith: string;     // EditAgent ID
+};
+
+type EditAgent = {
+  id: string;
+  type: "human" | "ai";
+  label: string;                 // "user" | "claude-3.5-sonnet" など
+};
+
+type RevisionSummary = {
+  blocksAdded: number;
+  blocksRemoved: number;
+  blocksModified: number;
+  labelsChanged: string[];       // 変更されたラベル名
+  provLinksAdded: number;
+  provLinksRemoved: number;
+  knowledgeLinksAdded: number;
+  knowledgeLinksRemoved: number;
+};
+```
+
+### 保存場所
+
+`ProvNoteDocument.documentProvenance` として JSON ファイル内に保存。
+
+### PROV-JSON-LD 出力
+
+PROV-JSON-LD 生成時、`documentProvenance` は `prov:Bundle` として Content Provenance と分離して出力する。
+
+```jsonc
+{
+  "@context": { ... },
+  "@graph": [ /* Content Provenance（ノート内容の来歴） */ ],
+  "provnote:documentProvenance": {
+    "@type": "prov:Bundle",
+    "@graph": [
+      {
+        "@id": "rev_002",
+        "@type": "prov:Entity",
+        "prov:wasDerivedFrom": { "@id": "rev_001" },
+        "prov:wasGeneratedBy": { "@id": "edit_002" },
+        "prov:generatedAtTime": "2026-04-07T14:30:00Z"
+      },
+      {
+        "@id": "edit_002",
+        "@type": "prov:Activity",
+        "prov:wasAssociatedWith": { "@id": "agent_human" },
+        "prov:startedAtTime": "2026-04-07T14:25:00Z",
+        "prov:endedAtTime": "2026-04-07T14:30:00Z"
+      },
+      {
+        "@id": "agent_human",
+        "@type": "prov:Agent",
+        "rdfs:label": "user"
+      }
+    ]
+  }
+}
+```
+
+### リビジョン管理ルール
+
+- リビジョンは最新 **100 件** まで保持。超過分は古い順に削除。
+- 保存ごとに前回のスナップショットと diff を計算し、`RevisionSummary` を自動生成。
+- AI 操作は既存の `generatedBy` を `EditAgent` として統合。
+
+---
+
 ## Google Drive 統合
 
 - **形式:** JSON 文字列として保存。MIME タイプ `application/json`、拡張子 `.provnote.json`
@@ -133,3 +240,4 @@ generator.ts は `blocks` + `labels` + `provLinks` から PROV-JSON-LD を計算
 - **読み込み:** `files.get` + `alt=media` で JSON を取得
 - **一覧:** `files.list` で `.provnote.json` ファイルを取得
 - **ノート間リンクの解決:** `BlockLink.targetNoteId` は Google Drive のファイル ID
+- **Revision API:** `revisions.list` でバージョン履歴を取得し、`RevisionEntity.driveRevisionId` と紐付け

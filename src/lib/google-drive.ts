@@ -2,6 +2,7 @@
 // ProvNote 専用フォルダ内にノートファイルを保存・読み込み
 
 import { getAccessToken } from "./google-auth";
+import type { DocumentProvenance } from "../features/document-provenance/types";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -71,6 +72,8 @@ export type ProvNoteDocument = {
   };
   /** スコープ別 AI チャット履歴 */
   chats?: ScopeChat[];
+  /** ドキュメント来歴（編集操作の PROV-DM 記録） */
+  documentProvenance?: DocumentProvenance;
   createdAt: string;
   modifiedAt: string;
 };
@@ -267,6 +270,27 @@ export async function saveFile(
       body: JSON.stringify(content),
     }
   );
+}
+
+/** Google Drive Revision の型 */
+export type DriveRevision = {
+  id: string;
+  modifiedTime: string;
+};
+
+/** ファイルの最新リビジョン ID を取得 */
+export async function getLatestRevisionId(fileId: string): Promise<string | null> {
+  try {
+    const res = await authedFetch(
+      `${DRIVE_API}/files/${fileId}/revisions?fields=revisions(id,modifiedTime)&pageSize=1`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const revisions: DriveRevision[] = data.revisions ?? [];
+    return revisions.length > 0 ? revisions[revisions.length - 1].id : null;
+  } catch {
+    return null;
+  }
 }
 
 // ファイルを削除（ゴミ箱に移動）
