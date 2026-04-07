@@ -13,6 +13,7 @@ import {
   type ProvNoteDocument,
 } from "../lib/google-drive";
 import { PROV_TEMPLATE } from "../lib/prov-template";
+import { recordRevision } from "../features/document-provenance/tracker";
 import {
   buildNoteGraph,
   type NoteGraphData,
@@ -218,11 +219,14 @@ export function useFileManager(authenticated: boolean) {
   // PROV テンプレートから作成
   const handleNewFromTemplate = useCallback(() => {
     setActiveFileId(null);
-    setActiveDoc({
+    let doc: ProvNoteDocument = {
       ...PROV_TEMPLATE,
       createdAt: new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
-    });
+    };
+    // ドキュメント来歴: テンプレート作成を記録
+    doc = recordRevision(doc, null, "template_create");
+    setActiveDoc(doc);
     setEditorKey((k) => k + 1);
   }, [setActiveFileId]);
 
@@ -318,7 +322,7 @@ export function useFileManager(authenticated: boolean) {
       try {
         // 派生先ノートを作成
         const now = new Date().toISOString();
-        const newDoc: ProvNoteDocument = {
+        let newDoc: ProvNoteDocument = {
           version: 2,
           title: `↳ ${derivedTitle}`,
           pages: [{ id: "main", title: `↳ ${derivedTitle}`, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
@@ -327,6 +331,8 @@ export function useFileManager(authenticated: boolean) {
           createdAt: now,
           modifiedAt: now,
         };
+        // ドキュメント来歴: 派生ノート作成を記録
+        newDoc = recordRevision(newDoc, null, "human_edit");
         const newFileId = await createFile(newDoc.title, newDoc);
 
         // 元ノートに noteLinks を追加して保存
@@ -375,6 +381,9 @@ export function useFileManager(authenticated: boolean) {
     async (doc: ProvNoteDocument) => {
       setDeriving(true);
       try {
+        // ドキュメント来歴: AI 派生ノート作成を記録
+        const model = doc.generatedBy?.model ?? doc.generatedBy?.agent;
+        doc = recordRevision(doc, null, "ai_derivation", model);
         const newFileId = await createFile(doc.title, doc);
         const now = new Date().toISOString();
 

@@ -7,6 +7,12 @@ export type RevisionSummary = {
   blocksAdded: number;
   blocksRemoved: number;
   blocksModified: number;
+  /** 追加されたブロック ID */
+  addedBlockIds?: string[];
+  /** 削除されたブロック ID */
+  removedBlockIds?: string[];
+  /** 変更されたブロック ID */
+  modifiedBlockIds?: string[];
   labelsChanged: string[];
   provLinksAdded: number;
   provLinksRemoved: number;

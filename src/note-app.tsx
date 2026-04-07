@@ -181,6 +181,33 @@ function NoteEditorInner({
   const [currentProvenance, setCurrentProvenance] = useState(
     initialDoc?.documentProvenance ?? undefined,
   );
+  // AI 挿入直後フラグ（次回保存を ai_generation として記録）
+  const lastAiInsertRef = useRef(false);
+  // 履歴ハイライト対象ブロック ID
+  const [highlightBlockIds, setHighlightBlockIds] = useState<string[]>([]);
+  // ブロックハイライト: 動的 <style> タグで対象ブロックの背景色を変更
+  useEffect(() => {
+    const styleId = "doc-provenance-highlight";
+    let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (highlightBlockIds.length === 0) {
+      styleEl?.remove();
+      return;
+    }
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      document.head.appendChild(styleEl);
+    }
+    const selectors = highlightBlockIds
+      .map((id) => `[data-id="${id}"][data-node-type="blockOuter"]`)
+      .join(",\n");
+    styleEl.textContent = `${selectors} {
+  background: rgba(59, 130, 246, 0.08);
+  border-left: 2px solid rgba(59, 130, 246, 0.5);
+  transition: background 0.2s ease;
+}`;
+    return () => { styleEl?.remove(); };
+  }, [highlightBlockIds]);
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source">(
@@ -290,8 +317,19 @@ function NoteEditorInner({
     };
 
     // ドキュメント来歴: リビジョンを追記
-    const { type, agentLabel } = detectActivityType(doc);
-    doc = recordRevision(doc, prevPageRef.current, type, agentLabel);
+    // AI 挿入直後かどうかを判定（lastAiInsertRef が true なら ai_generation）
+    let actType: import("./features/document-provenance/types").EditActivityType;
+    let actLabel: string | undefined;
+    if (lastAiInsertRef.current) {
+      actType = "ai_generation";
+      actLabel = getSelectedModel?.() ?? "ai";
+      lastAiInsertRef.current = false;
+    } else {
+      const detected = detectActivityType(doc);
+      actType = detected.type;
+      actLabel = detected.agentLabel;
+    }
+    doc = recordRevision(doc, prevPageRef.current, actType, actLabel);
     // 前回保存状態を更新
     prevPageRef.current = structuredClone(doc.pages[0]);
 
@@ -459,6 +497,7 @@ function NoteEditorInner({
         ];
         editor.updateBlock(targetBlockId, { content: newContent });
       }
+      lastAiInsertRef.current = true;
       markDirty();
     },
     [markDirty, aiAssistant.sourceBlockIds],
@@ -890,7 +929,7 @@ function NoteEditorInner({
             {(["graph", "prov", "chat", "history", ...(sourceDoc ? ["source" as const] : [])] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setRightTab(tab)}
+                onClick={() => { setRightTab(tab); if (tab !== "history") setHighlightBlockIds([]); }}
                 className={cn(
                   "text-xs font-bold tracking-wide px-1.5 py-0.5 rounded transition-colors",
                   rightTab === tab
@@ -929,7 +968,7 @@ function NoteEditorInner({
               />
             )}
             {rightTab === "history" && (
-              <DocumentProvenancePanel provenance={currentProvenance} />
+              <DocumentProvenancePanel provenance={currentProvenance} onHighlightBlocks={setHighlightBlockIds} />
             )}
             {rightTab === "source" && sourceDoc && (
               <SourceDocPanel doc={sourceDoc} />

@@ -36,10 +36,14 @@ export function computeRevisionSummary(
   if (!prevPage) {
     // 初回保存: 全ブロックが新規
     const currentBlocks = collectBlockIds(currentPage.blocks);
+    const addedBlockIds = [...currentBlocks.keys()];
     return {
       blocksAdded: currentBlocks.size,
       blocksRemoved: 0,
       blocksModified: 0,
+      addedBlockIds,
+      removedBlockIds: [],
+      modifiedBlockIds: [],
       labelsChanged: Object.keys(currentPage.labels),
       provLinksAdded: currentPage.provLinks.length,
       provLinksRemoved: 0,
@@ -52,22 +56,22 @@ export function computeRevisionSummary(
   const prevBlocks = collectBlockIds(prevPage.blocks);
   const currentBlocks = collectBlockIds(currentPage.blocks);
 
-  let blocksAdded = 0;
-  let blocksRemoved = 0;
-  let blocksModified = 0;
+  const addedBlockIds: string[] = [];
+  const removedBlockIds: string[] = [];
+  const modifiedBlockIds: string[] = [];
 
   for (const [id, block] of currentBlocks) {
     const prevBlock = prevBlocks.get(id);
     if (!prevBlock) {
-      blocksAdded++;
+      addedBlockIds.push(id);
     } else if (blockContentKey(block) !== blockContentKey(prevBlock)) {
-      blocksModified++;
+      modifiedBlockIds.push(id);
     }
   }
 
   for (const id of prevBlocks.keys()) {
     if (!currentBlocks.has(id)) {
-      blocksRemoved++;
+      removedBlockIds.push(id);
     }
   }
 
@@ -110,9 +114,12 @@ export function computeRevisionSummary(
   }
 
   return {
-    blocksAdded,
-    blocksRemoved,
-    blocksModified,
+    blocksAdded: addedBlockIds.length,
+    blocksRemoved: removedBlockIds.length,
+    blocksModified: modifiedBlockIds.length,
+    addedBlockIds: addedBlockIds.length > 0 ? addedBlockIds : undefined,
+    removedBlockIds: removedBlockIds.length > 0 ? removedBlockIds : undefined,
+    modifiedBlockIds: modifiedBlockIds.length > 0 ? modifiedBlockIds : undefined,
     labelsChanged: [...new Set(labelsChanged)],
     provLinksAdded,
     provLinksRemoved,

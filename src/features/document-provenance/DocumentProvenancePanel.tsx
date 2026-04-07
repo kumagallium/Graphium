@@ -1,11 +1,15 @@
 // ドキュメント来歴パネル
 // リビジョン履歴をタイムラインとして表示する
+// リビジョンクリックで変更ブロックをハイライト
 
+import { useState } from "react";
 import type { DocumentProvenance, RevisionSummary } from "./types";
 import { useT } from "../../i18n";
 
 type Props = {
   provenance: DocumentProvenance | null | undefined;
+  /** リビジョン選択時のコールバック（ブロック ID 一覧） */
+  onHighlightBlocks?: (blockIds: string[]) => void;
 };
 
 /** 変更サマリを人間が読める形式に変換 */
@@ -45,8 +49,17 @@ function activityTypeLabel(type: string): string {
   }
 }
 
-export function DocumentProvenancePanel({ provenance }: Props) {
+/** RevisionSummary から変更ブロック ID を集約 */
+function getChangedBlockIds(summary: RevisionSummary): string[] {
+  return [
+    ...(summary.addedBlockIds ?? []),
+    ...(summary.modifiedBlockIds ?? []),
+  ];
+}
+
+export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props) {
   const t = useT();
+  const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
 
   if (!provenance || provenance.revisions.length === 0) {
     return (
@@ -56,10 +69,20 @@ export function DocumentProvenancePanel({ provenance }: Props) {
     );
   }
 
-  // 新しい順に表示
   const reversedRevisions = [...provenance.revisions].reverse();
   const activityMap = new Map(provenance.activities.map((a) => [a.id, a]));
   const agentMap = new Map(provenance.agents.map((a) => [a.id, a]));
+
+  const handleRevisionClick = (revId: string, summary: RevisionSummary) => {
+    if (selectedRevId === revId) {
+      // 同じリビジョンをクリック → ハイライト解除
+      setSelectedRevId(null);
+      onHighlightBlocks?.([]);
+    } else {
+      setSelectedRevId(revId);
+      onHighlightBlocks?.(getChangedBlockIds(summary));
+    }
+  };
 
   return (
     <div className="p-3 space-y-1">
@@ -70,11 +93,20 @@ export function DocumentProvenancePanel({ provenance }: Props) {
         const activity = activityMap.get(rev.wasGeneratedBy);
         const agent = activity ? agentMap.get(activity.wasAssociatedWith) : null;
         const summaryParts = formatSummary(rev.summary, t);
+        const isSelected = selectedRevId === rev.id;
+        const hasBlocks = getChangedBlockIds(rev.summary).length > 0;
 
         return (
           <div
             key={rev.id}
-            className="border border-border rounded px-2.5 py-1.5 text-xs space-y-0.5 bg-background"
+            onClick={() => hasBlocks && handleRevisionClick(rev.id, rev.summary)}
+            className={[
+              "border rounded px-2.5 py-1.5 text-xs space-y-0.5 transition-colors",
+              isSelected
+                ? "border-primary bg-primary/5"
+                : "border-border bg-background",
+              hasBlocks ? "cursor-pointer hover:border-primary/50" : "",
+            ].join(" ")}
           >
             <div className="flex items-center justify-between">
               <span className="font-mono text-muted-foreground">{rev.id}</span>
