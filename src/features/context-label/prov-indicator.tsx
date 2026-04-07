@@ -33,9 +33,9 @@ const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#5b8fb9",
   "[材料]": "#4B7A52",
   "[ツール]": "#c08b3e",
-  "[属性]": "#c08b3e",
+  "[属性]": "#8fa394",
   "[結果]": "#c26356",
-  "[条件]": "#c08b3e",
+  "[条件]": "#8fa394",
 };
 
 function getLabelColor(label: string): string {
