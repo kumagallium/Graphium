@@ -26,12 +26,14 @@ export function buildDocumentProvenanceBundle(
 
   // prov:Agent ノード
   for (const agent of provenance.agents) {
-    graph.push({
+    const agentNode: ProvBundleNode = {
       "@id": agent.id,
       "@type": "prov:Agent",
       "rdfs:label": agent.label,
       "provnote:agentType": agent.type,
-    });
+    };
+    if (agent.email) agentNode["foaf:mbox"] = agent.email;
+    graph.push(agentNode);
   }
 
   // prov:Activity ノード
@@ -60,6 +62,10 @@ export function buildDocumentProvenanceBundle(
     }
     if (revision.driveRevisionId) {
       node["provnote:driveRevisionId"] = revision.driveRevisionId;
+    }
+    node["provnote:contentHash"] = revision.contentHash;
+    if (revision.prevContentHash) {
+      node["provnote:prevContentHash"] = revision.prevContentHash;
     }
     graph.push(node);
   }

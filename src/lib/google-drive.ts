@@ -427,6 +427,24 @@ export async function fetchMediaBlobUrl(driveFileId: string): Promise<string> {
   return url;
 }
 
+// ユーザーメールのキャッシュ
+let cachedUserEmail: string | null = null;
+
+/** 現在のユーザーの Google アカウントメールアドレスを取得 */
+export async function getUserEmail(): Promise<string | null> {
+  if (cachedUserEmail) return cachedUserEmail;
+  try {
+    const res = await authedFetch(
+      "https://www.googleapis.com/oauth2/v2/userinfo?fields=email"
+    );
+    const data = await res.json();
+    cachedUserEmail = data.email ?? null;
+    return cachedUserEmail;
+  } catch {
+    return null;
+  }
+}
+
 /** CDN URL から Drive ファイル ID を抽出 */
 export function extractDriveFileId(url: string): string | null {
   const match = url.match(/googleusercontent\.com\/d\/([^=/?]+)/);
@@ -437,6 +455,7 @@ export function extractDriveFileId(url: string): string | null {
 export function clearCache(): void {
   cachedFolderId = null;
   cachedUploadFolderId = null;
+  cachedUserEmail = null;
   // Blob URL を解放
   for (const url of blobUrlCache.values()) {
     URL.revokeObjectURL(url);

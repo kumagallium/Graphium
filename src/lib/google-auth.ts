@@ -6,7 +6,7 @@ const DEFAULT_CLIENT_ID =
 const CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || DEFAULT_CLIENT_ID;
 
-const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
 const STORAGE_KEY = "provnote_auth";
 // 以前ログインに成功した記録（サイレントリフレッシュ判定用）
 const HAS_CONSENTED_KEY = "provnote_has_consented";

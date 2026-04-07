@@ -1,15 +1,19 @@
 // ドキュメント差分計算
 // 前回保存と現在の状態を比較して RevisionSummary を生成する
 
-import type { RevisionSummary } from "./types";
+import type { RevisionSummary, BlockContentDiff } from "./types";
 import type { ProvNotePage } from "../../lib/google-drive";
+
+/** ブロックのテキスト内容を抽出 */
+function blockTextContent(block: any): string {
+  return Array.isArray(block.content)
+    ? block.content.map((c: any) => c.text ?? "").join("")
+    : "";
+}
 
 /** ブロックの内容をハッシュ的に比較するためのキー生成 */
 function blockContentKey(block: any): string {
-  // テキストブロックの場合は content を文字列化
-  const content = Array.isArray(block.content)
-    ? block.content.map((c: any) => c.text ?? "").join("")
-    : "";
+  const content = blockTextContent(block);
   const props = block.props ? JSON.stringify(block.props) : "";
   return `${block.type}:${content}:${props}`;
 }
@@ -37,6 +41,11 @@ export function computeRevisionSummary(
     // 初回保存: 全ブロックが新規
     const currentBlocks = collectBlockIds(currentPage.blocks);
     const addedBlockIds = [...currentBlocks.keys()];
+    const contentDiff: BlockContentDiff[] = [];
+    for (const [id, block] of currentBlocks) {
+      const text = blockTextContent(block);
+      if (text) contentDiff.push({ blockId: id, type: "add", after: text });
+    }
     return {
       blocksAdded: currentBlocks.size,
       blocksRemoved: 0,
@@ -44,6 +53,7 @@ export function computeRevisionSummary(
       addedBlockIds,
       removedBlockIds: [],
       modifiedBlockIds: [],
+      contentDiff: contentDiff.length > 0 ? contentDiff : undefined,
       labelsChanged: Object.keys(currentPage.labels),
       provLinksAdded: currentPage.provLinks.length,
       provLinksRemoved: 0,
@@ -59,19 +69,30 @@ export function computeRevisionSummary(
   const addedBlockIds: string[] = [];
   const removedBlockIds: string[] = [];
   const modifiedBlockIds: string[] = [];
+  const contentDiff: BlockContentDiff[] = [];
 
   for (const [id, block] of currentBlocks) {
     const prevBlock = prevBlocks.get(id);
     if (!prevBlock) {
       addedBlockIds.push(id);
+      const text = blockTextContent(block);
+      if (text) contentDiff.push({ blockId: id, type: "add", after: text });
     } else if (blockContentKey(block) !== blockContentKey(prevBlock)) {
       modifiedBlockIds.push(id);
+      contentDiff.push({
+        blockId: id,
+        type: "modify",
+        before: blockTextContent(prevBlock),
+        after: blockTextContent(block),
+      });
     }
   }
 
   for (const id of prevBlocks.keys()) {
     if (!currentBlocks.has(id)) {
       removedBlockIds.push(id);
+      const text = blockTextContent(prevBlocks.get(id)!);
+      if (text) contentDiff.push({ blockId: id, type: "remove", before: text });
     }
   }
 
@@ -120,12 +141,27 @@ export function computeRevisionSummary(
     addedBlockIds: addedBlockIds.length > 0 ? addedBlockIds : undefined,
     removedBlockIds: removedBlockIds.length > 0 ? removedBlockIds : undefined,
     modifiedBlockIds: modifiedBlockIds.length > 0 ? modifiedBlockIds : undefined,
+    contentDiff: contentDiff.length > 0 ? contentDiff : undefined,
     labelsChanged: [...new Set(labelsChanged)],
     provLinksAdded,
     provLinksRemoved,
     knowledgeLinksAdded,
     knowledgeLinksRemoved,
   };
+}
+
+/** ページ全体の SHA-256 ハッシュを計算（改ざん検知用） */
+export async function computePageHash(page: ProvNotePage): Promise<string> {
+  const text = JSON.stringify({
+    blocks: page.blocks,
+    labels: page.labels,
+    provLinks: page.provLinks,
+    knowledgeLinks: page.knowledgeLinks,
+  });
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** RevisionSummary が「変更なし」かどうかを判定 */

@@ -59,6 +59,7 @@ import {
   fetchMediaBlobUrl,
   extractDriveFileId,
   getLatestRevisionId,
+  getUserEmail,
 } from "./lib/google-drive";
 import type { NoteLink } from "./lib/google-drive";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
@@ -273,7 +274,7 @@ function NoteEditorInner({
   }, [labelStore]);
 
   // ── 保存ロジック ──
-  const buildDocument = useCallback((): ProvNoteDocument => {
+  const buildDocument = useCallback(async (): Promise<ProvNoteDocument> => {
     const blocks = editorRef.current?.document || [];
     const labelSnapshot = labelStore.getSnapshot();
     const labelsObj: Record<string, string> = {};
@@ -320,7 +321,7 @@ function NoteEditorInner({
       modifiedAt: new Date().toISOString(),
     };
 
-    // ドキュメント来歴: リビジョンを追記
+    // ドキュメント来歴: リビジョンを追記（buildDocument を async 化）
     // AI 挿入直後かどうかを判定（lastAiInsertRef が true なら ai_generation）
     let actType: import("./features/document-provenance/types").EditActivityType;
     let actLabel: string | undefined;
@@ -333,15 +334,16 @@ function NoteEditorInner({
       actType = detected.type;
       actLabel = detected.agentLabel;
     }
-    doc = recordRevision(doc, prevPageRef.current, actType, actLabel);
+    const email = await getUserEmail() ?? undefined;
+    doc = await recordRevision(doc, prevPageRef.current, actType, { agentLabel: actLabel, email });
     // 前回保存状態を更新
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
   }, [title, labelStore, linkStore, indexTableStore, aiAssistant, initialDoc, currentProvenance]);
 
-  const handleSave = useCallback(() => {
-    const doc = buildDocument();
+  const handleSave = useCallback(async () => {
+    const doc = await buildDocument();
     onSave(doc);
     // 保存後に documentProvenance を state に反映（History パネル更新用）
     if (doc.documentProvenance) {

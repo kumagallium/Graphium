@@ -5,6 +5,7 @@ export type {
   EditAgent,
   EditActivityType,
   RevisionSummary,
+  BlockContentDiff,
 } from "./types";
 export { MAX_REVISIONS } from "./types";
 export { recordRevision, detectActivityType, createEmptyProvenance } from "./tracker";

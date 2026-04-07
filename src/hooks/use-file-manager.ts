@@ -217,7 +217,7 @@ export function useFileManager(authenticated: boolean) {
   }, [setActiveFileId]);
 
   // PROV テンプレートから作成
-  const handleNewFromTemplate = useCallback(() => {
+  const handleNewFromTemplate = useCallback(async () => {
     setActiveFileId(null);
     let doc: ProvNoteDocument = {
       ...PROV_TEMPLATE,
@@ -225,7 +225,7 @@ export function useFileManager(authenticated: boolean) {
       modifiedAt: new Date().toISOString(),
     };
     // ドキュメント来歴: テンプレート作成を記録
-    doc = recordRevision(doc, null, "template_create");
+    doc = await recordRevision(doc, null, "template_create");
     setActiveDoc(doc);
     setEditorKey((k) => k + 1);
   }, [setActiveFileId]);
@@ -332,7 +332,7 @@ export function useFileManager(authenticated: boolean) {
           modifiedAt: now,
         };
         // ドキュメント来歴: 手動派生ノート作成を記録
-        newDoc = recordRevision(newDoc, null, "human_derivation");
+        newDoc = await recordRevision(newDoc, null, "human_derivation");
         const newFileId = await createFile(newDoc.title, newDoc);
 
         // 元ノートに noteLinks を追加して保存
@@ -345,7 +345,7 @@ export function useFileManager(authenticated: boolean) {
           });
           let updatedDoc: ProvNoteDocument = { ...activeDoc, noteLinks, modifiedAt: now };
           // ドキュメント来歴: 派生元として記録
-          updatedDoc = recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", undefined, true);
+          updatedDoc = await recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", { force: true });
           await saveFile(activeFileIdRef.current, updatedDoc);
           setActiveDoc(updatedDoc);
         }
@@ -385,7 +385,7 @@ export function useFileManager(authenticated: boolean) {
       try {
         // ドキュメント来歴: AI 派生ノート作成を記録
         const model = doc.generatedBy?.model ?? doc.generatedBy?.agent;
-        doc = recordRevision(doc, null, "ai_derivation", model);
+        doc = await recordRevision(doc, null, "ai_derivation", { agentLabel: model });
         const newFileId = await createFile(doc.title, doc);
         const now = new Date().toISOString();
 
@@ -399,7 +399,7 @@ export function useFileManager(authenticated: boolean) {
           });
           let updatedDoc: ProvNoteDocument = { ...activeDoc, noteLinks, modifiedAt: now };
           // ドキュメント来歴: 派生元として記録
-          updatedDoc = recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", undefined, true);
+          updatedDoc = await recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", { force: true });
           await saveFile(activeFileIdRef.current, updatedDoc);
           setActiveDoc(updatedDoc);
         }

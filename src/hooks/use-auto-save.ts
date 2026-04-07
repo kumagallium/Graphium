@@ -3,10 +3,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useAutoSave(onSave: () => void) {
+export function useAutoSave(onSave: () => void | Promise<void>) {
   const [dirty, setDirty] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleSaveRef = useRef<() => void>(() => {});
+  const handleSaveRef = useRef<() => void | Promise<void>>(() => {});
 
   // 常に最新の onSave を ref に保持
   useEffect(() => {

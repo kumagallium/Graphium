@@ -7,7 +7,7 @@ import type {
   EditActivity,
   EditActivityType,
 } from "./types";
-import { computeRevisionSummary, isEmptySummary } from "./diff";
+import { computeRevisionSummary, computePageHash, isEmptySummary } from "./diff";
 import type { ProvNoteDocument, ProvNotePage } from "../../lib/google-drive";
 
 // 既知のエージェント ID
@@ -25,23 +25,31 @@ function nextId(prefix: string, existing: { id: string }[]): string {
   return `${prefix}_${String(max + 1).padStart(3, "0")}`;
 }
 
-/** エージェントが存在しなければ追加 */
+/** エージェントが存在しなければ追加（email があれば更新） */
 function ensureAgent(
   provenance: DocumentProvenance,
   type: "human" | "ai",
   label: string,
+  email?: string,
 ): string {
   const existing = provenance.agents.find(
     (a) => a.type === type && a.label === label,
   );
-  if (existing) return existing.id;
+  if (existing) {
+    // email が新たに判明した場合は更新
+    if (email && !existing.email) existing.email = email;
+    return existing.id;
+  }
 
   const id = type === "human" ? HUMAN_AGENT_ID : `agent_ai_${label.replace(/[^a-z0-9]/gi, "_")}`;
   // 同じ ID が既にあれば既存を返す
   const byId = provenance.agents.find((a) => a.id === id);
-  if (byId) return byId.id;
+  if (byId) {
+    if (email && !byId.email) byId.email = email;
+    return byId.id;
+  }
 
-  provenance.agents.push({ id, type, label });
+  provenance.agents.push({ id, type, label, email });
   return id;
 }
 
@@ -54,15 +62,23 @@ export function createEmptyProvenance(): DocumentProvenance {
   };
 }
 
+/** recordRevision のオプション */
+export type RecordRevisionOptions = {
+  agentLabel?: string;
+  /** Google アカウントのメールアドレス */
+  email?: string;
+  /** true にすると diff が空でもリビジョンを記録する（アクティビティログ用） */
+  force?: boolean;
+};
+
 /** 保存時にリビジョンを追記する */
-export function recordRevision(
+export async function recordRevision(
   doc: ProvNoteDocument,
   prevPage: ProvNotePage | null,
   activityType: EditActivityType,
-  agentLabel?: string,
-  /** true にすると diff が空でもリビジョンを記録する（アクティビティログ用） */
-  force?: boolean,
-): ProvNoteDocument {
+  options?: RecordRevisionOptions,
+): Promise<ProvNoteDocument> {
+  const { agentLabel, email, force } = options ?? {};
   const provenance = doc.documentProvenance
     ? structuredClone(doc.documentProvenance)
     : createEmptyProvenance();
@@ -78,12 +94,15 @@ export function recordRevision(
 
   const now = new Date().toISOString();
 
+  // ページハッシュ計算（改ざん検知用）
+  const contentHash = await computePageHash(currentPage);
+
   // エージェント登録
   const agentType =
     activityType === "human_edit" || activityType === "human_derivation" || activityType === "derive_source"
       ? "human" : "ai";
   const label = agentLabel ?? (agentType === "human" ? "user" : "ai");
-  const agentId = ensureAgent(provenance, agentType, label);
+  const agentId = ensureAgent(provenance, agentType, label, email);
 
   // Activity 作成
   const activityId = nextId("edit", provenance.activities);
@@ -103,6 +122,8 @@ export function recordRevision(
     id: revisionId,
     savedAt: now,
     summary,
+    contentHash,
+    prevContentHash: prevRevision?.contentHash,
     wasDerivedFrom: prevRevision?.id,
     wasGeneratedBy: activityId,
   };
