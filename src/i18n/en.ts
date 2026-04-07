@@ -304,4 +304,8 @@ export const en: Record<string, string> = {
   "label.networkTitle": "Notes using \"{name}\"",
   "label.legendLabel": "Label value",
   "label.legendNote": "Note",
+
+  // ── PDF エクスポート ──
+  "pdf.export": "PDF",
+  "pdf.exporting": "Exporting...",
 };

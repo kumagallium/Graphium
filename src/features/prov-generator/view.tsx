@@ -92,7 +92,7 @@ function getNodeSubtype(node: ProvJsonLdNode): string {
  * ProvJsonLd → Cytoscape elements 変換
  * Phase 3: 埋め込み関係からエッジを抽出
  */
-function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefinition[] {
+export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefinition[] {
   const elements: cytoscape.ElementDefinition[] = [];
   const nodeIdSet = new Set(doc["@graph"].map((n) => n["@id"]));
 
@@ -207,7 +207,7 @@ const NODE_SIZES: Record<string, { width: number; height: number }> = {
 };
 const DEFAULT_NODE_SIZE = { width: 140, height: 50 };
 
-async function applyElkLayout(cy: cytoscape.Core) {
+export async function applyElkLayout(cy: cytoscape.Core) {
   const elk = new ELK();
 
   const elkNodes = cy.nodes().map((n) => {
@@ -267,7 +267,7 @@ const commonNodeStyle = {
   "transition-timing-function": "ease-in-out-sine" as any,
 };
 
-const cyStyles: cytoscape.StylesheetStyle[] = [
+export const cyStyles: cytoscape.StylesheetStyle[] = [
   {
     selector: 'node[subtype = "prov:Activity"]',
     style: {
