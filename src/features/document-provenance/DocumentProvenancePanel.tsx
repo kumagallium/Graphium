@@ -1,9 +1,9 @@
 // ドキュメント来歴パネル
 // リビジョン履歴をタイムラインとして表示する
-// リビジョンクリックで変更ブロックをハイライト
+// リビジョンクリックで変更ブロックをハイライト + テキスト差分を展開表示
 
 import { useState } from "react";
-import type { DocumentProvenance, RevisionSummary } from "./types";
+import type { DocumentProvenance, RevisionSummary, RevisionEntity, BlockContentDiff } from "./types";
 import { useT } from "../../i18n";
 
 type Props = {
@@ -11,6 +11,12 @@ type Props = {
   /** リビジョン選択時のコールバック（ブロック ID 一覧） */
   onHighlightBlocks?: (blockIds: string[]) => void;
 };
+
+/** テキストを省略表示（長すぎる場合） */
+function truncate(text: string, max = 80): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + "…";
+}
 
 /** 変更サマリを人間が読める形式に変換 */
 function formatSummary(summary: RevisionSummary, t: ReturnType<typeof useT>): string[] {
@@ -59,6 +65,53 @@ function getChangedBlockIds(summary: RevisionSummary): string[] {
   ];
 }
 
+/** diff type のアイコン・色 */
+function diffTypeStyle(type: BlockContentDiff["type"]) {
+  switch (type) {
+    case "add": return { icon: "+", color: "text-green-600 dark:text-green-400" };
+    case "remove": return { icon: "−", color: "text-red-600 dark:text-red-400" };
+    case "modify": return { icon: "~", color: "text-blue-600 dark:text-blue-400" };
+  }
+}
+
+/** テキスト差分の展開表示 */
+function ContentDiffView({ diffs }: { diffs: BlockContentDiff[] }) {
+  return (
+    <div className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5">
+      {diffs.map((diff, i) => {
+        const { icon, color } = diffTypeStyle(diff.type);
+        return (
+          <div key={i} className="text-[10px] leading-relaxed">
+            <div className="flex items-start gap-1">
+              <span className={`font-bold ${color} shrink-0 w-3 text-center`}>{icon}</span>
+              <span className="font-mono text-muted-foreground/60 shrink-0">
+                {diff.blockId.slice(0, 8)}
+              </span>
+              <div className="min-w-0 flex-1">
+                {diff.type === "modify" && diff.before && (
+                  <div className="text-red-600/70 dark:text-red-400/70 line-through break-all">
+                    {truncate(diff.before)}
+                  </div>
+                )}
+                {(diff.type === "add" || diff.type === "modify") && diff.after && (
+                  <div className={`${diff.type === "add" ? "text-green-600/70 dark:text-green-400/70" : "text-foreground/70"} break-all`}>
+                    {truncate(diff.after)}
+                  </div>
+                )}
+                {diff.type === "remove" && diff.before && (
+                  <div className="text-red-600/70 dark:text-red-400/70 line-through break-all">
+                    {truncate(diff.before)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props) {
   const t = useT();
   const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
@@ -91,23 +144,24 @@ export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props
       <div className="text-xs text-muted-foreground mb-2">
         {provenance.revisions.length} {t("history.revisions")}
       </div>
-      {reversedRevisions.map((rev) => {
+      {reversedRevisions.map((rev: RevisionEntity) => {
         const activity = activityMap.get(rev.wasGeneratedBy);
         const agent = activity ? agentMap.get(activity.wasAssociatedWith) : null;
         const summaryParts = formatSummary(rev.summary, t);
         const isSelected = selectedRevId === rev.id;
         const hasBlocks = getChangedBlockIds(rev.summary).length > 0;
+        const hasDiffs = rev.summary.contentDiff && rev.summary.contentDiff.length > 0;
 
         return (
           <div
             key={rev.id}
-            onClick={() => hasBlocks && handleRevisionClick(rev.id, rev.summary)}
+            onClick={() => (hasBlocks || hasDiffs) && handleRevisionClick(rev.id, rev.summary)}
             className={[
               "border rounded px-2.5 py-1.5 text-xs space-y-0.5 transition-colors",
               isSelected
                 ? "border-primary bg-primary/5"
                 : "border-border bg-background",
-              hasBlocks ? "cursor-pointer hover:border-primary/50" : "",
+              hasBlocks || hasDiffs ? "cursor-pointer hover:border-primary/50" : "",
             ].join(" ")}
           >
             <div className="flex items-center justify-between">
@@ -123,6 +177,9 @@ export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props
               {agent && (
                 <span className="text-muted-foreground">
                   {agent.type === "ai" ? "AI" : ""} {agent.label}
+                  {agent.email && (
+                    <span className="ml-1 text-muted-foreground/60">({agent.email})</span>
+                  )}
                 </span>
               )}
             </div>
@@ -130,6 +187,10 @@ export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props
               <div className="text-muted-foreground">
                 {summaryParts.join(" | ")}
               </div>
+            )}
+            {/* テキスト差分の展開表示（選択時） */}
+            {isSelected && hasDiffs && (
+              <ContentDiffView diffs={rev.summary.contentDiff!} />
             )}
           </div>
         );

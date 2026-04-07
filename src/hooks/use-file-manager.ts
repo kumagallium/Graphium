@@ -335,18 +335,21 @@ export function useFileManager(authenticated: boolean) {
         newDoc = await recordRevision(newDoc, null, "human_derivation");
         const newFileId = await createFile(newDoc.title, newDoc);
 
-        // 元ノートに noteLinks を追加して保存
-        if (activeFileIdRef.current && activeDoc) {
-          const noteLinks = activeDoc.noteLinks ?? [];
+        // 元ノートに noteLinks を追加して保存（Drive から最新を読み直して provenance を引き継ぐ）
+        if (activeFileIdRef.current) {
+          const latestDoc = await loadFile(activeFileIdRef.current);
+          const noteLinks = latestDoc.noteLinks ?? [];
           noteLinks.push({
             targetNoteId: newFileId,
             sourceBlockId,
             type: "derived_from",
           });
-          let updatedDoc: ProvNoteDocument = { ...activeDoc, noteLinks, modifiedAt: now };
+          let updatedDoc: ProvNoteDocument = { ...latestDoc, noteLinks, modifiedAt: now };
           // ドキュメント来歴: 派生元として記録
-          updatedDoc = await recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", { force: true });
+          updatedDoc = await recordRevision(updatedDoc, latestDoc.pages[0], "derive_source", { force: true });
           await saveFile(activeFileIdRef.current, updatedDoc);
+          // キャッシュも更新（次回 handleOpenFile でキャッシュから読む際に最新を返すため）
+          docCacheRef.current.set(activeFileIdRef.current, updatedDoc);
           setActiveDoc(updatedDoc);
         }
 
@@ -389,18 +392,20 @@ export function useFileManager(authenticated: boolean) {
         const newFileId = await createFile(doc.title, doc);
         const now = new Date().toISOString();
 
-        // 元ノートに noteLinks を追加して保存
-        if (activeFileIdRef.current && activeDoc && doc.derivedFromBlockId) {
-          const noteLinks = activeDoc.noteLinks ?? [];
+        // 元ノートに noteLinks を追加して保存（Drive から最新を読み直して provenance を引き継ぐ）
+        if (activeFileIdRef.current && doc.derivedFromBlockId) {
+          const latestDoc = await loadFile(activeFileIdRef.current);
+          const noteLinks = latestDoc.noteLinks ?? [];
           noteLinks.push({
             targetNoteId: newFileId,
             sourceBlockId: doc.derivedFromBlockId,
             type: "derived_from",
           });
-          let updatedDoc: ProvNoteDocument = { ...activeDoc, noteLinks, modifiedAt: now };
+          let updatedDoc: ProvNoteDocument = { ...latestDoc, noteLinks, modifiedAt: now };
           // ドキュメント来歴: 派生元として記録
-          updatedDoc = await recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", { force: true });
+          updatedDoc = await recordRevision(updatedDoc, latestDoc.pages[0], "derive_source", { force: true });
           await saveFile(activeFileIdRef.current, updatedDoc);
+          docCacheRef.current.set(activeFileIdRef.current, updatedDoc);
           setActiveDoc(updatedDoc);
         }
 
