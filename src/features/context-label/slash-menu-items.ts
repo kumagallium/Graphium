@@ -25,14 +25,14 @@ type LabelSlashItem = {
   group: string;
   aliases: string[];
   label: CoreLabel;
-  blockType: "heading" | "bulletListItem" | "table";
+  blockType: "heading" | "bulletListItem";
   onItemClick: (editor: any) => void;
 };
 
 function createLabelSlashItem(
   title: string,
   label: CoreLabel,
-  blockType: "heading" | "bulletListItem" | "table",
+  blockType: "heading" | "bulletListItem",
   aliases: string[]
 ): LabelSlashItem {
   return {
@@ -45,32 +45,9 @@ function createLabelSlashItem(
     onItemClick: (editor: any) => {
       const currentBlock = editor.getTextCursorPosition().block;
 
-      let newBlock: any;
-      if (blockType === "heading") {
-        newBlock = { type: "heading", props: { level: 2 } };
-      } else if (blockType === "table") {
-        // パターンテーブル: パターン名・条件列を持つ 3x2 テーブル
-        newBlock = {
-          type: "table",
-          content: {
-            type: "tableContent",
-            rows: [
-              { cells: [
-                [{ type: "text", text: "パターン名", styles: {} }],
-                [{ type: "text", text: "条件1", styles: {} }],
-                [{ type: "text", text: "条件2", styles: {} }],
-              ]},
-              { cells: [
-                [{ type: "text", text: "", styles: {} }],
-                [{ type: "text", text: "", styles: {} }],
-                [{ type: "text", text: "", styles: {} }],
-              ]},
-            ],
-          },
-        };
-      } else {
-        newBlock = { type: "bulletListItem" };
-      }
+      const newBlock: any = blockType === "heading"
+        ? { type: "heading", props: { level: 2 } }
+        : { type: "bulletListItem" };
 
       const inserted = editor.insertBlocks(
         [newBlock],

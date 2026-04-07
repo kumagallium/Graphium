@@ -82,43 +82,6 @@ const contextLabelInitialContent = [
     content: [{ type: "text", text: "2. アニールする", styles: {} }],
   },
   {
-    id: "block-sample-table",
-    type: "table",
-    content: {
-      type: "tableContent",
-      rows: [
-        {
-          cells: [
-            [{ type: "text", text: "パターン名", styles: {} }],
-            [{ type: "text", text: "温度", styles: {} }],
-            [{ type: "text", text: "時間", styles: {} }],
-          ],
-        },
-        {
-          cells: [
-            [{ type: "text", text: "パターンA", styles: {} }],
-            [{ type: "text", text: "600℃", styles: {} }],
-            [{ type: "text", text: "24h", styles: {} }],
-          ],
-        },
-        {
-          cells: [
-            [{ type: "text", text: "パターンB", styles: {} }],
-            [{ type: "text", text: "700℃", styles: {} }],
-            [{ type: "text", text: "24h", styles: {} }],
-          ],
-        },
-        {
-          cells: [
-            [{ type: "text", text: "パターンC", styles: {} }],
-            [{ type: "text", text: "800℃", styles: {} }],
-            [{ type: "text", text: "24h", styles: {} }],
-          ],
-        },
-      ],
-    },
-  },
-  {
     id: "block-step3",
     type: "heading",
     props: { level: 2 },
@@ -136,7 +99,6 @@ const initialLabels: [string, string][] = [
   ["block-used1", "[使用したもの]"],
   ["block-result1", "[結果]"],
   ["block-step2", "[手順]"],
-  ["block-sample-table", "[パターン]"],
   ["block-step3", "[手順]"],
   ["block-result3", "[結果]"],
 ];

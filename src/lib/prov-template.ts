@@ -1,5 +1,5 @@
 // PROV-DM の全機能を示すテンプレート
-// 手順・使用したもの・条件・パターンテーブル・結果・前手順リンクを含む
+// 手順・使用したもの・属性・結果・前手順リンクを含む
 
 import type { ProvNoteDocument } from "./google-drive";
 
@@ -11,7 +11,6 @@ const ids = {
   used1b: "tpl-used1b",
   result1: "tpl-result1",
   step2: "tpl-step2",
-  sampleTable: "tpl-sample-table",
   cond2a: "tpl-cond2a",
   cond2b: "tpl-cond2b",
   step3: "tpl-step3",
@@ -54,43 +53,6 @@ const blocks = [
     content: [{ type: "text", text: "2. アニールする", styles: {} }],
   },
   {
-    id: ids.sampleTable,
-    type: "table",
-    content: {
-      type: "tableContent",
-      rows: [
-        {
-          cells: [
-            [{ type: "text", text: "パターン名", styles: {} }],
-            [{ type: "text", text: "温度", styles: {} }],
-            [{ type: "text", text: "時間", styles: {} }],
-          ],
-        },
-        {
-          cells: [
-            [{ type: "text", text: "パターンA", styles: {} }],
-            [{ type: "text", text: "600℃", styles: {} }],
-            [{ type: "text", text: "24h", styles: {} }],
-          ],
-        },
-        {
-          cells: [
-            [{ type: "text", text: "パターンB", styles: {} }],
-            [{ type: "text", text: "700℃", styles: {} }],
-            [{ type: "text", text: "24h", styles: {} }],
-          ],
-        },
-        {
-          cells: [
-            [{ type: "text", text: "パターンC", styles: {} }],
-            [{ type: "text", text: "800℃", styles: {} }],
-            [{ type: "text", text: "24h", styles: {} }],
-          ],
-        },
-      ],
-    },
-  },
-  {
     id: ids.cond2a,
     type: "paragraph",
     content: [{ type: "text", text: "昇温速度: 5℃/min", styles: {} }],
@@ -120,7 +82,6 @@ const labels: Record<string, string> = {
   [ids.used1b]: "[使用したもの]",
   [ids.result1]: "[結果]",
   [ids.step2]: "[手順]",
-  [ids.sampleTable]: "[パターン]",
   [ids.cond2a]: "[属性]",
   [ids.cond2b]: "[属性]",
   [ids.step3]: "[手順]",

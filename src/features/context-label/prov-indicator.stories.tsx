@@ -22,7 +22,6 @@ const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#5b8fb9",
   "[使用したもの]": "#4B7A52",
   "[属性]": "#c08b3e",
-  "[パターン]": "#8b7ab5",
   "[結果]": "#c26356",
 };
 function getLabelColor(label: string): string {
@@ -151,15 +150,7 @@ export const NoteWithIndicators: StoryObj = {
       <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
       <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
-      <EditorBlock label="[パターン]" indent={24}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead><tr><th style={th}>パターン名</th><th style={th}>温度</th><th style={th}>時間</th></tr></thead>
-          <tbody>
-            <tr><td style={td}>パターンA</td><td style={td}>600℃</td><td style={td}>24h</td></tr>
-            <tr><td style={td}>パターンB</td><td style={td}>700℃</td><td style={td}>24h</td></tr>
-          </tbody>
-        </table>
-      </EditorBlock>
+      <EditorBlock label="[属性]" indent={24}><p>温度: 600℃</p></EditorBlock>
       <EditorBlock label="[属性]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
       <EditorBlock label="[属性]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
 

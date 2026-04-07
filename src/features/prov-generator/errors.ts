@@ -5,10 +5,7 @@
 
 export type ProvWarningType =
   | "unknown-label"          // 未知のラベル → Layer 3 扱い
-  | "broken-link"            // 前手順リンク先が存在しない
-  | "empty-sample-table"     // [試料] テーブルが空
-  | "sample-id-mismatch"     // [結果] のパターンIDが [試料] と不一致
-  | "sample-condition-coexist"; // 同じH2内に [試料] と [条件] が両方
+  | "broken-link";           // 前手順リンク先が存在しない
 
 export type ProvWarning = {
   type: ProvWarningType;
