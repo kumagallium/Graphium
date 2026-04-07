@@ -333,9 +333,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     return [scopeActId];
   }
 
-  // ── [使用したもの] / [材料] / [ツール] → Entity + used 関係 ──
+  // ── [材料] / [ツール] → Entity + used 関係 ──
   // Phase 3: テーブルの場合は行ごとに個別 Entity に展開
-  const INPUT_LABELS: CoreLabel[] = ["[使用したもの]", "[材料]", "[ツール]"];
+  const INPUT_LABELS: CoreLabel[] = ["[材料]", "[ツール]"];
   for (const lb of labeledBlocks) {
     if (lb.coreLabel && INPUT_LABELS.includes(lb.coreLabel)) {
       const subtype = lb.coreLabel ? LABEL_TO_ENTITY_SUBTYPE[lb.coreLabel] : undefined;
@@ -667,7 +667,6 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
       }
       return "prov:Activity";
     }
-    case "[使用したもの]": return "prov:Entity";
     case "[材料]": return "prov:Entity";
     case "[ツール]": return "prov:Entity";
     case "[属性]": return null; // 親ノードのプロパティとして埋め込む
@@ -746,7 +745,8 @@ function findParentLabeledNodeId(
   const normalized = normalizeLabel(parentLabel);
 
   switch (normalized) {
-    case "[使用したもの]":
+    case "[材料]":
+    case "[ツール]":
       return `entity_${parentId}`;
     case "[結果]":
       return `result_${parentId}`;

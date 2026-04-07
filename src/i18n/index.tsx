@@ -110,7 +110,6 @@ export function getLocale(): Locale {
 
 const LABEL_DISPLAY_MAP: Record<string, string> = {
   "[手順]": "label.step.bracketed",
-  "[使用したもの]": "label.used.bracketed",
   "[材料]": "label.material.bracketed",
   "[ツール]": "label.tool.bracketed",
   "[属性]": "label.attr.bracketed",

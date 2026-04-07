@@ -24,7 +24,6 @@ export type LabelSuggestion = {
 // バッジ表示名（[] を除いた名前）
 export const DISPLAY_NAMES: Record<string, string> = {
   "[手順]": "手順",
-  "[使用したもの]": "使用するもの",
   "[材料]": "材料",
   "[ツール]": "ツール",
   "[属性]": "属性",

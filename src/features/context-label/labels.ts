@@ -3,10 +3,9 @@
 // thought-provenance-spec.md § 0-A に準拠
 // ──────────────────────────────────────────────
 
-// Layer 1: コアラベル（PROV-DM直結、6種）
+// Layer 1: コアラベル（PROV-DM直結、5種）
 export type CoreLabel =
   | "[手順]"
-  | "[使用したもの]"
   | "[材料]"
   | "[ツール]"
   | "[属性]"
@@ -14,7 +13,6 @@ export type CoreLabel =
 
 export const CORE_LABELS: CoreLabel[] = [
   "[手順]",
-  "[使用したもの]",
   "[材料]",
   "[ツール]",
   "[属性]",
@@ -24,7 +22,6 @@ export const CORE_LABELS: CoreLabel[] = [
 // PROV-DMロールのマッピング
 export const CORE_LABEL_PROV: Record<CoreLabel, string> = {
   "[手順]": "prov:Activity",
-  "[使用したもの]": "prov:used",
   "[材料]": "prov:used",       // Entity subtype: material
   "[ツール]": "prov:used",     // Entity subtype: tool
   "[属性]": "prov:Entity",     // 親ノードの属性（prov:Entity として出力）
@@ -44,8 +41,9 @@ export const ALIAS_MAP: Record<string, CoreLabel> = {
   "[産物]": "[結果]",
   "[output]": "[結果]",
   "[Reagents]": "[材料]",
-  // 表示名統一: [使用するもの] → 内部は [使用したもの] に正規化
-  "[使用するもの]": "[使用したもの]",
+  // 後方互換: [使用したもの] → [材料] に正規化
+  "[使用したもの]": "[材料]",
+  "[使用するもの]": "[材料]",
   // [条件] は [属性] のエイリアスとして後方互換
   "[条件]": "[属性]",
   "[パラメータ]": "[属性]",

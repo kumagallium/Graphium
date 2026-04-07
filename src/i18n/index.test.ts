@@ -57,7 +57,8 @@ describe("t()", () => {
 describe("getDisplayLabel()", () => {
   it("内部キーをロケールに応じた表示ラベルに変換する（英語）", () => {
     expect(getDisplayLabel("[手順]")).toBe("[Procedure]");
-    expect(getDisplayLabel("[使用したもの]")).toBe("[Materials]");
+    expect(getDisplayLabel("[材料]")).toBe("[Material]");
+    expect(getDisplayLabel("[ツール]")).toBe("[Tool]");
     expect(getDisplayLabel("[属性]")).toBe("[Attributes]");
     expect(getDisplayLabel("[結果]")).toBe("[Results]");
     expect(getDisplayLabel("[前手順]")).toBe("[Prior step]");
@@ -72,7 +73,7 @@ describe("getDisplayLabel()", () => {
   it("日本語ロケールでは日本語の表示ラベルを返す", () => {
     syncLocale("ja");
     expect(getDisplayLabel("[手順]")).toBe("[手順]");
-    expect(getDisplayLabel("[使用したもの]")).toBe("[使用したもの]");
+    expect(getDisplayLabel("[材料]")).toBe("[材料]");
     expect(getDisplayLabel("[結果]")).toBe("[結果]");
   });
 });
@@ -83,7 +84,7 @@ describe("getDisplayLabelName()", () => {
   it("括弧付きの表示名から括弧を除去する", () => {
     // [手順] → 英語表示 [Procedure] → 括弧除去 → Procedure
     expect(getDisplayLabelName("[手順]")).toBe("Procedure");
-    expect(getDisplayLabelName("[使用したもの]")).toBe("Materials");
+    expect(getDisplayLabelName("[材料]")).toBe("Material");
     expect(getDisplayLabelName("[属性]")).toBe("Attributes");
     expect(getDisplayLabelName("[結果]")).toBe("Results");
     expect(getDisplayLabelName("[前手順]")).toBe("Prior step");

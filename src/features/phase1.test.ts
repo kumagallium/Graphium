@@ -98,9 +98,8 @@ describe("# オートコンプリート候補", () => {
   it("候補リストにコアラベルが含まれる", () => {
     const suggestions = buildSuggestionList();
     const coreItems = suggestions.filter((s) => s.group === "core");
-    expect(coreItems).toHaveLength(6);
+    expect(coreItems).toHaveLength(5);
     expect(coreItems.map((s) => s.label)).toContain("[手順]");
-    expect(coreItems.map((s) => s.label)).toContain("[使用したもの]");
     expect(coreItems.map((s) => s.label)).toContain("[材料]");
     expect(coreItems.map((s) => s.label)).toContain("[ツール]");
   });
@@ -121,7 +120,7 @@ describe("# オートコンプリート候補", () => {
 
   it("getDisplayName は [] を除去する", () => {
     expect(getDisplayName("[手順]")).toBe("手順");
-    expect(getDisplayName("[使用したもの]")).toBe("使用するもの");
+    expect(getDisplayName("[材料]")).toBe("材料");
     expect(getDisplayName("[カスタム]")).toBe("カスタム");
   });
 });
