@@ -36,9 +36,10 @@ function toW3CLabel(text: string): { "@value": string; "@language": string }[] {
 
 /** provnote: プレフィックス付きの拡張プロパティを抽出 */
 function extractExtensionProps(node: ProvJsonLdNode): Record<string, any> {
+  const SKIP_KEYS = new Set(["provnote:blockId", "provnote:sampleId", "provnote:entityType", "provnote:attributes"]);
   const ext: Record<string, any> = {};
   for (const [key, value] of Object.entries(node)) {
-    if (key.startsWith("provnote:") && key !== "provnote:blockId" && key !== "provnote:sampleId") {
+    if (key.startsWith("provnote:") && !SKIP_KEYS.has(key)) {
       ext[key] = value;
     }
   }
@@ -58,6 +59,11 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       "@id": node["@id"],
       label: toW3CLabel(node["rdfs:label"]),
     };
+
+    // Entity サブタイプ（MatPROV 互換: material / tool）
+    if (node["provnote:entityType"]) {
+      w3cNode["type"] = [{ "@value": node["provnote:entityType"] }];
+    }
 
     // provnote:blockId → 拡張プロパティとして保持
     if (node["provnote:blockId"]) {

@@ -98,17 +98,19 @@ describe("# オートコンプリート候補", () => {
   it("候補リストにコアラベルが含まれる", () => {
     const suggestions = buildSuggestionList();
     const coreItems = suggestions.filter((s) => s.group === "core");
-    expect(coreItems).toHaveLength(4);
+    expect(coreItems).toHaveLength(6);
     expect(coreItems.map((s) => s.label)).toContain("[手順]");
     expect(coreItems.map((s) => s.label)).toContain("[使用したもの]");
+    expect(coreItems.map((s) => s.label)).toContain("[材料]");
+    expect(coreItems.map((s) => s.label)).toContain("[ツール]");
   });
 
   it("候補リストにエイリアスが含まれる", () => {
     const suggestions = buildSuggestionList();
     const aliasItems = suggestions.filter((s) => s.group === "alias");
     expect(aliasItems.length).toBeGreaterThan(0);
-    const matAlias = aliasItems.find((s) => s.query === "材料");
-    expect(matAlias?.label).toBe("[使用したもの]");
+    const equipAlias = aliasItems.find((s) => s.query === "装置");
+    expect(equipAlias?.label).toBe("[ツール]");
   });
 
   it("候補リストにフリーラベルが含まれる", () => {
@@ -130,7 +132,7 @@ describe("# オートコンプリート候補", () => {
 describe("ラベルエイリアス拡張", () => {
   it("英語短縮エイリアスが正規化される", () => {
     expect(normalizeLabel("[step]")).toBe("[手順]");
-    expect(normalizeLabel("[mat]")).toBe("[使用したもの]");
+    expect(normalizeLabel("[mat]")).toBe("[材料]");
     expect(normalizeLabel("[result]")).toBe("[結果]");
     expect(normalizeLabel("[attr]")).toBe("[属性]");
   });

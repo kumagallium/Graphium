@@ -3,16 +3,20 @@
 // thought-provenance-spec.md § 0-A に準拠
 // ──────────────────────────────────────────────
 
-// Layer 1: コアラベル（PROV-DM直結、4種）
+// Layer 1: コアラベル（PROV-DM直結、6種）
 export type CoreLabel =
   | "[手順]"
   | "[使用したもの]"
+  | "[材料]"
+  | "[ツール]"
   | "[属性]"
   | "[結果]";
 
 export const CORE_LABELS: CoreLabel[] = [
   "[手順]",
   "[使用したもの]",
+  "[材料]",
+  "[ツール]",
   "[属性]",
   "[結果]",
 ];
@@ -21,33 +25,57 @@ export const CORE_LABELS: CoreLabel[] = [
 export const CORE_LABEL_PROV: Record<CoreLabel, string> = {
   "[手順]": "prov:Activity",
   "[使用したもの]": "prov:used",
+  "[材料]": "prov:used",       // Entity subtype: material
+  "[ツール]": "prov:used",     // Entity subtype: tool
   "[属性]": "prov:Entity",     // 親ノードの属性（prov:Entity として出力）
   "[結果]": "prov:wasGeneratedBy",
 };
 
+// Entity サブタイプ（MatPROV 互換: material / tool）
+export type EntitySubtype = "material" | "tool";
+export const LABEL_TO_ENTITY_SUBTYPE: Partial<Record<CoreLabel, EntitySubtype>> = {
+  "[材料]": "material",
+  "[ツール]": "tool",
+};
+
 // Layer 2: エイリアス（ユーザーが書く → コアラベルに正規化）
 export const ALIAS_MAP: Record<string, CoreLabel> = {
-  "[材料]": "[使用したもの]",
   "[操作]": "[手順]",
   "[産物]": "[結果]",
   "[output]": "[結果]",
-  "[Reagents]": "[使用したもの]",
+  "[Reagents]": "[材料]",
   // 表示名統一: [使用するもの] → 内部は [使用したもの] に正規化
   "[使用するもの]": "[使用したもの]",
   // [条件] は [属性] のエイリアスとして後方互換
   "[条件]": "[属性]",
   "[パラメータ]": "[属性]",
   "[仕様]": "[属性]",
+  // 材料エイリアス
+  "[試薬]": "[材料]",
+  "[原料]": "[材料]",
+  // ツールエイリアス
+  "[装置]": "[ツール]",
+  "[器具]": "[ツール]",
+  "[道具]": "[ツール]",
+  "[機器]": "[ツール]",
   // 英語短縮
   "[step]": "[手順]",
-  "[mat]": "[使用したもの]",
+  "[mat]": "[材料]",
   "[result]": "[結果]",
   "[attr]": "[属性]",
+  "[tool]": "[ツール]",
   // 英語フルネーム
   "[Procedure]": "[手順]",
   "[procedure]": "[手順]",
-  "[Materials]": "[使用したもの]",
-  "[materials]": "[使用したもの]",
+  "[Materials]": "[材料]",
+  "[materials]": "[材料]",
+  "[Material]": "[材料]",
+  "[material]": "[材料]",
+  "[Tool]": "[ツール]",
+  "[Tools]": "[ツール]",
+  "[tools]": "[ツール]",
+  "[Equipment]": "[ツール]",
+  "[equipment]": "[ツール]",
   "[Attributes]": "[属性]",
   "[attributes]": "[属性]",
   "[Results]": "[結果]",
