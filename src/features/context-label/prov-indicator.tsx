@@ -32,7 +32,7 @@ import { t as tStatic } from "../../i18n";
 const LABEL_COLORS: Record<string, string> = {
   "[手順]": "#5b8fb9",
   "[材料]": "#4B7A52",
-  "[ツール]": "#6B8E7B",
+  "[ツール]": "#c08b3e",
   "[属性]": "#c08b3e",
   "[結果]": "#c26356",
   "[条件]": "#c08b3e",

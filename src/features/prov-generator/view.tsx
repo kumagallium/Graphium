@@ -101,7 +101,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
 
   // 予約済み provnote: キー（ビュー表示対象外）
   const RESERVED_KEYS = new Set([
-    "provnote:blockId", "provnote:sampleId", "provnote:attributes", "provnote:warnings",
+    "provnote:blockId", "provnote:sampleId", "provnote:attributes", "provnote:warnings", "provnote:entityType",
   ]);
 
   let attrNodeIdx = 0;
