@@ -93,6 +93,12 @@ export const ja: Record<string, string> = {
   "history.revisions": "リビジョン",
   "history.blocks": "ブロック",
   "history.labels": "ラベル",
+  "history.type.edit": "編集",
+  "history.type.derive": "派生",
+  "history.type.aiGen": "AI 生成",
+  "history.type.aiDerive": "AI 派生",
+  "history.type.template": "テンプレート",
+  "history.type.deriveSource": "派生元",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",

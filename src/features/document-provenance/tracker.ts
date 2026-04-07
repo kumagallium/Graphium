@@ -60,6 +60,8 @@ export function recordRevision(
   prevPage: ProvNotePage | null,
   activityType: EditActivityType,
   agentLabel?: string,
+  /** true にすると diff が空でもリビジョンを記録する（アクティビティログ用） */
+  force?: boolean,
 ): ProvNoteDocument {
   const provenance = doc.documentProvenance
     ? structuredClone(doc.documentProvenance)
@@ -71,13 +73,15 @@ export function recordRevision(
   // 差分計算
   const summary = computeRevisionSummary(prevPage, currentPage);
 
-  // 変更なしならスキップ
-  if (prevPage && isEmptySummary(summary)) return doc;
+  // 変更なしならスキップ（force 指定時は記録する）
+  if (!force && prevPage && isEmptySummary(summary)) return doc;
 
   const now = new Date().toISOString();
 
   // エージェント登録
-  const agentType = activityType === "human_edit" ? "human" : "ai";
+  const agentType =
+    activityType === "human_edit" || activityType === "human_derivation" || activityType === "derive_source"
+      ? "human" : "ai";
   const label = agentLabel ?? (agentType === "human" ? "user" : "ai");
   const agentId = ensureAgent(provenance, agentType, label);
 

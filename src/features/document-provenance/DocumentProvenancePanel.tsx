@@ -39,12 +39,14 @@ function relativeTime(isoString: string): string {
 }
 
 /** 操作種別の表示ラベル */
-function activityTypeLabel(type: string): string {
+function activityTypeLabel(type: string, t: ReturnType<typeof useT>): string {
   switch (type) {
-    case "human_edit": return "Edit";
-    case "ai_generation": return "AI Gen";
-    case "ai_derivation": return "AI Derive";
-    case "template_create": return "Template";
+    case "human_edit": return t("history.type.edit");
+    case "human_derivation": return t("history.type.derive");
+    case "ai_generation": return t("history.type.aiGen");
+    case "ai_derivation": return t("history.type.aiDerive");
+    case "template_create": return t("history.type.template");
+    case "derive_source": return t("history.type.deriveSource");
     default: return type;
   }
 }
@@ -115,7 +117,7 @@ export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props
             <div className="flex items-center gap-1.5">
               {activity && (
                 <span className="px-1 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary">
-                  {activityTypeLabel(activity.type)}
+                  {activityTypeLabel(activity.type, t)}
                 </span>
               )}
               {agent && (

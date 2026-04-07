@@ -35,9 +35,11 @@ export type RevisionEntity = {
 /** 編集操作の種別 */
 export type EditActivityType =
   | "human_edit"
+  | "human_derivation"
   | "ai_generation"
   | "ai_derivation"
-  | "template_create";
+  | "template_create"
+  | "derive_source";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {

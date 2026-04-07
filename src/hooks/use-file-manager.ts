@@ -331,8 +331,8 @@ export function useFileManager(authenticated: boolean) {
           createdAt: now,
           modifiedAt: now,
         };
-        // ドキュメント来歴: 派生ノート作成を記録
-        newDoc = recordRevision(newDoc, null, "human_edit");
+        // ドキュメント来歴: 手動派生ノート作成を記録
+        newDoc = recordRevision(newDoc, null, "human_derivation");
         const newFileId = await createFile(newDoc.title, newDoc);
 
         // 元ノートに noteLinks を追加して保存
@@ -343,7 +343,9 @@ export function useFileManager(authenticated: boolean) {
             sourceBlockId,
             type: "derived_from",
           });
-          const updatedDoc = { ...activeDoc, noteLinks, modifiedAt: now };
+          let updatedDoc: ProvNoteDocument = { ...activeDoc, noteLinks, modifiedAt: now };
+          // ドキュメント来歴: 派生元として記録
+          updatedDoc = recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", undefined, true);
           await saveFile(activeFileIdRef.current, updatedDoc);
           setActiveDoc(updatedDoc);
         }
@@ -395,7 +397,9 @@ export function useFileManager(authenticated: boolean) {
             sourceBlockId: doc.derivedFromBlockId,
             type: "derived_from",
           });
-          const updatedDoc = { ...activeDoc, noteLinks, modifiedAt: now };
+          let updatedDoc: ProvNoteDocument = { ...activeDoc, noteLinks, modifiedAt: now };
+          // ドキュメント来歴: 派生元として記録
+          updatedDoc = recordRevision(updatedDoc, activeDoc.pages[0], "derive_source", undefined, true);
           await saveFile(activeFileIdRef.current, updatedDoc);
           setActiveDoc(updatedDoc);
         }
