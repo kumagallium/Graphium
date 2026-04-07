@@ -73,6 +73,7 @@ import {
   type MediaIndexEntry,
 } from "./features/asset-browser";
 import { useT, t as tStatic } from "./i18n";
+import { exportNoteToPdf } from "./features/pdf-export";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -177,6 +178,9 @@ function NoteEditorInner({
   );
   const t = useT();
   const [title, setTitle] = useState(initialDoc?.title || tStatic("editor.newNote"));
+
+  // ── PDF エクスポート（状態のみ — ハンドラーは provDoc 宣言後） ──
+  const [pdfExporting, setPdfExporting] = useState(false);
 
   // ── メディアピッカー ──
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
@@ -291,6 +295,23 @@ function NoteEditorInner({
     labelStore.labels,
     linkStore.links,
   );
+
+  // ── PDF エクスポートハンドラー ──
+  const handleExportPdf = useCallback(async () => {
+    const editorEl = document.querySelector("[data-label-wrapper] .bn-editor") as HTMLElement | null;
+    if (!editorEl) return;
+    setPdfExporting(true);
+    try {
+      await exportNoteToPdf({
+        title,
+        editorElement: editorEl,
+        provDoc,
+        labels: labelStore.labels,
+      });
+    } finally {
+      setPdfExporting(false);
+    }
+  }, [title, provDoc, labelStore.labels]);
 
   // ラベル・リンク・インデックステーブル変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -723,6 +744,19 @@ function NoteEditorInner({
           )}
         >
           {t("common.save")}
+        </button>
+        <button
+          onClick={handleExportPdf}
+          disabled={pdfExporting}
+          className={cn(
+            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
+            pdfExporting
+              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
+              : "border-border text-muted-foreground hover:bg-muted/50"
+          )}
+          title={t("pdf.export")}
+        >
+          {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
         </button>
       </div>
 

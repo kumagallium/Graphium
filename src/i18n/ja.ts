@@ -291,4 +291,8 @@ export const ja: Record<string, string> = {
   "label.networkTitle": "「{name}」を使用しているノート",
   "label.legendLabel": "ラベル値",
   "label.legendNote": "ノート",
+
+  // ── PDF エクスポート ──
+  "pdf.export": "PDF",
+  "pdf.exporting": "エクスポート中...",
 };
