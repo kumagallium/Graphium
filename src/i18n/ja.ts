@@ -286,4 +286,9 @@ export const ja: Record<string, string> = {
   "label.noteColumn": "ノート",
   "label.previewColumn": "内容",
   "label.sortNote": "ノート",
+  "label.noteCount": "ノート数",
+  "label.noteCountValue": "{count} 件",
+  "label.networkTitle": "「{name}」を使用しているノート",
+  "label.legendLabel": "ラベル値",
+  "label.legendNote": "ノート",
 };

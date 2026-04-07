@@ -1,0 +1,179 @@
+// ラベルギャラリービューのストーリー
+// グループ化テーブル + ネットワークモーダルの各状態を確認する
+
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { LabelGalleryView } from "./LabelGalleryView";
+import { LocaleProvider } from "../../i18n";
+import type { ProvNoteIndex } from "../navigation/index-file";
+
+const meta: Meta<typeof LabelGalleryView> = {
+  title: "Organisms/LabelGalleryView",
+  component: LabelGalleryView,
+  parameters: { layout: "padded" },
+  decorators: [
+    (Story) => (
+      <LocaleProvider>
+        <Story />
+      </LocaleProvider>
+    ),
+  ],
+};
+export default meta;
+
+// ── モックデータ ──
+
+const now = new Date().toISOString();
+const yesterday = new Date(Date.now() - 86400000).toISOString();
+const twoDaysAgo = new Date(Date.now() - 172800000).toISOString();
+const weekAgo = new Date(Date.now() - 604800000).toISOString();
+
+const mockIndex: ProvNoteIndex = {
+  version: 1,
+  updatedAt: now,
+  notes: [
+    {
+      noteId: "note-1",
+      title: "カレーの実験記録",
+      modifiedAt: now,
+      createdAt: weekAgo,
+      headings: [],
+      labels: [
+        { blockId: "b1", label: "[使用したもの]", preview: "玉ねぎ" },
+        { blockId: "b2", label: "[使用したもの]", preview: "にんじん" },
+        { blockId: "b3", label: "[使用したもの]", preview: "カレー粉" },
+      ],
+      outgoingLinks: [],
+    },
+    {
+      noteId: "note-2",
+      title: "肉じゃがの実験記録",
+      modifiedAt: yesterday,
+      createdAt: weekAgo,
+      headings: [],
+      labels: [
+        { blockId: "b4", label: "[使用したもの]", preview: "玉ねぎ" },
+        { blockId: "b5", label: "[使用したもの]", preview: "にんじん" },
+        { blockId: "b6", label: "[使用したもの]", preview: "じゃがいも" },
+      ],
+      outgoingLinks: [],
+    },
+    {
+      noteId: "note-3",
+      title: "オニオンスープの実験記録",
+      modifiedAt: twoDaysAgo,
+      createdAt: weekAgo,
+      headings: [],
+      labels: [
+        { blockId: "b7", label: "[使用したもの]", preview: "玉ねぎ" },
+        { blockId: "b8", label: "[使用したもの]", preview: "バター" },
+      ],
+      outgoingLinks: [],
+    },
+    {
+      noteId: "note-4",
+      title: "野菜サラダの実験記録",
+      modifiedAt: weekAgo,
+      createdAt: weekAgo,
+      headings: [],
+      labels: [
+        { blockId: "b9", label: "[使用したもの]", preview: "にんじん" },
+        { blockId: "b10", label: "[使用したもの]", preview: "トマト" },
+      ],
+      outgoingLinks: [],
+    },
+  ],
+};
+
+// 1件のみのデータ
+const singleIndex: ProvNoteIndex = {
+  version: 1,
+  updatedAt: now,
+  notes: [
+    {
+      noteId: "note-1",
+      title: "テスト実験",
+      modifiedAt: now,
+      createdAt: now,
+      headings: [],
+      labels: [
+        { blockId: "b1", label: "[使用したもの]", preview: "サンプル" },
+      ],
+      outgoingLinks: [],
+    },
+  ],
+};
+
+// 空データ
+const emptyIndex: ProvNoteIndex = {
+  version: 1,
+  updatedAt: now,
+  notes: [],
+};
+
+const noop = () => {};
+
+function Container({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ width: 700, height: 500, border: "1px solid #d5e0d7", borderRadius: 8, overflow: "hidden", display: "flex" }}>
+      {children}
+    </div>
+  );
+}
+
+// ── ストーリー ──
+
+export const Default: StoryObj<typeof LabelGalleryView> = {
+  name: "グループ化テーブル（複数ノート共有）",
+  render: () => (
+    <Container>
+      <LabelGalleryView
+        noteIndex={mockIndex}
+        label="[使用したもの]"
+        onBack={noop}
+        onNavigateNote={(id) => console.log("navigate:", id)}
+      />
+    </Container>
+  ),
+};
+
+export const SingleEntry: StoryObj<typeof LabelGalleryView> = {
+  name: "1件のみ",
+  render: () => (
+    <Container>
+      <LabelGalleryView
+        noteIndex={singleIndex}
+        label="[使用したもの]"
+        onBack={noop}
+        onNavigateNote={(id) => console.log("navigate:", id)}
+      />
+    </Container>
+  ),
+};
+
+export const Empty: StoryObj<typeof LabelGalleryView> = {
+  name: "空状態",
+  render: () => (
+    <Container>
+      <LabelGalleryView
+        noteIndex={emptyIndex}
+        label="[使用したもの]"
+        onBack={noop}
+        onNavigateNote={noop}
+      />
+    </Container>
+  ),
+};
+
+export const Loading: StoryObj<typeof LabelGalleryView> = {
+  name: "読み込み中",
+  render: () => (
+    <Container>
+      <LabelGalleryView
+        noteIndex={null}
+        label="[使用したもの]"
+        onBack={noop}
+        onNavigateNote={noop}
+      />
+    </Container>
+  ),
+};

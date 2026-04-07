@@ -286,4 +286,9 @@ export const en: Record<string, string> = {
   "label.noteColumn": "Note",
   "label.previewColumn": "Content",
   "label.sortNote": "Note",
+  "label.noteCount": "Notes",
+  "label.noteCountValue": "{count}",
+  "label.networkTitle": "Notes using \"{name}\"",
+  "label.legendLabel": "Label value",
+  "label.legendNote": "Note",
 };
