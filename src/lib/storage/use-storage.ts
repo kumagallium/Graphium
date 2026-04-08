@@ -1,7 +1,7 @@
 // ストレージプロバイダーの React Hook
 // useGoogleAuth の代替として、プロバイダー非依存の認証状態管理を提供
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider, setActiveProvider, initProviders } from "./registry";
 import type { StorageProvider } from "./types";
 
@@ -14,6 +14,8 @@ export function useStorage() {
   const [provider, setProvider] = useState<StorageProvider | null>(null);
   // プロバイダー切り替えを検知するためのカウンター
   const [providerVersion, setProviderVersion] = useState(0);
+  // init 完了後に signIn を自動実行するフラグ
+  const pendingSignInRef = useRef(false);
 
   useEffect(() => {
     // プロバイダーを初期化
@@ -33,6 +35,11 @@ export function useStorage() {
     p.init().then(() => {
       setAuthenticated(p.getAuthState().isSignedIn);
       setLoading(false);
+      // 切り替えサインインが保留中なら実行
+      if (pendingSignInRef.current) {
+        pendingSignInRef.current = false;
+        p.signIn();
+      }
     });
 
     return unsubscribe;
@@ -40,9 +47,12 @@ export function useStorage() {
 
   const signIn = useCallback(
     (providerId?: string) => {
-      if (providerId) {
-        // 別プロバイダーへの切り替えサインイン（例: offline → Google）
+      if (providerId && provider?.id !== providerId) {
+        // 別プロバイダーへの切り替えサインイン（例: ログイン画面 → Google）
+        // init 完了後に signIn を自動実行するようフラグを立てる
+        pendingSignInRef.current = true;
         setActiveProvider(providerId);
+        setLoading(true);
         setProviderVersion((v) => v + 1);
         return;
       }
@@ -60,8 +70,6 @@ export function useStorage() {
     // React state をリセットして即座にログイン画面に戻す
     setAuthenticated(false);
     setLoading(false);
-    // 注: providerVersion はインクリメントしない
-    // （再初期化すると local provider が即座に signedIn=true に戻るため）
   }, [provider]);
 
   // プロバイダーを切り替え（リロードなし）
