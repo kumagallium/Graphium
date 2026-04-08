@@ -687,11 +687,11 @@ function NoteEditorInner({
 
     const processElement = (el: Element) => {
       const src = el.getAttribute("src");
-      if (!src || !src.includes("googleusercontent.com") || src.startsWith("blob:")) return;
-      const driveFileId = getActiveProvider().extractFileId(src);
-      if (!driveFileId) return;
+      if (!src || src.startsWith("blob:")) return;
+      const fileId = getActiveProvider().extractFileId(src);
+      if (!fileId) return;
 
-      getActiveProvider().getMediaBlobUrl(driveFileId).then((blobUrl) => {
+      getActiveProvider().getMediaBlobUrl(fileId).then((blobUrl) => {
         localBlobUrls.push(blobUrl);
         el.setAttribute("src", blobUrl);
         if (el instanceof HTMLVideoElement || el instanceof HTMLAudioElement) {
@@ -866,6 +866,12 @@ function NoteEditorInner({
               onEditorReady={handleEditorReady}
               onChange={handleContentChange}
               uploadFile={uploadFile}
+              resolveFileUrl={async (url: string) => {
+                const p = getActiveProvider();
+                const fid = p.extractFileId(url);
+                if (fid) return p.getMediaBlobUrl(fid);
+                return url;
+              }}
               onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
               getMentionSuggestions={() => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };

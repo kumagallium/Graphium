@@ -65,6 +65,8 @@ function generateId(): string {
 // 認証状態リスナー
 let authListeners: Array<(state: AuthState) => void> = [];
 let signedIn = false;
+// Blob URL キャッシュ（local-media:// → blob: の変換結果を再利用）
+const mediaBlobCache = new Map<string, string>();
 
 export class LocalStorageProvider implements StorageProvider {
   readonly id = "local";
@@ -157,28 +159,35 @@ export class LocalStorageProvider implements StorageProvider {
   async uploadMedia(file: File): Promise<MediaUploadResult> {
     const id = generateId();
     const blob = new Blob([await file.arrayBuffer()], { type: file.type });
-    const url = URL.createObjectURL(blob);
 
     // IndexedDB にメタデータと Blob を保存
     await withStore(STORE_MEDIA, "readwrite", (store) =>
       store.put({ id, name: file.name, mimeType: file.type, blob, createdTime: new Date().toISOString() })
     );
 
+    // 永続的な URL 形式（セッションをまたいで有効）
+    const url = `local-media://${id}`;
     return { fileId: id, url, name: file.name, mimeType: file.type };
   }
 
   async getMediaBlobUrl(fileId: string): Promise<string> {
+    // Blob URL キャッシュ（同一セッション内で再利用）
+    const cached = mediaBlobCache.get(fileId);
+    if (cached) return cached;
+
     const record = await withStore<any>(STORE_MEDIA, "readonly", (store) =>
       store.get(fileId)
     );
     if (!record?.blob) throw new Error(`メディアが見つかりません: ${fileId}`);
-    return URL.createObjectURL(record.blob);
+    const blobUrl = URL.createObjectURL(record.blob);
+    mediaBlobCache.set(fileId, blobUrl);
+    return blobUrl;
   }
 
   extractFileId(url: string): string | null {
-    // ローカルの Blob URL からは ID を抽出できない
-    // メディアインデックスの fileId で管理する
-    return null;
+    // local-media://{fileId} 形式から ID を抽出
+    const match = url.match(/^local-media:\/\/(.+)$/);
+    return match ? match[1] : null;
   }
 
   async getUserEmail(): Promise<string | null> {

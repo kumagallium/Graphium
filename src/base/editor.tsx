@@ -50,6 +50,8 @@ type SandboxEditorProps = {
   onChange?: () => void;
   /** メディアファイルアップロードハンドラ（File → URL を返す） */
   uploadFile?: (file: File) => Promise<string>;
+  /** 保存された URL を表示用 URL に変換する（local-media:// → blob: 等） */
+  resolveFileUrl?: (url: string) => Promise<string>;
   /** # ラベルオートコンプリートで選択されたときのコールバック */
   onHashtagSelect?: (blockId: string, label: string) => void;
   /** @ 参照リンクで選択されたときのコールバック */
@@ -70,6 +72,7 @@ export function SandboxEditor({
   onEditorReady,
   onChange,
   uploadFile,
+  resolveFileUrl,
   onHashtagSelect,
   onMentionSelect,
   getMentionSuggestions,
@@ -89,6 +92,7 @@ export function SandboxEditor({
     schema,
     initialContent: initialContent?.length ? (initialContent as any) : undefined,
     uploadFile,
+    resolveFileUrl,
   });
 
   // エディタインスタンスを外部に公開
