@@ -26,6 +26,8 @@ export type FileSidebarProps = {
   activeAssetType: MediaType | null;
   /** 現在アクティブなラベル（ハイライト用） */
   activeLabel: string | null;
+  /** ファイル一覧の読み込み中フラグ */
+  filesLoading?: boolean;
 };
 
 // ラベル色マッピング（NoteListView と同じ）
@@ -62,6 +64,7 @@ export function FileSidebar({
   onShowLabelGallery,
   activeAssetType,
   activeLabel,
+  filesLoading = false,
 }: FileSidebarProps) {
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
@@ -114,6 +117,7 @@ export function FileSidebar({
           activeFileId={activeFileId}
           onSelect={onSelect}
           onShowNoteList={onShowNoteList}
+          loading={filesLoading}
         />
 
         {/* データ一覧セクション */}

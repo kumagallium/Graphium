@@ -1,6 +1,7 @@
 // 最近のノート（左パネル上部）
 // 最近開いた/保存したノート5件を表示する
 
+import { useT } from "../../i18n";
 import { type RecentNote, formatRelativeTime } from "./recent-notes-store";
 
 export function RecentNotes({
@@ -8,20 +9,27 @@ export function RecentNotes({
   activeFileId,
   onSelect,
   onShowNoteList,
+  loading = false,
 }: {
   notes: RecentNote[];
   activeFileId: string | null;
   onSelect: (noteId: string) => void;
   onShowNoteList: () => void;
+  loading?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="px-2 py-2">
       <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider px-2 mb-1">
-        最近のノート
+        {t("nav.recentNotes")}
       </div>
-      {notes.length === 0 ? (
+      {loading ? (
         <p className="text-xs text-muted-foreground px-2 py-1">
-          まだノートがありません
+          {t("nav.loadingNotes")}
+        </p>
+      ) : notes.length === 0 ? (
+        <p className="text-xs text-muted-foreground px-2 py-1">
+          {t("nav.noNotes")}
         </p>
       ) : (
         notes.map((note) => (

@@ -1080,6 +1080,7 @@ export function NoteApp() {
         onShowLabelGallery={(label) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); }}
         activeAssetType={fm.activeAssetType}
         activeLabel={fm.activeLabel}
+        filesLoading={fm.filesLoading}
       />
       <main className="flex-1 overflow-hidden flex flex-col relative">
         {fm.activeAssetType ? (
