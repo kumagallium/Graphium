@@ -129,20 +129,20 @@ Google Drive sync works without any configuration. To enable AI features, you ne
 
 <table>
   <tr>
-    <td><b>Editor with context labels & sidebar</b></td>
+    <td><b>Editor with context labels</b></td>
     <td><b>Provenance graph (PROV-DM)</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/sandbox.png" alt="Editor" width="400" /></td>
-    <td><img src="docs/screenshots/prov-generator.png" alt="Provenance graph" width="400" /></td>
+    <td><img src="docs/screenshots/editor.png" alt="Editor" width="400" /></td>
+    <td><img src="docs/screenshots/prov-graph.png" alt="Provenance graph" width="400" /></td>
   </tr>
   <tr>
-    <td><b>Inter-note network graph</b></td>
-    <td><b>Label gallery (index table)</b></td>
+    <td><b>Document provenance history</b></td>
+    <td><b>Login screen</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/graph.png" alt="Network graph" width="400" /></td>
-    <td><img src="docs/screenshots/label-gallery.png" alt="Label gallery" width="400" /></td>
+    <td><img src="docs/screenshots/history.png" alt="Document provenance" width="400" /></td>
+    <td><img src="docs/screenshots/login.png" alt="Login" width="400" /></td>
   </tr>
 </table>
 
