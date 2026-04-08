@@ -58,6 +58,28 @@ function DeleteConfirmDialog({
   );
 }
 
+// 画像サムネイル: local-media:// URL を Blob URL に変換して表示
+function ImageThumbnail({ entry }: { entry: MediaIndexEntry }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const provider = getActiveProvider();
+    const fileId = provider.extractFileId(entry.thumbnailUrl);
+    if (!fileId) {
+      // Google Drive 等: URL をそのまま使う
+      setSrc(entry.thumbnailUrl);
+      return;
+    }
+    // ローカル: Blob URL に変換
+    provider.getMediaBlobUrl(fileId).then(setSrc).catch(() => {});
+  }, [entry.thumbnailUrl]);
+
+  if (!src) {
+    return <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted"><span className="text-3xl">🖼️</span></div>;
+  }
+  return <img src={src} alt={entry.name} className="w-full h-32 object-cover rounded-t-md bg-muted" loading="lazy" />;
+}
+
 // 動画サムネイル: Intersection Observer で画面内に入ったときだけ Blob URL を取得
 function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -133,14 +155,7 @@ function MediaCard({
   const thumbnail = useMemo(() => {
     switch (entry.type) {
       case "image":
-        return (
-          <img
-            src={entry.thumbnailUrl}
-            alt={entry.name}
-            className="w-full h-32 object-cover rounded-t-md bg-muted"
-            loading="lazy"
-          />
-        );
+        return <ImageThumbnail entry={entry} />;
       case "video":
         return <VideoThumbnail entry={entry} />;
       case "audio":
