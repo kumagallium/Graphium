@@ -290,7 +290,10 @@ export const ja: Record<string, string> = {
   "asset.slashVideoSub": "新規アップロードまたは既存の動画から挿入",
   "asset.slashAudio": "音声",
   "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
+  "asset.slashPdf": "PDF",
+  "asset.slashPdfSub": "新規アップロードまたは既存の PDF から挿入",
   "asset.uploadNew": "ファイルからアップロード",
+  "asset.uploading": "アップロード中…",
 
   // ── ラベルギャラリー ──
   "label.section": "ラベル",

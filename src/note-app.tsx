@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxEditor } from "./base/editor";
+import { pdfViewerBlock } from "./blocks/pdf-viewer";
 import {
   LabelStoreProvider,
   useLabelStore,
@@ -138,7 +139,7 @@ function NoteEditor(props: NoteEditorProps) {
 const KNOWN_BLOCK_TYPES = new Set([
   "paragraph", "heading", "bulletListItem", "numberedListItem",
   "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock",
+  "codeBlock", "pdf",
 ]);
 
 function sanitizeBlocks(blocks: any[]): any[] {
@@ -235,17 +236,16 @@ function NoteEditorInner({
     const editor = editorRef.current;
     if (!editor) return;
 
-    const blockType = entry.type === "video" ? "video"
-      : entry.type === "audio" ? "audio"
-      : "image";
-
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
 
-    const newBlock = {
-      type: blockType,
-      props: { url: entry.url, name: entry.name },
-    };
+    // PDF はカスタムブロック、それ以外は BlockNote 標準ブロック
+    const newBlock = entry.type === "pdf"
+      ? { type: "pdf", props: { url: entry.url, name: entry.name } }
+      : {
+          type: entry.type === "video" ? "video" : entry.type === "audio" ? "audio" : "image",
+          props: { url: entry.url, name: entry.name },
+        };
     editor.insertBlocks([newBlock], currentBlock, "after");
 
     // 現在のブロックが空（スラッシュだけ）なら削除
@@ -843,7 +843,7 @@ function NoteEditorInner({
           <div style={{ padding: "16px 0", paddingLeft: 100, paddingRight: 100 }}>
             <SandboxEditor
               key={fileId || "new"}
-              blocks={[]}
+              blocks={[pdfViewerBlock]}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
               extraSlashMenuItems={[...labelSlashMenuItems, indexTableSlashItem, ...mediaSlashItems]}

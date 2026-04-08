@@ -63,5 +63,11 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       "audio",
       ["audio", "音声", "おんせい", "sound", "music"],
     ),
+    createMediaSlashItem(
+      "asset.slashPdf",
+      "asset.slashPdfSub",
+      "pdf",
+      ["pdf", "document", "論文", "ろんぶん", "paper"],
+    ),
   ];
 }

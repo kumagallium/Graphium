@@ -290,7 +290,10 @@ export const en: Record<string, string> = {
   "asset.slashVideoSub": "Upload new or insert existing video",
   "asset.slashAudio": "Audio",
   "asset.slashAudioSub": "Upload new or insert existing audio",
+  "asset.slashPdf": "PDF",
+  "asset.slashPdfSub": "Upload new or insert existing PDF",
   "asset.uploadNew": "Upload from file",
+  "asset.uploading": "Uploading…",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",

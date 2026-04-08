@@ -72,6 +72,12 @@ function PickerItem({
             <span className="text-xl">🔊</span>
           </div>
         );
+      case "pdf":
+        return (
+          <div className="w-full h-20 flex items-center justify-center rounded bg-muted">
+            <span className="text-xl">📄</span>
+          </div>
+        );
       default:
         return (
           <div className="w-full h-20 flex items-center justify-center rounded bg-muted">
@@ -112,6 +118,7 @@ export function MediaPickerModal({
 }: MediaPickerModalProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 自動フォーカス
@@ -190,28 +197,41 @@ export function MediaPickerModal({
           {/* 新規アップロードボタン */}
           {onUpload && (
             <div className="mb-3">
-              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors cursor-pointer">
-                📁 {t("asset.uploadNew")}
+              <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border text-foreground transition-colors ${uploading ? "opacity-50 pointer-events-none" : "hover:bg-muted cursor-pointer"}`}>
+                {uploading ? (
+                  <>
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    {t("asset.uploading")}
+                  </>
+                ) : (
+                  <>📁 {t("asset.uploadNew")}</>
+                )}
                 <input
                   type="file"
-                  accept={mediaType === "image" ? "image/*" : mediaType === "video" ? "video/*" : mediaType === "audio" ? "audio/*" : "*/*"}
+                  accept={mediaType === "image" ? "image/*" : mediaType === "video" ? "video/*" : mediaType === "audio" ? "audio/*" : mediaType === "pdf" ? "application/pdf" : "*/*"}
                   className="hidden"
+                  disabled={uploading}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    const url = await onUpload(file);
-                    // アップロード後、そのメディアを挿入用に通知
-                    onSelect({
-                      fileId: "",
-                      name: file.name,
-                      type: mediaType,
-                      mimeType: file.type,
-                      url,
-                      thumbnailUrl: url.replace("=s0", "=s200"),
-                      uploadedAt: new Date().toISOString(),
-                      usedIn: [],
-                    });
-                    onClose();
+                    setUploading(true);
+                    try {
+                      const url = await onUpload(file);
+                      // アップロード後、そのメディアを挿入用に通知
+                      onSelect({
+                        fileId: "",
+                        name: file.name,
+                        type: mediaType,
+                        mimeType: file.type,
+                        url,
+                        thumbnailUrl: url.replace("=s0", "=s200"),
+                        uploadedAt: new Date().toISOString(),
+                        usedIn: [],
+                      });
+                      onClose();
+                    } finally {
+                      setUploading(false);
+                    }
                   }}
                 />
               </label>

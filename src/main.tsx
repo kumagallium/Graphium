@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { SandboxEditor } from "./base/editor";
 import { MultiPageLayout, useMultiPage } from "./base/multipage";
 import { helloBlock } from "./blocks/example-hello";
+import { pdfViewerBlock } from "./blocks/pdf-viewer";
 import {
   LabelBadgeLayer,
   LabelDropdownPortal,
@@ -122,6 +123,13 @@ const experiments: Experiment[] = [
     description: "最小構成のカスタムブロック例",
     layer: "blocks",
     blocks: [helloBlock],
+  },
+  {
+    id: "pdf-viewer",
+    name: "PDF Viewer Block",
+    description: "PDF ファイルを埋め込み表示するカスタムブロック",
+    layer: "blocks",
+    blocks: [pdfViewerBlock],
   },
   {
     id: "context-label",
