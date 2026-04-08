@@ -1,7 +1,8 @@
 // ノートアプリのメイン画面
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Save, FileDown, Share2, MoreHorizontal } from "lucide-react";
 import { SandboxEditor } from "./base/editor";
 import { pdfViewerBlock } from "./blocks/pdf-viewer";
 import {
@@ -89,6 +90,83 @@ import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 
 import type { ProvNoteFile } from "./lib/document-types";
 import type { NoteGraphData } from "./features/network-graph";
+
+// ── ヘッダーメニュー（Notion 風ドロップダウン） ──
+function NoteHeaderMenu({
+  onSave,
+  saveDisabled,
+  onExportPdf,
+  pdfExporting,
+  onExportProvJsonLd,
+  provExportDisabled,
+  t,
+}: {
+  onSave: () => void;
+  saveDisabled: boolean;
+  onExportPdf: () => void;
+  pdfExporting: boolean;
+  onExportProvJsonLd: () => void;
+  provExportDisabled: boolean;
+  t: (key: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // メニュー外クリックで閉じる
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const itemClass =
+    "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        title={t("common.menu")}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+          <button
+            className={itemClass}
+            disabled={saveDisabled}
+            onClick={() => { onSave(); setOpen(false); }}
+          >
+            <Save size={14} />
+            {t("common.save")}
+          </button>
+          <button
+            className={itemClass}
+            disabled={pdfExporting}
+            onClick={() => { onExportPdf(); setOpen(false); }}
+          >
+            <FileDown size={14} />
+            {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
+          </button>
+          <button
+            className={itemClass}
+            disabled={provExportDisabled}
+            onClick={() => { onExportProvJsonLd(); setOpen(false); }}
+          >
+            <Share2 size={14} />
+            {t("prov.export")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── エディタ本体 ──
 type NoteEditorProps = {
@@ -811,44 +889,15 @@ function NoteEditorInner({
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
-        <button
-          onClick={saveNow}
-          disabled={saving}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
-            saving
-              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
-              : "border-primary text-primary bg-primary/5 hover:bg-primary/10"
-          )}
-        >
-          {t("common.save")}
-        </button>
-        <button
-          onClick={handleExportPdf}
-          disabled={pdfExporting}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
-            pdfExporting
-              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
-              : "border-border text-muted-foreground hover:bg-muted/50"
-          )}
-          title={t("pdf.export")}
-        >
-          {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
-        </button>
-        <button
-          onClick={handleExportProvJsonLd}
-          disabled={!provDoc || provDoc["@graph"].length === 0}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
-            !provDoc || provDoc["@graph"].length === 0
-              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
-              : "border-border text-muted-foreground hover:bg-muted/50"
-          )}
-          title={!provDoc || provDoc["@graph"].length === 0 ? t("prov.exportDisabled") : t("prov.export")}
-        >
-          {t("prov.export")}
-        </button>
+        <NoteHeaderMenu
+          onSave={saveNow}
+          saveDisabled={saving}
+          onExportPdf={handleExportPdf}
+          pdfExporting={pdfExporting}
+          onExportProvJsonLd={handleExportProvJsonLd}
+          provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
+          t={t}
+        />
       </div>
 
       <div className="flex h-full w-full overflow-hidden">

@@ -54,6 +54,7 @@ export const en: Record<string, string> = {
   "common.saving": "Saving...",
   "common.unsaved": "Unsaved",
   "common.saved": "Saved",
+  "common.menu": "Menu",
   "common.close": "Close",
   "common.delete": "Delete",
   "common.add": "Add",

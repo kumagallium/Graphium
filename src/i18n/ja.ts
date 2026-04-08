@@ -54,6 +54,7 @@ export const ja: Record<string, string> = {
   "common.saving": "保存中...",
   "common.unsaved": "未保存",
   "common.saved": "保存済み",
+  "common.menu": "メニュー",
   "common.close": "閉じる",
   "common.delete": "削除",
   "common.add": "追加",

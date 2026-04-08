@@ -1,6 +1,7 @@
 // ファイル一覧サイドバー
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { Image, FileText, Video, Volume2 } from "lucide-react";
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
@@ -40,11 +41,11 @@ const LABEL_HEX: Record<string, string> = {
 };
 
 // メディアタイプ別のアイコンと表示順
-const MEDIA_NAV_ITEMS: { type: MediaType; icon: string }[] = [
-  { type: "image", icon: "🖼️" },
-  { type: "pdf", icon: "📄" },
-  { type: "video", icon: "🎥" },
-  { type: "audio", icon: "🔊" },
+const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
+  { type: "image", icon: <Image size={14} /> },
+  { type: "pdf", icon: <FileText size={14} /> },
+  { type: "video", icon: <Video size={14} /> },
+  { type: "audio", icon: <Volume2 size={14} /> },
 ];
 
 export function FileSidebar({
@@ -139,7 +140,7 @@ export function FileSidebar({
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   }`}
                 >
-                  <span className="text-sm">{icon}</span>
+                  <span className="text-muted-foreground shrink-0">{icon}</span>
                   <span className="flex-1 text-left">{t(`asset.type.${type}`)}</span>
                   {count > 0 && (
                     <span className="text-[10px] text-muted-foreground">{count}</span>

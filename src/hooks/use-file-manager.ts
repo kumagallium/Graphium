@@ -133,8 +133,10 @@ export function useFileManager(authenticated: boolean) {
   // ファイルを開く（キャッシュ優先、cachedDoc が渡された場合はキャッシュを即時更新）
   const handleOpenFile = useCallback(async (fileId: string, cachedDoc?: ProvNoteDocument) => {
     try {
-      // ノート一覧ビューを閉じる
+      // ノート一覧・ギャラリービューを閉じる
       setShowNoteList(false);
+      setActiveAssetType(null);
+      setActiveLabel(null);
       // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新
       if (cachedDoc) {
         docCacheRef.current.set(fileId, cachedDoc);
@@ -241,11 +243,19 @@ export function useFileManager(authenticated: boolean) {
     setActiveFileId(null);
     setActiveDoc(null);
     setEditorKey((k) => k + 1);
+    // ギャラリービューを閉じる
+    setActiveAssetType(null);
+    setActiveLabel(null);
+    setShowNoteList(false);
   }, [setActiveFileId]);
 
   // PROV テンプレートから作成
   const handleNewFromTemplate = useCallback(async () => {
     setActiveFileId(null);
+    // ギャラリービューを閉じる
+    setActiveAssetType(null);
+    setActiveLabel(null);
+    setShowNoteList(false);
     let doc: ProvNoteDocument = {
       ...PROV_TEMPLATE,
       createdAt: new Date().toISOString(),
