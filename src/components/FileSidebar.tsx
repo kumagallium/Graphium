@@ -11,7 +11,6 @@ export type FileSidebarProps = {
   activeFileId: string | null;
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
-  onNewFromTemplate: () => void;
   onRefresh: () => void;
   onSignOut: () => void;
   onShowReleaseNotes: () => void;
@@ -50,7 +49,6 @@ export function FileSidebar({
   activeFileId,
   onSelect,
   onNewNote,
-  onNewFromTemplate,
   onRefresh,
   onSignOut,
   onShowReleaseNotes,
@@ -106,12 +104,6 @@ export function FileSidebar({
           className="w-full text-left rounded-md px-3 py-2 mb-1.5 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
           {t("sidebar.newNote")}
-        </button>
-        <button
-          onClick={onNewFromTemplate}
-          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium border border-border text-sidebar-foreground/80 hover:bg-sidebar-accent transition-colors"
-        >
-          {t("sidebar.provTemplate")}
         </button>
       </div>
 

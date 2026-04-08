@@ -1061,7 +1061,6 @@ export function NoteApp() {
         activeFileId={fm.activeFileId}
         onSelect={fm.handleOpenFile}
         onNewNote={fm.handleNewNote}
-        onNewFromTemplate={fm.handleNewFromTemplate}
         onRefresh={fm.refreshFiles}
         onSignOut={signOut}
         onShowReleaseNotes={() => setShowReleaseNotes(true)}
