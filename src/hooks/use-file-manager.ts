@@ -178,6 +178,7 @@ export function useFileManager(authenticated: boolean) {
   // ファイル一覧が取得されたらインデックスを構築
   useEffect(() => {
     if (!authenticated) return;
+    if (filesLoading) return; // ファイル一覧取得中はインデックス構築をスキップ
     if (files.length === 0) {
       // ノートが無い場合は空のインデックスをセット（NoteListView の loading 解除）
       const emptyIndex: ProvNoteIndex = { version: 3, updatedAt: new Date().toISOString(), notes: [] };
@@ -194,7 +195,7 @@ export function useFileManager(authenticated: boolean) {
       }
     })();
     return () => { cancelled = true; };
-  }, [authenticated, files]);
+  }, [authenticated, files, filesLoading]);
 
   // メディアインデックスの初期構築（ノートインデックス構築後に実行）
   useEffect(() => {

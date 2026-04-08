@@ -1058,7 +1058,7 @@ export function NoteApp() {
 
   // 未認証
   if (!authenticated) {
-    return <LoginScreen onSignIn={signIn} onSelectLocal={() => switchProvider("local")} />;
+    return <LoginScreen onSignIn={() => signIn("google-drive")} onSelectLocal={() => switchProvider("local")} />;
   }
 
   return (

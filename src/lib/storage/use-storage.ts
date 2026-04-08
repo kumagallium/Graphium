@@ -12,6 +12,8 @@ export function useStorage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [provider, setProvider] = useState<StorageProvider | null>(null);
+  // プロバイダー切り替えを検知するためのカウンター
+  const [providerVersion, setProviderVersion] = useState(0);
 
   useEffect(() => {
     // プロバイダーを初期化
@@ -34,26 +36,47 @@ export function useStorage() {
     });
 
     return unsubscribe;
-  }, []);
+  }, [providerVersion]);
 
-  const signIn = () => provider?.signIn();
+  const signIn = useCallback(
+    (providerId?: string) => {
+      if (providerId) {
+        // 別プロバイダーへの切り替えサインイン（例: offline → Google）
+        setActiveProvider(providerId);
+        setProviderVersion((v) => v + 1);
+        return;
+      }
+      provider?.signIn();
+    },
+    [provider],
+  );
 
   // サインアウト: プロバイダー設定をリセットしてログイン画面に戻す
   // last_file / recent-notes は残す（再ログイン時に自動復元するため）
   const signOut = useCallback(() => {
     provider?.signOut();
-    // プロバイダー設定のみクリア（次回リロード時にログイン画面を表示）
+    // プロバイダー設定をクリア → ログイン画面を表示
     localStorage.removeItem(STORAGE_KEY);
+    // React state をリセットして即座にログイン画面に戻す
+    setAuthenticated(false);
+    setProvider(null);
+    setLoading(false);
+    // 再初期化（新しいプロバイダーでリスナーを再設定）
+    setProviderVersion((v) => v + 1);
   }, [provider]);
 
-  // プロバイダーを切り替え（ページリロードで全状態をリセット）
+  // プロバイダーを切り替え（リロードなし）
   const switchProvider = useCallback((id: string) => {
-    setActiveProvider(id);
-    // 旧プロバイダーのキャッシュをクリア
+    // 現在のプロバイダーをサインアウト
+    provider?.signOut();
+    provider?.clearCache();
+    // UI キャッシュをクリア（別プロバイダーのファイルIDは使えない）
     localStorage.removeItem("provnote_last_file");
     localStorage.removeItem("provnote-recent-notes");
-    window.location.reload();
-  }, []);
+    // 新しいプロバイダーに切り替え
+    setActiveProvider(id);
+    setProviderVersion((v) => v + 1);
+  }, [provider]);
 
   return { authenticated, loading, signIn, signOut, provider, switchProvider };
 }
