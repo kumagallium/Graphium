@@ -22,9 +22,11 @@ If you discover a security vulnerability in Graphium, please report it responsib
 
 ### What to Expect
 
-- **Acknowledgment**: Within 48 hours
-- **Initial assessment**: Within 1 week
-- **Fix timeline**: Depends on severity, typically within 2 weeks for critical issues
+This is a volunteer-maintained project, so we cannot guarantee specific response times. That said, we will do our best to:
+
+- **Acknowledge** your report promptly
+- **Assess** the issue and communicate next steps
+- **Prioritize** fixes based on severity
 
 ### Scope
 
