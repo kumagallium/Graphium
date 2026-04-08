@@ -3,6 +3,7 @@
 //
 // 1. 箇条書きで Enter → 次行に同じラベルを継承
 // 2. ラベル付き箇条書きをインデント → [属性] に変更
+// 3. ブロック削除時 → 孤立ラベルをクリーンアップ
 // ──────────────────────────────────────────────
 
 import type { LabelStore } from "./store";
@@ -91,6 +92,13 @@ export function setupLabelAutoAssign(
       const currentLabel = labelStore.labels.get(block.id);
       if (currentLabel && INDENT_TO_ATTRIBUTE_LABELS.has(currentLabel)) {
         labelStore.setLabel(block.id, "[属性]");
+      }
+    }
+
+    // 3. 削除されたブロックのラベルをクリーンアップ
+    for (const blockId of prevBlockIds) {
+      if (!currentBlockIds.has(blockId) && labelStore.labels.has(blockId)) {
+        labelStore.setLabel(blockId, null);
       }
     }
 
