@@ -9,14 +9,16 @@ import type { LabelStore } from "./store";
 
 // 継承対象のラベル（箇条書きで Enter した時に次行にコピーするラベル）
 const INHERITABLE_LABELS = new Set([
-  "[使用したもの]",
+  "[材料]",
+  "[ツール]",
   "[結果]",
   "[属性]",
 ]);
 
 // インデント時に [属性] に変換するラベル
 const INDENT_TO_ATTRIBUTE_LABELS = new Set([
-  "[使用したもの]",
+  "[材料]",
+  "[ツール]",
   "[結果]",
 ]);
 
