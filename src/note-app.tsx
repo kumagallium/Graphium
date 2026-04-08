@@ -17,7 +17,7 @@ import {
   setOnPrevStepLinkSelected,
 } from "./features/context-label/prov-indicator";
 import {
-  labelSlashMenuItems,
+  buildLabelSlashMenuItems,
   setSlashMenuLabelCallback,
 } from "./features/context-label/slash-menu-items";
 import {
@@ -866,7 +866,7 @@ function NoteEditorInner({
               blocks={[pdfViewerBlock]}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...labelSlashMenuItems, indexTableSlashItem, ...mediaSlashItems]}
+              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, ...mediaSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

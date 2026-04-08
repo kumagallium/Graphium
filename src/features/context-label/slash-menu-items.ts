@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────
 
 import type { CoreLabel } from "./labels";
-import { t, getDisplayLabel } from "../../i18n";
+import { t, getDisplayLabel, getDisplayLabelName } from "../../i18n";
 
 // ラベル設定のグローバルコールバック
 // note-app.tsx 側で useLabelStore().setLabel を登録する
@@ -76,67 +76,69 @@ function createLabelSlashItem(
   };
 }
 
-/** スラッシュメニューに追加するラベルアイテム一覧 */
-export const labelSlashMenuItems: LabelSlashItem[] = [
-  createLabelSlashItem("手順", "[手順]", "heading", [
-    "手順",
-    "てじゅん",
-    "ステップ",
-    "操作",
-    "step",
-    "procedure",
-    "process",
-    "method",
-    "protocol",
-  ]),
-  createLabelSlashItem("材料", "[材料]", "bulletListItem", [
-    "使用",
-    "しよう",
-    "材料",
-    "ざいりょう",
-    "試薬",
-    "原料",
-    "reagent",
-    "reagents",
-    "material",
-    "materials",
-  ]),
-  createLabelSlashItem("ツール", "[ツール]", "bulletListItem", [
-    "ツール",
-    "つーる",
-    "装置",
-    "器具",
-    "道具",
-    "機器",
-    "tool",
-    "tools",
-    "equipment",
-    "instrument",
-  ]),
-  createLabelSlashItem("属性", "[属性]", "bulletListItem", [
-    "属性",
-    "ぞくせい",
-    "条件",
-    "パラメータ",
-    "仕様",
-    "property",
-    "properties",
-    "attribute",
-    "attributes",
-    "condition",
-    "parameter",
-    "spec",
-  ]),
-  createLabelSlashItem("結果", "[結果]", "bulletListItem", [
-    "結果",
-    "けっか",
-    "データ",
-    "産物",
-    "出力",
-    "result",
-    "results",
-    "output",
-    "data",
-    "outcome",
-  ]),
-];
+/** スラッシュメニューに追加するラベルアイテム一覧を構築（ロケール変更に対応） */
+export function buildLabelSlashMenuItems(): LabelSlashItem[] {
+  return [
+    createLabelSlashItem(getDisplayLabelName("[手順]"), "[手順]", "heading", [
+      "手順",
+      "てじゅん",
+      "ステップ",
+      "操作",
+      "step",
+      "procedure",
+      "process",
+      "method",
+      "protocol",
+    ]),
+    createLabelSlashItem(getDisplayLabelName("[材料]"), "[材料]", "bulletListItem", [
+      "使用",
+      "しよう",
+      "材料",
+      "ざいりょう",
+      "試薬",
+      "原料",
+      "reagent",
+      "reagents",
+      "material",
+      "materials",
+    ]),
+    createLabelSlashItem(getDisplayLabelName("[ツール]"), "[ツール]", "bulletListItem", [
+      "ツール",
+      "つーる",
+      "装置",
+      "器具",
+      "道具",
+      "機器",
+      "tool",
+      "tools",
+      "equipment",
+      "instrument",
+    ]),
+    createLabelSlashItem(getDisplayLabelName("[属性]"), "[属性]", "bulletListItem", [
+      "属性",
+      "ぞくせい",
+      "条件",
+      "パラメータ",
+      "仕様",
+      "property",
+      "properties",
+      "attribute",
+      "attributes",
+      "condition",
+      "parameter",
+      "spec",
+    ]),
+    createLabelSlashItem(getDisplayLabelName("[結果]"), "[結果]", "bulletListItem", [
+      "結果",
+      "けっか",
+      "データ",
+      "産物",
+      "出力",
+      "result",
+      "results",
+      "output",
+      "data",
+      "outcome",
+    ]),
+  ];
+}

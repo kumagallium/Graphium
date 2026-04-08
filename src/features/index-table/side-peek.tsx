@@ -22,7 +22,7 @@ import { LabelStoreProvider, useLabelStore } from "@features/context-label/store
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
 import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
-import { labelSlashMenuItems } from "@features/context-label/slash-menu-items";
+import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 import { useT, t as tStatic } from "../../i18n";
 
@@ -448,7 +448,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
                 key={noteId}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}
-                extraSlashMenuItems={[...labelSlashMenuItems]}
+                extraSlashMenuItems={[...buildLabelSlashMenuItems()]}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
                 onHashtagSelect={(blockId, label) => labelStoreRef.current.setLabel(blockId, label)}

@@ -109,12 +109,21 @@ export function getLocale(): Locale {
 // 内部キー（[手順] 等）をロケールに応じた表示名に変換
 
 const LABEL_DISPLAY_MAP: Record<string, string> = {
+  // コアラベル
   "[手順]": "label.step.bracketed",
   "[材料]": "label.material.bracketed",
   "[ツール]": "label.tool.bracketed",
   "[属性]": "label.attr.bracketed",
   "[結果]": "label.result.bracketed",
   "[前手順]": "label.prevStep.bracketed",
+  // フリーラベル例
+  "[目的]": "label.free.purpose",
+  "[考察]": "label.free.discussion",
+  "[疑問]": "label.free.question",
+  "[証跡]": "label.free.evidence",
+  "[背景]": "label.free.background",
+  "[参照]": "label.free.reference",
+  "[感想]": "label.free.impression",
 };
 
 /** 内部ラベルキーを表示名に変換 */

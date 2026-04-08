@@ -118,6 +118,7 @@ export const ja: Record<string, string> = {
   "labelUi.noLabel": "ラベルなし",
 
   // ── PROV インジケーター ──
+  "provIndicator.clickForDetails": "{label} — クリックで詳細",
   "provIndicator.outLinks": "→ 出力リンク",
   "provIndicator.inLinks": "← 入力リンク",
   "provIndicator.selectStep": "リンク先の [手順] を選択",

@@ -8,6 +8,7 @@ import {
   normalizeLabel,
   type CoreLabel,
 } from "./labels";
+import { getDisplayLabelName } from "../../i18n";
 
 // 候補アイテムの型
 export type LabelSuggestion = {
@@ -21,18 +22,9 @@ export type LabelSuggestion = {
   group: "core" | "alias" | "free";
 };
 
-// バッジ表示名（[] を除いた名前）
-export const DISPLAY_NAMES: Record<string, string> = {
-  "[手順]": "手順",
-  "[材料]": "材料",
-  "[ツール]": "ツール",
-  "[属性]": "属性",
-  "[結果]": "結果",
-};
-
-/** 表示名を取得（[] を除去） */
+/** 表示名を取得（i18n 経由、[] を除去） */
 export function getDisplayName(label: string): string {
-  return DISPLAY_NAMES[label] ?? label.replace(/^\[|\]$/g, "");
+  return getDisplayLabelName(label);
 }
 
 /** 候補リストを構築 */
@@ -64,7 +56,7 @@ export function buildSuggestionList(): LabelSuggestion[] {
 
   // フリーラベル例
   for (const label of FREE_LABEL_EXAMPLES) {
-    const displayName = label.replace(/^\[|\]$/g, "");
+    const displayName = getDisplayName(label);
     suggestions.push({
       query: displayName,
       label,

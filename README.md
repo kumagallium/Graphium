@@ -5,6 +5,9 @@
 <p align="center">
   Block-based note editor with <b>PROV-DM</b> provenance tracking — built on <a href="https://www.blocknotejs.org/">BlockNote.js</a>.
 </p>
+<p align="center">
+  <b>English</b> | <a href="README.ja.md">日本語</a>
+</p>
 
 Graphium is an attempt to rethink how scientific notes work. It combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking — where linking small ideas leads to unexpected discoveries — with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C standard that gives those discoveries formal, traceable provenance. When AI enters the picture, it bridges both: AI-generated knowledge is recorded with the same provenance trail as human notes, so you always know where an idea came from.
 
@@ -218,15 +221,18 @@ graph LR
 
 ## Language & Internationalization
 
-The Graphium UI currently uses **Japanese** for context labels and some interface elements. This reflects the project's origin in a Japanese research group.
+Graphium supports **English** (default) and **Japanese**. The language can be switched from **⚙ Settings** in the sidebar.
 
-| Element | Current language | Planned |
-|---------|-----------------|---------|
-| Context labels | Japanese (`[手順]`, `[結果]`, …) with English aliases (`[step]`, `[result]`, …) | Full i18n — English default, Japanese secondary |
-| UI chrome | Mixed (English + Japanese) | English default |
-| README / docs | English (README), Japanese (design specs) | English for all public-facing docs |
+All user-facing text — context labels, menus, tooltips, and panel UI — is fully internationalized. Context labels are displayed in the active locale (e.g. `[Procedure]` in English, `[手順]` in Japanese) while the internal data format remains stable for backward compatibility.
 
-Internationalization (i18n) is on the roadmap. Contributions are welcome.
+| Element | Status |
+|---------|--------|
+| Context labels | Fully localized (English / Japanese) |
+| UI chrome | Fully localized |
+| Label input | Both languages accepted as aliases (e.g. `[step]`, `[材料]`) |
+| README / docs | English / Japanese |
+
+Contributions for additional languages are welcome.
 
 ## Development
 

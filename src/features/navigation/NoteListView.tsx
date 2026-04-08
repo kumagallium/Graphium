@@ -21,14 +21,6 @@ const LABEL_HEX: Record<string, string> = {
   "[条件]": "#c08b3e",
 };
 
-// 表示名（「使用するもの」に統一）
-const LABEL_SHORT: Record<string, string> = {
-  "[手順]": "手順",
-  "[使用したもの]": "使用するもの",
-  "[結果]": "結果",
-  "[属性]": "属性",
-  "[条件]": "属性",
-};
 
 // 削除確認ダイアログ
 function DeleteConfirmDialog({

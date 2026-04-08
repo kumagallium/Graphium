@@ -205,7 +205,7 @@ export function ProvIndicatorLayer() {
                 setActiveBlockId(isActive ? null : blockId)
               }
               data-prov-label-anchor={blockId}
-              title={`${label} — クリックで詳細`}
+              title={tStatic("provIndicator.clickForDetails", { label: getDisplayLabel(label) })}
               className="fixed z-[9997] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
               style={{
                 top,

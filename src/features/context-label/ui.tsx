@@ -319,7 +319,7 @@ export function LabelSideMenuButton() {
           lineHeight: 1.6,
         }}
       >
-        {label}
+        {getDisplayLabel(label)}
       </span>
     );
   }
