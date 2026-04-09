@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Send, Trash2, FileDown, FilePlus, List } from "lucide-react";
+import { Bot, Send, Trash2, FileDown, FilePlus, List, Replace } from "lucide-react";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useAiAssistant } from "./store";
@@ -14,6 +14,8 @@ type AiAssistantPanelProps = {
   onSubmit: (question: string) => void;
   /** AI 回答をスコープ内にブロックとして挿入する */
   onInsertToScope?: (markdown: string) => void;
+  /** AI 回答で対象ブロックを置換する */
+  onReplaceBlocks?: (markdown: string) => void;
   /** 別ノートとして派生する（従来の buildAiDerivedDocument 動作） */
   onDeriveNote?: (question: string, answer: string) => void;
 };
@@ -21,10 +23,11 @@ type AiAssistantPanelProps = {
 export function AiAssistantPanel({
   onSubmit,
   onInsertToScope,
+  onReplaceBlocks,
   onDeriveNote,
 }: AiAssistantPanelProps) {
   const {
-    messages, loading, error, clearMessages, parkChat,
+    messages, loading, error, parkChat,
     chats, selectChat, sourceBlockIds, quotedMarkdown,
   } = useAiAssistant();
   const t = useT();
@@ -66,6 +69,9 @@ export function AiAssistantPanel({
     },
     [selectChat],
   );
+
+  // 引用元ブロックがある → 置換ボタンを表示
+  const canReplace = sourceBlockIds.length > 0 && !!onReplaceBlocks;
 
   return (
     <div className="flex flex-col h-full">
@@ -126,6 +132,7 @@ export function AiAssistantPanel({
                 key={i}
                 message={msg}
                 onInsert={onInsertToScope}
+                onReplace={canReplace ? onReplaceBlocks : undefined}
                 onDerive={
                   onDeriveNote && i > 0 && msg.role === "assistant"
                     ? () => {
@@ -238,10 +245,12 @@ function ChatListView({
 function ChatBubble({
   message,
   onInsert,
+  onReplace,
   onDerive,
 }: {
   message: ChatMessage;
   onInsert?: (markdown: string) => void;
+  onReplace?: (markdown: string) => void;
   onDerive?: () => void;
 }) {
   const t = useT();
@@ -257,8 +266,18 @@ function ChatBubble({
       >
         {message.content}
       </div>
-      {!isUser && (onInsert || onDerive) && (
-        <div className="flex gap-1 mt-1">
+      {!isUser && (onInsert || onReplace || onDerive) && (
+        <div className="flex gap-1 mt-1 flex-wrap">
+          {onReplace && (
+            <button
+              onClick={() => onReplace(message.content)}
+              title={t("aiChat.replaceInNote")}
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-blue-600 hover:text-blue-700 rounded hover:bg-blue-50 transition-colors font-medium"
+            >
+              <Replace size={10} />
+              {t("aiChat.replaceInNote")}
+            </button>
+          )}
           {onInsert && (
             <button
               onClick={() => onInsert(message.content)}

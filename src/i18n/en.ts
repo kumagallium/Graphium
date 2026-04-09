@@ -226,6 +226,7 @@ export const en: Record<string, string> = {
   "aiChat.messageCount": "{count} messages",
   "aiChat.pageScope": "Page",
   "aiChat.insertToNote": "Insert into note",
+  "aiChat.replaceInNote": "Replace in note",
   "aiChat.deriveAsNote": "Derive as note",
 
   // ── PROV パネル追加 ──

@@ -641,6 +641,52 @@ function NoteEditorInner({
     [markDirty, aiAssistant.sourceBlockIds],
   );
 
+  // AI 回答で対象ブロックを置換
+  const handleReplaceBlocks = useCallback(
+    (markdown: string) => {
+      if (!editorRef.current) return;
+      const editor = editorRef.current;
+      const blockIds = aiAssistant.sourceBlockIds;
+      if (blockIds.length === 0) return;
+
+      const newBlocks = editor.tryParseMarkdownToBlocks(markdown);
+      if (newBlocks.length === 0) return;
+
+      const firstBlock = editor.getBlock(blockIds[0]);
+      if (!firstBlock) return;
+
+      if (firstBlock.type === "heading") {
+        // 見出しスコープ: 見出し配下のブロックを置換（見出し自体は残す）
+        const scope = collectHeadingScope(editor.document, firstBlock);
+        // 見出し以外のスコープブロックを削除
+        for (let i = scope.length - 1; i >= 1; i--) {
+          editor.removeBlocks([scope[i].id]);
+        }
+        // 見出しの直後に新しいブロックを挿入
+        editor.insertBlocks(newBlocks, firstBlock, "after");
+      } else if (blockIds.length === 1) {
+        // 単一ブロック: 内容を置換
+        const parsed = newBlocks[0];
+        if (parsed && firstBlock.type === parsed.type) {
+          // 同じブロックタイプなら content を直接更新
+          editor.updateBlock(blockIds[0], { content: parsed.content });
+        } else {
+          // ブロックタイプが異なる場合は削除→挿入
+          editor.insertBlocks(newBlocks, firstBlock, "after");
+          editor.removeBlocks([blockIds[0]]);
+        }
+      } else {
+        // 複数ブロック選択: 最初のブロックの後に挿入し、元のブロックを削除
+        editor.insertBlocks(newBlocks, firstBlock, "before");
+        editor.removeBlocks(blockIds);
+      }
+
+      lastAiInsertRef.current = true;
+      markDirty();
+    },
+    [markDirty, aiAssistant],
+  );
+
   // ── 初期データの復元 ──
   const initializedRef = useRef(false);
   useEffect(() => {
@@ -1095,6 +1141,7 @@ function NoteEditorInner({
                 <AiAssistantPanel
                   onSubmit={handleAiChatSubmit}
                   onInsertToScope={handleInsertToScope}
+                  onReplaceBlocks={handleReplaceBlocks}
                   onDeriveNote={handleAiDeriveFromChat}
                 />
               )}
