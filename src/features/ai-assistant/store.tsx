@@ -138,6 +138,8 @@ export function AiAssistantProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({
       ...prev,
       messages: [...prev.messages, message],
+      // 最初のメッセージ追加時に activeChatId を確定（保存時の ID 安定化）
+      activeChatId: prev.activeChatId ?? crypto.randomUUID(),
     }));
   }, []);
 
