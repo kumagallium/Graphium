@@ -226,7 +226,21 @@ export const ja: Record<string, string> = {
   "aiChat.messageCount": "{count} メッセージ",
   "aiChat.pageScope": "ページ全体",
   "aiChat.insertToNote": "ノートに反映",
+  "aiChat.replaceInNote": "置換",
   "aiChat.deriveAsNote": "別ノートとして派生",
+
+  // ── AI 編集 ──
+  "aiEdit.askAi": "AI に質問",
+  "aiEdit.rewrite": "書き換え",
+  "aiEdit.summarize": "要約",
+  "aiEdit.translate": "翻訳",
+  "aiEdit.custom": "カスタム指示...",
+  "aiEdit.customPlaceholder": "指示を入力（例: よりフォーマルに）",
+  "aiEdit.customSubmit": "実行",
+  "aiEdit.editingLabel": "編集中",
+  "aiEdit.rewriteInstruction": "以下のテキストをより明確で読みやすく書き換えてください。書き換えたテキストのみを返してください。説明は不要です。",
+  "aiEdit.summarizeInstruction": "以下のテキストを簡潔に要約してください。要約のみを返してください。説明は不要です。",
+  "aiEdit.translateInstruction": "以下のテキストを英語に翻訳してください。すでに英語の場合は日本語に翻訳してください。翻訳のみを返してください。説明は不要です。",
 
   // ── PROV パネル追加 ──
   "provPanel.noLabelsMessage": "エディタにラベルを付けてから「PROV生成」を実行してください",

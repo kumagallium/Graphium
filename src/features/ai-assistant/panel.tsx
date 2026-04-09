@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Send, Trash2, FileDown, FilePlus, List } from "lucide-react";
+import { Bot, Send, Trash2, FileDown, FilePlus, List, Replace, Pencil } from "lucide-react";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useAiAssistant } from "./store";
@@ -14,6 +14,8 @@ type AiAssistantPanelProps = {
   onSubmit: (question: string) => void;
   /** AI 回答をスコープ内にブロックとして挿入する */
   onInsertToScope?: (markdown: string) => void;
+  /** AI 回答で対象ブロックを置換する */
+  onReplaceBlocks?: (markdown: string) => void;
   /** 別ノートとして派生する（従来の buildAiDerivedDocument 動作） */
   onDeriveNote?: (question: string, answer: string) => void;
 };
@@ -21,11 +23,13 @@ type AiAssistantPanelProps = {
 export function AiAssistantPanel({
   onSubmit,
   onInsertToScope,
+  onReplaceBlocks,
   onDeriveNote,
 }: AiAssistantPanelProps) {
   const {
     messages, loading, error, clearMessages, parkChat,
     chats, selectChat, sourceBlockIds, quotedMarkdown,
+    editMode, clearEditMode,
   } = useAiAssistant();
   const t = useT();
   const [input, setInput] = useState("");
@@ -36,11 +40,31 @@ export function AiAssistantPanel({
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editAutoSentRef = useRef(false);
 
   // 新しいメッセージが追加されたら自動スクロール
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // 編集モードで開かれたら自動的にプロンプトを送信
+  useEffect(() => {
+    if (!editMode || editAutoSentRef.current || messages.length > 0 || loading) return;
+    editAutoSentRef.current = true;
+
+    const actionKey = editMode.action === "custom"
+      ? editMode.customInstruction ?? ""
+      : t(`aiEdit.${editMode.action}Instruction` as any);
+
+    if (actionKey) {
+      onSubmit(actionKey);
+    }
+  }, [editMode, messages.length, loading, onSubmit, t]);
+
+  // editMode が変わったらフラグをリセット
+  useEffect(() => {
+    editAutoSentRef.current = false;
+  }, [editMode]);
 
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
@@ -67,12 +91,25 @@ export function AiAssistantPanel({
     [selectChat],
   );
 
+  // 編集モードのラベル
+  const editModeLabel = editMode
+    ? editMode.action === "custom"
+      ? t("aiEdit.custom")
+      : t(`aiEdit.${editMode.action}` as any)
+    : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2">
         <Bot size={14} className="text-violet-500" />
         <span className="text-xs font-semibold text-foreground">{t("aiChat.title")}</span>
+        {editModeLabel && (
+          <span className="flex items-center gap-1 text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+            <Pencil size={10} />
+            {editModeLabel}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1">
           {chats.length > 0 && !showChatList && (
             <button
@@ -98,7 +135,9 @@ export function AiAssistantPanel({
       {/* 引用表示 */}
       {quotedMarkdown && messages.length === 0 && !showChatList && (
         <div className="px-3 py-2 border-b border-border">
-          <div className="text-[10px] text-muted-foreground mb-1">{t("aiChat.quote")}</div>
+          <div className="text-[10px] text-muted-foreground mb-1">
+            {editMode ? t("aiEdit.editingLabel") : t("aiChat.quote")}
+          </div>
           <div className="bg-muted/50 rounded p-2 text-[11px] text-foreground/70 max-h-20 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
             {quotedMarkdown}
           </div>
@@ -125,7 +164,9 @@ export function AiAssistantPanel({
               <ChatBubble
                 key={i}
                 message={msg}
+                isEditMode={!!editMode}
                 onInsert={onInsertToScope}
+                onReplace={editMode ? onReplaceBlocks : undefined}
                 onDerive={
                   onDeriveNote && i > 0 && msg.role === "assistant"
                     ? () => {
@@ -237,11 +278,15 @@ function ChatListView({
 // チャットバブルコンポーネント
 function ChatBubble({
   message,
+  isEditMode,
   onInsert,
+  onReplace,
   onDerive,
 }: {
   message: ChatMessage;
+  isEditMode: boolean;
   onInsert?: (markdown: string) => void;
+  onReplace?: (markdown: string) => void;
   onDerive?: () => void;
 }) {
   const t = useT();
@@ -257,8 +302,18 @@ function ChatBubble({
       >
         {message.content}
       </div>
-      {!isUser && (onInsert || onDerive) && (
-        <div className="flex gap-1 mt-1">
+      {!isUser && (onInsert || onReplace || onDerive) && (
+        <div className="flex gap-1 mt-1 flex-wrap">
+          {onReplace && (
+            <button
+              onClick={() => onReplace(message.content)}
+              title={t("aiChat.replaceInNote")}
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-blue-600 hover:text-blue-700 rounded hover:bg-blue-50 transition-colors font-medium"
+            >
+              <Replace size={10} />
+              {t("aiChat.replaceInNote")}
+            </button>
+          )}
           {onInsert && (
             <button
               onClick={() => onInsert(message.content)}

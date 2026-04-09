@@ -226,7 +226,21 @@ export const en: Record<string, string> = {
   "aiChat.messageCount": "{count} messages",
   "aiChat.pageScope": "Page",
   "aiChat.insertToNote": "Insert into note",
+  "aiChat.replaceInNote": "Replace in note",
   "aiChat.deriveAsNote": "Derive as note",
+
+  // ── AI 編集 ──
+  "aiEdit.askAi": "Ask AI",
+  "aiEdit.rewrite": "Rewrite",
+  "aiEdit.summarize": "Summarize",
+  "aiEdit.translate": "Translate",
+  "aiEdit.custom": "Custom instruction...",
+  "aiEdit.customPlaceholder": "Enter instruction (e.g. make it more formal)",
+  "aiEdit.customSubmit": "Run",
+  "aiEdit.editingLabel": "Editing",
+  "aiEdit.rewriteInstruction": "Rewrite the following text to improve clarity and readability. Return only the rewritten text, no explanations.",
+  "aiEdit.summarizeInstruction": "Summarize the following text concisely. Return only the summary, no explanations.",
+  "aiEdit.translateInstruction": "Translate the following text to English. If it is already in English, translate to Japanese. Return only the translation, no explanations.",
 
   // ── PROV パネル追加 ──
   "provPanel.noLabelsMessage": "Add labels to the editor, then run PROV generation",
