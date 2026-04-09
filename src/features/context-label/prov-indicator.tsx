@@ -172,9 +172,17 @@ export function ProvIndicatorLayer() {
   useEffect(() => {
     window.addEventListener("scroll", compute, true);
     window.addEventListener("resize", compute);
+    // エディタラッパーの幅変化を監視（右パネル展開/折りたたみ時の再計算）
+    const wrapper = document.querySelector("[data-label-wrapper]");
+    let ro: ResizeObserver | undefined;
+    if (wrapper) {
+      ro = new ResizeObserver(compute);
+      ro.observe(wrapper);
+    }
     return () => {
       window.removeEventListener("scroll", compute, true);
       window.removeEventListener("resize", compute);
+      ro?.disconnect();
     };
   }, [compute]);
 
