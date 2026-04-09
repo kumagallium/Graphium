@@ -44,31 +44,36 @@ export function UrlPasteMenu({
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
+          e.stopPropagation();
           setActiveIndex((prev) => (prev + 1) % ITEMS.length);
           break;
         case "ArrowUp":
           e.preventDefault();
+          e.stopPropagation();
           setActiveIndex((prev) => (prev - 1 + ITEMS.length) % ITEMS.length);
           break;
         case "Enter":
           e.preventDefault();
+          e.stopPropagation();
           handleSelect(activeIndex);
           break;
         case "Escape":
           e.preventDefault();
+          e.stopPropagation();
           onDismiss();
           break;
       }
     };
     // 少し遅延して登録（ペーストイベントと競合しないため）
+    // capture フェーズで登録し、エディタより先にキーイベントを捕捉する
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handleClick);
-      document.addEventListener("keydown", handleKeyDown);
+      document.addEventListener("keydown", handleKeyDown, true);
     }, 50);
     return () => {
       clearTimeout(timer);
       document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [onDismiss, activeIndex, handleSelect]);
 
