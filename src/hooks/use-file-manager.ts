@@ -190,7 +190,13 @@ export function useFileManager(authenticated: boolean) {
       await refreshFiles();
       const lastFileId = localStorage.getItem("graphium_last_file");
       if (lastFileId && !activeFileIdRef.current) {
-        handleOpenFile(lastFileId);
+        // ファイル一覧に存在するか確認（ゴミ箱内のファイルを開かないようにする）
+        const currentFiles = await listFiles();
+        if (currentFiles.some((f) => f.id === lastFileId)) {
+          handleOpenFile(lastFileId);
+        } else {
+          localStorage.removeItem("graphium_last_file");
+        }
       }
     })();
   }, [authenticated, refreshFiles, handleOpenFile]);
@@ -286,7 +292,9 @@ export function useFileManager(authenticated: boolean) {
         }
 
         const currentFileId = activeFileIdRef.current;
-        if (currentFileId) {
+        // ファイル一覧に存在するか確認（ゴミ箱内のファイルへの保存を防止）
+        const fileExists = currentFileId && files.some((f) => f.id === currentFileId);
+        if (currentFileId && fileExists) {
           // 既存ファイルを上書き
           await saveFile(currentFileId, doc);
           // キャッシュも更新
