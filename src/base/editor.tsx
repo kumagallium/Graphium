@@ -15,6 +15,7 @@ import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName } from "@features/context-label/hashtag-menu";
+import { BlockSelectionManager } from "@features/block-selection";
 
 type SlashMenuItem = {
   title: string;
@@ -169,6 +170,8 @@ export function SandboxEditor({
       slashMenu={hasExtraSlash ? false : undefined}
       onChange={onChange}
     >
+      {/* 複数ブロック選択: ハイライト + フローティングツールバー */}
+      <BlockSelectionManager />
       {usesCustomSideMenu && (
         <SideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
       )}
