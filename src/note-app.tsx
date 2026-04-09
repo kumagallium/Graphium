@@ -1191,6 +1191,7 @@ export function NoteApp() {
             onNavigateNote={(noteId) => { fm.setActiveAssetType(null); fm.handleOpenFile(noteId); }}
             onDeleteMedia={fm.handleDeleteMedia}
             onRenameMedia={fm.handleRenameMedia}
+            onAddUrlBookmark={fm.handleAddUrlBookmark}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView

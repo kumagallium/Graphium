@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 /** 日付を YYYY-MM-DD 形式でフォーマット */
@@ -12,7 +12,9 @@ function formatDate(isoDate: string): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
+import { getFaviconUrl } from "./media-index";
 import { MediaDetailModal } from "./MediaDetailModal";
+import { UrlBookmarkModal } from "./UrlBookmarkModal";
 
 type SortKey = "uploadedAt" | "name";
 
@@ -138,6 +140,24 @@ function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
   );
 }
 
+// URL ブックマークサムネイル: favicon + ドメイン表示
+function UrlThumbnail({ entry }: { entry: MediaIndexEntry }) {
+  const domain = entry.urlMeta?.domain ?? "";
+  return (
+    <div className="w-full h-32 flex flex-col items-center justify-center gap-2 rounded-t-md bg-muted px-3">
+      <img
+        src={getFaviconUrl(domain)}
+        alt=""
+        className="w-8 h-8 rounded"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
+      />
+      <span className="text-[10px] text-muted-foreground truncate max-w-full">{domain}</span>
+    </div>
+  );
+}
+
 // メディアカードコンポーネント
 function MediaCard({
   entry,
@@ -171,6 +191,8 @@ function MediaCard({
             <FileText size={32} className="text-muted-foreground" />
           </div>
         );
+      case "url":
+        return <UrlThumbnail entry={entry} />;
       default:
         return (
           <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
@@ -201,12 +223,31 @@ function MediaCard({
 
       {/* メタデータ */}
       <div className="p-2">
-        <p className="text-xs font-medium text-foreground truncate" title={entry.name}>
-          {entry.name}
-        </p>
+        <div className="flex items-center gap-1">
+          <p className="text-xs font-medium text-foreground truncate flex-1" title={entry.name}>
+            {entry.name}
+          </p>
+          {entry.type === "url" && (
+            <a
+              href={entry.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+              title={t("asset.urlOpen")}
+            >
+              <ExternalLink size={12} />
+            </a>
+          )}
+        </div>
         <p className="text-[10px] text-muted-foreground mt-0.5">
           {formatDate(entry.uploadedAt)}
         </p>
+        {entry.type === "url" && entry.urlMeta?.description && (
+          <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
+            {entry.urlMeta.description}
+          </p>
+        )}
         {/* 使用されているノート */}
         {entry.usedIn.length > 0 ? (
           <div className="mt-1 flex flex-wrap gap-1">
@@ -238,6 +279,8 @@ export type AssetGalleryViewProps = {
   onNavigateNote: (noteId: string) => void;
   onDeleteMedia: (entry: MediaIndexEntry) => Promise<void>;
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
+  /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
+  onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
 };
 
 export function AssetGalleryView({
@@ -247,6 +290,7 @@ export function AssetGalleryView({
   onNavigateNote,
   onDeleteMedia,
   onRenameMedia,
+  onAddUrlBookmark,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -255,6 +299,7 @@ export function AssetGalleryView({
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
+  const [showUrlModal, setShowUrlModal] = useState(false);
 
   const handleSort = useCallback((key: SortKey) => {
     setSortKey((prev) => {
@@ -276,7 +321,10 @@ export function AssetGalleryView({
       result = result.filter(
         (m) =>
           m.name.toLowerCase().includes(q) ||
-          m.usedIn.some((u) => u.noteTitle.toLowerCase().includes(q))
+          m.usedIn.some((u) => u.noteTitle.toLowerCase().includes(q)) ||
+          m.urlMeta?.domain?.toLowerCase().includes(q) ||
+          m.urlMeta?.description?.toLowerCase().includes(q) ||
+          (m.type === "url" && m.url.toLowerCase().includes(q))
       );
     }
     return [...result].sort((a, b) => {
@@ -318,6 +366,15 @@ export function AssetGalleryView({
         <span className="text-xs text-muted-foreground">
           {t("asset.count", { count: String(filtered.length) })}
         </span>
+        {mediaType === "url" && onAddUrlBookmark && (
+          <button
+            onClick={() => setShowUrlModal(true)}
+            className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            <Plus size={12} />
+            {t("asset.urlAdd")}
+          </button>
+        )}
       </div>
 
       {/* 検索バー + ソート */}
@@ -399,6 +456,17 @@ export function AssetGalleryView({
             // モーダル内の表示を更新
             setDetailEntry({ ...entry, name: newName });
           }}
+        />
+      )}
+
+      {/* URL ブックマーク登録モーダル */}
+      {showUrlModal && onAddUrlBookmark && (
+        <UrlBookmarkModal
+          onRegister={(entry) => {
+            onAddUrlBookmark(entry);
+            setShowUrlModal(false);
+          }}
+          onClose={() => setShowUrlModal(false)}
         />
       )}
     </div>

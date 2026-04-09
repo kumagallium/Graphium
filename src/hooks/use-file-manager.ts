@@ -581,7 +581,10 @@ export function useFileManager(authenticated: boolean) {
 
   // メディアリネーム（モーダルから呼ぶ）
   const handleRenameMedia = useCallback(async (entry: MediaIndexEntry, newName: string) => {
-    await renameMediaFile(entry.fileId, newName);
+    // URL ブックマークは Drive ファイルがないのでインデックスのみ更新
+    if (entry.type !== "url") {
+      await renameMediaFile(entry.fileId, newName);
+    }
     const current = mediaIndexRef.current ?? createEmptyIndex();
     const updated = renameMediaEntry(current, entry.fileId, newName);
     mediaIndexRef.current = updated;
@@ -591,9 +594,21 @@ export function useFileManager(authenticated: boolean) {
 
   // メディア削除（ギャラリーから呼ぶ）
   const handleDeleteMedia = useCallback(async (entry: MediaIndexEntry) => {
-    await deleteMediaFile(entry.fileId);
+    // URL ブックマークは Drive 上にファイルがないので削除 API を呼ばない
+    if (entry.type !== "url") {
+      await deleteMediaFile(entry.fileId);
+    }
     const current = mediaIndexRef.current ?? createEmptyIndex();
     const updated = removeMediaEntry(current, entry.fileId);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+  }, []);
+
+  // URL ブックマーク追加
+  const handleAddUrlBookmark = useCallback((entry: MediaIndexEntry) => {
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const updated = addMediaEntry(current, entry);
     mediaIndexRef.current = updated;
     setMediaIndex(updated);
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
@@ -633,5 +648,6 @@ export function useFileManager(authenticated: boolean) {
     handleUploadMedia,
     handleDeleteMedia,
     handleRenameMedia,
+    handleAddUrlBookmark,
   };
 }

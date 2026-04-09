@@ -305,6 +305,16 @@ export const ja: Record<string, string> = {
   "asset.slashPdfSub": "新規アップロードまたは既存の PDF から挿入",
   "asset.uploadNew": "ファイルからアップロード",
   "asset.uploading": "アップロード中…",
+  "asset.type.url": "URL",
+  "asset.urlRegisterTitle": "URL を登録",
+  "asset.urlFetch": "取得",
+  "asset.urlTitle": "タイトル",
+  "asset.urlDescription": "説明",
+  "asset.urlRegister": "登録",
+  "asset.urlRegistering": "登録中…",
+  "asset.urlAdd": "URL を追加",
+  "asset.urlOpen": "新しいタブで開く",
+  "asset.urlDomain": "ドメイン",
 
   // ── ラベルギャラリー ──
   "label.section": "ラベル",

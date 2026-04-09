@@ -10,7 +10,7 @@ const INDEX_FILE_NAME = ".provnote-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "other";
+export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "other";
 
 /** メディアが使用されているノートの情報 */
 export type MediaUsage = {
@@ -19,24 +19,36 @@ export type MediaUsage = {
   blockId: string;
 };
 
+/** URL ブックマークのメタデータ（type === "url" のとき） */
+export type UrlMeta = {
+  /** ドメイン名 */
+  domain: string;
+  /** 説明文（OGP description 等） */
+  description?: string;
+  /** OGP 画像 URL */
+  ogImage?: string;
+};
+
 /** メディアインデックスのエントリ */
 export type MediaIndexEntry = {
-  /** Google Drive ファイル ID */
+  /** Google Drive ファイル ID（URL ブックマークの場合は生成 ID） */
   fileId: string;
-  /** ファイル名 */
+  /** ファイル名（URL ブックマークの場合はタイトル） */
   name: string;
   /** メディアタイプ */
   type: MediaType;
   /** MIME タイプ */
   mimeType: string;
-  /** CDN URL（表示用） */
+  /** CDN URL（表示用）/ URL ブックマークの場合は外部 URL */
   url: string;
   /** サムネイル URL */
   thumbnailUrl: string;
-  /** アップロード日時 */
+  /** アップロード日時 / URL 登録日時 */
   uploadedAt: string;
   /** 使用されているノート一覧 */
   usedIn: MediaUsage[];
+  /** URL ブックマーク用メタデータ（type === "url" のとき） */
+  urlMeta?: UrlMeta;
 };
 
 /** メディアインデックス全体 */
@@ -213,7 +225,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, other: 0 };
   for (const entry of index.media) {
     counts[entry.type]++;
   }
@@ -314,10 +326,14 @@ export async function ensureMediaIndex(
   // Drive の uploadFiles/ を走査
   const driveFiles = await listUploadFiles();
 
-  // 既存インデックスがあり、ファイル数が一致し、usedIn も構築済みなら最新とみなす
+  // 既存の URL ブックマーク（Drive にファイルがないエントリ）を保持
+  const existingUrlBookmarks = (existing?.media ?? []).filter((m) => m.type === "url");
+
+  // 既存インデックスがあり、ファイル数が一致し（URL ブックマークを除外して比較）、usedIn も構築済みなら最新とみなす
+  const existingMediaCount = (existing?.media.length ?? 0) - existingUrlBookmarks.length;
   if (
     existing &&
-    existing.media.length === driveFiles.length &&
+    existingMediaCount === driveFiles.length &&
     driveFiles.length > 0 &&
     existing.media.some((m) => m.usedIn.length > 0)
   ) {
@@ -330,6 +346,9 @@ export async function ensureMediaIndex(
   );
 
   const media: MediaIndexEntry[] = [];
+  // URL ブックマークを先に追加（Drive ファイルとは別管理）
+  media.push(...existingUrlBookmarks);
+
   for (const file of driveFiles) {
     const existingEntry = existingMap.get(file.id);
     const type = existingEntry?.type ?? mimeToMediaType(file.mimeType);
@@ -395,6 +414,61 @@ export async function ensureMediaIndex(
   saveMediaIndex(index).catch((err) => console.warn("メディアインデックス保存失敗:", err));
 
   return index;
+}
+
+// ── URL ブックマーク ──
+
+/** URL からドメイン名を抽出 */
+export function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+/** Google Favicon サービスで favicon URL を取得 */
+export function getFaviconUrl(domain: string, size = 64): string {
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
+}
+
+/** URL のメタデータを取得（OGP タイトル・説明・画像）
+ *  CORS エラー等で取得できない場合はドメイン名のみ返す */
+export async function fetchUrlMetadata(url: string): Promise<{
+  title: string;
+  description?: string;
+  ogImage?: string;
+  domain: string;
+}> {
+  const domain = extractDomain(url);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      mode: "cors",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return { title: domain, domain };
+    const html = await res.text();
+    // HTML からメタデータを抽出
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute("content");
+    const title = ogTitle || doc.querySelector("title")?.textContent?.trim() || domain;
+    const description =
+      doc.querySelector('meta[property="og:description"]')?.getAttribute("content") ||
+      doc.querySelector('meta[name="description"]')?.getAttribute("content") ||
+      undefined;
+    const ogImage = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || undefined;
+    return { title, description, ogImage, domain };
+  } catch {
+    // CORS やネットワークエラー → ドメイン名のみ
+    return { title: domain, domain };
+  }
+}
+
+/** URL ブックマーク用のユニーク ID を生成 */
+export function generateUrlBookmarkId(): string {
+  return `url_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** ノートのブロックからメディア URL → blockId のマップを構築 */

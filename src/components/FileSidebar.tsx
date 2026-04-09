@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2 } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link } from "lucide-react";
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
@@ -46,6 +46,7 @@ const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
   { type: "pdf", icon: <FileText size={14} /> },
   { type: "video", icon: <Video size={14} /> },
   { type: "audio", icon: <Volume2 size={14} /> },
+  { type: "url", icon: <Link size={14} /> },
 ];
 
 export function FileSidebar({

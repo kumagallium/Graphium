@@ -305,6 +305,16 @@ export const en: Record<string, string> = {
   "asset.slashPdfSub": "Upload new or insert existing PDF",
   "asset.uploadNew": "Upload from file",
   "asset.uploading": "Uploading…",
+  "asset.type.url": "URLs",
+  "asset.urlRegisterTitle": "Register URL",
+  "asset.urlFetch": "Fetch",
+  "asset.urlTitle": "Title",
+  "asset.urlDescription": "Description",
+  "asset.urlRegister": "Register",
+  "asset.urlRegistering": "Registering…",
+  "asset.urlAdd": "Add URL",
+  "asset.urlOpen": "Open in new tab",
+  "asset.urlDomain": "Domain",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",
