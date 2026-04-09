@@ -1,7 +1,8 @@
 // ノートアプリのメイン画面
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText } from "lucide-react";
 import { SandboxEditor } from "./base/editor";
 import { pdfViewerBlock } from "./blocks/pdf-viewer";
 import {
@@ -89,6 +90,83 @@ import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 
 import type { ProvNoteFile } from "./lib/document-types";
 import type { NoteGraphData } from "./features/network-graph";
+
+// ── ヘッダーメニュー（Notion 風ドロップダウン） ──
+function NoteHeaderMenu({
+  onSave,
+  saveDisabled,
+  onExportPdf,
+  pdfExporting,
+  onExportProvJsonLd,
+  provExportDisabled,
+  t,
+}: {
+  onSave: () => void;
+  saveDisabled: boolean;
+  onExportPdf: () => void;
+  pdfExporting: boolean;
+  onExportProvJsonLd: () => void;
+  provExportDisabled: boolean;
+  t: (key: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // メニュー外クリックで閉じる
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const itemClass =
+    "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        title={t("common.menu")}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+          <button
+            className={itemClass}
+            disabled={saveDisabled}
+            onClick={() => { onSave(); setOpen(false); }}
+          >
+            <Save size={14} />
+            {t("common.save")}
+          </button>
+          <button
+            className={itemClass}
+            disabled={pdfExporting}
+            onClick={() => { onExportPdf(); setOpen(false); }}
+          >
+            <FileDown size={14} />
+            {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
+          </button>
+          <button
+            className={itemClass}
+            disabled={provExportDisabled}
+            onClick={() => { onExportProvJsonLd(); setOpen(false); }}
+          >
+            <Share2 size={14} />
+            {t("prov.export")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── エディタ本体 ──
 type NoteEditorProps = {
@@ -208,9 +286,13 @@ function NoteEditorInner({
   }, [highlightBlockIds]);
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source">(
-    sourceDoc ? "source" : "graph"
-  );
+  // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | null>(null);
+  // アイコンレールのトグル: 同じタブクリックで閉じる
+  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source") => {
+    setRightTab((prev) => prev === tab ? null : tab);
+    if (tab !== "history") setHighlightBlockIds([]);
+  }, []);
   const t = useT();
   const [title, setTitle] = useState(initialDoc?.title || tStatic("editor.newNote"));
 
@@ -811,44 +893,15 @@ function NoteEditorInner({
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
-        <button
-          onClick={saveNow}
-          disabled={saving}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
-            saving
-              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
-              : "border-primary text-primary bg-primary/5 hover:bg-primary/10"
-          )}
-        >
-          {t("common.save")}
-        </button>
-        <button
-          onClick={handleExportPdf}
-          disabled={pdfExporting}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
-            pdfExporting
-              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
-              : "border-border text-muted-foreground hover:bg-muted/50"
-          )}
-          title={t("pdf.export")}
-        >
-          {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
-        </button>
-        <button
-          onClick={handleExportProvJsonLd}
-          disabled={!provDoc || provDoc["@graph"].length === 0}
-          className={cn(
-            "px-3 py-1 text-xs font-medium rounded-md border transition-colors shrink-0",
-            !provDoc || provDoc["@graph"].length === 0
-              ? "border-border text-muted-foreground bg-muted cursor-not-allowed"
-              : "border-border text-muted-foreground hover:bg-muted/50"
-          )}
-          title={!provDoc || provDoc["@graph"].length === 0 ? t("prov.exportDisabled") : t("prov.export")}
-        >
-          {t("prov.export")}
-        </button>
+        <NoteHeaderMenu
+          onSave={saveNow}
+          saveDisabled={saving}
+          onExportPdf={handleExportPdf}
+          pdfExporting={pdfExporting}
+          onExportProvJsonLd={handleExportProvJsonLd}
+          provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
+          t={t}
+        />
       </div>
 
       <div className="flex h-full w-full overflow-hidden">
@@ -979,57 +1032,72 @@ function NoteEditorInner({
           </div>
         </div>
 
-        {/* 右: Graph / PROV / Chat / Source パネル */}
-        <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
-          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-            {(["graph", "prov", "chat", "history", ...(sourceDoc ? ["source" as const] : [])] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => { setRightTab(tab); if (tab !== "history") setHighlightBlockIds([]); }}
-                className={cn(
-                  "text-xs font-bold tracking-wide px-1.5 py-0.5 rounded transition-colors",
-                  rightTab === tab
-                    ? "text-foreground bg-background"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab === "graph" ? "Graph" : tab === "prov" ? t("panel.prov") : tab === "chat" ? "Chat" : tab === "history" ? t("panel.history") : "Source"}
-              </button>
-            ))}
-            {rightTab === "prov" && (
-              <button
-                onClick={generateProv}
-                title={t("panel.generateManual")}
-                className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto"
-              >
-                {t("panel.generate")}
-              </button>
-            )}
+        {/* 右: アイコンレール + オンデマンド展開パネル */}
+        {rightTab && (
+          <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+              <span className="text-xs font-bold tracking-wide text-foreground">
+                {rightTab === "graph" ? "Graph" : rightTab === "prov" ? t("panel.prov") : rightTab === "chat" ? "Chat" : rightTab === "history" ? t("panel.history") : "Source"}
+              </span>
+              {rightTab === "prov" && (
+                <button
+                  onClick={generateProv}
+                  title={t("panel.generateManual")}
+                  className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto"
+                >
+                  {t("panel.generate")}
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-auto">
+              {rightTab === "graph" && (
+                <NetworkGraphPanel
+                  data={noteGraphData}
+                  onNavigate={onNavigateNote}
+                />
+              )}
+              {rightTab === "prov" && (
+                <ProvGraphPanel doc={provDoc} />
+              )}
+              {rightTab === "chat" && (
+                <AiAssistantPanel
+                  onSubmit={handleAiChatSubmit}
+                  onInsertToScope={handleInsertToScope}
+                  onDeriveNote={handleAiDeriveFromChat}
+                />
+              )}
+              {rightTab === "history" && (
+                <DocumentProvenancePanel provenance={currentProvenance} onHighlightBlocks={setHighlightBlockIds} />
+              )}
+              {rightTab === "source" && sourceDoc && (
+                <SourceDocPanel doc={sourceDoc} />
+              )}
+            </div>
           </div>
-          <div className="flex-1 overflow-auto">
-            {rightTab === "graph" && (
-              <NetworkGraphPanel
-                data={noteGraphData}
-                onNavigate={onNavigateNote}
-              />
-            )}
-            {rightTab === "prov" && (
-              <ProvGraphPanel doc={provDoc} />
-            )}
-            {rightTab === "chat" && (
-              <AiAssistantPanel
-                onSubmit={handleAiChatSubmit}
-                onInsertToScope={handleInsertToScope}
-                onDeriveNote={handleAiDeriveFromChat}
-              />
-            )}
-            {rightTab === "history" && (
-              <DocumentProvenancePanel provenance={currentProvenance} onHighlightBlocks={setHighlightBlockIds} />
-            )}
-            {rightTab === "source" && sourceDoc && (
-              <SourceDocPanel doc={sourceDoc} />
-            )}
-          </div>
+        )}
+        {/* アイコンレール */}
+        <div className="w-10 shrink-0 border-l border-border bg-muted/50 flex flex-col items-center py-2 gap-1">
+          {([
+            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: true },
+            { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 },
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
+            { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
+            ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: "Source", show: true }] : []),
+          ] as const).filter((item) => item.show).map((item) => (
+            <button
+              key={item.tab}
+              onClick={() => toggleRightTab(item.tab)}
+              title={item.label}
+              className={cn(
+                "w-8 h-8 flex items-center justify-center rounded-md transition-colors",
+                rightTab === item.tab
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+              )}
+            >
+              {item.icon}
+            </button>
+          ))}
         </div>
       </div>
     </>

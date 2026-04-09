@@ -2,6 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Image, Video, Volume2, FileText, Paperclip, Play } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 /** 日付を YYYY-MM-DD 形式でフォーマット */
@@ -75,7 +76,7 @@ function ImageThumbnail({ entry }: { entry: MediaIndexEntry }) {
   }, [entry.thumbnailUrl]);
 
   if (!src) {
-    return <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted"><span className="text-3xl">🖼️</span></div>;
+    return <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted"><Image size={32} className="text-muted-foreground" /></div>;
   }
   return <img src={src} alt={entry.name} className="w-full h-32 object-cover rounded-t-md bg-muted" loading="lazy" />;
 }
@@ -127,11 +128,11 @@ function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
       />
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-3xl">🎥</span>
+          <Video size={32} className="text-muted-foreground" />
         </div>
       )}
-      <span className="absolute inset-0 flex items-center justify-center text-white/80 text-2xl bg-black/20 pointer-events-none">
-        ▶
+      <span className="absolute inset-0 flex items-center justify-center text-white/80 bg-black/20 pointer-events-none">
+        <Play size={24} fill="currentColor" />
       </span>
     </div>
   );
@@ -161,19 +162,19 @@ function MediaCard({
       case "audio":
         return (
           <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
-            <span className="text-3xl">🔊</span>
+            <Volume2 size={32} className="text-muted-foreground" />
           </div>
         );
       case "pdf":
         return (
           <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
-            <span className="text-3xl">📄</span>
+            <FileText size={32} className="text-muted-foreground" />
           </div>
         );
       default:
         return (
           <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
-            <span className="text-3xl">📎</span>
+            <Paperclip size={32} className="text-muted-foreground" />
           </div>
         );
     }
