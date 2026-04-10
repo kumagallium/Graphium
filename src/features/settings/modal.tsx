@@ -446,6 +446,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               )}
             </div>
 
+            {/* バックエンド未接続時は案内のみ表示 */}
+            {!healthLoading && !health ? (
+              <div className="rounded-lg border border-dashed border-border p-4 text-center">
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.health.unavailable")}
+                </p>
+              </div>
+            ) : <>
+
             {/* 登録済みモデル一覧 */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -758,6 +767,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {t("settings.tools.help")}
               </p>
             </div>
+
+            </>}
           </div>
         )}
       </ModalBody>
