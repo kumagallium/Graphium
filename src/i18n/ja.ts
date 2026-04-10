@@ -238,6 +238,10 @@ export const ja: Record<string, string> = {
   "settings.addModel.displayName": "表示名",
   "settings.addModel.addButton": "追加",
   "settings.addModel.adding": "追加中...",
+  // ── Registry ──
+  "settings.registry.title": "Crucible Registry URL",
+  "settings.registry.placeholder": "http://localhost:8080",
+  "settings.registry.help": "MCP ツール管理用の Crucible Registry の URL。空欄の場合はサーバーのデフォルトを使用します。",
   // ── ツール ──
   "settings.tools.title": "ツール",
   "settings.tools.empty": "ツールが登録されていません",

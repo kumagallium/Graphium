@@ -9,6 +9,7 @@ import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import { fetchRegistryServers, filterMCPServers, buildSSEUrl } from "../services/registry.js";
 import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
+import { getRegistryUrl, getRegistryKey } from "../services/env.js";
 
 const app = new Hono();
 
@@ -62,8 +63,8 @@ app.post("/run", async (c) => {
   ];
 
   // MCP ツール取得（Registry 接続）
-  const registryUrl = process.env.CRUCIBLE_API_URL ?? "";
-  const registryKey = process.env.CRUCIBLE_API_KEY ?? "";
+  const registryUrl = getRegistryUrl(c);
+  const registryKey = getRegistryKey();
   const allServers = await fetchRegistryServers(registryUrl, registryKey);
   let mcpServers = filterMCPServers(allServers);
   // server_names が指定されていたら、そのサーバーのみ接続

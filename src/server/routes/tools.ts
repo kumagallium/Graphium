@@ -3,12 +3,13 @@
 
 import { Hono } from "hono";
 import { fetchRegistryServers } from "../services/registry.js";
+import { getRegistryUrl, getRegistryKey } from "../services/env.js";
 
 const app = new Hono();
 
 app.get("/", async (c) => {
-  const registryUrl = process.env.CRUCIBLE_API_URL ?? "";
-  const registryKey = process.env.CRUCIBLE_API_KEY ?? "";
+  const registryUrl = getRegistryUrl(c);
+  const registryKey = getRegistryKey();
 
   const servers = await fetchRegistryServers(registryUrl, registryKey);
 

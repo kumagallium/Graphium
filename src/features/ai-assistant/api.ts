@@ -1,6 +1,16 @@
 // Graphium ビルトインバックエンド API クライアント
 // /api/* エンドポイントを呼び出して AI 機能を提供する
 
+import { getRegistryUrl } from "../settings/store";
+
+// Registry URL が設定されている場合はヘッダーに含める
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
+  const registryUrl = getRegistryUrl();
+  if (registryUrl) h["X-Registry-URL"] = registryUrl;
+  return h;
+}
+
 export type AgentRunRequest = {
   message: string;
   session_id?: string;
@@ -55,7 +65,7 @@ export type ModelsResponse = {
  * 登録済みモデル一覧を取得する
  */
 export async function fetchModels(): Promise<ModelsResponse> {
-  const res = await fetch("/api/models");
+  const res = await fetch("/api/models", { headers: apiHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch models: ${res.status}`);
   }
@@ -76,7 +86,7 @@ export type ProfilesResponse = {
  * プロファイル一覧を取得する
  */
 export async function fetchProfiles(): Promise<ProfilesResponse> {
-  const res = await fetch("/api/profiles");
+  const res = await fetch("/api/profiles", { headers: apiHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch profiles: ${res.status}`);
   }
@@ -91,7 +101,7 @@ export async function generateTitle(
 ): Promise<string> {
   const res = await fetch("/api/agent/sessions/title", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: apiHeaders(),
     body: JSON.stringify({ first_message: firstMessage }),
   });
 
@@ -120,7 +130,7 @@ export async function runAgent(
 ): Promise<AgentRunResponse> {
   const res = await fetch("/api/agent/run", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: apiHeaders(),
     body: JSON.stringify(req),
     signal,
   });

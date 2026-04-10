@@ -2,11 +2,12 @@
 // GET /api/health — バックエンド + Registry の接続状態
 
 import { Hono } from "hono";
+import { getRegistryUrl } from "../services/env.js";
 
 const app = new Hono();
 
 app.get("/", async (c) => {
-  const registryUrl = process.env.CRUCIBLE_API_URL ?? "";
+  const registryUrl = getRegistryUrl(c);
   let registryStatus: "ok" | "unavailable" = "unavailable";
 
   if (registryUrl) {

@@ -10,12 +10,15 @@ export type Settings = {
   profile: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
+  /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる） */
+  registryUrl: string;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   model: "",
   profile: "",
   disabledTools: [],
+  registryUrl: "",
 };
 
 /** localStorage から設定を読み込む */
@@ -48,6 +51,11 @@ export function getSelectedProfile(): string {
 /** 無効にしたツール名リストを取得する */
 export function getDisabledTools(): string[] {
   return loadSettings().disabledTools;
+}
+
+/** Crucible Registry URL を取得する（空文字 = バックエンドのデフォルト） */
+export function getRegistryUrl(): string {
+  return loadSettings().registryUrl;
 }
 
 /** AI バックエンドが利用可能かどうか（ビルトインバックエンドは常に available） */

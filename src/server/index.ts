@@ -32,7 +32,7 @@ app.use(
   "/api/*",
   cors({
     origin: allowedOrigins,
-    allowHeaders: ["Content-Type", "X-API-Key"],
+    allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
 );

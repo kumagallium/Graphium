@@ -80,6 +80,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [model, setModel] = useState("");
   const [profile, setProfile] = useState("");
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
+  const [registryUrl, setRegistryUrl] = useState("");
 
   // サーバーデータ
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -142,6 +143,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setModel(settings.model);
     setProfile(settings.profile);
     setDisabledTools(settings.disabledTools ?? []);
+    setRegistryUrl(settings.registryUrl ?? "");
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -155,14 +157,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       .catch(() => setProfiles([]))
       .finally(() => setProfilesLoading(false));
 
+    // Registry URL ヘッダーを付与
+    const regUrl = settings.registryUrl ?? "";
+    const regHeaders: HeadersInit = regUrl ? { "X-Registry-URL": regUrl } : {};
+
     setHealthLoading(true);
-    fetch("/api/health")
+    fetch("/api/health", { headers: regHeaders })
       .then((r) => r.json())
       .then((data) => setHealth(data))
       .catch(() => setHealth(null))
       .finally(() => setHealthLoading(false));
 
-    fetch("/api/tools")
+    fetch("/api/tools", { headers: regHeaders })
       .then((r) => r.json())
       .then((data) => setToolsData(data))
       .catch(() => setToolsData(null));
@@ -287,7 +293,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, profile, disabledTools });
+    saveSettings({ model, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, "") });
     setSaved(true);
     setTimeout(() => onClose(), 600);
   }, [model, profile, onClose]);
@@ -683,6 +689,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* MCP ツール状態 */}
+            {/* Crucible Registry URL */}
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                {t("settings.registry.title")}
+              </label>
+              <Input
+                type="url"
+                value={registryUrl}
+                onChange={(e) => { setRegistryUrl(e.target.value); setSaved(false); }}
+                placeholder={t("settings.registry.placeholder")}
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">{t("settings.registry.help")}</p>
+            </div>
+
+            {/* ツール一覧 */}
             <div>
               <div className="flex items-center gap-1.5 mb-2">
                 <Wrench size={14} className="text-muted-foreground" />
