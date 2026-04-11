@@ -1,10 +1,12 @@
 // @ai-sdk/mcp クライアント管理
-// Crucible Registry から取得した SSE URL に接続してツールを取得する
+// Crucible Registry から取得した MCP サーバーに接続してツールを取得する
+// SSE と Streamable HTTP の両トランスポートに対応
 
 import { createMCPClient } from "@ai-sdk/mcp";
 type MCPServerInfo = {
   name: string;
   url: string;
+  transport: "sse" | "streamable-http";
   [key: string]: unknown;
 };
 
@@ -26,13 +28,11 @@ export async function connectMCPServers(
   const results = await Promise.allSettled(
     servers.map(async (server) => {
       try {
+        const transport = server.transport === "streamable-http"
+          ? { type: "http" as const, url: server.url }
+          : { type: "sse" as const, url: server.url };
         const client = await Promise.race([
-          createMCPClient({
-            transport: {
-              type: "sse",
-              url: server.url,
-            },
-          }),
+          createMCPClient({ transport }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("接続タイムアウト")), CONNECTION_TIMEOUT_MS),
           ),

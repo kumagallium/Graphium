@@ -7,7 +7,7 @@ import { getModel, getDefaultModel, listModels } from "../config/models.js";
 import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
-import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildSSEUrl } from "../services/registry.js";
+import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
 import { getRegistryUrl, getRegistryKey } from "../services/env.js";
 
@@ -86,12 +86,12 @@ app.post("/run", async (c) => {
     const disabled = new Set(body.disabled_tools);
     mcpServers = mcpServers.filter((s) => !disabled.has(s.name));
   }
-  const sseServers = mcpServers.map((s) => ({
+  const mcpEndpoints = mcpServers.map((s) => ({
     ...s,
-    url: buildSSEUrl(s, registryUrl),
-    transport: "sse" as const,
+    url: buildMCPUrl(s, registryUrl),
+    transport: detectTransport(s),
   }));
-  const { tools, clients } = await connectMCPServers(sseServers);
+  const { tools, clients } = await connectMCPServers(mcpEndpoints);
 
   try {
     const model = createModel(modelConfig);

@@ -81,12 +81,20 @@ export function buildSkillPromptSection(skills: RegistryServer[]): string {
 }
 
 /**
- * MCP サーバーの SSE URL を構築する
+ * MCP サーバーの接続 URL を構築する
  */
-export function buildSSEUrl(server: RegistryServer, registryUrl: string): string {
-  // Registry と同じホスト上で port と endpoint_path から URL を構築
+export function buildMCPUrl(server: RegistryServer, registryUrl: string): string {
   const host = new URL(registryUrl).hostname;
   const port = server.port ?? 8100;
   const path = server.endpoint_path ?? "/sse";
   return `http://${host}:${port}${path}`;
+}
+
+/**
+ * エンドポイントパスからトランスポートタイプを判定する
+ * /mcp → Streamable HTTP、/sse → SSE
+ */
+export function detectTransport(server: RegistryServer): "sse" | "streamable-http" {
+  const path = server.endpoint_path ?? "/sse";
+  return path.includes("/mcp") ? "streamable-http" : "sse";
 }
