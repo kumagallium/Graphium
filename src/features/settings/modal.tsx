@@ -740,7 +740,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             aria-label={isDisabled ? t("settings.tools.enable") : t("settings.tools.disable")}
                             className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
                             style={{
-                              backgroundColor: !isDisabled && tool.status === "running" ? "#4B7A52" : "#d5e0d7",
+                              backgroundColor: !isDisabled && (tool.status === "running" || tool.tool_type === "skill") ? "#4B7A52" : "#d5e0d7",
                             }}
                           >
                             <span
