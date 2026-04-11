@@ -12,7 +12,7 @@ app.get("/", async (c) => {
 
   if (registryUrl) {
     try {
-      const res = await fetch(`${registryUrl.replace(/\/$/, "")}/health`, {
+      const res = await fetch(`${registryUrl.replace(/\/$/, "")}/api/servers`, {
         signal: AbortSignal.timeout(3000),
       });
       if (res.ok) registryStatus = "ok";
