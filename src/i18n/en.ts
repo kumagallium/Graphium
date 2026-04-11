@@ -71,6 +71,7 @@ export const en: Record<string, string> = {
   "login.subtitle": "Block editor with PROV-DM provenance tracking",
   "login.selectStorage": "Select where to save your notes",
   "login.driveNote": "Notes are saved in the Graphium folder on Google Drive",
+  "login.driveDesktopNote": "Your browser will open for Google sign-in",
   "login.localNote": "Notes are saved in this browser (offline)",
   "login.localStart": "Start offline",
 

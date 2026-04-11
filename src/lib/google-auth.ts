@@ -1,5 +1,9 @@
-// Google Identity Services (GIS) による認証
-// クライアントIDは環境変数 → 組み込みデフォルト の優先順で取得
+// Google 認証（プラットフォーム共通エントリポイント）
+// Web: GIS SDK（Implicit Grant）
+// デスクトップ: Authorization Code + PKCE（google-auth-desktop.ts に委任）
+
+import { isTauri } from "./platform";
+import * as desktop from "./google-auth-desktop";
 
 const DEFAULT_CLIENT_ID =
   "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
@@ -106,6 +110,7 @@ function loadGisScript(): Promise<void> {
 
 // 初期化（トークン期限切れ時はサイレントリフレッシュを試行）
 export async function initGoogleAuth(): Promise<void> {
+  if (isTauri()) return desktop.initDesktopAuth();
   if (!CLIENT_ID) {
     console.warn("Google OAuth Client ID が設定されていません");
     return;
@@ -184,6 +189,7 @@ function scheduleTokenRefresh(expiresAt: number | null) {
 
 // サインイン（ポップアップ表示）
 export function signIn(): void {
+  if (isTauri()) { desktop.signInDesktop().catch((e) => console.error("Desktop OAuth error:", e)); return; }
   if (!tokenClient) {
     console.error("Google 認証が初期化されていません");
     return;
@@ -193,6 +199,7 @@ export function signIn(): void {
 
 // サインアウト
 export function signOut(): void {
+  if (isTauri()) { desktop.signOutDesktop(); return; }
   if (authState.accessToken) {
     const token = authState.accessToken;
     fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
@@ -206,6 +213,7 @@ export function signOut(): void {
 
 // 現在のアクセストークンを取得（期限切れならnull）
 export function getAccessToken(): string | null {
+  if (isTauri()) return desktop.getAccessToken();
   if (!authState.accessToken || !authState.expiresAt) return null;
   if (Date.now() >= authState.expiresAt) {
     setAuthState(null, null);
@@ -216,6 +224,7 @@ export function getAccessToken(): string | null {
 
 // 認証状態が変わったときのリスナー
 export function onAuthChange(fn: (token: string | null) => void): () => void {
+  if (isTauri()) return desktop.onAuthChange(fn);
   authListeners.push(fn);
   return () => {
     authListeners = authListeners.filter((l) => l !== fn);
@@ -224,5 +233,6 @@ export function onAuthChange(fn: (token: string | null) => void): () => void {
 
 // 認証済みかどうか
 export function isSignedIn(): boolean {
+  if (isTauri()) return desktop.isSignedIn();
   return getAccessToken() !== null;
 }

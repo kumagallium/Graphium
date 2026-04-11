@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Graphium デスクトップアプリのデフォルト権限","local":true,"windows":["main"],"permissions":["core:default",{"identifier":"shell:allow-spawn","allow":[{"name":"binaries/graphium-server","sidecar":true}]},"shell:allow-kill","updater:default"]}}
+{"default":{"identifier":"default","description":"Graphium デスクトップアプリのデフォルト権限","local":true,"windows":["main"],"permissions":["core:default",{"identifier":"shell:allow-spawn","allow":[{"name":"binaries/graphium-server","sidecar":true}]},"shell:allow-kill","updater:default","opener:default"]}}

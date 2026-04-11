@@ -71,6 +71,7 @@ export const ja: Record<string, string> = {
   "login.subtitle": "PROV-DM プロヴェナンス追跡付きブロックエディタ",
   "login.selectStorage": "ノートの保存先を選択してください",
   "login.driveNote": "ノートは Google Drive の Graphium フォルダに保存されます",
+  "login.driveDesktopNote": "ブラウザが開いて Google にサインインします",
   "login.localNote": "ノートはこのブラウザにローカル保存されます（オフライン）",
   "login.localStart": "オフラインで開始",
 

@@ -15,6 +15,7 @@ import modelsRoutes from "./routes/models.js";
 import profilesRoutes from "./routes/profiles.js";
 import agentRoutes from "./routes/agent.js";
 import toolsRoutes from "./routes/tools.js";
+import authRoutes from "./routes/auth.js";
 
 // データディレクトリ設定（環境変数 or デフォルト）
 const dataDir = process.env.DATA_DIR ?? join(process.cwd(), "data");
@@ -43,6 +44,7 @@ app.route("/api/models", modelsRoutes);
 app.route("/api/profiles", profilesRoutes);
 app.route("/api/agent", agentRoutes);
 app.route("/api/tools", toolsRoutes);
+app.route("/api/auth", authRoutes);
 
 // 本番環境: 静的ファイル配信（SERVE_STATIC 環境変数で有効化）
 const staticDir = process.env.SERVE_STATIC;
