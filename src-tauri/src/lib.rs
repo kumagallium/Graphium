@@ -1,7 +1,7 @@
 // Graphium デスクトップアプリのコアライブラリ
 
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

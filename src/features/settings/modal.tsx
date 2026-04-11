@@ -23,6 +23,7 @@ import {
   type ModelInfo,
   type ProfileInfo,
 } from "../ai-assistant/api";
+import { apiBase } from "../../lib/platform";
 import { useLocale, type Locale } from "../../i18n";
 
 // ── プロバイダー定義 ──
@@ -162,13 +163,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const regHeaders: HeadersInit = regUrl ? { "X-Registry-URL": regUrl } : {};
 
     setHealthLoading(true);
-    fetch("/api/health", { headers: regHeaders })
+    fetch(`${apiBase()}/health`, { headers: regHeaders })
       .then((r) => r.json())
       .then((data) => setHealth(data))
       .catch(() => setHealth(null))
       .finally(() => setHealthLoading(false));
 
-    fetch("/api/tools", { headers: regHeaders })
+    fetch(`${apiBase()}/tools`, { headers: regHeaders })
       .then((r) => r.json())
       .then((data) => setToolsData(data))
       .catch(() => setToolsData(null));
@@ -189,7 +190,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         api_key: addApiKey.trim(),
       };
       if (addApiBase.trim()) body.api_base = addApiBase.trim();
-      const res = await fetch("/api/models/available", {
+      const res = await fetch(`${apiBase()}/models/available`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -220,7 +221,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setAdding(true);
     setAddError("");
     try {
-      const res = await fetch("/api/models", {
+      const res = await fetch(`${apiBase()}/models`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -254,7 +255,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const handleDeleteModel = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/models/${id}`, { method: "DELETE" });
+      await fetch(`${apiBase()}/models/${id}`, { method: "DELETE" });
       setDeleteConfirm(null);
       refreshModels();
     } catch {
@@ -277,7 +278,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       if (editName.trim()) body.model_name = editName.trim();
       if (editApiKey.trim()) body.api_key = editApiKey.trim();
       body.api_base = editApiBase.trim();
-      await fetch(`/api/models/${editingId}`, {
+      await fetch(`${apiBase()}/models/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

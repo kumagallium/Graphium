@@ -3,6 +3,7 @@
 import type { StorageProvider } from "./types";
 import { GoogleDriveProvider } from "./providers/google-drive";
 import { LocalStorageProvider } from "./providers/local";
+import { isTauri } from "../platform";
 
 const STORAGE_KEY = "graphium_storage_provider";
 
@@ -45,16 +46,17 @@ export function initProviders(): void {
   registerProvider(new GoogleDriveProvider());
   registerProvider(new LocalStorageProvider());
 
-  // 保存された設定を復元、なければ Google Drive をデフォルトに
-  const savedId = (typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null) ?? "google-drive";
+  // 保存された設定を復元。Tauri 環境ではデフォルトを local に
+  const defaultProvider = isTauri() ? "local" : "google-drive";
+  const savedId = (typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null) ?? defaultProvider;
   const provider = providers.get(savedId);
   if (provider) {
     activeProvider = provider;
   } else {
     // 不明なプロバイダーが保存されていた場合はフォールバック
-    activeProvider = providers.get("google-drive")!;
+    activeProvider = providers.get(defaultProvider)!;
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, "google-drive");
+      localStorage.setItem(STORAGE_KEY, defaultProvider);
     }
   }
 }
