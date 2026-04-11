@@ -16,6 +16,9 @@ docs/screenshots/*.webm
 # AI backend data (models, profiles — user-specific)
 data/
 
+# Tauri build artifacts
+src-tauri/target/
+
 # Claude Code (private config — managed in parent repo)
 CLAUDE.md
 .claude/

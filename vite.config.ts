@@ -39,8 +39,11 @@ function releaseNotesPlugin(): Plugin {
   };
 }
 
+// Tauri 環境では base を "/" にする（ローカルファイル配信のため）
+const isTauri = process.env.TAURI_ENV_PLATFORM !== undefined;
+
 export default defineConfig({
-  base: "/Graphium/",
+  base: isTauri ? "/" : "/Graphium/",
   plugins: [releaseNotesPlugin(), tailwindcss(), react()],
   resolve: {
     alias: {
@@ -52,7 +55,10 @@ export default defineConfig({
       "@ui": path.resolve(__dirname, "src/ui"),
     },
   },
+  // Tauri 開発時のホットリロード用
   server: {
+    port: 5174,
+    strictPort: true,
     proxy: {
       // /api/* をバックエンドサーバーに転送
       "/api": {
@@ -61,4 +67,6 @@ export default defineConfig({
       },
     },
   },
+  // Tauri 環境ではホスト情報をクリアテキストで渡さない
+  envPrefix: ["VITE_", "TAURI_ENV_"],
 });
