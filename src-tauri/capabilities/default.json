@@ -14,6 +14,7 @@
         }
       ]
     },
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "updater:default"
   ]
 }

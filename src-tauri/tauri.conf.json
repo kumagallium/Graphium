@@ -40,5 +40,13 @@
     "resources": [
       "sidecar/server.mjs"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/kumagallium/Graphium/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

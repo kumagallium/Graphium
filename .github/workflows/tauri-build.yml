@@ -1,0 +1,92 @@
+name: Tauri Desktop Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS (Apple Silicon)
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            label: macOS (Intel)
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: Linux
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows
+
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # Linux 固有: WebView + UI 依存ライブラリ
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # sidecar ラッパーの作成（各プラットフォーム用）
+      - name: Create sidecar wrapper (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          cp src-tauri/binaries/graphium-server-aarch64-apple-darwin \
+             src-tauri/binaries/graphium-server-${{ matrix.target }}
+          chmod +x src-tauri/binaries/graphium-server-${{ matrix.target }}
+
+      - name: Create sidecar wrapper (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $content = @"
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          node "%SCRIPT_DIR%..\sidecar\server.mjs" %*
+          "@
+          Set-Content -Path "src-tauri\binaries\graphium-server-${{ matrix.target }}.exe" -Value $content
+
+      - name: Bundle server
+        run: node scripts/bundle-server.mjs
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Graphium ${{ github.ref_name }}"
+          releaseBody: "See the [changelog](https://github.com/kumagallium/Graphium/blob/main/CHANGELOG.md) for details."
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
