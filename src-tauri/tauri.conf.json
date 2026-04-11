@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5174",
-    "beforeDevCommand": "pnpm dev:client -- --port 5174",
+    "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "node scripts/bundle-server.mjs && pnpm build"
   },
   "app": {
