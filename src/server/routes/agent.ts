@@ -7,7 +7,7 @@ import { getModel, getDefaultModel, listModels } from "../config/models.js";
 import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
-import { fetchRegistryServers, filterMCPServers, buildSSEUrl } from "../services/registry.js";
+import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildSSEUrl } from "../services/registry.js";
 import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
 import { getRegistryUrl, getRegistryKey } from "../services/env.js";
 
@@ -62,10 +62,19 @@ app.post("/run", async (c) => {
     { role: "user" as const, content: body.message },
   ];
 
-  // MCP ツール取得（Registry 接続）
+  // Registry からツール・スキル取得
   const registryUrl = getRegistryUrl(c);
   const registryKey = getRegistryKey();
   const allServers = await fetchRegistryServers(registryUrl, registryKey);
+
+  // Skill をシステムプロンプトに注入
+  const skills = filterSkills(allServers);
+  const skillSection = buildSkillPromptSection(skills);
+  if (skillSection) {
+    systemPrompt += skillSection;
+  }
+
+  // MCP ツール取得
   let mcpServers = filterMCPServers(allServers);
   // server_names が指定されていたら、そのサーバーのみ接続
   if (body.server_names && body.server_names.length > 0) {

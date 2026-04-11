@@ -25,19 +25,24 @@ export async function connectMCPServers(
 
   const results = await Promise.allSettled(
     servers.map(async (server) => {
-      const client = await Promise.race([
-        createMCPClient({
-          transport: {
-            type: "sse",
-            url: server.url,
-          },
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("接続タイムアウト")), CONNECTION_TIMEOUT_MS),
-        ),
-      ]);
-      const serverTools = await client.tools();
-      return { client, tools: serverTools, name: server.name };
+      try {
+        const client = await Promise.race([
+          createMCPClient({
+            transport: {
+              type: "sse",
+              url: server.url,
+            },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("接続タイムアウト")), CONNECTION_TIMEOUT_MS),
+          ),
+        ]);
+        const serverTools = await client.tools();
+        console.log(`MCP サーバー "${server.name}" に接続 (${server.url})`);
+        return { client, tools: serverTools, name: server.name };
+      } catch (err) {
+        throw new Error(`${server.name} (${server.url}): ${err instanceof Error ? err.message : err}`);
+      }
     }),
   );
 
@@ -46,7 +51,7 @@ export async function connectMCPServers(
       clients.push(result.value.client);
       tools = { ...tools, ...result.value.tools };
     } else {
-      console.warn(`MCP サーバーへの接続に失敗:`, result.reason);
+      console.warn(`MCP 接続失敗: ${result.reason}`);
     }
   }
 

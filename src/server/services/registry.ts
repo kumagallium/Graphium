@@ -9,6 +9,7 @@ export type RegistryServer = {
   port?: number;
   endpoint_path?: string;
   icon?: string;
+  content?: string; // Skill のマークダウン本文
 };
 
 /**
@@ -46,6 +47,37 @@ export function filterMCPServers(servers: RegistryServer[]): RegistryServer[] {
   return servers.filter(
     (s) => s.tool_type === "mcp_server" && s.status === "running",
   );
+}
+
+/**
+ * Skill（マークダウン）のみフィルタする
+ */
+export function filterSkills(servers: RegistryServer[]): RegistryServer[] {
+  return servers.filter(
+    (s) => s.tool_type === "skill" && s.content?.trim(),
+  );
+}
+
+/**
+ * Skill のマークダウンをシステムプロンプトに注入するセクションを構築する
+ * Crucible Agent 互換: 1 skill あたり 3000 文字、全体 10000 文字上限
+ */
+export function buildSkillPromptSection(skills: RegistryServer[]): string {
+  if (skills.length === 0) return "";
+
+  const SKILL_MAX_CHARS = 3000;
+  const TOTAL_MAX_CHARS = 10000;
+
+  const sections: string[] = [];
+  let total = 0;
+  for (const s of skills) {
+    const content = (s.content ?? "").slice(0, SKILL_MAX_CHARS);
+    if (total + content.length > TOTAL_MAX_CHARS) break;
+    sections.push(`### ${s.display_name}\n\n${content}`);
+    total += content.length;
+  }
+
+  return "\n\n## Available Skills\n\n" + sections.join("\n\n---\n\n");
 }
 
 /**
