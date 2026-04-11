@@ -31,6 +31,19 @@ This gradient of label density is a core design decision — not a limitation.
 
 No installation required — works in your browser. Notes are saved to Google Drive or your browser's local storage.
 
+### Desktop app
+
+Download the desktop app for offline use with local file storage. Google Drive sync is also available.
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | [Graphium.dmg](https://github.com/kumagallium/Graphium/releases/latest) |
+| macOS (Intel) | [Graphium.dmg](https://github.com/kumagallium/Graphium/releases/latest) |
+| Windows | [Graphium.msi](https://github.com/kumagallium/Graphium/releases/latest) |
+| Linux | [Graphium.AppImage](https://github.com/kumagallium/Graphium/releases/latest) |
+
+> All downloads are available on the [Releases](https://github.com/kumagallium/Graphium/releases) page.
+
 ## Interoperability
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.
@@ -124,6 +137,7 @@ Google Drive sync works without any configuration. AI features require the backe
 - **AI assistant** — derive notes from AI responses with full provenance metadata
 - **Google Drive storage** — notes saved as `.graphium.json` files
 - **Google OAuth 2.0** authentication
+- **Desktop app** — Tauri-based native app with local file storage and Google Drive sync
 
 ### Screenshots
 
@@ -210,7 +224,8 @@ graph LR
 | Editor | TypeScript / React / BlockNote.js |
 | AI Runtime | Vercel AI SDK / @ai-sdk/mcp |
 | Backend | Node.js / Hono |
-| Storage | Google Drive / Local Storage / JSON files |
+| Storage | Google Drive / Local Storage / Local filesystem |
+| Desktop | Tauri v2 (macOS / Windows / Linux) |
 | Graph Visualization | Cytoscape.js |
 | Build | Vite / pnpm |
 
