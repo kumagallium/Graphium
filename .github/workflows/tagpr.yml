@@ -1,0 +1,35 @@
+name: tagpr
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  tagpr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # package.json の version を tauri.conf.json に同期
+      # tagpr は versionFile で tauri.conf.json を更新するが、
+      # package.json も同じバージョンに揃える
+      - name: Sync package.json version
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          PKG_VERSION=$(jq -r .version package.json)
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp
+            mv package.json.tmp package.json
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add package.json
+            git diff --cached --quiet || git commit -m "chore: sync package.json version to $VERSION"
+          fi
+
+      - uses: Songmu/tagpr@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,12 @@
+# tagpr 設定ファイル
+# https://github.com/Songmu/tagpr
+
+[tagpr]
+# バージョニング対象ファイル（tauri.conf.json の version フィールド）
+versionFile = src-tauri/tauri.conf.json
+# リリースブランチ
+releaseBranch = main
+# v プレフィックス付きタグ
+vPrefix = true
+# CHANGELOG は tagpr が自動生成
+changelog = CHANGELOG.md
