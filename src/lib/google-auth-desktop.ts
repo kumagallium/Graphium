@@ -10,13 +10,14 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 // デスクトップ用 OAuth クライアント（Google Cloud Console で「デスクトップ アプリ」として作成）
-const DEFAULT_DESKTOP_CLIENT_ID =
+// VITE_GOOGLE_DESKTOP_CLIENT_ID / VITE_GOOGLE_DESKTOP_CLIENT_SECRET は
+// ビルド時に Vite が埋め込む（CI では GitHub Secrets から注入）
+const DEFAULT_CLIENT_ID =
   "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
 const CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID as string) ||
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) ||
-  DEFAULT_DESKTOP_CLIENT_ID;
-// Google は「デスクトップ アプリ」の secret をアプリに埋め込む前提で設計している
+  DEFAULT_CLIENT_ID;
 const CLIENT_SECRET =
   (import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_SECRET as string) || "";
 
