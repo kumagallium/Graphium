@@ -235,8 +235,8 @@ jobs:
         run: |
           TAG="${{ steps.assets.outputs.tag }}"
           # 既存の latest.json があれば削除
-          ASSET_ID=$(gh api repos/${{ github.repository }}/releases/${{ needs.resolve-release.outputs.release_id }}/assets --jq '.[] | select(.name == "latest.json") | .id' 2>/dev/null || true)
+          ASSET_ID=$(gh api repos/${{ github.repository }}/releases/${{ needs.resolve-release.outputs.release_id }}/assets --jq '.[] | select(.name == "latest.json") | .id' 2>/dev/null || echo "")
           if [ -n "$ASSET_ID" ]; then
-            gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+            gh api -X DELETE repos/${{ github.repository }}/releases/assets/"$ASSET_ID"
           fi
-          gh release upload "$TAG" latest.json --clobber
+          gh release upload "$TAG" latest.json --clobber --repo "${{ github.repository }}"
