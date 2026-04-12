@@ -67,6 +67,10 @@ export function useStorage() {
         setProviderVersion((v) => v + 1);
         return;
       }
+      // プロバイダー選択を永続化（モバイルのリダイレクト認証ではページがリロードされるため）
+      if (providerId) {
+        localStorage.setItem(STORAGE_KEY, providerId);
+      }
       provider?.signIn();
     },
     [provider],
