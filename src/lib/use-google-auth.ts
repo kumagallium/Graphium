@@ -15,7 +15,11 @@ export function useGoogleAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    initGoogleAuth().then(() => setLoading(false));
+    initGoogleAuth().then(() => {
+      // リダイレクト認証完了後、リスナー登録前に状態が変わっている可能性がある
+      setAuthenticated(isSignedIn());
+      setLoading(false);
+    });
     const unsubscribe = onAuthChange((token) => {
       setAuthenticated(token !== null);
     });
