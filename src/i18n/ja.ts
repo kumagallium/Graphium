@@ -371,6 +371,11 @@ export const ja: Record<string, string> = {
   "label.legendLabel": "ラベル値",
   "label.legendNote": "ノート",
 
+  // ── 自動更新 ──
+  "updater.available": "Graphium {version} が利用可能です",
+  "updater.install": "再起動して更新",
+  "updater.installing": "ダウンロード中...",
+
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "エクスポート中...",

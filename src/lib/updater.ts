@@ -1,9 +1,16 @@
 // Tauri 自動更新チェック
 // アプリ起動時と 24 時間ごとに更新を確認する
+// 更新が見つかると CustomEvent で UI に通知する
 
 import { isTauri } from "./platform";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 時間
+
+/** 更新情報を UI に伝える CustomEvent の detail 型 */
+export type UpdateAvailableDetail = {
+  version: string;
+  install: () => Promise<void>;
+};
 
 /** 更新チェックを開始する */
 export async function initUpdater(): Promise<void> {
@@ -22,9 +29,17 @@ async function checkForUpdates(): Promise<void> {
     const update = await check();
     if (update) {
       console.log(`[updater] Update available: ${update.version}`);
-      // 将来: UI で更新通知を表示し、ユーザーの確認後にインストール
-      // await update.downloadAndInstall();
-      // await relaunch();
+      const detail: UpdateAvailableDetail = {
+        version: update.version,
+        install: async () => {
+          await update.downloadAndInstall();
+          const { relaunch } = await import("@tauri-apps/plugin-process");
+          await relaunch();
+        },
+      };
+      window.dispatchEvent(
+        new CustomEvent("graphium-update-available", { detail }),
+      );
     } else {
       console.log("[updater] App is up to date");
     }

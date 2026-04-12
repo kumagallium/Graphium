@@ -94,6 +94,7 @@ import { FileSidebar } from "./components/FileSidebar";
 import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
+import { UpdateBanner } from "./components/UpdateBanner";
 
 import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData } from "./features/network-graph";
@@ -1367,7 +1368,9 @@ export function NoteApp() {
   }
 
   return (
-    <div className="flex h-screen font-sans antialiased bg-background text-foreground">
+    <div className="flex flex-col h-screen font-sans antialiased bg-background text-foreground">
+      <UpdateBanner />
+      <div className="flex flex-1 min-h-0">
       <FileSidebar
         activeFileId={fm.activeFileId}
         onSelect={fm.handleOpenFile}
@@ -1453,6 +1456,7 @@ export function NoteApp() {
         setShowSettings(false);
         setAgentConfigured(isAgentConfigured());
       }} />
+      </div>
     </div>
   );
 }

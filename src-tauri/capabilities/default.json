@@ -16,6 +16,7 @@
     },
     "shell:allow-kill",
     "updater:default",
+    "process:allow-restart",
     "opener:default"
   ]
 }
