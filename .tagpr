@@ -8,5 +8,5 @@ versionFile = src-tauri/tauri.conf.json
 releaseBranch = main
 # v プレフィックス付きタグ
 vPrefix = true
-# CHANGELOG は tagpr が自動生成
-changelog = CHANGELOG.md
+# CHANGELOG を自動生成する
+changelog = true
