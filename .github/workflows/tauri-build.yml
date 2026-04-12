@@ -4,13 +4,42 @@ on:
   release:
     types: [created]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to build (e.g. v0.3.1)"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
+  # workflow_dispatch 時はタグからリリース ID を解決する
+  resolve-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.resolve.outputs.release_id }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve release ID
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.payload.release?.tag_name || '${{ inputs.release_tag }}';
+            core.setOutput('tag', tag);
+            if (context.payload.release?.id) {
+              core.setOutput('release_id', context.payload.release.id);
+              return;
+            }
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag,
+            });
+            core.setOutput('release_id', release.id);
+
   build:
-    # release イベント時は tagpr が作成したリリースを使用
+    needs: resolve-release
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ needs.resolve-release.outputs.tag }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -95,5 +124,5 @@ jobs:
           VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
           VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
         with:
-          releaseId: ${{ github.event.release.id }}
+          releaseId: ${{ needs.resolve-release.outputs.release_id }}
           args: --target ${{ matrix.target }}
