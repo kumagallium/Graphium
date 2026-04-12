@@ -44,6 +44,19 @@ Download the desktop app for offline use with local file storage. Google Drive s
 
 > All downloads are available on the [Releases](https://github.com/kumagallium/Graphium/releases) page.
 
+<details>
+<summary><b>macOS: "Graphium is damaged" error</b></summary>
+
+The app is not code-signed yet. macOS may block it on first launch. To fix this, run in Terminal after installing:
+
+```bash
+xattr -cr /Applications/Graphium.app
+```
+
+Then open the app normally.
+
+</details>
+
 ## Interoperability
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.

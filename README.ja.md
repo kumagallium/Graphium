@@ -44,6 +44,19 @@ Graphium は**段階的開示（progressive disclosure）**を設計の中心に
 
 > すべてのダウンロードは [Releases](https://github.com/kumagallium/Graphium/releases) ページにあります。
 
+<details>
+<summary><b>macOS:「Graphium は壊れています」エラーが出る場合</b></summary>
+
+アプリはまだコード署名されていません。初回起動時に macOS がブロックする場合があります。インストール後にターミナルで以下を実行してください：
+
+```bash
+xattr -cr /Applications/Graphium.app
+```
+
+その後、通常通りアプリを開けます。
+
+</details>
+
 ## 相互運用性
 
 Graphium はプロヴェナンスを **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** としてエクスポートします。これは Linked Data 上に構築された W3C 標準であり、独自形式ではありません。PROV-DM や JSON-LD を理解するあらゆるツールが Graphium の出力を利用できます。プロヴェナンスデータは設計上ポータブルです。
