@@ -10,7 +10,7 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
-import { filterSuggestionItems } from "@blocknote/core/extensions";
+import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
@@ -110,18 +110,52 @@ export function SandboxEditor({
     () => new Set(excludeDefaultSlashTitles ?? []),
     [excludeDefaultSlashTitles],
   );
+  // デフォルトアイテムを1回だけ取得（毎回呼ぶと蓄積する問題を防ぐ）
+  const defaultSlashItems = useMemo(() => {
+    let items = getDefaultReactSlashMenuItems(editor as any);
+    if (excludeSet.size > 0) {
+      items = items.filter((item: any) => !excludeSet.has(item.title));
+    }
+    return items;
+  }, [editor, excludeSet]);
+  // extra + default を結合（title + group で重複除去 + グループ順にソート）
+  const allSlashItems = useMemo(() => {
+    if (!hasExtraSlash) return defaultSlashItems;
+    const combined = [...defaultSlashItems, ...extraSlashMenuItems];
+    // 重複除去
+    const seen = new Set<string>();
+    const unique = combined.filter((item: any) => {
+      const key = `${item.title}|${item.group ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    // 同じグループのアイテムを隣接させる（BlockNote がグループヘッダーを重複レンダーするのを防ぐ）
+    const groupOrder: string[] = [];
+    for (const item of unique) {
+      const g = (item as any).group ?? "";
+      if (!groupOrder.includes(g)) groupOrder.push(g);
+    }
+    unique.sort((a: any, b: any) => {
+      const ga = groupOrder.indexOf(a.group ?? "");
+      const gb = groupOrder.indexOf(b.group ?? "");
+      return ga - gb;
+    });
+    return unique;
+  }, [defaultSlashItems, hasExtraSlash, extraSlashMenuItems]);
   const getSlashItems = useMemo(() => {
     if (!hasExtraSlash) return undefined;
     return async (query: string) => {
-      let defaultItems = getDefaultReactSlashMenuItems(editor as any);
-      // 指定されたデフォルトアイテムを除外
-      if (excludeSet.size > 0) {
-        defaultItems = defaultItems.filter((item: any) => !excludeSet.has(item.title));
-      }
-      const allItems = [...defaultItems, ...extraSlashMenuItems];
-      return filterSuggestionItems(allItems as any, query) as any;
+      if (!query) return allSlashItems as any;
+      // カスタムフィルタ: title と aliases のみでマッチ（group 名でのマッチを防ぐ）
+      const q = query.toLowerCase();
+      return allSlashItems.filter((item: any) => {
+        if (item.title?.toLowerCase().includes(q)) return true;
+        if (item.aliases?.some((a: string) => a.toLowerCase().includes(q))) return true;
+        return false;
+      }) as any;
     };
-  }, [editor, hasExtraSlash, extraSlashMenuItems, excludeSet]);
+  }, [hasExtraSlash, allSlashItems]);
 
   // # ラベルオートコンプリート
   const labelSuggestions = useMemo(() => buildSuggestionList(), []);
@@ -137,7 +171,7 @@ export function SandboxEditor({
           }
         },
       }));
-      return filterSuggestionItems(items as any, query) as any;
+      return _filterSuggestionItems(items as any, query) as any;
     },
     [editor, labelSuggestions, onHashtagSelect],
   );
@@ -156,7 +190,7 @@ export function SandboxEditor({
           }
         },
       }));
-      return filterSuggestionItems(items as any, query) as any;
+      return _filterSuggestionItems(items as any, query) as any;
     },
     [editor, getMentionSuggestions, onMentionSelect],
   );

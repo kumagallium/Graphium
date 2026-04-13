@@ -64,7 +64,8 @@ import { recordRevision, detectActivityType } from "./features/document-provenan
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
-import { MobileCaptureView, MemoGalleryView, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
+import type { CaptureEntry } from "./features/mobile-capture";
 import {
   AssetGalleryView,
   LabelGalleryView,
@@ -210,8 +211,8 @@ type NoteEditorProps = {
   pendingMemoInsert?: { text: string } | null;
   /** メモ挿入完了コールバック */
   onMemoInserted?: () => void;
-  /** メモギャラリーを開くコールバック（スラッシュメニュー用） */
-  onOpenMemoGallery?: () => void;
+  /** メモピッカー用のキャプチャインデックス */
+  captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -265,7 +266,7 @@ function NoteEditorInner({
   onAddUrlBookmark,
   pendingMemoInsert,
   onMemoInserted,
-  onOpenMemoGallery,
+  captureIndex: captureIndexProp,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -328,6 +329,9 @@ function NoteEditorInner({
   // ── メディアピッカー ──
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
 
+  // ── メモピッカーモーダル ──
+  const [memoPickerOpen, setMemoPickerOpen] = useState(false);
+
   // スラッシュメニューからピッカーを開くコールバック登録
   useEffect(() => {
     setMediaPickerCallback((type: MediaType) => setPickerMediaType(type));
@@ -336,9 +340,9 @@ function NoteEditorInner({
 
   // スラッシュメニューからメモピッカーを開くコールバック登録
   useEffect(() => {
-    setMemoPickerCallback(() => onOpenMemoGallery?.());
+    setMemoPickerCallback(() => setMemoPickerOpen(true));
     return () => { setMemoPickerCallback(null); };
-  }, [onOpenMemoGallery]);
+  }, []);
 
   // スラッシュメニューから URL ブックマークピッカーを開くコールバック登録
   useEffect(() => {
@@ -1148,6 +1152,35 @@ function NoteEditorInner({
           onUpload={uploadFile}
         />
       )}
+      {/* メモピッカーモーダル（スラッシュメニュー /memo から） */}
+      <MemoPickerModal
+        open={memoPickerOpen}
+        onClose={() => setMemoPickerOpen(false)}
+        captureIndex={captureIndexProp ?? null}
+        onSelect={(entry: CaptureEntry) => {
+          // カーソル位置の後に paragraph ブロックとして挿入
+          const editor = editorRef.current;
+          if (!editor) return;
+          const blocks = entry.text.split("\n").map((line: string) => ({
+            type: "paragraph",
+            content: [{ type: "text" as const, text: line, styles: {} }],
+          }));
+          if (blocks.length === 0) return;
+          const currentBlock = editor.getTextCursorPosition()?.block;
+          if (currentBlock) {
+            editor.insertBlocks(blocks, currentBlock, "after");
+            // スラッシュだけの空ブロックを削除
+            const content = currentBlock.content;
+            if (Array.isArray(content) && content.length <= 1) {
+              const text = content[0]?.text?.trim() ?? "";
+              if (text === "" || text === "/memo") {
+                editor.removeBlocks([currentBlock]);
+              }
+            }
+          }
+          markDirty();
+        }}
+      />
       {/* URL ピッカーモーダル（スラッシュメニュー /bookmark から） */}
       {urlSlashPickerOpen && (
         <MediaPickerModal
@@ -1435,8 +1468,8 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
-    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setSidebarOpen(false); },
-    onNewNote: () => { fm.handleNewNote(); setSidebarOpen(false); },
+    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setSidebarOpen(false); },
+    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onSignOut: signOut,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
@@ -1507,6 +1540,8 @@ export function NoteApp() {
               setShowMemos(false);
             }}
             onDeleteMemo={capture.handleDeleteCapture}
+            onEditMemo={capture.handleEditCapture}
+            onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
             insertDisabled={!fm.activeFileId}
           />
         ) : !isDesktop && !fm.activeFileId ? (
@@ -1553,7 +1588,7 @@ export function NoteApp() {
               }
               setPendingMemoInsert(null);
             }}
-            onOpenMemoGallery={() => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); }}
+            captureIndex={capture.captureIndex}
           />
         )}
         {/* 派生ノート作成中のオーバーレイ */}

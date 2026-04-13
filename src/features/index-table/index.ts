@@ -1,6 +1,8 @@
 // インデックステーブル機能のエントリーポイント
 // カスタムブロック型は使わず、標準 table ブロック + 外部ストアで実装
 
+import { t } from "../../i18n";
+
 export { IndexTableStoreProvider, useIndexTableStore } from "./store";
 export { IndexTableIconLayer } from "./icon-layer";
 export { setIndexTableCallbacks } from "./context";
@@ -17,9 +19,9 @@ export function setRegisterIndexTableCallback(
 
 // スラッシュメニュー用の挿入アイテム
 export const indexTableSlashItem = {
-  title: "インデックステーブル",
-  subtext: "試料・サンプル管理用のテーブルを挿入",
-  group: "実験ブロック",
+  title: t("slash.indexTable"),
+  subtext: t("slash.indexTableSub"),
+  group: t("slash.advancedGroup"),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(

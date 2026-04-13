@@ -23,8 +23,8 @@ export function getMemoSlashMenuItem(): SlashMenuItem {
   return {
     title: t("memo.slashTitle"),
     subtext: t("memo.slashSub"),
-    group: t("memo.title"),
-    aliases: ["memo", "メモ", "めも", "sticky", "note", "付箋"],
+    group: t("asset.slashGroup"),
+    aliases: ["memo", "メモ", "めも", "sticky", "付箋"],
     onItemClick: (_editor: any) => {
       _openMemoPickerCallback?.();
     },

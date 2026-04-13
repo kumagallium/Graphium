@@ -182,6 +182,17 @@ export const ja: Record<string, string> = {
   // ── スラッシュメニュー ──
   "slashMenu.group": "PROV ラベル",
 
+  // ── スラッシュメニュー（カスタムブロック） ──
+  "slash.advancedGroup": "高度なブロック",
+  "slash.indexTable": "インデックステーブル",
+  "slash.indexTableSub": "データ管理用のテーブルを挿入",
+  "slash.bookmark": "ブックマーク",
+  "slash.bookmarkSub": "URL をカード形式で表示",
+  "slash.pdf": "PDF",
+  "slash.pdfSub": "PDF ファイルを埋め込み表示",
+  "slash.hello": "Hello Block",
+  "slash.helloSub": "サンプルのカスタムブロックを挿入",
+
   // ── 追加 UI テキスト ──
   "common.empty": "(空)",
   "common.back": "← 戻る",
@@ -397,8 +408,16 @@ export const ja: Record<string, string> = {
   "memo.inserted": "メモを挿入しました",
   "memo.networkTitle": "メモの使用状況",
   "memo.networkEmpty": "まだメモがノートに挿入されていません。",
+  "memo.clickToEdit": "クリックで編集",
+  "memo.editHistory": "編集履歴",
+  "memo.tabNetwork": "ネットワーク",
+  "memo.tabHistory": "履歴",
+  "memo.created": "作成",
+  "memo.modified": "編集",
   "memo.slashTitle": "メモ",
   "memo.slashSub": "保存済みメモから挿入",
+  "memo.pickTitle": "メモを選択",
+  "memo.searchPlaceholder": "メモを検索...",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

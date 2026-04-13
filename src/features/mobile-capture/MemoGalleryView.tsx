@@ -1,33 +1,34 @@
 // PC 向けメモギャラリービュー
-// サイドバーの「メモ」クリックで表示。カード一覧 + エディタへの挿入 + ネットワーク図
+// サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StickyNote, Trash2, ClipboardCopy, Network } from "lucide-react";
+import { StickyNote, Trash2, ClipboardCopy, Network, History } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
-import { Modal, ModalHeader, ModalBody } from "../../ui/modal";
 
 // fcose レイアウト登録
 ensureCytoscapePlugins();
 
-// ── ネットワーク図 ──
+// ── メモ詳細モーダル（MediaDetailModal と同じパターン） ──
 
-const GRAPH_BG = "#fafdf7";
-const MEMO_COLOR = "#c08b3e";
-const NOTE_COLOR = "#5b8fb9";
-const EDGE_COLOR = "#d4c9a8";
+const MEMO_NODE_COLOR = "#c08b3e";
+const MEMO_BORDER = "#a67832";
+const NOTE_NODE_COLOR = "#5b8fb9";
+const NOTE_BORDER = "#4a7da6";
+const EDGE_COLOR = "#b8d4bb";
+const BG_COLOR = "#fafdf7";
 
-const networkStyle: cytoscape.StylesheetStyle[] = [
+const graphStyle: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
       label: "data(label)",
       "text-wrap": "wrap",
-      "text-max-width": "120px",
-      "font-size": "11px",
+      "text-max-width": "100px",
+      "font-size": "10px",
       "font-family": "Inter, system-ui, sans-serif",
       "text-valign": "bottom",
       "text-margin-y": 6,
@@ -42,186 +43,358 @@ const networkStyle: cytoscape.StylesheetStyle[] = [
     },
   },
   {
-    selector: "node.hover",
-    style: { "border-width": 3, "overlay-opacity": 0.06, "overlay-color": "#000" },
+    selector: "node.memo-node",
+    style: {
+      shape: "diamond",
+      "font-weight": "bold" as any,
+      "font-size": "11px",
+    },
   },
   {
-    selector: "node.faded",
-    style: { opacity: 0.15 },
+    selector: "node.note-node.hover",
+    style: {
+      "border-width": 3,
+      "overlay-opacity": 0.06,
+      "overlay-color": "#000",
+    },
   },
   {
     selector: "edge",
     style: {
       width: 1.5,
       "line-color": EDGE_COLOR,
+      "target-arrow-color": EDGE_COLOR,
+      "target-arrow-shape": "triangle",
+      "arrow-scale": 0.8,
       "curve-style": "unbundled-bezier" as any,
       "control-point-distances": 30,
       "control-point-weights": 0.5,
-      opacity: 1,
-      "transition-property": "opacity, width, line-color" as any,
-      "transition-duration": 200,
+      opacity: 0.7,
     },
-  },
-  {
-    selector: "edge.hover-connected",
-    style: { width: 2.5, "line-color": MEMO_COLOR, "z-index": 10 },
-  },
-  {
-    selector: "edge.faded",
-    style: { opacity: 0.08 },
   },
 ];
 
-function MemoNetworkModal({
-  open,
+function MemoDetailModal({
+  entry,
   onClose,
-  captures,
+  onDelete,
+  onNavigateNote,
+  onEdit,
 }: {
-  open: boolean;
+  entry: CaptureEntry;
   onClose: () => void;
-  captures: CaptureEntry[];
+  onDelete?: () => void;
+  onNavigateNote?: (noteId: string) => void;
+  onEdit?: (captureId: string, newText: string) => void;
 }) {
   const t = useT();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const graphRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const hasUsages = (entry.usedIn?.length ?? 0) > 0;
+  const hasHistory = (entry.editHistory?.length ?? 0) > 0;
+  const hasRightPanel = hasUsages || hasHistory;
+  const [rightTab, setRightTab] = useState<"network" | "history">(hasUsages ? "network" : "history");
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(entry.text);
+
+  const handleNavigate = useCallback(
+    (noteId: string) => {
+      onClose();
+      onNavigateNote?.(noteId);
+    },
+    [onClose, onNavigateNote],
+  );
+
+  const handleSaveEdit = useCallback(() => {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === entry.text || !onEdit) {
+      setEditing(false);
+      setEditText(entry.text);
+      return;
+    }
+    onEdit(entry.id, trimmed);
+    setEditing(false);
+  }, [editText, entry, onEdit]);
 
   useEffect(() => {
-    if (!open || !containerRef.current) return;
+    if (!graphRef.current || !hasUsages) return;
 
-    const timer = setTimeout(() => {
-      if (!containerRef.current) return;
+    const elements: cytoscape.ElementDefinition[] = [];
+    const memoLabel = entry.text.length > 20 ? entry.text.slice(0, 18) + "…" : entry.text;
 
-      const elements: cytoscape.ElementDefinition[] = [];
-      const noteIds = new Set<string>();
+    // 中心: メモノード
+    elements.push({
+      data: {
+        id: entry.id,
+        label: memoLabel,
+        color: MEMO_NODE_COLOR,
+        borderColor: MEMO_BORDER,
+        size: 44,
+      },
+      classes: "memo-node",
+    });
 
-      // メモノードと、接続先のノートノード
-      for (const cap of captures) {
-        if (!cap.usedIn || cap.usedIn.length === 0) continue;
-        // メモノード（先頭 20 文字）
-        const memoLabel = cap.text.length > 20 ? cap.text.slice(0, 20) + "…" : cap.text;
-        elements.push({
-          data: {
-            id: cap.id,
-            label: memoLabel,
-            color: MEMO_COLOR,
-            borderColor: "#a67832",
-            size: 34,
-            isCenter: true,
-          },
-        });
-        for (const usage of cap.usedIn) {
-          if (!noteIds.has(usage.noteId)) {
-            noteIds.add(usage.noteId);
-            elements.push({
-              data: {
-                id: usage.noteId,
-                label: usage.noteTitle,
-                color: NOTE_COLOR,
-                borderColor: "#4a7da6",
-                size: 30,
-                isCenter: false,
-              },
-            });
-          }
-          elements.push({
-            data: {
-              id: `${cap.id}->${usage.noteId}`,
-              source: cap.id,
-              target: usage.noteId,
-            },
-          });
-        }
-      }
-
-      if (elements.length === 0) return;
-
-      if (cyRef.current) cyRef.current.destroy();
-
-      const cy = cytoscape({
-        container: containerRef.current,
-        elements,
-        style: networkStyle,
-        layout: { name: "preset" },
-        userZoomingEnabled: true,
-        userPanningEnabled: true,
-        boxSelectionEnabled: false,
-        wheelSensitivity: 0.3,
-        minZoom: 0.3,
-        maxZoom: 3,
+    // ノートノード
+    const seen = new Set<string>();
+    for (const usage of entry.usedIn!) {
+      if (seen.has(usage.noteId)) continue;
+      seen.add(usage.noteId);
+      const noteLabel = usage.noteTitle.length > 18 ? usage.noteTitle.slice(0, 16) + "…" : usage.noteTitle;
+      elements.push({
+        data: {
+          id: usage.noteId,
+          label: noteLabel,
+          color: NOTE_NODE_COLOR,
+          borderColor: NOTE_BORDER,
+          size: 32,
+        },
+        classes: "note-node",
       });
-
-      const layout = cy.layout({
-        name: "fcose",
-        animate: true,
-        animationDuration: 600,
-        animationEasing: "ease-out-cubic" as any,
-        quality: "default",
-        randomize: true,
-        nodeRepulsion: 5000,
-        idealEdgeLength: 100,
-        edgeElasticity: 0.45,
-        gravity: 0.3,
-        nodeSeparation: 60,
-        padding: 30,
-      } as any);
-      layout.on("layoutstop", () => cy.fit(undefined, 20));
-      layout.run();
-
-      // ホバーエフェクト
-      cy.on("mouseover", "node", (evt) => {
-        const node = evt.target;
-        const neighborhood = node.neighborhood();
-        cy.elements().addClass("faded");
-        node.removeClass("faded").addClass("hover");
-        neighborhood.removeClass("faded");
-        neighborhood.edges().addClass("hover-connected");
+      elements.push({
+        data: {
+          id: `${entry.id}->${usage.noteId}`,
+          source: entry.id,
+          target: usage.noteId,
+        },
       });
-      cy.on("mouseout", "node", () => {
-        cy.elements().removeClass("faded hover hover-connected");
-      });
+    }
 
-      cyRef.current = cy;
-    }, 50);
+    if (cyRef.current) cyRef.current.destroy();
+
+    const cy = cytoscape({
+      container: graphRef.current,
+      elements,
+      style: graphStyle,
+      layout: { name: "preset" },
+      userZoomingEnabled: true,
+      userPanningEnabled: true,
+      boxSelectionEnabled: false,
+      wheelSensitivity: 0.3,
+      minZoom: 0.3,
+      maxZoom: 3,
+    });
+
+    const layout = cy.layout({
+      name: "fcose",
+      animate: true,
+      animationDuration: 600,
+      animationEasing: "ease-out-cubic" as any,
+      quality: "default",
+      randomize: true,
+      nodeRepulsion: 5000,
+      idealEdgeLength: 100,
+      edgeElasticity: 0.45,
+      gravity: 0.3,
+      nodeSeparation: 60,
+      padding: 30,
+    } as any);
+    layout.on("layoutstop", () => cy.fit(undefined, 20));
+    layout.run();
+
+    cy.on("mouseover", "node.note-node", (evt) => {
+      evt.target.addClass("hover");
+      graphRef.current!.style.cursor = "pointer";
+    });
+    cy.on("mouseout", "node.note-node", () => {
+      cy.nodes().removeClass("hover");
+      graphRef.current!.style.cursor = "default";
+    });
+
+    // ノートノードクリックでナビゲーション
+    cy.on("tap", "node.note-node", (evt) => {
+      handleNavigate(evt.target.id());
+    });
+
+    cyRef.current = cy;
 
     return () => {
-      clearTimeout(timer);
-      if (cyRef.current) {
-        cyRef.current.destroy();
-        cyRef.current = null;
-      }
+      cy.destroy();
+      cyRef.current = null;
     };
-  }, [open, captures]);
+  }, [entry, hasUsages, handleNavigate]);
 
-  // usedIn のあるメモが1つもない場合
-  const hasUsage = captures.some((c) => c.usedIn && c.usedIn.length > 0);
+  // ESC で閉じる
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   return (
-    <Modal open={open} onClose={onClose}>
-      <div className="w-[600px]">
-        <ModalHeader onClose={onClose}>{t("memo.networkTitle")}</ModalHeader>
-        <ModalBody className="p-0">
-          {/* 凡例 */}
-          <div className="px-4 py-2 border-b border-border flex items-center gap-4 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: MEMO_COLOR }} />
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border border-border rounded-lg shadow-2xl w-[90vw] max-w-4xl h-[60vh] flex flex-col overflow-hidden">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-sm font-semibold text-foreground truncate">
               {t("memo.title")}
+            </h2>
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              {t("memo.created")}: {formatRelativeTime(entry.createdAt)}
             </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NOTE_COLOR }} />
-              {t("nav.noteColumn")}
-            </span>
+            {entry.modifiedAt && (
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                {t("memo.modified")}: {formatRelativeTime(entry.modifiedAt)}
+              </span>
+            )}
+            {hasUsages && (
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                {t("memo.usedCount", { count: String(entry.usedIn!.length) })}
+              </span>
+            )}
           </div>
-          {/* グラフ */}
-          {hasUsage ? (
-            <div ref={containerRef} className="w-full" style={{ height: 360, background: GRAPH_BG }} />
-          ) : (
-            <div className="flex items-center justify-center py-16" style={{ background: GRAPH_BG }}>
-              <p className="text-xs text-muted-foreground">{t("memo.networkEmpty")}</p>
+          <div className="flex items-center gap-2">
+            {onDelete && (
+              <button
+                onClick={() => { onDelete(); onClose(); }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                {t("common.delete")}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* コンテンツ: 左 メモ本文 / 右 グラフ */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* 左: メモ本文 */}
+          <div className={`flex flex-col p-6 bg-muted/30 overflow-auto ${hasRightPanel ? "w-1/2 border-r border-border" : "w-full"}`}>
+            {editing ? (
+              <div className="flex-1 flex flex-col gap-2">
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  autoFocus
+                  className="flex-1 w-full resize-none bg-background border border-border rounded-md p-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => { setEditing(false); setEditText(entry.text); }}
+                    className="px-3 py-1 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="px-3 py-1 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                  >
+                    {t("common.save")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p
+                className={`text-sm text-foreground whitespace-pre-wrap ${onEdit ? "cursor-pointer hover:bg-muted/50 rounded p-2 -m-2 transition-colors" : ""}`}
+                onClick={() => { if (onEdit) setEditing(true); }}
+                title={onEdit ? t("memo.clickToEdit") : undefined}
+              >
+                {entry.text}
+              </p>
+            )}
+          </div>
+
+          {/* 右: タブ切り替え（ネットワーク / 履歴） */}
+          {hasRightPanel && (
+            <div className="w-1/2 flex flex-col">
+              {/* タブヘッダー */}
+              <div className="flex items-center border-b border-border">
+                {hasUsages && (
+                  <button
+                    onClick={() => setRightTab("network")}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
+                      rightTab === "network"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Network size={13} />
+                    {t("memo.tabNetwork")}
+                  </button>
+                )}
+                {hasHistory && (
+                  <button
+                    onClick={() => setRightTab("history")}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
+                      rightTab === "history"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <History size={13} />
+                    {t("memo.tabHistory")}
+                  </button>
+                )}
+              </div>
+
+              {/* タブコンテンツ: ネットワーク */}
+              {rightTab === "network" && hasUsages && (
+                <>
+                  <div className="px-4 py-2 border-b border-border flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-sm"
+                        style={{ backgroundColor: MEMO_NODE_COLOR, transform: "rotate(45deg)" }}
+                      />
+                      {t("memo.title")}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: NOTE_NODE_COLOR }}
+                      />
+                      {t("nav.noteColumn")}
+                    </span>
+                    <span className="ml-auto">{t("asset.clickToNavigate")}</span>
+                  </div>
+                  <div ref={graphRef} className="flex-1" style={{ background: BG_COLOR }} />
+                </>
+              )}
+
+              {/* タブコンテンツ: 編集履歴 */}
+              {rightTab === "history" && hasHistory && (
+                <div className="flex-1 overflow-auto p-4">
+                  <div className="space-y-3">
+                    {[...entry.editHistory!].reverse().map((record, i, arr) => {
+                      // 次の（時系列で前の）テキストと比較して差分を表示
+                      const nextText = i < arr.length - 1 ? arr[i + 1].previousText : entry.text;
+                      return (
+                        <div key={i} className="border-l-2 border-border pl-3 py-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-medium text-muted-foreground">
+                              {formatRelativeTime(record.editedAt)}
+                            </span>
+                            <span className="text-[10px] text-blue-600/70 dark:text-blue-400/70">
+                              ~{t("history.type.edit")}
+                            </span>
+                          </div>
+                          <div className="text-[11px] space-y-0.5">
+                            <div className="text-red-600/70 dark:text-red-400/70 line-through whitespace-pre-wrap line-clamp-3">
+                              {record.previousText}
+                            </div>
+                            <div className="text-foreground/70 whitespace-pre-wrap line-clamp-3">
+                              {nextText}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </ModalBody>
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -229,11 +402,13 @@ function MemoNetworkModal({
 
 function MemoCard({
   entry,
+  onOpenDetail,
   onInsert,
   onDelete,
   insertDisabled,
 }: {
   entry: CaptureEntry;
+  onOpenDetail: () => void;
   onInsert?: () => void;
   onDelete?: () => void;
   insertDisabled?: boolean;
@@ -242,8 +417,11 @@ function MemoCard({
   const usedCount = entry.usedIn?.length ?? 0;
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 group hover:border-primary/30 transition-colors">
-      <p className="text-sm text-foreground whitespace-pre-wrap mb-2">
+    <div
+      className="bg-card border border-border rounded-lg p-4 group hover:border-primary/30 transition-colors cursor-pointer"
+      onClick={onOpenDetail}
+    >
+      <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4 mb-2">
         {entry.text}
       </p>
       <div className="flex items-center justify-between">
@@ -260,7 +438,7 @@ function MemoCard({
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {onInsert && (
             <button
-              onClick={onInsert}
+              onClick={(e) => { e.stopPropagation(); onInsert(); }}
               disabled={insertDisabled}
               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
               title={t("memo.insert")}
@@ -270,7 +448,7 @@ function MemoCard({
           )}
           {onDelete && (
             <button
-              onClick={onDelete}
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               title={t("common.delete")}
             >
@@ -337,6 +515,8 @@ export function MemoGalleryView({
   onBack,
   onInsertMemo,
   onDeleteMemo,
+  onEditMemo,
+  onNavigateNote,
   insertDisabled,
 }: {
   captureIndex: CaptureIndex | null;
@@ -344,14 +524,14 @@ export function MemoGalleryView({
   onBack: () => void;
   onInsertMemo?: (captureId: string, text: string, deleteAfter: boolean) => void;
   onDeleteMemo?: (captureId: string) => void;
+  onEditMemo?: (captureId: string, newText: string) => void;
+  onNavigateNote?: (noteId: string) => void;
   insertDisabled?: boolean;
 }) {
   const t = useT();
   const captures = captureIndex?.captures ?? [];
   const [pendingInsert, setPendingInsert] = useState<{ id: string; text: string } | null>(null);
-  const [showNetwork, setShowNetwork] = useState(false);
-
-  const hasUsage = captures.some((c) => c.usedIn && c.usedIn.length > 0);
+  const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
 
   const handleInsertAndKeep = useCallback(() => {
     if (!pendingInsert || !onInsertMemo) return;
@@ -379,16 +559,6 @@ export function MemoGalleryView({
         <span className="text-xs text-muted-foreground">
           {loading ? t("common.loading") : t("memo.count", { count: String(captures.length) })}
         </span>
-        {/* ネットワーク図ボタン */}
-        {hasUsage && (
-          <button
-            onClick={() => setShowNetwork(true)}
-            className="ml-auto p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title={t("memo.networkTitle")}
-          >
-            <Network size={16} />
-          </button>
-        )}
       </div>
 
       {/* 挿入先のヒント */}
@@ -415,6 +585,7 @@ export function MemoGalleryView({
               <MemoCard
                 key={entry.id}
                 entry={entry}
+                onOpenDetail={() => setDetailEntry(entry)}
                 onInsert={onInsertMemo ? () => setPendingInsert({ id: entry.id, text: entry.text }) : undefined}
                 onDelete={onDeleteMemo ? () => onDeleteMemo(entry.id) : undefined}
                 insertDisabled={insertDisabled}
@@ -433,12 +604,16 @@ export function MemoGalleryView({
         />
       )}
 
-      {/* ネットワーク図モーダル */}
-      <MemoNetworkModal
-        open={showNetwork}
-        onClose={() => setShowNetwork(false)}
-        captures={captures}
-      />
+      {/* メモ詳細モーダル */}
+      {detailEntry && (
+        <MemoDetailModal
+          entry={detailEntry}
+          onClose={() => setDetailEntry(null)}
+          onDelete={onDeleteMemo ? () => { onDeleteMemo(detailEntry.id); setDetailEntry(null); } : undefined}
+          onNavigateNote={onNavigateNote}
+          onEdit={onEditMemo ? (id, text) => { onEditMemo(id, text); setDetailEntry({ ...detailEntry, text }); } : undefined}
+        />
+      )}
     </div>
   );
 }

@@ -16,6 +16,14 @@ export type MemoUsage = {
   insertedAt: string;
 };
 
+/** 編集履歴エントリ */
+export type MemoEditRecord = {
+  /** 編集日時 */
+  editedAt: string;
+  /** 編集前のテキスト */
+  previousText: string;
+};
+
 /** 付箋キャプチャ1件 */
 export type CaptureEntry = {
   /** 一意 ID */
@@ -24,10 +32,14 @@ export type CaptureEntry = {
   text: string;
   /** 作成日時 */
   createdAt: string;
+  /** 最終編集日時 */
+  modifiedAt?: string;
   /** 作成者メールアドレス */
   createdBy?: string;
   /** 挿入されたノート一覧 */
   usedIn?: MemoUsage[];
+  /** 編集履歴（変更前テキストを保持） */
+  editHistory?: MemoEditRecord[];
 };
 
 /** キャプチャインデックス全体 */
@@ -155,6 +167,25 @@ export function removeCapture(index: CaptureIndex, captureId: string): CaptureIn
     ...index,
     updatedAt: new Date().toISOString(),
     captures: index.captures.filter((c) => c.id !== captureId),
+  };
+}
+
+/** メモのテキストを編集 */
+export function editCapture(index: CaptureIndex, captureId: string, newText: string): CaptureIndex {
+  const now = new Date().toISOString();
+  return {
+    ...index,
+    updatedAt: now,
+    captures: index.captures.map((c) => {
+      if (c.id !== captureId || c.text === newText) return c;
+      const history = c.editHistory ?? [];
+      return {
+        ...c,
+        text: newText,
+        modifiedAt: now,
+        editHistory: [...history, { editedAt: now, previousText: c.text }],
+      };
+    }),
   };
 }
 

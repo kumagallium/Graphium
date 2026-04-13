@@ -1,5 +1,6 @@
 import { BookmarkBlock } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
+import { t } from "../../i18n";
 
 // ブロック登録エントリー
 export const bookmarkBlock: CustomBlockEntry = {
@@ -16,9 +17,9 @@ export function setBookmarkPickerCallback(cb: (() => void) | null) {
 
 // スラッシュメニュー用アイテム（ピッカーモーダルを開く）
 export const bookmarkSlashItem = {
-  title: "Bookmark",
-  subtext: "URL をカード形式で表示",
-  group: "メディア",
+  title: t("slash.bookmark"),
+  subtext: t("slash.bookmarkSub"),
+  group: t("asset.slashGroup"),
   onItemClick: () => {
     bookmarkPickerCallback?.();
   },

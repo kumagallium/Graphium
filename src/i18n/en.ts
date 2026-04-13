@@ -182,6 +182,17 @@ export const en: Record<string, string> = {
   // ── スラッシュメニュー ──
   "slashMenu.group": "PROV labels",
 
+  // ── スラッシュメニュー（カスタムブロック） ──
+  "slash.advancedGroup": "Advanced",
+  "slash.indexTable": "Index Table",
+  "slash.indexTableSub": "Insert a table for data management",
+  "slash.bookmark": "Bookmark",
+  "slash.bookmarkSub": "Display URL as a card",
+  "slash.pdf": "PDF",
+  "slash.pdfSub": "Embed a PDF file",
+  "slash.hello": "Hello Block",
+  "slash.helloSub": "Insert a sample custom block",
+
   // ── 追加 UI テキスト ──
   "common.empty": "(empty)",
   "common.back": "← Back",
@@ -397,8 +408,16 @@ export const en: Record<string, string> = {
   "memo.inserted": "Memo inserted",
   "memo.networkTitle": "Memo usage network",
   "memo.networkEmpty": "No memos have been inserted into notes yet.",
+  "memo.clickToEdit": "Click to edit",
+  "memo.editHistory": "Edit history",
+  "memo.tabNetwork": "Network",
+  "memo.tabHistory": "History",
+  "memo.created": "Created",
+  "memo.modified": "Modified",
   "memo.slashTitle": "Memo",
   "memo.slashSub": "Insert from saved memos",
+  "memo.pickTitle": "Select memo",
+  "memo.searchPlaceholder": "Search memos...",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
