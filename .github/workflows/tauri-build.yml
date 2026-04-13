@@ -159,7 +159,7 @@ jobs:
             }
 
             echo "Signing $ASSET..."
-            tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" 2>&1 || echo "WARNING: signing failed for $ASSET"
+            tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 || echo "WARNING: signing failed for $ASSET"
           done
 
           echo "Signatures generated:"
