@@ -1,5 +1,7 @@
 # Changelog
 
+## [v0.3.3](https://github.com/kumagallium/Graphium/compare/v0.3.2...v0.3.3) - 2026-04-13
+
 ## [v0.3.2](https://github.com/kumagallium/Graphium/compare/v0.3.1...v0.3.2) - 2026-04-13
 - Add mobile responsive layout by @kumagallium in https://github.com/kumagallium/Graphium/pull/83
 - Add mobile memo capture view with PC sidebar integration by @kumagallium in https://github.com/kumagallium/Graphium/pull/84
