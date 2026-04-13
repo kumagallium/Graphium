@@ -387,6 +387,13 @@ export const ja: Record<string, string> = {
   "memo.hint": "送信ボタンをタップして保存",
   "memo.insert": "ノートに挿入",
   "memo.emptyDesktop": "メモがありません。モバイルからメモを作成できます。",
+  "memo.usedCount": "{count} 件で使用",
+  "memo.insertConfirmTitle": "メモを挿入",
+  "memo.insertConfirmMessage": "このメモを現在のノートに挿入します。挿入後にメモを残しますか？",
+  "memo.insertAndKeep": "挿入してメモを残す",
+  "memo.insertAndDelete": "挿入してメモを削除",
+  "memo.insertHint": "メモを挿入するにはノートを先に開いてください。",
+  "memo.inserted": "メモを挿入しました",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

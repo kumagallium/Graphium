@@ -9,6 +9,13 @@ const INDEX_FILE_NAME = ".graphium-captures.json";
 
 // ── 型定義 ──
 
+/** メモが挿入されたノートの情報 */
+export type MemoUsage = {
+  noteId: string;
+  noteTitle: string;
+  insertedAt: string;
+};
+
 /** 付箋キャプチャ1件 */
 export type CaptureEntry = {
   /** 一意 ID */
@@ -19,6 +26,8 @@ export type CaptureEntry = {
   createdAt: string;
   /** 作成者メールアドレス */
   createdBy?: string;
+  /** 挿入されたノート一覧 */
+  usedIn?: MemoUsage[];
 };
 
 /** キャプチャインデックス全体 */
@@ -146,6 +155,29 @@ export function removeCapture(index: CaptureIndex, captureId: string): CaptureIn
     ...index,
     updatedAt: new Date().toISOString(),
     captures: index.captures.filter((c) => c.id !== captureId),
+  };
+}
+
+/** メモの usedIn に挿入記録を追加 */
+export function recordMemoUsage(
+  index: CaptureIndex,
+  captureId: string,
+  noteId: string,
+  noteTitle: string,
+): CaptureIndex {
+  return {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    captures: index.captures.map((c) => {
+      if (c.id !== captureId) return c;
+      const usedIn = c.usedIn ?? [];
+      // 同じノートへの重複記録を防ぐ
+      if (usedIn.some((u) => u.noteId === noteId)) return c;
+      return {
+        ...c,
+        usedIn: [...usedIn, { noteId, noteTitle, insertedAt: new Date().toISOString() }],
+      };
+    }),
   };
 }
 

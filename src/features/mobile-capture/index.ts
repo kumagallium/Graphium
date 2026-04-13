@@ -7,7 +7,8 @@ export {
   createEmptyCaptureIndex,
   addCapture,
   removeCapture,
+  recordMemoUsage,
   generateCaptureId,
   clearCaptureCache,
 } from "./capture-store";
-export type { CaptureIndex, CaptureEntry } from "./capture-store";
+export type { CaptureIndex, CaptureEntry, MemoUsage } from "./capture-store";

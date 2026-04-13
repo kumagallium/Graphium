@@ -8,6 +8,7 @@ import {
   createEmptyCaptureIndex,
   addCapture,
   removeCapture,
+  recordMemoUsage,
   generateCaptureId,
   clearCaptureCache,
   type CaptureIndex,
@@ -90,11 +91,25 @@ export function useCapture(authenticated: boolean) {
     }
   }, []);
 
+  // メモの挿入を記録
+  const handleRecordUsage = useCallback(async (captureId: string, noteId: string, noteTitle: string) => {
+    try {
+      const current = indexRef.current ?? createEmptyCaptureIndex();
+      const updated = recordMemoUsage(current, captureId, noteId, noteTitle);
+      indexRef.current = updated;
+      setCaptureIndex(updated);
+      await saveCaptureIndex(updated);
+    } catch (err) {
+      console.error("メモ使用記録に失敗:", err);
+    }
+  }, []);
+
   return {
     captureIndex,
     captureLoading: loading,
     capturing,
     handleCreateCapture,
     handleDeleteCapture,
+    handleRecordUsage,
   };
 }

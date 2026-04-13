@@ -206,6 +206,10 @@ type NoteEditorProps = {
   mediaIndex?: import("./features/asset-browser").MediaIndex | null;
   /** URL ブックマーク登録コールバック */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
+  /** メモ挿入リクエスト（メモギャラリーから） */
+  pendingMemoInsert?: { text: string } | null;
+  /** メモ挿入完了コールバック */
+  onMemoInserted?: () => void;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -257,6 +261,8 @@ function NoteEditorInner({
   uploadFile,
   mediaIndex,
   onAddUrlBookmark,
+  pendingMemoInsert,
+  onMemoInserted,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -583,6 +589,25 @@ function NoteEditorInner({
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
+
+  // ── メモ挿入（メモギャラリーから） ──
+  useEffect(() => {
+    if (!pendingMemoInsert || !editorRef.current) return;
+    const editor = editorRef.current;
+    const blocks = pendingMemoInsert.text.split("\n").map((line: string) => ({
+      type: "paragraph",
+      content: [{ type: "text" as const, text: line, styles: {} }],
+    }));
+    if (blocks.length === 0) return;
+    // ドキュメント末尾に挿入
+    const allBlocks = editor.document;
+    const lastBlock = allBlocks[allBlocks.length - 1];
+    if (lastBlock) {
+      editor.insertBlocks(blocks, lastBlock, "after");
+    }
+    markDirty();
+    onMemoInserted?.();
+  }, [pendingMemoInsert, markDirty, onMemoInserted]);
 
   // ── PROV 生成 ──
   const { provDoc, generateProv, triggerRegeneration } = useProvGeneration(
@@ -1375,6 +1400,8 @@ export function NoteApp() {
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
+  // メモ挿入リクエスト（メモギャラリー → エディタ）
+  const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
 
   const isDesktop = useIsDesktop();
   const fm = useFileManager(authenticated);
@@ -1465,7 +1492,12 @@ export function NoteApp() {
             captureIndex={capture.captureIndex}
             loading={capture.captureLoading}
             onBack={() => setShowMemos(false)}
+            onInsertMemo={(captureId, text, deleteAfter) => {
+              setPendingMemoInsert({ captureId, text, deleteAfter });
+              setShowMemos(false);
+            }}
             onDeleteMemo={capture.handleDeleteCapture}
+            insertDisabled={!fm.activeFileId}
           />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
@@ -1496,6 +1528,20 @@ export function NoteApp() {
             uploadFile={fm.handleUploadMedia}
             mediaIndex={fm.mediaIndex}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
+            pendingMemoInsert={pendingMemoInsert}
+            onMemoInserted={() => {
+              if (!pendingMemoInsert) return;
+              const { captureId, deleteAfter } = pendingMemoInsert;
+              // usedIn を記録
+              if (fm.activeFileId && fm.activeDoc) {
+                capture.handleRecordUsage(captureId, fm.activeFileId, fm.activeDoc.title);
+              }
+              // 削除オプション
+              if (deleteAfter) {
+                capture.handleDeleteCapture(captureId);
+              }
+              setPendingMemoInsert(null);
+            }}
           />
         )}
         {/* 派生ノート作成中のオーバーレイ */}

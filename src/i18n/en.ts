@@ -387,6 +387,13 @@ export const en: Record<string, string> = {
   "memo.hint": "Tap the send button to save",
   "memo.insert": "Insert into note",
   "memo.emptyDesktop": "No memos yet. Create memos from the mobile view.",
+  "memo.usedCount": "Used in {count}",
+  "memo.insertConfirmTitle": "Insert memo",
+  "memo.insertConfirmMessage": "Insert this memo into the current note. Would you like to keep or delete the memo afterward?",
+  "memo.insertAndKeep": "Insert and keep memo",
+  "memo.insertAndDelete": "Insert and delete memo",
+  "memo.insertHint": "Open a note first to insert memos.",
+  "memo.inserted": "Memo inserted",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
