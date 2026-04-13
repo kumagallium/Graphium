@@ -120,8 +120,8 @@ describe("# オートコンプリート候補", () => {
 
   it("getDisplayName は [] を除去する", () => {
     // i18n 経由: テスト環境ではデフォルト英語
-    expect(getDisplayName("[手順]")).toBe("Procedure");
-    expect(getDisplayName("[材料]")).toBe("Material");
+    expect(getDisplayName("[手順]")).toBe("Step");
+    expect(getDisplayName("[材料]")).toBe("Input");
     // カスタムラベルは i18n マッピングがないのでそのまま除去
     expect(getDisplayName("[カスタム]")).toBe("カスタム");
   });

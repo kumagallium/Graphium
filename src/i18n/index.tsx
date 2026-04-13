@@ -107,6 +107,9 @@ export function getLocale(): Locale {
 
 // ── ラベル表示名変換 ──
 // 内部キー（[手順] 等）をロケールに応じた表示名に変換
+// ユーザーがカスタム表示名を設定している場合はそちらを優先
+
+import { getCustomLabels } from "../features/settings/store";
 
 const LABEL_DISPLAY_MAP: Record<string, string> = {
   // コアラベル
@@ -126,8 +129,12 @@ const LABEL_DISPLAY_MAP: Record<string, string> = {
   "[感想]": "label.free.impression",
 };
 
-/** 内部ラベルキーを表示名に変換 */
+/** 内部ラベルキーを表示名に変換（カスタム名があればそちらを優先） */
 export function getDisplayLabel(internalLabel: string): string {
+  // カスタム表示名があればそちらを返す
+  const custom = getCustomLabels();
+  if (custom[internalLabel]) return `[${custom[internalLabel]}]`;
+
   const key = LABEL_DISPLAY_MAP[internalLabel];
   if (key) return t(key);
   // コアラベル以外はそのまま返す（フリーラベル）
@@ -136,6 +143,10 @@ export function getDisplayLabel(internalLabel: string): string {
 
 /** 括弧なしの表示名を取得 */
 export function getDisplayLabelName(internalLabel: string): string {
+  // カスタム表示名があればそちらを返す
+  const custom = getCustomLabels();
+  if (custom[internalLabel]) return custom[internalLabel];
+
   const display = getDisplayLabel(internalLabel);
   // [xxx] → xxx
   const m = display.match(/^\[(.+)\]$/);

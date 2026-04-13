@@ -12,11 +12,13 @@ import {
   AlertCircle,
   Loader2,
   Wrench,
+  RotateCcw,
+  Tag,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels } from "./store";
 import {
   fetchModels,
   fetchProfiles,
@@ -25,6 +27,7 @@ import {
 } from "../ai-assistant/api";
 import { apiBase } from "../../lib/platform";
 import { useLocale, type Locale } from "../../i18n";
+import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -66,7 +69,16 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "general" | "ai-setup";
+type Tab = "general" | "labels" | "ai-setup";
+
+// ラベルタブで使う内部キーと i18n デフォルト名のマッピング
+const LABEL_I18N_KEYS: Record<CoreLabel, string> = {
+  "[手順]": "label.step",
+  "[材料]": "label.material",
+  "[ツール]": "label.tool",
+  "[属性]": "label.attr",
+  "[結果]": "label.result",
+};
 
 type SettingsModalProps = {
   isOpen: boolean;
@@ -82,6 +94,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [profile, setProfile] = useState("");
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
+  const [customLabels, setCustomLabels] = useState<CustomLabels>({});
 
   // サーバーデータ
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -145,6 +158,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setProfile(settings.profile);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
+    setCustomLabels(settings.customLabels ?? {});
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -294,10 +308,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, "") });
+    saveSettings({ model, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels });
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, profile, onClose]);
+  }, [model, profile, customLabels, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -327,7 +341,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
       {/* タブ */}
       <div className="flex border-b border-border px-6">
-        {(["general", "ai-setup"] as Tab[]).map((tabId) => (
+        {(["general", "labels", "ai-setup"] as Tab[]).map((tabId) => (
           <button
             key={tabId}
             onClick={() => setTab(tabId)}
@@ -337,7 +351,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tabId === "general" ? t("settings.tab.general") : t("settings.tab.aiSetup")}
+            {t(`settings.tab.${tabId === "ai-setup" ? "aiSetup" : tabId}`)}
           </button>
         ))}
       </div>
@@ -416,6 +430,60 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">{t("settings.modelHelp")}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Labels タブ ── */}
+        {tab === "labels" && (
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Tag size={14} className="text-muted-foreground" />
+                <label className="text-xs font-semibold text-foreground">
+                  {t("settings.labels.title")}
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
+
+              <div className="space-y-2">
+                {CORE_LABELS.map((label) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <div className="w-28 shrink-0">
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {CORE_LABEL_PROV[label]}
+                      </span>
+                    </div>
+                    <Input
+                      type="text"
+                      value={customLabels[label] ?? ""}
+                      onChange={(e) => {
+                        setCustomLabels((prev) => {
+                          const next = { ...prev };
+                          if (e.target.value.trim()) {
+                            next[label] = e.target.value.trim();
+                          } else {
+                            delete next[label];
+                          }
+                          return next;
+                        });
+                        setSaved(false);
+                      }}
+                      placeholder={t(LABEL_I18N_KEYS[label])}
+                      className="flex-1"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {Object.keys(customLabels).length > 0 && (
+                <button
+                  onClick={() => { setCustomLabels({}); setSaved(false); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-3 transition-colors"
+                >
+                  <RotateCcw size={12} /> {t("settings.labels.reset")}
+                </button>
+              )}
             </div>
           </div>
         )}

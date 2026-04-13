@@ -2,20 +2,20 @@
 
 export const ja: Record<string, string> = {
   // ── PROV-DM コアラベル表示名 ──
-  "label.step": "手順",
-  "label.used": "使用したもの",
-  "label.attr": "属性",
-  "label.result": "結果",
-  "label.prevStep": "前手順",
-  "label.material": "材料",
+  "label.step": "ステップ",
+  "label.used": "インプット",
+  "label.attr": "パラメータ",
+  "label.result": "アウトプット",
+  "label.prevStep": "前ステップ",
+  "label.material": "インプット",
   "label.tool": "ツール",
-  "label.step.bracketed": "[手順]",
-  "label.used.bracketed": "[使用したもの]",
-  "label.material.bracketed": "[材料]",
+  "label.step.bracketed": "[ステップ]",
+  "label.used.bracketed": "[インプット]",
+  "label.material.bracketed": "[インプット]",
   "label.tool.bracketed": "[ツール]",
-  "label.attr.bracketed": "[属性]",
-  "label.result.bracketed": "[結果]",
-  "label.prevStep.bracketed": "[前手順]",
+  "label.attr.bracketed": "[パラメータ]",
+  "label.result.bracketed": "[アウトプット]",
+  "label.prevStep.bracketed": "[前ステップ]",
   // フリーラベル例
   "label.free.purpose": "[目的]",
   "label.free.discussion": "[考察]",
@@ -92,7 +92,7 @@ export const ja: Record<string, string> = {
   "editor.derivedNote": "派生ノート",
 
   // ── 右パネルタブ ──
-  "panel.prov": "手順",
+  "panel.prov": "ステップ",
   "panel.generate": "生成",
   "panel.generateManual": "手動で再生成",
   "panel.history": "履歴",
@@ -115,8 +115,8 @@ export const ja: Record<string, string> = {
   "labelUi.custom": "カスタム",
   "labelUi.removeLabel": "ラベルを外す",
   "labelUi.placeholder": "[ラベル名]",
-  "labelUi.prevStepLink": "前手順リンク（wasInformedBy）",
-  "labelUi.selectPrevStep": "前の手順を選択してリンク",
+  "labelUi.prevStepLink": "前ステップリンク（wasInformedBy）",
+  "labelUi.selectPrevStep": "前のステップを選択してリンク",
   "labelUi.selectHeading": "リンク先の見出しを選択",
   "labelUi.insertLabeledBlock": "{label} ラベル付きブロックを挿入",
   "labelUi.provLabel": "PROV ラベル",
@@ -126,7 +126,7 @@ export const ja: Record<string, string> = {
   "provIndicator.clickForDetails": "{label} — クリックで詳細",
   "provIndicator.outLinks": "→ 出力リンク",
   "provIndicator.inLinks": "← 入力リンク",
-  "provIndicator.selectStep": "リンク先の [手順] を選択",
+  "provIndicator.selectStep": "リンク先の [ステップ] を選択",
   "provIndicator.noHeadings": "見出しがありません",
 
   // ── リンクバッジ ──
@@ -199,6 +199,7 @@ export const ja: Record<string, string> = {
 
   // ── 設定モーダル追加 ──
   "settings.tab.general": "一般",
+  "settings.tab.labels": "ラベル",
   "settings.tab.aiSetup": "AI セットアップ",
   "settings.profile": "システムプロンプト",
   "settings.profileDefault": "デフォルト (science)",
@@ -266,11 +267,11 @@ export const ja: Record<string, string> = {
 
   // ── PROV パネル追加 ──
   "provPanel.noLabelsMessage": "エディタにラベルを付けてから「PROV生成」を実行してください",
-  "provPanel.stepLegend": "手順",
-  "provPanel.materialLegend": "材料",
+  "provPanel.stepLegend": "ステップ",
+  "provPanel.materialLegend": "インプット",
   "provPanel.toolLegend": "ツール",
-  "provPanel.resultLegend": "結果",
-  "provPanel.attrLegend": "属性",
+  "provPanel.resultLegend": "アウトプット",
+  "provPanel.attrLegend": "パラメータ",
   "provPanel.graphStats": "{nodes} ノード · {relations} リレーション",
   "provPanel.expandView": "拡大表示",
 
@@ -379,6 +380,12 @@ export const ja: Record<string, string> = {
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "エクスポート中...",
+
+  // ── ラベルカスタマイズ ──
+  "settings.labels.title": "コアラベルの表示名",
+  "settings.labels.help": "PROV-DM のコアラベルの表示名をカスタマイズできます。空欄にするとデフォルト名が使われます。",
+  "settings.labels.reset": "デフォルトに戻す",
+  "settings.labels.provRole": "PROV-DM の役割",
 
   // ── PROV-JSON-LD エクスポート ──
   "prov.export": "PROV-JSON-LD",

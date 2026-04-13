@@ -16,7 +16,7 @@ import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
 import { extractRelations, type FlatRelation } from "./generator";
-import { t } from "../../i18n";
+import { t, getDisplayLabelName } from "../../i18n";
 
 // 後方互換
 type ProvDocument = ProvJsonLd;
@@ -486,11 +486,11 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
 
   const legendBar = (
     <div style={legendBarStyle}>
-      <LegendDot color={THEME.activity.bg} shape="circle" label={t("provPanel.stepLegend")} />
-      <LegendDot color={THEME.entity.bg} shape="square" label={t("provPanel.materialLegend")} />
-      <LegendDot color={THEME.tool.bg} shape="diamond" label={t("provPanel.toolLegend")} />
-      <LegendDot color={THEME.result.bg} shape="square" label={t("provPanel.resultLegend")} />
-      <LegendDot color={THEME.parameter.bg} shape="square" label={t("provPanel.attrLegend")} />
+      <LegendDot color={THEME.activity.bg} shape="circle" label={getDisplayLabelName("[手順]")} />
+      <LegendDot color={THEME.entity.bg} shape="square" label={getDisplayLabelName("[材料]")} />
+      <LegendDot color={THEME.tool.bg} shape="diamond" label={getDisplayLabelName("[ツール]")} />
+      <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("[結果]")} />
+      <LegendDot color={THEME.parameter.bg} shape="square" label={getDisplayLabelName("[属性]")} />
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>

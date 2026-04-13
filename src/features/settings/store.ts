@@ -3,6 +3,9 @@
 
 const STORAGE_KEY = "graphium-settings";
 
+/** コアラベルのカスタム表示名（キーは内部ラベルキー、値はユーザーが設定した表示名） */
+export type CustomLabels = Record<string, string>;
+
 export type Settings = {
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
@@ -12,6 +15,8 @@ export type Settings = {
   disabledTools: string[];
   /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる） */
   registryUrl: string;
+  /** コアラベルのカスタム表示名（空オブジェクト = デフォルト） */
+  customLabels: CustomLabels;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -19,6 +24,7 @@ const DEFAULT_SETTINGS: Settings = {
   profile: "",
   disabledTools: [],
   registryUrl: "",
+  customLabels: {},
 };
 
 /** localStorage から設定を読み込む */
@@ -56,6 +62,11 @@ export function getDisabledTools(): string[] {
 /** Crucible Registry URL を取得する（空文字 = バックエンドのデフォルト） */
 export function getRegistryUrl(): string {
   return loadSettings().registryUrl;
+}
+
+/** コアラベルのカスタム表示名を取得する */
+export function getCustomLabels(): CustomLabels {
+  return loadSettings().customLabels;
 }
 
 /** AI バックエンドが利用可能かどうか（ビルトインバックエンドは常に available） */

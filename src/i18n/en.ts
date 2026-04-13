@@ -2,19 +2,19 @@
 
 export const en: Record<string, string> = {
   // ── PROV-DM コアラベル表示名 ──
-  "label.step": "Procedure",
-  "label.used": "Materials",
-  "label.attr": "Attributes",
-  "label.result": "Results",
+  "label.step": "Step",
+  "label.used": "Input",
+  "label.attr": "Parameter",
+  "label.result": "Output",
   "label.prevStep": "Prior step",
-  "label.material": "Material",
+  "label.material": "Input",
   "label.tool": "Tool",
-  "label.step.bracketed": "[Procedure]",
-  "label.used.bracketed": "[Materials]",
-  "label.material.bracketed": "[Material]",
+  "label.step.bracketed": "[Step]",
+  "label.used.bracketed": "[Input]",
+  "label.material.bracketed": "[Input]",
   "label.tool.bracketed": "[Tool]",
-  "label.attr.bracketed": "[Attributes]",
-  "label.result.bracketed": "[Results]",
+  "label.attr.bracketed": "[Parameter]",
+  "label.result.bracketed": "[Output]",
   "label.prevStep.bracketed": "[Prior step]",
   // フリーラベル例
   "label.free.purpose": "[Purpose]",
@@ -92,7 +92,7 @@ export const en: Record<string, string> = {
   "editor.derivedNote": "Derived note",
 
   // ── 右パネルタブ ──
-  "panel.prov": "Procedure",
+  "panel.prov": "Steps",
   "panel.generate": "Generate",
   "panel.generateManual": "Regenerate manually",
   "panel.history": "History",
@@ -126,7 +126,7 @@ export const en: Record<string, string> = {
   "provIndicator.clickForDetails": "{label} — Click for details",
   "provIndicator.outLinks": "→ Output links",
   "provIndicator.inLinks": "← Input links",
-  "provIndicator.selectStep": "Select [Procedure] to link",
+  "provIndicator.selectStep": "Select [Step] to link",
   "provIndicator.noHeadings": "No headings found",
 
   // ── リンクバッジ ──
@@ -199,6 +199,7 @@ export const en: Record<string, string> = {
 
   // ── 設定モーダル追加 ──
   "settings.tab.general": "General",
+  "settings.tab.labels": "Labels",
   "settings.tab.aiSetup": "AI Setup",
   "settings.profile": "System Prompt",
   "settings.profileDefault": "Default (science)",
@@ -266,11 +267,11 @@ export const en: Record<string, string> = {
 
   // ── PROV パネル追加 ──
   "provPanel.noLabelsMessage": "Add labels to the editor, then run PROV generation",
-  "provPanel.stepLegend": "Procedure",
-  "provPanel.materialLegend": "Material",
+  "provPanel.stepLegend": "Step",
+  "provPanel.materialLegend": "Input",
   "provPanel.toolLegend": "Tool",
-  "provPanel.resultLegend": "Results",
-  "provPanel.attrLegend": "Attributes",
+  "provPanel.resultLegend": "Output",
+  "provPanel.attrLegend": "Parameter",
   "provPanel.graphStats": "{nodes} nodes · {relations} relations",
   "provPanel.expandView": "Expand view",
 
@@ -379,6 +380,12 @@ export const en: Record<string, string> = {
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "Exporting...",
+
+  // ── ラベルカスタマイズ ──
+  "settings.labels.title": "Core Label Names",
+  "settings.labels.help": "Customize the display names of PROV-DM core labels. Leave empty to use the default name.",
+  "settings.labels.reset": "Reset to defaults",
+  "settings.labels.provRole": "PROV-DM role",
 
   // ── PROV-JSON-LD エクスポート ──
   "prov.export": "PROV-JSON-LD",
