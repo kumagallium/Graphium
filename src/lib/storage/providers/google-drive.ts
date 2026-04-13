@@ -24,6 +24,9 @@ import {
   getLatestRevisionId,
   clearCache as driveClearCache,
 } from "../../google-drive";
+import { clearIndexCache } from "../../../features/navigation/index-file";
+import { clearMediaIndexCache } from "../../../features/asset-browser/media-index";
+import { clearCaptureCache } from "../../../features/mobile-capture/capture-store";
 
 export class GoogleDriveProvider implements StorageProvider {
   readonly id = "google-drive";
@@ -39,7 +42,7 @@ export class GoogleDriveProvider implements StorageProvider {
 
   signOut(): void {
     gisSignOut();
-    driveClearCache();
+    this.clearCache();
   }
 
   getAuthState(): AuthState {
@@ -119,5 +122,8 @@ export class GoogleDriveProvider implements StorageProvider {
 
   clearCache(): void {
     driveClearCache();
+    clearIndexCache();
+    clearMediaIndexCache();
+    clearCaptureCache();
   }
 }

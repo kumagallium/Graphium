@@ -53,8 +53,10 @@ if (isTauri()) {
 }
 
 // ── モード判定 ──
-// ?sandbox パラメータがある場合はサンドボックスモード
-const isSandboxMode = new URLSearchParams(window.location.search).has("sandbox");
+// ?sandbox パラメータがある場合はサンドボックスモード（開発ビルドのみ有効）
+const isSandboxMode =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).has("sandbox");
 
 // ── サンドボックスモード（既存の実験環境） ──────────
 

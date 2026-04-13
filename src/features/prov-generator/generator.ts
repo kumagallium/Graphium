@@ -131,8 +131,10 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   const nodes: InternalNode[] = [];
   const relations: InternalRelation[] = [];
 
-  console.group("[PROV] 生成開始");
-  console.log("ブロック数:", blocks.length, "ラベル数:", labels.size, "リンク数:", links.length);
+  if (import.meta.env.DEV) {
+    console.group("[PROV] 生成開始");
+    console.log("ブロック数:", blocks.length, "ラベル数:", labels.size, "リンク数:", links.length);
+  }
 
   const flatBlocks = flattenBlocks(blocks);
 
@@ -406,10 +408,12 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  console.log("生成ノード:", nodes.map((n) => `${n["@type"]} "${n.label}" (${n["@id"]})`));
-  console.log("生成リレーション:", relations.map((r) => `${r["@type"]} ${r.from} → ${r.to}`));
-  console.log("警告:", warnings);
-  console.groupEnd();
+  if (import.meta.env.DEV) {
+    console.log("生成ノード:", nodes.map((n) => `${n["@type"]} "${n.label}" (${n["@id"]})`));
+    console.log("生成リレーション:", relations.map((r) => `${r["@type"]} ${r.from} → ${r.to}`));
+    console.log("警告:", warnings);
+    console.groupEnd();
+  }
 
   // ── 中間表現 → PROV-JSON-LD 埋め込み形式に変換 ──
   return buildProvJsonLd(nodes, relations, warnings, input.documentProvenance);

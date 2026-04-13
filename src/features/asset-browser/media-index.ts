@@ -94,6 +94,12 @@ async function getFolderId(): Promise<string> {
 // インデックスファイル ID のキャッシュ
 let cachedIndexFileId: string | null = null;
 
+/** モジュールキャッシュをクリア（サインアウト時に呼ぶ） */
+export function clearMediaIndexCache(): void {
+  cachedFolderId = null;
+  cachedIndexFileId = null;
+}
+
 async function findIndexFileId(): Promise<string | null> {
   if (cachedIndexFileId) return cachedIndexFileId;
   const folderId = await getFolderId();
