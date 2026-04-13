@@ -8,13 +8,17 @@
 
 import type { LabelStore } from "./store";
 
-// 継承対象のラベル（Enter した時に次行にコピーするラベル）
+// 継承対象のラベル（箇条書きで Enter → 空の次行にもコピーするラベル）
 const INHERITABLE_LABELS = new Set([
-  "[手順]",
   "[材料]",
   "[ツール]",
   "[結果]",
   "[属性]",
+]);
+
+// 分割時のみ継承するラベル（Enter でブロックが分割され、新ブロックにコンテンツがある場合のみ）
+const SPLIT_ONLY_LABELS = new Set([
+  "[手順]",
 ]);
 
 // インデント時に [属性] に変換するラベル
@@ -116,7 +120,13 @@ export function setupLabelAutoAssign(
       if (!prev) continue;
 
       const prevLabel = labelStore.labels.get(prev.block.id);
-      if (prevLabel && INHERITABLE_LABELS.has(prevLabel)) {
+      if (!prevLabel) continue;
+
+      if (INHERITABLE_LABELS.has(prevLabel)) {
+        // 箇条書きラベル: 空行でも継承（Enter で次行を追加するフロー）
+        labelStore.setLabel(block.id, prevLabel);
+      } else if (SPLIT_ONLY_LABELS.has(prevLabel) && blockHasContent(block)) {
+        // 見出しラベル: 分割時（新ブロックにコンテンツあり）のみ継承
         labelStore.setLabel(block.id, prevLabel);
       }
     }
