@@ -8,8 +8,9 @@
 
 import type { LabelStore } from "./store";
 
-// 継承対象のラベル（箇条書きで Enter した時に次行にコピーするラベル）
+// 継承対象のラベル（Enter した時に次行にコピーするラベル）
 const INHERITABLE_LABELS = new Set([
+  "[手順]",
   "[材料]",
   "[ツール]",
   "[結果]",
@@ -70,8 +71,12 @@ export function setupLabelAutoAssign(
       if (prevBlockIds.has(block.id)) continue; // 既存ブロック
       if (labelStore.labels.has(block.id)) continue; // 既にラベルあり
 
-      // 箇条書き系のブロックのみ対象
-      if (block.type !== "bulletListItem" && block.type !== "numberedListItem") continue;
+      // 箇条書き・段落ブロックを対象（見出しは意図的な区切りなので除外）
+      if (
+        block.type !== "bulletListItem" &&
+        block.type !== "numberedListItem" &&
+        block.type !== "paragraph"
+      ) continue;
 
       // 直前のブロック（同じ深さ）を探す
       const prev = findPrevSiblingAt(allBlocks, i, depth);
