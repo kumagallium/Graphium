@@ -64,7 +64,7 @@ import { recordRevision, detectActivityType } from "./features/document-provenan
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
-import { MobileCaptureView } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView } from "./features/mobile-capture";
 import {
   AssetGalleryView,
   LabelGalleryView,
@@ -88,6 +88,7 @@ import { exportProvJsonLd } from "./features/prov-export";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useProvGeneration } from "./hooks/use-prov-generation";
 import { useFileManager } from "./hooks/use-file-manager";
+import { useCapture } from "./hooks/use-capture";
 
 // components
 import { LoginScreen } from "./components/LoginScreen";
@@ -1373,9 +1374,11 @@ export function NoteApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showMemos, setShowMemos] = useState(false);
 
   const isDesktop = useIsDesktop();
   const fm = useFileManager(authenticated);
+  const capture = useCapture(authenticated);
 
   const t = useT();
 
@@ -1403,14 +1406,17 @@ export function NoteApp() {
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setSidebarOpen(false); },
+    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setSidebarOpen(false); },
     mediaIndex: fm.mediaIndex,
-    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setSidebarOpen(false); },
+    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setSidebarOpen(false); },
     noteIndex: fm.noteIndex,
-    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setSidebarOpen(false); },
+    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
     filesLoading: fm.filesLoading,
+    memoCount: capture.captureIndex?.captures.length ?? 0,
+    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setSidebarOpen(false); },
+    memosActive: showMemos,
   };
 
   return (
@@ -1454,16 +1460,21 @@ export function NoteApp() {
               for (const id of ids) await fm.handleDelete(id);
             }}
           />
+        ) : showMemos ? (
+          <MemoGalleryView
+            captureIndex={capture.captureIndex}
+            loading={capture.captureLoading}
+            onBack={() => setShowMemos(false)}
+            onDeleteMemo={capture.handleDeleteCapture}
+          />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
           <MobileCaptureView
-            noteIndex={fm.noteIndex}
-            onOpenNote={(noteId) => fm.handleOpenFile(noteId)}
-            onCreateCapture={fm.handleCreateCapture}
-            onDeleteNotes={async (ids) => {
-              for (const id of ids) await fm.handleDelete(id);
-            }}
-            creating={fm.capturing}
+            captureIndex={capture.captureIndex}
+            loading={capture.captureLoading}
+            onCreateCapture={capture.handleCreateCapture}
+            onDeleteCapture={capture.handleDeleteCapture}
+            creating={capture.capturing}
           />
         ) : (
           <NoteEditor

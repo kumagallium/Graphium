@@ -376,15 +376,17 @@ export const en: Record<string, string> = {
   "updater.install": "Restart to update",
   "updater.installing": "Downloading...",
 
-  // ── モバイルキャプチャ ──
-  "capture.title": "Captures",
-  "capture.count": "{count} notes",
-  "capture.empty": "No captures yet. Tap the button below to create one.",
-  "capture.newMemo": "New Memo",
-  "capture.creating": "Creating...",
-  "capture.placeholder": "Write your memo here...",
-  "capture.saving": "Saving to Google Drive...",
-  "capture.hint": "Tap the send button to save",
+  // ── メモ ──
+  "memo.title": "Memos",
+  "memo.count": "{count} items",
+  "memo.empty": "No memos yet. Tap the button below to create one.",
+  "memo.new": "New Memo",
+  "memo.creating": "Creating...",
+  "memo.placeholder": "Write your memo here...",
+  "memo.saving": "Saving to Google Drive...",
+  "memo.hint": "Tap the send button to save",
+  "memo.insert": "Insert into note",
+  "memo.emptyDesktop": "No memos yet. Create memos from the mobile view.",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

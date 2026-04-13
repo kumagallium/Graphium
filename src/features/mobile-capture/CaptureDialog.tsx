@@ -56,7 +56,7 @@ export function CaptureDialog({
           <X size={20} />
         </button>
         <h2 className="text-sm font-semibold text-foreground">
-          {t("capture.newMemo")}
+          {t("memo.new")}
         </h2>
         <button
           onClick={handleSubmit}
@@ -74,7 +74,7 @@ export function CaptureDialog({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={t("capture.placeholder")}
+          placeholder={t("memo.placeholder")}
           disabled={submitting}
           className="w-full h-full resize-none bg-transparent text-foreground text-base placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-50"
         />
@@ -83,7 +83,7 @@ export function CaptureDialog({
       {/* フッターヒント */}
       <div className="px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] border-t border-border">
         <p className="text-[10px] text-muted-foreground text-center">
-          {submitting ? t("capture.saving") : t("capture.hint")}
+          {submitting ? t("memo.saving") : t("memo.hint")}
         </p>
       </div>
     </div>

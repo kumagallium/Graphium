@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link, StickyNote } from "lucide-react";
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
@@ -29,6 +29,12 @@ export type FileSidebarProps = {
   activeLabel: string | null;
   /** ファイル一覧の読み込み中フラグ */
   filesLoading?: boolean;
+  /** メモの件数 */
+  memoCount?: number;
+  /** メモセクションクリック時 */
+  onShowMemos?: () => void;
+  /** メモセクションがアクティブか */
+  memosActive?: boolean;
 };
 
 // ラベル色マッピング（NoteListView と同じ）
@@ -67,6 +73,9 @@ export function FileSidebar({
   activeAssetType,
   activeLabel,
   filesLoading = false,
+  memoCount = 0,
+  onShowMemos,
+  memosActive = false,
 }: FileSidebarProps) {
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
@@ -149,6 +158,23 @@ export function FileSidebar({
                 </button>
               );
             })}
+            {/* メモ */}
+            {onShowMemos && (
+              <button
+                onClick={onShowMemos}
+                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                  memosActive
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                }`}
+              >
+                <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
+                <span className="flex-1 text-left">{t("memo.title")}</span>
+                {memoCount > 0 && (
+                  <span className="text-[10px] text-muted-foreground">{memoCount}</span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 

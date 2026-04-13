@@ -1,79 +1,39 @@
 // モバイル専用クイックキャプチャビュー
-// データ一覧をカード形式で表示し、付箋テキストを素早く投稿できる
+// 付箋インデックス（.graphium-captures.json）をカード形式で表示し、素早く投稿できる
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { StickyNote, Plus, Trash2 } from "lucide-react";
-import {
-  IndexFileNoteListSource,
-  type NoteListEntry,
-} from "../navigation/note-list-source";
-import type { GraphiumIndex } from "../navigation/index-file";
+import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
-import { useT, getDisplayLabelName } from "../../i18n";
+import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
 
-// ラベル色マッピング（NoteListView と同じ）
-const LABEL_HEX: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[使用したもの]": "#4B7A52",
-  "[結果]": "#c26356",
-  "[属性]": "#c08b3e",
-  "[条件]": "#c08b3e",
-};
-
-// ノートカード（1枚分）
-function NoteCard({
+// 付箋カード（1枚分）
+function CaptureCard({
   entry,
-  onOpen,
   onDelete,
 }: {
-  entry: NoteListEntry;
-  onOpen: () => void;
+  entry: CaptureEntry;
   onDelete?: () => void;
 }) {
   const [showDelete, setShowDelete] = useState(false);
 
   return (
     <div
-      className="relative bg-card border border-border rounded-lg p-3 active:bg-muted/50 transition-colors cursor-pointer"
-      onClick={onOpen}
+      className="relative bg-card border border-border rounded-lg p-3 transition-colors"
       onContextMenu={(e) => {
         e.preventDefault();
         setShowDelete((v) => !v);
       }}
     >
-      {/* タイトル */}
-      <h3 className="text-sm font-medium text-foreground line-clamp-2 mb-1.5">
-        {entry.title}
-      </h3>
+      {/* テキスト */}
+      <p className="text-sm text-foreground line-clamp-4 whitespace-pre-wrap mb-1.5">
+        {entry.text}
+      </p>
 
-      {/* ラベル */}
-      {entry.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-1.5">
-          {entry.labels.map((label) => {
-            const color = LABEL_HEX[label] ?? "#8fa394";
-            return (
-              <span
-                key={label}
-                className="inline-block text-[10px] font-semibold rounded-full whitespace-nowrap"
-                style={{
-                  padding: "0px 5px",
-                  backgroundColor: color + "18",
-                  color,
-                  border: `1px solid ${color}38`,
-                  lineHeight: 1.5,
-                }}
-              >
-                {getDisplayLabelName(label)}
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 更新日時 */}
+      {/* 作成日時 */}
       <p className="text-[10px] text-muted-foreground">
-        {formatRelativeTime(entry.modifiedAt)}
+        {formatRelativeTime(entry.createdAt)}
       </p>
 
       {/* 削除ボタン（長押しで表示） */}
@@ -94,51 +54,22 @@ function NoteCard({
 }
 
 export function MobileCaptureView({
-  noteIndex,
-  onOpenNote,
+  captureIndex,
+  loading,
   onCreateCapture,
-  onDeleteNotes,
+  onDeleteCapture,
   creating,
 }: {
-  noteIndex: GraphiumIndex | null;
-  onOpenNote: (noteId: string) => void;
+  captureIndex: CaptureIndex | null;
+  loading: boolean;
   onCreateCapture: (text: string) => Promise<void>;
-  onDeleteNotes?: (noteIds: string[]) => Promise<void>;
+  onDeleteCapture?: (captureId: string) => Promise<void>;
   creating: boolean;
 }) {
-  const [entries, setEntries] = useState<NoteListEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
   const t = useT();
 
-  // インデックスからノート一覧を構築
-  useEffect(() => {
-    if (!noteIndex) {
-      setLoading(true);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const source = new IndexFileNoteListSource(noteIndex);
-      const result = await source.loadNoteList();
-      if (!cancelled) {
-        setEntries(result);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [noteIndex]);
-
-  // 更新日時でソート（新しい順）
-  const sorted = useMemo(() => {
-    return [...entries].sort(
-      (a, b) =>
-        new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
-    );
-  }, [entries]);
+  const captures = captureIndex?.captures ?? [];
 
   // キャプチャ送信
   const handleSubmit = useCallback(
@@ -151,11 +82,11 @@ export function MobileCaptureView({
 
   // 削除
   const handleDelete = useCallback(
-    async (noteId: string) => {
-      if (!onDeleteNotes) return;
-      await onDeleteNotes([noteId]);
+    async (captureId: string) => {
+      if (!onDeleteCapture) return;
+      await onDeleteCapture(captureId);
     },
-    [onDeleteNotes]
+    [onDeleteCapture]
   );
 
   return (
@@ -163,12 +94,12 @@ export function MobileCaptureView({
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h1 className="text-base font-semibold text-foreground">
-          {t("capture.title")}
+          {t("memo.title")}
         </h1>
         <span className="text-xs text-muted-foreground">
           {loading
             ? t("nav.loadingNotes")
-            : t("capture.count", { count: String(entries.length) })}
+            : t("memo.count", { count: String(captures.length) })}
         </span>
       </div>
 
@@ -177,25 +108,26 @@ export function MobileCaptureView({
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">
-              {t("nav.loadingNotes")}
+              {t("common.loading")}
             </p>
           </div>
-        ) : sorted.length === 0 ? (
+        ) : captures.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {t("capture.empty")}
+              {t("memo.empty")}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
-            {sorted.map((entry) => (
-              <NoteCard
-                key={entry.noteId}
+            {captures.map((entry) => (
+              <CaptureCard
+                key={entry.id}
                 entry={entry}
-                onOpen={() => onOpenNote(entry.noteId)}
                 onDelete={
-                  onDeleteNotes ? () => handleDelete(entry.noteId) : undefined
+                  onDeleteCapture
+                    ? () => handleDelete(entry.id)
+                    : undefined
                 }
               />
             ))}
@@ -211,7 +143,7 @@ export function MobileCaptureView({
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
         >
           <Plus size={18} />
-          {creating ? t("capture.creating") : t("capture.newMemo")}
+          {creating ? t("memo.creating") : t("memo.new")}
         </button>
       </div>
 

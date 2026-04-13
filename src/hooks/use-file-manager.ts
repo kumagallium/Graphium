@@ -189,7 +189,9 @@ export function useFileManager(authenticated: boolean) {
     (async () => {
       await refreshFiles();
       const lastFileId = localStorage.getItem("graphium_last_file");
-      if (lastFileId && !activeFileIdRef.current) {
+      // モバイル（768px 未満）ではキャプチャビューをデフォルトにするため、最後のファイルを復元しない
+      const isMobile = window.innerWidth < 768;
+      if (lastFileId && !activeFileIdRef.current && !isMobile) {
         // ファイル一覧に存在するか確認（ゴミ箱内のファイルを開かないようにする）
         const currentFiles = await listFiles();
         if (currentFiles.some((f) => f.id === lastFileId)) {
@@ -613,62 +615,6 @@ export function useFileManager(authenticated: boolean) {
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
   }, []);
 
-  // クイックキャプチャ: テキストメモから新規ドキュメントを作成
-  const [capturing, setCapturing] = useState(false);
-  const handleCreateCapture = useCallback(async (text: string) => {
-    setCapturing(true);
-    try {
-      const now = new Date().toISOString();
-      // タイトル: テキストの先頭行（最大30文字）
-      const firstLine = text.split("\n")[0].trim();
-      const title = firstLine.length > 30 ? firstLine.slice(0, 30) + "…" : firstLine;
-      // paragraph ブロックとしてテキストを保存
-      const blockId = `cap-${Date.now()}`;
-      const blocks = text.split("\n").map((line, i) => ({
-        id: `${blockId}-${i}`,
-        type: "paragraph",
-        content: [{ type: "text", text: line, styles: {} }],
-      }));
-      let doc: GraphiumDocument = {
-        version: 2,
-        title,
-        pages: [{
-          id: "main",
-          title,
-          blocks,
-          labels: {},
-          provLinks: [],
-          knowledgeLinks: [],
-        }],
-        createdAt: now,
-        modifiedAt: now,
-      };
-      // PROV: キャプチャ作成を記録
-      doc = await recordRevision(doc, null, "template_create");
-      const newId = await createFile(doc.title, doc);
-      docCacheRef.current.set(newId, doc);
-      // ファイル一覧に追加
-      const newFile: GraphiumFile = {
-        id: newId,
-        name: `${doc.title}.graphium.json`,
-        modifiedTime: now,
-        createdTime: now,
-      };
-      setFiles((prev) => [newFile, ...prev]);
-      // インデックスを更新
-      if (noteIndexRef.current) {
-        const updated = updateIndexEntry(noteIndexRef.current, newId, doc);
-        noteIndexRef.current = updated;
-        setNoteIndex(updated);
-        saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
-      }
-    } catch (err) {
-      console.error("キャプチャ作成に失敗:", err);
-    } finally {
-      setCapturing(false);
-    }
-  }, []);
-
   // URL ブックマーク追加（重複チェック付き）
   const handleAddUrlBookmark = useCallback((entry: MediaIndexEntry) => {
     const current = mediaIndexRef.current ?? createEmptyIndex();
@@ -717,8 +663,5 @@ export function useFileManager(authenticated: boolean) {
     handleDeleteMedia,
     handleRenameMedia,
     handleAddUrlBookmark,
-    // クイックキャプチャ
-    capturing,
-    handleCreateCapture,
   };
 }
