@@ -2,7 +2,7 @@
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2 } from "lucide-react";
+import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
@@ -104,6 +104,7 @@ export function MobileCaptureView({
 }) {
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -126,6 +127,17 @@ export function MobileCaptureView({
     items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return items;
   }, [captureIndex, mediaIndex]);
+
+  // 検索フィルタ
+  const filtered = useMemo(() => {
+    if (!searchQuery.trim()) return timeline;
+    const q = searchQuery.trim().toLowerCase();
+    return timeline.filter((item) => {
+      if (item.kind === "memo") return item.entry.text.toLowerCase().includes(q);
+      if (item.kind === "media") return item.entry.name.toLowerCase().includes(q);
+      return false;
+    });
+  }, [timeline, searchQuery]);
 
   // テキストメモ送信
   const handleSubmit = useCallback(
@@ -178,9 +190,33 @@ export function MobileCaptureView({
         <span className="text-xs text-muted-foreground">
           {loading
             ? t("common.loading")
-            : t("memo.count", { count: String(timeline.length) })}
+            : t("memo.count", { count: String(filtered.length) })}
         </span>
       </div>
+
+      {/* 検索バー */}
+      {timeline.length > 0 && (
+        <div className="px-3 py-2 border-b border-border">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("memo.searchPlaceholder")}
+              className="w-full text-xs pl-8 pr-8 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* タイムライン一覧 */}
       <div className="flex-1 overflow-auto px-3 py-3">
@@ -190,16 +226,16 @@ export function MobileCaptureView({
               {t("common.loading")}
             </p>
           </div>
-        ) : timeline.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {t("memo.empty")}
+              {searchQuery.trim() ? t("nav.noMatchingNotes") : t("memo.empty")}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
-            {timeline.map((item) =>
+            {filtered.map((item) =>
               item.kind === "memo" ? (
                 <MemoCard
                   key={item.entry.id}
