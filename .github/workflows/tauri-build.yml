@@ -142,8 +142,8 @@ jobs:
           TAG="${{ needs.resolve-release.outputs.tag }}"
           REPO="${{ github.repository }}"
 
-          # 秘密鍵をデコードしてファイルに書き出し
-          echo "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d > /tmp/signing.key
+          # 秘密鍵をファイルに書き出し（既にテキスト形式）
+          printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/signing.key
 
           mkdir -p /tmp/assets
 
