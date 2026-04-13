@@ -287,9 +287,25 @@ function handleVisibilityChange() {
   }
 }
 
+// 認証エラーのリスナー
+let authErrorListeners: Array<(error: string) => void> = [];
+export function onAuthError(fn: (error: string) => void): () => void {
+  authErrorListeners.push(fn);
+  return () => { authErrorListeners = authErrorListeners.filter((l) => l !== fn); };
+}
+function emitAuthError(error: string) {
+  authErrorListeners.forEach((fn) => fn(error));
+}
+
 // サインイン
 export function signIn(): void {
-  if (isTauri()) { desktop.signInDesktop().catch((e) => console.error("Desktop OAuth error:", e)); return; }
+  if (isTauri()) {
+    desktop.signInDesktop().catch((e) => {
+      console.error("Desktop OAuth error:", e);
+      emitAuthError(e instanceof Error ? e.message : String(e));
+    });
+    return;
+  }
 
   // モバイル: ポップアップが動作しないため、リダイレクト方式を使用
   if (isMobile()) {

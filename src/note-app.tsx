@@ -1437,7 +1437,7 @@ function NoteEditorInner({
 
 // ── メインアプリ ──
 export function NoteApp() {
-  const { authenticated, loading: authLoading, signIn, signOut, switchProvider } = useStorage();
+  const { authenticated, loading: authLoading, authError, signIn, signOut, switchProvider } = useStorage();
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
@@ -1463,7 +1463,17 @@ export function NoteApp() {
 
   // 未認証
   if (!authenticated) {
-    return <LoginScreen onSignIn={() => signIn("google-drive")} onSelectLocal={() => switchProvider(isTauri() ? "filesystem" : "local")} />;
+    return (
+      <>
+        <LoginScreen onSignIn={() => signIn("google-drive")} onSelectLocal={() => switchProvider(isTauri() ? "filesystem" : "local")} />
+        {authError && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 max-w-sm px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm shadow-lg">
+            <p className="font-medium">{t("login.authError")}</p>
+            <p className="text-xs mt-1 opacity-80">{authError}</p>
+          </div>
+        )}
+      </>
+    );
   }
 
   const sidebarProps = {

@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider, setActiveProvider, initProviders } from "./registry";
+import { onAuthError } from "../google-auth";
 import type { StorageProvider } from "./types";
 
 const STORAGE_KEY = "graphium_storage_provider";
@@ -11,6 +12,7 @@ const STORAGE_KEY = "graphium_storage_provider";
 export function useStorage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [provider, setProvider] = useState<StorageProvider | null>(null);
   // プロバイダー切り替えを検知するためのカウンター
   const [providerVersion, setProviderVersion] = useState(0);
@@ -31,6 +33,13 @@ export function useStorage() {
     // 認証状態変化のリスナー
     const unsubscribe = p.onAuthChange((state) => {
       setAuthenticated(state.isSignedIn);
+      if (state.isSignedIn) setAuthError(null);
+    });
+
+    // 認証エラーのリスナー
+    const unsubscribeError = onAuthError((error) => {
+      setAuthError(error);
+      setLoading(false);
     });
 
     // 保存された設定がない場合はログイン画面を表示（init をスキップ）
@@ -39,7 +48,7 @@ export function useStorage() {
       initDoneRef.current = false;
       setAuthenticated(false);
       setLoading(false);
-      return unsubscribe;
+      return () => { unsubscribe(); unsubscribeError(); };
     }
 
     // プロバイダーを初期化（サイレントリフレッシュ等）
@@ -58,11 +67,12 @@ export function useStorage() {
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => { unsubscribe(); unsubscribeError(); };
   }, [providerVersion]);
 
   const signIn = useCallback(
     (providerId?: string) => {
+      setAuthError(null);
       if (providerId && provider?.id !== providerId) {
         // 別プロバイダーへの切り替えサインイン（例: ログイン画面 → Google）
         // 旧プロバイダーの UI キャッシュをクリア（ファイル ID 体系が異なるため）
@@ -125,5 +135,5 @@ export function useStorage() {
     setProviderVersion((v) => v + 1);
   }, [provider]);
 
-  return { authenticated, loading, signIn, signOut, provider, switchProvider };
+  return { authenticated, loading, authError, signIn, signOut, provider, switchProvider };
 }

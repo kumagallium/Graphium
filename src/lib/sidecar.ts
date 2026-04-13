@@ -47,7 +47,7 @@ export async function startSidecar(): Promise<boolean> {
     const command = Command.sidecar("binaries/graphium-server", [], {
       env: {
         PORT: "3001",
-        CORS_ORIGINS: "http://localhost:5174,tauri://localhost,http://tauri.localhost",
+        CORS_ORIGINS: "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
       },
     });
 

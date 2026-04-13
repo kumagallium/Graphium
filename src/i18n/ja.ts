@@ -74,6 +74,7 @@ export const ja: Record<string, string> = {
   "login.driveDesktopNote": "ブラウザが開いて Google にサインインします",
   "login.localNote": "ノートはこのブラウザにローカル保存されます（オフライン）",
   "login.localStart": "オフラインで開始",
+  "login.authError": "サインインに失敗しました",
 
   // ── サイドバー ──
   "sidebar.newNote": "+ 新しいノート",

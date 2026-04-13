@@ -204,6 +204,9 @@ export async function initDesktopAuth(): Promise<void> {
 
 // サインイン（システムブラウザで Google 認証画面を開く）
 export async function signInDesktop(): Promise<void> {
+  console.log("[desktop-auth] signInDesktop started, CLIENT_ID:", CLIENT_ID.slice(0, 20) + "...");
+  console.log("[desktop-auth] CLIENT_SECRET present:", CLIENT_SECRET.length > 0);
+
   const codeVerifier = generateRandomString(64);
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const state = generateRandomString(32);
@@ -226,8 +229,11 @@ export async function signInDesktop(): Promise<void> {
   await openUrl(authUrl);
 
   // sidecar をポーリングして認証コードを待つ
+  console.log("[desktop-auth] Polling for auth code...");
   const code = await pollForAuthCode(state);
+  console.log("[desktop-auth] Got auth code, exchanging for tokens...");
   await exchangeCode(code, codeVerifier);
+  console.log("[desktop-auth] Token exchange complete, authenticated");
 }
 
 // sidecar をポーリングして認証コードを取得

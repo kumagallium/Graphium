@@ -74,6 +74,7 @@ export const en: Record<string, string> = {
   "login.driveDesktopNote": "Your browser will open for Google sign-in",
   "login.localNote": "Notes are saved in this browser (offline)",
   "login.localStart": "Start offline",
+  "login.authError": "Sign-in failed",
 
   // ── サイドバー ──
   "sidebar.newNote": "+ New Note",
