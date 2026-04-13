@@ -58,6 +58,10 @@ type InternalNode = {
   attributes?: { label: string; blockId: string }[];
   /** Entity サブタイプ（material / tool） */
   entitySubtype?: import("../context-label/labels").EntitySubtype;
+  /** メディアブロックの種類（image / video / audio / pdf / file） */
+  mediaType?: string;
+  /** メディア URL */
+  mediaUrl?: string;
 };
 
 type InternalRelation = {
@@ -368,6 +372,97 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
+  // ── メディアブロック → Entity（ラベル付きセクション内のみ） ──
+  // フラットブロックを走査し、直前のラベルコンテキスト（[材料]/[ツール]/[結果]）を追跡。
+  // メディアブロックがラベル付きセクション内にあれば PROV Entity として生成する。
+  // 同一 URL のメディアは 1 Entity にまとめ、複数の prov:used/wasGeneratedBy を付与。
+
+  const MEDIA_BLOCK_TYPES = ["image", "video", "audio", "file", "pdf"];
+  const ENTITY_LABEL_SET: CoreLabel[] = ["[材料]", "[ツール]", "[結果]"];
+
+  type EntityLabelContext = { coreLabel: CoreLabel };
+
+  let currentEntityLabel: EntityLabelContext | null = null;
+  // URL → デデュプ情報（同一メディアを 1 Entity にまとめる）
+  const mediaEntityMap = new Map<string, {
+    entityId: string;
+    activityIds: Set<string>;
+    coreLabel: CoreLabel;
+  }>();
+
+  for (const block of flatBlocks) {
+    // ラベルコンテキストの更新
+    const rawLabel = labels.get(block.id);
+    if (rawLabel) {
+      const normalized = normalizeLabel(rawLabel);
+      if (ENTITY_LABEL_SET.includes(normalized as CoreLabel)) {
+        currentEntityLabel = { coreLabel: normalized as CoreLabel };
+      } else {
+        // [手順] や [属性] など他のコアラベルはメディアのコンテキストをリセット
+        currentEntityLabel = null;
+      }
+    }
+
+    // 見出しブロックでコンテキストをリセット（新しいセクションの開始）
+    if (block.type === "heading" && !rawLabel) {
+      currentEntityLabel = null;
+    }
+
+    // メディアブロックの検出
+    if (
+      MEDIA_BLOCK_TYPES.includes(block.type) &&
+      block.props?.url &&
+      currentEntityLabel
+    ) {
+      const url: string = block.props.url;
+      const actIds = getActivityIdsForScope(block.id);
+      const { coreLabel } = currentEntityLabel;
+
+      if (mediaEntityMap.has(url)) {
+        // 同一メディア → Activity 関係のみ追加
+        const existing = mediaEntityMap.get(url)!;
+        for (const actId of actIds) {
+          existing.activityIds.add(actId);
+        }
+      } else {
+        // 新規メディア Entity を生成
+        const prefix = coreLabel === "[結果]" ? "result_media" : "entity_media";
+        const entityId = `${prefix}_${block.id}`;
+        const mediaName = block.props.name
+          || decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? "")
+          || block.id.slice(0, 8);
+
+        const subtype = LABEL_TO_ENTITY_SUBTYPE[coreLabel];
+        nodes.push({
+          "@id": entityId,
+          "@type": "prov:Entity",
+          label: mediaName,
+          blockId: block.id,
+          entitySubtype: subtype,
+          mediaType: block.type,
+          mediaUrl: url,
+        });
+
+        mediaEntityMap.set(url, {
+          entityId,
+          activityIds: new Set(actIds),
+          coreLabel,
+        });
+      }
+    }
+  }
+
+  // メディア Entity の PROV 関係を生成
+  for (const [, info] of mediaEntityMap) {
+    for (const actId of info.activityIds) {
+      if (info.coreLabel === "[結果]") {
+        relations.push({ "@type": "prov:wasGeneratedBy", from: info.entityId, to: actId });
+      } else {
+        relations.push({ "@type": "prov:used", from: actId, to: info.entityId });
+      }
+    }
+  }
+
   // ── informed_by → 前手順の結果を経由してリンク ──
   for (const link of validLinks) {
     if (link.type === "informed_by") {
@@ -436,6 +531,13 @@ function buildProvJsonLd(
     // Entity サブタイプ（material / tool）
     if (n.entitySubtype) {
       jsonLdNode["graphium:entityType"] = n.entitySubtype;
+    }
+    // メディア Entity のプロパティ
+    if (n.mediaType) {
+      jsonLdNode["graphium:mediaType"] = n.mediaType;
+    }
+    if (n.mediaUrl) {
+      jsonLdNode["graphium:mediaUrl"] = n.mediaUrl;
     }
     // 構造化属性（テーブルから展開された params）
     if (n.params) {

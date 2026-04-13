@@ -791,3 +791,345 @@ describe("孤立リンク（G-ORPHAN-LINK）", () => {
     expect(usedRels.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+// ──────────────────────────────────
+// メディアブロックの PROV Entity 化
+// ──────────────────────────────────
+
+describe("メディアブロック → PROV Entity", () => {
+  it("[材料] セクション内の画像が Entity (prov:used) になる", () => {
+    const blocks = [
+      {
+        id: "h2-mix",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "混合する" }],
+        children: [],
+      },
+      {
+        id: "mat-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "Cu粉末" }],
+        children: [],
+      },
+      {
+        id: "img-cu",
+        type: "image",
+        props: { url: "https://lh3.googleusercontent.com/d/abc123=s0", name: "Cu_sample.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-mix", "[手順]"],
+      ["mat-para", "[材料]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // メディア Entity が生成されている
+    const mediaEntity = doc["@graph"].find((n) => n["@id"] === "entity_media_img-cu");
+    expect(mediaEntity).toBeDefined();
+    expect(mediaEntity!["rdfs:label"]).toBe("Cu_sample.png");
+    expect(mediaEntity!["graphium:mediaType"]).toBe("image");
+    expect(mediaEntity!["graphium:mediaUrl"]).toBe("https://lh3.googleusercontent.com/d/abc123=s0");
+    expect(mediaEntity!["graphium:entityType"]).toBe("material");
+
+    // prov:used 関係
+    const relations = getRelations(doc);
+    const mediaUsed = relations.filter((r) => r.to === "entity_media_img-cu" && r["@type"] === "prov:used");
+    expect(mediaUsed).toHaveLength(1);
+    expect(mediaUsed[0].from).toBe("activity_h2-mix");
+  });
+
+  it("[結果] セクション内の画像が Entity (prov:wasGeneratedBy) になる", () => {
+    const blocks = [
+      {
+        id: "h2-eval",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "評価する" }],
+        children: [],
+      },
+      {
+        id: "res-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "XRD結果" }],
+        children: [],
+      },
+      {
+        id: "img-xrd",
+        type: "image",
+        props: { url: "https://lh3.googleusercontent.com/d/xrd456=s0", name: "XRD_result.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-eval", "[手順]"],
+      ["res-para", "[結果]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const mediaEntity = doc["@graph"].find((n) => n["@id"] === "result_media_img-xrd");
+    expect(mediaEntity).toBeDefined();
+    expect(mediaEntity!["rdfs:label"]).toBe("XRD_result.png");
+    expect(mediaEntity!["graphium:mediaType"]).toBe("image");
+
+    const relations = getRelations(doc);
+    const genRels = relations.filter((r) => r.from === "result_media_img-xrd" && r["@type"] === "prov:wasGeneratedBy");
+    expect(genRels).toHaveLength(1);
+    expect(genRels[0].to).toBe("activity_h2-eval");
+  });
+
+  it("[ツール] セクション内の画像が Entity (prov:used, entityType=tool) になる", () => {
+    const blocks = [
+      {
+        id: "h2-sinter",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "焼成する" }],
+        children: [],
+      },
+      {
+        id: "tool-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "電気炉" }],
+        children: [],
+      },
+      {
+        id: "img-furnace",
+        type: "image",
+        props: { url: "https://example.com/furnace.jpg", name: "furnace.jpg" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-sinter", "[手順]"],
+      ["tool-para", "[ツール]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const mediaEntity = doc["@graph"].find((n) => n["@id"] === "entity_media_img-furnace");
+    expect(mediaEntity).toBeDefined();
+    expect(mediaEntity!["graphium:entityType"]).toBe("tool");
+  });
+
+  it("ラベルなしセクションのメディアは Entity 化しない", () => {
+    const blocks = [
+      {
+        id: "h2-step",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "ステップ" }],
+        children: [],
+      },
+      {
+        id: "para-text",
+        type: "paragraph",
+        content: [{ type: "text", text: "メモ" }],
+        children: [],
+      },
+      {
+        id: "img-memo",
+        type: "image",
+        props: { url: "https://example.com/memo.png", name: "memo.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-step", "[手順]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const mediaEntity = doc["@graph"].find((n) => n["@id"].includes("media"));
+    expect(mediaEntity).toBeUndefined();
+  });
+
+  it("同一 URL のメディアが複数箇所で使われたら 1 Entity にまとめる", () => {
+    const sharedUrl = "https://lh3.googleusercontent.com/d/shared123=s0";
+    const blocks = [
+      {
+        id: "h2-step1",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "ステップ1" }],
+        children: [],
+      },
+      {
+        id: "mat1",
+        type: "paragraph",
+        content: [{ type: "text", text: "材料A" }],
+        children: [],
+      },
+      {
+        id: "img-1",
+        type: "image",
+        props: { url: sharedUrl, name: "shared.png" },
+        children: [],
+      },
+      {
+        id: "h2-step2",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "ステップ2" }],
+        children: [],
+      },
+      {
+        id: "mat2",
+        type: "paragraph",
+        content: [{ type: "text", text: "材料B" }],
+        children: [],
+      },
+      {
+        id: "img-2",
+        type: "image",
+        props: { url: sharedUrl, name: "shared.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-step1", "[手順]"],
+      ["mat1", "[材料]"],
+      ["h2-step2", "[手順]"],
+      ["mat2", "[材料]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // 同一 URL → Entity は 1 つだけ
+    const mediaEntities = doc["@graph"].filter((n) => n["@id"].includes("media"));
+    expect(mediaEntities).toHaveLength(1);
+    expect(mediaEntities[0]["rdfs:label"]).toBe("shared.png");
+
+    // 2つの Activity から prov:used される
+    const relations = getRelations(doc);
+    const usedRels = relations.filter(
+      (r) => r.to === mediaEntities[0]["@id"] && r["@type"] === "prov:used"
+    );
+    expect(usedRels).toHaveLength(2);
+    expect(usedRels.map((r) => r.from).sort()).toEqual(["activity_h2-step1", "activity_h2-step2"]);
+  });
+
+  it("見出しでラベルコンテキストがリセットされる", () => {
+    const blocks = [
+      {
+        id: "h2-step",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "ステップ" }],
+        children: [],
+      },
+      {
+        id: "mat",
+        type: "paragraph",
+        content: [{ type: "text", text: "材料" }],
+        children: [],
+      },
+      {
+        id: "h3-note",
+        type: "heading",
+        props: { level: 3 },
+        content: [{ type: "text", text: "補足" }],
+        children: [],
+      },
+      {
+        id: "img-after-heading",
+        type: "image",
+        props: { url: "https://example.com/note.png", name: "note.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-step", "[手順]"],
+      ["mat", "[材料]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // ラベルなし見出し後のメディアは Entity 化されない
+    const mediaEntity = doc["@graph"].find((n) => n["@id"].includes("media"));
+    expect(mediaEntity).toBeUndefined();
+  });
+
+  it("動画・音声・PDF もメディア Entity として扱われる", () => {
+    const blocks = [
+      {
+        id: "h2-observe",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "観察する" }],
+        children: [],
+      },
+      {
+        id: "res-label",
+        type: "paragraph",
+        content: [{ type: "text", text: "観察結果" }],
+        children: [],
+      },
+      {
+        id: "vid-result",
+        type: "video",
+        props: { url: "https://example.com/reaction.mp4", name: "reaction.mp4" },
+        children: [],
+      },
+      {
+        id: "pdf-report",
+        type: "pdf",
+        props: { url: "https://example.com/report.pdf", name: "report.pdf" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-observe", "[手順]"],
+      ["res-label", "[結果]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const vidEntity = doc["@graph"].find((n) => n["@id"] === "result_media_vid-result");
+    expect(vidEntity).toBeDefined();
+    expect(vidEntity!["graphium:mediaType"]).toBe("video");
+
+    const pdfEntity = doc["@graph"].find((n) => n["@id"] === "result_media_pdf-report");
+    expect(pdfEntity).toBeDefined();
+    expect(pdfEntity!["graphium:mediaType"]).toBe("pdf");
+  });
+
+  it("props.name がない場合は URL からラベルを取得する", () => {
+    const blocks = [
+      {
+        id: "h2-step",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "ステップ" }],
+        children: [],
+      },
+      {
+        id: "mat",
+        type: "paragraph",
+        content: [{ type: "text", text: "材料" }],
+        children: [],
+      },
+      {
+        id: "img-noname",
+        type: "image",
+        props: { url: "https://lh3.googleusercontent.com/d/fileId123=s0" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-step", "[手順]"],
+      ["mat", "[材料]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const mediaEntity = doc["@graph"].find((n) => n["@id"] === "entity_media_img-noname");
+    expect(mediaEntity).toBeDefined();
+    // URL からファイル名部分を取得
+    expect(mediaEntity!["rdfs:label"]).toBeTruthy();
+    expect(mediaEntity!["rdfs:label"].length).toBeGreaterThan(0);
+  });
+});
