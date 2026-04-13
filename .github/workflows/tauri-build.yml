@@ -130,8 +130,10 @@ jobs:
     needs: [resolve-release, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Install minisign
-        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: Install pnpm and Tauri CLI
+        run: |
+          npm install -g pnpm
+          pnpm add -g @tauri-apps/cli
 
       - name: Download updater assets and sign
         env:
@@ -141,23 +143,13 @@ jobs:
           set -e
           TAG="${{ needs.resolve-release.outputs.tag }}"
           REPO="${{ github.repository }}"
-
-          # 秘密鍵をデコードしてファイルに書き出し（Node.js でシェル問題を回避）
-          node -e "require('fs').writeFileSync('/tmp/signing.key', Buffer.from(process.env.TAURI_SIGNING_PRIVATE_KEY, 'base64'))"
-          echo "Key file size: $(wc -c < /tmp/signing.key) bytes"
-          echo "Key file first line: $(head -1 /tmp/signing.key)"
+          VERSION="${TAG#v}"
 
           mkdir -p /tmp/assets
 
-          # 署名対象ファイルをダウンロード
           ASSETS=(
             "Graphium_aarch64.app.tar.gz"
             "Graphium_x64.app.tar.gz"
-          )
-
-          # バージョン番号付きアセット
-          VERSION="${TAG#v}"
-          ASSETS+=(
             "Graphium_${VERSION}_amd64.AppImage"
             "Graphium_${VERSION}_x64-setup.exe"
           )
@@ -170,11 +162,11 @@ jobs:
             }
 
             echo "Signing $ASSET..."
-            minisign -S -W -s /tmp/signing.key -m "/tmp/assets/$ASSET" || echo "WARNING: signing failed for $ASSET"
+            tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" || echo "WARNING: signing failed for $ASSET"
           done
 
-          # 秘密鍵を削除
-          rm -f /tmp/signing.key
+          echo "Signatures generated:"
+          ls -la /tmp/assets/*.sig 2>/dev/null || echo "No signatures"
 
           echo "Signatures generated:"
           ls -la /tmp/assets/*.minisig 2>/dev/null || echo "No signatures"
@@ -187,7 +179,7 @@ jobs:
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
 
           read_sig() {
-            local file="/tmp/assets/$1.minisig"
+            local file="/tmp/assets/$1.sig"
             if [ -f "$file" ]; then
               cat "$file"
             fi
