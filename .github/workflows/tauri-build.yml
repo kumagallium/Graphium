@@ -142,8 +142,9 @@ jobs:
           TAG="${{ needs.resolve-release.outputs.tag }}"
           REPO="${{ github.repository }}"
 
-          # 秘密鍵をファイルに書き出し（既にテキスト形式）
-          printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY" > /tmp/signing.key
+          # 秘密鍵をデコードしてファイルに書き出し（base64 エンコードされた minisign 鍵）
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | base64 -d > /tmp/signing.key
+          echo "Key file size: $(wc -c < /tmp/signing.key) bytes"
 
           mkdir -p /tmp/assets
 
@@ -168,7 +169,7 @@ jobs:
             }
 
             echo "Signing $ASSET..."
-            echo "" | minisign -S -s /tmp/signing.key -m "/tmp/assets/$ASSET" 2>/dev/null || true
+            minisign -S -W -s /tmp/signing.key -m "/tmp/assets/$ASSET" || echo "WARNING: signing failed for $ASSET"
           done
 
           # 秘密鍵を削除
