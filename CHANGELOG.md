@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.3.2](https://github.com/kumagallium/Graphium/compare/v0.3.1...v0.3.2) - 2026-04-13
+- Add mobile responsive layout by @kumagallium in https://github.com/kumagallium/Graphium/pull/83
+- Add mobile memo capture view with PC sidebar integration by @kumagallium in https://github.com/kumagallium/Graphium/pull/84
+- Add memo insertion into notes with usage tracking by @kumagallium in https://github.com/kumagallium/Graphium/pull/85
+- Add memo network graph, slash menu, and mobile media capture by @kumagallium in https://github.com/kumagallium/Graphium/pull/86
+- Add customizable core label names + fix label inheritance on Enter by @kumagallium in https://github.com/kumagallium/Graphium/pull/87
+- Fix Web OAuth silent refresh reliability by @kumagallium in https://github.com/kumagallium/Graphium/pull/88
+- [fix] Clean up orphan links in PROV graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/89
+
 ## [v0.3.1](https://github.com/kumagallium/Graphium/compare/v0.3.0...v0.3.1) - 2026-04-12
 - Enable auto-updater with signing and tagpr release automation by @kumagallium in https://github.com/kumagallium/Graphium/pull/80
 
