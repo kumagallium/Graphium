@@ -46,6 +46,8 @@ export type LinkStore = {
   restoreLinks: (links: BlockLink[]) => void;
   /** あるブロック ID に紐づくリンクを別のブロック ID に転送する */
   transferLinks: (fromBlockId: string, toBlockId: string) => void;
+  /** 指定ブロックに関連するリンクを一括削除（ブロック削除時のクリーンアップ用） */
+  removeLinksForBlock: (blockId: string) => void;
 };
 
 const LinkStoreContext = createContext<LinkStore | null>(null);
@@ -120,6 +122,10 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const removeLinksForBlock = useCallback((blockId: string) => {
+    setLinks((prev) => prev.filter((l) => l.sourceBlockId !== blockId && l.targetBlockId !== blockId));
+  }, []);
+
   const restoreLinks = useCallback((restored: BlockLink[]) => {
     // v1 → v2 マイグレーション: layer フィールドがない場合は自動付与
     const migrated = restored.map((link) => {
@@ -133,7 +139,7 @@ export function LinkStoreProvider({ children }: { children: ReactNode }) {
 
   return (
     <LinkStoreContext.Provider
-      value={{ links, addLink, removeLink, getOutgoing, getIncoming, getAllLinks, restoreLinks, transferLinks }}
+      value={{ links, addLink, removeLink, getOutgoing, getIncoming, getAllLinks, restoreLinks, transferLinks, removeLinksForBlock }}
     >
       {children}
     </LinkStoreContext.Provider>

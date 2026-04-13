@@ -703,3 +703,91 @@ describe("extractRelations", () => {
     expect(types.has("graphium:hasAttribute")).toBe(false);
   });
 });
+
+// ──────────────────────────────────
+// 孤立リンクのクリーンアップ
+// ──────────────────────────────────
+
+describe("孤立リンク（G-ORPHAN-LINK）", () => {
+  it("削除済みブロックへの informed_by リンクは合成Entity を生成しない", () => {
+    // h2-cut → h2-fry のリンクがあるが、h2-cut は削除済み（blocks に含まれない）
+    const blocksWithoutCut = curryBlocks.filter((b) => b.id !== "h2-cut" && b.id !== "used-vegs");
+    const labelsWithoutCut = new Map([
+      ["h2-fry", "[手順]"],
+      ["cond-fire", "[属性]"],
+      ["h2-simmer", "[手順]"],
+      ["result-curry", "[結果]"],
+    ]);
+    const linksWithOrphan = [
+      { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+      { id: "link-2", sourceBlockId: "h2-simmer", targetBlockId: "h2-fry", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+    ];
+
+    const doc = generateProvDocument({ blocks: blocksWithoutCut, labels: labelsWithoutCut, links: linksWithOrphan });
+
+    // 削除済みブロック（h2-cut）の合成 Entity が生成されていないこと
+    const orphanSynthetic = doc["@graph"].filter((n) => n["@id"] === "result_synthetic_h2-cut");
+    expect(orphanSynthetic).toHaveLength(0);
+
+    // 削除済みブロック参照のノードが存在しないこと
+    const orphanNodes = doc["@graph"].filter((n) => n["graphium:blockId"] === "h2-cut");
+    expect(orphanNodes).toHaveLength(0);
+
+    // 有効なリンク（h2-simmer → h2-fry）の合成 Entity は正常に生成されること
+    const validSynthetic = doc["@graph"].filter((n) => n["@id"] === "result_synthetic_h2-fry");
+    expect(validSynthetic).toHaveLength(1);
+  });
+
+  it("削除済みブロックへのリンクに broken-link 警告が出る", () => {
+    const blocksWithoutCut = curryBlocks.filter((b) => b.id !== "h2-cut" && b.id !== "used-vegs");
+    const labelsWithoutCut = new Map([
+      ["h2-fry", "[手順]"],
+      ["cond-fire", "[属性]"],
+      ["h2-simmer", "[手順]"],
+      ["result-curry", "[結果]"],
+    ]);
+    const linksWithOrphan = [
+      { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+    ];
+
+    const doc = generateProvDocument({ blocks: blocksWithoutCut, labels: labelsWithoutCut, links: linksWithOrphan });
+    const warnings = getWarnings(doc);
+
+    expect(warnings.some((w: any) => w.type === "broken-link")).toBe(true);
+  });
+
+  it("ソースブロックが削除済みのリンクもスキップされる", () => {
+    // h2-fry が削除されたが、h2-fry → h2-cut のリンクが残っている場合
+    const blocksWithoutFry = curryBlocks.filter((b) => b.id !== "h2-fry" && b.id !== "cond-fire");
+    const labelsWithoutFry = new Map([
+      ["h2-cut", "[手順]"],
+      ["used-vegs", "[材料]"],
+      ["h2-simmer", "[手順]"],
+      ["result-curry", "[結果]"],
+    ]);
+    const linksWithOrphanSource = [
+      { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
+    ];
+
+    const doc = generateProvDocument({ blocks: blocksWithoutFry, labels: labelsWithoutFry, links: linksWithOrphanSource });
+
+    // 削除済みソースブロックの Activity が生成されていないこと
+    const orphanActivity = doc["@graph"].filter((n) => n["@id"] === "activity_h2-fry");
+    expect(orphanActivity).toHaveLength(0);
+
+    // 警告が出ること
+    const warnings = getWarnings(doc);
+    expect(warnings.some((w: any) => w.type === "broken-link")).toBe(true);
+  });
+
+  it("有効なリンクは引き続き正常に処理される", () => {
+    // 正常なカレーシナリオ — 孤立リンクなし
+    const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
+
+    expect(getWarnings(doc)).toHaveLength(0);
+
+    const relations = getRelations(doc);
+    const usedRels = relations.filter((r) => r["@type"] === "prov:used");
+    expect(usedRels.length).toBeGreaterThanOrEqual(3);
+  });
+});

@@ -147,10 +147,14 @@ export function setupLabelAutoAssign(
       }
     }
 
-    // 3. 削除されたブロックのラベルをクリーンアップ
+    // 3. 削除されたブロックのラベル・リンクをクリーンアップ
     for (const blockId of prevBlockIds) {
-      if (!currentBlockIds.has(blockId) && labelStore.labels.has(blockId)) {
-        labelStore.setLabel(blockId, null);
+      if (!currentBlockIds.has(blockId)) {
+        if (labelStore.labels.has(blockId)) {
+          labelStore.setLabel(blockId, null);
+        }
+        // 削除ブロックに関連するリンクも除去（孤立リンク防止）
+        linkStore?.removeLinksForBlock(blockId);
       }
     }
 

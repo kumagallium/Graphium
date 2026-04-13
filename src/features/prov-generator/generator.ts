@@ -168,14 +168,21 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   // ── Step 2: @リンク解析 ──
 
+  // 孤立リンク（削除済みブロックへの参照）を除外し、有効なリンクのみ処理する
+  const validLinks: BlockLink[] = [];
   const informedByMap = new Map<string, BlockLink[]>();
   for (const link of links) {
-    if (link.type === "informed_by") {
-      const targetExists = blocks.some((b: any) => findBlockById(b, link.targetBlockId));
-      if (!targetExists) {
-        warnings.push(createWarning("broken-link", link.sourceBlockId, `前手順リンク先 ${link.targetBlockId} が存在しません`));
-      }
+    const sourceExists = blocks.some((b: any) => findBlockById(b, link.sourceBlockId));
+    const targetExists = blocks.some((b: any) => findBlockById(b, link.targetBlockId));
 
+    if (!sourceExists || !targetExists) {
+      warnings.push(createWarning("broken-link", link.sourceBlockId,
+        `リンク ${link.type} の${!sourceExists ? "元" : "先"} ${!sourceExists ? link.sourceBlockId : link.targetBlockId} が存在しません — スキップ`));
+      continue;
+    }
+
+    validLinks.push(link);
+    if (link.type === "informed_by") {
       const existing = informedByMap.get(link.sourceBlockId) ?? [];
       existing.push(link);
       informedByMap.set(link.sourceBlockId, existing);
@@ -362,7 +369,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   }
 
   // ── informed_by → 前手順の結果を経由してリンク ──
-  for (const link of links) {
+  for (const link of validLinks) {
     if (link.type === "informed_by") {
       const prevActId = `activity_${link.targetBlockId}`;
       const currentActId = `activity_${link.sourceBlockId}`;
