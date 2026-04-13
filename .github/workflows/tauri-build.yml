@@ -128,12 +128,33 @@ jobs:
           includeUpdaterJson: false
           args: --target ${{ matrix.target }}
 
-      # .sig ファイルをアーティファクトとしてアップロード（updater JSON 生成用）
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+        with:
+          releaseId: ${{ needs.resolve-release.outputs.release_id }}
+          includeUpdaterJson: false
+          args: --target ${{ matrix.target }}
+
+      # tauri-action がアップロード時に .sig を消す場合があるため、
+      # ビルド出力全体から .sig を探してアップロード
       - name: Upload signature artifacts
+        shell: bash
+        run: |
+          mkdir -p /tmp/sigs
+          find src-tauri/target -name '*.sig' -type f -exec cp {} /tmp/sigs/ \; 2>/dev/null || true
+          echo "Collected signatures:"
+          ls -la /tmp/sigs/ 2>/dev/null || echo "No sig files"
+
+      - name: Upload signature to Actions artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sig-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/**/*.sig
+          path: /tmp/sigs/*.sig
           if-no-files-found: warn
 
   # 全ビルド完了後に latest.json を生成してリリースにアップロード
