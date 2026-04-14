@@ -14,6 +14,7 @@ export {
 } from "./note-list-source";
 export {
   ensureIndex,
+  readIndexFile,
   updateIndexEntry,
   removeIndexEntry,
   buildIndexEntry,

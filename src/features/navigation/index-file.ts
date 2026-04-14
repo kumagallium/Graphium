@@ -297,29 +297,99 @@ function extractBlockText(block: any): string {
 
 // ── インデックスの初期構築・差分更新 ──
 
-// 起動時: インデックスを読み込み、古ければ再構築
+// 起動時: インデックスを読み込み、古ければ差分更新
+// prefetchedIndex が渡された場合は readIndexFile をスキップ（並列読み込み用）
 export async function ensureIndex(
   files: GraphiumFile[],
   docCache: Map<string, GraphiumDocument>,
+  prefetchedIndex?: GraphiumIndex | null,
 ): Promise<GraphiumIndex> {
-  const existing = await readIndexFile();
+  const existing = prefetchedIndex !== undefined ? prefetchedIndex : await readIndexFile();
 
   // 既存インデックスが最新かチェック（バージョン一致 + ファイル数一致 + 更新日が全て含まれている）
   if (existing && existing.version === INDEX_SCHEMA_VERSION && isIndexFresh(existing, files)) {
     return existing;
   }
 
-  // インデックスが存在しないか古い → 全ノートから構築
-  // キャッシュにないものは Drive から読み込み
+  // スキーマバージョンが異なる → 全件再構築が必要
+  if (!existing || existing.version !== INDEX_SCHEMA_VERSION) {
+    return fullRebuild(files, docCache);
+  }
+
+  // 差分更新: 変更があったノートだけ再読み込み
+  const indexMap = new Map(existing.notes.map((n) => [n.noteId, n]));
+  const fileIds = new Set(files.map((f) => f.id));
+  const staleFiles: GraphiumFile[] = [];
+
   for (const file of files) {
-    if (!docCache.has(file.id)) {
-      try {
+    const entry = indexMap.get(file.id);
+    if (!entry || new Date(file.modifiedTime).getTime() > new Date(entry.modifiedAt).getTime() + 1000) {
+      staleFiles.push(file);
+    }
+  }
+
+  // 削除されたノートを除去
+  const deletedIds = existing.notes
+    .filter((n) => !fileIds.has(n.noteId))
+    .map((n) => n.noteId);
+
+  // 変更も削除もなければ既存インデックスを返す
+  if (staleFiles.length === 0 && deletedIds.length === 0) {
+    return existing;
+  }
+
+  // 変更があったノートだけ並列読み込み
+  const toLoad = staleFiles.filter((f) => !docCache.has(f.id));
+  if (toLoad.length > 0) {
+    const results = await Promise.allSettled(
+      toLoad.map(async (file) => {
         const doc = await getActiveProvider().loadFile(file.id);
         docCache.set(file.id, doc);
-      } catch {
-        // スキップ
+      })
+    );
+    // エラーは無視（削除済みファイルなど）
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.warn(`[index] スキップ: ${toLoad[i].name}`);
       }
+    });
+  }
+
+  // 既存エントリをベースに差分適用
+  let notes = existing.notes.filter((n) => fileIds.has(n.noteId));
+  for (const file of staleFiles) {
+    const doc = docCache.get(file.id);
+    if (doc) {
+      notes = notes.filter((n) => n.noteId !== file.id);
+      notes.push(buildIndexEntry(file.id, doc, file));
     }
+  }
+
+  const index: GraphiumIndex = {
+    version: INDEX_SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    notes,
+  };
+
+  // バックグラウンドで保存（UI をブロックしない）
+  saveIndexFile(index).catch((err) => console.warn("インデックス保存失敗:", err));
+
+  return index;
+}
+
+// 全件再構築（スキーマバージョン変更時やインデックスが存在しない場合）
+async function fullRebuild(
+  files: GraphiumFile[],
+  docCache: Map<string, GraphiumDocument>,
+): Promise<GraphiumIndex> {
+  const toLoad = files.filter((f) => !docCache.has(f.id));
+  if (toLoad.length > 0) {
+    await Promise.allSettled(
+      toLoad.map(async (file) => {
+        const doc = await getActiveProvider().loadFile(file.id);
+        docCache.set(file.id, doc);
+      })
+    );
   }
 
   const entries: NoteIndexEntry[] = [];
@@ -336,7 +406,6 @@ export async function ensureIndex(
     notes: entries,
   };
 
-  // バックグラウンドで保存（UI をブロックしない）
   saveIndexFile(index).catch((err) => console.warn("インデックス保存失敗:", err));
 
   return index;

@@ -15,6 +15,7 @@ import {
   addToRecent,
   removeFromRecent,
   ensureIndex,
+  readIndexFile,
   updateIndexEntry,
   removeIndexEntry,
   saveIndexFile,
@@ -217,7 +218,15 @@ export function useFileManager(authenticated: boolean) {
     })();
   }, [authenticated, refreshFiles, handleOpenFile]);
 
-  // ファイル一覧が取得されたらインデックスを構築
+  // インデックスの先行読み込み（listFiles と並列実行）
+  const prefetchedIndexRef = useRef<Promise<GraphiumIndex | null> | null>(null);
+  useEffect(() => {
+    if (!authenticated) return;
+    // listFiles と同時にインデックスファイルの読み込みを開始
+    prefetchedIndexRef.current = readIndexFile().catch(() => null);
+  }, [authenticated]);
+
+  // ファイル一覧が取得されたらインデックスを構築（先行読み込み結果を利用）
   useEffect(() => {
     if (!authenticated) return;
     if (filesLoading) return; // ファイル一覧取得中はインデックス構築をスキップ
@@ -230,7 +239,9 @@ export function useFileManager(authenticated: boolean) {
     }
     let cancelled = false;
     (async () => {
-      const index = await ensureIndex(files, docCacheRef.current);
+      // 先行読み込みの結果を取得（listFiles と並行して既に読み込み済み）
+      const prefetched = prefetchedIndexRef.current ? await prefetchedIndexRef.current : undefined;
+      const index = await ensureIndex(files, docCacheRef.current, prefetched);
       if (!cancelled) {
         noteIndexRef.current = index;
         setNoteIndex(index);
