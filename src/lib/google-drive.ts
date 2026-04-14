@@ -101,10 +101,11 @@ export async function getOrCreateFolder(): Promise<string> {
   return cachedFolderId!;
 }
 
-// Graphium フォルダ内のファイル一覧を取得
+// Graphium フォルダ内のノートファイル一覧を取得
+// インデックスファイル（.graphium-index.json 等）やメディアフォルダは除外する
 export async function listFiles(): Promise<GraphiumFile[]> {
   const folderId = await getOrCreateFolder();
-  const query = `'${folderId}' in parents and mimeType!='${MIME_FOLDER}' and trashed=false`;
+  const query = `'${folderId}' in parents and mimeType!='${MIME_FOLDER}' and trashed=false and (name contains '.graphium.json' or name contains '.provnote.json')`;
   const fields = "files(id,name,modifiedTime,createdTime)";
 
   const res = await authedFetch(
