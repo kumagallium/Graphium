@@ -49,7 +49,14 @@ export async function detectPkceSupport(): Promise<boolean> {
       method: "GET",
       signal: AbortSignal.timeout(3000),
     });
-    serverAvailable = res.ok;
+    if (!res.ok) {
+      serverAvailable = false;
+    } else {
+      // JSON レスポンスかチェック（GitHub Pages 等の SPA フォールバックで
+      // HTML が 200 で返る場合に PKCE 有効と誤検出するのを防ぐ）
+      const data = await res.json();
+      serverAvailable = typeof data?.status === "string";
+    }
   } catch {
     serverAvailable = false;
   }
