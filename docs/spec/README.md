@@ -2,7 +2,7 @@
 
 > Graphium = Zettelkasten + オプショナル PROV
 
-BlockNote.js ベースのブロックエディタの上に、`@` 参照（知識ネットワーク）と `#` ラベル（PROV 来歴）を載せたノートアプリ。
+BlockNote.js ベースのブロックエディタの上に、`@` 参照（知識ネットワーク）と `#` ラベル（PROV 来歴追跡）を載せた汎用ノートアプリ。あらゆる分野の作業記録・思考整理に使えるが、ラベルを活用すると PROV-DM 準拠の来歴グラフが自動生成され、実験科学・ソフトウェア開発・プロジェクト管理等で特に威力を発揮する。
 
 ---
 
@@ -21,7 +21,7 @@ BlockNote.js ベースのブロックエディタの上に、`@` 参照（知識
 | [03-notation.md](03-notation.md) | 記法と操作 — # ラベル・@ 参照・3つの入口 |
 | [04-data-model.md](04-data-model.md) | データモデル — 3層構造・型定義・リンク・同期・ストレージ |
 | [05-ui.md](05-ui.md) | 画面構成と可視化 — レイアウト・右パネル・インジケーター |
-| [06-samples.md](06-samples.md) | 試料管理と実験の3層構造 — Protocol / Instruction / Result |
+| [06-samples.md](06-samples.md) | 応用例: 実験科学 — 試料管理と3層構造（Protocol / Instruction / Result） |
 | [07-phases.md](07-phases.md) | 段階的開発計画 — 5フェーズのロードマップと実装状況 |
 | [08-scalability.md](08-scalability.md) | スケーラビリティと共同編集 — インデックスファイル・Yjs・制約 |
 

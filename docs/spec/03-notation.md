@@ -10,21 +10,21 @@ Graphium のインライン操作は2つの記号に集約される。
 
 ### コアラベル 5種
 
-| 入力 | 内部名 | PROV |
-|---|---|---|
-| `#手` | [手順] | prov:Activity |
-| `#材` | [材料] | prov:Entity + used (material subtype) |
-| `#ツ` | [ツール] | prov:Entity + used (tool subtype) |
-| `#結` | [結果] | prov:Entity + wasGeneratedBy |
-| `#属` | [属性] | prov:Entity + 親への関係 |
+| 表示名 (en/ja) | 入力例 | 内部名 | PROV |
+|---|---|---|---|
+| Procedure / 手順 | `#手`, `#step` | [手順] | prov:Activity |
+| Input / インプット | `#in`, `#材`, `#material` | [材料] | prov:Entity + used (material subtype) |
+| Tool / ツール | `#ツ`, `#tool` | [ツール] | prov:Entity + used (tool subtype) |
+| Output / アウトプット | `#out`, `#結`, `#result` | [結果] | prov:Entity + wasGeneratedBy |
+| Attribute / 属性 | `#属`, `#attr` | [属性] | prov:Entity + 親への関係 |
 
-旧仕様の `[使用するもの]` は `[材料]`（入力物質）と `[ツール]`（装置・ソフトウェア）に分離された。どちらも `prov:used` で紐付くが、サブタイプにより PROV 上で区別される。
+コアラベルの表示名はドメインに依存しない汎用的な名称（Input / Output / Tool）を採用している。内部名（`[材料]`、`[結果]` 等）は実験科学をリードドメインとして開発した経緯から残っているが、ユーザーにはi18nにより汎用名で表示される。
 
 5種すべてが PROV に直接マッピングされる。ラベルの役割は「このブロックは PROV 上で何であるか」を宣言すること。この一貫性を保つため、UI トリガーやテーブル操作の機能はラベルではなくブロック型（インデックステーブル）で実現する。
 
 ### エイリアス
 
-`ALIAS_MAP` により、ユーザーは好きな呼び方でラベルを付けられる。`#使用したもの` → `[材料]`、`#装置` → `[ツール]` 等。i18n 対応により英語エイリアス（`#step` → `[手順]`、`#material` → `[材料]`）も利用可能。
+`ALIAS_MAP` により、ユーザーは各ドメインの用語でラベルを付けられる。実験科学なら `#材料` `#試薬` `#装置`、ソフトウェア開発なら `#input` `#output` `#tool` など。エイリアスはすべてコアラベルに正規化される。
 
 ### フリーラベル
 
