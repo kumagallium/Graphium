@@ -1,9 +1,11 @@
 // Google 認証（プラットフォーム共通エントリポイント）
-// Web: GIS SDK（Implicit Grant）
+// Web（セルフホスト）: Authorization Code + PKCE（サーバー経由でトークン交換）
+// Web（GitHub Pages 等）: GIS SDK（Implicit Grant）
 // デスクトップ: Authorization Code + PKCE（google-auth-desktop.ts に委任）
 
 import { isTauri, isMobile } from "./platform";
 import * as desktop from "./google-auth-desktop";
+import * as webPkce from "./google-auth-web-pkce";
 
 const DEFAULT_CLIENT_ID =
   "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
@@ -67,6 +69,8 @@ let authState: AuthState = loadFromStorage();
 let authListeners: Array<(token: string | null) => void> = [];
 let refreshTimerId: ReturnType<typeof setTimeout> | null = null;
 let refreshRetryCount = 0;
+// signIn() で consent なしのリクエストが失敗した場合に consent にフォールバックするフラグ
+let pendingConsentFallback = false;
 
 // 以前ログインに成功したことがあるか
 function hasPreviousConsent(): boolean {
@@ -163,6 +167,25 @@ export async function initGoogleAuth(): Promise<void> {
     return;
   }
 
+  // セルフホスト環境: PKCE サーバーが利用可能かチェック
+  // PKCE の refresh_token がある場合は優先的にチェック
+  if (!isMobile()) {
+    const hasPkceSession = webPkce.hasRefreshToken();
+    if (hasPkceSession) {
+      // 既に PKCE セッションがある → サーバー検出をスキップして PKCE 初期化
+      await webPkce.initPkceAuth();
+      return;
+    }
+    // サーバー検出（初回のみ）
+    const pkceSupported = await webPkce.detectPkceSupport();
+    if (pkceSupported) {
+      console.log("PKCE サーバーを検出、Authorization Code フローを使用します");
+      await webPkce.initPkceAuth();
+      return;
+    }
+  }
+
+  // PKCE 非対応環境: GIS Implicit Grant フォールバック
   await loadGisScript();
 
   // サイレントリフレッシュが必要か判定
@@ -175,6 +198,13 @@ export async function initGoogleAuth(): Promise<void> {
     callback: (response) => {
       if (response.error) {
         console.error("Google 認証エラー:", response.error);
+        // signIn() で prompt:"" が失敗した場合 → consent 画面にフォールバック
+        if (pendingConsentFallback) {
+          pendingConsentFallback = false;
+          console.log("prompt なしでの認証が失敗、consent 画面にフォールバックします");
+          tokenClient?.requestAccessToken({ prompt: "consent" });
+          return;
+        }
         // リトライ可能ならスケジュール
         if (refreshRetryCount < MAX_REFRESH_RETRIES) {
           console.log(`サイレントリフレッシュをリトライします (${refreshRetryCount}/${MAX_REFRESH_RETRIES})`);
@@ -186,6 +216,7 @@ export async function initGoogleAuth(): Promise<void> {
           setAuthState(null, null);
         }
       } else {
+        pendingConsentFallback = false;
         const expiresAt = Date.now() + response.expires_in * 1000;
         setAuthState(response.access_token, expiresAt);
       }
@@ -195,6 +226,13 @@ export async function initGoogleAuth(): Promise<void> {
     },
     error_callback: (error) => {
       console.error("Google 認証エラー:", error);
+      // signIn() で prompt:"" が失敗した場合 → consent 画面にフォールバック
+      if (pendingConsentFallback) {
+        pendingConsentFallback = false;
+        console.log("prompt なしでの認証が失敗、consent 画面にフォールバックします");
+        tokenClient?.requestAccessToken({ prompt: "consent" });
+        return;
+      }
       // リトライ可能ならスケジュール
       if (refreshRetryCount < MAX_REFRESH_RETRIES) {
         console.log(`サイレントリフレッシュをリトライします (${refreshRetryCount}/${MAX_REFRESH_RETRIES})`);
@@ -307,6 +345,15 @@ export function signIn(): void {
     return;
   }
 
+  // セルフホスト環境: PKCE フロー
+  if (webPkce.isPkceAvailable()) {
+    webPkce.signInPkce().catch((e) => {
+      console.error("Web PKCE OAuth error:", e);
+      emitAuthError(e instanceof Error ? e.message : String(e));
+    });
+    return;
+  }
+
   // モバイル: ポップアップが動作しないため、リダイレクト方式を使用
   if (isMobile()) {
     localStorage.setItem(REDIRECT_PENDING_KEY, "true");
@@ -327,12 +374,21 @@ export function signIn(): void {
     console.error("Google 認証が初期化されていません");
     return;
   }
-  tokenClient.requestAccessToken({ prompt: "consent" });
+
+  // 以前ログイン済みのユーザー → prompt なしでまず試行（同意画面をスキップ）
+  // 初回ユーザー → consent 画面を表示してスコープ同意を取得
+  if (hasPreviousConsent()) {
+    pendingConsentFallback = true;
+    tokenClient.requestAccessToken({ prompt: "" });
+  } else {
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  }
 }
 
 // サインアウト
 export function signOut(): void {
   if (isTauri()) { desktop.signOutDesktop(); return; }
+  if (webPkce.isPkceAvailable()) { webPkce.signOutPkce(); return; }
   if (authState.accessToken) {
     const token = authState.accessToken;
     fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
@@ -347,6 +403,7 @@ export function signOut(): void {
 // 現在のアクセストークンを取得（期限切れならnull）
 export function getAccessToken(): string | null {
   if (isTauri()) return desktop.getAccessToken();
+  if (webPkce.isPkceAvailable()) return webPkce.getAccessToken();
   if (!authState.accessToken || !authState.expiresAt) return null;
   if (Date.now() >= authState.expiresAt) {
     setAuthState(null, null);
@@ -358,6 +415,7 @@ export function getAccessToken(): string | null {
 // 認証状態が変わったときのリスナー
 export function onAuthChange(fn: (token: string | null) => void): () => void {
   if (isTauri()) return desktop.onAuthChange(fn);
+  if (webPkce.isPkceAvailable()) return webPkce.onAuthChange(fn);
   authListeners.push(fn);
   return () => {
     authListeners = authListeners.filter((l) => l !== fn);
@@ -367,5 +425,6 @@ export function onAuthChange(fn: (token: string | null) => void): () => void {
 // 認証済みかどうか
 export function isSignedIn(): boolean {
   if (isTauri()) return desktop.isSignedIn();
+  if (webPkce.isPkceAvailable()) return webPkce.isSignedIn();
   return getAccessToken() !== null;
 }
