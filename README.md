@@ -83,6 +83,17 @@ Once added, Graphium launches in full-screen mode without the browser navigation
 
 The mobile view is optimized for quick data capture in the field. For full editing with context labels and provenance features, use the desktop or tablet view.
 
+<table>
+  <tr>
+    <td><b>Capture timeline</b></td>
+    <td><b>New memo input</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/mobile-capture.png" alt="Mobile capture timeline" width="280" /></td>
+    <td><img src="docs/screenshots/mobile-memo-input.png" alt="Mobile memo input" width="280" /></td>
+  </tr>
+</table>
+
 ## Interoperability
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.
