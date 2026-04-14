@@ -7,47 +7,49 @@
 ```
 BlockNote ブロックモデル (UI層)
   ↓ blocks をそのまま保存
-ProvNoteDocument (永続化層・Google Drive)
+GraphiumDocument (永続化層・Google Drive)
   = blocks + labels + provLinks + knowledgeLinks + chats
   ↓ blocks + labels + provLinks から計算
 PROV-JSON-LD (出力層・W3C標準) ← 保存しない。毎回再生成。
 ```
 
-- **BlockNote**: ブロックの型・内容・ネスト構造。provnote は触らず、上にラベルを載せる。
-- **ProvNoteDocument**: ラベル・リンク・チャット・ノート間関係。BlockNote の blocks をそのまま含む。
+- **BlockNote**: ブロックの型・内容・ネスト構造。Graphium は触らず、上にラベルを載せる。
+- **GraphiumDocument**: ラベル・リンク・チャット・ノート間関係。BlockNote の blocks をそのまま含む。
 - **PROV-JSON-LD**: blocks + labels + provLinks から generator.ts が生成。knowledgeLinks は含まない（知識層は別グラフ）。
 
 ---
 
 ## 型定義
 
-### ProvNoteDocument
+### GraphiumDocument
 
 ```typescript
-type ProvNoteDocument = {
+type GraphiumDocument = {
   version: 2;
   title: string;
-  pages: ProvNotePage[];
+  pages: GraphiumPage[];
   noteLinks?: NoteLink[];
   derivedFromNoteId?: string;
   derivedFromBlockId?: string;
   generatedBy?: AgentMeta;
   chats?: ScopeChat[];
+  documentProvenance?: DocumentProvenance;
   createdAt: string;
   modifiedAt: string;
 };
 ```
 
-### ProvNotePage
+### GraphiumPage
 
 ```typescript
-type ProvNotePage = {
+type GraphiumPage = {
   id: string;
   title: string;
   blocks: Block[];                // BlockNote のブロック木をそのまま
   labels: Record<string, string>; // blockId → ラベル名
   provLinks: BlockLink[];         // DAG 制約あり
   knowledgeLinks: BlockLink[];    // 循環 OK
+  indexTables?: Record<string, Record<string, string>>; // テーブルID → { サンプル名 → ノートID }
 };
 ```
 
@@ -72,7 +74,7 @@ type BlockLink = {
 type ScopeChat = {
   id: string;
   scopeBlockId: string;
-  scopeType: "heading" | "block";
+  scopeType: "heading" | "block" | "page";
   messages: { role: "user"|"assistant"; content: string; timestamp: string }[];
   generatedBy?: AgentMeta;
   createdAt: string;
@@ -112,7 +114,7 @@ generator.ts は `blocks` + `labels` + `provLinks` から PROV-JSON-LD を計算
 | 名前空間 | 用途 | 制約 |
 |---|---|---|
 | `prov:` | W3C 標準の型・関係 | 固定 |
-| `provnote:` | ユーザー定義プロパティ（テーブルヘッダーから自動生成） | 制限なし |
+| `graphium:` | ユーザー定義プロパティ（テーブルヘッダーから自動生成） | 制限なし |
 | `rdfs:` | label, comment | 標準 |
 
 ### 単一試料の場合
@@ -187,7 +189,7 @@ type RevisionSummary = {
 
 ### 保存場所
 
-`ProvNoteDocument.documentProvenance` として JSON ファイル内に保存。
+`GraphiumDocument.documentProvenance` として JSON ファイル内に保存。
 
 ### PROV-JSON-LD 出力
 
@@ -197,7 +199,7 @@ PROV-JSON-LD 生成時、`documentProvenance` は `prov:Bundle` として Conten
 {
   "@context": { ... },
   "@graph": [ /* Content Provenance（ノート内容の来歴） */ ],
-  "provnote:documentProvenance": {
+  "graphium:documentProvenance": {
     "@type": "prov:Bundle",
     "@graph": [
       {
@@ -232,12 +234,27 @@ PROV-JSON-LD 生成時、`documentProvenance` は `prov:Bundle` として Conten
 
 ---
 
-## Google Drive 統合
+## ストレージプロバイダー
 
-- **形式:** JSON 文字列として保存。MIME タイプ `application/json`、拡張子 `.provnote.json`
-- **認証:** OAuth 2.0 (Google Identity Services)。スコープは `drive.file`
+`StorageProvider` インターフェースにより、複数のバックエンドを抽象化。プロバイダーの切り替えはアプリ内の設定で可能。
+
+### Google Drive（Web / デスクトップ共通）
+
+- **形式:** JSON 文字列として保存。MIME タイプ `application/json`、拡張子 `.graphium.json`
+- **認証:** OAuth 2.0。Web は PKCE フロー（GIS SDK フォールバック付き）、デスクトップはシステムブラウザ経由の PKCE
+- **スコープ:** `drive.file`（自アプリが作成したファイルのみアクセス）
 - **保存:** `files.update` で更新。自動保存（debounce 付き）
 - **読み込み:** `files.get` + `alt=media` で JSON を取得
-- **一覧:** `files.list` で `.provnote.json` ファイルを取得
+- **一覧:** `files.list` で `.graphium.json` ファイルを取得
 - **ノート間リンクの解決:** `BlockLink.targetNoteId` は Google Drive のファイル ID
 - **Revision API:** `revisions.list` でバージョン履歴を取得し、`RevisionEntity.driveRevisionId` と紐付け
+
+### Local Storage（ブラウザ）
+
+- IndexedDB ベースのオフラインストレージ
+- Google アカウント不要で利用可能
+
+### Filesystem（デスクトップ / Tauri）
+
+- `~/Documents/Graphium/notes/` に JSON ファイルとして保存
+- Tauri IPC 経由で Rust バックエンドがファイル操作を担当
