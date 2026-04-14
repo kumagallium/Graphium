@@ -1564,7 +1564,9 @@ export function NoteApp() {
             loading={capture.captureLoading}
             onCreateCapture={capture.handleCreateCapture}
             onDeleteCapture={capture.handleDeleteCapture}
+            onEditCapture={capture.handleEditCapture}
             onUploadMedia={fm.handleUploadMedia}
+            onAddUrlBookmark={fm.handleAddUrlBookmark}
             creating={capture.capturing}
           />
         ) : (

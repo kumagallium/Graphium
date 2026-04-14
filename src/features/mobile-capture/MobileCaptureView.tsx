@@ -1,10 +1,11 @@
 // モバイル専用クイックキャプチャビュー
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
+import { UrlBookmarkModal } from "../asset-browser/UrlBookmarkModal";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
@@ -15,19 +16,140 @@ type TimelineItem =
   | { kind: "memo"; entry: CaptureEntry; timestamp: string }
   | { kind: "media"; entry: MediaIndexEntry; timestamp: string };
 
-// メモカード
-function MemoCard({
+// ── モバイル用メモ編集モーダル ──
+
+function MobileMemoEditModal({
   entry,
+  onClose,
+  onEdit,
   onDelete,
 }: {
   entry: CaptureEntry;
+  onClose: () => void;
+  onEdit?: (captureId: string, newText: string) => void;
+  onDelete?: () => void;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(entry.text);
+
+  const handleSave = useCallback(() => {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === entry.text || !onEdit) {
+      setEditing(false);
+      setEditText(entry.text);
+      return;
+    }
+    onEdit(entry.id, trimmed);
+    setEditing(false);
+  }, [editText, entry, onEdit]);
+
+  // ESC で閉じる
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/40"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border-t border-border rounded-t-2xl shadow-2xl w-full max-h-[80dvh] flex flex-col overflow-hidden animate-slide-up">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <StickyNote size={16} className="text-primary shrink-0" />
+            <span className="text-xs text-muted-foreground truncate">
+              {formatRelativeTime(entry.createdAt)}
+            </span>
+            {entry.modifiedAt && (
+              <span className="text-[10px] text-muted-foreground truncate">
+                ({t("memo.modified")}: {formatRelativeTime(entry.modifiedAt)})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {onDelete && (
+              <button
+                onClick={() => { onDelete(); onClose(); }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* コンテンツ */}
+        <div className="flex-1 overflow-auto p-4">
+          {editing ? (
+            <div className="flex flex-col gap-3 h-full">
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                autoFocus
+                className="flex-1 w-full min-h-[120px] resize-none bg-background border border-border rounded-lg p-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => { setEditing(false); setEditText(entry.text); }}
+                  className="px-4 py-2 text-xs rounded-lg border border-border text-foreground active:bg-muted transition-colors"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="px-4 py-2 text-xs rounded-lg bg-primary text-primary-foreground active:opacity-80 transition-opacity"
+                >
+                  {t("common.save")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={`${onEdit ? "cursor-pointer active:bg-muted/50 rounded-lg p-2 -m-2 transition-colors" : ""}`}
+              onClick={() => { if (onEdit) setEditing(true); }}
+            >
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {entry.text}
+              </p>
+              {onEdit && (
+                <p className="text-[10px] text-muted-foreground mt-3">
+                  {t("memo.clickToEdit")}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// メモカード
+function MemoCard({
+  entry,
+  onTap,
+  onDelete,
+}: {
+  entry: CaptureEntry;
+  onTap?: () => void;
   onDelete?: () => void;
 }) {
   const [showDelete, setShowDelete] = useState(false);
 
   return (
     <div
-      className="relative bg-card border border-border rounded-lg p-3 transition-colors"
+      className="relative bg-card border border-border rounded-lg p-3 transition-colors active:bg-muted/30 cursor-pointer"
+      onClick={() => onTap?.()}
       onContextMenu={(e) => {
         e.preventDefault();
         setShowDelete((v) => !v);
@@ -91,7 +213,9 @@ export function MobileCaptureView({
   loading,
   onCreateCapture,
   onDeleteCapture,
+  onEditCapture,
   onUploadMedia,
+  onAddUrlBookmark,
   creating,
 }: {
   captureIndex: CaptureIndex | null;
@@ -99,10 +223,14 @@ export function MobileCaptureView({
   loading: boolean;
   onCreateCapture: (text: string) => Promise<void>;
   onDeleteCapture?: (captureId: string) => Promise<void>;
+  onEditCapture?: (captureId: string, newText: string) => void;
   onUploadMedia?: (file: File) => Promise<string>;
+  onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   creating: boolean;
 }) {
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
+  const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [uploading, setUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -240,6 +368,7 @@ export function MobileCaptureView({
                 <MemoCard
                   key={item.entry.id}
                   entry={item.entry}
+                  onTap={() => setDetailEntry(item.entry)}
                   onDelete={
                     onDeleteCapture
                       ? () => handleDelete(item.entry.id)
@@ -274,6 +403,17 @@ export function MobileCaptureView({
             <Plus size={18} />
             {creating ? t("memo.creating") : t("memo.new")}
           </button>
+
+          {/* ブックマーク追加ボタン */}
+          {onAddUrlBookmark && (
+            <button
+              onClick={() => setShowBookmarkModal(true)}
+              className="p-3 rounded-xl border border-border text-muted-foreground active:bg-muted transition-colors"
+              title={t("asset.urlRegisterTitle")}
+            >
+              <Link size={20} />
+            </button>
+          )}
 
           {/* メディアキャプチャボタン */}
           {onUploadMedia && (
@@ -338,6 +478,33 @@ export function MobileCaptureView({
           onSubmit={handleSubmit}
           onClose={() => setShowCaptureDialog(false)}
           submitting={creating}
+        />
+      )}
+
+      {/* メモ詳細・編集モーダル */}
+      {detailEntry && (
+        <MobileMemoEditModal
+          entry={detailEntry}
+          onClose={() => setDetailEntry(null)}
+          onEdit={onEditCapture ? (id, text) => {
+            onEditCapture(id, text);
+            setDetailEntry({ ...detailEntry, text, modifiedAt: new Date().toISOString() });
+          } : undefined}
+          onDelete={onDeleteCapture ? () => {
+            onDeleteCapture(detailEntry.id);
+            setDetailEntry(null);
+          } : undefined}
+        />
+      )}
+
+      {/* URL ブックマーク登録モーダル */}
+      {showBookmarkModal && onAddUrlBookmark && (
+        <UrlBookmarkModal
+          onRegister={(entry) => {
+            onAddUrlBookmark(entry);
+            setShowBookmarkModal(false);
+          }}
+          onClose={() => setShowBookmarkModal(false)}
         />
       )}
     </div>
