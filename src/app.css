@@ -98,6 +98,10 @@
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
 }
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
 
 @utility animate-fade-in {
   animation: fade-in 0.2s ease-out;
@@ -107,6 +111,9 @@
 }
 @utility animate-slide-in-right {
   animation: slide-in-right 0.2s ease-out;
+}
+@utility animate-slide-up {
+  animation: slide-up 0.25s ease-out;
 }
 
 /* モバイルレスポンシブ: BlockNote 見出しサイズ調整 */
