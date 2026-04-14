@@ -1455,7 +1455,7 @@ export function NoteApp() {
   // 認証読み込み中
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
+      <div className="flex items-center justify-center h-dvh bg-background">
         <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
       </div>
     );
@@ -1500,7 +1500,7 @@ export function NoteApp() {
   };
 
   return (
-    <div className="flex flex-col h-screen font-sans antialiased bg-background text-foreground">
+    <div className="flex flex-col h-dvh font-sans antialiased bg-background text-foreground">
       <UpdateBanner />
       {/* モバイルヘッダー（メモ画面では非表示 — 記録特化体験） */}
       {(isDesktop || fm.activeFileId) && (

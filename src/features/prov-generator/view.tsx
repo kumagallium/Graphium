@@ -593,7 +593,7 @@ const modalOverlayStyle: React.CSSProperties = {
 
 const modalContentStyle: React.CSSProperties = {
   width: "calc(100vw - 64px)",
-  height: "calc(100vh - 64px)",
+  height: "calc(100dvh - 64px)",
   background: THEME.background,
   borderRadius: 12,
   border: `1px solid ${THEME.border}`,

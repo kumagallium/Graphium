@@ -40,7 +40,7 @@ function Modal({ open, onClose, children }: ModalProps) {
         onClick={onClose}
       />
       {/* コンテンツ */}
-      <div className="relative bg-background border border-border rounded-xl shadow-lg max-h-[85vh] overflow-y-auto">
+      <div className="relative bg-background border border-border rounded-xl shadow-lg max-h-[85dvh] overflow-y-auto">
         {children}
       </div>
     </div>,

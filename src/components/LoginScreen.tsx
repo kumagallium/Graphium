@@ -11,7 +11,7 @@ type Props = {
 export function LoginScreen({ onSignIn, onSelectLocal }: Props) {
   const t = useT();
   return (
-    <div className="flex items-center justify-center h-screen bg-background">
+    <div className="flex items-center justify-center h-dvh bg-background">
       <div className="text-center space-y-6 max-w-sm">
         <div className="flex flex-col items-center gap-3">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Graphium" className="w-16 h-16" />
