@@ -1133,3 +1133,132 @@ describe("メディアブロック → PROV Entity", () => {
     expect(mediaEntity!["rdfs:label"].length).toBeGreaterThan(0);
   });
 });
+
+// ──────────────────────────────────
+// 子ブロックの暗黙的属性化
+// ──────────────────────────────────
+
+describe("子ブロック（インデント）→ 親 Entity の属性", () => {
+  it("[結果] の子画像が属性（mediaUrl 付き）として埋め込まれる", () => {
+    const imgUrl = "https://lh3.googleusercontent.com/d/xrd789=s0";
+    const blocks = [
+      {
+        id: "h2-eval",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "評価する" }],
+        children: [],
+      },
+      {
+        id: "res-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "XRD結果" }],
+        children: [
+          {
+            id: "child-img",
+            type: "image",
+            props: { url: imgUrl, name: "XRD_pattern.png" },
+            children: [],
+          },
+        ],
+      },
+    ];
+    const labels = new Map([
+      ["h2-eval", "[手順]"],
+      ["res-para", "[結果]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const resultEntity = doc["@graph"].find((n) => n["@id"] === "result_res-para");
+    expect(resultEntity).toBeDefined();
+    expect(resultEntity!["graphium:attributes"]).toBeDefined();
+
+    const mediaAttr = resultEntity!["graphium:attributes"]!.find(
+      (a: any) => a["rdfs:label"] === "XRD_pattern.png"
+    );
+    expect(mediaAttr).toBeDefined();
+    expect(mediaAttr!["graphium:mediaUrl"]).toBe(imgUrl);
+
+    // 子ブロックとして処理されたメディアは独立 Entity にならない
+    const mediaEntity = doc["@graph"].find((n) => n["@id"].includes("media"));
+    expect(mediaEntity).toBeUndefined();
+  });
+
+  it("[材料] の子画像が属性として埋め込まれる", () => {
+    const blocks = [
+      {
+        id: "h2-mix",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "混合する" }],
+        children: [],
+      },
+      {
+        id: "mat-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "Cu粉末" }],
+        children: [
+          {
+            id: "child-photo",
+            type: "image",
+            props: { url: "https://example.com/cu.jpg", name: "Cu_photo.jpg" },
+            children: [],
+          },
+        ],
+      },
+    ];
+    const labels = new Map([
+      ["h2-mix", "[手順]"],
+      ["mat-para", "[材料]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const entity = doc["@graph"].find((n) => n["@id"] === "entity_mat-para");
+    expect(entity).toBeDefined();
+    expect(entity!["graphium:attributes"]).toHaveLength(1);
+    expect(entity!["graphium:attributes"]![0]["rdfs:label"]).toBe("Cu_photo.jpg");
+    expect(entity!["graphium:attributes"]![0]["graphium:mediaUrl"]).toBe("https://example.com/cu.jpg");
+  });
+
+  it("ラベル付きの子ブロックは暗黙的属性化されない（二重処理防止）", () => {
+    const blocks = [
+      {
+        id: "h2-step",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "ステップ" }],
+        children: [],
+      },
+      {
+        id: "res-para",
+        type: "paragraph",
+        content: [{ type: "text", text: "結果" }],
+        children: [
+          {
+            id: "child-labeled",
+            type: "paragraph",
+            content: [{ type: "text", text: "温度 800°C" }],
+            children: [],
+          },
+        ],
+      },
+    ];
+    const labels = new Map([
+      ["h2-step", "[手順]"],
+      ["res-para", "[結果]"],
+      ["child-labeled", "[属性]"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    const resultEntity = doc["@graph"].find((n) => n["@id"] === "result_res-para");
+    expect(resultEntity).toBeDefined();
+
+    // [属性] ラベル経由の属性のみ（暗黙的属性は追加されない）
+    const attrs = resultEntity!["graphium:attributes"] ?? [];
+    const tempAttrs = attrs.filter((a: any) => a["rdfs:label"] === "温度 800°C");
+    expect(tempAttrs).toHaveLength(1);
+  });
+});

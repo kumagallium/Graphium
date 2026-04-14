@@ -70,14 +70,43 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
   // 予約済み graphium: キー（ビュー表示対象外）
   const RESERVED_KEYS = new Set([
     "graphium:blockId", "graphium:attributes", "graphium:warnings", "graphium:entityType",
+    "graphium:mediaType", "graphium:mediaUrl",
   ]);
+
+  // メディアタイプ別のラベルプレフィックス
+  const MEDIA_LABEL_PREFIX: Record<string, string> = {
+    audio: "\u266B ",  // ♫
+    video: "\u25B6 ",  // ▶
+    pdf: "\uD83D\uDCC4 ",  // 📄
+    file: "\uD83D\uDCCE ",  // 📎
+  };
 
   let attrNodeIdx = 0;
   let edgeIdx = 0;
 
+  /** メディア URL → サムネイル URL を解決（画像・動画のみ、音声等はサムネイルなし） */
+  function resolveThumbUrl(url: string, type?: string): string | undefined {
+    if (type === "audio" || type === "file") return undefined;
+    return url.includes("googleusercontent.com")
+      ? url.replace(/=s\d+$/, "=s80")
+      : url;
+  }
+
   // ノード
   for (const node of doc["@graph"]) {
-    const label = node["rdfs:label"];
+    let label = node["rdfs:label"];
+
+    // メディア Entity の場合はサムネイル URL をノードデータに付与
+    const mediaUrl = node["graphium:mediaUrl"] as string | undefined;
+    const mediaType = node["graphium:mediaType"] as string | undefined;
+    let thumbnailUrl: string | undefined;
+    if (mediaUrl) {
+      thumbnailUrl = resolveThumbUrl(mediaUrl, mediaType);
+      // サムネイルがないメディアにはラベルにプレフィックスを付ける
+      if (!thumbnailUrl && mediaType && MEDIA_LABEL_PREFIX[mediaType]) {
+        label = MEDIA_LABEL_PREFIX[mediaType] + label;
+      }
+    }
 
     elements.push({
       data: {
@@ -85,6 +114,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
         label,
         type: node["@type"],
         subtype: getNodeSubtype(node),
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
       },
     });
 
@@ -97,12 +127,23 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
         const value = node[key as `graphium:${string}`] as string;
         const attrId = `attr_${node["@id"]}_${attrNodeIdx++}`;
 
+        // パラメータ値が画像 URL かチェック
+        const isImageUrl = /\.(png|jpe?g|gif|webp|svg|bmp)/i.test(value) ||
+          value.includes("googleusercontent.com/d/");
+        let attrThumbnailUrl: string | undefined;
+        if (isImageUrl) {
+          attrThumbnailUrl = value.includes("googleusercontent.com")
+            ? value.replace(/=s\d+$/, "=s80")
+            : value;
+        }
+
         elements.push({
           data: {
             id: attrId,
-            label: `${shortKey}=${value}`,
+            label: isImageUrl ? shortKey : `${shortKey}=${value}`,
             type: "graphium:Attribute",
             subtype: "parameter",
+            ...(attrThumbnailUrl ? { thumbnailUrl: attrThumbnailUrl } : {}),
           },
         });
         // エッジ: 親ノード → 属性ノード（フロー順方向）
@@ -122,12 +163,25 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
       for (const attr of node["graphium:attributes"] as ProvAttribute[]) {
         const attrId = `attr_${node["@id"]}_${attrNodeIdx++}`;
 
+        // 属性にメディア URL がある場合はサムネイル表示
+        const attrMediaUrl = attr["graphium:mediaUrl"];
+        const attrMediaType = attr["graphium:mediaType"];
+        let attrThumbUrl: string | undefined;
+        let attrLabel = attr["rdfs:label"];
+        if (attrMediaUrl) {
+          attrThumbUrl = resolveThumbUrl(attrMediaUrl, attrMediaType);
+          if (!attrThumbUrl && attrMediaType && MEDIA_LABEL_PREFIX[attrMediaType]) {
+            attrLabel = MEDIA_LABEL_PREFIX[attrMediaType] + attrLabel;
+          }
+        }
+
         elements.push({
           data: {
             id: attrId,
-            label: attr["rdfs:label"],
+            label: attrLabel,
             type: "graphium:Attribute",
             subtype: "parameter",
+            ...(attrThumbUrl ? { thumbnailUrl: attrThumbUrl } : {}),
           },
         });
         elements.push({
@@ -288,6 +342,22 @@ export const cyStyles: cytoscape.StylesheetStyle[] = [
       shape: "round-rectangle",
     },
   },
+  // ── メディア Entity / 属性（サムネイル付き — 画像・動画のみ） ──
+  {
+    selector: "node[thumbnailUrl]",
+    style: {
+      "background-image": "data(thumbnailUrl)" as any,
+      "background-image-crossorigin": "anonymous" as any,
+      "background-fit": "cover" as any,
+      "background-image-opacity": 0.85,
+      "background-opacity": 0.1,
+      width: 50,
+      height: 50,
+      "text-valign": "bottom" as const,
+      "text-margin-y": 4,
+      "padding": "8px",
+    },
+  },
   // ── ホバーエフェクト ──
   {
     selector: "node.hover",
@@ -421,6 +491,35 @@ function CytoscapeGraph({
 
     let cancelled = false;
 
+    // サムネイル URL を Blob URL に変換して Cytoscape に反映
+    const thumbnailNodes = cy.nodes("[thumbnailUrl]");
+    const blobUrls: string[] = [];
+    if (thumbnailNodes.length > 0) {
+      // 順次取得（429 レート制限を回避）
+      (async () => {
+        for (const node of thumbnailNodes.toArray()) {
+          if (cancelled) break;
+          const url = node.data("thumbnailUrl") as string;
+          if (url.startsWith("blob:") || url.startsWith("data:")) continue;
+          try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            blobUrls.push(blobUrl);
+            if (!cancelled) {
+              cy.batch(() => { node.data("thumbnailUrl", blobUrl); });
+            }
+          } catch {
+            // ネットワークエラーはスキップ
+          }
+        }
+        if (!cancelled && blobUrls.length > 0) {
+          cy.style().update();
+        }
+      })();
+    }
+
     cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.5 } as any).run();
     cy.fit(undefined, 20);
     applyElkLayout(cy).then(() => {
@@ -431,6 +530,10 @@ function CytoscapeGraph({
 
     return () => {
       cancelled = true;
+      // Blob URL を解放
+      for (const url of blobUrls) {
+        URL.revokeObjectURL(url);
+      }
       cy.destroy();
       cyRef.current = null;
     };
@@ -478,8 +581,9 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
   const attrCount = doc["@graph"].reduce((sum, n) => {
     let count = 0;
     if (n["graphium:attributes"]) count += (n["graphium:attributes"] as ProvAttribute[]).length;
+    const STATS_EXCLUDED = ["graphium:blockId", "graphium:attributes", "graphium:warnings", "graphium:entityType", "graphium:mediaType", "graphium:mediaUrl"];
     for (const key of Object.keys(n)) {
-      if (key.startsWith("graphium:") && !["graphium:blockId", "graphium:attributes", "graphium:warnings"].includes(key) && typeof n[key as `graphium:${string}`] === "string") count++;
+      if (key.startsWith("graphium:") && !STATS_EXCLUDED.includes(key) && typeof n[key as `graphium:${string}`] === "string") count++;
     }
     return sum + count;
   }, 0);
