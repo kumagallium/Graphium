@@ -258,3 +258,111 @@ PROV-JSON-LD 生成時、`documentProvenance` は `prov:Bundle` として Conten
 
 - `~/Documents/Graphium/notes/` に JSON ファイルとして保存
 - Tauri IPC 経由で Rust バックエンドがファイル操作を担当
+
+---
+
+## インデックスファイル
+
+ノート・メディア・キャプチャのメタデータを集約した JSON ファイル。個別ノートを開かずに @ 候補表示・被参照数計算・ネットワークグラフ描画・アセットブラウザ表示を可能にする。ノート保存・作成・削除時に差分更新される。
+
+### ノートインデックス（`.graphium-index.json`）
+
+```typescript
+type GraphiumIndex = {
+  version: number;
+  updatedAt: string;
+  notes: NoteIndexEntry[];
+};
+
+type NoteIndexEntry = {
+  noteId: string;              // ストレージプロバイダーのファイル ID
+  title: string;
+  modifiedAt: string;
+  createdAt: string;
+
+  // スコープ情報（@ 候補に使う）
+  headings: {
+    blockId: string;
+    text: string;
+    level: 2 | 3;
+  }[];
+
+  // ラベル情報（アセットブラウザ・フィルタに使う）
+  labels: {
+    blockId: string;
+    label: string;             // "[手順]", "[結果]" etc.
+    preview: string;           // ブロックのテキスト先頭
+  }[];
+
+  // リンク情報（ネットワークグラフ・backlink・被参照数に使う）
+  outgoingLinks: {
+    targetNoteId: string;
+    targetBlockId?: string;
+    layer: "prov" | "knowledge";
+  }[];
+};
+```
+
+**用途:** @ オートコンプリート、被参照数によるノート一覧ソート、backlink 構築、ネットワークグラフの全体描画。
+
+### メディアインデックス（`.graphium-media-index.json`）
+
+```typescript
+type MediaIndex = {
+  version: 1;
+  updatedAt: string;
+  media: MediaIndexEntry[];
+};
+
+type MediaIndexEntry = {
+  fileId: string;              // ストレージプロバイダーのファイル ID
+  name: string;                // ファイル名（URL ブックマークの場合はタイトル）
+  type: "image" | "video" | "audio" | "pdf" | "data" | "url";
+  mimeType: string;
+  url: string;                 // CDN URL（表示用）
+  thumbnailUrl: string;
+  uploadedAt: string;
+  usedIn: {                    // 使用されているノート一覧
+    noteId: string;
+    noteTitle: string;
+    blockId: string;
+  }[];
+  urlMeta?: {                  // URL ブックマーク用メタデータ
+    originalUrl: string;
+    siteName?: string;
+    description?: string;
+    faviconUrl?: string;
+  };
+};
+```
+
+**用途:** アセットブラウザのメディア一覧・サムネイル表示、メディアからノートへの逆引き（usedIn）、ラベル付きメディアの PROV 連携。
+
+### キャプチャインデックス（`.graphium-captures.json`）
+
+```typescript
+type CaptureIndex = {
+  version: 1;
+  updatedAt: string;
+  captures: CaptureEntry[];
+};
+
+type CaptureEntry = {
+  id: string;                  // 一意 ID
+  text: string;                // テキスト内容
+  createdAt: string;
+  modifiedAt?: string;
+  createdBy?: string;          // 作成者メールアドレス
+  usedIn?: {                   // 挿入されたノート一覧
+    noteId: string;
+    noteTitle: string;
+    insertedAt: string;
+  }[];
+  editHistory?: {              // 編集履歴（変更前テキストを保持）
+    editedAt: string;
+    previousText: string;
+  }[];
+};
+```
+
+**用途:** モバイルキャプチャ（付箋メモ）の一覧表示、ノートへの挿入追跡。
