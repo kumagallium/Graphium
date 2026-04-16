@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.3.4](https://github.com/kumagallium/Graphium/compare/v0.3.3...v0.3.4) - 2026-04-16
+- Harden app for production readiness by @kumagallium in https://github.com/kumagallium/Graphium/pull/93
+- Remove unused sandbox mode by @kumagallium in https://github.com/kumagallium/Graphium/pull/94
+- Fix Google OAuth session persistence by @kumagallium in https://github.com/kumagallium/Graphium/pull/95
+- Fix iOS mobile viewport scroll and auto-zoom by @kumagallium in https://github.com/kumagallium/Graphium/pull/96
+- Update design spec to match current implementation by @kumagallium in https://github.com/kumagallium/Graphium/pull/97
+- Add memo editing and bookmark creation on mobile by @kumagallium in https://github.com/kumagallium/Graphium/pull/98
+- Generalize spec: Graphium as universal note app by @kumagallium in https://github.com/kumagallium/Graphium/pull/99
+- Add index file type definitions to data model spec by @kumagallium in https://github.com/kumagallium/Graphium/pull/100
+- Incremental index update instead of full rebuild by @kumagallium in https://github.com/kumagallium/Graphium/pull/101
+- feat: Media blocks in PROV graph with thumbnails and audio icons by @kumagallium in https://github.com/kumagallium/Graphium/pull/102
+- Filter out index files from listFiles query by @kumagallium in https://github.com/kumagallium/Graphium/pull/103
+- Reuse provider credentials & fix desktop model data loss by @kumagallium in https://github.com/kumagallium/Graphium/pull/105
+- [feat] Sync block props.name on media rename by @kumagallium in https://github.com/kumagallium/Graphium/pull/104
+
 ## [v0.3.3](https://github.com/kumagallium/Graphium/compare/v0.3.2...v0.3.3) - 2026-04-13
 
 ## [v0.3.2](https://github.com/kumagallium/Graphium/compare/v0.3.1...v0.3.2) - 2026-04-13

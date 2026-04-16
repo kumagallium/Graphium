@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/refs/heads/dev/crates/tauri-config-schema/schema.json",
   "productName": "Graphium",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "identifier": "com.graphium.app",
   "build": {
     "frontendDist": "../dist",
