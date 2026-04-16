@@ -35,6 +35,7 @@ function resolveDataDir(): string {
   }
 }
 const dataDir = resolveDataDir();
+console.log(`[server] Data directory: ${dataDir}`);
 setModelsDataDir(dataDir);
 setProfilesDataDir(dataDir);
 

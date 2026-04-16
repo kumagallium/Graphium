@@ -44,10 +44,16 @@ export async function startSidecar(): Promise<boolean> {
 
   try {
     const { Command } = await import("@tauri-apps/plugin-shell");
+    const { documentDir, join: pathJoin } = await import("@tauri-apps/api/path");
+    // データディレクトリを明示的に指定（process.cwd() の不安定さを回避）
+    const docsDir = await documentDir();
+    const dataDir = await pathJoin(docsDir, "Graphium", "server-data");
+
     const command = Command.sidecar("binaries/graphium-server", [], {
       env: {
         PORT: "3001",
         CORS_ORIGINS: "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
+        DATA_DIR: dataDir,
       },
     });
 
