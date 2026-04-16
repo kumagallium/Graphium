@@ -453,9 +453,9 @@ export function AssetGalleryView({
           onClose={() => setDetailEntry(null)}
           onNavigateNote={onNavigateNote}
           onRename={async (entry, newName) => {
-            await onRenameMedia(entry, newName);
-            // モーダル内の表示を更新
+            // 楽観的更新: モーダル内の表示を即座に反映
             setDetailEntry({ ...entry, name: newName });
+            await onRenameMedia(entry, newName);
           }}
         />
       )}

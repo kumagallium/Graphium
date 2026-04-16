@@ -79,6 +79,7 @@ import {
   extractDomain,
   fetchUrlMetadata,
   type MediaType,
+  findBlockIdsByMediaUrl,
   type MediaIndexEntry,
 } from "./features/asset-browser";
 import { useT, t as tStatic } from "./i18n";
@@ -213,6 +214,8 @@ type NoteEditorProps = {
   onMemoInserted?: () => void;
   /** メモピッカー用のキャプチャインデックス */
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
+  /** エディタ参照を親に伝播するコールバック */
+  onEditorRef?: (editor: any) => void;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -267,6 +270,7 @@ function NoteEditorInner({
   pendingMemoInsert,
   onMemoInserted,
   captureIndex: captureIndexProp,
+  onEditorRef,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -471,6 +475,7 @@ function NoteEditorInner({
   // エディタ参照を保持
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
+    onEditorRef?.(editor);
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
 
@@ -1452,6 +1457,21 @@ export function NoteApp() {
 
   const t = useT();
 
+  // エディタ参照（メディアリネーム時のブロック同期用）
+  const noteEditorRef = useRef<any>(null);
+
+  // メディアリネーム（ブロック props.name 同期付き）
+  const handleRenameMediaWithBlockSync = useCallback(async (entry: MediaIndexEntry, newName: string) => {
+    await fm.handleRenameMedia(entry, newName);
+    // エディタ内で同じ URL を参照しているブロックの props.name も更新
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    const blockIds = findBlockIdsByMediaUrl(editor.document, entry.url);
+    for (const blockId of blockIds) {
+      editor.updateBlock(blockId, { props: { name: newName } });
+    }
+  }, [fm.handleRenameMedia]);
+
   // 認証読み込み中
   if (authLoading) {
     return (
@@ -1523,7 +1543,7 @@ export function NoteApp() {
             onBack={() => fm.setActiveAssetType(null)}
             onNavigateNote={(noteId) => { fm.setActiveAssetType(null); fm.handleOpenFile(noteId); }}
             onDeleteMedia={fm.handleDeleteMedia}
-            onRenameMedia={fm.handleRenameMedia}
+            onRenameMedia={handleRenameMediaWithBlockSync}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
           />
         ) : fm.activeLabel ? (
@@ -1607,6 +1627,7 @@ export function NoteApp() {
               setPendingMemoInsert(null);
             }}
             captureIndex={capture.captureIndex}
+            onEditorRef={(editor) => { noteEditorRef.current = editor; }}
           />
         )}
         {/* 派生ノート作成中のオーバーレイ */}

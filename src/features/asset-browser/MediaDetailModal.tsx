@@ -302,6 +302,11 @@ export function MediaDetailModal({
   const [editName, setEditName] = useState(entry.name);
   const [renaming, setRenaming] = useState(false);
 
+  // entry prop が更新されたら editName も同期
+  useEffect(() => {
+    if (!editing) setEditName(entry.name);
+  }, [entry.name, editing]);
+
   const handleRename = useCallback(async () => {
     const trimmed = editName.trim();
     if (!trimmed || trimmed === entry.name || !onRename) {

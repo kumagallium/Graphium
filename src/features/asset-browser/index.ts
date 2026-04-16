@@ -17,6 +17,8 @@ export {
   renameMediaEntry,
   extractFileIdFromUrl,
   extractMediaFromBlocks,
+  findBlockIdsByMediaUrl,
+  updateBlockNameByUrl,
   mimeToMediaType,
   ensureMediaIndex,
   fetchUrlMetadata,
