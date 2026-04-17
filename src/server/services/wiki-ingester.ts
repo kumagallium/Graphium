@@ -15,6 +15,8 @@ export type IngesterOutput = {
   suggestedAction: "create" | "merge";
   mergeTargetId?: string;
   confidence: number;
+  /** 関連する既存 Concept のタイトルリスト */
+  relatedConcepts: string[];
 };
 
 export type ExistingWikiInfo = {
@@ -25,6 +27,9 @@ export type ExistingWikiInfo = {
 
 /**
  * Ingester 用のシステムプロンプトを構築する
+ *
+ * 知識発展型: ノートの単純な要約ではなく、既存 Concept との関連づけ・
+ * 新しい洞察の生成・根拠の提示を行う
  */
 export function buildIngesterSystemPrompt(
   language: string,
@@ -32,48 +37,64 @@ export function buildIngesterSystemPrompt(
 ): string {
   const wikiListText = existingWikis.length > 0
     ? existingWikis.map((w) => `- [${w.kind}] ${w.title} (id: ${w.id})`).join("\n")
-    : "(none)";
+    : "(none yet)";
 
-  return `You are a knowledge extraction assistant for Graphium, a provenance-tracking research editor.
+  const hasExistingConcepts = existingWikis.some((w) => w.kind === "concept");
 
-Your task is to extract reusable knowledge from the given research note and create structured Wiki documents.
+  return `You are a knowledge synthesis engine for Graphium, a provenance-tracking research editor.
+
+Your role is NOT to simply summarize notes. You are a **knowledge developer**: you extract insights, connect ideas across contexts, identify patterns, and build a growing knowledge base.
 
 ## Output Format
 
-You MUST respond with valid JSON only (no markdown, no explanation). The JSON should follow this structure:
+Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
-\`\`\`json
 {
   "wikis": [
     {
       "kind": "summary" | "concept",
       "title": "string",
       "sections": [
-        { "heading": "string", "content": "string (max 300 chars)" }
+        { "heading": "string", "content": "string" }
       ],
       "suggestedAction": "create" | "merge",
       "mergeTargetId": "string (only if merge)",
-      "confidence": 0.0-1.0
+      "confidence": 0.0-1.0,
+      "relatedConcepts": ["existing concept title 1", "..."]
     }
   ]
 }
-\`\`\`
 
-## Classification Rules
+## Two Wiki Types
 
-- **Summary**: A recap of a specific note, experiment, or external source. Title should reference the source.
-- **Concept**: Cross-cutting knowledge about a topic, material, technique, or lesson. Title should be the concept name.
+### Summary (1 per note, always generated)
+A structured analysis of the note — NOT a copy-paste summary. Include:
+- **Overview**: What was done and why (2-3 sentences)
+- **Key findings**: Specific results, measurements, observations
+- **Insights**: What can be learned from this that wasn't explicitly stated
+- **Open questions**: What remains unclear or should be investigated next
+- **Connections**: How this relates to other work (reference existing Concepts if any)
 
-## Wiki Structure Rules
+### Concept (0-3 per note, knowledge development)
+Cross-cutting knowledge pages that **go beyond what the note explicitly says**. A good Concept:
+- Synthesizes knowledge that would be useful in OTHER contexts
+- Draws connections the researcher might not have made explicit
+- Includes reasoning, not just facts (e.g., "X works because Y, which implies Z")
+- References the source note as evidence ("Based on [note title]...")
+- Suggests related topics or next steps for investigation
 
-- Each section should have a clear H2-level heading
-- Section content should be concise (max 300 characters)
-- Include practical, reusable knowledge (not just a copy of the note)
-- Context labels in the source (e.g., [手順], [材料], [結果]) are hints about the content structure
+**Bad Concept** (avoid): A concept that just repeats what the note says in different words.
+**Good Concept**: Takes a specific finding and develops it into broader, reusable knowledge with reasoning.
 
-## Merge vs Create
+## Merge vs Create (Critical)
 
-Check existing wikis below. If the note's main concepts strongly overlap with an existing wiki, suggest "merge" with the target ID. Otherwise, suggest "create".
+${hasExistingConcepts ? `You have existing Concepts below. Before creating a new Concept:
+1. Check if the note's knowledge EXTENDS an existing Concept → suggest "merge" with that ID
+2. Check if the note CONTRADICTS an existing Concept → suggest "create" a new one that addresses the contradiction
+3. Check if the note provides NEW EVIDENCE for an existing Concept → suggest "merge"
+4. Only create a new Concept if the knowledge is genuinely distinct
+
+When merging, your sections should contain the NEW information to ADD to the existing Concept, not duplicate what's already there.` : "No existing Concepts yet. Create new ones freely."}
 
 ## Existing Wikis
 
@@ -83,12 +104,14 @@ ${wikiListText}
 
 Output in: ${language === "ja" ? "Japanese" : "English"}
 
-## Important
+## Quality Guidelines
 
-- Generate 1-3 wikis per note (don't over-generate)
-- Focus on knowledge that would be useful when referenced from other notes
-- Set confidence based on how clearly the knowledge can be extracted (0.5-1.0)
-- If the note is too short or unclear, return an empty wikis array`;
+- Summary: Always generate exactly 1 per note
+- Concepts: Generate 0-3. Quality over quantity — only create if there's genuine insight to develop
+- Section content: Be substantive (100-500 chars per section). Include reasoning, not just facts
+- relatedConcepts: List titles of existing Concepts that are related (empty array if none)
+- confidence: 0.9+ for clear, well-evidenced knowledge. 0.6-0.8 for tentative insights
+- If the note is too short or trivial (e.g., just a title), generate only a minimal Summary with confidence 0.5`;
 }
 
 /**
@@ -120,6 +143,7 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
         suggestedAction: w.suggestedAction === "merge" ? "merge" as const : "create" as const,
         mergeTargetId: w.mergeTargetId ? String(w.mergeTargetId) : undefined,
         confidence: typeof w.confidence === "number" ? w.confidence : 0.7,
+        relatedConcepts: Array.isArray(w.relatedConcepts) ? w.relatedConcepts.map(String) : [],
       }));
   } catch (err) {
     console.error("Ingester 出力のパース失敗:", err);

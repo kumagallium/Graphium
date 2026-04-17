@@ -64,7 +64,7 @@ import { recordRevision, detectActivityType } from "./features/document-provenan
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
-import { WikiListView, WikiBanner, ingestNote, buildWikiDocument, embedWikiSections } from "./features/wiki";
+import { WikiListView, WikiBanner, IngestToast, type IngestToastState, ingestNote, buildWikiDocument, mergeIntoWikiDocument, embedWikiSections } from "./features/wiki";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
 import type { CaptureEntry } from "./features/mobile-capture";
@@ -1478,6 +1478,7 @@ export function NoteApp() {
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
+  const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
 
@@ -1728,6 +1729,7 @@ export function NoteApp() {
             isWikiDoc={fm.activeDoc?.source === "ai"}
             onIngestToWiki={fm.activeDoc?.source !== "ai" ? async () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
+              setIngestToast({ status: "loading", message: "Knowledge を生成中..." });
               try {
                 // 既存 Wiki 一覧を取得
                 const existingWikis = (fm.noteIndex?.notes ?? [])
@@ -1736,29 +1738,50 @@ export function NoteApp() {
 
                 const result = await ingestNote(fm.activeFileId, fm.activeDoc, existingWikis, "ja");
                 if (result.wikis.length === 0) {
-                  alert("Knowledge の抽出に十分な内容がありませんでした。");
+                  setIngestToast({ status: "error", message: "抽出に十分な内容がありませんでした" });
                   return;
                 }
 
-                // 生成された Wiki をすべて保存
+                // 生成された Wiki を保存（merge or create）
+                const titles: string[] = [];
                 for (const wiki of result.wikis) {
+                  if (wiki.suggestedAction === "merge" && wiki.mergeTargetId) {
+                    // 既存 Wiki に追記
+                    try {
+                      const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
+                      if (existingDoc) {
+                        const mergedDoc = mergeIntoWikiDocument(existingDoc, wiki, fm.activeFileId, result.model);
+                        await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc);
+                        titles.push(`merged → ${wiki.title}`);
+                        embedWikiSections(wiki.mergeTargetId, mergedDoc).catch((err) =>
+                          console.warn("Embedding 生成失敗:", err)
+                        );
+                        continue;
+                      }
+                    } catch {
+                      // merge 失敗時は新規作成にフォールバック
+                    }
+                  }
+                  // 新規作成
                   const wikiDoc = buildWikiDocument(wiki, fm.activeFileId, result.model);
                   const newId = await fm.handleCreateWikiFile(wikiDoc);
-                  // Embedding をバックグラウンドで生成
+                  titles.push(`${wiki.kind}: ${wiki.title}`);
                   embedWikiSections(newId, wikiDoc).catch((err) =>
                     console.warn("Embedding 生成失敗:", err)
                   );
                 }
 
-                alert(`${result.wikis.length} 件の Wiki を生成しました。サイドバーの AI セクションで確認できます。`);
+                setIngestToast({ status: "success", message: `${titles.length} 件生成: ${titles.join(", ")}` });
               } catch (err) {
                 console.error("Ingest 失敗:", err);
-                alert(`Knowledge への追加に失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
+                setIngestToast({ status: "error", message: err instanceof Error ? err.message : "不明なエラー" });
               }
             } : undefined}
           />
           </>
         )}
+        {/* Ingest トースト通知 */}
+        <IngestToast state={ingestToast} onDismiss={() => setIngestToast(null)} />
         {/* 派生ノート作成中のオーバーレイ */}
         {fm.deriving && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">

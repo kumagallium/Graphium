@@ -95,6 +95,46 @@ export function buildWikiDocument(
 }
 
 /**
+ * 既存 Wiki ドキュメントに新しいセクションを追記（merge）する
+ */
+export function mergeIntoWikiDocument(
+  existingDoc: GraphiumDocument,
+  ingesterOutput: IngesterOutput,
+  sourceNoteId: string,
+  model: string | null,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const newBlocks = convertSectionsToBlocks(ingesterOutput.sections);
+  const page = existingDoc.pages[0];
+
+  // 新しいセクションを既存ブロックの末尾に追加
+  const mergedBlocks = [...(page?.blocks ?? []), ...newBlocks];
+
+  // derivedFromNotes に追加（重複除去）
+  const derivedFromNotes = [
+    ...new Set([...(existingDoc.wikiMeta?.derivedFromNotes ?? []), sourceNoteId]),
+  ];
+
+  return {
+    ...existingDoc,
+    pages: [{
+      ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
+      blocks: mergedBlocks,
+    }],
+    wikiMeta: {
+      ...existingDoc.wikiMeta!,
+      derivedFromNotes,
+      lastIngestedAt: now,
+      generatedBy: {
+        model: model ?? existingDoc.wikiMeta?.generatedBy?.model ?? "unknown",
+        version: "1.0.0",
+      },
+    },
+    modifiedAt: now,
+  };
+}
+
+/**
  * Ingester のセクション出力を BlockNote ブロック配列に変換する
  */
 function convertSectionsToBlocks(
