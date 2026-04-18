@@ -65,13 +65,13 @@ export function buildWikiDocument(
   const blocks = convertSectionsToBlocks(ingesterOutput.sections);
 
   // 関連セクションを追加（派生元ノート + 関連 Concept）
-  const relationBlocks = buildRelationBlocks(
+  const relations = buildRelationBlocks(
     sourceNoteId,
     sourceNoteTitle,
     ingesterOutput.relatedConcepts,
     existingWikiTitles,
   );
-  blocks.push(...relationBlocks);
+  blocks.push(...relations.blocks);
 
   const wikiMeta: WikiMeta = {
     kind: ingesterOutput.kind,
@@ -96,7 +96,7 @@ export function buildWikiDocument(
       blocks,
       labels: {},
       provLinks: [],
-      knowledgeLinks: [],
+      knowledgeLinks: relations.knowledgeLinks,
     }],
     source: "ai",
     wikiMeta,
@@ -192,13 +192,19 @@ function convertSectionsToBlocks(
  * 関連セクションのブロックを構築する
  * 派生元ノートへのリンクと関連 Concept を含む
  */
+type RelationBlocksResult = {
+  blocks: any[];
+  knowledgeLinks: any[];
+};
+
 function buildRelationBlocks(
   sourceNoteId: string,
   sourceNoteTitle?: string,
   relatedConcepts?: string[],
   existingWikiTitles?: { id: string; title: string }[],
-): any[] {
+): RelationBlocksResult {
   const blocks: any[] = [];
+  const knowledgeLinks: any[] = [];
 
   // 「関連」見出し
   blocks.push({
@@ -209,34 +215,60 @@ function buildRelationBlocks(
     children: [],
   });
 
-  // 派生元ノートへのリンク（プレーンテキスト表記）
+  // 派生元ノートへの @リンク（青テキスト + knowledgeLinks）
   const sourceLabel = sourceNoteTitle ?? sourceNoteId;
+  const sourceBlockId = crypto.randomUUID();
   blocks.push({
-    id: crypto.randomUUID(),
+    id: sourceBlockId,
     type: "bulletListItem",
     props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
     content: [
-      { type: "text", text: `Source: @${sourceLabel}`, styles: {} },
+      { type: "text", text: "Source: ", styles: { bold: true } },
+      { type: "text", text: `@${sourceLabel}`, styles: { textColor: "blue" } },
     ],
     children: [],
   });
+  knowledgeLinks.push({
+    id: crypto.randomUUID(),
+    sourceBlockId,
+    targetBlockId: "",
+    targetNoteId: sourceNoteId,
+    type: "reference",
+    layer: "knowledge",
+    createdBy: "ai",
+  });
 
-  // 関連 Concept へのリンク
-  if (relatedConcepts && relatedConcepts.length > 0) {
+  // 関連 Concept への @リンク
+  if (relatedConcepts && relatedConcepts.length > 0 && existingWikiTitles) {
     for (const conceptTitle of relatedConcepts) {
+      const wiki = existingWikiTitles.find((w) => w.title === conceptTitle);
+      const blockId = crypto.randomUUID();
+      const label = wiki ? `🤖 ${conceptTitle}` : conceptTitle;
       blocks.push({
-        id: crypto.randomUUID(),
+        id: blockId,
         type: "bulletListItem",
         props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
         content: [
-          { type: "text", text: `Related: 🤖 ${conceptTitle}`, styles: {} },
+          { type: "text", text: "Related: ", styles: { bold: true } },
+          { type: "text", text: `@${label}`, styles: { textColor: "blue" } },
         ],
         children: [],
       });
+      if (wiki) {
+        knowledgeLinks.push({
+          id: crypto.randomUUID(),
+          sourceBlockId: blockId,
+          targetBlockId: "",
+          targetNoteId: wiki.id,
+          type: "reference",
+          layer: "knowledge",
+          createdBy: "ai",
+        });
+      }
     }
   }
 
-  return blocks;
+  return { blocks, knowledgeLinks };
 }
 
 /**
