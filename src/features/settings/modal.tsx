@@ -91,6 +91,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // 設定値
   const [model, setModel] = useState("");
+  const [embeddingModel, setEmbeddingModel] = useState("");
   const [profile, setProfile] = useState("");
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
@@ -172,6 +173,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (!isOpen) return;
     const settings = loadSettings();
     setModel(settings.model);
+    setEmbeddingModel(settings.embeddingModel ?? "");
     setProfile(settings.profile);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
@@ -364,10 +366,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels });
+    saveSettings({ model, embeddingModel, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels });
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, profile, customLabels, onClose]);
+  }, [model, embeddingModel, profile, customLabels, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -486,6 +488,34 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">{t("settings.modelHelp")}</p>
+            </div>
+
+            {/* Embedding モデル選択 */}
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                Embedding Model
+              </label>
+              <div className="relative">
+                <select
+                  value={embeddingModel}
+                  onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
+                  disabled={modelsLoading || models.length === 0}
+                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                >
+                  <option value="">
+                    {models.length === 0 ? "No models" : "Same as chat model"}
+                  </option>
+                  {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Embedding requires OpenAI or OpenAI-compatible provider. Leave empty to use text-match fallback.
+              </p>
             </div>
           </div>
         )}

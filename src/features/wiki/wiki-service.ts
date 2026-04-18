@@ -4,6 +4,7 @@
 import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import { getEmbeddingModel } from "../settings/store";
 
 /** サーバー API の URL ベース */
 const API_BASE = "/api/wiki";
@@ -333,10 +334,14 @@ export async function embedWikiSections(
   // Embedding API を試みる
   let embeddingSuccess = false;
   try {
+    const embModel = getEmbeddingModel();
     const res = await fetch(`${API_BASE}/embed`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texts: sections }),
+      body: JSON.stringify({
+        texts: sections,
+        ...(embModel ? { embedding_model: embModel } : {}),
+      }),
     });
 
     if (res.ok) {

@@ -3,6 +3,7 @@
 // システムプロンプトに注入するコンテキスト文字列として返す
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
+import { getEmbeddingModel } from "../settings/store";
 
 const TOP_K = 5;
 const MIN_SCORE = 0.3;
@@ -18,11 +19,13 @@ export async function retrieveWikiContext(
 ): Promise<string | null> {
   // まず embedding ベースの検索を試みる
   try {
+    const embModel = getEmbeddingModel();
     const res = await fetch("/api/wiki/embed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         texts: [{ documentId: "_query", sectionId: "_query", text: userMessage }],
+        ...(embModel ? { embedding_model: embModel } : {}),
       }),
     });
 

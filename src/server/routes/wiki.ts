@@ -80,16 +80,19 @@ app.post("/embed", async (c) => {
   const body = await c.req.json<{
     texts: { documentId: string; sectionId: string; text: string }[];
     model?: string;
+    embedding_model?: string;
   }>();
 
   if (!body.texts || body.texts.length === 0) {
     return c.json({ error: "texts は必須です" }, 400);
   }
 
-  // Embedding にはデフォルトモデルの API キーを利用
+  // Embedding 用モデルを解決: embedding_model → model → デフォルト
+  const models = listModels();
   let modelConfig = getDefaultModel();
-  if (body.model) {
-    const models = listModels();
+  if (body.embedding_model) {
+    modelConfig = models.find((m) => m.name === body.embedding_model) ?? modelConfig;
+  } else if (body.model) {
     modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
   }
 

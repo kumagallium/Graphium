@@ -9,6 +9,8 @@ export type CustomLabels = Record<string, string>;
 export type Settings = {
   /** AI で使用するモデル名（空文字 = サーバーデフォルト） */
   model: string;
+  /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
+  embeddingModel: string;
   /** AI プロファイル名（空文字 = "science"） */
   profile: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
@@ -21,6 +23,7 @@ export type Settings = {
 
 const DEFAULT_SETTINGS: Settings = {
   model: "",
+  embeddingModel: "",
   profile: "",
   disabledTools: [],
   registryUrl: "",
@@ -67,6 +70,11 @@ export function getRegistryUrl(): string {
 /** コアラベルのカスタム表示名を取得する */
 export function getCustomLabels(): CustomLabels {
   return loadSettings().customLabels;
+}
+
+/** Embedding 用モデル名を取得する（空文字 = チャットモデルと同じ） */
+export function getEmbeddingModel(): string {
+  return loadSettings().embeddingModel;
 }
 
 /** AI バックエンドが利用可能かどうか（ビルトインバックエンドは常に available） */
