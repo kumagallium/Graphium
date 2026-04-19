@@ -72,7 +72,7 @@ import {
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail,
   // Lint（自動実行用）
-  buildWikiSnapshots,
+  lintWikis, buildWikiSnapshots,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
@@ -81,7 +81,6 @@ import {
   wikiLog,
 } from "./features/wiki";
 import { setWikiIndexForRetriever } from "./features/wiki/retriever";
-import { detectLocalIssues, type LintIssue } from "./server/services/wiki-linter";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
 import type { CaptureEntry } from "./features/mobile-capture";
@@ -1783,29 +1782,33 @@ export function NoteApp() {
       // Synthesis 失敗は無視
     }
 
-    // 自動 Lint: Ingest 完了後にローカル検出 → 自動修正 → 修正不能はトースト通知
+    // 自動 Lint: ローカル検出 + LLM 分析（5ページ以上で LLM 実行）
     try {
       const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
       if (snapshots.length >= 2) {
-        const issues = detectLocalIssues(snapshots);
+        // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
+        const useLlm = snapshots.length >= 5;
+        const report = await lintWikis(snapshots, "ja", !useLlm);
+        const issues = report.issues;
+
         if (issues.length > 0) {
-          // 矛盾はトーストで通知（自動修正不可）
-          const contradictions = issues.filter((i) => i.type === "contradiction");
-          if (contradictions.length > 0) {
+          // contradiction / gap はトーストで通知（人間が判断）
+          const humanNeeded = issues.filter((i) => i.type === "contradiction" || i.type === "gap");
+          if (humanNeeded.length > 0) {
             setIngestToast((prev) => ({
               items: [
                 ...(prev?.items ?? []),
-                ...contradictions.map((c) => ({
+                ...humanNeeded.map((c) => ({
                   id: `lint:${crypto.randomUUID()}`,
-                  status: "error" as const,
-                  noteTitle: `⚠ ${c.title}`,
+                  status: (c.type === "contradiction" ? "error" : "success") as "error" | "success",
+                  noteTitle: `${c.type === "contradiction" ? "⚠" : "💡"} ${c.title}`,
                   result: c.suggestion,
                 })),
               ],
             }));
           }
 
-          // orphan/stale はログに記録（情報として残す）
+          // orphan/stale はログに記録
           const autoFixable = issues.filter((i) => i.type === "orphan" || i.type === "stale");
           if (autoFixable.length > 0) {
             wikiLog.append(
@@ -1813,6 +1816,11 @@ export function NoteApp() {
               autoFixable.flatMap((i) => i.affectedWikiIds),
               `Auto-detected ${autoFixable.length} issue(s): ${autoFixable.map((i) => `${i.type}:"${i.title}"`).join(", ")}`,
             ).catch(() => {});
+          }
+
+          // 全体のログ
+          if (useLlm) {
+            wikiLog.append("lint", [], `LLM health check: ${issues.length} issue(s) found`).catch(() => {});
           }
         }
       }

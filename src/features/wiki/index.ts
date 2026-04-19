@@ -9,7 +9,7 @@ export {
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail,
   // Lint（自動実行用）
-  buildWikiSnapshots,
+  lintWikis, buildWikiSnapshots,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
