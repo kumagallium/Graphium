@@ -65,21 +65,21 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
 import {
-  WikiListView, WikiLintView, WikiLogView, WikiBanner,
+  WikiListView, WikiLogView, WikiBanner,
   IngestToast, type IngestToastState, type IngestToastItem,
   ingestNote, ingestFromUrl, ingestFromChat,
   buildWikiDocument, mergeIntoWikiDocument, embedWikiSections,
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail,
-  // Lint
-  lintWikis, buildWikiSnapshots,
+  // Lint（自動実行用）
+  buildWikiSnapshots,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // 操作ログ
   wikiLog,
 } from "./features/wiki";
 import { setWikiIndexForRetriever } from "./features/wiki/retriever";
-import type { LintReport } from "./server/services/wiki-linter";
+import { detectLocalIssues, type LintIssue } from "./server/services/wiki-linter";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
 import type { CaptureEntry } from "./features/mobile-capture";
@@ -1557,10 +1557,8 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
-  // Wiki Lint / Log 表示状態
-  const [activeWikiView, setActiveWikiView] = useState<"lint" | "log" | null>(null);
-  const [lintReport, setLintReport] = useState<LintReport | null>(null);
-  const [lintLoading, setLintLoading] = useState(false);
+  // Wiki Log 表示状態
+  const [activeWikiView, setActiveWikiView] = useState<"log" | null>(null);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
 
@@ -1702,6 +1700,43 @@ export function NoteApp() {
       ingestQueueRef.current.shift();
     }
 
+    // 自動 Lint: Ingest 完了後にローカル検出 → 自動修正 → 修正不能はトースト通知
+    try {
+      const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      if (snapshots.length >= 2) {
+        const issues = detectLocalIssues(snapshots);
+        if (issues.length > 0) {
+          // 矛盾はトーストで通知（自動修正不可）
+          const contradictions = issues.filter((i) => i.type === "contradiction");
+          if (contradictions.length > 0) {
+            setIngestToast((prev) => ({
+              items: [
+                ...(prev?.items ?? []),
+                ...contradictions.map((c) => ({
+                  id: `lint:${crypto.randomUUID()}`,
+                  status: "error" as const,
+                  noteTitle: `⚠ ${c.title}`,
+                  result: c.suggestion,
+                })),
+              ],
+            }));
+          }
+
+          // orphan/stale はログに記録（情報として残す）
+          const autoFixable = issues.filter((i) => i.type === "orphan" || i.type === "stale");
+          if (autoFixable.length > 0) {
+            wikiLog.append(
+              "lint",
+              autoFixable.flatMap((i) => i.affectedWikiIds),
+              `Auto-detected ${autoFixable.length} issue(s): ${autoFixable.map((i) => `${i.type}:"${i.title}"`).join(", ")}`,
+            ).catch(() => {});
+          }
+        }
+      }
+    } catch {
+      // Lint 失敗は無視（Ingest 自体は成功している）
+    }
+
     ingestRunningRef.current = false;
   }, [fm]);
 
@@ -1712,21 +1747,6 @@ export function NoteApp() {
     setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
     processIngestQueue();
   }, [processIngestQueue]);
-
-  // Lint 実行ハンドラ
-  const handleRunLint = useCallback(async (localOnly: boolean) => {
-    setLintLoading(true);
-    try {
-      const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
-      const report = await lintWikis(snapshots, "ja", localOnly);
-      setLintReport(report);
-      wikiLog.append("lint", [], `Health check completed: ${report.summary.total} issue(s)`).catch(() => {});
-    } catch (err) {
-      console.error("Lint failed:", err);
-    } finally {
-      setLintLoading(false);
-    }
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
   // 構造化インデックスを Retriever に注入（Wiki メタ変更時に更新）
   useEffect(() => {
@@ -1812,7 +1832,6 @@ export function NoteApp() {
     })(),
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); },
     activeWikiKind: fm.activeWikiKind,
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
     onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
     activeWikiView,
   };
@@ -1899,14 +1918,6 @@ export function NoteApp() {
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
             insertDisabled={!fm.activeFileId}
-          />
-        ) : activeWikiView === "lint" ? (
-          <WikiLintView
-            report={lintReport}
-            loading={lintLoading}
-            onRunLint={handleRunLint}
-            onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
-            onBack={() => setActiveWikiView(null)}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView

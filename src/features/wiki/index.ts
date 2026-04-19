@@ -1,5 +1,4 @@
 export { WikiListView } from "./WikiListView";
-export { WikiLintView } from "./WikiLintView";
 export { WikiLogView } from "./WikiLogView";
 export { WikiBanner } from "./WikiBanner";
 export { IngestToast, type IngestToastState, type IngestToastItem } from "./IngestToast";
@@ -9,8 +8,8 @@ export {
   embedWikiSections, markEditedSections,
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail,
-  // Lint
-  lintWikis, buildWikiSnapshots,
+  // Lint（自動実行用）
+  buildWikiSnapshots,
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
