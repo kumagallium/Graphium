@@ -113,7 +113,7 @@ Output in: ${language === "ja" ? "Japanese" : "English"}
 
 - Summary: Always generate exactly 1 per note
 - Concepts: Generate 0-3. Quality over quantity — only create if there's genuine insight to develop
-- Section content: Be substantive (100-500 chars per section). Include reasoning, not just facts
+- Section content: Be thorough. Include reasoning, evidence, and concrete examples — not just facts. Write as much as needed to fully develop the insight
 - relatedConcepts: List titles of existing Concepts that are related (empty array if none)
 - confidence: 0.9+ for clear, well-evidenced knowledge. 0.6-0.8 for tentative insights
 - externalReferences: Include URLs to authoritative sources (Wikipedia, academic papers, official docs) that support or contextualize the knowledge. Only include URLs you are confident exist. 0-3 per wiki. Leave empty if no relevant external source comes to mind

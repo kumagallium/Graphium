@@ -77,7 +77,7 @@ Respond with valid JSON only (no markdown wrapper):
 - Generate 0-2 candidates (quality over quantity)
 - Only propose with confidence >= 0.75
 - Each candidate must combine 2-4 existing Concepts
-- Section content should be substantive (200-600 chars per section)
+- Section content should be thorough — include reasoning, evidence, and implications without length constraints
 - Include sections like: Overview, Key Insight, Implications, Open Questions
 - The rationale must explain what NEW understanding emerges
 - Return empty candidates array if no meaningful synthesis is possible

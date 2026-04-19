@@ -85,7 +85,7 @@ Respond with valid JSON only (no markdown wrapper):
 - Focus on Concept pages (not Summaries — those are tied to specific notes)
 - Don't propose trivial updates (just adding a mention without substance)
 - Each proposal should add genuine value to the existing page
-- Keep section content concise (100-400 chars)
+- Write section content with enough depth to be genuinely useful
 - Return empty proposals array if no updates are warranted
 
 ## Language
