@@ -11,6 +11,21 @@ import {
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
+import {
+  buildLinterSystemPrompt,
+  buildLinterUserMessage,
+  parseLinterOutput,
+  detectLocalIssues,
+  type WikiSnapshot,
+  type LintReport,
+  type LintIssue,
+} from "../services/wiki-linter.js";
+import {
+  buildCrossUpdateSystemPrompt,
+  buildCrossUpdateUserMessage,
+  parseCrossUpdateOutput,
+  type ExistingWikiDetail,
+} from "../services/wiki-cross-updater.js";
 import { generateEmbeddings } from "../services/embedding.js";
 
 const app = new Hono();
@@ -121,6 +136,175 @@ app.post("/embed", async (c) => {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki embed error:", err);
     return c.json({ error: message }, 500);
+  }
+});
+
+// Wiki の整合性チェック（Lint）
+app.post("/lint", async (c) => {
+  const body = await c.req.json<{
+    wikis: WikiSnapshot[];
+    language: string;
+    model?: string;
+    /** true: ローカル検出のみ（LLM 不使用）。デフォルト false */
+    localOnly?: boolean;
+  }>();
+
+  if (!body.wikis || body.wikis.length === 0) {
+    return c.json({ error: "wikis は必須です" }, 400);
+  }
+
+  // ローカル検出（LLM 不要）
+  const localIssues = detectLocalIssues(body.wikis);
+
+  if (body.localOnly) {
+    const report: LintReport = {
+      issues: localIssues,
+      summary: buildSummary(localIssues),
+      analyzedAt: new Date().toISOString(),
+    };
+    return c.json(report);
+  }
+
+  // LLM による深い分析
+  let modelConfig = getDefaultModel();
+  if (body.model) {
+    const models = listModels();
+    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
+  }
+
+  if (!modelConfig) {
+    // モデルなしの場合、ローカル結果のみ返す
+    const report: LintReport = {
+      issues: localIssues,
+      summary: buildSummary(localIssues),
+      analyzedAt: new Date().toISOString(),
+    };
+    return c.json(report);
+  }
+
+  const systemPrompt = buildLinterSystemPrompt(body.language || "en");
+  const userMessage = buildLinterUserMessage(body.wikis);
+
+  try {
+    const model = createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+    });
+
+    const llmIssues = parseLinterOutput(result.message);
+
+    // ローカル検出 + LLM 分析をマージ（重複排除）
+    const allIssues = mergeIssues(localIssues, llmIssues);
+
+    const report: LintReport = {
+      issues: allIssues,
+      summary: buildSummary(allIssues),
+      analyzedAt: new Date().toISOString(),
+    };
+
+    return c.json({
+      ...report,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "不明なエラー";
+    console.error("Wiki lint error:", err);
+    // LLM 失敗時はローカル結果のみ返す
+    const report: LintReport = {
+      issues: localIssues,
+      summary: buildSummary(localIssues),
+      analyzedAt: new Date().toISOString(),
+    };
+    return c.json({ ...report, lintError: message });
+  }
+});
+
+function buildSummary(issues: { type: string }[]) {
+  return {
+    total: issues.length,
+    contradictions: issues.filter((i) => i.type === "contradiction").length,
+    orphans: issues.filter((i) => i.type === "orphan").length,
+    gaps: issues.filter((i) => i.type === "gap").length,
+    stale: issues.filter((i) => i.type === "stale").length,
+  };
+}
+
+function mergeIssues(
+  localIssues: LintIssue[],
+  llmIssues: LintIssue[],
+): LintIssue[] {
+  const merged = [...localIssues];
+  for (const llmIssue of llmIssues) {
+    // ローカル検出と重複するタイプ+対象 Wiki の組み合わせはスキップ
+    const isDuplicate = localIssues.some(
+      (li) =>
+        li.type === llmIssue.type &&
+        li.affectedWikiIds.some((id) => llmIssue.affectedWikiIds.includes(id)),
+    );
+    if (!isDuplicate) merged.push(llmIssue);
+  }
+  return merged;
+}
+
+// 横断更新（Ingest 後に既存 Wiki の更新提案を生成）
+app.post("/cross-update", async (c) => {
+  const body = await c.req.json<{
+    newNoteTitle: string;
+    newNoteContent: string;
+    newWikiTitles: string[];
+    existingWikis: ExistingWikiDetail[];
+    language: string;
+    model?: string;
+  }>();
+
+  if (!body.existingWikis || body.existingWikis.length === 0) {
+    return c.json({ proposals: [] });
+  }
+
+  let modelConfig = getDefaultModel();
+  if (body.model) {
+    const models = listModels();
+    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
+  }
+
+  if (!modelConfig) {
+    return c.json({ proposals: [] });
+  }
+
+  const systemPrompt = buildCrossUpdateSystemPrompt(body.language || "en");
+  const userMessage = buildCrossUpdateUserMessage(
+    body.newNoteTitle,
+    body.newNoteContent,
+    body.newWikiTitles,
+    body.existingWikis,
+  );
+
+  try {
+    const model = createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+    });
+
+    const proposals = parseCrossUpdateOutput(result.message);
+
+    return c.json({
+      proposals,
+      tokenUsage: result.tokenUsage,
+      model: result.model,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "不明なエラー";
+    console.error("Wiki cross-update error:", err);
+    return c.json({ proposals: [], error: message });
   }
 });
 

@@ -548,6 +548,365 @@ export async function ingestFromChat(
   return res.json();
 }
 
+// ── 横断更新（Cross-Update） ──
+
+import type { CrossUpdateProposal, ExistingWikiDetail } from "../../server/services/wiki-cross-updater";
+
+type CrossUpdateInput = {
+  newNoteTitle: string;
+  newNoteContent: string;
+  newWikiTitles: string[];
+  existingWikis: ExistingWikiDetail[];
+  language: string;
+};
+
+type CrossUpdateResult = {
+  proposals: CrossUpdateProposal[];
+};
+
+/**
+ * 横断更新の提案を取得する
+ */
+export async function fetchCrossUpdateProposals(
+  input: CrossUpdateInput,
+): Promise<CrossUpdateResult> {
+  const res = await fetch(`${API_BASE}/cross-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    console.error("Cross-update API failed:", res.status);
+    return { proposals: [] };
+  }
+
+  return res.json();
+}
+
+/**
+ * CrossUpdateProposal を既存の Wiki ドキュメントに適用する
+ */
+export function applyCrossUpdate(
+  existingDoc: GraphiumDocument,
+  proposal: CrossUpdateProposal,
+  sourceNoteId: string,
+  model: string | null,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const page = existingDoc.pages[0];
+  if (!page) return existingDoc;
+
+  let updatedBlocks = [...page.blocks];
+  const updatedKnowledgeLinks = [...(page.knowledgeLinks ?? [])];
+
+  if (proposal.updateType === "add_section" && proposal.section) {
+    // 新しいセクションを References の前に挿入
+    const refIndex = updatedBlocks.findIndex(
+      (b) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
+    );
+    const newBlocks = convertSectionsToBlocks([proposal.section]);
+    if (refIndex >= 0) {
+      updatedBlocks = [
+        ...updatedBlocks.slice(0, refIndex),
+        ...newBlocks,
+        ...updatedBlocks.slice(refIndex),
+      ];
+    } else {
+      updatedBlocks.push(...newBlocks);
+    }
+  } else if (proposal.updateType === "revise_section" && proposal.section) {
+    // 既存セクションの末尾にコンテンツを追加
+    const headingIdx = updatedBlocks.findIndex(
+      (b) => b.type === "heading" && extractInlineText(b.content) === proposal.section!.heading,
+    );
+    if (headingIdx >= 0) {
+      // 次の H2 見出しまでのブロックの末尾に追加
+      let insertIdx = headingIdx + 1;
+      while (insertIdx < updatedBlocks.length) {
+        if (updatedBlocks[insertIdx].type === "heading" && updatedBlocks[insertIdx].props?.level === 2) break;
+        insertIdx++;
+      }
+      const updateParagraph = {
+        id: crypto.randomUUID(),
+        type: "paragraph",
+        props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+        content: [{ type: "text", text: proposal.section.content, styles: {} }],
+        children: [],
+      };
+      updatedBlocks = [
+        ...updatedBlocks.slice(0, insertIdx),
+        updateParagraph,
+        ...updatedBlocks.slice(insertIdx),
+      ];
+    } else {
+      // セクション見出しが見つからない場合は add_section として処理
+      const newBlocks = convertSectionsToBlocks([proposal.section]);
+      updatedBlocks.push(...newBlocks);
+    }
+  } else if (proposal.updateType === "add_reference" && proposal.reference) {
+    // Reference セクションに新しいリンクを追加
+    const blockId = crypto.randomUUID();
+    const refBlock = {
+      id: blockId,
+      type: "bulletListItem",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+      content: [
+        { type: "text", text: "Related: ", styles: { bold: true } },
+        { type: "text", text: `@${proposal.reference.noteTitle}`, styles: { textColor: "blue" } },
+      ],
+      children: [],
+    };
+
+    // References セクション内に追加
+    const refHeadingIdx = updatedBlocks.findIndex(
+      (b) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
+    );
+    if (refHeadingIdx >= 0) {
+      // Reference セクションの末尾に追加
+      let insertIdx = refHeadingIdx + 1;
+      while (insertIdx < updatedBlocks.length) {
+        if (updatedBlocks[insertIdx].type === "heading" && updatedBlocks[insertIdx].props?.level === 2) break;
+        insertIdx++;
+      }
+      updatedBlocks = [
+        ...updatedBlocks.slice(0, insertIdx),
+        refBlock,
+        ...updatedBlocks.slice(insertIdx),
+      ];
+    } else {
+      updatedBlocks.push(refBlock);
+    }
+
+    if (proposal.reference.noteId) {
+      updatedKnowledgeLinks.push({
+        id: crypto.randomUUID(),
+        sourceBlockId: blockId,
+        targetBlockId: "",
+        targetNoteId: proposal.reference.noteId,
+        type: "reference",
+        layer: "knowledge",
+        createdBy: "ai",
+      });
+    }
+  }
+
+  // derivedFromNotes に追加
+  const derivedFromNotes = [
+    ...new Set([...(existingDoc.wikiMeta?.derivedFromNotes ?? []), sourceNoteId]),
+  ];
+
+  return {
+    ...existingDoc,
+    pages: [{
+      ...page,
+      blocks: updatedBlocks,
+      knowledgeLinks: updatedKnowledgeLinks,
+    }],
+    wikiMeta: {
+      ...existingDoc.wikiMeta!,
+      derivedFromNotes,
+      lastIngestedAt: now,
+    },
+    modifiedAt: now,
+  };
+}
+
+/**
+ * 既存の Wiki からセクション見出し・プレビューを抽出する（横断更新の入力用）
+ */
+export function extractWikiDetail(
+  id: string,
+  doc: GraphiumDocument,
+): ExistingWikiDetail | null {
+  if (!doc.wikiMeta || doc.wikiMeta.kind !== "concept") return null;
+
+  const page = doc.pages[0];
+  if (!page) return null;
+
+  const sectionHeadings: string[] = [];
+  const sectionPreviews: string[] = [];
+  let currentHeading = "";
+  let currentContent: string[] = [];
+
+  const flushSection = () => {
+    if (currentHeading) {
+      sectionHeadings.push(currentHeading);
+      sectionPreviews.push(currentContent.join(" ").slice(0, 200));
+    }
+    currentContent = [];
+  };
+
+  for (const block of page.blocks) {
+    if (block.type === "heading" && block.props?.level === 2) {
+      flushSection();
+      currentHeading = extractInlineText(block.content);
+    } else if (currentHeading) {
+      const text = extractInlineText(block.content);
+      if (text) currentContent.push(text);
+    }
+  }
+  flushSection();
+
+  return {
+    id,
+    title: doc.title,
+    kind: doc.wikiMeta.kind,
+    sectionHeadings,
+    sectionPreviews,
+  };
+}
+
+// ── Lint（整合性チェック） ──
+
+import type { LintReport, WikiSnapshot } from "../../server/services/wiki-linter";
+
+/**
+ * Wiki の整合性チェックを実行する
+ */
+export async function lintWikis(
+  wikis: WikiSnapshot[],
+  language: string,
+  localOnly: boolean = false,
+): Promise<LintReport> {
+  const res = await fetch(`${API_BASE}/lint`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wikis, language, localOnly }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `Lint failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Wiki ドキュメント一覧から Lint 用のスナップショットを構築する
+ */
+export function buildWikiSnapshots(
+  wikiFiles: { id: string; modifiedTime: string }[],
+  wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
+  getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
+): WikiSnapshot[] {
+  const snapshots: WikiSnapshot[] = [];
+
+  for (const file of wikiFiles) {
+    const meta = wikiMetas.get(file.id);
+    if (!meta) continue;
+
+    const doc = getCachedDoc(`wiki:${file.id}`);
+    const wikiMeta = doc?.wikiMeta;
+
+    snapshots.push({
+      id: file.id,
+      title: meta.title,
+      kind: meta.kind,
+      status: meta.status as "draft" | "published",
+      derivedFromNotes: wikiMeta?.derivedFromNotes ?? [],
+      relatedConcepts: extractRelatedConcepts(doc),
+      sections: meta.headings,
+      lastIngestedAt: wikiMeta?.lastIngestedAt,
+      modifiedAt: file.modifiedTime,
+    });
+  }
+
+  return snapshots;
+}
+
+/**
+ * Wiki ドキュメントから関連 Concept タイトルを抽出する
+ */
+function extractRelatedConcepts(doc: GraphiumDocument | null | undefined): string[] {
+  if (!doc) return [];
+  const page = doc.pages[0];
+  if (!page) return [];
+
+  const concepts: string[] = [];
+  for (const link of page.knowledgeLinks ?? []) {
+    if (link.targetNoteId && link.type === "reference") {
+      concepts.push(link.targetNoteId);
+    }
+  }
+  return concepts;
+}
+
+// ── 構造化インデックス ──
+
+export type WikiIndexEntry = {
+  id: string;
+  title: string;
+  kind: WikiKind;
+  status: string;
+  sections: string[];
+  derivedFromNotes: string[];
+  relatedConcepts: string[];
+  modifiedAt: string;
+};
+
+/**
+ * LLM が参照可能な構造化 Wiki インデックスを構築する
+ * Retriever のコンテキストに注入して、LLM が Wiki 全体像を把握できるようにする
+ */
+export function buildWikiIndex(
+  wikiFiles: { id: string; modifiedTime: string }[],
+  wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
+  getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
+): WikiIndexEntry[] {
+  const entries: WikiIndexEntry[] = [];
+
+  for (const file of wikiFiles) {
+    const meta = wikiMetas.get(file.id);
+    if (!meta) continue;
+
+    const doc = getCachedDoc(`wiki:${file.id}`);
+
+    entries.push({
+      id: file.id,
+      title: meta.title,
+      kind: meta.kind,
+      status: meta.status,
+      sections: meta.headings,
+      derivedFromNotes: doc?.wikiMeta?.derivedFromNotes ?? [],
+      relatedConcepts: extractRelatedConcepts(doc),
+      modifiedAt: file.modifiedTime,
+    });
+  }
+
+  return entries;
+}
+
+/**
+ * Wiki インデックスを LLM 向けテキストにフォーマットする
+ */
+export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
+  if (entries.length === 0) return "";
+
+  const summaries = entries.filter((e) => e.kind === "summary");
+  const concepts = entries.filter((e) => e.kind === "concept");
+
+  let text = `## Wiki Index (${entries.length} pages)\n\n`;
+
+  if (concepts.length > 0) {
+    text += `### Concepts (${concepts.length})\n`;
+    for (const c of concepts) {
+      text += `- **${c.title}** [${c.status}]: ${c.sections.join(", ")}\n`;
+    }
+    text += "\n";
+  }
+
+  if (summaries.length > 0) {
+    text += `### Summaries (${summaries.length})\n`;
+    for (const s of summaries) {
+      text += `- **${s.title}** [${s.status}]: ${s.sections.join(", ")}\n`;
+    }
+  }
+
+  return text;
+}
+
 function extractInlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;

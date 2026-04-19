@@ -39,7 +39,7 @@ export async function retrieveWikiContext(
         const results = await embeddingStore.searchByVector(queryVector, TOP_K);
         const relevant = results.filter((r) => r.score >= MIN_SCORE);
         if (relevant.length > 0) {
-          return formatWikiContext(relevant);
+          return formatWikiContext(relevant, _wikiIndexText || undefined);
         }
       }
     }
@@ -72,8 +72,12 @@ export async function retrieveWikiContextFallback(
       .sort((a, b) => b.score - a.score)
       .slice(0, TOP_K);
 
-    if (matched.length === 0) return null;
-    return formatWikiContext(matched);
+    if (matched.length === 0) {
+      // 検索結果なしでもインデックスがあれば注入
+      if (_wikiIndexText) return formatWikiContext([], _wikiIndexText);
+      return null;
+    }
+    return formatWikiContext(matched, _wikiIndexText || undefined);
   } catch {
     return null;
   }
@@ -114,7 +118,7 @@ function calculateTextRelevance(query: string, text: string): number {
 }
 
 /** 検索結果をシステムプロンプト注入用フォーマットに変換 */
-function formatWikiContext(results: SearchResult[]): string {
+function formatWikiContext(results: SearchResult[], wikiIndexText?: string): string {
   let context = "";
   for (const r of results) {
     const entry = `[${r.text}]\n`;
@@ -122,11 +126,28 @@ function formatWikiContext(results: SearchResult[]): string {
     context += entry;
   }
 
-  if (!context) return null as any;
+  if (!context && !wikiIndexText) return null as any;
 
-  return `The following is the user's accumulated knowledge from their Wiki. Use it when relevant to provide informed responses.
+  let output = `The following is the user's accumulated knowledge from their Wiki. Use it when relevant to provide informed responses.`;
 
-<knowledge>
-${context.trim()}
-</knowledge>`;
+  if (wikiIndexText) {
+    output += `\n\n<wiki-index>\n${wikiIndexText}\n</wiki-index>`;
+  }
+
+  if (context) {
+    output += `\n\n<knowledge>\n${context.trim()}\n</knowledge>`;
+  }
+
+  return output;
+}
+
+/** Wiki インデックステキストを設定する（外部から注入） */
+let _wikiIndexText: string = "";
+export function setWikiIndexForRetriever(text: string): void {
+  _wikiIndexText = text;
+}
+
+/** 現在の Wiki インデックステキストを取得 */
+export function getWikiIndexText(): string {
+  return _wikiIndexText;
 }

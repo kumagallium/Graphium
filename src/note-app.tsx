@@ -64,7 +64,22 @@ import { recordRevision, detectActivityType } from "./features/document-provenan
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
-import { WikiListView, WikiBanner, IngestToast, type IngestToastState, type IngestToastItem, ingestNote, ingestFromUrl, ingestFromChat, buildWikiDocument, mergeIntoWikiDocument, embedWikiSections } from "./features/wiki";
+import {
+  WikiListView, WikiLogView, WikiBanner,
+  IngestToast, type IngestToastState, type IngestToastItem,
+  ingestNote, ingestFromUrl, ingestFromChat,
+  buildWikiDocument, mergeIntoWikiDocument, embedWikiSections,
+  // 横断更新
+  fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail,
+  // Lint（自動実行用）
+  buildWikiSnapshots,
+  // 構造化インデックス
+  buildWikiIndex, formatWikiIndexForLLM,
+  // 操作ログ
+  wikiLog,
+} from "./features/wiki";
+import { setWikiIndexForRetriever } from "./features/wiki/retriever";
+import { detectLocalIssues, type LintIssue } from "./server/services/wiki-linter";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
 import type { CaptureEntry } from "./features/mobile-capture";
@@ -1542,6 +1557,8 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
+  // Wiki Log 表示状態
+  const [activeWikiView, setActiveWikiView] = useState<"log" | null>(null);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
 
@@ -1589,6 +1606,8 @@ export function NoteApp() {
           ),
         }));
 
+        const createdWikiIds: string[] = [];
+        const createdWikiTitles: string[] = [];
         for (const wiki of result.wikis) {
           if (wiki.suggestedAction === "merge" && wiki.mergeTargetId) {
             try {
@@ -1597,6 +1616,9 @@ export function NoteApp() {
                 const mergedDoc = mergeIntoWikiDocument(existingDoc, wiki, job.noteId, result.model);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc);
                 embedWikiSections(wiki.mergeTargetId, mergedDoc).catch(() => {});
+                createdWikiIds.push(wiki.mergeTargetId);
+                createdWikiTitles.push(wiki.title);
+                wikiLog.append("merge", [wiki.mergeTargetId], `Merged into "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
                 continue;
               }
             } catch { /* fallback to create */ }
@@ -1605,6 +1627,57 @@ export function NoteApp() {
           const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap);
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
+          createdWikiIds.push(newId);
+          createdWikiTitles.push(wiki.title);
+          wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+        }
+
+        // 横断更新: 既存 Concept ページの自動更新
+        if (existingWikis.length > 0 && job.doc) {
+          (async () => {
+            try {
+              const existingDetails = existingWikis
+                .filter((w) => w.kind === "concept" && !createdWikiIds.includes(w.id))
+                .map((w) => {
+                  const doc = fm.getCachedDoc(`wiki:${w.id}`);
+                  return doc ? extractWikiDetail(w.id, doc) : null;
+                })
+                .filter((d): d is NonNullable<typeof d> => d !== null);
+
+              if (existingDetails.length > 0) {
+                const noteContent = job.doc.pages[0]?.blocks
+                  ?.map((b: any) => {
+                    if (Array.isArray(b.content)) return b.content.map((c: any) => c.text ?? "").join("");
+                    return "";
+                  })
+                  .filter(Boolean)
+                  .join("\n") ?? "";
+
+                const crossResult = await fetchCrossUpdateProposals({
+                  newNoteTitle: job.noteTitle,
+                  newNoteContent: noteContent,
+                  newWikiTitles: createdWikiTitles,
+                  existingWikis: existingDetails,
+                  language: "ja",
+                });
+
+                for (const proposal of crossResult.proposals) {
+                  const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
+                  if (!targetDoc) continue;
+                  const updatedDoc = applyCrossUpdate(targetDoc, proposal, job.noteId, result.model);
+                  await fm.handleSaveWikiFile(proposal.targetWikiId, updatedDoc);
+                  embedWikiSections(proposal.targetWikiId, updatedDoc).catch(() => {});
+                  wikiLog.append(
+                    "cross-update",
+                    [proposal.targetWikiId],
+                    `Updated "${proposal.targetWikiTitle}" (${proposal.updateType}): ${proposal.reason}`,
+                  ).catch(() => {});
+                }
+              }
+            } catch (err) {
+              console.error("Cross-update failed:", err);
+            }
+          })();
         }
 
         setIngestToast((prev) => ({
@@ -1627,6 +1700,43 @@ export function NoteApp() {
       ingestQueueRef.current.shift();
     }
 
+    // 自動 Lint: Ingest 完了後にローカル検出 → 自動修正 → 修正不能はトースト通知
+    try {
+      const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      if (snapshots.length >= 2) {
+        const issues = detectLocalIssues(snapshots);
+        if (issues.length > 0) {
+          // 矛盾はトーストで通知（自動修正不可）
+          const contradictions = issues.filter((i) => i.type === "contradiction");
+          if (contradictions.length > 0) {
+            setIngestToast((prev) => ({
+              items: [
+                ...(prev?.items ?? []),
+                ...contradictions.map((c) => ({
+                  id: `lint:${crypto.randomUUID()}`,
+                  status: "error" as const,
+                  noteTitle: `⚠ ${c.title}`,
+                  result: c.suggestion,
+                })),
+              ],
+            }));
+          }
+
+          // orphan/stale はログに記録（情報として残す）
+          const autoFixable = issues.filter((i) => i.type === "orphan" || i.type === "stale");
+          if (autoFixable.length > 0) {
+            wikiLog.append(
+              "lint",
+              autoFixable.flatMap((i) => i.affectedWikiIds),
+              `Auto-detected ${autoFixable.length} issue(s): ${autoFixable.map((i) => `${i.type}:"${i.title}"`).join(", ")}`,
+            ).catch(() => {});
+          }
+        }
+      }
+    } catch {
+      // Lint 失敗は無視（Ingest 自体は成功している）
+    }
+
     ingestRunningRef.current = false;
   }, [fm]);
 
@@ -1637,6 +1747,17 @@ export function NoteApp() {
     setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
     processIngestQueue();
   }, [processIngestQueue]);
+
+  // 構造化インデックスを Retriever に注入（Wiki メタ変更時に更新）
+  useEffect(() => {
+    if (fm.wikiFiles.length > 0 && fm.wikiMetas.size > 0) {
+      const entries = buildWikiIndex(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      const text = formatWikiIndexForLLM(entries);
+      setWikiIndexForRetriever(text);
+    } else {
+      setWikiIndexForRetriever("");
+    }
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
   const t = useT();
 
@@ -1709,8 +1830,10 @@ export function NoteApp() {
       }
       return { summary, concept };
     })(),
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); },
     activeWikiKind: fm.activeWikiKind,
+    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    activeWikiView,
   };
 
   return (
@@ -1796,6 +1919,11 @@ export function NoteApp() {
             onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
             insertDisabled={!fm.activeFileId}
           />
+        ) : activeWikiView === "log" ? (
+          <WikiLogView
+            onBack={() => setActiveWikiView(null)}
+            onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
+          />
         ) : fm.activeWikiKind ? (
           <WikiListView
             noteIndex={fm.noteIndex}
@@ -1837,6 +1965,7 @@ export function NoteApp() {
                 };
                 const wikiId = fm.activeFileId.replace("wiki:", "");
                 fm.handleSaveWikiFile(wikiId, updatedDoc);
+                wikiLog.append("approve", [wikiId], `Approved "${fm.activeDoc.title}" (Draft → Published)`).catch(() => {});
               }}
               onRegenerate={async () => {
                 if (!fm.activeDoc?.wikiMeta) return;
@@ -1852,6 +1981,7 @@ export function NoteApp() {
                     const wikiId = fm.activeFileId!.replace("wiki:", "");
                     await fm.handleSaveWikiFile(wikiId, newDoc);
                     fm.handleOpenWikiFile(wikiId);
+                    wikiLog.append("regenerate", [wikiId], `Regenerated "${result.wikis[0].title}"`).catch(() => {});
                   }
                 } catch (err) {
                   console.error("Wiki の再生成に失敗:", err);
@@ -1860,7 +1990,9 @@ export function NoteApp() {
               onDelete={() => {
                 if (!fm.activeFileId) return;
                 const wikiId = fm.activeFileId.replace("wiki:", "");
+                const title = fm.activeDoc?.title ?? wikiId;
                 fm.handleDeleteWikiFile(wikiId);
+                wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
               }}
             />
           )}
