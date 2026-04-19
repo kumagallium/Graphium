@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle,
+  Copy,
   Info,
   Loader2,
   RefreshCw,
@@ -29,6 +30,7 @@ const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
   orphan: Unlink,
   gap: Lightbulb,
   stale: Clock,
+  redundant: Copy,
 };
 
 const ISSUE_LABELS: Record<LintIssueType, string> = {
@@ -36,6 +38,7 @@ const ISSUE_LABELS: Record<LintIssueType, string> = {
   orphan: "Orphan",
   gap: "Gap",
   stale: "Stale",
+  redundant: "Redundant",
 };
 
 const SEVERITY_STYLES: Record<LintSeverity, string> = {
@@ -150,6 +153,12 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
                     <span className="flex items-center gap-1">
                       <Clock size={10} className="text-amber-500" />
                       {report.summary.stale}
+                    </span>
+                  )}
+                  {report.summary.redundant > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Copy size={10} className="text-amber-500" />
+                      {report.summary.redundant}
                     </span>
                   )}
                 </div>

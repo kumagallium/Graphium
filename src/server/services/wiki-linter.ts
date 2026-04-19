@@ -4,8 +4,9 @@
 // - 孤立ページ（Orphan）: 他の Wiki や元ノートとの接続がないページ
 // - 知識ギャップ（Gap）: カバーされていないトピック・発展可能な領域
 // - 陳腐化（Stale）: 長期間更新されていないページ
+// - 重複（Redundant）: 内容が大幅に重なる Concept 同士
 
-export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale";
+export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant";
 export type LintSeverity = "info" | "warning" | "error";
 
 export type LintIssue = {
@@ -27,6 +28,7 @@ export type LintReport = {
     orphans: number;
     gaps: number;
     stale: number;
+    redundant: number;
   };
   analyzedAt: string;
 };
@@ -73,6 +75,12 @@ A Wiki page that hasn't been updated in a long time while related pages have bee
 Or a page whose source notes may have changed since the Wiki was generated.
 Severity: "warning"
 
+### redundant
+Two or more Concept pages that cover substantially the same knowledge.
+One could be deleted or merged into the other without losing information.
+This often happens when a page is regenerated with a better model — the old version may now be redundant.
+Severity: "warning"
+
 ## Output Format
 
 Respond with valid JSON only (no markdown wrapper):
@@ -80,7 +88,7 @@ Respond with valid JSON only (no markdown wrapper):
 {
   "issues": [
     {
-      "type": "contradiction" | "orphan" | "gap" | "stale",
+      "type": "contradiction" | "orphan" | "gap" | "stale" | "redundant",
       "severity": "info" | "warning" | "error",
       "title": "Short issue title",
       "description": "Detailed explanation of the issue",
@@ -98,6 +106,7 @@ Respond with valid JSON only (no markdown wrapper):
 - For gaps: suggest what kind of Concept page could be created
 - For contradictions: quote the conflicting claims
 - For stale: compare lastIngestedAt dates with related pages
+- For redundant: compare section headings and content themes between Concept pages. If two Concepts cover >70% of the same ground, flag them. Suggest which one to keep (prefer the one with more recent updates or more sources) and which to delete or merge
 - Return an empty issues array if no issues are found
 
 ## Language
@@ -167,7 +176,7 @@ export function parseLinterOutput(text: string): LintIssue[] {
 }
 
 function validateIssueType(type: string): LintIssueType {
-  if (["contradiction", "orphan", "gap", "stale"].includes(type)) {
+  if (["contradiction", "orphan", "gap", "stale", "redundant"].includes(type)) {
     return type as LintIssueType;
   }
   return "gap";

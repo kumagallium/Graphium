@@ -1961,16 +1961,21 @@ export function NoteApp() {
         if (report.issues.length > 0) {
           // 問題があればトースト通知（バックグラウンドで静かに）
           const important = report.issues.filter((i) =>
-            i.type === "contradiction" || i.type === "gap",
+            i.type === "contradiction" || i.type === "gap" || i.type === "redundant",
           );
           if (important.length > 0) {
+            const iconMap: Record<string, string> = {
+              contradiction: "\u26a0",
+              gap: "\ud83d\udca1",
+              redundant: "\ud83d\udd04",
+            };
             setIngestToast((prev) => ({
               items: [
                 ...(prev?.items ?? []),
                 ...important.slice(0, 3).map((issue) => ({
                   id: `auto-lint:${crypto.randomUUID()}`,
                   status: (issue.type === "contradiction" ? "error" : "success") as "error" | "success",
-                  noteTitle: `${issue.type === "contradiction" ? "\u26a0" : "\ud83d\udca1"} ${issue.title}`,
+                  noteTitle: `${iconMap[issue.type] ?? "\u26a0"} ${issue.title}`,
                   result: issue.suggestion,
                 })),
               ],

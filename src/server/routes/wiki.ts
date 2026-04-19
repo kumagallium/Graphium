@@ -243,6 +243,7 @@ function buildSummary(issues: { type: string }[]) {
     orphans: issues.filter((i) => i.type === "orphan").length,
     gaps: issues.filter((i) => i.type === "gap").length,
     stale: issues.filter((i) => i.type === "stale").length,
+    redundant: issues.filter((i) => i.type === "redundant").length,
   };
 }
 
