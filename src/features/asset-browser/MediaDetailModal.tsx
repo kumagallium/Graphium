@@ -287,6 +287,7 @@ export type MediaDetailModalProps = {
   onClose: () => void;
   onNavigateNote: (noteId: string) => void;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
+  onIngest?: (entry: MediaIndexEntry) => void;
 };
 
 export function MediaDetailModal({
@@ -294,6 +295,7 @@ export function MediaDetailModal({
   onClose,
   onNavigateNote,
   onRename,
+  onIngest,
 }: MediaDetailModalProps) {
   const t = useT();
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -453,6 +455,14 @@ export function MediaDetailModal({
               </span>
             )}
           </div>
+          {onIngest && (entry.type === "url" || entry.type === "pdf") && (
+            <button
+              onClick={() => onIngest(entry)}
+              className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+            >
+              🤖 Add to Knowledge
+            </button>
+          )}
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"

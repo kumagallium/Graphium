@@ -459,6 +459,95 @@ function extractBlockText(block: any): string {
   return "";
 }
 
+// ── 追加 Ingest ソース ──
+
+/**
+ * URL からテキストを取得して Wiki を生成する
+ */
+export async function ingestFromUrl(
+  url: string,
+  existingWikis: ExistingWikiInfo[],
+  language: string,
+): Promise<IngestResult> {
+  // サーバーサイドで HTML 取得・パース
+  const fetchRes = await fetch(`${API_BASE}/fetch-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!fetchRes.ok) {
+    const err = await fetchRes.json().catch(() => ({ error: "Fetch failed" }));
+    throw new Error(err.error || `URL fetch failed (${fetchRes.status})`);
+  }
+
+  const urlData = await fetchRes.json() as {
+    title: string;
+    description: string;
+    text: string;
+    url: string;
+  };
+
+  const noteContent = [
+    urlData.description && `> ${urlData.description}`,
+    "",
+    urlData.text,
+  ].filter(Boolean).join("\n");
+
+  const res = await fetch(`${API_BASE}/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      noteId: `url:${url}`,
+      noteContent,
+      noteTitle: urlData.title || url,
+      existingWikiTitles: existingWikis,
+      language,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `Ingest failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * AI チャットの会話履歴から Wiki を生成する
+ */
+export async function ingestFromChat(
+  chatMessages: { role: string; content: string }[],
+  chatTitle: string,
+  existingWikis: ExistingWikiInfo[],
+  language: string,
+): Promise<IngestResult> {
+  // チャットメッセージをテキスト化
+  const chatContent = chatMessages
+    .map((m) => `${m.role === "user" ? "User" : "AI"}: ${m.content}`)
+    .join("\n\n");
+
+  const res = await fetch(`${API_BASE}/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      noteId: `chat:${Date.now()}`,
+      noteContent: chatContent,
+      noteTitle: `Chat: ${chatTitle}`,
+      existingWikiTitles: existingWikis,
+      language,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `Ingest failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
 function extractInlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;

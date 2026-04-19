@@ -19,6 +19,8 @@ type AiAssistantPanelProps = {
   onReplaceBlocks?: (markdown: string) => void;
   /** 別ノートとして派生する（従来の buildAiDerivedDocument 動作） */
   onDeriveNote?: (question: string, answer: string) => void;
+  /** チャット内容を Knowledge に追加する */
+  onIngestChat?: (messages: ChatMessage[]) => void;
 };
 
 export function AiAssistantPanel({
@@ -26,6 +28,7 @@ export function AiAssistantPanel({
   onInsertToScope,
   onReplaceBlocks,
   onDeriveNote,
+  onIngestChat,
 }: AiAssistantPanelProps) {
   const {
     messages, loading, error, parkChat,
@@ -116,6 +119,15 @@ export function AiAssistantPanel({
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <List size={12} />
+            </button>
+          )}
+          {messages.length > 0 && onIngestChat && (
+            <button
+              onClick={() => onIngestChat(messages)}
+              title="Add to Knowledge"
+              className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Bot size={12} />
             </button>
           )}
           {messages.length > 0 && (

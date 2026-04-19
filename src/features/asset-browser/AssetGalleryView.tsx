@@ -282,6 +282,8 @@ export type AssetGalleryViewProps = {
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
+  /** メディアから Knowledge を生成（URL/PDF 用） */
+  onIngestMedia?: (entry: MediaIndexEntry) => void;
 };
 
 export function AssetGalleryView({
@@ -292,6 +294,7 @@ export function AssetGalleryView({
   onDeleteMedia,
   onRenameMedia,
   onAddUrlBookmark,
+  onIngestMedia,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -457,6 +460,7 @@ export function AssetGalleryView({
             setDetailEntry({ ...entry, name: newName });
             await onRenameMedia(entry, newName);
           }}
+          onIngest={onIngestMedia}
         />
       )}
 
