@@ -65,14 +65,21 @@ import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
 import {
-  WikiListView, WikiBanner, IngestToast, type IngestToastState, type IngestToastItem,
+  WikiListView, WikiLintView, WikiLogView, WikiBanner,
+  IngestToast, type IngestToastState, type IngestToastItem,
   ingestNote, ingestFromUrl, ingestFromChat,
   buildWikiDocument, mergeIntoWikiDocument, embedWikiSections,
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail,
+  // Lint
+  lintWikis, buildWikiSnapshots,
+  // 構造化インデックス
+  buildWikiIndex, formatWikiIndexForLLM,
   // 操作ログ
   wikiLog,
 } from "./features/wiki";
+import { setWikiIndexForRetriever } from "./features/wiki/retriever";
+import type { LintReport } from "./server/services/wiki-linter";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
 import type { CaptureEntry } from "./features/mobile-capture";
@@ -1550,6 +1557,10 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
+  // Wiki Lint / Log 表示状態
+  const [activeWikiView, setActiveWikiView] = useState<"lint" | "log" | null>(null);
+  const [lintReport, setLintReport] = useState<LintReport | null>(null);
+  const [lintLoading, setLintLoading] = useState(false);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
 
@@ -1702,6 +1713,32 @@ export function NoteApp() {
     processIngestQueue();
   }, [processIngestQueue]);
 
+  // Lint 実行ハンドラ
+  const handleRunLint = useCallback(async (localOnly: boolean) => {
+    setLintLoading(true);
+    try {
+      const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      const report = await lintWikis(snapshots, "ja", localOnly);
+      setLintReport(report);
+      wikiLog.append("lint", [], `Health check completed: ${report.summary.total} issue(s)`).catch(() => {});
+    } catch (err) {
+      console.error("Lint failed:", err);
+    } finally {
+      setLintLoading(false);
+    }
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+
+  // 構造化インデックスを Retriever に注入（Wiki メタ変更時に更新）
+  useEffect(() => {
+    if (fm.wikiFiles.length > 0 && fm.wikiMetas.size > 0) {
+      const entries = buildWikiIndex(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+      const text = formatWikiIndexForLLM(entries);
+      setWikiIndexForRetriever(text);
+    } else {
+      setWikiIndexForRetriever("");
+    }
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+
   const t = useT();
 
   // エディタ参照（メディアリネーム時のブロック同期用）
@@ -1773,8 +1810,11 @@ export function NoteApp() {
       }
       return { summary, concept };
     })(),
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); },
     activeWikiKind: fm.activeWikiKind,
+    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    activeWikiView,
   };
 
   return (
@@ -1860,6 +1900,19 @@ export function NoteApp() {
             onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
             insertDisabled={!fm.activeFileId}
           />
+        ) : activeWikiView === "lint" ? (
+          <WikiLintView
+            report={lintReport}
+            loading={lintLoading}
+            onRunLint={handleRunLint}
+            onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
+            onBack={() => setActiveWikiView(null)}
+          />
+        ) : activeWikiView === "log" ? (
+          <WikiLogView
+            onBack={() => setActiveWikiView(null)}
+            onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
+          />
         ) : fm.activeWikiKind ? (
           <WikiListView
             noteIndex={fm.noteIndex}
@@ -1901,6 +1954,7 @@ export function NoteApp() {
                 };
                 const wikiId = fm.activeFileId.replace("wiki:", "");
                 fm.handleSaveWikiFile(wikiId, updatedDoc);
+                wikiLog.append("approve", [wikiId], `Approved "${fm.activeDoc.title}" (Draft → Published)`).catch(() => {});
               }}
               onRegenerate={async () => {
                 if (!fm.activeDoc?.wikiMeta) return;
@@ -1916,6 +1970,7 @@ export function NoteApp() {
                     const wikiId = fm.activeFileId!.replace("wiki:", "");
                     await fm.handleSaveWikiFile(wikiId, newDoc);
                     fm.handleOpenWikiFile(wikiId);
+                    wikiLog.append("regenerate", [wikiId], `Regenerated "${result.wikis[0].title}"`).catch(() => {});
                   }
                 } catch (err) {
                   console.error("Wiki の再生成に失敗:", err);
@@ -1924,7 +1979,9 @@ export function NoteApp() {
               onDelete={() => {
                 if (!fm.activeFileId) return;
                 const wikiId = fm.activeFileId.replace("wiki:", "");
+                const title = fm.activeDoc?.title ?? wikiId;
                 fm.handleDeleteWikiFile(wikiId);
+                wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
               }}
             />
           )}

@@ -789,7 +789,7 @@ export async function lintWikis(
 export function buildWikiSnapshots(
   wikiFiles: { id: string; modifiedTime: string }[],
   wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
-  getCachedDoc: (id: string) => GraphiumDocument | null,
+  getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
 ): WikiSnapshot[] {
   const snapshots: WikiSnapshot[] = [];
 
@@ -819,7 +819,7 @@ export function buildWikiSnapshots(
 /**
  * Wiki ドキュメントから関連 Concept タイトルを抽出する
  */
-function extractRelatedConcepts(doc: GraphiumDocument | null): string[] {
+function extractRelatedConcepts(doc: GraphiumDocument | null | undefined): string[] {
   if (!doc) return [];
   const page = doc.pages[0];
   if (!page) return [];
@@ -853,7 +853,7 @@ export type WikiIndexEntry = {
 export function buildWikiIndex(
   wikiFiles: { id: string; modifiedTime: string }[],
   wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
-  getCachedDoc: (id: string) => GraphiumDocument | null,
+  getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
 ): WikiIndexEntry[] {
   const entries: WikiIndexEntry[] = [];
 
