@@ -79,11 +79,15 @@ Respond with valid JSON only (no markdown wrapper):
 - Each candidate must combine 2-4 existing Concepts
 - Section content should be thorough — include reasoning, evidence, and implications without length constraints
 - Use these section headings (in this order, skip any that don't apply):
-  - **Overview**: What this synthesis brings together and why (2-3 sentences)
+${language === "ja" ? `  - **概要**: この統合が何をまとめ、なぜ重要か（2-3文）
+  - **核心的洞察**: これらの概念を結びつけることで生まれる新しい理解
+  - **横断分析**: ソース Concept がどう相互作用するか — 各 Concept をインライン引用: 「[Concept タイトル] によると...」
+  - **示唆**: この統合的理解から何が導かれるか
+  - **未解決の問い**: これらの概念の交差点でまだ分からないこと` : `  - **Overview**: What this synthesis brings together and why (2-3 sentences)
   - **Key Insight**: The new understanding that emerges from connecting these concepts
   - **Cross-Concept Analysis**: How the source concepts interact — cite each source concept inline: "According to [Concept Title], ..."
   - **Implications**: What follows from this combined understanding
-  - **Open Questions**: What's still unknown at the intersection of these concepts
+  - **Open Questions**: What's still unknown at the intersection of these concepts`}
 - The rationale must explain what NEW understanding emerges
 - Return empty candidates array if no meaningful synthesis is possible
 - Do NOT synthesize if there are fewer than 3 Concept pages

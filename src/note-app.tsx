@@ -1705,7 +1705,7 @@ export function NoteApp() {
             } catch { /* fallback to create */ }
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
-          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap);
+          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, "ja");
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
           createdWikiIds.push(newId);
@@ -1791,7 +1791,7 @@ export function NoteApp() {
 
         const synthResult = await fetchSynthesisCandidates(conceptSnapshots, existingSynthesisTitles, "ja");
         for (const candidate of synthResult.candidates) {
-          const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null);
+          const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja");
           const newId = await fm.handleCreateWikiFile(synthDoc);
           embedWikiSections(newId, synthDoc).catch(() => {});
           wikiLog.append(
@@ -2254,7 +2254,7 @@ export function NoteApp() {
                       return;
                     }
                     for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, jobId, result.model, entry.name || entry.url);
+                      const wikiDoc = buildWikiDocument(wiki, jobId, result.model, entry.name || entry.url, undefined, "ja");
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -2427,7 +2427,7 @@ export function NoteApp() {
                       : { candidates: [] };
                     if (synthResult.candidates && synthResult.candidates.length > 0) {
                       const candidate = synthResult.candidates[0];
-                      const newDoc = buildSynthesisDocument(candidate, synthResult.model ?? null);
+                      const newDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja");
                       if (newDoc.wikiMeta) {
                         newDoc.wikiMeta.generatedBy = {
                           model: synthResult.model ?? selectedModel ?? "unknown",
@@ -2618,7 +2618,7 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, url);
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, url, undefined, "ja");
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
@@ -2648,7 +2648,7 @@ export function NoteApp() {
                     return;
                   }
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle);
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja");
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
@@ -2671,7 +2671,7 @@ export function NoteApp() {
                   if (result.wikis.length === 0) return;
                   const savedTitles: string[] = [];
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle);
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja");
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                     savedTitles.push(wiki.title);

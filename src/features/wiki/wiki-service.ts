@@ -64,6 +64,7 @@ export function buildWikiDocument(
   model: string | null,
   sourceNoteTitle?: string,
   existingWikiTitles?: { id: string; title: string }[],
+  language?: string,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const blocks = convertSectionsToBlocks(ingesterOutput.sections);
@@ -89,7 +90,7 @@ export function buildWikiDocument(
     },
     status: "draft",
     lastIngestedAt: now,
-    language: undefined,
+    language: language ?? undefined,
   };
 
   return {
@@ -1122,6 +1123,7 @@ export async function fetchSynthesisCandidates(
 export function buildSynthesisDocument(
   candidate: SynthesisCandidate,
   model: string | null,
+  language?: string,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const blocks = convertSectionsToBlocks(candidate.sections);
@@ -1174,7 +1176,7 @@ export function buildSynthesisDocument(
     },
     status: "draft",
     lastIngestedAt: now,
-    language: undefined,
+    language: language ?? undefined,
   };
 
   return {
