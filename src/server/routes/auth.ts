@@ -66,15 +66,33 @@ h2{color:#dc3545}</style></head>
     );
   }
 
+  // Node.js 常駐サーバー用: Map に保存してポーリングで取得（フォールバック）
   pendingCodes.set(state, { code, receivedAt: Date.now() });
 
+  // postMessage でポップアップの親ウィンドウに直接コードを送る
+  // Serverless 環境（Vercel）ではポーリング方式が使えないため、これが主要な経路
   return c.html(
     `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Graphium</title>
 <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f8f9fa}
 .card{text-align:center;padding:2rem;border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
 h2{color:#22c55e}</style></head>
-<body><div class="card"><h2>&#10003; Authentication successful!</h2><p>You can close this tab and return to Graphium.</p></div></body></html>`,
+<body><div class="card"><h2>&#10003; Authentication successful!</h2><p>This tab will close automatically.</p></div>
+<script>
+(function(){
+  try {
+    if (window.opener) {
+      window.opener.postMessage({
+        type: "graphium-auth-callback",
+        code: ${JSON.stringify(code)},
+        state: ${JSON.stringify(state)}
+      }, "*");
+      setTimeout(function(){ window.close(); }, 500);
+    }
+  } catch(e) { console.error("postMessage failed:", e); }
+})();
+</script>
+</body></html>`,
   );
 });
 

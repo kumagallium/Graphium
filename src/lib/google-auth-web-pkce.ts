@@ -219,15 +219,43 @@ function getCallbackRedirectUri(): string {
   return `${window.location.origin}/api/auth/callback`;
 }
 
-// --- ポーリング ---
+// --- 認証コード受信 ---
 
-async function pollForAuthCode(state: string): Promise<string> {
-  const startTime = Date.now();
-
+/**
+ * 認証コードを待つ。2 つの方式を並行で待ち、先に来た方を使う:
+ * 1. postMessage: ポップアップの callback ページから直接受信（Serverless 対応）
+ * 2. ポーリング: サーバーの /token-status をポーリング（Node.js 常駐サーバー用フォールバック）
+ */
+async function waitForAuthCode(state: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
+    let resolved = false;
+    const startTime = Date.now();
+
+    // --- 方式 1: postMessage ---
+    function onMessage(event: MessageEvent) {
+      if (resolved) return;
+      const data = event.data;
+      if (
+        data?.type === "graphium-auth-callback" &&
+        data?.state === state &&
+        data?.code
+      ) {
+        resolved = true;
+        window.removeEventListener("message", onMessage);
+        resolve(data.code);
+      }
+    }
+    window.addEventListener("message", onMessage);
+
+    // --- 方式 2: ポーリング（フォールバック） ---
     const poll = async () => {
+      if (resolved) return;
       if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-        reject(new Error("認証タイムアウト: 5分以内に認証を完了してください"));
+        if (!resolved) {
+          resolved = true;
+          window.removeEventListener("message", onMessage);
+          reject(new Error("認証タイムアウト: 5分以内に認証を完了してください"));
+        }
         return;
       }
 
@@ -237,7 +265,9 @@ async function pollForAuthCode(state: string): Promise<string> {
         );
         const data = await res.json();
 
-        if (data.status === "ready") {
+        if (data.status === "ready" && !resolved) {
+          resolved = true;
+          window.removeEventListener("message", onMessage);
           resolve(data.code);
           return;
         }
@@ -245,7 +275,7 @@ async function pollForAuthCode(state: string): Promise<string> {
         // サーバー未応答の場合はリトライ
       }
 
-      setTimeout(poll, POLL_INTERVAL_MS);
+      if (!resolved) setTimeout(poll, POLL_INTERVAL_MS);
     };
 
     poll();
@@ -334,8 +364,8 @@ export async function signInPkce(): Promise<void> {
     return;
   }
 
-  // サーバーをポーリングして認証コードを待つ
-  const code = await pollForAuthCode(state);
+  // 認証コードを待つ（postMessage + ポーリングの並行待ち）
+  const code = await waitForAuthCode(state);
 
   // ポップアップを閉じる
   try {
