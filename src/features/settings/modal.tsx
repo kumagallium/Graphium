@@ -18,14 +18,14 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig } from "./store";
 import {
   fetchModels,
   fetchProfiles,
   type ModelInfo,
   type ProfileInfo,
 } from "../ai-assistant/api";
-import { apiBase } from "../../lib/platform";
+import { apiBase, isTauri } from "../../lib/platform";
 import { useLocale, type Locale } from "../../i18n";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 
@@ -154,8 +154,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   // 保存
   const [saved, setSaved] = useState(false);
 
+  // Web モード判定（非 Tauri = Web）
+  const isWebMode = !isTauri();
+
+  // LLMModelConfig → ModelInfo 変換（Web モード用）
+  const toModelInfo = (m: LLMModelConfig): ModelInfo => ({
+    name: m.name,
+    provider: m.provider,
+    model_id: m.modelId,
+    api_base: m.apiBase ?? "",
+    supports_function_calling: true,
+    id: m.id,
+  });
+
   // ── データ取得 ──
   const refreshModels = useCallback(() => {
+    if (isWebMode) {
+      // Web モード: localStorage から読み込み
+      const llmModels = getLLMModels();
+      setModels(llmModels.map(toModelInfo));
+      setDefaultModel(llmModels[0]?.name ?? "");
+      return;
+    }
     setModelsLoading(true);
     fetchModels()
       .then((res) => {
@@ -167,7 +187,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setDefaultModel("");
       })
       .finally(() => setModelsLoading(false));
-  }, []);
+  }, [isWebMode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -210,16 +230,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // ── モデル追加フロー ──
   const handleFetchAvailable = useCallback(async () => {
-    // 既存プロバイダーモードの場合は source_model_id を使う
+    // 既存プロバイダーモードの場合
     if (addMode === "existing" && sourceModelId) {
       setFetchingAvailable(true);
       setAddError("");
       setAvailableModels([]);
       try {
+        // Web モード: localStorage からキーを取得してリクエストに含める
+        let reqBody: Record<string, string | undefined>;
+        if (isWebMode) {
+          const source = getLLMModels().find((m) => m.id === sourceModelId);
+          if (!source) throw new Error("モデルが見つかりません");
+          reqBody = { provider: source.provider, api_key: source.apiKey, api_base: source.apiBase ?? undefined };
+        } else {
+          reqBody = { source_model_id: sourceModelId };
+        }
         const res = await fetch(`${apiBase()}/models/available`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source_model_id: sourceModelId }),
+          body: JSON.stringify(reqBody),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -273,7 +302,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } finally {
       setFetchingAvailable(false);
     }
-  }, [addMode, sourceModelId, addProvider, addApiKey, addApiBase, t]);
+  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, t]);
 
   const handleAddModel = useCallback(async () => {
     const modelId = customModelId.trim() || selectedModelId;
@@ -284,27 +313,48 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setAdding(true);
     setAddError("");
     try {
-      // 既存プロバイダーモードでは source_model_id を使い、apiKey は送信しない
-      const reqBody: Record<string, string | undefined> = {
-        model_name: modelDisplayName.trim() || modelId,
-        provider: addProvider,
-        model_id: modelId,
-      };
-      if (addMode === "existing" && sourceModelId) {
-        reqBody.source_model_id = sourceModelId;
+      if (isWebMode) {
+        // Web モード: localStorage に保存
+        // 既存プロバイダーモードでは既存モデルの API キーを再利用
+        let apiKey = addApiKey.trim();
+        let apiBaseVal = addApiBase.trim() || null;
+        if (addMode === "existing" && sourceModelId) {
+          const source = getLLMModels().find((m) => m.id === sourceModelId);
+          if (source) {
+            apiKey = source.apiKey;
+            apiBaseVal = apiBaseVal || source.apiBase;
+          }
+        }
+        addLLMModel({
+          name: modelDisplayName.trim() || modelId,
+          provider: addProvider,
+          modelId: modelId,
+          apiKey,
+          apiBase: apiBaseVal,
+        });
       } else {
-        reqBody.api_key = addApiKey.trim();
-        reqBody.api_base = addApiBase.trim() || undefined;
-      }
+        // Desktop/Docker: サーバー API 経由
+        const reqBody: Record<string, string | undefined> = {
+          model_name: modelDisplayName.trim() || modelId,
+          provider: addProvider,
+          model_id: modelId,
+        };
+        if (addMode === "existing" && sourceModelId) {
+          reqBody.source_model_id = sourceModelId;
+        } else {
+          reqBody.api_key = addApiKey.trim();
+          reqBody.api_base = addApiBase.trim() || undefined;
+        }
 
-      const res = await fetch(`${apiBase()}/models`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(reqBody),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Error ${res.status}`);
+        const res = await fetch(`${apiBase()}/models`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reqBody),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Error ${res.status}`);
+        }
       }
       // 成功 → フォームリセット、一覧更新
       setShowAddForm(false);
@@ -323,17 +373,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } finally {
       setAdding(false);
     }
-  }, [addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, refreshModels, t]);
+  }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, refreshModels, t]);
 
   const handleDeleteModel = useCallback(async (id: string) => {
     try {
-      await fetch(`${apiBase()}/models/${id}`, { method: "DELETE" });
+      if (isWebMode) {
+        removeLLMModel(id);
+      } else {
+        await fetch(`${apiBase()}/models/${id}`, { method: "DELETE" });
+      }
       setDeleteConfirm(null);
       refreshModels();
     } catch {
       // 静かに失敗
     }
-  }, [refreshModels]);
+  }, [isWebMode, refreshModels]);
 
   const handleStartEdit = useCallback((m: ModelInfo) => {
     setEditingId(m.id);
@@ -346,15 +400,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (!editingId) return;
     setEditSaving(true);
     try {
-      const body: Record<string, string> = {};
-      if (editName.trim()) body.model_name = editName.trim();
-      if (editApiKey.trim()) body.api_key = editApiKey.trim();
-      body.api_base = editApiBase.trim();
-      await fetch(`${apiBase()}/models/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      if (isWebMode) {
+        // Web モード: localStorage を直接更新
+        const allModels = getLLMModels();
+        const idx = allModels.findIndex((m) => m.id === editingId);
+        if (idx >= 0) {
+          if (editName.trim()) allModels[idx].name = editName.trim();
+          if (editApiKey.trim()) allModels[idx].apiKey = editApiKey.trim();
+          allModels[idx].apiBase = editApiBase.trim() || null;
+          localStorage.setItem("graphium-llm-models", JSON.stringify(allModels));
+        }
+      } else {
+        const body: Record<string, string> = {};
+        if (editName.trim()) body.model_name = editName.trim();
+        if (editApiKey.trim()) body.api_key = editApiKey.trim();
+        body.api_base = editApiBase.trim();
+        await fetch(`${apiBase()}/models/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
       setEditingId(null);
       refreshModels();
     } catch {
@@ -362,7 +428,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } finally {
       setEditSaving(false);
     }
-  }, [editingId, editName, editApiKey, editApiBase, refreshModels]);
+  }, [isWebMode, editingId, editName, editApiKey, editApiBase, refreshModels]);
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
