@@ -28,12 +28,15 @@ const pendingCodes = new Map<
 >();
 
 // 5分以上経過したエントリを自動削除
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, entry] of pendingCodes) {
-    if (now - entry.receivedAt > 5 * 60 * 1000) pendingCodes.delete(state);
-  }
-}, 60 * 1000);
+// Vercel Serverless ではモジュールレベルの setInterval は不要（各 invocation が独立）
+if (process.env.VERCEL !== "1") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [state, entry] of pendingCodes) {
+      if (now - entry.receivedAt > 5 * 60 * 1000) pendingCodes.delete(state);
+    }
+  }, 60 * 1000);
+}
 
 // Google OAuth リダイレクト先
 app.get("/callback", (c) => {

@@ -81,3 +81,57 @@ export function getEmbeddingModel(): string {
 export function isAgentConfigured(): boolean {
   return true;
 }
+
+// --- Web モード用: クライアント側 LLM モデル管理 ---
+// Vercel 等の Serverless 環境では API キーをサーバーに保存できないため、
+// クライアント（localStorage）でモデル設定を管理し、リクエストヘッダーで送信する
+
+const LLM_MODELS_KEY = "graphium-llm-models";
+
+export type LLMModelConfig = {
+  id: string;
+  name: string;
+  provider: string;
+  modelId: string;
+  apiKey: string;
+  apiBase: string | null;
+};
+
+/** クライアント保存のモデル一覧を取得 */
+export function getLLMModels(): LLMModelConfig[] {
+  try {
+    const raw = localStorage.getItem(LLM_MODELS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as LLMModelConfig[];
+  } catch {
+    return [];
+  }
+}
+
+/** クライアントにモデルを保存 */
+export function addLLMModel(model: Omit<LLMModelConfig, "id">): LLMModelConfig {
+  const models = getLLMModels();
+  const newModel: LLMModelConfig = { ...model, id: crypto.randomUUID() };
+  models.push(newModel);
+  localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(models));
+  return newModel;
+}
+
+/** クライアントからモデルを削除 */
+export function removeLLMModel(id: string): void {
+  const models = getLLMModels().filter((m) => m.id !== id);
+  localStorage.setItem(LLM_MODELS_KEY, JSON.stringify(models));
+}
+
+/** デフォルトの LLM モデルを取得（先頭のモデル） */
+export function getDefaultLLMModel(): LLMModelConfig | undefined {
+  const settings = loadSettings();
+  const models = getLLMModels();
+  if (models.length === 0) return undefined;
+  // settings.model で名前指定されていればそれを優先
+  if (settings.model) {
+    const found = models.find((m) => m.name === settings.model);
+    if (found) return found;
+  }
+  return models[0];
+}

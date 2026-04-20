@@ -1,14 +1,28 @@
 // Graphium ビルトインバックエンド API クライアント
 // /api/* エンドポイントを呼び出して AI 機能を提供する
 
-import { apiBase } from "../../lib/platform";
-import { getRegistryUrl } from "../settings/store";
+import { apiBase, isTauri } from "../../lib/platform";
+import { getRegistryUrl, getDefaultLLMModel } from "../settings/store";
 
-// Registry URL が設定されている場合はヘッダーに含める
+// Registry URL・LLM API キーが設定されている場合はヘッダーに含める
 function apiHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
   const registryUrl = getRegistryUrl();
   if (registryUrl) h["X-Registry-URL"] = registryUrl;
+
+  // Web モード（非 Tauri）: クライアント保持の API キーをヘッダーで送信
+  if (!isTauri()) {
+    const model = getDefaultLLMModel();
+    if (model) {
+      h["X-LLM-API-Key"] = JSON.stringify({
+        provider: model.provider,
+        modelId: model.modelId,
+        apiKey: model.apiKey,
+        apiBase: model.apiBase,
+        name: model.name,
+      });
+    }
+  }
   return h;
 }
 

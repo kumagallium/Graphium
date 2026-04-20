@@ -1,8 +1,18 @@
 // プロンプトプロファイル管理（JSON ファイル）
-// data/profiles.json に保存する
+// Node モード: data/profiles.json に保存する
+// Vercel モード: SEED_PROFILES を直接返す（ファイル I/O なし）
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+
+import type { ServerMode } from "./models.js";
+
+let serverMode: ServerMode = "node";
+
+/** サーバーモードを設定する（Vercel ではファイル I/O を無効化） */
+export function setServerMode(mode: ServerMode): void {
+  serverMode = mode;
+}
 
 export type Profile = {
   id: string;
@@ -52,6 +62,9 @@ function ensureDataDir(): void {
 }
 
 function readProfiles(): Profile[] {
+  // Vercel モードではファイル I/O を行わず SEED_PROFILES を直接返す
+  if (serverMode === "vercel") return SEED_PROFILES;
+
   try {
     const raw = readFileSync(profilesPath(), "utf-8");
     return JSON.parse(raw) as Profile[];

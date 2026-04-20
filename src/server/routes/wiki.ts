@@ -3,8 +3,8 @@
 // POST /api/wiki/embed — テキストの embedding を生成
 
 import { Hono } from "hono";
-import { getDefaultModel, listModels } from "../config/models.js";
 import { createModel } from "../services/llm.js";
+import { resolveModelConfig } from "../services/header-model.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import {
   buildIngesterSystemPrompt,
@@ -51,12 +51,8 @@ app.post("/ingest", async (c) => {
     return c.json({ error: "noteContent は必須です" }, 400);
   }
 
-  // モデル解決
-  let modelConfig = getDefaultModel();
-  if (body.model) {
-    const models = listModels();
-    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
-  }
+  // モデル解決: ヘッダー → body.model → デフォルト
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
     return c.json(
@@ -108,14 +104,8 @@ app.post("/embed", async (c) => {
     return c.json({ error: "texts は必須です" }, 400);
   }
 
-  // Embedding 用モデルを解決: embedding_model → model → デフォルト
-  const models = listModels();
-  let modelConfig = getDefaultModel();
-  if (body.embedding_model) {
-    modelConfig = models.find((m) => m.name === body.embedding_model) ?? modelConfig;
-  } else if (body.model) {
-    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
-  }
+  // Embedding 用モデルを解決: ヘッダー → embedding_model → model → デフォルト
+  const modelConfig = resolveModelConfig(c, { modelName: body.embedding_model || body.model });
 
   if (!modelConfig) {
     return c.json(
@@ -172,11 +162,7 @@ app.post("/lint", async (c) => {
   }
 
   // LLM による深い分析
-  let modelConfig = getDefaultModel();
-  if (body.model) {
-    const models = listModels();
-    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
-  }
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
     // モデルなしの場合、ローカル結果のみ返す
@@ -272,11 +258,7 @@ app.post("/cross-update", async (c) => {
     return c.json({ proposals: [] });
   }
 
-  let modelConfig = getDefaultModel();
-  if (body.model) {
-    const models = listModels();
-    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
-  }
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
     return c.json({ proposals: [] });
@@ -327,11 +309,7 @@ app.post("/synthesize", async (c) => {
     return c.json({ candidates: [] });
   }
 
-  let modelConfig = getDefaultModel();
-  if (body.model) {
-    const models = listModels();
-    modelConfig = models.find((m) => m.name === body.model) ?? modelConfig;
-  }
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
     return c.json({ candidates: [] });

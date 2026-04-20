@@ -40,11 +40,12 @@ function releaseNotesPlugin(): Plugin {
   };
 }
 
-// Tauri 環境では base を "/" にする（ローカルファイル配信のため）
+// Tauri / Vercel 環境では base を "/" にする
 const isTauri = process.env.TAURI_ENV_PLATFORM !== undefined;
+const isVercel = process.env.VERCEL === "1";
 
 export default defineConfig({
-  base: isTauri ? "/" : "/Graphium/",
+  base: (isTauri || isVercel) ? "/" : "/Graphium/",
   plugins: [
     releaseNotesPlugin(),
     tailwindcss(),
@@ -84,8 +85,8 @@ export default defineConfig({
         theme_color: "#fafdf7",
         background_color: "#fafdf7",
         display: "standalone",
-        scope: "/Graphium/",
-        start_url: "/Graphium/",
+        scope: isVercel ? "/" : "/Graphium/",
+        start_url: isVercel ? "/" : "/Graphium/",
         icons: [
           { src: "logo.png", sizes: "192x192", type: "image/png" },
           { src: "apple-touch-icon.png", sizes: "180x180", type: "image/png" },

@@ -1,22 +1,14 @@
-// Graphium バックエンドサーバー（Hono + Node.js）
-// フロントエンドからの /api/* リクエストを処理する
-// 本番環境では静的ファイルの配信も行う
+// Graphium バックエンドサーバー（Node.js 常駐プロセス用）
+// デスクトップ（Tauri sidecar）・Docker で使用
+// Vercel Serverless Functions では api/[[...route]].ts を使用
 
-import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { setDataDir as setModelsDataDir } from "./config/models.js";
 import { setDataDir as setProfilesDataDir } from "./config/profiles.js";
-import healthRoutes from "./routes/health.js";
-import modelsRoutes from "./routes/models.js";
-import profilesRoutes from "./routes/profiles.js";
-import agentRoutes from "./routes/agent.js";
-import toolsRoutes from "./routes/tools.js";
-import authRoutes from "./routes/auth.js";
-import wikiRoutes from "./routes/wiki.js";
+import { createApp } from "./app.js";
 
 // データディレクトリ設定（環境変数 or デフォルト）
 // デスクトップアプリ（sidecar）では ~/Documents/Graphium/server-data を使用
@@ -40,35 +32,7 @@ console.log(`[server] Data directory: ${dataDir}`);
 setModelsDataDir(dataDir);
 setProfilesDataDir(dataDir);
 
-const app = new Hono();
-
-// CORS 設定（開発時のみ必要。本番は同一オリジン）
-// Tauri オリジンも常に含める（dev サーバーをデスクトップアプリが共用する場合に必要）
-const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5174")
-  .split(",")
-  .map((o) => o.trim());
-// Tauri webview オリジンを必ず追加（macOS: tauri://, Windows: https://tauri.localhost）
-for (const tauriOrigin of ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"]) {
-  if (!allowedOrigins.includes(tauriOrigin)) allowedOrigins.push(tauriOrigin);
-}
-
-app.use(
-  "/api/*",
-  cors({
-    origin: allowedOrigins,
-    allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL"],
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  }),
-);
-
-// API ルートマウント
-app.route("/api/health", healthRoutes);
-app.route("/api/models", modelsRoutes);
-app.route("/api/profiles", profilesRoutes);
-app.route("/api/agent", agentRoutes);
-app.route("/api/tools", toolsRoutes);
-app.route("/api/auth", authRoutes);
-app.route("/api/wiki", wikiRoutes);
+const app = createApp({ mode: "node" });
 
 // 本番環境: 静的ファイル配信（SERVE_STATIC 環境変数で有効化）
 const staticDir = process.env.SERVE_STATIC;

@@ -3,10 +3,10 @@
 
 import { Hono } from "hono";
 import type { ModelMessage } from "ai";
-import { getModel, getDefaultModel, listModels } from "../config/models.js";
 import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
+import { resolveModelConfig } from "../services/header-model.js";
 import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
 import { getRegistryUrl, getRegistryKey } from "../services/env.js";
@@ -35,12 +35,8 @@ app.post("/run", async (c) => {
     return c.json({ error: "message は必須です" }, 400);
   }
 
-  // モデル解決: options.model → デフォルト
-  let modelConfig = getDefaultModel();
-  if (body.options?.model) {
-    const models = listModels();
-    modelConfig = models.find((m) => m.name === body.options!.model) ?? modelConfig;
-  }
+  // モデル解決: ヘッダー → options.model → デフォルト
+  const modelConfig = resolveModelConfig(c, { modelName: body.options?.model });
 
   if (!modelConfig) {
     return c.json(
@@ -135,7 +131,7 @@ app.post("/sessions/title", async (c) => {
     return c.json({ error: "first_message は必須です" }, 400);
   }
 
-  const modelConfig = getDefaultModel();
+  const modelConfig = resolveModelConfig(c);
   if (!modelConfig) {
     // フォールバック: 先頭25文字
     const title = body.first_message.slice(0, 25) +
