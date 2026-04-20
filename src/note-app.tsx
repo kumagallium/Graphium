@@ -2469,13 +2469,10 @@ export function NoteApp() {
                       const doc = await fm.loadDoc(noteId);
                       if (doc) sourceDocs.push({ noteId, doc });
                     }
+
+                    // ソースノートが読めない場合（チャット由来など）、Wiki 自身をソースにする
                     if (sourceDocs.length === 0) {
-                      setIngestToast((prev) => ({
-                        items: (prev?.items ?? []).map((i) =>
-                          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: "Source notes not found" } : i
-                        ),
-                      }));
-                      return;
+                      sourceDocs.push({ noteId: wikiId, doc: fm.activeDoc });
                     }
 
                     const primarySource = sourceDocs[0];
