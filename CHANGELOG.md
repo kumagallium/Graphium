@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.3.5](https://github.com/kumagallium/Graphium/compare/v0.3.4...v0.3.5) - 2026-04-20
+- AI Knowledge Layer (G-ZETTEL) by @kumagallium in https://github.com/kumagallium/Graphium/pull/107
+- Add URL and chat ingest sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/108
+- Add autonomous Wiki maintenance (lint, cross-update, index, log) by @kumagallium in https://github.com/kumagallium/Graphium/pull/110
+- Hide AI features when backend is unavailable by @kumagallium in https://github.com/kumagallium/Graphium/pull/109
+- Auto-save knowledge-worthy chat responses to Wiki by @kumagallium in https://github.com/kumagallium/Graphium/pull/111
+- Add Synthesis Wiki pages (auto-generated from Concepts) by @kumagallium in https://github.com/kumagallium/Graphium/pull/112
+- Add Vercel Serverless Functions support for Web hosting by @kumagallium in https://github.com/kumagallium/Graphium/pull/114
+- Deepen llm-wiki: autonomous knowledge management by @kumagallium in https://github.com/kumagallium/Graphium/pull/113
+- Add clickable inline citation links in Wiki pages by @kumagallium in https://github.com/kumagallium/Graphium/pull/115
+
 ## [v0.3.4](https://github.com/kumagallium/Graphium/compare/v0.3.3...v0.3.4) - 2026-04-16
 - Harden app for production readiness by @kumagallium in https://github.com/kumagallium/Graphium/pull/93
 - Remove unused sandbox mode by @kumagallium in https://github.com/kumagallium/Graphium/pull/94
