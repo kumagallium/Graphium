@@ -77,6 +77,8 @@ import {
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
   fetchSynthesisCandidates, buildSynthesisDocument, buildConceptSnapshots,
+  // インライン引用リンク
+  buildNoteIndex,
   // 操作ログ
   wikiLog,
 } from "./features/wiki";
@@ -1694,7 +1696,8 @@ export function NoteApp() {
             try {
               const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
               if (existingDoc) {
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, "ja");
+                const nIdx = buildNoteIndex(fm.noteIndex);
+                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, "ja", nIdx);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc);
                 embedWikiSections(wiki.mergeTargetId, mergedDoc).catch(() => {});
                 createdWikiIds.push(wiki.mergeTargetId);
@@ -1705,7 +1708,7 @@ export function NoteApp() {
             } catch { /* fallback to create */ }
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
-          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, "ja");
+          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, "ja", buildNoteIndex(fm.noteIndex));
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
           createdWikiIds.push(newId);
@@ -1745,7 +1748,7 @@ export function NoteApp() {
                 for (const proposal of crossResult.proposals) {
                   const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
                   if (!targetDoc) continue;
-                  const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model);
+                  const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model, buildNoteIndex(fm.noteIndex));
                   await fm.handleSaveWikiFile(proposal.targetWikiId, updatedDoc);
                   embedWikiSections(proposal.targetWikiId, updatedDoc).catch(() => {});
                   wikiLog.append(
@@ -1791,7 +1794,7 @@ export function NoteApp() {
 
         const synthResult = await fetchSynthesisCandidates(conceptSnapshots, existingSynthesisTitles, "ja");
         for (const candidate of synthResult.candidates) {
-          const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja");
+          const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
           const newId = await fm.handleCreateWikiFile(synthDoc);
           embedWikiSections(newId, synthDoc).catch(() => {});
           wikiLog.append(
@@ -1865,7 +1868,7 @@ export function NoteApp() {
                 for (const proposal of crossResult.proposals) {
                   const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
                   if (!targetDoc) continue;
-                  const updated = await applyCrossUpdate(targetDoc, proposal, wikiId, null);
+                  const updated = await applyCrossUpdate(targetDoc, proposal, wikiId, null, buildNoteIndex(fm.noteIndex));
                   await fm.handleSaveWikiFile(proposal.targetWikiId, updated);
                   wikiLog.append("cross-update", [proposal.targetWikiId, wikiId],
                     `Auto-fix orphan: linked "${doc.title}" → "${proposal.targetWikiTitle}"`).catch(() => {});
@@ -1926,6 +1929,7 @@ export function NoteApp() {
                   mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
                   null,
                   "ja",
+                  buildNoteIndex(fm.noteIndex),
                 );
 
                 // 統合先に mergeDoc の derivedFromNotes も追加
@@ -2091,6 +2095,7 @@ export function NoteApp() {
                   mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
                   null,
                   "ja",
+                  buildNoteIndex(fm.noteIndex),
                 );
 
                 if (mergedResult.wikiMeta) {
@@ -2256,7 +2261,7 @@ export function NoteApp() {
                       return;
                     }
                     for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, jobId, result.model, entry.name || entry.url, undefined, "ja");
+                      const wikiDoc = buildWikiDocument(wiki, jobId, result.model, entry.name || entry.url, undefined, "ja", buildNoteIndex(fm.noteIndex));
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -2429,7 +2434,7 @@ export function NoteApp() {
                       : { candidates: [] };
                     if (synthResult.candidates && synthResult.candidates.length > 0) {
                       const candidate = synthResult.candidates[0];
-                      const newDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja");
+                      const newDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
                       if (newDoc.wikiMeta) {
                         newDoc.wikiMeta.generatedBy = {
                           model: synthResult.model ?? selectedModel ?? "unknown",
@@ -2499,6 +2504,7 @@ export function NoteApp() {
                         primarySource.noteId,
                         result.model,
                         "ja",
+                        buildNoteIndex(fm.noteIndex),
                       );
                       if (rewritten.wikiMeta) {
                         rewritten.wikiMeta.generatedBy = {
@@ -2621,7 +2627,7 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, url, undefined, "ja");
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, url, undefined, "ja", buildNoteIndex(fm.noteIndex));
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
@@ -2651,7 +2657,7 @@ export function NoteApp() {
                     return;
                   }
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja");
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja", buildNoteIndex(fm.noteIndex));
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
@@ -2674,7 +2680,7 @@ export function NoteApp() {
                   if (result.wikis.length === 0) return;
                   const savedTitles: string[] = [];
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja");
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja", buildNoteIndex(fm.noteIndex));
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                     savedTitles.push(wiki.title);
