@@ -382,15 +382,15 @@ function parseInlineCitations(
     } else {
       // ノート/Wiki をタイトルで検索
       const note = noteIndex.find((n) => n.title === citedTitle);
-      const label = note?.isWiki ? `🤖 ${citedTitle}` : citedTitle;
-
-      inlineContent.push({
-        type: "text",
-        text: `@${label}`,
-        styles: { textColor: "blue" },
-      });
 
       if (note) {
+        // マッチ → クリッカブルな @リンク（青テキスト）
+        const label = note.isWiki ? `🤖 ${citedTitle}` : citedTitle;
+        inlineContent.push({
+          type: "text",
+          text: `@${label}`,
+          styles: { textColor: "blue" },
+        });
         knowledgeLinks.push({
           id: crypto.randomUUID(),
           sourceBlockId: blockId,
@@ -399,6 +399,13 @@ function parseInlineCitations(
           type: "reference",
           layer: "knowledge",
           createdBy: "ai",
+        });
+      } else {
+        // マッチしない → プレーンテキストのまま残す
+        inlineContent.push({
+          type: "text",
+          text: citedTitle,
+          styles: {},
         });
       }
     }
