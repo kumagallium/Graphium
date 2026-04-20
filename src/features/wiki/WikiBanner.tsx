@@ -4,6 +4,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Bot, Check, RefreshCw, Trash2, ChevronDown } from "lucide-react";
 import type { WikiMeta } from "../../lib/document-types";
+import { isTauri } from "../../lib/platform";
+import { getLLMModels } from "../settings/store";
 
 export type RegenerateOptions = {
   /** 使用するモデル名（空文字 = 現在のデフォルト） */
@@ -68,15 +70,24 @@ export function WikiBanner({
       setShowModelPicker(false);
       return;
     }
-    try {
-      const res = await fetch("/api/models");
-      if (res.ok) {
-        const data = await res.json() as { models: ModelOption[]; default: string };
-        setModels(data.models);
-        setDefaultModel(data.default);
+
+    if (!isTauri()) {
+      // Web モード: localStorage からモデルを取得
+      const llmModels = getLLMModels();
+      setModels(llmModels.map((m) => ({ name: m.name, provider: m.provider })));
+      setDefaultModel(llmModels[0]?.name ?? "");
+    } else {
+      // Tauri / Node モード: サーバー API から取得
+      try {
+        const res = await fetch("/api/models");
+        if (res.ok) {
+          const data = await res.json() as { models: ModelOption[]; default: string };
+          setModels(data.models);
+          setDefaultModel(data.default);
+        }
+      } catch {
+        // 取得失敗時は空リスト
       }
-    } catch {
-      // 取得失敗時は空リスト
     }
     setShowModelPicker(true);
   };
