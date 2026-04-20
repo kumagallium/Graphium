@@ -16,6 +16,8 @@ export {
   type WikiIndexEntry,
   // Synthesis
   fetchSynthesisCandidates, buildSynthesisDocument, buildConceptSnapshots,
+  // インライン引用リンク
+  buildNoteIndex,
 } from "./wiki-service";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";
 export { wikiLog } from "./wiki-log";

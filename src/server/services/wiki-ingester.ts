@@ -105,20 +105,20 @@ Cross-cutting knowledge pages that **go beyond what the note explicitly says**.
 Use these section headings (in this order, skip any that don't apply):
 ${language === "ja" ? `- **定義**: この概念が何であるか、1段落で明確に
 - **メカニズム**: どう機能するか — 推論・因果関係・原理（最重要セクション）
-- **根拠**: ソースノートからの具体的な知見。インライン引用を使う: 「[ノートタイトル] によると...」
+- **根拠**: ソースノートからの具体的な知見。インライン引用を使う: 「[[ノートタイトル]] によると...」
 - **示唆**: この知識が他の研究に何を意味するか
 - **未解決の問い**: まだ分からないこと、次に調べるべきこと` : `- **Definition**: What this concept is, in one clear paragraph
 - **Mechanism**: How it works — reasoning, cause-effect, principles (the most important section)
-- **Evidence**: Concrete findings from the source note that support this concept. Use inline citations: "According to [note title], ..." or "Based on [note title], ..."
+- **Evidence**: Concrete findings from the source note that support this concept. Use inline citations: "According to [[note title]], ..." or "Based on [[note title]], ..."
 - **Implications**: What this means for other work, what follows from this knowledge
 - **Open Questions**: What's still unknown, what to investigate next`}
 
-**Inline citation rule**: When referencing knowledge from a specific source, cite it inline:
-${language === "ja" ? `- 「[ノートタイトル] によると、pH > 10 で還元速度が増加する。」
-- 「[ノートタイトル] に基づくと、酸化膜は温度依存的な導電性を示す。」` : `- "The reduction rate increases at pH > 10 (from [note title])."
-- "Based on [note title], oxide films show temperature-dependent conductivity."`}
-This helps readers trace each claim back to its origin.
-**IMPORTANT**: Use the EXACT source note title provided in the user message. Do NOT write generic phrases like "Based on the new source" or "According to the note" — always use the specific title in brackets.
+**Inline citation rule**: When referencing knowledge from a specific source, cite it inline using **double brackets** \`[[title]]\`:
+${language === "ja" ? `- 「[[ノートタイトル]] によると、pH > 10 で還元速度が増加する。」
+- 「[[ノートタイトル]] に基づくと、酸化膜は温度依存的な導電性を示す。」` : `- "The reduction rate increases at pH > 10 (from [[note title]])."
+- "Based on [[note title]], oxide films show temperature-dependent conductivity."`}
+Double brackets \`[[ ]]\` are automatically converted to clickable links. This helps readers trace each claim back to its origin.
+**IMPORTANT**: Use the EXACT source note title provided in the user message. Do NOT write generic phrases like "Based on the new source" or "According to the note" — always use the specific title in double brackets.
 
 **Bad Concept** (avoid): A concept that just repeats what the note says in different words.
 **Good Concept**: Takes a specific finding and develops it into broader, reusable knowledge with reasoning and citations.

@@ -7,8 +7,22 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { getEmbeddingModel, getDefaultLLMModel } from "../settings/store";
 import { isTauri } from "../../lib/platform";
 
+import type { GraphiumIndex } from "../navigation";
+
 /** サーバー API の URL ベース */
 const API_BASE = "/api/wiki";
+
+/**
+ * GraphiumIndex から NoteIndex を構築する（インライン引用リンク解決用）
+ */
+export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteIndex {
+  if (!index?.notes) return [];
+  return index.notes.map((n) => ({
+    id: n.noteId,
+    title: n.title,
+    isWiki: n.source === "ai",
+  }));
+}
 
 /** Web モード用: X-LLM-API-Key ヘッダーを含む共通ヘッダー */
 function wikiHeaders(): Record<string, string> {
@@ -84,9 +98,11 @@ export function buildWikiDocument(
   sourceNoteTitle?: string,
   existingWikiTitles?: { id: string; title: string }[],
   language?: string,
+  /** ノート/Wiki のタイトル→ID マッピング（インライン引用リンク解決用） */
+  noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const blocks = convertSectionsToBlocks(ingesterOutput.sections);
+  const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex);
 
   // 関連セクションを追加（派生元ノート + 関連 Concept）
   const relations = buildRelationBlocks(
@@ -96,7 +112,7 @@ export function buildWikiDocument(
     existingWikiTitles,
     ingesterOutput.externalReferences,
   );
-  blocks.push(...relations.blocks);
+  converted.blocks.push(...relations.blocks);
 
   const wikiMeta: WikiMeta = {
     kind: ingesterOutput.kind,
@@ -118,10 +134,10 @@ export function buildWikiDocument(
     pages: [{
       id: "main",
       title: ingesterOutput.title,
-      blocks,
+      blocks: converted.blocks,
       labels: {},
       provLinks: [],
-      knowledgeLinks: relations.knowledgeLinks,
+      knowledgeLinks: [...converted.knowledgeLinks, ...relations.knowledgeLinks],
     }],
     source: "ai",
     wikiMeta,
@@ -138,13 +154,14 @@ export function mergeIntoWikiDocument(
   ingesterOutput: IngesterOutput,
   sourceNoteId: string,
   model: string | null,
+  noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const newBlocks = convertSectionsToBlocks(ingesterOutput.sections);
+  const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex);
   const page = existingDoc.pages[0];
 
   // 新しいセクションを既存ブロックの末尾に追加
-  const mergedBlocks = [...(page?.blocks ?? []), ...newBlocks];
+  const mergedBlocks = [...(page?.blocks ?? []), ...converted.blocks];
 
   // derivedFromNotes に追加（重複除去）
   const derivedFromNotes = [
@@ -156,6 +173,7 @@ export function mergeIntoWikiDocument(
     pages: [{
       ...(page ?? { id: "main", title: existingDoc.title, labels: {}, provLinks: [], knowledgeLinks: [] }),
       blocks: mergedBlocks,
+      knowledgeLinks: [...(page?.knowledgeLinks ?? []), ...converted.knowledgeLinks],
     }],
     wikiMeta: {
       ...existingDoc.wikiMeta!,
@@ -182,9 +200,10 @@ export async function rewriteAndMerge(
   model: string | null,
   /** 言語オーバーライド（既存 Wiki の wikiMeta.language が未設定の場合に使う） */
   language?: string,
+  noteIndex?: NoteIndex,
 ): Promise<GraphiumDocument> {
   const page = existingDoc.pages[0];
-  if (!page) return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model);
+  if (!page) return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
 
   // 既存ページのセクションをテキストとして抽出
   const existingSections = extractSectionsFromBlocks(page.blocks);
@@ -198,7 +217,7 @@ export async function rewriteAndMerge(
 
   // セクションが少なすぎる場合は rewrite 不要（従来のマージ）
   if (existingSections.length === 0) {
-    return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model);
+    return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
   }
 
   try {
@@ -215,7 +234,7 @@ export async function rewriteAndMerge(
 
     if (!res.ok) {
       console.warn("Rewrite API failed, falling back to append merge");
-      return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model);
+      return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
     }
 
     const data = await res.json() as {
@@ -223,11 +242,11 @@ export async function rewriteAndMerge(
     };
 
     if (!data.sections || data.sections.length === 0) {
-      return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model);
+      return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
     }
 
-    // 再構成されたセクションをブロックに変換
-    const rewrittenBlocks = convertSectionsToBlocks(data.sections);
+    // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
+    const converted = convertSectionsToBlocks(data.sections, noteIndex);
 
     // References セクションは既存のものを保持
     const refIndex = page.blocks.findIndex(
@@ -235,7 +254,14 @@ export async function rewriteAndMerge(
     );
     const refBlocks = refIndex >= 0 ? page.blocks.slice(refIndex) : [];
 
-    const finalBlocks = [...rewrittenBlocks, ...refBlocks];
+    const finalBlocks = [...converted.blocks, ...refBlocks];
+
+    // 既存の knowledgeLinks から References セクション以外のものを除去し、新しいものを追加
+    const existingRefLinks = (page.knowledgeLinks ?? []).filter((link: any) => {
+      if (refIndex < 0) return true;
+      const refBlockIds = new Set(refBlocks.map((b: any) => b.id));
+      return refBlockIds.has(link.sourceBlockId);
+    });
 
     const now = new Date().toISOString();
     const derivedFromNotes = [
@@ -247,6 +273,7 @@ export async function rewriteAndMerge(
       pages: [{
         ...page,
         blocks: finalBlocks,
+        knowledgeLinks: [...existingRefLinks, ...converted.knowledgeLinks],
       }],
       wikiMeta: {
         ...existingDoc.wikiMeta!,
@@ -261,12 +288,35 @@ export async function rewriteAndMerge(
     };
   } catch (err) {
     console.warn("Rewrite failed:", err);
-    return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model);
+    return mergeIntoWikiDocument(existingDoc, ingesterOutput, sourceNoteId, model, noteIndex);
   }
 }
 
 /**
+ * インラインコンテンツからテキストを抽出する
+ * @リンク（青テキスト）は [[タイトル]] 形式に復元する（Rewriter に渡す際に引用を保持するため）
+ */
+function extractInlineTextWithCitations(content: any): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((c: any) => {
+      // @リンク（青テキスト）を [[タイトル]] に復元
+      if (c.type === "text" && c.styles?.textColor === "blue" && typeof c.text === "string" && c.text.startsWith("@")) {
+        let title = c.text.slice(1); // '@' を除去
+        // Wiki の 🤖 プレフィックスを除去
+        if (title.startsWith("🤖 ")) title = title.slice(3);
+        return `[[${title}]]`;
+      }
+      return c.text ?? c.content ?? "";
+    }).join("");
+  }
+  return extractInlineText(content);
+}
+
+/**
  * BlockNote ブロック配列から H2 セクション単位でテキストを抽出する
+ * @リンクは [[タイトル]] 形式に復元する
  */
 function extractSectionsFromBlocks(
   blocks: any[],
@@ -289,7 +339,7 @@ function extractSectionsFromBlocks(
         break;
       }
     } else if (currentHeading) {
-      const text = extractInlineText(block.content);
+      const text = extractInlineTextWithCitations(block.content);
       if (text) currentContent.push(text);
     }
   }
@@ -303,12 +353,112 @@ function extractSectionsFromBlocks(
 }
 
 /**
+ * ノート/Wiki のタイトル → ID を解決するための情報
+ */
+type NoteIndex = { id: string; title: string; isWiki?: boolean }[];
+
+type ConvertResult = {
+  blocks: any[];
+  knowledgeLinks: any[];
+};
+
+/**
+ * テキスト中の [[タイトル]] を検出して、
+ * プレーンテキスト部分と @リンク（青テキスト）に分割したインラインコンテンツを返す
+ */
+function parseInlineCitations(
+  text: string,
+  noteIndex: NoteIndex,
+): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
+  const blockId = crypto.randomUUID();
+  const inlineContent: any[] = [];
+  const knowledgeLinks: any[] = [];
+
+  // [[...]] を検出する正規表現
+  const regex = /\[\[([^\]]+)\]\]/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    // マッチ前のプレーンテキスト
+    if (match.index > lastIndex) {
+      inlineContent.push({
+        type: "text",
+        text: text.slice(lastIndex, match.index),
+        styles: {},
+      });
+    }
+
+    const citedTitle = match[1];
+
+    // URL の場合は BlockNote link 要素にする
+    if (/^https?:\/\//.test(citedTitle)) {
+      inlineContent.push({
+        type: "link",
+        href: citedTitle,
+        content: [{ type: "text", text: citedTitle, styles: {} }],
+      });
+    } else {
+      // ノート/Wiki をタイトルで検索
+      const note = noteIndex.find((n) => n.title === citedTitle);
+
+      if (note) {
+        // マッチ → クリッカブルな @リンク（青テキスト）
+        const label = note.isWiki ? `🤖 ${citedTitle}` : citedTitle;
+        inlineContent.push({
+          type: "text",
+          text: `@${label}`,
+          styles: { textColor: "blue" },
+        });
+        knowledgeLinks.push({
+          id: crypto.randomUUID(),
+          sourceBlockId: blockId,
+          targetBlockId: "",
+          targetNoteId: note.id,
+          type: "reference",
+          layer: "knowledge",
+          createdBy: "ai",
+        });
+      } else {
+        // マッチしない → プレーンテキストのまま残す
+        inlineContent.push({
+          type: "text",
+          text: citedTitle,
+          styles: {},
+        });
+      }
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  // 残りのプレーンテキスト
+  if (lastIndex < text.length) {
+    inlineContent.push({
+      type: "text",
+      text: text.slice(lastIndex),
+      styles: {},
+    });
+  }
+
+  // [[...]] が無かった場合はそのままプレーンテキスト
+  if (inlineContent.length === 0) {
+    inlineContent.push({ type: "text", text, styles: {} });
+  }
+
+  return { inlineContent, knowledgeLinks, blockId };
+}
+
+/**
  * Ingester のセクション出力を BlockNote ブロック配列に変換する
+ * [[タイトル]] をクリッカブルな @リンクに変換し、knowledgeLinks を生成する
  */
 function convertSectionsToBlocks(
   sections: { heading: string; content: string }[],
-): any[] {
+  noteIndex: NoteIndex = [],
+): ConvertResult {
   const blocks: any[] = [];
+  const knowledgeLinks: any[] = [];
 
   for (const section of sections) {
     // H2 見出しブロック
@@ -328,21 +478,23 @@ function convertSectionsToBlocks(
     // コンテンツを段落ブロックに分割
     const paragraphs = section.content.split("\n").filter(Boolean);
     for (const para of paragraphs) {
+      const parsed = parseInlineCitations(para, noteIndex);
       blocks.push({
-        id: crypto.randomUUID(),
+        id: parsed.blockId,
         type: "paragraph",
         props: {
           textColor: "default",
           backgroundColor: "default",
           textAlignment: "left",
         },
-        content: [{ type: "text", text: para, styles: {} }],
+        content: parsed.inlineContent,
         children: [],
       });
+      knowledgeLinks.push(...parsed.knowledgeLinks);
     }
   }
 
-  return blocks;
+  return { blocks, knowledgeLinks };
 }
 
 /**
@@ -752,6 +904,7 @@ export async function applyCrossUpdate(
   proposal: CrossUpdateProposal,
   sourceNoteId: string,
   model: string | null,
+  noteIndex?: NoteIndex,
 ): Promise<GraphiumDocument> {
   const now = new Date().toISOString();
   const page = existingDoc.pages[0];
@@ -765,15 +918,16 @@ export async function applyCrossUpdate(
     const refIndex = updatedBlocks.findIndex(
       (b) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
     );
-    const newBlocks = convertSectionsToBlocks([proposal.section]);
+    const converted = convertSectionsToBlocks([proposal.section], noteIndex);
+    updatedKnowledgeLinks.push(...converted.knowledgeLinks);
     if (refIndex >= 0) {
       updatedBlocks = [
         ...updatedBlocks.slice(0, refIndex),
-        ...newBlocks,
+        ...converted.blocks,
         ...updatedBlocks.slice(refIndex),
       ];
     } else {
-      updatedBlocks.push(...newBlocks);
+      updatedBlocks.push(...converted.blocks);
     }
   } else if (proposal.updateType === "revise_section" && proposal.section) {
     // rewrite API で対象セクションを書き換え
@@ -788,12 +942,12 @@ export async function applyCrossUpdate(
         endIdx++;
       }
       const existingContent = updatedBlocks.slice(headingIdx + 1, endIdx)
-        .map((b: any) => extractInlineText(b.content))
+        .map((b: any) => extractInlineTextWithCitations(b.content))
         .filter(Boolean)
         .join("\n");
 
       // rewrite API で統合
-      let rewrittenBlocks: any[] | null = null;
+      let rewrittenConverted: ConvertResult | null = null;
       try {
         const res = await fetch(`${API_BASE}/rewrite`, {
           method: "POST",
@@ -808,27 +962,29 @@ export async function applyCrossUpdate(
         if (res.ok) {
           const data = await res.json() as { sections: { heading: string; content: string }[] };
           if (data.sections?.length > 0) {
-            rewrittenBlocks = convertSectionsToBlocks(data.sections);
+            rewrittenConverted = convertSectionsToBlocks(data.sections, noteIndex);
           }
         }
       } catch {
         // rewrite 失敗 → 従来の追記にフォールバック
       }
 
-      if (rewrittenBlocks) {
+      if (rewrittenConverted) {
         // 対象セクション全体を書き換え
         updatedBlocks = [
           ...updatedBlocks.slice(0, headingIdx),
-          ...rewrittenBlocks,
+          ...rewrittenConverted.blocks,
           ...updatedBlocks.slice(endIdx),
         ];
+        updatedKnowledgeLinks.push(...rewrittenConverted.knowledgeLinks);
       } else {
-        // フォールバック: 末尾に追記
+        // フォールバック: 末尾に追記（引用パース付き）
+        const parsed = parseInlineCitations(proposal.section.content, noteIndex ?? []);
         const updateParagraph = {
-          id: crypto.randomUUID(),
+          id: parsed.blockId,
           type: "paragraph",
           props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
-          content: [{ type: "text", text: proposal.section.content, styles: {} }],
+          content: parsed.inlineContent,
           children: [],
         };
         updatedBlocks = [
@@ -836,11 +992,13 @@ export async function applyCrossUpdate(
           updateParagraph,
           ...updatedBlocks.slice(endIdx),
         ];
+        updatedKnowledgeLinks.push(...parsed.knowledgeLinks);
       }
     } else {
       // セクション見出しが見つからない場合は add_section として処理
-      const newBlocks = convertSectionsToBlocks([proposal.section]);
-      updatedBlocks.push(...newBlocks);
+      const converted = convertSectionsToBlocks([proposal.section], noteIndex);
+      updatedBlocks.push(...converted.blocks);
+      updatedKnowledgeLinks.push(...converted.knowledgeLinks);
     }
   } else if (proposal.updateType === "add_reference" && proposal.reference) {
     // Reference セクションに新しいリンクを追加
@@ -1145,13 +1303,14 @@ export function buildSynthesisDocument(
   candidate: SynthesisCandidate,
   model: string | null,
   language?: string,
+  noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const blocks = convertSectionsToBlocks(candidate.sections);
+  const converted = convertSectionsToBlocks(candidate.sections, noteIndex);
 
   // ソース Concept への参照セクション
   const refBlocks: any[] = [];
-  const knowledgeLinks: any[] = [];
+  const knowledgeLinks: any[] = [...converted.knowledgeLinks];
 
   refBlocks.push({
     id: crypto.randomUUID(),
@@ -1184,7 +1343,7 @@ export function buildSynthesisDocument(
     });
   }
 
-  blocks.push(...refBlocks);
+  converted.blocks.push(...refBlocks);
 
   const wikiMeta: WikiMeta = {
     kind: "synthesis",
@@ -1206,7 +1365,7 @@ export function buildSynthesisDocument(
     pages: [{
       id: "main",
       title: candidate.title,
-      blocks,
+      blocks: converted.blocks,
       labels: {},
       provLinks: [],
       knowledgeLinks,
