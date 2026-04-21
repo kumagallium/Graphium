@@ -3,10 +3,11 @@
 // wikiFiles + wikiMetas から直接描画（noteIndex に依存しない）
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, Bot, Search, Trash2 } from "lucide-react";
+import { Bot, Search, Trash2 } from "lucide-react";
 import type { WikiKind } from "../../lib/document-types";
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
+import { Breadcrumb } from "../../components/Breadcrumb";
 
 /** 日付を YYYY-MM-DD 形式でフォーマット */
 function formatDate(isoDate: string): string {
@@ -26,7 +27,10 @@ type Props = {
   wikiKind: WikiKind;
   wikiFiles: GraphiumFile[];
   wikiMetas: Map<string, WikiMeta>;
+  /** クリック時（サイドピーク表示用） */
   onOpenWiki: (wikiId: string) => void;
+  /** ダブルクリック or ���ルで開く */
+  onOpenWikiFull?: (wikiId: string) => void;
   onBack: () => void;
   onDeleteWiki: (wikiId: string) => Promise<void>;
 };
@@ -36,6 +40,7 @@ export function WikiListView({
   wikiFiles,
   wikiMetas,
   onOpenWiki,
+  onOpenWikiFull,
   onBack,
   onDeleteWiki,
 }: Props) {
@@ -82,15 +87,13 @@ export function WikiListView({
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-        <button
-          onClick={onBack}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft size={16} />
-        </button>
+        <Breadcrumb items={[
+          { label: "Home", onClick: onBack },
+          { label: "Wiki" },
+          { label: kindLabel },
+        ]} />
         <div className="flex items-center gap-2">
           <Bot size={16} className="text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">{kindLabel}</h2>
           <span className="text-xs text-muted-foreground">({filtered.length})</span>
         </div>
         <div className="flex-1" />
@@ -125,6 +128,7 @@ export function WikiListView({
               <button
                 key={entry.id}
                 onClick={() => onOpenWiki(entry.id)}
+                onDoubleClick={() => onOpenWikiFull?.(entry.id)}
                 className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors group"
               >
                 <div className="flex items-start gap-3">

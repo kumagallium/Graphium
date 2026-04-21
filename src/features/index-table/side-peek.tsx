@@ -109,7 +109,13 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
     setSaveStatus("saved");
     docRef.current = null;
 
-    getActiveProvider().loadFile(noteId)
+    // wiki:xxxx 形式のIDの場合は loadWikiFile を使用
+    const isWiki = noteId.startsWith("wiki:");
+    const loadFn = isWiki
+      ? getActiveProvider().loadWikiFile?.(noteId.replace(/^wiki:/, ""))
+      : getActiveProvider().loadFile(noteId);
+
+    (loadFn ?? Promise.reject(new Error("Wiki not supported")))
       .then((d) => {
         if (!cancelled) {
           setDoc(d);
@@ -204,7 +210,12 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
 
     setSaveStatus("saving");
     try {
-      await getActiveProvider().saveFile(noteId, updatedDoc);
+      const isWiki = noteId.startsWith("wiki:");
+      if (isWiki) {
+        await getActiveProvider().saveWikiFile?.(noteId.replace(/^wiki:/, ""), updatedDoc);
+      } else {
+        await getActiveProvider().saveFile(noteId, updatedDoc);
+      }
       docRef.current = updatedDoc;
       setSaveStatus("saved");
     } catch (err) {

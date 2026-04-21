@@ -10,6 +10,7 @@ import type { GraphiumIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
 import { formatRelativeTime } from "./recent-notes-store";
 import { useT, getDisplayLabelName } from "../../i18n";
+import { Breadcrumb } from "../../components/Breadcrumb";
 
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
@@ -68,11 +69,15 @@ function DeleteConfirmDialog({
 export function NoteListView({
   noteIndex,
   onOpenNote,
+  onOpenNoteFull,
   onBack,
   onDeleteNotes,
 }: {
   noteIndex: GraphiumIndex | null;
+  /** クリック時のコールバック（サイドピーク表示用） */
   onOpenNote: (noteId: string) => void;
+  /** ダブルクリック or フルで開くコールバック */
+  onOpenNoteFull?: (noteId: string) => void;
   onBack: () => void;
   onDeleteNotes?: (noteIds: string[]) => Promise<void>;
 }) {
@@ -213,13 +218,10 @@ export function NoteListView({
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-        <button
-          onClick={onBack}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t("common.back")}
-        </button>
-        <h1 className="text-base font-semibold text-foreground">{t("nav.noteList")}</h1>
+        <Breadcrumb items={[
+          { label: "Home", onClick: onBack },
+          { label: t("nav.noteList") },
+        ]} />
         <span className="text-xs text-muted-foreground">
           {loading ? t("nav.loadingNotes") : t("nav.noteCount", { filtered: String(filtered.length), total: String(entries.length) })}
         </span>
@@ -307,6 +309,7 @@ export function NoteListView({
                     selectedIds.has(entry.noteId) ? "bg-primary/5" : ""
                   }`}
                   onClick={() => onOpenNote(entry.noteId)}
+                  onDoubleClick={() => onOpenNoteFull?.(entry.noteId)}
                 >
                   {/* チェックボックス */}
                   {onDeleteNotes && (

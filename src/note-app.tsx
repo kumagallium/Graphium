@@ -1,7 +1,7 @@
 // ノートアプリのメイン画面
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText } from "lucide-react";
 import { apiBase, isTauri } from "./lib/platform";
 import { SandboxEditor } from "./base/editor";
@@ -64,6 +64,7 @@ import { recordRevision, detectActivityType } from "./features/document-provenan
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, type GraphiumIndex } from "./features/navigation";
+import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner,
   IngestToast, type IngestToastState, type IngestToastItem,
@@ -1601,6 +1602,50 @@ function NoteEditorInner({
   );
 }
 
+// サイドピーク用エラーバウンダリ（一覧ビューでの SidePeek クラッシュでアプリ全体が落ちるのを防ぐ）
+class ListSidePeekBoundary extends Component<
+  { children: ReactNode; onClose: () => void },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("SidePeek error:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          position: "fixed", top: 0, right: 0, bottom: 0, width: "55%",
+          minWidth: 400, maxWidth: 800, background: "var(--color-card)",
+          borderLeft: "1px solid var(--color-border-subtle)",
+          boxShadow: "-4px 0 24px rgba(0,0,0,0.08)", zIndex: 100,
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", gap: 12, padding: 24,
+        }}>
+          <p style={{ color: "var(--color-destructive)", fontSize: 13 }}>
+            {this.state.error.message}
+          </p>
+          <button
+            onClick={this.props.onClose}
+            style={{
+              padding: "6px 16px", borderRadius: 6,
+              border: "1px solid var(--color-border)",
+              background: "var(--color-surface)", cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            Close
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── メインアプリ ──
 export function NoteApp() {
   const { authenticated, loading: authLoading, authError, signIn, signOut, switchProvider } = useStorage();
@@ -1635,6 +1680,8 @@ export function NoteApp() {
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
+  // 一覧ビュー用サイドピーク（NoteEditorInner 外でも使えるグローバルな state）
+  const [listSidePeekNoteId, setListSidePeekNoteId] = useState<string | null>(null);
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
@@ -1648,6 +1695,27 @@ export function NoteApp() {
   const isDesktop = useIsDesktop();
   const fm = useFileManager(authenticated);
   const capture = useCapture(authenticated);
+
+  // ─── URL ハッシュルーター ───
+  const routeActions: RouteActions = useMemo(() => ({
+    openFile: (fileId: string) => fm.handleOpenFile(fileId),
+    openWikiFile: (wikiId: string) => fm.handleOpenWikiFile(wikiId),
+    setShowNoteList: (show: boolean) => fm.setShowNoteList(show),
+    setActiveWikiKind: (kind: WikiKind | null) => fm.setActiveWikiKind(kind),
+    setActiveWikiView: (view: "log" | "lint" | null) => setActiveWikiView(view),
+    setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
+    setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
+    setShowMemos: (show: boolean) => setShowMemos(show),
+    clearViews: () => {
+      fm.setShowNoteList(false);
+      fm.setActiveAssetType(null);
+      fm.setActiveLabel(null);
+      fm.setActiveWikiKind(null);
+      setActiveWikiView(null);
+      setShowMemos(false);
+    },
+  }), [fm]);
+  const router = useHashRouter(routeActions);
 
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
@@ -2182,7 +2250,7 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
-    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setSidebarOpen(false); },
+    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
     onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onSignOut: signOut,
@@ -2190,16 +2258,16 @@ export function NoteApp() {
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setSidebarOpen(false); },
+    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
     mediaIndex: fm.mediaIndex,
-    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setSidebarOpen(false); },
+    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
-    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
     filesLoading: fm.filesLoading,
     memoCount: capture.captureIndex?.captures.length ?? 0,
-    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setSidebarOpen(false); },
+    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     wikiCounts: (() => {
       let summary = 0;
@@ -2212,11 +2280,11 @@ export function NoteApp() {
       }
       return { summary, concept, synthesis };
     })(),
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); },
+    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
-    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); },
+    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
+    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
   };
 
@@ -2283,8 +2351,9 @@ export function NoteApp() {
         ) : fm.showNoteList ? (
           <NoteListView
             noteIndex={fm.noteIndex}
-            onOpenNote={(noteId) => { fm.setShowNoteList(false); fm.handleOpenFile(noteId); }}
-            onBack={() => fm.setShowNoteList(false)}
+            onOpenNote={(noteId) => { setListSidePeekNoteId(noteId); }}
+            onOpenNoteFull={(noteId) => { setListSidePeekNoteId(null); fm.setShowNoteList(false); fm.handleOpenFile(noteId); router.navigate({ view: "editor", fileId: noteId }); }}
+            onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
             onDeleteNotes={async (ids) => {
               for (const id of ids) await fm.handleDelete(id);
             }}
@@ -2333,8 +2402,9 @@ export function NoteApp() {
             wikiKind={fm.activeWikiKind}
             wikiFiles={fm.wikiFiles}
             wikiMetas={fm.wikiMetas}
-            onOpenWiki={(wikiId) => { fm.setActiveWikiKind(null); fm.handleOpenWikiFile(wikiId); }}
-            onBack={() => fm.setActiveWikiKind(null)}
+            onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
+            onOpenWikiFull={(wikiId) => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind: fm.activeWikiKind!, wikiId }); }}
+            onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
           />
         ) : !isDesktop && !fm.activeFileId ? (
@@ -2712,6 +2782,27 @@ export function NoteApp() {
           </div>
         )}
       </main>
+      {/* 一覧ビュー用サイドピーク（NoteEditorInner 外で表示） */}
+      {listSidePeekNoteId && (
+        <AiAssistantProvider aiAvailable={false}>
+          <ListSidePeekBoundary onClose={() => setListSidePeekNoteId(null)}>
+            <SidePeek
+              noteId={listSidePeekNoteId}
+              cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
+              onClose={() => setListSidePeekNoteId(null)}
+              onNavigate={(noteId, savedDoc) => {
+                setListSidePeekNoteId(null);
+                if (noteId.startsWith("wiki:")) {
+                  fm.handleOpenWikiFile(noteId.replace(/^wiki:/, ""));
+                } else {
+                  fm.handleOpenFile(noteId, savedDoc);
+                }
+                router.navigate({ view: "editor", fileId: noteId });
+              }}
+            />
+          </ListSidePeekBoundary>
+        </AiAssistantProvider>
+      )}
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
       )}
