@@ -64,6 +64,8 @@ export async function ingestNote(
   language: string,
   /** 使用するモデル名（省略時はサーバーデフォルト） */
   model?: string,
+  /** Ingest 時に適用する Skill（プロンプトテンプレート） */
+  skills?: { title: string; prompt: string }[],
 ): Promise<IngestResult> {
   const noteContent = extractPlainTextFromDoc(doc);
 
@@ -77,6 +79,7 @@ export async function ingestNote(
       existingWikiTitles: existingWikis,
       language,
       ...(model ? { model } : {}),
+      ...(skills && skills.length > 0 ? { skills } : {}),
     }),
   });
 

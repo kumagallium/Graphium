@@ -28,6 +28,11 @@ import {
   driveCreateWikiFile,
   driveSaveWikiFile,
   driveDeleteWikiFile,
+  driveListSkillFiles,
+  driveLoadSkillFile,
+  driveCreateSkillFile,
+  driveSaveSkillFile,
+  driveDeleteSkillFile,
 } from "../../google-drive";
 import { clearIndexCache } from "../../../features/navigation/index-file";
 import { clearMediaIndexCache } from "../../../features/asset-browser/media-index";
@@ -151,5 +156,26 @@ export class GoogleDriveProvider implements StorageProvider {
 
   async deleteWikiFile(fileId: string): Promise<void> {
     return driveDeleteWikiFile(fileId);
+  }
+
+  // --- Skill ドキュメント CRUD ---
+  async listSkillFiles(): Promise<GraphiumFile[]> {
+    return driveListSkillFiles();
+  }
+
+  async loadSkillFile(fileId: string): Promise<GraphiumDocument> {
+    return driveLoadSkillFile(fileId);
+  }
+
+  async createSkillFile(title: string, content: GraphiumDocument): Promise<string> {
+    return driveCreateSkillFile(title, content);
+  }
+
+  async saveSkillFile(fileId: string, content: GraphiumDocument): Promise<void> {
+    return driveSaveSkillFile(fileId, content);
+  }
+
+  async deleteSkillFile(fileId: string): Promise<void> {
+    return driveDeleteSkillFile(fileId);
   }
 }

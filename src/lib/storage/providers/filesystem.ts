@@ -244,4 +244,37 @@ export class LocalFilesystemProvider implements StorageProvider {
   async deleteWikiFile(fileId: string): Promise<void> {
     await invoke("delete_wiki_file", { fileId });
   }
+
+  // --- Skill ドキュメント CRUD ---
+
+  async listSkillFiles(): Promise<GraphiumFile[]> {
+    const files = await invoke<RustFileInfo[]>("list_skill_files");
+    return files.map((f) => ({
+      id: f.id,
+      name: f.name,
+      modifiedTime: f.modified_time,
+      createdTime: f.created_time,
+    }));
+  }
+
+  async loadSkillFile(fileId: string): Promise<GraphiumDocument> {
+    const json = await invoke<string>("read_skill_file", { fileId });
+    return JSON.parse(json) as GraphiumDocument;
+  }
+
+  async createSkillFile(title: string, content: GraphiumDocument): Promise<string> {
+    const id = crypto.randomUUID();
+    const json = JSON.stringify(content);
+    await invoke("write_skill_file", { fileId: id, content: json });
+    return id;
+  }
+
+  async saveSkillFile(fileId: string, content: GraphiumDocument): Promise<void> {
+    const json = JSON.stringify(content);
+    await invoke("write_skill_file", { fileId, content: json });
+  }
+
+  async deleteSkillFile(fileId: string): Promise<void> {
+    await invoke("delete_skill_file", { fileId });
+  }
 }

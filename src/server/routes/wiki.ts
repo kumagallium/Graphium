@@ -51,6 +51,7 @@ app.post("/ingest", async (c) => {
     existingWikiTitles: ExistingWikiInfo[];
     language: string;
     model?: string;
+    skills?: { title: string; prompt: string }[];
   }>();
 
   if (!body.noteContent) {
@@ -70,6 +71,7 @@ app.post("/ingest", async (c) => {
   const systemPrompt = buildIngesterSystemPrompt(
     body.language || "en",
     body.existingWikiTitles || [],
+    body.skills,
   );
 
   const userMessage = `Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;

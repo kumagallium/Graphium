@@ -52,6 +52,7 @@ async function authedFetch(
 let cachedFolderId: string | null = null;
 let cachedUploadFolderId: string | null = null;
 let cachedWikiFolderId: string | null = null;
+let cachedSkillFolderId: string | null = null;
 
 // Graphium 専用フォルダを取得 or 作成（旧名 ProvNote からの自動リネーム付き）
 export async function getOrCreateFolder(): Promise<string> {
@@ -509,11 +510,113 @@ export async function driveDeleteWikiFile(fileId: string): Promise<void> {
   return deleteFile(fileId);
 }
 
+// ── Skill ドキュメント CRUD ──
+
+const SKILL_FOLDER = "skills";
+
+async function getOrCreateSkillFolder(): Promise<string> {
+  if (cachedSkillFolderId) return cachedSkillFolderId;
+
+  const parentId = await getOrCreateFolder();
+
+  const query = `name='${SKILL_FOLDER}' and mimeType='${MIME_FOLDER}' and '${parentId}' in parents and trashed=false`;
+  const res = await authedFetch(
+    `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name)&spaces=drive`
+  );
+  const data = await res.json();
+
+  if (data.files && data.files.length > 0) {
+    cachedSkillFolderId = data.files[0].id;
+    return cachedSkillFolderId!;
+  }
+
+  const createRes = await authedFetch(`${DRIVE_API}/files`, {
+    method: "POST",
+    headers: { "Content-Type": MIME_JSON },
+    body: JSON.stringify({
+      name: SKILL_FOLDER,
+      parents: [parentId],
+      mimeType: MIME_FOLDER,
+    }),
+  });
+  const folder = await createRes.json();
+  cachedSkillFolderId = folder.id;
+  return cachedSkillFolderId!;
+}
+
+export async function driveListSkillFiles(): Promise<GraphiumFile[]> {
+  const folderId = await getOrCreateSkillFolder();
+  const query = `'${folderId}' in parents and trashed=false and name contains '.graphium.json'`;
+  const fields = "files(id,name,modifiedTime,createdTime)";
+
+  const res = await authedFetch(
+    `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=${fields}&orderBy=modifiedTime desc&spaces=drive`
+  );
+  const data = await res.json();
+  return data.files || [];
+}
+
+export async function driveLoadSkillFile(fileId: string): Promise<GraphiumDocument> {
+  return loadFile(fileId);
+}
+
+export async function driveCreateSkillFile(
+  title: string,
+  content: GraphiumDocument
+): Promise<string> {
+  const folderId = await getOrCreateSkillFolder();
+  const fileName = `${title}.skill.graphium.json`;
+
+  const metadata = {
+    name: fileName,
+    parents: [folderId],
+    mimeType: MIME_JSON,
+  };
+
+  const boundary = "graphium_skill_boundary";
+  const body = [
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    "Content-Type: application/json",
+    "",
+    JSON.stringify(content),
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const res = await authedFetch(
+    `${UPLOAD_API}/files?uploadType=multipart&fields=id`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    }
+  );
+  const data = await res.json();
+  return data.id;
+}
+
+export async function driveSaveSkillFile(
+  fileId: string,
+  content: GraphiumDocument
+): Promise<void> {
+  return saveFile(fileId, content);
+}
+
+export async function driveDeleteSkillFile(fileId: string): Promise<void> {
+  return deleteFile(fileId);
+}
+
 // フォルダIDキャッシュをクリア（サインアウト時に呼ぶ）
 export function clearCache(): void {
   cachedFolderId = null;
   cachedUploadFolderId = null;
   cachedWikiFolderId = null;
+  cachedSkillFolderId = null;
   cachedUserEmail = null;
   // Blob URL を解放
   for (const url of blobUrlCache.values()) {

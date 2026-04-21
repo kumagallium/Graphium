@@ -40,6 +40,12 @@ export type ExistingWikiInfo = {
   kind: WikiKind;
 };
 
+/** Ingest 時に適用する Skill の情報 */
+export type IngestSkill = {
+  title: string;
+  prompt: string;
+};
+
 /**
  * Ingester 用のシステムプロンプトを構築する
  *
@@ -49,6 +55,7 @@ export type ExistingWikiInfo = {
 export function buildIngesterSystemPrompt(
   language: string,
   existingWikis: ExistingWikiInfo[],
+  skills?: IngestSkill[],
 ): string {
   const wikiListText = existingWikis.length > 0
     ? existingWikis.map((w) => `- [${w.kind}] ${w.title} (id: ${w.id})`).join("\n")
@@ -149,7 +156,13 @@ Output in: ${language === "ja" ? "Japanese" : "English"}
 - relatedConcepts: Array of {title, citation} for existing Concepts that are related. The citation should explain WHY this concept is related (e.g., "provides pH-dependency context"). Empty array if none
 - confidence: 0.9+ for clear, well-evidenced knowledge. 0.6-0.8 for tentative insights
 - externalReferences: Array of {url, title, citation}. The citation explains what this reference supports (e.g., "general framework for reaction kinetics"). Prioritize well-known, stable URLs. 0-5 per wiki
-- If the note is too short or trivial (e.g., just a title), generate only a minimal Summary with confidence 0.5`;
+- If the note is too short or trivial (e.g., just a title), generate only a minimal Summary with confidence 0.5${skills && skills.length > 0 ? `
+
+## Applied Skills
+
+The following skills should guide your analysis and output generation:
+
+${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}` : ""}`;
 }
 
 /**

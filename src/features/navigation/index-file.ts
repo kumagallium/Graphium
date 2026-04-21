@@ -37,8 +37,8 @@ export type NoteIndexEntry = {
     targetBlockId?: string;
     layer: "prov" | "knowledge";
   }[];
-  /** ドキュメントソース: "human" or "ai"（Wiki） */
-  source?: "human" | "ai";
+  /** ドキュメントソース: "human" or "ai"（Wiki）or "skill" */
+  source?: "human" | "ai" | "skill";
   /** Wiki ドキュメントの種類（source === "ai" の場合のみ） */
   wikiKind?: WikiKind;
 };

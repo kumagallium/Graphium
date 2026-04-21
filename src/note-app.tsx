@@ -84,6 +84,7 @@ import {
   wikiLog,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
+import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
 import type { CaptureEntry } from "./features/mobile-capture";
@@ -270,6 +271,8 @@ type NoteEditorProps = {
   isWikiDoc?: boolean;
   /** AI バックエンドが利用可能か（false なら Chat タブを非表示） */
   aiAvailable?: boolean;
+  /** ローカル Skill のプロンプト（AI チャットに注入） */
+  skillPrompts?: string;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -352,6 +355,7 @@ function NoteEditorInner({
   onAutoIngestChat,
   isWikiDoc,
   aiAvailable = true,
+  skillPrompts,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -822,6 +826,7 @@ function NoteEditorInner({
           profile: getSelectedProfile(),
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
+          ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         });
         // Wiki コンテキストが使われ���場合、引用情報を処理
@@ -1687,6 +1692,9 @@ export function NoteApp() {
   const ingestRunningRef = useRef(false);
   // Wiki Log 表示状態
   const [activeWikiView, setActiveWikiView] = useState<"log" | "lint" | null>(null);
+  // Skill 表示状態
+  const [showSkillList, setShowSkillList] = useState(false);
+  const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
   const [lintReport, setLintReport] = useState<import("./server/services/wiki-linter").LintReport | null>(null);
   const [lintLoading, setLintLoading] = useState(false);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
@@ -1737,7 +1745,18 @@ export function NoteApp() {
           .filter((n) => n.source === "ai" && n.wikiKind)
           .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
 
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, "ja");
+        // Ingest 自動適用の Skill を取得
+        const ingestSkills: { title: string; prompt: string }[] = [];
+        for (const [skillId, meta] of fm.skillMetas.entries()) {
+          if (meta.availableForIngest) {
+            const skillDoc = fm.getCachedDoc(`skill:${skillId}`);
+            if (skillDoc) {
+              ingestSkills.push({ title: meta.title, prompt: extractSkillPrompt(skillDoc) });
+            }
+          }
+        }
+
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, "ja", undefined, ingestSkills);
 
         if (result.wikis.length === 0) {
           setIngestToast((prev) => ({
@@ -1777,6 +1796,10 @@ export function NoteApp() {
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
           const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, "ja", buildNoteIndex(fm.noteIndex));
+          // 使用した Skill を記録
+          if (ingestSkills.length > 0 && wikiDoc.wikiMeta) {
+            wikiDoc.wikiMeta.skillsUsed = ingestSkills.map((s) => s.title);
+          }
           const newId = await fm.handleCreateWikiFile(wikiDoc);
           embedWikiSections(newId, wikiDoc).catch(() => {});
           createdWikiIds.push(newId);
@@ -2283,9 +2306,12 @@ export function NoteApp() {
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
-    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
+    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
+    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
+    skillCount: fm.skillMetas.size,
+    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setSidebarOpen(false); },
+    skillActive: showSkillList,
   };
 
   return (
@@ -2407,6 +2433,16 @@ export function NoteApp() {
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
           />
+        ) : showSkillList ? (
+          <SkillListView
+            skillFiles={fm.skillFiles}
+            skillMetas={fm.skillMetas}
+            onOpenSkill={(skillId) => { setShowSkillList(false); fm.handleOpenSkillFile(skillId); }}
+            onOpenSkillFull={(skillId) => { setShowSkillList(false); fm.handleOpenSkillFile(skillId); }}
+            onBack={() => setShowSkillList(false)}
+            onDeleteSkill={fm.handleDeleteSkillFile}
+            onNewSkill={() => setShowNewSkillDialog(true)}
+          />
         ) : !isDesktop && !fm.activeFileId ? (
           /* モバイル: ノート未選択時はクイックキャプチャビューを表示 */
           <MobileCaptureView
@@ -2425,6 +2461,10 @@ export function NoteApp() {
           />
         ) : (
           <>
+          {/* Skill バナー（Skill ドキュメントの場合） */}
+          {fm.activeDoc?.source === "skill" && fm.activeDoc?.skillMeta && (
+            <SkillBanner availableForIngest={fm.activeDoc.skillMeta.availableForIngest} />
+          )}
           {/* Wiki バナー（AI 生成ドキュメントの場合） */}
           {fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta && (
             <WikiBanner
@@ -2621,12 +2661,17 @@ export function NoteApp() {
           )}
           <NoteEditor
             key={fm.editorKey}
-            fileId={fm.activeFileId?.replace("wiki:", "") ?? fm.activeFileId}
+            fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             onSave={fm.activeDoc?.source === "ai"
               ? (doc: GraphiumDocument) => {
                   const wikiId = fm.activeFileId?.replace("wiki:", "");
                   if (wikiId) fm.handleSaveWikiFile(wikiId, doc);
+                }
+              : fm.activeDoc?.source === "skill"
+              ? (doc: GraphiumDocument) => {
+                  const skillId = fm.activeFileId?.replace("skill:", "");
+                  if (skillId) fm.handleSaveSkillFile(skillId, doc);
                 }
               : fm.handleSave}
             onDeriveNote={fm.handleDeriveNote}
@@ -2667,6 +2712,19 @@ export function NoteApp() {
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
             isWikiDoc={fm.activeDoc?.source === "ai"}
             aiAvailable={aiAvailable ?? false}
+            skillPrompts={(() => {
+              const skills: { title: string; prompt: string }[] = [];
+              for (const [skillId, meta] of fm.skillMetas.entries()) {
+                if (meta.availableForIngest) {
+                  const skillDoc = fm.getCachedDoc(`skill:${skillId}`);
+                  if (skillDoc) {
+                    skills.push({ title: meta.title, prompt: extractSkillPrompt(skillDoc) });
+                  }
+                }
+              }
+              if (skills.length === 0) return undefined;
+              return buildSkillPromptSection(skills);
+            })()}
             onIngestToWiki={aiAvailable && fm.activeDoc?.source !== "ai" ? () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
@@ -2810,6 +2868,18 @@ export function NoteApp() {
         setShowSettings(false);
         setAgentConfigured(isAgentConfigured());
       }} />
+      {showNewSkillDialog && (
+        <NewSkillDialog
+          onClose={() => setShowNewSkillDialog(false)}
+          onCreate={async (title, description, availableForIngest) => {
+            const doc = buildSkillDocument(title, description, "", availableForIngest);
+            const newId = await fm.handleCreateSkillFile(doc);
+            setShowNewSkillDialog(false);
+            setShowSkillList(false);
+            fm.handleOpenSkillFile(newId);
+          }}
+        />
+      )}
       </div>
     </div>
   );

@@ -70,4 +70,11 @@ export interface StorageProvider {
   createWikiFile?(title: string, content: GraphiumDocument): Promise<string>;
   saveWikiFile?(fileId: string, content: GraphiumDocument): Promise<void>;
   deleteWikiFile?(fileId: string): Promise<void>;
+
+  // --- Skill ドキュメント CRUD ---
+  listSkillFiles?(): Promise<GraphiumFile[]>;
+  loadSkillFile?(fileId: string): Promise<GraphiumDocument>;
+  createSkillFile?(title: string, content: GraphiumDocument): Promise<string>;
+  saveSkillFile?(fileId: string, content: GraphiumDocument): Promise<void>;
+  deleteSkillFile?(fileId: string): Promise<void>;
 }

@@ -69,6 +69,24 @@ const deleteWikiFileFromStorage = (id: string) => {
   if (!storage().deleteWikiFile) throw new Error("Wiki 非対応のストレージプロバイダーです");
   return storage().deleteWikiFile!(id);
 };
+// Skill ドキュメント操作ヘルパー
+const listSkillFiles = () => storage().listSkillFiles?.() ?? Promise.resolve([]);
+const loadSkillFile = (id: string) => {
+  if (!storage().loadSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
+  return storage().loadSkillFile!(id);
+};
+const createSkillFile = (title: string, content: GraphiumDocument) => {
+  if (!storage().createSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
+  return storage().createSkillFile!(title, content);
+};
+const saveSkillFile = (id: string, content: GraphiumDocument) => {
+  if (!storage().saveSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
+  return storage().saveSkillFile!(id, content);
+};
+const deleteSkillFileFromStorage = (id: string) => {
+  if (!storage().deleteSkillFile) throw new Error("Skill 非対応のストレージプロバイダーです");
+  return storage().deleteSkillFile!(id);
+};
 
 export function useFileManager(authenticated: boolean) {
   const [files, setFiles] = useState<GraphiumFile[]>([]);
@@ -115,18 +133,46 @@ export function useFileManager(authenticated: boolean) {
   const [activeWikiKind, setActiveWikiKind] = useState<WikiKind | null>(null);
   // Wiki メタデータ（サイドバーカウント・リスト表示用、noteIndex とは独立）
   const [wikiMetas, setWikiMetas] = useState<Map<string, { title: string; kind: WikiKind; headings: string[] }>>(new Map());
+  // Skill 関連の状態
+  const [skillFiles, setSkillFiles] = useState<GraphiumFile[]>([]);
+  const [skillMetas, setSkillMetas] = useState<Map<string, { title: string; description: string; availableForIngest: boolean }>>(new Map());
 
-  // ファイル一覧を取得（ノートと Wiki を並列取得）
+  // ファイル一覧を取得（ノートと Wiki と Skill を並列取得）
   const refreshFiles = useCallback(async () => {
     setFilesLoading(true);
     try {
-      const [noteResult, wikiResult] = await Promise.all([
+      const [noteResult, wikiResult, skillResult] = await Promise.all([
         listFiles(),
         listWikiFiles(),
+        listSkillFiles(),
       ]);
       console.log(`[wiki-debug] refreshFiles: notes=${noteResult.length}, wikis=${wikiResult.length}`, wikiResult.map(f => f.id));
       setFiles(noteResult);
       setWikiFiles(wikiResult);
+      setSkillFiles(skillResult);
+      // Skill メタデータをバックグラウンドで読み込み
+      if (skillResult.length > 0) {
+        Promise.allSettled(
+          skillResult.map(async (f) => {
+            const doc = await loadSkillFile(f.id);
+            return { id: f.id, doc };
+          })
+        ).then((results) => {
+          const metas = new Map<string, { title: string; description: string; availableForIngest: boolean }>();
+          for (const r of results) {
+            if (r.status === "fulfilled") {
+              const { id, doc } = r.value;
+              metas.set(id, {
+                title: doc.title,
+                description: doc.skillMeta?.description ?? "",
+                availableForIngest: doc.skillMeta?.availableForIngest ?? true,
+              });
+              docCacheRef.current.set(`skill:${id}`, doc);
+            }
+          }
+          setSkillMetas(metas);
+        });
+      }
       // Wiki メタデータをバックグラウンドで読み込み（サイドバーカウント・リスト表示用）
       if (wikiResult.length > 0) {
         Promise.allSettled(
@@ -950,6 +996,95 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
+  // Skill を開く
+  const handleOpenSkillFile = useCallback(
+    async (skillId: string) => {
+      try {
+        const cached = docCacheRef.current.get(`skill:${skillId}`);
+        const doc = cached ?? await loadSkillFile(skillId);
+        if (!cached) docCacheRef.current.set(`skill:${skillId}`, doc);
+        setActiveFileId(`skill:${skillId}`);
+        setActiveDoc(doc);
+        setEditorKey((k) => k + 1);
+      } catch (err) {
+        console.error("Skill の読み込みに失敗:", err);
+      }
+    },
+    [setActiveFileId]
+  );
+
+  // Skill を保存
+  const handleSaveSkillFile = useCallback(
+    async (skillId: string, doc: GraphiumDocument) => {
+      try {
+        await saveSkillFile(skillId, doc);
+        docCacheRef.current.set(`skill:${skillId}`, doc);
+        setSkillMetas((prev) => {
+          const next = new Map(prev);
+          next.set(skillId, {
+            title: doc.title,
+            description: doc.skillMeta?.description ?? "",
+            availableForIngest: doc.skillMeta?.availableForIngest ?? true,
+          });
+          return next;
+        });
+        setSkillFiles((prev) => prev.map((f) =>
+          f.id === skillId ? { ...f, modifiedTime: new Date().toISOString() } : f
+        ));
+      } catch (err) {
+        console.error("Skill の保存に失敗:", err);
+      }
+    },
+    []
+  );
+
+  // Skill を削除
+  const handleDeleteSkillFile = useCallback(
+    async (skillId: string) => {
+      try {
+        docCacheRef.current.delete(`skill:${skillId}`);
+        await deleteSkillFileFromStorage(skillId);
+        if (activeFileId === `skill:${skillId}`) {
+          setActiveFileId(null);
+          setActiveDoc(null);
+          setEditorKey((k) => k + 1);
+        }
+        setSkillFiles((prev) => prev.filter((f) => f.id !== skillId));
+        setSkillMetas((prev) => { const next = new Map(prev); next.delete(skillId); return next; });
+      } catch (err) {
+        console.error("Skill の削除に失敗:", err);
+      }
+    },
+    [activeFileId, setActiveFileId]
+  );
+
+  // Skill の新規作成
+  const handleCreateSkillFile = useCallback(
+    async (doc: GraphiumDocument): Promise<string> => {
+      const newId = await createSkillFile(doc.title, doc);
+      docCacheRef.current.set(`skill:${newId}`, doc);
+      setSkillMetas((prev) => {
+        const next = new Map(prev);
+        next.set(newId, {
+          title: doc.title,
+          description: doc.skillMeta?.description ?? "",
+          availableForIngest: doc.skillMeta?.availableForIngest ?? true,
+        });
+        return next;
+      });
+      const now = new Date().toISOString();
+      const newFile: GraphiumFile = {
+        id: newId,
+        name: `${doc.title}.skill.graphium.json`,
+        modifiedTime: now,
+        createdTime: now,
+      };
+      setSkillFiles((prev) => [newFile, ...prev]);
+      return newId;
+    },
+    []
+  );
+
   return {
     // 状態
     files,
@@ -996,5 +1131,12 @@ export function useFileManager(authenticated: boolean) {
     handleSaveWikiFile,
     handleDeleteWikiFile,
     handleCreateWikiFile,
+    // Skill
+    skillFiles,
+    skillMetas,
+    handleOpenSkillFile,
+    handleSaveSkillFile,
+    handleDeleteSkillFile,
+    handleCreateSkillFile,
   };
 }

@@ -304,4 +304,61 @@ export class LocalStorageProvider implements StorageProvider {
       store.delete(`__wiki__${fileId}`)
     );
   }
+
+  // --- Skill ドキュメント CRUD ---
+
+  async listSkillFiles(): Promise<GraphiumFile[]> {
+    const records = await getAll<{ id: string; name: string; modifiedTime: string; createdTime: string }>(STORE_FILES);
+    const skillRecords = records.filter((r) => r.id.startsWith("__skill__"));
+    return skillRecords
+      .map((r) => ({
+        id: r.id.replace("__skill__", ""),
+        name: r.name,
+        modifiedTime: r.modifiedTime,
+        createdTime: r.createdTime,
+      }))
+      .sort((a, b) => new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime());
+  }
+
+  async loadSkillFile(fileId: string): Promise<GraphiumDocument> {
+    const record = await withStore<any>(STORE_FILES, "readonly", (store) =>
+      store.get(`__skill__${fileId}`)
+    );
+    if (!record) throw new Error(`Skill が見つかりません: ${fileId}`);
+    return record.content;
+  }
+
+  async createSkillFile(title: string, content: GraphiumDocument): Promise<string> {
+    const id = generateId();
+    const now = new Date().toISOString();
+    const name = `${title}.skill.graphium.json`;
+    await withStore(STORE_FILES, "readwrite", (store) =>
+      store.put({ id: `__skill__${id}`, name, content, modifiedTime: now, createdTime: now })
+    );
+    return id;
+  }
+
+  async saveSkillFile(fileId: string, content: GraphiumDocument): Promise<void> {
+    const key = `__skill__${fileId}`;
+    const existing = await withStore<any>(STORE_FILES, "readonly", (store) =>
+      store.get(key)
+    );
+    const now = new Date().toISOString();
+    const name = `${content.title}.skill.graphium.json`;
+    await withStore(STORE_FILES, "readwrite", (store) =>
+      store.put({
+        id: key,
+        name,
+        content,
+        modifiedTime: now,
+        createdTime: existing?.createdTime ?? now,
+      })
+    );
+  }
+
+  async deleteSkillFile(fileId: string): Promise<void> {
+    await withStore(STORE_FILES, "readwrite", (store) =>
+      store.delete(`__skill__${fileId}`)
+    );
+  }
 }

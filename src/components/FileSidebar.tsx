@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench } from "lucide-react";
 import type { WikiKind } from "../lib/document-types";
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
@@ -50,6 +50,12 @@ export type FileSidebarProps = {
   onShowWikiLint?: () => void;
   /** Log/Lint がアクティブか */
   activeWikiView?: "log" | "lint" | null;
+  /** Skill 件数 */
+  skillCount?: number;
+  /** Skill リスト表示 */
+  onShowSkillList?: () => void;
+  /** Skill セクションがアクティブか */
+  skillActive?: boolean;
 };
 
 // ラベル色マッピング（NoteListView と同じ）
@@ -98,6 +104,9 @@ export function FileSidebar({
   onShowWikiLog,
   onShowWikiLint,
   activeWikiView,
+  skillCount = 0,
+  onShowSkillList,
+  skillActive = false,
 }: FileSidebarProps) {
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
@@ -289,6 +298,22 @@ export function FileSidebar({
                 >
                   <span className="text-muted-foreground shrink-0"><ShieldCheck size={14} /></span>
                   <span className="flex-1 text-left">Health Check</span>
+                </button>
+              )}
+              {onShowSkillList && (
+                <button
+                  onClick={onShowSkillList}
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                    skillActive
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  }`}
+                >
+                  <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
+                  <span className="flex-1 text-left">Skill</span>
+                  {skillCount > 0 && (
+                    <span className="text-[10px] text-muted-foreground">{skillCount}</span>
+                  )}
                 </button>
               )}
             </div>

@@ -7,6 +7,16 @@ import type { DocumentProvenance } from "../features/document-provenance/types";
 // synthesis: 複数の Concept を統合して新しい洞察を生むページ
 export type WikiKind = "summary" | "concept" | "synthesis";
 
+// Skill（プロンプトテンプレート）のメタデータ
+export type SkillMeta = {
+  /** スキルの説明（一行） */
+  description: string;
+  /** Ingest 時に自動適用するか */
+  availableForIngest: boolean;
+  /** 作成日時 */
+  createdAt: string;
+};
+
 // AI Wiki ドキュメントのメタデータ
 export type WikiMeta = {
   kind: WikiKind;
@@ -99,10 +109,12 @@ export type GraphiumDocument = {
   chats?: ScopeChat[];
   /** ドキュメント来歴（編集操作の PROV-DM 記録） */
   documentProvenance?: DocumentProvenance;
-  /** ドキュメントソース: "human"（既存ノート）or "ai"（Wiki ドキュメント） */
-  source?: "human" | "ai";
-  /** AI Wiki ドキュメントのメタデータ（source === "ai" の場合のみ） */
+  /** ドキュメントソース: "human"（既存ノート）or "ai"（Wiki ドキュメント）or "skill"（プロンプトテ��プレート） */
+  source?: "human" | "ai" | "skill";
+  /** AI Wiki ドキュメント���メタデータ（source === "ai" の場合のみ） */
   wikiMeta?: WikiMeta;
+  /** Skill メタデータ（source === "skill" の場合のみ） */
+  skillMeta?: SkillMeta;
   createdAt: string;
   modifiedAt: string;
 };
