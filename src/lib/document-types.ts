@@ -7,11 +7,6 @@ import type { DocumentProvenance } from "../features/document-provenance/types";
 // synthesis: 複数の Concept を統合して新しい洞察を生むページ
 export type WikiKind = "summary" | "concept" | "synthesis";
 
-// AI Wiki ドキュメントのステータス
-// draft: 生成直後 or 品質が低い。Retriever のコンテキスト注入対象外
-// published: ユーザーが確認済み or confidence が高い。Retriever の対象
-export type WikiStatus = "draft" | "published";
-
 // AI Wiki ドキュメントのメタデータ
 export type WikiMeta = {
   kind: WikiKind;
@@ -26,7 +21,6 @@ export type WikiMeta = {
     model: string;
     version: string;
   };
-  status: WikiStatus;
   /** 最後に Ingest を実行した日時 */
   lastIngestedAt?: string;
   /** Ingest 時に使用した Skill 名 */

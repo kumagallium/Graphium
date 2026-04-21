@@ -11,7 +11,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
-  Check,
   Zap,
 } from "lucide-react";
 import { wikiLog, type WikiLogEntry, type WikiLogEventType } from "./wiki-log";
@@ -25,7 +24,6 @@ const EVENT_ICONS: Record<WikiLogEventType, typeof History> = {
   ingest: BookOpen,
   merge: GitMerge,
   lint: ShieldCheck,
-  approve: Check,
   delete: Trash2,
   "cross-update": Zap,
   regenerate: RefreshCw,
@@ -35,7 +33,6 @@ const EVENT_COLORS: Record<WikiLogEventType, string> = {
   ingest: "text-blue-500",
   merge: "text-purple-500",
   lint: "text-amber-500",
-  approve: "text-emerald-500",
   delete: "text-red-500",
   "cross-update": "text-orange-500",
   regenerate: "text-cyan-500",

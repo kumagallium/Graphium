@@ -2360,17 +2360,6 @@ export function NoteApp() {
             <WikiBanner
               wikiMeta={fm.activeDoc.wikiMeta}
               loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
-              onApprove={() => {
-                if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
-                const updatedDoc = {
-                  ...fm.activeDoc,
-                  wikiMeta: { ...fm.activeDoc.wikiMeta, status: "published" as const },
-                  modifiedAt: new Date().toISOString(),
-                };
-                const wikiId = fm.activeFileId.replace("wiki:", "");
-                fm.handleSaveWikiFile(wikiId, updatedDoc);
-                wikiLog.append("approve", [wikiId], `Approved "${fm.activeDoc.title}" (Draft → Published)`).catch(() => {});
-              }}
               onRegenerate={async (options) => {
                 if (!fm.activeDoc?.wikiMeta) return;
                 const wikiId = fm.activeFileId!.replace("wiki:", "");

@@ -18,7 +18,6 @@ function formatDate(isoDate: string): string {
 type WikiMeta = {
   title: string;
   kind: WikiKind;
-  status: string;
   headings: string[];
 };
 
@@ -54,7 +53,6 @@ export function WikiListView({
         id: f.id,
         title: wikiMetas.get(f.id)!.title,
         modifiedAt: f.modifiedTime,
-        status: wikiMetas.get(f.id)!.status,
         headings: wikiMetas.get(f.id)!.headings,
       }))
       .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
@@ -135,13 +133,6 @@ export function WikiListView({
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground truncate">
                         {entry.title}
-                      </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
-                        entry.status === "published"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                      }`}>
-                        {entry.status}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">

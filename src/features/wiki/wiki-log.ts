@@ -1,5 +1,5 @@
 // Wiki 操作ログ（IndexedDB ベース）
-// Ingest・Lint・Approve 等の操作を時系列で記録する
+// Ingest・Lint 等の操作を時系列で記録する
 // llm-wiki の log.md に相当する append-only ログ
 
 const DB_NAME = "graphium-wiki-log";
@@ -10,7 +10,6 @@ export type WikiLogEventType =
   | "ingest"      // ソースから Wiki を生成
   | "merge"       // 既存 Wiki にマージ
   | "lint"        // 整合性チェック実行
-  | "approve"     // Draft → Published
   | "delete"      // Wiki 削除
   | "cross-update" // 横断更新で既存ページを更新
   | "regenerate"; // Wiki を再生成

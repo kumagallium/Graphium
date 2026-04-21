@@ -114,7 +114,7 @@ export function useFileManager(authenticated: boolean) {
   const [wikiFiles, setWikiFiles] = useState<GraphiumFile[]>([]);
   const [activeWikiKind, setActiveWikiKind] = useState<WikiKind | null>(null);
   // Wiki メタデータ（サイドバーカウント・リスト表示用、noteIndex とは独立）
-  const [wikiMetas, setWikiMetas] = useState<Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>>(new Map());
+  const [wikiMetas, setWikiMetas] = useState<Map<string, { title: string; kind: WikiKind; headings: string[] }>>(new Map());
 
   // ファイル一覧を取得（ノートと Wiki を並列取得）
   const refreshFiles = useCallback(async () => {
@@ -135,7 +135,7 @@ export function useFileManager(authenticated: boolean) {
             return { id: f.id, doc };
           })
         ).then((results) => {
-          const metas = new Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>();
+          const metas = new Map<string, { title: string; kind: WikiKind; headings: string[] }>();
           for (const r of results) {
             if (r.status === "fulfilled") {
               const { id, doc } = r.value;
@@ -149,7 +149,6 @@ export function useFileManager(authenticated: boolean) {
               metas.set(id, {
                 title: doc.title,
                 kind: doc.wikiMeta?.kind ?? "concept",
-                status: doc.wikiMeta?.status ?? "draft",
                 headings,
               });
               docCacheRef.current.set(`wiki:${id}`, doc);
@@ -927,7 +926,6 @@ export function useFileManager(authenticated: boolean) {
         next.set(newId, {
           title: doc.title,
           kind: doc.wikiMeta?.kind ?? "concept",
-          status: doc.wikiMeta?.status ?? "draft",
           headings,
         });
         return next;

@@ -37,7 +37,6 @@ export type WikiSnapshot = {
   id: string;
   title: string;
   kind: "summary" | "concept" | "synthesis";
-  status: "draft" | "published";
   derivedFromNotes: string[];
   relatedConcepts: string[];
   sections: string[];
@@ -125,7 +124,6 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
   const wikiDescriptions = wikis.map((w) => {
     const lines = [
       `## [${w.kind}] ${w.title} (id: ${w.id})`,
-      `Status: ${w.status}`,
       `Last updated: ${w.modifiedAt}`,
       w.lastIngestedAt ? `Last ingested: ${w.lastIngestedAt}` : null,
       `Sources: ${w.derivedFromNotes.length} note(s)`,

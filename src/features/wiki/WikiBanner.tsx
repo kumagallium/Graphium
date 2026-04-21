@@ -1,8 +1,8 @@
 // Wiki ドキュメント用バナー
-// エディタ上部に表示: AI 生成バッジ、ステータス、由来ノート、アクションボタン
+// エディタ上部に表示: AI 生成バッジ、由来ノート、アクションボタン
 
 import { useState, useRef, useEffect } from "react";
-import { Bot, Check, RefreshCw, Trash2, ChevronDown } from "lucide-react";
+import { Bot, RefreshCw, Trash2, ChevronDown } from "lucide-react";
 import type { WikiMeta } from "../../lib/document-types";
 
 export type RegenerateOptions = {
@@ -17,7 +17,6 @@ type ModelOption = {
 
 type Props = {
   wikiMeta: WikiMeta;
-  onApprove: () => void;
   onRegenerate: (options?: RegenerateOptions) => void;
   onDelete: () => void;
   loading?: boolean;
@@ -36,12 +35,10 @@ function formatDate(isoDate: string): string {
 
 export function WikiBanner({
   wikiMeta,
-  onApprove,
   onRegenerate,
   onDelete,
   loading = false,
 }: Props) {
-  const isDraft = wikiMeta.status === "draft";
   const kindLabel = wikiMeta.kind === "summary" ? "Summary" : wikiMeta.kind === "synthesis" ? "Synthesis" : "Concept";
 
   // モデル選択ドロップダウンの状態
@@ -104,17 +101,6 @@ export function WikiBanner({
           AI {kindLabel}
         </span>
 
-        {/* ステータスバッジ */}
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-            isDraft
-              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-          }`}
-        >
-          {isDraft ? "Draft" : "Published"}
-        </span>
-
         {/* 生成日 */}
         <span className="text-[10px] text-muted-foreground">
           {formatDate(wikiMeta.generatedAt)}
@@ -131,18 +117,6 @@ export function WikiBanner({
 
         {/* アクションボタン */}
         <div className="flex items-center gap-1">
-          {isDraft && (
-            <button
-              onClick={onApprove}
-              disabled={loading}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors disabled:opacity-50"
-              title="Approve (Draft → Published)"
-            >
-              <Check size={12} />
-              Approve
-            </button>
-          )}
-
           {/* Regenerate ボタン + モデル選択ドロップダウン */}
           <div className="relative" ref={pickerRef}>
             <button

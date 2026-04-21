@@ -123,7 +123,6 @@ export function buildWikiDocument(
       model: model ?? "unknown",
       version: "1.0.0",
     },
-    status: "draft",
     lastIngestedAt: now,
     language: language ?? undefined,
   };
@@ -1144,7 +1143,7 @@ export async function lintWikis(
  */
 export function buildWikiSnapshots(
   wikiFiles: { id: string; modifiedTime: string }[],
-  wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
+  wikiMetas: Map<string, { title: string; kind: WikiKind; headings: string[] }>,
   getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
 ): WikiSnapshot[] {
   const snapshots: WikiSnapshot[] = [];
@@ -1160,7 +1159,6 @@ export function buildWikiSnapshots(
       id: file.id,
       title: meta.title,
       kind: meta.kind,
-      status: meta.status as "draft" | "published",
       derivedFromNotes: wikiMeta?.derivedFromNotes ?? [],
       relatedConcepts: extractRelatedConcepts(doc),
       sections: meta.headings,
@@ -1195,7 +1193,6 @@ export type WikiIndexEntry = {
   id: string;
   title: string;
   kind: WikiKind;
-  status: string;
   sections: string[];
   derivedFromNotes: string[];
   relatedConcepts: string[];
@@ -1208,7 +1205,7 @@ export type WikiIndexEntry = {
  */
 export function buildWikiIndex(
   wikiFiles: { id: string; modifiedTime: string }[],
-  wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
+  wikiMetas: Map<string, { title: string; kind: WikiKind; headings: string[] }>,
   getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
 ): WikiIndexEntry[] {
   const entries: WikiIndexEntry[] = [];
@@ -1223,7 +1220,6 @@ export function buildWikiIndex(
       id: file.id,
       title: meta.title,
       kind: meta.kind,
-      status: meta.status,
       sections: meta.headings,
       derivedFromNotes: doc?.wikiMeta?.derivedFromNotes ?? [],
       relatedConcepts: extractRelatedConcepts(doc),
@@ -1248,7 +1244,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (concepts.length > 0) {
     text += `### Concepts (${concepts.length})\n`;
     for (const c of concepts) {
-      text += `- **${c.title}** [${c.status}]: ${c.sections.join(", ")}\n`;
+      text += `- **${c.title}**: ${c.sections.join(", ")}\n`;
     }
     text += "\n";
   }
@@ -1256,7 +1252,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (summaries.length > 0) {
     text += `### Summaries (${summaries.length})\n`;
     for (const s of summaries) {
-      text += `- **${s.title}** [${s.status}]: ${s.sections.join(", ")}\n`;
+      text += `- **${s.title}**: ${s.sections.join(", ")}\n`;
     }
   }
 
@@ -1354,7 +1350,6 @@ export function buildSynthesisDocument(
       model: model ?? "unknown",
       version: "1.0.0",
     },
-    status: "draft",
     lastIngestedAt: now,
     language: language ?? undefined,
   };
@@ -1382,7 +1377,7 @@ export function buildSynthesisDocument(
  */
 export function buildConceptSnapshots(
   wikiFiles: { id: string; modifiedTime: string }[],
-  wikiMetas: Map<string, { title: string; kind: WikiKind; status: string; headings: string[] }>,
+  wikiMetas: Map<string, { title: string; kind: WikiKind; headings: string[] }>,
   getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
 ): ConceptSnapshot[] {
   const snapshots: ConceptSnapshot[] = [];
