@@ -816,7 +816,10 @@ function NoteEditorInner({
           const noteContents: string[] = [];
           for (const attached of attachedNotes) {
             try {
-              const doc = await getActiveProvider().loadFile(attached.id);
+              const provider = getActiveProvider();
+              const doc = attached.isWiki && provider.loadWikiFile
+                ? await provider.loadWikiFile(attached.id)
+                : await provider.loadFile(attached.id);
               if (doc) {
                 const page = doc.pages[0];
                 const blocks = page?.blocks ?? [];
@@ -845,7 +848,7 @@ function NoteEditorInner({
               userMessage,
               "",
               "---",
-              "以下は参照として添付されたノートの内容です:",
+              "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
               "",
               ...noteContents,
               "---",
