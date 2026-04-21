@@ -40,7 +40,8 @@ export class IndexFileNoteListSource implements NoteListSource {
       outgoingMap.set(note.noteId, uniqueTargets.size);
     }
 
-    return this.index.notes.map((n) => ({
+    // AI ドキュメント（Wiki）はノート一覧から除外（AI Knowledge セクションで表示）
+    return this.index.notes.filter((n) => n.source !== "ai").map((n) => ({
       noteId: n.noteId,
       title: n.title,
       modifiedAt: n.modifiedAt,
