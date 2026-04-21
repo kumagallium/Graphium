@@ -70,14 +70,14 @@ export function WikiBanner({
     }
     try {
       // Web モード: localStorage からモデル一覧を取得
-      const { isTauri } = await import("../../lib/platform");
+      const { apiBase, isTauri } = await import("../../lib/platform");
       if (!isTauri()) {
         const { getLLMModels } = await import("../settings/store");
         const localModels = getLLMModels();
         setModels(localModels.map((m) => ({ name: m.name, provider: m.provider, model_id: m.modelId })));
         setDefaultModel(localModels[0]?.name ?? "");
       } else {
-        const res = await fetch("/api/models");
+        const res = await fetch(`${apiBase()}/models`);
         if (res.ok) {
           const data = await res.json() as { models: ModelOption[]; default: string };
           setModels(data.models);

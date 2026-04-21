@@ -5,12 +5,12 @@ import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-ty
 import { embeddingStore } from "../../lib/embedding-store";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { getEmbeddingModel, getDefaultLLMModel } from "../settings/store";
-import { isTauri } from "../../lib/platform";
+import { apiBase, isTauri } from "../../lib/platform";
 
 import type { GraphiumIndex } from "../navigation";
 
-/** サーバー API の URL ベース */
-const API_BASE = "/api/wiki";
+/** サーバー API の URL ベース（Tauri: http://localhost:3001/api/wiki, Web: /api/wiki） */
+const API_BASE = `${apiBase()}/wiki`;
 
 /**
  * GraphiumIndex から NoteIndex を構築する（インライン引用リンク解決用）

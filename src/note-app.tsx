@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText } from "lucide-react";
-import { isTauri } from "./lib/platform";
+import { apiBase, isTauri } from "./lib/platform";
 import { SandboxEditor } from "./base/editor";
 import { pdfViewerBlock } from "./blocks/pdf-viewer";
 import { bookmarkBlock, bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
@@ -2429,7 +2429,7 @@ export function NoteApp() {
                         });
                       }
                     }
-                    const synthRes = await fetch("/api/wiki/synthesize", {
+                    const synthRes = await fetch(`${apiBase()}/wiki/synthesize`, {
                       method: "POST",
                       headers: synthHeaders,
                       body: JSON.stringify({

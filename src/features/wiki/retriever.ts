@@ -4,7 +4,7 @@
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
 import { getEmbeddingModel, getDefaultLLMModel } from "../settings/store";
-import { isTauri } from "../../lib/platform";
+import { apiBase, isTauri } from "../../lib/platform";
 
 const TOP_K = 5;
 const MIN_SCORE = 0.3;
@@ -31,7 +31,7 @@ export async function retrieveWikiContext(
         });
       }
     }
-    const res = await fetch("/api/wiki/embed", {
+    const res = await fetch(`${apiBase()}/wiki/embed`, {
       method: "POST",
       headers: embedHeaders,
       body: JSON.stringify({
