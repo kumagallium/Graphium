@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.3.6](https://github.com/kumagallium/Graphium/compare/v0.3.5...v0.3.6) - 2026-04-22
+- Remove wiki status and Approve workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/117
+- feat: List navigation with side peek, URL routing, and breadcrumbs by @kumagallium in https://github.com/kumagallium/Graphium/pull/118
+- Add linked notes list view in graph panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/119
+- Add Skill (prompt template) feature by @kumagallium in https://github.com/kumagallium/Graphium/pull/120
+- Add @mention to attach note/wiki context in AI chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/121
+- fix(i18n): localize relative time labels in recent notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/122
+- [docs] Polish README for international audience: AI Knowledge + hide JP-only spec by @kumagallium in https://github.com/kumagallium/Graphium/pull/123
+
 ## [v0.3.5](https://github.com/kumagallium/Graphium/compare/v0.3.4...v0.3.5) - 2026-04-20
 - AI Knowledge Layer (G-ZETTEL) by @kumagallium in https://github.com/kumagallium/Graphium/pull/107
 - Add URL and chat ingest sources by @kumagallium in https://github.com/kumagallium/Graphium/pull/108
