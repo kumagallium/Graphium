@@ -178,6 +178,15 @@ export const ja: Record<string, string> = {
   "nav.sortByTitle": "タイトル順",
   "nav.sortByOutgoing": "リンク数順",
 
+  // ── 相対時間 ──
+  "time.justNow": "たった今",
+  "time.minutesAgo": "{n}分前",
+  "time.hoursAgo": "{n}h前",
+  "time.yesterday": "昨日",
+  "time.daysAgo": "{n}日前",
+  "time.weeksAgo": "{n}週前",
+  "time.monthsAgo": "{n}ヶ月前",
+
   // ── インデックステーブル ──
   "indexTable.sidePeek": "サイドピーク",
   "indexTable.openNote": "ノートを開く",

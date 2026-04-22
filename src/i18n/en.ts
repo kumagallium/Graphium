@@ -178,6 +178,15 @@ export const en: Record<string, string> = {
   "nav.sortByTitle": "Sort by title",
   "nav.sortByOutgoing": "Sort by outgoing links",
 
+  // ── 相対時間 ──
+  "time.justNow": "just now",
+  "time.minutesAgo": "{n}m ago",
+  "time.hoursAgo": "{n}h ago",
+  "time.yesterday": "yesterday",
+  "time.daysAgo": "{n}d ago",
+  "time.weeksAgo": "{n}w ago",
+  "time.monthsAgo": "{n}mo ago",
+
   // ── インデックステーブル ──
   "indexTable.sidePeek": "Side peek",
   "indexTable.openNote": "Open note",
