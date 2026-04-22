@@ -94,6 +94,23 @@ The mobile view is optimized for quick data capture in the field. For full editi
   </tr>
 </table>
 
+## AI Knowledge Layer
+
+When you connect an LLM, Graphium builds a **second layer** on top of your notes — a wiki of concepts and summaries auto-generated from what you've written. Think of it as *Zettelkasten extended by an LLM*: the AI reads your notes, extracts stable ideas, keeps them cross-linked, and cites back to the source blocks — all while carrying the same PROV-DM provenance as the rest of the editor.
+
+| Capability | What it does |
+|-----------|--------------|
+| **Ingest from notes** | After you edit a note, the AI extracts knowledge-worthy sections and writes them into Wiki pages (Concept / Summary). |
+| **Ingest from URL & chat** | Drop a URL or save an AI chat response — it becomes a Wiki page with the same provenance chain. |
+| **Synthesis pages** | Concepts that appear across multiple notes get auto-generated Synthesis pages that connect them. |
+| **Autonomous maintenance** | Periodic lint checks, cross-update proposals, and index rebuilds keep the wiki coherent as your notes grow. |
+| **Inline citations** | Every Wiki section links back to the source block in the original note, so nothing is orphaned. |
+| **Retriever for AI chat** | Wiki context is injected into AI responses — the assistant remembers what you wrote last week without re-reading every note. |
+
+Wiki pages live in the same storage as your notes (Google Drive / local / Tauri filesystem) and are fully editable by hand. The AI will not overwrite your manual edits unless you explicitly ask it to rewrite a page. Every Wiki edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
+
+AI Knowledge is **opt-in**: configure an LLM in **⚙ Settings → AI Setup** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
+
 ## Interoperability
 
 Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2024/SUBM-prov-jsonld-20240825/)** — a W3C standard built on Linked Data. This is not a proprietary format: any tool that understands PROV-DM or JSON-LD can consume Graphium's output. Provenance data is portable by design.
@@ -185,6 +202,7 @@ Google Drive sync works without any configuration. AI features require the backe
 - **Provenance graph** visualization (Cytoscape.js + ELK layout)
 - **Inter-note network graph** (Cytoscape.js + fcose layout)
 - **AI assistant** — derive notes from AI responses with full provenance metadata
+- **AI Knowledge Layer** — auto-generated Wiki pages (Concept / Summary / Synthesis) with inline citations, autonomous lint & cross-update
 - **Google Drive storage** — notes saved as `.graphium.json` files
 - **Google OAuth 2.0** authentication
 - **Desktop app** — Tauri-based native app with local file storage and Google Drive sync
