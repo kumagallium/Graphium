@@ -7,6 +7,7 @@ import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useAiAssistant } from "./store";
 import { fetchModels } from "./api";
+import { ensureSidecar } from "../../lib/sidecar";
 import { useT } from "../../i18n";
 import type { ChatMessage, ScopeChat } from "../../lib/google-drive";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -122,7 +123,6 @@ export function AiAssistantPanel({
         setAiStatus(res.models.length > 0 ? "connected" : "no-models");
       } catch {
         // sidecar が死んでいたら再起動を試みる
-        const { ensureSidecar } = await import("../../lib/sidecar");
         const recovered = await ensureSidecar();
         if (recovered) {
           try {

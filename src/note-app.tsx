@@ -4,6 +4,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText } from "lucide-react";
 import { apiBase, isTauri } from "./lib/platform";
+import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { pdfViewerBlock } from "./blocks/pdf-viewer";
 import { bookmarkBlock, bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
@@ -1725,7 +1726,6 @@ export function NoteApp() {
       } catch {
         // sidecar 復旧を試みる（Tauri 環境のみ）
         try {
-          const { ensureSidecar } = await import("./lib/sidecar");
           const recovered = await ensureSidecar();
           if (recovered) {
             const { fetchModels } = await import("./features/ai-assistant/api");
