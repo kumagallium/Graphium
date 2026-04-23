@@ -26,6 +26,7 @@ import {
   type ProfileInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
+import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
 import { useLocale, type Locale } from "../../i18n";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 
@@ -211,7 +212,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setSidecarLog([]);
     setShowSidecarLog(false);
     try {
-      const { restartSidecar, getSidecarState, getRecentSidecarLog } = await import("../../lib/sidecar");
       const ok = await restartSidecar();
       if (ok) {
         const regUrl = loadSettings().registryUrl ?? "";
