@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.3.9](https://github.com/kumagallium/Graphium/compare/v0.3.8...v0.3.9) - 2026-04-24
+- [fix] Unblock desktop close button and unify release notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/132
+- chore: Limit desktop release to macOS Apple Silicon by @kumagallium in https://github.com/kumagallium/Graphium/pull/131
+
 ## [v0.3.8](https://github.com/kumagallium/Graphium/compare/v0.3.7...v0.3.8) - 2026-04-24
 - fix: Bundle Node.js runtime for distributed desktop app by @kumagallium in https://github.com/kumagallium/Graphium/pull/129
 
