@@ -311,6 +311,12 @@ type NoteEditorProps = {
   skillPrompts?: string;
   /** Cmd+K Composer を開くコールバック（空ノート予示の ⌘K チップから呼ばれる） */
   onOpenComposer?: () => void;
+  /** Composer 送信をノートスコープで受けるための imperative ref。
+   *  NoteApp 側で ref を作り、NoteEditorInner が useEffect でハンドラを登録する。
+   *  ノート未開時は null のままになり、NoteApp はそれを検知して no-op 扱いする。 */
+  composerSubmitRef?: React.MutableRefObject<
+    ((submission: ComposerSubmission) => void | Promise<void>) | null
+  >;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -397,6 +403,7 @@ function NoteEditorInner({
   aiAvailable = true,
   skillPrompts,
   onOpenComposer,
+  composerSubmitRef,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -1081,6 +1088,25 @@ function NoteEditorInner({
     },
     [fileId, aiAssistant, markDirty],
   );
+
+  // Composer（Cmd+K）からの送信を受けるハンドラを ref に登録する。
+  // NoteApp 側は composerSubmitRef.current?.(submission) を呼ぶだけで、
+  // ノートが開いていない場合は null のまま → Composer 送信は no-op になる。
+  // 現状 Ask モードのみ実配線。他モードは後続 PR で。
+  useEffect(() => {
+    if (!composerSubmitRef) return;
+    composerSubmitRef.current = async (submission) => {
+      if (submission.mode === "ask") {
+        setRightTab("chat");
+        await handleAiChatSubmit(submission.prompt);
+        return;
+      }
+      console.info("[Composer] mode not yet wired to AI:", submission);
+    };
+    return () => {
+      if (composerSubmitRef.current) composerSubmitRef.current = null;
+    };
+  }, [composerSubmitRef, handleAiChatSubmit]);
 
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
@@ -1893,14 +1919,27 @@ export function NoteApp() {
   const [showMemos, setShowMemos] = useState(false);
 
   // Cmd+K Composer（統一された AI 呼び出し口 / UX Audit #04）
-  // 実 AI 呼び出しは後続 PR で配線予定。現状は開閉と送信の記録だけ行う。
+  // Ask モードは NoteEditorInner が composerSubmitRef 経由でハンドラを登録し、
+  // 既存 handleAiChatSubmit に流す。他モードは後続 PR で配線。
   const composer = useComposer();
   const [composerPrompt, setComposerPrompt] = useState("");
-  const handleComposerSubmit = useCallback((submission: ComposerSubmission) => {
-    console.info("[Composer] submit (not yet wired to AI):", submission);
-    setComposerPrompt("");
-    composer.closeComposer();
-  }, [composer]);
+  const composerSubmitRef = useRef<
+    ((submission: ComposerSubmission) => void | Promise<void>) | null
+  >(null);
+  const handleComposerSubmit = useCallback(
+    async (submission: ComposerSubmission) => {
+      const handler = composerSubmitRef.current;
+      setComposerPrompt("");
+      composer.closeComposer();
+      if (handler) {
+        await handler(submission);
+      } else {
+        // ノート未開時は受け皿がないので何もしない（ログのみ）
+        console.info("[Composer] no active note — submit ignored:", submission);
+      }
+    },
+    [composer],
+  );
   const handleComposerCardSelect = useCallback((card: DiscoveryCard) => {
     console.info("[Composer] discovery card selected (not yet wired):", card);
   }, []);
@@ -2934,6 +2973,7 @@ export function NoteApp() {
             isWikiDoc={fm.activeDoc?.source === "ai"}
             aiAvailable={aiAvailable ?? false}
             onOpenComposer={composer.openComposer}
+            composerSubmitRef={composerSubmitRef}
             skillPrompts={(() => {
               const skills: { title: string; prompt: string }[] = [];
               for (const [skillId, meta] of fm.skillMetas.entries()) {

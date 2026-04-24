@@ -15,7 +15,7 @@ const meta: Meta<typeof Composer> = {
     docs: {
       description: {
         component:
-          "Cmd+K で開くグローバル Composer。AI 実行は後続 PR で配線予定の段階で、ここではシェル（入力 / 発見カード / モードタブ）のみ確認する。",
+          "Cmd+K で開くグローバル Composer。実アプリでは Ask モードのみ右パネル Chat に配線済み（Compose / Insert は後続 PR）。本ストーリーは配線なしのシェルで、submit と発見カード選択は console に流れる。",
       },
     },
   },
