@@ -1,5 +1,6 @@
 // Composer（Cmd+K）の型定義
-// UI スケルトン段階。AI 実行配線は後続 PR。
+// 現状 UI で公開されているのは Ask のみ。残り 3 モードは実装を残しつつ
+// 意図的に UI から隠している（project_composer_mode_redesign.md 参照）。
 
 export const COMPOSER_MODES = ["ask", "compose", "insert-prov", "insert-media"] as const;
 export type ComposerMode = (typeof COMPOSER_MODES)[number];

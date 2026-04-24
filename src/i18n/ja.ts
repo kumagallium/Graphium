@@ -476,12 +476,13 @@ export const ja: Record<string, string> = {
   "onboarding.chip.slash.label": "スラッシュメニュー",
   "onboarding.chip.slash.desc": "空行で / を打つとブロック・ツール一覧",
 
-  // ── Composer（Cmd+K） ──
-  "composer.placeholder": "質問・執筆・挿入...（Cmd+K で開閉）",
+  // ── Composer（Cmd+K） ── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
+  "composer.placeholder": "このノートについて AI に質問...（Cmd+K で開閉）",
   "composer.mode.ask": "質問",
   "composer.mode.compose": "執筆",
   "composer.mode.insertProv": "PROV を挿入",
   "composer.mode.insertMedia": "メディアを挿入",
-  "composer.aria.dialog": "Composer",
-  "composer.aria.modes": "Composer モード",
+  "composer.aria.dialog": "AI に質問",
+  "composer.insertProv.systemHint": "次の説明を実験・作業の手順に分解して、1 手順 = 1 ブロックで書き出してください。各ブロックの役割を行頭に [手順] / [材料] / [ツール] / [結果] のいずれかのラベルで示してください。",
+  "aiChat.runFailed": "AI 実行に失敗しました",
 };

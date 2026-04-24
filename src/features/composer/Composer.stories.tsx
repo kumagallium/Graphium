@@ -1,5 +1,6 @@
 // Composer（Cmd+K）のビジュアル確認用ストーリー
-// 実際のキーボードショートカットは無効化した状態でオーバーレイを常時表示する。
+// 現状 UI は Ask 単機能なので、入力有り / 発見カード有り の 2 ストーリーだけ提供。
+// モード切替 UI は持っていないため、他モードの表示確認は不要。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
@@ -15,7 +16,7 @@ const meta: Meta<typeof Composer> = {
     docs: {
       description: {
         component:
-          "Cmd+K で開くグローバル Composer。実アプリでは Ask モードのみ右パネル Chat に配線済み（Compose / Insert は後続 PR）。本ストーリーは配線なしのシェルで、submit と発見カード選択は console に流れる。",
+          "Cmd+K で開くグローバル Composer（Ask 単機能）。送信は右パネル Chat に流れるが、本ストーリーは配線なしのシェルで、submit と発見カード選択は console に流れる。",
       },
     },
   },
@@ -23,12 +24,11 @@ const meta: Meta<typeof Composer> = {
 export default meta;
 
 type Args = {
-  defaultMode?: ComposerMode;
   showDiscoveryCards?: boolean;
 };
 
-function Harness({ defaultMode = "ask", showDiscoveryCards = false }: Args) {
-  const [mode, setMode] = useState<ComposerMode>(defaultMode);
+function Harness({ showDiscoveryCards = false }: Args) {
+  const [mode, setMode] = useState<ComposerMode>("ask");
   const [prompt, setPrompt] = useState("");
   const [log, setLog] = useState<string[]>([]);
 
@@ -107,26 +107,14 @@ function Harness({ defaultMode = "ask", showDiscoveryCards = false }: Args) {
   );
 }
 
-export const AskMode: StoryObj<Args> = {
-  name: "Ask モード（初期状態）",
+export const Default: StoryObj<Args> = {
+  name: "初期状態（入力のみ）",
   render: (args) => <Harness {...args} />,
-  args: { defaultMode: "ask" },
-};
-
-export const ComposeMode: StoryObj<Args> = {
-  name: "Compose モード",
-  render: (args) => <Harness {...args} />,
-  args: { defaultMode: "compose" },
-};
-
-export const InsertProvMode: StoryObj<Args> = {
-  name: "Insert PROV モード",
-  render: (args) => <Harness {...args} />,
-  args: { defaultMode: "insert-prov" },
+  args: {},
 };
 
 export const WithDiscoveryCards: StoryObj<Args> = {
   name: "発見カード付き",
   render: (args) => <Harness {...args} />,
-  args: { defaultMode: "ask", showDiscoveryCards: true },
+  args: { showDiscoveryCards: true },
 };
