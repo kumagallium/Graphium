@@ -70,6 +70,61 @@
   --radius: 0.625rem;
 }
 
+/* ============================================================
+   Scene tokens (oklch) — UX Audit redesign 用プリミティブ
+   ------------------------------------------------------------
+   新規 UI（書き面の静けさ / 中央 Composer / Wiki Banner リファイン 等）
+   が参照する oklch ベース・カラーパレット。
+   既存の --color-* (@theme) はそのまま維持し、新設 UI だけが
+   var(--paper) / var(--forest) 等を参照する。
+   ブランドグリーン --forest は既存 #4B7A52 とほぼ同値。
+   ============================================================ */
+:root {
+  /* Paper — 温かみのあるニュートラル（背景系） */
+  --paper: oklch(0.985 0.005 85);
+  --paper-2: oklch(0.972 0.006 85);
+  --paper-3: oklch(0.955 0.008 85);
+
+  /* Ink — テキスト階層（前景系） */
+  --ink: oklch(0.22 0.01 85);
+  --ink-2: oklch(0.38 0.01 85);
+  --ink-3: oklch(0.56 0.01 85);
+  --ink-4: oklch(0.72 0.008 85);
+
+  /* Rule — 罫線・区切り */
+  --rule: oklch(0.90 0.006 85);
+  --rule-2: oklch(0.94 0.006 85);
+
+  /* Forest — ブランド（既存 #4B7A52 と等価）: primary / provenance */
+  --forest: oklch(0.48 0.09 150);
+  --forest-soft: oklch(0.94 0.04 150);
+  --forest-ink: oklch(0.30 0.08 150);
+
+  /* Amber — 発見・下書き・警告 */
+  --amber: oklch(0.68 0.14 60);
+  --amber-soft: oklch(0.94 0.07 70);
+  --amber-ink: oklch(0.42 0.12 55);
+
+  /* Rose — 注意・エラー・結果 */
+  --rose: oklch(0.62 0.14 25);
+  --rose-soft: oklch(0.95 0.04 25);
+
+  /* Sky — AI・リンク・情報 */
+  --sky: oklch(0.60 0.10 230);
+  --sky-soft: oklch(0.95 0.035 230);
+  --sky-ink: oklch(0.38 0.09 230);
+
+  /* Radii */
+  --r-1: 6px;
+  --r-2: 8px;
+  --r-3: 10px;
+  --pill: 9999px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(30, 20, 10, 0.05), 0 2px 6px rgba(30, 20, 10, 0.04);
+  --shadow-2: 0 2px 6px rgba(30, 20, 10, 0.06), 0 10px 30px rgba(30, 20, 10, 0.06);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
