@@ -24,10 +24,10 @@ const MOCK_INDEX: GraphiumIndex = {
       createdAt: daysAgo(14),
       headings: [{ blockId: "h1", text: "焼結条件の検討", level: 2 }],
       labels: [
-        { blockId: "b1", label: "[手順]", preview: "焼結条件の検討" },
-        { blockId: "b2", label: "[使用したもの]", preview: "Cu粉末 1g" },
-        { blockId: "b3", label: "[結果]", preview: "焼結体（密度 85%）" },
-        { blockId: "b4", label: "[属性]", preview: "温度: 800℃" },
+        { blockId: "b1", label: "procedure", preview: "焼結条件の検討" },
+        { blockId: "b2", label: "material", preview: "Cu粉末 1g" },
+        { blockId: "b3", label: "result", preview: "焼結体（密度 85%）" },
+        { blockId: "b4", label: "attribute", preview: "温度: 800℃" },
       ],
       outgoingLinks: [
         { targetNoteId: "note-2", layer: "prov" },
@@ -42,8 +42,8 @@ const MOCK_INDEX: GraphiumIndex = {
       createdAt: daysAgo(21),
       headings: [{ blockId: "h2", text: "洗浄工程", level: 2 }],
       labels: [
-        { blockId: "b5", label: "[手順]", preview: "洗浄工程" },
-        { blockId: "b6", label: "[使用したもの]", preview: "シリカ管" },
+        { blockId: "b5", label: "procedure", preview: "洗浄工程" },
+        { blockId: "b6", label: "material", preview: "シリカ管" },
       ],
       outgoingLinks: [{ targetNoteId: "note-4", layer: "prov" }],
     },
@@ -54,7 +54,7 @@ const MOCK_INDEX: GraphiumIndex = {
       createdAt: daysAgo(7),
       headings: [],
       labels: [
-        { blockId: "b7", label: "[結果]", preview: "Cu2O ピーク確認" },
+        { blockId: "b7", label: "result", preview: "Cu2O ピーク確認" },
       ],
       outgoingLinks: [],
     },
@@ -65,8 +65,8 @@ const MOCK_INDEX: GraphiumIndex = {
       createdAt: daysAgo(30),
       headings: [],
       labels: [
-        { blockId: "b8", label: "[使用したもの]", preview: "管状炉 KTF-040N" },
-        { blockId: "b9", label: "[属性]", preview: "最高温度: 1100℃" },
+        { blockId: "b8", label: "material", preview: "管状炉 KTF-040N" },
+        { blockId: "b9", label: "attribute", preview: "最高温度: 1100℃" },
       ],
       outgoingLinks: [],
     },
@@ -77,7 +77,7 @@ const MOCK_INDEX: GraphiumIndex = {
       createdAt: daysAgo(10),
       headings: [{ blockId: "h3", text: "温度プロファイル", level: 2 }],
       labels: [
-        { blockId: "b10", label: "[属性]", preview: "昇温速度: 5℃/min" },
+        { blockId: "b10", label: "attribute", preview: "昇温速度: 5℃/min" },
       ],
       outgoingLinks: [
         { targetNoteId: "note-1", layer: "prov" },
@@ -101,11 +101,11 @@ const MOCK_INDEX: GraphiumIndex = {
       createdAt: daysAgo(2),
       headings: [{ blockId: "h4", text: "実験計画", level: 2 }],
       labels: [
-        { blockId: "b11", label: "[手順]", preview: "実験計画" },
-        { blockId: "b12", label: "[使用したもの]", preview: "Cu粉末 2g" },
-        { blockId: "b13", label: "[使用したもの]", preview: "Ni粉末 0.5g" },
-        { blockId: "b14", label: "[属性]", preview: "温度: 900℃" },
-        { blockId: "b15", label: "[結果]", preview: "（予定）" },
+        { blockId: "b11", label: "procedure", preview: "実験計画" },
+        { blockId: "b12", label: "material", preview: "Cu粉末 2g" },
+        { blockId: "b13", label: "material", preview: "Ni粉末 0.5g" },
+        { blockId: "b14", label: "attribute", preview: "温度: 900℃" },
+        { blockId: "b15", label: "result", preview: "（予定）" },
       ],
       outgoingLinks: [
         { targetNoteId: "note-1", layer: "prov" },

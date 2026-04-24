@@ -57,12 +57,12 @@ const curryBlocks = [
 ];
 
 const curryLabels = new Map([
-  ["h2-cut", "[手順]"],
-  ["used-vegs", "[使用したもの]"],
-  ["h2-fry", "[手順]"],
-  ["cond-fire", "[属性]"],
-  ["h2-simmer", "[手順]"],
-  ["result-curry", "[結果]"],
+  ["h2-cut", "procedure"],
+  ["used-vegs", "material"],
+  ["h2-fry", "procedure"],
+  ["cond-fire", "attribute"],
+  ["h2-simmer", "procedure"],
+  ["result-curry", "result"],
 ]);
 
 const curryLinks = [
@@ -192,11 +192,11 @@ const scopeBlocks = [
 ];
 
 const scopeLabels = new Map([
-  ["h2-cut", "[手順]"],
-  ["used-carrot", "[使用したもの]"],
-  ["used-memo", "[使用したもの]"],
-  ["h2-fry", "[手順]"],
-  ["cond-fire", "[属性]"],
+  ["h2-cut", "procedure"],
+  ["used-carrot", "material"],
+  ["used-memo", "material"],
+  ["h2-fry", "procedure"],
+  ["cond-fire", "attribute"],
 ]);
 
 describe("スコープ境界テスト", () => {
@@ -254,9 +254,9 @@ describe("スコープ境界テスト", () => {
       },
     ];
     const labelsWithH1 = new Map([
-      ["h2-step", "[手順]"],
-      ["used-item", "[使用したもの]"],
-      ["used-orphan", "[使用したもの]"],
+      ["h2-step", "procedure"],
+      ["used-item", "material"],
+      ["used-orphan", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks: blocksWithH1, labels: labelsWithH1, links: [] });
@@ -292,8 +292,8 @@ describe("スコープ境界テスト", () => {
       },
     ];
     const labelsWithH3 = new Map([
-      ["h2-step", "[手順]"],
-      ["used-detail-item", "[使用したもの]"],
+      ["h2-step", "procedure"],
+      ["used-detail-item", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks: blocksWithH3, labels: labelsWithH3, links: [] });
@@ -379,16 +379,16 @@ const hierarchyBlocks = [
 ];
 
 const hierarchyLabels = new Map([
-  ["h2-a", "[手順]"],
-  ["used-mat1", "[使用したもの]"],
-  ["h3-a1", "[手順]"],
-  ["used-mat2", "[使用したもの]"],
-  ["result-a1", "[結果]"],
-  ["h3-a2", "[手順]"],
-  ["param-a2", "[属性]"],
-  ["result-a2", "[結果]"],
-  ["h2-b", "[手順]"],
-  ["used-mat3", "[使用したもの]"],
+  ["h2-a", "procedure"],
+  ["used-mat1", "material"],
+  ["h3-a1", "procedure"],
+  ["used-mat2", "material"],
+  ["result-a1", "result"],
+  ["h3-a2", "procedure"],
+  ["param-a2", "attribute"],
+  ["result-a2", "result"],
+  ["h2-b", "procedure"],
+  ["used-mat3", "material"],
 ]);
 
 describe("見出しレベル階層スコープ", () => {
@@ -494,10 +494,10 @@ describe("見出しレベル階層スコープ", () => {
       },
     ];
     const labelsWithUnlabeledH3 = new Map([
-      ["h2-parent", "[手順]"],
-      ["h3-sub", "[手順]"],
-      ["used-in-sub", "[使用したもの]"],
-      ["used-after-note", "[使用したもの]"],
+      ["h2-parent", "procedure"],
+      ["h3-sub", "procedure"],
+      ["used-in-sub", "material"],
+      ["used-after-note", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks: blocksWithUnlabeledH3, labels: labelsWithUnlabeledH3, links: [] });
@@ -547,8 +547,8 @@ describe("Phase 3: テーブル構造化属性", () => {
       },
     ];
     const labels = new Map([
-      ["h2-mix", "[手順]"],
-      ["mat-table", "[使用したもの]"],
+      ["h2-mix", "procedure"],
+      ["mat-table", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -595,8 +595,8 @@ describe("Phase 3: テーブル構造化属性", () => {
       },
     ];
     const labels = new Map([
-      ["h2-eval", "[手順]"],
-      ["res-table", "[結果]"],
+      ["h2-eval", "procedure"],
+      ["res-table", "result"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -630,8 +630,8 @@ describe("Phase 3: テーブル構造化属性", () => {
       },
     ];
     const labels = new Map([
-      ["h2-step", "[手順]"],
-      ["used-para", "[使用したもの]"],
+      ["h2-step", "procedure"],
+      ["used-para", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -713,10 +713,10 @@ describe("孤立リンク（G-ORPHAN-LINK）", () => {
     // h2-cut → h2-fry のリンクがあるが、h2-cut は削除済み（blocks に含まれない）
     const blocksWithoutCut = curryBlocks.filter((b) => b.id !== "h2-cut" && b.id !== "used-vegs");
     const labelsWithoutCut = new Map([
-      ["h2-fry", "[手順]"],
-      ["cond-fire", "[属性]"],
-      ["h2-simmer", "[手順]"],
-      ["result-curry", "[結果]"],
+      ["h2-fry", "procedure"],
+      ["cond-fire", "attribute"],
+      ["h2-simmer", "procedure"],
+      ["result-curry", "result"],
     ]);
     const linksWithOrphan = [
       { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
@@ -741,10 +741,10 @@ describe("孤立リンク（G-ORPHAN-LINK）", () => {
   it("削除済みブロックへのリンクに broken-link 警告が出る", () => {
     const blocksWithoutCut = curryBlocks.filter((b) => b.id !== "h2-cut" && b.id !== "used-vegs");
     const labelsWithoutCut = new Map([
-      ["h2-fry", "[手順]"],
-      ["cond-fire", "[属性]"],
-      ["h2-simmer", "[手順]"],
-      ["result-curry", "[結果]"],
+      ["h2-fry", "procedure"],
+      ["cond-fire", "attribute"],
+      ["h2-simmer", "procedure"],
+      ["result-curry", "result"],
     ]);
     const linksWithOrphan = [
       { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
@@ -760,10 +760,10 @@ describe("孤立リンク（G-ORPHAN-LINK）", () => {
     // h2-fry が削除されたが、h2-fry → h2-cut のリンクが残っている場合
     const blocksWithoutFry = curryBlocks.filter((b) => b.id !== "h2-fry" && b.id !== "cond-fire");
     const labelsWithoutFry = new Map([
-      ["h2-cut", "[手順]"],
-      ["used-vegs", "[材料]"],
-      ["h2-simmer", "[手順]"],
-      ["result-curry", "[結果]"],
+      ["h2-cut", "procedure"],
+      ["used-vegs", "material"],
+      ["h2-simmer", "procedure"],
+      ["result-curry", "result"],
     ]);
     const linksWithOrphanSource = [
       { id: "link-1", sourceBlockId: "h2-fry", targetBlockId: "h2-cut", type: "informed_by" as const, layer: "prov" as const, createdBy: "human" as const },
@@ -820,8 +820,8 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-mix", "[手順]"],
-      ["mat-para", "[材料]"],
+      ["h2-mix", "procedure"],
+      ["mat-para", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -864,8 +864,8 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-eval", "[手順]"],
-      ["res-para", "[結果]"],
+      ["h2-eval", "procedure"],
+      ["res-para", "result"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -904,8 +904,8 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-sinter", "[手順]"],
-      ["tool-para", "[ツール]"],
+      ["h2-sinter", "procedure"],
+      ["tool-para", "tool"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -938,7 +938,7 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-step", "[手順]"],
+      ["h2-step", "procedure"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -990,10 +990,10 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-step1", "[手順]"],
-      ["mat1", "[材料]"],
-      ["h2-step2", "[手順]"],
-      ["mat2", "[材料]"],
+      ["h2-step1", "procedure"],
+      ["mat1", "material"],
+      ["h2-step2", "procedure"],
+      ["mat2", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -1042,8 +1042,8 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-step", "[手順]"],
-      ["mat", "[材料]"],
+      ["h2-step", "procedure"],
+      ["mat", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -1082,8 +1082,8 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-observe", "[手順]"],
-      ["res-label", "[結果]"],
+      ["h2-observe", "procedure"],
+      ["res-label", "result"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -1120,8 +1120,8 @@ describe("メディアブロック → PROV Entity", () => {
       },
     ];
     const labels = new Map([
-      ["h2-step", "[手順]"],
-      ["mat", "[材料]"],
+      ["h2-step", "procedure"],
+      ["mat", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -1164,8 +1164,8 @@ describe("子ブロック（インデント）→ 親 Entity の属性", () => {
       },
     ];
     const labels = new Map([
-      ["h2-eval", "[手順]"],
-      ["res-para", "[結果]"],
+      ["h2-eval", "procedure"],
+      ["res-para", "result"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -1209,8 +1209,8 @@ describe("子ブロック（インデント）→ 親 Entity の属性", () => {
       },
     ];
     const labels = new Map([
-      ["h2-mix", "[手順]"],
-      ["mat-para", "[材料]"],
+      ["h2-mix", "procedure"],
+      ["mat-para", "material"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });
@@ -1246,9 +1246,9 @@ describe("子ブロック（インデント）→ 親 Entity の属性", () => {
       },
     ];
     const labels = new Map([
-      ["h2-step", "[手順]"],
-      ["res-para", "[結果]"],
-      ["child-labeled", "[属性]"],
+      ["h2-step", "procedure"],
+      ["res-para", "result"],
+      ["child-labeled", "attribute"],
     ]);
 
     const doc = generateProvDocument({ blocks, labels, links: [] });

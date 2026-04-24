@@ -18,10 +18,10 @@ const tokens = {
 
 // ラベル色
 const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[使用したもの]": "#4B7A52",
-  "[属性]": "#c08b3e",
-  "[結果]": "#c26356",
+  "procedure": "#5b8fb9",
+  "material": "#4B7A52",
+  "attribute": "#c08b3e",
+  "result": "#c26356",
 };
 function getLabelColor(label: string): string {
   return LABEL_COLORS[label] ?? tokens.mutedFg;
@@ -118,9 +118,9 @@ export const DefaultState: StoryObj = {
 
 // ドロップダウン（ラベル選択済み）
 export const WithActiveLabel: StoryObj = {
-  name: "ラベル選択済み（[手順]）",
+  name: "ラベル選択済み（procedure）",
   render: () => {
-    const activeLabel = "[手順]";
+    const activeLabel = "procedure";
     return (
       <div style={dropdownStyle}>
         <div style={sectionHeaderStyle}>コアラベル（PROV-DM）</div>

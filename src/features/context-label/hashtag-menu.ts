@@ -14,9 +14,9 @@ import { getDisplayLabelName } from "../../i18n";
 export type LabelSuggestion = {
   /** 検索対象文字列 */
   query: string;
-  /** 内部ラベル名（例: "[使用したもの]"） */
+  /** 内部ラベル名（例: "material"） */
   label: string;
-  /** バッジに表示する名前（例: "使用したもの"） */
+  /** バッジに表示する名前（例: "インプット"） */
   displayName: string;
   /** ラベルの種類 */
   group: "core" | "alias" | "free";

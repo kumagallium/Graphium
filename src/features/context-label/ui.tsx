@@ -36,12 +36,11 @@ import { Input } from "@ui/form-field";
 // 色定義
 // ──────────────────────────────────
 const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[使用したもの]": "#4B7A52",
-  "[属性]": "#c08b3e",
-  "[結果]": "#c26356",
-  // 後方互換
-  "[条件]": "#c08b3e",
+  procedure: "#5b8fb9",
+  material: "#4B7A52",
+  tool: "#c08b3e",
+  attribute: "#c08b3e",
+  result: "#c26356",
 };
 
 function getLabelColor(label: string): string {
@@ -242,8 +241,7 @@ export function LabelDropdownPortal() {
               onChange={(e) => setFreeInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && freeInput.trim()) {
-                  const v = freeInput.trim();
-                  select(v.startsWith("[") ? v : `[${v}]`);
+                  select(freeInput.trim());
                 }
                 if (e.key === "Escape") closeDropdown();
               }}
@@ -254,8 +252,7 @@ export function LabelDropdownPortal() {
               size="sm"
               onClick={() => {
                 if (freeInput.trim()) {
-                  const v = freeInput.trim();
-                  select(v.startsWith("[") ? v : `[${v}]`);
+                  select(freeInput.trim());
                 }
               }}
               className="text-xs shrink-0"

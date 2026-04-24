@@ -28,7 +28,7 @@ describe("リンクの二層分離", () => {
     const blocks = [
       { id: "h2-step", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順1" }], children: [] },
     ];
-    const labels = new Map([["h2-step", "[手順]"]]);
+    const labels = new Map([["h2-step", "procedure"]]);
     const links = [
       { id: "ref-1", sourceBlockId: "h2-step", targetBlockId: "some-block", type: "reference" as const, layer: "knowledge" as const, createdBy: "human" as const },
     ];
@@ -42,15 +42,15 @@ describe("リンクの二層分離", () => {
 });
 
 // ──────────────────────────────────
-// 1.4 [属性] の PROV 名変更
+// 1.4 attribute の PROV 名変更
 // ──────────────────────────────────
-describe("[属性] の PROV 名変更", () => {
-  it("[属性] ブロックが独立ノードではなく親の graphium:attributes に埋め込まれる", () => {
+describe("attribute の PROV 名変更", () => {
+  it("attribute ブロックが独立ノードではなく親の graphium:attributes に埋め込まれる", () => {
     const blocks = [
       { id: "h2-step", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "焼結" }], children: [] },
       { id: "attr-1", type: "paragraph", content: [{ type: "text", text: "温度 800℃" }], children: [] },
     ];
-    const labels = new Map([["h2-step", "[手順]"], ["attr-1", "[属性]"]]);
+    const labels = new Map([["h2-step", "procedure"], ["attr-1", "attribute"]]);
     const doc = generateProvDocument({ blocks, labels, links: [] });
 
     // param_ ノードは生成されない
@@ -62,12 +62,12 @@ describe("[属性] の PROV 名変更", () => {
     expect(act!["graphium:attributes"]![0]["rdfs:label"]).toBe("温度 800℃");
   });
 
-  it("[属性] が親 Activity の graphium:attributes に埋め込まれる", () => {
+  it("attribute が親 Activity の graphium:attributes に埋め込まれる", () => {
     const blocks = [
       { id: "h2-step", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "焼結" }], children: [] },
       { id: "attr-1", type: "paragraph", content: [{ type: "text", text: "温度 800℃" }], children: [] },
     ];
-    const labels = new Map([["h2-step", "[手順]"], ["attr-1", "[属性]"]]);
+    const labels = new Map([["h2-step", "procedure"], ["attr-1", "attribute"]]);
     const doc = generateProvDocument({ blocks, labels, links: [] });
 
     // param_ ノードは生成されない
@@ -82,7 +82,7 @@ describe("[属性] の PROV 名変更", () => {
     const blocks = [
       { id: "h2-step", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順" }], children: [] },
     ];
-    const labels = new Map([["h2-step", "[手順]"]]);
+    const labels = new Map([["h2-step", "procedure"]]);
     const doc = generateProvDocument({ blocks, labels, links: [] });
     expect(doc["@context"].graphium).toBe("https://graphium.app/ns#");
     expect(doc["@context"].rdfs).toBe("http://www.w3.org/2000/01/rdf-schema#");
@@ -99,9 +99,9 @@ describe("# オートコンプリート候補", () => {
     const suggestions = buildSuggestionList();
     const coreItems = suggestions.filter((s) => s.group === "core");
     expect(coreItems).toHaveLength(5);
-    expect(coreItems.map((s) => s.label)).toContain("[手順]");
-    expect(coreItems.map((s) => s.label)).toContain("[材料]");
-    expect(coreItems.map((s) => s.label)).toContain("[ツール]");
+    expect(coreItems.map((s) => s.label)).toContain("procedure");
+    expect(coreItems.map((s) => s.label)).toContain("material");
+    expect(coreItems.map((s) => s.label)).toContain("tool");
   });
 
   it("候補リストにエイリアスが含まれる", () => {
@@ -109,7 +109,7 @@ describe("# オートコンプリート候補", () => {
     const aliasItems = suggestions.filter((s) => s.group === "alias");
     expect(aliasItems.length).toBeGreaterThan(0);
     const equipAlias = aliasItems.find((s) => s.query === "装置");
-    expect(equipAlias?.label).toBe("[ツール]");
+    expect(equipAlias?.label).toBe("tool");
   });
 
   it("候補リストにフリーラベルが含まれる", () => {
@@ -118,12 +118,14 @@ describe("# オートコンプリート候補", () => {
     expect(freeItems.length).toBeGreaterThan(0);
   });
 
-  it("getDisplayName は [] を除去する", () => {
+  it("getDisplayName は内部キーを表示名に変換する（i18n 経由）", () => {
     // i18n 経由: テスト環境ではデフォルト英語
+    expect(getDisplayName("procedure")).toBe("Step");
+    expect(getDisplayName("material")).toBe("Input");
+    // 旧ブラケット表記も normalize 経由で解決できる
     expect(getDisplayName("[手順]")).toBe("Step");
-    expect(getDisplayName("[材料]")).toBe("Input");
-    // カスタムラベルは i18n マッピングがないのでそのまま除去
-    expect(getDisplayName("[カスタム]")).toBe("カスタム");
+    // カスタムラベルは i18n マッピングがないのでそのまま返る
+    expect(getDisplayName("custom-free")).toBe("custom-free");
   });
 });
 
@@ -131,11 +133,24 @@ describe("# オートコンプリート候補", () => {
 // ラベルの追加エイリアス
 // ──────────────────────────────────
 describe("ラベルエイリアス拡張", () => {
-  it("英語短縮エイリアスが正規化される", () => {
-    expect(normalizeLabel("[step]")).toBe("[手順]");
-    expect(normalizeLabel("[mat]")).toBe("[材料]");
-    expect(normalizeLabel("[result]")).toBe("[結果]");
-    expect(normalizeLabel("[attr]")).toBe("[属性]");
+  it("旧ブラケット日本語が内部キーに正規化される", () => {
+    expect(normalizeLabel("[手順]")).toBe("procedure");
+    expect(normalizeLabel("[材料]")).toBe("material");
+    expect(normalizeLabel("[ツール]")).toBe("tool");
+    expect(normalizeLabel("[属性]")).toBe("attribute");
+    expect(normalizeLabel("[結果]")).toBe("result");
+  });
+
+  it("英語短縮エイリアスが内部キーに正規化される", () => {
+    expect(normalizeLabel("[step]")).toBe("procedure");
+    expect(normalizeLabel("[mat]")).toBe("material");
+    expect(normalizeLabel("[result]")).toBe("result");
+    expect(normalizeLabel("[attr]")).toBe("attribute");
+  });
+
+  it("内部キーはそのまま保持される", () => {
+    expect(normalizeLabel("procedure")).toBe("procedure");
+    expect(normalizeLabel("material")).toBe("material");
   });
 
   it("エイリアスは alias として分類される", () => {

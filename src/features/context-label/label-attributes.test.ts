@@ -19,14 +19,17 @@ const ALL_EXECUTORS: ExecutorType[] = ["human", "machine", "ai"];
 const ALL_STATUSES: StepStatus[] = ["planned", "in-progress", "done", "skipped"];
 
 describe("hasLabelAttributes", () => {
-  it('"[手順]" に対して true を返す', () => {
-    expect(hasLabelAttributes("[手順]")).toBe(true);
+  it('"procedure" に対して true を返す', () => {
+    expect(hasLabelAttributes("procedure")).toBe(true);
   });
 
   it("その他のラベルに対して false を返す", () => {
-    expect(hasLabelAttributes("[結果]")).toBe(false);
-    expect(hasLabelAttributes("[属性]")).toBe(false);
-    expect(hasLabelAttributes("[使用したもの]")).toBe(false);
+    expect(hasLabelAttributes("result")).toBe(false);
+    expect(hasLabelAttributes("attribute")).toBe(false);
+    expect(hasLabelAttributes("material")).toBe(false);
+    expect(hasLabelAttributes("tool")).toBe(false);
+    // 旧ブラケット表記は内部キーではないため false（マイグレーション経由で内部キーに寄せる）
+    expect(hasLabelAttributes("[手順]")).toBe(false);
     expect(hasLabelAttributes("任意のテキスト")).toBe(false);
     expect(hasLabelAttributes("")).toBe(false);
   });

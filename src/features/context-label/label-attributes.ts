@@ -20,7 +20,7 @@ export type StepAttributes = {
 
 // ラベルごとの属性マップ（拡張可能）
 export type LabelAttributes = {
-  "[手順]": StepAttributes;
+  procedure: StepAttributes;
 };
 
 // デフォルト値
@@ -32,7 +32,7 @@ export const DEFAULT_STEP_ATTRIBUTES: StepAttributes = {
 
 // ラベルが連動属性を持つかどうか
 export function hasLabelAttributes(label: string): label is keyof LabelAttributes {
-  return label === "[手順]";
+  return label === "procedure";
 }
 
 import { t } from "../../i18n";

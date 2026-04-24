@@ -25,7 +25,7 @@ import {
 
 export type LabelStore = {
   labels: Map<string, string>;
-  /** blockId → 連動属性（現在は [手順] のみ） */
+  /** blockId → 連動属性（現在は procedure のみ） */
   attributes: Map<string, StepAttributes>;
   /** 現在ドロップダウンが開いているブロックID（null = 閉じている） */
   openBlockId: string | null;
@@ -66,7 +66,7 @@ export function LabelStoreProvider({ children }: { children: ReactNode }) {
         // ラベル解除 or 連動属性なしラベル → 属性を削除
         next.delete(blockId);
       } else if (!prev.has(blockId)) {
-        // 新たに [手順] が付いた → デフォルト属性を設定
+        // 新たに procedure が付いた → デフォルト属性を設定
         next.set(blockId, { ...DEFAULT_STEP_ATTRIBUTES });
       }
       return next;

@@ -56,12 +56,18 @@ describe("t()", () => {
 
 describe("getDisplayLabel()", () => {
   it("内部キーをロケールに応じた表示ラベルに変換する（英語）", () => {
+    expect(getDisplayLabel("procedure")).toBe("[Step]");
+    expect(getDisplayLabel("material")).toBe("[Input]");
+    expect(getDisplayLabel("tool")).toBe("[Tool]");
+    expect(getDisplayLabel("attribute")).toBe("[Parameter]");
+    expect(getDisplayLabel("result")).toBe("[Output]");
+    expect(getDisplayLabel("prev-procedure")).toBe("[Prior step]");
+  });
+
+  it("旧ブラケット表記は normalize 経由で内部キーとして解決される", () => {
     expect(getDisplayLabel("[手順]")).toBe("[Step]");
     expect(getDisplayLabel("[材料]")).toBe("[Input]");
     expect(getDisplayLabel("[ツール]")).toBe("[Tool]");
-    expect(getDisplayLabel("[属性]")).toBe("[Parameter]");
-    expect(getDisplayLabel("[結果]")).toBe("[Output]");
-    expect(getDisplayLabel("[前手順]")).toBe("[Prior step]");
   });
 
   it("マップに存在しないフリーラベルはそのまま返す", () => {
@@ -72,9 +78,9 @@ describe("getDisplayLabel()", () => {
 
   it("日本語ロケールでは日本語の表示ラベルを返す", () => {
     syncLocale("ja");
-    expect(getDisplayLabel("[手順]")).toBe("[ステップ]");
-    expect(getDisplayLabel("[材料]")).toBe("[インプット]");
-    expect(getDisplayLabel("[結果]")).toBe("[アウトプット]");
+    expect(getDisplayLabel("procedure")).toBe("[ステップ]");
+    expect(getDisplayLabel("material")).toBe("[インプット]");
+    expect(getDisplayLabel("result")).toBe("[アウトプット]");
   });
 });
 
@@ -82,12 +88,11 @@ describe("getDisplayLabel()", () => {
 
 describe("getDisplayLabelName()", () => {
   it("括弧付きの表示名から括弧を除去する", () => {
-    // [手順] → 英語表示 [Step] → 括弧除去 → Step
-    expect(getDisplayLabelName("[手順]")).toBe("Step");
-    expect(getDisplayLabelName("[材料]")).toBe("Input");
-    expect(getDisplayLabelName("[属性]")).toBe("Parameter");
-    expect(getDisplayLabelName("[結果]")).toBe("Output");
-    expect(getDisplayLabelName("[前手順]")).toBe("Prior step");
+    expect(getDisplayLabelName("procedure")).toBe("Step");
+    expect(getDisplayLabelName("material")).toBe("Input");
+    expect(getDisplayLabelName("attribute")).toBe("Parameter");
+    expect(getDisplayLabelName("result")).toBe("Output");
+    expect(getDisplayLabelName("prev-procedure")).toBe("Prior step");
   });
 
   it("括弧なしの文字列はそのまま返す", () => {

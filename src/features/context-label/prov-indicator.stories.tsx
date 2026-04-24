@@ -19,10 +19,10 @@ const tokens = {
 
 // ラベル色
 const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[使用したもの]": "#4B7A52",
-  "[属性]": "#c08b3e",
-  "[結果]": "#c26356",
+  "procedure": "#5b8fb9",
+  "material": "#4B7A52",
+  "attribute": "#c08b3e",
+  "result": "#c26356",
 };
 function getLabelColor(label: string): string {
   return LABEL_COLORS[label] ?? tokens.mutedFg;
@@ -143,19 +143,19 @@ export const NoteWithIndicators: StoryObj = {
     <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
       <EditorBlock><h1 style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.3 }}>Cu粉末アニール実験</h1></EditorBlock>
 
-      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></EditorBlock>
-      <EditorBlock label="[使用したもの]" indent={24}><p>Cu粉末 1g</p></EditorBlock>
-      <EditorBlock label="[使用したもの]" indent={24}><p>シリカ管</p></EditorBlock>
+      <EditorBlock label="procedure"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></EditorBlock>
+      <EditorBlock label="material" indent={24}><p>Cu粉末 1g</p></EditorBlock>
+      <EditorBlock label="material" indent={24}><p>シリカ管</p></EditorBlock>
       <EditorBlock indent={24}><p style={{ color: tokens.mutedFg }}>真空封入管内で封入する。（ラベルなし）</p></EditorBlock>
-      <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
+      <EditorBlock label="result" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
-      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
-      <EditorBlock label="[属性]" indent={24}><p>温度: 600℃</p></EditorBlock>
-      <EditorBlock label="[属性]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
-      <EditorBlock label="[属性]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
+      <EditorBlock label="procedure"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
+      <EditorBlock label="attribute" indent={24}><p>温度: 600℃</p></EditorBlock>
+      <EditorBlock label="attribute" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
+      <EditorBlock label="attribute" indent={24}><p>冷却: 炉冷</p></EditorBlock>
 
-      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></EditorBlock>
-      <EditorBlock label="[結果]" indent={24}><p>XRD測定により相同定を行う。</p></EditorBlock>
+      <EditorBlock label="procedure"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></EditorBlock>
+      <EditorBlock label="result" indent={24}><p>XRD測定により相同定を行う。</p></EditorBlock>
     </div>
   ),
 };
@@ -164,7 +164,7 @@ export const NoteWithIndicators: StoryObj = {
 export const PanelWithLabelAndLinks: StoryObj = {
   name: "統合パネル（ラベル + リンク）",
   render: () => {
-    const label = "[手順]";
+    const label = "procedure";
     const color = getLabelColor(label);
     const links = [
       { id: "l1", type: "informed_by" as LinkType, target: "1. 封入する", createdBy: "human" as const, direction: "out" },
@@ -218,7 +218,7 @@ export const PanelWithLabelAndLinks: StoryObj = {
           );
         })}
 
-        {/* 前手順リンク追加（[手順] ラベルのみ表示） */}
+        {/* 前手順リンク追加（procedure ラベルのみ表示） */}
         <div style={dividerStyle} />
         <div style={{ ...sectionHeaderStyle, color: "#5b8fb9" }}>前手順リンク（wasInformedBy）</div>
         <button style={{ ...menuItemStyle, color: "#5b8fb9", background: "#eff6ff", borderRadius: 4, margin: "2px 6px", width: "calc(100% - 12px)" }}>
@@ -229,11 +229,11 @@ export const PanelWithLabelAndLinks: StoryObj = {
   },
 };
 
-// 統合パネル（[手順] 以外 — 前手順リンクなし）
+// 統合パネル（procedure 以外 — 前手順リンクなし）
 export const PanelWithoutPrevStep: StoryObj = {
-  name: "統合パネル（[使用したもの] — 前手順リンクなし）",
+  name: "統合パネル（material — 前手順リンクなし）",
   render: () => {
-    const label = "[使用したもの]";
+    const label = "material";
     const color = getLabelColor(label);
 
     return (
@@ -251,7 +251,7 @@ export const PanelWithoutPrevStep: StoryObj = {
           </button>
         </div>
         <p style={{ padding: "6px 12px", fontSize: 11, color: tokens.mutedFg }}>
-          前手順リンクセクションは [手順] ラベルのみに表示されます。
+          前手順リンクセクションは procedure ラベルのみに表示されます。
         </p>
       </div>
     );
@@ -263,7 +263,7 @@ export const PanelLabelPicker: StoryObj = {
   name: "統合パネル（ラベル変更）",
   render: () => {
     function Demo() {
-      const [label, setLabel] = useState<string | null>("[手順]");
+      const [label, setLabel] = useState<string | null>("procedure");
       const color = label ? getLabelColor(label) : "#9ca3af";
 
       return (

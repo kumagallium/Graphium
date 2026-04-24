@@ -77,15 +77,15 @@ const blocks = [
 
 // 各ブロックに付けるラベル
 const labels: Record<string, string> = {
-  [ids.step1]: "[手順]",
-  [ids.used1a]: "[使用したもの]",
-  [ids.used1b]: "[使用したもの]",
-  [ids.result1]: "[結果]",
-  [ids.step2]: "[手順]",
-  [ids.cond2a]: "[属性]",
-  [ids.cond2b]: "[属性]",
-  [ids.step3]: "[手順]",
-  [ids.result3]: "[結果]",
+  [ids.step1]: "procedure",
+  [ids.used1a]: "material",
+  [ids.used1b]: "material",
+  [ids.result1]: "result",
+  [ids.step2]: "procedure",
+  [ids.cond2a]: "attribute",
+  [ids.cond2b]: "attribute",
+  [ids.step3]: "procedure",
+  [ids.result3]: "result",
 };
 
 // 前手順リンク（PROV 層）
@@ -110,7 +110,7 @@ const provLinks = [
 
 // テンプレートドキュメント
 export const PROV_TEMPLATE: GraphiumDocument = {
-  version: 2,
+  version: 3,
   title: "Cu粉末アニール実験",
   pages: [
     {

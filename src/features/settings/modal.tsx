@@ -74,11 +74,11 @@ type Tab = "general" | "labels" | "ai-setup";
 
 // ラベルタブで使う内部キーと i18n デフォルト名のマッピング
 const LABEL_I18N_KEYS: Record<CoreLabel, string> = {
-  "[手順]": "label.step",
-  "[材料]": "label.material",
-  "[ツール]": "label.tool",
-  "[属性]": "label.attr",
-  "[結果]": "label.result",
+  procedure: "label.step",
+  material: "label.material",
+  tool: "label.tool",
+  attribute: "label.attr",
+  result: "label.result",
 };
 
 type SettingsModalProps = {

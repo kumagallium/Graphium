@@ -73,13 +73,13 @@ function makeLinkStoreStub(initial: BlockLink[] = []) {
 
 describe("cleanupBlockMetadata", () => {
   it("指定ブロックの labels を削除する", () => {
-    const labelStore = makeLabelStoreStub({ "b1": "[手順]", "b2": "[材料]" });
+    const labelStore = makeLabelStoreStub({ "b1": "procedure", "b2": "material" });
     const linkStore = makeLinkStoreStub();
 
     cleanupBlockMetadata(["b1"], labelStore, linkStore);
 
     expect(labelStore.labels.has("b1")).toBe(false);
-    expect(labelStore.labels.get("b2")).toBe("[材料]");
+    expect(labelStore.labels.get("b2")).toBe("material");
     expect(labelStore.setLabel).toHaveBeenCalledWith("b1", null);
   });
 
@@ -103,14 +103,14 @@ describe("cleanupBlockMetadata", () => {
   });
 
   it("空配列の場合は何もしない", () => {
-    const labelStore = makeLabelStoreStub({ "b1": "[手順]" });
+    const labelStore = makeLabelStoreStub({ "b1": "procedure" });
     const linkStore = makeLinkStoreStub();
 
     cleanupBlockMetadata([], labelStore, linkStore);
 
     expect(labelStore.setLabel).not.toHaveBeenCalled();
     expect(linkStore.removeLinksForBlock).not.toHaveBeenCalled();
-    expect(labelStore.labels.get("b1")).toBe("[手順]");
+    expect(labelStore.labels.get("b1")).toBe("procedure");
   });
 
   it("ラベル未付与ブロックでも linkStore はクリーンアップを試行する（safety）", () => {
@@ -124,7 +124,7 @@ describe("cleanupBlockMetadata", () => {
   });
 
   it("二重呼び出ししても idempotent", () => {
-    const labelStore = makeLabelStoreStub({ "b1": "[手順]" });
+    const labelStore = makeLabelStoreStub({ "b1": "procedure" });
     const linkStore = makeLinkStoreStub([
       {
         id: "l1",
@@ -146,12 +146,12 @@ describe("cleanupBlockMetadata", () => {
 
 describe("copyLabelsByIdMap", () => {
   it("旧 ID のラベルを新 ID に複製する", () => {
-    const labelStore = makeLabelStoreStub({ "old1": "[材料]" });
+    const labelStore = makeLabelStoreStub({ "old1": "material" });
 
     copyLabelsByIdMap(new Map([["old1", "new1"]]), labelStore);
 
-    expect(labelStore.labels.get("new1")).toBe("[材料]");
-    expect(labelStore.labels.get("old1")).toBe("[材料]"); // 旧側は残る
+    expect(labelStore.labels.get("new1")).toBe("material");
+    expect(labelStore.labels.get("old1")).toBe("material"); // 旧側は残る
   });
 
   it("ラベルのないブロックはスキップ", () => {
@@ -163,7 +163,7 @@ describe("copyLabelsByIdMap", () => {
   });
 
   it("同一 ID のペアはスキップ", () => {
-    const labelStore = makeLabelStoreStub({ "b1": "[手順]" });
+    const labelStore = makeLabelStoreStub({ "b1": "procedure" });
 
     copyLabelsByIdMap(new Map([["b1", "b1"]]), labelStore);
 

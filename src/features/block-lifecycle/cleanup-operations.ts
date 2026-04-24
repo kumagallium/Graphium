@@ -39,7 +39,7 @@ export function cleanupBlockMetadata(
 
 /**
  * 旧 ID → 新 ID のマップに従って labels を複製する。
- * 連動属性（[手順] 等）も併せて複製される。
+ * 連動属性（procedure 等）も併せて複製される。
  */
 export function copyLabelsByIdMap(
   idMap: ReadonlyMap<string, string>,

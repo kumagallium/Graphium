@@ -16,12 +16,13 @@ const tokens = {
   font: "'Inter', system-ui, sans-serif",
 };
 
-// ラベル色
+// ラベル色（内部キー）
 const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[使用したもの]": "#4B7A52",
-  "[属性]": "#c08b3e",
-  "[結果]": "#c26356",
+  procedure: "#5b8fb9",
+  material: "#4B7A52",
+  tool: "#c08b3e",
+  attribute: "#c08b3e",
+  result: "#c26356",
 };
 function getLabelColor(label: string): string {
   return LABEL_COLORS[label] ?? tokens.mutedFg;
@@ -152,18 +153,18 @@ export const NoteStatic: StoryObj = {
     <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
       <EditorBlock><h1 style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.3 }}>Cu粉末アニール実験</h1></EditorBlock>
 
-      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></EditorBlock>
-      <EditorBlock label="[使用したもの]" indent={24}><p>Cu粉末 1g</p></EditorBlock>
-      <EditorBlock label="[使用したもの]" indent={24}><p>シリカ管</p></EditorBlock>
-      <EditorBlock label="[結果]" indent={24}><p>封入されたCu粉末</p></EditorBlock>
+      <EditorBlock label="procedure"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></EditorBlock>
+      <EditorBlock label="material" indent={24}><p>Cu粉末 1g</p></EditorBlock>
+      <EditorBlock label="material" indent={24}><p>シリカ管</p></EditorBlock>
+      <EditorBlock label="result" indent={24}><p>封入されたCu粉末</p></EditorBlock>
 
-      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
-      <EditorBlock label="[属性]" indent={24}><p>温度: 600℃</p></EditorBlock>
-      <EditorBlock label="[属性]" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
-      <EditorBlock label="[属性]" indent={24}><p>冷却: 炉冷</p></EditorBlock>
+      <EditorBlock label="procedure"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></EditorBlock>
+      <EditorBlock label="attribute" indent={24}><p>温度: 600℃</p></EditorBlock>
+      <EditorBlock label="attribute" indent={24}><p>昇温速度: 5℃/min</p></EditorBlock>
+      <EditorBlock label="attribute" indent={24}><p>冷却: 炉冷</p></EditorBlock>
 
-      <EditorBlock label="[手順]"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></EditorBlock>
-      <EditorBlock label="[結果]" indent={24}><p>XRD測定により相同定を行う。</p></EditorBlock>
+      <EditorBlock label="procedure"><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></EditorBlock>
+      <EditorBlock label="result" indent={24}><p>XRD測定により相同定を行う。</p></EditorBlock>
     </div>
   ),
 };
@@ -181,17 +182,17 @@ export const NoteHoverDemo: StoryObj = {
           </p>
 
           <HoverBlock id="t" hoveredId={h} setHoveredId={setH}><h1 style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.3 }}>Cu粉末アニール実験</h1></HoverBlock>
-          <HoverBlock id="s1" label="[手順]" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></HoverBlock>
-          <HoverBlock id="u1" label="[使用したもの]" indent={24} hoveredId={h} setHoveredId={setH}><p>Cu粉末 1g</p></HoverBlock>
-          <HoverBlock id="u2" label="[使用したもの]" indent={24} hoveredId={h} setHoveredId={setH}><p>シリカ管</p></HoverBlock>
+          <HoverBlock id="s1" label="procedure" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>1. 封入する</h2></HoverBlock>
+          <HoverBlock id="u1" label="material" indent={24} hoveredId={h} setHoveredId={setH}><p>Cu粉末 1g</p></HoverBlock>
+          <HoverBlock id="u2" label="material" indent={24} hoveredId={h} setHoveredId={setH}><p>シリカ管</p></HoverBlock>
           <HoverBlock id="p1" indent={24} hoveredId={h} setHoveredId={setH}><p style={{ color: tokens.mutedFg }}>真空封入管内で封入する。（ラベルなし）</p></HoverBlock>
-          <HoverBlock id="r1" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>封入されたCu粉末</p></HoverBlock>
-          <HoverBlock id="s2" label="[手順]" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></HoverBlock>
-          <HoverBlock id="st" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>温度: 600℃</p></HoverBlock>
-          <HoverBlock id="c1" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>昇温速度: 5℃/min</p></HoverBlock>
-          <HoverBlock id="c2" label="[属性]" indent={24} hoveredId={h} setHoveredId={setH}><p>冷却: 炉冷</p></HoverBlock>
-          <HoverBlock id="s3" label="[手順]" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></HoverBlock>
-          <HoverBlock id="r2" label="[結果]" indent={24} hoveredId={h} setHoveredId={setH}><p>XRD測定により相同定を行う。</p></HoverBlock>
+          <HoverBlock id="r1" label="result" indent={24} hoveredId={h} setHoveredId={setH}><p>封入されたCu粉末</p></HoverBlock>
+          <HoverBlock id="s2" label="procedure" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>2. アニールする</h2></HoverBlock>
+          <HoverBlock id="st" label="attribute" indent={24} hoveredId={h} setHoveredId={setH}><p>温度: 600℃</p></HoverBlock>
+          <HoverBlock id="c1" label="attribute" indent={24} hoveredId={h} setHoveredId={setH}><p>昇温速度: 5℃/min</p></HoverBlock>
+          <HoverBlock id="c2" label="attribute" indent={24} hoveredId={h} setHoveredId={setH}><p>冷却: 炉冷</p></HoverBlock>
+          <HoverBlock id="s3" label="procedure" hoveredId={h} setHoveredId={setH}><h2 style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.3 }}>3. 評価する</h2></HoverBlock>
+          <HoverBlock id="r2" label="result" indent={24} hoveredId={h} setHoveredId={setH}><p>XRD測定により相同定を行う。</p></HoverBlock>
         </div>
       );
     }

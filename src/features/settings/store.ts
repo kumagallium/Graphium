@@ -30,13 +30,42 @@ const DEFAULT_SETTINGS: Settings = {
   customLabels: {},
 };
 
+/**
+ * customLabels のキーは Phase 2 で日本語ブラケット（[手順] 等）から
+ * 内部キー（procedure 等）に移行した。localStorage に残っている旧キーを
+ * 読み込み時に正規化して吸収する。
+ */
+const LEGACY_LABEL_KEY_MAP: Record<string, string> = {
+  "[手順]": "procedure",
+  "[材料]": "material",
+  "[ツール]": "tool",
+  "[属性]": "attribute",
+  "[結果]": "result",
+  "[使用したもの]": "material",
+  "[条件]": "attribute",
+};
+
+function migrateCustomLabels(customLabels: CustomLabels | undefined): CustomLabels {
+  if (!customLabels) return {};
+  const next: CustomLabels = {};
+  for (const [key, value] of Object.entries(customLabels)) {
+    const normalized = LEGACY_LABEL_KEY_MAP[key] ?? key;
+    next[normalized] = value;
+  }
+  return next;
+}
+
 /** localStorage から設定を読み込む */
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      customLabels: migrateCustomLabels(parsed.customLabels),
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }

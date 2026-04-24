@@ -38,9 +38,9 @@ const mockIndex: GraphiumIndex = {
       createdAt: weekAgo,
       headings: [],
       labels: [
-        { blockId: "b1", label: "[使用したもの]", preview: "玉ねぎ" },
-        { blockId: "b2", label: "[使用したもの]", preview: "にんじん" },
-        { blockId: "b3", label: "[使用したもの]", preview: "カレー粉" },
+        { blockId: "b1", label: "material", preview: "玉ねぎ" },
+        { blockId: "b2", label: "material", preview: "にんじん" },
+        { blockId: "b3", label: "material", preview: "カレー粉" },
       ],
       outgoingLinks: [],
     },
@@ -51,9 +51,9 @@ const mockIndex: GraphiumIndex = {
       createdAt: weekAgo,
       headings: [],
       labels: [
-        { blockId: "b4", label: "[使用したもの]", preview: "玉ねぎ" },
-        { blockId: "b5", label: "[使用したもの]", preview: "にんじん" },
-        { blockId: "b6", label: "[使用したもの]", preview: "じゃがいも" },
+        { blockId: "b4", label: "material", preview: "玉ねぎ" },
+        { blockId: "b5", label: "material", preview: "にんじん" },
+        { blockId: "b6", label: "material", preview: "じゃがいも" },
       ],
       outgoingLinks: [],
     },
@@ -64,8 +64,8 @@ const mockIndex: GraphiumIndex = {
       createdAt: weekAgo,
       headings: [],
       labels: [
-        { blockId: "b7", label: "[使用したもの]", preview: "玉ねぎ" },
-        { blockId: "b8", label: "[使用したもの]", preview: "バター" },
+        { blockId: "b7", label: "material", preview: "玉ねぎ" },
+        { blockId: "b8", label: "material", preview: "バター" },
       ],
       outgoingLinks: [],
     },
@@ -76,8 +76,8 @@ const mockIndex: GraphiumIndex = {
       createdAt: weekAgo,
       headings: [],
       labels: [
-        { blockId: "b9", label: "[使用したもの]", preview: "にんじん" },
-        { blockId: "b10", label: "[使用したもの]", preview: "トマト" },
+        { blockId: "b9", label: "material", preview: "にんじん" },
+        { blockId: "b10", label: "material", preview: "トマト" },
       ],
       outgoingLinks: [],
     },
@@ -96,7 +96,7 @@ const singleIndex: GraphiumIndex = {
       createdAt: now,
       headings: [],
       labels: [
-        { blockId: "b1", label: "[使用したもの]", preview: "サンプル" },
+        { blockId: "b1", label: "material", preview: "サンプル" },
       ],
       outgoingLinks: [],
     },
@@ -128,7 +128,7 @@ export const Default: StoryObj<typeof LabelGalleryView> = {
     <Container>
       <LabelGalleryView
         noteIndex={mockIndex}
-        label="[使用したもの]"
+        label="material"
         onBack={noop}
         onNavigateNote={(id) => console.log("navigate:", id)}
       />
@@ -142,7 +142,7 @@ export const SingleEntry: StoryObj<typeof LabelGalleryView> = {
     <Container>
       <LabelGalleryView
         noteIndex={singleIndex}
-        label="[使用したもの]"
+        label="material"
         onBack={noop}
         onNavigateNote={(id) => console.log("navigate:", id)}
       />
@@ -156,7 +156,7 @@ export const Empty: StoryObj<typeof LabelGalleryView> = {
     <Container>
       <LabelGalleryView
         noteIndex={emptyIndex}
-        label="[使用したもの]"
+        label="material"
         onBack={noop}
         onNavigateNote={noop}
       />
@@ -170,7 +170,7 @@ export const Loading: StoryObj<typeof LabelGalleryView> = {
     <Container>
       <LabelGalleryView
         noteIndex={null}
-        label="[使用したもの]"
+        label="material"
         onBack={noop}
         onNavigateNote={noop}
       />

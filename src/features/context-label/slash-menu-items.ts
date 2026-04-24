@@ -79,7 +79,7 @@ function createLabelSlashItem(
 /** スラッシュメニューに追加するラベルアイテム一覧を構築（ロケール変更に対応） */
 export function buildLabelSlashMenuItems(): LabelSlashItem[] {
   return [
-    createLabelSlashItem(getDisplayLabelName("[手順]"), "[手順]", "heading", [
+    createLabelSlashItem(getDisplayLabelName("procedure"), "procedure", "heading", [
       "手順",
       "てじゅん",
       "ステップ",
@@ -90,7 +90,7 @@ export function buildLabelSlashMenuItems(): LabelSlashItem[] {
       "method",
       "protocol",
     ]),
-    createLabelSlashItem(getDisplayLabelName("[材料]"), "[材料]", "bulletListItem", [
+    createLabelSlashItem(getDisplayLabelName("material"), "material", "bulletListItem", [
       "使用",
       "しよう",
       "材料",
@@ -101,8 +101,9 @@ export function buildLabelSlashMenuItems(): LabelSlashItem[] {
       "reagents",
       "material",
       "materials",
+      "input",
     ]),
-    createLabelSlashItem(getDisplayLabelName("[ツール]"), "[ツール]", "bulletListItem", [
+    createLabelSlashItem(getDisplayLabelName("tool"), "tool", "bulletListItem", [
       "ツール",
       "つーる",
       "装置",
@@ -114,7 +115,7 @@ export function buildLabelSlashMenuItems(): LabelSlashItem[] {
       "equipment",
       "instrument",
     ]),
-    createLabelSlashItem(getDisplayLabelName("[属性]"), "[属性]", "bulletListItem", [
+    createLabelSlashItem(getDisplayLabelName("attribute"), "attribute", "bulletListItem", [
       "属性",
       "ぞくせい",
       "条件",
@@ -128,7 +129,7 @@ export function buildLabelSlashMenuItems(): LabelSlashItem[] {
       "parameter",
       "spec",
     ]),
-    createLabelSlashItem(getDisplayLabelName("[結果]"), "[結果]", "bulletListItem", [
+    createLabelSlashItem(getDisplayLabelName("result"), "result", "bulletListItem", [
       "結果",
       "けっか",
       "データ",

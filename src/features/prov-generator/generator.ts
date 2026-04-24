@@ -225,7 +225,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         scopeStack.pop();
       }
 
-      if (normalized === "[手順]") {
+      if (normalized === "procedure") {
         const role = getHeadingLabelRole(level, normalized);
         if (role === "activity") {
           scopeStack.push({ level, activityId: `activity_${block.id}` });
@@ -259,9 +259,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     return { label: getBlockText(block) };
   }
 
-  // ── [材料] / [ツール] → Entity + used 関係 ──
+  // ── material / tool → Entity + used 関係 ──
   // Phase 3: テーブルの場合は行ごとに個別 Entity に展開
-  const INPUT_LABELS: CoreLabel[] = ["[材料]", "[ツール]"];
+  const INPUT_LABELS: CoreLabel[] = ["material", "tool"];
   for (const lb of labeledBlocks) {
     if (lb.coreLabel && INPUT_LABELS.includes(lb.coreLabel)) {
       const subtype = lb.coreLabel ? LABEL_TO_ENTITY_SUBTYPE[lb.coreLabel] : undefined;
@@ -317,10 +317,10 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // ── [結果] → Entity + wasGeneratedBy 関係 ──
+  // ── result → Entity + wasGeneratedBy 関係 ──
   // Phase 3: テーブルの場合は行ごとに個別 Entity に展開
   for (const lb of labeledBlocks) {
-    if (lb.coreLabel === "[結果]") {
+    if (lb.coreLabel === "result") {
       if (lb.block.type === "table") {
         const parsed = parseStructuredTable(lb.block);
         if (parsed && parsed.rows.length > 0) {
@@ -371,11 +371,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // ── [属性] → 親ノードの graphium:attributes に埋め込み ──
+  // ── attribute → 親ノードの graphium:attributes に埋め込み ──
   // 独立ノードは作らず、親の Entity/Activity のプロパティとして格納
-  // ※ [結果] ノード生成後に実行する（result_ ノードを参照するため）
+  // ※ result ノード生成後に実行する（result_ ノードを参照するため）
   for (const lb of labeledBlocks) {
-    if (lb.coreLabel === "[属性]") {
+    if (lb.coreLabel === "attribute") {
       // メディアブロックの場合はファイル名・URL・タイプを取得
       const { label: attrLabel, mediaUrl, mediaType } = getEntityLabelAndMedia(lb.block);
       const attrEntry = { label: attrLabel, blockId: lb.block.id, mediaUrl, mediaType };
@@ -406,7 +406,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   // その Entity の属性として埋め込む。
 
   const MEDIA_BLOCK_TYPES = ["image", "video", "audio", "file", "pdf"];
-  const ENTITY_LABEL_SET: CoreLabel[] = ["[材料]", "[ツール]", "[結果]"];
+  const ENTITY_LABEL_SET: CoreLabel[] = ["material", "tool", "result"];
 
   // ラベルなしメディアブロックの祖先を探して属性として埋め込む
   const embeddedMediaIds = new Set<string>();
@@ -468,7 +468,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       if (ENTITY_LABEL_SET.includes(normalized as CoreLabel)) {
         currentEntityLabel = { coreLabel: normalized as CoreLabel };
       } else {
-        // [手順] や [属性] など他のコアラベルはメディアのコンテキストをリセット
+        // procedure / attribute など他のコアラベルはメディアのコンテキストをリセット
         currentEntityLabel = null;
       }
     }
@@ -497,7 +497,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         }
       } else {
         // 新規メディア Entity を生成
-        const prefix = coreLabel === "[結果]" ? "result_media" : "entity_media";
+        const prefix = coreLabel === "result" ? "result_media" : "entity_media";
         const entityId = `${prefix}_${block.id}`;
         const mediaName = block.props.name
           || decodeURIComponent(url.split("/").pop()?.split("?")[0] ?? "")
@@ -526,7 +526,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   // メディア Entity の PROV 関係を生成
   for (const [, info] of mediaEntityMap) {
     for (const actId of info.activityIds) {
-      if (info.coreLabel === "[結果]") {
+      if (info.coreLabel === "result") {
         relations.push({ "@type": "prov:wasGeneratedBy", from: info.entityId, to: actId });
       } else {
         relations.push({ "@type": "prov:used", from: actId, to: info.entityId });
@@ -682,17 +682,17 @@ function buildProvJsonLd(
 /** コアラベル → PROVロール */
 function coreToProvRole(label: CoreLabel, block: any): string | null {
   switch (label) {
-    case "[手順]": {
+    case "procedure": {
       if (block.type === "heading") {
         const role = getHeadingLabelRole(block.props?.level ?? 2, label);
         return role === "activity" ? "prov:Activity" : null;
       }
       return "prov:Activity";
     }
-    case "[材料]": return "prov:Entity";
-    case "[ツール]": return "prov:Entity";
-    case "[属性]": return null; // 親ノードのプロパティとして埋め込む
-    case "[結果]": return "prov:Entity";
+    case "material": return "prov:Entity";
+    case "tool": return "prov:Entity";
+    case "attribute": return null; // 親ノードのプロパティとして埋め込む
+    case "result": return "prov:Entity";
     default: return null;
   }
 }
@@ -776,12 +776,12 @@ function findParentLabeledNodeId(
   const normalized = normalizeLabel(parentLabel);
 
   switch (normalized) {
-    case "[材料]":
-    case "[ツール]":
+    case "material":
+    case "tool":
       return `entity_${parentId}`;
-    case "[結果]":
+    case "result":
       return `result_${parentId}`;
-    case "[手順]":
+    case "procedure":
       return null;
     default:
       return null;

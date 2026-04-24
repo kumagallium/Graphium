@@ -11,22 +11,22 @@ import type { LinkStore } from "../block-link/store";
 
 // 継承対象のラベル（箇条書きで Enter → 空の次行にもコピーするラベル）
 const INHERITABLE_LABELS = new Set([
-  "[材料]",
-  "[ツール]",
-  "[結果]",
-  "[属性]",
+  "material",
+  "tool",
+  "result",
+  "attribute",
 ]);
 
 // 分割時のみ継承するラベル（Enter でブロックが分割され、新ブロックにコンテンツがある場合のみ）
 const SPLIT_ONLY_LABELS = new Set([
-  "[手順]",
+  "procedure",
 ]);
 
-// インデント時に [属性] に変換するラベル
+// インデント時に attribute に変換するラベル
 const INDENT_TO_ATTRIBUTE_LABELS = new Set([
-  "[材料]",
-  "[ツール]",
-  "[結果]",
+  "material",
+  "tool",
+  "result",
 ]);
 
 /**
@@ -143,7 +143,7 @@ export function setupLabelAutoAssign(
 
       const currentLabel = labelStore.labels.get(block.id);
       if (currentLabel && INDENT_TO_ATTRIBUTE_LABELS.has(currentLabel)) {
-        labelStore.setLabel(block.id, "[属性]");
+        labelStore.setLabel(block.id, "attribute");
       }
     }
 

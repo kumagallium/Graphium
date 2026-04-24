@@ -41,10 +41,10 @@ const neutral = [
   { name: "text-tertiary", value: "#8fa394", tailwind: "text-text-tertiary", desc: "第三階層テキスト（アイコン・プレースホルダー）" },
 ];
 const labelColors = [
-  { name: "[手順]", color: "#5b8fb9" },
-  { name: "[使用したもの]", color: "#4B7A52" },
-  { name: "[属性]", color: "#c08b3e" },
-  { name: "[結果]", color: "#c26356" },
+  { name: "procedure", color: "#5b8fb9" },
+  { name: "material", color: "#4B7A52" },
+  { name: "attribute", color: "#c08b3e" },
+  { name: "result", color: "#c26356" },
 ];
 
 function Swatch({ color, size = 40 }: { color: string; size?: number }) {

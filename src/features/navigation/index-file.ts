@@ -3,6 +3,7 @@
 
 import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { normalizeLabel } from "../context-label/labels";
 
 // ── 型定義 ──
 
@@ -10,7 +11,8 @@ import { getActiveProvider } from "../../lib/storage/registry";
 // extractBlockText の改善等、インデックス構築ロジックが変わった場合にインクリメントする
 // v4: source, wikiKind フィールドを追加（Wiki ドキュメント対応）
 // v5: author, model フィールドを追加（誰が / どのモデルが書いたかを一覧で表示）
-const INDEX_SCHEMA_VERSION = 5;
+// v6: ラベルを内部キー（procedure/material/tool/attribute/result）に正規化
+const INDEX_SCHEMA_VERSION = 6;
 
 export type GraphiumIndex = {
   version: number;
@@ -179,11 +181,12 @@ export function buildIndexEntry(
 
     // ラベルを収集（子ブロックも再帰的に検索、テーブル・子要素のテキストも取得）
     // ブロックが削除済みでラベルだけ残っている場合はスキップ（ゴーストラベル除去）
+    // v2 以前の旧データが混入してもインデックスは内部キーで統一するため normalize する。
     for (const [blockId, label] of Object.entries(page.labels || {})) {
       const block = findBlockById(page.blocks || [], blockId);
       if (!block) continue;
       const preview = extractBlockText(block).slice(0, 80);
-      labels.push({ blockId, label: label as string, preview });
+      labels.push({ blockId, label: normalizeLabel(label as string), preview });
     }
 
     // provLinks からの出力リンク

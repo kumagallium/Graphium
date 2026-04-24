@@ -30,12 +30,11 @@ import { t as tStatic } from "../../i18n";
 // 色定義
 // ──────────────────────────────────
 const LABEL_COLORS: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[材料]": "#4B7A52",
-  "[ツール]": "#c08b3e",
-  "[属性]": "#8fa394",
-  "[結果]": "#c26356",
-  "[条件]": "#8fa394",
+  procedure: "#5b8fb9",
+  material: "#4B7A52",
+  tool: "#c08b3e",
+  attribute: "#8fa394",
+  result: "#c26356",
 };
 
 function getLabelColor(label: string): string {
@@ -403,8 +402,7 @@ function ProvPanel({
                   onChange={(e) => setFreeInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && freeInput.trim()) {
-                      const v = freeInput.trim();
-                      onLabelChange(v.startsWith("[") ? v : `[${v}]`);
+                      onLabelChange(freeInput.trim());
                       setShowLabelPicker(false);
                     }
                     if (e.key === "Escape") setShowLabelPicker(false);
@@ -416,8 +414,7 @@ function ProvPanel({
                   size="sm"
                   onClick={() => {
                     if (freeInput.trim()) {
-                      const v = freeInput.trim();
-                      onLabelChange(v.startsWith("[") ? v : `[${v}]`);
+                      onLabelChange(freeInput.trim());
                       setShowLabelPicker(false);
                     }
                   }}
@@ -482,8 +479,8 @@ function ProvPanel({
           </>
         )}
 
-        {/* ── 前手順リンク追加（[手順] ラベルのみ） ── */}
-        {label === "[手順]" && <>
+        {/* ── 前手順リンク追加（procedure ラベルのみ） ── */}
+        {label === "procedure" && <>
         <DropdownDivider />
         <DropdownSectionHeader className="text-[#5b8fb9]">
           {t("labelUi.prevStepLink")}
@@ -494,14 +491,14 @@ function ProvPanel({
               blockId: string;
               text: string;
             }[] = [];
-            // [手順] ラベルが付いたブロックのみをリンク先候補にする
+            // procedure ラベルが付いたブロックのみをリンク先候補にする
             const labelMap = useLabelStoreRef.current;
             document
               .querySelectorAll('[data-node-type="blockOuter"]')
               .forEach((el) => {
                 const bid = el.getAttribute("data-id");
                 if (!bid || bid === blockId) return;
-                if (labelMap.get(bid) !== "[手順]") return;
+                if (labelMap.get(bid) !== "procedure") return;
                 const heading = el.querySelector("h1, h2, h3");
                 const text = heading?.textContent
                   || el.querySelector("[data-content-type]")?.textContent
@@ -542,7 +539,7 @@ function ProvPanel({
                 className="text-xs"
               >
                 <span className="text-[10px] text-[#5b8fb9] font-semibold mr-1">
-                  {getDisplayLabel("[手順]")}
+                  {getDisplayLabel("procedure")}
                 </span>
                 {c.text || t("common.empty")}
               </MenuItem>

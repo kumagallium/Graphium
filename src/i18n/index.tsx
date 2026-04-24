@@ -106,46 +106,52 @@ export function getLocale(): Locale {
 }
 
 // ── ラベル表示名変換 ──
-// 内部キー（[手順] 等）をロケールに応じた表示名に変換
+// 内部キー（"procedure" 等）をロケールに応じた表示名に変換
 // ユーザーがカスタム表示名を設定している場合はそちらを優先
 
 import { getCustomLabels } from "../features/settings/store";
+import { normalizeLabel } from "../features/context-label/labels";
 
+// 内部キー → i18n キー（ブラケット付き表示名）
 const LABEL_DISPLAY_MAP: Record<string, string> = {
   // コアラベル
-  "[手順]": "label.step.bracketed",
-  "[材料]": "label.material.bracketed",
-  "[ツール]": "label.tool.bracketed",
-  "[属性]": "label.attr.bracketed",
-  "[結果]": "label.result.bracketed",
-  "[前手順]": "label.prevStep.bracketed",
-  // フリーラベル例
-  "[目的]": "label.free.purpose",
-  "[考察]": "label.free.discussion",
-  "[疑問]": "label.free.question",
-  "[証跡]": "label.free.evidence",
-  "[背景]": "label.free.background",
-  "[参照]": "label.free.reference",
-  "[感想]": "label.free.impression",
+  procedure: "label.step.bracketed",
+  material: "label.material.bracketed",
+  tool: "label.tool.bracketed",
+  attribute: "label.attr.bracketed",
+  result: "label.result.bracketed",
+  // 構造ラベル
+  "prev-procedure": "label.prevStep.bracketed",
+  // フリーラベル例（内部キーは "free.xxx"）
+  "free.purpose": "label.free.purpose",
+  "free.discussion": "label.free.discussion",
+  "free.question": "label.free.question",
+  "free.evidence": "label.free.evidence",
+  "free.background": "label.free.background",
+  "free.reference": "label.free.reference",
+  "free.impression": "label.free.impression",
 };
 
 /** 内部ラベルキーを表示名に変換（カスタム名があればそちらを優先） */
 export function getDisplayLabel(internalLabel: string): string {
-  // カスタム表示名があればそちらを返す
-  const custom = getCustomLabels();
-  if (custom[internalLabel]) return `[${custom[internalLabel]}]`;
+  // 旧データ・外部入力で渡された表示文字列は内部キーに寄せる
+  const key = normalizeLabel(internalLabel);
 
-  const key = LABEL_DISPLAY_MAP[internalLabel];
-  if (key) return t(key);
-  // コアラベル以外はそのまま返す（フリーラベル）
+  // カスタム表示名があればそちらを返す（キーは内部キー）
+  const custom = getCustomLabels();
+  if (custom[key]) return `[${custom[key]}]`;
+
+  const i18nKey = LABEL_DISPLAY_MAP[key];
+  if (i18nKey) return t(i18nKey);
+  // コアラベル以外はそのまま返す（フリーラベル文字列など）
   return internalLabel;
 }
 
 /** 括弧なしの表示名を取得 */
 export function getDisplayLabelName(internalLabel: string): string {
-  // カスタム表示名があればそちらを返す
+  const key = normalizeLabel(internalLabel);
   const custom = getCustomLabels();
-  if (custom[internalLabel]) return custom[internalLabel];
+  if (custom[key]) return custom[key];
 
   const display = getDisplayLabel(internalLabel);
   // [xxx] → xxx

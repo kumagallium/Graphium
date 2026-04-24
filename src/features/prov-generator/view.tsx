@@ -590,11 +590,11 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
 
   const legendBar = (
     <div style={legendBarStyle}>
-      <LegendDot color={THEME.activity.bg} shape="circle" label={getDisplayLabelName("[手順]")} />
-      <LegendDot color={THEME.entity.bg} shape="square" label={getDisplayLabelName("[材料]")} />
-      <LegendDot color={THEME.tool.bg} shape="diamond" label={getDisplayLabelName("[ツール]")} />
-      <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("[結果]")} />
-      <LegendDot color={THEME.parameter.bg} shape="square" label={getDisplayLabelName("[属性]")} />
+      <LegendDot color={THEME.activity.bg} shape="circle" label={getDisplayLabelName("procedure")} />
+      <LegendDot color={THEME.entity.bg} shape="square" label={getDisplayLabelName("material")} />
+      <LegendDot color={THEME.tool.bg} shape="diamond" label={getDisplayLabelName("tool")} />
+      <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("result")} />
+      <LegendDot color={THEME.parameter.bg} shape="square" label={getDisplayLabelName("attribute")} />
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>

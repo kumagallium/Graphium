@@ -51,13 +51,13 @@ export const WithSections: Story = {
   render: () => {
     const [open, setOpen] = useState(false);
     const [pos, setPos] = useState({ top: 0, left: 0 });
-    const [selected, setSelected] = useState<string | null>("[手順]");
+    const [selected, setSelected] = useState<string | null>("procedure");
 
     const labels = [
-      { name: "[手順]", color: "#5b8fb9" },
-      { name: "[使用したもの]", color: "#4B7A52" },
-      { name: "[属性]", color: "#c08b3e" },
-      { name: "[結果]", color: "#c26356" },
+      { name: "procedure", color: "#5b8fb9" },
+      { name: "material", color: "#4B7A52" },
+      { name: "attribute", color: "#c08b3e" },
+      { name: "result", color: "#c26356" },
     ];
 
     return (

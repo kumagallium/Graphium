@@ -15,11 +15,11 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
 const LABEL_HEX: Record<string, string> = {
-  "[手順]": "#5b8fb9",
-  "[使用したもの]": "#4B7A52",
-  "[結果]": "#c26356",
-  "[属性]": "#c08b3e",
-  "[条件]": "#c08b3e",
+  procedure: "#5b8fb9",
+  material: "#4B7A52",
+  tool: "#c08b3e",
+  attribute: "#c08b3e",
+  result: "#c26356",
 };
 
 

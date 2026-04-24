@@ -3,6 +3,7 @@
 
 import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
+import { migrateToLatest } from "../../document-migration";
 
 const DB_NAME = "graphium-local";
 const DB_VERSION = 1;
@@ -120,7 +121,7 @@ export class LocalStorageProvider implements StorageProvider {
       store.get(fileId)
     );
     if (!record) throw new Error(`ファイルが見つかりません: ${fileId}`);
-    return record.content;
+    return migrateToLatest(record.content);
   }
 
   async createFile(title: string, content: GraphiumDocument): Promise<string> {

@@ -7,6 +7,7 @@
 
 import { getAccessToken } from "./google-auth";
 import type { GraphiumDocument, GraphiumFile } from "./document-types";
+import { migrateToLatest } from "./document-migration";
 
 // ドメイン型を再エクスポート（既存コードの互換性維持）
 export type {
@@ -123,36 +124,7 @@ export async function loadFile(fileId: string): Promise<GraphiumDocument> {
     `${DRIVE_API}/files/${fileId}?alt=media`
   );
   const doc: GraphiumDocument = await res.json();
-  return migrateDocument(doc);
-}
-
-/** v1 → v2 自動変換: links → provLinks + knowledgeLinks */
-function migrateDocument(doc: GraphiumDocument): GraphiumDocument {
-  for (const page of doc.pages) {
-    // 旧 links フィールドが存在し、新フィールドがない場合は変換
-    if (page.links && !page.provLinks) {
-      const provLinks: any[] = [];
-      const knowledgeLinks: any[] = [];
-      for (const link of page.links) {
-        const isProv = !link.type || [
-          "derived_from", "used", "generated", "reproduction_of", "informed_by",
-        ].includes(link.type);
-        if (isProv) {
-          provLinks.push({ ...link, layer: "prov" });
-        } else {
-          knowledgeLinks.push({ ...link, layer: "knowledge" });
-        }
-      }
-      page.provLinks = provLinks;
-      page.knowledgeLinks = knowledgeLinks;
-    }
-    // デフォルト値を保証
-    if (!page.provLinks) page.provLinks = [];
-    if (!page.knowledgeLinks) page.knowledgeLinks = [];
-  }
-  // version を 2 に更新
-  doc.version = 2;
-  return doc;
+  return migrateToLatest(doc);
 }
 
 // 新規ファイルを作成
