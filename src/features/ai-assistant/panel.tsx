@@ -142,6 +142,13 @@ export function AiAssistantPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // メッセージが追加されたら会話ビューに戻す。
+  // Cmd+K Composer からの送信のように、チャット一覧を表示中でも外部からメッセージが
+  // 追加される経路があるため、messages が 0→N に変化したら showChatList を下ろす。
+  useEffect(() => {
+    if (messages.length > 0) setShowChatList(false);
+  }, [messages.length]);
+
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed || loading) return;

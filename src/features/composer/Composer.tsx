@@ -1,42 +1,30 @@
-// Cmd+K Composer — スケルトン実装
-// UX Audit #04 に基づき「統一された入口」のシェルだけを提供する。
-// AI 呼び出し・スラッシュメニュー統合は後続 PR で段階導入する。
+// Cmd+K Composer — Ask 単機能の AI 呼び出し口
+// 「⌘K＝AI に聞く / `/`＝挿入 / `#`＝ラベル / `@`＝参照」という
+// 1 ショートカット 1 用途の棲み分けに揃えるため、当面 UI は Ask のみ公開する。
 //
-// 構成:
-//   上段 — プロンプト入力（自動拡張 textarea）
-//   中段 — 発見カード 4 枚（呼び出し側が渡す）
-//   下段 — モード切替タブ（Ask / Compose / Insert PROV / Insert Media）
+// compose / insert-prov / insert-media の実装は ref ハンドラに残しており、
+// 将来スラッシュメニューや別ショートカットから再利用できる（詳細は
+// project_composer_mode_redesign.md）。
 
 import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/i18n";
-import { COMPOSER_MODES, type ComposerMode, type ComposerSubmission, type DiscoveryCard } from "./types";
+import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 
 type ComposerProps = {
   open: boolean;
+  /** 現状は常に "ask"。将来 UI 復活時のために型は残してある。 */
   mode: ComposerMode;
   prompt: string;
   onPromptChange: (value: string) => void;
-  onModeChange: (mode: ComposerMode) => void;
+  /** 将来用。現在の UI には呼び出す箇所がない。 */
+  onModeChange?: (mode: ComposerMode) => void;
   onSubmit: (submission: ComposerSubmission) => void;
   onClose: () => void;
-  /** 呼び出し側が直近文脈から組み立てる発見カード（空配列ならガイド文だけ表示） */
+  /** Ask モードの発見カード（直近文脈から呼び出し側が組み立てる） */
   discoveryCards?: DiscoveryCard[];
   onDiscoveryCardSelect?: (card: DiscoveryCard) => void;
 };
-
-function modeLabel(t: (k: string) => string, mode: ComposerMode): string {
-  switch (mode) {
-    case "ask":
-      return t("composer.mode.ask");
-    case "compose":
-      return t("composer.mode.compose");
-    case "insert-prov":
-      return t("composer.mode.insertProv");
-    case "insert-media":
-      return t("composer.mode.insertMedia");
-  }
-}
 
 export function Composer(props: ComposerProps) {
   const {
@@ -44,7 +32,6 @@ export function Composer(props: ComposerProps) {
     mode,
     prompt,
     onPromptChange,
-    onModeChange,
     onSubmit,
     onClose,
     discoveryCards,
@@ -87,7 +74,6 @@ export function Composer(props: ComposerProps) {
     }
   };
 
-  // textarea 自動伸縮
   const handleInput = (value: string) => {
     onPromptChange(value);
     const el = textareaRef.current;
@@ -141,7 +127,7 @@ export function Composer(props: ComposerProps) {
           flexDirection: "column",
         }}
       >
-        {/* 上段 — プロンプト */}
+        {/* 上段 — プロンプト入力 */}
         <div
           style={{
             padding: "14px 16px 10px",
@@ -243,55 +229,6 @@ export function Composer(props: ComposerProps) {
           </div>
         )}
 
-        {/* 下段 — モードタブ */}
-        <div
-          role="tablist"
-          aria-label={t("composer.aria.modes")}
-          style={{
-            borderTop: "1px solid var(--rule-2)",
-            padding: "8px 12px",
-            display: "flex",
-            gap: 4,
-            background: "var(--paper-2)",
-            fontSize: 12,
-          }}
-        >
-          {COMPOSER_MODES.map((m) => {
-            const active = m === mode;
-            return (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => onModeChange(m)}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "var(--r-1)",
-                  border: "none",
-                  background: active ? "var(--forest-soft)" : "transparent",
-                  color: active ? "var(--forest-ink)" : "var(--ink-3)",
-                  fontWeight: active ? 600 : 400,
-                  cursor: "pointer",
-                  font: "inherit",
-                }}
-              >
-                {modeLabel(t, m)}
-              </button>
-            );
-          })}
-          <div style={{ flex: 1 }} />
-          <span
-            style={{
-              fontFamily: "ui-monospace, 'SF Mono', monospace",
-              fontSize: 10,
-              color: "var(--ink-4)",
-              alignSelf: "center",
-            }}
-          >
-            Enter ↵
-          </span>
-        </div>
       </div>
     </div>,
     document.body,

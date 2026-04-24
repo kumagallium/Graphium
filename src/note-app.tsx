@@ -1089,24 +1089,105 @@ function NoteEditorInner({
     [fileId, aiAssistant, markDirty],
   );
 
+  // Composer 結果をドキュメント末尾にブロックとして挿入するヘルパー。
+  // Compose / Insert PROV で共通利用。scope は意図的に気にせず常に末尾挿入（Composer の呼び出し点は
+  // グローバルで、ブロック選択スコープに紐付かないため、末尾が最も予測可能）。
+  const insertComposerResultAtEnd = useCallback(async (markdown: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const parsed = markdown.trim();
+    if (!parsed) return;
+    const blocks = await editor.tryParseMarkdownToBlocks(parsed);
+    if (blocks.length === 0) return;
+    const allBlocks = editor.document;
+    const lastBlock = allBlocks[allBlocks.length - 1];
+    if (lastBlock) {
+      editor.insertBlocks(blocks, lastBlock, "after");
+      lastAiInsertRef.current = true;
+      markDirty();
+    }
+  }, [markDirty]);
+
+  // Composer 用の軽量 AI 呼び出し。Chat パネルには入らず、結果文字列だけを返す。
+  // systemHint を与えるとプロンプトに前置する（Insert PROV で手順化を促す等）。
+  const runComposerAgent = useCallback(async (prompt: string, systemHint?: string): Promise<string> => {
+    const selectedModel = getSelectedModel();
+    const disabledTools = getDisabledTools();
+    const message = systemHint ? `${systemHint}\n\n${prompt}` : prompt;
+    const response = await runAgent({
+      message,
+      profile: getSelectedProfile(),
+      ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
+      ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
+      options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
+    });
+    return response.message;
+  }, [skillPrompts]);
+
   // Composer（Cmd+K）からの送信を受けるハンドラを ref に登録する。
-  // NoteApp 側は composerSubmitRef.current?.(submission) を呼ぶだけで、
-  // ノートが開いていない場合は null のまま → Composer 送信は no-op になる。
-  // 現状 Ask モードのみ実配線。他モードは後続 PR で。
+  // ── 実装メモ ──
+  // handleAiChatSubmit は aiAssistant ストアの state 変化のたびに再生成されるため、
+  // これを useEffect の deps に入れると登録/解除が大量に繰り返される（submit 中にも
+  // cleanup が走って副作用をかき乱す）。そこで最新の callback を ref 経由で拾い、
+  // useEffect は一度だけ走らせる（stable callback via ref パターン）。
+  const composerHandlersRef = useRef({
+    handleAiChatSubmit,
+    runComposerAgent,
+    insertComposerResultAtEnd,
+    setRightTab,
+    setPickerMediaType,
+  });
+  composerHandlersRef.current = {
+    handleAiChatSubmit,
+    runComposerAgent,
+    insertComposerResultAtEnd,
+    setRightTab,
+    setPickerMediaType,
+  };
+
   useEffect(() => {
     if (!composerSubmitRef) return;
     composerSubmitRef.current = async (submission) => {
-      if (submission.mode === "ask") {
-        setRightTab("chat");
-        await handleAiChatSubmit(submission.prompt);
+      const { mode, prompt } = submission;
+      const h = composerHandlersRef.current;
+
+      if (mode === "ask") {
+        h.setRightTab("chat");
+        await h.handleAiChatSubmit(prompt);
         return;
       }
-      console.info("[Composer] mode not yet wired to AI:", submission);
+
+      if (mode === "insert-media") {
+        h.setPickerMediaType("image");
+        return;
+      }
+
+      if (!isAgentConfigured()) {
+        window.alert(tStatic("settings.aiNotConfigured"));
+        return;
+      }
+
+      try {
+        if (mode === "compose") {
+          const text = await h.runComposerAgent(prompt);
+          await h.insertComposerResultAtEnd(text);
+          return;
+        }
+        if (mode === "insert-prov") {
+          const hint = tStatic("composer.insertProv.systemHint");
+          const text = await h.runComposerAgent(prompt, hint);
+          await h.insertComposerResultAtEnd(text);
+          return;
+        }
+      } catch (err) {
+        console.error("[Composer] submit failed:", err);
+        window.alert(err instanceof Error ? err.message : tStatic("aiChat.runFailed"));
+      }
     };
     return () => {
       if (composerSubmitRef.current) composerSubmitRef.current = null;
     };
-  }, [composerSubmitRef, handleAiChatSubmit]);
+  }, [composerSubmitRef]);
 
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
@@ -1919,9 +2000,10 @@ export function NoteApp() {
   const [showMemos, setShowMemos] = useState(false);
 
   // Cmd+K Composer（統一された AI 呼び出し口 / UX Audit #04）
-  // Ask モードは NoteEditorInner が composerSubmitRef 経由でハンドラを登録し、
-  // 既存 handleAiChatSubmit に流す。他モードは後続 PR で配線。
-  const composer = useComposer();
+  // Ask のみ UI 公開。他モードの実装は NoteEditorInner 内のハンドラに保持（将来用）。
+  // useComposer の組み込みショートカットは無効化して、ここで fm.activeFileId を見て
+  // 「ノート上でのみ開く」よう制御する。
+  const composer = useComposer({ disableShortcut: true });
   const [composerPrompt, setComposerPrompt] = useState("");
   const composerSubmitRef = useRef<
     ((submission: ComposerSubmission) => void | Promise<void>) | null
@@ -1931,11 +2013,14 @@ export function NoteApp() {
       const handler = composerSubmitRef.current;
       setComposerPrompt("");
       composer.closeComposer();
-      if (handler) {
-        await handler(submission);
-      } else {
-        // ノート未開時は受け皿がないので何もしない（ログのみ）
+      if (!handler) {
         console.info("[Composer] no active note — submit ignored:", submission);
+        return;
+      }
+      try {
+        await handler(submission);
+      } catch (err) {
+        console.error("[Composer] submit handler threw:", err);
       }
     },
     [composer],
@@ -1961,6 +2046,22 @@ export function NoteApp() {
   const isDesktop = useIsDesktop();
   const fm = useFileManager(authenticated);
   const capture = useCapture(authenticated);
+
+  // Cmd+K: NoteEditor がマウント中のみ Composer を開く。
+  // composerSubmitRef.current は NoteEditorInner の useEffect で登録/解除されるので、
+  // 「ハンドラがある＝編集面が表示されている」を一発の真偽で判定できる。
+  // 一覧・Wiki ハブ・アセットギャラリー等では NoteEditor がそもそも描画されないため null。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        if (!composerSubmitRef.current) return;
+        e.preventDefault();
+        composer.toggleComposer();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [composer]);
 
   // ─── URL ハッシュルーター ───
   const routeActions: RouteActions = useMemo(() => ({

@@ -476,12 +476,13 @@ export const en: Record<string, string> = {
   "onboarding.chip.slash.label": "Slash menu",
   "onboarding.chip.slash.desc": "Type / in an empty line for blocks and tools",
 
-  // ── Composer（Cmd+K） ──
-  "composer.placeholder": "Ask, compose, or insert... (Cmd+K to toggle)",
+  // ── Composer（Cmd+K）── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
+  "composer.placeholder": "Ask AI about this note... (Cmd+K to toggle)",
   "composer.mode.ask": "Ask",
   "composer.mode.compose": "Compose",
   "composer.mode.insertProv": "Insert PROV",
   "composer.mode.insertMedia": "Insert Media",
-  "composer.aria.dialog": "Composer",
-  "composer.aria.modes": "Composer mode",
+  "composer.aria.dialog": "Ask AI",
+  "composer.insertProv.systemHint": "Turn the following description into a numbered procedure. Use one block per step and start each step with the action verb. Label each block's role in brackets at the start of the line: [Step], [Input], [Tool], or [Output].",
+  "aiChat.runFailed": "AI request failed",
 };
