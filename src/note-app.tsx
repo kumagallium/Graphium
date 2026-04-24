@@ -40,6 +40,16 @@ import {
 } from "./features/block-link";
 import { useBlockLifecycle } from "./features/block-lifecycle";
 import {
+  GRAPHIUM_CLIPBOARD_MIME,
+  applyClipboardPayload,
+  buildClipboardPayload,
+  computeIdMap,
+  embedPayloadInHtml,
+  extractPayloadFromHtml,
+  flattenBlockIds,
+  parseClipboardPayload,
+} from "./features/block-lifecycle/clipboard";
+import {
   getHeadingSuggestions,
   getNoteSuggestions,
 } from "./features/block-link/mention-menu";
@@ -480,6 +490,7 @@ function NoteEditorInner({
   // ── URL ペースト検知 ──
   const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
   const pasteListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
+  const copyListenerRef = useRef<((e: ClipboardEvent) => void) | null>(null);
 
   // スラッシュメニューからの URL ピッカーモーダル用状態
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
@@ -571,25 +582,92 @@ function NoteEditorInner({
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
 
-    // URL ペースト検知リスナー
-    // 前回のリスナーがあればクリーンアップ
+    // 前回のリスナーがあればクリーンアップ。
+    // copy は capture / bubble の両方に登録しているので両方とも removeEventListener する。
     if (pasteListenerRef.current) {
-      editor.domElement?.removeEventListener("paste", pasteListenerRef.current);
+      editor.domElement?.removeEventListener("paste", pasteListenerRef.current, true);
     }
-    const listener = (e: ClipboardEvent) => {
+    if (copyListenerRef.current) {
+      editor.domElement?.removeEventListener("copy", copyListenerRef.current, true);
+      editor.domElement?.removeEventListener("copy", copyListenerRef.current, false);
+    }
+
+    // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（Phase 3）。
+    //
+    // Chrome は text/plain / text/html / image/* 以外のカスタム MIME を
+    // OS clipboard に書き出す際に捨てるため、
+    //   1. ブラウザ内のみで完結する場合に備えて application/x-graphium-clipboard にも setData
+    //   2. OS clipboard 経由でも生存させるため text/html の先頭に
+    //      HTML コメントとして base64 ペイロードを埋め込む
+    // capture phase だけだと ProseMirror が後から text/html を上書きしてしまうので、
+    // bubble phase の最後でもう一度 embed する（同リスナーを 2 回登録）。
+    const copyListener = (e: ClipboardEvent) => {
+      try {
+        let blockIds: string[] = [];
+        const selection = editor.getSelection?.();
+        const selectedBlocks = selection?.blocks;
+        if (selectedBlocks && selectedBlocks.length > 0) {
+          blockIds = flattenBlockIds(selectedBlocks);
+        } else {
+          // フォールバック: カーソル位置のブロック 1 つ（部分テキスト選択など、
+          // selection.blocks が取れないケース）
+          const cursorBlock = editor.getTextCursorPosition?.()?.block;
+          if (cursorBlock?.id) blockIds = [cursorBlock.id];
+        }
+        if (blockIds.length === 0) return;
+        const payload = buildClipboardPayload({
+          blockIds,
+          getLabel: (id) => labelStore.getLabel(id),
+          getAttributes: (id) => labelStore.getAttributes(id),
+          allLinks: linkStore.getAllLinks(),
+        });
+        if (!payload) return;
+        e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
+        const existingHtml = e.clipboardData?.getData("text/html") ?? "";
+        e.clipboardData?.setData("text/html", embedPayloadInHtml(payload, existingHtml));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[Graphium copy] error", err);
+      }
+    };
+    copyListenerRef.current = copyListener;
+
+    // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
+    const pasteListener = (e: ClipboardEvent) => {
+      // 1) ブラウザ内コピペ（同タブ）はカスタム MIME がそのまま生きる
+      // 2) OS clipboard 経由でも text/html の HTML コメントから取り出す
+      const graphiumRaw = e.clipboardData?.getData(GRAPHIUM_CLIPBOARD_MIME);
+      const htmlData = e.clipboardData?.getData("text/html");
+      const payload =
+        parseClipboardPayload(graphiumRaw) ?? extractPayloadFromHtml(htmlData);
+      if (payload) {
+        const beforeIds = new Set(flattenBlockIds(editor.document));
+        // BlockNote のネイティブパースを動かしてから、追加されたブロック ID を確定させる
+        setTimeout(() => {
+          const afterIds = flattenBlockIds(editor.document);
+          const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          const idMap = computeIdMap(payload.blockIds, newIds);
+          if (idMap.size === 0) return;
+          applyClipboardPayload(idMap, payload, {
+            setLabel: (blockId, label) => labelStore.setLabel(blockId, label),
+            setAttributes: (blockId, attrs) => labelStore.setAttributes(blockId, attrs),
+            addLink: (params) => linkStore.addLink(params),
+          });
+        }, 0);
+        return;
+      }
+
+      // 既存: URL のみのペーストならブックマーク選択メニューを出す
       const text = e.clipboardData?.getData("text/plain")?.trim();
       if (!text) return;
-      // URL のみのペーストかチェック
       try {
         const parsed = new URL(text);
         if (!parsed.protocol.startsWith("http")) return;
       } catch {
         return;
       }
-      // ペースト位置のブロック ID を取得
       const currentBlock = editor.getTextCursorPosition()?.block;
       if (!currentBlock) return;
-      // ペースト位置の座標を取得
       const sel = window.getSelection();
       let x = 0, y = 0;
       if (sel && sel.rangeCount > 0) {
@@ -597,18 +675,36 @@ function NoteEditorInner({
         x = rect.left;
         y = rect.bottom;
       }
-      // 少し遅延してメニュー表示（ペーストテキスト挿入後）
       setTimeout(() => {
         setPastedUrl({ url: text, position: { x, y }, blockId: currentBlock.id });
       }, 100);
     };
-    pasteListenerRef.current = listener;
-    // BlockNote の DOM 要素にリスナーを追加
-    const domEl = editor.domElement;
-    if (domEl) {
-      domEl.addEventListener("paste", listener);
-    }
-  }, [labelStore]);
+    pasteListenerRef.current = pasteListener;
+
+    // editor.domElement が ready になるまで rAF で待ってからリスナー登録する。
+    // BlockNote の onEditorReady は editor インスタンスはあるが domElement が
+    // まだ設定されていない段階でも複数回呼ばれるため、ここでガードする。
+    // セーブまでリスナーが付かない不具合を防ぐ。
+    let attempts = 0;
+    const attachClipboardListeners = () => {
+      const domEl = editor.domElement;
+      if (!domEl) {
+        if (attempts++ < 60) {
+          requestAnimationFrame(attachClipboardListeners);
+        }
+        return;
+      }
+      // ProseMirror が copy/paste を capture phase で先取りする場合があるため、
+      // 自分も capture phase で受け取る。preventDefault はしないので
+      // BlockNote のネイティブシリアライズ／パースはそのまま走る。
+      domEl.addEventListener("copy", copyListener, true);
+      domEl.addEventListener("paste", pasteListener, true);
+      // bubble phase でも copy を補足する（capture phase で setData した内容を
+      // ProseMirror が clearData している場合、bubble の最後でもう一度 setData する）
+      domEl.addEventListener("copy", copyListener, false);
+    };
+    attachClipboardListeners();
+  }, [labelStore, linkStore]);
 
   // ── 保存ロジック ──
   const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {
