@@ -23,13 +23,28 @@ if (isTauri()) {
     });
   });
   initUpdater();
-  // beforeunload ではなく Tauri ウィンドウ閉じイベントで停止
-  // （HMR リロードで sidecar が誤って kill されるのを防ぐ）
-  import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-    getCurrentWindow().onCloseRequested(async () => {
-      await stopSidecar();
+  // Rust 側の CloseRequested → prevent_close → 'app-close-requested' emit を受けて
+  // sidecar を停止し、shutdown_ack で Rust に終了許可を返す。
+  // sidecar の kill が返らない場合でも 2 秒で諦めて ACK を送る。
+  (async () => {
+    const { listen } = await import("@tauri-apps/api/event");
+    const { invoke } = await import("@tauri-apps/api/core");
+    await listen("app-close-requested", async () => {
+      try {
+        await Promise.race([
+          stopSidecar(),
+          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+        ]);
+      } catch (e) {
+        console.error("[main] stopSidecar failed during shutdown", e);
+      }
+      try {
+        await invoke("shutdown_ack");
+      } catch (e) {
+        console.error("[main] shutdown_ack invoke failed", e);
+      }
     });
-  });
+  })();
 }
 
 // ── マイグレーション（provnote → graphium） ──

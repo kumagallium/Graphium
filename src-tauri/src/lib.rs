@@ -3,8 +3,20 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
+
+/// 終了処理の状態。フロントから shutdown_ack が来ると true、
+/// 次の CloseRequested ではそのまま閉じる（無限ループ防止）
+static SHUTDOWN_ACK: AtomicBool = AtomicBool::new(false);
+
+/// フロントエンドから呼ぶ「sidecar の後始末が終わったので終了してよい」通知
+#[tauri::command]
+fn shutdown_ack(app: tauri::AppHandle) {
+    SHUTDOWN_ACK.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
 
 // --- ファイルシステムコマンド ---
 
@@ -443,6 +455,7 @@ pub fn run() {
             read_app_data,
             write_app_data,
             get_media_path,
+            shutdown_ack,
         ])
         .setup(|app| {
             // メニューバー構築
@@ -515,6 +528,32 @@ pub fn run() {
                     _ => {}
                 }
             });
+
+            // 閉じるイベント制御: 一旦 prevent_close してフロントに通知し、
+            // sidecar 停止後に shutdown_ack を受けて exit する。
+            // フロントが応答しなくても 3 秒のフェイルセーフで強制終了する。
+            if let Some(main_window) = app.get_webview_window("main") {
+                let window_handle = main_window.clone();
+                main_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if SHUTDOWN_ACK.load(Ordering::SeqCst) {
+                            // ACK 済み → そのまま閉じる
+                            return;
+                        }
+                        api.prevent_close();
+                        let _ = window_handle.emit("app-close-requested", ());
+
+                        // フェイルセーフ: 3 秒以内に ACK が来なければ強制終了
+                        let app_handle = window_handle.app_handle().clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_secs(3));
+                            if !SHUTDOWN_ACK.load(Ordering::SeqCst) {
+                                app_handle.exit(0);
+                            }
+                        });
+                    }
+                });
+            }
 
             Ok(())
         })
