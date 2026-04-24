@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.3.7](https://github.com/kumagallium/Graphium/compare/v0.3.6...v0.3.7) - 2026-04-24
+- [fix] Allow AI chat on unsaved new notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/124
+- feat: Add UI controls to restart sidecar backend by @kumagallium in https://github.com/kumagallium/Graphium/pull/126
+- Add save-to-graphium Claude Code skill and surface author/model in lists by @kumagallium in https://github.com/kumagallium/Graphium/pull/127
+- [fix] Add missing skill file Tauri commands by @kumagallium in https://github.com/kumagallium/Graphium/pull/128
+
 ## [v0.3.6](https://github.com/kumagallium/Graphium/compare/v0.3.5...v0.3.6) - 2026-04-22
 - Remove wiki status and Approve workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/117
 - feat: List navigation with side peek, URL routing, and breadcrumbs by @kumagallium in https://github.com/kumagallium/Graphium/pull/118
