@@ -1,18 +1,18 @@
 #!/bin/bash
 # Graphium バックエンドサーバー sidecar ラッパー
-# Tauri から spawn され、Node.js でバンドル済みサーバーを起動する
+# Tauri から spawn され、同梱の Node.js でバンドル済みサーバーを起動する
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# 起動候補（bundled .app / dev (target/debug) / 互換レイアウトの順）
-CANDIDATES=(
+# server.mjs の起動候補（bundled .app / dev / 互換）
+SERVER_CANDIDATES=(
   "$SCRIPT_DIR/../Resources/sidecar/server.mjs"   # bundled .app: Contents/MacOS → Contents/Resources/sidecar
   "$SCRIPT_DIR/../../sidecar/server.mjs"          # dev: target/debug → src-tauri/sidecar
   "$SCRIPT_DIR/../sidecar/server.mjs"             # 互換: 同階層に sidecar/ がある場合
 )
 
 SERVER_FILE=""
-for candidate in "${CANDIDATES[@]}"; do
+for candidate in "${SERVER_CANDIDATES[@]}"; do
   if [ -f "$candidate" ]; then
     SERVER_FILE="$candidate"
     break
@@ -21,10 +21,41 @@ done
 
 if [ -z "$SERVER_FILE" ]; then
   echo "graphium-server: server.mjs not found in any candidate path:" >&2
-  for candidate in "${CANDIDATES[@]}"; do
+  for candidate in "${SERVER_CANDIDATES[@]}"; do
     echo "  - $candidate" >&2
   done
   exit 1
 fi
 
-exec node "$SERVER_FILE" "$@"
+# Node ランタイムの起動候補（同梱 → PATH の順）
+# 配布版では同梱 node を必ず使う（GUI 起動時は PATH を継承しないため）。
+# dev では同梱されていなければ PATH の node を試す
+NODE_CANDIDATES=(
+  "$SCRIPT_DIR/../Resources/sidecar/node"        # bundled .app
+  "$SCRIPT_DIR/../../sidecar/node"               # dev: target/debug → src-tauri/sidecar
+  "$SCRIPT_DIR/../sidecar/node"                  # 互換
+)
+
+NODE_BIN=""
+for candidate in "${NODE_CANDIDATES[@]}"; do
+  if [ -x "$candidate" ]; then
+    NODE_BIN="$candidate"
+    break
+  fi
+done
+
+# fallback: PATH の node（dev 環境で同梱がない場合用）
+if [ -z "$NODE_BIN" ] && command -v node >/dev/null 2>&1; then
+  NODE_BIN="node"
+fi
+
+if [ -z "$NODE_BIN" ]; then
+  echo "graphium-server: bundled Node.js not found and 'node' is not in PATH" >&2
+  echo "Searched:" >&2
+  for candidate in "${NODE_CANDIDATES[@]}"; do
+    echo "  - $candidate" >&2
+  done
+  exit 1
+fi
+
+exec "$NODE_BIN" "$SERVER_FILE" "$@"
