@@ -14,6 +14,38 @@ import {
   extractDomain,
 } from "./media-index";
 
+// 画像サムネイル: local-media:// URL を Blob URL に変換して表示
+// AssetGalleryView.ImageThumbnail と同じパターン
+function ImageThumb({ entry }: { entry: MediaIndexEntry }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const provider = getActiveProvider();
+    const fileId = provider.extractFileId(entry.thumbnailUrl);
+    if (!fileId) {
+      setSrc(entry.thumbnailUrl);
+      return;
+    }
+    let cancelled = false;
+    provider.getMediaBlobUrl(fileId)
+      .then((url) => { if (!cancelled) setSrc(url); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [entry.thumbnailUrl]);
+
+  if (!src) {
+    return <div className="w-full h-20 rounded bg-muted" />;
+  }
+  return (
+    <img
+      src={src}
+      alt={entry.name}
+      className="w-full h-20 object-cover rounded bg-muted"
+      loading="lazy"
+    />
+  );
+}
+
 // 動画サムネイル（AssetGalleryView と同じパターン）
 function VideoThumb({ entry }: { entry: MediaIndexEntry }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,14 +96,7 @@ function PickerItem({
   const thumbnail = useMemo(() => {
     switch (entry.type) {
       case "image":
-        return (
-          <img
-            src={entry.thumbnailUrl}
-            alt={entry.name}
-            className="w-full h-20 object-cover rounded bg-muted"
-            loading="lazy"
-          />
-        );
+        return <ImageThumb entry={entry} />;
       case "video":
         return <VideoThumb entry={entry} />;
       case "audio":
