@@ -80,8 +80,83 @@ function makeProps(extra = {}) {
   };
 }
 
-function makeTextContent(text) {
-  return [{ type: "text", text, styles: {} }];
+// BlockNote のインライン content にパースする。
+// 対応: **bold**, *italic*, `code`, [text](url)
+// 未クローズや他の記法は plain text として扱う。
+function parseInlineContent(text) {
+  if (!text) return [{ type: "text", text: "", styles: {} }];
+
+  const result = [];
+  let remaining = text;
+
+  const pushText = (t, styles = {}) => {
+    if (!t) return;
+    // 直前と同じ styles ならマージして出力量を抑える
+    const last = result[result.length - 1];
+    if (
+      last &&
+      last.type === "text" &&
+      JSON.stringify(last.styles) === JSON.stringify(styles)
+    ) {
+      last.text += t;
+    } else {
+      result.push({ type: "text", text: t, styles });
+    }
+  };
+
+  while (remaining.length > 0) {
+    // **bold**
+    const boldMatch = remaining.match(/^\*\*([^*\n]+?)\*\*/);
+    if (boldMatch) {
+      pushText(boldMatch[1], { bold: true });
+      remaining = remaining.slice(boldMatch[0].length);
+      continue;
+    }
+
+    // `code`
+    const codeMatch = remaining.match(/^`([^`\n]+?)`/);
+    if (codeMatch) {
+      pushText(codeMatch[1], { code: true });
+      remaining = remaining.slice(codeMatch[0].length);
+      continue;
+    }
+
+    // [text](url)
+    const linkMatch = remaining.match(/^\[([^\]\n]+?)\]\(([^)\n]+?)\)/);
+    if (linkMatch) {
+      result.push({
+        type: "link",
+        href: linkMatch[2],
+        content: [{ type: "text", text: linkMatch[1], styles: {} }],
+      });
+      remaining = remaining.slice(linkMatch[0].length);
+      continue;
+    }
+
+    // *italic* (bold より後でチェックし、** を巻き込まないように)
+    const italicMatch = remaining.match(/^\*([^*\n]+?)\*/);
+    if (italicMatch) {
+      pushText(italicMatch[1], { italic: true });
+      remaining = remaining.slice(italicMatch[0].length);
+      continue;
+    }
+
+    // plain text: 次の特殊記号まで取り込む
+    const nextSpecial = remaining.search(/\*\*|`|\[|\*/);
+    if (nextSpecial === -1) {
+      pushText(remaining);
+      break;
+    } else if (nextSpecial === 0) {
+      // 特殊記号で始まるが match できなかった（未クローズ）→ 1文字だけ plain として消費
+      pushText(remaining[0]);
+      remaining = remaining.slice(1);
+    } else {
+      pushText(remaining.slice(0, nextSpecial));
+      remaining = remaining.slice(nextSpecial);
+    }
+  }
+
+  return result.length > 0 ? result : [{ type: "text", text: "", styles: {} }];
 }
 
 function headingBlock(level, text) {
@@ -89,7 +164,7 @@ function headingBlock(level, text) {
     id: randomUUID(),
     type: "heading",
     props: makeProps({ level }),
-    content: makeTextContent(text),
+    content: parseInlineContent(text),
     children: [],
   };
 }
@@ -99,7 +174,7 @@ function paragraphBlock(text) {
     id: randomUUID(),
     type: "paragraph",
     props: makeProps(),
-    content: makeTextContent(text),
+    content: parseInlineContent(text),
     children: [],
   };
 }
@@ -109,7 +184,7 @@ function bulletListItemBlock(text) {
     id: randomUUID(),
     type: "bulletListItem",
     props: makeProps(),
-    content: makeTextContent(text),
+    content: parseInlineContent(text),
     children: [],
   };
 }
@@ -119,7 +194,36 @@ function codeBlock(lang, code) {
     id: randomUUID(),
     type: "codeBlock",
     props: { language: lang || "text" },
-    content: makeTextContent(code),
+    // コードブロックはインライン装飾を解釈しない（そのまま出力）
+    content: [{ type: "text", text: code, styles: {} }],
+    children: [],
+  };
+}
+
+// "| a | b | c |" → ["a", "b", "c"]
+function splitTableRow(line) {
+  return line
+    .replace(/^\s*\|/, "")
+    .replace(/\|\s*$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
+
+// テーブルセパレータ行の判定（|---|---|---| 形式、: で alignment）
+function isTableSeparator(line) {
+  return /^\s*\|[\s\-:|]+\|\s*$/.test(line) && /-/.test(line);
+}
+
+function tableBlock(rows) {
+  return {
+    id: randomUUID(),
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: rows.map((cells) => ({
+        cells: cells.map((cell) => parseInlineContent(cell)),
+      })),
+    },
     children: [],
   };
 }
@@ -159,6 +263,22 @@ function markdownToBlocks(md) {
       continue;
     }
 
+    // テーブル（| col | col | ...  +  次行が |---|---| セパレータ）
+    if (
+      /^\s*\|(.+)\|\s*$/.test(line) &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
+      const rows = [splitTableRow(line)];
+      i += 2; // ヘッダー行とセパレータ行をスキップ
+      while (i < lines.length && /^\s*\|(.+)\|\s*$/.test(lines[i])) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      blocks.push(tableBlock(rows));
+      continue;
+    }
+
     // 箇条書き (ネスト非対応: 先頭記号をそのまま除去)
     if (/^\s*[-*]\s+/.test(line)) {
       blocks.push(bulletListItemBlock(line.replace(/^\s*[-*]\s+/, "")));
@@ -186,7 +306,8 @@ function markdownToBlocks(md) {
       !/^#{1,3}\s+/.test(lines[i]) &&
       !/^```/.test(lines[i]) &&
       !/^\s*[-*]\s+/.test(lines[i]) &&
-      !/^\s*\d+\.\s+/.test(lines[i])
+      !/^\s*\d+\.\s+/.test(lines[i]) &&
+      !/^\s*\|.+\|\s*$/.test(lines[i])
     ) {
       buf.push(lines[i]);
       i++;
