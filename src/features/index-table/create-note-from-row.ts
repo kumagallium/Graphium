@@ -43,6 +43,7 @@ export async function createNoteFromRow(
   files: GraphiumFile[],
   store: { setLinkedNote: (blockId: string, sampleName: string, noteId: string) => void },
   onAddNoteLink?: (targetNoteId: string, sourceBlockId: string) => void,
+  parentNoteId?: string | null,
 ): Promise<string | null> {
   const block = editor.getBlock(tableBlockId);
   if (!block) return null;
@@ -64,6 +65,7 @@ export async function createNoteFromRow(
   const newDoc: GraphiumDocument = {
     version: 2,
     title,
+    ...(parentNoteId ? { derivedFromNoteId: parentNoteId, derivedFromBlockId: tableBlockId } : {}),
     pages: [
       {
         id: crypto.randomUUID(),

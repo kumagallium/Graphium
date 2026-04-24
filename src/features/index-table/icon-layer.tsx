@@ -132,6 +132,7 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
           callbacks.files,
           store,
           callbacks.onAddNoteLink,
+          callbacks.currentFileId,
         );
         if (fileId) {
           // セルテキストを @ノート名（青文字）に変換
