@@ -87,12 +87,11 @@ export function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings> & { font?: string };
     // 旧 `font` フィールドを latinFont / jpFont に振り分ける（一回限りのマイグレーション）
     const legacyFont = typeof parsed.font === "string" ? parsed.font : "";
-    // 旧 latinFont = "inter" は新デフォルトと等価なので "" に丸める。
-    // 旧 "" は Atkinson + Inter 数字を意味していたので "atkinson-next-mixed" にマッピング。
+    // 旧 latinFont = "inter" は新デフォルト（""）と等価なので丸める。
+    // それ以外で LATIN_FONTS に該当しない値は ""（デフォルト）にフォールバック。
     const rawLatin = parsed.latinFont as string | undefined;
     const migratedLatin: LatinFont = rawLatin !== undefined
       ? (rawLatin === "inter" ? ""
-        : rawLatin === "" ? "atkinson-next-mixed"
         : (LATIN_FONTS as readonly string[]).includes(rawLatin) ? (rawLatin as LatinFont)
         : "")
       : (legacyFont === "lexend" ? "lexend"
