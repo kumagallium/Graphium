@@ -10,7 +10,7 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          "本文の読みやすさを 3 フォントで体感比較。dyslexia / 読み速度の観点から、Lexend (NASA 共同研究) と Atkinson Hyperlegible (Braille Institute) を候補に検討。デフォルトは Inter (design.md 指定)。",
+          "本文の読みやすさを 5 フォントで体感比較。**現行デフォルト = Atkinson Hyperlegible Next + Inter 数字 (B 案)**。dyslexia 配慮（識別性重視の字形）と数字の見慣れたグリフを両立。Inter / Lexend / Atkinson (旧版) / Atkinson Next (生) は body[data-font=\"...\"] で切り替えて比較できる。",
       },
     },
   },
@@ -28,7 +28,7 @@ const FONTS = [
     key: "inter" as const,
     name: "Inter",
     family: "'Inter', system-ui, sans-serif",
-    note: "design.md 既定。中立的なヒューマニスト体。",
+    note: "中立的なヒューマニスト体。design.md の元の指定。",
     letterSpacing: "0.01em",
   },
   {
@@ -54,9 +54,9 @@ const FONTS = [
   },
   {
     key: "atkinson-next-mixed" as const,
-    name: "Atkinson Next + Inter 数字",
+    name: "Atkinson Next + Inter 数字 ★ デフォルト",
     family: "'Inter Numerals', 'Atkinson Hyperlegible Next', system-ui, sans-serif",
-    note: "B 案。数字 0-9 のみ Inter のグリフに差し替え（unicode-range U+0030-0039）。文字部分の dyslexia 配慮を維持しつつ「0」問題を回避。",
+    note: "★ 現行デフォルト。数字 0-9 のみ Inter のグリフに差し替え（unicode-range U+0030-0039）。文字部分の dyslexia 配慮を維持しつつ「0」の中点問題を回避。",
     letterSpacing: "0",
   },
 ];
@@ -195,7 +195,7 @@ export const ThreeUp: StoryObj = {
 };
 
 export const InterOnly: StoryObj = {
-  name: "Inter 単独 (現行デフォルト)",
+  name: "Inter 単独",
   render: () => (
     <div style={{ background: "var(--paper)", padding: 32, maxWidth: 720 }}>
       <Sample family={FONTS[0].family} letterSpacing={FONTS[0].letterSpacing} />
@@ -231,7 +231,7 @@ export const AtkinsonNextOnly: StoryObj = {
 };
 
 export const AtkinsonNextMixedOnly: StoryObj = {
-  name: "Atkinson Next + Inter 数字 単独 (B 案)",
+  name: "Atkinson Next + Inter 数字 単独 (★ 現行デフォルト)",
   render: () => (
     <div style={{ background: "var(--paper)", padding: 32, maxWidth: 720 }}>
       <Sample family={FONTS[4].family} letterSpacing={FONTS[4].letterSpacing} />

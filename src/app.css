@@ -210,8 +210,13 @@
   --shadow-1: 0 1px 2px rgba(30, 20, 10, 0.05), 0 2px 6px rgba(30, 20, 10, 0.04);
   --shadow-2: 0 2px 6px rgba(30, 20, 10, 0.06), 0 10px 30px rgba(30, 20, 10, 0.06);
 
-  /* Typography — design.md 準拠（本文 Inter、mono JetBrains Mono） */
-  --ui:   'Inter', system-ui, sans-serif;
+  /* Typography
+     UI/本文は Atkinson Hyperlegible Next（dyslexia 配慮、識別性重視）。
+     数字 0-9 のみ Inter に差し替え（'Inter Numerals' は unicode-range で 0-9 のみ提供）。
+     これにより文字部分は Atkinson の dyslexia 配慮を維持しつつ、数字は慣れた字形に。
+     ※ 親リポジトリの design.md は「本文 Inter」だが、本プロジェクトでは
+        アクセシビリティ優先で逸脱（feedback_dyslexia_typography 参照） */
+  --ui:   'Inter Numerals', 'Atkinson Hyperlegible Next', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 }
 
@@ -227,16 +232,20 @@
     @apply bg-background text-foreground;
     font-family: var(--ui);
     color: var(--ink);
-    /* dyslexia / 読みやすさ向上: 文字間隔をわずかに広げる
-       BDA (British Dyslexia Association) 推奨の控えめ値 */
-    letter-spacing: 0.01em;
+    /* Atkinson Next は字幅が広めの設計なので追加 letter-spacing は不要 */
+    letter-spacing: 0;
     height: 100dvh;
     overflow: hidden;
   }
-  /* 読みやすさモード: body[data-font="..."] で UI フォントを切り替える */
+  /* 読みやすさモード切り替え（設定 UI 経由 / DevTools で body[data-font] を上書き）
+     デフォルト = Atkinson Next + Inter 数字。以下は他フォントを試したい時の代替モード。 */
+  body[data-font="inter"] {
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
   body[data-font="lexend"] {
     font-family: 'Lexend', system-ui, sans-serif;
-    letter-spacing: 0;  /* Lexend 自体が広めの設計なので追加 letter-spacing は不要 */
+    letter-spacing: 0;
   }
   body[data-font="atkinson"] {
     font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
@@ -244,11 +253,6 @@
   }
   body[data-font="atkinson-next"] {
     font-family: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
-    letter-spacing: 0;
-  }
-  body[data-font="atkinson-next-mixed"] {
-    /* 数字だけ Inter のグリフ、それ以外は Atkinson Next */
-    font-family: 'Inter Numerals', 'Atkinson Hyperlegible Next', system-ui, sans-serif;
     letter-spacing: 0;
   }
 }
