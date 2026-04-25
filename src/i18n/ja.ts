@@ -182,6 +182,7 @@ export const ja: Record<string, string> = {
 
   // ── ナビゲーション ──
   "nav.noteList": "すべてのノート",
+  "nav.openNoteList": "ノート一覧を開く",
   "nav.recentNotes": "最近のノート",
   "nav.showAll": "すべて表示",
   "nav.back": "戻る",

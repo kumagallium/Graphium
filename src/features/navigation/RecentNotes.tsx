@@ -1,6 +1,7 @@
 // 最近のノート（左パネル上部）
 // 最近開いた/保存したノート5件を表示する
 
+import { StickyNote, ArrowRight } from "lucide-react";
 import { useT } from "../../i18n";
 import { type RecentNote, formatRelativeTime } from "./recent-notes-store";
 
@@ -42,7 +43,7 @@ export function RecentNotes({
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
             }`}
           >
-            <span className="shrink-0 text-muted-foreground/60">&#128196;</span>
+            <span className="shrink-0 text-muted-foreground/60"><StickyNote size={14} /></span>
             <span className="min-w-0 flex-1 truncate">{note.title}</span>
             <span className="shrink-0 text-xs text-muted-foreground/60">
               {formatRelativeTime(note.lastAccessedAt)}
@@ -54,8 +55,8 @@ export function RecentNotes({
         onClick={onShowNoteList}
         className="w-full text-left flex items-center gap-1.5 rounded-md px-2 py-1.5 mt-1 text-xs text-primary/80 hover:text-primary hover:bg-sidebar-accent/50 transition-colors"
       >
-        <span>&#128203;</span>
-        <span>ノート一覧を開く &rarr;</span>
+        <span>{t("nav.openNoteList")}</span>
+        <ArrowRight size={12} />
       </button>
     </div>
   );
