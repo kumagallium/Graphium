@@ -370,10 +370,77 @@ type ConvertResult = {
 };
 
 /**
- * テキスト中の [[タイトル]] を検出して、
- * プレーンテキスト部分と @リンク（青テキスト）に分割したインラインコンテンツを返す
+ * LLM が稀に出す不正フォーマットを正規化する
+ * 例: `[Chat: ...]]`（単一の `[`）→ `[[Chat: ...]]`
  */
-function parseInlineCitations(
+function normalizeInlineMarkup(text: string): string {
+  // 行頭または非 `[` 文字の後に出現する `[Chat: ...]]` を `[[Chat: ...]]` に補正
+  return text.replace(/(^|[^\[])\[(Chat:[^\]]*?)\]\]/g, "$1[[$2]]");
+}
+
+/**
+ * 1 つの `[[...]]` 引用に対応するインライン要素を出力に push する
+ */
+function pushCitation(
+  inlineContent: any[],
+  knowledgeLinks: any[],
+  blockId: string,
+  citedTitle: string,
+  noteIndex: NoteIndex,
+): void {
+  // 外部 URL → BlockNote link
+  if (/^https?:\/\//.test(citedTitle)) {
+    inlineContent.push({
+      type: "link",
+      href: citedTitle,
+      content: [{ type: "text", text: citedTitle, styles: {} }],
+    });
+    return;
+  }
+
+  // Chat 由来の引用は現状リンク先を解決できない（ScopeChat は note 内に格納されており
+  // noteIndex に乗らない）。視覚的にチャット引用と分かるようイタリック+グレーで描画する。
+  // クリックでチャットを開く対応は ideas.md `G-CHATCITE-OPEN` を参照。
+  if (/^Chat:\s/i.test(citedTitle)) {
+    inlineContent.push({
+      type: "text",
+      text: citedTitle,
+      styles: { italic: true, textColor: "gray" } as any,
+    });
+    return;
+  }
+
+  // ノート/Wiki ルックアップ
+  const note = noteIndex.find((n) => n.title === citedTitle);
+  if (note) {
+    const label = note.isWiki ? `🤖 ${citedTitle}` : citedTitle;
+    inlineContent.push({
+      type: "text",
+      text: `@${label}`,
+      styles: { textColor: "blue" },
+    });
+    knowledgeLinks.push({
+      id: crypto.randomUUID(),
+      sourceBlockId: blockId,
+      targetBlockId: "",
+      targetNoteId: note.id,
+      type: "reference",
+      layer: "knowledge",
+      createdBy: "ai",
+    });
+    return;
+  }
+
+  // マッチしない → プレーンテキスト
+  inlineContent.push({ type: "text", text: citedTitle, styles: {} });
+}
+
+/**
+ * テキスト中の `[[タイトル]]` 引用と Markdown インライン装飾
+ * （`**bold**` / `*italic*` / `` `code` `` / `[text](url)`）を検出し、
+ * BlockNote のインラインコンテンツ配列と knowledgeLinks に変換する。
+ */
+export function parseInlineCitations(
   text: string,
   noteIndex: NoteIndex,
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
@@ -381,76 +448,54 @@ function parseInlineCitations(
   const inlineContent: any[] = [];
   const knowledgeLinks: any[] = [];
 
-  // [[...]] を検出する正規表現
-  const regex = /\[\[([^\]]+)\]\]/g;
+  const normalized = normalizeInlineMarkup(text);
+
+  // 優先順: [[...]] > [text](url) > **bold** > *italic* > `code`
+  // - italic は単独 `*` の対なので、空白のみを内包しないよう制限する
+  // - bold/italic は最短マッチ（lazy）にして、`**foo** **bar**` のような連続パターンに対応
+  const TOKEN_RE = /\[\[([^\]]+?)\]\]|\[([^\]]+?)\]\(([^)]+?)\)|\*\*([^*]+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*|`([^`]+?)`/g;
+
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(text)) !== null) {
-    // マッチ前のプレーンテキスト
+  while ((match = TOKEN_RE.exec(normalized)) !== null) {
     if (match.index > lastIndex) {
       inlineContent.push({
         type: "text",
-        text: text.slice(lastIndex, match.index),
+        text: normalized.slice(lastIndex, match.index),
         styles: {},
       });
     }
 
-    const citedTitle = match[1];
-
-    // URL の場合は BlockNote link 要素にする
-    if (/^https?:\/\//.test(citedTitle)) {
+    if (match[1] !== undefined) {
+      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex);
+    } else if (match[2] !== undefined && match[3] !== undefined) {
       inlineContent.push({
         type: "link",
-        href: citedTitle,
-        content: [{ type: "text", text: citedTitle, styles: {} }],
+        href: match[3],
+        content: [{ type: "text", text: match[2], styles: {} }],
       });
-    } else {
-      // ノート/Wiki をタイトルで検索
-      const note = noteIndex.find((n) => n.title === citedTitle);
-
-      if (note) {
-        // マッチ → クリッカブルな @リンク（青テキスト）
-        const label = note.isWiki ? `🤖 ${citedTitle}` : citedTitle;
-        inlineContent.push({
-          type: "text",
-          text: `@${label}`,
-          styles: { textColor: "blue" },
-        });
-        knowledgeLinks.push({
-          id: crypto.randomUUID(),
-          sourceBlockId: blockId,
-          targetBlockId: "",
-          targetNoteId: note.id,
-          type: "reference",
-          layer: "knowledge",
-          createdBy: "ai",
-        });
-      } else {
-        // マッチしない → プレーンテキストのまま残す
-        inlineContent.push({
-          type: "text",
-          text: citedTitle,
-          styles: {},
-        });
-      }
+    } else if (match[4] !== undefined) {
+      inlineContent.push({ type: "text", text: match[4], styles: { bold: true } });
+    } else if (match[5] !== undefined) {
+      inlineContent.push({ type: "text", text: match[5], styles: { italic: true } });
+    } else if (match[6] !== undefined) {
+      inlineContent.push({ type: "text", text: match[6], styles: { code: true } as any });
     }
 
-    lastIndex = regex.lastIndex;
+    lastIndex = TOKEN_RE.lastIndex;
   }
 
-  // 残りのプレーンテキスト
-  if (lastIndex < text.length) {
+  if (lastIndex < normalized.length) {
     inlineContent.push({
       type: "text",
-      text: text.slice(lastIndex),
+      text: normalized.slice(lastIndex),
       styles: {},
     });
   }
 
-  // [[...]] が無かった場合はそのままプレーンテキスト
   if (inlineContent.length === 0) {
-    inlineContent.push({ type: "text", text, styles: {} });
+    inlineContent.push({ type: "text", text: normalized, styles: {} });
   }
 
   return { inlineContent, knowledgeLinks, blockId };
