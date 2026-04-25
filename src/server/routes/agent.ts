@@ -10,6 +10,7 @@ import { resolveModelConfig } from "../services/header-model.js";
 import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
 import { getRegistryUrl, getRegistryKey } from "../services/env.js";
+import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 
 const app = new Hono();
 
@@ -25,6 +26,8 @@ app.post("/run", async (c) => {
     disabled_tools?: string[];
     /** Wiki Retriever が検索したコンテキスト（フロントエンドで embedding 検索済み） */
     wiki_context?: string;
+    /** 構造化出力（コンテキストラベル）の指示に使う言語 */
+    language?: string;
     options?: {
       max_turns?: number;
       model?: string;
@@ -73,6 +76,9 @@ app.post("/run", async (c) => {
   // Wiki-worthy 自己評価指示
   systemPrompt += `\n\nAt the very end of your response, append a hidden tag: <!-- wiki_worthy: true/false -->
 Set it to true ONLY if your response contains generalizable knowledge, insights, methodology, or principles that would be valuable to save in a knowledge base. Set it to false for task-specific help, simple answers, or conversational responses.`;
+
+  // 構造化出力（コンテキストラベル）指示
+  systemPrompt += buildLabeledOutputInstruction(body.language || "en");
 
   // Skill をシステムプロンプトに注入
   const skills = filterSkills(allServers);

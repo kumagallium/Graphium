@@ -69,6 +69,7 @@ import {
   buildAiDerivedDocument,
 } from "./features/ai-assistant";
 import type { AttachedNote } from "./features/ai-assistant/panel";
+import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getSelectedProfile, getDisabledTools, getDefaultLLMModel } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -119,7 +120,7 @@ import {
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
 } from "./features/asset-browser";
-import { useT, t as tStatic } from "./i18n";
+import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
 import { exportProvJsonLd } from "./features/prov-export";
 
@@ -1112,6 +1113,7 @@ function NoteEditorInner({
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
           ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
+          language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         });
         // Wiki コンテキストが使われ���場合、引用情報を処理
@@ -1212,6 +1214,7 @@ function NoteEditorInner({
       profile: getSelectedProfile(),
       ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
       ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
+      language: getLocale(),
       options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
     });
     return response.message;
@@ -1335,15 +1338,58 @@ function NoteEditorInner({
     (markdown: string) => {
       if (!editorRef.current) return;
       const editor = editorRef.current;
+
+      // 挿入後にラベルを適用 + 連続する procedure 見出しを informed_by で自動連結する
+      const applyExtractedLabels = (
+        inserted: any[],
+        extracted: { path: number[]; label: string }[],
+      ) => {
+        if (extracted.length === 0) return;
+        const resolveByPath = (path: number[]): any | null => {
+          let nodes: any[] = inserted as any[];
+          let node: any = null;
+          for (const idx of path) {
+            node = nodes?.[idx];
+            if (!node) return null;
+            nodes = node.children ?? [];
+          }
+          return node;
+        };
+        setTimeout(() => {
+          // ラベル付与
+          const procedureHeadingIds: string[] = [];
+          for (const { path, label } of extracted) {
+            const block = resolveByPath(path);
+            if (!block?.id) continue;
+            labelStore.setLabel(block.id, label);
+            // procedure 見出し（H2+）を順序通りに収集して informed_by チェーンを作る
+            if (label === "procedure" && block.type === "heading" && (block.props?.level ?? 0) >= 2) {
+              procedureHeadingIds.push(block.id);
+            }
+          }
+          // 同レベル連続 procedure を informed_by で連結（テンプレート Step1→Step2 と同じ意図）
+          for (let i = 1; i < procedureHeadingIds.length; i++) {
+            linkStore.addLink({
+              sourceBlockId: procedureHeadingIds[i],
+              targetBlockId: procedureHeadingIds[i - 1],
+              type: "informed_by",
+              createdBy: "ai",
+            });
+          }
+        }, 0);
+      };
+
       const targetBlockId = aiAssistant.sourceBlockIds[0];
       if (!targetBlockId) {
         // ページ全体チャット: ドキュメント末尾に挿入
-        const blocks = editor.tryParseMarkdownToBlocks(markdown);
-        if (blocks.length === 0) return;
+        const parsed = editor.tryParseMarkdownToBlocks(markdown);
+        if (parsed.length === 0) return;
+        const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
         const allBlocks = editor.document;
         const lastBlock = allBlocks[allBlocks.length - 1];
         if (lastBlock) {
-          editor.insertBlocks(blocks, lastBlock, "after");
+          const inserted = editor.insertBlocks(blocks, lastBlock, "after");
+          applyExtractedLabels(inserted as any[], labels);
         }
         lastAiInsertRef.current = true;
         markDirty();
@@ -1352,23 +1398,28 @@ function NoteEditorInner({
       const targetBlock = editor.getBlock(targetBlockId);
       if (!targetBlock) return;
       if (targetBlock.type === "heading") {
-        const blocks = editor.tryParseMarkdownToBlocks(markdown);
-        if (blocks.length === 0) return;
+        const parsed = editor.tryParseMarkdownToBlocks(markdown);
+        if (parsed.length === 0) return;
+        const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
         const scope = collectHeadingScope(editor.document, targetBlock);
         const insertAfterBlock = scope[scope.length - 1];
-        editor.insertBlocks(blocks, insertAfterBlock, "after");
+        const inserted = editor.insertBlocks(blocks, insertAfterBlock, "after");
+        applyExtractedLabels(inserted as any[], labels);
       } else {
+        // 段落・リストへの追記: マーカーは平文のまま見えてしまうので、
+        // 単純な文字列レベルで剥がしてから追記する（ラベル付与はスキップ）。
+        const stripped = markdown.replace(/^\s*\[\[label:[a-z]+\]\][ 　]?/gm, "");
         const existingContent = Array.isArray(targetBlock.content) ? targetBlock.content : [];
         const newContent = [
           ...existingContent,
-          { type: "text" as const, text: "\n" + markdown, styles: {} },
+          { type: "text" as const, text: "\n" + stripped, styles: {} },
         ];
         editor.updateBlock(targetBlockId, { content: newContent });
       }
       lastAiInsertRef.current = true;
       markDirty();
     },
-    [markDirty, aiAssistant.sourceBlockIds],
+    [markDirty, aiAssistant.sourceBlockIds, labelStore, linkStore],
   );
 
   // AI 回答で対象ブロックを置換
