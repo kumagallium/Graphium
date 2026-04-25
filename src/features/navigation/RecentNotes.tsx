@@ -20,7 +20,7 @@ export function RecentNotes({
   const t = useT();
   return (
     <div className="px-2 py-2">
-      <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider px-2 mb-1">
+      <div className="text-xs font-semibold text-sidebar-foreground/50 px-2 mb-1">
         {t("nav.recentNotes")}
       </div>
       {loading ? (

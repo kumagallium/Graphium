@@ -2,7 +2,11 @@
 
 /* ============================================================
    Web Fonts — セルフホスト (public/fonts/)
-   Inter (本文・UI、design.md 指定) / JetBrains Mono (mono メタ情報)
+   - Inter: 本文・UI（design.md 指定、デフォルト）
+   - Lexend: dyslexia / 読み速度最適化 (variable font, NASA 共同研究)
+   - Atkinson Hyperlegible: dyslexia / 視覚障害向け (Braille Institute)
+   - JetBrains Mono: mono メタ情報
+   読みやすさモードは body[data-font="lexend"] / [data-font="atkinson"] で切り替え
    ============================================================ */
 @font-face {
   font-family: 'Inter';
@@ -10,6 +14,27 @@
   font-weight: 400 500;
   font-display: swap;
   src: url('/fonts/inter.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lexend';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/fonts/lexend.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/atkinson-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/atkinson-700.woff2') format('woff2');
 }
 @font-face {
   font-family: 'JetBrains Mono';
@@ -177,8 +202,20 @@
     @apply bg-background text-foreground;
     font-family: var(--ui);
     color: var(--ink);
+    /* dyslexia / 読みやすさ向上: 文字間隔をわずかに広げる
+       BDA (British Dyslexia Association) 推奨の控えめ値 */
+    letter-spacing: 0.01em;
     height: 100dvh;
     overflow: hidden;
+  }
+  /* 読みやすさモード: body[data-font="..."] で UI フォントを切り替える */
+  body[data-font="lexend"] {
+    font-family: 'Lexend', system-ui, sans-serif;
+    letter-spacing: 0;  /* Lexend 自体が広めの設計なので追加 letter-spacing は不要 */
+  }
+  body[data-font="atkinson"] {
+    font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+    letter-spacing: 0;
   }
 }
 

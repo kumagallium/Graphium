@@ -164,7 +164,7 @@ export function FileSidebar({
 
         {/* データ一覧セクション */}
         <div className="px-4 pt-3 pb-2">
-          <h3 className="text-xs font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
             {t("asset.dataSection")}
           </h3>
           <div className="space-y-0.5">
@@ -211,7 +211,7 @@ export function FileSidebar({
 
         {/* ラベルセクション */}
         <div className="px-4 pt-1 pb-2">
-          <h3 className="text-xs font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
             {t("label.section")}
           </h3>
           {!noteIndex ? (
@@ -250,7 +250,7 @@ export function FileSidebar({
         {/* AI Knowledge セクション（バックエンド不在時は非表示） */}
         {onShowWikiList && aiAvailable && (
           <div className="px-4 pt-1 pb-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+            <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
               AI
             </h3>
             <div className="space-y-0.5">

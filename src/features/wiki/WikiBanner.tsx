@@ -204,15 +204,12 @@ export function WikiBanner({
                 <div
                   style={{
                     padding: "7px 12px",
-                    fontSize: 10,
-                    fontFamily: "var(--mono)",
+                    fontSize: 11,
                     color: "var(--ink-3)",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
                     borderBottom: "1px solid var(--rule-2)",
                   }}
                 >
-                  Regenerate with...
+                  Regenerate with…
                 </div>
                 {models.map((m) => (
                   <button
