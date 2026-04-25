@@ -488,13 +488,16 @@ export const ja: Record<string, string> = {
   "onboarding.chip.slash.desc": "空行で / を打つとブロック・ツール一覧",
 
   // ── Composer（Cmd+K） ── UI は Ask 単機能。残りのモード ID は内部互換のため保持。
-  "composer.placeholder": "このノートについて AI に質問...（Cmd+K で開閉）",
+  "composer.placeholder": "このノートについて AI に質問...",
   "composer.mode.ask": "質問",
   "composer.mode.compose": "執筆",
   "composer.mode.insertProv": "PROV を挿入",
   "composer.mode.insertMedia": "メディアを挿入",
   "composer.aria.dialog": "AI に質問",
-  "composer.discoveryHint": "もしよければ — 自由に書くのでも OK",
+  "composer.discoveryHint": "候補",
+  "composer.submit": "送信",
+  "composer.kbd.submit": "で送信",
+  "composer.kbd.close": "で閉じる",
   "composer.insertProv.systemHint": "次の説明を実験・作業の手順に分解して、1 手順 = 1 ブロックで書き出してください。各ブロックの役割を行頭に [手順] / [材料] / [ツール] / [結果] のいずれかのラベルで示してください。",
   "aiChat.runFailed": "AI 実行に失敗しました",
 };

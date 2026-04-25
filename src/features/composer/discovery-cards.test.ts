@@ -107,10 +107,17 @@ describe("buildDiscoveryCards", () => {
     });
     expect(cards).toHaveLength(4);
     expect(cards.map((c) => c.title)).toEqual([
-      "Wiki「XRD 測定手順」を見る",
-      "「T_cal」の更新提案を見る",
-      "「Cu S-A 要約」の再生成版を見る",
-      "Synthesis「S-A + S-B 統合」を見る",
+      "「XRD 測定手順」について教えて",
+      "「T_cal」について教えて",
+      "「Cu S-A 要約」について教えて",
+      "「S-A + S-B 統合」について教えて",
+    ]);
+    // hint で type を区別
+    expect(cards.map((c) => c.hint)).toEqual([
+      "最近作られた Wiki",
+      "他ノートとの横断更新の提案",
+      "別モデルでの再生成結果",
+      "複数ノートを統合した Synthesis",
     ]);
   });
 
@@ -158,7 +165,7 @@ describe("buildDiscoveryCards", () => {
       now: NOW,
     });
     expect(cards).toHaveLength(1);
-    expect(cards[0].title).toBe("Wiki「Test Wiki」を見る");
+    expect(cards[0].title).toBe("「Test Wiki」について教えて");
   });
 
   it('activeFileId に "wiki:" プレフィックスが付いていても Wiki ベースカードを返す', () => {
@@ -197,8 +204,8 @@ describe("buildDiscoveryCards", () => {
     // [base for note-A, note-B, note-C] = 3 枚
     expect(cards).toHaveLength(3);
     expect(cards[0].id).toContain("note-A");
-    expect(cards[1].title).toBe("「recent human」について聞く");
-    expect(cards[2].title).toBe("「older human」について聞く");
+    expect(cards[1].title).toBe("「recent human」について教えて");
+    expect(cards[2].title).toBe("「older human」について教えて");
   });
 
   it("最大 4 枚まで切り詰める", () => {
@@ -242,6 +249,7 @@ describe("promptForDiscoveryCard", () => {
 
   it("custom action は key で分岐", () => {
     expect(promptForDiscoveryCard({ id: "x", title: "t", action: { kind: "custom", key: "clarify-wiki" } })).toContain("矛盾");
-    expect(promptForDiscoveryCard({ id: "x", title: "「ノート1」について聞く", action: { kind: "custom", key: "note:abc" } })).toBe("ノート1について教えてください。");
+    expect(promptForDiscoveryCard({ id: "x", title: "「ノート1」について教えて", action: { kind: "custom", key: "note:abc" } })).toBe("「ノート1」について教えてください。");
+    expect(promptForDiscoveryCard({ id: "x", title: "「Wiki1」について教えて", action: { kind: "custom", key: "wiki:xyz" } })).toBe("「Wiki1」について教えてください。");
   });
 });

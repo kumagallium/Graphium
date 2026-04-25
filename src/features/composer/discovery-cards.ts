@@ -96,32 +96,21 @@ function cardsFromWikiLog(
     const wikiTitle = lookupWikiTitle(noteIndex, wikiId);
     if (!wikiTitle) continue; // タイトル不明の wiki はカード化しない（重複感の元）
 
-    let title: string | null = null;
+    // タイトルはクリック後の prompt と齟齬がないよう「について教えて」型で統一。
+    // 直近のイベント種別は hint 側で補足する。
     let hint: string | undefined;
     switch (e.type) {
-      case "ingest":
-        title = `Wiki「${wikiTitle}」を見る`;
-        hint = "直近に作られた要約・概念ページ";
-        break;
-      case "cross-update":
-        title = `「${wikiTitle}」の更新提案を見る`;
-        hint = "他ノートとの横断更新の候補";
-        break;
-      case "regenerate":
-        title = `「${wikiTitle}」の再生成版を見る`;
-        hint = "別モデルでの再生成結果";
-        break;
-      case "merge":
-        title = `Synthesis「${wikiTitle}」を見る`;
-        hint = "複数ノートを統合した洞察ページ";
-        break;
+      case "ingest":      hint = "最近作られた Wiki"; break;
+      case "cross-update": hint = "他ノートとの横断更新の提案"; break;
+      case "regenerate":  hint = "別モデルでの再生成結果"; break;
+      case "merge":       hint = "複数ノートを統合した Synthesis"; break;
       default:
         // lint, delete はカード化しない
         continue;
     }
     cards.push({
       id: `log-${e.id}`,
-      title,
+      title: `「${wikiTitle}」について教えて`,
       hint,
       action: { kind: "custom", key: `wiki:${wikiId}` },
     });
@@ -149,8 +138,8 @@ function recentNoteCards(
 
   return sorted.map((n) => ({
     id: `recent-${n.noteId}`,
-    title: `「${n.title}」について聞く`,
-    hint: `直近の自ノート（${formatRelativeTime(n.modifiedAt, now)}）から問いかける`,
+    title: `「${n.title}」について教えて`,
+    hint: `${formatRelativeTime(n.modifiedAt, now)}に編集したノート`,
     action: { kind: "custom", key: `note:${n.noteId}` },
   }));
 }
@@ -209,16 +198,11 @@ export function promptForDiscoveryCard(card: DiscoveryCard): string {
       if (card.action.key === "clarify-wiki") {
         return "この Wiki の矛盾・繰り返しを洗い出し、書き直しのヒントをください。";
       }
-      if (card.action.key.startsWith("wiki:")) {
-        // タイトルから引用部分を抜き出してそのまま prompt に
+      if (card.action.key.startsWith("wiki:") || card.action.key.startsWith("note:")) {
+        // 「<タイトル>」について教えて → 「<タイトル>」について教えてください。
         const m = card.title.match(/「(.+?)」/);
-        const wikiName = m ? m[1] : card.title;
-        return `Wiki「${wikiName}」について教えてください。`;
-      }
-      if (card.action.key.startsWith("note:")) {
-        // title は「<ノート名>」について聞く 形式。両端の装飾を取り除いてプロンプトに
-        const noteName = card.title.replace(/「|」/g, "").replace(/について聞く$/, "");
-        return `${noteName}について教えてください。`;
+        const name = m ? m[1] : card.title;
+        return `「${name}」について教えてください。`;
       }
       return card.title;
   }
