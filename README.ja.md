@@ -333,6 +333,16 @@ graph LR
 
 [Crucible Registry](https://github.com/kumagallium/Crucible) は MCP サーバーの管理と自動検出を提供します。接続すると、登録済み MCP ツールが **⚙ 設定 → AI セットアップ** に表示され、AI アシスタントが利用できるようになります。
 
+## エディタの外から書く
+
+Graphium のノートは Graphium 内で書く必要はありません。同梱の [`save-to-graphium`](scripts/claude-code-skill/save-to-graphium/SKILL.md) スキルを使うと、[Claude Code](https://claude.com/claude-code)（CLI または VS Code 拡張）の会話を要約して Graphium のノートとして保存できます。ノートには `agent: "claude-code"`、モデル名、OS ユーザー名が PROV-DM のエージェントメタデータとして記録されるので、AI との議論も手書きノートと同じ来歴の流れに乗ります。
+
+```bash
+ln -s "$(pwd)/scripts/claude-code-skill/save-to-graphium" ~/.claude/skills/save-to-graphium
+```
+
+シンボリックリンクを張れば、あとは Claude Code に「これを Graphium に保存して」と頼むだけ。次回 Graphium 起動時にサイドバーに現れ、リンクを張ったり、ラベルを付けたり、Knowledge Layer に流し込んだりできます。
+
 ## 言語と国際化
 
 Graphium は**英語**（デフォルト）と**日本語**をサポートしています。言語はサイドバーの **⚙ 設定** から切り替えられます。

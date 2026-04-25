@@ -334,6 +334,16 @@ graph LR
 
 [Crucible Registry](https://github.com/kumagallium/Crucible) provides MCP server management with auto-discovery. When connected, registered MCP tools appear in **⚙ Settings → AI Setup** and can be used by the AI assistant.
 
+## Beyond the editor
+
+Graphium notes don't have to be written inside Graphium. The bundled [`save-to-graphium`](scripts/claude-code-skill/save-to-graphium/SKILL.md) skill lets [Claude Code](https://claude.com/claude-code) (CLI or VS Code extension) save the gist of any conversation as a Graphium note. The note carries `agent: "claude-code"`, the model name, and the OS user as PROV-DM agent metadata, so AI-driven discussions get the same provenance trail as anything you wrote by hand.
+
+```bash
+ln -s "$(pwd)/scripts/claude-code-skill/save-to-graphium" ~/.claude/skills/save-to-graphium
+```
+
+After the symlink is in place, just ask Claude Code "save this to Graphium" — the note appears in your sidebar on next launch, ready to be linked, labeled, or pushed into the Knowledge Layer.
+
 ## Language & Internationalization
 
 Graphium supports **English** (default) and **Japanese**. The language can be switched from **⚙ Settings** in the sidebar.
