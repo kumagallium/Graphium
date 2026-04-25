@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.3.10](https://github.com/kumagallium/Graphium/compare/v0.3.9...v0.3.10) - 2026-04-25
+- [refactor] Introduce useBlockLifecycle facade for labels and provLinks by @kumagallium in https://github.com/kumagallium/Graphium/pull/134
+- [refactor] i18n internal keys for PROV labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/136
+- [feat] Carry labels and provLinks across block copy/paste by @kumagallium in https://github.com/kumagallium/Graphium/pull/137
+- [feat] Add oklch scene tokens as primitives for UX Audit redesign by @kumagallium in https://github.com/kumagallium/Graphium/pull/138
+- [feat] Scaffold Cmd+K Composer overlay (AI wiring deferred) by @kumagallium in https://github.com/kumagallium/Graphium/pull/139
+- [feat] Derive whole note from header menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/140
+- [feat] Empty-note guide for discovering Cmd+K / # / @ / / by @kumagallium in https://github.com/kumagallium/Graphium/pull/141
+- [feat] Wire Composer Ask mode to existing Chat panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/142
+- [feat] Composer: ship Ask-only UI and wire it end-to-end by @kumagallium in https://github.com/kumagallium/Graphium/pull/143
+- feat: Generate PROV-labeled notes from URL by @kumagallium in https://github.com/kumagallium/Graphium/pull/144
+- [feat] Add local save directory setting (G-SAVEDIR) by @kumagallium in https://github.com/kumagallium/Graphium/pull/146
+- fix: MediaPickerModal image thumbnails broken for local storage by @kumagallium in https://github.com/kumagallium/Graphium/pull/145
+- feat: UX Audit B — fonts, heading scale, color tokens, WikiBanner refine by @kumagallium in https://github.com/kumagallium/Graphium/pull/147
+- feat: /template slash command with Plan and Run templates by @kumagallium in https://github.com/kumagallium/Graphium/pull/148
+- feat: Wire Composer discovery cards to real data by @kumagallium in https://github.com/kumagallium/Graphium/pull/149
+- feat(composer): unified Cmd+K palette with note search by @kumagallium in https://github.com/kumagallium/Graphium/pull/151
+- feat: AI labeled output — auto context labels + PROV edges by @kumagallium in https://github.com/kumagallium/Graphium/pull/152
+- feat: AI labeled output Phase 2 — Replace + Derive label propagation by @kumagallium in https://github.com/kumagallium/Graphium/pull/153
+- feat: UX Audit cleanup — fonts, sidebar spacing, font setting, label affordance by @kumagallium in https://github.com/kumagallium/Graphium/pull/150
+
 ## [v0.3.9](https://github.com/kumagallium/Graphium/compare/v0.3.8...v0.3.9) - 2026-04-24
 - [fix] Unblock desktop close button and unify release notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/132
 - chore: Limit desktop release to macOS Apple Silicon by @kumagallium in https://github.com/kumagallium/Graphium/pull/131
