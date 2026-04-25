@@ -106,10 +106,38 @@ When you connect an LLM, Graphium builds a **second layer** on top of your notes
 | **Autonomous maintenance** | Periodic lint checks, cross-update proposals, and index rebuilds keep the wiki coherent as your notes grow. |
 | **Inline citations** | Every Wiki section links back to the source block in the original note, so nothing is orphaned. |
 | **Retriever for AI chat** | Wiki context is injected into AI responses — the assistant remembers what you wrote last week without re-reading every note. |
+| **Auto-labeled answers** | AI replies inserted into the editor are automatically tagged with PROV-DM context labels (`[Procedure]`, `[Material]`, `[Result]`, …) and consecutive steps get linked with `informed_by` — a provenance graph emerges from the chat itself, no manual labeling required. |
 
 Wiki pages live in the same storage as your notes (Google Drive / local / Tauri filesystem) and are fully editable by hand. The AI will not overwrite your manual edits unless you explicitly ask it to rewrite a page. Every Wiki edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
 
 AI Knowledge is **opt-in**: configure an LLM in **⚙ Settings → AI Setup** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
+
+## Composer (⌘K)
+
+A single palette for finding what you've written and asking what's next. Hit `⌘K` (or `Ctrl+K`) anywhere in Graphium and start typing.
+
+| Input | Result |
+|-------|--------|
+| Words from a title or heading | Jump straight to that note (Wiki entries are surfaced too) |
+| `#label` | Filter by context label — `#procedure`, `#step`, `#手順` all map to the same thing |
+| `@author` | Filter by who wrote it — humans by username, AI by model name |
+| Empty | Recent notes plus *discovery cards* — quick prompts derived from your active note and the last week of Wiki activity (ingest / cross-update / regenerate / merge) |
+| `Cmd+Enter` | Send the input to the AI assistant instead of jumping |
+
+The Composer is the entry point that ties the editor, the AI Knowledge Layer, and your own past work into one motion.
+
+## Templates
+
+The `/template` slash command opens a picker with reusable scaffolds:
+
+- **Plan template** — H1 title, Background / Goals, an index table (Item × Conditions), and Expected Outcomes. Each row of the table becomes a child note when you derive it.
+- **Run template** — a per-item record where steps are pre-labeled (`[Procedure]` / `[Material]` / `[Tool]` / `[Attribute]` / `[Result]`) and consecutive steps are pre-linked with `informed_by`. Use it as a working example of "what a fully labeled note looks like."
+
+The vocabulary is generic: it fits lab experiments, cooking, manufacturing runs, or any project workflow. User-defined templates can be registered programmatically (`registerUserTemplate()`).
+
+## Reading comfort
+
+Some people read more comfortably with letterforms designed for dyslexia. Graphium ships with **[Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/)** and **[Lexend](https://www.lexend.com/)** as built-in choices alongside Inter, switchable from **⚙ Settings → General**. Pick what works for your eyes — the rest of the editor stays the same.
 
 ## Interoperability
 
@@ -202,7 +230,11 @@ Google Drive sync works without any configuration. AI features require the backe
 - **Provenance graph** visualization (Cytoscape.js + ELK layout)
 - **Inter-note network graph** (Cytoscape.js + fcose layout)
 - **AI assistant** — derive notes from AI responses with full provenance metadata
+- **AI auto-labeling** — AI answers are inserted with PROV-DM context labels and `informed_by` chains already attached
 - **AI Knowledge Layer** — auto-generated Wiki pages (Concept / Summary / Synthesis) with inline citations, autonomous lint & cross-update
+- **Composer (⌘K)** — unified palette for note search (`#label` / `@author` filters), discovery cards, and AI ask
+- **Templates** — `/template` slash command with Plan and Run scaffolds (extensible)
+- **Reading-font setting** — pick between Atkinson Next, Inter, Lexend, and a default mix; tuned for dyslexia-aware reading
 - **Google Drive storage** — notes saved as `.graphium.json` files
 - **Google OAuth 2.0** authentication
 - **Desktop app** — Tauri-based native app with local file storage and Google Drive sync
@@ -341,9 +373,11 @@ src/
 │   ├── prov-export/   # W3C PROV-JSON-LD file export
 │   ├── index-table/   # Index table for related notes
 │   ├── network-graph/ # Inter-note derivation network (Cytoscape + fcose)
-│   ├── ai-assistant/  # AI chat & note derivation
-│   ├── settings/      # Settings modal (General + AI Setup)
-│   ├── template/      # Template save/load/diff
+│   ├── ai-assistant/  # AI chat & note derivation, marker-based auto-labeling
+│   ├── composer/      # ⌘K palette: note search + discovery cards + AI ask
+│   ├── template/      # /template slash command (Plan / Run)
+│   ├── wiki/          # AI Knowledge Layer (Concept / Summary / Synthesis)
+│   ├── settings/      # Settings modal (General + AI Setup + reading font)
 │   └── release-notes/ # Release notes display
 ├── server/            # Built-in AI backend (Hono + Vercel AI SDK)
 │   ├── routes/        # API endpoints (/api/agent, /api/models, etc.)
