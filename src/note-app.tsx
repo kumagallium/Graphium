@@ -1333,51 +1333,51 @@ function NoteEditorInner({
     [fileId, title, aiAssistant, labelStore, initialDoc, onAiDeriveNote, onSourceDocChange],
   );
 
+  // 挿入されたブロック配列に対して、抽出済みラベルを path 経由で実 ID に解決して
+  // labelStore に適用し、連続する procedure 見出しを informed_by で自動連結する。
+  // handleInsertToScope と handleReplaceBlocks の双方から使う。
+  const applyExtractedLabels = useCallback(
+    (inserted: any[], extracted: { path: number[]; label: string }[]) => {
+      if (extracted.length === 0) return;
+      const resolveByPath = (path: number[]): any | null => {
+        let nodes: any[] = inserted as any[];
+        let node: any = null;
+        for (const idx of path) {
+          node = nodes?.[idx];
+          if (!node) return null;
+          nodes = node.children ?? [];
+        }
+        return node;
+      };
+      setTimeout(() => {
+        const procedureHeadingIds: string[] = [];
+        for (const { path, label } of extracted) {
+          const block = resolveByPath(path);
+          if (!block?.id) continue;
+          labelStore.setLabel(block.id, label);
+          if (label === "procedure" && block.type === "heading" && (block.props?.level ?? 0) >= 2) {
+            procedureHeadingIds.push(block.id);
+          }
+        }
+        // 同レベル連続 procedure を informed_by で連結（/template Step1→Step2 と同じ意図）
+        for (let i = 1; i < procedureHeadingIds.length; i++) {
+          linkStore.addLink({
+            sourceBlockId: procedureHeadingIds[i],
+            targetBlockId: procedureHeadingIds[i - 1],
+            type: "informed_by",
+            createdBy: "ai",
+          });
+        }
+      }, 0);
+    },
+    [labelStore, linkStore],
+  );
+
   // AI 回答をスコープに反映
   const handleInsertToScope = useCallback(
     (markdown: string) => {
       if (!editorRef.current) return;
       const editor = editorRef.current;
-
-      // 挿入後にラベルを適用 + 連続する procedure 見出しを informed_by で自動連結する
-      const applyExtractedLabels = (
-        inserted: any[],
-        extracted: { path: number[]; label: string }[],
-      ) => {
-        if (extracted.length === 0) return;
-        const resolveByPath = (path: number[]): any | null => {
-          let nodes: any[] = inserted as any[];
-          let node: any = null;
-          for (const idx of path) {
-            node = nodes?.[idx];
-            if (!node) return null;
-            nodes = node.children ?? [];
-          }
-          return node;
-        };
-        setTimeout(() => {
-          // ラベル付与
-          const procedureHeadingIds: string[] = [];
-          for (const { path, label } of extracted) {
-            const block = resolveByPath(path);
-            if (!block?.id) continue;
-            labelStore.setLabel(block.id, label);
-            // procedure 見出し（H2+）を順序通りに収集して informed_by チェーンを作る
-            if (label === "procedure" && block.type === "heading" && (block.props?.level ?? 0) >= 2) {
-              procedureHeadingIds.push(block.id);
-            }
-          }
-          // 同レベル連続 procedure を informed_by で連結（テンプレート Step1→Step2 と同じ意図）
-          for (let i = 1; i < procedureHeadingIds.length; i++) {
-            linkStore.addLink({
-              sourceBlockId: procedureHeadingIds[i],
-              targetBlockId: procedureHeadingIds[i - 1],
-              type: "informed_by",
-              createdBy: "ai",
-            });
-          }
-        }, 0);
-      };
 
       const targetBlockId = aiAssistant.sourceBlockIds[0];
       if (!targetBlockId) {
@@ -1419,7 +1419,7 @@ function NoteEditorInner({
       lastAiInsertRef.current = true;
       markDirty();
     },
-    [markDirty, aiAssistant.sourceBlockIds, labelStore, linkStore],
+    [markDirty, aiAssistant.sourceBlockIds, applyExtractedLabels],
   );
 
   // AI 回答で対象ブロックを置換
@@ -1430,12 +1430,15 @@ function NoteEditorInner({
       const blockIds = aiAssistant.sourceBlockIds;
       if (blockIds.length === 0) return;
 
-      const newBlocks = editor.tryParseMarkdownToBlocks(markdown);
-      if (newBlocks.length === 0) return;
+      const parsedBlocks = editor.tryParseMarkdownToBlocks(markdown);
+      if (parsedBlocks.length === 0) return;
+      const { blocks: newBlocks, labels: extractedLabels } =
+        extractLabelMarkersFromBlocks(parsedBlocks);
 
       const firstBlock = editor.getBlock(blockIds[0]);
       if (!firstBlock) return;
 
+      let inserted: any[] = [];
       if (firstBlock.type === "heading") {
         // 見出しスコープ: 見出し配下のブロックを置換（見出し自体は残す）
         const scope = collectHeadingScope(editor.document, firstBlock);
@@ -1446,30 +1449,35 @@ function NoteEditorInner({
           editor.removeBlocks([scope[i].id]);
         }
         // 見出しの直後に新しいブロックを挿入
-        editor.insertBlocks(newBlocks, firstBlock, "after");
+        inserted = editor.insertBlocks(newBlocks, firstBlock, "after") as any[];
       } else if (blockIds.length === 1) {
         // 単一ブロック: 内容を置換
         const parsed = newBlocks[0];
         if (parsed && firstBlock.type === parsed.type) {
-          // 同じブロックタイプなら content を直接更新
+          // 同じブロックタイプなら content を直接更新（ラベル適用なし: id 解決できないため）
           editor.updateBlock(blockIds[0], { content: parsed.content });
+          // 単一ブロック更新時は extractedLabels の対象外として扱う
         } else {
           // ブロックタイプが異なる場合は削除→挿入
-          editor.insertBlocks(newBlocks, firstBlock, "after");
+          inserted = editor.insertBlocks(newBlocks, firstBlock, "after") as any[];
           removeBlockMetadata([blockIds[0]]);
           editor.removeBlocks([blockIds[0]]);
         }
       } else {
         // 複数ブロック選択: 最初のブロックの後に挿入し、元のブロックを削除
-        editor.insertBlocks(newBlocks, firstBlock, "before");
+        inserted = editor.insertBlocks(newBlocks, firstBlock, "before") as any[];
         removeBlockMetadata(blockIds);
         editor.removeBlocks(blockIds);
+      }
+
+      if (inserted.length > 0) {
+        applyExtractedLabels(inserted, extractedLabels);
       }
 
       lastAiInsertRef.current = true;
       markDirty();
     },
-    [markDirty, aiAssistant, removeBlockMetadata],
+    [markDirty, aiAssistant, removeBlockMetadata, applyExtractedLabels],
   );
 
   // ── 初期データの復元 ──
