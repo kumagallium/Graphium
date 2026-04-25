@@ -8,13 +8,14 @@ export type CustomLabels = Record<string, string>;
 
 /**
  * ラテン文字用フォント。
- * - ""       : デフォルト = Atkinson Hyperlegible Next + Inter 数字
- *              （Atkinson の 0 はスラッシュ入りで好まない人向けに数字だけ Inter）
- * - "inter"  : Inter（design.md の元仕様、中立的なヒューマニスト体）
- * - "lexend" : Lexend（NASA 共同研究の読み速度最適化）
+ * - ""              : デフォルト = Atkinson Hyperlegible Next + Inter 数字
+ *                     （Atkinson の 0 はスラッシュ入りで好まない人向けに数字だけ Inter）
+ * - "atkinson-next" : Atkinson Next 単体（数字も Atkinson のグリフ、スラッシュ 0 容認）
+ * - "inter"         : Inter（design.md の元仕様、中立的なヒューマニスト体）
+ * - "lexend"        : Lexend（NASA 共同研究の読み速度最適化）
  */
-export type LatinFont = "" | "inter" | "lexend";
-export const LATIN_FONTS: readonly LatinFont[] = ["", "inter", "lexend"] as const;
+export type LatinFont = "" | "atkinson-next" | "inter" | "lexend";
+export const LATIN_FONTS: readonly LatinFont[] = ["", "atkinson-next", "inter", "lexend"] as const;
 
 /**
  * 日本語用フォント。

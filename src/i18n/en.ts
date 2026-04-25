@@ -156,6 +156,7 @@ export const en: Record<string, string> = {
   "settings.fontJp": "Japanese",
   "settings.fontLatinDefault": "Default (Atkinson Next + Inter numerals)",
   "settings.fontJpDefault": "Default (OS system font)",
+  "settings.fontAtkinsonNext": "Atkinson Next only (digits with slashed 0)",
   "settings.fontInter": "Inter (neutral humanist sans)",
   "settings.fontLexend": "Lexend (reading-speed optimized / NASA study)",
   "settings.fontBizUDP": "BIZ UDPGothic (Japanese UD gothic)",

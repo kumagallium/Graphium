@@ -623,15 +623,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           ? "'Inter', system-ui, sans-serif"
                           : latinFont === "lexend"
                             ? "'Lexend', system-ui, sans-serif"
-                            : "'Inter Numerals', 'Atkinson Hyperlegible Next', system-ui, sans-serif",
+                            : latinFont === "atkinson-next"
+                              ? "'Atkinson Hyperlegible Next', system-ui, sans-serif"
+                              : "'Inter Numerals', 'Atkinson Hyperlegible Next', system-ui, sans-serif",
                       }}
                     >
                       {LATIN_FONTS.map((mode) => {
                         const labelKey = mode === ""
                           ? "settings.fontLatinDefault"
-                          : mode === "inter"
-                            ? "settings.fontInter"
-                            : "settings.fontLexend";
+                          : mode === "atkinson-next"
+                            ? "settings.fontAtkinsonNext"
+                            : mode === "inter"
+                              ? "settings.fontInter"
+                              : "settings.fontLexend";
                         return (
                           <option key={mode || "default"} value={mode}>
                             {t(labelKey)}

@@ -232,6 +232,10 @@
   /* 読みやすさモード切り替え（設定 UI 経由 / DevTools で body[data-latin-font] / body[data-jp-font] を上書き）
      ラテン用と日本語用は独立軸。Lexend / Atkinson 等はラテン専用フォントなので
      日本語混在時はその次の指定（BIZ UDPGothic / system フォント）にフォールバックする。 */
+  body[data-latin-font="atkinson-next"] {
+    --latin-ui: 'Atkinson Hyperlegible Next';
+    letter-spacing: 0;
+  }
   body[data-latin-font="inter"] {
     --latin-ui: 'Inter';
     letter-spacing: 0.01em;
