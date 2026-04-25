@@ -384,7 +384,7 @@ export function NoteListView({
                       <span className="inline-flex items-center gap-1">
                         {entry.model && (
                           <span
-                            className="inline-block text-[10px] font-medium rounded px-1 py-0.5 bg-muted text-muted-foreground"
+                            className="inline-block text-xs font-medium rounded px-1 py-0.5 bg-muted text-muted-foreground"
                             title={entry.model}
                           >
                             🤖

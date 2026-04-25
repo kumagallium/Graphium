@@ -86,6 +86,24 @@
   --color-sidebar-border: #d5e0d7;
   --color-sidebar-ring: #4B7A52;
   --radius: 0.625rem;
+
+  /* タイプスケール（ratio 1.25 / Notion 準拠 / design.md と整合）
+     12 → 14 → 16 → 20 → 24 → 30 px
+     line-height: UI は 1.5、本文（text-base 個別上書きで）は 1.7、見出しは段階的に詰める */
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 14px;
+  --text-sm--line-height: 1.5;
+  --text-base: 16px;
+  --text-base--line-height: 1.6;
+  --text-lg: 20px;
+  --text-lg--line-height: 1.4;
+  --text-xl: 24px;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 30px;
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 36px;
+  --text-3xl--line-height: 1.2;
 }
 
 /* ============================================================
@@ -244,6 +262,21 @@ body[data-label-dropdown-open="true"] .bn-side-menu {
 .bn-editor,
 .bn-container {
   background-color: var(--paper) !important;
+}
+
+/* BlockNote 本文 — タイプスケール base (16px) を採用、行間は読み物用に 1.7
+   UI 部分（sidebar 等）の text-base が 1.6 なのに対し、エディタ本文は読み心地優先で広めに取る */
+.bn-editor {
+  font-size: 16px;
+  line-height: 1.7;
+}
+.bn-editor p,
+.bn-editor li,
+.bn-editor [data-content-type="paragraph"],
+.bn-editor [data-content-type="bulletListItem"],
+.bn-editor [data-content-type="numberedListItem"],
+.bn-editor [data-content-type="checkListItem"] {
+  line-height: 1.7;
 }
 
 /* BlockNote 見出しサイズ（design.md / Notion 準拠）

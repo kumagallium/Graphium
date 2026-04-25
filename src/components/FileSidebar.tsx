@@ -164,7 +164,7 @@ export function FileSidebar({
 
         {/* データ一覧セクション */}
         <div className="px-4 pt-3 pb-2">
-          <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+          <h3 className="text-xs font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
             {t("asset.dataSection")}
           </h3>
           <div className="space-y-0.5">
@@ -175,7 +175,7 @@ export function FileSidebar({
                 <button
                   key={type}
                   onClick={() => onShowAssetGallery(type)}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                     activeAssetType === type
                       ? "bg-primary/10 text-primary font-semibold"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -184,7 +184,7 @@ export function FileSidebar({
                   <span className="text-muted-foreground shrink-0">{icon}</span>
                   <span className="flex-1 text-left">{t(`asset.type.${type}`)}</span>
                   {count > 0 && (
-                    <span className="text-[10px] text-muted-foreground">{count}</span>
+                    <span className="text-xs text-muted-foreground">{count}</span>
                   )}
                 </button>
               );
@@ -193,7 +193,7 @@ export function FileSidebar({
             {onShowMemos && (
               <button
                 onClick={onShowMemos}
-                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                   memosActive
                     ? "bg-primary/10 text-primary font-semibold"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -202,7 +202,7 @@ export function FileSidebar({
                 <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
                 <span className="flex-1 text-left">{t("memo.title")}</span>
                 {memoCount > 0 && (
-                  <span className="text-[10px] text-muted-foreground">{memoCount}</span>
+                  <span className="text-xs text-muted-foreground">{memoCount}</span>
                 )}
               </button>
             )}
@@ -211,13 +211,13 @@ export function FileSidebar({
 
         {/* ラベルセクション */}
         <div className="px-4 pt-1 pb-2">
-          <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+          <h3 className="text-xs font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
             {t("label.section")}
           </h3>
           {!noteIndex ? (
-            <p className="text-[10px] text-muted-foreground/50 px-2 py-1">{t("common.loading")}</p>
+            <p className="text-xs text-muted-foreground/50 px-2 py-1">{t("common.loading")}</p>
           ) : labelCounts.size === 0 ? (
-            <p className="text-[10px] text-muted-foreground/50 px-2 py-1">—</p>
+            <p className="text-xs text-muted-foreground/50 px-2 py-1">—</p>
           ) : (
             <div className="space-y-0.5">
               {[...labelCounts.entries()]
@@ -228,7 +228,7 @@ export function FileSidebar({
                     <button
                       key={label}
                       onClick={() => onShowLabelGallery(label)}
-                      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                         activeLabel === label
                           ? "bg-primary/10 text-primary font-semibold"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -239,7 +239,7 @@ export function FileSidebar({
                         style={{ backgroundColor: color }}
                       />
                       <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
-                      <span className="text-[10px] text-muted-foreground">{count}</span>
+                      <span className="text-xs text-muted-foreground">{count}</span>
                     </button>
                   );
                 })}
@@ -250,7 +250,7 @@ export function FileSidebar({
         {/* AI Knowledge セクション（バックエンド不在時は非表示） */}
         {onShowWikiList && aiAvailable && (
           <div className="px-4 pt-1 pb-2">
-            <h3 className="text-[10px] font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
+            <h3 className="text-xs font-semibold text-sidebar-foreground/40 tracking-wider uppercase mb-1.5">
               AI
             </h3>
             <div className="space-y-0.5">
@@ -260,7 +260,7 @@ export function FileSidebar({
                   <button
                     key={kind}
                     onClick={() => onShowWikiList(kind)}
-                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                       activeWikiKind === kind
                         ? "bg-primary/10 text-primary font-semibold"
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -269,7 +269,7 @@ export function FileSidebar({
                     <span className="text-muted-foreground shrink-0"><Bot size={14} /></span>
                     <span className="flex-1 text-left capitalize">{kind === "summary" ? "Summary" : kind === "concept" ? "Concept" : "Synthesis"}</span>
                     {count > 0 && (
-                      <span className="text-[10px] text-muted-foreground">{count}</span>
+                      <span className="text-xs text-muted-foreground">{count}</span>
                     )}
                   </button>
                 );
@@ -277,7 +277,7 @@ export function FileSidebar({
               {onShowWikiLog && (
                 <button
                   onClick={onShowWikiLog}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                     activeWikiView === "log"
                       ? "bg-primary/10 text-primary font-semibold"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -290,7 +290,7 @@ export function FileSidebar({
               {onShowWikiLint && (
                 <button
                   onClick={onShowWikiLint}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                     activeWikiView === "lint"
                       ? "bg-primary/10 text-primary font-semibold"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -303,7 +303,7 @@ export function FileSidebar({
               {onShowSkillList && (
                 <button
                   onClick={onShowSkillList}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition-colors ${
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                     skillActive
                       ? "bg-primary/10 text-primary font-semibold"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -312,7 +312,7 @@ export function FileSidebar({
                   <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
                   <span className="flex-1 text-left">Skill</span>
                   {skillCount > 0 && (
-                    <span className="text-[10px] text-muted-foreground">{skillCount}</span>
+                    <span className="text-xs text-muted-foreground">{skillCount}</span>
                   )}
                 </button>
               )}
