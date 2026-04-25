@@ -301,6 +301,14 @@
   }
 }
 
+/* Composer のヒント行（発見カード、控えめ） */
+.composer-discovery-card:hover {
+  background-color: var(--paper-2);
+}
+.composer-discovery-card:hover > span:first-child {
+  color: var(--forest);
+}
+
 /* WikiBanner Regenerate dropdown アイテムのホバー */
 .wiki-banner-dropdown-item:hover {
   background-color: var(--paper-3) !important;

@@ -494,6 +494,7 @@ export const ja: Record<string, string> = {
   "composer.mode.insertProv": "PROV を挿入",
   "composer.mode.insertMedia": "メディアを挿入",
   "composer.aria.dialog": "AI に質問",
+  "composer.discoveryHint": "もしよければ — 自由に書くのでも OK",
   "composer.insertProv.systemHint": "次の説明を実験・作業の手順に分解して、1 手順 = 1 ブロックで書き出してください。各ブロックの役割を行頭に [手順] / [材料] / [ツール] / [結果] のいずれかのラベルで示してください。",
   "aiChat.runFailed": "AI 実行に失敗しました",
 };

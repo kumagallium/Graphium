@@ -494,6 +494,7 @@ export const en: Record<string, string> = {
   "composer.mode.insertProv": "Insert PROV",
   "composer.mode.insertMedia": "Insert Media",
   "composer.aria.dialog": "Ask AI",
+  "composer.discoveryHint": "Try one of these — or just type your own.",
   "composer.insertProv.systemHint": "Turn the following description into a numbered procedure. Use one block per step and start each step with the action verb. Label each block's role in brackets at the start of the line: [Step], [Input], [Tool], or [Output].",
   "aiChat.runFailed": "AI request failed",
 };

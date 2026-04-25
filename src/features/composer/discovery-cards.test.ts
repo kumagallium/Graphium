@@ -80,34 +80,60 @@ describe("buildDiscoveryCards", () => {
     expect(cards[0]?.title).toBe("この Wiki を整理する");
   });
 
-  it("直近 7 日の wikiLog から ingest / cross-update / regenerate / merge をカード化、lint と delete は無視", () => {
+  it("直近 7 日の wikiLog からイベントごとに、wiki タイトル付きでカード化（lint と delete は無視）", () => {
     const recent = (offsetHours: number) => new Date(NOW.getTime() - offsetHours * 3600 * 1000).toISOString();
+    const idx: GraphiumIndex = {
+      version: 6,
+      updatedAt: NOW.toISOString(),
+      notes: [
+        entry({ noteId: "wiki-1", title: "XRD 測定手順", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
+        entry({ noteId: "wiki-2", title: "T_cal", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "concept" }),
+        entry({ noteId: "wiki-3", title: "Cu S-A 要約", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
+        entry({ noteId: "wiki-4", title: "S-A + S-B 統合", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "synthesis" }),
+      ],
+    };
     const cards = buildDiscoveryCards({
-      noteIndex: null,
+      noteIndex: idx,
       activeFileId: null,
       wikiLogEntries: [
         logEntry({ id: "1", type: "ingest", timestamp: recent(2), wikiIds: ["wiki-1"] }),
         logEntry({ id: "2", type: "cross-update", timestamp: recent(5), wikiIds: ["wiki-2"] }),
         logEntry({ id: "3", type: "regenerate", timestamp: recent(10), wikiIds: ["wiki-3"] }),
         logEntry({ id: "4", type: "merge", timestamp: recent(20), wikiIds: ["wiki-4"] }),
-        logEntry({ id: "5", type: "lint", timestamp: recent(1), wikiIds: ["wiki-5"] }),
-        logEntry({ id: "6", type: "delete", timestamp: recent(1), wikiIds: ["wiki-6"] }),
+        logEntry({ id: "5", type: "lint", timestamp: recent(1), wikiIds: ["wiki-1"] }),
+        logEntry({ id: "6", type: "delete", timestamp: recent(1), wikiIds: ["wiki-2"] }),
       ],
       now: NOW,
     });
     expect(cards).toHaveLength(4);
     expect(cards.map((c) => c.title)).toEqual([
-      "最近作った Wiki を活用する",
-      "横断更新の提案を確認",
-      "再生成された Wiki を見比べる",
-      "Synthesis を確認する",
+      "Wiki「XRD 測定手順」を見る",
+      "「T_cal」の更新提案を見る",
+      "「Cu S-A 要約」の再生成版を見る",
+      "Synthesis「S-A + S-B 統合」を見る",
     ]);
+  });
+
+  it("noteIndex に存在しない wiki のログは捨てる（タイトル不明な古ログ）", () => {
+    const recent = new Date(NOW.getTime() - 3600 * 1000).toISOString();
+    const cards = buildDiscoveryCards({
+      noteIndex: { version: 6, updatedAt: NOW.toISOString(), notes: [] },
+      activeFileId: null,
+      wikiLogEntries: [logEntry({ id: "1", type: "ingest", timestamp: recent, wikiIds: ["wiki-ghost"] })],
+      now: NOW,
+    });
+    expect(cards).toEqual([]);
   });
 
   it("7 日より古い wikiLog エントリは無視される", () => {
     const oldIso = new Date(NOW.getTime() - 8 * 24 * 3600 * 1000).toISOString();
+    const idx: GraphiumIndex = {
+      version: 6,
+      updatedAt: NOW.toISOString(),
+      notes: [entry({ noteId: "wiki-old", title: "old", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" })],
+    };
     const cards = buildDiscoveryCards({
-      noteIndex: null,
+      noteIndex: idx,
       activeFileId: null,
       wikiLogEntries: [logEntry({ id: "old", type: "ingest", timestamp: oldIso, wikiIds: ["wiki-old"] })],
       now: NOW,
@@ -117,8 +143,13 @@ describe("buildDiscoveryCards", () => {
 
   it("同じ wikiId のログは最初の 1 つだけ採用される（重複排除）", () => {
     const recent = new Date(NOW.getTime() - 3600 * 1000).toISOString();
+    const idx: GraphiumIndex = {
+      version: 6,
+      updatedAt: NOW.toISOString(),
+      notes: [entry({ noteId: "wiki-1", title: "Test Wiki", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" })],
+    };
     const cards = buildDiscoveryCards({
-      noteIndex: null,
+      noteIndex: idx,
       activeFileId: null,
       wikiLogEntries: [
         logEntry({ id: "1", type: "ingest", timestamp: recent, wikiIds: ["wiki-1"] }),
@@ -127,7 +158,22 @@ describe("buildDiscoveryCards", () => {
       now: NOW,
     });
     expect(cards).toHaveLength(1);
-    expect(cards[0].title).toBe("最近作った Wiki を活用する");
+    expect(cards[0].title).toBe("Wiki「Test Wiki」を見る");
+  });
+
+  it('activeFileId に "wiki:" プレフィックスが付いていても Wiki ベースカードを返す', () => {
+    const idx: GraphiumIndex = {
+      version: 6,
+      updatedAt: NOW.toISOString(),
+      notes: [entry({ noteId: "abc-123", title: "Summary doc", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" })],
+    };
+    const cards = buildDiscoveryCards({
+      noteIndex: idx,
+      activeFileId: "wiki:abc-123",
+      wikiLogEntries: [],
+      now: NOW,
+    });
+    expect(cards[0]?.title).toBe("この Wiki を整理する");
   });
 
   it("ベース + ログで枠が余るときは直近更新ノートで埋める（自ノートと AI/skill ノートは除外）", () => {
@@ -160,7 +206,13 @@ describe("buildDiscoveryCards", () => {
     const idx: GraphiumIndex = {
       version: 6,
       updatedAt: NOW.toISOString(),
-      notes: [entry({ noteId: "note-A", title: "active", modifiedAt: NOW.toISOString(), source: "human" })],
+      notes: [
+        entry({ noteId: "note-A", title: "active", modifiedAt: NOW.toISOString(), source: "human" }),
+        entry({ noteId: "wiki-1", title: "w1", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
+        entry({ noteId: "wiki-2", title: "w2", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
+        entry({ noteId: "wiki-3", title: "w3", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
+        entry({ noteId: "wiki-4", title: "w4", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
+      ],
     };
     const cards = buildDiscoveryCards({
       noteIndex: idx,

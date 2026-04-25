@@ -186,42 +186,53 @@ export function Composer(props: ComposerProps) {
           </kbd>
         </div>
 
-        {/* 中段 — 発見カード */}
+        {/* 中段 — 発見カード（ヒント。選ばなくても良い） */}
         {cards.length > 0 && (
           <div
             style={{
               borderTop: "1px solid var(--rule-2)",
-              padding: "10px 12px 12px",
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 8,
-              background: "var(--paper-2)",
+              padding: "8px 12px 10px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
             }}
           >
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--ink-3)",
+                padding: "2px 4px 4px",
+              }}
+            >
+              {t("composer.discoveryHint")}
+            </div>
             {cards.map((card) => (
               <button
                 key={card.id}
                 type="button"
                 onClick={() => onDiscoveryCardSelect?.(card)}
+                className="composer-discovery-card"
                 style={{
                   textAlign: "left",
-                  padding: "10px 12px",
-                  background: "var(--paper)",
-                  border: "1px solid var(--rule)",
-                  borderRadius: "var(--r-2)",
+                  padding: "5px 8px",
+                  background: "transparent",
+                  border: "none",
+                  borderRadius: "var(--r-1)",
                   cursor: "pointer",
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 3,
+                  alignItems: "baseline",
+                  gap: 8,
                   font: "inherit",
+                  width: "100%",
                 }}
               >
-                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>
+                <span style={{ color: "var(--ink-3)", fontSize: 12, flexShrink: 0 }}>›</span>
+                <span style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
                   {card.title}
                 </span>
                 {card.hint && (
-                  <span style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.45 }}>
-                    {card.hint}
+                  <span style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.5 }}>
+                    — {card.hint}
                   </span>
                 )}
               </button>

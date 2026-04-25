@@ -32,13 +32,23 @@ function isWithinRecentDays(iso: string, now: Date): boolean {
   return t >= cutoff;
 }
 
+/** activeFileId は Wiki ドキュメントの場合 "wiki:<id>" プレフィックス付きで来る。
+   noteIndex.notes の noteId は plain なので、両形式で照合する。 */
+function findActiveEntry(
+  noteIndex: GraphiumIndex,
+  activeFileId: string,
+): NoteIndexEntry | undefined {
+  const plainId = activeFileId.replace(/^wiki:/, "");
+  return noteIndex.notes.find((n) => n.noteId === plainId || n.noteId === activeFileId);
+}
+
 /** 現在のノートに紐づくベースカードを返す（ノートが開かれていれば 1 枚） */
 function baseCardForActiveNote(
   noteIndex: GraphiumIndex | null,
   activeFileId: string | null,
 ): DiscoveryCard | null {
   if (!activeFileId || !noteIndex) return null;
-  const entry = noteIndex.notes.find((n) => n.noteId === activeFileId);
+  const entry = findActiveEntry(noteIndex, activeFileId);
   if (!entry) return null;
   // 人間ノートなら「要約」、Wiki ドキュメントなら「概念整理」
   if (entry.source === "ai") {
@@ -57,8 +67,23 @@ function baseCardForActiveNote(
   };
 }
 
-/** wikiLog の直近イベントから候補カードを生成（重複ノート ID は最初の 1 つだけ） */
-function cardsFromWikiLog(entries: WikiLogEntry[], now: Date): DiscoveryCard[] {
+/** noteIndex から wiki タイトルを引く。見つからない（古い・既削除）時は null。 */
+function lookupWikiTitle(
+  noteIndex: GraphiumIndex | null,
+  wikiId: string,
+): string | null {
+  if (!noteIndex) return null;
+  const e = noteIndex.notes.find((n) => n.noteId === wikiId);
+  return e?.title ?? null;
+}
+
+/** wikiLog の直近イベントから候補カードを生成（重複ノート ID は最初の 1 つだけ）
+   wiki のタイトルが取れる場合のみカード化する（取れない＝古いログ・削除済みは捨てる） */
+function cardsFromWikiLog(
+  entries: WikiLogEntry[],
+  now: Date,
+  noteIndex: GraphiumIndex | null,
+): DiscoveryCard[] {
   const cards: DiscoveryCard[] = [];
   const seenWikiIds = new Set<string>();
 
@@ -68,30 +93,32 @@ function cardsFromWikiLog(entries: WikiLogEntry[], now: Date): DiscoveryCard[] {
     if (!wikiId || seenWikiIds.has(wikiId)) continue;
     seenWikiIds.add(wikiId);
 
+    const wikiTitle = lookupWikiTitle(noteIndex, wikiId);
+    if (!wikiTitle) continue; // タイトル不明の wiki はカード化しない（重複感の元）
+
     let title: string | null = null;
     let hint: string | undefined;
     switch (e.type) {
       case "ingest":
-        title = "最近作った Wiki を活用する";
-        hint = e.summary;
+        title = `Wiki「${wikiTitle}」を見る`;
+        hint = "直近に作られた要約・概念ページ";
         break;
       case "cross-update":
-        title = "横断更新の提案を確認";
-        hint = e.summary;
+        title = `「${wikiTitle}」の更新提案を見る`;
+        hint = "他ノートとの横断更新の候補";
         break;
       case "regenerate":
-        title = "再生成された Wiki を見比べる";
-        hint = e.summary;
+        title = `「${wikiTitle}」の再生成版を見る`;
+        hint = "別モデルでの再生成結果";
         break;
       case "merge":
-        title = "Synthesis を確認する";
-        hint = e.summary;
+        title = `Synthesis「${wikiTitle}」を見る`;
+        hint = "複数ノートを統合した洞察ページ";
         break;
       default:
         // lint, delete はカード化しない
         continue;
     }
-    if (!title) continue;
     cards.push({
       id: `log-${e.id}`,
       title,
@@ -149,8 +176,8 @@ export function buildDiscoveryCards(ctx: DiscoveryCardContext): DiscoveryCard[] 
   const base = baseCardForActiveNote(ctx.noteIndex, ctx.activeFileId);
   if (base) cards.push(base);
 
-  // 2. wikiLog 由来のカード（直近 7 日）
-  const fromLog = cardsFromWikiLog(ctx.wikiLogEntries, now);
+  // 2. wikiLog 由来のカード（直近 7 日、wiki タイトルが引ければ採用）
+  const fromLog = cardsFromWikiLog(ctx.wikiLogEntries, now, ctx.noteIndex);
   for (const c of fromLog) {
     if (cards.length >= MAX_CARDS) break;
     cards.push(c);
@@ -183,7 +210,10 @@ export function promptForDiscoveryCard(card: DiscoveryCard): string {
         return "この Wiki の矛盾・繰り返しを洗い出し、書き直しのヒントをください。";
       }
       if (card.action.key.startsWith("wiki:")) {
-        return `${card.title}: ${card.hint ?? ""}`;
+        // タイトルから引用部分を抜き出してそのまま prompt に
+        const m = card.title.match(/「(.+?)」/);
+        const wikiName = m ? m[1] : card.title;
+        return `Wiki「${wikiName}」について教えてください。`;
       }
       if (card.action.key.startsWith("note:")) {
         // title は「<ノート名>」について聞く 形式。両端の装飾を取り除いてプロンプトに
