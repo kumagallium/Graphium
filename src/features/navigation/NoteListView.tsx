@@ -2,6 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpen } from "lucide-react";
 import {
   IndexFileNoteListSource,
   type NoteListEntry,
@@ -72,6 +73,7 @@ export function NoteListView({
   onOpenNoteFull,
   onBack,
   onDeleteNotes,
+  onOpenWikiPeek,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -80,6 +82,8 @@ export function NoteListView({
   onOpenNoteFull?: (noteId: string) => void;
   onBack: () => void;
   onDeleteNotes?: (noteIds: string[]) => Promise<void>;
+  /** Knowledge アイコン押下で対応 wiki エントリをサイドピークで開くコールバック */
+  onOpenWikiPeek?: (wikiNoteId: string) => void;
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -291,6 +295,11 @@ export function NoteListView({
                   {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th className="py-2 px-3 w-[140px]">{t("nav.labels")}</th>
+                <th className="py-2 px-2 w-[56px] text-center" title={t("nav.knowledgeColumnTooltip")}>
+                  <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
+                    <BookOpen size={14} />
+                  </span>
+                </th>
                 <th className="py-2 px-2 w-[96px]" title={t("nav.authorTooltip")}>{t("nav.author")}</th>
                 <th
                   className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground"
@@ -375,6 +384,32 @@ export function NoteListView({
                         );
                       })}
                     </div>
+                  </td>
+                  <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    {entry.knowledgeCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (entry.primaryKnowledgeWikiId && onOpenWikiPeek) {
+                            onOpenWikiPeek(`wiki:${entry.primaryKnowledgeWikiId}`);
+                          }
+                        }}
+                        disabled={!onOpenWikiPeek}
+                        title={
+                          entry.knowledgeCount === 1
+                            ? t("knowledge.inKnowledge")
+                            : t("knowledge.inKnowledgeCount", { count: String(entry.knowledgeCount) })
+                        }
+                        className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors disabled:cursor-default"
+                      >
+                        <BookOpen size={14} />
+                        {entry.knowledgeCount > 1 && (
+                          <span className="ml-0.5 text-[10px] font-semibold">{entry.knowledgeCount}</span>
+                        )}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground/30 text-xs">—</span>
+                    )}
                   </td>
                   <td
                     className="py-2 px-2 text-xs text-muted-foreground truncate"

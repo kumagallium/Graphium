@@ -19,6 +19,7 @@ export {
   removeIndexEntry,
   buildIndexEntry,
   saveIndexFile,
+  buildKnowledgeMap,
   type GraphiumIndex,
   type NoteIndexEntry,
 } from "./index-file";

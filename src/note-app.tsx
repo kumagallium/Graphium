@@ -77,7 +77,7 @@ import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
-import { NoteListView, type GraphiumIndex } from "./features/navigation";
+import { NoteListView, buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner,
@@ -98,6 +98,7 @@ import {
   wikiLog,
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
+import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { ingestUrlToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
@@ -417,6 +418,9 @@ function NoteEditorInner({
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   const editorRef = useRef<any>(null);
+  // このノートを派生元として参照する wiki エントリ（Knowledge 化済み判定用）
+  const knowledgeMap = useMemo(() => buildKnowledgeMap(noteIndex ?? null), [noteIndex]);
+  const wikiEntriesForCurrentNote: NoteIndexEntry[] = fileId ? (knowledgeMap.get(fileId) ?? []) : [];
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // 前回保存時のページ状態（差分計算用）
@@ -1756,6 +1760,7 @@ function NoteEditorInner({
             setSidePeekNoteId(null);
             onNavigateNote(noteId, savedDoc);
           }}
+          wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
         />
       )}
       <ProvIndicatorHoverHint />
@@ -1839,6 +1844,14 @@ function NoteEditorInner({
           placeholder={t("editor.titlePlaceholder")}
           title={title}
         />
+        {!isWikiDoc && aiAvailable && (
+          <KnowledgeStatusChip
+            wikiEntries={wikiEntriesForCurrentNote}
+            onAdd={onIngestToWiki}
+            onOpen={(wikiNoteId) => onNavigateNote(wikiNoteId)}
+            disabled={!fileId || saving}
+          />
+        )}
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
@@ -2235,6 +2248,8 @@ export function NoteApp() {
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
   const capture = useCapture(authenticated);
+  // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
+  const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
 
   // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
   // wiki エントリは handleOpenWikiFile + wikiKind ナビ、それ以外は handleOpenFile。
@@ -3015,6 +3030,7 @@ export function NoteApp() {
             onDeleteNotes={async (ids) => {
               for (const id of ids) await fm.handleDelete(id);
             }}
+            onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
           />
         ) : showMemos ? (
           <MemoGalleryView
@@ -3493,6 +3509,16 @@ export function NoteApp() {
                 }
                 router.navigate({ view: "editor", fileId: noteId });
               }}
+              wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
+              onAddToKnowledge={
+                (aiAvailable ?? false) && !listSidePeekNoteId.startsWith("wiki:")
+                  ? () => {
+                      const cached = fm.getCachedDoc?.(listSidePeekNoteId);
+                      if (!cached || cached.source === "ai") return;
+                      enqueueIngest(listSidePeekNoteId, cached.title, cached);
+                    }
+                  : undefined
+              }
             />
           </ListSidePeekBoundary>
         </AiAssistantProvider>

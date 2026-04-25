@@ -12,7 +12,7 @@ import { normalizeLabel } from "../context-label/labels";
 // v4: source, wikiKind フィールドを追加（Wiki ドキュメント対応）
 // v5: author, model フィールドを追加（誰が / どのモデルが書いたかを一覧で表示）
 // v6: ラベルを内部キー（procedure/material/tool/attribute/result）に正規化
-const INDEX_SCHEMA_VERSION = 6;
+const INDEX_SCHEMA_VERSION = 7;
 
 export type GraphiumIndex = {
   version: number;
@@ -48,6 +48,12 @@ export type NoteIndexEntry = {
   author?: string;
   /** 書記役の LLM モデル ID (例: claude-opus-4-7)。人間が直接書いたノートでは未設定 */
   model?: string;
+  /**
+   * source === "ai" の wiki エントリのみ設定される。
+   * このエントリが派生元として参照する通常ノートの ID 配列（wikiMeta.derivedFromNotes）。
+   * 通常ノート → 派生 wiki エントリの逆引き lookup を実装するために保存する。
+   */
+  derivedFromNotes?: string[];
 };
 
 // ── Drive API ──
@@ -252,7 +258,27 @@ export function buildIndexEntry(
     wikiKind: doc.wikiMeta?.kind,
     author,
     model,
+    derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
   };
+}
+
+/**
+ * 通常ノート ID → そのノートを派生元として参照する wiki エントリ配列の Map を構築する。
+ * Knowledge 化済みかの判定や、ソースノートから対応 wiki への逆引き表示に使う。
+ */
+export function buildKnowledgeMap(index: GraphiumIndex | null): Map<string, NoteIndexEntry[]> {
+  const map = new Map<string, NoteIndexEntry[]>();
+  if (!index) return map;
+  for (const entry of index.notes) {
+    if (entry.source !== "ai") continue;
+    if (!entry.derivedFromNotes || entry.derivedFromNotes.length === 0) continue;
+    for (const sourceNoteId of entry.derivedFromNotes) {
+      const list = map.get(sourceNoteId);
+      if (list) list.push(entry);
+      else map.set(sourceNoteId, [entry]);
+    }
+  }
+  return map;
 }
 
 // ブロック配列から ID で再帰的に検索

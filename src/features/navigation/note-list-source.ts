@@ -1,7 +1,7 @@
 // ノート一覧のデータソース抽象化
 // インデックスファイルから取得する IndexFileNoteListSource を使用
 
-import type { GraphiumIndex, NoteIndexEntry } from "./index-file";
+import { buildKnowledgeMap, type GraphiumIndex, type NoteIndexEntry } from "./index-file";
 
 export type NoteListEntry = {
   noteId: string;
@@ -15,6 +15,10 @@ export type NoteListEntry = {
   author?: string;
   /** 書記役 LLM のモデル ID (例: claude-opus-4-7) */
   model?: string;
+  /** このノートを派生元として参照する wiki エントリ数（Knowledge 化済みインジケータ用） */
+  knowledgeCount: number;
+  /** 主要な派生 wiki エントリ ID（一覧の Knowledge アイコンからのジャンプ先） */
+  primaryKnowledgeWikiId?: string;
 };
 
 export interface NoteListSource {
@@ -44,18 +48,26 @@ export class IndexFileNoteListSource implements NoteListSource {
       outgoingMap.set(note.noteId, uniqueTargets.size);
     }
 
+    // 通常ノート ID → 派生 wiki エントリ配列の逆引き
+    const knowledgeMap = buildKnowledgeMap(this.index);
+
     // AI ドキュメント（Wiki）はノート一覧から除外（AI Knowledge セクションで表示）
-    return this.index.notes.filter((n) => n.source !== "ai").map((n) => ({
-      noteId: n.noteId,
-      title: n.title,
-      modifiedAt: n.modifiedAt,
-      createdAt: n.createdAt,
-      labels: [...new Set(n.labels.map((l) => l.label))],
-      incomingLinkCount: incomingMap.get(n.noteId)?.size ?? 0,
-      outgoingLinkCount: outgoingMap.get(n.noteId) ?? 0,
-      author: n.author,
-      model: n.model,
-    }));
+    return this.index.notes.filter((n) => n.source !== "ai").map((n) => {
+      const wikiEntries = knowledgeMap.get(n.noteId) ?? [];
+      return {
+        noteId: n.noteId,
+        title: n.title,
+        modifiedAt: n.modifiedAt,
+        createdAt: n.createdAt,
+        labels: [...new Set(n.labels.map((l) => l.label))],
+        incomingLinkCount: incomingMap.get(n.noteId)?.size ?? 0,
+        outgoingLinkCount: outgoingMap.get(n.noteId) ?? 0,
+        author: n.author,
+        model: n.model,
+        knowledgeCount: wikiEntries.length,
+        primaryKnowledgeWikiId: wikiEntries[0]?.noteId,
+      };
+    });
   }
 
   // バックリンク: 指定ノートを参照している全ノートを返す

@@ -2,6 +2,7 @@ export { WikiListView } from "./WikiListView";
 export { WikiLogView } from "./WikiLogView";
 export { WikiLintView } from "./WikiLintView";
 export { WikiBanner } from "./WikiBanner";
+export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export { IngestToast, type IngestToastState, type IngestToastItem } from "./IngestToast";
 export {
   ingestNote, ingestFromUrl, ingestFromChat,

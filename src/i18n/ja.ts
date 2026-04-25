@@ -282,6 +282,14 @@ export const ja: Record<string, string> = {
   "labelUi.clickToChange": "{label} — クリックで変更",
   "labelUi.addLabel": "ラベルを付ける",
 
+  // ── Knowledge 状態チップ ──
+  "knowledge.addToKnowledge": "Knowledge に追加",
+  "knowledge.inKnowledge": "Knowledge 化済み",
+  "knowledge.inKnowledgeCount": "Knowledge 化済み ({count})",
+  "knowledge.openInKnowledge": "対応する Knowledge エントリを開く",
+  "nav.knowledgeColumn": "Knowledge",
+  "nav.knowledgeColumnTooltip": "このノートが Knowledge 化されているか",
+
   // ── リンクバッジ追加 ──
   "linkBadge.linkCount": "{count} リンク",
 

@@ -21,6 +21,8 @@ import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
+import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
+import type { NoteIndexEntry } from "@features/navigation";
 import { useT, t as tStatic } from "../../i18n";
 
 type SidePeekProps = {
@@ -29,6 +31,13 @@ type SidePeekProps = {
   cachedDoc?: GraphiumDocument;
   onClose: () => void;
   onNavigate: (noteId: string, savedDoc?: GraphiumDocument) => void;
+  /**
+   * このノートを派生元とする wiki エントリ。Knowledge 化状態チップ表示用。
+   * 渡されないか空配列 + onAddToKnowledge 未指定の場合はチップは描画されない。
+   */
+  wikiEntries?: NoteIndexEntry[];
+  /** 未化のときに「Add to Knowledge」を押すと呼ばれる */
+  onAddToKnowledge?: () => void;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -71,7 +80,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
     }));
 }
 
-function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps) {
+function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -402,6 +411,14 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate }: SidePeekProps
         >
           {effectiveDoc?.title ?? ""}
         </span>
+
+        {!noteId.startsWith("wiki:") && (
+          <KnowledgeStatusChip
+            wikiEntries={wikiEntries ?? []}
+            onAdd={onAddToKnowledge}
+            onOpen={(wikiNoteId) => onNavigate(wikiNoteId)}
+          />
+        )}
 
         <span
           style={{
