@@ -341,10 +341,11 @@ body[data-label-dropdown-open="true"] .bn-side-menu {
   text-decoration: underline;
 }
 
-/* BlockNote エディタ背景を Paper トークンに統一 */
+/* BlockNote エディタ背景は周囲（--color-background）と揃える
+   --paper はわずかに緑寄りで余白と差が出るため、note 領域は親の背景を継承させる */
 .bn-editor,
 .bn-container {
-  background-color: var(--paper) !important;
+  background-color: var(--color-background) !important;
 }
 
 /* BlockNote 本文 — タイプスケール base (16px) を採用、行間は読み物用に 1.7
