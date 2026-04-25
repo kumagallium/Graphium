@@ -29,7 +29,7 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
       "text-wrap": "wrap",
       "text-max-width": "100px",
       "font-size": "10px",
-      "font-family": "Inter, system-ui, sans-serif",
+      "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
       "text-valign": "bottom",
       "text-margin-y": 6,
       "background-color": "data(color)",

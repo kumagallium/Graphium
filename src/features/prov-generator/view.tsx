@@ -279,7 +279,7 @@ const commonNodeStyle = {
   "text-wrap": "wrap" as any,
   "text-max-width": "120px",
   "font-size": "11px",
-  "font-family": "Inter, system-ui, sans-serif",
+  "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
   "text-valign": "center" as const,
   "text-halign": "center" as const,
   "border-width": 2,

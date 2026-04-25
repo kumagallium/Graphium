@@ -192,10 +192,6 @@
         アクセシビリティ優先で逸脱（feedback_dyslexia_typography 参照） */
   --ui:   'Atkinson Hyperlegible Next', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
-  /* Tailwind の font-sans / font-mono ユーティリティを --ui / --mono に同期。
-     これがないと <div className="font-sans"> が body[data-font] を上書きしてしまう。 */
-  --font-sans: var(--ui);
-  --font-mono: var(--mono);
 }
 
 @layer base {
@@ -208,6 +204,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Tailwind の font-sans/mono ユーティリティを --ui/--mono に同期。
+       @theme で上書きするとデフォルトに勝てなかったため body レベルで宣言。
+       これで <div className="font-sans"> も body[data-font] の変更に追従する。 */
+    --font-sans: var(--ui);
+    --font-mono: var(--mono);
     font-family: var(--ui);
     color: var(--ink);
     /* Atkinson Next は字幅が広めの設計なので追加 letter-spacing は不要 */

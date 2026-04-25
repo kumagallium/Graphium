@@ -67,7 +67,7 @@ const networkStyle: cytoscape.StylesheetStyle[] = [
       "text-wrap": "wrap",
       "text-max-width": "120px",
       "font-size": "11px",
-      "font-family": "Inter, system-ui, sans-serif",
+      "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
       "text-valign": "bottom",
       "text-margin-y": 6,
       "background-color": "data(color)",
