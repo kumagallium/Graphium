@@ -494,6 +494,10 @@ function ChatBubble({
 }) {
   const t = useT();
   const isUser = message.role === "user";
+  // [[label:xxx]] マーカーはノート挿入時に消費する内部表示。チャット表示では除去する。
+  const displayContent = isUser
+    ? message.content
+    : message.content.replace(/\[\[label:[a-z]+\]\][ 　]?/g, "");
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
@@ -503,7 +507,7 @@ function ChatBubble({
             : "bg-muted text-foreground"
         }`}
       >
-        {message.content}
+        {displayContent}
       </div>
       {!isUser && (onInsert || onReplace || onDerive) && (
         <div className="flex gap-1 mt-1 flex-wrap">

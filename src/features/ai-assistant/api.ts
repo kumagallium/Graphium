@@ -35,6 +35,8 @@ export type AgentRunRequest = {
   disabled_tools?: string[];
   /** Wiki Retriever が検索したコンテキスト */
   wiki_context?: string;
+  /** 構造化出力用のシステムプロンプトに使う言語（"en" | "ja"） */
+  language?: string;
   options?: {
     max_turns?: number;
     model?: string;
