@@ -2156,6 +2156,23 @@ export function NoteApp() {
   const fm = useFileManager(authenticated);
   const capture = useCapture(authenticated);
 
+  // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
+  // wiki エントリは handleOpenWikiFile + wikiKind ナビ、それ以外は handleOpenFile。
+  const handleComposerNoteSelect = useCallback(
+    (noteId: string, source: "human" | "ai" | "skill" | undefined) => {
+      setComposerPrompt("");
+      composer.closeComposer();
+      if (source === "ai") {
+        const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+        if (entry?.wikiKind) fm.setActiveWikiKind(entry.wikiKind);
+        fm.handleOpenWikiFile(noteId);
+        return;
+      }
+      fm.handleOpenFile(noteId);
+    },
+    [composer, fm],
+  );
+
   // Cmd+K: NoteEditor がマウント中のみ Composer を開く。
   // composerSubmitRef.current は NoteEditorInner の useEffect で登録/解除されるので、
   // 「ハンドラがある＝編集面が表示されている」を一発の真偽で判定できる。
@@ -3400,6 +3417,8 @@ export function NoteApp() {
         onClose={composer.closeComposer}
         discoveryCards={composerDiscoveryCards}
         onDiscoveryCardSelect={handleComposerCardSelect}
+        noteIndex={fm.noteIndex ?? null}
+        onNoteSelect={handleComposerNoteSelect}
       />
       {showNewSkillDialog && (
         <NewSkillDialog
