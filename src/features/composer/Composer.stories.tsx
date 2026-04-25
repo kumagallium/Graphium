@@ -7,6 +7,7 @@ import { useState } from "react";
 import { LocaleProvider } from "@/i18n";
 import { Composer } from "./Composer";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
+import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 
 const meta: Meta<typeof Composer> = {
   title: "Molecules/Composer",
@@ -25,11 +26,79 @@ export default meta;
 
 type Args = {
   showDiscoveryCards?: boolean;
+  /** 検索ソース。指定すると検索 UI（ノートリスト + AI 質問アクション）が出る */
+  withSearch?: boolean;
+  /** 初期入力。検索結果プレビューを楽に確認したいとき用 */
+  initialPrompt?: string;
 };
 
-function Harness({ showDiscoveryCards = false }: Args) {
+const sampleNotes: NoteIndexEntry[] = [
+  {
+    noteId: "n-xrd-procedure",
+    title: "XRD analysis standard procedure",
+    modifiedAt: "2026-04-25T10:00:00.000Z",
+    createdAt: "2026-04-01T00:00:00.000Z",
+    headings: [],
+    labels: [{ blockId: "b1", label: "procedure", preview: "" }],
+    outgoingLinks: [],
+    source: "human",
+    author: "kumagai",
+  },
+  {
+    noteId: "n-xrd-log",
+    title: "XRD raw log 2026-04",
+    modifiedAt: "2026-04-24T08:00:00.000Z",
+    createdAt: "2026-04-10T00:00:00.000Z",
+    headings: [],
+    labels: [],
+    outgoingLinks: [],
+    source: "human",
+  },
+  {
+    noteId: "n-claude-session",
+    title: "Claude Code セッション要約",
+    modifiedAt: "2026-04-23T20:00:00.000Z",
+    createdAt: "2026-04-23T19:00:00.000Z",
+    headings: [],
+    labels: [],
+    outgoingLinks: [],
+    source: "human",
+    author: "kumagai",
+    model: "claude-opus-4-7",
+  },
+  {
+    noteId: "w-xrd",
+    title: "XRD",
+    modifiedAt: "2026-04-22T00:00:00.000Z",
+    createdAt: "2026-04-22T00:00:00.000Z",
+    headings: [],
+    labels: [],
+    outgoingLinks: [],
+    source: "ai",
+    wikiKind: "concept",
+    model: "claude-opus-4-7",
+  },
+  {
+    noteId: "n-design-misc",
+    title: "Design notes — UI スパイク",
+    modifiedAt: "2026-04-20T00:00:00.000Z",
+    createdAt: "2026-04-20T00:00:00.000Z",
+    headings: [{ blockId: "h1", text: "About XRD measurement", level: 2 }],
+    labels: [],
+    outgoingLinks: [],
+    source: "human",
+  },
+];
+
+const sampleIndex: GraphiumIndex = {
+  version: 6,
+  updatedAt: "2026-04-25T10:00:00.000Z",
+  notes: sampleNotes,
+};
+
+function Harness({ showDiscoveryCards = false, withSearch = false, initialPrompt = "" }: Args) {
   const [mode, setMode] = useState<ComposerMode>("ask");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [log, setLog] = useState<string[]>([]);
 
   const sampleCards: DiscoveryCard[] = showDiscoveryCards
@@ -101,6 +170,13 @@ function Harness({ showDiscoveryCards = false }: Args) {
           onDiscoveryCardSelect={(card) =>
             setLog((prev) => [...prev, `card: ${card.id} (${card.action.kind})`])
           }
+          noteIndex={withSearch ? sampleIndex : null}
+          onNoteSelect={
+            withSearch
+              ? (noteId, source) =>
+                  setLog((prev) => [...prev, `open note: ${noteId} (source=${source ?? "human"})`])
+              : undefined
+          }
         />
       </div>
     </LocaleProvider>
@@ -117,4 +193,34 @@ export const WithDiscoveryCards: StoryObj<Args> = {
   name: "発見カード付き",
   render: (args) => <Harness {...args} />,
   args: { showDiscoveryCards: true },
+};
+
+export const SearchEmpty: StoryObj<Args> = {
+  name: "検索 — 入力空（直近のノート）",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true },
+};
+
+export const SearchTitle: StoryObj<Args> = {
+  name: "検索 — タイトル一致",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "xrd" },
+};
+
+export const SearchLabelFilter: StoryObj<Args> = {
+  name: "検索 — #ラベルで絞り込み",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "#procedure" },
+};
+
+export const SearchAuthorFilter: StoryObj<Args> = {
+  name: "検索 — @作者で絞り込み",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "@claude" },
+};
+
+export const SearchNoMatch: StoryObj<Args> = {
+  name: "検索 — 一致なし（AI に倒れる）",
+  render: (args) => <Harness {...args} />,
+  args: { withSearch: true, initialPrompt: "ZZZ unknown query" },
 };

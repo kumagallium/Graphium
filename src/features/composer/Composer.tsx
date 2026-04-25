@@ -1,15 +1,26 @@
-// Cmd+K Composer — Ask 単機能の AI 呼び出し口
-// 「⌘K＝AI に聞く / `/`＝挿入 / `#`＝ラベル / `@`＝参照」という
-// 1 ショートカット 1 用途の棲み分けに揃えるため、当面 UI は Ask のみ公開する。
+// Cmd+K Composer — 「ノートを探す」「AI に質問する」を 1 つの入力欄に統合した
+// Spotlight 風 UI（unified palette）。タブ分割せず、入力に応じて結果が並ぶ。
 //
-// compose / insert-prov / insert-media の実装は ref ハンドラに残しており、
-// 将来スラッシュメニューや別ショートカットから再利用できる（詳細は
-// project_composer_mode_redesign.md）。
+// 検索（Phase 1）:
+//   - fm.noteIndex に対するタイトル / 見出し / ラベル / 作者の即時フィルタ
+//   - `#xxx` でラベル絞り込み、`@xxx` で作者絞り込み
+//   - 入力空のときは直近更新ノート 5 件を「最近のノート」として提示
+//   - 一致 0 件のときは AI 質問アクションのみ提示
+//   - BM25 / embedding / graph 近傍は別タスク（G-BM25 / G-GRAPHRAG）で hybrid 化
+//
+// AI 質問:
+//   - 候補リスト最下段の「AI に質問」アクション行を選んで Enter（または ⌘+Enter）
+//   - ノート行を選んで Enter ならジャンプ。ジャンプ用のハンドラがなければ AI に倒れる
+//
+// compose / insert-prov / insert-media の実装は呼び出し側（note-app.tsx）の
+// composerSubmitRef に残しており、将来スラッシュメニューや別ショートカットから再利用できる。
 
-import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
+import type { GraphiumIndex } from "../navigation/index-file";
+import { searchNotes, type SearchHit } from "./search";
 
 type ComposerProps = {
   open: boolean;
@@ -24,7 +35,17 @@ type ComposerProps = {
   /** Ask モードの発見カード（直近文脈から呼び出し側が組み立てる） */
   discoveryCards?: DiscoveryCard[];
   onDiscoveryCardSelect?: (card: DiscoveryCard) => void;
+  /** ノート一覧（検索ソース） */
+  noteIndex?: GraphiumIndex | null;
+  /** ノート行を選んだときのジャンプハンドラ。未指定時は検索 UI を出さない */
+  onNoteSelect?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
 };
+
+type ResultRow =
+  | { kind: "note"; hit: SearchHit }
+  | { kind: "ask-ai" };
+
+const MAX_RESULTS = 8;
 
 export function Composer(props: ComposerProps) {
   const {
@@ -36,25 +57,48 @@ export function Composer(props: ComposerProps) {
     onClose,
     discoveryCards,
     onDiscoveryCardSelect,
+    noteIndex,
+    onNoteSelect,
   } = props;
 
   const t = useT();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  // 開いた瞬間にフォーカス・textarea の縦サイズ初期化
+  // 検索結果（純関数なので useMemo で十分）
+  const hits = useMemo(() => {
+    if (!noteIndex || !onNoteSelect) return [];
+    return searchNotes(prompt, noteIndex.notes, { limit: MAX_RESULTS });
+  }, [prompt, noteIndex, onNoteSelect]);
+
+  const trimmed = prompt.trim();
+  const isEmptyQuery = trimmed.length === 0;
+
+  // 結果行を組み立てる: ノート一覧 + 末尾 AI アクション
+  const rows = useMemo<ResultRow[]>(() => {
+    const list: ResultRow[] = hits.map((hit) => ({ kind: "note", hit }));
+    // 入力が非空のときだけ AI アクションを末尾に出す（空入力は履歴ビューとして純粋に保つ）
+    if (!isEmptyQuery) {
+      list.push({ kind: "ask-ai" });
+    }
+    return list;
+  }, [hits, isEmptyQuery]);
+
+  // 入力が変わるたびに先頭にハイライトを戻す（ノート行があればそれ、無ければ AI 行）
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [prompt, open]);
+
+  // 開いた瞬間にフォーカス
   useEffect(() => {
     if (!open) return;
-    const el = textareaRef.current;
-    if (!el) return;
-    el.focus();
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    inputRef.current?.focus();
   }, [open]);
 
   // Esc で閉じる
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent | globalThis.KeyboardEvent) => {
+    const handler = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
@@ -64,32 +108,60 @@ export function Composer(props: ComposerProps) {
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  const submit = () => {
-    const trimmed = prompt.trim();
+  const submitAi = () => {
     if (trimmed.length === 0) return;
     onSubmit({ mode, prompt: trimmed });
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Cmd/Ctrl + Enter で送信。素の Enter は改行を許可（複数行入力に対応）
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      submit();
+  const activateRow = (row: ResultRow) => {
+    if (row.kind === "ask-ai") {
+      submitAi();
+      return;
+    }
+    if (onNoteSelect) {
+      onNoteSelect(row.hit.entry.noteId, row.hit.entry.source);
     }
   };
 
-  const handleInput = (value: string) => {
-    onPromptChange(value);
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // 日本語 IME 変換中は無視
+    if (e.nativeEvent.isComposing) return;
+
+    if (e.key === "ArrowDown") {
+      if (rows.length === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(rows.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      if (rows.length === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      // ⌘+Enter は常に AI 送信（従来動作の保持）
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        submitAi();
+        return;
+      }
+      // 通常 Enter は選択行のアクション。行が無ければ AI 送信フォールバック
+      e.preventDefault();
+      const row = rows[activeIndex];
+      if (row) {
+        activateRow(row);
+      } else {
+        submitAi();
+      }
     }
   };
 
   const cards = useMemo(() => discoveryCards ?? [], [discoveryCards]);
+  // 入力空のときだけ発見カードを出す（検索結果が出ているときは候補が二重になり邪魔）
+  const showCards = isEmptyQuery && cards.length > 0;
 
   if (!open) return null;
+
+  const sectionHeading = isEmptyQuery
+    ? t("composer.search.recentHeading")
+    : t("composer.search.notesHeading");
 
   return createPortal(
     <div
@@ -129,14 +201,15 @@ export function Composer(props: ComposerProps) {
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          maxHeight: "70vh",
         }}
       >
-        {/* 上段 — プロンプト入力 */}
+        {/* 上段 — プロンプト入力（1 行 input。検索 UX では textarea より input が自然） */}
         <div
           style={{
             padding: "14px 16px 10px",
             display: "flex",
-            alignItems: "flex-start",
+            alignItems: "center",
             gap: 10,
           }}
         >
@@ -145,42 +218,35 @@ export function Composer(props: ComposerProps) {
               fontFamily: "ui-monospace, 'SF Mono', monospace",
               fontSize: 13,
               color: "var(--forest)",
-              lineHeight: "22px",
               userSelect: "none",
             }}
             aria-hidden
           >
             »
           </span>
-          <textarea
-            ref={textareaRef}
+          <input
+            ref={inputRef}
             value={prompt}
-            onChange={(e) => handleInput(e.target.value)}
+            onChange={(e) => onPromptChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t("composer.placeholder")}
-            rows={1}
-            wrap="soft"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
             style={{
               flex: 1,
-              minWidth: 0,  // flex item が長文で親より広がるのを防ぐ → 折り返しが正しく効く
-              resize: "none",
+              minWidth: 0,
               border: "none",
               outline: "none",
               background: "transparent",
               fontSize: 15,
-              lineHeight: 1.5,
               color: "var(--ink)",
-              minHeight: 22,
-              maxHeight: 200,
-              overflowWrap: "break-word",
-              wordBreak: "break-word",
-              whiteSpace: "pre-wrap",
               fontFamily: "inherit",
             }}
           />
         </div>
 
-        {/* 上段の下 — ショートカット表示 + 送信ボタン */}
+        {/* ショートカット表示 */}
         <div
           style={{
             padding: "0 16px 10px",
@@ -197,30 +263,76 @@ export function Composer(props: ComposerProps) {
               fontFamily: "var(--mono)",
             }}
           >
-            ⌘ + Enter {t("composer.kbd.submit")} · Esc {t("composer.kbd.close")}
+            ↑↓ {t("composer.search.hintFilters")} · ⌘+Enter {t("composer.kbd.submit")} · Esc {t("composer.kbd.close")}
           </span>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={prompt.trim().length === 0}
-            style={{
-              padding: "5px 12px",
-              fontSize: 12,
-              fontWeight: 500,
-              borderRadius: "var(--r-1)",
-              border: "1px solid var(--forest)",
-              background: prompt.trim().length === 0 ? "var(--paper-2)" : "var(--forest)",
-              color: prompt.trim().length === 0 ? "var(--ink-4)" : "#fff",
-              cursor: prompt.trim().length === 0 ? "not-allowed" : "pointer",
-              transition: "background-color 120ms ease",
-            }}
-          >
-            {t("composer.submit")}
-          </button>
         </div>
 
-        {/* 中段 — 発見カード（ヒント。選ばなくても良い） */}
-        {cards.length > 0 && (
+        {/* 結果リスト（onNoteSelect 未配線のときは出さない） */}
+        {onNoteSelect && (rows.length > 0 || (!isEmptyQuery && hits.length === 0)) && (
+          <div
+            style={{
+              borderTop: "1px solid var(--rule-2)",
+              overflowY: "auto",
+              flex: 1,
+            }}
+          >
+            {/* 「ノート」セクション */}
+            {hits.length > 0 && (
+              <SectionHeading>{sectionHeading}</SectionHeading>
+            )}
+            {rows.map((row, i) => {
+              if (row.kind === "note") {
+                return (
+                  <NoteRow
+                    key={row.hit.entry.noteId}
+                    hit={row.hit}
+                    active={i === activeIndex}
+                    onMouseEnter={() => setActiveIndex(i)}
+                    onClick={() => activateRow(row)}
+                  />
+                );
+              }
+              // ask-ai 行
+              return null;
+            })}
+
+            {/* 一致 0 件 */}
+            {!isEmptyQuery && hits.length === 0 && (
+              <div
+                style={{
+                  padding: "10px 16px",
+                  fontSize: 12,
+                  color: "var(--ink-3)",
+                }}
+              >
+                {t("composer.search.empty")}
+              </div>
+            )}
+
+            {/* 「アクション」セクション (AI に質問) */}
+            {!isEmptyQuery && (
+              <>
+                <SectionHeading>{t("composer.search.actionsHeading")}</SectionHeading>
+                {(() => {
+                  const askIndex = rows.findIndex((r) => r.kind === "ask-ai");
+                  if (askIndex < 0) return null;
+                  return (
+                    <AskAiRow
+                      query={trimmed}
+                      label={t("composer.search.askAi", { query: trimmed })}
+                      active={askIndex === activeIndex}
+                      onMouseEnter={() => setActiveIndex(askIndex)}
+                      onClick={submitAi}
+                    />
+                  );
+                })()}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 発見カード — 入力空のときだけ */}
+        {showCards && (
           <div
             style={{
               borderTop: "1px solid var(--rule-2)",
@@ -273,9 +385,170 @@ export function Composer(props: ComposerProps) {
             ))}
           </div>
         )}
-
       </div>
     </div>,
     document.body,
+  );
+}
+
+// ── 内部コンポーネント ──
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: "8px 16px 4px",
+        fontSize: 10,
+        color: "var(--ink-3)",
+        fontFamily: "var(--mono)",
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+type NoteRowProps = {
+  hit: SearchHit;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+};
+
+function NoteRow({ hit, active, onMouseEnter, onClick }: NoteRowProps) {
+  const { entry, titleMatches } = hit;
+  const isWiki = entry.source === "ai";
+  const icon = isWiki ? "📘" : entry.model ? "🤖" : "📄";
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        padding: "8px 16px",
+        background: active ? "var(--paper-2)" : "transparent",
+        border: "none",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+        cursor: "pointer",
+        font: "inherit",
+        color: "var(--ink)",
+      }}
+    >
+      <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>{icon}</span>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 13,
+          lineHeight: 1.4,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <HighlightedTitle title={entry.title} ranges={titleMatches} />
+      </span>
+      {entry.author && (
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--ink-3)",
+            fontFamily: "var(--mono)",
+            flexShrink: 0,
+          }}
+        >
+          @{entry.author}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function HighlightedTitle({
+  title,
+  ranges,
+}: {
+  title: string;
+  ranges: { start: number; end: number }[];
+}) {
+  if (ranges.length === 0) return <>{title}</>;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const r of ranges) {
+    if (cursor < r.start) parts.push(title.slice(cursor, r.start));
+    parts.push(
+      <strong key={r.start} style={{ color: "var(--forest)", fontWeight: 600 }}>
+        {title.slice(r.start, r.end)}
+      </strong>,
+    );
+    cursor = r.end;
+  }
+  if (cursor < title.length) parts.push(title.slice(cursor));
+  return <>{parts}</>;
+}
+
+type AskAiRowProps = {
+  query: string;
+  label: string;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+};
+
+function AskAiRow({ label, active, onMouseEnter, onClick }: AskAiRowProps) {
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        padding: "8px 16px",
+        background: active ? "var(--paper-2)" : "transparent",
+        border: "none",
+        borderLeft: active ? "2px solid var(--forest)" : "2px solid transparent",
+        cursor: "pointer",
+        font: "inherit",
+        color: "var(--ink)",
+      }}
+    >
+      <span style={{ fontSize: 14, flexShrink: 0 }} aria-hidden>✨</span>
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 13,
+          lineHeight: 1.4,
+          color: "var(--ink-2)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: 10,
+          color: "var(--ink-3)",
+          fontFamily: "var(--mono)",
+          flexShrink: 0,
+        }}
+      >
+        ↵
+      </span>
+    </button>
   );
 }
