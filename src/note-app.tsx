@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen } from "lucide-react";
 import { apiBase, isTauri } from "./lib/platform";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
@@ -163,6 +163,8 @@ function NoteHeaderMenu({
   onIngestFromUrl,
   ingestDisabled,
   isWikiDoc,
+  inKnowledge,
+  onOpenKnowledge,
   t,
 }: {
   onSave: () => void;
@@ -177,6 +179,10 @@ function NoteHeaderMenu({
   onIngestFromUrl?: () => void;
   ingestDisabled?: boolean;
   isWikiDoc?: boolean;
+  /** このノートが既に Knowledge 化されているか（true なら Add の代わりに「Already in Knowledge」を表示） */
+  inKnowledge?: boolean;
+  /** 「Already in Knowledge」押下で対応 wiki エントリを開く */
+  onOpenKnowledge?: () => void;
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -248,14 +254,25 @@ function NoteHeaderMenu({
           {onIngestToWiki && !isWikiDoc && (
             <>
               <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                disabled={ingestDisabled}
-                onClick={() => { onIngestToWiki(); setOpen(false); }}
-              >
-                <BookPlus size={14} />
-                Add to Knowledge
-              </button>
+              {inKnowledge ? (
+                <button
+                  className={itemClass}
+                  disabled={!onOpenKnowledge}
+                  onClick={() => { onOpenKnowledge?.(); setOpen(false); }}
+                >
+                  <BookOpen size={14} />
+                  {t("knowledge.alreadyInKnowledge")}
+                </button>
+              ) : (
+                <button
+                  className={itemClass}
+                  disabled={ingestDisabled}
+                  onClick={() => { onIngestToWiki(); setOpen(false); }}
+                >
+                  <BookPlus size={14} />
+                  {t("knowledge.addToKnowledge")}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -1868,6 +1885,12 @@ function NoteEditorInner({
           onDeriveWholeNote={onDeriveWholeNote && !isWikiDoc ? onDeriveWholeNote : undefined}
           deriveDisabled={!fileId || saving || derivingDisabled}
           isWikiDoc={isWikiDoc}
+          inKnowledge={wikiEntriesForCurrentNote.length > 0}
+          onOpenKnowledge={
+            wikiEntriesForCurrentNote.length > 0
+              ? () => onNavigateNote(`wiki:${wikiEntriesForCurrentNote[0].noteId}`)
+              : undefined
+          }
           t={t}
         />
       </div>
@@ -2970,28 +2993,36 @@ export function NoteApp() {
             onDeleteMedia={fm.handleDeleteMedia}
             onRenameMedia={handleRenameMediaWithBlockSync}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
+            resolveKnowledgeWikiId={(entry) => {
+              if (entry.type !== "url" || !entry.url) return undefined;
+              return appKnowledgeMap.get(`url:${entry.url}`)?.[0]?.noteId;
+            }}
             onIngestMedia={aiAvailable ? (entry) => {
               if (entry.type === "url" && entry.url) {
-                const jobId = `url:${Date.now()}`;
-                const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.url };
+                // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
+                // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
+                // が壊れない。
+                const toastId = `url-toast:${Date.now()}`;
+                const sourceNoteId = `url:${entry.url}`;
+                const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.url };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
                 (async () => {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
                   try {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromUrl(entry.url, existingWikis, "ja");
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, jobId, result.model, entry.name || entry.url, undefined, "ja", buildNoteIndex(fm.noteIndex));
+                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, "ja", buildNoteIndex(fm.noteIndex));
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
                   }
                 })();
               }
@@ -3396,8 +3427,10 @@ export function NoteApp() {
             onIngestFromUrl={aiAvailable ? () => {
               const url = prompt("URL を入力してください:");
               if (!url) return;
-              // URL Ingest をキューに追加
-              const jobId = `url:${Date.now()}`;
+              // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
+              // を使い分ける。後者で逆引きが効くようにする。
+              const jobId = `url-toast:${Date.now()}`;
+              const sourceNoteId = `url:${url}`;
               const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: url };
               ingestQueueRef.current.push({ noteId: jobId, noteTitle: url, doc: null as any });
               setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
@@ -3418,7 +3451,7 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, url, undefined, "ja", buildNoteIndex(fm.noteIndex));
+                    const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, "ja", buildNoteIndex(fm.noteIndex));
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
@@ -3525,9 +3558,23 @@ export function NoteApp() {
               onAddToKnowledge={
                 (aiAvailable ?? false) && !listSidePeekNoteId.startsWith("wiki:")
                   ? () => {
+                      // 一覧→ピークのフローでは fm.cachedDocs に doc が乗っていないことが
+                      // ある（SidePeek が独自にロードするため）ので、未キャッシュ時は
+                      // storage provider から直接ロードしてから ingest する。
                       const cached = fm.getCachedDoc?.(listSidePeekNoteId);
-                      if (!cached || cached.source === "ai") return;
-                      enqueueIngest(listSidePeekNoteId, cached.title, cached);
+                      if (cached && cached.source !== "ai") {
+                        enqueueIngest(listSidePeekNoteId, cached.title, cached);
+                        return;
+                      }
+                      void getActiveProvider()
+                        .loadFile(listSidePeekNoteId)
+                        .then((doc) => {
+                          if (doc.source === "ai") return;
+                          enqueueIngest(listSidePeekNoteId, doc.title, doc);
+                        })
+                        .catch((err) => {
+                          console.error("[SidePeek] Add to Knowledge load failed:", err);
+                        });
                     }
                   : undefined
               }

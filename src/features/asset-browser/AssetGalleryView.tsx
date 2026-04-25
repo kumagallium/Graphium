@@ -286,6 +286,11 @@ export type AssetGalleryViewProps = {
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  /**
+   * 与えられた URL/PDF が既に Knowledge 化されている場合の wiki ノート ID を返す。
+   * 戻り値があれば MediaDetailModal は「In Knowledge」表示に切り替わる。
+   */
+  resolveKnowledgeWikiId?: (entry: MediaIndexEntry) => string | undefined;
 };
 
 export function AssetGalleryView({
@@ -298,6 +303,7 @@ export function AssetGalleryView({
   onAddUrlBookmark,
   onIngestMedia,
   onCreateProvNote,
+  resolveKnowledgeWikiId,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -465,6 +471,7 @@ export function AssetGalleryView({
           }}
           onIngest={onIngestMedia}
           onCreateProvNote={onCreateProvNote}
+          knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
         />
       )}
 

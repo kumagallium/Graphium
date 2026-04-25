@@ -54,7 +54,7 @@ export function IngestToast({ state, onDismiss }: Props) {
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-50 w-80 rounded-lg border shadow-lg transition-all duration-300 ${
+      className={`fixed bottom-4 right-4 z-[9999] w-80 rounded-lg border shadow-lg transition-all duration-300 ${
         allDone
           ? errorCount > 0
             ? "bg-destructive/10 border-destructive/20"

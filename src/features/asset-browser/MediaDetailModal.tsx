@@ -2,7 +2,7 @@
 // 左: 画像拡大表示 / 右: 使用ノートのグラフ構造
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { ExternalLink, BookPlus, FlaskConical } from "lucide-react";
+import { ExternalLink, BookPlus, BookOpen, FlaskConical } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -290,6 +290,8 @@ export type MediaDetailModalProps = {
   onIngest?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  /** この URL/PDF を派生元として参照する wiki ノート ID。あれば「In Knowledge」表示に切り替わる */
+  knowledgeWikiNoteId?: string;
 };
 
 export function MediaDetailModal({
@@ -299,6 +301,7 @@ export function MediaDetailModal({
   onRename,
   onIngest,
   onCreateProvNote,
+  knowledgeWikiNoteId,
 }: MediaDetailModalProps) {
   const t = useT();
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -460,13 +463,24 @@ export function MediaDetailModal({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {onIngest && (entry.type === "url" || entry.type === "pdf") && (
-              <button
-                onClick={() => onIngest(entry)}
-                className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5"
-              >
-                <BookPlus size={14} />
-                Add to Knowledge
-              </button>
+              knowledgeWikiNoteId ? (
+                <button
+                  onClick={() => handleNavigate(`wiki:${knowledgeWikiNoteId}`)}
+                  className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5"
+                  title={t("knowledge.openInKnowledge")}
+                >
+                  <BookOpen size={14} />
+                  {t("knowledge.inKnowledge")}
+                </button>
+              ) : (
+                <button
+                  onClick={() => onIngest(entry)}
+                  className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5"
+                >
+                  <BookPlus size={14} />
+                  {t("knowledge.addToKnowledge")}
+                </button>
+              )
             )}
             {onCreateProvNote && entry.type === "url" && (
               <button

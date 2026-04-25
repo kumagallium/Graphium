@@ -287,6 +287,7 @@ export const en: Record<string, string> = {
   "knowledge.inKnowledge": "In Knowledge",
   "knowledge.inKnowledgeCount": "In Knowledge ({count})",
   "knowledge.openInKnowledge": "Open the corresponding Knowledge entry",
+  "knowledge.alreadyInKnowledge": "Already in Knowledge ↗",
   "nav.knowledgeColumn": "Knowledge",
   "nav.knowledgeColumnTooltip": "Whether this note has been added to Knowledge",
 
