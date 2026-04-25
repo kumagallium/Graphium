@@ -161,7 +161,14 @@ export function SandboxEditor({
   const labelSuggestions = useMemo(() => buildSuggestionList(), []);
   const getHashtagItems = useCallback(
     async (query: string) => {
-      const items = labelSuggestions.map((s) => ({
+      // クエリが空のときはコアラベル + フリーラベルだけ。
+      // alias は v2 以前の旧ブラケット入力を救うための裏導線なので、
+      // 何かタイプされてマッチした時にだけ姿を現す方がメニューが整理される。
+      const trimmed = query.trim();
+      const visible = trimmed.length === 0
+        ? labelSuggestions.filter((s) => s.group !== "alias")
+        : labelSuggestions;
+      const items = visible.map((s) => ({
         title: s.displayName,
         group: s.group === "core" ? "コアラベル" : s.group === "alias" ? "エイリアス" : "フリーラベル",
         onItemClick: () => {
@@ -171,7 +178,7 @@ export function SandboxEditor({
           }
         },
       }));
-      return _filterSuggestionItems(items as any, query) as any;
+      return _filterSuggestionItems(items as any, trimmed) as any;
     },
     [editor, labelSuggestions, onHashtagSelect],
   );

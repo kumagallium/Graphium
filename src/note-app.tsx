@@ -1780,6 +1780,16 @@ function NoteEditorInner({
           placeholder={t("editor.titlePlaceholder")}
           title={title}
         />
+        {!isWikiDoc && (
+          <span
+            className="hidden md:inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0"
+            title={t("editor.labelHintTooltip")}
+          >
+            <kbd className="font-mono text-[10px] px-1 py-px rounded border border-border bg-muted">/</kbd>
+            <span className="opacity-60">{t("editor.labelHintOr")}</span>
+            <kbd className="font-mono text-[10px] px-1 py-px rounded border border-border bg-muted">#</kbd>
+          </span>
+        )}
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
