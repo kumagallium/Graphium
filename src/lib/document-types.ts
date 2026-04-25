@@ -7,6 +7,17 @@ import type { DocumentProvenance } from "../features/document-provenance/types";
 // synthesis: 複数の Concept を統合して新しい洞察を生むページ
 export type WikiKind = "summary" | "concept" | "synthesis";
 
+// Concept の抽象度レベル（concept のみで意味を持つ）
+// principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
+// finding: 本人の経験から立ち上がった転用可能な命題
+// bridge: 複数の finding を貫く抽象（後段の cross-update で生成）
+export type ConceptLevel = "principle" | "finding" | "bridge";
+
+// Concept の確度ステータス（principle で主に意味を持つ）
+// candidate: 1 ノートのみで依拠されている。検索・retrieval 母集団には含むが UI では薄表示
+// verified: 2 ノート以上で依拠された。「自分の研究で繰り返し効いている原理」
+export type ConceptStatus = "candidate" | "verified";
+
 // Skill（プロンプトテンプレート）のメタデータ
 export type SkillMeta = {
   /** スキルの説明（一行） */
@@ -44,6 +55,12 @@ export type WikiMeta = {
   }[];
   /** Wiki の生成言語 */
   language?: string;
+  /** Concept の抽象度レベル（concept のみ） */
+  level?: ConceptLevel;
+  /** Concept の確度ステータス（principle で主に意味を持つ） */
+  status?: ConceptStatus;
+  /** principle が依拠していると判定された、ソースノート内の該当文（生成時の自己検証用） */
+  evidenceSpan?: string;
 };
 
 // Graphium ファイルのメタデータ

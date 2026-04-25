@@ -128,6 +128,11 @@ export function buildWikiDocument(
     },
     lastIngestedAt: now,
     language: language ?? undefined,
+    // Concept のみ level/evidenceSpan を持つ。新規生成時の status は常に "candidate"
+    // （Cross-Update で別ノートも依拠した時点で "verified" に昇格させる想定）
+    level: ingesterOutput.kind === "concept" ? ingesterOutput.level : undefined,
+    status: ingesterOutput.kind === "concept" ? "candidate" : undefined,
+    evidenceSpan: ingesterOutput.evidenceSpan,
   };
 
   return {
