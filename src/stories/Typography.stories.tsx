@@ -1,5 +1,5 @@
 // 読みやすさ・タイポグラフィ比較用ストーリー
-// dyslexia 観点で Inter / Lexend / Atkinson Hyperlegible を並べて体感比較する
+// dyslexia 観点で Inter / Lexend / Atkinson Hyperlegible Next を並べて体感比較する
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -10,7 +10,7 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          "本文の読みやすさを 5 フォントで体感比較。**現行デフォルト = Atkinson Hyperlegible Next + Inter 数字 (B 案)**。dyslexia 配慮（識別性重視の字形）と数字の見慣れたグリフを両立。Inter / Lexend / Atkinson (旧版) / Atkinson Next (生) は body[data-font=\"...\"] で切り替えて比較できる。",
+          "本文の読みやすさを 4 フォントで体感比較。**現行デフォルト = Atkinson Hyperlegible Next + Inter 数字 (B 案)**。dyslexia 配慮（識別性重視の字形）と数字の見慣れたグリフを両立。Inter / Lexend / Atkinson Next (生) は body[data-font=\"...\"] で切り替えて比較できる。",
       },
     },
   },
@@ -36,13 +36,6 @@ const FONTS = [
     name: "Lexend",
     family: "'Lexend', system-ui, sans-serif",
     note: "NASA 共同研究で読み速度を最適化。可読性のため横幅広め・字間広め。",
-    letterSpacing: "0",
-  },
-  {
-    key: "atkinson" as const,
-    name: "Atkinson Hyperlegible",
-    family: "'Atkinson Hyperlegible', system-ui, sans-serif",
-    note: "Braille Institute (2019)。b/d/p/q や I/l/1 を識別性重視で設計。0 は中点入り。",
     letterSpacing: "0",
   },
   {

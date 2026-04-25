@@ -164,7 +164,7 @@ export function FileSidebar({
 
         {/* データ一覧セクション */}
         <div className="px-4 pt-3 pb-2">
-          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
+          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-2">
             {t("asset.dataSection")}
           </h3>
           <div className="space-y-0.5">
@@ -210,8 +210,8 @@ export function FileSidebar({
         </div>
 
         {/* ラベルセクション */}
-        <div className="px-4 pt-1 pb-2">
-          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
+        <div className="px-4 pt-3 pb-2">
+          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-2">
             {t("label.section")}
           </h3>
           {!noteIndex ? (

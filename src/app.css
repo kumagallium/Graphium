@@ -4,9 +4,9 @@
    Web Fonts — セルフホスト (public/fonts/)
    - Inter: 本文・UI（design.md 指定、デフォルト）
    - Lexend: dyslexia / 読み速度最適化 (variable font, NASA 共同研究)
-   - Atkinson Hyperlegible: dyslexia / 視覚障害向け (Braille Institute)
+   - Atkinson Hyperlegible Next: dyslexia / 視覚障害向け (Braille Institute, 最新版)
    - JetBrains Mono: mono メタ情報
-   読みやすさモードは body[data-font="lexend"] / [data-font="atkinson"] で切り替え
+   読みやすさモードは body[data-font="lexend"] / [data-font="atkinson-next"] で切り替え
    ============================================================ */
 @font-face {
   font-family: 'Inter';
@@ -21,20 +21,6 @@
   font-weight: 400 500;
   font-display: swap;
   src: url('/fonts/lexend.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Atkinson Hyperlegible';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/atkinson-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Atkinson Hyperlegible';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/atkinson-700.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Atkinson Hyperlegible Next';
@@ -245,10 +231,6 @@
   }
   body[data-font="lexend"] {
     font-family: 'Lexend', system-ui, sans-serif;
-    letter-spacing: 0;
-  }
-  body[data-font="atkinson"] {
-    font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
     letter-spacing: 0;
   }
   body[data-font="atkinson-next"] {
