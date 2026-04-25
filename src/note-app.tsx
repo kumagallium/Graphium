@@ -1139,6 +1139,7 @@ function NoteEditorInner({
     insertComposerResultAtEnd,
     setRightTab,
     setPickerMediaType,
+    parkChat: aiAssistant.parkChat,
   });
   composerHandlersRef.current = {
     handleAiChatSubmit,
@@ -1146,6 +1147,7 @@ function NoteEditorInner({
     insertComposerResultAtEnd,
     setRightTab,
     setPickerMediaType,
+    parkChat: aiAssistant.parkChat,
   };
 
   useEffect(() => {
@@ -1155,6 +1157,10 @@ function NoteEditorInner({
       const h = composerHandlersRef.current;
 
       if (mode === "ask") {
+        // Cmd+K で開く Composer は「新しい問いを立てる」ショートカットとして扱う。
+        // 既存チャットがあれば履歴 (chats) に退避してから新セッションを開始する。
+        // チャット欄を開いている状態での追加質問は、チャット欄の input を使えばよい。
+        h.parkChat();
         h.setRightTab("chat");
         await h.handleAiChatSubmit(prompt);
         return;
