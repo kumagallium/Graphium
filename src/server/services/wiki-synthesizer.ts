@@ -24,6 +24,11 @@ export type ConceptSnapshot = {
   sections: { heading: string; preview: string }[];
   /** 関連 Concept タイトル */
   relatedConcepts: string[];
+  /**
+   * 上流 Summary のプレビュー（誤差伝搬抑制のため Synthesizer に併読させる）。
+   * 空配列でも動作する（後方互換）。
+   */
+  sourceSummaryPreviews?: { title: string; preview: string }[];
 };
 
 /**
@@ -72,10 +77,19 @@ Respond with valid JSON only (no markdown wrapper):
   ]
 }
 
+## Citation rules (strict — prevents error amplification)
+
+Synthesis sits at the top of an inference chain (note → Summary → Concept → Synthesis), so unsupported claims compound. Mitigate by:
+
+1. **Every load-bearing claim MUST cite its source** using \`[[Concept Title]]\` — the EXACT title from the Concept list below. Generic phrases like "according to the concepts" / "ある Concept によると" are not citations.
+2. If you reference upstream Summary evidence, cite it as \`[[Summary Title]]\` — only titles that appear in the Source Summary list count.
+3. **Do NOT invent external URLs, DOIs, paper titles, or author names.** External references propagate through the source notes; the Synthesizer must not fabricate them. If the source Concepts don't carry a citation, omit it.
+4. Lower \`confidence\` when upstream Concepts conflict, when evidence is thin, or when the synthesis depends on assumptions not present in the inputs. Do not inflate confidence to make a candidate pass the 0.75 threshold.
+
 ## Guidelines
 
 - Generate 0-2 candidates (quality over quantity)
-- Only propose with confidence >= 0.75
+- Only propose with confidence >= 0.75 (and treat 0.75 as "barely confident" — most genuine syntheses sit at 0.8-0.9)
 - Each candidate must combine 2-4 existing Concepts
 - Section content should be thorough — include reasoning, evidence, and implications without length constraints
 - Use these section headings (in this order, skip any that don't apply):
@@ -118,11 +132,26 @@ export function buildSynthesizerUserMessage(
     return `### ${c.title} (id: ${c.id})\n${sections}${related ? "\n" + related : ""}`;
   }).join("\n\n");
 
+  // 上流 Summary のプレビュー（誤差伝搬対策: Synthesizer に原料に近い層も見せる）
+  const summaryMap = new Map<string, string>();
+  for (const c of concepts) {
+    for (const s of c.sourceSummaryPreviews ?? []) {
+      if (!summaryMap.has(s.title)) summaryMap.set(s.title, s.preview);
+    }
+  }
+  const summarySection = summaryMap.size > 0
+    ? `\n\n## Source Summaries (upstream evidence — cite as [[Summary Title]] when load-bearing)\n${
+        Array.from(summaryMap.entries())
+          .map(([title, preview]) => `### ${title}\n${preview}`)
+          .join("\n\n")
+      }`
+    : "";
+
   const existingNote = existingSynthesisTitles.length > 0
     ? `\n\n## Existing Syntheses (avoid duplicating these)\n${existingSynthesisTitles.map((t) => `- ${t}`).join("\n")}`
     : "";
 
-  return `Analyze the following ${concepts.length} Concept pages and propose synthesis opportunities:\n\n${conceptDescriptions}${existingNote}`;
+  return `Analyze the following ${concepts.length} Concept pages and propose synthesis opportunities:\n\n${conceptDescriptions}${summarySection}${existingNote}`;
 }
 
 /**

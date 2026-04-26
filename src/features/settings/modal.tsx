@@ -127,6 +127,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   // 設定値
   const [model, setModel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
+  const [synthesisModel, setSynthesisModel] = useState("");
   const [profile, setProfile] = useState("");
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
@@ -282,6 +283,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     const settings = loadSettings();
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
+    setSynthesisModel(settings.synthesisModel ?? "");
     setProfile(settings.profile);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
@@ -558,11 +560,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont });
+    saveSettings({ model, embeddingModel, synthesisModel, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, profile, disabledTools, registryUrl, customLabels, latinFont, jpFont, onClose]);
+  }, [model, embeddingModel, synthesisModel, profile, disabledTools, registryUrl, customLabels, latinFont, jpFont, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -611,6 +613,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         {/* ── General タブ ── */}
         {tab === "general" && (
           <div className="space-y-4">
+            {/* ── Display & Locale ── */}
+            <div className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground/80 border-b border-border pb-1">
+              {t("settings.section.display")}
+            </div>
             {/* 言語 */}
             <div>
               <label className="text-xs font-semibold text-foreground mb-1 block">
@@ -721,6 +727,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               <p className="text-xs text-muted-foreground mt-1.5">{t("settings.fontHelp")}</p>
             </div>
 
+            {/* ── AI ── */}
+            <div className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground/80 border-b border-border pb-1 pt-2">
+              {t("settings.section.ai")}
+            </div>
             {/* プロファイル選択 */}
             <div>
               <label className="text-xs font-semibold text-foreground mb-1 block">
@@ -799,6 +809,40 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               </p>
             </div>
 
+            {/* Synthesis モデル選択（複数 Concept を統合する最終推論用） */}
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                {t("settings.synthesisModel")}
+              </label>
+              <div className="relative">
+                <select
+                  value={synthesisModel}
+                  onChange={(e) => { setSynthesisModel(e.target.value); setSaved(false); }}
+                  disabled={modelsLoading || models.length === 0}
+                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                >
+                  <option value="">
+                    {models.length === 0 ? t("settings.modelNone") : t("settings.synthesisModelSameAsDefault")}
+                  </option>
+                  {models.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {t("settings.synthesisModelHelp")}
+              </p>
+            </div>
+
+            {/* ── Storage（デスクトップ版のみ） ── */}
+            {isTauri() && (
+              <div className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground/80 border-b border-border pb-1 pt-2">
+                {t("settings.section.storage")}
+              </div>
+            )}
             {/* ローカル保存先（デスクトップ版のみ） */}
             {isTauri() && (
               <div>

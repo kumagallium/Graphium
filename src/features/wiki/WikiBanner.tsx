@@ -158,6 +158,29 @@ export function WikiBanner({
           </span>
         )}
 
+        {/* 信頼度チップ（Synthesis 等で誤差伝搬の指標として表示） */}
+        {typeof wikiMeta.confidence === "number" && (
+          <span
+            title="Self-rated confidence at generation. Lower values mean upstream evidence was thin or conflicting."
+            style={{
+              fontSize: 10,
+              padding: "1px 6px",
+              borderRadius: "var(--pill)",
+              border: "1px solid var(--rule)",
+              background: "var(--paper)",
+              color:
+                wikiMeta.confidence >= 0.85
+                  ? "var(--forest-ink)"
+                  : wikiMeta.confidence >= 0.7
+                    ? "var(--ink-3)"
+                    : "var(--ember, #b54708)",
+              fontFamily: "var(--mono)",
+            }}
+          >
+            conf {wikiMeta.confidence.toFixed(2)}
+          </span>
+        )}
+
         <div style={{ flex: 1 }} />
 
         {/* アクションボタン */}

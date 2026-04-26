@@ -30,6 +30,10 @@ export type Settings = {
   model: string;
   /** Embedding 用モデル名（空文字 = チャットモデルと同じ） */
   embeddingModel: string;
+  /** Synthesis（複数 Concept 統合）用モデル名（空文字 = `model` と同じ）。
+   *  Synthesis は上流の Summary/Concept を束ねる最終推論で誤差伝搬の影響を最も受けるため、
+   *  個別に賢いモデルを当てられるようにする */
+  synthesisModel: string;
   /** AI プロファイル名（空文字 = "science"） */
   profile: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
@@ -47,6 +51,7 @@ export type Settings = {
 const DEFAULT_SETTINGS: Settings = {
   model: "",
   embeddingModel: "",
+  synthesisModel: "",
   profile: "",
   disabledTools: [],
   registryUrl: "",
@@ -146,6 +151,19 @@ export function getCustomLabels(): CustomLabels {
 /** Embedding 用モデル名を取得する（空文字 = チャットモデルと同じ） */
 export function getEmbeddingModel(): string {
   return loadSettings().embeddingModel;
+}
+
+/** Synthesis 用モデル名を取得する（空文字 = `model` と同じ） */
+export function getSynthesisModel(): string {
+  return loadSettings().synthesisModel ?? "";
+}
+
+/** Synthesis 用の LLMModelConfig を取得する。設定がなければ default にフォールバック */
+export function getSynthesisLLMModel(): LLMModelConfig | undefined {
+  const synthName = getSynthesisModel();
+  if (!synthName) return getDefaultLLMModel();
+  const found = getLLMModels().find((m) => m.name === synthName);
+  return found ?? getDefaultLLMModel();
 }
 
 /** AI バックエンドが利用可能かどうか（ビルトインバックエンドは常に available） */

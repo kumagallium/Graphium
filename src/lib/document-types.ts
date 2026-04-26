@@ -61,6 +61,8 @@ export type WikiMeta = {
   status?: ConceptStatus;
   /** principle が依拠していると判定された、ソースノート内の該当文（生成時の自己検証用） */
   evidenceSpan?: string;
+  /** 生成時の自己評価された確度（0.0〜1.0）。主に Synthesis で誤差伝搬の指標として表示する */
+  confidence?: number;
 };
 
 // Graphium ファイルのメタデータ

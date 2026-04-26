@@ -4,7 +4,7 @@
 import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
-import { getEmbeddingModel, getDefaultLLMModel } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getSynthesisLLMModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 
 import type { GraphiumIndex } from "../navigation";
@@ -24,11 +24,14 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
   }));
 }
 
-/** Web モード用: X-LLM-API-Key ヘッダーを含む共通ヘッダー */
-function wikiHeaders(): Record<string, string> {
+/**
+ * Web モード用: X-LLM-API-Key ヘッダーを含む共通ヘッダー
+ * mode="synthesis" の場合は Synthesis 用モデル（未設定なら default にフォールバック）を使う
+ */
+function wikiHeaders(mode: "default" | "synthesis" = "default"): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = getDefaultLLMModel();
+    const model = mode === "synthesis" ? getSynthesisLLMModel() : getDefaultLLMModel();
     if (model) {
       h["X-LLM-API-Key"] = JSON.stringify({
         provider: model.provider,
@@ -1333,7 +1336,7 @@ export async function fetchSynthesisCandidates(
 
   const res = await fetch(`${API_BASE}/synthesize`, {
     method: "POST",
-    headers: wikiHeaders(),
+    headers: wikiHeaders("synthesis"),
     body: JSON.stringify({ concepts, existingSynthesisTitles, language }),
   });
 
@@ -1405,6 +1408,8 @@ export function buildSynthesisDocument(
     },
     lastIngestedAt: now,
     language: language ?? undefined,
+    // 誤差伝搬の指標として、Synthesizer 自身の confidence を保持する
+    confidence: typeof candidate.confidence === "number" ? candidate.confidence : undefined,
   };
 
   return {
@@ -1427,12 +1432,32 @@ export function buildSynthesisDocument(
 
 /**
  * 既存の Concept ページからスナップショットを構築する（Synthesis 入力用）
+ *
+ * 誤差伝搬対策として、Concept の `derivedFromNotes` と一致する Summary を
+ * 引いて先頭セクションのプレビューを併記する。Synthesizer が Concept だけでなく
+ * 上流の Summary にも触れることで、独立な誤差を集約・矛盾検出しやすくする。
  */
 export function buildConceptSnapshots(
   wikiFiles: { id: string; modifiedTime: string }[],
   wikiMetas: Map<string, { title: string; kind: WikiKind; headings: string[]; model?: string }>,
   getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
 ): ConceptSnapshot[] {
+  // Summary 索引: 派生元 noteId → { title, preview }
+  // extractWikiDetail は Concept 専用のため、Summary は本ヘルパーで先頭セクションを抽出する
+  const summaryByNote = new Map<string, { title: string; preview: string }>();
+  for (const file of wikiFiles) {
+    const meta = wikiMetas.get(file.id);
+    if (!meta || meta.kind !== "summary") continue;
+    const doc = getCachedDoc(`wiki:${file.id}`);
+    if (!doc) continue;
+    const preview = extractFirstSectionPreview(doc, 240);
+    for (const noteId of doc.wikiMeta?.derivedFromNotes ?? []) {
+      if (!summaryByNote.has(noteId)) {
+        summaryByNote.set(noteId, { title: meta.title, preview });
+      }
+    }
+  }
+
   const snapshots: ConceptSnapshot[] = [];
 
   for (const file of wikiFiles) {
@@ -1441,6 +1466,14 @@ export function buildConceptSnapshots(
 
     const doc = getCachedDoc(`wiki:${file.id}`);
     const detail = doc ? extractWikiDetail(file.id, doc) : null;
+
+    // この Concept が依拠している Summary を集める（重複除去）
+    const summarySet = new Map<string, string>();
+    for (const noteId of doc?.wikiMeta?.derivedFromNotes ?? []) {
+      const s = summaryByNote.get(noteId);
+      if (s && !summarySet.has(s.title)) summarySet.set(s.title, s.preview);
+    }
+    const sourceSummaryPreviews = Array.from(summarySet.entries()).map(([title, preview]) => ({ title, preview }));
 
     snapshots.push({
       id: file.id,
@@ -1452,10 +1485,35 @@ export function buildConceptSnapshots(
           }))
         : meta.headings.map((h) => ({ heading: h, preview: "" })),
       relatedConcepts: doc ? extractRelatedConcepts(doc).map(String) : [],
+      sourceSummaryPreviews,
     });
   }
 
   return snapshots;
+}
+
+/**
+ * Wiki ドキュメントから先頭 H2 セクションの本文プレビューを抽出する。
+ * Synthesizer の Summary 併読用。kind を問わず動作する。
+ */
+function extractFirstSectionPreview(doc: GraphiumDocument, maxLen: number): string {
+  const page = doc.pages[0];
+  if (!page) return "";
+  const lines: string[] = [];
+  let inFirstSection = false;
+  for (const block of page.blocks) {
+    if (block.type === "heading" && block.props?.level === 2) {
+      if (inFirstSection) break;
+      inFirstSection = true;
+      continue;
+    }
+    if (inFirstSection) {
+      const t = extractInlineText(block.content);
+      if (t) lines.push(t);
+      if (lines.join(" ").length >= maxLen) break;
+    }
+  }
+  return lines.join(" ").slice(0, maxLen);
 }
 
 function extractInlineText(content: any): string {

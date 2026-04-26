@@ -332,6 +332,12 @@ export const ja: Record<string, string> = {
   "settings.modelLoading": "モデルを読み込み中...",
   "settings.modelNone": "モデルが未登録です",
   "settings.modelHelp": "使用する AI モデルを選択します。未指定の場合はサーバーのデフォルトモデルが使われます。",
+  "settings.synthesisModel": "Synthesis モデル",
+  "settings.synthesisModelSameAsDefault": "デフォルトモデルと同じ",
+  "settings.synthesisModelHelp": "任意。複数の Concept を統合して Synthesis ページを生成する際に使われます。最も誤差が伝搬しやすい工程なので、ここだけ賢いモデルを当てるとコスパが良いことがあります。",
+  "settings.section.display": "表示・ロケール",
+  "settings.section.ai": "AI",
+  "settings.section.storage": "ストレージ",
   // ── ローカル保存先（デスクトップ版のみ） ──
   "settings.saveDir.title": "ローカル保存先",
   "settings.saveDir.help": "ノート・メディア・Wiki・アプリデータを保存するフォルダです。Dropbox / Google Drive / OneDrive の同期フォルダを指定すれば、OAuth なしでデバイス間同期できます。",

@@ -332,6 +332,12 @@ export const en: Record<string, string> = {
   "settings.modelLoading": "Loading models...",
   "settings.modelNone": "No models registered",
   "settings.modelHelp": "Select the AI model to use. If not specified, the server default is used.",
+  "settings.synthesisModel": "Synthesis Model",
+  "settings.synthesisModelSameAsDefault": "Same as default model",
+  "settings.synthesisModelHelp": "Optional. Used when combining multiple Concepts into a Synthesis page — this is the most error-prone step, so a stronger model often pays off.",
+  "settings.section.display": "Display & Locale",
+  "settings.section.ai": "AI",
+  "settings.section.storage": "Storage",
   // ── ローカル保存先（デスクトップ版のみ） ──
   "settings.saveDir.title": "Local save location",
   "settings.saveDir.help": "Folder where notes, media, wiki, and appdata are stored. Point this at a Dropbox, Google Drive, or OneDrive sync folder to keep Graphium data in sync across devices without OAuth.",
