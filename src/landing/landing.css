@@ -1,6 +1,15 @@
 /* Landing page own styles. Tailwind is the main driver via app.css; this file
    adds a few section-level rhythm tokens that are easier to read as plain CSS. */
 
+/* The editor sets html/body to height:100dvh; overflow:hidden so the editor
+   chrome can scroll-lock. The landing page imports the same app.css for
+   design tokens, so we have to undo that lock here or the page won't scroll. */
+html,
+body {
+  height: auto;
+  overflow: auto;
+}
+
 .lp-root {
   min-height: 100dvh;
   background: var(--paper, #fafdf7);
