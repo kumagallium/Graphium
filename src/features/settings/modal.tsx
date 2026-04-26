@@ -1196,27 +1196,29 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                   <>
                     <div>
                       <label className="text-xs font-medium text-foreground mb-1 block">{t("settings.addModel.selectProvider")}</label>
-                      <div className="space-y-1">
-                        {providerGroups.map((g) => (
-                          <button
-                            key={g.representativeId}
-                            onClick={() => {
-                              setSourceModelId(g.representativeId);
-                              setAddProvider(g.provider);
-                              setAvailableModels([]);
-                              setSelectedModelId("");
-                              setCustomModelId("");
-                              setAddError("");
-                            }}
-                            className={`w-full text-left px-3 py-2 text-xs rounded-md border transition-colors ${
-                              sourceModelId === g.representativeId
-                                ? "border-primary bg-primary/10 text-primary font-medium"
-                                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                            }`}
-                          >
-                            {g.label}
-                          </button>
-                        ))}
+                      <div className="relative">
+                        <select
+                          value={sourceModelId ?? ""}
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            const g = providerGroups.find((g) => g.representativeId === id);
+                            setSourceModelId(id || null);
+                            if (g) setAddProvider(g.provider);
+                            setAvailableModels([]);
+                            setSelectedModelId("");
+                            setCustomModelId("");
+                            setAddError("");
+                          }}
+                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground focus:border-primary focus:outline-none"
+                        >
+                          <option value="">{t("settings.addModel.selectProviderPlaceholder")}</option>
+                          {providerGroups.map((g) => (
+                            <option key={g.representativeId} value={g.representativeId}>
+                              {g.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       </div>
                     </div>
 

@@ -386,6 +386,7 @@ export const ja: Record<string, string> = {
   "settings.addModel.useExisting": "既存プロバイダーから追加",
   "settings.addModel.newProvider": "新しいプロバイダー",
   "settings.addModel.selectProvider": "プロバイダーを選択",
+  "settings.addModel.selectProviderPlaceholder": "— プロバイダーを選択 —",
   // ── Registry ──
   "settings.registry.title": "Crucible Registry URL",
   "settings.registry.placeholder": "http://localhost:8080",

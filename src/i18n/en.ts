@@ -386,6 +386,7 @@ export const en: Record<string, string> = {
   "settings.addModel.useExisting": "Use existing provider",
   "settings.addModel.newProvider": "New provider",
   "settings.addModel.selectProvider": "Select a provider",
+  "settings.addModel.selectProviderPlaceholder": "— choose a provider —",
   // ── Registry ──
   "settings.registry.title": "Crucible Registry URL",
   "settings.registry.placeholder": "http://localhost:8080",
