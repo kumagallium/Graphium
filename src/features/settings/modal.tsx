@@ -1408,6 +1408,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             t={t}
             wikiSummaries={wikiSummaries ?? []}
             onRegenerateWiki={onRegenerateWiki}
+            availableModels={models}
+            defaultModel={defaultModel}
             bulkKinds={bulkKinds}
             setBulkKinds={setBulkKinds}
             bulkModelOverride={bulkModelOverride}
@@ -1439,6 +1441,8 @@ type MaintenanceTabProps = {
   t: (key: string) => string;
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
+  availableModels: ModelInfo[];
+  defaultModel: string;
   bulkKinds: Set<WikiKind>;
   setBulkKinds: (s: Set<WikiKind>) => void;
   bulkModelOverride: string;
@@ -1454,6 +1458,8 @@ function MaintenanceTab({
   t,
   wikiSummaries,
   onRegenerateWiki,
+  availableModels,
+  defaultModel,
   bulkKinds,
   setBulkKinds,
   bulkModelOverride,
@@ -1554,13 +1560,29 @@ function MaintenanceTab({
         <label className="text-xs font-semibold text-foreground mb-1 block">
           {t("settings.maintenance.modelOverride")}
         </label>
-        <Input
-          type="text"
-          value={bulkModelOverride}
-          onChange={(e) => setBulkModelOverride(e.target.value)}
-          placeholder={t("settings.maintenance.modelOverridePlaceholder")}
-          disabled={bulkRunning}
-        />
+        <div className="relative">
+          <select
+            value={bulkModelOverride}
+            onChange={(e) => setBulkModelOverride(e.target.value)}
+            disabled={bulkRunning}
+            className="w-full appearance-none rounded-md border border-border bg-background px-3 py-1.5 pr-8 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+          >
+            <option value="">
+              {t("settings.maintenance.modelOverrideDefault")}
+              {defaultModel ? ` (${defaultModel})` : ""}
+            </option>
+            {availableModels.map((m) => (
+              <option key={m.id || m.name} value={m.name}>
+                {m.name}
+                {m.provider ? ` — ${m.provider}` : ""}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={14}
+            className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground"
+          />
+        </div>
         <p className="text-xs text-muted-foreground mt-1">
           {t("settings.maintenance.modelOverrideHelp")}
         </p>
