@@ -52,7 +52,9 @@ body {
 .lp-lead {
   font-size: clamp(1.05rem, 1.6vw, 1.2rem);
   color: color-mix(in srgb, var(--ink, #1d2620) 78%, transparent);
-  max-width: 56ch;
+  /* No prose-narrow cap: lead text uses the full section content width so
+     Hero / Problem visually align with the Pillars / Trust / GetStarted grids
+     below. The section itself is capped at 1080px so lines still stay readable. */
 }
 
 .lp-tagline {
@@ -64,7 +66,6 @@ body {
   border-left: 3px solid color-mix(in srgb, var(--forest, #4b7a52) 40%, transparent);
   padding-left: 1rem;
   margin: 1.5rem 0;
-  max-width: 48ch;
 }
 
 .lp-cta-row {
@@ -277,12 +278,30 @@ body {
   font-size: 0.98rem;
 }
 
-/* Previously this added a 6%→transparent green gradient to Pillars/GetStarted.
-   The gradient was constrained to the 1080px section box, which made those
-   sections read as visibly narrower than Hero / Problem on wide viewports.
-   Visual rhythm now comes from the eyebrow label and section spacing alone. */
+/* Accent sections (Pillars, GetStarted) get a soft green→transparent gradient
+   that extends to the viewport edges via a pseudo-element. Putting the gradient
+   directly on the section would constrain it to the 1080px content box and
+   read as a narrower colored card on wide screens. */
 .lp-section--accent {
-  /* no-op — kept for backward semantic readability of section markup */
+  position: relative;
+  isolation: isolate;
+}
+
+.lp-section--accent::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--forest, #4b7a52) 6%, transparent),
+    transparent 70%
+  );
+  z-index: -1;
+  pointer-events: none;
 }
 
 .lp-cta-card {
