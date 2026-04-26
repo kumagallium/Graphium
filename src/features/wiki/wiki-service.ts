@@ -4,7 +4,7 @@
 import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
-import { getEmbeddingModel, getDefaultLLMModel, getSynthesisLLMModel } from "../settings/store";
+import { getEmbeddingModel, getDefaultLLMModel, getSynthesisLLMModel, getEmbeddingLLMModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 
 import type { GraphiumIndex } from "../navigation";
@@ -25,13 +25,21 @@ export function buildNoteIndex(index: GraphiumIndex | null | undefined): NoteInd
 }
 
 /**
- * Web モード用: X-LLM-API-Key ヘッダーを含む共通ヘッダー
- * mode="synthesis" の場合は Synthesis 用モデル（未設定なら default にフォールバック）を使う
+ * Web モード用: X-LLM-API-Key ヘッダーを含む共通ヘッダー。
+ *
+ * resolveModelConfig (server) はヘッダーを最優先するため、Embedding や Synthesis の
+ * モデルを切り替えたい場合はヘッダー側で適切な認証情報を送る必要がある。
+ * - "default":   default chat モデル
+ * - "synthesis": Synthesis 用モデル（未設定なら default）
+ * - "embedding": Embedding 用モデル（未設定なら default）
  */
-function wikiHeaders(mode: "default" | "synthesis" = "default"): Record<string, string> {
+function wikiHeaders(mode: "default" | "synthesis" | "embedding" = "default"): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (!isTauri()) {
-    const model = mode === "synthesis" ? getSynthesisLLMModel() : getDefaultLLMModel();
+    const model =
+      mode === "synthesis" ? getSynthesisLLMModel()
+      : mode === "embedding" ? getEmbeddingLLMModel()
+      : getDefaultLLMModel();
     if (model) {
       h["X-LLM-API-Key"] = JSON.stringify({
         provider: model.provider,
@@ -703,7 +711,7 @@ export async function embedWikiSections(
     const embModel = getEmbeddingModel();
     const res = await fetch(`${API_BASE}/embed`, {
       method: "POST",
-      headers: wikiHeaders(),
+      headers: wikiHeaders("embedding"),
       body: JSON.stringify({
         texts: sections,
         ...(embModel ? { embedding_model: embModel } : {}),

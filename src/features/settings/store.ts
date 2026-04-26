@@ -166,6 +166,18 @@ export function getSynthesisLLMModel(): LLMModelConfig | undefined {
   return found ?? getDefaultLLMModel();
 }
 
+/** Embedding 用の LLMModelConfig を取得する。
+ *  embeddingModel 設定が空の場合は default にフォールバック（embeddings が動かない場合あり）。
+ *  Web モードでは `wikiHeaders("embedding")` でこの認証情報をヘッダーに入れる必要がある —
+ *  そうしないと resolveModelConfig がデフォルトの chat モデルでヘッダーを上書きしてしまう。
+ */
+export function getEmbeddingLLMModel(): LLMModelConfig | undefined {
+  const embName = getEmbeddingModel();
+  if (!embName) return getDefaultLLMModel();
+  const found = getLLMModels().find((m) => m.name === embName);
+  return found ?? getDefaultLLMModel();
+}
+
 /** AI バックエンドが利用可能かどうか（ビルトインバックエンドは常に available） */
 export function isAgentConfigured(): boolean {
   return true;

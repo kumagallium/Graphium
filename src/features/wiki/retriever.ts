@@ -3,7 +3,7 @@
 // システムプロンプトに注入するコンテキスト文字列として返す
 
 import { embeddingStore, type SearchResult } from "../../lib/embedding-store";
-import { getEmbeddingModel, getDefaultLLMModel } from "../settings/store";
+import { getEmbeddingModel, getEmbeddingLLMModel } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 
 const TOP_K = 5;
@@ -23,7 +23,9 @@ export async function retrieveWikiContext(
     const embModel = getEmbeddingModel();
     const embedHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (!isTauri()) {
-      const model = getDefaultLLMModel();
+      // Embedding 用の認証情報を送る（resolveModelConfig がヘッダーを最優先するため、
+      // ここで chat モデルを送ると body.embedding_model が無視されてしまう）
+      const model = getEmbeddingLLMModel();
       if (model) {
         embedHeaders["X-LLM-API-Key"] = JSON.stringify({
           provider: model.provider, modelId: model.modelId,
