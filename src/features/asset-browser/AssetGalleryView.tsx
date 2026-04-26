@@ -282,6 +282,8 @@ export type AssetGalleryViewProps = {
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
+  /** ファイル直接アップロード（image/video/audio/pdf のみ使用、ノート非経由） */
+  onUploadMedia?: (file: File) => Promise<string>;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
@@ -301,6 +303,7 @@ export function AssetGalleryView({
   onDeleteMedia,
   onRenameMedia,
   onAddUrlBookmark,
+  onUploadMedia,
   onIngestMedia,
   onCreateProvNote,
   resolveKnowledgeWikiId,
@@ -313,6 +316,37 @@ export function AssetGalleryView({
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
   const [showUrlModal, setShowUrlModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const acceptByType: Record<MediaType, string> = {
+    image: "image/*",
+    video: "video/*",
+    audio: "audio/*",
+    pdf: "application/pdf",
+    url: "",
+    other: "",
+  };
+
+  const handleFilePicked = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0 || !onUploadMedia) return;
+      setUploading(true);
+      try {
+        for (const file of Array.from(files)) {
+          await onUploadMedia(file);
+        }
+      } catch (err) {
+        console.error("メディアアップロード失敗:", err);
+        alert(t("asset.uploadFailed"));
+      } finally {
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [onUploadMedia, t]
+  );
 
   const handleSort = useCallback((key: SortKey) => {
     setSortKey((prev) => {
@@ -387,6 +421,26 @@ export function AssetGalleryView({
             <Plus size={12} />
             {t("asset.urlAdd")}
           </button>
+        )}
+        {mediaType !== "url" && onUploadMedia && (
+          <>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              <Plus size={12} />
+              {uploading ? t("asset.uploading") : t("asset.upload")}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={acceptByType[mediaType]}
+              multiple
+              onChange={handleFilePicked}
+              className="hidden"
+            />
+          </>
         )}
       </div>
 

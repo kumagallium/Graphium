@@ -2,7 +2,8 @@
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StickyNote, Trash2, ClipboardCopy, Network, History } from "lucide-react";
+import { StickyNote, Trash2, ClipboardCopy, Network, History, Plus } from "lucide-react";
+import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
@@ -518,6 +519,8 @@ export function MemoGalleryView({
   onEditMemo,
   onNavigateNote,
   insertDisabled,
+  onCreateMemo,
+  creating,
 }: {
   captureIndex: CaptureIndex | null;
   loading: boolean;
@@ -527,11 +530,24 @@ export function MemoGalleryView({
   onEditMemo?: (captureId: string, newText: string) => void;
   onNavigateNote?: (noteId: string) => void;
   insertDisabled?: boolean;
+  /** 新規メモ作成（PC からの直接入力） */
+  onCreateMemo?: (text: string) => Promise<void>;
+  creating?: boolean;
 }) {
   const t = useT();
   const captures = captureIndex?.captures ?? [];
   const [pendingInsert, setPendingInsert] = useState<{ id: string; text: string } | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
+  const [showCaptureDialog, setShowCaptureDialog] = useState(false);
+
+  const handleCreateSubmit = useCallback(
+    async (text: string) => {
+      if (!onCreateMemo) return;
+      await onCreateMemo(text);
+      setShowCaptureDialog(false);
+    },
+    [onCreateMemo]
+  );
 
   const handleInsertAndKeep = useCallback(() => {
     if (!pendingInsert || !onInsertMemo) return;
@@ -559,6 +575,16 @@ export function MemoGalleryView({
         <span className="text-xs text-muted-foreground">
           {loading ? t("common.loading") : t("memo.count", { count: String(captures.length) })}
         </span>
+        {onCreateMemo && (
+          <button
+            onClick={() => setShowCaptureDialog(true)}
+            disabled={creating}
+            className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            <Plus size={12} />
+            {t("memo.new")}
+          </button>
+        )}
       </div>
 
       {/* 挿入先のヒント */}
@@ -612,6 +638,15 @@ export function MemoGalleryView({
           onDelete={onDeleteMemo ? () => { onDeleteMemo(detailEntry.id); setDetailEntry(null); } : undefined}
           onNavigateNote={onNavigateNote}
           onEdit={onEditMemo ? (id, text) => { onEditMemo(id, text); setDetailEntry({ ...detailEntry, text }); } : undefined}
+        />
+      )}
+
+      {/* 新規作成ダイアログ */}
+      {showCaptureDialog && onCreateMemo && (
+        <CaptureDialog
+          onSubmit={handleCreateSubmit}
+          onClose={() => setShowCaptureDialog(false)}
+          submitting={creating ?? false}
         />
       )}
     </div>

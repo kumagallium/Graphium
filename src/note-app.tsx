@@ -3189,6 +3189,7 @@ export function NoteApp() {
             onDeleteMedia={fm.handleDeleteMedia}
             onRenameMedia={handleRenameMediaWithBlockSync}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
+            onUploadMedia={fm.handleUploadMedia}
             resolveKnowledgeWikiId={(entry) => {
               if (entry.type !== "url" || !entry.url) return undefined;
               return appKnowledgeMap.get(`url:${entry.url}`)?.[0]?.noteId;
@@ -3284,6 +3285,8 @@ export function NoteApp() {
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
             insertDisabled={!fm.activeFileId}
+            onCreateMemo={capture.handleCreateCapture}
+            creating={capture.capturing}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView
