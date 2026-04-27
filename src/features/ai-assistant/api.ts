@@ -36,7 +36,6 @@ function apiHeaders(
 export type AgentRunRequest = {
   message: string;
   session_id?: string;
-  profile?: string;
   custom_instructions?: string;
   server_names?: string[];
   disabled_tools?: string[];
@@ -98,26 +97,6 @@ export async function fetchModels(): Promise<ModelsResponse> {
   return res.json();
 }
 
-export type ProfileInfo = {
-  id: string;
-  name: string;
-  description: string;
-};
-
-export type ProfilesResponse = {
-  profiles: ProfileInfo[];
-};
-
-/**
- * プロファイル一覧を取得する
- */
-export async function fetchProfiles(): Promise<ProfilesResponse> {
-  const res = await fetch(`${apiBase()}/profiles`, { headers: apiHeaders() });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch profiles: ${res.status}`);
-  }
-  return res.json();
-}
 
 /**
  * AI にセッションタイトル（15文字以内の要約）を生成させる

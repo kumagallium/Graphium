@@ -291,6 +291,22 @@ export function FileSidebar({
                   </button>
                 );
               })}
+              {onShowSkillList && (
+                <button
+                  onClick={onShowSkillList}
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                    skillActive
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  }`}
+                >
+                  <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
+                  <span className="flex-1 text-left">Skill</span>
+                  {skillCount > 0 && (
+                    <span className="text-xs text-muted-foreground">{skillCount}</span>
+                  )}
+                </button>
+              )}
               {onShowWikiLog && (
                 <button
                   onClick={onShowWikiLog}
@@ -315,22 +331,6 @@ export function FileSidebar({
                 >
                   <span className="text-muted-foreground shrink-0"><ShieldCheck size={14} /></span>
                   <span className="flex-1 text-left">Health Check</span>
-                </button>
-              )}
-              {onShowSkillList && (
-                <button
-                  onClick={onShowSkillList}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                    skillActive
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  }`}
-                >
-                  <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
-                  <span className="flex-1 text-left">Skill</span>
-                  {skillCount > 0 && (
-                    <span className="text-xs text-muted-foreground">{skillCount}</span>
-                  )}
                 </button>
               )}
             </div>

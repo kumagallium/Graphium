@@ -32,19 +32,14 @@ const selectStyle: React.CSSProperties = {
 // ── モーダル静的モック ──
 function MockSettingsModal({
   initialModel = "",
-  initialProfile = "",
   models = ["Claude Sonnet", "GPT-4o"],
-  profiles = ["science", "general"],
   saved = false,
 }: {
   initialModel?: string;
-  initialProfile?: string;
   models?: string[];
-  profiles?: string[];
   saved?: boolean;
 }) {
   const [model, setModel] = useState(initialModel);
-  const [profile, setProfile] = useState(initialProfile);
 
   return (
     <div
@@ -102,30 +97,6 @@ function MockSettingsModal({
 
         {/* コンテンツ */}
         <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* プロファイル */}
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: tokens.fg, marginBottom: 6 }}>
-              Profile
-            </div>
-            <div style={{ position: "relative" }}>
-              <select
-                value={profile}
-                onChange={(e) => setProfile(e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">Default (science)</option>
-                {profiles.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-              <ChevronDown
-                size={14}
-                color={tokens.mutedFg}
-                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-              />
-            </div>
-          </div>
-
           {/* モデル */}
           <div>
             <div style={{ fontSize: 12, fontWeight: 500, color: tokens.fg, marginBottom: 6 }}>
@@ -221,7 +192,6 @@ export const Saved: Story = {
   name: "Saved",
   args: {
     initialModel: "Claude Sonnet",
-    initialProfile: "science",
     saved: true,
   },
 };

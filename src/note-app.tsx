@@ -70,7 +70,7 @@ import {
 } from "./features/ai-assistant";
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
-import { SettingsModal, isAgentConfigured, getSelectedModel, getSelectedProfile, getDisabledTools, getDefaultLLMModel, getChatSynthesisLLMModel, getAutoIngestChat } from "./features/settings";
+import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getDefaultLLMModel, getChatSynthesisLLMModel, getAutoIngestChat } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -1133,7 +1133,6 @@ function NoteEditorInner({
         const response = await runAgent({
           message: userMessage,
           session_id: aiAssistant.sessionId ?? undefined,
-          profile: getSelectedProfile(),
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
           ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
@@ -1236,7 +1235,6 @@ function NoteEditorInner({
     const message = systemHint ? `${systemHint}\n\n${prompt}` : prompt;
     const response = await runAgent({
       message,
-      profile: getSelectedProfile(),
       ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
       ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
       language: getLocale(),

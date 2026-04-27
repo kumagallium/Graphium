@@ -9,9 +9,18 @@ import {
 } from "./note-list-source";
 import type { GraphiumIndex } from "./index-file";
 import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToolbar";
-import { formatRelativeTime } from "./recent-notes-store";
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
+
+// 日付を YYYY-MM-DD 形式で表示
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
@@ -87,7 +96,7 @@ export function NoteListView({
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("outgoingLinkCount");
+  const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -302,7 +311,13 @@ export function NoteListView({
                 </th>
                 <th className="py-2 px-2 w-[96px]" title={t("nav.authorTooltip")}>{t("nav.author")}</th>
                 <th
-                  className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground"
+                  className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("createdAt")}
+                >
+                  {t("nav.createdDate")}{sortKey === "createdAt" && (sortDir === "desc" ? " ↓" : " ↑")}
+                </th>
+                <th
+                  className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("modifiedAt")}
                 >
                   {t("nav.modifiedDate")}{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
@@ -431,8 +446,11 @@ export function NoteListView({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground">
-                    {formatRelativeTime(entry.modifiedAt)}
+                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                    {formatDate(entry.createdAt)}
+                  </td>
+                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                    {formatDate(entry.modifiedAt)}
                   </td>
                   {/* 個別削除ボタン（ホバーで表示） */}
                   {onDeleteNotes && (

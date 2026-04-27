@@ -38,8 +38,6 @@ export type Settings = {
   /** チャット応答を自動的に Wiki に取り込むか（true がデフォルト）。
    *  wiki-worthy 判定で worthy となった会話のみ ingest される。 */
   autoIngestChat: boolean;
-  /** AI プロファイル名（空文字 = "science"） */
-  profile: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
   /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる） */
@@ -57,7 +55,6 @@ const DEFAULT_SETTINGS: Settings = {
   embeddingModel: "",
   chatSynthesisModel: "",
   autoIngestChat: true,
-  profile: "",
   disabledTools: [],
   registryUrl: "",
   customLabels: {},
@@ -140,11 +137,6 @@ export function saveSettings(settings: Settings): void {
 /** 選択中のモデル名を取得する（空文字 = サーバーデフォルト） */
 export function getSelectedModel(): string {
   return loadSettings().model;
-}
-
-/** 選択中のプロファイル名を取得する（空文字なら "science"） */
-export function getSelectedProfile(): string {
-  return loadSettings().profile || "science";
 }
 
 /** 無効にしたツール名リストを取得する */

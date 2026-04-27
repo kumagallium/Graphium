@@ -22,9 +22,7 @@ import { Input } from "@ui/form-field";
 import { loadSettings, saveSettings, type Settings, type CustomLabels, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, LATIN_FONTS, JP_FONTS, applyFontMode } from "./store";
 import {
   fetchModels,
-  fetchProfiles,
   type ModelInfo,
-  type ProfileInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
 import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
@@ -129,7 +127,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [embeddingModel, setEmbeddingModel] = useState("");
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   const [autoIngestChat, setAutoIngestChat] = useState(true);
-  const [profile, setProfile] = useState("");
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
@@ -140,8 +137,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
-  const [profilesLoading, setProfilesLoading] = useState(false);
 
   // ヘルスチェック
   const [health, setHealth] = useState<HealthStatus>(null);
@@ -286,7 +281,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setEmbeddingModel(settings.embeddingModel ?? "");
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
     setAutoIngestChat(settings.autoIngestChat ?? true);
-    setProfile(settings.profile);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
     setCustomLabels(settings.customLabels ?? {});
@@ -298,12 +292,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setAddError("");
 
     refreshModels();
-
-    setProfilesLoading(true);
-    fetchProfiles()
-      .then((res) => setProfiles(res.profiles))
-      .catch(() => setProfiles([]))
-      .finally(() => setProfilesLoading(false));
 
     // Registry URL ヘッダーを付与
     const regUrl = settings.registryUrl ?? "";
@@ -562,11 +550,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, chatSynthesisModel, autoIngestChat, profile, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont });
+    saveSettings({ model, embeddingModel, chatSynthesisModel, autoIngestChat, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, autoIngestChat, profile, disabledTools, registryUrl, customLabels, latinFont, jpFont, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, autoIngestChat, disabledTools, registryUrl, customLabels, latinFont, jpFont, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -733,30 +721,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             <div className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground/80 border-b border-border pb-1 pt-2">
               {t("settings.section.ai")}
             </div>
-            {/* プロファイル選択 */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">
-                {t("settings.profile")}
-              </label>
-              <div className="relative">
-                <select
-                  value={profile}
-                  onChange={(e) => { setProfile(e.target.value); setSaved(false); }}
-                  disabled={profilesLoading || profiles.length === 0}
-                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {profilesLoading ? t("settings.profileLoading") : profiles.length === 0 ? t("settings.profileNone") : t("settings.profileDefault")}
-                  </option>
-                  {profiles.map((p) => (
-                    <option key={p.id} value={p.name}>{p.name} — {p.description}</option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1.5">{t("settings.profileHelp")}</p>
-            </div>
-
             {/* モデル選択 */}
             <div>
               <label className="text-xs font-semibold text-foreground mb-1 block">
