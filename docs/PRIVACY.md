@@ -1,52 +1,37 @@
 # Privacy Policy
 
-**Last updated:** 2026-03-23
+**Last updated:** 2026-04-27
 
-Graphium is an open-source, client-side note editor with provenance tracking. This privacy policy explains how the application handles your data.
+Graphium is an open-source, local-first note editor with provenance tracking. This privacy policy explains how the application handles your data.
 
 ## What Graphium Does
 
-Graphium is a block-based note editor that optionally integrates with Google Drive for saving and loading notes. All editing happens in your browser — there is no backend server.
+Graphium is a block-based note editor. Notes are stored on your filesystem (desktop app) or in your browser's IndexedDB (web). All editing happens locally — Graphium itself does not send your notes anywhere.
 
 ## Data Collection
 
 **Graphium does not collect, store, or transmit any personal data to any server.**
 
 - No analytics or tracking
-- No cookies (beyond what Google Identity Services requires for authentication)
-- No server-side storage — all processing happens locally in your browser
-
-## Google Drive Integration
-
-When you choose to sign in with Google, Graphium requests the following permission:
-
-- **`drive.file`** — Access only to files that Graphium creates or that you explicitly open with Graphium
-
-### What this means:
-
-- Graphium **can** read and write its own files in your Google Drive
-- Graphium **cannot** access any other files in your Google Drive
-- Your Google access token is stored only in `sessionStorage` (cleared when you close the browser tab)
-- No refresh tokens are stored
-- You can revoke access at any time via [Google Account Permissions](https://myaccount.google.com/permissions)
+- No cookies
+- No account or sign-in
+- No server-side note storage
 
 ## Data Storage
 
 | Data | Where it is stored |
 |------|-------------------|
-| Notes (local mode) | Your browser's local storage |
-| Notes (Drive mode) | Your Google Drive, in a "Graphium" folder |
-| Authentication token | Browser `sessionStorage` (temporary) |
+| Notes (desktop app) | Plain JSON files on your filesystem (default: `~/Documents/Graphium/`, configurable in Settings) |
+| Notes (web / Docker self-host) | Your browser's IndexedDB |
 | Personal information | Nowhere — not collected |
+
+If you point the desktop app's save folder at a synced cloud folder (Google Drive / iCloud / Dropbox / etc.), your OS-level cloud sync will replicate the files to that provider. Graphium itself does not communicate with any cloud storage API.
 
 ## Third-Party Services
 
-Graphium uses only:
+Graphium does not use any third-party services for storage or authentication.
 
-- **Google Identity Services** — for OAuth 2.0 authentication
-- **Google Drive API** — for file storage (only when you sign in)
-
-No other third-party services are used.
+If you configure an LLM provider (optional, opt-in) for AI features, your prompts are sent to that provider per their terms — Graphium does not relay or log this traffic.
 
 ## Children's Privacy
 

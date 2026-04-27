@@ -2,7 +2,7 @@
 // ノート作成・遷移に必要な情報をカスタムブロック render に提供する
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { GraphiumFile } from "../../lib/google-drive";
+import type { GraphiumFile } from "../../lib/document-types";
 
 type IndexTableContextValue = {
   // Google Drive 上のファイル一覧

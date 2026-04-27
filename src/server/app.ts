@@ -10,7 +10,6 @@ import modelsRoutes from "./routes/models.js";
 import profilesRoutes from "./routes/profiles.js";
 import agentRoutes from "./routes/agent.js";
 import toolsRoutes from "./routes/tools.js";
-import authRoutes from "./routes/auth.js";
 import wikiRoutes from "./routes/wiki.js";
 import provRoutes from "./routes/prov.js";
 
@@ -55,7 +54,6 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/profiles", profilesRoutes);
   app.route("/api/agent", agentRoutes);
   app.route("/api/tools", toolsRoutes);
-  app.route("/api/auth", authRoutes);
   app.route("/api/wiki", wikiRoutes);
   app.route("/api/prov", provRoutes);
 

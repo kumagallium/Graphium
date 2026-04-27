@@ -1,7 +1,7 @@
 // PROV-DM の全機能を示すテンプレート
 // 手順・使用したもの・属性・結果・前手順リンクを含む
 
-import type { GraphiumDocument } from "./google-drive";
+import type { GraphiumDocument } from "./document-types";
 
 // ブロック ID（ラベル・リンクとの紐付け用）
 const ids = {

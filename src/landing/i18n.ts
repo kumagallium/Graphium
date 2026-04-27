@@ -53,7 +53,7 @@ export const en = {
     "Every line is on GitHub. Self-host with Docker, audit the code, send a PR.",
   "trust.storage.title": "Your storage",
   "trust.storage.body":
-    "Notes save to Google Drive, your local browser, or your filesystem on the desktop app. No vendor database in between.",
+    "Notes are plain JSON files on your filesystem (desktop) or in your browser (web). Point the desktop app at a Google Drive / iCloud / Dropbox synced folder if you want sync — no extra OAuth required.",
   "trust.ai.title": "AI is opt-in",
   "trust.ai.body":
     "Without an LLM Graphium is just a clean linked-note editor. Plug one in to activate the Knowledge Layer.",
@@ -81,7 +81,7 @@ export const en = {
   // Get started
   "start.heading": "Get started.",
   "start.online.title": "Try online",
-  "start.online.body": "No install. Browser + optional Google Drive sync.",
+  "start.online.body": "No install. Browser-local storage — your notes stay in this browser.",
   "start.online.cta": "Open Graphium",
   "start.desktop.title": "Desktop app",
   "start.desktop.body": "macOS Apple Silicon. Local files. Native window.",
@@ -138,7 +138,7 @@ export const ja: Record<keyof typeof en, string> = {
     "コードは全部 GitHub にあります。Docker でセルフホストもでき、監査も PR も自由です。",
   "trust.storage.title": "あなたのストレージ",
   "trust.storage.body":
-    "ノートは Google Drive、ローカルブラウザ、または（デスクトップ版なら）あなたのファイルシステムに保存されます。間にベンダー DB は挟みません。",
+    "ノートはあなたのファイルシステム（デスクトップ版）またはブラウザ（Web 版）にプレーンな JSON で保存されます。Google Drive / iCloud / Dropbox の同期フォルダを保存先に指定すれば、追加の OAuth 連携なしでクラウド同期できます。",
   "trust.ai.title": "AI はオプトイン",
   "trust.ai.body":
     "LLM を繋がなくても、シンプルなリンクノートエディタとして動きます。繋ぐと Knowledge Layer が起動します。",
@@ -164,7 +164,7 @@ export const ja: Record<keyof typeof en, string> = {
 
   "start.heading": "はじめる。",
   "start.online.title": "オンラインで試す",
-  "start.online.body": "インストール不要。ブラウザ + 任意の Google Drive 同期。",
+  "start.online.body": "インストール不要。ブラウザ内に保存されます。",
   "start.online.cta": "Graphium を開く",
   "start.desktop.title": "デスクトップアプリ",
   "start.desktop.body": "macOS Apple Silicon。ローカルファイル。ネイティブウィンドウ。",

@@ -14,7 +14,6 @@ export type FileSidebarProps = {
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
   onRefresh: () => void;
-  onSignOut: () => void;
   onShowReleaseNotes: () => void;
   onShowSettings: () => void;
   agentConfigured: boolean;
@@ -86,7 +85,6 @@ export function FileSidebar({
   onSelect,
   onNewNote,
   onRefresh,
-  onSignOut,
   onShowReleaseNotes,
   onShowSettings,
   agentConfigured,
@@ -356,12 +354,6 @@ export function FileSidebar({
           className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {t("sidebar.releaseNotes")}
-        </button>
-        <button
-          onClick={onSignOut}
-          className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t("common.signOut")}
         </button>
       </div>
     </aside>

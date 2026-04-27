@@ -1,7 +1,7 @@
 // @ をトリガーの参照リンクオートコンプリート
 // 知識層リンク（reference）を作成する
 
-import type { GraphiumFile } from "../../lib/google-drive";
+import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 
 // 参照候補の型

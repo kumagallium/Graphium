@@ -8,7 +8,7 @@ import {
   type GraphiumIndex,
   type NoteIndexEntry,
 } from "./index-file";
-import type { GraphiumDocument, GraphiumFile } from "../../lib/google-drive";
+import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 
 // テスト用のモック GraphiumDocument を構築するヘルパー
 function mockDoc(overrides: Partial<GraphiumDocument> = {}): GraphiumDocument {

@@ -9,7 +9,7 @@ import { useAiAssistant } from "./store";
 import { fetchModels } from "./api";
 import { ensureSidecar } from "../../lib/sidecar";
 import { useT } from "../../i18n";
-import type { ChatMessage, ScopeChat } from "../../lib/google-drive";
+import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 
 /** チャットに添付されたノート参照 */

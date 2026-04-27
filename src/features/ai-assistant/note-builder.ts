@@ -1,6 +1,6 @@
 // AI 回答から派生ノートの GraphiumDocument を組み立てる
 
-import type { GraphiumDocument } from "../../lib/google-drive";
+import type { GraphiumDocument } from "../../lib/document-types";
 import type { AgentRunResponse } from "./api";
 import { extractLabelMarkersFromBlocks } from "./label-markers";
 

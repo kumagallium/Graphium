@@ -31,5 +31,3 @@ jobs:
 
       - name: Build check
         run: pnpm build
-        env:
-          VITE_GOOGLE_CLIENT_ID: dummy-for-ci

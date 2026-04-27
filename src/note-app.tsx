@@ -132,7 +132,7 @@ import { useFileManager } from "./hooks/use-file-manager";
 import { useCapture } from "./hooks/use-capture";
 
 // components
-import { LoginScreen } from "./components/LoginScreen";
+import { WelcomeDialog } from "./components/WelcomeDialog";
 import { FileSidebar } from "./components/FileSidebar";
 import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
@@ -441,7 +441,7 @@ function NoteEditorInner({
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // 前回保存時のページ状態（差分計算用）
-  const prevPageRef = useRef<import("./lib/google-drive").GraphiumPage | null>(
+  const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
   );
   // 最新の documentProvenance（保存ごとに更新）
@@ -2170,7 +2170,7 @@ class ListSidePeekBoundary extends Component<
 
 // ── メインアプリ ──
 export function NoteApp() {
-  const { authenticated, loading: authLoading, authError, signIn, signOut, switchProvider } = useStorage();
+  const { authenticated, loading: authLoading } = useStorage();
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
@@ -3091,18 +3091,13 @@ export function NoteApp() {
     );
   }
 
-  // 未認証
+  // ローカルストレージは init() 完了後に signedIn=true になるため通常ここは通らない。
+  // 何らかの理由で初期化に失敗した場合のみ、簡素なフォールバックを表示する。
   if (!authenticated) {
     return (
-      <>
-        <LoginScreen onSignIn={() => signIn("google-drive")} onSelectLocal={() => switchProvider(isTauri() ? "filesystem" : "local")} />
-        {authError && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 max-w-sm px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm shadow-lg">
-            <p className="font-medium">{t("login.authError")}</p>
-            <p className="text-xs mt-1 opacity-80">{authError}</p>
-          </div>
-        )}
-      </>
+      <div className="flex items-center justify-center h-dvh bg-background">
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      </div>
     );
   }
 
@@ -3111,7 +3106,6 @@ export function NoteApp() {
     onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
     onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
-    onSignOut: signOut,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
@@ -3612,6 +3606,7 @@ export function NoteApp() {
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
       )}
+      <WelcomeDialog />
       <SettingsModal
         isOpen={showSettings}
         onClose={() => {

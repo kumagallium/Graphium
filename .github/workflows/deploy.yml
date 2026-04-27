@@ -51,8 +51,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-        env:
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

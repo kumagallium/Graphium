@@ -168,6 +168,119 @@ fn set_graphium_root(path: Option<String>) -> Result<GraphiumRootInfo, String> {
     get_graphium_root()
 }
 
+// --- 旧 Drive レイアウトの検知・移行（v0.4 で OAuth 撤去） ---
+//
+// 旧レイアウト: ルート / wiki/ / skills/ 直下に `*.graphium.json`
+// 新レイアウト: notes/ / wiki/ / skills/ 直下に `*.json`
+//
+// ユーザーが Drive Desktop で同期していた `Graphium/` フォルダを保存先に指定した場合、
+// 既存ノートを取りこぼさないため一回限りの移行を提供する。
+
+/// 旧 Drive レイアウトの検知結果
+#[derive(Serialize, Deserialize, Default)]
+pub struct LegacyDriveScan {
+    pub note_count: usize,
+    pub wiki_count: usize,
+    pub skill_count: usize,
+}
+
+impl LegacyDriveScan {
+    fn total(&self) -> usize {
+        self.note_count + self.wiki_count + self.skill_count
+    }
+}
+
+fn count_legacy_files(dir: &PathBuf) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut count = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.ends_with(".graphium.json") || name.ends_with(".provnote.json") {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// 旧 Drive レイアウトのノートが Graphium ルート直下にあるか調べる
+#[tauri::command]
+fn detect_legacy_drive_layout() -> Result<LegacyDriveScan, String> {
+    let root = graphium_root()?;
+    let mut scan = LegacyDriveScan::default();
+    if root.exists() {
+        scan.note_count = count_legacy_files(&root);
+    }
+    let wiki = root.join("wiki");
+    if wiki.exists() {
+        scan.wiki_count = count_legacy_files(&wiki);
+    }
+    let skills = root.join("skills");
+    if skills.exists() {
+        scan.skill_count = count_legacy_files(&skills);
+    }
+    Ok(scan)
+}
+
+fn migrate_legacy_dir(src: &PathBuf, dst: &PathBuf) -> Result<usize, String> {
+    if !src.exists() {
+        return Ok(0);
+    }
+    fs::create_dir_all(dst).map_err(|e| format!("ディレクトリ作成失敗: {e}"))?;
+    let entries = fs::read_dir(src).map_err(|e| format!("ディレクトリ読み取り失敗: {e}"))?;
+    let mut moved = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        // `xxx.graphium.json` / `xxx.provnote.json` → `xxx.json`
+        let new_name = if let Some(stem) = name.strip_suffix(".graphium.json") {
+            format!("{stem}.json")
+        } else if let Some(stem) = name.strip_suffix(".provnote.json") {
+            format!("{stem}.json")
+        } else {
+            continue;
+        };
+        let target = dst.join(&new_name);
+        if target.exists() {
+            // 衝突回避: 既存ファイルがある場合はスキップ（手動解決を促す）
+            continue;
+        }
+        fs::rename(&path, &target).map_err(|e| format!("ファイル移動失敗 ({name}): {e}"))?;
+        moved += 1;
+    }
+    Ok(moved)
+}
+
+/// 旧 Drive レイアウトを新レイアウトへ移行する
+/// - ルート直下の `*.graphium.json` → `notes/*.json`
+/// - `wiki/*.graphium.json` → `wiki/*.json`（同じディレクトリ内、拡張子のみ変更）
+/// - `skills/*.graphium.json` → `skills/*.json`
+#[tauri::command]
+fn migrate_legacy_drive_layout() -> Result<LegacyDriveScan, String> {
+    let root = graphium_root()?;
+    let mut moved = LegacyDriveScan::default();
+    moved.note_count = migrate_legacy_dir(&root, &root.join("notes"))?;
+    let wiki = root.join("wiki");
+    moved.wiki_count = migrate_legacy_dir(&wiki, &wiki)?;
+    let skills = root.join("skills");
+    moved.skill_count = migrate_legacy_dir(&skills, &skills)?;
+    if moved.total() > 0 {
+        // インデックスを再構築させる
+        let _ = fs::remove_file(appdata_dir()?.join("note-index.json"));
+    }
+    Ok(moved)
+}
+
 /// ファイル情報
 #[derive(Serialize, Deserialize)]
 pub struct FileInfo {
@@ -556,6 +669,8 @@ pub fn run() {
             get_media_path,
             get_graphium_root,
             set_graphium_root,
+            detect_legacy_drive_layout,
+            migrate_legacy_drive_layout,
             shutdown_ack,
         ])
         .setup(|app| {

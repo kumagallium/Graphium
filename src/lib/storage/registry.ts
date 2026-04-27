@@ -1,7 +1,6 @@
 // ストレージプロバイダーの登録・切り替え管理
 
 import type { StorageProvider } from "./types";
-import { GoogleDriveProvider } from "./providers/google-drive";
 import { LocalStorageProvider } from "./providers/local";
 import { LocalFilesystemProvider } from "./providers/filesystem";
 import { isTauri } from "../platform";
@@ -40,23 +39,28 @@ export function getAvailableProviders(): StorageProvider[] {
 
 /** デフォルトプロバイダーで初期化 */
 export function initProviders(): void {
-  // 既に初期化済みならスキップ
   if (providers.size > 0) return;
 
-  // プロバイダーを登録
-  registerProvider(new GoogleDriveProvider());
+  // ローカル（IndexedDB）はどの環境でも利用可能
   registerProvider(new LocalStorageProvider());
+  // Tauri 環境では OS ファイルシステムを優先
   if (isTauri()) {
     registerProvider(new LocalFilesystemProvider());
   }
 
-  // 保存された設定を復元
-  // Tauri: 前回の選択がなければログイン画面を表示（デフォルトなし）
-  // Web: 前回の選択がなければ google-drive（従来の動作を維持）
-  const defaultProvider = isTauri() ? null : "google-drive";
-  let savedId = (typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null) ?? defaultProvider;
+  // デフォルト: Tauri なら filesystem、Web/Docker なら local（IndexedDB）
+  const defaultId = isTauri() ? "filesystem" : "local";
+  let savedId = (typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null) ?? defaultId;
 
-  // Tauri 環境で IndexedDB 版（local）が保存されていたら filesystem へマイグレーション
+  // 過去バージョンの遺産（v0.4 で OAuth 撤去）: google-drive が保存されていたら現環境のデフォルトに置き換える
+  if (savedId === "google-drive") {
+    savedId = defaultId;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, savedId);
+    }
+  }
+
+  // Tauri 環境で IndexedDB 版（local）が保存されていたら filesystem へ移行
   if (isTauri() && savedId === "local") {
     savedId = "filesystem";
     if (typeof localStorage !== "undefined") {
@@ -64,19 +68,10 @@ export function initProviders(): void {
     }
   }
 
-  if (savedId) {
-    const provider = providers.get(savedId);
-    if (provider) {
-      activeProvider = provider;
-    } else {
-      // 不明なプロバイダー → フォールバック
-      activeProvider = providers.get(isTauri() ? "filesystem" : "google-drive")!;
-    }
-  } else {
-    // 未選択状態: filesystem をセットするが signIn しない（ログイン画面表示用）
-    activeProvider = providers.get(isTauri() ? "filesystem" : "google-drive")!;
-  }
+  const provider = providers.get(savedId) ?? providers.get(defaultId);
+  if (!provider) throw new Error("ストレージプロバイダーの初期化に失敗しました");
+  activeProvider = provider;
 }
 
-// モジュール読み込み時に即座に初期化（getActiveProvider() が常に使えるようにする）
+// モジュール読み込み時に即座に初期化
 initProviders();
