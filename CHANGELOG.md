@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.3.11](https://github.com/kumagallium/Graphium/compare/v0.3.10...v0.3.11) - 2026-04-27
+- docs: refresh README with recent features by @kumagallium in https://github.com/kumagallium/Graphium/pull/154
+- refactor: unify sidebar icons in RecentNotes with Lucide by @kumagallium in https://github.com/kumagallium/Graphium/pull/156
+- Revamp wiki ingester prompt for readability + add concept levels by @kumagallium in https://github.com/kumagallium/Graphium/pull/157
+- refactor: unify Add to Knowledge / Create PROV Note icons by @kumagallium in https://github.com/kumagallium/Graphium/pull/158
+- feat: detect Knowledge state and surface it across the UI by @kumagallium in https://github.com/kumagallium/Graphium/pull/160
+- Render markdown inline styles and chat citations in Wiki content by @kumagallium in https://github.com/kumagallium/Graphium/pull/161
+- feat: public landing page at /Graphium/, move app to /Graphium/app/ by @kumagallium in https://github.com/kumagallium/Graphium/pull/159
+- feat: Composer 'Add to Knowledge' card with keyboard navigation by @kumagallium in https://github.com/kumagallium/Graphium/pull/162
+- docs: add 'Beyond the editor' section for save-to-graphium skill by @kumagallium in https://github.com/kumagallium/Graphium/pull/163
+- feat: surface 'Already in Knowledge' state across dropdown, modal, peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/164
+- feat(settings): add Maintenance tab with bulk wiki Regenerate by @kumagallium in https://github.com/kumagallium/Graphium/pull/165
+- fix(landing): unlock html/body scrolling on the LP by @kumagallium in https://github.com/kumagallium/Graphium/pull/167
+- fix(landing): remove accent gradient so all sections share visual width by @kumagallium in https://github.com/kumagallium/Graphium/pull/168
+- feat(wiki): Synthesis model + error-propagation safeguards by @kumagallium in https://github.com/kumagallium/Graphium/pull/166
+- fix(landing): widen Hero/Problem text + restore gradient as full-viewport band by @kumagallium in https://github.com/kumagallium/Graphium/pull/169
+- fix(landing): align color tokens with editor (body / header / cards) by @kumagallium in https://github.com/kumagallium/Graphium/pull/171
+- fix(wiki): send embedding model credentials in X-LLM-API-Key by @kumagallium in https://github.com/kumagallium/Graphium/pull/170
+- fix(landing): tighten section spacing by @kumagallium in https://github.com/kumagallium/Graphium/pull/172
+- feat: direct upload to data list and PC memo creation by @kumagallium in https://github.com/kumagallium/Graphium/pull/173
+- feat(settings): rename Synthesis model to Chat & Synthesis model by @kumagallium in https://github.com/kumagallium/Graphium/pull/174
+- feat(list): unify note/wiki lists, drop profile feature by @kumagallium in https://github.com/kumagallium/Graphium/pull/175
+
 ## [v0.3.10](https://github.com/kumagallium/Graphium/compare/v0.3.9...v0.3.10) - 2026-04-25
 - [refactor] Introduce useBlockLifecycle facade for labels and provLinks by @kumagallium in https://github.com/kumagallium/Graphium/pull/134
 - [refactor] i18n internal keys for PROV labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/136
