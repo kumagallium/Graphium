@@ -21,8 +21,6 @@ services:
   graphium:
     build:
       context: .
-      args:
-        - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-}
     ports:
       - "5174:3001"
     volumes:

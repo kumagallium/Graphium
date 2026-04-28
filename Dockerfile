@@ -15,9 +15,6 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-ARG VITE_GOOGLE_CLIENT_ID=""
-ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
-
 RUN pnpm build
 
 # ── Stage 2: Runtime ──

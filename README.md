@@ -17,7 +17,7 @@ Graphium is designed around **progressive disclosure**. You choose how deep to g
 
 | Level | What you do | What you get |
 |-------|------------|--------------|
-| **Just notes** | Write and link notes with `@` references | A Zettelkasten-style linked notebook with Google Drive sync |
+| **Just notes** | Write and link notes with `@` references | A Zettelkasten-style linked notebook saved on your filesystem |
 | **Some labels** | Add `#` context labels to key blocks | Those blocks gain PROV-DM structure — a provenance graph emerges for the labeled parts |
 | **Full labeling** | Label all blocks systematically | Complete provenance tracking across your entire workflow |
 
@@ -29,11 +29,11 @@ This gradient of label density is a core design decision — not a limitation.
 
 **[→ Open Graphium on GitHub Pages](https://kumagallium.github.io/Graphium/)**
 
-No installation required — works in your browser. Notes are saved to Google Drive or your browser's local storage.
+No installation required — works in your browser. Notes are saved in this browser (IndexedDB).
 
 ### Desktop app
 
-Download the desktop app for offline use with local file storage. Google Drive sync is also available.
+Download the desktop app to save notes as plain JSON files on your filesystem. Point the save folder at a Google Drive / iCloud / Dropbox synced folder if you want cloud sync — no extra OAuth setup needed.
 
 | Platform | File | How to check |
 |----------|------|-------------|
@@ -108,7 +108,7 @@ When you connect an LLM, Graphium builds a **second layer** on top of your notes
 | **Retriever for AI chat** | Wiki context is injected into AI responses — the assistant remembers what you wrote last week without re-reading every note. |
 | **Auto-labeled answers** | AI replies inserted into the editor are automatically tagged with PROV-DM context labels (`[Procedure]`, `[Material]`, `[Result]`, …) and consecutive steps get linked with `informed_by` — a provenance graph emerges from the chat itself, no manual labeling required. |
 
-Wiki pages live in the same storage as your notes (Google Drive / local / Tauri filesystem) and are fully editable by hand. The AI will not overwrite your manual edits unless you explicitly ask it to rewrite a page. Every Wiki edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
+Wiki pages live in the same storage as your notes (browser IndexedDB or Tauri filesystem) and are fully editable by hand. The AI will not overwrite your manual edits unless you explicitly ask it to rewrite a page. Every Wiki edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
 
 AI Knowledge is **opt-in**: configure an LLM in **⚙ Settings → AI Setup** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
 
@@ -147,13 +147,13 @@ Graphium exports provenance as **[PROV-JSON-LD](https://www.w3.org/submissions/2
 
 ### Option 1: Use online (no setup)
 
-Visit **https://kumagallium.github.io/Graphium/** and start writing. Your notes are saved in your browser's local storage.
+Visit **https://kumagallium.github.io/Graphium/** and start writing. Your notes are saved in your browser's IndexedDB.
 
-To sync with Google Drive, sign in with your Google account from the sidebar.
+> **Want the same notes on multiple machines?** Use the [desktop app](#desktop-app) and point its save folder at a Google Drive / iCloud / Dropbox synced folder.
 
 ### Option 2: Run with Docker — editor only
 
-Run Graphium as a standalone editor — no AI, no external services. Just the note editor with Google Drive sync.
+Run Graphium as a standalone editor — no AI, no external services. Just the note editor.
 
 ```bash
 git clone https://github.com/kumagallium/Graphium.git
@@ -191,7 +191,13 @@ docker compose up -d
 2. Register an MCP server from a GitHub repository
 3. Tools appear in **⚙ Settings → AI Setup** and can be toggled on/off
 
-No `.env` editing required — everything is configured from the browser. Google Drive sync and Google OAuth work out of the box.
+No `.env` editing required — everything is configured from the browser.
+
+> **Self-hosting and storage**
+> Notes are stored in the browser's IndexedDB by default. To keep notes off the browser:
+> - **On a personal machine** running Docker: mount a Google Drive / iCloud / Dropbox synced folder to `/app/data` and the OS handles cloud sync.
+> - **On a remote VPS**: use [rclone](https://rclone.org/) or similar to sync `/app/data` ↔ your cloud storage of choice.
+> - Server-side filesystem storage (notes saved to `/app/data` and accessible across browsers) is on the roadmap — see [#G-DOCKER-SYNC](ideas.md).
 
 > **Note:** In Docker mode, all services run without API key authentication and are only accessible from your local machine (`localhost`).
 
@@ -218,7 +224,7 @@ pnpm install
 pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 ```
 
-Google Drive sync works without any configuration. AI features require the backend server — run `pnpm dev` which starts both the frontend and backend together. Go to **⚙ Settings → AI Setup** to add your LLM model.
+Notes are saved to your browser's IndexedDB by default. AI features require the backend server — run `pnpm dev` which starts both the frontend and backend together. Go to **⚙ Settings → AI Setup** to add your LLM model.
 
 ## Features
 
@@ -235,9 +241,8 @@ Google Drive sync works without any configuration. AI features require the backe
 - **Composer (⌘K)** — unified palette for note search (`#label` / `@author` filters), discovery cards, and AI ask
 - **Templates** — `/template` slash command with Plan and Run scaffolds (extensible)
 - **Reading-font setting** — pick between Atkinson Next, Inter, Lexend, and a default mix; tuned for dyslexia-aware reading
-- **Google Drive storage** — notes saved as `.graphium.json` files
-- **Google OAuth 2.0** authentication
-- **Desktop app** — Tauri-based native app with local file storage and Google Drive sync
+- **Local-first storage** — plain JSON files on your filesystem (desktop) or IndexedDB (browser)
+- **Desktop app** — Tauri-based native app with local file storage; point the save folder at a synced cloud folder (Drive/iCloud/Dropbox) for cross-device sync without OAuth
 - **Mobile PWA** — Quick capture (memos, photos, video, audio, bookmarks) with pull-to-refresh and media preview
 
 ### Screenshots
@@ -253,11 +258,11 @@ Google Drive sync works without any configuration. AI features require the backe
   </tr>
   <tr>
     <td><b>Document provenance history</b></td>
-    <td><b>Login screen</b></td>
+    <td></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/history.png" alt="Document provenance" width="400" /></td>
-    <td><img src="docs/screenshots/login.png" alt="Login" width="400" /></td>
+    <td></td>
   </tr>
 </table>
 
@@ -307,7 +312,7 @@ Graphium-specific extensions use the `graphium:` namespace (`https://graphium.ap
 
 ## Architecture
 
-Graphium is a **note editor with a built-in AI backend**. Notes are stored in Google Drive or the browser's local storage. AI features are powered by [Vercel AI SDK](https://ai-sdk.dev/) running on a Node.js backend (Hono) — no external AI server required.
+Graphium is a **note editor with a built-in AI backend**. Notes are stored on your local filesystem (desktop app) or in the browser's IndexedDB (web). AI features are powered by [Vercel AI SDK](https://ai-sdk.dev/) running on a Node.js backend (Hono) — no external AI server required.
 
 ```mermaid
 graph LR
@@ -325,7 +330,7 @@ graph LR
 | Editor | TypeScript / React / BlockNote.js |
 | AI Runtime | Vercel AI SDK / @ai-sdk/mcp |
 | Backend | Node.js / Hono |
-| Storage | Google Drive / Local Storage / Local filesystem |
+| Storage | Browser IndexedDB / Local filesystem (Tauri) |
 | Desktop | Tauri v2 (macOS / Windows / Linux) |
 | Graph Visualization | Cytoscape.js |
 | Build | Vite / pnpm |

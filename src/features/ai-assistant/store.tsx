@@ -2,7 +2,7 @@
 // チャットパネル・引用ブロック・チャット履歴・実行状態を管理する
 
 import { ReactNode, createContext, useCallback, useContext, useState } from "react";
-import type { ChatMessage, ScopeChat } from "../../lib/google-drive";
+import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 
 export type AiAssistantState = {
   /** 引用元ブロックIDリスト */

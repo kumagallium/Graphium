@@ -1,7 +1,7 @@
 // ノート間の派生関係からネットワークグラフデータを構築
 // 2ホップ以内の関係ノードを抽出
 
-import type { GraphiumDocument, GraphiumFile } from "../../lib/google-drive";
+import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 
 export type NoteNode = {
   id: string;

@@ -2,7 +2,7 @@
 // 前回保存と現在の状態を比較して RevisionSummary を生成する
 
 import type { RevisionSummary, BlockContentDiff } from "./types";
-import type { GraphiumPage } from "../../lib/google-drive";
+import type { GraphiumPage } from "../../lib/document-types";
 
 /** ブロックのテキスト内容を抽出 */
 function blockTextContent(block: any): string {

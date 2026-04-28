@@ -1,6 +1,6 @@
 // 派生元ノート読み取り専用パネル + ユーティリティ関数
 
-import type { GraphiumDocument } from "../lib/google-drive";
+import type { GraphiumDocument } from "../lib/document-types";
 import { useT } from "../i18n";
 import { t as tStatic } from "../i18n";
 

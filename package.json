@@ -21,7 +21,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "tauri": "tauri",
-    "tauri:dev": "node scripts/fetch-node.mjs && node scripts/bundle-server.mjs && tauri dev",
+    "tauri:dev": "node scripts/fetch-node.mjs && node scripts/bundle-server.mjs && TAURI_ENV_PLATFORM=darwin tauri dev",
     "tauri:build": "node scripts/fetch-node.mjs && tauri build",
     "bundle:server": "node scripts/bundle-server.mjs",
     "bundle:node": "node scripts/fetch-node.mjs"

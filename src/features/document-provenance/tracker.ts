@@ -8,7 +8,7 @@ import type {
   EditActivityType,
 } from "./types";
 import { computeRevisionSummary, computePageHash, isEmptySummary } from "./diff";
-import type { GraphiumDocument, GraphiumPage } from "../../lib/google-drive";
+import type { GraphiumDocument, GraphiumPage } from "../../lib/document-types";
 
 // 既知のエージェント ID
 const HUMAN_AGENT_ID = "agent_human";
