@@ -6,10 +6,12 @@
 // それ以外は何も表示しない（即エディタ）
 
 import { useEffect, useState } from "react";
-import { Folder, HardDrive } from "lucide-react";
+import { Folder, HardDrive, Server } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useT } from "../i18n";
 import { isTauri } from "../lib/platform";
+import { getActiveProvider, probeServerProvider } from "../lib/storage/registry";
+import { AiUpgradeNotice } from "./AiUpgradeNotice";
 
 const WELCOME_SHOWN_KEY = "graphium_welcome_shown";
 
@@ -53,6 +55,9 @@ export function WelcomeDialog() {
       // 初回起動チェック
       const shown = typeof localStorage !== "undefined" ? localStorage.getItem(WELCOME_SHOWN_KEY) : null;
       if (!shown && !cancelled) {
+        // サーバー側ストレージの判定が間に合うように probe を待つ
+        await probeServerProvider();
+        if (cancelled) return;
         let rootPath: string | null = null;
         if (isTauri()) {
           try {
@@ -119,14 +124,26 @@ export function WelcomeDialog() {
                 </div>
               </div>
             )}
-            {!isTauri() && (
+            {!isTauri() && getActiveProvider().id === "server-fs" && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-muted text-xs">
-                <HardDrive size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+                <Server size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium mb-0.5">{t("welcome.browserStorage")}</p>
-                  <p className="text-muted-foreground">{t("welcome.browserStorageHint")}</p>
+                  <p className="font-medium mb-0.5">{t("welcome.serverStorage")}</p>
+                  <p className="text-muted-foreground">{t("welcome.serverStorageHint")}</p>
                 </div>
               </div>
+            )}
+            {!isTauri() && getActiveProvider().id !== "server-fs" && (
+              <>
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-muted text-xs">
+                  <HardDrive size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium mb-0.5">{t("welcome.browserStorage")}</p>
+                    <p className="text-muted-foreground">{t("welcome.browserStorageHint")}</p>
+                  </div>
+                </div>
+                <AiUpgradeNotice variant="card" />
+              </>
             )}
             <button
               onClick={dismissWelcome}

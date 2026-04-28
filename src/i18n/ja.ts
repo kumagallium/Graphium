@@ -86,6 +86,16 @@ export const ja: Record<string, string> = {
   "welcome.migratedTitle": "移行が完了しました",
   "welcome.migratedBody": "{n} 件のファイルを移行しました。続けて Graphium を開始します。",
   "welcome.migrationError": "移行中にエラーが発生しました",
+  "welcome.serverStorage": "このサーバーに保存されます",
+  "welcome.serverStorageHint": "ノートはこのサーバーのファイルシステムに保存され、同じ URL に接続するすべてのブラウザ・端末で共有されます。",
+
+  // ── デスクトップ / Docker への導線（ブラウザ版でのアップグレード CTA） ──
+  "upgrade.title": "AI 機能はデスクトップ版 / Docker で利用可能",
+  "upgrade.body": "Knowledge Layer や AI チャットを使うには、デスクトップアプリをインストールするか、Docker でセルフホストしてください。ブラウザ版はエディタをお試しいただくためのプレビュー版です（ノートは IndexedDB に保存され、キャッシュ削除等で消える可能性があります）。",
+  "upgrade.desktopCta": "デスクトップ版を入手",
+  "upgrade.dockerCta": "Docker で起動",
+  "upgrade.inline": "デスクトップ版で利用可能",
+  "upgrade.footer": "AI を有効化",
 
   // ── サイドバー ──
   "sidebar.newNote": "+ 新しいノート",

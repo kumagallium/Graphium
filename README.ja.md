@@ -27,9 +27,9 @@ Graphium は**段階的開示（progressive disclosure）**を設計の中心に
 
 ## すぐに試す
 
-**[→ GitHub Pages で Graphium を開く](https://kumagallium.github.io/Graphium/)**
+**[→ ブラウザでプレビュー（GitHub Pages）](https://kumagallium.github.io/Graphium/)**
 
-インストール不要 — ブラウザで動作します。ノートはこのブラウザ（IndexedDB）に保存されます。
+ブラウザ版は **プレビュー** です。エディタの感触と PROV-DM ラベリングをお試しいただけます。ノートはこのブラウザの IndexedDB に保存されるため、お試しには十分ですが、AI 機能（Knowledge Layer・AI チャット）や永続的な保存、複数端末同期がほしい場合はデスクトップアプリか Docker セルフホストをご利用ください。
 
 ### デスクトップアプリ
 

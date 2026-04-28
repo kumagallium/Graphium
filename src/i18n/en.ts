@@ -86,6 +86,16 @@ export const en: Record<string, string> = {
   "welcome.migratedTitle": "Migration complete",
   "welcome.migratedBody": "Migrated {n} file(s). Opening Graphium...",
   "welcome.migrationError": "Migration failed",
+  "welcome.serverStorage": "Notes are saved on this server",
+  "welcome.serverStorageHint": "Stored on this server's filesystem and shared across every browser that visits the same URL.",
+
+  // ── Desktop / Docker upgrade CTA (browser preview) ──
+  "upgrade.title": "AI features available in the desktop app / Docker",
+  "upgrade.body": "Knowledge Layer, AI chat, and related features run only with a backend. Install the desktop app or self-host with Docker. The browser version is a preview to try the editor — notes live in IndexedDB and can be evicted by the browser.",
+  "upgrade.desktopCta": "Get the desktop app",
+  "upgrade.dockerCta": "Run with Docker",
+  "upgrade.inline": "Available in the desktop app",
+  "upgrade.footer": "Enable AI",
 
   // ── サイドバー ──
   "sidebar.newNote": "+ New Note",

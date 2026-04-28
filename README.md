@@ -27,9 +27,9 @@ This gradient of label density is a core design decision — not a limitation.
 
 ## Try it now
 
-**[→ Open Graphium on GitHub Pages](https://kumagallium.github.io/Graphium/)**
+**[→ Preview in your browser (GitHub Pages)](https://kumagallium.github.io/Graphium/)**
 
-No installation required — works in your browser. Notes are saved in this browser (IndexedDB).
+The browser version is a **preview** to try the editor and PROV-DM labeling. Notes are stored in this browser's IndexedDB — fine for kicking the tires, but the desktop app or self-hosted Docker is what you want for the full experience: AI features (Knowledge Layer, AI chat), durable storage, and cross-device sync.
 
 ### Desktop app
 

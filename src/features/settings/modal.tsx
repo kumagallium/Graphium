@@ -36,6 +36,7 @@ import { useLocale, type Locale } from "../../i18n";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 import type { WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
+import { AiUpgradeNotice } from "../../components/AiUpgradeNotice";
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -1036,6 +1037,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         {/* ── AI Setup タブ ── */}
         {tab === "ai-setup" && (
           <div className="space-y-5">
+            {/* AI バックエンド未接続時はアップグレード CTA を最上部に表示 */}
+            {!healthLoading && !health && (
+              <AiUpgradeNotice variant="card" />
+            )}
             {/* 接続状態パネル */}
             <div className="rounded-lg border border-border p-3">
               <h3 className="text-xs font-semibold text-foreground mb-2">{t("settings.health.title")}</h3>
