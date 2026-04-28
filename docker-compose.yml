@@ -31,6 +31,9 @@ services:
       - SERVE_STATIC=dist
       - CRUCIBLE_API_URL=http://crucible-api:8000
       - CRUCIBLE_API_KEY=${CRUCIBLE_API_KEY:-}
+      # Server-side note storage (auto-enabled when DATA_DIR is writable).
+      # Set GRAPHIUM_AUTH_TOKEN to require X-Graphium-Token on all storage requests.
+      - GRAPHIUM_AUTH_TOKEN=${GRAPHIUM_AUTH_TOKEN:-}
     depends_on:
       - crucible-api
     restart: unless-stopped

@@ -4,16 +4,28 @@
 #   docker compose -f docker-compose.standalone.yml up -d
 #   http://localhost:5174/Graphium/
 #
-# This runs Graphium as a standalone note editor with Google Drive sync.
-# No AI assistant, no agent server, no database required.
+# Notes are saved on the server filesystem under /app/data and shared
+# across browsers/devices that hit the same URL. To back up via cloud
+# sync, mount a Drive/iCloud/Dropbox synced folder onto /app/data.
 #
 # To enable AI + MCP tools (full Crucible stack), use the default docker-compose.yml:
 #   docker compose up -d
 
 services:
-  provnote:
+  graphium:
     build:
       context: .
     ports:
-      - "5174:80"
+      - "5174:3001"
+    volumes:
+      - graphium_data:/app/data
+    environment:
+      - PORT=3001
+      - DATA_DIR=/app/data
+      - SERVE_STATIC=dist
+      # Set GRAPHIUM_AUTH_TOKEN to require X-Graphium-Token on storage requests.
+      - GRAPHIUM_AUTH_TOKEN=${GRAPHIUM_AUTH_TOKEN:-}
     restart: unless-stopped
+
+volumes:
+  graphium_data:

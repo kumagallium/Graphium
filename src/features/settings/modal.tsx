@@ -35,6 +35,7 @@ import {
 import { useLocale, type Locale } from "../../i18n";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 import type { WikiKind } from "../../lib/document-types";
+import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -152,6 +153,14 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [graphiumRoot, setGraphiumRootState] = useState<GraphiumRootInfo | null>(null);
   const [rootBusy, setRootBusy] = useState(false);
   const [rootError, setRootError] = useState<string | null>(null);
+
+  // サーバーストレージ機能（Docker / セルフホスト Web）
+  const [serverCaps, setServerCaps] = useState<{ serverStorage: boolean; requiresAuth: boolean } | null>(null);
+  const [serverToken, setServerTokenInput] = useState<string>(() => {
+    if (typeof localStorage === "undefined") return "";
+    return localStorage.getItem("graphium_server_token") ?? "";
+  });
+  const [serverTokenSaved, setServerTokenSaved] = useState(false);
 
   // ツール
   const [toolsData, setToolsData] = useState<ToolsResponse | null>(null);
@@ -316,7 +325,23 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     } else {
       setGraphiumRootState(null);
     }
+
+    // Web/Docker: サーバーストレージ機能を検出
+    if (!isTauri()) {
+      fetchCapabilities()
+        .then((caps) => setServerCaps(caps))
+        .catch(() => setServerCaps(null));
+    }
   }, [isOpen, refreshModels]);
+
+  const handleSaveServerToken = useCallback(() => {
+    setServerStorageToken(serverToken.trim() || null);
+    setServerTokenSaved(true);
+    // 自動でリロードして新トークンで初期化させる
+    setTimeout(() => {
+      window.location.reload();
+    }, 600);
+  }, [serverToken]);
 
   const handlePickGraphiumRoot = useCallback(async () => {
     setRootBusy(true);
@@ -823,12 +848,56 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               </label>
             </div>
 
-            {/* ── Storage（デスクトップ版のみ） ── */}
-            {isTauri() && (
+            {/* ── Storage ── */}
+            {(isTauri() || serverCaps?.serverStorage) && (
               <div className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground/80 border-b border-border pb-1 pt-2">
                 {t("settings.section.storage")}
               </div>
             )}
+
+            {/* サーバーストレージ（Docker / セルフホスト Web のみ） */}
+            {!isTauri() && serverCaps?.serverStorage && (
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <FolderOpen size={14} className="text-muted-foreground" />
+                  <label className="text-xs font-semibold text-foreground">
+                    {t("settings.serverStorage.title")}
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  {t("settings.serverStorage.help")}
+                </p>
+                {serverCaps.requiresAuth ? (
+                  <div className="space-y-2">
+                    <Input
+                      type="password"
+                      value={serverToken}
+                      onChange={(e) => { setServerTokenInput(e.target.value); setServerTokenSaved(false); }}
+                      placeholder={t("settings.serverStorage.tokenPlaceholder")}
+                      autoComplete="off"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={handleSaveServerToken} disabled={!serverToken}>
+                        {t("settings.serverStorage.save")}
+                      </Button>
+                      {serverTokenSaved && (
+                        <span className="text-xs text-muted-foreground">
+                          {t("settings.serverStorage.savedReloading")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.serverStorage.tokenHelp")}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {t("settings.serverStorage.noAuth")}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* ローカル保存先（デスクトップ版のみ） */}
             {isTauri() && (
               <div>

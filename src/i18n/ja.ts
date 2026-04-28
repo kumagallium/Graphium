@@ -357,6 +357,14 @@ export const ja: Record<string, string> = {
   "settings.saveDir.restartNote": "変更を全体に反映するには Graphium を再起動してください。",
   "settings.saveDir.pickFailed": "フォルダの選択に失敗しました",
   "settings.saveDir.saveFailed": "保存先の更新に失敗しました",
+  // ── サーバーストレージ（Docker / セルフホスト Web） ──
+  "settings.serverStorage.title": "サーバーストレージ",
+  "settings.serverStorage.help": "ノートはこのサーバーのファイルシステムに保存され、同じ URL にアクセスする全てのブラウザで共有されます。",
+  "settings.serverStorage.tokenPlaceholder": "X-Graphium-Token の値",
+  "settings.serverStorage.save": "保存して再読込",
+  "settings.serverStorage.savedReloading": "保存しました。再読み込みします…",
+  "settings.serverStorage.tokenHelp": "サーバーが GRAPHIUM_AUTH_TOKEN を要求しています。docker-compose の環境変数で設定したトークンと同じ値を入力してください。",
+  "settings.serverStorage.noAuth": "このサーバーは認証なしで利用できます（GRAPHIUM_AUTH_TOKEN が未設定）。本番運用ではトークンの設定を推奨します。",
   // ── 接続状態 ──
   "settings.health.title": "接続状態",
   "settings.health.checking": "確認中...",

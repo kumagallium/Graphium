@@ -2,7 +2,7 @@
 // ローカルファースト構成: 認証は不要、起動時に既定プロバイダーで自動初期化する
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getActiveProvider, setActiveProvider, initProviders } from "./registry";
+import { getActiveProvider, setActiveProvider, initProviders, probeServerProvider } from "./registry";
 import type { StorageProvider } from "./types";
 
 /** ストレージプロバイダーの初期化状態を管理する Hook */
@@ -15,26 +15,40 @@ export function useStorage() {
   const initDoneRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
     initProviders();
-    const p = getActiveProvider();
-    setProvider(p);
-    setAuthenticated(p.getAuthState().isSignedIn);
+    let unsubscribe: (() => void) | null = null;
 
-    const unsubscribe = p.onAuthChange((state) => {
-      setAuthenticated(state.isSignedIn);
-    });
+    (async () => {
+      // サーバー側ストレージ機能を検出して必要なら active を切り替える
+      await probeServerProvider();
+      if (cancelled) return;
 
-    p.init().then(() => {
-      initDoneRef.current = true;
+      const p = getActiveProvider();
+      setProvider(p);
       setAuthenticated(p.getAuthState().isSignedIn);
-      setLoading(false);
-    }).catch((e) => {
-      console.error("ストレージ初期化エラー:", e);
-      initDoneRef.current = false;
-      setLoading(false);
-    });
 
-    return unsubscribe;
+      unsubscribe = p.onAuthChange((state) => {
+        setAuthenticated(state.isSignedIn);
+      });
+
+      try {
+        await p.init();
+        if (cancelled) return;
+        initDoneRef.current = true;
+        setAuthenticated(p.getAuthState().isSignedIn);
+        setLoading(false);
+      } catch (e) {
+        console.error("ストレージ初期化エラー:", e);
+        initDoneRef.current = false;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [providerVersion]);
 
   // プロバイダー切り替え（設定画面用）

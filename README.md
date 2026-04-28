@@ -194,10 +194,10 @@ docker compose up -d
 No `.env` editing required — everything is configured from the browser.
 
 > **Self-hosting and storage**
-> Notes are stored in the browser's IndexedDB by default. To keep notes off the browser:
-> - **On a personal machine** running Docker: mount a Google Drive / iCloud / Dropbox synced folder to `/app/data` and the OS handles cloud sync.
-> - **On a remote VPS**: use [rclone](https://rclone.org/) or similar to sync `/app/data` ↔ your cloud storage of choice.
-> - Server-side filesystem storage (notes saved to `/app/data` and accessible across browsers) is on the roadmap — see [#G-DOCKER-SYNC](ideas.md).
+> When running under Docker (or any self-hosted Node.js backend), notes are saved to the server filesystem at `/app/data` by default — visit the same URL from any browser or device and you see the same notes. The frontend auto-detects this on first load.
+> - **Cloud backup**: mount a Google Drive / iCloud / Dropbox synced folder to `/app/data` (`volumes: - "~/Google Drive/Graphium:/app/data"`) and the OS handles replication.
+> - **Remote VPS**: use [rclone](https://rclone.org/) or similar to back up `/app/data` to S3 / B2 / etc.
+> - **Authentication**: set `GRAPHIUM_AUTH_TOKEN=<your-secret>` to require an `X-Graphium-Token` header on all storage requests. Configure the same token in **⚙ Settings → Server Storage** in the UI. Without this, anyone who can reach the URL can read/write notes — fine on `localhost`, not for public deployments.
 
 > **Note:** In Docker mode, all services run without API key authentication and are only accessible from your local machine (`localhost`).
 
@@ -330,7 +330,7 @@ graph LR
 | Editor | TypeScript / React / BlockNote.js |
 | AI Runtime | Vercel AI SDK / @ai-sdk/mcp |
 | Backend | Node.js / Hono |
-| Storage | Browser IndexedDB / Local filesystem (Tauri) |
+| Storage | Local filesystem (Tauri) / Server filesystem (Docker) / Browser IndexedDB (Web) |
 | Desktop | Tauri v2 (macOS / Windows / Linux) |
 | Graph Visualization | Cytoscape.js |
 | Build | Vite / pnpm |

@@ -193,7 +193,11 @@ docker compose up -d
 
 `.env` の編集は不要 — すべてブラウザから設定できます。
 
-> **クラウド同期**: ノートはコンテナの `/app/data` ボリュームに保存されます。Drive / iCloud / Dropbox 同期フォルダを `volumes:` でマウントすれば、OS のクラウド同期にそのまま乗せられます（OAuth 不要）。リモート VPS では `rclone` などの外部ツールでバックアップしてください。
+> **セルフホスト時のストレージ**
+> Docker（または任意の Node.js バックエンド）で動かすと、ノートはサーバーのファイルシステム `/app/data` に保存され、同じ URL に接続するすべてのブラウザ・端末で共有されます。フロントエンドが起動時に自動検知します。
+> - **クラウドバックアップ**: `volumes: - "~/Google Drive/Graphium:/app/data"` のように同期フォルダを `/app/data` にマウントすれば、OS が複製を担当します。
+> - **リモート VPS**: [rclone](https://rclone.org/) などで `/app/data` を S3 / B2 等にバックアップ。
+> - **認証**: `GRAPHIUM_AUTH_TOKEN=<secret>` を設定すると、すべてのストレージリクエストに `X-Graphium-Token` ヘッダーが必要になります。同じ値を **⚙ 設定 → サーバーストレージ** で入力してください。未設定だと URL に到達できる人が誰でも読み書きできます — `localhost` 限定なら問題ありませんが、公開デプロイでは必須です。
 
 > **注意:** Docker モードでは、すべてのサービスが API キー認証なしで動作し、ローカルマシン（`localhost`）からのみアクセス可能です。
 
@@ -326,7 +330,7 @@ graph LR
 | エディタ | TypeScript / React / BlockNote.js |
 | AI ランタイム | Vercel AI SDK / @ai-sdk/mcp |
 | バックエンド | Node.js / Hono |
-| ストレージ | ブラウザ IndexedDB / ローカルファイルシステム（Tauri） |
+| ストレージ | ローカルファイルシステム（Tauri） / サーバーファイルシステム（Docker） / ブラウザ IndexedDB（Web） |
 | グラフ可視化 | Cytoscape.js |
 | ビルド | Vite / pnpm |
 

@@ -12,6 +12,7 @@ import agentRoutes from "./routes/agent.js";
 import toolsRoutes from "./routes/tools.js";
 import wikiRoutes from "./routes/wiki.js";
 import provRoutes from "./routes/prov.js";
+import storageRoutes from "./routes/storage.js";
 
 export type AppMode = "node" | "vercel";
 
@@ -43,8 +44,8 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
     "/api/*",
     cors({
       origin: allowedOrigins,
-      allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key"],
-      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token"],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
   );
 
@@ -56,6 +57,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/tools", toolsRoutes);
   app.route("/api/wiki", wikiRoutes);
   app.route("/api/prov", provRoutes);
+  app.route("/api/storage", storageRoutes);
 
   return app;
 }

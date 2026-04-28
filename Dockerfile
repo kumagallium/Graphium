@@ -15,21 +15,18 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-RUN pnpm build
+# フロントエンドをビルド + サーバーを単一 ESM ファイルにバンドル
+RUN pnpm build && node scripts/bundle-server.mjs
 
 # ── Stage 2: Runtime ──
+# サーバーは esbuild でバンドル済み（src-tauri/sidecar/server.mjs）なので
+# ランタイムは Node のみで足り、依存パッケージ・パッケージマネージャ不要。
 FROM node:20-alpine
-
-RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# 本番依存のみインストール
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
-
-# バックエンドソース（tsx で実行）
-COPY src/server/ src/server/
+# バンドル済みサーバー
+COPY --from=builder /app/src-tauri/sidecar/server.mjs server.mjs
 
 # フロントエンドビルド成果物
 COPY --from=builder /app/dist dist/
@@ -46,5 +43,4 @@ ENV SERVE_STATIC=dist
 
 EXPOSE 3001
 
-# tsx でバックエンドを起動
-CMD ["npx", "tsx", "src/server/index.ts"]
+CMD ["node", "server.mjs"]

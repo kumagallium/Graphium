@@ -357,6 +357,14 @@ export const en: Record<string, string> = {
   "settings.saveDir.restartNote": "Restart Graphium after changing this for the new location to take effect everywhere.",
   "settings.saveDir.pickFailed": "Failed to select folder",
   "settings.saveDir.saveFailed": "Failed to update save location",
+  // ── Server storage (Docker / self-host Web) ──
+  "settings.serverStorage.title": "Server storage",
+  "settings.serverStorage.help": "Notes are saved on this server's filesystem and shared across every browser that visits the same URL.",
+  "settings.serverStorage.tokenPlaceholder": "X-Graphium-Token value",
+  "settings.serverStorage.save": "Save and reload",
+  "settings.serverStorage.savedReloading": "Saved. Reloading…",
+  "settings.serverStorage.tokenHelp": "The server requires GRAPHIUM_AUTH_TOKEN. Enter the same value you set in docker-compose env.",
+  "settings.serverStorage.noAuth": "This server is open without authentication (GRAPHIUM_AUTH_TOKEN is not set). Setting a token is recommended for any non-localhost deployment.",
   // ── 接続状態 ──
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
