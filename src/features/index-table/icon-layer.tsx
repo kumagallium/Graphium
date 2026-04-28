@@ -1,7 +1,7 @@
 // インデックステーブルの行頭アイコンレイヤー
 // ProvIndicatorLayer と同じパターンで body ポータルに描画する
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../../i18n";
 import { useIndexTableStore } from "./store";
@@ -24,11 +24,23 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
   const [loading, setLoading] = useState<string | null>(null);
 
   // テーブル行の位置を計算
+  // ノート読み込み直後など editor / DOM がまだ準備できていない場合は
+  // 検出失敗時に短い遅延で再試行する（restore 後に icon が出ない回帰の保険）。
+  const retryRef = useRef<number | null>(null);
   const compute = useCallback(() => {
     const next: RowIcon[] = [];
     const editor = editorRef.current;
-    if (!editor) return;
+    if (!editor) {
+      if (store.tables.size > 0 && retryRef.current === null) {
+        retryRef.current = window.setTimeout(() => {
+          retryRef.current = null;
+          compute();
+        }, 200);
+      }
+      return;
+    }
 
+    let domMissing = false;
     store.tables.forEach((linkedNotes, blockId) => {
       const block = editor.getBlock(blockId);
       if (!block || block.type !== "table") return;
@@ -36,7 +48,10 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
       const blockEl = document.querySelector(
         `[data-id="${blockId}"][data-node-type="blockOuter"]`
       );
-      if (!blockEl) return;
+      if (!blockEl) {
+        domMissing = true;
+        return;
+      }
 
       const trElements = blockEl.querySelectorAll("tr");
       const tableRows = block.content?.rows;
@@ -60,12 +75,37 @@ export function IndexTableIconLayer({ editorRef }: { editorRef: React.RefObject<
     });
 
     setIcons(next);
+
+    // 期待した DOM がまだ存在しない場合は短い遅延で再試行する。
+    // BlockNote の DOM レンダリングが store の restore より遅れるケースの保険。
+    if (domMissing && retryRef.current === null) {
+      retryRef.current = window.setTimeout(() => {
+        retryRef.current = null;
+        compute();
+      }, 200);
+    }
   }, [store.tables, editorRef]);
+
+  useEffect(() => {
+    return () => {
+      if (retryRef.current !== null) {
+        window.clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
+    };
+  }, []);
 
   // store.tables 変更時に再計算
   useEffect(() => {
     const timer = setTimeout(compute, 50);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // tables が変わったら古い retry はキャンセル（古いクロージャで再計算しないため）
+      if (retryRef.current !== null) {
+        window.clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
+    };
   }, [compute]);
 
   // スクロール・リサイズ・DOM 変化にも追従
