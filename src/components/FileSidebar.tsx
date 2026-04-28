@@ -1,7 +1,8 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles } from "lucide-react";
+import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import type { WikiKind } from "../lib/document-types";
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
@@ -262,7 +263,16 @@ export function FileSidebar({
           )}
         </div>
 
-        {/* AI Knowledge セクション（バックエンド不在時は非表示） */}
+        {/* AI Knowledge セクション（バックエンド不在時はロック表示で導線） */}
+        {onShowWikiList && !aiAvailable && (
+          <div className="px-4 pt-1 pb-2">
+            <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5 flex items-center gap-1">
+              AI
+              <Sparkles size={11} className="text-muted-foreground/60" />
+            </h3>
+            <AiUpgradeNotice variant="card" />
+          </div>
+        )}
         {onShowWikiList && aiAvailable && (
           <div className="px-4 pt-1 pb-2">
             <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">

@@ -80,14 +80,14 @@ export const en = {
 
   // Get started
   "start.heading": "Get started.",
-  "start.online.title": "Try online",
-  "start.online.body": "No install. Browser-local storage — your notes stay in this browser.",
-  "start.online.cta": "Open Graphium",
+  "start.online.title": "Preview in browser",
+  "start.online.body": "No install. Try the editor and PROV-DM labeling. Notes live in your browser (IndexedDB) — fine for kicking the tires, but the desktop app or a self-hosted Docker setup is what you want for the full experience (AI features, durable storage, cross-device sync).",
+  "start.online.cta": "Open the preview",
   "start.desktop.title": "Desktop app",
-  "start.desktop.body": "macOS Apple Silicon. Local files. Native window.",
+  "start.desktop.body": "macOS Apple Silicon. Local files, AI features, optional cloud sync via OS-level Drive/iCloud/Dropbox folders.",
   "start.desktop.cta": "Download",
-  "start.selfhost.title": "Self-host",
-  "start.selfhost.body": "Docker compose. Full control, including the AI backend.",
+  "start.selfhost.title": "Self-host with Docker",
+  "start.selfhost.body": "Notes stored on your server, accessible from any browser at the same URL. AI backend included.",
   "start.selfhost.cta": "Read the guide",
 
   // Footer
@@ -163,14 +163,14 @@ export const ja: Record<keyof typeof en, string> = {
     "授業・本・会話を横断してアイデアを繋げる第二の脳 — そして、戻ってきた時に自分で説明してくれる。",
 
   "start.heading": "はじめる。",
-  "start.online.title": "オンラインで試す",
-  "start.online.body": "インストール不要。ブラウザ内に保存されます。",
-  "start.online.cta": "Graphium を開く",
+  "start.online.title": "ブラウザでプレビュー",
+  "start.online.body": "インストール不要。エディタの感触と PROV-DM ラベリングを試せます。ノートはブラウザ（IndexedDB）に保存されます — お試しには十分ですが、AI 機能・永続的な保存・複数端末同期がほしい場合はデスクトップ版か Docker セルフホストを使ってください。",
+  "start.online.cta": "プレビューを開く",
   "start.desktop.title": "デスクトップアプリ",
-  "start.desktop.body": "macOS Apple Silicon。ローカルファイル。ネイティブウィンドウ。",
+  "start.desktop.body": "macOS Apple Silicon。ファイルシステム保存、AI 機能、Drive/iCloud/Dropbox 同期フォルダによる任意のクラウド同期。",
   "start.desktop.cta": "ダウンロード",
-  "start.selfhost.title": "セルフホスト",
-  "start.selfhost.body": "Docker compose。AI バックエンドも含めて完全制御。",
+  "start.selfhost.title": "Docker でセルフホスト",
+  "start.selfhost.body": "ノートはサーバーに保存され、同じ URL に接続するすべてのブラウザで共有されます。AI バックエンド付き。",
   "start.selfhost.cta": "ガイドを読む",
 
   "footer.builtBy": "作: ",
