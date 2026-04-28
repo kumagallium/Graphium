@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.3.12](https://github.com/kumagallium/Graphium/compare/v0.3.11...v0.3.12) - 2026-04-28
+- refactor: drop Google Drive OAuth, go local-first by @kumagallium in https://github.com/kumagallium/Graphium/pull/176
+
 ## [v0.3.11](https://github.com/kumagallium/Graphium/compare/v0.3.10...v0.3.11) - 2026-04-27
 - docs: refresh README with recent features by @kumagallium in https://github.com/kumagallium/Graphium/pull/154
 - refactor: unify sidebar icons in RecentNotes with Lucide by @kumagallium in https://github.com/kumagallium/Graphium/pull/156
