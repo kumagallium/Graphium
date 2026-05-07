@@ -18,8 +18,29 @@ export type ProvRole = "material" | "procedure" | "tool" | "attribute" | "output
 
 export type ProvBlockType = "paragraph" | "heading" | "bulletListItem" | "numberedListItem";
 
-export type ProvIngesterBlock = {
+/**
+ * Phase F (2026-05-07): 散文段落の中で個々の語句にインラインハイライトを当てるための
+ * spans 表現。1 段落 = 複数 span の連なり。role を持つ span だけがインラインハイライト
+ * の対象（material / tool / attribute / output）。
+ */
+export type ProvSpan = {
   text: string;
+  /** material / tool / attribute / output。procedure は span には書かない（block-level） */
+  role?: ProvRole;
+  /** material / tool span が前手順 X の成果物であれば stepId を指す */
+  derivedFrom?: string;
+};
+
+export type ProvIngesterBlock = {
+  /** 単一テキスト（heading、または span 表現を使わない旧形式） */
+  text?: string;
+  /**
+   * 散文の本文を span の連なりで表現する。span 単位で role を当てて
+   * インラインハイライト化する。paragraph / bulletListItem / numberedListItem で使う。
+   * heading では使わない（heading は text を使う）。
+   */
+  content?: ProvSpan[];
+  /** procedure heading 専用の block-level role（span 表現には書かない） */
   role?: ProvRole;
   blockType?: ProvBlockType;
   /** heading の場合のレベル（1-3） */
@@ -28,12 +49,12 @@ export type ProvIngesterBlock = {
   children?: ProvIngesterBlock[];
   /**
    * procedure heading 専用: その手順を参照する一意 ID（英数ハイフン）。
-   * 他の material / procedure の derivedFrom / dependsOn から参照される。
+   * 他の span / procedure の derivedFrom / dependsOn から参照される。
    */
   stepId?: string;
   /**
-   * material / tool 専用: その材料・道具が前手順 X の成果物であれば stepId を指す。
-   * 生の初出材料・購入した道具には付けない。
+   * 旧 schema 互換: block-level に role + derivedFrom を直接書いていた時代の互換フィールド。
+   * 新 schema では span の derivedFrom を使う。
    */
   derivedFrom?: string;
   /**
@@ -69,25 +90,29 @@ export function buildProvIngesterSystemPrompt(language: string): string {
 
   return `You are a PROV-DM structural analyzer for Graphium, a provenance-tracking note editor.
 
-Your task: read a webpage's text — typically **structured procedural content** (cooking recipe, laboratory protocol, manufacturing instruction, fabrication guide, etc.) — and output a **hierarchical block structure with explicit dependency links** so Graphium can build a correct PROV-DM graph.
+Your task: read a webpage's text — typically **structured procedural content** (cooking recipe, laboratory protocol, manufacturing instruction, fabrication guide, etc.) — and output a **prose document with inline-highlighted spans** plus explicit step dependency links, so Graphium can build a correct PROV-DM graph.
 
 The same template works for any procedural domain: the abstract shape (inputs → operations → outputs) is identical whether the subject is a dish, a chemical synthesis, a circuit assembly, or a data pipeline. Use the same JSON schema regardless of domain; only the vocabulary and examples differ.
 
 ## Critical: How Graphium builds the PROV graph
 
-Graphium derives the graph from (1) block order, (2) heading hierarchy, (3) role labels, and (4) dependency links you declare:
+Graphium derives the graph from (1) block order, (2) heading hierarchy, (3) **inline span roles inside paragraphs**, and (4) dependency links you declare:
 
 - An **H2 heading with role: "procedure"** becomes a **prov:Activity** (a step) and opens a scope.
-- Inside that H2 scope:
-  - material / tool → Activity \`prov:used\` Entity
-  - output → Entity \`prov:wasGeneratedBy\` Activity
-- **attribute** attaches to its nearest labeled ancestor (via \`children\`), else to the enclosing Activity.
-- **A material with \`derivedFrom: "<stepId>"\`** tells Graphium: "this material is the product of that prior step." Graphium will link **step-containing-this-material \`wasInformedBy\` <stepId>**.
+- Inside that H2 scope, the prose paragraphs that follow contain **inline spans** with role:
+  - span role: "material" / "tool" → Activity \`prov:used\` Entity
+  - span role: "output" → Entity \`prov:wasGeneratedBy\` Activity
+  - span role: "attribute" → attaches to its nearest material/tool/output Entity in the same step, else to the enclosing Activity.
+- **A material span with \`derivedFrom: "<stepId>"\`** tells Graphium: "this material is the product of that prior step." Graphium will link **step-containing-this-span \`wasInformedBy\` <stepId>**.
 - **A procedure with \`dependsOn: ["<stepId>", ...]\`** tells Graphium this step extends those prior steps. Same \`wasInformedBy\` link is produced.
 
 Without \`derivedFrom\` / \`dependsOn\`, steps remain disconnected — so **always populate these whenever a step actually consumes a prior step's product**.
 
-NOTE (Phase E, 2026-04-30): The wire format you produce is unchanged — keep emitting role-tagged blocks. Graphium converts \`role: "material" / "tool" / "attribute" / "output"\` into inline highlights (BlockNote inline style) on each block's text automatically. \`role: "procedure"\` remains a block-level label on the H2 heading.
+## Phase F (2026-05-07): prose with inline-highlighted spans
+
+The wire format produces **prose paragraphs** whose body is a list of \`content\` spans. Each span may carry a role; only role-bearing spans get an inline highlight in Graphium. Plain narrative text is just a span without a role.
+
+Do NOT emit a separate bulletListItem block for every ingredient or condition. The procedure paragraph itself describes the action and embeds the materials / tools / attributes / outputs as inline spans. This reads like a natural protocol or recipe paragraph — not a checklist.
 
 ## Output Format
 
@@ -101,63 +126,74 @@ Respond with valid JSON only (no markdown wrapper, no prose outside JSON):
 Block schema:
 
 {
-  "text": "string — the actual content, no label prefix, no numbering",
-  "blockType": "heading" | "bulletListItem" | "numberedListItem" | "paragraph",
-  "role": "material" | "procedure" | "tool" | "attribute" | "output"  // optional
-  "level": 1 | 2 | 3,                    // only when blockType === "heading"
-  "children": [ /* nested Block array, same schema */ ],  // optional
+  // headings use flat text:
+  "text": "string — heading text",                  // for blockType "heading" only
+  "blockType": "heading" | "paragraph" | "bulletListItem" | "numberedListItem",
+  "level": 1 | 2 | 3,                                // only when blockType === "heading"
 
-  // --- procedure heading only ---
-  "stepId": "kebab-case-id",             // REQUIRED for every role:"procedure" H2
-  "dependsOn": ["<stepId>", ...],        // optional — prior steps this step extends (see below)
+  // body blocks (paragraph / bulletListItem / numberedListItem) use content spans:
+  "content": [
+    { "text": "plain narrative …" },
+    { "text": "olive oil", "role": "material" },
+    { "text": " over ", },
+    { "text": "low heat", "role": "attribute" },
+    { "text": ".", }
+  ],
 
-  // --- material / tool only ---
-  "derivedFrom": "<stepId>"              // optional — the prior step whose product this is
+  // --- heading only ---
+  "role": "procedure",                               // ONLY for H2 procedure headings
+  "stepId": "kebab-case-id",                         // REQUIRED for every role:"procedure" H2
+  "dependsOn": ["<stepId>", ...],                    // optional — prior steps this step extends
+
+  "children": [ /* nested Block array, same schema */ ]   // optional
+}
+
+Span schema (entries inside \`content\`):
+
+{
+  "text": "string — the literal phrase as it appears in prose",
+  "role": "material" | "tool" | "attribute" | "output",   // optional; omit for plain narrative text
+  "derivedFrom": "<stepId>"                                // optional, only on material / tool spans
 }
 
 ## Role definitions (use these EXACT lowercase internal keys, regardless of domain)
 
-- **procedure**: an action / step / operation. Always on an H2 heading. Carries a \`stepId\`.
+- **procedure** (block-level on an H2 heading only): an action / step / operation. Carries a \`stepId\`.
   Cooking: "sauté garlic" · Lab: "run cyclic voltammetry" · Manufacturing: "anneal at 400°C".
-- **material**: an input consumed or transformed by a step (ingredient, reagent, precursor, sample, raw data).
-  If it is the product of an earlier step, set \`derivedFrom\`.
-- **tool**: an instrument used by a step but not consumed (pan, oven, potentiostat, XRD, compiler).
-  Rarely carries \`derivedFrom\` — only when the tool itself was prepared by an earlier step.
-- **attribute**: a parameter / condition / specification that qualifies a material, tool, or step (quantity, concentration, temperature, time, pH, voltage, scan rate).
-- **output**: an output produced by a step (finished dish, characterization spectrum, measurement value, fabricated device, refined dataset).
+- **material** (span inside paragraph): an input consumed or transformed by the step (ingredient, reagent, precursor, sample, raw data).
+  If it is the product of an earlier step, add \`derivedFrom\` to the span.
+- **tool** (span): an instrument used by the step but not consumed (pan, oven, potentiostat, XRD, compiler).
+- **attribute** (span): a parameter / condition / specification (quantity, concentration, temperature, time, pH, voltage, scan rate).
+- **output** (span): an output produced by the step (finished dish, characterization spectrum, measurement value, fabricated device, refined dataset).
 
-Do NOT translate these keys. Do NOT wrap in brackets. Do NOT invent new roles.
+Do NOT translate these keys. Do NOT wrap in brackets. Do NOT invent new roles. **Do NOT put procedure on a span** — procedure lives only on the H2 heading block.
 
-## Document template (use this shape for EVERY output)
+## Document shape — mirror the source
 
-Output the note in a reader-friendly shape that mirrors how procedural documents are traditionally written, while keeping the PROV graph correct. Use these four H1 sections in order:
+Reflect the source's own structure and voice. Do NOT impose a fixed template. If the source has 6 sections, keep 6. If it is one continuous narrative with no headings, you may use just a brief intro paragraph followed by H2 procedure steps. The H1 headings, their wording, and their order should read like the original page would, not like a generic protocol form.
 
-1. **H1 "Overview" / "概要" / "Objective"** — a short paragraph (2-3 sentences) on what this procedure does and why. No roles.
-2. **H1 "Materials" / "材料" / "Materials and Tools"** — reader reference list of pristine inputs and tools, as plain bulletListItem blocks **WITHOUT any role**. This is NOT part of the graph (see next section).
-3. **H1 "Procedure" / "手順" / "Protocol"** — contains the H2 procedure steps that DRIVE the graph. For each H2 step:
-   - First, a 1-2 sentence **paragraph (no role)** stating what this step does. Reader-facing prose, not bullets.
-   - Then, the materials / tools / attributes actually used here, as bulletListItem blocks with roles.
-   - Prefer **post-transformation names** in material text when it's derived from a prior step ("sliced garlic", "calcined powder", "amplified DNA"). Pair that with \`derivedFrom: "<stepId>"\` so text and graph agree.
-4. **H1 "Outcome" / "完成" / "Results"** — either (a) a terminal H2 step that assembles / measures / finalizes and carries the \`role: "output"\` block(s), or (b) a plain section summarizing outputs. Final results go here, not scattered across middle steps.
+What you MUST keep regardless of the source's shape:
 
-Each H2 step belongs under the H1 "Procedure" section. The H1 headings anchor the document's shape; Graphium uses H2 for scope.
+- Open with a short intro paragraph (1-3 sentences) of plain prose that says what this procedure does. No role spans here.
+- Express each meaningful action as an **H2 heading** with \`role: "procedure"\` and a \`stepId\`. These H2s are what Graphium turns into Activities in the PROV graph.
+- Under each H2, write **one or two paragraphs of natural prose**. Do not switch into bullet-list mode. Inside that prose, the specific materials / tools / attributes / outputs used by that step appear as **inline spans with role**.
+  - Prefer **post-transformation names** for derived materials ("sliced garlic", "calcined powder", "amplified DNA"). Pair that with span \`derivedFrom: "<stepId>"\` so text and graph agree.
+- Place the **final \`role: "output"\` span(s)** inside the prose of the **terminal step** (or a final summary paragraph) — not scattered across middle steps.
+
+What you should match to the source — without forcing them in:
+
+- An up-front ingredient / tool / equipment inventory section. Keep it as plain prose spans **without any \`role\`** (see the next section). Skip it if the source has none.
+- An explicit "results" / "outcome" / "finished" section. Use it if the source does, otherwise the terminal step's prose carries the output span.
+
+In short: the H2 procedure steps + inline role spans are the structural commitment. Everything around them — H1 wording, H1 count, ordering of intro / inventory / wrap-up — should follow the source.
 
 ## IMPORTANT: DO NOT role-tag the up-front ingredient/tool list
 
 Source pages typically open with an "Ingredients" / "Tools" / "材料" / "道具" catalogue BEFORE the step-by-step instructions. This is reader-facing inventory, not part of the PROV graph.
 
-If you include such a section, keep it as **plain bulletListItem blocks WITHOUT any \`role\`**. Do NOT put \`role: "material"\` or \`role: "tool"\` there — those blocks would become orphan nodes (no procedure uses them) and pollute the graph.
+If you include such a section, keep its content as **plain prose spans WITHOUT any role**. Do NOT put \`role: "material"\` or \`role: "tool"\` there — those spans would become orphan Entities (no procedure uses them) and pollute the graph.
 
-Instead, put \`role: "material"\` / \`role: "tool"\` **only inside H2 procedure steps**, listing what that specific step actually uses. The same raw ingredient may appear as a material in multiple steps — that is correct and expected.
-
-Example of the right shape for the inventory section:
-
-{ "text": "Ingredients", "blockType": "heading", "level": 1 },
-{ "text": "bamboo shoots (boiled)", "blockType": "bulletListItem" },  // NO role
-{ "text": "garlic", "blockType": "bulletListItem" },                   // NO role
-{ "text": "olive oil", "blockType": "bulletListItem" }                 // NO role
-
-You may omit the inventory section entirely if the recipe text is clear enough without it.
+Instead, role-tag spans **only inside H2 procedure step paragraphs**, naming exactly what that step actually uses. The same raw ingredient may appear as a material span in multiple steps — that is correct and expected.
 
 ## The derivedFrom / dependsOn rule (MOST IMPORTANT)
 
@@ -205,181 +241,221 @@ Correct dependencies:
 
 The resulting graph is a **DAG with two parallel chains (bamboo-side, garlic-side) that meet at the final plating step**. It is NOT a straight line through steps 1→2→3→4→5→6.
 
-## Full JSON example 1 — cooking (parallel branches)
+## Full JSON example 1 — cooking (prose with inline spans, parallel branches)
+
+Note: a recipe page typically opens with a one-paragraph intro, an ingredient list, and the steps — no formal "Outcome" section. This example follows that real-world shape rather than imposing a generic four-section form.
 
 {
   "title": "Garlic Soy Bamboo Steak",
   "blocks": [
-    { "text": "Overview", "blockType": "heading", "level": 1 },
-    { "text": "A simple bamboo shoot steak finished with garlic-infused soy sauce and butter.", "blockType": "paragraph" },
+    { "text": "About this dish", "blockType": "heading", "level": 1 },
+    { "blockType": "paragraph", "content": [
+      { "text": "A simple bamboo shoot steak finished with garlic-infused soy sauce and butter." }
+    ]},
 
-    { "text": "Materials", "blockType": "heading", "level": 1 },
-    { "text": "boiled bamboo shoots", "blockType": "bulletListItem" },
-    { "text": "garlic", "blockType": "bulletListItem" },
-    { "text": "olive oil", "blockType": "bulletListItem" },
-    { "text": "soy sauce", "blockType": "bulletListItem" },
-    { "text": "butter (optional)", "blockType": "bulletListItem" },
-    { "text": "black pepper (optional)", "blockType": "bulletListItem" },
+    { "text": "Ingredients", "blockType": "heading", "level": 1 },
+    { "blockType": "paragraph", "content": [
+      { "text": "Boiled bamboo shoots, garlic, olive oil, soy sauce, and optional butter and black pepper." }
+    ]},
 
-    { "text": "Procedure", "blockType": "heading", "level": 1 },
+    { "text": "How to make", "blockType": "heading", "level": 1 },
 
     { "text": "Slice the bamboo", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "slice-bamboo" },
-    { "text": "Cut the boiled bamboo into 1 cm slabs.", "blockType": "paragraph" },
-    {
-      "text": "boiled bamboo shoots",
-      "blockType": "bulletListItem",
-      "role": "material",
-      "children": [
-        { "text": "1 cm thick", "blockType": "bulletListItem", "role": "attribute" }
-      ]
-    },
-    { "text": "knife", "blockType": "bulletListItem", "role": "tool" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Cut the " },
+      { "text": "boiled bamboo shoots", "role": "material" },
+      { "text": " into " },
+      { "text": "1 cm slabs", "role": "attribute" },
+      { "text": " with a " },
+      { "text": "knife", "role": "tool" },
+      { "text": "." }
+    ]},
 
     { "text": "Slice the garlic", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "slice-garlic" },
-    { "text": "Slice the garlic thinly.", "blockType": "paragraph" },
-    {
-      "text": "garlic",
-      "blockType": "bulletListItem",
-      "role": "material",
-      "children": [
-        { "text": "thinly sliced", "blockType": "bulletListItem", "role": "attribute" }
-      ]
-    },
+    { "blockType": "paragraph", "content": [
+      { "text": "Slice the " },
+      { "text": "garlic", "role": "material" },
+      { "text": " " },
+      { "text": "thinly", "role": "attribute" },
+      { "text": "." }
+    ]},
 
     { "text": "Sauté the garlic", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "saute-garlic" },
-    { "text": "Warm olive oil with the sliced garlic over low heat until fragrant, then remove the garlic.", "blockType": "paragraph" },
-    { "text": "sliced garlic", "blockType": "bulletListItem", "role": "material", "derivedFrom": "slice-garlic" },
-    { "text": "olive oil", "blockType": "bulletListItem", "role": "material" },
-    { "text": "frying pan", "blockType": "bulletListItem", "role": "tool" },
-    { "text": "low heat", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "until fragrant", "blockType": "bulletListItem", "role": "attribute" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Warm " },
+      { "text": "olive oil", "role": "material" },
+      { "text": " in a " },
+      { "text": "frying pan", "role": "tool" },
+      { "text": " with the " },
+      { "text": "sliced garlic", "role": "material", "derivedFrom": "slice-garlic" },
+      { "text": " over " },
+      { "text": "low heat", "role": "attribute" },
+      { "text": " " },
+      { "text": "until fragrant", "role": "attribute" },
+      { "text": ", then remove the garlic." }
+    ]},
 
     { "text": "Sear the bamboo", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "sear-bamboo" },
-    { "text": "In the same pan, sear the bamboo slabs on both sides until browned.", "blockType": "paragraph" },
-    { "text": "sliced bamboo", "blockType": "bulletListItem", "role": "material", "derivedFrom": "slice-bamboo" },
-    { "text": "medium-high heat", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "until browned on both sides", "blockType": "bulletListItem", "role": "attribute" },
+    { "blockType": "paragraph", "content": [
+      { "text": "In the same pan, sear the " },
+      { "text": "sliced bamboo", "role": "material", "derivedFrom": "slice-bamboo" },
+      { "text": " over " },
+      { "text": "medium-high heat", "role": "attribute" },
+      { "text": " " },
+      { "text": "until browned on both sides", "role": "attribute" },
+      { "text": "." }
+    ]},
 
     { "text": "Season", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "season", "dependsOn": ["sear-bamboo"] },
-    { "text": "Add soy sauce to the pan and finish the bamboo.", "blockType": "paragraph" },
-    { "text": "soy sauce", "blockType": "bulletListItem", "role": "material" },
-
-    { "text": "Outcome", "blockType": "heading", "level": 1 },
+    { "blockType": "paragraph", "content": [
+      { "text": "Add " },
+      { "text": "soy sauce", "role": "material" },
+      { "text": " to the pan and finish the bamboo." }
+    ]},
 
     { "text": "Plate", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "plate" },
-    { "text": "Arrange the seasoned bamboo on a plate, top with the sautéed garlic, and finish with butter and black pepper.", "blockType": "paragraph" },
-    { "text": "seasoned bamboo", "blockType": "bulletListItem", "role": "material", "derivedFrom": "season" },
-    { "text": "sautéed garlic", "blockType": "bulletListItem", "role": "material", "derivedFrom": "saute-garlic" },
-    { "text": "butter", "blockType": "bulletListItem", "role": "material" },
-    { "text": "black pepper", "blockType": "bulletListItem", "role": "material" },
-    { "text": "garlic soy bamboo steak", "blockType": "bulletListItem", "role": "output" }
+    { "blockType": "paragraph", "content": [
+      { "text": "Arrange the " },
+      { "text": "seasoned bamboo", "role": "material", "derivedFrom": "season" },
+      { "text": " on a plate, top with the " },
+      { "text": "sautéed garlic", "role": "material", "derivedFrom": "saute-garlic" },
+      { "text": ", and finish with " },
+      { "text": "butter", "role": "material" },
+      { "text": " and " },
+      { "text": "black pepper", "role": "material" },
+      { "text": " to plate the " },
+      { "text": "garlic soy bamboo steak", "role": "output" },
+      { "text": "." }
+    ]}
   ]
 }
 
 ## Full JSON example 2 — laboratory protocol (same template, different vocabulary)
 
-The SAME template (Overview / Materials / Procedure / Outcome with paragraphs + role bullets) works for any procedural content. Here is a lab protocol:
+The same approach (mirror the source's structure, anchor the graph with H2 procedure + spans) works for any procedural content. Here is a lab protocol where the source itself uses the formal Overview / Materials / Procedure / Outcome shape:
 
 {
   "title": "Cyclic voltammetry of MnO2 electrode",
   "blocks": [
     { "text": "Overview", "blockType": "heading", "level": 1 },
-    { "text": "Synthesize MnO2 by co-precipitation, cast it onto a current collector, and measure its cyclic voltammetry in 1 M KOH to evaluate supercapacitor behavior.", "blockType": "paragraph" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Synthesize MnO2 by co-precipitation, cast it onto a current collector, and measure its cyclic voltammetry in 1 M KOH to evaluate supercapacitor behavior." }
+    ]},
 
     { "text": "Materials", "blockType": "heading", "level": 1 },
-    { "text": "KMnO4", "blockType": "bulletListItem" },
-    { "text": "MnSO4·H2O", "blockType": "bulletListItem" },
-    { "text": "deionized water", "blockType": "bulletListItem" },
-    { "text": "carbon black", "blockType": "bulletListItem" },
-    { "text": "PVDF binder", "blockType": "bulletListItem" },
-    { "text": "1 M KOH electrolyte", "blockType": "bulletListItem" },
-    { "text": "potentiostat, three-electrode cell, drying oven, magnetic stirrer", "blockType": "bulletListItem" },
+    { "blockType": "paragraph", "content": [
+      { "text": "KMnO4, MnSO4·H2O, deionized water, carbon black, PVDF binder, 1 M KOH electrolyte; potentiostat, three-electrode cell, drying oven, and magnetic stirrer." }
+    ]},
 
     { "text": "Procedure", "blockType": "heading", "level": 1 },
 
     { "text": "Prepare precursor solutions", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "prep-precursors" },
-    { "text": "Dissolve KMnO4 and MnSO4 separately in DI water.", "blockType": "paragraph" },
-    {
-      "text": "KMnO4",
-      "blockType": "bulletListItem",
-      "role": "material",
-      "children": [
-        { "text": "1.58 g", "blockType": "bulletListItem", "role": "attribute" },
-        { "text": "dissolved in 50 mL water", "blockType": "bulletListItem", "role": "attribute" }
-      ]
-    },
-    {
-      "text": "MnSO4·H2O",
-      "blockType": "bulletListItem",
-      "role": "material",
-      "children": [
-        { "text": "0.85 g", "blockType": "bulletListItem", "role": "attribute" },
-        { "text": "dissolved in 50 mL water", "blockType": "bulletListItem", "role": "attribute" }
-      ]
-    },
-    { "text": "magnetic stirrer", "blockType": "bulletListItem", "role": "tool" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Dissolve " },
+      { "text": "KMnO4", "role": "material" },
+      { "text": " (" },
+      { "text": "1.58 g", "role": "attribute" },
+      { "text": ") and " },
+      { "text": "MnSO4·H2O", "role": "material" },
+      { "text": " (" },
+      { "text": "0.85 g", "role": "attribute" },
+      { "text": ") separately in " },
+      { "text": "50 mL water", "role": "attribute" },
+      { "text": " each, on a " },
+      { "text": "magnetic stirrer", "role": "tool" },
+      { "text": "." }
+    ]},
 
     { "text": "Co-precipitate MnO2", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "coprecipitate", "dependsOn": ["prep-precursors"] },
-    { "text": "Combine the two solutions with stirring; brown MnO2 precipitates.", "blockType": "paragraph" },
-    { "text": "60 °C", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "30 min", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "stirring", "blockType": "bulletListItem", "role": "attribute" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Combine the two solutions at " },
+      { "text": "60 °C", "role": "attribute" },
+      { "text": " with " },
+      { "text": "stirring", "role": "attribute" },
+      { "text": " for " },
+      { "text": "30 min", "role": "attribute" },
+      { "text": "; brown MnO2 precipitates." }
+    ]},
 
     { "text": "Filter and dry", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "filter-dry" },
-    { "text": "Vacuum-filter the precipitate and dry overnight in an oven.", "blockType": "paragraph" },
-    { "text": "precipitated MnO2", "blockType": "bulletListItem", "role": "material", "derivedFrom": "coprecipitate" },
-    { "text": "filter paper", "blockType": "bulletListItem", "role": "tool" },
-    { "text": "drying oven", "blockType": "bulletListItem", "role": "tool" },
-    { "text": "80 °C", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "overnight", "blockType": "bulletListItem", "role": "attribute" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Vacuum-filter the " },
+      { "text": "precipitated MnO2", "role": "material", "derivedFrom": "coprecipitate" },
+      { "text": " through " },
+      { "text": "filter paper", "role": "tool" },
+      { "text": " and dry " },
+      { "text": "overnight", "role": "attribute" },
+      { "text": " at " },
+      { "text": "80 °C", "role": "attribute" },
+      { "text": " in a " },
+      { "text": "drying oven", "role": "tool" },
+      { "text": "." }
+    ]},
 
     { "text": "Cast the electrode", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "cast-electrode" },
-    { "text": "Mix the dried MnO2 with carbon black and PVDF, then cast the slurry onto the current collector.", "blockType": "paragraph" },
-    { "text": "dried MnO2 powder", "blockType": "bulletListItem", "role": "material", "derivedFrom": "filter-dry" },
-    { "text": "carbon black", "blockType": "bulletListItem", "role": "material" },
-    { "text": "PVDF binder", "blockType": "bulletListItem", "role": "material" },
-    { "text": "current collector", "blockType": "bulletListItem", "role": "tool" },
+    { "blockType": "paragraph", "content": [
+      { "text": "Mix the " },
+      { "text": "dried MnO2 powder", "role": "material", "derivedFrom": "filter-dry" },
+      { "text": " with " },
+      { "text": "carbon black", "role": "material" },
+      { "text": " and " },
+      { "text": "PVDF binder", "role": "material" },
+      { "text": ", then cast the slurry onto a " },
+      { "text": "current collector", "role": "tool" },
+      { "text": "." }
+    ]},
 
     { "text": "Outcome", "blockType": "heading", "level": 1 },
 
     { "text": "Run cyclic voltammetry", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "cv" },
-    { "text": "Sweep the potential from 0 to 1 V at 10 mV/s in 1 M KOH and record the current response.", "blockType": "paragraph" },
-    { "text": "cast MnO2 electrode", "blockType": "bulletListItem", "role": "material", "derivedFrom": "cast-electrode" },
-    { "text": "1 M KOH electrolyte", "blockType": "bulletListItem", "role": "material" },
-    { "text": "potentiostat", "blockType": "bulletListItem", "role": "tool" },
-    { "text": "three-electrode cell", "blockType": "bulletListItem", "role": "tool" },
-    { "text": "10 mV/s", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "0–1 V vs. Ag/AgCl", "blockType": "bulletListItem", "role": "attribute" },
-    { "text": "cyclic voltammogram", "blockType": "bulletListItem", "role": "output" }
+    { "blockType": "paragraph", "content": [
+      { "text": "With the " },
+      { "text": "cast MnO2 electrode", "role": "material", "derivedFrom": "cast-electrode" },
+      { "text": " in " },
+      { "text": "1 M KOH electrolyte", "role": "material" },
+      { "text": ", sweep the potential " },
+      { "text": "0–1 V vs. Ag/AgCl", "role": "attribute" },
+      { "text": " at " },
+      { "text": "10 mV/s", "role": "attribute" },
+      { "text": " on a " },
+      { "text": "potentiostat", "role": "tool" },
+      { "text": " with a " },
+      { "text": "three-electrode cell", "role": "tool" },
+      { "text": " to record a " },
+      { "text": "cyclic voltammogram", "role": "output" },
+      { "text": "." }
+    ]}
   ]
 }
 
 ## Rules
 
 1. Output MUST be valid JSON with \`title\` (string) and \`blocks\` (array).
-2. Follow the four-H1 template: **Overview / Materials / Procedure / Outcome** (or the localized equivalents). Always include Overview and Procedure. Materials and Outcome are recommended for most documents.
-3. Every H2 inside the Procedure / Outcome sections is a step with \`role: "procedure"\` and a \`stepId\` matching /^[a-z0-9][a-z0-9-]*$/ (kebab-case, unique within the document).
-4. Every H2 step MUST start with a **1-2 sentence paragraph (no role)** that states what the step does in natural prose. Then list materials / tools / attributes as role-bulletListItems.
+2. Mirror the source's own structure and voice (H1 wording, count, ordering). Required structural elements — regardless of the source's shape: a brief intro paragraph at the top, H2 procedure steps with \`stepId\`, the terminal step (or a final summary) carrying the \`role: "output"\` span(s).
+3. Every H2 that represents a meaningful action carries \`role: "procedure"\` and a \`stepId\` matching /^[a-z0-9][a-z0-9-]*$/ (kebab-case, unique within the document). Non-action H2s (e.g. a sub-heading inside the intro) do not need procedure.
+4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them.
 5. Prefer **3-10 H2 steps** total. Split at meaningful physical actions — not at every sentence.
-6. For each step's materials, identify which are pristine (first introduction, raw from stock) and which are products of an earlier step. Set \`derivedFrom\` on the latter. If a step extends a prior step without a distinct material handoff, add \`dependsOn\`.
-7. \`dependsOn\` / \`derivedFrom\` MUST reference a stepId defined earlier in the document.
-8. The Materials H1 section is READER REFERENCE ONLY — its bullets MUST NOT carry any role (they would become orphan Entities in the graph).
-9. Put \`role: "output"\` blocks in the Outcome section, typically inside the final H2 step. Do NOT scatter output blocks across middle steps unless the source explicitly describes multiple terminal outputs.
+6. For each role-bearing material span, decide whether it is pristine (first introduction, raw from stock) or the product of an earlier step. Set \`derivedFrom\` on the latter. If a step extends a prior step without a distinct material handoff, add \`dependsOn\` to the H2.
+7. \`dependsOn\` / span \`derivedFrom\` MUST reference a stepId defined earlier in the document.
+8. Up-front inventory sections (ingredient lists, equipment lists — whatever the source calls them) are READER REFERENCE ONLY. Their spans MUST NOT carry any role; they would otherwise become orphan Entities in the graph.
+9. Place \`role: "output"\` spans inside the **terminal H2 step's paragraph** (or, if the source has an explicit results / outcome / finished-product H1, inside that section's terminal step). Do NOT scatter output spans across middle steps unless the source explicitly describes multiple terminal outputs.
 10. Prefer post-transformation names for derived materials ("sliced garlic", "dried MnO2 powder") so the text reads naturally and the \`derivedFrom\` link is self-consistent.
-11. Language of \`text\`: ${isJa ? "Japanese" : "match the source language, or English if ambiguous"}.
-12. Do NOT use numbering prefixes ("1. ", "2. ") in step text — use numberedListItem blockType inside a step if ordering within that step matters, or rely on H2 ordering across steps.
-13. Nest attributes as \`children\` of the material / tool they describe; step-wide attributes (heat level, total duration) go as direct bulletListItem children of the H2.
-14. Never fabricate dependencies that aren't implied by the source text.
-15. **Every \`role: "procedure"\` H2 MUST contain at least one block with \`role: "material"\`, \`"tool"\`, or \`"output"\`.** A procedure with no inputs and no outputs produces no graph edges and is useless. If you cannot identify any concrete material / tool / output for a step, drop the step entirely or merge it into an adjacent step.
+11. Span text MUST be the literal phrase as it appears in the surrounding prose (so concatenating all span \`text\` reproduces the paragraph). Plain narrative segments are spans without a role.
+12. Language of \`text\`: ${isJa ? "Japanese" : "match the source language, or English if ambiguous"}.
+13. Do NOT use numbering prefixes ("1. ", "2. ") in step heading text. If sequencing inside a step matters, use a numberedListItem block (with \`content\` spans) — but prefer flowing prose.
+14. Step-wide attributes (heat level, total duration) appear as inline attribute spans inside the step's paragraph, not as separate blocks.
+15. Never fabricate dependencies that aren't implied by the source text.
+16. **Every \`role: "procedure"\` H2 MUST contain at least one role-bearing span (material / tool / output) in its paragraph(s).** A procedure with no inputs and no outputs produces no graph edges and is useless. If you cannot identify any concrete material / tool / output for a step, drop the step entirely or merge it into an adjacent step.
 
 ## Self-check before emitting JSON
 
 Before you finalize the JSON, walk through your output and confirm:
 
-1. **Every role-tagged block lives under a procedure scope.** For each block carrying \`role: "material" | "tool" | "attribute" | "output"\`, trace upward: it must be a child (or sibling-after) of an H2 that has \`role: "procedure"\`. If a role-tagged block sits under the up-front Materials / Ingredients H1, **remove its \`role\`** — it would otherwise become an isolated graph node.
-2. **No empty procedures.** Every \`role: "procedure"\` H2 must include at least one material / tool / output bullet underneath. Drop or merge any that don't.
-3. **Dependency chain integrity.** Every \`derivedFrom\` and every entry in \`dependsOn\` resolves to a \`stepId\` defined earlier in the document. No forward references, no typos.
-4. **Pristine vs derived split is correct.** Re-check each material: if it is the literal product of an earlier step, set \`derivedFrom\`; if it is fresh from inventory, leave it without \`derivedFrom\`. The same raw ingredient appearing in multiple steps is fine — duplicate the bullet, do NOT use \`derivedFrom\` for it.
+1. **Every role-bearing span lives inside a procedure-scope paragraph.** For each span carrying \`role: "material" | "tool" | "attribute" | "output"\`, trace upward: it must be inside a paragraph that follows an H2 with \`role: "procedure"\` (and stays within that step's scope until the next H2). If a role-tagged span sits under the up-front Materials / Ingredients H1, **remove its \`role\`** — it would otherwise become an isolated graph node.
+2. **No empty procedures.** Every \`role: "procedure"\` H2 must include at least one role-bearing span (material / tool / output) in the prose that follows. Drop or merge any that don't.
+3. **Dependency chain integrity.** Every span \`derivedFrom\` and every entry in \`dependsOn\` resolves to a \`stepId\` defined earlier in the document. No forward references, no typos.
+4. **Pristine vs derived split is correct.** Re-check each material span: if it is the literal product of an earlier step, set \`derivedFrom\`; if it is fresh from inventory, leave it without \`derivedFrom\`. The same raw ingredient appearing in multiple steps is fine — repeat the span, do NOT use \`derivedFrom\` for it.
+5. **Paragraph reads as natural prose.** Concatenating all span \`text\` for a paragraph should produce a fluent sentence. No leftover bullet syntax. No "Material: X" prefixes.
 
 If any check fails, fix the JSON before emitting.
 `;
@@ -437,8 +513,11 @@ function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
   const out: ProvIngesterBlock[] = [];
   for (const b of input) {
     if (!b || typeof b !== "object") continue;
+
+    // text と content の両方を許す。両方無いブロックは捨てる。
     const text = typeof b.text === "string" ? b.text.trim() : "";
-    if (!text) continue;
+    const content = Array.isArray(b.content) ? sanitizeSpans(b.content) : undefined;
+    if (!text && (!content || content.length === 0)) continue;
 
     // 後方互換: LLM が旧 role "result" を出力した場合は "output" に正規化
     const rawRole = typeof b.role === "string" && b.role === "result" ? "output" : b.role;
@@ -461,7 +540,16 @@ function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
 
     const children = Array.isArray(b.children) ? sanitizeBlocks(b.children, depth + 1) : undefined;
 
-    const node: ProvIngesterBlock = { text, role, blockType, level };
+    const node: ProvIngesterBlock = { blockType, level };
+    // heading は spans を使わない（procedure ラベルは block-level） → text を採用
+    if (blockType === "heading") {
+      node.text = text;
+    } else if (content && content.length > 0) {
+      node.content = content;
+    } else {
+      node.text = text;
+    }
+    if (role) node.role = role;
     if (children && children.length > 0) node.children = children;
 
     const stepId = sanitizeStepId(b.stepId);
@@ -478,6 +566,30 @@ function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
     }
 
     out.push(node);
+  }
+  return out;
+}
+
+function sanitizeSpans(input: any[]): ProvSpan[] {
+  const out: ProvSpan[] = [];
+  for (const s of input) {
+    if (!s || typeof s !== "object") continue;
+    const text = typeof s.text === "string" ? s.text : "";
+    if (!text) continue; // 空 span は捨てる（前後空白だけのテキストは段落整形で潰れる）
+
+    const rawRole = typeof s.role === "string" && s.role === "result" ? "output" : s.role;
+    let role: ProvRole | undefined;
+    if (typeof rawRole === "string" && VALID_ROLES.includes(rawRole as ProvRole)) {
+      // span に procedure を書くのは設計外なので無視する
+      role = rawRole === "procedure" ? undefined : (rawRole as ProvRole);
+    }
+
+    const span: ProvSpan = { text };
+    if (role) span.role = role;
+    const derivedFrom = sanitizeStepId(s.derivedFrom);
+    if (derivedFrom) span.derivedFrom = derivedFrom;
+
+    out.push(span);
   }
   return out;
 }

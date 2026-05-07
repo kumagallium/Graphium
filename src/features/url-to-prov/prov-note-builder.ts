@@ -28,8 +28,17 @@ function makeInlineEntityId(label: CoreLabel): string {
   return `ent_${label}_${rand}`;
 }
 
-export type ProvIngesterBlock = {
+export type ProvSpan = {
   text: string;
+  role?: string;
+  derivedFrom?: string;
+};
+
+export type ProvIngesterBlock = {
+  /** 単一テキスト（heading や span 表現を使わない旧形式の本文） */
+  text?: string;
+  /** Phase F (2026-05-07): 散文の本文を span の連なりで表す */
+  content?: ProvSpan[];
   role?: string;
   blockType?: "paragraph" | "heading" | "bulletListItem" | "numberedListItem";
   level?: 1 | 2 | 3;
@@ -174,8 +183,11 @@ function buildSourceHeaderBlock(params: BuildProvNoteParams): any {
  * ctx に副作用で labels / procedures / pending deps を蓄積する。
  */
 function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
-  const text = b.text?.trim();
-  if (!text) return null;
+  // ── 本文を取り出す ──
+  // span 表現があればそれを優先、無ければ flat text を 1 span として扱う。
+  const flatText = b.text?.trim() ?? "";
+  const hasSpans = Array.isArray(b.content) && b.content.length > 0;
+  if (!hasSpans && !flatText) return null;
 
   const id = crypto.randomUUID();
   const blockType = b.blockType ?? "paragraph";
@@ -189,6 +201,7 @@ function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
     props.level = b.level ?? 2;
   }
 
+  // block-level role（procedure や旧 schema の単一 role）
   let coreLabel: CoreLabel | null = null;
   if (b.role) {
     const normalized = normalizeLabel(b.role);
@@ -203,25 +216,20 @@ function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
     blockType === "heading" &&
     (props.level === 2 || props.level === 3);
 
-  // ── スコープ外の material/tool/result はラベルを剥がす ──
+  // ── スコープ外の material/tool/result の block-level ラベルは剥がす ──
   // Graphium の prov-generator は H2 procedure スコープの外にある
-  // material/tool/result を孤立 Entity として扱ってしまう（どの Activity にも
-  // 繋がらない）。読者視点の「材料リスト」セクションにラベルを付けられると
-  // グラフが汚れるので、スコープ内のみ core label を採用する。
-  //
-  // 例外: attribute は祖先探索で親 Entity に吸収されるため、スコープ外でも
-  //      孤立しない（prov-generator が warning を出すのみ）。そのまま残す。
+  // material/tool/result を孤立 Entity として扱ってしまう。
+  // span 単位の inline ラベルでも同様に scope 外なら drop する（後段で span ごとに判定）。
   const ENTITY_LIKE: CoreLabel[] = ["material", "tool", "result"];
   const isEntityLike = coreLabel !== null && ENTITY_LIKE.includes(coreLabel);
   const insideProcedureScope = ctx.currentProcedureBlockId !== null;
 
   if (isEntityLike && !insideProcedureScope) {
-    // スコープ外 → PROV グラフから除外（テキストはそのまま残る）
     coreLabel = null;
   }
 
-  // Phase E: inline-scope ラベル (material/tool/attribute/output) は labels マップに登録せず、
-  // 後段でブロック content にインライン style として書き戻す。procedure だけ block-level に残す。
+  // Phase E: block-level の inline-scope ラベル（旧 schema 互換）は labels に登録せず、
+  // テキスト全体に inline style として書き戻す。procedure だけ block-level に残す。
   if (coreLabel && !INLINE_SCOPE_LABELS.has(coreLabel)) {
     ctx.labels[id] = coreLabel;
   }
@@ -236,7 +244,6 @@ function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
     ctx.procedures.push(record);
     if (b.stepId) ctx.stepIdToBlockId.set(b.stepId, id);
 
-    // この手順の dependsOn は 2nd パスで解決する
     if (b.dependsOn && b.dependsOn.length > 0) {
       for (const dep of b.dependsOn) {
         ctx.pendingDependsOn.push({ fromBlockId: id, toStepId: dep });
@@ -244,8 +251,7 @@ function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
     }
   }
 
-  // material / tool の derivedFrom は 2nd パスで解決する
-  //（現在の scope 手順から derivedFrom の手順へ informed_by）
+  // 旧 schema 互換: block-level の derivedFrom（material/tool）
   if (
     b.derivedFrom &&
     (coreLabel === "material" || coreLabel === "tool") &&
@@ -257,6 +263,7 @@ function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
     });
   }
 
+  // 子ブロックを再帰変換
   const children: any[] = [];
   if (b.children && b.children.length > 0) {
     for (const c of b.children) {
@@ -265,19 +272,67 @@ function convertBlock(b: ProvIngesterBlock, ctx: BuildContext): any | null {
     }
   }
 
-  // Phase E: inline-scope ラベルが付いたブロックは、テキスト全体に inline style を当てる
-  const styles: Record<string, unknown> =
-    coreLabel && INLINE_SCOPE_LABELS.has(coreLabel)
-      ? { [INLINE_LABEL_TO_STYLE_KEY[coreLabel]]: makeInlineEntityId(coreLabel) }
-      : {};
+  // ── BlockNote content[] を組み立てる ──
+  let bnContent: any[];
+  if (hasSpans) {
+    bnContent = buildSpanContent(b.content!, ctx);
+  } else {
+    // flat text 1 span として扱う。block-level coreLabel が inline-scope なら全文に当てる。
+    const styles: Record<string, unknown> =
+      coreLabel && INLINE_SCOPE_LABELS.has(coreLabel)
+        ? { [INLINE_LABEL_TO_STYLE_KEY[coreLabel]]: makeInlineEntityId(coreLabel) }
+        : {};
+    bnContent = [{ type: "text", text: flatText, styles }];
+  }
 
   return {
     id,
     type: blockType,
     props,
-    content: [{ type: "text", text, styles }],
+    content: bnContent,
     children,
   };
+}
+
+/**
+ * span 配列 → BlockNote content[]。
+ * 各 span に role があれば inline style を生成し、material/tool で
+ * derivedFrom があれば現在の procedure scope から informed_by を pending に積む。
+ */
+function buildSpanContent(spans: ProvSpan[], ctx: BuildContext): any[] {
+  const out: any[] = [];
+  for (const span of spans) {
+    if (!span.text) continue;
+    let styles: Record<string, unknown> = {};
+    let label: CoreLabel | null = null;
+    if (span.role) {
+      const normalized = normalizeLabel(span.role);
+      if ((CORE_LABELS as string[]).includes(normalized) && INLINE_SCOPE_LABELS.has(normalized as CoreLabel)) {
+        label = normalized as CoreLabel;
+      }
+    }
+    // scope 外の material/tool/output は inline 化を諦めてプレーン span にする（attribute は許容）
+    if (label && (label === "material" || label === "tool" || label === "output") && !ctx.currentProcedureBlockId) {
+      label = null;
+    }
+    if (label) {
+      styles[INLINE_LABEL_TO_STYLE_KEY[label]] = makeInlineEntityId(label);
+      if (
+        span.derivedFrom &&
+        (label === "material" || label === "tool") &&
+        ctx.currentProcedureBlockId
+      ) {
+        ctx.pendingDerivedFrom.push({
+          fromBlockId: ctx.currentProcedureBlockId,
+          toStepId: span.derivedFrom,
+        });
+      }
+    }
+    out.push({ type: "text", text: span.text, styles });
+  }
+  // 全 span が捨てられた場合のフォールバック（理論上 sanitize で防がれる）
+  if (out.length === 0) out.push({ type: "text", text: "", styles: {} });
+  return out;
 }
 
 /**
