@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
+import { CollapsibleSection } from "./CollapsibleSection";
 import type { WikiKind } from "../lib/document-types";
 import { RecentNotes, type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
@@ -139,6 +140,29 @@ export function FileSidebar({
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
 
+  // wiki エントリの noteId 集合。最近のノートから AI Knowledge を除外するための索引。
+  const wikiNoteIdSet = useMemo(() => {
+    const s = new Set<string>();
+    if (!noteIndex) return s;
+    for (const note of noteIndex.notes) {
+      if (note.wikiKind) s.add(note.noteId);
+    }
+    return s;
+  }, [noteIndex]);
+
+  // セクション右上に出す件数バッジの集計
+  const dataCount = useMemo(() => {
+    if (!mediaCounts) return memoCount;
+    return (mediaCounts.image ?? 0) + (mediaCounts.pdf ?? 0) + (mediaCounts.video ?? 0)
+      + (mediaCounts.audio ?? 0) + (mediaCounts.url ?? 0) + memoCount;
+  }, [mediaCounts, memoCount]);
+
+  const aiTotalCount = useMemo(() => {
+    const w = wikiCounts;
+    const wsum = (w?.summary ?? 0) + (w?.concept ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0);
+    return wsum + skillCount;
+  }, [wikiCounts, skillCount]);
+
   // ラベルカウント（ギャラリーの行数 = 同ラベル内のユニーク preview / text 数）
   // Phase D-3-α: インライン由来のハイライト text もユニーク集計に合流する。
   //   block-level: preview 文字列単位
@@ -203,118 +227,130 @@ export function FileSidebar({
         </button>
       </div>
 
-      {/* 最近のノート + データ一覧 */}
-      <div className="flex-1 overflow-y-auto">
-        <RecentNotes
-          notes={recentNotes}
-          activeFileId={activeFileId}
-          onSelect={onSelect}
-          onShowNoteList={onShowNoteList}
-          loading={filesLoading}
-        />
+      {/* セクション一覧（折り畳み可能） */}
+      <div className="flex-1 overflow-y-auto pb-2">
+        <CollapsibleSection
+          storageKey="recent"
+          title={t("nav.recentNotes")}
+          defaultOpen={true}
+        >
+          <RecentNotes
+            notes={recentNotes}
+            activeFileId={activeFileId}
+            onSelect={onSelect}
+            onShowNoteList={onShowNoteList}
+            loading={filesLoading}
+            excludeNoteIds={wikiNoteIdSet}
+          />
+        </CollapsibleSection>
 
-        {/* データ一覧セクション */}
-        <div className="px-4 pt-3 pb-2">
-          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-2">
-            {t("asset.dataSection")}
-          </h3>
-          <div className="space-y-0.5">
-            {MEDIA_NAV_ITEMS.map(({ type, icon }) => {
-              const count = mediaCounts?.[type] ?? 0;
-              // カウント 0 でも表示（将来のアップロードに備える）
-              return (
-                <button
-                  key={type}
-                  onClick={() => onShowAssetGallery(type)}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                    activeAssetType === type
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  }`}
-                >
-                  <span className="text-muted-foreground shrink-0">{icon}</span>
-                  <span className="flex-1 text-left">{t(`asset.type.${type}`)}</span>
-                  {count > 0 && (
-                    <span className="text-xs text-muted-foreground">{count}</span>
-                  )}
-                </button>
-              );
-            })}
-            {/* メモ */}
-            {onShowMemos && (
+        {/* データ */}
+        <CollapsibleSection
+          storageKey="data"
+          title={t("asset.dataSection")}
+          defaultOpen={true}
+          count={dataCount}
+        >
+          {MEDIA_NAV_ITEMS.map(({ type, icon }) => {
+            const count = mediaCounts?.[type] ?? 0;
+            // カウント 0 でも表示（将来のアップロードに備える）
+            return (
               <button
-                onClick={onShowMemos}
+                key={type}
+                onClick={() => onShowAssetGallery(type)}
                 className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                  memosActive
+                  activeAssetType === type
                     ? "bg-primary/10 text-primary font-semibold"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 }`}
               >
-                <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
-                <span className="flex-1 text-left">{t("memo.title")}</span>
-                {memoCount > 0 && (
-                  <span className="text-xs text-muted-foreground">{memoCount}</span>
+                <span className="text-muted-foreground shrink-0">{icon}</span>
+                <span className="flex-1 text-left">{t(`asset.type.${type}`)}</span>
+                {count > 0 && (
+                  <span className="text-xs text-muted-foreground">{count}</span>
                 )}
               </button>
-            )}
-          </div>
-        </div>
+            );
+          })}
+          {onShowMemos && (
+            <button
+              onClick={onShowMemos}
+              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                memosActive
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              }`}
+            >
+              <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
+              <span className="flex-1 text-left">{t("memo.title")}</span>
+              {memoCount > 0 && (
+                <span className="text-xs text-muted-foreground">{memoCount}</span>
+              )}
+            </button>
+          )}
+        </CollapsibleSection>
 
-        {/* ラベルセクション */}
-        <div className="px-4 pt-3 pb-2">
-          <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-2">
-            {t("label.section")}
-          </h3>
+        {/* ラベル */}
+        <CollapsibleSection
+          storageKey="labels"
+          title={t("label.section")}
+          defaultOpen={true}
+          count={labelCounts.size}
+        >
           {!noteIndex ? (
             <p className="text-xs text-muted-foreground/50 px-2 py-1">{t("common.loading")}</p>
           ) : labelCounts.size === 0 ? (
             <p className="text-xs text-muted-foreground/50 px-2 py-1">—</p>
           ) : (
-            <div className="space-y-0.5">
-              {[...labelCounts.entries()]
-                .sort((a, b) => b[1] - a[1])
-                .map(([label, count]) => {
-                  const color = LABEL_HEX[label] ?? "#8fa394";
-                  return (
-                    <button
-                      key={label}
-                      onClick={() => onShowLabelGallery(label)}
-                      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                        activeLabel === label
-                          ? "bg-primary/10 text-primary font-semibold"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      }`}
-                    >
-                      <span
-                        className="inline-block w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: color }}
-                      />
-                      <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
-                      <span className="text-xs text-muted-foreground">{count}</span>
-                    </button>
-                  );
-                })}
-            </div>
+            [...labelCounts.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .map(([label, count]) => {
+                const color = LABEL_HEX[label] ?? "#8fa394";
+                return (
+                  <button
+                    key={label}
+                    onClick={() => onShowLabelGallery(label)}
+                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                      activeLabel === label
+                        ? "bg-primary/10 text-primary font-semibold"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="flex-1 text-left truncate">{getDisplayLabelName(label)}</span>
+                    <span className="text-xs text-muted-foreground">{count}</span>
+                  </button>
+                );
+              })
           )}
-        </div>
+        </CollapsibleSection>
 
         {/* AI Knowledge セクション（バックエンド不在時はロック表示で導線） */}
         {onShowWikiList && !aiAvailable && (
-          <div className="px-4 pt-1 pb-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5 flex items-center gap-1">
-              AI
-              <Sparkles size={11} className="text-muted-foreground/60" />
-            </h3>
+          <CollapsibleSection
+            storageKey="ai"
+            title={(
+              <span className="flex items-center gap-1">
+                AI
+                <Sparkles size={11} className="text-muted-foreground/60" />
+              </span>
+            )}
+            defaultOpen={false}
+          >
             <AiUpgradeNotice variant="card" />
-          </div>
+          </CollapsibleSection>
         )}
         {onShowWikiList && aiAvailable && (
-          <div className="px-4 pt-1 pb-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
-              AI
-            </h3>
-            <div className="space-y-0.5">
-              {(() => {
+          <CollapsibleSection
+            storageKey="ai"
+            title="AI"
+            defaultOpen={false}
+            count={aiTotalCount}
+          >
+            {(() => {
                 // 既定では Summary / Concept のみ表示。
                 // 実験フラグでオプトインしたとき、または既存ユーザーが残しているデータが
                 // ある場合（count > 0）は表示してアクセスを保つ。
@@ -355,72 +391,78 @@ export function FileSidebar({
                   );
                 });
               })()}
-              {onShowSkillList && (
-                <button
-                  onClick={onShowSkillList}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                    skillActive
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  }`}
-                >
-                  <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
-                  <span className="flex-1 text-left">Skill</span>
-                  {skillCount > 0 && (
-                    <span className="text-xs text-muted-foreground">{skillCount}</span>
-                  )}
-                </button>
-              )}
-              {onShowWikiLog && (
-                <button
-                  onClick={onShowWikiLog}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                    activeWikiView === "log"
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  }`}
-                >
-                  <span className="text-muted-foreground shrink-0"><History size={14} /></span>
-                  <span className="flex-1 text-left">Activity Log</span>
-                </button>
-              )}
-              {onShowWikiLint && (
-                <button
-                  onClick={onShowWikiLint}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                    activeWikiView === "lint"
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  }`}
-                >
-                  <span className="text-muted-foreground shrink-0"><ShieldCheck size={14} /></span>
-                  <span className="flex-1 text-left">Health Check</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Library セクション（Phase 2c — Shared root が設定されていれば表示） */}
-        {onShowSharedLibrary && (
-          <div className="px-4 pt-1 pb-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground/40 mb-1.5">
-              Library
-            </h3>
-            <div className="space-y-0.5">
+            {onShowSkillList && (
               <button
-                onClick={onShowSharedLibrary}
+                onClick={onShowSkillList}
                 className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                  sharedLibraryActive
+                  skillActive
                     ? "bg-primary/10 text-primary font-semibold"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 }`}
               >
-                <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
-                <span className="flex-1 text-left">Shared</span>
+                <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
+                <span className="flex-1 text-left">Skill</span>
+                {skillCount > 0 && (
+                  <span className="text-xs text-muted-foreground">{skillCount}</span>
+                )}
               </button>
-            </div>
-          </div>
+            )}
+            {(onShowWikiLog || onShowWikiLint) && (
+              <div className="flex items-center gap-1 px-2 pt-1">
+                {onShowWikiLog && (
+                  <button
+                    onClick={onShowWikiLog}
+                    title="Activity Log"
+                    aria-label="Activity Log"
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                      activeWikiView === "log"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <History size={12} />
+                    <span>Log</span>
+                  </button>
+                )}
+                {onShowWikiLint && (
+                  <button
+                    onClick={onShowWikiLint}
+                    title="Health Check"
+                    aria-label="Health Check"
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                      activeWikiView === "lint"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <ShieldCheck size={12} />
+                    <span>Health</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* Library セクション（Phase 2c — Shared root が設定されていれば表示） */}
+        {onShowSharedLibrary && (
+          <CollapsibleSection
+            storageKey="library"
+            title="Library"
+            defaultOpen={false}
+          >
+            <button
+              onClick={onShowSharedLibrary}
+              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                sharedLibraryActive
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              }`}
+            >
+              <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
+              <span className="flex-1 text-left">Shared</span>
+            </button>
+          </CollapsibleSection>
         )}
       </div>
 

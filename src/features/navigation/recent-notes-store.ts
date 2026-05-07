@@ -11,17 +11,25 @@ export type RecentNote = {
 const STORAGE_KEY = "graphium-recent-notes";
 const MAX_ENTRIES = 5;
 
+// wiki エントリ判定。`addToRecent` / `getRecentNotes` 双方で防御し、
+// 旧 localStorage に残っている `wiki:xxx` 形式の履歴も読み込み時に除去する。
+function isWikiId(noteId: string): boolean {
+  return noteId.startsWith("wiki:");
+}
+
 // localStorage から読み込み
 export function getRecentNotes(): RecentNote[] {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") as RecentNote[];
+    return raw.filter((n) => !isWikiId(n.noteId));
   } catch {
     return [];
   }
 }
 
-// ノートを先頭に追加（既存エントリは削除して再挿入）
+// ノートを先頭に追加（既存エントリは削除して再挿入）。wiki ID は受け付けない。
 export function addToRecent(noteId: string, title: string): RecentNote[] {
+  if (isWikiId(noteId)) return getRecentNotes();
   const recent = getRecentNotes().filter((n) => n.noteId !== noteId);
   recent.unshift({
     noteId,

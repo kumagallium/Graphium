@@ -11,29 +11,32 @@ export function RecentNotes({
   onSelect,
   onShowNoteList,
   loading = false,
+  excludeNoteIds,
 }: {
   notes: RecentNote[];
   activeFileId: string | null;
   onSelect: (noteId: string) => void;
   onShowNoteList: () => void;
   loading?: boolean;
+  /** 表示時に除外する noteId（AI Knowledge 化された wiki などを排除するため） */
+  excludeNoteIds?: ReadonlySet<string>;
 }) {
   const t = useT();
+  const visibleNotes = excludeNoteIds
+    ? notes.filter((n) => !excludeNoteIds.has(n.noteId))
+    : notes;
   return (
-    <div className="px-2 py-2">
-      <div className="text-xs font-semibold text-sidebar-foreground/50 px-2 mb-1">
-        {t("nav.recentNotes")}
-      </div>
+    <div className="px-2 py-1">
       {loading ? (
         <p className="text-xs text-muted-foreground px-2 py-1">
           {t("nav.loadingNotes")}
         </p>
-      ) : notes.length === 0 ? (
+      ) : visibleNotes.length === 0 ? (
         <p className="text-xs text-muted-foreground px-2 py-1">
           {t("nav.noNotes")}
         </p>
       ) : (
-        notes.map((note) => (
+        visibleNotes.map((note) => (
           <button
             key={note.noteId}
             onClick={() => onSelect(note.noteId)}

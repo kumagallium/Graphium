@@ -2609,12 +2609,14 @@ export function NoteApp() {
 
   // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
   // wiki エントリは handleOpenWikiFile + wikiKind ナビ、それ以外は handleOpenFile。
+  // source === "ai" でなくても、index 側に wikiKind があれば wiki 経路に振る
+  // （古いインデックスや source 欠落エントリで Recent Notes に wiki が混入するのを防ぐ）。
   const handleComposerNoteSelect = useCallback(
     (noteId: string, source: "human" | "ai" | "skill" | undefined) => {
       setComposerPrompt("");
       composer.closeComposer();
-      if (source === "ai") {
-        const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+      const entry = fm.noteIndex?.notes.find((n) => n.noteId === noteId);
+      if (source === "ai" || entry?.wikiKind) {
         if (entry?.wikiKind) fm.setActiveWikiKind(entry.wikiKind);
         fm.handleOpenWikiFile(noteId);
         return;
