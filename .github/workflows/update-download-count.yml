@@ -1,0 +1,63 @@
+name: Update download badges
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute total .dmg downloads
+        id: count
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          total=$(gh api --paginate "repos/${{ github.repository }}/releases" \
+            --jq '[.[].assets[] | select(.name | endswith(".dmg")) | .download_count] | add // 0')
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "Total .dmg downloads: $total"
+
+      - name: Write badge JSON to badges branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOTAL: ${{ steps.count.outputs.total }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          cd "$tmp"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          if git fetch --depth=1 origin badges 2>/dev/null; then
+            git checkout badges
+          else
+            git checkout --orphan badges
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p badges
+          cat > badges/dmg-downloads.json <<EOF
+          {
+            "schemaVersion": 1,
+            "label": "dmg downloads",
+            "message": "${TOTAL}",
+            "color": "blue"
+          }
+          EOF
+
+          git add badges/dmg-downloads.json
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "chore: update dmg download count to ${TOTAL}"
+          git push origin badges
