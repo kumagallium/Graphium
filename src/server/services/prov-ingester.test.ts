@@ -315,12 +315,13 @@ describe("buildProvIngesterSystemPrompt", () => {
     expect(prompt).toContain("MnO2");
   });
 
-  it("4 つの H1 テンプレート（Overview / Materials / Procedure / Outcome）が指示されている", () => {
+  it("ソース構造をミラーする方針が指示されている（固定 4 H1 を強制しない）", () => {
     const prompt = buildProvIngesterSystemPrompt("en");
-    expect(prompt).toContain("Overview");
-    expect(prompt).toContain("Materials");
-    expect(prompt).toContain("Procedure");
-    expect(prompt).toContain("Outcome");
+    expect(prompt).toContain("Mirror the source");
+    expect(prompt).toContain("Do NOT impose a fixed template");
+    // 必須要素は intro paragraph + H2 procedure + terminal step の output span
+    expect(prompt).toContain("intro paragraph");
+    expect(prompt).toContain("terminal step");
   });
 
   it("各 H2 step に散文 paragraph + inline span を要求する規則が含まれる", () => {
