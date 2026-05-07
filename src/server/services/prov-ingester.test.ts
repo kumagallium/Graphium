@@ -139,6 +139,82 @@ describe("parseProvIngesterOutput", () => {
     expect(out.blocks).toEqual([]);
   });
 
+  it("Phase F: paragraph の content spans をパースして role / derivedFrom を保持する", () => {
+    const raw = JSON.stringify({
+      title: "Recipe",
+      blocks: [
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "Warm " },
+            { text: "olive oil", role: "material" },
+            { text: " with " },
+            { text: "sliced garlic", role: "material", derivedFrom: "slice-garlic" },
+            { text: " over " },
+            { text: "low heat", role: "attribute" },
+            { text: "." },
+          ],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    expect(out.blocks).toHaveLength(1);
+    const block = out.blocks[0];
+    expect(block.text).toBeUndefined();
+    expect(block.content).toHaveLength(7);
+    expect(block.content![1]).toEqual({ text: "olive oil", role: "material" });
+    expect(block.content![3]).toEqual({
+      text: "sliced garlic",
+      role: "material",
+      derivedFrom: "slice-garlic",
+    });
+    expect(block.content![5]).toEqual({ text: "low heat", role: "attribute" });
+    expect(block.content![6]).toEqual({ text: "." });
+  });
+
+  it("Phase F: span の不正な role / 空 text / span 上の procedure は落とす", () => {
+    const raw = JSON.stringify({
+      title: "T",
+      blocks: [
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "ok", role: "ingredient" },          // 不正 role → role 削除
+            { text: "" },                                 // 空 → 落ちる
+            { text: "bad procedure span", role: "procedure" }, // span 上の procedure → role 削除
+            { text: "result alias", role: "result" },    // result → output に正規化
+          ],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    const spans = out.blocks[0].content!;
+    expect(spans).toHaveLength(3);
+    expect(spans[0]).toEqual({ text: "ok" });
+    expect(spans[1]).toEqual({ text: "bad procedure span" });
+    expect(spans[2]).toEqual({ text: "result alias", role: "output" });
+  });
+
+  it("Phase F: heading は span を持たず flat text を保持する", () => {
+    const raw = JSON.stringify({
+      title: "T",
+      blocks: [
+        {
+          blockType: "heading",
+          level: 2,
+          role: "procedure",
+          stepId: "slice",
+          text: "Slice",
+          // ここに content が入っていても heading では無視されて text 採用
+          content: [{ text: "should be ignored" }],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    expect(out.blocks[0].text).toBe("Slice");
+    expect(out.blocks[0].content).toBeUndefined();
+  });
+
   it("stepId / derivedFrom / dependsOn を拾う", () => {
     const raw = JSON.stringify({
       title: "R",
@@ -247,10 +323,11 @@ describe("buildProvIngesterSystemPrompt", () => {
     expect(prompt).toContain("Outcome");
   });
 
-  it("各 H2 step に自然文 paragraph を要求する規則が含まれる", () => {
+  it("各 H2 step に散文 paragraph + inline span を要求する規則が含まれる", () => {
     const prompt = buildProvIngesterSystemPrompt("en");
-    expect(prompt).toContain("1-2 sentence paragraph");
-    expect(prompt).toContain("natural prose");
+    expect(prompt).toContain("one or two prose paragraphs");
+    expect(prompt).toContain("inline spans with role");
+    expect(prompt).toContain("Do NOT use bulletListItem to list them");
   });
 });
 

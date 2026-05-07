@@ -136,11 +136,11 @@ const planTemplate: TemplateDef = {
 // ## Overview                   (paragraph)
 // ## [[label:procedure]] 手順1   (Activity)
 //   ### 計画                    (no role)
-//     - <inlineMaterial> 材料
-//     - <inlineTool> 道具
-//     - <inlineAttribute> 条件
+//     <inlineMaterial> 材料 (paragraph)
+//     <inlineTool> 道具 (paragraph)
+//     <inlineAttribute> 条件 (paragraph)
 //   ### 結果・考察               (no role)
-//     - <inlineOutput> 結果
+//     <inlineOutput> 結果 (paragraph)
 // ## [[label:procedure]] 手順2   (Activity, informed_by 手順1)
 //   ... 同様
 //
@@ -148,10 +148,13 @@ const planTemplate: TemplateDef = {
 // インラインハイライト（BlockNote inline style）に移行。procedure ラベルだけ block-level
 // として残る（H2 見出し = Activity）。
 //
+// 2026-05-07: Phase E のインライン化に合わせて placeholder の block も bulletListItem から
+// paragraph に変更。散文の中でハイライトする形に統一する。
+//
 // 注: BlockNote のデフォルト heading は level 1-3 のみサポート。procedure scope は
 //     level 2 を使う（prov-generator の仕様）。
 
-// 各 bullet の placeholder テキスト全体に当てるインライン style 用の entityId 発番
+// 各 placeholder paragraph テキスト全体に当てるインライン style 用の entityId 発番
 function makeStepEntityId(role: "material" | "tool" | "attribute" | "output", step: number): string {
   // step ごとに異なる id を返すため step インデックスを seed に含める
   const rand = Math.random().toString(36).slice(2, 8);
@@ -165,16 +168,16 @@ const experimentTemplate: TemplateDef = {
   tagKeys: ["template.tag.run", "template.tag.prov"],
   focusPath: [0],
   build: (t) => {
-    // Step n の bullet placeholder テキスト全体に inline style を当てるヘルパー
+    // Step n の placeholder テキスト全体に inline style を当てるヘルパー
     // BlockNote inline style 名: inlineMaterial / inlineTool / inlineAttribute / inlineOutput
-    const inlineBullet = (
+    const inlineParagraph = (
       role: "material" | "tool" | "attribute" | "output",
       step: number,
       placeholder: string,
     ) => {
       const styleKey = `inline${role[0].toUpperCase()}${role.slice(1)}`;
       return {
-        type: "bulletListItem" as const,
+        type: "paragraph" as const,
         content: [
           { type: "text", text: placeholder, styles: { [styleKey]: makeStepEntityId(role, step) } },
         ],
@@ -198,12 +201,12 @@ const experimentTemplate: TemplateDef = {
         content: [{ type: "text", text: t("template.experiment.planHeading"), styles: {} }],
         children: [],
       },
-      // [2] bullet material (inline highlight)
-      inlineBullet("material", step, t("template.experiment.materialPlaceholder")),
-      // [3] bullet tool (inline highlight)
-      inlineBullet("tool", step, t("template.experiment.toolPlaceholder")),
-      // [4] bullet attribute (inline highlight)
-      inlineBullet("attribute", step, t("template.experiment.attributePlaceholder")),
+      // [2] paragraph material (inline highlight)
+      inlineParagraph("material", step, t("template.experiment.materialPlaceholder")),
+      // [3] paragraph tool (inline highlight)
+      inlineParagraph("tool", step, t("template.experiment.toolPlaceholder")),
+      // [4] paragraph attribute (inline highlight)
+      inlineParagraph("attribute", step, t("template.experiment.attributePlaceholder")),
       // [5] H3 結果・考察
       {
         type: "heading",
@@ -211,8 +214,8 @@ const experimentTemplate: TemplateDef = {
         content: [{ type: "text", text: t("template.experiment.resultHeading"), styles: {} }],
         children: [],
       },
-      // [6] bullet output (inline highlight)
-      inlineBullet("output", step, t("template.experiment.resultPlaceholder")),
+      // [6] paragraph output (inline highlight)
+      inlineParagraph("output", step, t("template.experiment.resultPlaceholder")),
     ];
 
     // フラット展開: 各ステップは 7 ブロック
