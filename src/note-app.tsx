@@ -99,7 +99,9 @@ import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-has
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner,
   IngestToast, type IngestToastState, type IngestToastItem,
-  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf,
+  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromMultiSource,
+  extractPlainTextFromDoc,
+  type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
@@ -3339,7 +3341,12 @@ export function NoteApp() {
         for (const cId of sourceConceptIds) {
           const cDoc = await fm.loadDoc(`wiki:${cId}`);
           if (!cDoc) continue;
-          if (cDoc.wikiMeta?.kind !== "concept") continue;
+          // Synthesis のソースは Concept だけでなく Atom も許容する。
+          // Atomize 経由で生まれた抽象（atom）は Concept と同じく synthesis の
+          // 原料として正当に使われるため、ここで弾くと Atom ベースの Synthesis が
+          // 「Source concepts not found」で再生成不能になる。
+          const sourceKind = cDoc.wikiMeta?.kind;
+          if (sourceKind !== "concept" && sourceKind !== "atom") continue;
           concepts.push({
             id: cId,
             title: cDoc.title,
@@ -3350,12 +3357,21 @@ export function NoteApp() {
         }
 
         if (concepts.length < 2) {
+          // Synthesis は最低 2 件のソース（Concept/Atom）が必要。
+          // 1 件残っている場合と 0 件の場合で文言を分け、ユーザーが状況を理解できるようにする。
+          const totalSources = doc.wikiMeta.derivedFromNotes.length;
+          const errMsg =
+            totalSources === 0
+              ? "Synthesis has no source pages recorded"
+              : concepts.length === 0
+                ? `All ${totalSources} source page(s) are missing or deleted`
+                : `Synthesis needs ≥2 source pages; only ${concepts.length} of ${totalSources} remain`;
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: "Source concepts not found" } : i
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
             ),
           }));
-          return { ok: false, error: "Source concepts not found" };
+          return { ok: false, error: errMsg };
         }
 
         const synthHeaders: Record<string, string> = { "Content-Type": "application/json" };
@@ -3417,22 +3433,101 @@ export function NoteApp() {
           return { ok: false, error: "No synthesis generated" };
         }
       } else {
-        const sourceNoteIds = doc.wikiMeta.derivedFromNotes;
-        const sourceDocs: { noteId: string; doc: import("./lib/document-types").GraphiumDocument }[] = [];
-        for (const noteId of sourceNoteIds) {
-          const sDoc = await fm.loadDoc(noteId);
-          if (sDoc) sourceDocs.push({ noteId, doc: sDoc });
+        // マルチソース regenerate:
+        // derivedFromNotes に含まれる note / pdf: / url: prefix のソースをすべて
+        // 解決してテキスト化し、1 度の ingest で synthesis し直す。
+        // 単一ソースで再生成すると merge ingest で育った内容が消えてしまうため。
+        const sourceNoteIds = doc.wikiMeta.derivedFromNotes ?? [];
+        const parts: MultiSourcePart[] = [];
+        const skipped: string[] = [];
+
+        for (const rawId of sourceNoteIds) {
+          // 自己参照（過去の regenerate 不具合で wiki 自身の ID が混入することがある）はスキップ
+          if (rawId === wikiId) continue;
+
+          if (rawId.startsWith("pdf:")) {
+            const fileId = rawId.slice("pdf:".length);
+            try {
+              const provider = getActiveProvider();
+              const blobUrl = await provider.getMediaBlobUrl(fileId);
+              const blob = await (await fetch(blobUrl)).blob();
+              const { extractPdfText } = await import("./features/wiki/pdf-text-extractor");
+              const extracted = await extractPdfText(blob);
+              if (extracted.text && extracted.text.length >= 50) {
+                const mediaEntry = fm.mediaIndex?.media?.find((e) => e.fileId === fileId);
+                const pdfTitle = extracted.title || mediaEntry?.name || `PDF ${fileId.slice(0, 8)}`;
+                parts.push({ sourceNoteId: rawId, kind: "pdf", title: pdfTitle, text: extracted.text });
+              } else {
+                skipped.push(rawId);
+              }
+            } catch (e) {
+              console.warn("PDF source skipped during regenerate:", rawId, e);
+              skipped.push(rawId);
+            }
+            continue;
+          }
+
+          if (rawId.startsWith("url:")) {
+            const url = rawId.slice("url:".length);
+            try {
+              const fetchRes = await fetch(`${apiBase()}/wiki/fetch-url`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url }),
+              });
+              if (fetchRes.ok) {
+                const urlData = (await fetchRes.json()) as { title: string; description?: string; text: string };
+                const text = [urlData.description ? `> ${urlData.description}` : "", urlData.text].filter(Boolean).join("\n\n");
+                if (text.length >= 50) {
+                  parts.push({ sourceNoteId: rawId, kind: "url", title: urlData.title || url, text });
+                } else {
+                  skipped.push(rawId);
+                }
+              } else {
+                skipped.push(rawId);
+              }
+            } catch (e) {
+              console.warn("URL source skipped during regenerate:", rawId, e);
+              skipped.push(rawId);
+            }
+            continue;
+          }
+
+          // 通常ノート
+          const sDoc = await fm.loadDoc(rawId);
+          if (sDoc) {
+            const text = extractPlainTextFromDoc(sDoc);
+            if (text.trim().length > 0) {
+              parts.push({ sourceNoteId: rawId, kind: "note", title: sDoc.title, text });
+            } else {
+              skipped.push(rawId);
+            }
+          } else {
+            skipped.push(rawId);
+          }
         }
 
-        if (sourceDocs.length === 0) {
-          sourceDocs.push({ noteId: wikiId, doc });
+        if (parts.length === 0) {
+          // 1 件も解決できないときは、Wiki 自身の本文をソースにフォールバック
+          // （旧挙動互換。derivedFromNotes 全滅は通常はあり得ないが防御的に）
+          const selfText = extractPlainTextFromDoc(doc);
+          if (selfText.trim().length > 0) {
+            parts.push({ sourceNoteId: wikiId, kind: "note", title: wikiTitle, text: selfText });
+          } else {
+            setIngestToast((prev) => ({
+              items: (prev?.items ?? []).map((i) =>
+                i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: "No source available" } : i
+              ),
+            }));
+            return { ok: false, error: "No source available" };
+          }
         }
 
-        const primarySource = sourceDocs[0];
         const regenIngestSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
-        const result = await ingestNote(
-          primarySource.noteId,
-          primarySource.doc,
+        const result = await ingestFromMultiSource(
+          parts,
+          wikiTitle,
+          wikiId,
           [],
           "ja",
           selectedModel,
@@ -3440,36 +3535,36 @@ export function NoteApp() {
         );
 
         if (result.wikis.length > 0) {
-          // 既存 Wiki と同じ kind の出力を選ぶ。Ingester は通常
-          // [Summary, Concept1, Concept2...] の順で返すため、kind を見ずに [0] を取ると
-          // Concept ページを再生成しようとしても Summary の内容で置き換わってしまう。
+          // 既存 Wiki と同じ kind の出力を優先（タイトルが完全一致するものを最優先）
           const targetKind = doc.wikiMeta?.kind ?? "concept";
-          const matched = result.wikis.find((w) => w.kind === targetKind) ?? result.wikis[0];
-          // 再生成は既存内容を保持しない「上書き再構築」が正しい挙動。
-          // rewriteAndMerge は新規ノート ingest 時に既存 Wiki に新情報を統合するためのもので、
-          // 「再生成」ボタンの意図とは異なるため、buildWikiDocument で新規ドキュメントを作る。
+          const matched =
+            result.wikis.find((w) => w.kind === targetKind && w.title === wikiTitle) ??
+            result.wikis.find((w) => w.kind === targetKind) ??
+            result.wikis[0];
+
           const newDoc = buildWikiDocument(
             matched,
-            primarySource.noteId,
+            // sourceNoteTitle 表示用に primary を 1 件渡す。実際の derivedFromNotes は
+            // 後段で「元の wiki が持っていた配列」をそのまま引き継ぐ。
+            parts[0].sourceNoteId,
             result.model,
-            primarySource.doc.title,
+            parts[0].title,
             undefined,
             "ja",
             buildNoteIndex(fm.noteIndex),
           );
-          // 既存 Wiki のメタデータと派生元情報は引き継ぐ
+          // derivedFromNotes は **元の配列をそのまま保持** する。
+          // 自己参照（wikiId）と取得失敗ソースだけ落として保存する設計。
+          const preservedDerivedFromNotes = (doc.wikiMeta?.derivedFromNotes ?? []).filter(
+            (id) => id !== wikiId,
+          );
           const rewritten: GraphiumDocument = {
             ...newDoc,
             createdAt: doc.createdAt ?? newDoc.createdAt,
             modifiedAt: new Date().toISOString(),
             wikiMeta: {
               ...newDoc.wikiMeta!,
-              derivedFromNotes: [
-                ...new Set([
-                  ...(doc.wikiMeta?.derivedFromNotes ?? []),
-                  primarySource.noteId,
-                ]),
-              ],
+              derivedFromNotes: preservedDerivedFromNotes,
               derivedFromChats: doc.wikiMeta?.derivedFromChats ?? [],
               generatedBy: {
                 model: result.model ?? selectedModel ?? "unknown",
@@ -3484,11 +3579,17 @@ export function NoteApp() {
           embedWikiSections(wikiId, rewritten).catch(() => {});
           if (openAfter) fm.handleOpenWikiFile(wikiId);
           const modelLabel = result.model ?? selectedModel ?? "default";
-          wikiLog.append("regenerate", [wikiId], `Regenerated "${wikiTitle}" with ${modelLabel}`).catch(() => {});
+          const sourceSummary =
+            skipped.length > 0
+              ? `${parts.length} sources (${skipped.length} skipped)`
+              : `${parts.length} sources`;
+          wikiLog.append("regenerate", [wikiId], `Regenerated "${wikiTitle}" with ${modelLabel} from ${sourceSummary}`).catch(() => {});
 
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: modelLabel } : i
+              i.id === toastId
+                ? { ...i, status: "success" as const, detail: undefined, result: `${modelLabel} · ${sourceSummary}` }
+                : i
             ),
           }));
           return { ok: true };

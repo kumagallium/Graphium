@@ -151,8 +151,11 @@ export function buildSynthesizerUserMessage(
   concepts: ConceptSnapshot[],
   existingSynthesisTitles: string[],
 ): string {
-  if (concepts.length < 3) {
-    return "Not enough Concept pages for synthesis (minimum 3 required).";
+  // Synthesis は 2 件以上で成立する（プロンプトでも "two or more concepts" としている）。
+  // Discovery 側で 3 件以上に絞りたい場合は、呼び出し元（fetchSynthesisCandidates）で
+  // 既に件数ガードを行っているため、ここはサーバー /synthesize の最小要件と一致させる。
+  if (concepts.length < 2) {
+    return "Not enough Concept pages for synthesis (minimum 2 required).";
   }
 
   const conceptDescriptions = concepts.map((c) => {
