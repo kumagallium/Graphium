@@ -5,7 +5,9 @@ export { WikiBanner } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export { IngestToast, type IngestToastState, type IngestToastItem } from "./IngestToast";
 export {
-  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf,
+  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromMultiSource,
+  extractPlainTextFromDoc,
+  type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
   embedWikiSections, markEditedSections,
   // 横断更新

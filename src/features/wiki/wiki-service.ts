@@ -909,7 +909,7 @@ function extractSectionsForEmbedding(
 /**
  * GraphiumDocument からプレーンテキストを抽出する
  */
-function extractPlainTextFromDoc(doc: GraphiumDocument): string {
+export function extractPlainTextFromDoc(doc: GraphiumDocument): string {
   const page = doc.pages[0];
   if (!page) return "";
 
@@ -1053,6 +1053,81 @@ export async function ingestFromPdf(
 
   const data = (await res.json()) as IngestResult;
   return { ...data, pageCount: extracted.pageCount };
+}
+
+// ── マルチソース Ingest（regenerate 用） ──
+
+/** 1 つの再生成対象につき複数のソース（note / pdf / url）から抽出したテキスト塊。
+ * caller が事前に各ソースを解決して text 化しておく前提。 */
+export type MultiSourcePart = {
+  /** 元のソース ID（`<uuid>` / `pdf:<id>` / `url:<url>` 形式そのまま） */
+  sourceNoteId: string;
+  /** ヘッダ表示・LLM への手がかりとなる人間可読タイトル */
+  title: string;
+  /** プレーンテキスト本文 */
+  text: string;
+  kind: "note" | "pdf" | "url";
+};
+
+/**
+ * 複数のソース（note + pdf + url）を 1 度の ingest 呼び出しに束ねて渡し、
+ * Wiki を再生成する。merge ingest で育ったマルチソース Concept の regenerate に使う。
+ *
+ * 各ソースは `## Source N: <title>` ブロックで区切って LLM に渡し、すべてを
+ * 横断した synthesis を 1 つの Concept として返してもらう想定。
+ */
+export async function ingestFromMultiSource(
+  parts: MultiSourcePart[],
+  /** 再生成対象の Wiki タイトル（LLM がフォーカスすべき既存の主題） */
+  wikiTitle: string,
+  /** 再生成対象の Wiki ID（noteId として渡す。derivedFromNotes 解決には使わない） */
+  wikiId: string,
+  existingWikis: ExistingWikiInfo[],
+  language: string,
+  model?: string,
+  skills?: { title: string; prompt: string }[],
+): Promise<IngestResult> {
+  if (parts.length === 0) {
+    throw new Error("ソースが 1 件もありません");
+  }
+
+  const languageHint =
+    language === "ja"
+      ? "[出力言語: 日本語で書いてください。Summary も Concept もすべて日本語にしてください]"
+      : `[Output language: ${language}]`;
+
+  const sourceBlocks = parts
+    .map((p, i) => {
+      const kindLabel = p.kind === "pdf" ? "PDF" : p.kind === "url" ? "URL" : "Note";
+      return `## Source ${i + 1} [${kindLabel}]: ${p.title}\n\n${p.text}`;
+    })
+    .join("\n\n---\n\n");
+
+  // 単一ソース ingest と同じ /ingest エンドポイントに投げるが、Wiki タイトルを
+  // noteTitle として渡すことで「この Concept を作り直す」というフォーカスを
+  // LLM に与える。System prompt 側の Summary/Concept 構造はそのまま流用する。
+  const noteContent = `${languageHint}\n\n${sourceBlocks}`;
+
+  const res = await fetch(`${API_BASE}/ingest`, {
+    method: "POST",
+    headers: wikiHeaders(),
+    body: JSON.stringify({
+      noteId: wikiId,
+      noteContent,
+      noteTitle: wikiTitle,
+      existingWikiTitles: existingWikis,
+      language,
+      ...(model ? { model } : wikiBodyModel()),
+      ...(skills && skills.length > 0 ? { skills } : {}),
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `Ingest failed (${res.status})`);
+  }
+
+  return res.json() as Promise<IngestResult>;
 }
 
 /**

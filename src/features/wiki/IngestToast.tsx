@@ -110,6 +110,22 @@ export function IngestToast({ state, onDismiss }: Props) {
             {item.detail && (item.status === "generating" || item.status === "saving") && (
               <span className="text-muted-foreground/60 shrink-0">{item.detail}</span>
             )}
+            {item.result && item.status === "error" && (
+              <span
+                className="text-destructive/80 break-words whitespace-normal min-w-0 flex-1"
+                title={item.result}
+              >
+                — {item.result}
+              </span>
+            )}
+            {item.result && item.status === "success" && (
+              <span
+                className="text-muted-foreground/60 truncate min-w-0"
+                title={item.result}
+              >
+                — {item.result}
+              </span>
+            )}
           </div>
         ))}
         {queuedCount > 0 && activeItem && (
