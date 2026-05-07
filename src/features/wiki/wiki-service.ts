@@ -200,9 +200,24 @@ export function mergeIntoWikiDocument(
   const now = new Date().toISOString();
   const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex);
   const page = existingDoc.pages[0];
+  const existingBlocks = page?.blocks ?? [];
 
-  // 新しいセクションを既存ブロックの末尾に追加
-  const mergedBlocks = [...(page?.blocks ?? []), ...converted.blocks];
+  // 既存 References セクション（"References" / "関連" 等の H2 以降）の位置を探し、
+  // 新セクションは References の **前** に挿入する。
+  // 末尾追加だと References が本文の途中に埋もれ、リーダー視点で導線が崩れるため。
+  const refIdx = existingBlocks.findIndex(
+    (b: any) =>
+      b?.type === "heading" &&
+      isReferencesHeading(extractInlineText(b.content)),
+  );
+  const mergedBlocks =
+    refIdx >= 0
+      ? [
+          ...existingBlocks.slice(0, refIdx),
+          ...converted.blocks,
+          ...existingBlocks.slice(refIdx),
+        ]
+      : [...existingBlocks, ...converted.blocks];
 
   // derivedFromNotes に追加（重複除去）
   const derivedFromNotes = [
@@ -552,6 +567,32 @@ export function parseInlineCitations(
  * Ingester のセクション出力を BlockNote ブロック配列に変換する
  * [[タイトル]] をクリッカブルな @リンクに変換し、knowledgeLinks を生成する
  */
+/** 「References / 関連 / 参考文献」など、buildRelationBlocks 側が自動生成する
+ * セクションと衝突する見出しを判定する。LLM が誤ってこの種のセクションを
+ * 出力したときに二重 References になるのを防ぐ。 */
+function isReferencesHeading(heading: string): boolean {
+  const h = heading.trim().toLowerCase();
+  if (!h) return false;
+  return (
+    h === "references" ||
+    h === "reference" ||
+    h === "related" ||
+    h === "see also" ||
+    h === "関連" ||
+    h === "参考" ||
+    h === "参考文献" ||
+    h === "出典"
+  );
+}
+
+/** 1 行が markdown の ATX 見出し（`## xxx` / `### xxx`）かを判定し、レベルとテキストを返す。
+ * LLM が section.content 内に見出し記法を埋め込んでくる事故への防御。 */
+function parseMarkdownHeading(line: string): { level: number; text: string } | null {
+  const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+  if (!m) return null;
+  return { level: Math.min(m[1].length, 3), text: m[2].trim() };
+}
+
 function convertSectionsToBlocks(
   sections: { heading: string; content: string }[],
   noteIndex: NoteIndex = [],
@@ -560,9 +601,14 @@ function convertSectionsToBlocks(
   const knowledgeLinks: any[] = [];
 
   for (const section of sections) {
+    const trimmedHeading = (section.heading ?? "").trim();
+
+    // References 系の見出しは buildRelationBlocks 側で生成されるため、
+    // セクションごと丸ごとスキップして二重生成を防ぐ。
+    if (isReferencesHeading(trimmedHeading)) continue;
+
     // H2 見出しブロック（heading が空文字の場合はスキップ。短い Concept で
     // セクション分けが不要な場合に LLM が `heading: ""` を返すことがあるため）
-    const trimmedHeading = (section.heading ?? "").trim();
     if (trimmedHeading) {
       blocks.push({
         id: crypto.randomUUID(),
@@ -578,9 +624,28 @@ function convertSectionsToBlocks(
       });
     }
 
-    // コンテンツを段落ブロックに分割
+    // コンテンツを行ごとに分割し、`## ...` 形式の markdown 見出しは
+    // 生テキスト段落ではなく proper な heading ブロックに変換する。
     const paragraphs = section.content.split("\n").filter(Boolean);
     for (const para of paragraphs) {
+      const md = parseMarkdownHeading(para);
+      if (md) {
+        // References 系の埋め込み見出しもここでドロップする。
+        if (isReferencesHeading(md.text)) continue;
+        blocks.push({
+          id: crypto.randomUUID(),
+          type: "heading",
+          props: {
+            textColor: "default",
+            backgroundColor: "default",
+            textAlignment: "left",
+            level: md.level,
+          },
+          content: [{ type: "text", text: md.text, styles: {} }],
+          children: [],
+        });
+        continue;
+      }
       const parsed = parseInlineCitations(para, noteIndex);
       blocks.push({
         id: parsed.blockId,

@@ -3,7 +3,10 @@
 
 import { pdfjs } from "react-pdf";
 
-const MAX_TEXT_CHARS = 20_000;
+// 長文 PDF（100 ページ級の論文・資料）でも Summary が「冒頭しか読まなかった要約」に
+// ならないよう、LLM に渡す上限を広めに取る。日本語混じりで概ね 60-90 ページぶん。
+// それ以上はコスト・レイテンシが急増するので打ち切る。
+const MAX_TEXT_CHARS = 80_000;
 
 export type ExtractedPdf = {
   title: string;
@@ -22,6 +25,7 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
   const pageCount = doc.numPages;
   const parts: string[] = [];
   let total = 0;
+  let pagesRead = 0;
 
   for (let i = 1; i <= pageCount; i++) {
     const page = await doc.getPage(i);
@@ -32,12 +36,18 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
       .join(" ");
     parts.push(pageText);
     total += pageText.length;
+    pagesRead = i;
     if (total > MAX_TEXT_CHARS) break;
   }
 
   let text = parts.join("\n\n").trim();
+  const truncated = pagesRead < pageCount || text.length > MAX_TEXT_CHARS;
   if (text.length > MAX_TEXT_CHARS) {
-    text = text.slice(0, MAX_TEXT_CHARS) + "\n\n[... truncated]";
+    text = text.slice(0, MAX_TEXT_CHARS);
+  }
+  if (truncated) {
+    // LLM に「全文を読んだ」と誤認させないため、何ページ中何ページまで読めたかを明示する
+    text += `\n\n[... truncated: read ${pagesRead} of ${pageCount} pages]`;
   }
 
   let title = "";
