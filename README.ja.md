@@ -16,7 +16,7 @@
   <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/kumagallium/Graphium?display_name=tag&sort=semver"></a>
   <a href="https://github.com/kumagallium/Graphium/releases"><img alt="dmg downloads" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/kumagallium/Graphium/badges/badges/dmg-downloads.json"></a>
   <a href="https://github.com/kumagallium/Graphium/actions/workflows/test.yml"><img alt="CI" src="https://github.com/kumagallium/Graphium/actions/workflows/test.yml/badge.svg?branch=main"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kumagallium/Graphium"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kumagallium/Graphium?cacheSeconds=3600"></a>
   <a href="https://github.com/kumagallium/Graphium/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/kumagallium/Graphium?style=flat"></a>
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/kumagallium/Graphium/main">
 </p>
