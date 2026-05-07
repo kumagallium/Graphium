@@ -30,7 +30,7 @@ cannot tell:
 
 - Was that number something you measured, or something you assumed?
 - Was that paragraph yours, or did an LLM hand it to you on a tired afternoon?
-- How did I arrive at this idea — which earlier notes is it standing on?
+- How did I arrive at this idea in the first place?
 
 Researchers, designers, founders, writers, engineers, students — anyone whose
 work is **trial and error toward a discovery** — runs into the same wall. The

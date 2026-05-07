@@ -21,7 +21,7 @@ export const en = {
   // Problem
   "problem.heading": "Most notes get vaguer with time.",
   "problem.lead":
-    "Months later, you re-read your own page and cannot tell: was that number measured, or assumed? Was that paragraph yours, or did an LLM hand it to you on a tired afternoon? Which earlier note is this idea standing on?",
+    "Months later, you re-read your own page and cannot tell: was that number measured, or assumed? Was that paragraph yours, or did an LLM hand it to you on a tired afternoon? How did you arrive at this idea in the first place?",
   "problem.tagline": "Graphium notes get sharper as you write.",
   "problem.body":
     "The fix is provenance, and provenance cannot be bolted on later. It has to live in the spine of how the editor stores text. Graphium's spine is W3C PROV-DM, and its AI features are obligated to travel the same trail.",
@@ -115,7 +115,7 @@ export const ja: Record<keyof typeof en, string> = {
 
   "problem.heading": "普通のノートは、時間とともに曖昧になる。",
   "problem.lead":
-    "数ヶ月後、自分のページを読み返してこう問われると、答えに詰まります。その数字は測ったものか、それとも仮定だったか。その段落は自分の言葉か、それとも疲れた午後に LLM が手渡してくれたものか。このアイデアは、どのノートの上に立っているのか。",
+    "数ヶ月後、自分のページを読み返してこう問われると、答えに詰まります。その数字は測ったものか、それとも仮定だったか。その段落は自分の言葉か、それとも疲れた午後に LLM が手渡してくれたものか。このアイデアに、自分はどんな道のりで辿り着いたのか。",
   "problem.tagline": "Graphium のノートは、書くほどに鋭くなります。",
   "problem.body":
     "答えは「来歴（プロヴェナンス）」にあります。来歴は、後から付け足せる機能ではありません。エディタがテキストを保存するときの背骨に組み込む必要があります。Graphium の背骨は W3C の [PROV-DM](https://www.w3.org/TR/prov-dm/) であり、AI 機能にも同じ来歴の道を辿らせています。",
