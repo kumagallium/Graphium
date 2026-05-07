@@ -18,7 +18,7 @@
   <a href="https://github.com/kumagallium/Graphium/actions/workflows/test.yml"><img alt="CI" src="https://github.com/kumagallium/Graphium/actions/workflows/test.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kumagallium/Graphium"></a>
   <a href="https://github.com/kumagallium/Graphium/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/kumagallium/Graphium?style=flat"></a>
-  <img alt="Last commit" src="https://img.shields.io/github/last-commit/kumagallium/Graphium">
+  <img alt="Last commit" src="https://img.shields.io/github/last-commit/kumagallium/Graphium/main">
 </p>
 
 Graphium は、[Zettelkasten](https://ja.wikipedia.org/wiki/%E3%83%84%E3%82%A7%E3%83%86%E3%83%AB%E3%82%AB%E3%82%B9%E3%83%86%E3%83%B3) スタイルの小さなノート術と、W3C の来歴標準 [PROV-DM](https://www.w3.org/TR/prov-dm/) を組み合わせた、個人開発のオープンソースプロジェクトです。AI が手渡してくれた一文も含めて、すべての主張をその根拠となるノートまで辿れる状態を目指しています。
