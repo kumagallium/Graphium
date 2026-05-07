@@ -139,11 +139,38 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 
 The Summary is **private**. It can keep specific names, dates, sample IDs, paths — anything needed to reconstruct what happened. This is the user's local context layer.
 
-**Default to flowing prose with NO headings.** Output a single section with \`heading: ""\` (empty string) and put the whole summary in \`content\`. The summary is short — usually 3-6 sentences — so structure is usually unnecessary.
+The Summary is allowed to be longer than a Concept/Atom (which are deliberately one-idea-each), but **its job is selection, not coverage**. A good Summary tells a reader who has not opened the source: *what the central point is, what it is built on, what was surprising, and what is still open* — and stops there. Length follows substance. Padding the Summary to "feel thorough" is a failure mode.
 
-Only split into multiple sections (with non-empty headings) when the source note has 4+ genuinely independent topics that would lose meaning if merged. In that case, output up to 3 sections maximum, never more. Do not invent labels like 「核心の発見」「ジレンマの構造」「迷いの正体」 just to fill structure — write prose.
+### What a Summary must answer (in this order)
 
-The first line must be a hook — the most surprising or load-bearing finding from the note, not a meta-description.
+Treat these as the spine of every Summary. Skip a beat if the source does not support it; do not invent one to fill structure.
+
+1. **The point** — the single central claim or finding of the source, stated in 1-2 sentences as a hook. Not "本ノートでは…を扱う" / "This note discusses..." — state the substance.
+2. **What it is built on** — the key evidence, mechanism, data, or argument that makes the point credible. One or two beats, the load-bearing ones, not an exhaustive list.
+3. **What was surprising or non-obvious** — what would a careful reader miss if they only skimmed? Counter-intuitive results, a method choice that mattered, an inversion of common belief.
+4. **Limits / open questions** — what the source does not settle, where the argument is thin, what the user might want to follow up on. Skip if the source is self-contained.
+
+### Length follows the source — do not pad
+
+- A short note or a long source that makes **one** point → a few sentences is the right answer. Stay tight.
+- A long source that genuinely covers **multiple distinct beats** (separate arguments, separate chapters that don't reduce to one claim) → expand only as far as the distinct beats demand. 10-20 sentences and 2-4 real headings is the upper end, reserved for genuinely multi-threaded sources.
+- A trivial note → 2-3 sentences, confidence 0.5.
+
+**Anti-padding rules** (apply ruthlessly — these are the most common failure modes):
+
+- ❌ Restating the same point in different words across paragraphs to look thorough.
+- ❌ Listing every section of the source as if writing a table of contents. Compress; only the load-bearing parts survive.
+- ❌ Filler hedges like "様々な観点から論じられている" / "various perspectives are discussed". Either name the perspectives that matter, or cut.
+- ❌ Borrowing phrasing or noise from the source verbatim — chat fragments, headers, navigation labels, footnote markers — when they don't carry meaning. Paraphrase in your own register.
+- ✅ If you can delete a sentence and the Summary still answers the four spine questions, **delete it**.
+
+### Truncation honesty
+
+If the source ends with a marker like \`[... truncated: read N of M pages]\`, you only saw the first N pages. **State this at the end of the Summary** (e.g., 「（PDF 全 100 ページ中、冒頭 30 ページぶんから要約しています）」/ "(Summarized from the first 30 of 100 pages.)"). Do not pretend to have read the whole document.
+
+### Headings
+
+Default to flowing prose with a single empty-heading section (\`heading: ""\`). Use real headings only when the source has 2+ genuinely distinct beats that benefit from being navigable, and let each heading **name the actual beat** (e.g., 「方法」「予想外だった結果」). Never invent decorative labels like 「核心の発見」「ジレンマの構造」 just to fill structure.
 
 ## Concept (0-3 per note)
 
