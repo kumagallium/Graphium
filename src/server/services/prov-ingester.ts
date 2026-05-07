@@ -168,17 +168,21 @@ Span schema (entries inside \`content\`):
 
 Do NOT translate these keys. Do NOT wrap in brackets. Do NOT invent new roles. **Do NOT put procedure on a span** — procedure lives only on the H2 heading block.
 
-## Document template (use this shape for EVERY output)
+## Document shape (use this four-section shape for EVERY output)
 
-Output the note in a reader-friendly shape — flowing prose, not a checklist. Use these four H1 sections in order:
+Output the note as flowing prose, not a checklist. Always produce these **four H1 sections in this order**, each playing a fixed structural role. **Choose the actual heading wording to match the source domain and tone** — academic protocol, recipe blog, hobby tutorial, manufacturing manual — so it reads natural in context. Do not force a generic "Overview / Materials / Procedure / Outcome" if the source clearly belongs to a casual or domain-specific register.
 
-1. **H1 "Overview" / "概要" / "Objective"** — a short paragraph (2-3 sentences) on what this procedure does and why. Plain prose; no role spans.
-2. **H1 "Materials" / "材料" / "Materials and Tools"** — reader reference. EITHER one short paragraph naming the inputs and tools as plain prose, OR omit this section. **Never role-tag spans in this section** — those blocks are not part of the graph.
-3. **H1 "Procedure" / "手順" / "Protocol"** — contains the H2 procedure steps that DRIVE the graph. Each H2 step is followed by **one or two paragraphs** of natural prose describing the action. Inside that prose, the specific materials / tools / attributes / outputs used by that step appear as **inline spans with role**. Avoid bullet lists.
+1. **Section 1 — Introduction / overview.** A short paragraph (2-3 sentences) on what this procedure does and why. Plain prose; no role spans.
+   - Suggested wordings (pick one or invent a fitting one): \`Overview\` · \`About this dish\` · \`Objective\` · \`概要\` · \`このレシピについて\` · \`はじめに\`.
+2. **Section 2 — Inventory of inputs.** Reader reference for the up-front materials/tools list. EITHER a single short paragraph naming inputs and tools as plain prose, OR omit this section if the source has no inventory. **Never role-tag spans in this section** — those blocks are not part of the graph.
+   - Suggested wordings: \`Materials\` · \`Materials and Tools\` · \`Ingredients\` · \`What you'll need\` · \`材料\` · \`用意するもの\` · \`必要な道具\`.
+3. **Section 3 — The actual procedure.** Contains the H2 procedure steps that DRIVE the graph. Each H2 step is followed by **one or two paragraphs** of natural prose describing the action. Inside that prose, the specific materials / tools / attributes / outputs used by that step appear as **inline spans with role**. Avoid bullet lists.
+   - Suggested wordings: \`Procedure\` · \`Method\` · \`Protocol\` · \`Steps\` · \`How to make\` · \`Instructions\` · \`手順\` · \`作り方\` · \`プロセス\`.
    - Prefer **post-transformation names** for derived materials ("sliced garlic", "calcined powder", "amplified DNA"). Pair that with \`derivedFrom: "<stepId>"\` so text and graph agree.
-4. **H1 "Outcome" / "完成" / "Results"** — either (a) a terminal H2 step that assembles / measures / finalizes and contains the \`role: "output"\` span(s), or (b) a plain paragraph summarizing outputs. Final results go here, not scattered across middle steps.
+4. **Section 4 — Final result.** Either (a) a terminal H2 step that assembles / measures / finalizes and contains the \`role: "output"\` span(s), or (b) a plain paragraph summarizing outputs. Final results go here, not scattered across middle steps.
+   - Suggested wordings: \`Outcome\` · \`Results\` · \`Finished dish\` · \`To serve\` · \`Wrap-up\` · \`できあがり\` · \`仕上げ\` · \`完成\` · \`結果\`.
 
-Each H2 step belongs under the H1 "Procedure" section. The H1 headings anchor the document's shape; Graphium uses H2 for scope.
+Pick wordings consistent with each other (don't mix academic and casual tones across the four sections) and consistent with the source's voice. Each H2 step belongs under Section 3. The H1 headings anchor the document's shape; Graphium uses H2 for scope.
 
 ## IMPORTANT: DO NOT role-tag the up-front ingredient/tool list
 
@@ -236,20 +240,22 @@ The resulting graph is a **DAG with two parallel chains (bamboo-side, garlic-sid
 
 ## Full JSON example 1 — cooking (prose with inline spans, parallel branches)
 
+Note the H1 wording: this is a recipe, so "About this dish" / "Ingredients" / "How to make" / "To serve" reads more naturally than the academic "Overview / Materials / Procedure / Outcome".
+
 {
   "title": "Garlic Soy Bamboo Steak",
   "blocks": [
-    { "text": "Overview", "blockType": "heading", "level": 1 },
+    { "text": "About this dish", "blockType": "heading", "level": 1 },
     { "blockType": "paragraph", "content": [
       { "text": "A simple bamboo shoot steak finished with garlic-infused soy sauce and butter." }
     ]},
 
-    { "text": "Materials", "blockType": "heading", "level": 1 },
+    { "text": "Ingredients", "blockType": "heading", "level": 1 },
     { "blockType": "paragraph", "content": [
       { "text": "Boiled bamboo shoots, garlic, olive oil, soy sauce, and optional butter and black pepper." }
     ]},
 
-    { "text": "Procedure", "blockType": "heading", "level": 1 },
+    { "text": "How to make", "blockType": "heading", "level": 1 },
 
     { "text": "Slice the bamboo", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "slice-bamboo" },
     { "blockType": "paragraph", "content": [
@@ -304,7 +310,7 @@ The resulting graph is a **DAG with two parallel chains (bamboo-side, garlic-sid
       { "text": " to the pan and finish the bamboo." }
     ]},
 
-    { "text": "Outcome", "blockType": "heading", "level": 1 },
+    { "text": "To serve", "blockType": "heading", "level": 1 },
 
     { "text": "Plate", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "plate" },
     { "blockType": "paragraph", "content": [
@@ -325,7 +331,7 @@ The resulting graph is a **DAG with two parallel chains (bamboo-side, garlic-sid
 
 ## Full JSON example 2 — laboratory protocol (same template, different vocabulary)
 
-The SAME template (Overview / Materials / Procedure / Outcome, prose paragraphs with inline role spans) works for any procedural content. Here is a lab protocol:
+The same four-section shape (introduction / inventory / procedure / final result) works for any procedural content — only the H1 wording shifts to match the domain. Here is a lab protocol with academic wording:
 
 {
   "title": "Cyclic voltammetry of MnO2 electrode",
@@ -424,7 +430,7 @@ The SAME template (Overview / Materials / Procedure / Outcome, prose paragraphs 
 ## Rules
 
 1. Output MUST be valid JSON with \`title\` (string) and \`blocks\` (array).
-2. Follow the four-H1 template: **Overview / Materials / Procedure / Outcome** (or the localized equivalents). Always include Overview and Procedure. Materials and Outcome are recommended for most documents.
+2. Always produce the four-H1 shape (Section 1 introduction, Section 2 inventory, Section 3 procedure, Section 4 final result). The actual H1 wording is your choice and should match the source's domain and register — academic for protocols, casual/recipe-style for cooking, hobbyist for crafts. Sections 1 and 3 are required; Sections 2 and 4 are recommended for most documents.
 3. Every H2 inside the Procedure / Outcome sections is a step with \`role: "procedure"\` and a \`stepId\` matching /^[a-z0-9][a-z0-9-]*$/ (kebab-case, unique within the document).
 4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them.
 5. Prefer **3-10 H2 steps** total. Split at meaningful physical actions — not at every sentence.
