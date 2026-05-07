@@ -323,6 +323,13 @@ export const ja: Record<string, string> = {
   "template.experiment.toolPlaceholder": "道具・ツール",
   "template.experiment.attributePlaceholder": "条件・属性",
   "template.experiment.resultPlaceholder": "結果",
+  // 計画/結果段落の散文 placeholder。語句の前後にハイライト span が入る前提。
+  "template.experiment.planSentence.beforeMaterial": "",
+  "template.experiment.planSentence.beforeTool": "を",
+  "template.experiment.planSentence.beforeAttribute": "で",
+  "template.experiment.planSentence.tail": "のもとに行う。",
+  "template.experiment.resultSentence.beforeOutput": "",
+  "template.experiment.resultSentence.tail": "が得られた。",
 
   // ── 追加 UI テキスト ──
   "common.empty": "(空)",

@@ -323,6 +323,13 @@ export const en: Record<string, string> = {
   "template.experiment.toolPlaceholder": "Tool",
   "template.experiment.attributePlaceholder": "Setting / parameter",
   "template.experiment.resultPlaceholder": "Result",
+  // Prose placeholder around the inline-highlighted spans for plan/result paragraphs.
+  "template.experiment.planSentence.beforeMaterial": "Use ",
+  "template.experiment.planSentence.beforeTool": " with ",
+  "template.experiment.planSentence.beforeAttribute": " under ",
+  "template.experiment.planSentence.tail": ".",
+  "template.experiment.resultSentence.beforeOutput": "Obtained ",
+  "template.experiment.resultSentence.tail": ".",
 
   // ── 追加 UI テキスト ──
   "common.empty": "(empty)",

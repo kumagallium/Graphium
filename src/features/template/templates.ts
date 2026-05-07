@@ -136,11 +136,9 @@ const planTemplate: TemplateDef = {
 // ## Overview                   (paragraph)
 // ## [[label:procedure]] 手順1   (Activity)
 //   ### 計画                    (no role)
-//     <inlineMaterial> 材料 (paragraph)
-//     <inlineTool> 道具 (paragraph)
-//     <inlineAttribute> 条件 (paragraph)
+//     "<inlineMaterial>入力</> を <inlineTool>道具</> で <inlineAttribute>条件</> のもとに行う。" (paragraph)
 //   ### 結果・考察               (no role)
-//     <inlineOutput> 結果 (paragraph)
+//     "<inlineOutput>結果</> が得られた。" (paragraph)
 // ## [[label:procedure]] 手順2   (Activity, informed_by 手順1)
 //   ... 同様
 //
@@ -148,8 +146,9 @@ const planTemplate: TemplateDef = {
 // インラインハイライト（BlockNote inline style）に移行。procedure ラベルだけ block-level
 // として残る（H2 見出し = Activity）。
 //
-// 2026-05-07: Phase E のインライン化に合わせて placeholder の block も bulletListItem から
-// paragraph に変更。散文の中でハイライトする形に統一する。
+// 2026-05-07: 1 役割 = 1 placeholder bullet ではなく、1 step = 1 散文 paragraph に集約。
+// 接続詞を i18n から差し込み、入力 / 道具・ツール / 条件・属性 / 結果が文中の
+// インラインハイライトとして並ぶ形にする。
 //
 // 注: BlockNote のデフォルト heading は level 1-3 のみサポート。procedure scope は
 //     level 2 を使う（prov-generator の仕様）。
@@ -168,24 +167,32 @@ const experimentTemplate: TemplateDef = {
   tagKeys: ["template.tag.run", "template.tag.prov"],
   focusPath: [0],
   build: (t) => {
-    // Step n の placeholder テキスト全体に inline style を当てるヘルパー
-    // BlockNote inline style 名: inlineMaterial / inlineTool / inlineAttribute / inlineOutput
-    const inlineParagraph = (
-      role: "material" | "tool" | "attribute" | "output",
-      step: number,
-      placeholder: string,
-    ) => {
-      const styleKey = `inline${role[0].toUpperCase()}${role.slice(1)}`;
+    // 1 段落の中に複数の inline-highlighted span を並べる散文 placeholder を作る。
+    // segments: ["前置きテキスト", { role, text }, "次の接続詞", { role, text }, ...]
+    type Segment = string | { role: "material" | "tool" | "attribute" | "output"; text: string };
+    const inlineSentence = (step: number, segments: Segment[]) => {
+      const content = segments
+        .filter((seg) => (typeof seg === "string" ? seg.length > 0 : seg.text.length > 0))
+        .map((seg) => {
+          if (typeof seg === "string") {
+            return { type: "text", text: seg, styles: {} };
+          }
+          const styleKey = `inline${seg.role[0].toUpperCase()}${seg.role.slice(1)}`;
+          return {
+            type: "text",
+            text: seg.text,
+            styles: { [styleKey]: makeStepEntityId(seg.role, step) },
+          };
+        });
       return {
         type: "paragraph" as const,
-        content: [
-          { type: "text", text: placeholder, styles: { [styleKey]: makeStepEntityId(role, step) } },
-        ],
+        content,
         children: [],
       };
     };
 
     // Step n を生成するヘルパー（step は 1-indexed）
+    // 5 ブロック構成: H2 / H3 計画 / 計画散文 / H3 結果 / 結果散文
     const buildStep = (stepLabel: string, step: number) => [
       // [0] H2 手順 (procedure)
       {
@@ -201,29 +208,37 @@ const experimentTemplate: TemplateDef = {
         content: [{ type: "text", text: t("template.experiment.planHeading"), styles: {} }],
         children: [],
       },
-      // [2] paragraph material (inline highlight)
-      inlineParagraph("material", step, t("template.experiment.materialPlaceholder")),
-      // [3] paragraph tool (inline highlight)
-      inlineParagraph("tool", step, t("template.experiment.toolPlaceholder")),
-      // [4] paragraph attribute (inline highlight)
-      inlineParagraph("attribute", step, t("template.experiment.attributePlaceholder")),
-      // [5] H3 結果・考察
+      // [2] 計画散文（input + tool + attribute の inline highlight）
+      inlineSentence(step, [
+        t("template.experiment.planSentence.beforeMaterial"),
+        { role: "material", text: t("template.experiment.materialPlaceholder") },
+        t("template.experiment.planSentence.beforeTool"),
+        { role: "tool", text: t("template.experiment.toolPlaceholder") },
+        t("template.experiment.planSentence.beforeAttribute"),
+        { role: "attribute", text: t("template.experiment.attributePlaceholder") },
+        t("template.experiment.planSentence.tail"),
+      ]),
+      // [3] H3 結果・考察
       {
         type: "heading",
         props: { level: 3 },
         content: [{ type: "text", text: t("template.experiment.resultHeading"), styles: {} }],
         children: [],
       },
-      // [6] paragraph output (inline highlight)
-      inlineParagraph("output", step, t("template.experiment.resultPlaceholder")),
+      // [4] 結果散文（output の inline highlight）
+      inlineSentence(step, [
+        t("template.experiment.resultSentence.beforeOutput"),
+        { role: "output", text: t("template.experiment.resultPlaceholder") },
+        t("template.experiment.resultSentence.tail"),
+      ]),
     ];
 
-    // フラット展開: 各ステップは 7 ブロック
+    // フラット展開: 各ステップは 5 ブロック
     // [0] H1 試料名
     // [1] H2 Overview
     // [2] paragraph (overview body)
-    // [3..9]   step 1 (7 blocks)
-    // [10..16] step 2 (7 blocks)
+    // [3..7]   step 1 (5 blocks)
+    // [8..12]  step 2 (5 blocks)
     const step1 = buildStep(t("template.experiment.step1"), 1);
     const step2 = buildStep(t("template.experiment.step2"), 2);
 
@@ -259,15 +274,15 @@ const experimentTemplate: TemplateDef = {
         // → 「計画値 vs 実測値」の対比が PROV グラフ上で可視化できる。
         { path: [3], label: "procedure" },
         { path: [4], label: "plan" },
-        { path: [8], label: "result" },
+        { path: [6], label: "result" },
         // step 2
-        { path: [10], label: "procedure" },
-        { path: [11], label: "plan" },
-        { path: [15], label: "result" },
+        { path: [8], label: "procedure" },
+        { path: [9], label: "plan" },
+        { path: [11], label: "result" },
       ],
       provLinks: [
         // step 2 → step 1 (前手順リンク)
-        { sourcePath: [10], targetPath: [3], type: "informed_by" },
+        { sourcePath: [8], targetPath: [3], type: "informed_by" },
       ],
     };
   },
