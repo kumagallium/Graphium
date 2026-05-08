@@ -40,6 +40,12 @@ type SidePeekProps = {
   onAddToKnowledge?: () => void;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /**
+   * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
+   *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
+   * inline=false（デフォルト）: 従来通り画面右端から portal で fixed 表示。
+   */
+  inline?: boolean;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -82,7 +88,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
     }));
 }
 
-function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge, archived = false }: SidePeekProps) {
+function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge, archived = false, inline = false }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -306,11 +312,21 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
   const statusColor = saveStatus === "dirty" ? "var(--color-warning)"
     : "var(--color-text-tertiary)";
 
-  return createPortal(
-    <div
-      ref={sidePeekRef}
-      data-side-peek
-      style={{
+  const containerStyle: React.CSSProperties = inline
+    ? {
+        // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される
+        position: "relative",
+        height: "100%",
+        flexShrink: 0,
+        width: 480,
+        background: "var(--color-card)",
+        borderLeft: "1px solid var(--color-border-subtle)",
+        display: "flex",
+        flexDirection: "column",
+        animation: "sidePeekSlideIn 0.2s ease-out",
+      }
+    : {
+        // overlay（従来）: 画面右端から fixed で被せる
         position: "fixed",
         top: 0,
         right: 0,
@@ -325,7 +341,13 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
         display: "flex",
         flexDirection: "column",
         animation: "sidePeekSlideIn 0.2s ease-out",
-      }}
+      };
+
+  const body = (
+    <div
+      ref={sidePeekRef}
+      data-side-peek
+      style={containerStyle}
     >
       {/* ヘッダー */}
       <div
@@ -466,7 +488,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
         )}
         {!loading && !error && initialContent && (
           <>
-            <ProvIndicatorLayer />
+            <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
             <ProvIndicatorHoverHint wrapperEl={wrapperEl} zIndex={101} />
             <LabelDropdownPortal />
@@ -524,7 +546,9 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
           to { transform: translateX(0); }
         }
       `}</style>
-    </div>,
-    document.body
+    </div>
   );
+
+  if (inline) return body;
+  return createPortal(body, document.body);
 }

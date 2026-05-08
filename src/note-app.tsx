@@ -2064,18 +2064,6 @@ function NoteEditorInner({
     <>
       <ProvIndicatorLayer />
       <IndexTableIconLayer editorRef={editorRef} />
-      {sidePeekNoteId && (
-        <SidePeek
-          noteId={sidePeekNoteId}
-          cachedDoc={getCachedDoc?.(sidePeekNoteId)}
-          onClose={() => setSidePeekNoteId(null)}
-          onNavigate={(noteId, savedDoc) => {
-            setSidePeekNoteId(null);
-            onNavigateNote(noteId, savedDoc);
-          }}
-          wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
-        />
-      )}
       <ProvIndicatorHoverHint />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
@@ -2371,10 +2359,39 @@ function NoteEditorInner({
           </div>
         </div>
 
-        {/* 右: アイコンレール + オンデマンド展開パネル */}
+        {/* SidePeek（inline）— エディタの右、右パネルの左に差し込まれる。
+            デスクトップのみ inline（モバイルは overlay にフォールバック）。 */}
+        {sidePeekNoteId && isDesktop && (
+          <SidePeek
+            inline
+            noteId={sidePeekNoteId}
+            cachedDoc={getCachedDoc?.(sidePeekNoteId)}
+            onClose={() => setSidePeekNoteId(null)}
+            onNavigate={(noteId, savedDoc) => {
+              setSidePeekNoteId(null);
+              onNavigateNote(noteId, savedDoc);
+            }}
+            wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
+          />
+        )}
+        {sidePeekNoteId && !isDesktop && (
+          <SidePeek
+            noteId={sidePeekNoteId}
+            cachedDoc={getCachedDoc?.(sidePeekNoteId)}
+            onClose={() => setSidePeekNoteId(null)}
+            onNavigate={(noteId, savedDoc) => {
+              setSidePeekNoteId(null);
+              onNavigateNote(noteId, savedDoc);
+            }}
+            wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
+          />
+        )}
+
+        {/* 右: アイコンレール + オンデマンド展開パネル
+            relative + z-10: SidePeek の inline スライドインがこの下を通る */}
         {rightTab && (
           <div className={cn(
-            "shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden",
+            "shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden relative z-10",
             isDesktop ? "w-[480px]" : "fixed inset-0 z-[200] border-l-0"
           )}>
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
@@ -2407,6 +2424,7 @@ function NoteEditorInner({
                   data={noteGraphData}
                   lineageTree={lineageTree}
                   onNavigate={onNavigateNote}
+                  onPeek={(noteId) => setSidePeekNoteId(noteId)}
                   onOpenMedia={async (fileId) => {
                     try {
                       const blobUrl = await getActiveProvider().getMediaBlobUrl(fileId);
@@ -2440,9 +2458,10 @@ function NoteEditorInner({
             </div>
           </div>
         )}
-        {/* アイコンレール — デスクトップ: 右端縦レール / モバイル: ボトムバー */}
+        {/* アイコンレール — デスクトップ: 右端縦レール / モバイル: ボトムバー
+            relative + z-10: SidePeek の inline スライドインがこの下を通る */}
         <div className={cn(
-          "shrink-0 border-border bg-muted/50 flex items-center gap-1",
+          "shrink-0 border-border bg-muted/50 flex items-center gap-1 relative z-10",
           isDesktop
             ? "w-10 border-l flex-col py-2"
             : "fixed bottom-0 left-0 right-0 z-[100] h-14 border-t justify-center px-2 bg-background/95 backdrop-blur-sm"
