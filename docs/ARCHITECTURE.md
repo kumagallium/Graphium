@@ -348,7 +348,7 @@ people most often need to find.
 | Reference table (related notes) | `src/features/index-table/` |
 | Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
 | Onboarding flow | `src/features/onboarding/` |
-| URL-to-note ingestion | `src/features/url-to-prov/` |
+| URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |
 | Landing page | `src/landing/` |

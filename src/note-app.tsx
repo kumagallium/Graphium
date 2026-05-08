@@ -122,7 +122,7 @@ import {
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
-import { ingestUrlToProv, buildProvNoteDocument } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
@@ -1050,10 +1050,13 @@ function NoteEditorInner({
       wikiMeta: initialDoc?.wikiMeta,
       skillMeta: initialDoc?.skillMeta,
       generatedBy: initialDoc?.generatedBy,
-      // url-to-prov 由来の外部 URL メタデータを保持（来歴ツリーの上流ソース表示に必要）
+      // url-to-prov / pdf-to-prov 由来の外部ソースメタデータを保持
+      // （来歴ツリーの上流ソース表示・グラフのエッジ生成に必要）
       sourceUrl: initialDoc?.sourceUrl,
       sourceTitle: initialDoc?.sourceTitle,
       sourceFetchedAt: initialDoc?.sourceFetchedAt,
+      sourcePdfFileId: initialDoc?.sourcePdfFileId,
+      sourcePdfName: initialDoc?.sourcePdfName,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
@@ -4067,33 +4070,69 @@ export function NoteApp() {
               }
             } : undefined}
             onCreateProvNote={aiAvailable ? (entry) => {
-              if (entry.type !== "url" || !entry.url) return;
-              const jobId = `prov-url:${Date.now()}`;
-              const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.url };
-              setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
-              (async () => {
-                setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching & parsing URL..." } : i) }));
-                try {
-                  const result = await ingestUrlToProv(entry.url, "ja");
-                  if (!result.blocks || result.blocks.length === 0) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
-                    return;
+              // URL 経路
+              if (entry.type === "url" && entry.url) {
+                const jobId = `prov-url:${Date.now()}`;
+                const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.url };
+                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+                (async () => {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching & parsing URL..." } : i) }));
+                  try {
+                    const result = await ingestUrlToProv(entry.url, getLocale());
+                    if (!result.blocks || result.blocks.length === 0) {
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      return;
+                    }
+                    const provDoc = buildProvNoteDocument({
+                      title: result.title,
+                      blocks: result.blocks,
+                      sourceUrl: result.sourceUrl,
+                      sourceTitle: result.sourceTitle,
+                      sourceFetchedAt: result.sourceFetchedAt,
+                      model: result.model,
+                      tokenUsage: result.tokenUsage,
+                    });
+                    await fm.handleCreateNoteFromDocument(provDoc);
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
+                  } catch (err) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
                   }
-                  const provDoc = buildProvNoteDocument({
-                    title: result.title,
-                    blocks: result.blocks,
-                    sourceUrl: result.sourceUrl,
-                    sourceTitle: result.sourceTitle,
-                    sourceFetchedAt: result.sourceFetchedAt,
-                    model: result.model,
-                    tokenUsage: result.tokenUsage,
-                  });
-                  await fm.handleCreateNoteFromDocument(provDoc);
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
-                } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
-                }
-              })();
+                })();
+                return;
+              }
+              // PDF 経路
+              if (entry.type === "pdf" && entry.fileId) {
+                const jobId = `prov-pdf:${Date.now()}`;
+                const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
+                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+                (async () => {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting PDF text..." } : i) }));
+                  try {
+                    const provider = getActiveProvider();
+                    const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
+                    const blob = await (await fetch(blobUrl)).blob();
+                    const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getLocale());
+                    if (!result.blocks || result.blocks.length === 0) {
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      return;
+                    }
+                    const provDoc = buildProvNoteDocument({
+                      title: result.title,
+                      blocks: result.blocks,
+                      sourcePdfFileId: entry.fileId,
+                      sourceTitle: result.sourceTitle || entry.name,
+                      sourceFetchedAt: result.sourceFetchedAt,
+                      model: result.model,
+                      tokenUsage: result.tokenUsage,
+                    });
+                    await fm.handleCreateNoteFromDocument(provDoc);
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
+                  } catch (err) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  }
+                })();
+                return;
+              }
             } : undefined}
           />
         ) : fm.activeLabel ? (

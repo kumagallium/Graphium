@@ -87,6 +87,10 @@ function buildReverseParentIndex(
     if (doc.source !== "ai" && doc.sourceUrl) {
       add(docId, `url:${doc.sourceUrl}`, "external");
     }
+    // 通常ノートの top-level sourcePdfFileId（pdf-to-prov 由来）→ PDF 親
+    if (doc.source !== "ai" && doc.sourcePdfFileId) {
+      add(docId, `pdf:${doc.sourcePdfFileId}`, "external");
+    }
     if (
       doc.source === "ai" &&
       doc.wikiMeta?.kind === "atom" &&

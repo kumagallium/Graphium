@@ -195,6 +195,37 @@ describe("parseProvIngesterOutput", () => {
     expect(spans[2]).toEqual({ text: "result alias", role: "output" });
   });
 
+  it("句読点・記号・空白のみの role 付き span は role を剥がしてプレーン span にする", () => {
+    const raw = JSON.stringify({
+      title: "T",
+      blocks: [
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "salt", role: "material" },
+            { text: ", ", role: "material" },                      // 半角カンマ + 空白
+            { text: "pepper", role: "material" },
+            { text: "。", role: "attribute" },                     // 全角句点
+            { text: " ", role: "tool" },                           // 空白のみ
+            { text: "( ", role: "material", derivedFrom: "prep" }, // 記号のみ + derivedFrom も落ちる
+            { text: "—", role: "output" },                         // em-dash
+            { text: "real material", role: "material" },
+          ],
+        },
+      ],
+    });
+    const out = parseProvIngesterOutput(raw);
+    const spans = out.blocks[0].content!;
+    expect(spans[0]).toEqual({ text: "salt", role: "material" });
+    expect(spans[1]).toEqual({ text: ", " });
+    expect(spans[2]).toEqual({ text: "pepper", role: "material" });
+    expect(spans[3]).toEqual({ text: "。" });
+    expect(spans[4]).toEqual({ text: " " });
+    expect(spans[5]).toEqual({ text: "( " });   // role も derivedFrom も剥がれる
+    expect(spans[6]).toEqual({ text: "—" });
+    expect(spans[7]).toEqual({ text: "real material", role: "material" });
+  });
+
   it("Phase F: heading は span を持たず flat text を保持する", () => {
     const raw = JSON.stringify({
       title: "T",

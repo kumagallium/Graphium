@@ -145,6 +145,10 @@ export function buildNoteGraph(
     if (doc.source !== "ai" && doc.sourceUrl) {
       addEdge(`url:${doc.sourceUrl}`, fileId, "url");
     }
+    // 通常ノートの top-level sourcePdfFileId（pdf-to-prov 由来）→ PDF ノードへのエッジ
+    if (doc.source !== "ai" && doc.sourcePdfFileId) {
+      addEdge(`pdf:${doc.sourcePdfFileId}`, fileId, "url");
+    }
   }
 
   // BFS で2ホップ以内のノードを取得

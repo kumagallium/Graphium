@@ -218,6 +218,10 @@ export type GraphiumDocument = {
   sourceFetchedAt?: string;
   /** 外部 URL のページタイトル（fetch 時点） */
   sourceTitle?: string;
+  /** PDF から生成した場合の元 PDF（メディアインデックス上の fileId） */
+  sourcePdfFileId?: string;
+  /** PDF から生成した場合の表示用ファイル名 */
+  sourcePdfName?: string;
   createdAt: string;
   modifiedAt: string;
 };
