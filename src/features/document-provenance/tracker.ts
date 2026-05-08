@@ -142,23 +142,6 @@ export async function recordRevision(
   };
   provenance.revisions.push(revision);
 
-  // 上限チェック: 100件を超えたら古いものを削除
-  if (provenance.revisions.length > 100) {
-    const removeCount = provenance.revisions.length - 100;
-    const removedRevisions = provenance.revisions.splice(0, removeCount);
-
-    // 削除されたリビジョンに紐づく Activity も削除
-    const removedActivityIds = new Set(removedRevisions.map((r) => r.wasGeneratedBy));
-    provenance.activities = provenance.activities.filter(
-      (a) => !removedActivityIds.has(a.id),
-    );
-
-    // 最古リビジョンの wasDerivedFrom をクリア（前リビジョンが削除済み）
-    if (provenance.revisions.length > 0) {
-      provenance.revisions[0].wasDerivedFrom = undefined;
-    }
-  }
-
   return {
     ...doc,
     documentProvenance: provenance,

@@ -117,6 +117,3 @@ export type DocumentProvenance = {
   activities: EditActivity[];
   agents: EditAgent[];
 };
-
-/** リビジョン数の上限 */
-export const MAX_REVISIONS = 100;
