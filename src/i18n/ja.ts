@@ -155,6 +155,13 @@ export const ja: Record<string, string> = {
   "panel.generateManual": "手動で再生成",
   "panel.history": "履歴",
   "panel.links": "リンク",
+  "panel.graph.neighbors": "近傍",
+  "panel.graph.lineage": "来歴",
+
+  // ── 来歴ツリーパネル（レイヤー2 PROV）──
+  "lineage.title": "来歴",
+  "lineage.empty": "ノートを開くと来歴が表示されます。",
+  "lineage.noAncestors": "このノートは派生元を持ちません。",
 
   // ── リンク一覧パネル ──
   "links.empty": "リンクされたノートがありません。",
@@ -323,6 +330,13 @@ export const ja: Record<string, string> = {
   "template.experiment.toolPlaceholder": "道具・ツール",
   "template.experiment.attributePlaceholder": "条件・属性",
   "template.experiment.resultPlaceholder": "結果",
+  // 計画/結果段落の散文 placeholder。語句の前後にハイライト span が入る前提。
+  "template.experiment.planSentence.beforeMaterial": "",
+  "template.experiment.planSentence.beforeTool": "を",
+  "template.experiment.planSentence.beforeAttribute": "で",
+  "template.experiment.planSentence.tail": "のもとに行う。",
+  "template.experiment.resultSentence.beforeOutput": "",
+  "template.experiment.resultSentence.tail": "が得られた。",
 
   // ── 追加 UI テキスト ──
   "common.empty": "(空)",

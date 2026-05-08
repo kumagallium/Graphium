@@ -155,6 +155,13 @@ export const en: Record<string, string> = {
   "panel.generateManual": "Regenerate manually",
   "panel.history": "History",
   "panel.links": "Links",
+  "panel.graph.neighbors": "Neighbors",
+  "panel.graph.lineage": "Lineage",
+
+  // ── Lineage tree panel (Layer 2 PROV) ──
+  "lineage.title": "Lineage",
+  "lineage.empty": "Open a note to see its lineage.",
+  "lineage.noAncestors": "This note has no upstream sources.",
 
   // ── リンク一覧パネル ──
   "links.empty": "No linked notes.",
@@ -323,6 +330,13 @@ export const en: Record<string, string> = {
   "template.experiment.toolPlaceholder": "Tool",
   "template.experiment.attributePlaceholder": "Setting / parameter",
   "template.experiment.resultPlaceholder": "Result",
+  // Prose placeholder around the inline-highlighted spans for plan/result paragraphs.
+  "template.experiment.planSentence.beforeMaterial": "Use ",
+  "template.experiment.planSentence.beforeTool": " with ",
+  "template.experiment.planSentence.beforeAttribute": " under ",
+  "template.experiment.planSentence.tail": ".",
+  "template.experiment.resultSentence.beforeOutput": "Obtained ",
+  "template.experiment.resultSentence.tail": ".",
 
   // ── 追加 UI テキスト ──
   "common.empty": "(empty)",

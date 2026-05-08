@@ -19,20 +19,23 @@ const NODE_COLORS = {
   hop1: "#5b8fb9",    // 落ち着いた青（1ホップ）
   hop2: "#b8c9be",    // 淡いグリーングレー（2ホップ）
   wiki: "#9b6dcc",    // パープル（Wiki ドキュメント）
+  external: "#9aa0a6", // グレー（PDF / URL 等の外部ソース）
 } as const;
 
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 const BG_COLOR = "#fafdf7";   // テーマ背景
 
-function getNodeColor(hop: number, isCurrent: boolean, isWiki?: boolean): string {
+function getNodeColor(hop: number, isCurrent: boolean, isWiki?: boolean, external?: "pdf" | "url"): string {
   if (isCurrent) return NODE_COLORS.current;
+  if (external) return NODE_COLORS.external;
   if (isWiki) return NODE_COLORS.wiki;
   if (hop === 1) return NODE_COLORS.hop1;
   return NODE_COLORS.hop2;
 }
 
-function getBorderColor(hop: number, isCurrent: boolean, isWiki?: boolean): string {
+function getBorderColor(hop: number, isCurrent: boolean, isWiki?: boolean, external?: "pdf" | "url"): string {
   if (isCurrent) return "#3d6844";
+  if (external) return "#6e7378";
   if (isWiki) return "#7b4fb0";
   if (hop === 1) return "#4a7da6";
   return "#9cb5a4";
@@ -42,8 +45,9 @@ function getNodeSize(isCurrent: boolean): number {
   return isCurrent ? 40 : 28;
 }
 
-function getNodeShape(isCurrent: boolean, isWiki?: boolean): string {
+function getNodeShape(isCurrent: boolean, isWiki?: boolean, external?: "pdf" | "url"): string {
   if (isCurrent) return "ellipse";
+  if (external) return "rectangle";
   return isWiki ? "diamond" : "ellipse";
 }
 
@@ -146,9 +150,11 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
 export function NetworkGraphPanel({
   data,
   onNavigate,
+  onOpenMedia,
 }: {
   data: NoteGraphData;
   onNavigate: (noteId: string) => void;
+  onOpenMedia?: (fileId: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
@@ -189,20 +195,27 @@ export function NetworkGraphPanel({
       [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
 
     for (const node of data.nodes) {
-      const color = getNodeColor(node.hop, node.isCurrent, node.isWiki);
-      const baseTitle = node.isWiki ? `🤖 ${node.title}` : node.title;
+      const color = getNodeColor(node.hop, node.isCurrent, node.isWiki, node.external);
+      const baseTitle = node.external === "pdf"
+        ? `📄 ${node.title}`
+        : node.external === "url"
+        ? `🔗 ${node.title}`
+        : node.isWiki
+        ? `🤖 ${node.title}`
+        : node.title;
       elements.push({
         data: {
           id: node.id,
-          isWiki: node.isWiki,
           label: truncate(baseTitle, 18),
           fullLabel: baseTitle,
           color,
-          borderColor: getBorderColor(node.hop, node.isCurrent, node.isWiki),
+          borderColor: getBorderColor(node.hop, node.isCurrent, node.isWiki, node.external),
           size: getNodeSize(node.isCurrent),
-          shape: getNodeShape(node.isCurrent, node.isWiki),
+          shape: getNodeShape(node.isCurrent, node.isWiki, node.external),
           hop: node.hop,
           isCurrent: node.isCurrent,
+          isWiki: !!node.isWiki,
+          externalUrl: node.externalUrl,
         },
       });
     }
@@ -306,12 +319,24 @@ export function NetworkGraphPanel({
 
     // ノードクリックでナビゲーション
     cy.on("tap", "node", (evt) => {
-      const nodeId = evt.target.id();
+      const nodeId: string = evt.target.id();
       const isCurrent = evt.target.data("isCurrent");
-      const isWiki = evt.target.data("isWiki");
-      if (!isCurrent) {
-        handleNavigate(isWiki ? `wiki:${nodeId}` : nodeId);
+      if (isCurrent) return;
+      // 外部ソース: PDF はストレージプロバイダの blob URL、URL は元 URL
+      const externalUrl: string | undefined = evt.target.data("externalUrl");
+      if (nodeId.startsWith("pdf:")) {
+        if (onOpenMedia) onOpenMedia(nodeId.slice(4));
+        return;
       }
+      if (nodeId.startsWith("url:")) {
+        if (externalUrl) {
+          window.open(externalUrl, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
+      // wiki ノードは "wiki:" プレフィックスを付けて遷移
+      const isWiki = !!evt.target.data("isWiki");
+      handleNavigate(isWiki ? `wiki:${nodeId}` : nodeId);
     });
 
     cyRef.current = cy;
@@ -320,7 +345,7 @@ export function NetworkGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, handleNavigate, expanded]);
+  }, [data, handleNavigate, onOpenMedia, expanded]);
 
   if (data.nodes.length === 0) {
     return (

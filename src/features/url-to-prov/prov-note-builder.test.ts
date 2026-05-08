@@ -112,6 +112,88 @@ describe("buildProvNoteDocument", () => {
     expect(contentBlock.content[0].styles).toEqual({});
   });
 
+  it("Phase F: paragraph の content spans から inline highlight 付き BlockNote content を組み立てる", () => {
+    const doc = buildProvNoteDocument({
+      ...baseParams,
+      blocks: [
+        { text: "Sauté", blockType: "heading", level: 2, role: "procedure", stepId: "saute-garlic" },
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "Warm " },
+            { text: "olive oil", role: "material" },
+            { text: " over " },
+            { text: "low heat", role: "attribute" },
+            { text: "." },
+          ],
+        },
+      ],
+    });
+    const page = doc.pages[0];
+    const para = page.blocks[2];
+    expect(para.type).toBe("paragraph");
+    expect(para.content).toHaveLength(5);
+    expect(para.content[0]).toEqual({ type: "text", text: "Warm ", styles: {} });
+    expect(para.content[1].text).toBe("olive oil");
+    expect(para.content[1].styles.inlineMaterial).toMatch(/^ent_material_/);
+    expect(para.content[3].styles.inlineAttribute).toMatch(/^ent_attribute_/);
+    expect(para.content[4]).toEqual({ type: "text", text: ".", styles: {} });
+    // block-level labels には何も入らない
+    expect(page.labels[para.id]).toBeUndefined();
+  });
+
+  it("Phase F: span の derivedFrom から informed_by リンクが張られる", () => {
+    const doc = buildProvNoteDocument({
+      ...baseParams,
+      blocks: [
+        { text: "Slice", blockType: "heading", level: 2, role: "procedure", stepId: "slice-garlic" },
+        {
+          blockType: "paragraph",
+          content: [{ text: "garlic", role: "material" }],
+        },
+        { text: "Sauté", blockType: "heading", level: 2, role: "procedure", stepId: "saute-garlic" },
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "Warm oil with " },
+            { text: "sliced garlic", role: "material", derivedFrom: "slice-garlic" },
+            { text: "." },
+          ],
+        },
+      ],
+    });
+    const page = doc.pages[0];
+    const headings = page.blocks.filter((b: any) => b.type === "heading");
+    // saute-garlic → slice-garlic の informed_by が span derivedFrom 由来で張られる
+    const links = page.provLinks;
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      sourceBlockId: headings[1].id,
+      targetBlockId: headings[0].id,
+      type: "informed_by",
+    });
+  });
+
+  it("Phase F: scope 外の material/tool/output span は inline 化されずプレーンになる（attribute は許容）", () => {
+    const doc = buildProvNoteDocument({
+      ...baseParams,
+      blocks: [
+        // scope 開かない（procedure heading なし）でいきなり paragraph
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "olive oil", role: "material" },        // scope 外 → drop
+            { text: " warmed at " },
+            { text: "low heat", role: "attribute" },        // scope 外でも attribute は許容
+          ],
+        },
+      ],
+    });
+    const para = doc.pages[0].blocks[1];
+    expect(para.content[0].styles).toEqual({});             // material は剥がれる
+    expect(para.content[2].styles.inlineAttribute).toMatch(/^ent_attribute_/);
+  });
+
   it("heading の props.level が設定される", () => {
     const doc = buildProvNoteDocument({
       ...baseParams,

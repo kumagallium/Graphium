@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.6.3](https://github.com/kumagallium/Graphium/compare/v0.6.2...v0.6.3) - 2026-05-07
+- chore: add status badges and dmg download counter workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/239
+- fix: pin last-commit badge to main branch by @kumagallium in https://github.com/kumagallium/Graphium/pull/240
+- feat(wiki): smarter summaries + fix concept merge breakage by @kumagallium in https://github.com/kumagallium/Graphium/pull/241
+- feat(sidebar): collapsible sections + filter wikis from Recent Notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/242
+- fix(wiki): multi-source regenerate + clearer toast errors by @kumagallium in https://github.com/kumagallium/Graphium/pull/244
+- feat: prose paragraphs with inline highlights for templates and url-to-prov by @kumagallium in https://github.com/kumagallium/Graphium/pull/243
+
 ## [v0.6.2](https://github.com/kumagallium/Graphium/compare/v0.6.1...v0.6.2) - 2026-05-05
 - fix(tauri): use string model name for Atomize/Synthesize body.model by @kumagallium in https://github.com/kumagallium/Graphium/pull/232
 - feat(list): ドラッグで範囲選択 (note / wiki list) by @kumagallium in https://github.com/kumagallium/Graphium/pull/233
