@@ -109,12 +109,30 @@ export function buildNoteGraph(
       addEdge(doc.derivedFromNoteId, fileId, blockLabel);
     }
     // noteLinks: このノートの子（存在チェック）
+    // 同じ (from,to) ペアが複数経路で来ても 1 本だけ採用するための dedup セット
+    const edgeSeen = new Set<string>();
     if (doc.noteLinks) {
       for (const link of doc.noteLinks) {
         if (fileIds.has(link.targetNoteId)) {
+          const key = `${fileId}->${link.targetNoteId}`;
+          if (edgeSeen.has(key)) continue;
+          edgeSeen.add(key);
           const blockLabel = extractBlockText(doc, link.sourceBlockId);
           addEdge(fileId, link.targetNoteId, blockLabel);
         }
+      }
+    }
+    // knowledgeLinks(reference) もネットワークグラフではエッジとして表示する。
+    // 来歴ビューは noteLinks のみ参照するため循環は起きない（PROV と知識参照を分離している）。
+    for (const page of doc.pages) {
+      const knowledgeLinks = (page.knowledgeLinks ?? []) as Array<{ targetNoteId?: string; sourceBlockId?: string }>;
+      for (const link of knowledgeLinks) {
+        if (!link.targetNoteId || !fileIds.has(link.targetNoteId)) continue;
+        const key = `${fileId}->${link.targetNoteId}`;
+        if (edgeSeen.has(key)) continue;
+        edgeSeen.add(key);
+        const blockLabel = extractBlockText(doc, link.sourceBlockId);
+        addEdge(fileId, link.targetNoteId, blockLabel);
       }
     }
     // Wiki の derivedFromNotes: Wiki → 派生元ノートのエッジ
