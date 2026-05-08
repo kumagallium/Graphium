@@ -94,7 +94,7 @@ type ClipBounds = { top: number; bottom: number };
 // ──────────────────────────────────
 // ProvIndicatorLayer
 // ──────────────────────────────────
-export function ProvIndicatorLayer() {
+export function ProvIndicatorLayer({ wrapperEl }: { wrapperEl?: HTMLElement | null } = {}) {
   const { labels, getLabel, setLabel, openBlockId } = useLabelStore();
   const { links, getOutgoing, getIncoming, removeLink } = useLinkStore();
   const [indicators, setIndicators] = useState<IndicatorInfo[]>([]);
@@ -112,21 +112,26 @@ export function ProvIndicatorLayer() {
       blockIds.add(l.targetBlockId);
     });
 
-    // エディタラッパーの右端を取得（サイドバーとの境界）
-    // 複数の data-label-wrapper がある場合（メインエディタ + サイドピーク）、
-    // 自分のブロックを含む wrapper を closest() で特定する
+    // wrapperEl が渡されていれば、その配下のみを対象にする（メインエディタと SidePeek が
+    // 同じノートを開いているとき、blockId が両方に存在しても自分の wrapper 内の要素を
+    // 確実に拾うため）。未指定なら従来通りドキュメント全体から探索する。
+    const queryRoot: ParentNode = wrapperEl ?? document;
     let wrapper: Element | null = null;
-    for (const blockId of blockIds) {
-      const outer = document.querySelector(
-        `[data-id="${blockId}"][data-node-type="blockOuter"]`
-      );
-      if (outer) {
-        wrapper = outer.closest("[data-label-wrapper]");
-        if (wrapper) break;
+    if (wrapperEl) {
+      wrapper = wrapperEl;
+    } else {
+      for (const blockId of blockIds) {
+        const outer = document.querySelector(
+          `[data-id="${blockId}"][data-node-type="blockOuter"]`
+        );
+        if (outer) {
+          wrapper = outer.closest("[data-label-wrapper]");
+          if (wrapper) break;
+        }
       }
-    }
-    if (!wrapper) {
-      wrapper = document.querySelector("[data-label-wrapper]");
+      if (!wrapper) {
+        wrapper = document.querySelector("[data-label-wrapper]");
+      }
     }
     if (!wrapper) return;
     const wrapperRect = wrapper.getBoundingClientRect();
@@ -147,7 +152,7 @@ export function ProvIndicatorLayer() {
 
     const next: IndicatorInfo[] = [];
     blockIds.forEach((blockId) => {
-      const outer = document.querySelector(
+      const outer = queryRoot.querySelector(
         `[data-id="${blockId}"][data-node-type="blockOuter"]`
       ) as HTMLElement | null;
       if (!outer) return;
@@ -175,7 +180,7 @@ export function ProvIndicatorLayer() {
       });
     });
     setIndicators(next);
-  }, [labels, links, getLabel, getOutgoing, getIncoming]);
+  }, [labels, links, getLabel, getOutgoing, getIncoming, wrapperEl]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(compute);
@@ -185,7 +190,7 @@ export function ProvIndicatorLayer() {
   useEffect(() => {
     window.addEventListener("scroll", compute, true);
     window.addEventListener("resize", compute);
-    const wrapper = document.querySelector("[data-label-wrapper]");
+    const wrapper = wrapperEl ?? document.querySelector("[data-label-wrapper]");
     let ro: ResizeObserver | undefined;
     let mo: MutationObserver | undefined;
     if (wrapper) {
