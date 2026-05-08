@@ -595,7 +595,7 @@ export function MediaDetailModal({
                 </button>
               )
             )}
-            {onCreateProvNote && entry.type === "url" && (
+            {onCreateProvNote && (entry.type === "url" || entry.type === "pdf") && (
               <button
                 onClick={() => onCreateProvNote(entry)}
                 className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5"

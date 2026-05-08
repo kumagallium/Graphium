@@ -51,7 +51,10 @@ export type ProvIngesterBlock = {
 export type BuildProvNoteParams = {
   title: string;
   blocks: ProvIngesterBlock[];
-  sourceUrl: string;
+  /** 出典が外部 URL の場合のみ設定（URLtoPROV 経路） */
+  sourceUrl?: string;
+  /** 出典が PDF の場合に設定（PDFtoPROV 経路）。メディアインデックス上の fileId */
+  sourcePdfFileId?: string;
   sourceTitle?: string;
   sourceFetchedAt: string;
   model?: string | null;
@@ -124,9 +127,13 @@ export function buildProvNoteDocument(params: BuildProvNoteParams): GraphiumDocu
     sourceUrl: params.sourceUrl,
     sourceFetchedAt: params.sourceFetchedAt,
     sourceTitle: params.sourceTitle,
+    sourcePdfFileId: params.sourcePdfFileId,
+    sourcePdfName: params.sourcePdfFileId ? params.sourceTitle : undefined,
     generatedBy: {
       agent: "prov-ingester",
-      sessionId: `url:${params.sourceUrl}`,
+      sessionId: params.sourcePdfFileId
+        ? `pdf:${params.sourcePdfFileId}`
+        : `url:${params.sourceUrl ?? ""}`,
       model: params.model ?? undefined,
       tokenUsage: params.tokenUsage,
     },
@@ -156,6 +163,26 @@ type BuildContext = {
 };
 
 function buildSourceHeaderBlock(params: BuildProvNoteParams): any {
+  // PDF 出典: 外部リンクを張らず、ファイル名のテキスト表示にする
+  if (params.sourcePdfFileId) {
+    return {
+      id: crypto.randomUUID(),
+      type: "paragraph",
+      props: {
+        textColor: "default",
+        backgroundColor: "default",
+        textAlignment: "left",
+      },
+      content: [
+        { type: "text", text: "Source: ", styles: { bold: true } },
+        { type: "text", text: params.sourceTitle || "PDF", styles: {} },
+      ],
+      children: [],
+    };
+  }
+
+  // URL 出典: 既存通りリンクとして表示
+  const url = params.sourceUrl ?? "";
   return {
     id: crypto.randomUUID(),
     type: "paragraph",
@@ -168,9 +195,9 @@ function buildSourceHeaderBlock(params: BuildProvNoteParams): any {
       { type: "text", text: "Source: ", styles: { bold: true } },
       {
         type: "link",
-        href: params.sourceUrl,
+        href: url,
         content: [
-          { type: "text", text: params.sourceTitle || params.sourceUrl, styles: {} },
+          { type: "text", text: params.sourceTitle || url, styles: {} },
         ],
       },
     ],

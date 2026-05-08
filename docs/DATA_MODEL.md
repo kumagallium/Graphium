@@ -78,9 +78,13 @@ type GraphiumDocument = {
   skillMeta?: SkillMeta;
 
   // ── external source ─────────────────────────────────
+  // Set when the note was generated from an external URL (URL-to-PROV)
   sourceUrl?: string;
   sourceFetchedAt?: string;
   sourceTitle?: string;
+  // Set when the note was generated from a PDF (PDF-to-PROV)
+  sourcePdfFileId?: string;  // media-index fileId of the source PDF
+  sourcePdfName?: string;    // display filename
 
   createdAt: string;   // ISO 8601
   modifiedAt: string;  // ISO 8601
