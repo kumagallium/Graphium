@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.6.5](https://github.com/kumagallium/Graphium/compare/v0.6.4...v0.6.5) - 2026-05-08
+- fix(provenance): remove 100-revision silent cap by @kumagallium in https://github.com/kumagallium/Graphium/pull/248
+- SidePeek coexists inline with right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/250
+- docs: document archive semantics and uncapped revisions by @kumagallium in https://github.com/kumagallium/Graphium/pull/251
+- feat: PDF-to-PROV ingestion + atomic / connected graph rules by @kumagallium in https://github.com/kumagallium/Graphium/pull/252
+- feat(import): Markdown / Obsidian Vault import with [[wikilink]] resolution by @kumagallium in https://github.com/kumagallium/Graphium/pull/254
+
 ## [v0.6.4](https://github.com/kumagallium/Graphium/compare/v0.6.3...v0.6.4) - 2026-05-08
 - Add Layer 2 PROV lineage tree to right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/245
 - feat(archive): soft-archive merged wikis to preserve references by @kumagallium in https://github.com/kumagallium/Graphium/pull/247
