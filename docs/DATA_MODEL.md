@@ -186,6 +186,15 @@ This is intentionally not unified with the PROV-DM graph. The graph
 describes *the world the note talks about*; the edit log describes *the
 note as an artifact*. See [ARCHITECTURE.md §3.2](./ARCHITECTURE.md#32-provenance-layer-prov-dm).
 
+The revision log is **uncapped**. Every save appends a `RevisionEntity`
+(hash + activity + timestamps) and the entry is kept indefinitely;
+provenance is the core promise of Graphium, so silently dropping old
+revisions would contradict it. Each entry is small (a few hundred bytes
+of metadata, no content snapshot), so the file size grows roughly
+linearly in number of saves. If this becomes a measured problem,
+preferred mitigations are content-hash deduplication or
+user-controlled pruning, not silent truncation.
+
 ### 2.5 Conversational layer
 
 ```ts
@@ -338,13 +347,14 @@ type NoteIndexEntry = {
     entityId: string;
   }[];
 
-  deletedAt?: string;               // trashed timestamp
+  deletedAt?: string;               // trashed timestamp (user intent)
+  archivedAt?: string;              // archived timestamp (system retention)
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **11**.
+Defined in `src/features/navigation/index-file.ts`. Currently **12**.
 Bumping rules:
 
 | Version | Change |
@@ -356,18 +366,43 @@ Bumping rules:
 | **9** | Replaced `inlineLabelTypes` with `inlineLabels` (richer, includes `text` and `entityId`). |
 | **10** | Added `deletedAt` for trash. |
 | **11** | Added `atom` to `WikiKind`. |
+| **12** | Added `archivedAt` for soft-archive on auto-merge (preserves references that would otherwise dangle). |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
 escape hatch: any indexer logic change can ship behind a version bump
 without writing a per-version migration.
 
-### 5.2 Trash semantics
+### 5.2 Trash and archive semantics
 
-A non-empty `deletedAt` excludes the note from the main list, search,
-picker, and graph. The note file itself is *not* deleted; the trash view
-can restore (clear `deletedAt`) or hard-delete (remove the index entry
-and the underlying file).
+Two orthogonal flags partition entries into a tri-state: **active** /
+**archived** / **trashed**. Files on disk are never moved or deleted by
+either flag — the file path stays the same so any link or
+`derivedFromNotes` reference keeps resolving through `loadDoc`.
+
+| State | Flag | Meaning | List/search/graph | Citation/regenerate |
+|---|---|---|---|---|
+| active | (neither) | normal | shown | resolve |
+| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Concept into another) | hidden | resolve |
+| trashed | `deletedAt` | user delete intent | hidden | not resolved |
+
+Transitions:
+
+- **active → trashed** via the trash action (manual).
+- **active → archived** via auto-merge (the absorbed Concept is archived,
+  not deleted, so notes that cited it keep working).
+- **archived → active** via the restore action. Note that a Concept
+  archived by auto-merge will likely be re-archived on the next merge
+  cycle unless the user edits its content to differentiate it.
+- **archived → trashed** via the "Send to trash" action.
+- **trashed → active** via restore.
+- **trashed → gone** via permanent delete (removes the file and the
+  index entry). There is no path from archived directly to permanent
+  delete — archived items must pass through trash first.
+
+`updateIndexEntry` and the wiki rebuild step both preserve `archivedAt`
+and `deletedAt` on existing entries, so a save or a refresh will not
+silently strip the flag.
 
 ## 6. Storage providers
 

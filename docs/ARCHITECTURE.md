@@ -187,6 +187,15 @@ Notes:
 - **Embeddings** (per Wiki section) are stored via
   `src/lib/embedding-store.ts` and used as the retrieval substrate for AI
   chat. The retriever is `src/features/wiki/retriever.ts`.
+- **Auto-merge of redundant Concepts.** When the linter / startup-merge
+  flow detects two Concepts that overlap, one is rewritten into the
+  other and the absorbed Concept is **archived, not deleted**. Its file
+  stays on disk and its index entry gains an `archivedAt` flag, so any
+  note that cited it (or any Synthesis whose `derivedFromNotes` lists
+  it) keeps resolving through `loadDoc`. The archived page is hidden
+  from lists / search and is editable only after restore. See
+  [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
+  for the tri-state semantics.
 
 The relationship between Notes, Concept, Atom, and Synthesis is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
