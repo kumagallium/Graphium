@@ -194,6 +194,7 @@ export function NetworkGraphPanel({
       elements.push({
         data: {
           id: node.id,
+          isWiki: node.isWiki,
           label: truncate(baseTitle, 18),
           fullLabel: baseTitle,
           color,
@@ -307,8 +308,9 @@ export function NetworkGraphPanel({
     cy.on("tap", "node", (evt) => {
       const nodeId = evt.target.id();
       const isCurrent = evt.target.data("isCurrent");
+      const isWiki = evt.target.data("isWiki");
       if (!isCurrent) {
-        handleNavigate(nodeId);
+        handleNavigate(isWiki ? `wiki:${nodeId}` : nodeId);
       }
     });
 

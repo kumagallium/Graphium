@@ -2,8 +2,9 @@
 // エディタ上部に表示: AI 生成バッジ、アクションボタン
 
 import { useState, useRef, useEffect } from "react";
-import { RefreshCw, Trash2, ChevronDown } from "lucide-react";
+import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
 import type { WikiMeta } from "../../lib/document-types";
+import { useT } from "../../i18n";
 
 export type RegenerateOptions = {
   /** 使用するモデル名（空文字 = 現在のデフォルト） */
@@ -20,6 +21,10 @@ type Props = {
   onRegenerate: (options?: RegenerateOptions) => void;
   onDelete: () => void;
   loading?: boolean;
+  /** アーカイブ済みフラグ。true のとき編集系ボタンを抑制し、復元 UI を出す */
+  archived?: boolean;
+  /** アーカイブから復元するハンドラ（archived === true のときのみ有効） */
+  onRestoreFromArchive?: () => void;
 };
 
 function formatDate(isoDate: string): string {
@@ -37,7 +42,10 @@ export function WikiBanner({
   onRegenerate,
   onDelete,
   loading = false,
+  archived = false,
+  onRestoreFromArchive,
 }: Props) {
+  const t = useT();
   const kindLabel =
     wikiMeta.kind === "summary" ? "Summary"
     : wikiMeta.kind === "synthesis" ? "Synthesis"
@@ -96,8 +104,8 @@ export function WikiBanner({
       style={{
         margin: "14px 32px 6px",
         borderRadius: "var(--r-3)",
-        border: "1px solid var(--forest)",
-        background: "var(--forest-soft)",
+        border: archived ? "1px solid var(--rule)" : "1px solid var(--forest)",
+        background: archived ? "var(--paper-2, #f5f5f4)" : "var(--forest-soft)",
         padding: "10px 14px",
       }}
     >
@@ -180,10 +188,56 @@ export function WikiBanner({
           </span>
         )}
 
+        {archived && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 8px",
+              borderRadius: "var(--pill)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-3)",
+              fontSize: 10,
+              fontWeight: 500,
+            }}
+            title={t("archive.archivedHint")}
+          >
+            <Archive size={10} />
+            {t("archive.archivedBadge")}
+          </span>
+        )}
+
         <div style={{ flex: 1 }} />
 
         {/* アクションボタン */}
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {archived && onRestoreFromArchive && (
+            <button
+              onClick={onRestoreFromArchive}
+              disabled={loading}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                borderRadius: "var(--r-1)",
+                border: "1px solid var(--rule)",
+                background: "var(--paper)",
+                color: "var(--ink-2)",
+                fontSize: 11,
+                cursor: "pointer",
+                opacity: loading ? 0.5 : 1,
+              }}
+              title={t("archive.restoreHint")}
+            >
+              <RotateCcw size={12} />
+              {t("archive.restore")}
+            </button>
+          )}
+          {!archived && (
+          <>
           {/* Regenerate ▾ */}
           <div style={{ position: "relative" }} ref={pickerRef}>
             <button
@@ -313,6 +367,8 @@ export function WikiBanner({
           >
             <Trash2 size={13} />
           </button>
+          </>
+          )}
         </div>
       </div>
     </div>

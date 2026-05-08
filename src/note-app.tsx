@@ -415,6 +415,8 @@ type NoteEditorProps = {
   composerSubmitRef?: React.MutableRefObject<
     ((submission: ComposerSubmission) => void | Promise<void>) | null
   >;
+  /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
+  archived?: boolean;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -505,6 +507,7 @@ function NoteEditorInner({
   skillPrompts,
   onOpenComposer,
   composerSubmitRef,
+  archived = false,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -2232,6 +2235,7 @@ function NoteEditorInner({
             />
             <SandboxEditor
               key={fileId || "new"}
+              editable={!archived}
               blocks={[pdfViewerBlock, bookmarkBlock]}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
@@ -3081,8 +3085,11 @@ export function NoteApp() {
                 });
                 embedWikiSections(keepId, mergedResult).catch(() => {});
 
-                // 統合元を削除
-                await fm.handleDeleteWikiFile(mergeId);
+                // 統合元をアーカイブ（参照保護のため物理削除しない）
+                // ファイル本体は残し、一覧・検索からのみ除外する。
+                // 引用や regenerate からは引き続き解決できるので、
+                // derivedFromNotes に旧 ID が残っていても壊れない。
+                await fm.handleArchiveWikiFile(mergeId);
 
                 wikiLog.append("merge", [keepId, mergeId],
                   `Auto-merge redundant: "${mergeDoc.title}" → "${keepDoc.title}"`).catch(() => {});
@@ -3263,7 +3270,8 @@ export function NoteApp() {
                   activityType: "ai_generation",
                 });
                 embedWikiSections(keepId, mergedResult).catch(() => {});
-                await fm.handleDeleteWikiFile(mergeId);
+                // 統合元をアーカイブ（参照保護のため物理削除しない）
+                await fm.handleArchiveWikiFile(mergeId);
 
                 wikiLog.append("merge", [keepId, mergeId],
                   `Startup auto-merge: "${mergeDoc.title}" → "${keepDoc.title}"`).catch(() => {});
@@ -3894,7 +3902,7 @@ export function NoteApp() {
       setSidebarOpen(false);
     },
     trashActive: showTrash,
-    trashCount: fm.trashedNotes.length,
+    trashCount: fm.trashedNotes.length + fm.archivedNotes.length,
     onShowSharedLibrary: getSharedRoot()
       ? () => {
           setShowSharedLibrary(true);
@@ -4276,12 +4284,24 @@ export function NoteApp() {
           <TrashView
             rawNoteIndex={fm.rawNoteIndex}
             trashedNotes={fm.trashedNotes}
+            archivedNotes={fm.archivedNotes}
             onBack={() => { setShowTrash(false); router.navigate({ view: "home" }); }}
             onRestore={async (ids) => {
               for (const id of ids) await fm.handleRestore(id);
             }}
             onPermanentDelete={async (ids) => {
               for (const id of ids) await fm.handlePermanentDelete(id);
+            }}
+            onRestoreArchive={async (ids) => {
+              for (const id of ids) await fm.handleRestoreFromArchive(id);
+            }}
+            onSendArchiveToTrash={async (ids) => {
+              for (const id of ids) await fm.handleSendArchiveToTrash(id);
+            }}
+            onOpenArchived={(noteId, isWiki) => {
+              // アーカイブされた wiki / ノートをサイドピークで閲覧する。
+              // 編集導線は WikiBanner 側で「Archived」表示にして抑制する。
+              setListSidePeekNoteId(isWiki ? `wiki:${noteId}` : noteId);
             }}
           />
         ) : showSkillList ? (
@@ -4325,28 +4345,40 @@ export function NoteApp() {
             <SkillBanner availableForIngest={fm.activeDoc.skillMeta.availableForIngest} />
           )}
           {/* Wiki バナー（AI 生成ドキュメントの場合） */}
-          {fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta && (
-            <WikiBanner
-              wikiMeta={fm.activeDoc.wikiMeta}
-              loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
-              onRegenerate={async (options) => {
-                if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
-                const wikiId = fm.activeFileId.replace("wiki:", "");
-                await regenerateWikiById(wikiId, { model: options?.model, openAfter: true });
-              }}
-              onDelete={() => {
-                if (!fm.activeFileId) return;
-                const wikiId = fm.activeFileId.replace("wiki:", "");
-                const title = fm.activeDoc?.title ?? wikiId;
-                fm.handleDeleteWikiFile(wikiId);
-                wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
-              }}
-            />
-          )}
+          {fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta && (() => {
+            const wikiIdForBanner = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
+            const isArchived = wikiIdForBanner ? fm.archivedIdSet.has(wikiIdForBanner) : false;
+            return (
+              <WikiBanner
+                wikiMeta={fm.activeDoc.wikiMeta}
+                loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
+                archived={isArchived}
+                onRestoreFromArchive={isArchived && wikiIdForBanner
+                  ? () => fm.handleRestoreFromArchive(wikiIdForBanner)
+                  : undefined}
+                onRegenerate={async (options) => {
+                  if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
+                  const wikiId = fm.activeFileId.replace("wiki:", "");
+                  await regenerateWikiById(wikiId, { model: options?.model, openAfter: true });
+                }}
+                onDelete={() => {
+                  if (!fm.activeFileId) return;
+                  const wikiId = fm.activeFileId.replace("wiki:", "");
+                  const title = fm.activeDoc?.title ?? wikiId;
+                  fm.handleDeleteWikiFile(wikiId);
+                  wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
+                }}
+              />
+            );
+          })()}
           <NoteEditor
             key={fm.editorKey}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            archived={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              return rawId ? fm.archivedIdSet.has(rawId) : false;
+            })()}
             onSave={fm.activeDoc?.source === "ai"
               ? (doc: GraphiumDocument) => {
                   const wikiId = fm.activeFileId?.replace("wiki:", "");
@@ -4544,9 +4576,21 @@ export function NoteApp() {
             <SidePeek
               noteId={listSidePeekNoteId}
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
+              archived={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.archivedIdSet.has(rawId);
+              })()}
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
+                // アーカイブ画面 (showTrash) などの上位ビューを閉じてからルート遷移する。
+                // これを忘れると activeFileId が wiki に変わっても上位ビューが残り続け、
+                // 「Open full」が無反応に見える。
+                setShowTrash(false);
+                fm.setShowNoteList(false);
+                fm.setActiveAssetType(null);
+                fm.setActiveLabel(null);
+                setShowMemos(false);
                 if (noteId.startsWith("wiki:")) {
                   fm.handleOpenWikiFile(noteId.replace(/^wiki:/, ""));
                 } else {

@@ -28,7 +28,12 @@ import { normalizeLabel } from "../context-label/labels";
 //      Concept をさらに抽象化した "1 アイデア" 単位の Wiki。
 //      experimental.atomLayer 設定で生成可否を制御する。
 //      既存インデックスは自動再構築される。
-const INDEX_SCHEMA_VERSION = 11;
+// v12: archivedAt フィールド追加（アーカイブ機能）
+//      Concept merge で吸収された Wiki 等を「参照保護目的の退避」として archive する。
+//      ノート一覧・検索・最近からは除外し、引用・regenerate・グラフは透過解決する。
+//      ユーザーの削除意思 (deletedAt) と区別するため別フィールド。
+//      アーカイブからは「復元」のみ。完全削除はゴミ箱経由のみ。
+const INDEX_SCHEMA_VERSION = 12;
 
 export type GraphiumIndex = {
   version: number;
@@ -96,6 +101,17 @@ export type NoteIndexEntry = {
    * 復元すると undefined に戻る。完全削除でエントリ自体が除去される。
    */
   deletedAt?: string;
+  /**
+   * アーカイブした日時（ISO 文字列）。
+   * セットされていればこのノートはアーカイブ済みとみなし、ノート一覧・検索・最近から除外する。
+   * ただし引用・regenerate・グラフ探索など参照解決系では透過的に取得できる
+   * （loadDoc が archived/ プレフィックスにフォールバックする）。
+   *
+   * deletedAt とは別フィールド: deletedAt はユーザーの削除意思、archivedAt はシステム都合の退避
+   * （主に Concept merge 吸収時の参照保護）。アーカイブからは「復元」のみで、
+   * 完全削除はゴミ箱に戻してから行う。
+   */
+  archivedAt?: string;
 };
 
 // ── Drive API ──
@@ -628,13 +644,18 @@ function isIndexFresh(index: GraphiumIndex, files: GraphiumFile[]): boolean {
 }
 
 // ノート保存時: 該当エントリだけ差分更新
+// archivedAt / deletedAt は doc には乗らないため、既存エントリから引き継ぐ
+// （これが無いと archive 済みノートを保存した瞬間にフラグが剥がれる）。
 export function updateIndexEntry(
   index: GraphiumIndex,
   noteId: string,
   doc: GraphiumDocument,
   file?: GraphiumFile,
 ): GraphiumIndex {
+  const existing = index.notes.find((n) => n.noteId === noteId);
   const entry = buildIndexEntry(noteId, doc, file);
+  if (existing?.archivedAt) entry.archivedAt = existing.archivedAt;
+  if (existing?.deletedAt) entry.deletedAt = existing.deletedAt;
   const notes = index.notes.filter((n) => n.noteId !== noteId);
   notes.push(entry);
   return { ...index, updatedAt: new Date().toISOString(), notes };
@@ -683,16 +704,53 @@ export function restoreIndexEntry(
   };
 }
 
-// 通常表示用: ゴミ箱内エントリを除外
+// 通常表示用: ゴミ箱・アーカイブ内エントリを除外
 export function getActiveNotes(index: GraphiumIndex | null): NoteIndexEntry[] {
   if (!index) return [];
-  return index.notes.filter((n) => !n.deletedAt);
+  return index.notes.filter((n) => !n.deletedAt && !n.archivedAt);
 }
 
-// ゴミ箱表示用: ゴミ箱内エントリのみ
+// ゴミ箱表示用: ゴミ箱内エントリのみ（アーカイブは含めない）
 export function getTrashedNotes(index: GraphiumIndex | null): NoteIndexEntry[] {
   if (!index) return [];
-  return index.notes.filter((n) => n.deletedAt);
+  return index.notes.filter((n) => n.deletedAt && !n.archivedAt);
+}
+
+// アーカイブ表示用: アーカイブ内エントリのみ（ゴミ箱は含めない）
+export function getArchivedNotes(index: GraphiumIndex | null): NoteIndexEntry[] {
+  if (!index) return [];
+  return index.notes.filter((n) => n.archivedAt && !n.deletedAt);
+}
+
+// アーカイブする: archivedAt をセットする（エントリは残す）
+export function archiveIndexEntry(
+  index: GraphiumIndex,
+  noteId: string,
+): GraphiumIndex {
+  const now = new Date().toISOString();
+  return {
+    ...index,
+    updatedAt: now,
+    notes: index.notes.map((n) =>
+      n.noteId === noteId ? { ...n, archivedAt: now } : n
+    ),
+  };
+}
+
+// アーカイブから復元: archivedAt を消す
+export function restoreFromArchive(
+  index: GraphiumIndex,
+  noteId: string,
+): GraphiumIndex {
+  return {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    notes: index.notes.map((n) => {
+      if (n.noteId !== noteId) return n;
+      const { archivedAt: _omit, ...rest } = n;
+      return rest;
+    }),
+  };
 }
 
 /**

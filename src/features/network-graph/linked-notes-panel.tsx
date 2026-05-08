@@ -95,7 +95,7 @@ export function LinkedNotesPanel({
             {group.nodes.map((node) => (
               <li key={node.id}>
                 <button
-                  onClick={() => onNavigate(node.id)}
+                  onClick={() => onNavigate(node.isWiki ? `wiki:${node.id}` : node.id)}
                   className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-muted/50 transition-colors group cursor-pointer"
                 >
                   <span
