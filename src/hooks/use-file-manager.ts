@@ -21,6 +21,8 @@ import {
 } from "../features/derivation/clone-document";
 import {
   buildNoteGraph,
+  buildLineageTree,
+  type LineageNode,
   type NoteGraphData,
 } from "../features/network-graph";
 import {
@@ -125,6 +127,8 @@ export function useFileManager(authenticated: boolean) {
   const docCacheRef = useRef<Map<string, GraphiumDocument>>(new Map());
   // ネットワークグラフデータ
   const [noteGraphData, setNoteGraphData] = useState<NoteGraphData>({ nodes: [], edges: [] });
+  // 上流リネージツリー（レイヤー2 PROV）
+  const [lineageTree, setLineageTree] = useState<LineageNode | null>(null);
   // Split View 用の派生元ノート（NoteApp レベルで管理し、ファイル切り替えでも保持）
   const [sourceDoc, setSourceDoc] = useState<GraphiumDocument | null>(null);
   // ノート一覧ビューの表示状態
@@ -342,6 +346,21 @@ export function useFileManager(authenticated: boolean) {
           }
         });
       }
+      // Wiki も同様にバックグラウンドでロード（リネージツリーで atom→concept→note を辿るため）
+      const missingWikis = wikiList.filter((f) => !docCacheRef.current.has(`wiki:${f.id}`));
+      if (missingWikis.length > 0) {
+        const results = await Promise.allSettled(
+          missingWikis.map(async (f) => {
+            const doc = await loadWikiFile(f.id);
+            docCacheRef.current.set(`wiki:${f.id}`, doc);
+          })
+        );
+        results.forEach((r, i) => {
+          if (r.status === "rejected") {
+            console.warn(`Wiki 読み込みスキップ: ${missingWikis[i].name}`);
+          }
+        });
+      }
       // ゴミ箱内のノートはグラフから除外
       const trashedIds = new Set(
         (noteIndexRef.current?.notes ?? []).filter((n) => n.deletedAt).map((n) => n.noteId)
@@ -359,7 +378,10 @@ export function useFileManager(authenticated: boolean) {
         const doc = docCacheRef.current.get(`wiki:${f.id}`);
         if (doc) docs.set(f.id, doc);
       }
-      setNoteGraphData(buildNoteGraph(currentId, [...visibleNotes, ...visibleWikis], docs));
+      const allFiles = [...visibleNotes, ...visibleWikis];
+      const mIndex = mediaIndexRef.current;
+      setNoteGraphData(buildNoteGraph(currentId, allFiles, docs, mIndex));
+      setLineageTree(buildLineageTree(currentId, allFiles, docs, mIndex));
     },
     []
   );
@@ -1487,6 +1509,7 @@ export function useFileManager(authenticated: boolean) {
     deriving,
     editorKey,
     noteGraphData,
+    lineageTree,
     sourceDoc,
     setSourceDoc,
     showNoteList,

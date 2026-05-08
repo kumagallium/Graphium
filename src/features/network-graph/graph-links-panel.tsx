@@ -1,24 +1,30 @@
-// Graph パネル内で「グラフ表示」と「リスト表示」をサブタブ���切り替える
-// アイコンレールは 1 つ（Network）のまま、パネル内で切り替え
+// Graph パネル内で「グラフ表示」「来歴ツリー」をサブタブで切り替える
+// アイコンレールは 1 つ（Network）のまま、パネル内で切り替え。
+// 旧「リスト表示」(LinkedNotesPanel) は実装は残しつつ UI から非表示。
 
 import { useState } from "react";
-import { Network, List } from "lucide-react";
+import { Network, GitBranch } from "lucide-react";
 import { NetworkGraphPanel } from "./view";
-import { LinkedNotesPanel } from "./linked-notes-panel";
+import { LineagePanel } from "./lineage-panel";
 import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { NoteGraphData } from "./graph-builder";
+import type { LineageNode } from "./lineage-builder";
 
-type SubTab = "graph" | "list";
+type SubTab = "graph" | "lineage";
 
 export function GraphLinksPanel({
   data,
+  lineageTree,
   onNavigate,
+  onOpenMedia,
 }: {
   data: NoteGraphData;
+  lineageTree: LineageNode | null;
   onNavigate: (noteId: string) => void;
+  onOpenMedia?: (fileId: string) => void;
 }) {
-  const [subTab, setSubTab] = useState<SubTab>("list");
+  const [subTab, setSubTab] = useState<SubTab>("graph");
   const t = useT();
 
   return (
@@ -26,8 +32,8 @@ export function GraphLinksPanel({
       {/* サブタブ切り替え */}
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30">
         {([
-          { key: "list" as const, icon: <List size={14} />, label: t("panel.links") },
-          { key: "graph" as const, icon: <Network size={14} />, label: "Graph" },
+          { key: "graph" as const, icon: <Network size={14} />, label: t("panel.graph.neighbors") },
+          { key: "lineage" as const, icon: <GitBranch size={14} />, label: t("panel.graph.lineage") },
         ]).map((tab) => (
           <button
             key={tab.key}
@@ -47,9 +53,9 @@ export function GraphLinksPanel({
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
         {subTab === "graph" ? (
-          <NetworkGraphPanel data={data} onNavigate={onNavigate} />
+          <NetworkGraphPanel data={data} onNavigate={onNavigate} onOpenMedia={onOpenMedia} />
         ) : (
-          <LinkedNotesPanel data={data} onNavigate={onNavigate} />
+          <LineagePanel tree={lineageTree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} />
         )}
       </div>
     </div>

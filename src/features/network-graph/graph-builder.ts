@@ -2,6 +2,7 @@
 // 2ホップ以内の関係ノードを抽出
 
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
+import type { MediaIndex } from "../asset-browser/media-index";
 
 export type NoteNode = {
   id: string;
@@ -11,6 +12,10 @@ export type NoteNode = {
   hop: number;
   /** Wiki ドキュメントかどうか（グラフ上で別色・別形状にする） */
   isWiki?: boolean;
+  /** 外部ソース種別（pdf:/url: prefix が付いた derivedFromNotes 由来）。 */
+  external?: "pdf" | "url";
+  /** 外部リンク先 URL（PDF は CDN URL、URL は元 URL）。クリックで新規タブで開く。 */
+  externalUrl?: string;
 };
 
 export type NoteEdge = {
@@ -72,7 +77,8 @@ function findBlockText(blocks: any[], targetId: string): string | undefined {
 export function buildNoteGraph(
   currentNoteId: string | null,
   files: GraphiumFile[],
-  docs: Map<string, GraphiumDocument>
+  docs: Map<string, GraphiumDocument>,
+  mediaIndex: MediaIndex | null = null,
 ): NoteGraphData {
   if (!currentNoteId) return { nodes: [], edges: [] };
 
@@ -112,12 +118,32 @@ export function buildNoteGraph(
       }
     }
     // Wiki の derivedFromNotes: Wiki → 派生元ノートのエッジ
+    // pdf:/url: 外部ソースは仮想ノードとして追加
     if (doc.source === "ai" && doc.wikiMeta?.derivedFromNotes) {
-      for (const sourceNoteId of doc.wikiMeta.derivedFromNotes) {
-        if (fileIds.has(sourceNoteId)) {
-          addEdge(sourceNoteId, fileId, "ingest");
+      for (const sourceId of doc.wikiMeta.derivedFromNotes) {
+        if (sourceId.startsWith("pdf:") || sourceId.startsWith("url:")) {
+          // 外部ソースはエッジ追加（fileIds チェック不要）
+          addEdge(sourceId, fileId, sourceId.startsWith("pdf:") ? "pdf" : "url");
+        } else if (fileIds.has(sourceId)) {
+          addEdge(sourceId, fileId, "ingest");
         }
       }
+    }
+    // Atom の derivedFromConcepts: Concept → Atom のエッジ
+    if (
+      doc.source === "ai" &&
+      doc.wikiMeta?.kind === "atom" &&
+      doc.wikiMeta?.derivedFromConcepts
+    ) {
+      for (const conceptId of doc.wikiMeta.derivedFromConcepts) {
+        if (fileIds.has(conceptId)) {
+          addEdge(conceptId, fileId, "atomize");
+        }
+      }
+    }
+    // 通常ノートの top-level sourceUrl（url-to-prov 由来）→ 外部 URL ノードへのエッジ
+    if (doc.source !== "ai" && doc.sourceUrl) {
+      addEdge(`url:${doc.sourceUrl}`, fileId, "url");
     }
   }
 
@@ -147,10 +173,45 @@ export function buildNoteGraph(
     fileNameMap.set(f.id, f.name.replace(/\.(graphium|provnote)\.json$/, ""));
   }
 
+  // 外部ソース解決用のメディアマップ（pdf は fileId キー、url ブックマークは url キー）
+  const mediaByFileId = new Map<string, { name: string; url: string }>();
+  const mediaByUrl = new Map<string, string>();
+  if (mediaIndex) {
+    for (const m of mediaIndex.media) {
+      mediaByFileId.set(m.fileId, { name: m.name, url: m.url });
+      if (m.type === "url") mediaByUrl.set(m.url, m.name);
+    }
+  }
+
   // ノードを構築
   const nodeIds = new Set(hopMap.keys());
   const nodes: NoteNode[] = [];
   for (const [id, hop] of hopMap) {
+    if (id.startsWith("pdf:")) {
+      const fileId = id.slice(4);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({
+        id,
+        title: m?.name ?? `PDF ${fileId.slice(0, 8)}`,
+        isCurrent: false,
+        hop,
+        external: "pdf",
+        externalUrl: m?.url,
+      });
+      continue;
+    }
+    if (id.startsWith("url:")) {
+      const url = id.slice(4);
+      nodes.push({
+        id,
+        title: mediaByUrl.get(url) ?? url,
+        isCurrent: false,
+        hop,
+        external: "url",
+        externalUrl: url,
+      });
+      continue;
+    }
     const title =
       docs.get(id)?.title ?? fileNameMap.get(id) ?? "不明なノート";
     const doc = docs.get(id);

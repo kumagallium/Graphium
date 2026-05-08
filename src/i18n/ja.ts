@@ -155,6 +155,13 @@ export const ja: Record<string, string> = {
   "panel.generateManual": "手動で再生成",
   "panel.history": "履歴",
   "panel.links": "リンク",
+  "panel.graph.neighbors": "近傍",
+  "panel.graph.lineage": "来歴",
+
+  // ── 来歴ツリーパネル（レイヤー2 PROV）──
+  "lineage.title": "来歴",
+  "lineage.empty": "ノートを開くと来歴が表示されます。",
+  "lineage.noAncestors": "このノートは派生元を持ちません。",
 
   // ── リンク一覧パネル ──
   "links.empty": "リンクされたノートがありません。",
