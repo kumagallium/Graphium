@@ -89,6 +89,8 @@ type SandboxEditorProps = {
   onMentionSelect?: (sourceBlockId: string, suggestion: import("@features/block-link/mention-menu").ReferenceSuggestion) => void;
   /** @ 参照リンクの候補を取得する関数（外部から注入） */
   getMentionSuggestions?: () => import("@features/block-link/mention-menu").ReferenceSuggestion[];
+  /** 読み取り専用モード（アーカイブ済みノートの閲覧などで使う） */
+  editable?: boolean;
 };
 
 // サンドボックス共通エディタ
@@ -107,6 +109,7 @@ export function SandboxEditor({
   onHashtagSelect,
   onMentionSelect,
   getMentionSuggestions,
+  editable = true,
 }: SandboxEditorProps) {
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
@@ -246,6 +249,7 @@ export function SandboxEditor({
     <BlockNoteView
       editor={editor as any}
       theme="light"
+      editable={editable}
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
       formattingToolbar={formattingToolbar ? false : undefined}
       slashMenu={hasExtraSlash ? false : undefined}

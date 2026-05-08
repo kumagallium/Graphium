@@ -35,6 +35,8 @@ import {
   removeIndexEntry,
   softDeleteIndexEntry,
   restoreIndexEntry,
+  archiveIndexEntry,
+  restoreFromArchive,
   saveIndexFile,
   buildIndexEntry,
   type RecentNote,
@@ -145,15 +147,25 @@ export function useFileManager(authenticated: boolean) {
     noteIndexRef.current = next;
     setRawNoteIndex(next);
   }, []);
-  // メイン一覧用: deletedAt エントリを除外した index ビュー
+  // メイン一覧用: deletedAt / archivedAt エントリを除外した index ビュー
   const noteIndex: GraphiumIndex | null = useMemo(() => {
     if (!rawNoteIndex) return null;
-    return { ...rawNoteIndex, notes: rawNoteIndex.notes.filter((n) => !n.deletedAt) };
+    return { ...rawNoteIndex, notes: rawNoteIndex.notes.filter((n) => !n.deletedAt && !n.archivedAt) };
   }, [rawNoteIndex]);
-  // ゴミ箱用: deletedAt エントリのみ
+  // ゴミ箱用: deletedAt エントリのみ（アーカイブは含めない）
   const trashedNotes = useMemo(
-    () => (rawNoteIndex ? rawNoteIndex.notes.filter((n) => n.deletedAt) : []),
+    () => (rawNoteIndex ? rawNoteIndex.notes.filter((n) => n.deletedAt && !n.archivedAt) : []),
     [rawNoteIndex]
+  );
+  // アーカイブ用: archivedAt エントリのみ（ゴミ箱は含めない）
+  const archivedNotes = useMemo(
+    () => (rawNoteIndex ? rawNoteIndex.notes.filter((n) => n.archivedAt && !n.deletedAt) : []),
+    [rawNoteIndex]
+  );
+  // アーカイブされた ID の Set（wikiFiles / files の一覧フィルタに使う）
+  const archivedIdSet = useMemo(
+    () => new Set(archivedNotes.map((n) => n.noteId)),
+    [archivedNotes]
   );
   // 派生ノート作成中フラグ
   const [deriving, setDeriving] = useState(false);
@@ -491,6 +503,20 @@ export function useFileManager(authenticated: boolean) {
       // Wiki ファイルのインデックスエントリを追加
       // 既存インデックスから古い Wiki エントリを除去し、最新の wikiFiles から再構築する
       if (wikiFiles.length > 0) {
+        // 再構築前に Wiki エントリの archivedAt / deletedAt を保存しておき、
+        // buildIndexEntry の結果に再付与する（フラグが消えると archive 機能が壊れる）。
+        //
+        // snapshot ソースは noteIndexRef.current を優先する。`index` は ensureIndex の
+        // 結果で prefetched (起動時スナップショット) ベースなので、セッション中に
+        // archiveIndexEntry 等で更新された archivedAt を含まない。
+        const flagSource = noteIndexRef.current ?? index;
+        const wikiFlagSnapshot = new Map<string, { archivedAt?: string; deletedAt?: string }>();
+        for (const n of flagSource.notes) {
+          if (n.source === "ai" && (n.archivedAt || n.deletedAt)) {
+            wikiFlagSnapshot.set(n.noteId, { archivedAt: n.archivedAt, deletedAt: n.deletedAt });
+          }
+        }
+
         // まず既存の Wiki エントリを除去（ノートエントリだけ残す）
         index.notes = index.notes.filter((n) => n.source !== "ai");
 
@@ -504,6 +530,9 @@ export function useFileManager(authenticated: boolean) {
           if (result.status === "fulfilled") {
             const { file, doc } = result.value;
             const entry = buildIndexEntry(file.id, doc, file);
+            const flags = wikiFlagSnapshot.get(file.id);
+            if (flags?.archivedAt) entry.archivedAt = flags.archivedAt;
+            if (flags?.deletedAt) entry.deletedAt = flags.deletedAt;
             index.notes.push(entry);
           }
         }
@@ -1269,6 +1298,74 @@ export function useFileManager(authenticated: boolean) {
     [activeFileId, setActiveFileId]
   );
 
+  // Wiki をアーカイブする（ファイル本体は残し、archivedAt をセットするだけ）
+  // 主に Concept merge で吸収された Wiki の参照保護のために使う。
+  // 一覧・検索からは消えるが、引用 / regenerate / グラフ探索からは引き続き解決できる。
+  //
+  // 注: wikiFiles state は触らない。触ると index 再構築 effect が発火し、
+  // archived エントリを「ai 系の旧エントリ」として除去してしまう。一覧表示の除外は
+  // フック return 側の `wikiFiles: wikiFiles.filter(!archivedIdSet)` が担当する。
+  const handleArchiveWikiFile = useCallback(
+    async (wikiId: string) => {
+      try {
+        const indexId = wikiId; // wiki もインデックス上は noteId として扱われる
+        if (noteIndexRef.current) {
+          const updated = archiveIndexEntry(noteIndexRef.current, indexId);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+        }
+        if (activeFileId === `wiki:${wikiId}`) {
+          setActiveFileId(null);
+          setActiveDoc(null);
+          setEditorKey((k) => k + 1);
+        }
+      } catch (err) {
+        console.error("Wiki のアーカイブに失敗:", err);
+      }
+    },
+    [activeFileId, setActiveFileId]
+  );
+
+  // アーカイブから復元（archivedAt を消す）
+  const handleRestoreFromArchive = useCallback(
+    async (fileId: string) => {
+      try {
+        if (noteIndexRef.current) {
+          const updated = restoreFromArchive(noteIndexRef.current, fileId);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+        }
+        // wiki の場合は wikiFiles state にも戻す必要がある — 次回 listWikiFiles で同期される
+        await refreshFiles();
+      } catch (err) {
+        console.error("アーカイブからの復元に失敗:", err);
+      }
+    },
+    []
+  );
+
+  // アーカイブからゴミ箱に送る（archivedAt → deletedAt 付け替え）
+  // ユーザーが「アーカイブ済みだがやはり捨てたい」と判断したときの導線。
+  // 完全削除はゴミ箱経由のみとし、archive から直接消すパスは作らない。
+  const handleSendArchiveToTrash = useCallback(
+    async (fileId: string) => {
+      try {
+        if (noteIndexRef.current) {
+          const restored = restoreFromArchive(noteIndexRef.current, fileId);
+          const trashed = softDeleteIndexEntry(restored, fileId);
+          noteIndexRef.current = trashed;
+          setNoteIndex(trashed);
+          saveIndexFile(trashed).catch((err) => console.warn("インデックス保存失敗:", err));
+        }
+      } catch (err) {
+        console.error("アーカイブからゴミ箱への移動に失敗:", err);
+      }
+    },
+    []
+  );
+
   // 通常ノートの新規作成（構築済み GraphiumDocument を受け取って保存する汎用入り口）
   // URL → PROV ノート生成など、既存ノートに紐づかない新規作成で使う。
   // 派生リンクが必要な場合は handleAiDeriveNote を使うこと。
@@ -1518,6 +1615,8 @@ export function useFileManager(authenticated: boolean) {
     noteIndex,
     rawNoteIndex,
     trashedNotes,
+    archivedNotes,
+    archivedIdSet,
     mediaIndex,
     activeAssetType,
     activeLabel,
@@ -1536,6 +1635,9 @@ export function useFileManager(authenticated: boolean) {
     handleDelete,
     handleRestore,
     handlePermanentDelete,
+    handleArchiveWikiFile,
+    handleRestoreFromArchive,
+    handleSendArchiveToTrash,
     getCachedDoc,
     loadDoc,
     handleUploadMedia,
@@ -1545,8 +1647,10 @@ export function useFileManager(authenticated: boolean) {
     handleAddUrlBookmark,
     handleCreateNoteFromDocument,
     handleCreateNoteFromImport,
-    // Wiki
-    wikiFiles,
+    // Wiki — アーカイブ・ゴミ箱のエントリは UI 表示・グラフから除外する
+    // （ファイル本体は残るので、リンクや regenerate からは引き続き透過解決できる）
+    wikiFiles: wikiFiles.filter((f) => !archivedIdSet.has(f.id)),
+    allWikiFiles: wikiFiles,
     wikiMetas,
     activeWikiKind,
     setActiveWikiKind,

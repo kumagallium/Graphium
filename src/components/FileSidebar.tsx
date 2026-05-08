@@ -490,7 +490,7 @@ export function FileSidebar({
             }`}
           >
             <Trash2 size={12} className="shrink-0" />
-            <span className="flex-1 text-left">{t("nav.trash")}</span>
+            <span className="flex-1 text-left">{t("nav.trashAndArchive")}</span>
             {trashCount > 0 && (
               <span className="text-xs">{trashCount}</span>
             )}

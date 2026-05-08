@@ -38,6 +38,8 @@ type SidePeekProps = {
   wikiEntries?: NoteIndexEntry[];
   /** 未化のときに「Add to Knowledge」を押すと呼ばれる */
   onAddToKnowledge?: () => void;
+  /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
+  archived?: boolean;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -80,7 +82,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
     }));
 }
 
-function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge }: SidePeekProps) {
+function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge, archived = false }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -503,6 +505,7 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
               />
               <SandboxEditor
                 key={noteId}
+                editable={!archived}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}
                 extraSlashMenuItems={[...buildLabelSlashMenuItems()]}
