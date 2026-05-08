@@ -170,7 +170,7 @@ import type { WikiLogEntry } from "./features/wiki/wiki-log";
 import { EmptyNoteGuide } from "./features/onboarding";
 
 import type { GraphiumFile } from "./lib/document-types";
-import type { NoteGraphData } from "./features/network-graph";
+import type { NoteGraphData, LineageNode } from "./features/network-graph";
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
 function NoteHeaderMenu({
@@ -368,6 +368,7 @@ type NoteEditorProps = {
   saving: boolean;
   files: GraphiumFile[];
   noteGraphData: NoteGraphData;
+  lineageTree: LineageNode | null;
   /** 派生元ノート（Split View 用、NoteApp が管理） */
   sourceDoc: GraphiumDocument | null;
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
@@ -482,6 +483,7 @@ function NoteEditorInner({
   saving,
   files,
   noteGraphData,
+  lineageTree,
   sourceDoc,
   onSourceDocChange,
   getCachedDoc,
@@ -1045,6 +1047,10 @@ function NoteEditorInner({
       wikiMeta: initialDoc?.wikiMeta,
       skillMeta: initialDoc?.skillMeta,
       generatedBy: initialDoc?.generatedBy,
+      // url-to-prov 由来の外部 URL メタデータを保持（来歴ツリーの上流ソース表示に必要）
+      sourceUrl: initialDoc?.sourceUrl,
+      sourceTitle: initialDoc?.sourceTitle,
+      sourceFetchedAt: initialDoc?.sourceFetchedAt,
       createdAt: initialDoc?.createdAt || new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     };
@@ -2395,7 +2401,16 @@ function NoteEditorInner({
               {rightTab === "graph" && (
                 <GraphLinksPanel
                   data={noteGraphData}
+                  lineageTree={lineageTree}
                   onNavigate={onNavigateNote}
+                  onOpenMedia={async (fileId) => {
+                    try {
+                      const blobUrl = await getActiveProvider().getMediaBlobUrl(fileId);
+                      window.open(blobUrl, "_blank", "noopener,noreferrer");
+                    } catch (err) {
+                      console.error("メディアのオープンに失敗:", err);
+                    }
+                  }}
                 />
               )}
               {rightTab === "prov" && (
@@ -2430,7 +2445,7 @@ function NoteEditorInner({
         )}>
           {([
             { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: aiAvailable },
-            { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 },
+            { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: "Source", show: true }] : []),
@@ -4388,6 +4403,7 @@ export function NoteApp() {
             saving={fm.saving}
             files={fm.files}
             noteGraphData={fm.noteGraphData}
+            lineageTree={fm.lineageTree}
             sourceDoc={fm.sourceDoc}
             onSourceDocChange={fm.setSourceDoc}
             noteIndex={fm.noteIndex}
