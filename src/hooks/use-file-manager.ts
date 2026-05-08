@@ -1420,6 +1420,23 @@ export function useFileManager(authenticated: boolean) {
     [],
   );
 
+  // 取り込み 2 パス目用: 既存ノートに対して link 解決済みの doc を上書き保存する。
+  // recordRevision を呼ばないため、handleCreateNoteFromImport 直後の追加保存でリビジョンが
+  // 二重に積まれない。インデックスとキャッシュも追従更新する。
+  const handleSaveImportedDoc = useCallback(
+    async (noteId: string, doc: GraphiumDocument): Promise<void> => {
+      docCacheRef.current.set(noteId, doc);
+      await saveFile(noteId, doc);
+      if (noteIndexRef.current) {
+        const updated = updateIndexEntry(noteIndexRef.current, noteId, doc);
+        noteIndexRef.current = updated;
+        setNoteIndex(updated);
+        saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+      }
+    },
+    [],
+  );
+
   // Wiki の新規作成（Ingest 結果の保存用）
   // 呼び出し元はすべて AI 生成フローのため、デフォルトで ai_generation を記録する。
   const handleCreateWikiFile = useCallback(
@@ -1647,6 +1664,7 @@ export function useFileManager(authenticated: boolean) {
     handleAddUrlBookmark,
     handleCreateNoteFromDocument,
     handleCreateNoteFromImport,
+    handleSaveImportedDoc,
     // Wiki — アーカイブ・ゴミ箱のエントリは UI 表示・グラフから除外する
     // （ファイル本体は残るので、リンクや regenerate からは引き続き透過解決できる）
     wikiFiles: wikiFiles.filter((f) => !archivedIdSet.has(f.id)),

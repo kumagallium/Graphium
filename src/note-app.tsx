@@ -4209,6 +4209,123 @@ export function NoteApp() {
                 router.navigate({ view: "editor", fileId: lastNewId });
               }
             }}
+            onImportMarkdown={async (files, onProgress) => {
+              const {
+                importMarkdownToGraphiumDoc,
+                resolveWikiLinks,
+                isMarkdownFile,
+                buildVaultMap,
+              } = await import("./features/markdown-import/import");
+
+              const mdFiles = files.filter(isMarkdownFile);
+              if (mdFiles.length === 0) {
+                window.alert("Markdown ファイルが見つかりませんでした。");
+                return;
+              }
+
+              // 画像参照を相対パスで解決するため、フォルダ内の全ファイルからルックアップを作る。
+              // webkitdirectory 経由の File は webkitRelativePath を持つ（"vault/foo.md" 等）。
+              // 単体選択時は path = name のみなので vault モードかどうかで分岐する。
+              const isVaultMode = mdFiles.some((f) => (f as any).webkitRelativePath);
+              const allByPath = new Map<string, File>();
+              if (isVaultMode) {
+                for (const f of files) {
+                  const rel: string = (f as any).webkitRelativePath || f.name;
+                  allByPath.set(rel.toLowerCase(), f);
+                  // 末尾のファイル名のみのキーでも引けるように
+                  const baseName = rel.split("/").pop()?.toLowerCase();
+                  if (baseName && !allByPath.has(baseName)) allByPath.set(baseName, f);
+                }
+              }
+
+              const resolveImage = isVaultMode
+                ? async (relativePath: string): Promise<File | null> => {
+                    const lc = relativePath.toLowerCase();
+                    const direct = allByPath.get(lc);
+                    if (direct) return direct;
+                    const baseName = lc.split("/").pop();
+                    if (baseName) {
+                      const byName = allByPath.get(baseName);
+                      if (byName) return byName;
+                    }
+                    return null;
+                  }
+                : undefined;
+
+              // pass 1: 各 MD を doc に変換 → ノート作成
+              const vaultMap = buildVaultMap(mdFiles);
+              const baseNameToNoteId = new Map<string, string>();
+              const docsByNoteId = new Map<
+                string,
+                { doc: import("./lib/document-types").GraphiumDocument; wikilinks: { target: string; display: string }[] }
+              >();
+              const failed: string[] = [];
+              let lastNewId: string | null = null;
+
+              for (let i = 0; i < mdFiles.length; i++) {
+                const file = mdFiles[i];
+                onProgress({ done: i, total: mdFiles.length, current: file.name, failed: [...failed] });
+                try {
+                  const { doc, wikilinks } = await importMarkdownToGraphiumDoc(file, {
+                    resolveImage,
+                    uploadImage: fm.handleUploadMedia,
+                  });
+                  const newId = await fm.handleCreateNoteFromImport(doc);
+                  const baseName = file.name.replace(/\.(md|markdown)$/i, "");
+                  baseNameToNoteId.set(baseName.toLowerCase(), newId);
+                  docsByNoteId.set(newId, { doc, wikilinks });
+                  lastNewId = newId;
+                } catch (err) {
+                  console.error("Markdown インポート失敗:", file.name, err);
+                  failed.push(file.name);
+                }
+                onProgress({ done: i + 1, total: mdFiles.length, failed: [...failed] });
+              }
+
+              // pass 2: wikilinks を解決して保存
+              if (vaultMap.size > 0) {
+                let resolvedCount = 0;
+                let unresolvedCount = 0;
+                for (const [noteId, { doc, wikilinks }] of docsByNoteId) {
+                  if (wikilinks.length === 0) continue;
+                  const resolver = (target: string): string | null => {
+                    const id = baseNameToNoteId.get(target.toLowerCase());
+                    if (id) {
+                      resolvedCount++;
+                      return id;
+                    }
+                    unresolvedCount++;
+                    return null;
+                  };
+                  const updated = resolveWikiLinks(doc, wikilinks, resolver);
+                  if (updated.pages[0].knowledgeLinks.length > 0) {
+                    try {
+                      await fm.handleSaveImportedDoc(noteId, updated);
+                    } catch (err) {
+                      console.warn("Markdown リンク解決の保存失敗:", noteId, err);
+                    }
+                  }
+                }
+                console.info(`[markdown-import] リンク解決: ${resolvedCount} / ${resolvedCount + unresolvedCount}`);
+              }
+
+              await fm.refreshFiles();
+
+              const successCount = mdFiles.length - failed.length;
+              if (successCount > 0) {
+                const msg = [`${successCount} 件のノートを取り込みました。`];
+                if (vaultMap.size > 0) {
+                  msg.push("", "解決できなかった [[リンク]] はテキストとして残しています。");
+                }
+                window.alert(msg.join("\n"));
+              }
+
+              if (lastNewId && mdFiles.length === 1) {
+                fm.setShowNoteList(false);
+                fm.handleOpenFile(lastNewId);
+                router.navigate({ view: "editor", fileId: lastNewId });
+              }
+            }}
           />
         ) : showMemos ? (
           <MemoGalleryView
