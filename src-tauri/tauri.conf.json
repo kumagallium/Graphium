@@ -39,8 +39,7 @@
       "binaries/graphium-server"
     ],
     "resources": [
-      "sidecar/server.mjs",
-      "sidecar/node"
+      "sidecar/server.mjs"
     ]
   },
   "plugins": {

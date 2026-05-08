@@ -18,12 +18,25 @@ fn shutdown_ack(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-/// 任意 PID に SIGTERM を送る（macOS / Unix 系専用）。
+/// 任意 PID にシグナルを送って終了させる。
 /// port 3001 に居座る "他人 sidecar"（消えた worktree の幽霊など）を回収するために使う。
+/// Unix: SIGTERM、Windows: taskkill /F /PID
 #[tauri::command]
 fn kill_pid(pid: u32) -> Result<(), String> {
-    let output = std::process::Command::new("/bin/kill")
-        .args(["-TERM", &pid.to_string()])
+    #[cfg(unix)]
+    let mut command = {
+        let mut c = std::process::Command::new("/bin/kill");
+        c.args(["-TERM", &pid.to_string()]);
+        c
+    };
+    #[cfg(windows)]
+    let mut command = {
+        let mut c = std::process::Command::new("taskkill");
+        c.args(["/F", "/PID", &pid.to_string()]);
+        c
+    };
+
+    let output = command
         .output()
         .map_err(|e| format!("kill spawn failed: {e}"))?;
     if !output.status.success() {

@@ -133,8 +133,17 @@ export async function startSidecar(): Promise<boolean> {
 
   try {
     const { Command } = await import("@tauri-apps/plugin-shell");
+    const { resolveResource } = await import("@tauri-apps/api/path");
 
-    const command = Command.sidecar("binaries/graphium-server", [], {
+    // sidecar バイナリ自体は Node.js 本体のリネームコピー（fetch-node.mjs で配置）。
+    // そのため第一引数として server.mjs の絶対パスを渡す必要がある。
+    // resolveResource は dev/production の両方で適切なパスを返す:
+    //   - production: <bundle>/Resources/sidecar/server.mjs (mac) /
+    //                 <install>/resources/sidecar/server.mjs (win)
+    //   - dev:        <project>/src-tauri/sidecar/server.mjs
+    const serverScript = await resolveResource("sidecar/server.mjs");
+
+    const command = Command.sidecar("binaries/graphium-server", [serverScript], {
       env: {
         PORT: "3001",
         CORS_ORIGINS: "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
