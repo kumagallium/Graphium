@@ -11,6 +11,17 @@ on:
         description: "Branch / tag / SHA to build (default: current branch)"
         required: false
         default: ""
+  # Verify Windows build still works on PRs that touch desktop-build paths.
+  pull_request:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - "scripts/fetch-node.mjs"
+      - "scripts/bundle-server.mjs"
+      - "src/lib/sidecar.ts"
+      - ".github/workflows/windows-test-build.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
 
 permissions:
   contents: read
