@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.6.4](https://github.com/kumagallium/Graphium/compare/v0.6.3...v0.6.4) - 2026-05-08
+- Add Layer 2 PROV lineage tree to right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/245
+- feat(archive): soft-archive merged wikis to preserve references by @kumagallium in https://github.com/kumagallium/Graphium/pull/247
+
 ## [v0.6.3](https://github.com/kumagallium/Graphium/compare/v0.6.2...v0.6.3) - 2026-05-07
 - chore: add status badges and dmg download counter workflow by @kumagallium in https://github.com/kumagallium/Graphium/pull/239
 - fix: pin last-commit badge to main branch by @kumagallium in https://github.com/kumagallium/Graphium/pull/240
