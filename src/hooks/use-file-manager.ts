@@ -1415,6 +1415,17 @@ export function useFileManager(authenticated: boolean) {
         saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
       }
 
+      // メディアインデックスの usedIn を同期 — Word/Markdown 取り込みで貼られた
+      // 画像が画像モーダルのネットワーク表示に出るようにするため、handleSaveFile と
+      // 同じ手順で逆引きを更新する。
+      if (mediaIndexRef.current && doc.pages[0]) {
+        const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+        const updated = syncUsedIn(mediaIndexRef.current, newFileId, doc.title, mediaMap);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      }
+
       return newFileId;
     },
     [],
@@ -1432,6 +1443,16 @@ export function useFileManager(authenticated: boolean) {
         noteIndexRef.current = updated;
         setNoteIndex(updated);
         saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+      }
+
+      // 取り込み 2 パス目（リンク解決後）でも usedIn を同期しておく。
+      // pass 1 と pass 2 で blocks が変わっていても、最新状態に追従させる。
+      if (mediaIndexRef.current && doc.pages[0]) {
+        const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+        const updated = syncUsedIn(mediaIndexRef.current, noteId, doc.title, mediaMap);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
       }
     },
     [],
