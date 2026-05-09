@@ -59,7 +59,8 @@ export async function importMarkdownToGraphiumDoc(
   const { frontmatter, body } = splitFrontmatter(raw);
 
   const normalized = normalizeObsidianEmbeds(body);
-  const withImagesRewritten = await rewriteImageReferences(normalized, options);
+  const orderedImageUrls: string[] = [];
+  const withImagesRewritten = await rewriteImageReferences(normalized, options, orderedImageUrls);
 
   const wikilinks: WikiLinkRef[] = [];
   const withSentinels = withImagesRewritten.replace(/\[\[([^\[\]]+)\]\]/g, (_m, inner: string) => {
@@ -76,6 +77,13 @@ export async function importMarkdownToGraphiumDoc(
   const editor = BlockNoteEditor.create({ schema });
   const blocks = editor.tryParseMarkdownToBlocks(withSentinels);
 
+  // BlockNote の HTMLToBlocks は detached document 上で `imageElement.src` を読むため、
+  // `media-server://` のような独自スキームは解決時に消えて空 URL になる。出現順で
+  // 引き当てた upload URL を image ブロックに復元する（docx-import と同じ救済）。
+  const fixedBlocks = orderedImageUrls.length > 0
+    ? rewriteImageUrls(blocks as any[], orderedImageUrls)
+    : (blocks as any[]);
+
   const finalBlocks: any[] = [];
   if (frontmatter !== null && frontmatter.trim().length > 0) {
     finalBlocks.push({
@@ -86,7 +94,7 @@ export async function importMarkdownToGraphiumDoc(
       children: [],
     });
   }
-  finalBlocks.push(...(blocks as any[]));
+  finalBlocks.push(...fixedBlocks);
 
   const now = new Date().toISOString();
   return {
@@ -177,7 +185,11 @@ function encodeMarkdownUrl(p: string): string {
   return p.replace(/ /g, "%20");
 }
 
-async function rewriteImageReferences(md: string, options: MarkdownImportOptions): Promise<string> {
+async function rewriteImageReferences(
+  md: string,
+  options: MarkdownImportOptions,
+  orderedImageUrls: string[],
+): Promise<string> {
   if (!options.resolveImage || !options.uploadImage) return md;
 
   const regex = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -203,11 +215,42 @@ async function rewriteImageReferences(md: string, options: MarkdownImportOptions
     }
   }
 
-  return md.replace(regex, (full, alt: string, url: string) => {
+  // 出現順で upload URL を控える（docx-import 側の救済処理が image ブロックの順番で
+  // 当てに行くため、source ↔ block の順序が一致するようにここで蓄積する）。
+  // 解決済 URL はプレースホルダ data URL に書き換えて、BlockNote の URL 正規化を回避する。
+  return md.replace(regex, (_full, alt: string, url: string) => {
     const replaced = replacements.get(url);
-    if (!replaced) return full;
-    return `![${alt}](${replaced})`;
+    if (replaced) {
+      const idx = orderedImageUrls.length;
+      orderedImageUrls.push(replaced);
+      const placeholder = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' data-graphium-idx='${idx}'/>`;
+      return `![${alt}](${placeholder})`;
+    }
+    // 既に http(s) / data など解決済の URL は出現順記録のみ行い、source は変更しない。
+    const lower = url.toLowerCase();
+    if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:")) {
+      orderedImageUrls.push(url);
+    }
+    return `![${alt}](${url})`;
   });
+}
+
+/** docx-import と同じ救済処理: image ブロックの url を出現順で差し替える */
+function rewriteImageUrls(blocks: any[], orderedSrcs: string[]): any[] {
+  let cursor = 0;
+  const visit = (b: any): any => {
+    if (!b || typeof b !== "object") return b;
+    let next = b;
+    if (b.type === "image" && cursor < orderedSrcs.length) {
+      const src = orderedSrcs[cursor++];
+      if (src) next = { ...b, props: { ...(b.props ?? {}), url: src } };
+    }
+    if (Array.isArray(b.children) && b.children.length > 0) {
+      next = { ...next, children: b.children.map(visit) };
+    }
+    return next;
+  };
+  return blocks.map(visit);
 }
 
 function rewriteBlockSentinels(

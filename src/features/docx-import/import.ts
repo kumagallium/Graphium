@@ -44,6 +44,17 @@ export async function importDocxToGraphiumDoc(
   let uploadIndex = 0;
   const stats = { attempted: 0, succeeded: 0, skipped: 0, failed: 0 };
 
+  // mammoth が出力する <img> の src に最終 URL（例: `media-server://...`）を入れても、
+  // BlockNote の HTMLToBlocks は detached document（baseURI=about:blank）上で
+  // `imageElement.src` を読むため、独自スキームが空文字に正規化されてしまい、
+  // 画像ブロックの url が空になる事故が起きる（"空の画像ブロック" 現象）。
+  // そのため <img> には parse を通過させるためのプレースホルダ data URL を入れ、
+  // 出現順に対応する実 URL を別配列で持ち回し、parse 後のブロック木で差し替える。
+  const PLACEHOLDER_PREFIX = "data:image/svg+xml;utf8,";
+  const placeholderFor = (idx: number) =>
+    `${PLACEHOLDER_PREFIX}<svg xmlns='http://www.w3.org/2000/svg' data-graphium-idx='${idx}'/>`;
+  const orderedSrcs: (string | null)[] = [];
+
   const mammothOptions = options.uploadImage
     ? {
         convertImage: mammoth.images.imgElement(async (image) => {
@@ -53,6 +64,7 @@ export async function importDocxToGraphiumDoc(
           if (!isRenderableImageMime(image.contentType)) {
             stats.skipped++;
             console.warn(`[docx-import] #${idx} 非対応画像形式をスキップ:`, image.contentType);
+            orderedSrcs[idx] = null;
             return { src: "" };
           }
           // 直列化: 前のアップロード完了を待つ
@@ -79,12 +91,15 @@ export async function importDocxToGraphiumDoc(
             const url = await options.uploadImage!(imgFile);
             stats.succeeded++;
             console.debug(`[docx-import] #${idx} アップロード成功`, { url });
-            return { src: url };
+            orderedSrcs[idx] = url;
+            return { src: placeholderFor(idx) };
           } catch (err) {
             stats.failed++;
             console.error(`[docx-import] #${idx} アップロード失敗、base64 にフォールバック:`, err);
             const base64 = await image.readAsBase64String();
-            return { src: `data:${image.contentType};base64,${base64}` };
+            const fallback = `data:${image.contentType};base64,${base64}`;
+            orderedSrcs[idx] = fallback;
+            return { src: fallback };
           } finally {
             release!();
           }
@@ -126,6 +141,12 @@ export async function importDocxToGraphiumDoc(
   const editor = BlockNoteEditor.create({ schema });
   const blocks = editor.tryParseHTMLToBlocks(html);
 
+  // プレースホルダ data URL → 実 URL へ差し替え。
+  // BlockNote 側で url が空になった image ブロックも、出現順に対応する url を割り当てて救済する。
+  const fixedBlocks = options.uploadImage
+    ? rewriteImageUrls(blocks as any[], orderedSrcs)
+    : (blocks as any[]);
+
   const title = baseTitle;
   const now = new Date().toISOString();
 
@@ -135,7 +156,7 @@ export async function importDocxToGraphiumDoc(
     pages: [{
       id: crypto.randomUUID(),
       title,
-      blocks: blocks as unknown[] as any[],
+      blocks: fixedBlocks as unknown[] as any[],
       labels: {},
       provLinks: [],
       knowledgeLinks: [],
@@ -144,6 +165,39 @@ export async function importDocxToGraphiumDoc(
     modifiedAt: now,
     source: "human",
   };
+}
+
+/**
+ * BlockNote の image ブロックを書類の出現順に走査し、URL を差し替える。
+ * - props.url がプレースホルダ data URL なら orderedSrcs から復元
+ * - props.url が空（detached document の URL 解決で消えたケース）でも、
+ *   image ブロックの出現順位に対応する src を割り当てる
+ * 引き当てに使えない (null = skip) 要素は飛ばす。
+ */
+function rewriteImageUrls(blocks: any[], orderedSrcs: (string | null)[]): any[] {
+  let cursor = 0;
+  const nextSrc = (): string | null => {
+    while (cursor < orderedSrcs.length) {
+      const v = orderedSrcs[cursor++];
+      if (v) return v;
+    }
+    return null;
+  };
+  const visit = (b: any): any => {
+    if (!b || typeof b !== "object") return b;
+    let next = b;
+    if (b.type === "image") {
+      const src = nextSrc();
+      if (src) {
+        next = { ...b, props: { ...(b.props ?? {}), url: src } };
+      }
+    }
+    if (Array.isArray(b.children) && b.children.length > 0) {
+      next = { ...next, children: b.children.map(visit) };
+    }
+    return next;
+  };
+  return blocks.map(visit);
 }
 
 /** 拡張子から docx 判定 */
