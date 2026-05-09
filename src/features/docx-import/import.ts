@@ -39,39 +39,38 @@ export async function importDocxToGraphiumDoc(
   // 画像処理: uploadImage が渡されていればメディア層にアップロード、無ければ mammoth デフォルト（base64）
   const baseTitle = file.name.replace(/\.docx$/i, "") || "Untitled";
 
-  // 画像アップロードを直列化する。多数同時アップロードの取りこぼしを防ぐ
-  let uploadChain: Promise<unknown> = Promise.resolve();
-  let uploadIndex = 0;
+  // 設計メモ:
+  // mammoth の convertImage 段階では File を作るだけで、メディア層への upload はしない。
+  // 理由: BlockNote の HTMLToBlocks は <img> を必ずしも image ブロックとして残さない
+  // （表組み・ヘッダー・インライン文脈などで drop されるケースがある）。先に upload して
+  // しまうと、ノートに表示されない画像がメディア層に堆積してゴミになる。
+  // そこで、まずプレースホルダ data URL に idx を埋めて HTML を作り、ブロック化したあと
+  // 「実際に image ブロックとして生き残った idx」だけをまとめて upload する。
+  //
+  // また、プレースホルダを data URL にすることで、独自スキームで `imageElement.src` が
+  // 空文字に潰れる事故も避けている（detached document の baseURI=about:blank 問題）。
+  let nextIdx = 0;
   const stats = { attempted: 0, succeeded: 0, skipped: 0, failed: 0 };
-
-  // mammoth が出力する <img> の src に最終 URL（例: `media-server://...`）を入れても、
-  // BlockNote の HTMLToBlocks は detached document（baseURI=about:blank）上で
-  // `imageElement.src` を読むため、独自スキームが空文字に正規化されてしまい、
-  // 画像ブロックの url が空になる事故が起きる（"空の画像ブロック" 現象）。
-  // そのため <img> には parse を通過させるためのプレースホルダ data URL を入れ、
-  // 出現順に対応する実 URL を別配列で持ち回し、parse 後のブロック木で差し替える。
-  const PLACEHOLDER_PREFIX = "data:image/svg+xml;utf8,";
+  type Pending =
+    | { kind: "renderable"; file: File }
+    | { kind: "fallback"; dataUrl: string }
+    | { kind: "skipped" };
+  const pending: Pending[] = [];
   const placeholderFor = (idx: number) =>
-    `${PLACEHOLDER_PREFIX}<svg xmlns='http://www.w3.org/2000/svg' data-graphium-idx='${idx}'/>`;
-  const orderedSrcs: (string | null)[] = [];
+    `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' data-graphium-idx='${idx}'/>`;
 
   const mammothOptions = options.uploadImage
     ? {
         convertImage: mammoth.images.imgElement(async (image) => {
-          const idx = uploadIndex++;
+          const idx = nextIdx++;
           stats.attempted++;
           // ブラウザで表示できない形式（EMF / WMF / 不明形式 など）はメディア層に保存しない。
           if (!isRenderableImageMime(image.contentType)) {
             stats.skipped++;
             console.warn(`[docx-import] #${idx} 非対応画像形式をスキップ:`, image.contentType);
-            orderedSrcs[idx] = null;
+            pending[idx] = { kind: "skipped" };
             return { src: "" };
           }
-          // 直列化: 前のアップロード完了を待つ
-          const prev = uploadChain;
-          let release: () => void;
-          uploadChain = new Promise<void>((r) => { release = r; });
-          await prev;
           try {
             const base64 = await image.readAsBase64String();
             const binary = atob(base64);
@@ -84,34 +83,20 @@ export async function importDocxToGraphiumDoc(
               `${baseTitle}-${crypto.randomUUID().slice(0, 8)}.${ext}`,
               { type: image.contentType },
             );
-            console.debug(`[docx-import] #${idx} アップロード開始`, {
-              mime: image.contentType,
-              size: bytes.length,
-            });
-            const url = await options.uploadImage!(imgFile);
-            stats.succeeded++;
-            console.debug(`[docx-import] #${idx} アップロード成功`, { url });
-            orderedSrcs[idx] = url;
+            pending[idx] = { kind: "renderable", file: imgFile };
             return { src: placeholderFor(idx) };
           } catch (err) {
-            stats.failed++;
-            console.error(`[docx-import] #${idx} アップロード失敗、base64 にフォールバック:`, err);
+            console.error(`[docx-import] #${idx} 画像読み出し失敗、base64 にフォールバック:`, err);
             const base64 = await image.readAsBase64String();
             const fallback = `data:${image.contentType};base64,${base64}`;
-            orderedSrcs[idx] = fallback;
+            pending[idx] = { kind: "fallback", dataUrl: fallback };
             return { src: fallback };
-          } finally {
-            release!();
           }
         }),
       }
     : undefined;
 
   const { value: html } = await mammoth.convertToHtml({ arrayBuffer }, mammothOptions);
-  if (options.uploadImage) {
-    await uploadChain; // 全アップロード完了を待つ
-    console.info(`[docx-import] 画像処理完了`, stats);
-  }
 
   // ハイパーリンク抽出: Word 内の外部 URL を URL ブックマークとして登録する
   if (options.addUrlBookmark) {
@@ -141,11 +126,87 @@ export async function importDocxToGraphiumDoc(
   const editor = BlockNoteEditor.create({ schema });
   const blocks = editor.tryParseHTMLToBlocks(html);
 
-  // プレースホルダ data URL → 実 URL へ差し替え。
-  // BlockNote 側で url が空になった image ブロックも、出現順に対応する url を割り当てて救済する。
-  const fixedBlocks = options.uploadImage
-    ? rewriteImageUrls(blocks as any[], orderedSrcs)
-    : (blocks as any[]);
+  // ここで「ブロック化を生き残った image ブロック」を出現順に並べる。
+  // 各ブロックの url から idx を抽出（プレースホルダ data URL に埋め込んである）し、
+  // idx が取れなかったブロック（url が detached document で空文字に潰れた等）には
+  // 出現順に余っている renderable Pending を順に当てて救済する。
+  const imageBlocksInOrder = collectImageBlocksInOrder(blocks as any[]);
+  const usedIdxs = new Set<number>();
+  const fallbackQueue: number[] = [];
+  pending.forEach((p, i) => {
+    if (p && p.kind === "renderable") fallbackQueue.push(i);
+  });
+  const blockToIdx = new Map<any, number>();
+  for (const block of imageBlocksInOrder) {
+    const url: string = block?.props?.url ?? "";
+    const m = /data-graphium-idx=['"]?(\d+)/.exec(url);
+    let idx: number | null = m ? Number(m[1]) : null;
+    if (idx !== null && pending[idx]?.kind !== "renderable" && pending[idx]?.kind !== "fallback") {
+      idx = null; // 既に消化済 or 不正
+    }
+    if (idx === null) {
+      // 出現順 fallback: 未使用の renderable を頭から取る
+      while (fallbackQueue.length > 0) {
+        const candidate = fallbackQueue[0];
+        if (usedIdxs.has(candidate)) {
+          fallbackQueue.shift();
+          continue;
+        }
+        idx = candidate;
+        fallbackQueue.shift();
+        break;
+      }
+    }
+    if (idx === null) continue;
+    usedIdxs.add(idx);
+    blockToIdx.set(block, idx);
+  }
+
+  // 実際に block で参照される idx だけ upload する。表示されないものはメディア層を汚さない。
+  const uploadedUrls = new Map<number, string>();
+  if (options.uploadImage) {
+    for (const idx of usedIdxs) {
+      const slot = pending[idx];
+      if (!slot) continue;
+      if (slot.kind === "fallback") {
+        uploadedUrls.set(idx, slot.dataUrl);
+        continue;
+      }
+      if (slot.kind !== "renderable") continue;
+      try {
+        console.debug(`[docx-import] #${idx} アップロード開始`, {
+          mime: slot.file.type,
+          size: slot.file.size,
+        });
+        const url = await options.uploadImage(slot.file);
+        stats.succeeded++;
+        console.debug(`[docx-import] #${idx} アップロード成功`, { url });
+        uploadedUrls.set(idx, url);
+      } catch (err) {
+        stats.failed++;
+        console.error(`[docx-import] #${idx} アップロード失敗:`, err);
+        // upload 失敗時は base64 を埋めてノート上だけでも画像が見えるようにする
+        try {
+          const buf = await slot.file.arrayBuffer();
+          const u8 = new Uint8Array(buf);
+          let bin = "";
+          for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+          uploadedUrls.set(idx, `data:${slot.file.type};base64,${btoa(bin)}`);
+        } catch (e2) {
+          console.error(`[docx-import] #${idx} base64 フォールバックも失敗:`, e2);
+        }
+      }
+    }
+    console.info(`[docx-import] 画像処理完了`, {
+      ...stats,
+      blocksKept: imageBlocksInOrder.length,
+      uploaded: uploadedUrls.size,
+      droppedByBlockNote: pending.filter((p) => p?.kind === "renderable").length - usedIdxs.size,
+    });
+  }
+
+  // 各 image ブロックの url を確定値で書き戻す
+  const fixedBlocks = rewriteImageBlocks(blocks as any[], blockToIdx, uploadedUrls);
 
   const title = baseTitle;
   const now = new Date().toISOString();
@@ -167,30 +228,31 @@ export async function importDocxToGraphiumDoc(
   };
 }
 
-/**
- * BlockNote の image ブロックを書類の出現順に走査し、URL を差し替える。
- * - props.url がプレースホルダ data URL なら orderedSrcs から復元
- * - props.url が空（detached document の URL 解決で消えたケース）でも、
- *   image ブロックの出現順位に対応する src を割り当てる
- * 引き当てに使えない (null = skip) 要素は飛ばす。
- */
-function rewriteImageUrls(blocks: any[], orderedSrcs: (string | null)[]): any[] {
-  let cursor = 0;
-  const nextSrc = (): string | null => {
-    while (cursor < orderedSrcs.length) {
-      const v = orderedSrcs[cursor++];
-      if (v) return v;
-    }
-    return null;
+/** 出現順に image ブロックを集める（children も再帰）。同一参照を後段で書き戻すのに使う */
+function collectImageBlocksInOrder(blocks: any[]): any[] {
+  const out: any[] = [];
+  const visit = (b: any) => {
+    if (!b || typeof b !== "object") return;
+    if (b.type === "image") out.push(b);
+    if (Array.isArray(b.children)) for (const c of b.children) visit(c);
   };
+  for (const b of blocks) visit(b);
+  return out;
+}
+
+/** image ブロックの url を確定値で書き戻す。引き当てが無いブロックは props.url を空文字に揃える */
+function rewriteImageBlocks(
+  blocks: any[],
+  blockToIdx: Map<any, number>,
+  uploadedUrls: Map<number, string>,
+): any[] {
   const visit = (b: any): any => {
     if (!b || typeof b !== "object") return b;
     let next = b;
     if (b.type === "image") {
-      const src = nextSrc();
-      if (src) {
-        next = { ...b, props: { ...(b.props ?? {}), url: src } };
-      }
+      const idx = blockToIdx.get(b);
+      const url = idx !== undefined ? uploadedUrls.get(idx) : undefined;
+      next = { ...b, props: { ...(b.props ?? {}), url: url ?? "" } };
     }
     if (Array.isArray(b.children) && b.children.length > 0) {
       next = { ...next, children: b.children.map(visit) };
