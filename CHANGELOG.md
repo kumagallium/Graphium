@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.6.6](https://github.com/kumagallium/Graphium/compare/v0.6.5...v0.6.6) - 2026-05-09
+- fix(import): restore image URLs and media usage links on docx/markdown import by @kumagallium in https://github.com/kumagallium/Graphium/pull/255
+- feat: add list view with bulk delete to asset browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/257
+- fix(docx-import): only save images that survive as image blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/258
+
 ## [v0.6.5](https://github.com/kumagallium/Graphium/compare/v0.6.4...v0.6.5) - 2026-05-08
 - fix(provenance): remove 100-revision silent cap by @kumagallium in https://github.com/kumagallium/Graphium/pull/248
 - SidePeek coexists inline with right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/250
