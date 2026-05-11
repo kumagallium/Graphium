@@ -24,6 +24,74 @@ export type ConceptLevel = "principle" | "finding" | "bridge";
 // verified: 2 ノート以上で依拠された。「自分の研究で繰り返し効いている原理」
 export type ConceptStatus = "candidate" | "verified";
 
+// ──────────────────────────────────────────────
+// 意味的な型（提案 v4 Phase 1）
+//
+// Concept / Atom / Synthesis に直交する別次元の「型」を導入する。
+// 既存のコンテキストラベル（PROV-DM 存在論的役割）とは独立で、
+// 思考の強制を避けるためユーザーには選択を強制せず、AI が自動推定する。
+// すべて optional で、未指定でも従来通り動作する。
+// ──────────────────────────────────────────────
+
+// Concept の研究プロセス役割（文脈内で抽出された要素の「種類」）
+// 複数値可（同じ Concept が finding でもあり question でもありうる）
+export type ConceptRole =
+  | "finding"          // 発見・観察: この文脈で観察された事実
+  | "decision"         // 決定・選択: この文脈での選択とその理由
+  | "anomaly"          // 予期せぬ事象: 予想外の観測・結果
+  | "question"         // 残された問い: 文脈内で未解決の問い
+  | "setup"            // 設定・条件: 実験・分析の前提条件
+  | "interpretation"   // 解釈: 文脈内での暫定的意味付け
+  | "issue";           // 課題・問題: 文脈内で気づいた問題
+
+// Atom の推論的役割（文脈を剥がした主張の論理的性格）
+export type AtomType =
+  | "causal"           // 因果: X が Y を引き起こす／抑制する
+  | "correlational"    // 相関: X と Y は共変動する（因果は主張しない）
+  | "mechanistic"      // 機構: X は機構 M を通じて Y に至る
+  | "conditional"      // 条件依存: 条件 C 下でのみ X は Y を引き起こす
+  | "definitional"     // 定義・構造: X は Y という構造を持つ／に分類される
+  | "methodological"   // 方法: X は Y を達成する手段である
+  | "observational"    // 経験的観測: 実験で X が観測された（理論解釈なし）
+  | "boundary";        // 限界・境界: X は Y の範囲では成立しない
+
+// Synthesis の推論モード
+export type SynthesisMode =
+  | "deductive"        // 演繹: 独立 Atom 群 → 組み合わせ戦略
+  | "inductive"        // 帰納: 類似パターンの Atom 群（3 件以上） → 一般則
+  | "abductive"        // アブダクション: 観測 Atom + 既知則 Atom → 説明仮説
+  | "analogical"       // 類推: 異領域 Atom 間の構造写像 → 転用仮説
+  | "dialectic";       // 弁証法的止揚: 対立する Atom ペア → 上位枠組み
+
+// Synthesis（特に abductive 型）の検証状態
+export type HypothesisStatus =
+  | "speculative"      // 推測の段階（デフォルト）
+  | "tested"           // 検証中・部分的に裏付けあり
+  | "confirmed"        // 検証済み（複数の独立した支持）
+  | "refuted";         // 反証された
+
+// 主張が依存する手順条件（再現性の骨格）
+// PROV 構造を「最後まで剥がさない再現性骨格」として保持する。
+// AI が生成時に推定し、後で引用される際に「どんな手順条件下で成立するか」を即座に分かる形にする。
+export type KeyParameter = {
+  name: string;                           // 例: "機械合金化時間"
+  value: string;                          // 例: "3h"（Phase A は文字列、正規化は Phase B 以降）
+  necessity: "critical" | "important" | "incidental"; // この主張への影響度
+};
+
+export type ProcedureContext = {
+  /** 由来 Note の ID リスト（WikiMeta.derivedFromNotes と重複する場合あり） */
+  derivedFromNotes: string[];
+  /** 主要ステップを列挙した手順指紋（自然言語、例: "機械合金化 → SPS焼結"） */
+  protocolFingerprint?: string;
+  /** 主張が依存する重要パラメータ */
+  keyParameters?: KeyParameter[];
+  /** 主張が依存する装置・手法 */
+  keyTools?: string[];
+  /** 主張が成立するパラメータ範囲（自然言語） */
+  validityRange?: string;
+};
+
 // Skill（プロンプトテンプレート）のメタデータ
 export type SkillMeta = {
   /** スキルの説明（一行） */
@@ -81,6 +149,19 @@ export type WikiMeta = {
   derivedFromConcepts?: string[];
   /** 生成時の自己評価された確度（0.0〜1.0）。主に Synthesis で誤差伝搬の指標として表示する */
   confidence?: number;
+
+  // ── 意味的な型（提案 v4 Phase 1。すべて optional、後方互換維持） ──
+
+  /** Concept の研究プロセス役割。複数可（同じ Concept が finding でもあり question でもありうる） */
+  conceptRole?: ConceptRole[];
+  /** Atom の推論的役割 */
+  atomType?: AtomType;
+  /** Synthesis の推論モード */
+  synthesisMode?: SynthesisMode;
+  /** Synthesis の検証状態（特に abductive 型で意味を持つ） */
+  hypothesisStatus?: HypothesisStatus;
+  /** 主張が依存する手順条件（再現性の骨格、Phase 2.3） */
+  procedureContext?: ProcedureContext;
 };
 
 /**
@@ -96,6 +177,14 @@ export type WikiMetaSummary = {
   level?: ConceptLevel;
   /** principle のときのみ意味を持つ確度ステータス */
   status?: ConceptStatus;
+  /** Concept の研究プロセス役割（複数可） */
+  conceptRole?: ConceptRole[];
+  /** Atom の推論的役割 */
+  atomType?: AtomType;
+  /** Synthesis の推論モード */
+  synthesisMode?: SynthesisMode;
+  /** Synthesis の検証状態 */
+  hypothesisStatus?: HypothesisStatus;
 };
 
 // Graphium ファイルのメタデータ

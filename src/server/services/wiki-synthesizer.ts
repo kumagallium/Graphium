@@ -2,6 +2,25 @@
 // 既存の Concept ページ群を分析し、複数ページを統合した
 // 新しい洞察（Synthesis ページ）を生成する
 
+import type { HypothesisStatus, SynthesisMode } from "../../lib/document-types.js";
+
+/** Synthesis の推論モード（提案 v4 Phase 1.3）として認める値の一覧 */
+const SYNTHESIS_MODE_VALUES: SynthesisMode[] = [
+  "deductive",
+  "inductive",
+  "abductive",
+  "analogical",
+  "dialectic",
+];
+
+/** Synthesis の検証状態として認める値の一覧 */
+const HYPOTHESIS_STATUS_VALUES: HypothesisStatus[] = [
+  "speculative",
+  "tested",
+  "confirmed",
+  "refuted",
+];
+
 export type SynthesisCandidate = {
   /** 統合対象の Concept ID リスト（2-4 個） */
   sourceConceptIds: string[];
@@ -15,6 +34,16 @@ export type SynthesisCandidate = {
   rationale: string;
   /** 信頼度 */
   confidence: number;
+  /**
+   * Synthesis の推論モード（提案 v4 Phase 1.3）。
+   * 入力 Concept の関係性から自動推定。認識不能・パース失敗時は undefined。
+   */
+  synthesisMode?: SynthesisMode;
+  /**
+   * Synthesis の検証状態。特に abductive 型で意味を持つ。
+   * 生成時のデフォルトは "speculative"。
+   */
+  hypothesisStatus?: HypothesisStatus;
 };
 
 export type ConceptSnapshot = {
@@ -108,10 +137,33 @@ Respond with valid JSON only (no markdown wrapper):
         { "heading": "Section heading", "content": "Section content" }
       ],
       "rationale": "Why this synthesis adds value beyond the individual concepts",
-      "confidence": 0.0-1.0
+      "confidence": 0.0-1.0,
+      "synthesisMode": "deductive" | "inductive" | "abductive" | "analogical" | "dialectic",
+      "hypothesisStatus": "speculative" | "tested" | "confirmed" | "refuted"
     }
   ]
 }
+
+## Synthesis mode (Phase 1.3 — read this carefully)
+
+Tag every candidate with **one** \`synthesisMode\` that names the kind of reasoning that produced it. This is the most important new field: it captures *how* the new insight is grounded, not just that it exists. Don't default to one mode — the existing prompt has been over-producing deductive-style combinations and we want to surface the others.
+
+- \`deductive\`: independent Concepts combine into a strategy that follows logically from them. "Given A and B and C, the natural move is D."
+- \`inductive\`: three or more Concepts show the **same** pattern; the Synthesis lifts it into a general rule. **Requires \`sourceConceptIds\` >= 3.**
+- \`abductive\`: an observation Concept (something measured / seen) plus a mechanism / known-rule Concept; the Synthesis is **the best explanatory hypothesis** for the observation. Most genuine "aha" Syntheses are abductive. Default \`hypothesisStatus\` to \`"speculative"\`.
+- \`analogical\`: structural mapping between Concepts from **different domains**. The Synthesis transfers a pattern across a domain gap. Note in the rationale which structural correspondence holds.
+- \`dialectic\`: two Concepts that argue **opposite directions** of the same effect, resolved by a higher frame that contains both. **Requires a real contradiction**, not just emphasis differences.
+
+Selection rules:
+- Pick the most informative single mode. Don't multi-label.
+- If the candidate is "A and B both say the same thing, so probably true" — that is **not** a Synthesis, it's a restatement. Drop it.
+- For \`abductive\`: name the observation Concept(s) and the rule/mechanism Concept(s) separately in the rationale.
+- For \`analogical\`: name the structural mapping (e.g., "X in domain A plays the role of Y in domain B").
+- For \`dialectic\`: state the contradiction explicitly before resolving it.
+
+## Hypothesis status
+
+Always include \`hypothesisStatus\`. Default \`"speculative"\`. Use \`"tested"\` only if the source Concepts themselves show prior validation. Never claim \`"confirmed"\` from a single round of synthesis.
 
 ## Citation rules (strict — prevents error amplification)
 
@@ -215,17 +267,35 @@ export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
         c.sections.length > 0 &&
         (typeof c.confidence === "number" ? c.confidence : 0.7) >= 0.85,
       )
-      .map((c: any) => ({
-        sourceConceptIds: c.sourceConceptIds.map(String),
-        sourceConceptTitles: Array.isArray(c.sourceConceptTitles) ? c.sourceConceptTitles.map(String) : [],
-        title: String(c.title),
-        sections: c.sections.map((s: any) => ({
-          heading: String(s.heading ?? ""),
-          content: String(s.content ?? ""),
-        })),
-        rationale: String(c.rationale ?? ""),
-        confidence: typeof c.confidence === "number" ? c.confidence : 0.85,
-      }));
+      .map((c: any) => {
+        const rawMode = typeof c.synthesisMode === "string" ? c.synthesisMode : undefined;
+        const synthesisMode: SynthesisMode | undefined =
+          rawMode && (SYNTHESIS_MODE_VALUES as string[]).includes(rawMode)
+            ? (rawMode as SynthesisMode)
+            : undefined;
+
+        const rawStatus = typeof c.hypothesisStatus === "string" ? c.hypothesisStatus : undefined;
+        const hypothesisStatus: HypothesisStatus | undefined =
+          rawStatus && (HYPOTHESIS_STATUS_VALUES as string[]).includes(rawStatus)
+            ? (rawStatus as HypothesisStatus)
+            : synthesisMode
+              ? "speculative" // モード判定できているのに status 欠落は speculative にフォールバック
+              : undefined;
+
+        return {
+          sourceConceptIds: c.sourceConceptIds.map(String),
+          sourceConceptTitles: Array.isArray(c.sourceConceptTitles) ? c.sourceConceptTitles.map(String) : [],
+          title: String(c.title),
+          sections: c.sections.map((s: any) => ({
+            heading: String(s.heading ?? ""),
+            content: String(s.content ?? ""),
+          })),
+          rationale: String(c.rationale ?? ""),
+          confidence: typeof c.confidence === "number" ? c.confidence : 0.85,
+          synthesisMode,
+          hypothesisStatus,
+        };
+      });
   } catch (err) {
     console.error("Synthesizer 出力のパース失敗:", err);
     return [];

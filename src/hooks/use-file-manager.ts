@@ -308,6 +308,10 @@ export function useFileManager(authenticated: boolean) {
                 model: doc.wikiMeta?.generatedBy?.model,
                 level: doc.wikiMeta?.level,
                 status: doc.wikiMeta?.status,
+                conceptRole: doc.wikiMeta?.conceptRole,
+                atomType: doc.wikiMeta?.atomType,
+                synthesisMode: doc.wikiMeta?.synthesisMode,
+                hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
               });
               docCacheRef.current.set(`wiki:${id}`, doc);
             }
@@ -1251,6 +1255,10 @@ export function useFileManager(authenticated: boolean) {
             model: doc.wikiMeta?.generatedBy?.model ?? existing?.model,
             level: doc.wikiMeta?.level ?? existing?.level,
             status: doc.wikiMeta?.status ?? existing?.status,
+            conceptRole: doc.wikiMeta?.conceptRole ?? existing?.conceptRole,
+            atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
+            synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
+            hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
           });
           return next;
         });
@@ -1482,6 +1490,10 @@ export function useFileManager(authenticated: boolean) {
           model: doc.wikiMeta?.generatedBy?.model,
           level: doc.wikiMeta?.level,
           status: doc.wikiMeta?.status,
+          conceptRole: doc.wikiMeta?.conceptRole,
+          atomType: doc.wikiMeta?.atomType,
+          synthesisMode: doc.wikiMeta?.synthesisMode,
+          hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
         });
         return next;
       });

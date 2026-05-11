@@ -274,6 +274,34 @@ type WikiMeta = {
 
   // Self-evaluated confidence (Synthesis especially)
   confidence?: number;            // 0.0 – 1.0
+
+  // Semantic types (Phase 1, all optional — additive, back-compatible)
+  conceptRole?: ConceptRole[];    // Concept only. Multi-valued.
+  atomType?: AtomType;            // Atom only.
+  synthesisMode?: SynthesisMode;  // Synthesis only.
+  hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
+  procedureContext?: ProcedureContext; // Concept / Atom / Synthesis. Procedural skeleton.
+};
+
+type ConceptRole =
+  | "finding" | "decision" | "anomaly" | "question"
+  | "setup"   | "interpretation" | "issue";
+
+type AtomType =
+  | "causal" | "correlational" | "mechanistic" | "conditional"
+  | "definitional" | "methodological" | "observational" | "boundary";
+
+type SynthesisMode =
+  | "deductive" | "inductive" | "abductive" | "analogical" | "dialectic";
+
+type HypothesisStatus = "speculative" | "tested" | "confirmed" | "refuted";
+
+type ProcedureContext = {
+  derivedFromNotes: string[];
+  protocolFingerprint?: string;
+  keyParameters?: { name: string; value: string; necessity: "critical" | "important" | "incidental" }[];
+  keyTools?: string[];
+  validityRange?: string;
 };
 ```
 
@@ -319,6 +347,32 @@ Any block whose ID appears in `wikiMeta.editedSections` is treated as
 human-edited and skipped during re-ingest. This is how a user can
 correct an AI Wiki entry without losing the correction the next time
 ingest runs.
+
+### 3.5 Semantic types (Phase 1)
+
+Three orthogonal type dimensions are attached as metadata on AI Wiki
+notes. The user never picks them — the generating LLM auto-infers them.
+All fields are optional and additive: existing Wiki notes from prior
+versions stay valid with these fields absent.
+
+| Field | Where it lives | Vocabulary |
+|---|---|---|
+| `conceptRole[]` | Concept | finding, decision, anomaly, question, setup, interpretation, issue |
+| `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
+| `synthesisMode` | Synthesis | deductive, inductive, abductive, analogical, dialectic |
+| `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
+
+These dimensions are **orthogonal to the existing context labels**
+(`procedure / plan / result / material / tool / attribute / output`),
+which carry PROV-DM ontological roles inside a note. The semantic types
+describe **what kind of reasoning move the Wiki note makes** —
+information that the context-label layer cannot express.
+
+`procedureContext` carries the **procedural skeleton** the claim
+depends on: key parameters, key tools, validity range. It is the
+"reproducibility scaffold that is intentionally not stripped" when the
+hourglass narrows from Concept down to Atom. Populated by upcoming PROV
+→ AI Wiki injection (Phase 2.2/2.3, separate PR).
 
 ## 4. Skill documents
 
@@ -380,12 +434,18 @@ type NoteIndexEntry = {
 
   deletedAt?: string;               // trashed timestamp (user intent)
   archivedAt?: string;              // archived timestamp (system retention)
+
+  // Phase 1 semantic types — mirrored from wikiMeta for fast list-view filtering
+  conceptRole?: ConceptRole[];
+  atomType?: AtomType;
+  synthesisMode?: SynthesisMode;
+  hypothesisStatus?: HypothesisStatus;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **12**.
+Defined in `src/features/navigation/index-file.ts`. Currently **13**.
 Bumping rules:
 
 | Version | Change |
@@ -398,6 +458,7 @@ Bumping rules:
 | **10** | Added `deletedAt` for trash. |
 | **11** | Added `atom` to `WikiKind`. |
 | **12** | Added `archivedAt` for soft-archive on auto-merge (preserves references that would otherwise dangle). |
+| **13** | Added `conceptRole` / `atomType` / `synthesisMode` / `hypothesisStatus` mirrors from `wikiMeta` (Phase 1 semantic types). |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

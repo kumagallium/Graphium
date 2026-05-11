@@ -159,6 +159,8 @@ export function buildWikiDocument(
     level: ingesterOutput.kind === "concept" ? ingesterOutput.level : undefined,
     status: ingesterOutput.kind === "concept" ? "candidate" : undefined,
     evidenceSpan: ingesterOutput.evidenceSpan,
+    // Phase 1.1: LLM が推定した research-process role を保存（concept のみ意味を持つ）
+    conceptRole: ingesterOutput.kind === "concept" ? ingesterOutput.conceptRole : undefined,
   };
 
   return {
@@ -1695,6 +1697,10 @@ export function buildSynthesisDocument(
     language: language ?? undefined,
     // 誤差伝搬の指標として、Synthesizer 自身の confidence を保持する
     confidence: typeof candidate.confidence === "number" ? candidate.confidence : undefined,
+    // Phase 1.3: 推論モードと検証状態
+    synthesisMode: candidate.synthesisMode,
+    hypothesisStatus: candidate.hypothesisStatus
+      ?? (candidate.synthesisMode ? "speculative" : undefined),
   };
 
   return {
@@ -1797,6 +1803,8 @@ export type AtomCandidate = {
   /** 上流 Concept のタイトル（id と同じ並びで対応）。@リンク描画用。 */
   derivedFromConceptTitles: string[];
   confidence: number;
+  /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
+  atomType?: import("../../lib/document-types").AtomType;
 };
 
 export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
@@ -1901,6 +1909,8 @@ export function buildAtomDocument(
     lastIngestedAt: now,
     language: language ?? undefined,
     confidence: candidate.confidence,
+    // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
+    atomType: candidate.atomType,
   };
 
   return {

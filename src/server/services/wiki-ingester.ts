@@ -1,7 +1,18 @@
 // Wiki Ingester
 // ノートコンテンツを LLM に渡して Wiki ドキュメントの構造化データを生成する
 
-import type { ConceptLevel, WikiKind } from "../../lib/document-types.js";
+import type { ConceptLevel, ConceptRole, WikiKind } from "../../lib/document-types.js";
+
+/** Concept の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
+const CONCEPT_ROLE_VALUES: ConceptRole[] = [
+  "finding",
+  "decision",
+  "anomaly",
+  "question",
+  "setup",
+  "interpretation",
+  "issue",
+];
 
 export type WikiSection = {
   heading: string;
@@ -32,6 +43,12 @@ export type IngesterOutput = {
   level?: ConceptLevel;
   /** principle 判定時に LLM が指し示したノート内の該当文（自己検証用） */
   evidenceSpan?: string;
+  /**
+   * Concept の研究プロセス役割（提案 v4 Phase 1.1）。
+   * concept のみで意味を持つ。複数値可。LLM が自動推定する。
+   * 認識不能・パース失敗時は undefined で、機能的には従来通り動作する。
+   */
+  conceptRole?: ConceptRole[];
   /** 関連する既存 Concept（引用付き） */
   relatedConcepts: RelatedConceptRef[];
   /** 根拠となる外部参照 URL（引用付き） */
@@ -118,6 +135,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
       "kind": "summary" | "concept",
       "level": "principle" | "finding"   // concept のみ。summary では省略
       "evidenceSpan": "string"           // level=principle の場合のみ。下の Principle threshold 参照
+      "conceptRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // concept のみ。複数可。下の Concept role 参照
       "title": "string",
       "sections": [
         { "heading": "string", "content": "string" }
@@ -134,6 +152,29 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
     }
   ]
 }
+
+## Concept role (Phase 1.1)
+
+For every Concept, tag it with one or more **research-process roles** in \`conceptRole\`. These are orthogonal to \`level\` and to the existing context labels: they describe **what kind of move the Concept makes inside the research process**, not what it represents ontologically.
+
+Pick from this fixed vocabulary (multiple values allowed when genuinely warranted — most Concepts have 1, occasionally 2):
+
+- \`finding\`: an observation or fact established in this context
+- \`decision\`: a choice made and its reason
+- \`anomaly\`: an unexpected observation or result
+- \`question\`: an unresolved question raised in this context
+- \`setup\`: a precondition, configuration, or experimental constraint
+- \`interpretation\`: a tentative meaning-making move (interpretation of data)
+- \`issue\`: a problem or concern noticed in this context
+
+Guidance:
+- Default for most positive results: \`["finding"]\`.
+- A finding that surprised the author: \`["finding", "anomaly"]\`.
+- A purposeful choice with reasoning: \`["decision"]\` (with \`["interpretation"]\` if it's also re-framing data).
+- An open thread: \`["question"]\` (often comes with \`level: "finding"\` rather than \`"principle"\`).
+- A flagged risk or limitation: \`["issue"]\`.
+- Hardware/protocol pre-conditions: \`["setup"]\`.
+- If none of these clearly fit, omit the field (do **not** pick \`finding\` as a default just to fill the slot).
 
 ## Summary (1 per note, always)
 
@@ -301,10 +342,23 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
         // principle は evidenceSpan 必須。空なら finding に降格させて textbook 流入を防ぐ
         const finalLevel: ConceptLevel | undefined =
           level === "principle" && rawEvidence.length === 0 ? "finding" : level;
+        const conceptRole: ConceptRole[] | undefined =
+          kind === "concept" && Array.isArray(w.conceptRole)
+            ? Array.from(
+                new Set(
+                  w.conceptRole
+                    .map((r: unknown) => (typeof r === "string" ? r : ""))
+                    .filter((r: string): r is ConceptRole =>
+                      (CONCEPT_ROLE_VALUES as string[]).includes(r),
+                    ),
+                ),
+              )
+            : undefined;
         return {
           kind,
           level: finalLevel,
           evidenceSpan: finalLevel === "principle" ? rawEvidence : undefined,
+          conceptRole: conceptRole && conceptRole.length > 0 ? conceptRole : undefined,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),

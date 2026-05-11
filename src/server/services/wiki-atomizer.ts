@@ -10,7 +10,20 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
+import type { AtomType } from "../../lib/document-types.js";
 import type { ConceptSnapshot } from "./wiki-synthesizer.js";
+
+/** Atom の推論的役割（提案 v4 Phase 1.2）として認める値の一覧 */
+const ATOM_TYPE_VALUES: AtomType[] = [
+  "causal",
+  "correlational",
+  "mechanistic",
+  "conditional",
+  "definitional",
+  "methodological",
+  "observational",
+  "boundary",
+];
 
 export type AtomCandidate = {
   /** 短く言い切る atom タイトル（1 アイデアを表す名詞句） */
@@ -23,6 +36,11 @@ export type AtomCandidate = {
   derivedFromConceptTitles: string[];
   /** 自己評価の確度（0.0〜1.0） */
   confidence: number;
+  /**
+   * Atom の推論的役割（提案 v4 Phase 1.2）。
+   * AI が主張の論理的性格から自動推定。認識不能・パース失敗時は undefined。
+   */
+  atomType?: AtomType;
 };
 
 export function buildAtomizerSystemPrompt(language: string): string {
@@ -94,10 +112,29 @@ Respond with valid JSON only:
       "title": "Atom title (5-12 words, domain-lifted)",
       "body": "1-3 short paragraphs of context-stripped, domain-lifted prose.",
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
-      "confidence": 0.0-1.0
+      "confidence": 0.0-1.0,
+      "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary"
     }
   ]
 }
+
+## Atom type (Phase 1.2)
+
+Tag every Atom with **one** \`atomType\` that captures the logical character of the claim. This is independent of the domain — it describes *what kind of statement* the Atom is making.
+
+- \`causal\`: "X causes / suppresses Y" (the Atom commits to a direction of effect)
+- \`correlational\`: "X and Y co-vary" (the Atom does **not** commit to causation)
+- \`mechanistic\`: "X leads to Y via mechanism M" (the *how* is the load-bearing part)
+- \`conditional\`: "Under condition C, X causes Y" (the boundary condition is essential to the claim)
+- \`definitional\`: "X is structured as / classified as Y" (a structural / taxonomic statement)
+- \`methodological\`: "X is a means to achieve Y" (the Atom is about *how to do something*)
+- \`observational\`: "X was observed in experiments" (pure empirical claim, no mechanism)
+- \`boundary\`: "X does **not** hold in range Y" (a negative / limit-of-validity claim)
+
+Guidance:
+- Pick the **most informative** type. Prefer \`mechanistic\` over \`causal\` when the mechanism is what makes the Atom transferable. Prefer \`conditional\` over \`causal\` when the boundary is doing the work.
+- Prefer \`correlational\` over \`causal\` when the source Concepts only show co-variation. Over-claiming causation is a common LLM failure mode — don't.
+- If genuinely uncertain between two types, omit the field. Better unset than wrong.
 
 ## Rules (strict)
 - **Each Atom MUST cite >= 2 Concepts** in \`sourceConceptIds\`. Use the EXACT id from the Concept list.
@@ -163,12 +200,19 @@ export function parseAtomizerOutput(
       const confidence = typeof a.confidence === "number" ? a.confidence : 0.7;
       if (confidence < 0.7) continue;
 
+      const rawAtomType = typeof a.atomType === "string" ? a.atomType : undefined;
+      const atomType: AtomType | undefined =
+        rawAtomType && (ATOM_TYPE_VALUES as string[]).includes(rawAtomType)
+          ? (rawAtomType as AtomType)
+          : undefined;
+
       out.push({
         title: String(a.title).trim(),
         body: String(a.body).trim(),
         derivedFromConcepts: validIds,
         derivedFromConceptTitles: titles,
         confidence,
+        atomType,
       });
     }
     return out;
