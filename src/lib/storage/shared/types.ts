@@ -18,7 +18,7 @@ export type SharedEntryType =
   | "reference"
   | "data-manifest"
   | "template"
-  | "concept"
+  | "claim"
   | "atom"
   | "report";
 

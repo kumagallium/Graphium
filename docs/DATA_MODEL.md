@@ -249,7 +249,7 @@ A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
 a populated `wikiMeta`. It opens in the same editor as a human note.
 
 ```ts
-type WikiKind = "summary" | "concept" | "atom" | "synthesis";
+type WikiKind = "summary" | "claim" | "atom" | "synthesis";
 
 type WikiMeta = {
   kind: WikiKind;
@@ -264,16 +264,44 @@ type WikiMeta = {
   sectionEmbeddings?: { sectionId: string; modelVersion: string }[];
   language?: string;
 
-  // Concept-only
+  // Claim-only
   level?: "principle" | "finding" | "bridge";
   status?: "candidate" | "verified";
   evidenceSpan?: string;
 
   // Atom-only
-  derivedFromConcepts?: string[];
+  derivedFromClaims?: string[];
 
   // Self-evaluated confidence (Synthesis especially)
   confidence?: number;            // 0.0 – 1.0
+
+  // Semantic types (Phase 1, all optional — additive, back-compatible)
+  claimRole?: ClaimRole[];    // Claim only. Multi-valued.
+  atomType?: AtomType;            // Atom only.
+  synthesisMode?: SynthesisMode;  // Synthesis only.
+  hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
+  procedureContext?: ProcedureContext; // Claim / Atom / Synthesis. Procedural skeleton.
+};
+
+type ClaimRole =
+  | "finding" | "decision" | "anomaly" | "question"
+  | "setup"   | "interpretation" | "issue";
+
+type AtomType =
+  | "causal" | "correlational" | "mechanistic" | "conditional"
+  | "definitional" | "methodological" | "observational" | "boundary";
+
+type SynthesisMode =
+  | "deductive" | "inductive" | "abductive" | "analogical" | "dialectic";
+
+type HypothesisStatus = "speculative" | "tested" | "confirmed" | "refuted";
+
+type ProcedureContext = {
+  derivedFromNotes: string[];
+  protocolFingerprint?: string;
+  keyParameters?: { name: string; value: string; necessity: "critical" | "important" | "incidental" }[];
+  keyTools?: string[];
+  validityRange?: string;
 };
 ```
 
@@ -282,7 +310,7 @@ type WikiMeta = {
 | Kind | Role | Carries context? |
 |---|---|---|
 | `summary` | Internal-facing summary of one note. | yes |
-| `concept` | Cross-note synthesis with key elements extracted. | yes |
+| `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
 
@@ -290,9 +318,9 @@ type WikiMeta = {
 `experimental.synthesis` settings. Existing files of these kinds are
 preserved even when generation is disabled.
 
-### 3.2 `level` and `status` for Concepts
+### 3.2 `level` and `status` for Claims
 
-Concepts can be qualified along two axes:
+Claims can be qualified along two axes:
 
 - **`level`** (abstraction):
   - `principle` — a general principle the note actually relied on in its
@@ -319,6 +347,32 @@ Any block whose ID appears in `wikiMeta.editedSections` is treated as
 human-edited and skipped during re-ingest. This is how a user can
 correct an AI Wiki entry without losing the correction the next time
 ingest runs.
+
+### 3.5 Semantic types (Phase 1)
+
+Three orthogonal type dimensions are attached as metadata on AI Wiki
+notes. The user never picks them — the generating LLM auto-infers them.
+All fields are optional and additive: existing Wiki notes from prior
+versions stay valid with these fields absent.
+
+| Field | Where it lives | Vocabulary |
+|---|---|---|
+| `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
+| `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
+| `synthesisMode` | Synthesis | deductive, inductive, abductive, analogical, dialectic |
+| `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
+
+These dimensions are **orthogonal to the existing context labels**
+(`procedure / plan / result / material / tool / attribute / output`),
+which carry PROV-DM ontological roles inside a note. The semantic types
+describe **what kind of reasoning move the Wiki note makes** —
+information that the context-label layer cannot express.
+
+`procedureContext` carries the **procedural skeleton** the claim
+depends on: key parameters, key tools, validity range. It is the
+"reproducibility scaffold that is intentionally not stripped" when the
+hourglass narrows from Claim down to Atom. Populated by upcoming PROV
+→ AI Wiki injection (Phase 2.2/2.3, separate PR).
 
 ## 4. Skill documents
 
@@ -380,12 +434,18 @@ type NoteIndexEntry = {
 
   deletedAt?: string;               // trashed timestamp (user intent)
   archivedAt?: string;              // archived timestamp (system retention)
+
+  // Phase 1 semantic types — mirrored from wikiMeta for fast list-view filtering
+  claimRole?: ClaimRole[];
+  atomType?: AtomType;
+  synthesisMode?: SynthesisMode;
+  hypothesisStatus?: HypothesisStatus;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **12**.
+Defined in `src/features/navigation/index-file.ts`. Currently **14**.
 Bumping rules:
 
 | Version | Change |
@@ -398,6 +458,8 @@ Bumping rules:
 | **10** | Added `deletedAt` for trash. |
 | **11** | Added `atom` to `WikiKind`. |
 | **12** | Added `archivedAt` for soft-archive on auto-merge (preserves references that would otherwise dangle). |
+| **13** | Added `claimRole` / `atomType` / `synthesisMode` / `hypothesisStatus` mirrors from `wikiMeta` (Phase 1 semantic types). |
+| **14** | Renamed `WikiKind` value `"concept"` to `"claim"`. The on-disk migration (`migrateConceptKindToClaim` in `document-migration.ts`) also moves `derivedFromConcepts` → `derivedFromClaims` and `conceptRole` → `claimRole` in `wikiMeta`. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
@@ -414,15 +476,15 @@ either flag — the file path stays the same so any link or
 | State | Flag | Meaning | List/search/graph | Citation/regenerate |
 |---|---|---|---|---|
 | active | (neither) | normal | shown | resolve |
-| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Concept into another) | hidden | resolve |
+| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Claim into another) | hidden | resolve |
 | trashed | `deletedAt` | user delete intent | hidden | not resolved |
 
 Transitions:
 
 - **active → trashed** via the trash action (manual).
-- **active → archived** via auto-merge (the absorbed Concept is archived,
+- **active → archived** via auto-merge (the absorbed Claim is archived,
   not deleted, so notes that cited it keep working).
-- **archived → active** via the restore action. Note that a Concept
+- **archived → active** via the restore action. Note that a Claim
   archived by auto-merge will likely be re-archived on the next merge
   cycle unless the user edits its content to differentiate it.
 - **archived → trashed** via the "Send to trash" action.
@@ -509,7 +571,7 @@ in `src/lib/storage/shared/types.ts`.
 ```ts
 type SharedEntryType =
   | "note" | "reference" | "data-manifest"
-  | "template" | "concept" | "atom" | "report";
+  | "template" | "claim" | "atom" | "report";
 
 type SharedEntry = {
   id: string;                  // uuidv7

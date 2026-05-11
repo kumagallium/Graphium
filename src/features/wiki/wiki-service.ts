@@ -137,7 +137,7 @@ export function buildWikiDocument(
   const relations = buildRelationBlocks(
     sourceNoteId,
     sourceNoteTitle,
-    ingesterOutput.relatedConcepts,
+    ingesterOutput.relatedClaims,
     existingWikiTitles,
     ingesterOutput.externalReferences,
   );
@@ -156,9 +156,11 @@ export function buildWikiDocument(
     language: language ?? undefined,
     // Concept のみ level/evidenceSpan を持つ。新規生成時の status は常に "candidate"
     // （Cross-Update で別ノートも依拠した時点で "verified" に昇格させる想定）
-    level: ingesterOutput.kind === "concept" ? ingesterOutput.level : undefined,
-    status: ingesterOutput.kind === "concept" ? "candidate" : undefined,
+    level: ingesterOutput.kind === "claim" ? ingesterOutput.level : undefined,
+    status: ingesterOutput.kind === "claim" ? "candidate" : undefined,
     evidenceSpan: ingesterOutput.evidenceSpan,
+    // Phase 1.1: LLM が推定した research-process role を保存（concept のみ意味を持つ）
+    claimRole: ingesterOutput.kind === "claim" ? ingesterOutput.claimRole : undefined,
   };
 
   return {
@@ -677,7 +679,7 @@ type RelationBlocksResult = {
 function buildRelationBlocks(
   sourceNoteId: string,
   sourceNoteTitle?: string,
-  relatedConcepts?: { title: string; citation: string }[],
+  relatedClaims?: { title: string; citation: string }[],
   existingWikiTitles?: { id: string; title: string }[],
   externalReferences?: { url: string; title: string; citation: string }[],
 ): RelationBlocksResult {
@@ -717,8 +719,8 @@ function buildRelationBlocks(
   });
 
   // 関連 Concept への @リンク（引用付き）
-  if (relatedConcepts && relatedConcepts.length > 0 && existingWikiTitles) {
-    for (const concept of relatedConcepts) {
+  if (relatedClaims && relatedClaims.length > 0 && existingWikiTitles) {
+    for (const concept of relatedClaims) {
       const wiki = existingWikiTitles.find((w) => w.title === concept.title);
       const blockId = crypto.randomUUID();
       const label = wiki ? `🤖 ${concept.title}` : concept.title;
@@ -870,7 +872,7 @@ function extractSectionsForEmbedding(
   const page = doc.pages[0];
   if (!page) return [];
 
-  const kind = doc.wikiMeta?.kind ?? "concept";
+  const kind = doc.wikiMeta?.kind ?? "claim";
   const docTitle = doc.title;
   const sections: { documentId: string; sectionId: string; text: string }[] = [];
 
@@ -1029,7 +1031,7 @@ export async function ingestFromPdf(
   // "Output in: ..." 指示が長文中で軽視されるケースに備えた近接リマインダ。
   const languageHint =
     language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Concept もすべて日本語にしてください]"
+      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
   const noteContent = `${languageHint}\n\n${extracted.text}`;
 
@@ -1093,7 +1095,7 @@ export async function ingestFromMultiSource(
 
   const languageHint =
     language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Concept もすべて日本語にしてください]"
+      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
 
   const sourceBlocks = parts
@@ -1390,7 +1392,7 @@ export function extractWikiDetail(
   id: string,
   doc: GraphiumDocument,
 ): ExistingWikiDetail | null {
-  if (!doc.wikiMeta || doc.wikiMeta.kind !== "concept") return null;
+  if (!doc.wikiMeta || doc.wikiMeta.kind !== "claim") return null;
 
   const page = doc.pages[0];
   if (!page) return null;
@@ -1476,9 +1478,9 @@ export function buildWikiSnapshots(
       title: meta.title,
       kind: meta.kind,
       derivedFromNotes: wikiMeta?.derivedFromNotes ?? [],
-      relatedConcepts: extractRelatedConcepts(doc),
+      relatedClaims: extractRelatedClaims(doc),
       bodyPreview: doc ? extractBodyPreview(doc, 240) : "",
-      level: meta.kind === "concept" ? meta.level : undefined,
+      level: meta.kind === "claim" ? meta.level : undefined,
       lastIngestedAt: wikiMeta?.lastIngestedAt,
       modifiedAt: file.modifiedTime,
     });
@@ -1490,7 +1492,7 @@ export function buildWikiSnapshots(
 /**
  * Wiki ドキュメントから関連 Concept タイトルを抽出する
  */
-function extractRelatedConcepts(doc: GraphiumDocument | null | undefined): string[] {
+function extractRelatedClaims(doc: GraphiumDocument | null | undefined): string[] {
   if (!doc) return [];
   const page = doc.pages[0];
   if (!page) return [];
@@ -1515,7 +1517,7 @@ export type WikiIndexEntry = {
   /** Concept のとき principle / finding / bridge */
   level?: "principle" | "finding" | "bridge";
   derivedFromNotes: string[];
-  relatedConcepts: string[];
+  relatedClaims: string[];
   modifiedAt: string;
 };
 
@@ -1541,9 +1543,9 @@ export function buildWikiIndex(
       title: meta.title,
       kind: meta.kind,
       bodyPreview: doc ? extractBodyPreview(doc, 200) : "",
-      level: meta.kind === "concept" ? meta.level : undefined,
+      level: meta.kind === "claim" ? meta.level : undefined,
       derivedFromNotes: doc?.wikiMeta?.derivedFromNotes ?? [],
-      relatedConcepts: extractRelatedConcepts(doc),
+      relatedClaims: extractRelatedClaims(doc),
       modifiedAt: file.modifiedTime,
     });
   }
@@ -1558,7 +1560,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   if (entries.length === 0) return "";
 
   const summaries = entries.filter((e) => e.kind === "summary");
-  const concepts = entries.filter((e) => e.kind === "concept");
+  const concepts = entries.filter((e) => e.kind === "claim");
   const syntheses = entries.filter((e) => e.kind === "synthesis");
 
   let text = `## Wiki Index (${entries.length} pages)\n\n`;
@@ -1592,7 +1594,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
 
 // ── Synthesis（複数 Concept の統合） ──
 
-import type { SynthesisCandidate, ConceptSnapshot } from "../../server/services/wiki-synthesizer";
+import type { SynthesisCandidate, ClaimSnapshot } from "../../server/services/wiki-synthesizer";
 
 type SynthesisResult = {
   candidates: SynthesisCandidate[];
@@ -1603,7 +1605,7 @@ type SynthesisResult = {
  * Synthesis の候補を取得する
  */
 export async function fetchSynthesisCandidates(
-  concepts: ConceptSnapshot[],
+  concepts: ClaimSnapshot[],
   existingSynthesisTitles: string[],
   language: string,
   /** 使用するモデル名。省略時はサーバー側のデフォルト。
@@ -1653,7 +1655,7 @@ export function buildSynthesisDocument(
     id: crypto.randomUUID(),
     type: "heading",
     props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
-    content: [{ type: "text", text: "Source Concepts", styles: {} }],
+    content: [{ type: "text", text: "Source Claims", styles: {} }],
     children: [],
   });
 
@@ -1695,6 +1697,10 @@ export function buildSynthesisDocument(
     language: language ?? undefined,
     // 誤差伝搬の指標として、Synthesizer 自身の confidence を保持する
     confidence: typeof candidate.confidence === "number" ? candidate.confidence : undefined,
+    // Phase 1.3: 推論モードと検証状態
+    synthesisMode: candidate.synthesisMode,
+    hypothesisStatus: candidate.hypothesisStatus
+      ?? (candidate.synthesisMode ? "speculative" : undefined),
   };
 
   return {
@@ -1793,10 +1799,12 @@ export async function dedupCandidatesByEmbedding<T extends { title: string; body
 export type AtomCandidate = {
   title: string;
   body: string;
-  derivedFromConcepts: string[];
+  derivedFromClaims: string[];
   /** 上流 Concept のタイトル（id と同じ並びで対応）。@リンク描画用。 */
   derivedFromConceptTitles: string[];
   confidence: number;
+  /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
+  atomType?: import("../../lib/document-types").AtomType;
 };
 
 export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
@@ -1807,7 +1815,7 @@ export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
  * experimental.atomLayer 有効時にクライアントから呼ぶ。
  */
 export async function atomizeConcepts(
-  concepts: ConceptSnapshot[],
+  concepts: ClaimSnapshot[],
   language: string,
   options?: { existingAtomTitles?: string[]; model?: string },
 ): Promise<AtomizeResult> {
@@ -1854,18 +1862,18 @@ export function buildAtomDocument(
       children: [],
     }));
 
-  // Source Concepts セクション
+  // Source Claims セクション
   const knowledgeLinks: any[] = [];
-  if (candidate.derivedFromConcepts.length > 0) {
+  if (candidate.derivedFromClaims.length > 0) {
     blocks.push({
       id: crypto.randomUUID(),
       type: "heading",
       props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
-      content: [{ type: "text", text: "Source Concepts", styles: {} }],
+      content: [{ type: "text", text: "Source Claims", styles: {} }],
       children: [],
     });
-    for (let i = 0; i < candidate.derivedFromConcepts.length; i++) {
-      const conceptId = candidate.derivedFromConcepts[i];
+    for (let i = 0; i < candidate.derivedFromClaims.length; i++) {
+      const conceptId = candidate.derivedFromClaims[i];
       // タイトルが取れない場合は ID にフォールバックするが、これは index 不整合のサインなので
       // 実運用ではほぼ起きない想定
       const conceptTitle = candidate.derivedFromConceptTitles?.[i] ?? conceptId;
@@ -1895,12 +1903,14 @@ export function buildAtomDocument(
     kind: "atom",
     derivedFromNotes: [],
     derivedFromChats: [],
-    derivedFromConcepts: candidate.derivedFromConcepts,
+    derivedFromClaims: candidate.derivedFromClaims,
     generatedAt: now,
     generatedBy: { model: model ?? "unknown", version: "1.0.0" },
     lastIngestedAt: now,
     language: language ?? undefined,
     confidence: candidate.confidence,
+    // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
+    atomType: candidate.atomType,
   };
 
   return {
@@ -1940,19 +1950,19 @@ export function buildAtomDocument(
  */
 export const MAX_SNAPSHOTS_PER_RUN = 50;
 
-export function buildConceptSnapshots(
+export function buildClaimSnapshots(
   wikiFiles: { id: string; modifiedTime: string }[],
   wikiMetas: Map<string, WikiMetaSummary>,
   getCachedDoc: (id: string) => GraphiumDocument | null | undefined,
   /**
    * Synthesizer に渡すソースの kind。
    * Atom レイヤを有効にした構成では "atom" を渡し、Atom 同士の結晶化として Synthesis を生成する。
-   * 既定の "concept" は legacy 経路（実験フラグ OFF 時には呼ばれない想定）。
+   * 既定の "claim" は legacy 経路（実験フラグ OFF 時には呼ばれない想定）。
    */
-  sourceKind: "concept" | "atom" = "concept",
+  sourceKind: "claim" | "atom" = "claim",
   /** 件数上限（既定: MAX_SNAPSHOTS_PER_RUN）。直近更新優先で切り詰める */
   limit: number = MAX_SNAPSHOTS_PER_RUN,
-): ConceptSnapshot[] {
+): ClaimSnapshot[] {
   // Summary 索引: 派生元 noteId → { title, preview }
   const summaryByNote = new Map<string, { title: string; preview: string }>();
   for (const file of wikiFiles) {
@@ -1968,7 +1978,7 @@ export function buildConceptSnapshots(
     }
   }
 
-  const snapshots: ConceptSnapshot[] = [];
+  const snapshots: ClaimSnapshot[] = [];
 
   // 直近更新を優先したいので modifiedTime 降順で見る。
   const orderedFiles = [...wikiFiles].sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime));
@@ -1993,7 +2003,7 @@ export function buildConceptSnapshots(
       title: meta.title,
       bodyPreview: doc ? extractBodyPreview(doc, 240) : "",
       level: meta.level,
-      relatedConcepts: doc ? extractRelatedConcepts(doc).map(String) : [],
+      relatedClaims: doc ? extractRelatedClaims(doc).map(String) : [],
       sourceSummaryPreviews,
     });
   }

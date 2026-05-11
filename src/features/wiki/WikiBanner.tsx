@@ -6,6 +6,27 @@ import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react
 import type { WikiMeta } from "../../lib/document-types";
 import { useT } from "../../i18n";
 
+function TypeBadge({ label, title }: { label: string; title?: string }) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "1px 7px",
+        borderRadius: "var(--pill)",
+        background: "var(--paper)",
+        border: "1px solid var(--rule)",
+        color: "var(--ink-2)",
+        fontSize: 10,
+        fontWeight: 500,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 export type RegenerateOptions = {
   /** 使用するモデル名（空文字 = 現在のデフォルト） */
   model: string;
@@ -50,7 +71,7 @@ export function WikiBanner({
     wikiMeta.kind === "summary" ? "Summary"
     : wikiMeta.kind === "synthesis" ? "Synthesis"
     : wikiMeta.kind === "atom" ? "Atom"
-    : "Concept";
+    : "Claim";
 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -146,6 +167,28 @@ export function WikiBanner({
           </span>
           AI {kindLabel}
         </span>
+
+        {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示。
+            hypothesisStatus は UI フロー未整備のためバナーには出さない（データは保持）。 */}
+        {wikiMeta.kind === "claim" && wikiMeta.claimRole?.map((role) => (
+          <TypeBadge
+            key={role}
+            label={t(`wikiTypes.claimRole.${role}` as any)}
+            title={t(`wikiTypes.claimRole.${role}` as any)}
+          />
+        ))}
+        {wikiMeta.kind === "atom" && wikiMeta.atomType && (
+          <TypeBadge
+            label={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
+            title={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
+          />
+        )}
+        {wikiMeta.kind === "synthesis" && wikiMeta.synthesisMode && (
+          <TypeBadge
+            label={t(`wikiTypes.synthesisMode.${wikiMeta.synthesisMode}` as any)}
+            title={t(`wikiTypes.synthesisMode.${wikiMeta.synthesisMode}` as any)}
+          />
+        )}
 
         {/* 生成日 */}
         <span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>

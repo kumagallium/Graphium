@@ -158,7 +158,7 @@ The pipeline (running on the Node server) has five stages:
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Atom* claims with citations back to source notes |
 | **Synthesizer** | `src/server/services/wiki-synthesizer.ts` | Weaves Atoms across notes into *Synthesis* pages |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Atoms, broken citations, redundant Concepts |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Atoms, broken citations, redundant Claims |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -179,7 +179,7 @@ sequenceDiagram
     S->>I: run
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
-    A->>FS: write Atom / Concept pages
+    A->>FS: write Atom / Claim pages
     A->>X: notify changed pages
     X->>FS: propagate to dependents
     X->>L: schedule lint
@@ -199,9 +199,9 @@ Notes:
 - **Embeddings** (per Wiki section) are stored via
   `src/lib/embedding-store.ts` and used as the retrieval substrate for AI
   chat. The retriever is `src/features/wiki/retriever.ts`.
-- **Auto-merge of redundant Concepts.** When the linter / startup-merge
-  flow detects two Concepts that overlap, one is rewritten into the
-  other and the absorbed Concept is **archived, not deleted**. Its file
+- **Auto-merge of redundant Claims.** When the linter / startup-merge
+  flow detects two Claims that overlap, one is rewritten into the
+  other and the absorbed Claim is **archived, not deleted**. Its file
   stays on disk and its index entry gains an `archivedAt` flag, so any
   note that cited it (or any Synthesis whose `derivedFromNotes` lists
   it) keeps resolving through `loadDoc`. The archived page is hidden
@@ -209,7 +209,7 @@ Notes:
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
 
-The relationship between Notes, Concept, Atom, and Synthesis is described
+The relationship between Notes, Claim, Atom, and Synthesis is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
 
 ### 3.4 Storage layer

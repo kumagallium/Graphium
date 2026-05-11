@@ -33,7 +33,7 @@ const TYPE_TO_FOLDER: Record<SharedEntryType, string> = {
   reference: "references",
   "data-manifest": "data-manifests",
   template: "templates",
-  concept: "concepts",
+  claim: "claims",
   atom: "atoms",
   report: "reports",
 };

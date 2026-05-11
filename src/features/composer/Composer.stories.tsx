@@ -75,7 +75,7 @@ const sampleNotes: NoteIndexEntry[] = [
     labels: [],
     outgoingLinks: [],
     source: "ai",
-    wikiKind: "concept",
+    wikiKind: "claim",
     model: "claude-opus-4-7",
   },
   {
@@ -122,7 +122,7 @@ function Harness({ showDiscoveryCards = false, withSearch = false, initialPrompt
           action: { kind: "visualize-prov" },
         },
         {
-          id: "concept",
+          id: "claim",
           title: "Concept Wiki を作る",
           hint: "頻出キーワードから Concept ノートを下書き",
           action: { kind: "make-concept-wiki" },

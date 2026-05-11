@@ -173,4 +173,83 @@ describe("migrateToLatest", () => {
     expect(doc.pages[0].blocks[0].content[0].styles.inlineMaterial).toBe("ent_b_link");
     expect(doc.pages[0].blocks[0].content[1].content[0].styles.inlineMaterial).toBe("ent_b_link");
   });
+
+  // ──────────────────────────────────────────────
+  // wikiMeta.kind: "concept" → "claim" リネームのマイグレーション
+  //   - 旧 kind / 旧フィールド名 (derivedFromConcepts / conceptRole) を移行
+  //   - 既に "claim" のものは触らない（idempotent）
+  // ──────────────────────────────────────────────
+
+  it('wikiMeta.kind: "concept" を "claim" にリネームする', () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "concept",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.kind).toBe("claim");
+  });
+
+  it("既に kind: 'claim' のものは変更しない（idempotent）", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "claim",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.kind).toBe("claim");
+  });
+
+  it("derivedFromConcepts → derivedFromClaims にリネームする", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "atom",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromConcepts: ["c1", "c2"],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.derivedFromClaims).toEqual(["c1", "c2"]);
+    expect((doc as any).wikiMeta.derivedFromConcepts).toBeUndefined();
+  });
+
+  it("conceptRole → claimRole にリネームする（PR-B1 過渡期データの保険）", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "concept",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      conceptRole: ["finding", "anomaly"],
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.kind).toBe("claim");
+    expect((doc as any).wikiMeta.claimRole).toEqual(["finding", "anomaly"]);
+    expect((doc as any).wikiMeta.conceptRole).toBeUndefined();
+  });
+
+  it("wikiMeta が無い人ノートでは何もしない", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    migrateToLatest(doc);
+    expect(doc.wikiMeta).toBeUndefined();
+  });
 });

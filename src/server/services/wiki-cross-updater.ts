@@ -26,7 +26,7 @@ export type CrossUpdateResult = {
 export type ExistingWikiDetail = {
   id: string;
   title: string;
-  kind: "summary" | "concept";
+  kind: "summary" | "claim";
   /** 既存セクションの見出しリスト */
   sectionHeadings: string[];
   /** セクション内容のサマリー（先頭200文字ずつ） */
@@ -57,7 +57,7 @@ A new note has been ingested into the Wiki. Your job is to determine if any EXIS
 
 ### add_section
 The new note contains information that should be added as a new section to an existing Wiki page.
-Use when: the existing Concept page covers a topic that the new note provides new evidence, examples, or perspectives on.
+Use when: the existing Claim page covers a topic that the new note provides new evidence, examples, or perspectives on.
 
 ### revise_section
 The new note contains information that updates, corrects, or enriches an existing section.
@@ -94,7 +94,7 @@ Respond with valid JSON only (no markdown wrapper):
 ## Guidelines
 
 - Only propose updates with confidence >= 0.7
-- Focus on Concept pages (not Summaries — those are tied to specific notes)
+- Focus on Claim pages (not Summaries — those are tied to specific notes)
 - Don't propose trivial updates (just adding a mention without substance)
 - Each proposal should add genuine value to the existing page
 - Write section content with enough depth to be genuinely useful

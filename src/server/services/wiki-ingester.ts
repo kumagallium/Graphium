@@ -1,16 +1,27 @@
 // Wiki Ingester
 // ノートコンテンツを LLM に渡して Wiki ドキュメントの構造化データを生成する
 
-import type { ConceptLevel, WikiKind } from "../../lib/document-types.js";
+import type { ClaimLevel, ClaimRole, WikiKind } from "../../lib/document-types.js";
+
+/** Claim の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
+const CLAIM_ROLE_VALUES: ClaimRole[] = [
+  "finding",
+  "decision",
+  "anomaly",
+  "question",
+  "setup",
+  "interpretation",
+  "issue",
+];
 
 export type WikiSection = {
   heading: string;
   content: string;
 };
 
-export type RelatedConceptRef = {
+export type RelatedClaimRef = {
   title: string;
-  /** この Concept との関連を説明する一�� */
+  /** この Claim との関連を説明する一�� */
   citation: string;
 };
 
@@ -28,12 +39,18 @@ export type IngesterOutput = {
   suggestedAction: "create" | "merge";
   mergeTargetId?: string;
   confidence: number;
-  /** Concept の抽象度レベル（concept のみ。summary では undefined） */
-  level?: ConceptLevel;
+  /** Claim の抽象度レベル（claim のみ。summary では undefined） */
+  level?: ClaimLevel;
   /** principle 判定時に LLM が指し示したノート内の該当文（自己検証用） */
   evidenceSpan?: string;
-  /** 関連する既存 Concept（引用付き） */
-  relatedConcepts: RelatedConceptRef[];
+  /**
+   * Claim の研究プロセス役割（提案 v4 Phase 1.1）。
+   * claim のみで意味を持つ。複数値可。LLM が自動推定する。
+   * 認識不能・パース失敗時は undefined で、機能的には従来通り動作する。
+   */
+  claimRole?: ClaimRole[];
+  /** 関連する既存 Claim（引用付き） */
+  relatedClaims: RelatedClaimRef[];
   /** 根拠となる外部参照 URL（引用付き） */
   externalReferences: ExternalRef[];
 };
@@ -53,7 +70,7 @@ export type IngestSkill = {
 /**
  * Ingester 用のシステムプロンプトを構築する
  *
- * 知識発展型: ノートの単純な要約ではなく、既存 Concept との関連づけ・
+ * 知識発展型: ノートの単純な要約ではなく、既存 Claim との関連づけ・
  * 新しい洞察の生成・根拠の提示を行う
  */
 export function buildIngesterSystemPrompt(
@@ -65,17 +82,17 @@ export function buildIngesterSystemPrompt(
     ? existingWikis.map((w) => `- [${w.kind}] ${w.title} (id: ${w.id})`).join("\n")
     : "(none yet)";
 
-  const hasExistingConcepts = existingWikis.some((w) => w.kind === "concept");
+  const hasExistingConcepts = existingWikis.some((w) => w.kind === "claim");
 
   const ja = language === "ja";
 
   const skillSection = skills && skills.length > 0
-    ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Summary or Concept.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
+    ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Summary or Claim.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
     : "";
 
   return `You are a note writer for Graphium, a provenance-tracking note editor.
 
-You produce two kinds of pages: a private **Summary** of one note (the local context), and one or more public-ready **Concepts** that crystallize knowledge in a transferable form. Concepts may eventually be shared as Knowledge Packs, so Concept content must be PII-free and abstracted from one-off specifics. Graphium is domain-general — assume the user's notes can be on any topic (research, software, planning, learning, business, etc.) and never inject a research-paper register unless the source note clearly is one.
+You produce two kinds of pages: a private **Summary** of one note (the local context), and one or more public-ready **Claims** that crystallize knowledge in a transferable form. Claims may eventually be shared as Knowledge Packs, so Claim content must be PII-free and abstracted from one-off specifics. Graphium is domain-general — assume the user's notes can be on any topic (research, software, planning, learning, business, etc.) and never inject a research-paper register unless the source note clearly is one.
 
 ## Voice (read this first)
 
@@ -84,8 +101,8 @@ Write so a future reader **wants to keep reading**. Most generated notes fail be
 - The first 1-2 sentences are a **hook**, not a meta-summary. State the finding, the tension, or the surprise. Never write "This note discusses..." / "本ノートでは…を扱う" — start with the substance itself.
 - Use specific verbs and concrete nouns. Replace "影響を与える" with "速度を 2 倍にする" / "律速段階を変える" when the note supports it.
 - One claim per sentence. Short sentences. Mix sentence lengths so the rhythm doesn't flatten.
-- Section headings are **optional landing spots, not a checklist**. Drop any section rather than fill it with filler. For short Concepts, flowing prose with no headings is fine.
-- A Concept should read like a short note from a colleague, not a structured report.${ja ? `
+- Section headings are **optional landing spots, not a checklist**. Drop any section rather than fill it with filler. For short Claims, flowing prose with no headings is fine.
+- A Claim should read like a short note from a colleague, not a structured report.${ja ? `
 - **日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した／〜と気づいた）は使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜と見ています」「〜のではないでしょうか」のいずれかに揃える。これは絶対ルールで、たとえノート原文が常体でも、生成する文章は敬体にする。` : ""}${skillSection}
 
 ### Tone calibration (Bad / Good)
@@ -115,9 +132,10 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
 {
   "wikis": [
     {
-      "kind": "summary" | "concept",
-      "level": "principle" | "finding"   // concept のみ。summary では省略
+      "kind": "summary" | "claim",
+      "level": "principle" | "finding"   // claim のみ。summary では省略
       "evidenceSpan": "string"           // level=principle の場合のみ。下の Principle threshold 参照
+      "claimRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // claim のみ。複数可。下の Claim role 参照
       "title": "string",
       "sections": [
         { "heading": "string", "content": "string" }
@@ -125,7 +143,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
       "suggestedAction": "create" | "merge",
       "mergeTargetId": "string (only if merge)",
       "confidence": 0.0-1.0,
-      "relatedConcepts": [
+      "relatedClaims": [
         { "title": "existing concept title", "citation": "one-sentence summary of what this concept contributes" }
       ],
       "externalReferences": [
@@ -135,11 +153,34 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
   ]
 }
 
+## Claim role (Phase 1.1)
+
+For every Claim, tag it with one or more **research-process roles** in \`claimRole\`. These are orthogonal to \`level\` and to the existing context labels: they describe **what kind of move the Claim makes inside the research process**, not what it represents ontologically.
+
+Pick from this fixed vocabulary (multiple values allowed when genuinely warranted — most Claims have 1, occasionally 2):
+
+- \`finding\`: an observation or fact established in this context
+- \`decision\`: a choice made and its reason
+- \`anomaly\`: an unexpected observation or result
+- \`question\`: an unresolved question raised in this context
+- \`setup\`: a precondition, configuration, or experimental constraint
+- \`interpretation\`: a tentative meaning-making move (interpretation of data)
+- \`issue\`: a problem or concern noticed in this context
+
+Guidance:
+- Default for most positive results: \`["finding"]\`.
+- A finding that surprised the author: \`["finding", "anomaly"]\`.
+- A purposeful choice with reasoning: \`["decision"]\` (with \`["interpretation"]\` if it's also re-framing data).
+- An open thread: \`["question"]\` (often comes with \`level: "finding"\` rather than \`"principle"\`).
+- A flagged risk or limitation: \`["issue"]\`.
+- Hardware/protocol pre-conditions: \`["setup"]\`.
+- If none of these clearly fit, omit the field (do **not** pick \`finding\` as a default just to fill the slot).
+
 ## Summary (1 per note, always)
 
 The Summary is **private**. It can keep specific names, dates, sample IDs, paths — anything needed to reconstruct what happened. This is the user's local context layer.
 
-The Summary is allowed to be longer than a Concept/Atom (which are deliberately one-idea-each), but **its job is selection, not coverage**. A good Summary tells a reader who has not opened the source: *what the central point is, what it is built on, what was surprising, and what is still open* — and stops there. Length follows substance. Padding the Summary to "feel thorough" is a failure mode.
+The Summary is allowed to be longer than a Claim/Atom (which are deliberately one-idea-each), but **its job is selection, not coverage**. A good Summary tells a reader who has not opened the source: *what the central point is, what it is built on, what was surprising, and what is still open* — and stops there. Length follows substance. Padding the Summary to "feel thorough" is a failure mode.
 
 ### What a Summary must answer (in this order)
 
@@ -172,11 +213,11 @@ If the source ends with a marker like \`[... truncated: read N of M pages]\`, yo
 
 Default to flowing prose with a single empty-heading section (\`heading: ""\`). Use real headings only when the source has 2+ genuinely distinct beats that benefit from being navigable, and let each heading **name the actual beat** (e.g., 「方法」「予想外だった結果」). Never invent decorative labels like 「核心の発見」「ジレンマの構造」 just to fill structure.
 
-## Concept (0-3 per note)
+## Claim (0-3 per note)
 
-**One Concept = one idea.** This is the strongest rule. If a note carries two transferable claims, generate two Concepts — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Concept is in a single sentence after reading it.
+**One Claim = one idea.** This is the strongest rule. If a note carries two transferable claims, generate two Claims — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Claim is in a single sentence after reading it.
 
-Concepts are **transferable knowledge**, written so they make sense to a researcher who has never seen this lab. They MUST be PII-free and abstracted:
+Claims are **transferable knowledge**, written so they make sense to a researcher who has never seen this lab. They MUST be PII-free and abstracted:
 
 - ❌ Personal/lab-specific: investigator names, institution names, internal project codenames, sample IDs, instrument serial numbers, file paths, dates of specific experiments. Keep these in the Summary instead.
 - ✅ Transferable: the principle / finding, with the specific evidence cited via \`[[note title]]\` so the reader can trace it back.
@@ -184,17 +225,17 @@ Concepts are **transferable knowledge**, written so they make sense to a researc
 
 ### Splitting test (apply before settling on the section structure)
 
-Before writing the body, ask: **"Does this Concept assert one claim, or several?"**
+Before writing the body, ask: **"Does this Claim assert one claim, or several?"**
 
-- One claim → one Concept. Proceed.
-- Several claims, each transferable on its own → split into separate Concepts. Each gets its own title that names that one claim.
-- Several pieces that only make sense together (a mechanism that needs setup + reasoning + consequence to land) → one Concept is correct. The test is whether the pieces are independent claims or facets of the same claim.
+- One claim → one Claim. Proceed.
+- Several claims, each transferable on its own → split into separate Claims. Each gets its own title that names that one claim.
+- Several pieces that only make sense together (a mechanism that needs setup + reasoning + consequence to land) → one Claim is correct. The test is whether the pieces are independent claims or facets of the same claim.
 
 When in doubt, split.
 
 ### level: \`finding\` vs \`principle\`
 
-- **\`finding\`** (default, where most Concepts live): a transferable proposition that emerged from the user's own experience. Specific enough to be **the user's** knowledge, abstract enough to combine with other findings. Example: "塩基性条件で酸化膜の還元は律速段階が切り替わる".
+- **\`finding\`** (default, where most Claims live): a transferable proposition that emerged from the user's own experience. Specific enough to be **the user's** knowledge, abstract enough to combine with other findings. Example: "塩基性条件で酸化膜の還元は律速段階が切り替わる".
 - **\`principle\`**: a textbook-knowable general truth that the note's reasoning **explicitly depended on**. Recording these is valuable because (a) the user may not have known it before, (b) it becomes a synthesis hub when other notes also lean on it. But the bar for generation is high — see threshold below.
 - \`bridge\` is reserved for cross-update synthesis; do not generate at ingest time.
 
@@ -208,19 +249,19 @@ If you cannot identify such a sentence, the principle is not load-bearing — it
 
 When you do generate a principle, you MUST fill \`evidenceSpan\` with the actual sentence (or close paraphrase) from the note that depends on it. This is a self-check: if you cannot quote it, you cannot generate the principle.
 
-### Concept body (minimal scaffold)
+### Claim body (minimal scaffold)
 
-Default shape — write only what the Concept actually needs:
+Default shape — write only what the Claim actually needs:
 
 ${ja ? `1. **冒頭 1-2 文で命題を言い切る**（見出しなし）。タイトルと合わせて読めば主張が立つ
 2. **メカニズムまたは根拠**：なぜそう言えるか。ソースノートを \`[[ノートタイトル]]\` でインライン引用
 3. **（任意）残る問い**：まだ分かっていないこと。なければ書かない
 
-A short Concept can be a single paragraph with no headings at all. Use headings only when the body genuinely splits into chunks.` : `1. **Open with the proposition in 1-2 sentences** (no heading). Together with the title, the claim should stand.
+A short Claim can be a single paragraph with no headings at all. Use headings only when the body genuinely splits into chunks.` : `1. **Open with the proposition in 1-2 sentences** (no heading). Together with the title, the claim should stand.
 2. **Mechanism or evidence**: why it holds. Cite the source note with \`[[note title]]\`.
 3. **(Optional) Open questions**: what remains unknown. Skip if there are none.
 
-A short Concept can be a single paragraph with no headings at all. Use headings only when the body genuinely splits into chunks.`}
+A short Claim can be a single paragraph with no headings at all. Use headings only when the body genuinely splits into chunks.`}
 
 The first paragraph should already deliver the proposition — anything that follows elaborates, not delays.
 
@@ -234,20 +275,20 @@ ${ja ? `- ✅ 「[[ZnO 還元実験 2026-04]] では pH 11 で速度が約 2 倍
 
 Double brackets become clickable links. Generic references that don't name the title break the trace.
 
-### Bad / Good Concepts
+### Bad / Good Claims
 
-- ❌ **Restatement**: A Concept that paraphrases the note in different words. Adds nothing.
-- ❌ **Textbook chapter**: A Concept that explains general background the note didn't actually depend on.
-- ❌ **Lab-specific log**: A Concept that names specific samples, dates, or instruments — that belongs in the Summary.
+- ❌ **Restatement**: A Claim that paraphrases the note in different words. Adds nothing.
+- ❌ **Textbook chapter**: A Claim that explains general background the note didn't actually depend on.
+- ❌ **Lab-specific log**: A Claim that names specific samples, dates, or instruments — that belongs in the Summary.
 - ✅ **Transferable proposition**: A claim of the form "X happens / works / fails when Y, because Z" that another researcher could pick up and apply, with \`[[note title]]\` showing where the evidence came from.
 
 ## Merge vs Create
 
-${hasExistingConcepts ? `Existing Concepts are listed below. Before creating a new Concept:
-1. If the note EXTENDS an existing Concept → "merge" with that ID. Sections should contain only the **new** content to add, not restate the existing.
-2. If the note CONTRADICTS an existing Concept → "create" a new one that addresses the contradiction (don't silently overwrite).
-3. If the note provides NEW EVIDENCE for an existing Concept → "merge".
-4. Otherwise create new.` : "No existing Concepts yet. Create freely."}
+${hasExistingConcepts ? `Existing Claims are listed below. Before creating a new Claim:
+1. If the note EXTENDS an existing Claim → "merge" with that ID. Sections should contain only the **new** content to add, not restate the existing.
+2. If the note CONTRADICTS an existing Claim → "create" a new one that addresses the contradiction (don't silently overwrite).
+3. If the note provides NEW EVIDENCE for an existing Claim → "merge".
+4. Otherwise create new.` : "No existing Claims yet. Create freely."}
 
 ## Existing Wikis
 
@@ -260,13 +301,13 @@ Output in: ${ja ? "Japanese" : "English"}
 ## Quality Guidelines
 
 - Summary: exactly 1 per note.
-- Concepts: 0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Concepts beat one long combined page. Each Concept must hold exactly one idea (see "Splitting test" above).
-- Quality > quantity. If the note has no transferable claim worth abstracting, generate zero Concepts and just produce the Summary.
-- Length: include what the Concept needs to be understood and traced — no more. A 3-sentence Concept that lands cleanly beats a 10-sentence one with filler. If you find yourself stretching to fill space, the Concept is done.
-- relatedConcepts: \`{title, citation}\` pairs for connected existing Concepts. \`citation\` explains the link in one line (e.g., "provides pH-dependency context"). Empty array if none.
+- Claims: 0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).
+- Quality > quantity. If the note has no transferable claim worth abstracting, generate zero Claims and just produce the Summary.
+- Length: include what the Claim needs to be understood and traced — no more. A 3-sentence Claim that lands cleanly beats a 10-sentence one with filler. If you find yourself stretching to fill space, the Claim is done.
+- relatedClaims: \`{title, citation}\` pairs for connected existing Claims. \`citation\` explains the link in one line (e.g., "provides pH-dependency context"). Empty array if none.
 - externalReferences: 0-5 per wiki. Prefer stable, well-known URLs. \`citation\` explains what each reference supports.
 - confidence: 0.9+ for clear, well-evidenced; 0.6-0.8 for tentative; 0.5 for trivial-note Summaries.
-- If the note is too short or trivial, return only a minimal Summary with confidence 0.5 — do not generate Concepts to fill space.`;
+- If the note is too short or trivial, return only a minimal Summary with confidence 0.5 — do not generate Claims to fill space.`;
 }
 
 /**
@@ -289,22 +330,35 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
     return wikis
       .filter((w: any) => w.title && w.sections && Array.isArray(w.sections))
       .map((w: any) => {
-        const kind: WikiKind = (w.kind === "summary" || w.kind === "concept" || w.kind === "atom" || w.kind === "synthesis") ? w.kind : "concept";
+        const kind: WikiKind = (w.kind === "summary" || w.kind === "claim" || w.kind === "atom" || w.kind === "synthesis") ? w.kind : "claim";
         const rawLevel = typeof w.level === "string" ? w.level : undefined;
-        const level: ConceptLevel | undefined =
-          kind === "concept" && (rawLevel === "principle" || rawLevel === "finding" || rawLevel === "bridge")
+        const level: ClaimLevel | undefined =
+          kind === "claim" && (rawLevel === "principle" || rawLevel === "finding" || rawLevel === "bridge")
             ? rawLevel
-            : kind === "concept"
+            : kind === "claim"
               ? "finding"
               : undefined;
         const rawEvidence = typeof w.evidenceSpan === "string" ? w.evidenceSpan.trim() : "";
         // principle は evidenceSpan 必須。空なら finding に降格させて textbook 流入を防ぐ
-        const finalLevel: ConceptLevel | undefined =
+        const finalLevel: ClaimLevel | undefined =
           level === "principle" && rawEvidence.length === 0 ? "finding" : level;
+        const claimRole: ClaimRole[] | undefined =
+          kind === "claim" && Array.isArray(w.claimRole)
+            ? Array.from(
+                new Set(
+                  w.claimRole
+                    .map((r: unknown) => (typeof r === "string" ? r : ""))
+                    .filter((r: string): r is ClaimRole =>
+                      (CLAIM_ROLE_VALUES as string[]).includes(r),
+                    ),
+                ),
+              )
+            : undefined;
         return {
           kind,
           level: finalLevel,
           evidenceSpan: finalLevel === "principle" ? rawEvidence : undefined,
+          claimRole: claimRole && claimRole.length > 0 ? claimRole : undefined,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),
@@ -313,8 +367,8 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
           suggestedAction: w.suggestedAction === "merge" ? "merge" as const : "create" as const,
           mergeTargetId: w.mergeTargetId ? String(w.mergeTargetId) : undefined,
           confidence: typeof w.confidence === "number" ? w.confidence : 0.7,
-          relatedConcepts: Array.isArray(w.relatedConcepts)
-            ? w.relatedConcepts.map((rc: any) =>
+          relatedClaims: Array.isArray(w.relatedClaims)
+            ? w.relatedClaims.map((rc: any) =>
                 typeof rc === "string"
                   ? { title: rc, citation: "" }  // 後方互換: 旧形式の文字列
                   : { title: String(rc.title ?? ""), citation: String(rc.citation ?? "") }

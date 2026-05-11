@@ -38,7 +38,7 @@ export type FileSidebarProps = {
   /** メモセクションがアクティブか */
   memosActive?: boolean;
   /** Wiki カテゴリ別カウント */
-  wikiCounts?: { summary: number; concept: number; atom: number; synthesis: number };
+  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
   /** 実験的レイヤ（Atom/Synthesis）を表示するか */
   showAtomLayer?: boolean;
   showSynthesisLayer?: boolean;
@@ -159,7 +159,7 @@ export function FileSidebar({
 
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
-    const wsum = (w?.summary ?? 0) + (w?.concept ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0);
+    const wsum = (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0);
     return wsum + skillCount;
   }, [wikiCounts, skillCount]);
 
@@ -351,17 +351,17 @@ export function FileSidebar({
             count={aiTotalCount}
           >
             {(() => {
-                // 既定では Summary / Concept のみ表示。
+                // 既定では Summary / Claim のみ表示。
                 // 実験フラグでオプトインしたとき、または既存ユーザーが残しているデータが
                 // ある場合（count > 0）は表示してアクセスを保つ。
-                const kinds: WikiKind[] = ["summary", "concept"];
+                const kinds: WikiKind[] = ["summary", "claim"];
                 if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
                 if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;
                   const label =
                     kind === "summary" ? "Summary"
-                    : kind === "concept" ? "Concept"
+                    : kind === "claim" ? "Claim"
                     : kind === "atom" ? "Atom"
                     : "Synthesis";
                   const isExperimental = kind === "atom" || kind === "synthesis";

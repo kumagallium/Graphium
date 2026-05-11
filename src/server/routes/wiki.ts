@@ -30,7 +30,7 @@ import {
   buildSynthesizerSystemPrompt,
   buildSynthesizerUserMessage,
   parseSynthesizerOutput,
-  type ConceptSnapshot,
+  type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
 import {
   buildAtomizerSystemPrompt,
@@ -370,7 +370,7 @@ app.post("/cross-update", async (c) => {
 // Synthesis（複数 Concept の統合ページ生成）
 app.post("/synthesize", async (c) => {
   const body = await c.req.json<{
-    concepts: ConceptSnapshot[];
+    concepts: ClaimSnapshot[];
     existingSynthesisTitles: string[];
     language: string;
     model?: string;
@@ -423,7 +423,7 @@ app.post("/synthesize", async (c) => {
 //   既存 Atom のタイトル一覧を渡すと重複提案を抑える。
 app.post("/atomize", async (c) => {
   const body = await c.req.json<{
-    concepts: ConceptSnapshot[];
+    concepts: ClaimSnapshot[];
     existingAtomTitles?: string[];
     language: string;
     model?: string;

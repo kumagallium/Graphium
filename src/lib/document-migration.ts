@@ -46,7 +46,42 @@ export function migrateToLatest(doc: GraphiumDocument): GraphiumDocument {
     doc.version = 5;
   }
 
+  // wikiMeta.kind: "concept" → "claim" のリネーム（提案 v4 で命名を見直したため）
+  //
+  // 「Concept」は事実ベースの抽出層であって哲学的概念ではないので、命名を
+  // Claim（主張）に統一する。version フィールドとは独立に毎回チェックする
+  // ことで、古いファイルを読むたびに idempotent に正規化する。
+  migrateConceptKindToClaim(doc);
+
   return doc;
+}
+
+/**
+ * wikiMeta.kind === "concept" を "claim" に置換し、
+ * 旧フィールド名 derivedFromConcepts / conceptRole も新名に移行する。
+ *
+ * インデックス側 (NoteIndexEntry.wikiKind) は INDEX_SCHEMA_VERSION bump
+ * に伴う再構築で自然に "claim" に揃うため、ここでは触らない。
+ */
+function migrateConceptKindToClaim(doc: GraphiumDocument): void {
+  const meta = doc.wikiMeta;
+  if (!meta) return;
+  // 旧 kind の文字列リテラルが「concept」のときだけ書き換える。
+  // 既に "claim" のものや別の kind には触らない。
+  if ((meta.kind as unknown as string) === "concept") {
+    (meta as any).kind = "claim";
+  }
+  const legacy = (meta as any).derivedFromConcepts;
+  if (Array.isArray(legacy) && !(meta as any).derivedFromClaims) {
+    (meta as any).derivedFromClaims = legacy;
+    delete (meta as any).derivedFromConcepts;
+  }
+  // PR-B1 で一時的に書き出される可能性のあった conceptRole も移行する
+  const legacyRole = (meta as any).conceptRole;
+  if (Array.isArray(legacyRole) && !(meta as any).claimRole) {
+    (meta as any).claimRole = legacyRole;
+    delete (meta as any).conceptRole;
+  }
 }
 
 /** v1 → v2: ページ内の links を provLinks / knowledgeLinks に分解 */

@@ -58,9 +58,9 @@ export const Summary: StoryObj = {
   render: () => <Wrapper wikiMeta={baseMeta} />,
 };
 
-export const Concept: StoryObj = {
-  name: "Concept",
-  render: () => <Wrapper wikiMeta={{ ...baseMeta, kind: "concept", generatedBy: { model: "claude-haiku-4-5", version: "" } }} />,
+export const Claim: StoryObj = {
+  name: "Claim",
+  render: () => <Wrapper wikiMeta={{ ...baseMeta, kind: "claim", generatedBy: { model: "claude-haiku-4-5", version: "" } }} />,
 };
 
 export const Synthesis: StoryObj = {

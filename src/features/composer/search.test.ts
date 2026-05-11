@@ -47,7 +47,7 @@ describe("searchNotes()", () => {
     entry({ noteId: "b", title: "Design notes", modifiedAt: "2026-04-20T00:00:00.000Z" }),
     entry({ noteId: "c", title: "XRD raw log 2026-04", modifiedAt: "2026-04-24T00:00:00.000Z" }),
     entry({ noteId: "d", title: "Claude session", modifiedAt: "2026-04-23T00:00:00.000Z", author: "kumagai", model: "claude-opus-4-7" }),
-    entry({ noteId: "e", title: "Wiki page on XRD", modifiedAt: "2026-04-22T00:00:00.000Z", source: "ai", wikiKind: "concept" }),
+    entry({ noteId: "e", title: "Wiki page on XRD", modifiedAt: "2026-04-22T00:00:00.000Z", source: "ai", wikiKind: "claim" }),
     entry({ noteId: "f", title: "Misc", modifiedAt: "2026-04-21T00:00:00.000Z",
       headings: [{ blockId: "h1", text: "About XRD measurement", level: 2 }] }),
   ];

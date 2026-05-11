@@ -269,7 +269,7 @@ export class LocalStorageProvider implements StorageProvider {
       store.get(`__wiki__${fileId}`)
     );
     if (!record) throw new Error(`Wiki が見つかりません: ${fileId}`);
-    return record.content;
+    return migrateToLatest(record.content);
   }
 
   async createWikiFile(title: string, content: GraphiumDocument): Promise<string> {

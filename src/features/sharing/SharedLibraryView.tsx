@@ -88,7 +88,7 @@ export function SharedLibraryView({
     reference: [],
     "data-manifest": [],
     template: [],
-    concept: [],
+    claim: [],
     atom: [],
     report: [],
   });
@@ -120,7 +120,7 @@ export function SharedLibraryView({
       reference: 0,
       "data-manifest": 0,
       template: 0,
-      concept: 0,
+      claim: 0,
       atom: 0,
       report: 0,
     };

@@ -1,10 +1,16 @@
 // Wiki リストビュー（メインエリアに表示）
-// Summary / Concept / Synthesis カテゴリ別に Wiki ドキュメント一覧をテーブル形式で表示
+// Summary / Claim / Synthesis カテゴリ別に Wiki ドキュメント一覧をテーブル形式で表示
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useState } from "react";
 import { Bot, Search, Trash2 } from "lucide-react";
-import type { WikiKind, WikiMetaSummary, ConceptLevel, ConceptStatus } from "../../lib/document-types";
+import type {
+  AtomType,
+  ClaimRole,
+  SynthesisMode,
+  WikiKind,
+  WikiMetaSummary,
+} from "../../lib/document-types";
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -82,56 +88,82 @@ function DeleteConfirmDialog({
   );
 }
 
-// Wiki エントリの種別を一目で示すバッジ。
-// kind=concept のみ level / status を併記する。
+// Wiki 一覧の「種別」列に表示する意味的なバッジ。
+// 一覧は既に kind でフィルタされているため kind 自体は冗長で、代わりに
+// 提案 v4 Phase 1 の意味的な型（claimRole / atomType / synthesisMode）を見せる。
+// 型が未推定のエントリは小さなフォールバック（— または kind の小ラベル）を返す。
+//
+// hypothesisStatus はユーザー操作で状態を昇格させる UI フローが無く、
+// 既定値以外がほぼ出ないため一覧では表示しない（データは wikiMeta に残す）。
 function TypeBadge({
   kind,
-  level,
-  status,
+  claimRole,
+  atomType,
+  synthesisMode,
 }: {
   kind: WikiKind;
-  level?: ConceptLevel;
-  status?: ConceptStatus;
+  claimRole?: ClaimRole[];
+  atomType?: AtomType;
+  synthesisMode?: SynthesisMode;
 }) {
   const t = useT();
+
   if (kind === "summary") {
-    return <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium">{t("wikiList.kindSummary")}</span>;
-  }
-  if (kind === "synthesis") {
-    return <span className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[11px] font-medium">{t("wikiList.kindSynthesis")}</span>;
-  }
-  // concept
-  const levelLabel =
-    level === "principle"
-      ? t("wikiList.levelPrinciple")
-      : level === "finding"
-        ? t("wikiList.levelFinding")
-        : level === "bridge"
-          ? t("wikiList.levelBridge")
-          : t("wikiList.kindConcept");
-  const colorClass =
-    level === "principle"
-      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-      : level === "bridge"
-        ? "bg-violet-500/15 text-violet-700 dark:text-violet-400"
-        : level === "finding"
-          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-          : "bg-muted text-muted-foreground";
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${colorClass}`}>
-        {levelLabel}
+    return (
+      <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium">
+        {t("wikiList.kindSummary")}
       </span>
-      {level === "principle" && status && (
-        <span
-          className={`text-[10px] ${status === "verified" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground/70"}`}
-          title={status === "verified" ? t("wikiList.statusVerifiedTooltip") : t("wikiList.statusCandidateTooltip")}
-        >
-          {status === "verified" ? t("wikiList.statusVerified") : t("wikiList.statusCandidate")}
-        </span>
-      )}
-    </span>
-  );
+    );
+  }
+
+  if (kind === "claim") {
+    if (!claimRole || claimRole.length === 0) {
+      return <span className="text-muted-foreground/40 text-[11px]">—</span>;
+    }
+    return (
+      <span className="inline-flex items-center gap-1 flex-wrap">
+        {claimRole.map((role) => (
+          <span
+            key={role}
+            title={t(`wikiTypes.claimRole.${role}` as any)}
+            className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-medium"
+          >
+            {t(`wikiTypes.claimRole.${role}` as any)}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  if (kind === "atom") {
+    if (!atomType) {
+      return <span className="text-muted-foreground/40 text-[11px]">—</span>;
+    }
+    return (
+      <span
+        title={t(`wikiTypes.atomType.${atomType}` as any)}
+        className="inline-block px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-700 dark:text-sky-400 text-[11px] font-medium"
+      >
+        {t(`wikiTypes.atomType.${atomType}` as any)}
+      </span>
+    );
+  }
+
+  if (kind === "synthesis") {
+    if (!synthesisMode) {
+      return <span className="text-muted-foreground/40 text-[11px]">—</span>;
+    }
+    return (
+      <span
+        title={t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
+        className="inline-block px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-400 text-[11px] font-medium"
+      >
+        {t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
+      </span>
+    );
+  }
+
+  return null;
 }
 
 export function WikiListView({
@@ -211,6 +243,11 @@ export function WikiListView({
         level: wikiMetas.get(f.id)!.level,
         status: wikiMetas.get(f.id)!.status,
         model: wikiMetas.get(f.id)!.model,
+        // 提案 v4 Phase 1: 意味的な型を一覧で見せるためのフィールド
+        claimRole: wikiMetas.get(f.id)!.claimRole,
+        atomType: wikiMetas.get(f.id)!.atomType,
+        synthesisMode: wikiMetas.get(f.id)!.synthesisMode,
+        hypothesisStatus: wikiMetas.get(f.id)!.hypothesisStatus,
         sources: sourcesCountById.get(f.id) ?? 0,
         incoming: incomingRefCount.get(f.id) ?? 0,
         outgoing: outgoingRefCountById.get(f.id) ?? 0,
@@ -296,7 +333,7 @@ export function WikiListView({
     wikiKind === "summary" ? t("wikiList.kindSummary")
     : wikiKind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiKind === "atom" ? t("wikiList.kindAtom")
-    : t("wikiList.kindConcept");
+    : t("wikiList.kindClaim");
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
@@ -443,7 +480,12 @@ export function WikiListView({
                     </span>
                   </td>
                   <td className="py-2 px-3 text-xs">
-                    <TypeBadge kind={entry.kind} level={entry.level} status={entry.status} />
+                    <TypeBadge
+                      kind={entry.kind}
+                      claimRole={entry.claimRole}
+                      atomType={entry.atomType}
+                      synthesisMode={entry.synthesisMode}
+                    />
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                     {entry.sources > 0 ? entry.sources : <span className="text-muted-foreground/40">—</span>}
