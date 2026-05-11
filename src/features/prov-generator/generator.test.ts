@@ -1509,7 +1509,7 @@ describe("Plan / Result phase スコーピング (Phase D-2)", () => {
     expect(ent!["graphium:phase"]).toBe("execution");
   });
 
-  it("同 entityId が plan/result 両方にある時、execution → plan に prov:specializationOf エッジ", () => {
+  it("同 entityId が plan/result 両方にある時、execution → plan に prov:wasDerivedFrom エッジ", () => {
     const blocks = [
       { id: "h-step", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step1" }], children: [] },
       { id: "h-plan", type: "heading", props: { level: 3 }, content: [{ type: "text", text: "計画" }], children: [] },
@@ -1529,9 +1529,9 @@ describe("Plan / Result phase スコーピング (Phase D-2)", () => {
     expect(planEnt).toBeDefined();
     expect(execEnt).toBeDefined();
 
-    // execution Entity に specializationOf が含まれ、plan Entity を指している
-    const specs = (execEnt as any)["prov:specializationOf"] ?? [];
-    expect(specs.some((s: any) => s["@id"] === "inline_material_ent_nacl_plan")).toBe(true);
+    // execution Entity に wasDerivedFrom が含まれ、plan Entity を指している
+    const derivations = (execEnt as any)["prov:wasDerivedFrom"] ?? [];
+    expect(derivations.some((s: any) => s["@id"] === "inline_material_ent_nacl_plan")).toBe(true);
   });
 
   it("plan / result 見出しは Activity を生まず、procedure の Activity スコープを保つ", () => {

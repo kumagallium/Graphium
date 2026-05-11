@@ -132,6 +132,18 @@ The generator (`src/features/prov-generator/generator.ts`) uses a
 `scopeStack` that infers *Activity* containment from heading structure,
 so users do not have to nest blocks manually.
 
+Inside a Step (Activity), `[Plan]` / `[Result]` phase headings do **not**
+create separate Activities — they only switch a *phase context* over the
+inline Entities they contain. Each Entity gets a `graphium:phase`
+attribute (`"plan"` or `"execution"`); plan-phase Entities are emitted
+as separate nodes with an `_plan` suffix so they coexist with their
+execution counterparts. When the same `(label, entityId)` pair appears
+in both phases, the generator emits a `prov:wasDerivedFrom` edge from
+the execution Entity to the plan Entity, expressing that the actual
+outcome was derived from the planned intent. The shared Step Activity
+that both Entities are `prov:used` by acts as the implicit activity of
+the PROV-DM derivation’s full form.
+
 ### 3.3 Knowledge layer (AI Wiki)
 
 The Wiki is a set of editable JSON documents that an LLM keeps in sync

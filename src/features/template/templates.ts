@@ -270,7 +270,7 @@ const experimentTemplate: TemplateDef = {
       labels: [
         // step 1: procedure (H2) と plan/result phase (H3)
         // Phase D-2: H3 plan 配下の Entity は graphium:phase=plan メタ + ノード ID 末尾に _plan が付く。
-        // 同 entityId が H3 result 配下に出ると execution Entity との specializationOf エッジが張られる
+        // 同 entityId が H3 result 配下に出ると execution Entity との wasDerivedFrom エッジが張られる
         // → 「計画値 vs 実測値」の対比が PROV グラフ上で可視化できる。
         { path: [3], label: "procedure" },
         { path: [4], label: "plan" },
