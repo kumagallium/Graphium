@@ -1031,7 +1031,7 @@ export async function ingestFromPdf(
   // "Output in: ..." 指示が長文中で軽視されるケースに備えた近接リマインダ。
   const languageHint =
     language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Concept もすべて日本語にしてください]"
+      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
   const noteContent = `${languageHint}\n\n${extracted.text}`;
 
@@ -1095,7 +1095,7 @@ export async function ingestFromMultiSource(
 
   const languageHint =
     language === "ja"
-      ? "[出力言語: 日本語で書いてください。Summary も Concept もすべて日本語にしてください]"
+      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
 
   const sourceBlocks = parts
@@ -1655,7 +1655,7 @@ export function buildSynthesisDocument(
     id: crypto.randomUUID(),
     type: "heading",
     props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
-    content: [{ type: "text", text: "Source Concepts", styles: {} }],
+    content: [{ type: "text", text: "Source Claims", styles: {} }],
     children: [],
   });
 
@@ -1862,14 +1862,14 @@ export function buildAtomDocument(
       children: [],
     }));
 
-  // Source Concepts セクション
+  // Source Claims セクション
   const knowledgeLinks: any[] = [];
   if (candidate.derivedFromClaims.length > 0) {
     blocks.push({
       id: crypto.randomUUID(),
       type: "heading",
       props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
-      content: [{ type: "text", text: "Source Concepts", styles: {} }],
+      content: [{ type: "text", text: "Source Claims", styles: {} }],
       children: [],
     });
     for (let i = 0; i < candidate.derivedFromClaims.length; i++) {

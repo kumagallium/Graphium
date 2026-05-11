@@ -108,7 +108,7 @@ function TypeBadge({
         ? t("wikiList.levelFinding")
         : level === "bridge"
           ? t("wikiList.levelBridge")
-          : t("wikiList.kindConcept");
+          : t("wikiList.kindClaim");
   const colorClass =
     level === "principle"
       ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
@@ -296,7 +296,7 @@ export function WikiListView({
     wikiKind === "summary" ? t("wikiList.kindSummary")
     : wikiKind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiKind === "atom" ? t("wikiList.kindAtom")
-    : t("wikiList.kindConcept");
+    : t("wikiList.kindClaim");
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">

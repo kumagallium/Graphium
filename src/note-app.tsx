@@ -3680,7 +3680,7 @@ export function NoteApp() {
       "claim",
     );
     if (claimSnapshots.length < 2) {
-      return { ok: false, created: 0, iterations: 0, error: "Need at least 2 Concepts" };
+      return { ok: false, created: 0, iterations: 0, error: "Need at least 2 Claims" };
     }
 
     // Atom は Concept→Atom の抽象化なので、共通抽象が有限 → 収束しやすい。
@@ -3694,7 +3694,7 @@ export function NoteApp() {
     setIngestToast((prev) => ({
       items: [
         ...(prev?.items ?? []),
-        { id: toastId, status: "generating" as const, noteTitle: `Discovering Atoms across ${claimSnapshots.length} Concepts` },
+        { id: toastId, status: "generating" as const, noteTitle: `Discovering Atoms across ${claimSnapshots.length} Claims` },
       ],
     }));
 
