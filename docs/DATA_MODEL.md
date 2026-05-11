@@ -179,6 +179,33 @@ sources and the heading structure to produce the PROV-DM graph. Heading
 levels feed a `scopeStack` that infers Activity containment without
 requiring the user to nest blocks.
 
+#### Plan / Execution phase
+
+`[Plan]` and `[Result]` headings live *inside* a Step. They do not
+create new Activities — the surrounding `[Step]` Activity remains the
+sole Activity for both phases. Instead, they switch a *phase context*
+over the inline Entities under them:
+
+- Each Entity node carries a `graphium:phase` property — `"plan"` for
+  Entities under a `[Plan]` heading, `"execution"` otherwise.
+- Plan-phase Entities are emitted with an `_plan` suffix in their
+  `@id` so they coexist as distinct nodes alongside their execution
+  counterparts (e.g. `inline_material_ent_nacl_plan` vs
+  `inline_material_ent_nacl`).
+- When the same `(label, entityId)` pair appears in both phases, the
+  generator emits a `prov:wasDerivedFrom` edge from the execution
+  Entity to the plan Entity, expressing that the actual outcome was
+  derived from the planned intent. The Step Activity that both
+  Entities are `prov:used` by serves as the implicit activity of the
+  PROV-DM derivation's full form.
+
+The `prov:Plan` class itself is intentionally *not* applied to
+individual plan-phase Entities; in PROV-DM `prov:Plan` denotes the
+plan document an agent follows as a whole, not the individual
+materials/tools/parameters within it. The `graphium:phase` attribute
+preserves the planned-vs-executed distinction without misusing that
+class.
+
 ### 2.4 Document provenance (edit log)
 
 `documentProvenance` is a separate concern from the PROV-DM graph above.

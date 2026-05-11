@@ -28,8 +28,8 @@ export type ProvJsonLdNode = {
   "rdfs:label": string;
   "prov:used"?: { "@id": string }[];
   "prov:wasGeneratedBy"?: { "@id": string };
-  /** Phase D-2: actual Entity から planned Entity への specialization 関係 */
-  "prov:specializationOf"?: { "@id": string }[];
+  /** Phase D-2: execution Entity から plan Entity への derivation 関係 */
+  "prov:wasDerivedFrom"?: { "@id": string }[];
   "graphium:attributes"?: ProvAttribute[];
   "graphium:blockId"?: string;
   [key: `graphium:${string}`]: any;
@@ -742,7 +742,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   //     ノード ID は `inline_<label>_<entityId>_plan` で execution Entity と分離
   //   - `#result` 見出し or 未指定 → 既存の Activity 実行 Entity (`prov:Entity`)
   //   - 同 entityId が plan / execution 両方に出現 → execution → plan に
-  //     `prov:specializationOf` エッジを張る（actual は planned の specialization）
+  //     `prov:wasDerivedFrom` エッジを張る（実体は計画から派生）
   function nodeIdFor(agg: AggregatedEntity): string {
     const phase = getPhaseForBlock(agg.blockId);
     const suffix = phase === "plan" ? "_plan" : "";
@@ -781,8 +781,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // 1b) specializationOf: execution Entity が plan Entity と同 entityId / 同 label の場合、
-  //    execution → plan の specializationOf エッジを張る（actual は planned の特殊化）
+  // 1b) wasDerivedFrom: execution Entity が plan Entity と同 entityId / 同 label の場合、
+  //    execution → plan の wasDerivedFrom エッジを張る（実体は計画から派生）。
+  //    PROV-DM 上 specializationOf は「同じ実体のより固定された見方」を表す関係で、
+  //    Plan（意図）と Execution（実体）は別個の事象なので、derivation の方が整合的。
+  //    Step Activity は両 Entity の used 関係から PROV-DM 完全形を復元可能。
   const planEntityKeys = new Set<string>();
   for (const agg of aggregatedList) {
     if (agg.label === "attribute") continue;
@@ -800,10 +803,10 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         const toId = `inline_${agg.label}_${agg.entityId}_plan`;
         // 重複防止
         const exists = relations.some(
-          (r) => r["@type"] === "prov:specializationOf" && r.from === fromId && r.to === toId,
+          (r) => r["@type"] === "prov:wasDerivedFrom" && r.from === fromId && r.to === toId,
         );
         if (!exists) {
-          relations.push({ "@type": "prov:specializationOf", from: fromId, to: toId });
+          relations.push({ "@type": "prov:wasDerivedFrom", from: fromId, to: toId });
         }
       }
     }
@@ -1034,12 +1037,14 @@ function buildProvJsonLd(
         sourceNode["prov:wasGeneratedBy"] = { "@id": rel.to };
         break;
       }
-      case "prov:specializationOf": {
-        // Phase D-2: actual Entity (from) は planned Entity (to) の specialization
-        if (!sourceNode["prov:specializationOf"]) {
-          sourceNode["prov:specializationOf"] = [];
+      case "prov:wasDerivedFrom": {
+        // Phase D-2: execution Entity (from) は plan Entity (to) から派生
+        // PROV-DM の wasDerivedFrom 短縮形。Activity (Step) は両 Entity の
+        // used 関係から復元可能なので、ここでは Entity 間の関係のみ記録する。
+        if (!sourceNode["prov:wasDerivedFrom"]) {
+          sourceNode["prov:wasDerivedFrom"] = [];
         }
-        sourceNode["prov:specializationOf"]!.push({ "@id": rel.to });
+        sourceNode["prov:wasDerivedFrom"]!.push({ "@id": rel.to });
         break;
       }
       // graphium:hasAttribute は廃止 — 属性は graphium:attributes に直接埋め込み

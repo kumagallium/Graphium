@@ -106,6 +106,18 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
         activity: node["prov:wasGeneratedBy"]["@id"],
       });
     }
+
+    // wasDerivedFrom: execution Entity → plan Entity（Plan/Execution の派生関係）
+    if (node["prov:wasDerivedFrom"]) {
+      for (const ref of node["prov:wasDerivedFrom"]) {
+        w3cNodes.push({
+          "@type": "Derivation",
+          "@id": `_:derivation_${node["@id"]}_${ref["@id"]}`,
+          generatedEntity: node["@id"],
+          usedEntity: ref["@id"],
+        });
+      }
+    }
   }
 
   return w3cNodes;
