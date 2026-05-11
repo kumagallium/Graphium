@@ -227,7 +227,7 @@ export class LocalFilesystemProvider implements StorageProvider {
 
   async loadWikiFile(fileId: string): Promise<GraphiumDocument> {
     const json = await invoke<string>("read_wiki_file", { fileId });
-    return JSON.parse(json) as GraphiumDocument;
+    return migrateToLatest(JSON.parse(json) as GraphiumDocument);
   }
 
   async createWikiFile(title: string, content: GraphiumDocument): Promise<string> {

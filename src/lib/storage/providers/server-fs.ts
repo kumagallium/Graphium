@@ -280,7 +280,7 @@ export class ServerFilesystemProvider implements StorageProvider {
 
   async loadWikiFile(fileId: string): Promise<GraphiumDocument> {
     const res = await authedFetchInternal(`/api/storage/wiki/${encodeURIComponent(fileId)}`);
-    return (await res.json()) as GraphiumDocument;
+    return migrateToLatest((await res.json()) as GraphiumDocument);
   }
 
   async createWikiFile(_title: string, content: GraphiumDocument): Promise<string> {
