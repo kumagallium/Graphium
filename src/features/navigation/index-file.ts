@@ -3,7 +3,7 @@
 
 import type {
   AtomType,
-  ConceptRole,
+  ClaimRole,
   GraphiumDocument,
   GraphiumFile,
   HypothesisStatus,
@@ -41,11 +41,15 @@ import { normalizeLabel } from "../context-label/labels";
 //      ノート一覧・検索・最近からは除外し、引用・regenerate・グラフは透過解決する。
 //      ユーザーの削除意思 (deletedAt) と区別するため別フィールド。
 //      アーカイブからは「復元」のみ。完全削除はゴミ箱経由のみ。
-// v13: conceptRole / atomType / synthesisMode / hypothesisStatus フィールド追加
+// v13: claimRole / atomType / synthesisMode / hypothesisStatus フィールド追加
 //      （提案 v4 Phase 1 の意味的な型）
 //      AI Wiki ノートに対する直交した型情報を一覧 UI でフィルタするため
 //      wikiMeta から mirror する。すべて optional。
-const INDEX_SCHEMA_VERSION = 13;
+// v14: WikiKind "concept" → "claim" リネーム（提案 v4 で命名を見直したため）。
+//      旧 kind / 旧フィールド名 (derivedFromConcepts / conceptRole) は
+//      document-migration.ts の migrateConceptKindToClaim で読み込み時に
+//      自動移行されるが、index 側のキャッシュは bump で再構築する。
+const INDEX_SCHEMA_VERSION = 14;
 
 export type GraphiumIndex = {
   version: number;
@@ -126,10 +130,10 @@ export type NoteIndexEntry = {
   archivedAt?: string;
   /**
    * Concept の研究プロセス役割（提案 v4 Phase 1.1）。
-   * wikiMeta.conceptRole を mirror する。複数値可。
+   * wikiMeta.claimRole を mirror する。複数値可。
    * 一覧 UI でロール単位のフィルタや色分け表示に使う。
    */
-  conceptRole?: ConceptRole[];
+  claimRole?: ClaimRole[];
   /** Atom の推論的役割（提案 v4 Phase 1.2）。wikiMeta.atomType を mirror。 */
   atomType?: AtomType;
   /** Synthesis の推論モード（提案 v4 Phase 1.3）。wikiMeta.synthesisMode を mirror。 */
@@ -377,7 +381,7 @@ export function buildIndexEntry(
     model,
     derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
     inlineLabels: inlineLabels.length > 0 ? inlineLabels : undefined,
-    conceptRole: doc.wikiMeta?.conceptRole,
+    claimRole: doc.wikiMeta?.claimRole,
     atomType: doc.wikiMeta?.atomType,
     synthesisMode: doc.wikiMeta?.synthesisMode,
     hypothesisStatus: doc.wikiMeta?.hypothesisStatus,

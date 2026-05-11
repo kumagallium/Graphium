@@ -214,7 +214,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [toolsData, setToolsData] = useState<ToolsResponse | null>(null);
 
   // Maintenance タブ — Wiki 一括 Regenerate
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["concept", "summary", "atom", "synthesis"]));
+  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["claim", "summary", "atom", "synthesis"]));
   const [bulkModelOverride, setBulkModelOverride] = useState("");
   const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -2086,7 +2086,7 @@ function MaintenanceTab({
   setSynthesisProgress,
   onReembedAllWikis,
 }: MaintenanceTabProps) {
-  const KINDS: WikiKind[] = ["concept", "summary", "atom", "synthesis"];
+  const KINDS: WikiKind[] = ["claim", "summary", "atom", "synthesis"];
   const [cancelling, setCancelling] = useState(false);
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
@@ -2152,13 +2152,13 @@ function MaintenanceTab({
   };
 
   const kindLabel = (k: WikiKind) =>
-    k === "concept" ? t("settings.maintenance.kind.concept")
+    k === "claim" ? t("settings.maintenance.kind.claim")
     : k === "summary" ? t("settings.maintenance.kind.summary")
     : k === "atom" ? t("settings.maintenance.kind.atom")
     : t("settings.maintenance.kind.synthesis");
 
   // ── Atom 候補の発見（auto-loop: 0 件返却 or 上限まで自動継続）──
-  const conceptCount = wikiSummaries.filter((w) => w.kind === "concept").length;
+  const conceptCount = wikiSummaries.filter((w) => w.kind === "claim").length;
   const atomCount = wikiSummaries.filter((w) => w.kind === "atom").length;
   const handleRunAtomizeDiscovery = async () => {
     if (!onRunAtomizeDiscovery || atomizeRunning) return;

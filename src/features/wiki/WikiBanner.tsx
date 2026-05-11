@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
 import type {
   AtomType,
-  ConceptRole,
+  ClaimRole,
   HypothesisStatus,
   SynthesisMode,
   WikiMeta,
@@ -14,7 +14,7 @@ import { useT } from "../../i18n";
 
 // 提案 v4 Phase 1.x の型バッジ表示用ラベル。
 // 内部キー (causal 等) と表示文字列 (Causal) の対応。
-const CONCEPT_ROLE_LABEL: Record<ConceptRole, string> = {
+const CLAIM_ROLE_LABEL: Record<ClaimRole, string> = {
   finding: "Finding",
   decision: "Decision",
   anomaly: "Anomaly",
@@ -116,7 +116,7 @@ export function WikiBanner({
     wikiMeta.kind === "summary" ? "Summary"
     : wikiMeta.kind === "synthesis" ? "Synthesis"
     : wikiMeta.kind === "atom" ? "Atom"
-    : "Concept";
+    : "Claim";
 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -214,10 +214,10 @@ export function WikiBanner({
         </span>
 
         {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示 */}
-        {wikiMeta.kind === "concept" && wikiMeta.conceptRole?.map((role) => (
+        {wikiMeta.kind === "claim" && wikiMeta.claimRole?.map((role) => (
           <TypeBadge
             key={role}
-            label={CONCEPT_ROLE_LABEL[role] ?? role}
+            label={CLAIM_ROLE_LABEL[role] ?? role}
             title={`Research-process role: ${role}`}
           />
         ))}

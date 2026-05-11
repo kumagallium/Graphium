@@ -304,11 +304,11 @@ export function useFileManager(authenticated: boolean) {
               const { id, doc } = r.value;
               metas.set(id, {
                 title: doc.title,
-                kind: doc.wikiMeta?.kind ?? "concept",
+                kind: doc.wikiMeta?.kind ?? "claim",
                 model: doc.wikiMeta?.generatedBy?.model,
                 level: doc.wikiMeta?.level,
                 status: doc.wikiMeta?.status,
-                conceptRole: doc.wikiMeta?.conceptRole,
+                claimRole: doc.wikiMeta?.claimRole,
                 atomType: doc.wikiMeta?.atomType,
                 synthesisMode: doc.wikiMeta?.synthesisMode,
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
@@ -1251,11 +1251,11 @@ export function useFileManager(authenticated: boolean) {
           const existing = next.get(wikiId);
           next.set(wikiId, {
             title: doc.title,
-            kind: doc.wikiMeta?.kind ?? existing?.kind ?? "concept",
+            kind: doc.wikiMeta?.kind ?? existing?.kind ?? "claim",
             model: doc.wikiMeta?.generatedBy?.model ?? existing?.model,
             level: doc.wikiMeta?.level ?? existing?.level,
             status: doc.wikiMeta?.status ?? existing?.status,
-            conceptRole: doc.wikiMeta?.conceptRole ?? existing?.conceptRole,
+            claimRole: doc.wikiMeta?.claimRole ?? existing?.claimRole,
             atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
             synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
             hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
@@ -1486,11 +1486,11 @@ export function useFileManager(authenticated: boolean) {
         const next = new Map(prev);
         next.set(newId, {
           title: doc.title,
-          kind: doc.wikiMeta?.kind ?? "concept",
+          kind: doc.wikiMeta?.kind ?? "claim",
           model: doc.wikiMeta?.generatedBy?.model,
           level: doc.wikiMeta?.level,
           status: doc.wikiMeta?.status,
-          conceptRole: doc.wikiMeta?.conceptRole,
+          claimRole: doc.wikiMeta?.claimRole,
           atomType: doc.wikiMeta?.atomType,
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,

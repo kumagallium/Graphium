@@ -4,7 +4,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Bot, Search, Trash2 } from "lucide-react";
-import type { WikiKind, WikiMetaSummary, ConceptLevel, ConceptStatus } from "../../lib/document-types";
+import type { WikiKind, WikiMetaSummary, ClaimLevel, ClaimStatus } from "../../lib/document-types";
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -90,8 +90,8 @@ function TypeBadge({
   status,
 }: {
   kind: WikiKind;
-  level?: ConceptLevel;
-  status?: ConceptStatus;
+  level?: ClaimLevel;
+  status?: ClaimStatus;
 }) {
   const t = useT();
   if (kind === "summary") {

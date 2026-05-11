@@ -378,7 +378,7 @@ export const ja: Record<string, string> = {
   "settings.maintenance.regenAll.title": "Wiki の一括 Regenerate",
   "settings.maintenance.regenAll.help": "プロンプトやモデルを更新したあと、既存の Knowledge ページを最新仕様で作り直します。",
   "settings.maintenance.kindFilter": "対象の種類",
-  "settings.maintenance.kind.concept": "Concept",
+  "settings.maintenance.kind.claim": "Claim",
   "settings.maintenance.kind.summary": "Summary",
   "settings.maintenance.kind.atom": "Atom",
   "settings.maintenance.kind.synthesis": "Synthesis",

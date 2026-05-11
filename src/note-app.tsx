@@ -110,7 +110,7 @@ import {
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
-  fetchSynthesisCandidates, buildSynthesisDocument, buildConceptSnapshots,
+  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
   // Discovery 共通: embedding ベース重複検出
@@ -2817,7 +2817,7 @@ export function NoteApp() {
           (async () => {
             try {
               const existingDetails = existingWikis
-                .filter((w) => w.kind === "concept" && !createdWikiIds.includes(w.id))
+                .filter((w) => w.kind === "claim" && !createdWikiIds.includes(w.id))
                 .map((w) => {
                   const doc = fm.getCachedDoc(`wiki:${w.id}`);
                   return doc ? extractWikiDetail(w.id, doc) : null;
@@ -2889,13 +2889,13 @@ export function NoteApp() {
     // 既存 Atom のタイトルは "重複しないでね" として LLM に渡す。
     // fire-and-forget — 失敗は ingest 全体には影響させない。
     if (isAtomLayerEnabled()) try {
-      const conceptSnapshots = buildConceptSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "concept");
-      if (conceptSnapshots.length >= 2) {
+      const claimSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "claim");
+      if (claimSnapshots.length >= 2) {
         const existingAtomTitles = [...fm.wikiMetas.entries()]
           .filter(([, m]) => m.kind === "atom")
           .map(([, m]) => m.title);
         const atomResult = await atomizeConcepts(
-          conceptSnapshots,
+          claimSnapshots,
           "ja",
           { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
         );
@@ -2937,8 +2937,8 @@ export function NoteApp() {
     if (isSynthesisEnabled()) try {
       // Atom が 3 つ以上あれば結晶化を試みる。Atom は文脈が削がれているので、
       // Concept より組み合わせの安定性が高く、誤差伝搬も抑えられる。
-      const conceptSnapshots = buildConceptSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "atom");
-      if (conceptSnapshots.length >= 3) {
+      const claimSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "atom");
+      if (claimSnapshots.length >= 3) {
         const existingSynthesisTitles = [...fm.wikiMetas.entries()]
           .filter(([, m]) => m.kind === "synthesis")
           .map(([, m]) => m.title);
@@ -2946,7 +2946,7 @@ export function NoteApp() {
         // Synthesis は Chat & Synthesis モデルを使う。Tauri モードではヘッダーに API キーが
         // 乗らないので body.model でサーバーに明示する必要がある。
         const synthResult = await fetchSynthesisCandidates(
-          conceptSnapshots,
+          claimSnapshots,
           existingSynthesisTitles,
           "ja",
           getChatSynthesisModelName() || undefined,
@@ -3020,7 +3020,7 @@ export function NoteApp() {
                 const detail = extractWikiDetail(wikiId, doc);
                 if (!detail) continue;
                 const otherConcepts = snapshots
-                  .filter((s) => s.kind === "concept" && s.id !== wikiId)
+                  .filter((s) => s.kind === "claim" && s.id !== wikiId)
                   .map((s) => {
                     const d = fm.getCachedDoc(`wiki:${s.id}`);
                     return d ? extractWikiDetail(s.id, d) : null;
@@ -3091,13 +3091,13 @@ export function NoteApp() {
                 const mergedResult = await rewriteAndMerge(
                   keepDoc,
                   {
-                    kind: "concept",
+                    kind: "claim",
                     title: keepDoc.title,
                     sections: mergeSections,
                     suggestedAction: "merge" as const,
                     mergeTargetId: keepId,
                     confidence: 0.9,
-                    relatedConcepts: [],
+                    relatedClaims: [],
                     externalReferences: [],
                   },
                   mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
@@ -3278,13 +3278,13 @@ export function NoteApp() {
                 const mergedResult = await rewriteAndMerge(
                   keepDoc,
                   {
-                    kind: "concept",
+                    kind: "claim",
                     title: keepDoc.title,
                     sections: mergeSections,
                     suggestedAction: "merge" as const,
                     mergeTargetId: keepId,
                     confidence: 0.9,
-                    relatedConcepts: [],
+                    relatedClaims: [],
                     externalReferences: [],
                   },
                   mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
@@ -3384,7 +3384,7 @@ export function NoteApp() {
     try {
       if (isSynthesis) {
         const sourceConceptIds = doc.wikiMeta.derivedFromNotes;
-        const concepts: { id: string; title: string; bodyPreview: string; level?: "principle" | "finding" | "bridge"; relatedConcepts: string[] }[] = [];
+        const concepts: { id: string; title: string; bodyPreview: string; level?: "principle" | "finding" | "bridge"; relatedClaims: string[] }[] = [];
         for (const cId of sourceConceptIds) {
           const cDoc = await fm.loadDoc(`wiki:${cId}`);
           if (!cDoc) continue;
@@ -3393,13 +3393,13 @@ export function NoteApp() {
           // 原料として正当に使われるため、ここで弾くと Atom ベースの Synthesis が
           // 「Source concepts not found」で再生成不能になる。
           const sourceKind = cDoc.wikiMeta?.kind;
-          if (sourceKind !== "concept" && sourceKind !== "atom") continue;
+          if (sourceKind !== "claim" && sourceKind !== "atom") continue;
           concepts.push({
             id: cId,
             title: cDoc.title,
             bodyPreview: extractBodyPreview(cDoc, 240),
             level: cDoc.wikiMeta?.level,
-            relatedConcepts: [],
+            relatedClaims: [],
           });
         }
 
@@ -3583,7 +3583,7 @@ export function NoteApp() {
 
         if (result.wikis.length > 0) {
           // 既存 Wiki と同じ kind の出力を優先（タイトルが完全一致するものを最優先）
-          const targetKind = doc.wikiMeta?.kind ?? "concept";
+          const targetKind = doc.wikiMeta?.kind ?? "claim";
           const matched =
             result.wikis.find((w) => w.kind === targetKind && w.title === wikiTitle) ??
             result.wikis.find((w) => w.kind === targetKind) ??
@@ -3673,13 +3673,13 @@ export function NoteApp() {
     if (!isAtomLayerEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Atom layer is disabled" };
     }
-    const conceptSnapshots = buildConceptSnapshots(
+    const claimSnapshots = buildClaimSnapshots(
       fm.wikiFiles,
       fm.wikiMetas,
       fm.getCachedDoc,
-      "concept",
+      "claim",
     );
-    if (conceptSnapshots.length < 2) {
+    if (claimSnapshots.length < 2) {
       return { ok: false, created: 0, iterations: 0, error: "Need at least 2 Concepts" };
     }
 
@@ -3694,7 +3694,7 @@ export function NoteApp() {
     setIngestToast((prev) => ({
       items: [
         ...(prev?.items ?? []),
-        { id: toastId, status: "generating" as const, noteTitle: `Discovering Atoms across ${conceptSnapshots.length} Concepts` },
+        { id: toastId, status: "generating" as const, noteTitle: `Discovering Atoms across ${claimSnapshots.length} Concepts` },
       ],
     }));
 
@@ -3705,7 +3705,7 @@ export function NoteApp() {
         lastIteration = iter;
         onProgress?.({ iteration: iter, createdSoFar: totalCreated });
         const result = await atomizeConcepts(
-          conceptSnapshots,
+          claimSnapshots,
           "ja",
           { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
         );
@@ -3759,7 +3759,7 @@ export function NoteApp() {
     if (!isSynthesisEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Synthesis layer is disabled" };
     }
-    const atomSnapshots = buildConceptSnapshots(
+    const atomSnapshots = buildClaimSnapshots(
       fm.wikiFiles,
       fm.wikiMetas,
       fm.getCachedDoc,
@@ -3857,7 +3857,7 @@ export function NoteApp() {
       return {
         id: wf.id,
         title: cached?.title ?? wf.name ?? wf.id,
-        kind: (meta?.kind ?? "concept") as WikiKind,
+        kind: (meta?.kind ?? "claim") as WikiKind,
         model: meta?.model,
       };
     });
@@ -3904,16 +3904,16 @@ export function NoteApp() {
     memosActive: showMemos,
     wikiCounts: (() => {
       let summary = 0;
-      let concept = 0;
+      let claim = 0;
       let atom = 0;
       let synthesis = 0;
       for (const meta of fm.wikiMetas.values()) {
         if (meta.kind === "summary") summary++;
-        else if (meta.kind === "concept") concept++;
+        else if (meta.kind === "claim") claim++;
         else if (meta.kind === "atom") atom++;
         else if (meta.kind === "synthesis") synthesis++;
       }
-      return { summary, concept, atom, synthesis };
+      return { summary, claim, atom, synthesis };
     })(),
     showAtomLayer: experimentalFlags.atomLayer,
     showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,

@@ -1,5 +1,5 @@
 // Wiki Synthesizer
-// 既存の Concept ページ群を分析し、複数ページを統合した
+// 既存の Claim ページ群を分析し、複数ページを統合した
 // 新しい洞察（Synthesis ページ）を生成する
 
 import type { HypothesisStatus, SynthesisMode } from "../../lib/document-types.js";
@@ -22,9 +22,9 @@ const HYPOTHESIS_STATUS_VALUES: HypothesisStatus[] = [
 ];
 
 export type SynthesisCandidate = {
-  /** 統合対象の Concept ID リスト（2-4 個） */
+  /** 統合対象の Claim ID リスト（2-4 個） */
   sourceConceptIds: string[];
-  /** 統合対象の Concept タイトル */
+  /** 統合対象の Claim タイトル */
   sourceConceptTitles: string[];
   /** 生成する Synthesis のタイトル */
   title: string;
@@ -36,7 +36,7 @@ export type SynthesisCandidate = {
   confidence: number;
   /**
    * Synthesis の推論モード（提案 v4 Phase 1.3）。
-   * 入力 Concept の関係性から自動推定。認識不能・パース失敗時は undefined。
+   * 入力 Claim の関係性から自動推定。認識不能・パース失敗時は undefined。
    */
   synthesisMode?: SynthesisMode;
   /**
@@ -46,7 +46,7 @@ export type SynthesisCandidate = {
   hypothesisStatus?: HypothesisStatus;
 };
 
-export type ConceptSnapshot = {
+export type ClaimSnapshot = {
   id: string;
   title: string;
   /**
@@ -54,10 +54,10 @@ export type ConceptSnapshot = {
    * 旧来の sections（見出し + プレビュー配列）から本文プレビュー一本に変更。
    */
   bodyPreview: string;
-  /** Concept の抽象度レベル（principle / finding / bridge） */
+  /** Claim の抽象度レベル（principle / finding / bridge） */
   level?: "principle" | "finding" | "bridge";
-  /** 関連 Concept タイトル */
-  relatedConcepts: string[];
+  /** 関連 Claim タイトル */
+  relatedClaims: string[];
   /**
    * 上流 Summary のプレビュー（誤差伝搬抑制のため Synthesizer に併読させる）。
    * 空配列でも動作する（後方互換）。
@@ -84,7 +84,7 @@ export function buildSynthesizerSystemPrompt(
 
   return `You are a synthesis writer for Graphium, a provenance-tracking note editor.
 
-Your task is to analyze a collection of existing Concept pages and identify opportunities where combining knowledge from multiple Concepts could produce NEW insights that don't exist in any single page. Graphium is domain-general — never assume a research-paper register unless the source Concepts clearly come from one.
+Your task is to analyze a collection of existing Claim pages and identify opportunities where combining knowledge from multiple Claims could produce NEW insights that don't exist in any single page. Graphium is domain-general — never assume a research-paper register unless the source Claims clearly come from one.
 
 ## Voice (read this first)
 
@@ -94,7 +94,7 @@ A Synthesis is **a short note that names a connection**, not a literature review
 - Short. Specific. One claim per sentence.
 - Skip sections rather than fill them with filler. Headings below are landing spots, not a checklist.
 - A reader should feel like a colleague is pointing out something they hadn't noticed.${language === "ja" ? `
-- **日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した）は使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜と見ています」「〜のではないでしょうか」のいずれかに揃える。これは絶対ルールで、ソース Concept が常体でも、Synthesis は敬体にする。` : ""}${skillSection}
+- **日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した）は使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜と見ています」「〜のではないでしょうか」のいずれかに揃える。これは絶対ルールで、ソース Claim が常体でも、Synthesis は敬体にする。` : ""}${skillSection}
 
 ### Tone calibration (Bad / Good)
 
@@ -113,14 +113,14 @@ A Synthesis is NOT:
 
 A Synthesis IS:
 - A new insight that EMERGES from connecting two or more concepts
-- Something that no single Concept page already says
+- Something that no single Claim page already says
 - A bridge between ideas that reveals a pattern, principle, or strategy
-- Useful to someone who has read the individual Concept pages but hasn't connected them
+- Useful to someone who has read the individual Claim pages but hasn't connected them
 
 Example:
-- Concept A: "Oxide thin films respond to temperature changes"
-- Concept B: "Reduction processes are pH-dependent"
-- Concept C: "Surface area affects reaction kinetics"
+- Claim A: "Oxide thin films respond to temperature changes"
+- Claim B: "Reduction processes are pH-dependent"
+- Claim C: "Surface area affects reaction kinetics"
 - **Synthesis**: "Multi-parameter optimization strategy for oxide reduction" — connecting temperature, pH, and surface area into a unified framework that none of the individual concepts describe
 
 ## Output Format
@@ -148,48 +148,48 @@ Respond with valid JSON only (no markdown wrapper):
 
 Tag every candidate with **one** \`synthesisMode\` that names the kind of reasoning that produced it. This is the most important new field: it captures *how* the new insight is grounded, not just that it exists. Don't default to one mode — the existing prompt has been over-producing deductive-style combinations and we want to surface the others.
 
-- \`deductive\`: independent Concepts combine into a strategy that follows logically from them. "Given A and B and C, the natural move is D."
-- \`inductive\`: three or more Concepts show the **same** pattern; the Synthesis lifts it into a general rule. **Requires \`sourceConceptIds\` >= 3.**
-- \`abductive\`: an observation Concept (something measured / seen) plus a mechanism / known-rule Concept; the Synthesis is **the best explanatory hypothesis** for the observation. Most genuine "aha" Syntheses are abductive. Default \`hypothesisStatus\` to \`"speculative"\`.
-- \`analogical\`: structural mapping between Concepts from **different domains**. The Synthesis transfers a pattern across a domain gap. Note in the rationale which structural correspondence holds.
-- \`dialectic\`: two Concepts that argue **opposite directions** of the same effect, resolved by a higher frame that contains both. **Requires a real contradiction**, not just emphasis differences.
+- \`deductive\`: independent Claims combine into a strategy that follows logically from them. "Given A and B and C, the natural move is D."
+- \`inductive\`: three or more Claims show the **same** pattern; the Synthesis lifts it into a general rule. **Requires \`sourceConceptIds\` >= 3.**
+- \`abductive\`: an observation Claim (something measured / seen) plus a mechanism / known-rule Claim; the Synthesis is **the best explanatory hypothesis** for the observation. Most genuine "aha" Syntheses are abductive. Default \`hypothesisStatus\` to \`"speculative"\`.
+- \`analogical\`: structural mapping between Claims from **different domains**. The Synthesis transfers a pattern across a domain gap. Note in the rationale which structural correspondence holds.
+- \`dialectic\`: two Claims that argue **opposite directions** of the same effect, resolved by a higher frame that contains both. **Requires a real contradiction**, not just emphasis differences.
 
 Selection rules:
 - Pick the most informative single mode. Don't multi-label.
 - If the candidate is "A and B both say the same thing, so probably true" — that is **not** a Synthesis, it's a restatement. Drop it.
-- For \`abductive\`: name the observation Concept(s) and the rule/mechanism Concept(s) separately in the rationale.
+- For \`abductive\`: name the observation Claim(s) and the rule/mechanism Claim(s) separately in the rationale.
 - For \`analogical\`: name the structural mapping (e.g., "X in domain A plays the role of Y in domain B").
 - For \`dialectic\`: state the contradiction explicitly before resolving it.
 
 ## Hypothesis status
 
-Always include \`hypothesisStatus\`. Default \`"speculative"\`. Use \`"tested"\` only if the source Concepts themselves show prior validation. Never claim \`"confirmed"\` from a single round of synthesis.
+Always include \`hypothesisStatus\`. Default \`"speculative"\`. Use \`"tested"\` only if the source Claims themselves show prior validation. Never claim \`"confirmed"\` from a single round of synthesis.
 
 ## Citation rules (strict — prevents error amplification)
 
-Synthesis sits at the top of an inference chain (note → Summary → Concept → Synthesis), so unsupported claims compound. Mitigate by:
+Synthesis sits at the top of an inference chain (note → Summary → Claim → Synthesis), so unsupported claims compound. Mitigate by:
 
-1. **Every load-bearing claim MUST cite its source** using \`[[Concept Title]]\` — the EXACT title from the Concept list below. Generic phrases like "according to the concepts" / "ある Concept によると" are not citations.
+1. **Every load-bearing claim MUST cite its source** using \`[[Claim Title]]\` — the EXACT title from the Claim list below. Generic phrases like "according to the concepts" / "ある Claim によると" are not citations.
 2. If you reference upstream Summary evidence, cite it as \`[[Summary Title]]\` — only titles that appear in the Source Summary list count.
-3. **Do NOT invent external URLs, DOIs, paper titles, or author names.** External references propagate through the source notes; the Synthesizer must not fabricate them. If the source Concepts don't carry a citation, omit it.
-4. Lower \`confidence\` when upstream Concepts conflict, when evidence is thin, or when the synthesis depends on assumptions not present in the inputs. Do not inflate confidence to make a candidate pass the 0.85 threshold.
+3. **Do NOT invent external URLs, DOIs, paper titles, or author names.** External references propagate through the source notes; the Synthesizer must not fabricate them. If the source Claims don't carry a citation, omit it.
+4. Lower \`confidence\` when upstream Claims conflict, when evidence is thin, or when the synthesis depends on assumptions not present in the inputs. Do not inflate confidence to make a candidate pass the 0.85 threshold.
 
 ## Guidelines
 
 - Generate 0-2 candidates (quality over quantity). **Returning an empty list is the correct answer when nothing crosses the bar — Synthesis sits at the top of the inference chain, so under-confident candidates compound errors downstream.**
 - Only propose with confidence >= 0.85 (and treat 0.85 as "barely confident" — most genuine syntheses sit at 0.88-0.95). The bar is intentionally high: Synthesis pages are crystallization, not coverage.
-- Each candidate must combine 2-4 existing Concepts
-- **One Synthesis = one connection.** If you see two unrelated patterns across the Concepts, output two candidates — never bundle them.
+- Each candidate must combine 2-4 existing Claims
+- **One Synthesis = one connection.** If you see two unrelated patterns across the Claims, output two candidates — never bundle them.
 - **Length: keep it short.** Include only what the connection needs. A two-paragraph Synthesis that lands cleanly beats a five-section one with filler. If you find yourself stretching to fill a section, drop the section.
 - Section structure (minimal — drop any that doesn't apply):
 ${language === "ja" ? `  1. **冒頭 1-2 文で新しい洞察を言い切る**（見出しなし可）
-  2. **横断分析**: ソース Concept がどう相互作用するか — 各 Concept をインライン引用 \`[[Concept タイトル]]\` で言及
+  2. **横断分析**: ソース Claim がどう相互作用するか — 各 Claim をインライン引用 \`[[Claim タイトル]]\` で言及
   3. **（任意）残る問い・反例**: 統合の境界条件や未解決の点。なければ書かない` : `  1. **Open with the new insight in 1-2 sentences** (no heading required)
-  2. **Cross-concept reasoning**: how the sources interact — cite each via inline \`[[Concept Title]]\`
+  2. **Cross-concept reasoning**: how the sources interact — cite each via inline \`[[Claim Title]]\`
   3. **(Optional) Open questions / boundaries**: where the synthesis breaks down. Skip if there are none.`}
 - The rationale must explain what NEW understanding emerges
 - Return empty candidates array if no meaningful synthesis is possible
-- Do NOT synthesize if there are fewer than 3 Concept pages
+- Do NOT synthesize if there are fewer than 3 Claim pages
 
 ## Language
 
@@ -200,21 +200,21 @@ Output in: ${language === "ja" ? "Japanese" : "English"}`;
  * Synthesis 用のユーザーメッセージを構築する
  */
 export function buildSynthesizerUserMessage(
-  concepts: ConceptSnapshot[],
+  concepts: ClaimSnapshot[],
   existingSynthesisTitles: string[],
 ): string {
   // Synthesis は 2 件以上で成立する（プロンプトでも "two or more concepts" としている）。
   // Discovery 側で 3 件以上に絞りたい場合は、呼び出し元（fetchSynthesisCandidates）で
   // 既に件数ガードを行っているため、ここはサーバー /synthesize の最小要件と一致させる。
   if (concepts.length < 2) {
-    return "Not enough Concept pages for synthesis (minimum 2 required).";
+    return "Not enough Claim pages for synthesis (minimum 2 required).";
   }
 
   const conceptDescriptions = concepts.map((c) => {
     const levelTag = c.level ? ` [${c.level}]` : "";
     const preview = c.bodyPreview ? `  ${c.bodyPreview}` : "";
-    const related = c.relatedConcepts.length > 0
-      ? `  Related to: ${c.relatedConcepts.join(", ")}`
+    const related = c.relatedClaims.length > 0
+      ? `  Related to: ${c.relatedClaims.join(", ")}`
       : "";
     const tail = [preview, related].filter(Boolean).join("\n");
     return `### ${c.title}${levelTag} (id: ${c.id})${tail ? "\n" + tail : ""}`;
@@ -239,7 +239,7 @@ export function buildSynthesizerUserMessage(
     ? `\n\n## Existing Syntheses (avoid duplicating these)\n${existingSynthesisTitles.map((t) => `- ${t}`).join("\n")}`
     : "";
 
-  return `Analyze the following ${concepts.length} Concept pages and propose synthesis opportunities:\n\n${conceptDescriptions}${summarySection}${existingNote}`;
+  return `Analyze the following ${concepts.length} Claim pages and propose synthesis opportunities:\n\n${conceptDescriptions}${summarySection}${existingNote}`;
 }
 
 /**

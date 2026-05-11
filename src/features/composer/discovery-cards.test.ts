@@ -110,7 +110,7 @@ describe("buildDiscoveryCards", () => {
       updatedAt: NOW.toISOString(),
       notes: [
         entry({ noteId: "wiki-1", title: "XRD 測定手順", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
-        entry({ noteId: "wiki-2", title: "T_cal", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "concept" }),
+        entry({ noteId: "wiki-2", title: "T_cal", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "claim" }),
         entry({ noteId: "wiki-3", title: "Cu S-A 要約", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
         entry({ noteId: "wiki-4", title: "S-A + S-B 統合", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "synthesis" }),
       ],

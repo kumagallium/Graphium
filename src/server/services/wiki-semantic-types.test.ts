@@ -1,4 +1,4 @@
-// 提案 v4 Phase 1 の意味的な型（conceptRole / atomType / synthesisMode /
+// 提案 v4 Phase 1 の意味的な型（claimRole / atomType / synthesisMode /
 // hypothesisStatus）の LLM 出力パースを検証する。
 // - 認識可能な値: そのまま採用される
 // - 認識不能な値 / 欠落: undefined（後方互換）
@@ -9,13 +9,13 @@ import { parseIngesterOutput } from "./wiki-ingester";
 import { parseAtomizerOutput } from "./wiki-atomizer";
 import { parseSynthesizerOutput } from "./wiki-synthesizer";
 
-describe("parseIngesterOutput: conceptRole", () => {
+describe("parseIngesterOutput: claimRole", () => {
   it("認識可能な研究プロセス役割を配列で受け取る", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
-        kind: "concept",
+        kind: "claim",
         level: "finding",
-        conceptRole: ["finding", "anomaly"],
+        claimRole: ["finding", "anomaly"],
         title: "Concept",
         sections: [{ heading: "h", content: "c" }],
         suggestedAction: "create",
@@ -23,28 +23,28 @@ describe("parseIngesterOutput: conceptRole", () => {
       }],
     }));
     expect(out).toHaveLength(1);
-    expect(out[0]?.conceptRole).toEqual(["finding", "anomaly"]);
+    expect(out[0]?.claimRole).toEqual(["finding", "anomaly"]);
   });
 
   it("認識不能な値は無視され、有効な値だけ残る", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
-        kind: "concept",
+        kind: "claim",
         level: "finding",
-        conceptRole: ["finding", "garbage", "issue"],
+        claimRole: ["finding", "garbage", "issue"],
         title: "Concept",
         sections: [{ heading: "h", content: "c" }],
         suggestedAction: "create",
         confidence: 0.9,
       }],
     }));
-    expect(out[0]?.conceptRole).toEqual(["finding", "issue"]);
+    expect(out[0]?.claimRole).toEqual(["finding", "issue"]);
   });
 
-  it("conceptRole 欠落でもパースが落ちず、フィールドは undefined", () => {
+  it("claimRole 欠落でもパースが落ちず、フィールドは undefined", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
-        kind: "concept",
+        kind: "claim",
         level: "finding",
         title: "Concept",
         sections: [{ heading: "h", content: "c" }],
@@ -52,36 +52,36 @@ describe("parseIngesterOutput: conceptRole", () => {
         confidence: 0.9,
       }],
     }));
-    expect(out[0]?.conceptRole).toBeUndefined();
+    expect(out[0]?.claimRole).toBeUndefined();
   });
 
-  it("summary kind では conceptRole を無視する", () => {
+  it("summary kind では claimRole を無視する", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
         kind: "summary",
-        conceptRole: ["finding"],
+        claimRole: ["finding"],
         title: "Summary",
         sections: [{ heading: "h", content: "c" }],
         suggestedAction: "create",
         confidence: 0.9,
       }],
     }));
-    expect(out[0]?.conceptRole).toBeUndefined();
+    expect(out[0]?.claimRole).toBeUndefined();
   });
 
   it("重複した役割は dedupe される", () => {
     const out = parseIngesterOutput(JSON.stringify({
       wikis: [{
-        kind: "concept",
+        kind: "claim",
         level: "finding",
-        conceptRole: ["finding", "finding", "anomaly"],
+        claimRole: ["finding", "finding", "anomaly"],
         title: "Concept",
         sections: [{ heading: "h", content: "c" }],
         suggestedAction: "create",
         confidence: 0.9,
       }],
     }));
-    expect(out[0]?.conceptRole).toEqual(["finding", "anomaly"]);
+    expect(out[0]?.claimRole).toEqual(["finding", "anomaly"]);
   });
 });
 

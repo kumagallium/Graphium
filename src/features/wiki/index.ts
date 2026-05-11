@@ -18,7 +18,7 @@ export {
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
   // Synthesis
-  fetchSynthesisCandidates, buildSynthesisDocument, buildConceptSnapshots,
+  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
   // Discovery 共通: embedding ベース重複検出

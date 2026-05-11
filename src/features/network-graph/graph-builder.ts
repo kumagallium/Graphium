@@ -147,13 +147,13 @@ export function buildNoteGraph(
         }
       }
     }
-    // Atom の derivedFromConcepts: Concept → Atom のエッジ
+    // Atom の derivedFromClaims: Concept → Atom のエッジ
     if (
       doc.source === "ai" &&
       doc.wikiMeta?.kind === "atom" &&
-      doc.wikiMeta?.derivedFromConcepts
+      doc.wikiMeta?.derivedFromClaims
     ) {
-      for (const conceptId of doc.wikiMeta.derivedFromConcepts) {
+      for (const conceptId of doc.wikiMeta.derivedFromClaims) {
         if (fileIds.has(conceptId)) {
           addEdge(conceptId, fileId, "atomize");
         }

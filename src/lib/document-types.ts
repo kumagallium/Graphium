@@ -5,37 +5,40 @@ import type { DocumentProvenance } from "../features/document-provenance/types";
 
 // AI Wiki ドキュメントの種類
 // summary  : 1 ノートに対する内部向け要約
-// concept  : 複数ノート横断の整理（実施文脈をある程度残す）
-// atom     : 実験的レイヤ。Concept をさらに抽象化し、文脈を削いだ単一アイデア（Zettel atom）
+// claim    : 複数ノート横断で抽出された事実ベースの主張（実施文脈をある程度残す）
+//            ※ 旧名称 "concept" は事実層を哲学的概念のように誤読させていたため、
+//              提案 v4 で「Claim（主張）」に改名した。旧 kind: "concept" は
+//              document-migration の migrateConceptKindToClaim で自動移行される。
+// atom     : 実験的レイヤ。Claim をさらに抽象化し、文脈を削いだ単一アイデア（Zettel atom）
 // synthesis: 実験的レイヤ。Atom 同士の結合から立ち上がる新しい洞察
 //
 // experimental.atomLayer / experimental.synthesis 設定で生成可否を制御する。
 // 既存ユーザーの synthesis ファイルは削除しないため、atom 同様に kind 文字列としては常に有効。
-export type WikiKind = "summary" | "concept" | "atom" | "synthesis";
+export type WikiKind = "summary" | "claim" | "atom" | "synthesis";
 
-// Concept の抽象度レベル（concept のみで意味を持つ）
+// Claim の抽象度レベル（claim のみで意味を持つ）
 // principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
 // finding: 本人の経験から立ち上がった転用可能な命題
 // bridge: 複数の finding を貫く抽象（後段の cross-update で生成）
-export type ConceptLevel = "principle" | "finding" | "bridge";
+export type ClaimLevel = "principle" | "finding" | "bridge";
 
-// Concept の確度ステータス（principle で主に意味を持つ）
+// Claim の確度ステータス（principle で主に意味を持つ）
 // candidate: 1 ノートのみで依拠されている。検索・retrieval 母集団には含むが UI では薄表示
 // verified: 2 ノート以上で依拠された。「自分の研究で繰り返し効いている原理」
-export type ConceptStatus = "candidate" | "verified";
+export type ClaimStatus = "candidate" | "verified";
 
 // ──────────────────────────────────────────────
 // 意味的な型（提案 v4 Phase 1）
 //
-// Concept / Atom / Synthesis に直交する別次元の「型」を導入する。
+// Claim / Atom / Synthesis に直交する別次元の「型」を導入する。
 // 既存のコンテキストラベル（PROV-DM 存在論的役割）とは独立で、
 // 思考の強制を避けるためユーザーには選択を強制せず、AI が自動推定する。
 // すべて optional で、未指定でも従来通り動作する。
 // ──────────────────────────────────────────────
 
-// Concept の研究プロセス役割（文脈内で抽出された要素の「種類」）
-// 複数値可（同じ Concept が finding でもあり question でもありうる）
-export type ConceptRole =
+// Claim の研究プロセス役割（文脈内で抽出された要素の「種類」）
+// 複数値可（同じ Claim が finding でもあり question でもありうる）
+export type ClaimRole =
   | "finding"          // 発見・観察: この文脈で観察された事実
   | "decision"         // 決定・選択: この文脈での選択とその理由
   | "anomaly"          // 予期せぬ事象: 予想外の観測・結果
@@ -139,21 +142,21 @@ export type WikiMeta = {
   }[];
   /** Wiki の生成言語 */
   language?: string;
-  /** Concept の抽象度レベル（concept のみ） */
-  level?: ConceptLevel;
-  /** Concept の確度ステータス（principle で主に意味を持つ） */
-  status?: ConceptStatus;
+  /** Claim の抽象度レベル（claim のみ） */
+  level?: ClaimLevel;
+  /** Claim の確度ステータス（principle で主に意味を持つ） */
+  status?: ClaimStatus;
   /** principle が依拠していると判定された、ソースノート内の該当文（生成時の自己検証用） */
   evidenceSpan?: string;
-  /** Atom が抽象化した元 Concept の ID リスト（atom のみ） */
-  derivedFromConcepts?: string[];
+  /** Atom が抽象化した元 Claim の ID リスト（atom のみ） */
+  derivedFromClaims?: string[];
   /** 生成時の自己評価された確度（0.0〜1.0）。主に Synthesis で誤差伝搬の指標として表示する */
   confidence?: number;
 
   // ── 意味的な型（提案 v4 Phase 1。すべて optional、後方互換維持） ──
 
-  /** Concept の研究プロセス役割。複数可（同じ Concept が finding でもあり question でもありうる） */
-  conceptRole?: ConceptRole[];
+  /** Claim の研究プロセス役割。複数可（同じ Claim が finding でもあり question でもありうる） */
+  claimRole?: ClaimRole[];
   /** Atom の推論的役割 */
   atomType?: AtomType;
   /** Synthesis の推論モード */
@@ -173,12 +176,12 @@ export type WikiMetaSummary = {
   kind: WikiKind;
   /** 書記役 LLM のモデル ID (例: claude-opus-4-7) */
   model?: string;
-  /** Concept のときのみ意味を持つ抽象度レベル */
-  level?: ConceptLevel;
+  /** Claim のときのみ意味を持つ抽象度レベル */
+  level?: ClaimLevel;
   /** principle のときのみ意味を持つ確度ステータス */
-  status?: ConceptStatus;
-  /** Concept の研究プロセス役割（複数可） */
-  conceptRole?: ConceptRole[];
+  status?: ClaimStatus;
+  /** Claim の研究プロセス役割（複数可） */
+  claimRole?: ClaimRole[];
   /** Atom の推論的役割 */
   atomType?: AtomType;
   /** Synthesis の推論モード */

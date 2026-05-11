@@ -378,7 +378,7 @@ export const en: Record<string, string> = {
   "settings.maintenance.regenAll.title": "Bulk regenerate Wiki",
   "settings.maintenance.regenAll.help": "Rebuild existing Knowledge pages with the latest prompts or model after you update them.",
   "settings.maintenance.kindFilter": "Target kinds",
-  "settings.maintenance.kind.concept": "Concept",
+  "settings.maintenance.kind.claim": "Claim",
   "settings.maintenance.kind.summary": "Summary",
   "settings.maintenance.kind.atom": "Atom",
   "settings.maintenance.kind.synthesis": "Synthesis",

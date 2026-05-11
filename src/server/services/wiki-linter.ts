@@ -4,7 +4,7 @@
 // - 孤立ページ（Orphan）: 他の Wiki や元ノートとの接続がないページ
 // - 知識ギャップ（Gap）: カバーされていないトピック・発展可能な領域
 // - 陳腐化（Stale）: 長期間更新されていないページ
-// - 重複（Redundant）: 内容が大幅に重なる Concept 同士
+// - 重複（Redundant）: 内容が大幅に重なる Claim 同士
 
 export type LintIssueType = "contradiction" | "orphan" | "gap" | "stale" | "redundant";
 export type LintSeverity = "info" | "warning" | "error";
@@ -36,12 +36,12 @@ export type LintReport = {
 export type WikiSnapshot = {
   id: string;
   title: string;
-  kind: "summary" | "concept" | "atom" | "synthesis";
+  kind: "summary" | "claim" | "atom" | "synthesis";
   derivedFromNotes: string[];
-  relatedConcepts: string[];
+  relatedClaims: string[];
   /** 本文先頭のプレビュー（1ノート1知見前提で sections は廃止） */
   bodyPreview: string;
-  /** Concept のときのみ意味を持つ（principle / finding / bridge） */
+  /** Claim のときのみ意味を持つ（principle / finding / bridge） */
   level?: "principle" | "finding" | "bridge";
   lastIngestedAt?: string;
   modifiedAt: string;
@@ -69,7 +69,7 @@ Severity: "warning"
 
 ### gap
 An area of knowledge that is referenced or implied but has no dedicated Wiki page.
-Also includes Concepts that could be synthesized from existing pages but haven't been.
+Also includes Claims that could be synthesized from existing pages but haven't been.
 Severity: "info"
 
 ### stale
@@ -78,7 +78,7 @@ Or a page whose source notes may have changed since the Wiki was generated.
 Severity: "warning"
 
 ### redundant
-Two or more Concept pages that cover substantially the same knowledge.
+Two or more Claim pages that cover substantially the same knowledge.
 One could be deleted or merged into the other without losing information.
 This often happens when a page is regenerated with a better model — the old version may now be redundant.
 Severity: "warning"
@@ -105,10 +105,10 @@ Respond with valid JSON only (no markdown wrapper):
 - Be specific: reference actual Wiki titles and content in descriptions
 - Be conservative: only flag clear issues, not speculative ones
 - Prioritize actionable issues: each issue should have a concrete suggestion
-- For gaps: suggest what kind of Concept page could be created
+- For gaps: suggest what kind of Claim page could be created
 - For contradictions: quote the conflicting claims
 - For stale: compare lastIngestedAt dates with related pages
-- For redundant: compare section headings and content themes between Concept pages. If two Concepts cover >70% of the same ground, flag them. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality. The suggestion should clearly state which page absorbs which
+- For redundant: compare section headings and content themes between Claim pages. If two Claims cover >70% of the same ground, flag them. IMPORTANT: in affectedWikiIds, put the page to KEEP first, and the page to MERGE INTO IT second. Prefer keeping the one with more recent updates, more sources, or better quality. The suggestion should clearly state which page absorbs which
 - Return an empty issues array if no issues are found
 
 ## Language
@@ -125,14 +125,14 @@ export function buildLinterUserMessage(wikis: WikiSnapshot[]): string {
   }
 
   const wikiDescriptions = wikis.map((w) => {
-    const kindLabel = w.kind === "concept" && w.level ? `concept/${w.level}` : w.kind;
+    const kindLabel = w.kind === "claim" && w.level ? `concept/${w.level}` : w.kind;
     const lines = [
       `## [${kindLabel}] ${w.title} (id: ${w.id})`,
       `Last updated: ${w.modifiedAt}`,
       w.lastIngestedAt ? `Last ingested: ${w.lastIngestedAt}` : null,
       `Sources: ${w.derivedFromNotes.length} note(s)`,
-      w.relatedConcepts.length > 0
-        ? `Related concepts: ${w.relatedConcepts.join(", ")}`
+      w.relatedClaims.length > 0
+        ? `Related concepts: ${w.relatedClaims.join(", ")}`
         : null,
       w.bodyPreview ? `Preview: ${w.bodyPreview}` : null,
     ].filter(Boolean);
@@ -204,11 +204,11 @@ export function detectLocalIssues(
   // Wiki ID → Wiki のマップ
   const wikiById = new Map(wikis.map((w) => [w.id, w]));
 
-  // 全 Wiki の relatedConcepts に含まれている ID セット
+  // 全 Wiki の relatedClaims に含まれている ID セット
   const referenced = new Set<string>();
   for (const w of wikis) {
-    for (const rc of w.relatedConcepts) {
-      // relatedConcepts はタイトルなので、ID に変換
+    for (const rc of w.relatedClaims) {
+      // relatedClaims はタイトルなので、ID に変換
       const target = wikis.find((t) => t.title === rc);
       if (target) referenced.add(target.id);
     }
@@ -233,19 +233,19 @@ export function detectLocalIssues(
       });
     }
 
-    // Orphan チェック: Concept で他から参照されておらず、自身も他を参照していない
-    if (w.kind === "concept") {
+    // Orphan チェック: Claim で他から参照されておらず、自身も他を参照していない
+    if (w.kind === "claim") {
       const isReferenced = referenced.has(w.id);
-      const hasOutgoing = w.relatedConcepts.length > 0;
+      const hasOutgoing = w.relatedClaims.length > 0;
       const hasSources = w.derivedFromNotes.length > 0;
       if (!isReferenced && !hasOutgoing && !hasSources) {
         issues.push({
           type: "orphan",
           severity: "warning",
-          title: `"${w.title}" is an orphan Concept`,
-          description: `This Concept has no connections to other Wiki pages or source notes.`,
+          title: `"${w.title}" is an orphan Claim`,
+          description: `This Claim has no connections to other Wiki pages or source notes.`,
           affectedWikiIds: [w.id],
-          suggestion: `Consider linking it to related Concepts, or delete if no longer relevant.`,
+          suggestion: `Consider linking it to related Claims, or delete if no longer relevant.`,
         });
       }
     }

@@ -57,7 +57,7 @@ not seen them together in one tool.
 | Pillar | What it means |
 |---|---|
 | **Provenance, by standard** | Block-level labels (`[Step]`, `[Plan]`, `[Result]`) map to PROV-DM *Activities*; inline highlights (`[Input]`, `[Tool]`, `[Parameter]`, `[Output]`) map to *Entities* and *Properties*; *Agents* come in from authorship metadata. The result is a graph a machine can verify, not just a search index. |
-| **A wiki the AI keeps for you** | Graphium ingests your notes into an editable AI Wiki — *Concept*, *Atom*, *Synthesis*. Future AI conversations read from this wiki, so their claims cite your notes, not their training data. |
+| **A wiki the AI keeps for you** | Graphium ingests your notes into an editable AI Wiki — *Claim*, *Atom*, *Synthesis*. Future AI conversations read from this wiki, so their claims cite your notes, not their training data. |
 | **A block editor for thinking-in-progress** | A [BlockNote.js](https://www.blocknotejs.org/)-based editor tuned for messy-now, structured-later: free writing, `@`-linking between notes, `#`-labeling when you are ready. |
 
 > Surface conveniences that sit on top of these pillars (mobile capture, sync,
@@ -90,7 +90,7 @@ bridge auditable in both directions.
 ## 5. The hourglass: where portable knowledge is born
 
 Knowledge in Graphium is shaped like an hourglass on its side. The flow goes
-**Notes → Concept → Atom → Synthesis**, and the unit at each stage carries
+**Notes → Claim → Atom → Synthesis**, and the unit at each stage carries
 less and less of the original project's context — until the Atom, which is
 the narrow waist where context drops to zero and the claim becomes portable.
 
@@ -112,11 +112,11 @@ flowchart LR
 ```
 
 > The yellow **Atom** is the waist of the hourglass. Blue boxes (Notes,
-> Concept, Synthesis) carry context; the Atom does not.
+> Claim, Synthesis) carry context; the Atom does not.
 
 - **Notes** carry full context — dates, mistakes, side conversations, the
   reason you did something on a Tuesday afternoon.
-- **Concept** pages extract the load-bearing elements while keeping context,
+- **Claim** pages extract the load-bearing elements while keeping context,
   so a human can still read them as part of the project they came from.
 - **Atom** is the waist. Each Atom is a single context-free claim with
   citations back to the notes that justify it. This is the unit that
