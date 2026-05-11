@@ -7,7 +7,6 @@ import { Bot, Search, Trash2 } from "lucide-react";
 import type {
   AtomType,
   ClaimRole,
-  HypothesisStatus,
   SynthesisMode,
   WikiKind,
   WikiMetaSummary,
@@ -89,59 +88,23 @@ function DeleteConfirmDialog({
   );
 }
 
-// 提案 v4 Phase 1 の意味的な型バッジ表示用ラベル。
-const CLAIM_ROLE_LABEL: Record<ClaimRole, string> = {
-  finding: "Finding",
-  decision: "Decision",
-  anomaly: "Anomaly",
-  question: "Question",
-  setup: "Setup",
-  interpretation: "Interpretation",
-  issue: "Issue",
-};
-
-const ATOM_TYPE_LABEL: Record<AtomType, string> = {
-  causal: "Causal",
-  correlational: "Correlational",
-  mechanistic: "Mechanistic",
-  conditional: "Conditional",
-  definitional: "Definitional",
-  methodological: "Methodological",
-  observational: "Observational",
-  boundary: "Boundary",
-};
-
-const SYNTHESIS_MODE_LABEL: Record<SynthesisMode, string> = {
-  deductive: "Deductive",
-  inductive: "Inductive",
-  abductive: "Abductive",
-  analogical: "Analogical",
-  dialectic: "Dialectic",
-};
-
-const HYPOTHESIS_STATUS_LABEL: Record<HypothesisStatus, string> = {
-  speculative: "Speculative",
-  tested: "Tested",
-  confirmed: "Confirmed",
-  refuted: "Refuted",
-};
-
 // Wiki 一覧の「種別」列に表示する意味的なバッジ。
 // 一覧は既に kind でフィルタされているため kind 自体は冗長で、代わりに
 // 提案 v4 Phase 1 の意味的な型（claimRole / atomType / synthesisMode）を見せる。
 // 型が未推定のエントリは小さなフォールバック（— または kind の小ラベル）を返す。
+//
+// hypothesisStatus はユーザー操作で状態を昇格させる UI フローが無く、
+// 既定値以外がほぼ出ないため一覧では表示しない（データは wikiMeta に残す）。
 function TypeBadge({
   kind,
   claimRole,
   atomType,
   synthesisMode,
-  hypothesisStatus,
 }: {
   kind: WikiKind;
   claimRole?: ClaimRole[];
   atomType?: AtomType;
   synthesisMode?: SynthesisMode;
-  hypothesisStatus?: HypothesisStatus;
 }) {
   const t = useT();
 
@@ -162,10 +125,10 @@ function TypeBadge({
         {claimRole.map((role) => (
           <span
             key={role}
-            title={`Research-process role: ${role}`}
+            title={t(`wikiTypes.claimRole.${role}` as any)}
             className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[11px] font-medium"
           >
-            {CLAIM_ROLE_LABEL[role] ?? role}
+            {t(`wikiTypes.claimRole.${role}` as any)}
           </span>
         ))}
       </span>
@@ -178,10 +141,10 @@ function TypeBadge({
     }
     return (
       <span
-        title={`Atom type: ${atomType}`}
+        title={t(`wikiTypes.atomType.${atomType}` as any)}
         className="inline-block px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-700 dark:text-sky-400 text-[11px] font-medium"
       >
-        {ATOM_TYPE_LABEL[atomType] ?? atomType}
+        {t(`wikiTypes.atomType.${atomType}` as any)}
       </span>
     );
   }
@@ -191,27 +154,11 @@ function TypeBadge({
       return <span className="text-muted-foreground/40 text-[11px]">—</span>;
     }
     return (
-      <span className="inline-flex items-center gap-1">
-        <span
-          title={`Reasoning mode: ${synthesisMode}`}
-          className="inline-block px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-400 text-[11px] font-medium"
-        >
-          {SYNTHESIS_MODE_LABEL[synthesisMode] ?? synthesisMode}
-        </span>
-        {hypothesisStatus && hypothesisStatus !== "speculative" && (
-          <span
-            title={`Hypothesis status: ${hypothesisStatus}`}
-            className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-              hypothesisStatus === "refuted"
-                ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
-                : hypothesisStatus === "confirmed"
-                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                  : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {HYPOTHESIS_STATUS_LABEL[hypothesisStatus] ?? hypothesisStatus}
-          </span>
-        )}
+      <span
+        title={t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
+        className="inline-block px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-400 text-[11px] font-medium"
+      >
+        {t(`wikiTypes.synthesisMode.${synthesisMode}` as any)}
       </span>
     );
   }
@@ -538,7 +485,6 @@ export function WikiListView({
                       claimRole={entry.claimRole}
                       atomType={entry.atomType}
                       synthesisMode={entry.synthesisMode}
-                      hypothesisStatus={entry.hypothesisStatus}
                     />
                   </td>
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">

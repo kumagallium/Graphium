@@ -3,55 +3,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
-import type {
-  AtomType,
-  ClaimRole,
-  HypothesisStatus,
-  SynthesisMode,
-  WikiMeta,
-} from "../../lib/document-types";
+import type { WikiMeta } from "../../lib/document-types";
 import { useT } from "../../i18n";
 
-// 提案 v4 Phase 1.x の型バッジ表示用ラベル。
-// 内部キー (causal 等) と表示文字列 (Causal) の対応。
-const CLAIM_ROLE_LABEL: Record<ClaimRole, string> = {
-  finding: "Finding",
-  decision: "Decision",
-  anomaly: "Anomaly",
-  question: "Question",
-  setup: "Setup",
-  interpretation: "Interpretation",
-  issue: "Issue",
-};
-
-const ATOM_TYPE_LABEL: Record<AtomType, string> = {
-  causal: "Causal",
-  correlational: "Correlational",
-  mechanistic: "Mechanistic",
-  conditional: "Conditional",
-  definitional: "Definitional",
-  methodological: "Methodological",
-  observational: "Observational",
-  boundary: "Boundary",
-};
-
-const SYNTHESIS_MODE_LABEL: Record<SynthesisMode, string> = {
-  deductive: "Deductive",
-  inductive: "Inductive",
-  abductive: "Abductive",
-  analogical: "Analogical",
-  dialectic: "Dialectic",
-};
-
-const HYPOTHESIS_STATUS_LABEL: Record<HypothesisStatus, string> = {
-  speculative: "Speculative",
-  tested: "Tested",
-  confirmed: "Confirmed",
-  refuted: "Refuted",
-};
-
-function TypeBadge({ label, title, tone = "neutral" }: { label: string; title?: string; tone?: "neutral" | "warn" }) {
-  const color = tone === "warn" ? "var(--ember, #b54708)" : "var(--ink-2)";
+function TypeBadge({ label, title }: { label: string; title?: string }) {
   return (
     <span
       title={title}
@@ -62,7 +17,7 @@ function TypeBadge({ label, title, tone = "neutral" }: { label: string; title?: 
         borderRadius: "var(--pill)",
         background: "var(--paper)",
         border: "1px solid var(--rule)",
-        color,
+        color: "var(--ink-2)",
         fontSize: 10,
         fontWeight: 500,
       }}
@@ -213,31 +168,25 @@ export function WikiBanner({
           AI {kindLabel}
         </span>
 
-        {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示 */}
+        {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示。
+            hypothesisStatus は UI フロー未整備のためバナーには出さない（データは保持）。 */}
         {wikiMeta.kind === "claim" && wikiMeta.claimRole?.map((role) => (
           <TypeBadge
             key={role}
-            label={CLAIM_ROLE_LABEL[role] ?? role}
-            title={`Research-process role: ${role}`}
+            label={t(`wikiTypes.claimRole.${role}` as any)}
+            title={t(`wikiTypes.claimRole.${role}` as any)}
           />
         ))}
         {wikiMeta.kind === "atom" && wikiMeta.atomType && (
           <TypeBadge
-            label={ATOM_TYPE_LABEL[wikiMeta.atomType] ?? wikiMeta.atomType}
-            title={`Atom type: ${wikiMeta.atomType}`}
+            label={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
+            title={t(`wikiTypes.atomType.${wikiMeta.atomType}` as any)}
           />
         )}
         {wikiMeta.kind === "synthesis" && wikiMeta.synthesisMode && (
           <TypeBadge
-            label={SYNTHESIS_MODE_LABEL[wikiMeta.synthesisMode] ?? wikiMeta.synthesisMode}
-            title={`Reasoning mode: ${wikiMeta.synthesisMode}`}
-          />
-        )}
-        {wikiMeta.kind === "synthesis" && wikiMeta.hypothesisStatus && wikiMeta.hypothesisStatus !== "speculative" && (
-          <TypeBadge
-            label={HYPOTHESIS_STATUS_LABEL[wikiMeta.hypothesisStatus] ?? wikiMeta.hypothesisStatus}
-            title={`Hypothesis status: ${wikiMeta.hypothesisStatus}`}
-            tone={wikiMeta.hypothesisStatus === "refuted" ? "warn" : "neutral"}
+            label={t(`wikiTypes.synthesisMode.${wikiMeta.synthesisMode}` as any)}
+            title={t(`wikiTypes.synthesisMode.${wikiMeta.synthesisMode}` as any)}
           />
         )}
 
