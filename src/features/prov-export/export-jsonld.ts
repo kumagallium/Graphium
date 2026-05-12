@@ -4,6 +4,14 @@
 
 import type { ProvJsonLd, ProvJsonLdNode } from "../prov-generator";
 import type { DocumentProvenanceBundle } from "../document-provenance/prov-output";
+import type {
+  AtomType,
+  ClaimRole,
+  HypothesisStatus,
+  ProcedureContext,
+  SynthesisMode,
+  WikiKind,
+} from "../../lib/document-types";
 
 // ── W3C PROV-JSON-LD 出力型 ──
 
@@ -218,16 +226,33 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
 /**
  * Graphium 内部形式を W3C PROV-JSON-LD 準拠ドキュメントに変換
  */
-type WikiEntityInfo = {
+export type WikiEntityInfo = {
   title: string;
-  kind: string;
+  kind: WikiKind | string;
   status: string;
   generatedAt: string;
   model: string;
   derivedFromNotes: string[];
+  // Phase 4 (PR-B7): 提案 v4 Phase 1 の意味的な型を PROV-JSON-LD に持ち出す。
+  // 内部識別子はそのまま emit する（UI ラベル "Insights" / "Ideas" は表示層の話で、
+  // データ上は atomType / synthesisMode を保持し続ける）。
+  /** Atom (Insights) の推論的役割。`kind: "atom"` のときに意味を持つ */
+  atomType?: AtomType;
+  /** Synthesis (Ideas) の推論モード。`kind: "synthesis"` のときに意味を持つ */
+  synthesisMode?: SynthesisMode;
+  /** Synthesis の検証状態（特に abductive 型で意味がある） */
+  hypothesisStatus?: HypothesisStatus;
+  /** Claim の研究プロセス役割（複数可） */
+  claimRole?: ClaimRole[];
+  /** Claim の抽象度レベル（principle / finding / bridge） */
+  level?: "principle" | "finding" | "bridge";
+  /** 自己評価された確度（0.0–1.0） */
+  confidence?: number;
+  /** Claim が依存する手順条件（reproducibility scaffold）。Claim 層のみ */
+  procedureContext?: ProcedureContext;
 };
 
-function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntities?: WikiEntityInfo[]): W3CProvDocument {
+export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntities?: WikiEntityInfo[]): W3CProvDocument {
   const graph: W3CProvNode[] = [];
 
   // Content Provenance（実験手順のPROVグラフ）
@@ -236,7 +261,7 @@ function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntities?: W
   // Wiki Knowledge Layer（AI 生成ドキュメント）を Entity として追加
   if (wikiEntities) {
     for (const wiki of wikiEntities) {
-      graph.push({
+      const wikiNode: W3CProvNode = {
         "@type": "Entity",
         "@id": `graphium:wiki/${encodeURIComponent(wiki.title)}`,
         label: toW3CLabel(wiki.title),
@@ -244,7 +269,19 @@ function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntities?: W
         "graphium:wikiStatus": wiki.status,
         "graphium:generatedAt": wiki.generatedAt,
         "graphium:generatedBy": wiki.model,
-      });
+      };
+      // Phase 4 (PR-B7): 砂時計のくびれに対応する意味的な型を持ち出す。
+      // atomType / synthesisMode / procedureContext は kind ごとに片方しか意味がないが、
+      // 出力側は kind 判別を呼び出し側に委ねず、与えられた値だけを安全に emit する。
+      if (wiki.atomType) wikiNode["graphium:atomType"] = wiki.atomType;
+      if (wiki.synthesisMode) wikiNode["graphium:synthesisMode"] = wiki.synthesisMode;
+      if (wiki.hypothesisStatus) wikiNode["graphium:hypothesisStatus"] = wiki.hypothesisStatus;
+      if (wiki.claimRole && wiki.claimRole.length > 0) wikiNode["graphium:claimRole"] = wiki.claimRole;
+      if (wiki.level) wikiNode["graphium:claimLevel"] = wiki.level;
+      if (typeof wiki.confidence === "number") wikiNode["graphium:confidence"] = wiki.confidence;
+      if (wiki.procedureContext) wikiNode["graphium:procedureContext"] = wiki.procedureContext;
+      graph.push(wikiNode);
+
       // Derivation: Wiki → 派生元ノート
       for (const sourceNoteId of wiki.derivedFromNotes) {
         graph.push({

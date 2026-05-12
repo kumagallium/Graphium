@@ -414,6 +414,34 @@ husk in `wikiMeta`.
 > `document-migration` step on load strips `procedureContext` from any
 > Atom / Synthesis docs that still carry it.
 
+#### Semantic types in the PROV-JSON-LD export (Phase 4)
+
+When a note is exported as PROV-JSON-LD (`src/features/prov-export/`),
+the Wiki Knowledge Layer entities carry the semantic types under
+`graphium:*` attributes:
+
+```jsonc
+{
+  "@type": "Entity",
+  "@id": "graphium:wiki/Annealed%20thin%20film%20resists%20oxidation",
+  "graphium:wikiKind": "claim",
+  "graphium:claimRole": ["finding"],
+  "graphium:claimLevel": "finding",
+  "graphium:procedureContext": {
+    "protocolFingerprint": "spin-coat → anneal",
+    "keyParameters": [{ "name": "T_anneal", "value": "650°C", "necessity": "critical" }],
+    "validityRange": "T_anneal ∈ [600, 700]°C"
+  }
+}
+```
+
+`atomType` is emitted for `wikiKind = atom`, `synthesisMode` and
+`hypothesisStatus` for `wikiKind = synthesis`. The export contract is
+the only place where these semantic types cross Graphium's boundary, so
+the field names here are stable even as UI labels shift (Atom →
+Insights, Synthesis → Ideas in PR-271 — internal identifiers are
+unchanged). See ARCHITECTURE.md §3.2 for the full export table.
+
 ## 4. Skill documents
 
 A "Skill" is a prompt template, also stored as a `GraphiumDocument` with
