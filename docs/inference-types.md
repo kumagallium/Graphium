@@ -2,80 +2,82 @@
 
 Graphium's Knowledge layer tags every extracted note with a small set of metadata fields that capture **what kind of reasoning produced this claim**. This document organizes those fields and explains the layer each one lives at. Read it as learning material, or open it whenever a badge in the UI is unfamiliar.
 
-The design root is the hourglass model: `Notes → Claim → Atom → Synthesis` (UI labels: *Claims → Insights → Ideas*; on-disk identifiers stay as `claim` / `atom` / `synthesis` to preserve existing data). Each layer carries a different concentration of context, and the inference types are attached at the layer they actually belong to.
+The design root is the hourglass model: **Notes → Claims → Insights → Ideas**. On-disk identifiers stay as `claim` / `atom` / `synthesis` so existing data keeps working, but everywhere a user sees a label, this doc and the UI agree on the new names. Each layer carries a different concentration of context, and the inference types are attached at the layer they actually belong to.
 
 ---
 
 ## Overview
 
-| Layer | Operation | Inference type field |
-|---|---|---|
-| Notes → Claim | extraction | `claimRole` (finding / decision / anomaly / question / setup / interpretation / issue) |
-| Claim → Atom | **abstraction (includes induction)** | `atomType` (causal / mechanistic / conditional / …) |
-| Atom → Synthesis | **integration of heterogeneous elements** | `synthesisMode` (deductive / abductive / analogical / dialectic) |
+| Layer (UI) | Layer (internal) | Operation | Inference type field |
+|---|---|---|---|
+| Notes → Claims | `claim` | extraction | `claimRole` (finding / decision / anomaly / question / setup / interpretation / issue) |
+| Claims → Insights | `atom` | **abstraction (includes induction)** | `atomType` (causal / mechanistic / conditional / …) |
+| Insights → Ideas | `synthesis` | **integration of heterogeneous elements** | `synthesisMode` (deductive / abductive / analogical / dialectic) |
 
-Note: **induction is not a Synthesis mode in this system.** It lives at the Claim → Atom transition. See "Why induction is not a Synthesis mode" below.
+Note: **induction is not an Idea mode in this system.** It lives at the Claims → Insights transition. See "Why induction is not an Idea mode" below.
 
 ---
 
-## The four Synthesis modes
+## The four Idea modes (`synthesisMode`)
 
-The Synthesizer takes Atoms (or Claims) and produces **a new connection across heterogeneous elements**. Lifting a general rule out of many similar cases (= induction) is the Atomizer's job, not the Synthesizer's.
+The Synthesizer takes Insights (or Claims) and produces **a new connection across heterogeneous elements**. Lifting a general rule out of many similar cases (= induction) is the Atomizer's job, not the Synthesizer's.
 
 ### `deductive`
 
-- Shape: independent Claims/Atoms → a strategy or combination that follows logically from them.
+- Shape: independent Claims/Insights → a strategy or combination that follows logically from them.
 - Example: "A demonstrates X", "B demonstrates Y", "C demonstrates Z" → "Combining A, B, and C yields a new approach W."
 - Lineage: classical deduction. If the premises hold, the conclusion holds.
-- Failure mode: any premise being wrong collapses the conclusion. When tagging a Synthesis as `deductive`, scrutinize premise confidence.
+- Failure mode: any premise being wrong collapses the conclusion. When tagging an Idea as `deductive`, scrutinize premise confidence.
 
 ### `abductive`
 
-- Shape: an observation Claim/Atom (something measured) + a mechanism/known-rule Claim/Atom → the best explanatory hypothesis for the observation.
+- Shape: an observation Claim/Insight (something measured) + a mechanism/known-rule Claim/Insight → the best explanatory hypothesis for the observation.
 - Example: "An anomalous sign reversal was observed in Al5Co2" + "Two-band conduction can produce this kind of phenomenon" → "Al5Co2's near-Fermi DOS may have a two-band structure" (hypothesis).
-- Lineage: C. S. Peirce. "Inference to the best explanation." **Most "aha"-style Syntheses are abductive.**
+- Lineage: C. S. Peirce. "Inference to the best explanation." **Most "aha"-style Ideas are abductive.**
 - Failure mode: many explanations could fit any observation. Confidence is intrinsically `speculative` until verified separately.
 
 ### `analogical`
 
-- Shape: discover a **structural mapping** between Claims/Atoms in different domains, then transfer one pattern to the other.
+- Shape: discover a **structural mapping** between Claims/Insights in different domains, then transfer one pattern to the other.
 - Example: "Background storage maintenance gradually restores fragmentation in reference structures" (software) ↔ "Biological tissue turnover gradually clears waste products" (biology) → a transfer hypothesis across both.
 - Lineage: Aristotle on analogy; Gentner's structure-mapping theory.
 - Failure mode: surface similarity easily induces wrong mappings. State explicitly in the rationale which element corresponds to which.
 
 ### `dialectic`
 
-- Shape: two Claims/Atoms making **opposite claims** about the same effect → a higher frame that contains both.
+- Shape: two Claims/Insights making **opposite claims** about the same effect → a higher frame that contains both.
 - Example: "Raising pH slows reduction" + "Raising pH speeds reduction" → "Rate-limiting step switches from hydroxide desorption to electron transfer around pH 11."
 - Lineage: Hegelian dialectic. Thesis–antithesis–synthesis.
 - Failure mode: requires a real contradiction, not just an emphasis difference. Do not over-apply.
 
 ---
 
-## Why induction is not a Synthesis mode
+## Why induction is not an Idea mode
 
-The early design (first version of proposal v4) placed an `inductive` mode on Synthesis: "Three or more Claims show the same pattern, lift it into a general rule."
+The early design (first version of proposal v4) placed an `inductive` mode on the synthesis layer: "Three or more Claims show the same pattern, lift it into a general rule."
 
 But reading the Atomizer's own definition carefully:
 
-> Atom: a thin substrate that factors out a single, context-stripped idea recurring across multiple Claims.
+> Insight (`atom`): a thin substrate that factors out a single, context-stripped idea recurring across multiple Claims.
 
-That **is** induction. The Atomizer is already a discovery layer that takes N similar Claims and produces M abstractions across them. So Synthesis-inductive and the Atomizer were doing the same job under different names.
+That **is** induction. The Atomizer is already a discovery layer that takes N similar Claims and produces M abstractions across them. So an inductive Idea and the Atomizer's output were doing the same job under different names.
 
 PR-B4 cleans this up:
 
-- Synthesis is restricted to four modes (deductive / abductive / analogical / dialectic) — the modes that genuinely integrate **heterogeneous** elements.
-- Induction is reframed as the core operation of the Atom layer.
-- The Atomizer prompt explicitly names **two routes to an Atom**: induction-from-many (the cases earn the rule by repetition) and lift-from-few (a couple of Claims that are already near-principles, lifted by domain abstraction).
-- The UI surfaces "derived from N Claims" on each Atom, so induction is visible as evidence.
+- Ideas are restricted to four modes (deductive / abductive / analogical / dialectic) — the modes that genuinely integrate **heterogeneous** elements.
+- Induction is reframed as the core operation of the Insights layer.
+- The Atomizer prompt explicitly names **two routes to an Insight**: induction-from-many (the cases earn the rule by repetition) and lift-from-few (a couple of Claims that are already near-principles, lifted by domain abstraction).
+- The UI surfaces "derived from N Claims" on each Insight, so induction is visible as evidence.
 
 Design implication:
 
-- **Claim layer**: individual facts with context.
-- **Atom layer (the hourglass waist)**: where context is stripped *and* repeated cases are generalized. Induction lives here.
-- **Synthesis layer**: where heterogeneous Atoms are woven into new connections.
+- **Claims layer**: individual facts with context.
+- **Insights layer (the hourglass waist)**: where context is stripped *and* repeated cases are generalized. Induction lives here.
+- **Ideas layer**: where heterogeneous Insights are woven into new connections.
 
-Induction and the four Synthesis modes (deduction / abduction / analogy / dialectic) are no longer peers on the same axis — they live at different layers and do different work.
+Induction and the four Idea modes (deduction / abduction / analogy / dialectic) are no longer peers on the same axis — they live at different layers and do different work.
+
+> A note on terminology: the internal field names (`atomType`, `synthesisMode`) keep the original `atom` / `synthesis` vocabulary because they predate the UI rename and serve as stable identifiers for stored data. When you read code or PROV-JSON-LD exports, expect those words to appear. When you read this doc or the UI, expect *Insights* / *Ideas*.
 
 ---
 
@@ -83,9 +85,9 @@ Induction and the four Synthesis modes (deduction / abduction / analogy / dialec
 
 The badges on each Wiki note's banner correspond directly to the vocabulary on this page.
 
-- **Claim** badge: value of `claimRole` (Finding / Decision / …)
-- **Atom** badge: value of `atomType` (Causal / Mechanistic / …)
-- **Synthesis** badge: value of `synthesisMode` (Deductive / Abductive / Analogical / Dialectic)
+- **Claims** badge: value of `claimRole` (Finding / Decision / …)
+- **Insights** badge: value of `atomType` (Causal / Mechanistic / …)
+- **Ideas** badge: value of `synthesisMode` (Deductive / Abductive / Analogical / Dialectic)
 
 A note without a badge is one the LLM could not infer a type for or judged inapplicable. There is no manual-tagging UI yet (we may add one if a real need surfaces).
 
