@@ -3903,11 +3903,15 @@ export function NoteApp() {
     onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     wikiCounts: (() => {
+      // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
+      // 表示用カウントは wikiFiles をベースに数える必要がある。
       let summary = 0;
       let claim = 0;
       let atom = 0;
       let synthesis = 0;
-      for (const meta of fm.wikiMetas.values()) {
+      for (const wf of fm.wikiFiles) {
+        const meta = fm.wikiMetas.get(wf.id);
+        if (!meta) continue;
         if (meta.kind === "summary") summary++;
         else if (meta.kind === "claim") claim++;
         else if (meta.kind === "atom") atom++;
