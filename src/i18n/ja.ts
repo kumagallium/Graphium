@@ -670,6 +670,8 @@ export const ja: Record<string, string> = {
   "wikiLint.action.running": "実行中...",
   "wikiLint.action.confirmArchive": "「{title}」をアーカイブしますか？引用や regenerate からは引き続き解決できますが、一覧には表示されなくなります。",
   "wikiLint.action.confirmRegenerate": "「{title}」を最新ソースから再生成しますか？LLM を呼び出します。",
+  "wikiLint.action.redundantGuardHint": "冗長な重複は最低 1 件残す必要があります（全部消すと知識が失われます）",
+  "wikiLint.action.archivedBadge": "アーカイブ済",
   "trash.empty": "ゴミ箱は空です",
   "trash.itemsCount": "件",
   "trash.colTitle": "タイトル",

@@ -242,10 +242,18 @@ function IssueCard({
   const style = SEVERITY_STYLES[issue.severity];
   // 各 wiki ごとに「実行中アクション」を持つ（同時並行で同じ wiki に別アクションが走らないように）
   const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | null>>({});
+  // 本セッションで archive 済みの wiki を覚えておく。redundant では「全部消す」のを防ぐためのガード。
+  const [archivedThisSession, setArchivedThisSession] = useState<Set<string>>(new Set());
 
   const availableActions = FIX_ACTIONS_BY_TYPE[issue.type] ?? ["open"];
   const hasRegenerate = availableActions.includes("regenerate") && Boolean(onRegenerateWiki);
   const hasArchive = availableActions.includes("archive") && Boolean(onArchiveWiki);
+
+  // Redundant ガード: 統合候補をすべてアーカイブできてしまうと知識が消失するため、
+  // 「残り 1 件以下」になる手前で Archive を無効化する。
+  const isRedundant = issue.type === "redundant";
+  const remainingCount = issue.affectedWikiIds.filter((id) => !archivedThisSession.has(id)).length;
+  const redundantGuardActive = isRedundant && remainingCount <= 1;
 
   const runAction = async (
     wikiId: string,
@@ -262,7 +270,14 @@ function IssueCard({
     setPendingByWiki((p) => ({ ...p, [wikiId]: action }));
     try {
       if (action === "regenerate") await onRegenerateWiki?.(wikiId);
-      else await onArchiveWiki?.(wikiId);
+      else {
+        await onArchiveWiki?.(wikiId);
+        setArchivedThisSession((prev) => {
+          const next = new Set(prev);
+          next.add(wikiId);
+          return next;
+        });
+      }
     } catch (err) {
       console.error("Lint fix action failed:", err);
     } finally {
@@ -296,9 +311,12 @@ function IssueCard({
             <div className="space-y-1.5">
               {issue.affectedWikiIds.map((id) => {
                 const pending = pendingByWiki[id];
+                const alreadyArchived = archivedThisSession.has(id);
+                // 「冗長」の場合: 残り 1 件以下では Archive ボタンを無効化（知識消失防止）
+                const archiveDisabledByGuard = hasArchive && redundantGuardActive && !alreadyArchived;
                 return (
                   <div key={id} className="flex items-center gap-2 flex-wrap text-[10px]">
-                    <span className="text-muted-foreground font-mono">{id.slice(0, 12)}...</span>
+                    <span className={`font-mono ${alreadyArchived ? "text-muted-foreground/50 line-through" : "text-muted-foreground"}`}>{id.slice(0, 12)}...</span>
                     <div className="flex gap-1">
                       <button
                         onClick={() => onOpenWiki(id)}
@@ -308,7 +326,7 @@ function IssueCard({
                         <ExternalLink size={9} />
                         {t("wikiLint.action.open")}
                       </button>
-                      {hasRegenerate && (
+                      {hasRegenerate && !alreadyArchived && (
                         <button
                           onClick={() => runAction(id, "regenerate")}
                           disabled={Boolean(pending)}
@@ -327,11 +345,12 @@ function IssueCard({
                           )}
                         </button>
                       )}
-                      {hasArchive && (
+                      {hasArchive && !alreadyArchived && (
                         <button
                           onClick={() => runAction(id, "archive")}
-                          disabled={Boolean(pending)}
-                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                          disabled={Boolean(pending) || archiveDisabledByGuard}
+                          title={archiveDisabledByGuard ? t("wikiLint.action.redundantGuardHint") : undefined}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           {pending === "archive" ? (
                             <>
@@ -345,6 +364,11 @@ function IssueCard({
                             </>
                           )}
                         </button>
+                      )}
+                      {alreadyArchived && (
+                        <span className="text-muted-foreground/60 italic">
+                          {t("wikiLint.action.archivedBadge")}
+                        </span>
                       )}
                     </div>
                   </div>

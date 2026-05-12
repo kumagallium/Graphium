@@ -63,14 +63,26 @@ Only flag genuine contradictions — different perspectives on the same topic ar
 Severity: "error"
 
 ### orphan
-A Wiki page with no connections to other pages or source notes.
-This may indicate forgotten or poorly integrated knowledge.
-Severity: "warning"
+**Strict definition.** Flag a page as orphan ONLY when ALL of the following hold:
+1. No other Wiki page references it (no incoming links).
+2. It does not reference any other Wiki page (no outgoing relatedClaims).
+3. It has no source notes in derivedFromNotes.
+
+Do NOT use \`orphan\` for a page that references *something missing* — that is a \`gap\`, not an orphan. A page with valid outgoing references is connected; do not flag it as isolated.
+
+Severity: "warning". Suggestion should explain the page exists in isolation; user choice is typically to archive or wire it up manually.
 
 ### gap
-An area of knowledge that is referenced or implied but has no dedicated Wiki page.
-Also includes Claims that could be synthesized from existing pages but haven't been.
-Severity: "info"
+A topic that **multiple existing Wiki pages reference but has no dedicated Wiki page of its own**. The referenced topic is implicit in the corpus; the gap is that nobody has written the centralizing page.
+
+When you emit a \`gap\` issue, the \`title\` and \`description\` MUST clearly say *what the missing topic is* (not just an internal ID). Examples:
+
+- ✅ "Multiple pages reference 'multi-band conduction' but no dedicated Claim explains it."
+- ❌ "Pages X, Y, Z reference af4189d8-... but no Wiki page exists."
+
+If you can only name the missing topic by ID (no human-readable title is inferable from how it is referenced), do NOT emit the issue — it is not actionable.
+
+Severity: "info".
 
 ### stale
 A Wiki page that hasn't been updated in a long time while related pages have been updated.

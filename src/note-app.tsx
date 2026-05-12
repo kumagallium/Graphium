@@ -4436,7 +4436,7 @@ export function NoteApp() {
                 setLintLoading(false);
               }
             }}
-            onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
+            onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
             onBack={() => setActiveWikiView(null)}
             onRegenerateWiki={async (wikiId) => {
               await regenerateWikiById(wikiId, { openAfter: false });

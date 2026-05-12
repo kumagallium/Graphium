@@ -670,6 +670,8 @@ export const en: Record<string, string> = {
   "wikiLint.action.running": "Working...",
   "wikiLint.action.confirmArchive": "Archive \"{title}\"? Citations and regenerate links will still resolve, but it will be removed from the main list.",
   "wikiLint.action.confirmRegenerate": "Regenerate \"{title}\" from the latest source? This calls the LLM.",
+  "wikiLint.action.redundantGuardHint": "At least one of the duplicates must remain (archiving all would lose the knowledge).",
+  "wikiLint.action.archivedBadge": "Archived",
   "trash.empty": "Trash is empty",
   "trash.itemsCount": "items",
   "trash.colTitle": "Title",
