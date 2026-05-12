@@ -1,7 +1,13 @@
 // Wiki Ingester
 // ノートコンテンツを LLM に渡して Wiki ドキュメントの構造化データを生成する
 
-import type { ClaimLevel, ClaimRole, WikiKind } from "../../lib/document-types.js";
+import type {
+  ClaimLevel,
+  ClaimRole,
+  KeyParameter,
+  ProcedureContext,
+  WikiKind,
+} from "../../lib/document-types.js";
 
 /** Claim の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
 const CLAIM_ROLE_VALUES: ClaimRole[] = [
@@ -13,6 +19,9 @@ const CLAIM_ROLE_VALUES: ClaimRole[] = [
   "interpretation",
   "issue",
 ];
+
+/** KeyParameter.necessity として認める値の一覧 */
+const NECESSITY_VALUES: KeyParameter["necessity"][] = ["critical", "important", "incidental"];
 
 export type WikiSection = {
   heading: string;
@@ -49,6 +58,12 @@ export type IngesterOutput = {
    * 認識不能・パース失敗時は undefined で、機能的には従来通り動作する。
    */
   claimRole?: ClaimRole[];
+  /**
+   * 主張が依存する手順条件（提案 v4 Phase 2.3）。
+   * Claim のみで意味を持つ。LLM が PROV 構造を読んで埋める。
+   * Procedure-independent な命題（純粋に概念的なもの）では undefined。
+   */
+  procedureContext?: ProcedureContext;
   /** 関連する既存 Claim（引用付き） */
   relatedClaims: RelatedClaimRef[];
   /** 根拠となる外部参照 URL（引用付き） */
@@ -136,6 +151,13 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
       "level": "principle" | "finding"   // claim のみ。summary では省略
       "evidenceSpan": "string"           // level=principle の場合のみ。下の Principle threshold 参照
       "claimRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // claim のみ。複数可。下の Claim role 参照
+      "procedureContext": {                                              // claim のみ。手順依存の主張のときだけ。下の Procedure context 参照
+        "derivedFromNotes": ["sourceNoteId"],
+        "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
+        "keyParameters": [{ "name": "...", "value": "...", "necessity": "critical" | "important" | "incidental" }],
+        "keyTools": ["..."],
+        "validityRange": "natural-language range over which the claim holds"
+      },
       "title": "string",
       "sections": [
         { "heading": "string", "content": "string" }
@@ -175,6 +197,27 @@ Guidance:
 - A flagged risk or limitation: \`["issue"]\`.
 - Hardware/protocol pre-conditions: \`["setup"]\`.
 - If none of these clearly fit, omit the field (do **not** pick \`finding\` as a default just to fill the slot).
+
+## Procedure context (Phase 2.3 — read this carefully)
+
+When the source note carries a PROV structure section (preceding the body — look for "## PROV structure of the source note" above), use it to fill \`procedureContext\` on every Claim whose validity **actually depends** on the procedure.
+
+A Claim depends on the procedure when changing the synthesis route, the tool, or a key parameter would plausibly change the truth-value of the claim. Empirical claims ("X was observed when we did Y") almost always depend on procedure. Pure conceptual claims ("X is defined as Y") usually do not.
+
+Schema:
+- \`derivedFromNotes\`: just echo the source note's id (you receive it implicitly — for the Ingester this is the single source note).
+- \`protocolFingerprint\`: a short natural-language chain of the main steps that lead to the result (e.g., "mechanical alloying → SPS sintering" or "PDF parse → atomize → cite"). Keep it under ~80 characters. Skip when no procedure is involved.
+- \`keyParameters\`: an array of \`{name, value, necessity}\`. Necessity:
+  - \`critical\`: change this and the claim likely flips (e.g., synthesis temperature for a phase-purity claim).
+  - \`important\`: change this and the claim shifts in magnitude but probably holds in direction.
+  - \`incidental\`: a parameter that happens to be in the PROV but is unlikely load-bearing for *this* claim.
+- \`keyTools\`: tools / instruments / methods the claim depends on. Use the names exactly as they appear in PROV.
+- \`validityRange\`: natural-language description of the parameter window over which the claim is expected to hold ("mechanical alloying time 1–5h, SPS temperature 800–900°C"). Set only when the source notes give enough information; otherwise omit.
+
+Rules:
+- **Omit \`procedureContext\` entirely** when the Claim is procedure-independent. An empty object is worse than no field — readers will think the Claim depends on a void procedure.
+- **Never invent** parameter values or tools that are not in the PROV section. If PROV is missing, you may still set \`keyTools\` from explicit mentions in the body, but leave \`keyParameters\` empty rather than fabricating numbers.
+- The PROV section uses the source note's language for values (e.g., "ボールミル", "300rpm") — keep them verbatim; do not translate.
 
 ## Summary (1 per note, always)
 
@@ -354,11 +397,14 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
                 ),
               )
             : undefined;
+        const procedureContext: ProcedureContext | undefined =
+          kind === "claim" ? parseProcedureContext(w.procedureContext) : undefined;
         return {
           kind,
           level: finalLevel,
           evidenceSpan: finalLevel === "principle" ? rawEvidence : undefined,
           claimRole: claimRole && claimRole.length > 0 ? claimRole : undefined,
+          procedureContext,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),
@@ -389,6 +435,73 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
     console.error("Ingester 出力のパース失敗:", err);
     return [];
   }
+}
+
+/**
+ * LLM が返した procedureContext オブジェクトをサニタイズする。
+ *
+ * - 各フィールドを型チェックして、無効な値は黙って捨てる
+ * - 全フィールドが空になった場合は undefined を返す（空オブジェクトを保存しない）
+ * - keyParameters の necessity は許容値以外は "important" にフォールバック
+ *
+ * 提案 v4 Phase 2.3。
+ */
+export function parseProcedureContext(raw: unknown): ProcedureContext | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+
+  const derivedFromNotes = Array.isArray(obj.derivedFromNotes)
+    ? obj.derivedFromNotes.filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
+
+  const protocolFingerprint =
+    typeof obj.protocolFingerprint === "string" && obj.protocolFingerprint.trim().length > 0
+      ? obj.protocolFingerprint.trim()
+      : undefined;
+
+  let keyParameters: KeyParameter[] | undefined;
+  if (Array.isArray(obj.keyParameters)) {
+    const parsed: KeyParameter[] = [];
+    for (const p of obj.keyParameters) {
+      if (!p || typeof p !== "object") continue;
+      const pp = p as Record<string, unknown>;
+      const name = typeof pp.name === "string" ? pp.name.trim() : "";
+      const value = typeof pp.value === "string" ? pp.value.trim() : "";
+      if (!name || !value) continue;
+      const rawNecessity = typeof pp.necessity === "string" ? pp.necessity : "";
+      const necessity: KeyParameter["necessity"] =
+        (NECESSITY_VALUES as string[]).includes(rawNecessity)
+          ? (rawNecessity as KeyParameter["necessity"])
+          : "important";
+      parsed.push({ name, value, necessity });
+    }
+    if (parsed.length > 0) keyParameters = parsed;
+  }
+
+  const keyTools = Array.isArray(obj.keyTools)
+    ? obj.keyTools.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+
+  const validityRange =
+    typeof obj.validityRange === "string" && obj.validityRange.trim().length > 0
+      ? obj.validityRange.trim()
+      : undefined;
+
+  const hasAny =
+    derivedFromNotes.length > 0 ||
+    protocolFingerprint !== undefined ||
+    keyParameters !== undefined ||
+    keyTools.length > 0 ||
+    validityRange !== undefined;
+  if (!hasAny) return undefined;
+
+  return {
+    derivedFromNotes,
+    protocolFingerprint,
+    keyParameters,
+    keyTools: keyTools.length > 0 ? keyTools : undefined,
+    validityRange,
+  };
 }
 
 /**

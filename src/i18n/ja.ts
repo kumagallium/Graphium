@@ -605,6 +605,13 @@ export const ja: Record<string, string> = {
   "wikiTypes.synthesisMode.abductive": "アブダクション",
   "wikiTypes.synthesisMode.analogical": "類推",
   "wikiTypes.synthesisMode.dialectic": "弁証法",
+  // 手順条件（procedureContext）— Phase 2.3
+  "wikiBanner.procedureContextTitle": "この主張の手順条件",
+  "wikiBanner.procedureContextHint": "この Claim の妥当性が依存する手順・パラメータ・ツールを LLM が推定したもの",
+  "wikiBanner.procedureProtocol": "関連手順",
+  "wikiBanner.procedureTools": "重要ツール",
+  "wikiBanner.procedureParameters": "重要パラメータ",
+  "wikiBanner.procedureValidity": "成立範囲",
   "wikiList.colTitle": "タイトル",
   "wikiList.colType": "種別",
   "wikiList.colSources": "生成元",

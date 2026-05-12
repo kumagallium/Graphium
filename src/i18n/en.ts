@@ -605,6 +605,13 @@ export const en: Record<string, string> = {
   "wikiTypes.synthesisMode.abductive": "Abductive",
   "wikiTypes.synthesisMode.analogical": "Analogical",
   "wikiTypes.synthesisMode.dialectic": "Dialectic",
+  // procedureContext — Phase 2.3
+  "wikiBanner.procedureContextTitle": "Procedure this claim depends on",
+  "wikiBanner.procedureContextHint": "LLM-inferred procedure, parameters, and tools the claim relies on",
+  "wikiBanner.procedureProtocol": "Protocol",
+  "wikiBanner.procedureTools": "Key tools",
+  "wikiBanner.procedureParameters": "Key parameters",
+  "wikiBanner.procedureValidity": "Validity range",
   "wikiList.colTitle": "Title",
   "wikiList.colType": "Type",
   "wikiList.colSources": "Sources",

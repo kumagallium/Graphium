@@ -5,9 +5,64 @@
 // - hypothesisStatus 欠落: synthesisMode があれば "speculative" にフォールバック
 
 import { describe, it, expect } from "vitest";
-import { parseIngesterOutput } from "./wiki-ingester";
+import { parseIngesterOutput, parseProcedureContext } from "./wiki-ingester";
 import { parseAtomizerOutput } from "./wiki-atomizer";
 import { parseSynthesizerOutput } from "./wiki-synthesizer";
+
+describe("parseProcedureContext", () => {
+  it("typical full structure を保持する", () => {
+    const out = parseProcedureContext({
+      derivedFromNotes: ["note-1"],
+      protocolFingerprint: "alloy → SPS",
+      keyParameters: [
+        { name: "Time", value: "3h", necessity: "critical" },
+        { name: "Temp", value: "850°C", necessity: "important" },
+      ],
+      keyTools: ["BallMill", "SPS"],
+      validityRange: "Time 1-5h, Temp 800-900°C",
+    });
+    expect(out).toMatchObject({
+      derivedFromNotes: ["note-1"],
+      protocolFingerprint: "alloy → SPS",
+      keyTools: ["BallMill", "SPS"],
+      validityRange: "Time 1-5h, Temp 800-900°C",
+    });
+    expect(out?.keyParameters).toHaveLength(2);
+  });
+
+  it("不正な necessity は important にフォールバック", () => {
+    const out = parseProcedureContext({
+      keyParameters: [{ name: "X", value: "1", necessity: "vital" }],
+    });
+    expect(out?.keyParameters?.[0].necessity).toBe("important");
+  });
+
+  it("name or value 欠落の parameter は捨てる", () => {
+    const out = parseProcedureContext({
+      keyParameters: [
+        { name: "ok", value: "v", necessity: "critical" },
+        { name: "", value: "v" },
+        { name: "n", value: "" },
+        { value: "v" },
+      ],
+    });
+    expect(out?.keyParameters).toHaveLength(1);
+    expect(out?.keyParameters?.[0].name).toBe("ok");
+  });
+
+  it("全フィールド欠落・空なら undefined を返す", () => {
+    expect(parseProcedureContext(null)).toBeUndefined();
+    expect(parseProcedureContext({})).toBeUndefined();
+    expect(parseProcedureContext({ derivedFromNotes: [], keyParameters: [], keyTools: [] })).toBeUndefined();
+    expect(parseProcedureContext({ protocolFingerprint: "" })).toBeUndefined();
+  });
+
+  it("string でない raw は安全に拒否", () => {
+    expect(parseProcedureContext("not an object")).toBeUndefined();
+    expect(parseProcedureContext(42)).toBeUndefined();
+    expect(parseProcedureContext([])).toBeUndefined();
+  });
+});
 
 describe("parseIngesterOutput: claimRole", () => {
   it("認識可能な研究プロセス役割を配列で受け取る", () => {

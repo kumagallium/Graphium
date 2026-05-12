@@ -11,6 +11,7 @@ import {
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
+import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
   buildLinterUserMessage,
@@ -56,6 +57,12 @@ app.post("/ingest", async (c) => {
     noteTitle: string;
     existingWikiTitles: ExistingWikiInfo[];
     language: string;
+    /**
+     * 提案 v4 Phase 2.2: ノートから抽出した PROV 構造サマリ（任意）。
+     * クライアントが summarizeNoteProv() で生成して送る。手順条件付きの
+     * 知識抽出（procedureContext）を促すためにプロンプトへ注入する。
+     */
+    provSummary?: unknown;
     model?: string;
     skills?: { title: string; prompt: string }[];
   }>();
@@ -80,7 +87,12 @@ app.post("/ingest", async (c) => {
     body.skills,
   );
 
-  const userMessage = `Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
+  // PROV 構造があれば user message の先頭にコンパクトに添える。
+  // 中身が空（activities も results も plan も無い）なら添えても情報がないので省略。
+  const provBlock = formatProvSummaryForPrompt(body.provSummary);
+  const provPrefix = provBlock ? `${provBlock}\n\n` : "";
+
+  const userMessage = `${provPrefix}Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
 
   try {
     const model = createModel(modelConfig);

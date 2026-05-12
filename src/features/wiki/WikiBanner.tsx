@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
-import type { WikiMeta } from "../../lib/document-types";
+import type { ProcedureContext, WikiMeta } from "../../lib/document-types";
 import { useT } from "../../i18n";
 
 function TypeBadge({ label, title }: { label: string; title?: string }) {
@@ -414,6 +414,93 @@ export function WikiBanner({
           )}
         </div>
       </div>
+
+      {/* 手順条件（Phase 2.3）— 推定があるときだけ控えめに折り畳んで表示 */}
+      {wikiMeta.procedureContext && hasProcedureContextContent(wikiMeta.procedureContext) && (
+        <ProcedureContextSection ctx={wikiMeta.procedureContext} />
+      )}
+    </div>
+  );
+}
+
+// 手順条件のサブセクション。デフォルトで折り畳み。
+function hasProcedureContextContent(ctx: ProcedureContext): boolean {
+  return Boolean(
+    ctx.protocolFingerprint ||
+      (ctx.keyParameters && ctx.keyParameters.length > 0) ||
+      (ctx.keyTools && ctx.keyTools.length > 0) ||
+      ctx.validityRange,
+  );
+}
+
+function ProcedureContextSection({ ctx }: { ctx: ProcedureContext }) {
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: open ? "6px 10px 8px" : "4px 10px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 11,
+        color: "var(--ink-2)",
+      }}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "1px 4px",
+          margin: 0,
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-2)",
+          font: "inherit",
+          cursor: "pointer",
+        }}
+        title={t("wikiBanner.procedureContextHint")}
+      >
+        <ChevronDown size={11} style={{ transform: open ? "rotate(0)" : "rotate(-90deg)", transition: "transform 120ms" }} />
+        <span style={{ fontWeight: 500 }}>{t("wikiBanner.procedureContextTitle")}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 4, lineHeight: 1.55 }}>
+          {ctx.protocolFingerprint && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>{t("wikiBanner.procedureProtocol")}: </span>
+              {ctx.protocolFingerprint}
+            </div>
+          )}
+          {ctx.keyTools && ctx.keyTools.length > 0 && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>{t("wikiBanner.procedureTools")}: </span>
+              {ctx.keyTools.join(", ")}
+            </div>
+          )}
+          {ctx.keyParameters && ctx.keyParameters.length > 0 && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>{t("wikiBanner.procedureParameters")}: </span>
+              {ctx.keyParameters.map((p, i) => (
+                <span key={p.name + i}>
+                  {i > 0 && ", "}
+                  {p.name}={p.value}
+                  <span style={{ color: "var(--ink-4)", fontSize: 10 }}> ({p.necessity})</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {ctx.validityRange && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>{t("wikiBanner.procedureValidity")}: </span>
+              {ctx.validityRange}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
