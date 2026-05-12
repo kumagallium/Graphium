@@ -68,33 +68,33 @@ Graphium は **段階的開示（progressive disclosure）** を設計の中心�
 
 再開や手伝いに興味があれば [Issues](https://github.com/kumagallium/Graphium/issues) をご覧ください。
 
-## AI ナレッジレイヤー
+## ナレッジ層
 
-LLM を接続すると、Graphium はノートの上に **もう一層** を作ります。あなたが書いた内容から自動生成される、編集可能な AI Wiki です。*LLM で拡張された Zettelkasten* と捉えてください。AI がノートを読み取り、安定したアイデアを抽出し、相互にリンクし、元のブロックへ引用を張ります。エディタの他の要素と同じ PROV-DM 来歴を保ったまま。
+LLM を接続すると、Graphium はノートの上に **もう一層** を作ります。あなたが書いた内容から自動生成される、編集可能なナレッジ層です。*LLM で拡張された Zettelkasten* と捉えてください。AI がノートを読み取り、安定したアイデアを抽出し、相互にリンクし、元のブロックへ引用を張ります。エディタの他の要素と同じ PROV-DM 来歴を保ったまま。
 
-Wiki には 4 つのドキュメント種別があり、それぞれ役割が異なります。
+ナレッジ層には 4 つのドキュメント種別があり、それぞれ役割が異なります。
 
 | 種別 | 役割 |
 |------|------|
-| **Summary** | 1 つのノートに対する内部向け要約 |
-| **Concept** | 複数ノート横断の整理。要素を抽出しつつ文脈は残す。`level`（principle / finding / bridge）と `status`（candidate / verified）で品質を表現 |
-| **Atom** | 実験的レイヤ。文脈を消した「ひとつの主張」+ 引用。プロジェクトを跨いで持ち運べる単位 |
-| **Synthesis** | 実験的レイヤ。複数 Atom を編んで生まれる新しい洞察 |
+| **要約 (Summaries)** | 1 つのノートに対する内部向け要約 |
+| **知見 (Claims)** | 複数ノート横断の発見。要素を抽出しつつ文脈は残す。`level`（principle / finding / bridge）と `status`（candidate / verified）で品質を表現 |
+| **洞察 (Insights)** | 実験的レイヤ。文脈を消した「ひとつの主張」+ 引用。プロジェクトを跨いで持ち運べる単位 |
+| **発想 (Ideas)** | 実験的レイヤ。複数の洞察を編んで生まれる新しい考え |
 
 | 機能 | 内容 |
 |------|------|
 | **5 段のパイプライン** | Ingest → Atomize → Synthesize → Cross-update → Lint。すべてコンパニオンサーバ上で動作し、ノート保存をトリガーに動きます |
-| **ノートから Ingest** | AI が知識価値のあるセクションを抽出し、Wiki ページに書き込みます。元ブロックへの引用付き |
-| **URL・チャットから Ingest** | URL を貼ったり、AI チャットの応答を保存すると、同じ来歴で Wiki ページに変換されます |
-| **Cross-update** | ある Wiki ページが変わると、依存するページがフラグ付けまたは書き直されます |
-| **Lint** | 孤立 Atom、壊れた引用、冗長な Concept を検出します |
+| **ノートから Ingest** | AI が知識価値のあるセクションを抽出し、ナレッジページに書き込みます。元ブロックへの引用付き |
+| **URL・チャットから Ingest** | URL を貼ったり、AI チャットの応答を保存すると、同じ来歴でナレッジページに変換されます |
+| **Cross-update** | あるナレッジページが変わると、依存するページがフラグ付けまたは書き直されます |
+| **Lint** | 孤立した洞察、壊れた引用、冗長な知見を検出します |
 | **編集の保護** | 手動で編集したセクションは再 Ingest 時にスキップされます。修正が AI に上書きされません |
-| **AI チャット用 Retriever** | AI 応答に Wiki コンテキストが注入されます。アシスタントは先週書いた内容を、毎回ノートを読み直さずに覚えています |
+| **AI チャット用 Retriever** | AI 応答にナレッジコンテキストが注入されます。アシスタントは先週書いた内容を、毎回ノートを読み直さずに覚えています |
 | **回答の自動ラベル付け** | AI 回答は PROV-DM 構造が付いた状態で挿入されます。Activity の見出しに `[ステップ]` ラベル、Entity には `[インプット]` / `[ツール]` / `[パラメータ]` / `[アウトプット]` のインラインハイライト、連続する手順には `informed_by` リンクが自動で付きます。チャットそのものから来歴グラフが立ち上がります |
 
-Wiki ページはノートと同じストレージ（Web は IndexedDB、Tauri / Docker はファイルシステム）に保存され、手動で自由に編集できます。Wiki の編集はすべて PROV-DM のリビジョンとして記録されるため、**いつ** 生成され、**どのエージェント**（人 or AI）が書き、**どこから** 派生したかを常に追跡できます。
+ナレッジページはノートと同じストレージ（Web は IndexedDB、Tauri / Docker はファイルシステム）に保存され、手動で自由に編集できます。ナレッジの編集はすべて PROV-DM のリビジョンとして記録されるため、**いつ** 生成され、**どのエージェント**（人 or AI）が書き、**どこから** 派生したかを常に追跡できます。
 
-AI ナレッジレイヤーは **オプトイン** です。**⚙ 設定 → AI Setup** で LLM を設定すると有効になります。LLM を設定しない場合、Graphium は通常のリンクノートエディタとして動作します。
+ナレッジ層は **オプトイン** です。**⚙ 設定 → AI Setup** で LLM を設定すると有効になります。LLM を設定しない場合、Graphium は通常のリンクノートエディタとして動作します。
 
 ## Composer（⌘K）
 
@@ -223,7 +223,7 @@ pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 - **ノート間ネットワークグラフ** — Cytoscape.js + fcose レイアウト
 - **AI アシスタント** — AI 応答から来歴メタデータ付きのノートを派生
 - **AI 自動ラベル付け** — AI 回答に PROV-DM コンテキストラベルと `informed_by` チェーンが自動で付与される
-- **AI ナレッジレイヤー** — 編集可能な AI Wiki（*Summary* / *Concept* / *Atom* / *Synthesis* の 4 種別）、5 段のパイプライン（ingest → atomize → synthesize → cross-update → lint）、再 Ingest 時の編集保護
+- **ナレッジ層** — 編集可能な AI ナレッジ層（*要約* / *知見* / *洞察* / *発想* の 4 種別）、5 段のパイプライン（ingest → atomize → synthesize → cross-update → lint）、再 Ingest 時の編集保護
 - **Composer（⌘K）** — ノート検索（`#ラベル` / `@作者` フィルタ）、発見カード、AI への質問を 1 つのパレットに統合
 - **Skill** — 再利用可能なプロンプトテンプレートを Graphium ドキュメント（`source: "skill"`）として保存。Ingest や対話で適用できる
 - **共有とライブラリ** — ノートをコンテンツアドレス型の共有ストアに送り、他者が Library から閲覧・Fork できる。共有時は埋め込みメディアが `shared-blob:` 参照として書き出される
@@ -316,7 +316,7 @@ Graphium 固有の拡張は `graphium:` 名前空間（`https://graphium.app/ns#
 
 ## アーキテクチャ（概要）
 
-Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScript / React アプリで、3 つの形態で配布しています。Web PWA（ノートは IndexedDB）、[Tauri v2](https://tauri.app/) のデスクトップアプリ（ノートは JSON ファイルとしてファイルシステムに保存）、そして [Docker](https://www.docker.com/) によるセルフホスト（Node.js のコンパニオンサーバ付き）。コンパニオンサーバは [Hono](https://hono.dev/) の上で動き、AI Knowledge Layer のパイプライン（ingest → atomize → synthesize → cross-update → lint）を担います。
+Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScript / React アプリで、3 つの形態で配布しています。Web PWA（ノートは IndexedDB）、[Tauri v2](https://tauri.app/) のデスクトップアプリ（ノートは JSON ファイルとしてファイルシステムに保存）、そして [Docker](https://www.docker.com/) によるセルフホスト（Node.js のコンパニオンサーバ付き）。コンパニオンサーバは [Hono](https://hono.dev/) の上で動き、ナレッジ層のパイプライン（ingest → atomize → synthesize → cross-update → lint）を担います。
 
 | コンポーネント | 技術 |
 |--------------|------|
@@ -388,7 +388,7 @@ src/
 │   ├── ai-assistant/  # AI チャット & ノート派生、マーカーによる自動ラベル付け
 │   ├── composer/      # ⌘K パレット: ノート検索 + 発見カード + AI 質問
 │   ├── template/      # /template スラッシュコマンド（Plan / Run）
-│   ├── wiki/          # AI ナレッジレイヤー（Concept / Summary / Synthesis）
+│   ├── wiki/          # ナレッジ層（要約 / 知見 / 洞察 / 発想）
 │   ├── settings/      # 設定モーダル（一般設定 + AI セットアップ + 読みやすさフォント）
 │   └── release-notes/ # リリースノート表示
 ├── lib/               # ユーティリティ（Google Auth、Drive API、Cytoscape セットアップ）
