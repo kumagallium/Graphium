@@ -1,7 +1,7 @@
 // Wiki ドキュメント用バナー
 // エディタ上部に表示: AI 生成バッジ、アクションボタン
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
 import type { ProcedureContext, SynthesisMode, WikiMeta } from "../../lib/document-types";
 import { useT } from "../../i18n";
@@ -53,19 +53,10 @@ function TypeBadge({
   );
 }
 
-export type RegenerateOptions = {
-  /** 使用するモデル名（空文字 = 現在のデフォルト） */
-  model: string;
-};
-
-type ModelOption = {
-  name: string;
-  provider: string;
-};
-
 type Props = {
   wikiMeta: WikiMeta;
-  onRegenerate: (options?: RegenerateOptions) => void;
+  /** 再生成。モデルは設定（Default / Chat & Synthesis）に従う — UI で個別選択させない */
+  onRegenerate: () => void;
   onDelete: () => void;
   loading?: boolean;
   /** アーカイブ済みフラグ。true のとき編集系ボタンを抑制し、復元 UI を出す */
@@ -99,53 +90,7 @@ export function WikiBanner({
     : wikiMeta.kind === "atom" ? t("wikiList.kindAtom")
     : t("wikiList.kindClaim");
 
-  const [showModelPicker, setShowModelPicker] = useState(false);
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [defaultModel, setDefaultModel] = useState("");
-  const pickerRef = useRef<HTMLDivElement>(null);
   const [modeModal, setModeModal] = useState<SynthesisMode | null>(null);
-
-  useEffect(() => {
-    if (!showModelPicker) return;
-    const handleClick = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setShowModelPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [showModelPicker]);
-
-  const handleOpenPicker = async () => {
-    if (showModelPicker) {
-      setShowModelPicker(false);
-      return;
-    }
-    try {
-      const { apiBase, isTauri } = await import("../../lib/platform");
-      if (!isTauri()) {
-        const { getLLMModels } = await import("../settings/store");
-        const localModels = getLLMModels();
-        setModels(localModels.map((m) => ({ name: m.name, provider: m.provider })));
-        setDefaultModel(localModels[0]?.name ?? "");
-      } else {
-        const res = await fetch(`${apiBase()}/models`);
-        if (res.ok) {
-          const data = await res.json() as { models: ModelOption[]; default: string };
-          setModels(data.models);
-          setDefaultModel(data.default);
-        }
-      }
-    } catch {
-      // 取得失敗時は空リスト
-    }
-    setShowModelPicker(true);
-  };
-
-  const handleSelectModel = (modelName: string) => {
-    setShowModelPicker(false);
-    onRegenerate({ model: modelName });
-  };
 
   return (
     <div
@@ -313,115 +258,28 @@ export function WikiBanner({
           )}
           {!archived && (
           <>
-          {/* Regenerate ▾ */}
-          <div style={{ position: "relative" }} ref={pickerRef}>
-            <button
-              onClick={handleOpenPicker}
-              disabled={loading}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 2,
-                padding: "4px 8px",
-                borderRadius: "var(--r-1)",
-                border: "1px solid var(--rule)",
-                background: "var(--paper)",
-                color: "var(--ink-2)",
-                fontSize: 11,
-                cursor: "pointer",
-                opacity: loading ? 0.5 : 1,
-              }}
-              title="Regenerate with model selection"
-            >
-              <RefreshCw size={12} />
-              <ChevronDown size={10} />
-            </button>
-
-            {showModelPicker && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 4px)",
-                  minWidth: 220,
-                  background: "var(--paper)",
-                  border: "1px solid var(--rule)",
-                  borderRadius: "var(--r-2)",
-                  boxShadow: "var(--shadow-2)",
-                  zIndex: 50,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: 11,
-                    color: "var(--ink-3)",
-                    borderBottom: "1px solid var(--rule-2)",
-                  }}
-                >
-                  Regenerate with…
-                </div>
-                {models.map((m) => (
-                  <button
-                    key={m.name}
-                    onClick={() => handleSelectModel(m.name)}
-                    className={`wiki-banner-dropdown-item${m.name === wikiMeta.generatedBy?.model ? " is-current" : ""}`}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "7px 12px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontSize: 11.5,
-                      color: "var(--ink)",
-                      cursor: "pointer",
-                      border: "none",
-                      font: "inherit",
-                    }}
-                  >
-                    <span style={{ flex: 1 }}>{m.name}</span>
-                    {m.name === defaultModel && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontFamily: "var(--mono)",
-                          color: "var(--ink-3)",
-                          flexShrink: 0,
-                        }}
-                      >
-                        (default)
-                      </span>
-                    )}
-                    {m.name === wikiMeta.generatedBy?.model && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontFamily: "var(--mono)",
-                          color: "var(--forest-ink)",
-                          flexShrink: 0,
-                        }}
-                      >
-                        current
-                      </span>
-                    )}
-                  </button>
-                ))}
-                {models.length === 0 && (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      fontSize: 11,
-                      color: "var(--ink-3)",
-                    }}
-                  >
-                    No models configured
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う */}
+          <button
+            onClick={onRegenerate}
+            disabled={loading}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              borderRadius: "var(--r-1)",
+              border: "1px solid var(--rule)",
+              background: "var(--paper)",
+              color: "var(--ink-2)",
+              fontSize: 11,
+              cursor: "pointer",
+              opacity: loading ? 0.5 : 1,
+            }}
+            title={t("wikiBanner.regenerateHint")}
+          >
+            <RefreshCw size={12} />
+            {t("wikiBanner.regenerate")}
+          </button>
 
           {/* Delete */}
           <button

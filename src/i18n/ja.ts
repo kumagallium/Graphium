@@ -628,6 +628,8 @@ export const ja: Record<string, string> = {
   "synthesisMode.modal.description.dialectic": "同じ効果について逆向きの主張をする 2 つの Claim を、両方を含む上位フレーム（条件・スケール・レジーム）で止揚します。本物の矛盾が必要で、強調の差や粒度の差は対象外です。",
   "synthesisMode.modal.shape.dialectic": "A は X → Y と言い、B は X → ¬Y と言う。両者は分岐条件 R の下で両立する。",
   // 手順条件（procedureContext）— Phase 2.3
+  "wikiBanner.regenerate": "再生成",
+  "wikiBanner.regenerateHint": "設定で選んだモデルで再生成（Synthesis は Chat & Synthesis モデル、それ以外は Default モデル）",
   "wikiBanner.procedureContextTitle": "この主張の手順条件",
   "wikiBanner.procedureContextHint": "この Claim の妥当性が依存する手順・パラメータ・ツールを LLM が推定したもの",
   "wikiBanner.procedureProtocol": "関連手順",
@@ -648,6 +650,8 @@ export const ja: Record<string, string> = {
   "wikiList.search": "検索...",
   "wikiList.count": "({filtered}/{total})",
   "wikiList.deleteSelected": "{count} 件ゴミ箱へ",
+  "wikiList.regenerateSelected": "{count} 件を再生成",
+  "wikiList.regenerateSelectedTitle": "選択した Knowledge を再生成（各エントリーは個別ジョブとして実行）",
   "wikiList.deleteConfirmTitleSingle": "Wiki をゴミ箱に移動しますか？",
   "wikiList.deleteConfirmTitleMulti": "{count} 件の Wiki をゴミ箱に移動しますか？",
   "wikiList.deleteConfirmMessage": "ゴミ箱からいつでも復元できます。完全削除はゴミ箱から行えます。",
@@ -799,6 +803,10 @@ export const ja: Record<string, string> = {
   "asset.bulkDeleteConfirmTitle": "選択メディアを削除",
   "asset.bulkDeleteConfirmMessage": "{count} 件を削除しますか？{refCount} 件のノートから参照が外れます。",
   "asset.bulkDeleteConfirmMessageNoRef": "{count} 件を削除しますか？どのノートでも使用されていません。",
+  "asset.bulkIngest": "{count} 件を Knowledge 化",
+  "asset.bulkIngestTitle": "選択した URL/PDF を Knowledge 化（既存は再生成）",
+  "asset.bulkCreateProvNote": "{count} 件から PROV Note 作成",
+  "asset.bulkCreateProvNoteTitle": "選択した URL/PDF から PROV Note を作成",
 
   // ── ラベルギャラリー ──
   "label.section": "ラベル",

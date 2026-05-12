@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, BookPlus, FlaskConical } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -544,6 +544,27 @@ export function AssetGalleryView({
     }
   }, [filtered, selectedIds, onDeleteMedia]);
 
+  // 一括 Knowledge 化（URL/PDF のみ）
+  // onIngestMedia は内部でトーストキューに積む fire-and-forget なので、
+  // 同期的に順次キックすれば各エントリーが個別ジョブとして並走する
+  const bulkActionable = mediaType === "url" || mediaType === "pdf";
+  const handleBulkIngest = useCallback(() => {
+    if (!onIngestMedia || selectedIds.size === 0) return;
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId));
+    for (const entry of targets) {
+      onIngestMedia(entry);
+    }
+    setSelectedIds(new Set());
+  }, [filtered, selectedIds, onIngestMedia]);
+  const handleBulkCreateProvNote = useCallback(() => {
+    if (!onCreateProvNote || selectedIds.size === 0) return;
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId));
+    for (const entry of targets) {
+      onCreateProvNote(entry);
+    }
+    setSelectedIds(new Set());
+  }, [filtered, selectedIds, onCreateProvNote]);
+
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
@@ -664,12 +685,34 @@ export function AssetGalleryView({
           >
             {t("asset.deselectAll")}
           </button>
-          <button
-            onClick={() => setBulkDeleteOpen(true)}
-            className="ml-auto px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-          >
-            {t("asset.deleteSelected", { count: String(selectedIds.size) })}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {bulkActionable && onIngestMedia && (
+              <button
+                onClick={handleBulkIngest}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("asset.bulkIngestTitle")}
+              >
+                <BookPlus size={12} />
+                {t("asset.bulkIngest", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {bulkActionable && onCreateProvNote && (
+              <button
+                onClick={handleBulkCreateProvNote}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("asset.bulkCreateProvNoteTitle")}
+              >
+                <FlaskConical size={12} />
+                {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            <button
+              onClick={() => setBulkDeleteOpen(true)}
+              className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+            >
+              {t("asset.deleteSelected", { count: String(selectedIds.size) })}
+            </button>
+          </div>
         </div>
       )}
 

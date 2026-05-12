@@ -3,7 +3,7 @@
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useState } from "react";
-import { Bot, Search, Trash2 } from "lucide-react";
+import { Bot, Search, Trash2, RefreshCw } from "lucide-react";
 import type {
   AtomType,
   ClaimRole,
@@ -41,6 +41,8 @@ type Props = {
   onOpenWikiFull?: (wikiId: string) => void;
   onBack: () => void;
   onDeleteWiki: (wikiId: string) => Promise<void>;
+  /** 一括再生成（任意）— 提供時のみアクションバーに表示 */
+  onRegenerateWiki?: (wikiId: string) => Promise<unknown> | void;
 };
 
 // 削除確認ダイアログ
@@ -175,6 +177,7 @@ export function WikiListView({
   onOpenWikiFull,
   onBack,
   onDeleteWiki,
+  onRegenerateWiki,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -348,12 +351,31 @@ export function WikiListView({
           {t("wikiList.count", { filtered: String(filtered.length), total: String(wikiEntries.length) })}
         </span>
         {someSelected && (
-          <button
-            onClick={() => setDeleteTarget([...selectedIds])}
-            className="ml-auto px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-          >
-            {t("wikiList.deleteSelected", { count: String(selectedIds.size) })}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {onRegenerateWiki && (
+              <button
+                onClick={() => {
+                  // regenerate は内部で toast キューに積む fire-and-forget を許容
+                  // 並列に走るが、各 wiki ごとに個別ジョブとしてトーストに表示される
+                  for (const id of selectedIds) {
+                    void onRegenerateWiki(id);
+                  }
+                  setSelectedIds(new Set());
+                }}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("wikiList.regenerateSelectedTitle")}
+              >
+                <RefreshCw size={12} />
+                {t("wikiList.regenerateSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            <button
+              onClick={() => setDeleteTarget([...selectedIds])}
+              className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+            >
+              {t("wikiList.deleteSelected", { count: String(selectedIds.size) })}
+            </button>
+          </div>
         )}
       </div>
 

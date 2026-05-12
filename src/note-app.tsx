@@ -4474,6 +4474,7 @@ export function NoteApp() {
             onOpenWikiFull={(wikiId) => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind: fm.activeWikiKind!, wikiId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
+            onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -4604,10 +4605,10 @@ export function NoteApp() {
                 onRestoreFromArchive={isArchived && wikiIdForBanner
                   ? () => fm.handleRestoreFromArchive(wikiIdForBanner)
                   : undefined}
-                onRegenerate={async (options) => {
+                onRegenerate={() => {
                   if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
                   const wikiId = fm.activeFileId.replace("wiki:", "");
-                  await regenerateWikiById(wikiId, { model: options?.model, openAfter: true });
+                  void regenerateWikiById(wikiId, { openAfter: true });
                 }}
                 onDelete={() => {
                   if (!fm.activeFileId) return;
