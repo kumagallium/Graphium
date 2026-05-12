@@ -130,29 +130,30 @@ export function IngestToast({ state, onDismiss }: Props) {
               {item.status === "error" && (
                 <X size={12} className="text-destructive shrink-0" />
               )}
-              <span className={`truncate ${item.status === "queued" ? "text-muted-foreground" : "text-foreground"}`}>
+              <span className={`truncate min-w-0 flex-1 ${item.status === "queued" ? "text-muted-foreground" : "text-foreground"}`}>
                 {item.noteTitle}
               </span>
               {item.detail && (item.status === "generating" || item.status === "saving") && (
                 <span className="text-muted-foreground/60 shrink-0">{item.detail}</span>
               )}
-              {item.result && item.status === "error" && (
-                <span
-                  className="text-destructive/80 break-words whitespace-normal min-w-0 flex-1"
-                  title={item.result}
-                >
-                  — {item.result}
-                </span>
-              )}
               {item.result && item.status === "success" && (
                 <span
-                  className="text-muted-foreground/60 truncate min-w-0"
+                  className="text-muted-foreground/60 truncate min-w-0 shrink-0 max-w-[40%]"
                   title={item.result}
                 >
                   — {item.result}
                 </span>
               )}
             </div>
+            {/* エラーは長文になりやすいので独立行に出す。break-words で折り返す */}
+            {item.result && item.status === "error" && (
+              <div
+                className="pl-5 pr-1 text-[11px] text-destructive/80 break-words whitespace-normal"
+                title={item.result}
+              >
+                {item.result}
+              </div>
+            )}
             {/* パイプラインステージ（cross-update / atomize / synthesize / lint） */}
             {item.stages && item.stages.length > 0 && (
               <ul className="pl-5 space-y-0.5">

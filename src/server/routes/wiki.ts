@@ -30,7 +30,8 @@ import {
 import {
   buildSynthesizerSystemPrompt,
   buildSynthesizerUserMessage,
-  parseSynthesizerOutput,
+  parseSynthesizerOutputWithStats,
+  SYNTHESIS_CONFIDENCE_THRESHOLD,
   type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
 import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
@@ -424,15 +425,23 @@ app.post("/synthesize", async (c) => {
       maxSteps: 1,
     });
 
-    const candidates = parseSynthesizerOutput(result.message);
+    const stats = parseSynthesizerOutputWithStats(result.message);
     // PR-B4.5: procedureContext は Synthesis に持たせない（砂時計のくびれ
     // を通った後の層は context-stripped が contract）。fallback ロジックは
     // 削除した。
 
     return c.json({
-      candidates,
+      candidates: stats.candidates,
       tokenUsage: result.tokenUsage,
       model: result.model,
+      // 「No synthesis generated」が confidence ガード由来か LLM 出力空かを
+      // クライアントで区別するための統計
+      stats: {
+        rawCount: stats.rawCount,
+        droppedByConfidence: stats.droppedByConfidence,
+        maxDroppedConfidence: stats.maxDroppedConfidence,
+        threshold: SYNTHESIS_CONFIDENCE_THRESHOLD,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";

@@ -3417,12 +3417,12 @@ export function NoteApp() {
         for (const cId of sourceConceptIds) {
           const cDoc = await fm.loadDoc(`wiki:${cId}`);
           if (!cDoc) continue;
-          // Synthesis のソースは Concept だけでなく Atom も許容する。
-          // Atomize 経由で生まれた抽象（atom）は Concept と同じく synthesis の
-          // 原料として正当に使われるため、ここで弾くと Atom ベースの Synthesis が
-          // 「Source concepts not found」で再生成不能になる。
+          // Synthesis のソースは Concept (claim) / Atom / Summary を許容する。
+          // 過去の synthesizer 出力では Summary も sourceConceptIds に混じることがあり、
+          // ここで弾くと既存 synthesis が「source pages missing」で再生成不能になる
+          // （実データで Summary を含む derivedFromNotes が観測されている）。
           const sourceKind = cDoc.wikiMeta?.kind;
-          if (sourceKind !== "claim" && sourceKind !== "atom") continue;
+          if (sourceKind !== "claim" && sourceKind !== "atom" && sourceKind !== "summary") continue;
           concepts.push({
             id: cId,
             title: cDoc.title,
@@ -3474,8 +3474,17 @@ export function NoteApp() {
           }),
         });
         const synthResult = synthRes.ok
-          ? await synthRes.json() as { candidates: any[]; model?: string }
-          : { candidates: [] };
+          ? await synthRes.json() as {
+              candidates: any[];
+              model?: string;
+              stats?: {
+                rawCount: number;
+                droppedByConfidence: number;
+                maxDroppedConfidence?: number;
+                threshold: number;
+              };
+            }
+          : { candidates: [] as any[], stats: undefined };
         if (synthResult.candidates && synthResult.candidates.length > 0) {
           const candidate = synthResult.candidates[0];
           const newDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
@@ -3501,12 +3510,23 @@ export function NoteApp() {
           }));
           return { ok: true };
         } else {
+          // 「No synthesis generated」が confidence ガード由来か LLM 出力空かを区別する
+          const stats = (synthResult as { stats?: { rawCount: number; droppedByConfidence: number; maxDroppedConfidence?: number; threshold: number } }).stats;
+          let errMsg = "No synthesis generated";
+          if (stats) {
+            if (stats.droppedByConfidence > 0 && stats.droppedByConfidence === stats.rawCount) {
+              const maxConf = stats.maxDroppedConfidence?.toFixed(2) ?? "?";
+              errMsg = `Quality below threshold (max conf ${maxConf} < ${stats.threshold}). Source pages may be too few or unrelated to synthesize confidently.`;
+            } else if (stats.rawCount === 0) {
+              errMsg = "LLM returned no synthesis candidates. Source pages may be too few or unrelated.";
+            }
+          }
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: "No synthesis generated" } : i
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
             ),
           }));
-          return { ok: false, error: "No synthesis generated" };
+          return { ok: false, error: errMsg };
         }
       } else {
         // マルチソース regenerate:
