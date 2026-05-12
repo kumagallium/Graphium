@@ -76,7 +76,7 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
-import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, getAutoIngestChat, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -400,8 +400,6 @@ type NoteEditorProps = {
   onDeleteNote?: () => void;
   /** チャットから Knowledge コールバック（手動） */
   onIngestChat?: (messages: import("./lib/document-types").ChatMessage[]) => void;
-  /** チャット応答の自動 Wiki 保存コールバック */
-  onAutoIngestChat?: (messages: import("./lib/document-types").ChatMessage[]) => void;
   /** Wiki ドキュメントかどうか */
   isWikiDoc?: boolean;
   /** AI バックエンドが利用可能か（false なら Chat タブを非表示） */
@@ -503,7 +501,6 @@ function NoteEditorInner({
   derivingDisabled,
   onDeleteNote,
   onIngestChat,
-  onAutoIngestChat,
   isWikiDoc,
   aiAvailable = true,
   skillPrompts,
@@ -1397,7 +1394,8 @@ function NoteEditorInner({
         // Wiki コンテキストが使われ���場合、引用情報を処理
         let assistantMessage = response.message;
         if (wikiContext) {
-          // wikiContext に含まれていた候補タイトル（Retriever が LLM に渡した正式タイトル）
+          // wikiContext に含まれていた候補タイトル（Retriever が embedding 検索で抽出して
+          // LLM に渡した、引用が特に期待される正式タイトル）
           const candidateTitles: string[] = [];
           const titlePattern = /\[id:\s*[^,]+,\s*title:\s*"([^"]+)"\]/g;
           let tm;
@@ -1405,15 +1403,26 @@ function NoteEditorInner({
             candidateTitles.push(tm[1]);
           }
 
+          // <wiki-index> 内で LLM に提示した全 Wiki ページタイトル。LLM はこの中からも
+          // 引用してよい（Retriever のヒットに無くても、index にあれば妥当な引用元）。
+          const indexTitles: string[] = [];
+          const indexBlockMatch = wikiContext.match(/<wiki-index>([\s\S]*?)<\/wiki-index>/);
+          if (indexBlockMatch) {
+            const titleInIndex = /^- \*\*(.+?)\*\*/gm;
+            let im;
+            while ((im = titleInIndex.exec(indexBlockMatch[1])) !== null) {
+              indexTitles.push(im[1]);
+            }
+          }
+          const allValidTitles = [...new Set([...candidateTitles, ...indexTitles])];
+
           // 候補タイトルへの正規化: LLM が `[Source: "..."]` でなく `【Source: @prefix...】`
           // のような派生形式で出すことがあるので、候補に対して prefix match で正式タイトルに復元する。
           const resolveTitle = (raw: string): string | null => {
             const cleaned = raw.replace(/^@/, "").trim();
-            // 完全一致
-            const exact = candidateTitles.find((t) => t === cleaned);
+            const exact = allValidTitles.find((t) => t === cleaned);
             if (exact) return exact;
-            // prefix 一致（LLM が長いタイトルを途中で切ることがある）
-            const prefix = candidateTitles.find((t) => t.startsWith(cleaned) || cleaned.startsWith(t));
+            const prefix = allValidTitles.find((t) => t.startsWith(cleaned) || cleaned.startsWith(t));
             return prefix ?? null;
           };
 
@@ -1428,13 +1437,19 @@ function NoteEditorInner({
             if (resolved) sources.add(resolved);
           }
           // 全角を抽出 + 元テキストでも半角形式に置換（panel 側のレンダラがクリック可能にできるよう）
+          // 解決できない引用は LLM の hallucination（実在しないタイトル）なので、本文から除去する。
           assistantMessage = assistantMessage.replace(fullWidth, (_full, raw: string) => {
             const resolved = resolveTitle(raw);
             if (resolved) {
               sources.add(resolved);
               return `[Source: "${resolved}"]`;
             }
-            return _full;
+            return "";
+          });
+          // 半角形式の hallucination も除去（実在タイトルでない引用は表示価値が低い）
+          assistantMessage = assistantMessage.replace(halfWidth, (_full, raw: string) => {
+            const resolved = resolveTitle(raw);
+            return resolved ? `[Source: "${resolved}"]` : "";
           });
 
           // LLM が一度も引用しなかった場合は wikiContext の全候補を trailing list に並べる
@@ -1449,10 +1464,8 @@ function NoteEditorInner({
             assistantMessage += "\n\n---\n📎 *Knowledge referenced*";
           }
         }
-        // <!-- wiki_worthy: true/false --> タグをパースして除去
-        const wikiWorthyMatch = assistantMessage.match(/<!--\s*wiki_worthy:\s*(true|false)\s*-->/);
-        const llmWikiWorthy = wikiWorthyMatch ? wikiWorthyMatch[1] === "true" : null;
-        // 表示用メッセージからタグを除去
+        // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
+        // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
         const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
 
         const assistantTimestamp = new Date().toISOString();
@@ -1464,34 +1477,6 @@ function NoteEditorInner({
         aiAssistant.setSessionId(response.session_id);
         aiAssistant.setLoading(false);
         markDirty();
-
-        // Query → Wiki 自動保存: LLM 判定を優先、fallback でヒューリスティック。
-        // ユーザーが Settings でオフにしている場合はスキップ。
-        if (onAutoIngestChat && getAutoIngestChat()) {
-          try {
-            const allMessages = [
-              ...aiAssistant.messages,
-              { role: "assistant" as const, content: cleanMessage, timestamp: assistantTimestamp },
-            ];
-
-            let isWorthy: boolean;
-            if (llmWikiWorthy !== null) {
-              // LLM が自己評価した結果を使う
-              isWorthy = llmWikiWorthy;
-            } else {
-              // LLM タグがない場合はヒューリスティックで判定
-              const { assessWikiWorthiness } = await import("./features/wiki/wiki-worthy");
-              const assessment = assessWikiWorthiness(allMessages);
-              isWorthy = assessment.worthy;
-            }
-
-            if (isWorthy) {
-              onAutoIngestChat(allMessages);
-            }
-          } catch {
-            // 判定失敗は無視
-          }
-        }
       } catch (err) {
         aiAssistant.setError(
           err instanceof Error ? err.message : "AI 実行に失敗しました",
@@ -4762,37 +4747,6 @@ export function NoteApp() {
                 }
               })();
             } : undefined}
-            onAutoIngestChat={(chatMessages) => {
-              // 自動 Wiki 保存: バックグラウンドで静かに実行
-              const jobId = `auto:${Date.now()}`;
-              const chatTitle = chatMessages[0]?.content.slice(0, 30) ?? "Chat";
-              (async () => {
-                try {
-                  const existingWikis = (fm.noteIndex?.notes ?? [])
-                    .filter((n) => n.source === "ai" && n.wikiKind)
-                    .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                  const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, "ja");
-                  if (result.wikis.length === 0) return;
-                  const savedTitles: string[] = [];
-                  for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja", buildNoteIndex(fm.noteIndex));
-                    const newId = await fm.handleCreateWikiFile(wikiDoc);
-                    embedWikiSections(newId, wikiDoc).catch(() => {});
-                    savedTitles.push(wiki.title);
-                    wikiLog.append("ingest", [newId], `Auto-saved from chat: "${wiki.title}"`).catch(() => {});
-                  }
-                  // 控えめなトースト通知
-                  setIngestToast((prev) => ({
-                    items: [
-                      ...(prev?.items ?? []),
-                      { id: jobId, status: "success" as const, noteTitle: `💡 Auto-saved: ${savedTitles.join(", ")}` },
-                    ],
-                  }));
-                } catch {
-                  // 自動保存の失敗は静かに無視
-                }
-              })();
-            }}
           />
           </>
         )}

@@ -1572,6 +1572,7 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
   const summaries = entries.filter((e) => e.kind === "summary");
   const concepts = entries.filter((e) => e.kind === "claim");
   const syntheses = entries.filter((e) => e.kind === "synthesis");
+  const atoms = entries.filter((e) => e.kind === "atom");
 
   let text = `## Wiki Index (${entries.length} pages)\n\n`;
 
@@ -1596,6 +1597,17 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
     text += `### Syntheses (${syntheses.length})\n`;
     for (const s of syntheses) {
       text += `- **${s.title}**: ${s.bodyPreview}\n`;
+    }
+    text += "\n";
+  }
+
+  // Atom はノート由来の具体的な観察・データ断片。
+  // Concept/Synthesis と並べて LLM が選べるようにする（質問によっては
+  // atom が一次ソースとして最も適切な引用元になる）。
+  if (atoms.length > 0) {
+    text += `### Atoms (${atoms.length})\n`;
+    for (const a of atoms) {
+      text += `- **${a.title}**: ${a.bodyPreview}\n`;
     }
   }
 

@@ -160,7 +160,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [model, setModel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
-  const [autoIngestChat, setAutoIngestChat] = useState(true);
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
@@ -353,7 +352,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
-    setAutoIngestChat(settings.autoIngestChat ?? true);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
     setCustomLabels(settings.customLabels ?? {});
@@ -739,11 +737,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, chatSynthesisModel, autoIngestChat, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
+    saveSettings({ model, embeddingModel, chatSynthesisModel, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, autoIngestChat, disabledTools, registryUrl, customLabels, latinFont, jpFont, experimental, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, disabledTools, registryUrl, customLabels, latinFont, jpFont, experimental, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -998,25 +996,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               </p>
             </div>
 
-            {/* チャットの自動 Wiki 取り込み */}
-            <div>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoIngestChat}
-                  onChange={(e) => { setAutoIngestChat(e.target.checked); setSaved(false); }}
-                  className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                />
-                <span className="flex-1">
-                  <span className="text-xs font-semibold text-foreground block">
-                    {t("settings.autoIngestChat")}
-                  </span>
-                  <span className="text-xs text-muted-foreground mt-0.5 block">
-                    {t("settings.autoIngestChatHelp")}
-                  </span>
-                </span>
-              </label>
-            </div>
           </div>
         )}
 

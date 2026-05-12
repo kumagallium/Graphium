@@ -423,8 +423,6 @@ export const ja: Record<string, string> = {
   "settings.chatSynthesisModel": "チャット・Synthesis モデル",
   "settings.chatSynthesisModelSameAsDefault": "デフォルトモデルと同じ",
   "settings.chatSynthesisModelHelp": "任意。AI チャットと Synthesis（複数 Claim の統合）で使われます。未指定の場合はデフォルトモデルが使われます。",
-  "settings.autoIngestChat": "チャットを自動的に Wiki に保存",
-  "settings.autoIngestChatHelp": "AI が「残す価値あり」と判定した会話を、自動で Wiki ページに抽出します。手動で取り込みたい場合はオフにしてください（チャットメニューから個別に Ingest できます）。",
   "settings.section.display": "表示・ロケール",
   "settings.section.ai": "AI",
   "settings.section.storage": "ストレージ",

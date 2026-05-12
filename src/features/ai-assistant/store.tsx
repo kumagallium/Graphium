@@ -72,6 +72,18 @@ function resolveScopeType(sourceBlockIds: string[]): ScopeChat["scopeType"] {
   return sourceBlockIds.length > 0 ? "heading" : "page";
 }
 
+// 現在のチャットに割り当てるべき安定 ID を返す。
+// 優先順位: 既に chats に存在するエントリの ID > activeChatId（addMessage 時に発行済み）
+// > 新規 UUID。
+// 注意: activeChatId が立っているのに新規 UUID を生成すると、保存ごとに別 ID で
+// チャットが増殖する（重複バグの原因）。
+function resolveChatId(
+  state: AiAssistantState,
+  existing: ScopeChat | null | undefined,
+): string {
+  return existing?.id ?? state.activeChatId ?? crypto.randomUUID();
+}
+
 // チャット退避時に generatedBy を構築するヘルパー
 function buildGeneratedBy(
   prev: AiAssistantState,
@@ -101,7 +113,7 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
             ? prev.chats.find((c) => c.id === prev.activeChatId)
             : null;
           const currentChat: ScopeChat = {
-            id: existing?.id ?? crypto.randomUUID(),
+            id: resolveChatId(prev, existing),
             scopeBlockId: prev.sourceBlockIds[0] ?? "",
             scopeType: resolveScopeType(prev.sourceBlockIds),
             messages: prev.messages,
@@ -178,7 +190,7 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
     const now = new Date().toISOString();
     const existing = s.activeChatId ? s.chats.find((c) => c.id === s.activeChatId) : null;
     return {
-      id: existing?.id ?? crypto.randomUUID(),
+      id: resolveChatId(s, existing),
       scopeBlockId: s.sourceBlockIds[0] ?? "",
       scopeType: resolveScopeType(s.sourceBlockIds),
       messages: s.messages,
@@ -198,7 +210,7 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
           ? prev.chats.find((c) => c.id === prev.activeChatId)
           : null;
         const currentChat: ScopeChat = {
-          id: existing?.id ?? crypto.randomUUID(),
+          id: resolveChatId(prev, existing),
           scopeBlockId: prev.sourceBlockIds[0] ?? "",
           scopeType: resolveScopeType(prev.sourceBlockIds),
           messages: prev.messages,
@@ -231,7 +243,7 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
           ? prev.chats.find((c) => c.id === prev.activeChatId)
           : null;
         const currentChat: ScopeChat = {
-          id: existing?.id ?? crypto.randomUUID(),
+          id: resolveChatId(prev, existing),
           scopeBlockId: prev.sourceBlockIds[0] ?? "",
           scopeType: resolveScopeType(prev.sourceBlockIds),
           messages: prev.messages,

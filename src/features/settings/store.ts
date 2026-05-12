@@ -49,9 +49,6 @@ export type Settings = {
    *  バックグラウンド処理（ingest/lint/rewrite）よりも能力を要求する場面があるため、
    *  個別にもう一段上のモデルを当てられるようにする。 */
   chatSynthesisModel: string;
-  /** チャット応答を自動的に Wiki に取り込むか（true がデフォルト）。
-   *  wiki-worthy 判定で worthy となった会話のみ ingest される。 */
-  autoIngestChat: boolean;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
   /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる） */
@@ -70,7 +67,6 @@ const DEFAULT_SETTINGS: Settings = {
   model: "",
   embeddingModel: "",
   chatSynthesisModel: "",
-  autoIngestChat: true,
   disabledTools: [],
   registryUrl: "",
   customLabels: {},
@@ -185,11 +181,6 @@ export function getCustomLabels(): CustomLabels {
 /** Embedding 用モデル名を取得する（空文字 = チャットモデルと同じ） */
 export function getEmbeddingModel(): string {
   return loadSettings().embeddingModel;
-}
-
-/** チャット応答の自動 Wiki 取り込みが有効かどうか */
-export function getAutoIngestChat(): boolean {
-  return loadSettings().autoIngestChat;
 }
 
 /** AI チャット & Synthesis 用モデル名を取得する（空文字 = `model` と同じ） */

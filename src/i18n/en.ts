@@ -423,8 +423,6 @@ export const en: Record<string, string> = {
   "settings.chatSynthesisModel": "Chat & Synthesis model",
   "settings.chatSynthesisModelSameAsDefault": "Same as default model",
   "settings.chatSynthesisModelHelp": "Optional. Used for AI Chat and Synthesis (combining multiple Claims). Falls back to the default model when empty.",
-  "settings.autoIngestChat": "Auto-save chats to Wiki",
-  "settings.autoIngestChatHelp": "When the AI judges a conversation worth keeping, automatically extract it into a Wiki page. Turn off if you prefer to ingest chats manually from the chat menu.",
   "settings.section.display": "Display & Locale",
   "settings.section.ai": "AI",
   "settings.section.storage": "Storage",
