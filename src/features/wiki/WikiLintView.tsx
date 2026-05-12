@@ -16,6 +16,7 @@ import {
   Clock,
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
+import { useT } from "../../i18n";
 
 type Props = {
   report: LintReport | null;
@@ -33,12 +34,12 @@ const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
   redundant: Copy,
 };
 
-const ISSUE_LABELS: Record<LintIssueType, string> = {
-  contradiction: "Contradiction",
-  orphan: "Orphan",
-  gap: "Gap",
-  stale: "Stale",
-  redundant: "Redundant",
+const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
+  contradiction: "wikiLint.type.contradiction",
+  orphan: "wikiLint.type.orphan",
+  gap: "wikiLint.type.gap",
+  stale: "wikiLint.type.stale",
+  redundant: "wikiLint.type.redundant",
 };
 
 const SEVERITY_STYLES: Record<LintSeverity, string> = {
@@ -48,6 +49,7 @@ const SEVERITY_STYLES: Record<LintSeverity, string> = {
 };
 
 export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }: Props) {
+  const t = useT();
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   return (
@@ -62,7 +64,7 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
         </button>
         <div className="flex items-center gap-2">
           <AlertTriangle size={16} className="text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Wiki Health Check</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t("wikiLint.header")}</h2>
         </div>
         <div className="flex-1" />
         <button
@@ -71,7 +73,7 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
           className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {loading ? "Analyzing..." : "Run Check"}
+          {loading ? t("wikiLint.analyzingShort") : t("wikiLint.runButton")}
         </button>
       </div>
 
@@ -80,19 +82,21 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
         {!report && !loading && (
           <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-3">
             <AlertTriangle size={28} className="opacity-30" />
-            <p>Run a health check to analyze your Wiki for issues</p>
+            <p>{t("wikiLint.emptyHint")}</p>
             <div className="flex gap-2">
               <button
                 onClick={() => onRunLint(true)}
+                title={t("wikiLint.quickHint")}
                 className="rounded px-3 py-1.5 text-xs border border-border hover:bg-muted transition-colors"
               >
-                Quick (local only)
+                {t("wikiLint.quickButton")}
               </button>
               <button
                 onClick={() => onRunLint(false)}
+                title={t("wikiLint.fullHint")}
                 className="rounded px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                Full (AI analysis)
+                {t("wikiLint.fullButton")}
               </button>
             </div>
           </div>
@@ -101,7 +105,7 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
         {loading && !report && (
           <div className="flex flex-col items-center justify-center h-48 text-xs text-muted-foreground gap-2">
             <Loader2 size={24} className="animate-spin text-primary" />
-            <p>Analyzing Wiki health...</p>
+            <p>{t("wikiLint.analyzingLong")}</p>
           </div>
         )}
 
@@ -114,14 +118,14 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
                   <>
                     <CheckCircle size={14} className="text-emerald-500" />
                     <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                      No issues found
+                      {t("wikiLint.noIssues")}
                     </span>
                   </>
                 ) : (
                   <>
                     <AlertTriangle size={14} className="text-amber-500" />
                     <span className="text-xs font-medium text-foreground">
-                      {report.summary.total} issue(s) found
+                      {t("wikiLint.issuesFound", { count: String(report.summary.total) })}
                     </span>
                   </>
                 )}
@@ -195,8 +199,9 @@ function IssueCard({
   onToggle: () => void;
   onOpenWiki: (wikiId: string) => void;
 }) {
+  const t = useT();
   const Icon = ISSUE_ICONS[issue.type];
-  const label = ISSUE_LABELS[issue.type];
+  const label = t(ISSUE_TYPE_I18N_KEY[issue.type] as any);
   const style = SEVERITY_STYLES[issue.severity];
 
   return (
@@ -217,7 +222,7 @@ function IssueCard({
           <p className="text-xs text-muted-foreground">{issue.description}</p>
           {issue.suggestion && (
             <div className="text-xs text-foreground/80 bg-muted/50 rounded px-2 py-1.5">
-              <span className="font-medium">Suggestion: </span>
+              <span className="font-medium">{t("wikiLint.suggestionPrefix")}</span>
               {issue.suggestion}
             </div>
           )}
@@ -229,7 +234,7 @@ function IssueCard({
                   onClick={() => onOpenWiki(id)}
                   className="text-[10px] text-primary hover:underline"
                 >
-                  Open: {id.slice(0, 12)}...
+                  {t("wikiLint.openWikiPrefix")}{id.slice(0, 12)}...
                 </button>
               ))}
             </div>

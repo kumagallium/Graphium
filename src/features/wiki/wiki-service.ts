@@ -1723,8 +1723,7 @@ export function buildSynthesisDocument(
     synthesisMode: candidate.synthesisMode,
     hypothesisStatus: candidate.hypothesisStatus
       ?? (candidate.synthesisMode ? "speculative" : undefined),
-    // Phase 2.3 (PR-B3): Synthesis に持ち越された手順条件
-    procedureContext: candidate.procedureContext,
+    // PR-B4.5: procedureContext は Synthesis に持たない（context-stripped）
   };
 
   return {
@@ -1829,8 +1828,7 @@ export type AtomCandidate = {
   confidence: number;
   /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
   atomType?: import("../../lib/document-types").AtomType;
-  /** 上流 Claim の procedureContext を intersection した結果（PR-B3）。 */
-  procedureContext?: import("../../lib/document-types").ProcedureContext;
+  // PR-B4.5: procedureContext は Atom には持たない（砂時計のくびれ）
 };
 
 export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
@@ -1937,8 +1935,7 @@ export function buildAtomDocument(
     confidence: candidate.confidence,
     // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
     atomType: candidate.atomType,
-    // Phase 2.3 (PR-B3): Atom にも手順条件（多くの場合は intersection で薄くなる）
-    procedureContext: candidate.procedureContext,
+    // PR-B4.5: procedureContext は Atom に持たない（context-stripped）
   };
 
   return {
@@ -2033,8 +2030,12 @@ export function buildClaimSnapshots(
       level: meta.level,
       relatedClaims: doc ? extractRelatedClaims(doc).map(String) : [],
       sourceSummaryPreviews,
-      // Phase 2.3 拡張: Claim に保存された手順条件を Atomizer / Synthesizer に渡す
-      procedureContext: doc?.wikiMeta?.procedureContext,
+      // PR-B4.5: procedureContext は ClaimSnapshot に含めない（Atom/Synthesis
+      // 層へは流さない）。reproducibility は wikiMeta の derivedFromNotes 経由で
+      // on-demand に source Claim を引く設計。
+      // PR-B5: Atom source の場合は atomType を伝搬し、サーバー側 synthesis-router で
+      // モード候補の推定に使う（"claim" source では undefined のまま）。
+      atomType: sourceKind === "atom" ? meta.atomType : undefined,
     });
   }
 

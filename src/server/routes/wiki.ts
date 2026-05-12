@@ -11,10 +11,7 @@ import {
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
-import {
-  formatProvSummaryForPrompt,
-  intersectClaimProcedureContexts,
-} from "../services/prov-prompt-injection.js";
+import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
   buildLinterUserMessage,
@@ -36,6 +33,7 @@ import {
   parseSynthesizerOutput,
   type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
+import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
 import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
@@ -402,7 +400,15 @@ app.post("/synthesize", async (c) => {
     return c.json({ candidates: [] });
   }
 
-  const systemPrompt = buildSynthesizerSystemPrompt(body.language || "en", body.skills);
+  // PR-B5: 入力 Atom の atomType から候補モードを推定し、Synthesizer プロンプトを
+  // その候補だけに絞る。Claim 入力 (atomType 無し) や signal 不足の場合は
+  // router が deductive 単独を返すため、最も permissive なデフォルト挙動になる。
+  const routerResult = routeSynthesisMode(body.concepts.map((c) => c.atomType));
+  const systemPrompt = buildSynthesizerSystemPrompt(
+    body.language || "en",
+    body.skills,
+    routerResult.candidateModes,
+  );
   const userMessage = buildSynthesizerUserMessage(
     body.concepts,
     body.existingSynthesisTitles || [],
@@ -418,16 +424,10 @@ app.post("/synthesize", async (c) => {
       maxSteps: 1,
     });
 
-    const candidates = parseSynthesizerOutput(result.message).map((cand) => {
-      // PR-B3.1: LLM が procedureContext を omit した場合、サーバー側で
-      // source Claim の procedureContext を deterministic に intersect して
-      // fallback として埋める。LLM が出していたものは尊重する。
-      if (cand.procedureContext) return cand;
-      const sourceCtxs = cand.sourceConceptIds
-        .map((id) => body.concepts.find((c) => c.id === id)?.procedureContext);
-      const fallback = intersectClaimProcedureContexts(sourceCtxs);
-      return fallback ? { ...cand, procedureContext: fallback } : cand;
-    });
+    const candidates = parseSynthesizerOutput(result.message);
+    // PR-B4.5: procedureContext は Synthesis に持たせない（砂時計のくびれ
+    // を通った後の層は context-stripped が contract）。fallback ロジックは
+    // 削除した。
 
     return c.json({
       candidates,
@@ -473,15 +473,9 @@ app.post("/atomize", async (c) => {
       maxSteps: 1,
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
-    const atoms = parseAtomizerOutput(result.message, idToTitle).map((atom) => {
-      // PR-B3.1: LLM が procedureContext を omit した Atom は、source Claim の
-      // procedureContext を deterministic に intersect した fallback で埋める。
-      if (atom.procedureContext) return atom;
-      const sourceCtxs = atom.derivedFromClaims
-        .map((id) => body.concepts.find((c) => c.id === id)?.procedureContext);
-      const fallback = intersectClaimProcedureContexts(sourceCtxs);
-      return fallback ? { ...atom, procedureContext: fallback } : atom;
-    });
+    const atoms = parseAtomizerOutput(result.message, idToTitle);
+    // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
+    // fallback ロジックは削除した。
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";
