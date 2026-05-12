@@ -4455,6 +4455,14 @@ export function NoteApp() {
             onArchiveWiki={async (wikiId) => {
               await fm.handleArchiveWikiFile(wikiId);
             }}
+            wikiTitleById={(() => {
+              // wikiId → title マップ。Lint カードで UUID ではなくタイトルを表示するため。
+              const map = new Map<string, string>();
+              for (const [id, meta] of fm.wikiMetas.entries()) {
+                if (meta?.title) map.set(id, meta.title);
+              }
+              return map;
+            })()}
           />
         ) : fm.activeWikiKind ? (
           <WikiListView

@@ -18,6 +18,23 @@ export type LintIssue = {
   affectedWikiIds: string[];
   /** 推奨アクション */
   suggestion: string;
+  /**
+   * 構造化された推奨アクション（PR-B6.2）。
+   *
+   * UI が ID 直接ではなく LLM の判断を踏まえた推奨を視覚化するためのフィールド。
+   * redundant のとき、どれを残しどれを吸収するかを id 単位で指定する。
+   * 他の issue type では使わない（contradiction / gap / orphan / stale は
+   * 単純な 1-wiki 操作で済む or AI に決めさせない方が安全）。
+   */
+  recommendedAction?: {
+    type: "merge";
+    /** 残す wiki id（canonical） */
+    keepId: string;
+    /** 吸収して archive 推奨の wiki id */
+    absorbId: string;
+    /** なぜ keepId を canonical に選ぶかの理由（人間向け） */
+    reason?: string;
+  };
 };
 
 export type LintReport = {
@@ -95,6 +112,8 @@ One could be deleted or merged into the other without losing information.
 This often happens when a page is regenerated with a better model — the old version may now be redundant.
 Severity: "warning"
 
+**For redundant issues you MUST fill \`recommendedAction\`** so the UI can show the user which page to keep vs absorb without forcing them to read the prose suggestion. Pick the better page as \`keepId\` (more recent / better-cited / more comprehensive). Put the other as \`absorbId\`. Add a one-sentence \`reason\` explaining your pick.
+
 ## Output Format
 
 Respond with valid JSON only (no markdown wrapper):
@@ -107,10 +126,25 @@ Respond with valid JSON only (no markdown wrapper):
       "title": "Short issue title",
       "description": "Detailed explanation of the issue",
       "affectedWikiIds": ["wiki-id-1", "wiki-id-2"],
-      "suggestion": "What should be done to resolve this"
+      "suggestion": "What should be done to resolve this",
+      "recommendedAction": {                  // redundant のみ必須。他は省略
+        "type": "merge",
+        "keepId": "wiki-id-to-keep",
+        "absorbId": "wiki-id-to-absorb",
+        "reason": "Why keepId is the canonical one (one sentence)"
+      }
     }
   ]
 }
+
+## CRITICAL: refer to wiki pages by TITLE, not by ID
+
+In \`title\`, \`description\`, and \`suggestion\`:
+- **Always use the page title** when referring to a specific wiki. Example: "Keep \"Bandgap engineering of Al5Co2\" and merge \"Al5Co2 reduction kinetics\" into it."
+- **Never paste raw UUIDs** like \`af4189d8-...\` in user-facing text — those are unreadable.
+- IDs go in \`affectedWikiIds\` and \`recommendedAction\` only (the UI handles ID-to-action wiring).
+
+If two pages have very similar titles, disambiguate with a short distinguishing phrase, not with the ID.
 
 ## Guidelines
 
@@ -172,16 +206,44 @@ export function parseLinterOutput(text: string): LintIssue[] {
 
     return issues
       .filter((i: any) => i.type && i.title && i.description)
-      .map((i: any) => ({
-        type: validateIssueType(i.type),
-        severity: validateSeverity(i.severity),
-        title: String(i.title),
-        description: String(i.description),
-        affectedWikiIds: Array.isArray(i.affectedWikiIds)
+      .map((i: any) => {
+        const affectedWikiIds: string[] = Array.isArray(i.affectedWikiIds)
           ? i.affectedWikiIds.map(String)
-          : [],
-        suggestion: String(i.suggestion ?? ""),
-      }));
+          : [];
+        // PR-B6.2: recommendedAction の取り出し。
+        // - type === "merge" 限定
+        // - keepId / absorbId は affectedWikiIds に含まれていなければ無効として捨てる
+        //   （LLM がノイズの id を返した時の hallucination 防御）
+        let recommendedAction: LintIssue["recommendedAction"];
+        const ra = i.recommendedAction;
+        if (ra && typeof ra === "object" && ra.type === "merge") {
+          const keepId = typeof ra.keepId === "string" ? ra.keepId : "";
+          const absorbId = typeof ra.absorbId === "string" ? ra.absorbId : "";
+          if (
+            keepId &&
+            absorbId &&
+            keepId !== absorbId &&
+            affectedWikiIds.includes(keepId) &&
+            affectedWikiIds.includes(absorbId)
+          ) {
+            recommendedAction = {
+              type: "merge",
+              keepId,
+              absorbId,
+              reason: typeof ra.reason === "string" ? ra.reason : undefined,
+            };
+          }
+        }
+        return {
+          type: validateIssueType(i.type),
+          severity: validateSeverity(i.severity),
+          title: String(i.title),
+          description: String(i.description),
+          affectedWikiIds,
+          suggestion: String(i.suggestion ?? ""),
+          recommendedAction,
+        };
+      });
   } catch (err) {
     console.error("Linter 出力のパース失敗:", err);
     return [];
