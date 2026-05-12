@@ -98,7 +98,7 @@ import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, typ
 import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner,
-  IngestToast, type IngestToastState, type IngestToastItem,
+  IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
   ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
@@ -2884,110 +2884,147 @@ export function NoteApp() {
       ingestQueueRef.current.shift();
     }
 
+    // パイプライン後半（Atomize / Synthesize / Lint）の進捗を 1 つの
+    // トーストアイテムで可視化する。スキップ理由・件数を ユーザーに見せ、
+    // 「summary 出た後に何が動いているのか分からない」状態を解消する。
+    const pipelineId = `pipeline:${Date.now()}`;
+    const pipelineStages: IngestStage[] = [
+      { key: "atomize", label: "Atomize", status: "pending" },
+      { key: "synthesize", label: "Synthesize", status: "pending" },
+      { key: "lint", label: "Lint", status: "pending" },
+    ];
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        {
+          id: pipelineId,
+          status: "generating" as const,
+          noteTitle: "🧠 Knowledge pipeline",
+          stages: pipelineStages,
+        },
+      ],
+    }));
+
+    const updateStage = (
+      key: string,
+      status: IngestStageStatus,
+      detail?: string,
+    ) => {
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) => {
+          if (i.id !== pipelineId) return i;
+          const stages = (i.stages ?? []).map((s) =>
+            s.key === key ? { ...s, status, detail } : s
+          );
+          // すべてのステージが終端状態になったら overall を success/error に切り替える
+          const remaining = stages.some(
+            (s) => s.status === "pending" || s.status === "running"
+          );
+          const hasError = stages.some((s) => s.status === "error");
+          const nextOverall = remaining
+            ? ("generating" as const)
+            : hasError
+              ? ("error" as const)
+              : ("success" as const);
+          return { ...i, stages, status: nextOverall };
+        }),
+      }));
+    };
+
     // 自動 Atomize: experimental.atomLayer 有効時、全 Concept を見渡して
     // 共通抽象を発見する discovery を 1 回回す（Synthesis と同じ pattern）。
-    // 既存 Atom のタイトルは "重複しないでね" として LLM に渡す。
-    // fire-and-forget — 失敗は ingest 全体には影響させない。
-    if (isAtomLayerEnabled()) try {
-      const claimSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "claim");
-      if (claimSnapshots.length >= 2) {
-        const existingAtomTitles = [...fm.wikiMetas.entries()]
-          .filter(([, m]) => m.kind === "atom")
-          .map(([, m]) => m.title);
-        const atomResult = await atomizeConcepts(
-          claimSnapshots,
-          "ja",
-          { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
-        );
-        for (const candidate of atomResult.atoms) {
-          const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, "ja");
-          const newId = await fm.handleCreateWikiFile(atomDoc);
-          embedWikiSections(newId, atomDoc).catch(() => {});
-          wikiLog.append(
-            "ingest",
-            [newId],
-            `Atom: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
-          ).catch(() => {});
-          setIngestToast((prev) => ({
-            items: [
-              ...(prev?.items ?? []),
-              { id: `atom:${newId}`, status: "success" as const, noteTitle: `🔬 Atom: ${candidate.title}` },
-            ],
-          }));
+    if (isAtomLayerEnabled()) {
+      try {
+        const claimSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "claim");
+        if (claimSnapshots.length < 2) {
+          updateStage("atomize", "skipped", `Claim ${claimSnapshots.length} 件（2 件以上で実行）`);
+        } else {
+          updateStage("atomize", "running", `${claimSnapshots.length} claims を分析中...`);
+          const existingAtomTitles = [...fm.wikiMetas.entries()]
+            .filter(([, m]) => m.kind === "atom")
+            .map(([, m]) => m.title);
+          const atomResult = await atomizeConcepts(
+            claimSnapshots,
+            "ja",
+            { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
+          );
+          for (const candidate of atomResult.atoms) {
+            const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, "ja");
+            const newId = await fm.handleCreateWikiFile(atomDoc);
+            embedWikiSections(newId, atomDoc).catch(() => {});
+            wikiLog.append(
+              "ingest",
+              [newId],
+              `Atom: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
+            ).catch(() => {});
+          }
+          updateStage(
+            "atomize",
+            "done",
+            atomResult.atoms.length > 0 ? `${atomResult.atoms.length} atoms 生成` : "新規 Atom なし",
+          );
         }
+      } catch (err) {
+        console.error("Atomize failed:", err);
+        updateStage("atomize", "error", err instanceof Error ? err.message : String(err));
       }
-    } catch (err) {
-      console.error("Atomize failed:", err);
-      setIngestToast((prev) => ({
-        items: [
-          ...(prev?.items ?? []),
-          {
-            id: `atom-error:${Date.now()}`,
-            status: "error" as const,
-            noteTitle: "🔬 Atom 自動生成に失敗しました",
-            result: err instanceof Error ? err.message : String(err),
-          },
-        ],
-      }));
+    } else {
+      updateStage("atomize", "skipped", "Atom Layer が無効");
     }
 
     // 自動 Synthesis: 実験フラグで Synthesis レイヤが有効なときのみ動作する。
     // 既定は OFF — 既存ユーザーの Synthesis ファイルは保持されるが新規自動生成は止まる。
     // Synthesis のソースは Concept ではなく Atom に切り替わる（atomLayer 前提）。
-    if (isSynthesisEnabled()) try {
-      // Atom が 3 つ以上あれば結晶化を試みる。Atom は文脈が削がれているので、
-      // Concept より組み合わせの安定性が高く、誤差伝搬も抑えられる。
-      const claimSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "atom");
-      if (claimSnapshots.length >= 3) {
-        const existingSynthesisTitles = [...fm.wikiMetas.entries()]
-          .filter(([, m]) => m.kind === "synthesis")
-          .map(([, m]) => m.title);
+    if (isSynthesisEnabled()) {
+      try {
+        const atomSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "atom");
+        if (atomSnapshots.length < 3) {
+          updateStage("synthesize", "skipped", `Atom ${atomSnapshots.length} 件（3 件以上で実行）`);
+        } else {
+          updateStage("synthesize", "running", `${atomSnapshots.length} atoms を結晶化中...`);
+          const existingSynthesisTitles = [...fm.wikiMetas.entries()]
+            .filter(([, m]) => m.kind === "synthesis")
+            .map(([, m]) => m.title);
 
-        // Synthesis は Chat & Synthesis モデルを使う。Tauri モードではヘッダーに API キーが
-        // 乗らないので body.model でサーバーに明示する必要がある。
-        const synthResult = await fetchSynthesisCandidates(
-          claimSnapshots,
-          existingSynthesisTitles,
-          "ja",
-          getChatSynthesisModelName() || undefined,
-        );
-        for (const candidate of synthResult.candidates) {
-          const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
-          const newId = await fm.handleCreateWikiFile(synthDoc);
-          embedWikiSections(newId, synthDoc).catch(() => {});
-          wikiLog.append(
-            "ingest",
-            [newId],
-            `Synthesis: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
-          ).catch(() => {});
-          // 控えめなトースト通知
-          setIngestToast((prev) => ({
-            items: [
-              ...(prev?.items ?? []),
-              { id: `synth:${newId}`, status: "success" as const, noteTitle: `🔗 Synthesis: ${candidate.title}` },
-            ],
-          }));
+          const synthResult = await fetchSynthesisCandidates(
+            atomSnapshots,
+            existingSynthesisTitles,
+            "ja",
+            getChatSynthesisModelName() || undefined,
+          );
+          for (const candidate of synthResult.candidates) {
+            const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
+            const newId = await fm.handleCreateWikiFile(synthDoc);
+            embedWikiSections(newId, synthDoc).catch(() => {});
+            wikiLog.append(
+              "ingest",
+              [newId],
+              `Synthesis: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
+            ).catch(() => {});
+          }
+          updateStage(
+            "synthesize",
+            "done",
+            synthResult.candidates.length > 0
+              ? `${synthResult.candidates.length} synthesis 生成`
+              : "新規 Synthesis なし",
+          );
         }
+      } catch (err) {
+        console.error("Synthesis failed:", err);
+        updateStage("synthesize", "error", err instanceof Error ? err.message : String(err));
       }
-    } catch (err) {
-      console.error("Synthesis failed:", err);
-      setIngestToast((prev) => ({
-        items: [
-          ...(prev?.items ?? []),
-          {
-            id: `synth-error:${Date.now()}`,
-            status: "error" as const,
-            noteTitle: "🔗 Synthesis 自動生成に失敗しました",
-            result: err instanceof Error ? err.message : String(err),
-          },
-        ],
-      }));
+    } else {
+      updateStage("synthesize", "skipped", "Synthesis Layer が無効");
     }
 
     // 自動 Lint: ローカル検出 + LLM 分析（5ページ以上で LLM 実行）
     try {
       const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
-      if (snapshots.length >= 2) {
+      if (snapshots.length < 2) {
+        updateStage("lint", "skipped", `Wiki ${snapshots.length} 件（2 件以上で実行）`);
+      } else {
+        updateStage("lint", "running", `${snapshots.length} wikis を分析中...`);
         // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
         const useLlm = snapshots.length >= 5;
         const report = await lintWikis(snapshots, "ja", !useLlm);
@@ -3160,9 +3197,16 @@ export function NoteApp() {
             wikiLog.append("lint", [], `LLM health check: ${issues.length} issue(s) found`).catch(() => {});
           }
         }
+        updateStage(
+          "lint",
+          "done",
+          issues.length > 0 ? `${issues.length} issues` : "問題なし",
+        );
       }
-    } catch {
-      // Lint 失敗は無視（Ingest 自体は成功している）
+    } catch (err) {
+      // Lint 失敗は ingest 全体には影響させない
+      console.error("Lint failed:", err);
+      updateStage("lint", "error", err instanceof Error ? err.message : String(err));
     }
 
     ingestRunningRef.current = false;
