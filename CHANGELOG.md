@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.6.7](https://github.com/kumagallium/Graphium/compare/v0.6.6...v0.6.7) - 2026-05-12
+- refactor(prov): use wasDerivedFrom for Plan/Execution relation by @kumagallium in https://github.com/kumagallium/Graphium/pull/259
+- feat(prov-extractor): add note PROV summary utility (Phase A step 1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/261
+- feat(wiki): semantic types on Concept / Atom / Synthesis (Phase 1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/262
+- fix(wiki): soft-delete wikis and serialize index saves by @kumagallium in https://github.com/kumagallium/Graphium/pull/264
+- feat(wiki): PROV→Claim prompt injection + procedureContext on Claim (Phase 2.2/2.3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/263
+- feat(wiki): show pipeline stages in ingest toast by @kumagallium in https://github.com/kumagallium/Graphium/pull/266
+- fix(wiki): better chat retrieval + markdown rendering + duplicate session fix by @kumagallium in https://github.com/kumagallium/Graphium/pull/267
+- feat(wiki): PROV→Atom/Synthesis cross-Claim integration (PR-B3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/265
+- refactor(wiki): relocate induction from Synthesis to Atom layer (PR-B4) by @kumagallium in https://github.com/kumagallium/Graphium/pull/268
+- refactor(wiki): procedureContext is Claim-only — revert B3/B3.1 propagation (PR-B4.5) by @kumagallium in https://github.com/kumagallium/Graphium/pull/269
+- feat(wiki-lint): i18n the Health Check view by @kumagallium in https://github.com/kumagallium/Graphium/pull/272
+- feat(wiki): synthesis mode router + 4 mode-specific prompts (PR-B5) by @kumagallium in https://github.com/kumagallium/Graphium/pull/270
+- refactor(wiki): rename Knowledge layer labels (Atom→Insights, Synthesis→Ideas, AI→Knowledge) by @kumagallium in https://github.com/kumagallium/Graphium/pull/271
+- feat(wiki-lint): per-issue fix actions (PR-B6 v1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/273
+- feat(wiki): synthesis mode explainer modal (Phase 5.4) by @kumagallium in https://github.com/kumagallium/Graphium/pull/274
+- feat(prov-export): semantic types in PROV-JSON-LD + align modal i18n (Phase 4) by @kumagallium in https://github.com/kumagallium/Graphium/pull/275
+- docs(inference-types): align with new UI labels + fix JA anchor slugs by @kumagallium in https://github.com/kumagallium/Graphium/pull/276
+- feat(sidebar): hide Labels section until first label, JA データ一覧 → データ by @kumagallium in https://github.com/kumagallium/Graphium/pull/277
+- feat(asset/wiki): bulk actions + unify regenerate model selection by @kumagallium in https://github.com/kumagallium/Graphium/pull/278
+
 ## [v0.6.6](https://github.com/kumagallium/Graphium/compare/v0.6.5...v0.6.6) - 2026-05-09
 - fix(import): restore image URLs and media usage links on docx/markdown import by @kumagallium in https://github.com/kumagallium/Graphium/pull/255
 - feat: add list view with bulk delete to asset browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/257
