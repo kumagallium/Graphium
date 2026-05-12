@@ -292,7 +292,9 @@ type AtomType =
   | "definitional" | "methodological" | "observational" | "boundary";
 
 type SynthesisMode =
-  | "deductive" | "inductive" | "abductive" | "analogical" | "dialectic";
+  | "deductive" | "abductive" | "analogical" | "dialectic";
+  // "inductive" was retired in PR-B4 — induction is the Claim → Atom operation,
+  // not a Synthesis mode. See docs/inference-types.md for the rationale.
 
 type HypothesisStatus = "speculative" | "tested" | "confirmed" | "refuted";
 
@@ -359,7 +361,7 @@ versions stay valid with these fields absent.
 |---|---|---|
 | `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
 | `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
-| `synthesisMode` | Synthesis | deductive, inductive, abductive, analogical, dialectic |
+| `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
 | `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
 
 These dimensions are **orthogonal to the existing context labels**

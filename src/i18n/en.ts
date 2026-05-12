@@ -599,7 +599,6 @@ export const en: Record<string, string> = {
   "wikiTypes.atomType.observational": "Observational",
   "wikiTypes.atomType.boundary": "Boundary",
   "wikiTypes.synthesisMode.deductive": "Deductive",
-  "wikiTypes.synthesisMode.inductive": "Inductive",
   "wikiTypes.synthesisMode.abductive": "Abductive",
   "wikiTypes.synthesisMode.analogical": "Analogical",
   "wikiTypes.synthesisMode.dialectic": "Dialectic",

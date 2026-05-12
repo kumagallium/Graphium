@@ -599,7 +599,6 @@ export const ja: Record<string, string> = {
   "wikiTypes.atomType.observational": "経験的観測",
   "wikiTypes.atomType.boundary": "限界・境界",
   "wikiTypes.synthesisMode.deductive": "演繹",
-  "wikiTypes.synthesisMode.inductive": "帰納",
   "wikiTypes.synthesisMode.abductive": "アブダクション",
   "wikiTypes.synthesisMode.analogical": "類推",
   "wikiTypes.synthesisMode.dialectic": "弁証法",

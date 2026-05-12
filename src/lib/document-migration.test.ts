@@ -253,3 +253,40 @@ describe("migrateToLatest", () => {
     expect(doc.wikiMeta).toBeUndefined();
   });
 });
+
+describe("migrateToLatest: synthesisMode \"inductive\" 廃止 (PR-B4)", () => {
+  // induction を Synthesis モードから外し、Atomizer 層に移動した。
+  // 過去 inductive で保存されていた Synthesis は読み込み時に undefined にする。
+
+  it("synthesisMode: \"inductive\" は undefined に格下げ", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "synthesis",
+      derivedFromNotes: ["n1", "n2"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      synthesisMode: "inductive",
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.synthesisMode).toBeUndefined();
+  });
+
+  it("他の synthesisMode 値（abductive 等）は触らない", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "synthesis",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      synthesisMode: "abductive",
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.synthesisMode).toBe("abductive");
+  });
+});
