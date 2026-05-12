@@ -156,7 +156,8 @@ The pipeline (running on the Node server) has five stages:
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Atom* claims with citations back to source notes |
-| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` | Weaves Atoms across notes into *Synthesis* pages |
+| **Synthesis router** | `src/features/ai-assistant/synthesis-router.ts` | From input Atoms' `atomType`, picks the candidate `synthesisMode`s (deductive / abductive / analogical / dialectic) the Synthesizer should consider |
+| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` + `src/server/services/synthesis-prompts/` | Weaves Atoms across notes into *Synthesis* pages. The system prompt is composed from a shared `common.ts` plus one file per mode; the router restricts which modes the LLM sees |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Atoms, broken citations, redundant Claims |
 
@@ -208,6 +209,31 @@ Notes:
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
+
+**Synthesis modes (Phase 1.3).** The Synthesizer can produce four kinds of
+Synthesis, distinguished by the type of reasoning that grounds the new
+insight:
+
+- `deductive` — independent claims combine into a strategy ("given A, B, C → D"). Most permissive; the default fallback.
+- `abductive` — an observation plus a mechanism / rule → the best explanatory hypothesis. Where most genuine "aha" Syntheses live.
+- `analogical` — structural mapping between claims from different domains.
+- `dialectic` — two claims that argue opposite directions of the same effect, resolved by a higher frame.
+
+Induction is **not** a Synthesis mode in this system; "many similar claims → a
+general rule" is what the Atom layer is for (PR-B4 relocated induction to
+the Atomizer). The Synthesizer specializes in combining heterogeneous
+elements into something new.
+
+The synthesis router (`src/features/ai-assistant/synthesis-router.ts`)
+inspects the `atomType` of each input Atom and proposes a candidate mode
+set; the LLM picks one. The router only rules in / rules out modes that
+can be decided from `atomType` alone — content judgments (e.g., whether
+two causal atoms actually argue *opposite* directions for `dialectic`,
+or whether two mechanistic atoms span genuinely different *domains* for
+`analogical`) are deferred to the LLM. Mode-specific prompts live in
+`src/server/services/synthesis-prompts/` (one file per mode plus a shared
+`common.ts`), and the router's candidate set decides which of those files
+are concatenated into the system prompt for a given run.
 
 The relationship between Notes, Claim, Atom, and Synthesis is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).

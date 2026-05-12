@@ -2033,6 +2033,9 @@ export function buildClaimSnapshots(
       // PR-B4.5: procedureContext は ClaimSnapshot に含めない（Atom/Synthesis
       // 層へは流さない）。reproducibility は wikiMeta の derivedFromNotes 経由で
       // on-demand に source Claim を引く設計。
+      // PR-B5: Atom source の場合は atomType を伝搬し、サーバー側 synthesis-router で
+      // モード候補の推定に使う（"claim" source では undefined のまま）。
+      atomType: sourceKind === "atom" ? meta.atomType : undefined,
     });
   }
 

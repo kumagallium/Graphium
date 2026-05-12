@@ -33,6 +33,7 @@ import {
   parseSynthesizerOutput,
   type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
+import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
 import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
@@ -399,7 +400,15 @@ app.post("/synthesize", async (c) => {
     return c.json({ candidates: [] });
   }
 
-  const systemPrompt = buildSynthesizerSystemPrompt(body.language || "en", body.skills);
+  // PR-B5: 入力 Atom の atomType から候補モードを推定し、Synthesizer プロンプトを
+  // その候補だけに絞る。Claim 入力 (atomType 無し) や signal 不足の場合は
+  // router が deductive 単独を返すため、最も permissive なデフォルト挙動になる。
+  const routerResult = routeSynthesisMode(body.concepts.map((c) => c.atomType));
+  const systemPrompt = buildSynthesizerSystemPrompt(
+    body.language || "en",
+    body.skills,
+    routerResult.candidateModes,
+  );
   const userMessage = buildSynthesizerUserMessage(
     body.concepts,
     body.existingSynthesisTitles || [],
