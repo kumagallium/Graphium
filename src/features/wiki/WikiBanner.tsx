@@ -20,12 +20,13 @@ function TypeBadge({
   const baseStyle = {
     display: "inline-flex",
     alignItems: "center",
-    padding: "1px 7px",
+    padding: "1px 8px",
     borderRadius: "var(--pill)",
     background: "var(--paper)",
     border: "1px solid var(--rule)",
     color: "var(--ink-2)",
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 1.4,
     fontWeight: 500,
   } as const;
 
@@ -38,9 +39,7 @@ function TypeBadge({
         style={{
           ...baseStyle,
           cursor: "pointer",
-          font: "inherit",
-          fontSize: 10,
-          fontWeight: 500,
+          fontFamily: "inherit",
         }}
       >
         {label}
@@ -153,35 +152,36 @@ export function WikiBanner({
       style={{
         margin: "14px 32px 6px",
         borderRadius: "var(--r-3)",
-        border: archived ? "1px solid var(--rule)" : "1px solid var(--forest)",
-        background: archived ? "var(--paper-2, #f5f5f4)" : "var(--forest-soft)",
+        border: "1px solid var(--rule)",
+        background: archived ? "var(--paper-3)" : "var(--paper-2)",
         padding: "10px 14px",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {/* AI バッジ */}
+        {/* AI バッジ — 緑の AI マーカーで「AI 生成」をアンカリングし、ピル外枠は控えめに */}
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 4,
-            padding: "2px 8px",
+            gap: 5,
+            padding: "1px 8px 1px 4px",
             borderRadius: "var(--pill)",
-            background: "#ffffff",
-            border: "1px solid var(--forest)",
-            color: "var(--forest-ink)",
-            fontSize: 10,
+            background: "var(--paper)",
+            border: "1px solid var(--rule)",
+            color: "var(--ink-2)",
+            fontSize: 12,
+            lineHeight: 1.4,
             fontWeight: 500,
           }}
         >
           <span
             style={{
-              width: 14,
-              height: 14,
+              width: 16,
+              height: 16,
               borderRadius: 3,
               background: "var(--forest)",
               color: "#fff",
-              fontSize: 8,
+              fontSize: 9,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -193,7 +193,7 @@ export function WikiBanner({
           >
             AI
           </span>
-          AI {kindLabel}
+          {kindLabel}
         </span>
 
         {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示。
@@ -220,7 +220,7 @@ export function WikiBanner({
         )}
 
         {/* 生成日 */}
-        <span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
+        <span style={{ fontSize: 12, lineHeight: 1.4, color: "var(--ink-3)" }}>
           {formatDate(wikiMeta.generatedAt)}
         </span>
 
@@ -228,7 +228,8 @@ export function WikiBanner({
         {wikiMeta.generatedBy?.model && (
           <span
             style={{
-              fontSize: 10.5,
+              fontSize: 12,
+              lineHeight: 1.4,
               color: "var(--ink-4)",
               fontFamily: "var(--mono)",
             }}
@@ -242,8 +243,9 @@ export function WikiBanner({
           <span
             title="Self-rated confidence at generation. Lower values mean upstream evidence was thin or conflicting."
             style={{
-              fontSize: 10,
-              padding: "1px 6px",
+              fontSize: 12,
+              lineHeight: 1.4,
+              padding: "1px 8px",
               borderRadius: "var(--pill)",
               border: "1px solid var(--rule)",
               background: "var(--paper)",
@@ -266,17 +268,18 @@ export function WikiBanner({
               display: "inline-flex",
               alignItems: "center",
               gap: 4,
-              padding: "2px 8px",
+              padding: "1px 8px",
               borderRadius: "var(--pill)",
               background: "var(--paper)",
               border: "1px solid var(--rule)",
               color: "var(--ink-3)",
-              fontSize: 10,
+              fontSize: 12,
+              lineHeight: 1.4,
               fontWeight: 500,
             }}
             title={t("archive.archivedHint")}
           >
-            <Archive size={10} />
+            <Archive size={12} />
             {t("archive.archivedBadge")}
           </span>
         )}
