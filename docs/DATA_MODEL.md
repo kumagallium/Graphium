@@ -1,9 +1,26 @@
 # Graphium — Data Model
 
-This document describes the on-disk shapes Graphium uses: notes, AI Wiki
-documents, the navigation index, shared storage entries, and the
-IndexedDB layout of the browser provider. It is the reference for anyone
-who wants to read, write, migrate, or interoperate with Graphium files.
+This document describes the on-disk shapes Graphium uses: notes,
+Knowledge layer documents (Summaries / Claims / Insights / Ideas), the
+navigation index, shared storage entries, and the IndexedDB layout of
+the browser provider. It is the reference for anyone who wants to read,
+write, migrate, or interoperate with Graphium files.
+
+> **Label vs. identifier.** UI labels (English / Japanese) and on-disk
+> identifiers differ on purpose — identifiers are part of the file
+> format and must not break existing data.
+>
+> | UI label (EN / JA) | On-disk `WikiKind` |
+> |---|---|
+> | Summaries / 要約 | `summary` |
+> | Claims / 知見 | `claim` |
+> | Insights / 洞察 | `atom` |
+> | Ideas / 発想 | `synthesis` |
+>
+> Type names (`AtomType`, `SynthesisMode`) and field names
+> (`atomType`, `synthesisMode`) also keep the historical identifiers
+> for the same reason. The rest of this document uses the on-disk
+> identifiers for technical accuracy.
 
 The corresponding source of truth in code:
 

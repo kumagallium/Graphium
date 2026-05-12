@@ -155,10 +155,10 @@ The pipeline (running on the Node server) has five stages:
 | Stage | File | What it does |
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
-| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Atom* claims with citations back to source notes |
-| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` | Weaves Atoms across notes into *Synthesis* pages |
+| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes |
+| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` | Weaves Insights across notes into *Idea* pages |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Atoms, broken citations, redundant Claims |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -179,7 +179,7 @@ sequenceDiagram
     S->>I: run
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
-    A->>FS: write Atom / Claim pages
+    A->>FS: write Insight / Claim pages
     A->>X: notify changed pages
     X->>FS: propagate to dependents
     X->>L: schedule lint
@@ -203,13 +203,13 @@ Notes:
   flow detects two Claims that overlap, one is rewritten into the
   other and the absorbed Claim is **archived, not deleted**. Its file
   stays on disk and its index entry gains an `archivedAt` flag, so any
-  note that cited it (or any Synthesis whose `derivedFromNotes` lists
+  note that cited it (or any Idea whose `derivedFromNotes` lists
   it) keeps resolving through `loadDoc`. The archived page is hidden
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
 
-The relationship between Notes, Claim, Atom, and Synthesis is described
+The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
 
 ### 3.4 Storage layer
