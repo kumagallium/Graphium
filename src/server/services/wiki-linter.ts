@@ -107,12 +107,35 @@ Or a page whose source notes may have changed since the Wiki was generated.
 Severity: "warning"
 
 ### redundant
-Two or more Claim pages that cover substantially the same knowledge.
-One could be deleted or merged into the other without losing information.
-This often happens when a page is regenerated with a better model — the old version may now be redundant.
+
+**STRICT bar. Only flag when removing one page would lose NOTHING of substance.**
+
+Pages can share a topic without being redundant. Two Claim pages about "substitution in thermoelectrics" can be making *different* specific claims — one about mobility and thermal conductivity, another about Seebeck sign-flip temperature, for example. Same domain, different load-bearing content. **That is NOT redundancy.**
+
+Redundancy requires that the two pages make **the same specific claim** (same load-bearing finding, same mechanism, same parameter regime). A page that overlaps in topic but covers a distinct mechanism, parameter, or finding is **not** redundant.
+
+#### Self-check (run before flagging)
+
+Before emitting a redundant issue, you MUST be able to answer:
+
+1. **Name the shared claim explicitly.** What is the specific finding both pages assert? "Both are about thermoelectrics" is not enough. The shared claim must be at the level of "X causes Y under condition Z" — same X, same Y, same Z.
+2. **List what the absorb side carries that the keep side does NOT cover.** If you can name ANY substantive piece of content (a different mechanism, parameter range, observation, citation) unique to the absorb side, the pages are NOT redundant. Do not flag.
+3. **Write your \`reason\` in the form "Both pages claim P. The absorb page adds nothing beyond P that is not already in keep."** If you cannot write this sentence honestly, do not flag.
+
+#### Anti-examples (do NOT flag these as redundant)
+
+- ❌ "Both pages are about pH-dependent reduction." → Different specific findings about pH effects are not redundant.
+- ❌ "Both pages cover Al5Co2 properties." → Substitution affecting mobility ≠ substitution affecting Seebeck sign-flip. Same compound, different claims.
+- ❌ "Both pages mention SPS sintering." → Sharing a method doesn't make claims redundant.
+
+#### Examples that ARE redundant
+
+- ✅ Two pages both titled around "Al5Co2 unit cell parameter is a = 3.62 Å measured by XRD." Identical specific finding.
+- ✅ A page that was regenerated with a better model, where the older one carries strictly less detail than the newer one.
+
 Severity: "warning"
 
-**For redundant issues you MUST fill \`recommendedAction\`** so the UI can show the user which page to keep vs absorb without forcing them to read the prose suggestion. Pick the better page as \`keepId\` (more recent / better-cited / more comprehensive). Put the other as \`absorbId\`. Add a one-sentence \`reason\` explaining your pick.
+**For redundant issues you MUST fill \`recommendedAction\`** with \`keepId\`, \`absorbId\`, and a \`reason\` that satisfies self-check #3 above. If you cannot write a \`reason\` of that form, **drop the issue entirely** — do not emit a redundant flag with vague justification.
 
 ## Output Format
 
