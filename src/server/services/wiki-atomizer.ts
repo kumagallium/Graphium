@@ -10,8 +10,10 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
-import type { AtomType } from "../../lib/document-types.js";
+import type { AtomType, ProcedureContext } from "../../lib/document-types.js";
 import type { ClaimSnapshot } from "./wiki-synthesizer.js";
+import { formatProcedureContextForClaimBlock } from "./prov-prompt-injection.js";
+import { parseProcedureContext } from "./wiki-ingester.js";
 
 /** Atom の推論的役割（提案 v4 Phase 1.2）として認める値の一覧 */
 const ATOM_TYPE_VALUES: AtomType[] = [
@@ -41,6 +43,13 @@ export type AtomCandidate = {
    * AI が主張の論理的性格から自動推定。認識不能・パース失敗時は undefined。
    */
   atomType?: AtomType;
+  /**
+   * Atom の妥当性が依存する手順条件（PR-B3, Phase 2.3 拡張）。
+   * 上流 Claim 群の procedureContext を見渡して LLM が
+   * "intersection of constraints" を構築する。Atom がドメインリフトされて
+   * もはや手順依存でない場合は undefined。
+   */
+  procedureContext?: ProcedureContext;
 };
 
 export function buildAtomizerSystemPrompt(language: string): string {
@@ -113,10 +122,28 @@ Respond with valid JSON only:
       "body": "1-3 short paragraphs of context-stripped, domain-lifted prose.",
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
-      "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary"
+      "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary",
+      "procedureContext": {                             // optional. see Procedure context section below
+        "derivedFromNotes": [],
+        "protocolFingerprint": "...",
+        "keyParameters": [{ "name": "...", "value": "...", "necessity": "critical" | "important" | "incidental" }],
+        "keyTools": ["..."],
+        "validityRange": "..."
+      }
     }
   ]
 }
+
+## Procedure context (Phase 2.3 cross-Claim merging — read this carefully)
+
+Some input Claims may carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. When you factor out an Atom from those Claims, **set the Atom's procedureContext to the INTERSECTION of the input Claims' constraints**, not the union.
+
+Rules:
+- Include a parameter / tool only if **all** the source Claims that load-bear on the Atom share it (or have a compatible value). Diverging values mean the Atom doesn't actually depend on that parameter.
+- If you successfully lifted the Atom out of its domain (e.g., Ti → "minor dopant element"), most procedureContext fields should drop away — the Atom is meant to be procedure-independent. **Omit \`procedureContext\` entirely in that case.**
+- If you keep procedureContext, mark each parameter's \`necessity\` from the Atom's perspective, not the source Claim's. A parameter that was "critical" for the original Claim may only be "important" for the abstracted Atom, or even "incidental".
+- Never invent parameters or tools that are not present in any input Claim's procedureContext.
+- The Atom-layer procedureContext is purposely **smaller than any single Claim's**. If it isn't, you have probably under-abstracted the Atom.
 
 ## Atom type (Phase 1.2)
 
@@ -164,7 +191,9 @@ export function buildAtomizerUserMessage(
   const blocks = concepts.map((c) => {
     const levelTag = c.level ? ` [${c.level}]` : "";
     const preview = c.bodyPreview ? `  ${c.bodyPreview}` : "";
-    return `### ${c.title}${levelTag} (id: ${c.id})${preview ? "\n" + preview : ""}`;
+    const procLine = formatProcedureContextForClaimBlock(c.procedureContext);
+    const tail = [preview, procLine].filter(Boolean).join("\n");
+    return `### ${c.title}${levelTag} (id: ${c.id})${tail ? "\n" + tail : ""}`;
   });
 
   const existingNote = existingAtomTitles.length > 0
@@ -206,6 +235,8 @@ export function parseAtomizerOutput(
           ? (rawAtomType as AtomType)
           : undefined;
 
+      const procedureContext: ProcedureContext | undefined = parseProcedureContext(a.procedureContext);
+
       out.push({
         title: String(a.title).trim(),
         body: String(a.body).trim(),
@@ -213,6 +244,7 @@ export function parseAtomizerOutput(
         derivedFromConceptTitles: titles,
         confidence,
         atomType,
+        procedureContext,
       });
     }
     return out;

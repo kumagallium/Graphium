@@ -1,7 +1,10 @@
 // 提案 v4 Phase 2.2: PROV → AI Wiki プロンプト注入ヘルパーのユニットテスト
 
 import { describe, it, expect } from "vitest";
-import { formatProvSummaryForPrompt } from "./prov-prompt-injection";
+import {
+  formatProvSummaryForPrompt,
+  formatProcedureContextForClaimBlock,
+} from "./prov-prompt-injection";
 
 describe("formatProvSummaryForPrompt", () => {
   it("中身が完全に空のサマリは null を返す（user message に prepend しない用）", () => {
@@ -68,5 +71,32 @@ describe("formatProvSummaryForPrompt", () => {
     expect(formatProvSummaryForPrompt(42)).toBeNull();
     expect(formatProvSummaryForPrompt("not an object")).toBeNull();
     expect(formatProvSummaryForPrompt([])).toBeNull(); // 配列は object だが activities/results が無い
+  });
+});
+
+describe("formatProcedureContextForClaimBlock", () => {
+  it("中身が無い procedureContext は null（Atomizer/Synthesizer の Claim ブロックに余計な行を出さない）", () => {
+    expect(formatProcedureContextForClaimBlock(null)).toBeNull();
+    expect(formatProcedureContextForClaimBlock(undefined)).toBeNull();
+    expect(formatProcedureContextForClaimBlock({})).toBeNull();
+  });
+
+  it("protocol / tools / params / validity を簡潔な 1 行に整形", () => {
+    const out = formatProcedureContextForClaimBlock({
+      protocolFingerprint: "MA → SPS",
+      keyTools: ["BallMill", "SPS"],
+      keyParameters: [{ name: "T", value: "850°C", necessity: "critical" }],
+      validityRange: "T 800-900°C",
+    });
+    expect(out).toContain("protocol: MA → SPS");
+    expect(out).toContain("tools: BallMill, SPS");
+    expect(out).toContain("T=850°C (critical)");
+    expect(out).toContain("validity: T 800-900°C");
+  });
+
+  it("一部フィールドのみでも整形できる", () => {
+    const out = formatProcedureContextForClaimBlock({ keyTools: ["X"] });
+    expect(out).toContain("tools: X");
+    expect(out).not.toContain("protocol:");
   });
 });

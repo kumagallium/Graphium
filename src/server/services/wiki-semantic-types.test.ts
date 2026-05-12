@@ -229,3 +229,70 @@ describe("parseSynthesizerOutput: synthesisMode + hypothesisStatus", () => {
     expect(out[0]?.hypothesisStatus).toBeUndefined();
   });
 });
+
+describe("Atomizer / Synthesizer procedureContext passthrough (PR-B3)", () => {
+  it("Atomizer 出力に procedureContext がある場合、parser は保持する", () => {
+    const conceptIds = new Map([["c1", "Concept 1"], ["c2", "Concept 2"]]);
+    const out = parseAtomizerOutput(JSON.stringify({
+      atoms: [{
+        title: "Atom title",
+        body: "Body.",
+        sourceConceptIds: ["c1", "c2"],
+        confidence: 0.8,
+        procedureContext: {
+          protocolFingerprint: "MA → SPS",
+          keyTools: ["BallMill"],
+        },
+      }],
+    }), conceptIds);
+    expect(out[0]?.procedureContext?.protocolFingerprint).toBe("MA → SPS");
+    expect(out[0]?.procedureContext?.keyTools).toEqual(["BallMill"]);
+  });
+
+  it("Atomizer 出力に procedureContext 無し → undefined（透過）", () => {
+    const conceptIds = new Map([["c1", "Concept 1"], ["c2", "Concept 2"]]);
+    const out = parseAtomizerOutput(JSON.stringify({
+      atoms: [{
+        title: "Atom",
+        body: "B",
+        sourceConceptIds: ["c1", "c2"],
+        confidence: 0.8,
+      }],
+    }), conceptIds);
+    expect(out[0]?.procedureContext).toBeUndefined();
+  });
+
+  it("Synthesizer 出力に procedureContext がある場合、parser は保持する", () => {
+    const out = parseSynthesizerOutput(JSON.stringify({
+      candidates: [{
+        sourceConceptIds: ["c1", "c2"],
+        sourceConceptTitles: ["A", "B"],
+        title: "S",
+        sections: [{ heading: "h", content: "c" }],
+        rationale: "Why",
+        confidence: 0.9,
+        synthesisMode: "abductive",
+        procedureContext: {
+          validityRange: "Temp 800-900°C",
+          keyParameters: [{ name: "T", value: "850", necessity: "critical" }],
+        },
+      }],
+    }));
+    expect(out[0]?.procedureContext?.validityRange).toBe("Temp 800-900°C");
+    expect(out[0]?.procedureContext?.keyParameters).toHaveLength(1);
+  });
+
+  it("Synthesizer 出力に procedureContext 無し → undefined", () => {
+    const out = parseSynthesizerOutput(JSON.stringify({
+      candidates: [{
+        sourceConceptIds: ["c1", "c2"],
+        sourceConceptTitles: ["A", "B"],
+        title: "S",
+        sections: [{ heading: "h", content: "c" }],
+        rationale: "Why",
+        confidence: 0.9,
+      }],
+    }));
+    expect(out[0]?.procedureContext).toBeUndefined();
+  });
+});

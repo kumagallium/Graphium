@@ -116,3 +116,42 @@ export function formatProvSummaryForPrompt(raw: unknown): string | null {
 
   return lines.join("\n");
 }
+
+/**
+ * Claim の procedureContext を、Atomizer / Synthesizer 用のユーザーメッセージで
+ * 各 Claim ブロックの下に簡潔に挿入するための短いマークダウン断片を作る。
+ *
+ * - 中身が無い procedureContext は null を返す（呼び出し側で空行を出さないように）
+ * - 1〜数行の簡潔なフォーマット。Synthesizer は 2-4 件の Claim を扱うため、
+ *   各 Claim の procedureContext は冗長にならないようにする。
+ */
+export function formatProcedureContextForClaimBlock(
+  ctx: unknown,
+): string | null {
+  if (!ctx || typeof ctx !== "object") return null;
+  const c = ctx as {
+    protocolFingerprint?: string;
+    keyParameters?: Array<{ name?: string; value?: string; necessity?: string }>;
+    keyTools?: string[];
+    validityRange?: string;
+  };
+  const parts: string[] = [];
+  if (typeof c.protocolFingerprint === "string" && c.protocolFingerprint.trim()) {
+    parts.push(`protocol: ${c.protocolFingerprint.trim()}`);
+  }
+  if (Array.isArray(c.keyTools) && c.keyTools.length > 0) {
+    parts.push(`tools: ${c.keyTools.filter((x) => typeof x === "string").join(", ")}`);
+  }
+  if (Array.isArray(c.keyParameters) && c.keyParameters.length > 0) {
+    const params = c.keyParameters
+      .filter((p) => p && typeof p.name === "string" && typeof p.value === "string")
+      .map((p) => `${p.name}=${p.value}${p.necessity ? ` (${p.necessity})` : ""}`)
+      .join(", ");
+    if (params) parts.push(`params: ${params}`);
+  }
+  if (typeof c.validityRange === "string" && c.validityRange.trim()) {
+    parts.push(`validity: ${c.validityRange.trim()}`);
+  }
+  if (parts.length === 0) return null;
+  return `  procedureContext — ${parts.join(" | ")}`;
+}
