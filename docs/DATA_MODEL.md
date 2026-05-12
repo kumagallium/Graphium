@@ -84,7 +84,7 @@ type GraphiumDocument = {
   // ── document provenance (edit log) ──────────────────
   documentProvenance?: DocumentProvenance;
 
-  // ── AI Wiki metadata (only when source === "ai") ────
+  // ── Knowledge layer metadata (only when source === "ai") ────
   wikiMeta?: WikiMeta;
 
   // ── shared storage refs (Phase 2) ───────────────────
@@ -260,7 +260,7 @@ type ScopeChat = {
 Chats are anchored to a scope (a heading, block, or page) so they can be
 re-attached to the same context after edits.
 
-## 3. AI Wiki documents
+## 3. Knowledge layer documents
 
 A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
 a populated `wikiMeta`. It opens in the same editor as a human note.
@@ -364,12 +364,12 @@ which model version. The actual vectors live in
 
 Any block whose ID appears in `wikiMeta.editedSections` is treated as
 human-edited and skipped during re-ingest. This is how a user can
-correct an AI Wiki entry without losing the correction the next time
+correct a Knowledge entry without losing the correction the next time
 ingest runs.
 
 ### 3.5 Semantic types (Phase 1)
 
-Three orthogonal type dimensions are attached as metadata on AI Wiki
+Three orthogonal type dimensions are attached as metadata on Knowledge
 notes. The user never picks them — the generating LLM auto-infers them.
 All fields are optional and additive: existing Wiki notes from prior
 versions stay valid with these fields absent.
@@ -392,7 +392,7 @@ depends on: key parameters, key tools, validity range. It is the
 "reproducibility scaffold that is intentionally not stripped" when the
 hourglass narrows from Claim down to Atom.
 
-Populated through the AI Wiki pipeline:
+Populated through the Knowledge pipeline:
 
 1. **Ingest time** (Phase 2.2/2.3): the client computes a PROV summary
    of the source note with `summarizeNoteProv()` and sends it to
@@ -556,7 +556,7 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file and other internal metadata.
-- **Wiki / Skill CRUD** (optional) — separate listings for AI Wiki and
+- **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
 Three backends ship today:

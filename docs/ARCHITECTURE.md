@@ -40,7 +40,7 @@ optional for the editor itself; the editor works without it.
 flowchart TB
     subgraph UI["UI layer"]
         E["Block editor<br/><i>BlockNote.js + Graphium blocks</i>"]
-        N["Navigation<br/><i>note list, AI Wiki nav, search</i>"]
+        N["Navigation<br/><i>note list, Knowledge nav, search</i>"]
         AI["AI Assistant<br/><i>chat, ask, compose</i>"]
     end
 
@@ -49,7 +49,7 @@ flowchart TB
         IL["inline-label<br/>(entity / agent inline)"]
         PG["prov-generator<br/>(blocks → PROV-DM graph)"]
         DP["document-provenance<br/>(per-note edit history)"]
-        WIKI["wiki<br/>(AI Wiki UI + service)"]
+        WIKI["wiki<br/>(Knowledge UI + service)"]
         SH["sharing<br/>(Library / Fork)"]
     end
 
@@ -82,7 +82,7 @@ flowchart TB
 
 Reading top to bottom: UI talks to feature modules, which read and write
 through `src/lib/document-types.ts` and the `StorageProvider` abstraction.
-AI features (Wiki ingest, chat) talk to the Node server. The Node server
+AI features (Knowledge ingest, chat) talk to the Node server. The Node server
 talks to LLM and embedding backends.
 
 ## 3. The four layers in detail
@@ -144,11 +144,15 @@ outcome was derived from the planned intent. The shared Step Activity
 that both Entities are `prov:used` by acts as the implicit activity of
 the PROV-DM derivation’s full form.
 
-### 3.3 Knowledge layer (AI Wiki)
+### 3.3 Knowledge layer
 
-The Wiki is a set of editable JSON documents that an LLM keeps in sync
-with your notes. Each Wiki document is a real `GraphiumDocument` with
-`source: "ai"` set, so it opens in the same editor.
+The Knowledge layer is a set of editable JSON documents that an LLM keeps
+in sync with your notes. Each Knowledge document is a real
+`GraphiumDocument` with `source: "ai"` set, so it opens in the same
+editor. On disk the documents are still grouped under `data/wiki/` and the
+TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
+`WikiMeta`) — UI labels and prose use "Knowledge / Claims / Insights /
+Ideas" instead.
 
 The pipeline (running on the Node server) has five stages:
 
@@ -347,8 +351,8 @@ people most often need to find.
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
 | ⌘K palette (note search + ask) | `src/features/composer/` |
-| AI Wiki UI and service | `src/features/wiki/` |
-| AI Wiki pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
+| Knowledge UI and service | `src/features/wiki/` |
+| Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
 | Inter-note network graph (Cytoscape) | `src/features/network-graph/` |
 | Storage provider | `src/lib/storage/providers/`, `src/lib/storage/registry.ts` |
 | Note JSON shape and migrations | `src/lib/document-types.ts`, `src/lib/document-migration.ts` |

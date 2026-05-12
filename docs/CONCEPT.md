@@ -19,7 +19,7 @@ The line I want the product to live up to:
 
 > **A note editor that turns information into knowledge you can reuse, anytime.**
 
-Everything in this document — the labels, the wiki, the file formats — is in
+Everything in this document — the labels, the Knowledge layer, the file formats — is in
 service of that one line.
 
 ## 2. Why I built it
@@ -151,7 +151,7 @@ design. I expect most people to live in the middle — marking the
 experiments and decisions that matter, leaving everyday writing alone — and
 I think that is fine.
 
-The same gradient applies to the AI Wiki. You can ignore it, browse it
+The same gradient applies to the Knowledge layer. You can ignore it, browse it
 occasionally, or curate it actively. Each level returns proportional value.
 
 ## 7. What Graphium is not
@@ -165,7 +165,7 @@ Saying what Graphium is *not* is part of saying what it is.
   (Google Drive, iCloud, Dropbox folders), not a requirement.
 - **Not a graph database.** PROV-DM is a side-effect of how you write, not a
   schema you fill in by hand.
-- **Not a closed format.** Notes are JSON; the wiki is JSON; you can read,
+- **Not a closed format.** Notes are JSON; the Knowledge layer is JSON; you can read,
   diff, grep, and back them up without me.
 - **Not a finished product.** Several pillars in this document — sharing,
   packs, mobile — are partial or paused. I would rather ship a stable spine
