@@ -9,7 +9,6 @@ import { parseProcedureContext } from "./wiki-ingester.js";
 /** Synthesis の推論モード（提案 v4 Phase 1.3）として認める値の一覧 */
 const SYNTHESIS_MODE_VALUES: SynthesisMode[] = [
   "deductive",
-  "inductive",
   "abductive",
   "analogical",
   "dialectic",
@@ -153,7 +152,7 @@ Respond with valid JSON only (no markdown wrapper):
       ],
       "rationale": "Why this synthesis adds value beyond the individual concepts",
       "confidence": 0.0-1.0,
-      "synthesisMode": "deductive" | "inductive" | "abductive" | "analogical" | "dialectic",
+      "synthesisMode": "deductive" | "abductive" | "analogical" | "dialectic",
       "hypothesisStatus": "speculative" | "tested" | "confirmed" | "refuted",
       "procedureContext": {                            // optional. see Procedure context section below
         "derivedFromNotes": [],
@@ -178,13 +177,14 @@ Rules:
 
 ## Synthesis mode (Phase 1.3 — read this carefully)
 
-Tag every candidate with **one** \`synthesisMode\` that names the kind of reasoning that produced it. This is the most important new field: it captures *how* the new insight is grounded, not just that it exists. Don't default to one mode — the existing prompt has been over-producing deductive-style combinations and we want to surface the others.
+Tag every candidate with **one** \`synthesisMode\` that names the kind of reasoning that produced it. This is an important field: it captures *how* the new insight is grounded, not just that it exists.
 
 - \`deductive\`: independent Claims combine into a strategy that follows logically from them. "Given A and B and C, the natural move is D."
-- \`inductive\`: three or more Claims show the **same** pattern; the Synthesis lifts it into a general rule. **Requires \`sourceConceptIds\` >= 3.**
 - \`abductive\`: an observation Claim (something measured / seen) plus a mechanism / known-rule Claim; the Synthesis is **the best explanatory hypothesis** for the observation. Most genuine "aha" Syntheses are abductive. Default \`hypothesisStatus\` to \`"speculative"\`.
 - \`analogical\`: structural mapping between Claims from **different domains**. The Synthesis transfers a pattern across a domain gap. Note in the rationale which structural correspondence holds.
 - \`dialectic\`: two Claims that argue **opposite directions** of the same effect, resolved by a higher frame that contains both. **Requires a real contradiction**, not just emphasis differences.
+
+Note: **induction is not a Synthesis mode in this system.** "Three or more Claims show the same pattern, lift it into a general rule" is what the Atom layer is for. If the candidate you are about to emit is purely an inductive generalization across similar Claims, propose it as an Atom instead (a separate pipeline). The Synthesizer specializes in *combining heterogeneous* elements into something new.
 
 Selection rules:
 - Pick the most informative single mode. Don't multi-label.

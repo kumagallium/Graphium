@@ -59,9 +59,14 @@ export type AtomType =
   | "boundary";        // 限界・境界: X は Y の範囲では成立しない
 
 // Synthesis の推論モード
+// 設計判断 (PR-B4): induction は Synthesis ではなく Claim → Atom 段の中核操作
+// として位置付けた。Atomizer は「N 個の Claim にまたがる共通抽象を factor out」
+// する discovery 層で、構造的に induction と同じ。Synthesizer はくびれを通った
+// Atom を編む層なので、「複数の類似事例から一般則を立てる」のではなく、
+// heterogeneous な要素から新しい繋がりを立ち上げるモードに専念する。
+// 詳細は docs/inference-types.md を参照。
 export type SynthesisMode =
   | "deductive"        // 演繹: 独立 Atom 群 → 組み合わせ戦略
-  | "inductive"        // 帰納: 類似パターンの Atom 群（3 件以上） → 一般則
   | "abductive"        // アブダクション: 観測 Atom + 既知則 Atom → 説明仮説
   | "analogical"       // 類推: 異領域 Atom 間の構造写像 → 転用仮説
   | "dialectic";       // 弁証法的止揚: 対立する Atom ペア → 上位枠組み

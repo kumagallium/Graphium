@@ -66,6 +66,12 @@ export function migrateToLatest(doc: GraphiumDocument): GraphiumDocument {
 function migrateConceptKindToClaim(doc: GraphiumDocument): void {
   const meta = doc.wikiMeta;
   if (!meta) return;
+  // PR-B4: synthesisMode "inductive" は廃止。意味的に Atomizer 層へ移動
+  // したため、Synthesis ドキュメントに残っていたら undefined に格下げ。
+  // 情報は失うが、利用者が少ない時期の整理として許容する。idempotent。
+  if ((meta as any).synthesisMode === "inductive") {
+    (meta as any).synthesisMode = undefined;
+  }
   // 旧 kind の文字列リテラルが「concept」のときだけ書き換える。
   // 既に "claim" のものや別の kind には触らない。
   if ((meta.kind as unknown as string) === "concept") {

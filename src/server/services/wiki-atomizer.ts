@@ -65,6 +65,15 @@ Your job is to scan a set of Claim pages and **factor out** the abstract ideas t
 - **Reusable.** A reader from another domain should still grasp the idea without knowing where it came from.
 - **Short.** Title (5-12 words) and 1-3 short paragraphs of body. No headings, no bullet lists. Prose only.
 
+## Two routes to an Atom (read this — induction lives here, not in Synthesis)
+
+Both routes produce Atoms. Pick whichever fits the Claims in front of you; many Atoms blend both:
+
+1. **Inductive route (induction-from-many).** Several Claims (often 3+) report the *same kind* of finding under *different particulars*. The Atom is the general rule the cases share. Necessary when no single Claim is enough to support the rule — it earns its weight from repetition.
+2. **Lift route (lift-from-few).** Two Claims that *already say something close to a principle* but are still framed in one domain. The Atom is the domain-lifted form. Repetition is not the load-bearing argument; abstraction is.
+
+Why this matters: the Synthesizer used to carry an \`inductive\` mode, and it overlapped with what the Atomizer already does. Induction is now firmly an Atomizer concern. If you find yourself proposing "lots of cases → general rule" — that **is** an Atom, not a Synthesis candidate.
+
 ## Domain-noun lifting (REQUIRED)
 
 When you write the Atom title and body, replace specific domain entities with the more abstract category they belong to. Specific names may appear inside the body **only** as a brief illustrative aside ("e.g., …"), never as the load-bearing subject.
