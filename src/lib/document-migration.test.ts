@@ -290,3 +290,64 @@ describe("migrateToLatest: synthesisMode \"inductive\" 廃止 (PR-B4)", () => {
     expect((doc as any).wikiMeta.synthesisMode).toBe("abductive");
   });
 });
+
+describe("migrateToLatest: procedureContext は Claim 専用 (PR-B4.5)", () => {
+  // 砂時計のくびれを通った Atom / Synthesis は context-stripped を contract と
+  // するため、PR-B3 で書き込まれた procedureContext は strip する。
+  // Claim には触らない。
+
+  it("Atom の procedureContext は読み込み時に削除", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "atom",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      procedureContext: {
+        derivedFromNotes: ["n1"],
+        keyTools: ["BallMill"],
+      },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.procedureContext).toBeUndefined();
+  });
+
+  it("Synthesis の procedureContext も読み込み時に削除", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "synthesis",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      procedureContext: { keyTools: ["X"] },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.procedureContext).toBeUndefined();
+  });
+
+  it("Claim の procedureContext は保持される（context あり層）", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "claim",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      procedureContext: {
+        derivedFromNotes: ["n1"],
+        keyTools: ["X"],
+      },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.procedureContext).toBeDefined();
+    expect((doc as any).wikiMeta.procedureContext.keyTools).toEqual(["X"]);
+  });
+});

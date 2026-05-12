@@ -2,9 +2,7 @@
 // 既存の Claim ページ群を分析し、複数ページを統合した
 // 新しい洞察（Synthesis ページ）を生成する
 
-import type { HypothesisStatus, ProcedureContext, SynthesisMode } from "../../lib/document-types.js";
-import { formatProcedureContextForClaimBlock } from "./prov-prompt-injection.js";
-import { parseProcedureContext } from "./wiki-ingester.js";
+import type { HypothesisStatus, SynthesisMode } from "../../lib/document-types.js";
 
 /** Synthesis の推論モード（提案 v4 Phase 1.3）として認める値の一覧 */
 const SYNTHESIS_MODE_VALUES: SynthesisMode[] = [
@@ -45,12 +43,10 @@ export type SynthesisCandidate = {
    * 生成時のデフォルトは "speculative"。
    */
   hypothesisStatus?: HypothesisStatus;
-  /**
-   * Synthesis が依存する手順条件（PR-B3, Phase 2.3 拡張）。
-   * 上流 Claim 群の procedureContext を見渡して conflicts を解消したもの。
-   * 純粋に概念横断的（手順非依存）な統合では undefined。
-   */
-  procedureContext?: ProcedureContext;
+  // procedureContext は意図的に持たない (PR-B4.5)。
+  // Synthesis は context-stripped な Atom を編む層であり、手順条件は
+  // Claim 層に留め置く。reproducibility は derivedFromNotes / 上流 Claim
+  // から on-demand で参照する設計。
 };
 
 export type ClaimSnapshot = {
@@ -70,13 +66,9 @@ export type ClaimSnapshot = {
    * 空配列でも動作する（後方互換）。
    */
   sourceSummaryPreviews?: { title: string; preview: string }[];
-  /**
-   * Claim に保存された手順条件（PR-B2 で Ingester が埋めたもの）。
-   * Atomizer / Synthesizer は複数 Claim の procedureContext を横に並べ、
-   * 出力 Atom / Synthesis の procedureContext を判断する材料にする。
-   * Phase 2.2/2.3 拡張（PR-B3）。
-   */
-  procedureContext?: import("../../lib/document-types.js").ProcedureContext;
+  // PR-B4.5: ClaimSnapshot からも procedureContext を外した。Atomizer /
+  // Synthesizer に渡しても下流に持ち越せず、混乱の元になるため。
+  // 必要があれば呼び出し側で source Claim から直接取得する。
 };
 
 /** Ingest 時に適用するスキルの情報 */
@@ -153,27 +145,16 @@ Respond with valid JSON only (no markdown wrapper):
       "rationale": "Why this synthesis adds value beyond the individual concepts",
       "confidence": 0.0-1.0,
       "synthesisMode": "deductive" | "abductive" | "analogical" | "dialectic",
-      "hypothesisStatus": "speculative" | "tested" | "confirmed" | "refuted",
-      "procedureContext": {                            // optional. see Procedure context section below
-        "derivedFromNotes": [],
-        "protocolFingerprint": "...",
-        "keyParameters": [{ "name": "...", "value": "...", "necessity": "critical" | "important" | "incidental" }],
-        "keyTools": ["..."],
-        "validityRange": "..."
-      }
+      "hypothesisStatus": "speculative" | "tested" | "confirmed" | "refuted"
     }
   ]
 }
 
-## Procedure context (Phase 2.3 cross-Claim integration)
+## What Synthesis does NOT carry: procedureContext
 
-Some input Claims carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. The procedural skeleton is the **reproducibility scaffold** of the PROV layer — preserve it through the Synthesis whenever the inputs provide it.
+Like Atom, the Synthesis layer is **procedure-independent by contract**. Source Claims may carry a \`procedureContext\` documenting the procedure they depend on, but a Synthesis re-combines context-stripped insights — it should not bind itself back to a specific procedural regime. Reproducibility lives at the Claim layer; \`derivedFromNotes\` lets a reader walk back when they need it.
 
-Rules:
-- **Preserve the intersection of constraints** in the Synthesis \`procedureContext\` whenever the input Claims share tools or parameters. Same alloy across all sources → keep the alloy. Same SPS profile → keep it.
-- If the Claims **disagree** on a parameter value (e.g., one says \`T=850°C\`, another \`T=700°C\`), and the Synthesis is using that disagreement as part of its insight (especially \`dialectic\` or \`analogical\` mode), call this out in the \`rationale\` and **widen \`validityRange\`** to span the disagreement instead of picking one side.
-- **Omit \`procedureContext\` entirely only when no input Claim provides any procedure information**, or the Synthesis is a domain-general principle that genuinely transcends every input procedure (rare; reserve this for explicit cross-domain analogies).
-- Never invent parameters/tools not present in any input Claim's procedureContext.
+If the candidate Synthesis only makes sense under a specific procedural regime, that is a signal the candidate is closer to a re-stated Claim than a genuine cross-Claim insight. Either widen it or drop it.
 
 ## Synthesis mode (Phase 1.3 — read this carefully)
 
@@ -248,8 +229,7 @@ export function buildSynthesizerUserMessage(
     const related = c.relatedClaims.length > 0
       ? `  Related to: ${c.relatedClaims.join(", ")}`
       : "";
-    const procLine = formatProcedureContextForClaimBlock(c.procedureContext);
-    const tail = [preview, related, procLine].filter(Boolean).join("\n");
+    const tail = [preview, related].filter(Boolean).join("\n");
     return `### ${c.title}${levelTag} (id: ${c.id})${tail ? "\n" + tail : ""}`;
   }).join("\n\n");
 
@@ -315,8 +295,6 @@ export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
               ? "speculative" // モード判定できているのに status 欠落は speculative にフォールバック
               : undefined;
 
-        const procedureContext: ProcedureContext | undefined = parseProcedureContext(c.procedureContext);
-
         return {
           sourceConceptIds: c.sourceConceptIds.map(String),
           sourceConceptTitles: Array.isArray(c.sourceConceptTitles) ? c.sourceConceptTitles.map(String) : [],
@@ -329,7 +307,6 @@ export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
           confidence: typeof c.confidence === "number" ? c.confidence : 0.85,
           synthesisMode,
           hypothesisStatus,
-          procedureContext,
         };
       });
   } catch (err) {
