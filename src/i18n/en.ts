@@ -578,7 +578,7 @@ export const en: Record<string, string> = {
   "nav.trashedNote": "In trash",
   "nav.refsTrashWarn": "{count} note(s) link to this. Move to trash anyway?",
   // Wiki list
-  "wikiList.crumbWiki": "Wiki",
+  "wikiList.crumbWiki": "Knowledge",
   "wikiList.kindSummary": "Summaries",
   "wikiList.kindClaim": "Claims",
   "wikiList.kindAtom": "Insights",

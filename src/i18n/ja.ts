@@ -578,7 +578,7 @@ export const ja: Record<string, string> = {
   "nav.trashedNote": "ゴミ箱内",
   "nav.refsTrashWarn": "このノートを {count} 件のノートが参照しています。ゴミ箱に移動しますか？",
   // Wiki 一覧
-  "wikiList.crumbWiki": "Wiki",
+  "wikiList.crumbWiki": "ナレッジ",
   "wikiList.kindSummary": "要約",
   "wikiList.kindClaim": "知見",
   "wikiList.kindAtom": "洞察",
