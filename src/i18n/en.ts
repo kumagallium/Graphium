@@ -629,6 +629,8 @@ export const en: Record<string, string> = {
   "synthesisMode.modal.description.dialectic": "Two Claims that argue opposite directions of the same effect, resolved by a higher frame (a condition, scale, or regime) that contains both. Requires a real contradiction — not emphasis or granularity differences.",
   "synthesisMode.modal.shape.dialectic": "A says X → Y. B says X → ¬Y. Both hold under regime R that separates them.",
   // procedureContext — Phase 2.3
+  "wikiBanner.regenerate": "Regenerate",
+  "wikiBanner.regenerateHint": "Regenerate with the model configured in Settings (Synthesis uses Chat & Synthesis model; others use Default model)",
   "wikiBanner.procedureContextTitle": "Procedure this claim depends on",
   "wikiBanner.procedureContextHint": "LLM-inferred procedure, parameters, and tools the claim relies on",
   "wikiBanner.procedureProtocol": "Protocol",
@@ -649,6 +651,8 @@ export const en: Record<string, string> = {
   "wikiList.search": "Search...",
   "wikiList.count": "({filtered}/{total})",
   "wikiList.deleteSelected": "Move {count} to trash",
+  "wikiList.regenerateSelected": "Regenerate {count}",
+  "wikiList.regenerateSelectedTitle": "Regenerate selected Knowledge entries (each runs as a separate job)",
   "wikiList.deleteConfirmTitleSingle": "Move this wiki to trash?",
   "wikiList.deleteConfirmTitleMulti": "Move {count} wikis to trash?",
   "wikiList.deleteConfirmMessage": "You can restore from Trash at any time. Permanent deletion is done from Trash.",
@@ -800,6 +804,10 @@ export const en: Record<string, string> = {
   "asset.bulkDeleteConfirmTitle": "Delete selected media",
   "asset.bulkDeleteConfirmMessage": "Delete {count} items? They will be removed from {refCount} notes.",
   "asset.bulkDeleteConfirmMessageNoRef": "Delete {count} items? They are not used in any note.",
+  "asset.bulkIngest": "Add {count} to Knowledge",
+  "asset.bulkIngestTitle": "Add selected URLs/PDFs to Knowledge (regenerates existing entries)",
+  "asset.bulkCreateProvNote": "Create PROV Note from {count}",
+  "asset.bulkCreateProvNoteTitle": "Create PROV Notes from selected URLs/PDFs",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",

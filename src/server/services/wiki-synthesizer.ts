@@ -145,6 +145,59 @@ export function buildSynthesizerUserMessage(
   return `Analyze the following ${concepts.length} Claim pages and propose synthesis opportunities:\n\n${conceptDescriptions}${summarySection}${existingNote}`;
 }
 
+/** Synthesizer の confidence 採用閾値（0.85 未満は提案として採用しない） */
+export const SYNTHESIS_CONFIDENCE_THRESHOLD = 0.85;
+
+/**
+ * Synthesizer の LLM 出力をパースし、フィルタ理由の統計も返す。
+ *
+ * 通常の `parseSynthesizerOutput` は `candidates` のみを返すが、regenerate などで
+ * 「LLM は候補を出したが confidence ガードで落とされた」ケースを区別したい場面で
+ * こちらを使う。トーストの曖昧な "No synthesis generated" を「品質基準未達」と
+ * 「LLM が候補を出さなかった」に分ける。
+ */
+export function parseSynthesizerOutputWithStats(text: string): {
+  candidates: SynthesisCandidate[];
+  rawCount: number;
+  droppedByConfidence: number;
+  maxDroppedConfidence?: number;
+} {
+  try {
+    let jsonText = text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) jsonText = jsonMatch[1].trim();
+    const parsed = JSON.parse(jsonText);
+    const raw = parsed.candidates ?? parsed;
+    if (!Array.isArray(raw)) return { candidates: [], rawCount: 0, droppedByConfidence: 0 };
+
+    let droppedByConfidence = 0;
+    let maxDroppedConfidence: number | undefined;
+    for (const c of raw) {
+      const structurallyOk =
+        c?.title &&
+        Array.isArray(c.sourceConceptIds) && c.sourceConceptIds.length >= 2 &&
+        Array.isArray(c.sections) && c.sections.length > 0;
+      if (!structurallyOk) continue;
+      const conf = typeof c.confidence === "number" ? c.confidence : 0.7;
+      if (conf < SYNTHESIS_CONFIDENCE_THRESHOLD) {
+        droppedByConfidence += 1;
+        if (maxDroppedConfidence === undefined || conf > maxDroppedConfidence) {
+          maxDroppedConfidence = conf;
+        }
+      }
+    }
+    return {
+      candidates: parseSynthesizerOutput(text),
+      rawCount: raw.length,
+      droppedByConfidence,
+      maxDroppedConfidence,
+    };
+  } catch (err) {
+    console.error("Synthesizer 出力の stats パース失敗:", err);
+    return { candidates: [], rawCount: 0, droppedByConfidence: 0 };
+  }
+}
+
 /**
  * Synthesizer の LLM 出力をパースする
  */
