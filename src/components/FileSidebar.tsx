@@ -328,13 +328,13 @@ export function FileSidebar({
           )}
         </CollapsibleSection>
 
-        {/* AI Knowledge セクション（バックエンド不在時はロック表示で導線） */}
+        {/* Knowledge セクション（バックエンド不在時はロック表示で導線） */}
         {onShowWikiList && !aiAvailable && (
           <CollapsibleSection
             storageKey="ai"
             title={(
               <span className="flex items-center gap-1">
-                AI
+                {t("sidebar.knowledge")}
                 <Sparkles size={11} className="text-muted-foreground/60" />
               </span>
             )}
@@ -346,12 +346,12 @@ export function FileSidebar({
         {onShowWikiList && aiAvailable && (
           <CollapsibleSection
             storageKey="ai"
-            title="AI"
+            title={t("sidebar.knowledge")}
             defaultOpen={false}
             count={aiTotalCount}
           >
             {(() => {
-                // 既定では Summary / Claim のみ表示。
+                // 既定では 要約 / 知見 のみ表示。
                 // 実験フラグでオプトインしたとき、または既存ユーザーが残しているデータが
                 // ある場合（count > 0）は表示してアクセスを保つ。
                 const kinds: WikiKind[] = ["summary", "claim"];
@@ -360,10 +360,10 @@ export function FileSidebar({
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;
                   const label =
-                    kind === "summary" ? "Summary"
-                    : kind === "claim" ? "Claim"
-                    : kind === "atom" ? "Atom"
-                    : "Synthesis";
+                    kind === "summary" ? t("wikiList.kindSummary")
+                    : kind === "claim" ? t("wikiList.kindClaim")
+                    : kind === "atom" ? t("wikiList.kindAtom")
+                    : t("wikiList.kindSynthesis");
                   const isExperimental = kind === "atom" || kind === "synthesis";
                   return (
                     <button
@@ -376,7 +376,7 @@ export function FileSidebar({
                       }`}
                     >
                       <span className="text-muted-foreground shrink-0"><Bot size={14} /></span>
-                      <span className="flex-1 text-left capitalize flex items-center gap-1.5">
+                      <span className="flex-1 text-left flex items-center gap-1.5">
                         {label}
                         {isExperimental && (
                           <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 border border-muted-foreground/30 rounded px-1 py-px">

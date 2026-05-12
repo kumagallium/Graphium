@@ -1,8 +1,8 @@
 # Inference types in Graphium
 
-Graphium's AI Wiki tags every extracted note with a small set of metadata fields that capture **what kind of reasoning produced this claim**. This document organizes those fields and explains the layer each one lives at. Read it as learning material, or open it whenever a badge in the UI is unfamiliar.
+Graphium's Knowledge layer tags every extracted note with a small set of metadata fields that capture **what kind of reasoning produced this claim**. This document organizes those fields and explains the layer each one lives at. Read it as learning material, or open it whenever a badge in the UI is unfamiliar.
 
-The design root is the hourglass model: `Notes → Claim → Atom → Synthesis`. Each layer carries a different concentration of context, and the inference types are attached at the layer they actually belong to.
+The design root is the hourglass model: `Notes → Claim → Atom → Synthesis` (UI labels: *Claims → Insights → Ideas*; on-disk identifiers stay as `claim` / `atom` / `synthesis` to preserve existing data). Each layer carries a different concentration of context, and the inference types are attached at the layer they actually belong to.
 
 ---
 

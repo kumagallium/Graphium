@@ -40,7 +40,7 @@ optional for the editor itself; the editor works without it.
 flowchart TB
     subgraph UI["UI layer"]
         E["Block editor<br/><i>BlockNote.js + Graphium blocks</i>"]
-        N["Navigation<br/><i>note list, AI Wiki nav, search</i>"]
+        N["Navigation<br/><i>note list, Knowledge nav, search</i>"]
         AI["AI Assistant<br/><i>chat, ask, compose</i>"]
     end
 
@@ -49,7 +49,7 @@ flowchart TB
         IL["inline-label<br/>(entity / agent inline)"]
         PG["prov-generator<br/>(blocks → PROV-DM graph)"]
         DP["document-provenance<br/>(per-note edit history)"]
-        WIKI["wiki<br/>(AI Wiki UI + service)"]
+        WIKI["wiki<br/>(Knowledge UI + service)"]
         SH["sharing<br/>(Library / Fork)"]
     end
 
@@ -82,7 +82,7 @@ flowchart TB
 
 Reading top to bottom: UI talks to feature modules, which read and write
 through `src/lib/document-types.ts` and the `StorageProvider` abstraction.
-AI features (Wiki ingest, chat) talk to the Node server. The Node server
+AI features (Knowledge ingest, chat) talk to the Node server. The Node server
 talks to LLM and embedding backends.
 
 ## 3. The four layers in detail
@@ -144,22 +144,26 @@ outcome was derived from the planned intent. The shared Step Activity
 that both Entities are `prov:used` by acts as the implicit activity of
 the PROV-DM derivation’s full form.
 
-### 3.3 Knowledge layer (AI Wiki)
+### 3.3 Knowledge layer
 
-The Wiki is a set of editable JSON documents that an LLM keeps in sync
-with your notes. Each Wiki document is a real `GraphiumDocument` with
-`source: "ai"` set, so it opens in the same editor.
+The Knowledge layer is a set of editable JSON documents that an LLM keeps
+in sync with your notes. Each Knowledge document is a real
+`GraphiumDocument` with `source: "ai"` set, so it opens in the same
+editor. On disk the documents are still grouped under `data/wiki/` and the
+TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
+`WikiMeta`) — UI labels and prose use "Knowledge / Claims / Insights /
+Ideas" instead.
 
 The pipeline (running on the Node server) has five stages:
 
 | Stage | File | What it does |
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
-| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Atom* claims with citations back to source notes |
-| **Synthesis router** | `src/features/ai-assistant/synthesis-router.ts` | From input Atoms' `atomType`, picks the candidate `synthesisMode`s (deductive / abductive / analogical / dialectic) the Synthesizer should consider |
-| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` + `src/server/services/synthesis-prompts/` | Weaves Atoms across notes into *Synthesis* pages. The system prompt is composed from a shared `common.ts` plus one file per mode; the router restricts which modes the LLM sees |
+| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes |
+| **Idea router** | `src/features/ai-assistant/synthesis-router.ts` | From input Insights' `atomType`, picks the candidate `synthesisMode`s (deductive / abductive / analogical / dialectic) the Synthesizer should consider |
+| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` + `src/server/services/synthesis-prompts/` | Weaves Insights across notes into *Idea* pages. The system prompt is composed from a shared `common.ts` plus one file per mode; the router restricts which modes the LLM sees |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Atoms, broken citations, redundant Claims |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -180,7 +184,7 @@ sequenceDiagram
     S->>I: run
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
-    A->>FS: write Atom / Claim pages
+    A->>FS: write Insight / Claim pages
     A->>X: notify changed pages
     X->>FS: propagate to dependents
     X->>L: schedule lint
@@ -204,38 +208,39 @@ Notes:
   flow detects two Claims that overlap, one is rewritten into the
   other and the absorbed Claim is **archived, not deleted**. Its file
   stays on disk and its index entry gains an `archivedAt` flag, so any
-  note that cited it (or any Synthesis whose `derivedFromNotes` lists
+  note that cited it (or any Idea whose `derivedFromNotes` lists
   it) keeps resolving through `loadDoc`. The archived page is hidden
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
 
-**Synthesis modes (Phase 1.3).** The Synthesizer can produce four kinds of
-Synthesis, distinguished by the type of reasoning that grounds the new
+**Idea modes (Phase 1.3).** The Synthesizer can produce four kinds of
+Idea, distinguished by the type of reasoning that grounds the new
 insight:
 
 - `deductive` — independent claims combine into a strategy ("given A, B, C → D"). Most permissive; the default fallback.
-- `abductive` — an observation plus a mechanism / rule → the best explanatory hypothesis. Where most genuine "aha" Syntheses live.
+- `abductive` — an observation plus a mechanism / rule → the best explanatory hypothesis. Where most genuine "aha" Ideas live.
 - `analogical` — structural mapping between claims from different domains.
 - `dialectic` — two claims that argue opposite directions of the same effect, resolved by a higher frame.
 
-Induction is **not** a Synthesis mode in this system; "many similar claims → a
-general rule" is what the Atom layer is for (PR-B4 relocated induction to
-the Atomizer). The Synthesizer specializes in combining heterogeneous
+Induction is **not** an Idea mode in this system; "many similar claims → a
+general rule" is what the Insights layer is for (PR-B4 relocated induction
+to the Atomizer). The Synthesizer specializes in combining heterogeneous
 elements into something new.
 
-The synthesis router (`src/features/ai-assistant/synthesis-router.ts`)
-inspects the `atomType` of each input Atom and proposes a candidate mode
-set; the LLM picks one. The router only rules in / rules out modes that
-can be decided from `atomType` alone — content judgments (e.g., whether
-two causal atoms actually argue *opposite* directions for `dialectic`,
-or whether two mechanistic atoms span genuinely different *domains* for
-`analogical`) are deferred to the LLM. Mode-specific prompts live in
-`src/server/services/synthesis-prompts/` (one file per mode plus a shared
-`common.ts`), and the router's candidate set decides which of those files
-are concatenated into the system prompt for a given run.
+The idea router (`src/features/ai-assistant/synthesis-router.ts`)
+inspects the `atomType` of each input Insight and proposes a candidate
+mode set; the LLM picks one. The router only rules in / rules out modes
+that can be decided from `atomType` alone — content judgments (e.g.,
+whether two causal Insights actually argue *opposite* directions for
+`dialectic`, or whether two mechanistic Insights span genuinely different
+*domains* for `analogical`) are deferred to the LLM. Mode-specific
+prompts live in `src/server/services/synthesis-prompts/` (one file per
+mode plus a shared `common.ts`), and the router's candidate set decides
+which of those files are concatenated into the system prompt for a given
+run.
 
-The relationship between Notes, Claim, Atom, and Synthesis is described
+The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
 
 ### 3.4 Storage layer
@@ -373,8 +378,8 @@ people most often need to find.
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
 | ⌘K palette (note search + ask) | `src/features/composer/` |
-| AI Wiki UI and service | `src/features/wiki/` |
-| AI Wiki pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
+| Knowledge UI and service | `src/features/wiki/` |
+| Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
 | Inter-note network graph (Cytoscape) | `src/features/network-graph/` |
 | Storage provider | `src/lib/storage/providers/`, `src/lib/storage/registry.ts` |
 | Note JSON shape and migrations | `src/lib/document-types.ts`, `src/lib/document-migration.ts` |

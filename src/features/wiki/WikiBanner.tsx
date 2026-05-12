@@ -68,10 +68,10 @@ export function WikiBanner({
 }: Props) {
   const t = useT();
   const kindLabel =
-    wikiMeta.kind === "summary" ? "Summary"
-    : wikiMeta.kind === "synthesis" ? "Synthesis"
-    : wikiMeta.kind === "atom" ? "Atom"
-    : "Claim";
+    wikiMeta.kind === "summary" ? t("wikiList.kindSummary")
+    : wikiMeta.kind === "synthesis" ? t("wikiList.kindSynthesis")
+    : wikiMeta.kind === "atom" ? t("wikiList.kindAtom")
+    : t("wikiList.kindClaim");
 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -165,7 +165,7 @@ export function WikiBanner({
           >
             AI
           </span>
-          AI {kindLabel}
+          {kindLabel}
         </span>
 
         {/* 意味的な型のバッジ（提案 v4 Phase 1）— 推定できているときのみ表示。

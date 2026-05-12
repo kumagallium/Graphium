@@ -26,10 +26,10 @@ function routeToHash(route: AppRoute): string {
   switch (route.view) {
     case "editor": return `#note/${route.fileId}`;
     case "notes": return "#notes";
-    case "wiki-list": return `#wiki/${route.kind}`;
-    case "wiki-editor": return `#wiki/${route.kind}/${route.wikiId}`;
-    case "wiki-log": return "#wiki-log";
-    case "wiki-lint": return "#wiki-lint";
+    case "wiki-list": return `#knowledge/${route.kind}`;
+    case "wiki-editor": return `#knowledge/${route.kind}/${route.wikiId}`;
+    case "wiki-log": return "#knowledge-log";
+    case "wiki-lint": return "#knowledge-lint";
     case "assets": return `#assets/${route.mediaType}`;
     case "labels": return `#labels/${encodeURIComponent(route.label)}`;
     case "memos": return "#memos";
@@ -51,6 +51,9 @@ function parseHash(hash: string): AppRoute {
       break;
     case "notes":
       return { view: "notes" };
+    // 新ルート (#knowledge/...) と旧ルート (#wiki/...) を同じ意味として解決。
+    // 旧ブックマーク互換のため "wiki" もここで受ける（writes は常に #knowledge/...）。
+    case "knowledge":
     case "wiki":
       if (parts.length >= 3) {
         const kind = parts[1] as WikiKind;
@@ -61,8 +64,10 @@ function parseHash(hash: string): AppRoute {
         return { view: "wiki-list", kind: parts[1] as WikiKind };
       }
       break;
+    case "knowledge-log":
     case "wiki-log":
       return { view: "wiki-log" };
+    case "knowledge-lint":
     case "wiki-lint":
       return { view: "wiki-lint" };
     case "assets":

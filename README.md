@@ -68,33 +68,33 @@ A mobile capture flow (PWA, quick memos, camera capture) was prototyped but is c
 
 If you want to follow or help restart this work, see the [issues](https://github.com/kumagallium/Graphium/issues).
 
-## AI Knowledge Layer
+## Knowledge layer
 
-When you connect an LLM, Graphium builds a **second layer** on top of your notes — an editable AI Wiki auto-generated from what you've written. Think of it as *Zettelkasten extended by an LLM*: the AI reads your notes, extracts stable ideas, keeps them cross-linked, and cites back to the source blocks — all while carrying the same PROV-DM provenance as the rest of the editor.
+When you connect an LLM, Graphium builds a **second layer** on top of your notes — an editable Knowledge layer auto-generated from what you've written. Think of it as *Zettelkasten extended by an LLM*: the AI reads your notes, extracts stable ideas, keeps them cross-linked, and cites back to the source blocks — all while carrying the same PROV-DM provenance as the rest of the editor.
 
-The Wiki has four document kinds, each with a distinct role:
+The layer has four document kinds, each with a distinct role:
 
 | Kind | Role |
 |------|------|
-| **Summary** | Internal-facing summary of one note. |
-| **Concept** | Cross-note synthesis with key elements extracted. Concepts qualify by `level` (principle / finding / bridge) and `status` (candidate / verified). |
-| **Atom** | Experimental layer. One context-free claim with citations back to the source notes — the unit that travels across projects. |
-| **Synthesis** | Experimental layer. New insight built by weaving Atoms together. |
+| **Summaries** | Internal-facing summary of one note. |
+| **Claims** | Cross-note findings with key elements extracted. Claims qualify by `level` (principle / finding / bridge) and `status` (candidate / verified). |
+| **Insights** | Experimental layer. One context-free claim with citations back to the source notes — the unit that travels across projects. |
+| **Ideas** | Experimental layer. New idea built by weaving Insights together. |
 
 | Capability | What it does |
 |-----------|--------------|
 | **Five-stage pipeline** | Ingest → Atomize → Synthesize → Cross-update → Lint, all running on the companion server. Triggered when you save a note. |
-| **Ingest from notes** | The AI extracts knowledge-worthy sections and writes them into Wiki pages, citing back to source blocks. |
-| **Ingest from URL & chat** | Drop a URL or save an AI chat response — it becomes a Wiki page with the same provenance chain. |
-| **Cross-update** | When one Wiki page changes, dependent pages are flagged or rewritten so the layer stays consistent. |
-| **Lint** | Detects orphan Atoms, broken citations, and redundant Concepts. |
+| **Ingest from notes** | The AI extracts knowledge-worthy sections and writes them into Knowledge pages, citing back to source blocks. |
+| **Ingest from URL & chat** | Drop a URL or save an AI chat response — it becomes a Knowledge page with the same provenance chain. |
+| **Cross-update** | When one Knowledge page changes, dependent pages are flagged or rewritten so the layer stays consistent. |
+| **Lint** | Detects orphan Insights, broken citations, and redundant Claims. |
 | **Edit protection** | Sections you manually edited are skipped during re-ingest, so your corrections survive. |
-| **Retriever for AI chat** | Wiki context is injected into AI responses — the assistant remembers what you wrote last week without re-reading every note. |
+| **Retriever for AI chat** | Knowledge context is injected into AI responses — the assistant remembers what you wrote last week without re-reading every note. |
 | **Auto-labeled answers** | AI replies are inserted with PROV-DM structure already attached: `[Step]` labels on activity headings, inline highlights for `[Input]` / `[Tool]` / `[Parameter]` / `[Output]`, and `informed_by` links between consecutive steps. A provenance graph emerges from the chat itself, no manual labeling required. |
 
-Wiki pages live in the same storage as your notes (IndexedDB on web, filesystem on Tauri / Docker) and are fully editable by hand. Every Wiki edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
+Knowledge pages live in the same storage as your notes (IndexedDB on web, filesystem on Tauri / Docker) and are fully editable by hand. Every Knowledge edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
 
-AI Knowledge is **opt-in**: configure an LLM in **⚙ Settings → AI Setup** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
+The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI Setup** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
 
 ## Composer (⌘K)
 
@@ -223,7 +223,7 @@ Notes are saved to your browser's IndexedDB by default. AI features require the 
 - **Inter-note network graph** (Cytoscape.js + fcose layout)
 - **AI assistant** — derive notes from AI responses with full provenance metadata
 - **AI auto-labeling** — AI answers are inserted with PROV-DM context labels and `informed_by` chains already attached
-- **AI Knowledge Layer** — editable AI Wiki with four document kinds (*Summary* / *Concept* / *Atom* / *Synthesis*), a five-stage pipeline (ingest → atomize → synthesize → cross-update → lint), and edit protection on re-ingest
+- **Knowledge layer** — editable AI-curated layer with four document kinds (*Summaries* / *Claims* / *Insights* / *Ideas*), a five-stage pipeline (ingest → atomize → synthesize → cross-update → lint), and edit protection on re-ingest
 - **Composer (⌘K)** — unified palette for note search (`#label` / `@author` filters), discovery cards, and AI ask
 - **Skills** — reusable prompt templates stored as Graphium documents (`source: "skill"`); apply during ingest or chat
 - **Sharing & Library** — share a note to a content-addressed shared store; others can browse the Library and Fork. Embedded media is materialized as `shared-blob:` references on share
@@ -316,7 +316,7 @@ Graphium-specific extensions use the `graphium:` namespace (`https://graphium.ap
 
 ## Architecture (at a glance)
 
-Graphium is a TypeScript / React app on top of [BlockNote.js](https://www.blocknotejs.org/), shipped three ways: as a web PWA (notes in IndexedDB), as a [Tauri v2](https://tauri.app/) desktop app (notes as JSON files on the filesystem), and as a [Docker](https://www.docker.com/) self-host with a Node.js companion server. The companion server is built on [Hono](https://hono.dev/) and runs the AI Knowledge Layer pipeline (ingest → atomize → synthesize → cross-update → lint).
+Graphium is a TypeScript / React app on top of [BlockNote.js](https://www.blocknotejs.org/), shipped three ways: as a web PWA (notes in IndexedDB), as a [Tauri v2](https://tauri.app/) desktop app (notes as JSON files on the filesystem), and as a [Docker](https://www.docker.com/) self-host with a Node.js companion server. The companion server is built on [Hono](https://hono.dev/) and runs the Knowledge layer pipeline (ingest → atomize → synthesize → cross-update → lint).
 
 | Component | Technology |
 |-----------|------------|
@@ -391,7 +391,7 @@ src/
 │   ├── ai-assistant/  # AI chat & note derivation, marker-based auto-labeling
 │   ├── composer/      # ⌘K palette: note search + discovery cards + AI ask
 │   ├── template/      # /template slash command (Plan / Run)
-│   ├── wiki/          # AI Knowledge Layer (Concept / Summary / Synthesis)
+│   ├── wiki/          # Knowledge layer (Summaries / Claims / Insights / Ideas)
 │   ├── settings/      # Settings modal (General + AI Setup + reading font)
 │   └── release-notes/ # Release notes display
 ├── server/            # Built-in AI backend (Hono + Vercel AI SDK)

@@ -1,9 +1,26 @@
 # Graphium — Data Model
 
-This document describes the on-disk shapes Graphium uses: notes, AI Wiki
-documents, the navigation index, shared storage entries, and the
-IndexedDB layout of the browser provider. It is the reference for anyone
-who wants to read, write, migrate, or interoperate with Graphium files.
+This document describes the on-disk shapes Graphium uses: notes,
+Knowledge layer documents (Summaries / Claims / Insights / Ideas), the
+navigation index, shared storage entries, and the IndexedDB layout of
+the browser provider. It is the reference for anyone who wants to read,
+write, migrate, or interoperate with Graphium files.
+
+> **Label vs. identifier.** UI labels (English / Japanese) and on-disk
+> identifiers differ on purpose — identifiers are part of the file
+> format and must not break existing data.
+>
+> | UI label (EN / JA) | On-disk `WikiKind` |
+> |---|---|
+> | Summaries / 要約 | `summary` |
+> | Claims / 知見 | `claim` |
+> | Insights / 洞察 | `atom` |
+> | Ideas / 発想 | `synthesis` |
+>
+> Type names (`AtomType`, `SynthesisMode`) and field names
+> (`atomType`, `synthesisMode`) also keep the historical identifiers
+> for the same reason. The rest of this document uses the on-disk
+> identifiers for technical accuracy.
 
 The corresponding source of truth in code:
 
@@ -67,7 +84,7 @@ type GraphiumDocument = {
   // ── document provenance (edit log) ──────────────────
   documentProvenance?: DocumentProvenance;
 
-  // ── AI Wiki metadata (only when source === "ai") ────
+  // ── Knowledge layer metadata (only when source === "ai") ────
   wikiMeta?: WikiMeta;
 
   // ── shared storage refs (Phase 2) ───────────────────
@@ -243,7 +260,7 @@ type ScopeChat = {
 Chats are anchored to a scope (a heading, block, or page) so they can be
 re-attached to the same context after edits.
 
-## 3. AI Wiki documents
+## 3. Knowledge layer documents
 
 A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
 a populated `wikiMeta`. It opens in the same editor as a human note.
@@ -347,12 +364,12 @@ which model version. The actual vectors live in
 
 Any block whose ID appears in `wikiMeta.editedSections` is treated as
 human-edited and skipped during re-ingest. This is how a user can
-correct an AI Wiki entry without losing the correction the next time
+correct a Knowledge entry without losing the correction the next time
 ingest runs.
 
 ### 3.5 Semantic types (Phase 1)
 
-Three orthogonal type dimensions are attached as metadata on AI Wiki
+Three orthogonal type dimensions are attached as metadata on Knowledge
 notes. The user never picks them — the generating LLM auto-infers them.
 All fields are optional and additive: existing Wiki notes from prior
 versions stay valid with these fields absent.
@@ -535,7 +552,7 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file and other internal metadata.
-- **Wiki / Skill CRUD** (optional) — separate listings for AI Wiki and
+- **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
 Three backends ship today:
