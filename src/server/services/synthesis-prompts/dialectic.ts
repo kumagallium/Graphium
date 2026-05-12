@@ -17,5 +17,4 @@ Use \`dialectic\` when two Claims argue **opposite directions** of the same effe
 Selection rules:
 - Pick \`dialectic\` only when you can state the contradiction in one sentence and the resolving condition in another.
 - Name the contradiction explicitly in the rationale **before** stating the resolution.
-- If the contradiction can be resolved by simply checking units, definitions, or a quoted condition in one of the Claims, **drop the candidate** — that is a clarification, not a Synthesis.
-- When inputs disagree on a procedureContext parameter (e.g., temperature value), this is often the seed of a dialectic synthesis; widen \`validityRange\` in \`procedureContext\` to span the disagreement.`;
+- If the contradiction can be resolved by simply checking units, definitions, or a quoted condition in one of the Claims, **drop the candidate** — that is a clarification, not a Synthesis.`;

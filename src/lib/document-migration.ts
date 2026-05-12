@@ -72,6 +72,13 @@ function migrateConceptKindToClaim(doc: GraphiumDocument): void {
   if ((meta as any).synthesisMode === "inductive") {
     (meta as any).synthesisMode = undefined;
   }
+  // PR-B4.5: procedureContext は Claim でのみ意味を持つ。Atom / Synthesis に
+  // PR-B3 で書かれた値が残っていたら strip する（context-stripped を contract に
+  // 統一）。再現性骨格は元 Claim 側に残っているので失う情報は冗長な intersection。
+  const kind = (meta as any).kind;
+  if ((kind === "atom" || kind === "synthesis") && (meta as any).procedureContext) {
+    (meta as any).procedureContext = undefined;
+  }
   // 旧 kind の文字列リテラルが「concept」のときだけ書き換える。
   // 既に "claim" のものや別の kind には触らない。
   if ((meta.kind as unknown as string) === "concept") {

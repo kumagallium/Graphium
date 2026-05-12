@@ -2,10 +2,8 @@
 // 既存の Claim ページ群を分析し、複数ページを統合した
 // 新しい洞察（Synthesis ページ）を生成する
 
-import type { AtomType, HypothesisStatus, ProcedureContext, SynthesisMode } from "../../lib/document-types.js";
-import { formatProcedureContextForClaimBlock } from "./prov-prompt-injection.js";
+import type { AtomType, HypothesisStatus, SynthesisMode } from "../../lib/document-types.js";
 import { buildSynthesizerSystemPromptV2 } from "./synthesis-prompts/index.js";
-import { parseProcedureContext } from "./wiki-ingester.js";
 
 /** Synthesis の推論モード（提案 v4 Phase 1.3）として認める値の一覧 */
 const SYNTHESIS_MODE_VALUES: SynthesisMode[] = [
@@ -46,12 +44,10 @@ export type SynthesisCandidate = {
    * 生成時のデフォルトは "speculative"。
    */
   hypothesisStatus?: HypothesisStatus;
-  /**
-   * Synthesis が依存する手順条件（PR-B3, Phase 2.3 拡張）。
-   * 上流 Claim 群の procedureContext を見渡して conflicts を解消したもの。
-   * 純粋に概念横断的（手順非依存）な統合では undefined。
-   */
-  procedureContext?: ProcedureContext;
+  // procedureContext は意図的に持たない (PR-B4.5)。
+  // Synthesis は context-stripped な Atom を編む層であり、手順条件は
+  // Claim 層に留め置く。reproducibility は derivedFromNotes / 上流 Claim
+  // から on-demand で参照する設計。
 };
 
 export type ClaimSnapshot = {
@@ -71,16 +67,13 @@ export type ClaimSnapshot = {
    * 空配列でも動作する（後方互換）。
    */
   sourceSummaryPreviews?: { title: string; preview: string }[];
-  /**
-   * Claim に保存された手順条件（PR-B2 で Ingester が埋めたもの）。
-   * Atomizer / Synthesizer は複数 Claim の procedureContext を横に並べ、
-   * 出力 Atom / Synthesis の procedureContext を判断する材料にする。
-   * Phase 2.2/2.3 拡張（PR-B3）。
-   */
-  procedureContext?: import("../../lib/document-types.js").ProcedureContext;
+  // PR-B4.5: ClaimSnapshot からも procedureContext を外した。Atomizer /
+  // Synthesizer に渡しても下流に持ち越せず、混乱の元になるため。
+  // 必要があれば呼び出し側で source Claim から直接取得する。
   /**
    * 入力が Atom の場合の atomType（提案 v4 Phase 1.2）。
    * Synthesis router がモード推定に使う。kind が "claim" の場合は undefined。
+   * PR-B5 で追加。
    */
   atomType?: AtomType;
 };
@@ -126,8 +119,7 @@ export function buildSynthesizerUserMessage(
     const related = c.relatedClaims.length > 0
       ? `  Related to: ${c.relatedClaims.join(", ")}`
       : "";
-    const procLine = formatProcedureContextForClaimBlock(c.procedureContext);
-    const tail = [preview, related, procLine].filter(Boolean).join("\n");
+    const tail = [preview, related].filter(Boolean).join("\n");
     return `### ${c.title}${levelTag} (id: ${c.id})${tail ? "\n" + tail : ""}`;
   }).join("\n\n");
 
@@ -193,8 +185,6 @@ export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
               ? "speculative" // モード判定できているのに status 欠落は speculative にフォールバック
               : undefined;
 
-        const procedureContext: ProcedureContext | undefined = parseProcedureContext(c.procedureContext);
-
         return {
           sourceConceptIds: c.sourceConceptIds.map(String),
           sourceConceptTitles: Array.isArray(c.sourceConceptTitles) ? c.sourceConceptTitles.map(String) : [],
@@ -207,7 +197,6 @@ export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
           confidence: typeof c.confidence === "number" ? c.confidence : 0.85,
           synthesisMode,
           hypothesisStatus,
-          procedureContext,
         };
       });
   } catch (err) {

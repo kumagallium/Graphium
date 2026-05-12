@@ -168,7 +168,16 @@ export type WikiMeta = {
   synthesisMode?: SynthesisMode;
   /** Synthesis の検証状態（特に abductive 型で意味を持つ） */
   hypothesisStatus?: HypothesisStatus;
-  /** 主張が依存する手順条件（再現性の骨格、Phase 2.3） */
+  /**
+   * 主張が依存する手順条件（再現性の骨格、Phase 2.3）。
+   *
+   * **Claim でのみ意味を持つ** (PR-B4.5)。Atom は砂時計のくびれであり
+   * context-stripped かつ domain-lifted を contract とするため
+   * procedureContext は持たない。Synthesis も同様に持たない。
+   * Atom / Synthesis から再現性骨格を辿りたい場合は、
+   * `derivedFromNotes` / `derivedFromClaims` を経由して source Claim の
+   * procedureContext を on-demand で参照する。
+   */
   procedureContext?: ProcedureContext;
 };
 

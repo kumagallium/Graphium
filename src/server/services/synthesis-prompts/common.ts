@@ -1,8 +1,10 @@
 // Synthesis プロンプトの共通部分（PR-B5 Phase 1.3）
 //
 // 4 モード (deductive / abductive / analogical / dialectic) すべてで共有する
-// 文体・出力フォーマット・引用ルール・procedureContext の扱い・hypothesisStatus・
-// 一般ガイドラインをここに集める。mode 別のセクションは各モードファイルから注入する。
+// 文体・出力フォーマット・引用ルール・hypothesisStatus・一般ガイドラインを
+// ここに集める。mode 別のセクションは各モードファイルから注入する。
+// PR-B4.5 で Synthesis は procedureContext を持たない契約になったため、
+// 出力スキーマからもプロンプトの procedure ルールからも撤去している。
 
 import type { SynthesizerSkill } from "./types.js";
 
@@ -72,28 +74,17 @@ Respond with valid JSON only (no markdown wrapper):
       "rationale": "Why this synthesis adds value beyond the individual concepts",
       "confidence": 0.0-1.0,
       "synthesisMode": "deductive" | "abductive" | "analogical" | "dialectic",
-      "hypothesisStatus": "speculative" | "tested" | "confirmed" | "refuted",
-      "procedureContext": {                            // optional. see Procedure context section below
-        "derivedFromNotes": [],
-        "protocolFingerprint": "...",
-        "keyParameters": [{ "name": "...", "value": "...", "necessity": "critical" | "important" | "incidental" }],
-        "keyTools": ["..."],
-        "validityRange": "..."
-      }
+      "hypothesisStatus": "speculative" | "tested" | "confirmed" | "refuted"
     }
   ]
 }`;
 
-/** Procedure context ルール（モード非依存） */
-export const PROCEDURE_CONTEXT_RULES = `## Procedure context (Phase 2.3 cross-Claim integration)
+/** PR-B4.5: Synthesis は procedureContext を持たない契約 */
+export const SYNTHESIS_NO_PROCEDURE_CONTEXT = `## What Synthesis does NOT carry: procedureContext
 
-Some input Claims carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. The procedural skeleton is the **reproducibility scaffold** of the PROV layer — preserve it through the Synthesis whenever the inputs provide it.
+Like Atom, the Synthesis layer is **procedure-independent by contract**. Source Claims may carry a \`procedureContext\` documenting the procedure they depend on, but a Synthesis re-combines context-stripped insights — it should not bind itself back to a specific procedural regime. Reproducibility lives at the Claim layer; \`derivedFromNotes\` lets a reader walk back when they need it.
 
-Rules:
-- **Preserve the intersection of constraints** in the Synthesis \`procedureContext\` whenever the input Claims share tools or parameters. Same alloy across all sources → keep the alloy. Same SPS profile → keep it.
-- If the Claims **disagree** on a parameter value (e.g., one says \`T=850°C\`, another \`T=700°C\`), and the Synthesis is using that disagreement as part of its insight (especially \`dialectic\` or \`analogical\` mode), call this out in the \`rationale\` and **widen \`validityRange\`** to span the disagreement instead of picking one side.
-- **Omit \`procedureContext\` entirely only when no input Claim provides any procedure information**, or the Synthesis is a domain-general principle that genuinely transcends every input procedure (rare; reserve this for explicit cross-domain analogies).
-- Never invent parameters/tools not present in any input Claim's procedureContext.`;
+If the candidate Synthesis only makes sense under a specific procedural regime, that is a signal the candidate is closer to a re-stated Claim than a genuine cross-Claim insight. Either widen it or drop it.`;
 
 /** induction が Synthesis モードに存在しないことの注記 */
 export const INDUCTION_NOT_HERE = `## Induction is not a Synthesis mode

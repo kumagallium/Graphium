@@ -16,9 +16,9 @@ import {
   HYPOTHESIS_STATUS_RULES,
   INDUCTION_NOT_HERE,
   OUTPUT_FORMAT,
-  PROCEDURE_CONTEXT_RULES,
   PROMPT_HEADER,
   SYNTHESIS_DEFINITION,
+  SYNTHESIS_NO_PROCEDURE_CONTEXT,
 } from "./common.js";
 import { ABDUCTIVE_DESCRIPTION, ABDUCTIVE_MODE_NAME } from "./abductive.js";
 import { ANALOGICAL_DESCRIPTION, ANALOGICAL_MODE_NAME } from "./analogical.js";
@@ -94,7 +94,7 @@ export function buildSynthesizerSystemPromptV2(opts: BuildSystemPromptOptions): 
     buildVoiceSection(language, skills),
     SYNTHESIS_DEFINITION,
     OUTPUT_FORMAT,
-    PROCEDURE_CONTEXT_RULES,
+    SYNTHESIS_NO_PROCEDURE_CONTEXT,
     buildModeSection(modes),
     INDUCTION_NOT_HERE,
     HYPOTHESIS_STATUS_RULES,

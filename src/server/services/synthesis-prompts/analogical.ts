@@ -17,5 +17,4 @@ Use \`analogical\` when the Synthesis maps a structural pattern from one domain 
 Selection rules:
 - Pick \`analogical\` only when the domain gap is real. Inputs from the same lab / paper / substrate are almost always **not** analogical — prefer \`deductive\` or \`abductive\`.
 - Name the structural mapping explicitly in the rationale: "X (domain A) corresponds to Y (domain B) because both play role Z."
-- Lower \`confidence\` if the mapping has obvious breakdowns; analogical mode is prone to overreach.
-- If the inputs share procedureContext, that is a hint they are *not* cross-domain — re-examine before choosing this mode.`;
+- Lower \`confidence\` if the mapping has obvious breakdowns; analogical mode is prone to overreach.`;
