@@ -280,7 +280,7 @@ type WikiMeta = {
   atomType?: AtomType;            // Atom only.
   synthesisMode?: SynthesisMode;  // Synthesis only.
   hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
-  procedureContext?: ProcedureContext; // Claim / Atom / Synthesis. Procedural skeleton.
+  procedureContext?: ProcedureContext; // Claim only. Atom/Synthesis are context-stripped by contract.
 };
 
 type ClaimRole =
@@ -371,35 +371,31 @@ describe **what kind of reasoning move the Wiki note makes** —
 information that the context-label layer cannot express.
 
 `procedureContext` carries the **procedural skeleton** the claim
-depends on: key parameters, key tools, validity range. It is the
-"reproducibility scaffold that is intentionally not stripped" when the
-hourglass narrows from Claim down to Atom.
+depends on: key parameters, key tools, validity range. It lives at the
+Claim layer only — Atom and Synthesis are context-stripped by contract
+(the hourglass waist). When a reader of an Atom or Synthesis needs the
+reproducibility scaffold of an upstream Claim, they walk back via
+`derivedFromNotes` / `derivedFromClaims` and read the source Claim's
+`procedureContext`.
 
-Populated through the AI Wiki pipeline:
-
-1. **Ingest time** (Phase 2.2/2.3): the client computes a PROV summary
-   of the source note with `summarizeNoteProv()` and sends it to
-   `/api/wiki/ingest` as `provSummary`. The server formats it into a
-   markdown block (`formatProvSummaryForPrompt`) that prepends the user
-   message, and the system prompt instructs the LLM to fill
-   `procedureContext` only on Claims whose validity actually depends on
-   the procedure.
-2. **Atomize / Synthesize time** (PR-B3): the `ClaimSnapshot` carried
-   into the Atomizer / Synthesizer now includes each Claim's
-   `procedureContext`. `formatProcedureContextForClaimBlock` renders a
-   one-line `procedureContext — protocol: … | tools: … | params: … |
-   validity: …` summary under each Claim block. Prompts instruct the
-   LLM to compute the **intersection** of the source Claims'
-   constraints for the new Atom / Synthesis, omit the field entirely
-   when the abstracted claim is genuinely procedure-independent
-   (typical for well-lifted Atoms), and never invent values not present
-   upstream.
-
-In every layer `parseProcedureContext` then sanitizes the LLM output:
+Populated at **Ingest time** (Phase 2.2/2.3): the client computes a
+PROV summary of the source note with `summarizeNoteProv()` and sends it
+to `/api/wiki/ingest` as `provSummary`. The server formats it into a
+markdown block (`formatProvSummaryForPrompt`) that prepends the user
+message, and the system prompt instructs the LLM to fill
+`procedureContext` only on Claims whose validity actually depends on
+the procedure. `parseProcedureContext` then sanitizes the LLM output:
 invalid `necessity` values fall back to `"important"`, name-or-value-
 empty parameters are dropped, and an all-empty `procedureContext` is
 collapsed to `undefined` so the field never appears as a meaningless
 husk in `wikiMeta`.
+
+> History: PR-B3 briefly propagated `procedureContext` into Atom and
+> Synthesis via an intersection-of-source-Claims fallback. PR-B4.5
+> reverted that — having context on Atom contradicted "context-
+> stripped" and made the hourglass model internally inconsistent. The
+> `document-migration` step on load strips `procedureContext` from any
+> Atom / Synthesis docs that still carry it.
 
 ## 4. Skill documents
 

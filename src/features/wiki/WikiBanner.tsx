@@ -415,8 +415,10 @@ export function WikiBanner({
         </div>
       </div>
 
-      {/* 手順条件（Phase 2.3）— 推定があるときだけ控えめに折り畳んで表示 */}
-      {wikiMeta.procedureContext && hasProcedureContextContent(wikiMeta.procedureContext) && (
+      {/* 手順条件（Phase 2.3）— Claim でのみ表示 (PR-B4.5: Atom/Synthesis は持たない設計に統一) */}
+      {wikiMeta.kind === "claim" &&
+        wikiMeta.procedureContext &&
+        hasProcedureContextContent(wikiMeta.procedureContext) && (
         <ProcedureContextSection ctx={wikiMeta.procedureContext} />
       )}
     </div>
