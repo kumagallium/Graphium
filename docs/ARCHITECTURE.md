@@ -144,6 +144,33 @@ outcome was derived from the planned intent. The shared Step Activity
 that both Entities are `prov:used` by acts as the implicit activity of
 the PROV-DM derivation’s full form.
 
+#### Wiki Knowledge Layer in the PROV-JSON-LD export
+
+When a note is exported as PROV-JSON-LD (`src/features/prov-export/`),
+the export bundle also includes the Wiki Knowledge Layer (Claims /
+Insights / Ideas) as additional `Entity` nodes, each with a
+`prov:wasDerivedFrom` edge back to its source note(s) and a
+`prov:wasAttributedTo` edge to the generating AI agent.
+
+Each Wiki entity carries the *semantic types* from §3.3 so that external
+PROV tools can see the hourglass structure of the knowledge layer:
+
+| Attribute (`graphium:*`) | Meaning | Present when |
+|---|---|---|
+| `wikiKind` | `summary` / `claim` / `atom` / `synthesis` | always |
+| `claimRole` | research-process role(s) of the Claim | `wikiKind = claim` |
+| `claimLevel` | abstraction level (`principle` / `finding` / `bridge`) | `wikiKind = claim` |
+| `procedureContext` | reproducibility scaffold (parameters, tools, validity range) | `wikiKind = claim` (procedure-bearing Claims only) |
+| `atomType` | inferential character of the Insight (causal / mechanistic / observational / …) | `wikiKind = atom` |
+| `synthesisMode` | reasoning mode of the Idea (deductive / abductive / analogical / dialectic) | `wikiKind = synthesis` |
+| `hypothesisStatus` | verification status (speculative / tested / confirmed / refuted) | `wikiKind = synthesis` |
+| `confidence` | self-rated confidence at generation (0.0–1.0) | optional |
+
+This export contract is the closest external observers get to the
+hourglass: the source note's PROV graph plus the Wiki entities derived
+from it, with semantic types attached so the data is interpretable
+without Graphium's internal vocabulary.
+
 ### 3.3 Knowledge layer
 
 The Knowledge layer is a set of editable JSON documents that an LLM keeps

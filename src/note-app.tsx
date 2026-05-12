@@ -146,7 +146,7 @@ import {
 } from "./features/asset-browser";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
-import { exportProvJsonLd } from "./features/prov-export";
+import { exportProvJsonLd, type WikiEntityInfo } from "./features/prov-export";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -416,6 +416,10 @@ type NoteEditorProps = {
   >;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
+   *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
+   *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
+  provWikiEntities?: WikiEntityInfo[];
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -507,6 +511,7 @@ function NoteEditorInner({
   onOpenComposer,
   composerSubmitRef,
   archived = false,
+  provWikiEntities,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -1241,10 +1246,12 @@ function NoteEditorInner({
   }, [title, provDoc, labelStore.labels]);
 
   // ── PROV-JSON-LD エクスポートハンドラー ──
+  // Phase 4 (PR-B7): Wiki Knowledge Layer も @graph に含める。NoteApp 側で
+  // wiki state から組み立てた wikiEntities を prop で受け取り、ここでは受け流す。
   const handleExportProvJsonLd = useCallback(() => {
     if (!provDoc || provDoc["@graph"].length === 0) return;
-    exportProvJsonLd({ title, provDoc });
-  }, [title, provDoc]);
+    exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
+  }, [title, provDoc, provWikiEntities]);
 
   // ラベル・リンク・インデックステーブル変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
@@ -2634,6 +2641,35 @@ export function NoteApp() {
   const capture = useCapture(authenticated);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
+
+  // Phase 4 (PR-B7): PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer の
+  // 意味的な型（atomType / synthesisMode / procedureContext / ...）を組み立てる。
+  // wiki state が変わったときだけ再計算する。
+  const provWikiEntities = useMemo<WikiEntityInfo[]>(() => {
+    const out: WikiEntityInfo[] = [];
+    for (const wf of fm.wikiFiles) {
+      const meta = fm.wikiMetas.get(wf.id);
+      if (!meta) continue;
+      const doc = fm.getCachedDoc(`wiki:${wf.id}`);
+      const wm = doc?.wikiMeta;
+      out.push({
+        title: meta.title,
+        kind: meta.kind,
+        status: meta.status ?? "active",
+        generatedAt: wm?.generatedAt ?? wf.modifiedTime,
+        model: wm?.generatedBy?.model ?? meta.model ?? "unknown",
+        derivedFromNotes: wm?.derivedFromNotes ?? [],
+        atomType: meta.atomType,
+        synthesisMode: meta.synthesisMode,
+        hypothesisStatus: meta.hypothesisStatus,
+        claimRole: meta.claimRole,
+        level: meta.level,
+        confidence: wm?.confidence,
+        procedureContext: wm?.procedureContext,
+      });
+    }
+    return out;
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
   // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
   // wiki エントリは handleOpenWikiFile + wikiKind ナビ、それ以外は handleOpenFile。
@@ -4772,6 +4808,7 @@ export function NoteApp() {
                 }
               })();
             } : undefined}
+            provWikiEntities={provWikiEntities}
           />
           </>
         )}
