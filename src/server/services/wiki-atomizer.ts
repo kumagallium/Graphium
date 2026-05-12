@@ -136,14 +136,13 @@ Respond with valid JSON only:
 
 ## Procedure context (Phase 2.3 cross-Claim merging — read this carefully)
 
-Some input Claims may carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. When you factor out an Atom from those Claims, **set the Atom's procedureContext to the INTERSECTION of the input Claims' constraints**, not the union.
+Some input Claims carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. When you factor out an Atom from those Claims, **preserve the INTERSECTION of the input Claims' constraints in the Atom's \`procedureContext\`**. The Atom is abstracted at the *claim level* (domain-lifted nouns), but the **procedural skeleton it inherited from the source measurements is still load-bearing and must remain visible** — this is the reproducibility scaffold of the PROV layer.
 
 Rules:
-- Include a parameter / tool only if **all** the source Claims that load-bear on the Atom share it (or have a compatible value). Diverging values mean the Atom doesn't actually depend on that parameter.
-- If you successfully lifted the Atom out of its domain (e.g., Ti → "minor dopant element"), most procedureContext fields should drop away — the Atom is meant to be procedure-independent. **Omit \`procedureContext\` entirely in that case.**
-- If you keep procedureContext, mark each parameter's \`necessity\` from the Atom's perspective, not the source Claim's. A parameter that was "critical" for the original Claim may only be "important" for the abstracted Atom, or even "incidental".
-- Never invent parameters or tools that are not present in any input Claim's procedureContext.
-- The Atom-layer procedureContext is purposely **smaller than any single Claim's**. If it isn't, you have probably under-abstracted the Atom.
+- Include a tool or parameter only if **all** the source Claims that load-bear on the Atom share it (or have a compatible value). Diverging values mean the Atom doesn't depend on that parameter — drop it from the intersection.
+- Mark each parameter's \`necessity\` from the Atom's perspective. A parameter that was "critical" for the original Claim may be only "important" or "incidental" for the abstracted Atom. Use the weakest commonly-supported level.
+- Never invent parameters or tools not present in any input Claim's procedureContext.
+- The Atom-layer procedureContext is purposely **smaller than any single Claim's**, but it should rarely be empty when source Claims have procedureContext. **Omit \`procedureContext\` entirely only when no input Claim provides any procedure information**, or when the intersection is truly empty (no shared tool, no shared parameter). In other cases, keep at least the shared tools.
 
 ## Atom type (Phase 1.2)
 

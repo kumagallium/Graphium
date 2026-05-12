@@ -155,3 +155,87 @@ export function formatProcedureContextForClaimBlock(
   if (parts.length === 0) return null;
   return `  procedureContext — ${parts.join(" | ")}`;
 }
+
+import type { ProcedureContext } from "../../lib/document-types.js";
+
+/**
+ * 複数の source Claim の procedureContext を decide-rule で集約する
+ * deterministic な intersection ヘルパー。
+ *
+ * LLM が procedureContext を omit したときに、サーバー側でこのヘルパーを
+ * fallback として呼ぶことで「PROV があるからこそ自動で骨格が降りてくる」
+ * 動きを保証する。LLM が自前で出した procedureContext を上書きはしない。
+ *
+ * 集約規則:
+ *   - keyTools: source Claims **全て** に共通して現れるツール（文字列一致）
+ *   - keyParameters: name が共通かつ value も一致するもののみ採用。
+ *     necessity は最小値（critical < important < incidental の順で弱いほうへ）
+ *   - protocolFingerprint / validityRange: 自然言語のため自動マージは行わない（undefined）
+ *   - 何も intersect しなかった場合は undefined を返す
+ *
+ * 提案 v4 Phase 2.3 拡張（PR-B3.1）。
+ */
+export function intersectClaimProcedureContexts(
+  contexts: Array<ProcedureContext | undefined>,
+): ProcedureContext | undefined {
+  const present = contexts.filter((c): c is ProcedureContext => Boolean(c));
+  if (present.length < 2) {
+    // 1 件以下では intersection の概念が曖昧。fallback としては動かない。
+    return undefined;
+  }
+
+  // ── keyTools の intersection ──
+  const toolsSets = present.map((c) => new Set(c.keyTools ?? []));
+  const firstToolSet = toolsSets[0];
+  const sharedTools = [...firstToolSet].filter((t) =>
+    toolsSets.every((set) => set.has(t)),
+  );
+
+  // ── keyParameters の intersection（name + value 完全一致） ──
+  const NECESSITY_RANK: Record<string, number> = {
+    critical: 0,
+    important: 1,
+    incidental: 2,
+  };
+  const firstParams = present[0].keyParameters ?? [];
+  const sharedParams = firstParams
+    .map((p) => {
+      // 他の全 source に同じ name + value が含まれているか
+      const allHave = present.every((c) =>
+        (c.keyParameters ?? []).some(
+          (q) => q.name === p.name && q.value === p.value,
+        ),
+      );
+      if (!allHave) return null;
+      // necessity は最も弱い (rank 値が大きい) ものに揃える — 安全側
+      const necessities = present.map((c) => {
+        const match = (c.keyParameters ?? []).find(
+          (q) => q.name === p.name && q.value === p.value,
+        );
+        return match?.necessity ?? "important";
+      });
+      const weakest = necessities.reduce((acc, n) =>
+        NECESSITY_RANK[n] > NECESSITY_RANK[acc] ? n : acc,
+      );
+      return { name: p.name, value: p.value, necessity: weakest as ProcedureContext["keyParameters"] extends Array<infer U> | undefined ? (U extends { necessity: infer N } ? N : never) : never };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  // ── derivedFromNotes: union（全 source の note を引き継ぐ） ──
+  const noteSet = new Set<string>();
+  for (const c of present) {
+    for (const n of c.derivedFromNotes ?? []) noteSet.add(n);
+  }
+  const derivedFromNotes = [...noteSet];
+
+  if (sharedTools.length === 0 && sharedParams.length === 0) {
+    return undefined;
+  }
+
+  return {
+    derivedFromNotes,
+    keyTools: sharedTools.length > 0 ? sharedTools : undefined,
+    keyParameters: sharedParams.length > 0 ? sharedParams : undefined,
+    // protocolFingerprint / validityRange は自動 merge しない
+  };
+}

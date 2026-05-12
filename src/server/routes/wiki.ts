@@ -11,7 +11,10 @@ import {
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
-import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
+import {
+  formatProvSummaryForPrompt,
+  intersectClaimProcedureContexts,
+} from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
   buildLinterUserMessage,
@@ -415,7 +418,16 @@ app.post("/synthesize", async (c) => {
       maxSteps: 1,
     });
 
-    const candidates = parseSynthesizerOutput(result.message);
+    const candidates = parseSynthesizerOutput(result.message).map((cand) => {
+      // PR-B3.1: LLM が procedureContext を omit した場合、サーバー側で
+      // source Claim の procedureContext を deterministic に intersect して
+      // fallback として埋める。LLM が出していたものは尊重する。
+      if (cand.procedureContext) return cand;
+      const sourceCtxs = cand.sourceConceptIds
+        .map((id) => body.concepts.find((c) => c.id === id)?.procedureContext);
+      const fallback = intersectClaimProcedureContexts(sourceCtxs);
+      return fallback ? { ...cand, procedureContext: fallback } : cand;
+    });
 
     return c.json({
       candidates,
@@ -461,7 +473,15 @@ app.post("/atomize", async (c) => {
       maxSteps: 1,
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
-    const atoms = parseAtomizerOutput(result.message, idToTitle);
+    const atoms = parseAtomizerOutput(result.message, idToTitle).map((atom) => {
+      // PR-B3.1: LLM が procedureContext を omit した Atom は、source Claim の
+      // procedureContext を deterministic に intersect した fallback で埋める。
+      if (atom.procedureContext) return atom;
+      const sourceCtxs = atom.derivedFromClaims
+        .map((id) => body.concepts.find((c) => c.id === id)?.procedureContext);
+      const fallback = intersectClaimProcedureContexts(sourceCtxs);
+      return fallback ? { ...atom, procedureContext: fallback } : atom;
+    });
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";

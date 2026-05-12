@@ -168,11 +168,12 @@ Respond with valid JSON only (no markdown wrapper):
 
 ## Procedure context (Phase 2.3 cross-Claim integration)
 
-Some input Claims may carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. When you craft a Synthesis:
+Some input Claims carry a \`procedureContext — ...\` line describing the procedural skeleton they depend on. The procedural skeleton is the **reproducibility scaffold** of the PROV layer — preserve it through the Synthesis whenever the inputs provide it.
 
-- If all input Claims share the same procedure (same alloy → same SPS profile, etc.), echo that shared context into the Synthesis \`procedureContext\`. This grounds the Synthesis to a reproducible regime.
-- If the Claims **disagree** on a parameter (e.g., one says \`T=850°C\`, another \`T=700°C\`), and the Synthesis is using that disagreement as part of its insight (especially \`dialectic\` or \`analogical\` mode), call this out in the \`rationale\` and **set a wider \`validityRange\`** to span the disagreement, not a single value.
-- If the Synthesis genuinely transcends procedure (a domain-general principle that holds regardless of how each source measured it), **omit \`procedureContext\`**. Forcing it in here would falsely tie a transferable insight to a specific lab setup.
+Rules:
+- **Preserve the intersection of constraints** in the Synthesis \`procedureContext\` whenever the input Claims share tools or parameters. Same alloy across all sources → keep the alloy. Same SPS profile → keep it.
+- If the Claims **disagree** on a parameter value (e.g., one says \`T=850°C\`, another \`T=700°C\`), and the Synthesis is using that disagreement as part of its insight (especially \`dialectic\` or \`analogical\` mode), call this out in the \`rationale\` and **widen \`validityRange\`** to span the disagreement instead of picking one side.
+- **Omit \`procedureContext\` entirely only when no input Claim provides any procedure information**, or the Synthesis is a domain-general principle that genuinely transcends every input procedure (rare; reserve this for explicit cross-domain analogies).
 - Never invent parameters/tools not present in any input Claim's procedureContext.
 
 ## Synthesis mode (Phase 1.3 — read this carefully)

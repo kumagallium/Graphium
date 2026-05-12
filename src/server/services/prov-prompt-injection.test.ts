@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatProvSummaryForPrompt,
   formatProcedureContextForClaimBlock,
+  intersectClaimProcedureContexts,
 } from "./prov-prompt-injection";
 
 describe("formatProvSummaryForPrompt", () => {
@@ -98,5 +99,71 @@ describe("formatProcedureContextForClaimBlock", () => {
     const out = formatProcedureContextForClaimBlock({ keyTools: ["X"] });
     expect(out).toContain("tools: X");
     expect(out).not.toContain("protocol:");
+  });
+});
+
+describe("intersectClaimProcedureContexts (PR-B3.1 deterministic fallback)", () => {
+  it("source 1 件以下では intersection 不可 → undefined", () => {
+    expect(intersectClaimProcedureContexts([])).toBeUndefined();
+    expect(intersectClaimProcedureContexts([undefined])).toBeUndefined();
+    expect(intersectClaimProcedureContexts([{
+      derivedFromNotes: ["n1"],
+      keyTools: ["A"],
+    }])).toBeUndefined();
+  });
+
+  it("全 source に共通する tool だけ拾う", () => {
+    const out = intersectClaimProcedureContexts([
+      { derivedFromNotes: ["n1"], keyTools: ["BallMill", "SPS"] },
+      { derivedFromNotes: ["n2"], keyTools: ["BallMill", "XRD"] },
+    ]);
+    expect(out?.keyTools).toEqual(["BallMill"]);
+  });
+
+  it("name + value が全 source で一致する parameter のみ残る", () => {
+    const out = intersectClaimProcedureContexts([
+      {
+        derivedFromNotes: ["n1"],
+        keyParameters: [
+          { name: "T", value: "850°C", necessity: "critical" },
+          { name: "Time", value: "3h", necessity: "important" },
+        ],
+      },
+      {
+        derivedFromNotes: ["n2"],
+        keyParameters: [
+          { name: "T", value: "850°C", necessity: "important" },
+          { name: "Time", value: "5h", necessity: "important" }, // value 違い → drop
+        ],
+      },
+    ]);
+    expect(out?.keyParameters).toHaveLength(1);
+    expect(out?.keyParameters?.[0].name).toBe("T");
+    // necessity は最も弱い (important) に揃う
+    expect(out?.keyParameters?.[0].necessity).toBe("important");
+  });
+
+  it("derivedFromNotes は union（全 source の note を引き継ぐ）", () => {
+    const out = intersectClaimProcedureContexts([
+      { derivedFromNotes: ["n1"], keyTools: ["X"] },
+      { derivedFromNotes: ["n2"], keyTools: ["X"] },
+    ]);
+    expect(new Set(out?.derivedFromNotes)).toEqual(new Set(["n1", "n2"]));
+  });
+
+  it("intersect 結果が空 → undefined", () => {
+    expect(intersectClaimProcedureContexts([
+      { derivedFromNotes: ["n1"], keyTools: ["A"] },
+      { derivedFromNotes: ["n2"], keyTools: ["B"] },
+    ])).toBeUndefined();
+  });
+
+  it("protocolFingerprint / validityRange は自動マージ対象外", () => {
+    const out = intersectClaimProcedureContexts([
+      { derivedFromNotes: ["n1"], protocolFingerprint: "A→B", keyTools: ["X"] },
+      { derivedFromNotes: ["n2"], protocolFingerprint: "C→D", keyTools: ["X"] },
+    ]);
+    expect(out?.keyTools).toEqual(["X"]);
+    expect(out?.protocolFingerprint).toBeUndefined();
   });
 });
