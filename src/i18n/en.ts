@@ -663,6 +663,13 @@ export const en: Record<string, string> = {
   "wikiLint.type.gap": "Gap",
   "wikiLint.type.stale": "Stale",
   "wikiLint.type.redundant": "Redundant",
+  // Fix actions (PR-B6)
+  "wikiLint.action.regenerate": "Regenerate",
+  "wikiLint.action.archive": "Archive",
+  "wikiLint.action.open": "Open",
+  "wikiLint.action.running": "Working...",
+  "wikiLint.action.confirmArchive": "Archive \"{title}\"? Citations and regenerate links will still resolve, but it will be removed from the main list.",
+  "wikiLint.action.confirmRegenerate": "Regenerate \"{title}\" from the latest source? This calls the LLM.",
   "trash.empty": "Trash is empty",
   "trash.itemsCount": "items",
   "trash.colTitle": "Title",

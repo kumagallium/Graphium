@@ -1,5 +1,7 @@
 // Wiki Lint 結果表示ビュー
-// 整合性チェックの結果を種別・重要度別に表示する
+// 整合性チェックの結果を種別・重要度別に表示する。
+// PR-B6 (v1): 検出だけでなく Fix アクション（Regenerate / Archive / Open）も提供。
+// AI ナレッジ層では AI が主導権を握ってよいが、実行はユーザーのボタン押下時のみ。
 
 import { useState } from "react";
 import {
@@ -14,6 +16,8 @@ import {
   Unlink,
   Lightbulb,
   Clock,
+  Archive as ArchiveIcon,
+  ExternalLink,
 } from "lucide-react";
 import type { LintReport, LintIssue, LintIssueType, LintSeverity } from "../../server/services/wiki-linter";
 import { useT } from "../../i18n";
@@ -24,6 +28,10 @@ type Props = {
   onRunLint: (localOnly: boolean) => void;
   onOpenWiki: (wikiId: string) => void;
   onBack: () => void;
+  /** Fix アクション (PR-B6 v1): wiki を再生成する。stale な wiki の代表的な修正。 */
+  onRegenerateWiki?: (wikiId: string) => Promise<void> | void;
+  /** Fix アクション (PR-B6 v1): wiki をアーカイブする。orphan / 冗長 / 古いものを退避。 */
+  onArchiveWiki?: (wikiId: string) => Promise<void> | void;
 };
 
 const ISSUE_ICONS: Record<LintIssueType, typeof AlertTriangle> = {
@@ -42,13 +50,36 @@ const ISSUE_TYPE_I18N_KEY: Record<LintIssueType, string> = {
   redundant: "wikiLint.type.redundant",
 };
 
+// 各 issue type で適用可能な fix アクション（PR-B6 v1）
+//
+// - contradiction: AI が片方を勝手に書き換えると別 issue を生むため Open のみ
+// - orphan: 参照されていない → Archive で隠す or Open で手動リンク追加
+// - gap: AI による穴埋めは v2 以降 → Open のみ
+// - stale: Regenerate（最新 source から再生成）/ Archive / Open
+// - redundant: Auto-merge は v2 以降 → Archive で片側を隠す or Open で比較
+const FIX_ACTIONS_BY_TYPE: Record<LintIssueType, ReadonlyArray<"open" | "regenerate" | "archive">> = {
+  contradiction: ["open"],
+  orphan: ["open", "archive"],
+  gap: ["open"],
+  stale: ["open", "regenerate", "archive"],
+  redundant: ["open", "archive"],
+};
+
 const SEVERITY_STYLES: Record<LintSeverity, string> = {
   error: "text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/30 dark:border-red-900/40",
   warning: "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/30 dark:border-amber-900/40",
   info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/40",
 };
 
-export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }: Props) {
+export function WikiLintView({
+  report,
+  loading,
+  onRunLint,
+  onOpenWiki,
+  onBack,
+  onRegenerateWiki,
+  onArchiveWiki,
+}: Props) {
   const t = useT();
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -178,6 +209,8 @@ export function WikiLintView({ report, loading, onRunLint, onOpenWiki, onBack }:
                   expanded={expandedId === idx}
                   onToggle={() => setExpandedId(expandedId === idx ? null : idx)}
                   onOpenWiki={onOpenWiki}
+                  onRegenerateWiki={onRegenerateWiki}
+                  onArchiveWiki={onArchiveWiki}
                 />
               ))}
             </div>
@@ -193,16 +226,49 @@ function IssueCard({
   expanded,
   onToggle,
   onOpenWiki,
+  onRegenerateWiki,
+  onArchiveWiki,
 }: {
   issue: LintIssue;
   expanded: boolean;
   onToggle: () => void;
   onOpenWiki: (wikiId: string) => void;
+  onRegenerateWiki?: (wikiId: string) => Promise<void> | void;
+  onArchiveWiki?: (wikiId: string) => Promise<void> | void;
 }) {
   const t = useT();
   const Icon = ISSUE_ICONS[issue.type];
   const label = t(ISSUE_TYPE_I18N_KEY[issue.type] as any);
   const style = SEVERITY_STYLES[issue.severity];
+  // 各 wiki ごとに「実行中アクション」を持つ（同時並行で同じ wiki に別アクションが走らないように）
+  const [pendingByWiki, setPendingByWiki] = useState<Record<string, "regenerate" | "archive" | null>>({});
+
+  const availableActions = FIX_ACTIONS_BY_TYPE[issue.type] ?? ["open"];
+  const hasRegenerate = availableActions.includes("regenerate") && Boolean(onRegenerateWiki);
+  const hasArchive = availableActions.includes("archive") && Boolean(onArchiveWiki);
+
+  const runAction = async (
+    wikiId: string,
+    action: "regenerate" | "archive",
+  ) => {
+    if (pendingByWiki[wikiId]) return;
+    // 確認ダイアログ。i18n 文の {title} 補間用のヒントは issue.title or wikiId 接頭辞。
+    const titleHint = issue.title || wikiId.slice(0, 12);
+    const message =
+      action === "archive"
+        ? t("wikiLint.action.confirmArchive", { title: titleHint })
+        : t("wikiLint.action.confirmRegenerate", { title: titleHint });
+    if (!window.confirm(message)) return;
+    setPendingByWiki((p) => ({ ...p, [wikiId]: action }));
+    try {
+      if (action === "regenerate") await onRegenerateWiki?.(wikiId);
+      else await onArchiveWiki?.(wikiId);
+    } catch (err) {
+      console.error("Lint fix action failed:", err);
+    } finally {
+      setPendingByWiki((p) => ({ ...p, [wikiId]: null }));
+    }
+  };
 
   return (
     <div className="px-4 py-3">
@@ -227,16 +293,63 @@ function IssueCard({
             </div>
           )}
           {issue.affectedWikiIds.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {issue.affectedWikiIds.map((id) => (
-                <button
-                  key={id}
-                  onClick={() => onOpenWiki(id)}
-                  className="text-[10px] text-primary hover:underline"
-                >
-                  {t("wikiLint.openWikiPrefix")}{id.slice(0, 12)}...
-                </button>
-              ))}
+            <div className="space-y-1.5">
+              {issue.affectedWikiIds.map((id) => {
+                const pending = pendingByWiki[id];
+                return (
+                  <div key={id} className="flex items-center gap-2 flex-wrap text-[10px]">
+                    <span className="text-muted-foreground font-mono">{id.slice(0, 12)}...</span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => onOpenWiki(id)}
+                        disabled={Boolean(pending)}
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border border-border bg-background text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        <ExternalLink size={9} />
+                        {t("wikiLint.action.open")}
+                      </button>
+                      {hasRegenerate && (
+                        <button
+                          onClick={() => runAction(id, "regenerate")}
+                          disabled={Boolean(pending)}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                        >
+                          {pending === "regenerate" ? (
+                            <>
+                              <Loader2 size={9} className="animate-spin" />
+                              {t("wikiLint.action.running")}
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={9} />
+                              {t("wikiLint.action.regenerate")}
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {hasArchive && (
+                        <button
+                          onClick={() => runAction(id, "archive")}
+                          disabled={Boolean(pending)}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          {pending === "archive" ? (
+                            <>
+                              <Loader2 size={9} className="animate-spin" />
+                              {t("wikiLint.action.running")}
+                            </>
+                          ) : (
+                            <>
+                              <ArchiveIcon size={9} />
+                              {t("wikiLint.action.archive")}
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

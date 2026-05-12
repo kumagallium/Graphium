@@ -4438,6 +4438,12 @@ export function NoteApp() {
             }}
             onOpenWiki={(wikiId) => { setActiveWikiView(null); fm.handleOpenWikiFile(wikiId); }}
             onBack={() => setActiveWikiView(null)}
+            onRegenerateWiki={async (wikiId) => {
+              await regenerateWikiById(wikiId, { openAfter: false });
+            }}
+            onArchiveWiki={async (wikiId) => {
+              await fm.handleArchiveWikiFile(wikiId);
+            }}
           />
         ) : fm.activeWikiKind ? (
           <WikiListView

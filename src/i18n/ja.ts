@@ -663,6 +663,13 @@ export const ja: Record<string, string> = {
   "wikiLint.type.gap": "穴",
   "wikiLint.type.stale": "古い",
   "wikiLint.type.redundant": "冗長",
+  // Fix アクション (PR-B6)
+  "wikiLint.action.regenerate": "再生成",
+  "wikiLint.action.archive": "アーカイブ",
+  "wikiLint.action.open": "開く",
+  "wikiLint.action.running": "実行中...",
+  "wikiLint.action.confirmArchive": "「{title}」をアーカイブしますか？引用や regenerate からは引き続き解決できますが、一覧には表示されなくなります。",
+  "wikiLint.action.confirmRegenerate": "「{title}」を最新ソースから再生成しますか？LLM を呼び出します。",
   "trash.empty": "ゴミ箱は空です",
   "trash.itemsCount": "件",
   "trash.colTitle": "タイトル",
