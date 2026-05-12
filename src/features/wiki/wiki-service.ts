@@ -2035,6 +2035,9 @@ export function buildClaimSnapshots(
       sourceSummaryPreviews,
       // Phase 2.3 拡張: Claim に保存された手順条件を Atomizer / Synthesizer に渡す
       procedureContext: doc?.wikiMeta?.procedureContext,
+      // PR-B5: Atom source の場合は atomType を伝搬し、サーバー側 synthesis-router で
+      // モード候補の推定に使う（"claim" source では undefined のまま）
+      atomType: sourceKind === "atom" ? meta.atomType : undefined,
     });
   }
 
