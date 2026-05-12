@@ -4428,6 +4428,17 @@ export function NoteApp() {
               setLintLoading(true);
               try {
                 const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
+                if (snapshots.length === 0) {
+                  // Wiki が無いときは API を叩かず空レポートを返す。
+                  // サーバーは wikis 必須なので 400 を返すが、ユーザーには「Wiki なし」と
+                  // 伝える方が親切。
+                  setLintReport({
+                    issues: [],
+                    summary: { total: 0, contradictions: 0, orphans: 0, gaps: 0, stale: 0, redundant: 0 },
+                    analyzedAt: new Date().toISOString(),
+                  });
+                  return;
+                }
                 const report = await lintWikis(snapshots, "ja", localOnly);
                 setLintReport(report);
               } catch (err) {
