@@ -154,8 +154,11 @@ export function getWikiTitleToIdMap(): Map<string, string> {
 function formatWikiContext(results: SearchResult[], wikiIndexText?: string): string {
   let context = "";
   for (const r of results) {
-    // メタ情報付きで注入（引用元の特定に使う）
-    const title = _wikiTitleMap.get(r.documentId) ?? r.documentId;
+    // titleMap に無い documentId は orphan embedding（削除済み wiki の残骸）。
+    // UUID をそのまま title として LLM に渡すと、応答に `[Source: "uuid..."]` が
+    // 残って "Knowledge referenced" に意味不明な行が出るため、ここで skip する。
+    const title = _wikiTitleMap.get(r.documentId);
+    if (!title) continue;
     const entry = `[id: ${r.documentId}, title: "${title}"]\n${r.text}\n\n`;
     if (context.length + entry.length > MAX_CONTEXT_CHARS) break;
     context += entry;
@@ -165,11 +168,20 @@ function formatWikiContext(results: SearchResult[], wikiIndexText?: string): str
 
   let output = `The following is the user's accumulated knowledge from their Wiki. Use it when relevant to provide informed responses.
 
+The Wiki contains four kinds of pages, all equally valid as citation sources:
+- **Concept**: generalized principles / findings / bridges (abstracted insight)
+- **Synthesis**: integrated insights across multiple concepts (use these when the user asks open-ended questions or wants new ideas / connections)
+- **Atom**: concrete observations / data fragments from notes (use these as primary-source evidence)
+- **Summary**: per-note summaries
+
+When the user asks an open-ended question (e.g. "what can we say from this?", "any ideas?"), actively draw on **Synthesis** and **Atom** pages in addition to Concepts — they often hold the most actionable evidence and the most generative connections.
+
 CITATION FORMAT (STRICT):
 - When you use information from a knowledge section, immediately follow that statement with: [Source: "exact page title"]
 - Use ASCII brackets only: [ and ]
 - Wrap the title in straight ASCII double quotes: "
-- Use the EXACT title shown in the [title: "..."] metadata above each section. Do not truncate, paraphrase, or add prefixes like @.
+- Use the EXACT title shown in the [title: "..."] metadata above each section, OR a title listed in the <wiki-index> below. Do not truncate, paraphrase, or add prefixes like @.
+- Do NOT cite sources that are not present in the metadata or wiki-index. Do not invent or fabricate titles.
 - Do NOT use full-width brackets 【】, do NOT prefix with @, do NOT translate the title.
 - Example: [Source: "Cu焼結 温度依存性"]`;
 
