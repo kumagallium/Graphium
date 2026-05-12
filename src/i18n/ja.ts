@@ -741,7 +741,7 @@ export const ja: Record<string, string> = {
   "indexTable.enterTitleHint": "1列目にノートのタイトルを入力してください",
 
   // ── アセットブラウザ ──
-  "asset.dataSection": "データ",
+  "asset.dataSection": "素材",
   "asset.type.image": "画像",
   "asset.type.video": "動画",
   "asset.type.audio": "音声",

@@ -741,7 +741,7 @@ export const en: Record<string, string> = {
   "indexTable.enterTitleHint": "Enter the note title in the first column",
 
   // ── アセットブラウザ ──
-  "asset.dataSection": "Data",
+  "asset.dataSection": "Materials",
   "asset.type.image": "Images",
   "asset.type.video": "Videos",
   "asset.type.audio": "Audio",
