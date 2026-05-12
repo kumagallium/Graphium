@@ -290,19 +290,15 @@ export function FileSidebar({
           )}
         </CollapsibleSection>
 
-        {/* ラベル */}
+        {/* ラベル: 1 件以上付与されてから表示（progressive disclosure） */}
+        {labelCounts.size > 0 && (
         <CollapsibleSection
           storageKey="labels"
           title={t("label.section")}
           defaultOpen={true}
           count={labelCounts.size}
         >
-          {!noteIndex ? (
-            <p className="text-xs text-muted-foreground/50 px-2 py-1">{t("common.loading")}</p>
-          ) : labelCounts.size === 0 ? (
-            <p className="text-xs text-muted-foreground/50 px-2 py-1">—</p>
-          ) : (
-            [...labelCounts.entries()]
+          {[...labelCounts.entries()]
               .sort((a, b) => b[1] - a[1])
               .map(([label, count]) => {
                 const color = LABEL_HEX[label] ?? "#8fa394";
@@ -324,9 +320,9 @@ export function FileSidebar({
                     <span className="text-xs text-muted-foreground">{count}</span>
                   </button>
                 );
-              })
-          )}
+              })}
         </CollapsibleSection>
+        )}
 
         {/* Knowledge セクション（バックエンド不在時はロック表示で導線） */}
         {onShowWikiList && !aiAvailable && (
