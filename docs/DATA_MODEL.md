@@ -371,8 +371,20 @@ information that the context-label layer cannot express.
 `procedureContext` carries the **procedural skeleton** the claim
 depends on: key parameters, key tools, validity range. It is the
 "reproducibility scaffold that is intentionally not stripped" when the
-hourglass narrows from Claim down to Atom. Populated by upcoming PROV
-→ AI Wiki injection (Phase 2.2/2.3, separate PR).
+hourglass narrows from Claim down to Atom.
+
+Populated at **Ingest time** (Phase 2.2/2.3): the client computes a
+PROV summary of the source note with `summarizeNoteProv()` and sends
+it to `/api/wiki/ingest` as `provSummary`. The server formats it into
+a markdown block (`formatProvSummaryForPrompt`) that prepends the user
+message, and the system prompt instructs the LLM to fill
+`procedureContext` only on Claims whose validity actually depends on
+the procedure. `parseProcedureContext` then sanitizes the LLM output:
+invalid `necessity` values fall back to `"important"`, name-or-value-
+empty parameters are dropped, and an all-empty `procedureContext` is
+collapsed to `undefined` so the field never appears as a meaningless
+husk in `wikiMeta`. Downstream layers (Atom, Synthesis) do not yet
+receive PROV injection — that arrives in a follow-up PR.
 
 ## 4. Skill documents
 

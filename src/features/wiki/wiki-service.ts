@@ -4,6 +4,7 @@
 import type { GraphiumDocument, WikiKind, WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import { embeddingStore } from "../../lib/embedding-store";
 import type { IngesterOutput } from "../../server/services/wiki-ingester";
+import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 
@@ -95,6 +96,12 @@ export async function ingestNote(
 ): Promise<IngestResult> {
   const noteContent = extractPlainTextFromDoc(doc);
 
+  // 提案 v4 Phase 2.2: ノートの PROV 構造をプロンプトに流すための要約。
+  // ラベル不十分なノートでも部分情報を返すので、常に呼んで構わない。
+  // Wiki ノート（source: "ai"）は再帰呼び出しなので PROV 構造を持たないが、
+  // summarizeNoteProv は activities=[] / results=[] を返すだけで安全に動く。
+  const provSummary = summarizeNoteProv(doc, { noteId });
+
   const res = await fetch(`${API_BASE}/ingest`, {
     method: "POST",
     headers: wikiHeaders(),
@@ -104,6 +111,7 @@ export async function ingestNote(
       noteTitle: doc.title,
       existingWikiTitles: existingWikis,
       language,
+      provSummary,
       ...(model ? { model } : {}),
       ...(skills && skills.length > 0 ? { skills } : {}),
     }),
@@ -159,8 +167,10 @@ export function buildWikiDocument(
     level: ingesterOutput.kind === "claim" ? ingesterOutput.level : undefined,
     status: ingesterOutput.kind === "claim" ? "candidate" : undefined,
     evidenceSpan: ingesterOutput.evidenceSpan,
-    // Phase 1.1: LLM が推定した research-process role を保存（concept のみ意味を持つ）
+    // Phase 1.1: LLM が推定した research-process role を保存（claim のみ意味を持つ）
     claimRole: ingesterOutput.kind === "claim" ? ingesterOutput.claimRole : undefined,
+    // Phase 2.3: LLM が推定した手順条件（PROV-AI ブリッジ）
+    procedureContext: ingesterOutput.kind === "claim" ? ingesterOutput.procedureContext : undefined,
   };
 
   return {
