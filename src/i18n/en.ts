@@ -602,6 +602,30 @@ export const en: Record<string, string> = {
   "wikiTypes.synthesisMode.abductive": "Abductive",
   "wikiTypes.synthesisMode.analogical": "Analogical",
   "wikiTypes.synthesisMode.dialectic": "Dialectic",
+  // Synthesis mode explainer modal (Phase 5.4)
+  "synthesisMode.modal.title": "Synthesis mode",
+  "synthesisMode.modal.shapeLabel": "Shape",
+  "synthesisMode.modal.otherModes": "Other synthesis modes",
+  "synthesisMode.modal.inductionNote": "Induction is not a Synthesis mode in Graphium. Generalising across similar Claims belongs to the Atom layer.",
+  "synthesisMode.modal.learnMore": "Learn more about the four modes",
+  "synthesisMode.modal.docsUrl": "https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md",
+  "synthesisMode.modal.close": "Close",
+  // deductive
+  "synthesisMode.modal.tagline.deductive": "Combination strategy",
+  "synthesisMode.modal.description.deductive": "Independent claims combine into a strategy that follows logically from them. Use this when the inputs do not contradict and do not span a domain gap — they are pieces that fit together.",
+  "synthesisMode.modal.shape.deductive": "Given A and B and C, the natural move is D.",
+  // abductive
+  "synthesisMode.modal.tagline.abductive": "Best explanatory hypothesis",
+  "synthesisMode.modal.description.abductive": "An observation pairs with a mechanism or known-rule, and the Synthesis is the best explanation of the observation. This is where most genuine \"aha\" Syntheses live; default hypothesis status is speculative.",
+  "synthesisMode.modal.shape.abductive": "We observed O. Given mechanism M, the most economical explanation is H.",
+  // analogical
+  "synthesisMode.modal.tagline.analogical": "Structural mapping across domains",
+  "synthesisMode.modal.description.analogical": "Structural mapping between claims from genuinely different domains. The Synthesis transfers a pattern across a domain gap, with the correspondence stated explicitly.",
+  "synthesisMode.modal.shape.analogical": "X in domain A plays the role of Y in domain B via structural correspondence S.",
+  // dialectic
+  "synthesisMode.modal.tagline.dialectic": "Opposite directions resolved by a higher frame",
+  "synthesisMode.modal.description.dialectic": "Two claims that argue opposite directions of the same effect, resolved by a higher frame (a condition, scale, or regime) that contains both. Requires a real contradiction — not emphasis or granularity differences.",
+  "synthesisMode.modal.shape.dialectic": "A says X → Y. B says X → ¬Y. Both hold under regime R that separates them.",
   // procedureContext — Phase 2.3
   "wikiBanner.procedureContextTitle": "Procedure this claim depends on",
   "wikiBanner.procedureContextHint": "LLM-inferred procedure, parameters, and tools the claim relies on",

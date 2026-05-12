@@ -3,25 +3,52 @@
 
 import { useState, useRef, useEffect } from "react";
 import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
-import type { ProcedureContext, WikiMeta } from "../../lib/document-types";
+import type { ProcedureContext, SynthesisMode, WikiMeta } from "../../lib/document-types";
 import { useT } from "../../i18n";
+import { SynthesisModeModal } from "./SynthesisModeModal";
 
-function TypeBadge({ label, title }: { label: string; title?: string }) {
+function TypeBadge({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title?: string;
+  onClick?: () => void;
+}) {
+  const interactive = Boolean(onClick);
+  const baseStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "1px 7px",
+    borderRadius: "var(--pill)",
+    background: "var(--paper)",
+    border: "1px solid var(--rule)",
+    color: "var(--ink-2)",
+    fontSize: 10,
+    fontWeight: 500,
+  } as const;
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        title={title}
+        onClick={onClick}
+        style={{
+          ...baseStyle,
+          cursor: "pointer",
+          font: "inherit",
+          fontSize: 10,
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
   return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "1px 7px",
-        borderRadius: "var(--pill)",
-        background: "var(--paper)",
-        border: "1px solid var(--rule)",
-        color: "var(--ink-2)",
-        fontSize: 10,
-        fontWeight: 500,
-      }}
-    >
+    <span title={title} style={baseStyle}>
       {label}
     </span>
   );
@@ -77,6 +104,7 @@ export function WikiBanner({
   const [models, setModels] = useState<ModelOption[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [modeModal, setModeModal] = useState<SynthesisMode | null>(null);
 
   useEffect(() => {
     if (!showModelPicker) return;
@@ -186,7 +214,8 @@ export function WikiBanner({
         {wikiMeta.kind === "synthesis" && wikiMeta.synthesisMode && (
           <TypeBadge
             label={t(`wikiTypes.synthesisMode.${wikiMeta.synthesisMode}` as any)}
-            title={t(`wikiTypes.synthesisMode.${wikiMeta.synthesisMode}` as any)}
+            title={t("synthesisMode.modal.learnMore" as any)}
+            onClick={() => setModeModal(wikiMeta.synthesisMode ?? null)}
           />
         )}
 
@@ -421,6 +450,13 @@ export function WikiBanner({
         hasProcedureContextContent(wikiMeta.procedureContext) && (
         <ProcedureContextSection ctx={wikiMeta.procedureContext} />
       )}
+
+      {/* Synthesis モード説明モーダル（Phase 5.4） */}
+      <SynthesisModeModal
+        open={modeModal !== null}
+        mode={modeModal}
+        onClose={() => setModeModal(null)}
+      />
     </div>
   );
 }

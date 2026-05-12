@@ -602,6 +602,30 @@ export const ja: Record<string, string> = {
   "wikiTypes.synthesisMode.abductive": "アブダクション",
   "wikiTypes.synthesisMode.analogical": "類推",
   "wikiTypes.synthesisMode.dialectic": "弁証法",
+  // Synthesis モード説明モーダル（Phase 5.4）
+  "synthesisMode.modal.title": "Synthesis モード",
+  "synthesisMode.modal.shapeLabel": "形",
+  "synthesisMode.modal.otherModes": "他の Synthesis モード",
+  "synthesisMode.modal.inductionNote": "induction は Graphium の Synthesis モードには含まれません。類似 Claim から一般則を立てる操作は Atom 層に属します。",
+  "synthesisMode.modal.learnMore": "4 つのモードについて詳しく知る",
+  "synthesisMode.modal.docsUrl": "https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.ja.md",
+  "synthesisMode.modal.close": "閉じる",
+  // deductive
+  "synthesisMode.modal.tagline.deductive": "組み合わせ戦略",
+  "synthesisMode.modal.description.deductive": "独立した Claim を組み合わせて、論理的に導かれる戦略・設計判断を立ち上げます。入力同士が矛盾せず、領域も離れていない、ピースが噛み合うときに選びます。",
+  "synthesisMode.modal.shape.deductive": "A・B・C があるなら、自然な次の一手は D。",
+  // abductive
+  "synthesisMode.modal.tagline.abductive": "観測を最もよく説明する仮説",
+  "synthesisMode.modal.description.abductive": "観測 Claim と機構・既知則 Claim が揃ったとき、観測を最もよく説明する仮説を立ち上げます。本物の「気づき」型の Synthesis はここに集まります。hypothesisStatus のデフォルトは speculative です。",
+  "synthesisMode.modal.shape.abductive": "観測 O が得られた。機構 M を踏まえると、最も無理のない説明は H。",
+  // analogical
+  "synthesisMode.modal.tagline.analogical": "異領域間の構造写像",
+  "synthesisMode.modal.description.analogical": "本当に異なる領域の Claim 同士から、構造を保ったまま転用する仮説を立ち上げます。どのような構造対応で写像が成立するかを明示します。",
+  "synthesisMode.modal.shape.analogical": "領域 A の X は、領域 B の Y と同じ役割を果たす（対応 S が成り立つ）。",
+  // dialectic
+  "synthesisMode.modal.tagline.dialectic": "対立を上位枠で止揚する",
+  "synthesisMode.modal.description.dialectic": "同じ効果について逆向きの主張をする 2 つの Claim を、両方を含む上位フレーム（条件・スケール・レジーム）で止揚します。本物の矛盾が必要で、強調の差や粒度の差は対象外です。",
+  "synthesisMode.modal.shape.dialectic": "A は X → Y と言い、B は X → ¬Y と言う。両者は分岐条件 R の下で両立する。",
   // 手順条件（procedureContext）— Phase 2.3
   "wikiBanner.procedureContextTitle": "この主張の手順条件",
   "wikiBanner.procedureContextHint": "この Claim の妥当性が依存する手順・パラメータ・ツールを LLM が推定したもの",
