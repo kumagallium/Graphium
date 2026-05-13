@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.6.9](https://github.com/kumagallium/Graphium/compare/v0.6.8...v0.6.9) - 2026-05-13
+- fix(pdf-export): unblock export in Tauri + flatten oklch for html2canvas by @kumagallium in https://github.com/kumagallium/Graphium/pull/281
+- feat(wiki): cluster-aware sampling for Discovery and Cross-Update by @kumagallium in https://github.com/kumagallium/Graphium/pull/282
+
 ## [v0.6.8](https://github.com/kumagallium/Graphium/compare/v0.6.7...v0.6.8) - 2026-05-12
 - refactor(sidebar): reorganize information architecture by @kumagallium in https://github.com/kumagallium/Graphium/pull/279
 
