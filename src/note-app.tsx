@@ -1250,7 +1250,7 @@ function NoteEditorInner({
   // wiki state から組み立てた wikiEntities を prop で受け取り、ここでは受け流す。
   const handleExportProvJsonLd = useCallback(() => {
     if (!provDoc || provDoc["@graph"].length === 0) return;
-    exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
+    void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
   }, [title, provDoc, provWikiEntities]);
 
   // ラベル・リンク・インデックステーブル変更時に自動保存トリガー
