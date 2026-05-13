@@ -12,6 +12,7 @@ import type {
   SynthesisMode,
   WikiKind,
 } from "../../lib/document-types";
+import { downloadBlob } from "../../lib/download-file";
 
 // ── W3C PROV-JSON-LD 出力型 ──
 
@@ -329,24 +330,17 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
 /**
  * PROV-JSON-LD をファイルとしてダウンロード
  */
-export function exportProvJsonLd(options: {
+export async function exportProvJsonLd(options: {
   title: string;
   provDoc: ProvJsonLd;
   wikiEntities?: WikiEntityInfo[];
-}): void {
+}): Promise<void> {
   const { title, provDoc, wikiEntities } = options;
 
   const jsonLd = buildW3CProvJsonLd(provDoc, title, wikiEntities);
   const jsonStr = JSON.stringify(jsonLd, null, 2);
 
   const blob = new Blob([jsonStr], { type: "application/ld+json" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${title.replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const filename = `${title.replace(/[/\\?%*:|"<>]/g, "_")}.jsonld`;
+  await downloadBlob(blob, filename);
 }
