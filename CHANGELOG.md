@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.6.8](https://github.com/kumagallium/Graphium/compare/v0.6.7...v0.6.8) - 2026-05-12
+- refactor(sidebar): reorganize information architecture by @kumagallium in https://github.com/kumagallium/Graphium/pull/279
+
 ## [v0.6.7](https://github.com/kumagallium/Graphium/compare/v0.6.6...v0.6.7) - 2026-05-12
 - refactor(prov): use wasDerivedFrom for Plan/Execution relation by @kumagallium in https://github.com/kumagallium/Graphium/pull/259
 - feat(prov-extractor): add note PROV summary utility (Phase A step 1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/261
