@@ -110,7 +110,10 @@ import {
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
-  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots,
+  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
+  type ClaimSnapshot,
+  type AtomCandidate, getDocEmbedding, pickFarthestSeeds, buildClusterSlice, pickClusterCount,
+  rankCandidatesByRelevance,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
   // Discovery 共通: embedding ベース重複検出
@@ -2766,9 +2769,23 @@ export function NoteApp() {
       }));
 
       try {
-        const existingWikis = (fm.noteIndex?.notes ?? [])
+        const allExistingWikis = (fm.noteIndex?.notes ?? [])
           .filter((n) => n.source === "ai" && n.wikiKind)
           .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+
+        // Ingest 時のマージ判定: LLM に渡す既存 Wiki タイトル一覧を関連度順にする。
+        // タイトルだけなのでトークンコストは軽いが、Wiki 数が増えると LLM の attention が
+        // 散ってマージ候補を見落とすため、(a) 関連度順にリオーダー (b) 上限 200 件でキャップ。
+        // 母集団が 200 未満なら全件残し、並べ替えだけ行う（既存挙動とほぼ同じ）。
+        const INGEST_TITLE_CAP = 200;
+        const queryText = `${job.noteTitle ?? job.doc.title ?? ""}`;
+        const existingWikis = allExistingWikis.length === 0
+          ? allExistingWikis
+          : rankCandidatesByRelevance(
+              { embedding: null, similarityText: queryText },
+              allExistingWikis.map((w) => ({ ...w, embedding: null, similarityText: w.title })),
+              INGEST_TITLE_CAP,
+            ).map(({ id, title, kind }) => ({ id, title, kind }));
 
         // Ingest 自動適用の Skill を取得（生成言語 = ja に絞る）
         const ingestSkills = pickActiveSkills(
@@ -2837,7 +2854,12 @@ export function NoteApp() {
         if (existingWikis.length > 0 && job.doc) {
           (async () => {
             try {
-              const existingDetails = existingWikis
+              // ② Cross-Update に渡す既存 Wiki は本文込みで重いので、関連度上位 K 件に絞る。
+              // 母集団が大きいと context length に当たって silent fail するリスクがある。
+              // 上限は 30 件で固定。embedding が両方そろっていれば cosine、それ以外は
+              // タイトル + section preview の token Jaccard でフォールバック。
+              const CROSS_UPDATE_CAP = 30;
+              const allExistingDetails = existingWikis
                 .filter((w) => w.kind === "claim" && !createdWikiIds.includes(w.id))
                 .map((w) => {
                   const doc = fm.getCachedDoc(`wiki:${w.id}`);
@@ -2845,7 +2867,7 @@ export function NoteApp() {
                 })
                 .filter((d): d is NonNullable<typeof d> => d !== null);
 
-              if (existingDetails.length > 0) {
+              if (allExistingDetails.length > 0) {
                 const noteContent = job.doc.pages[0]?.blocks
                   ?.map((b: any) => {
                     if (Array.isArray(b.content)) return b.content.map((c: any) => c.text ?? "").join("");
@@ -2853,6 +2875,27 @@ export function NoteApp() {
                   })
                   .filter(Boolean)
                   .join("\n") ?? "";
+
+                // クエリ embedding は、直前に作った Wiki の代表ベクトルを使う
+                // （embed が非同期で間に合っていない可能性あり → null フォールバック）
+                const queryEmbedding = createdWikiIds.length > 0
+                  ? await getDocEmbedding(createdWikiIds[0]).catch(() => null)
+                  : null;
+                const queryText = `${job.noteTitle}\n${noteContent.slice(0, 1000)}`;
+
+                const candidateFeatures = await Promise.all(
+                  allExistingDetails.map(async (d) => ({
+                    detail: d,
+                    embedding: await getDocEmbedding(d.id).catch(() => null),
+                    similarityText: `${d.title}\n${d.sectionPreviews.join("\n")}`,
+                  })),
+                );
+                const ranked = rankCandidatesByRelevance(
+                  { embedding: queryEmbedding, similarityText: queryText },
+                  candidateFeatures,
+                  CROSS_UPDATE_CAP,
+                );
+                const existingDetails = ranked.map((f) => f.detail);
 
                 const crossResult = await fetchCrossUpdateProposals({
                   newNoteTitle: job.noteTitle,
@@ -2953,36 +2996,95 @@ export function NoteApp() {
     };
 
     // 自動 Atomize: experimental.atomLayer 有効時、全 Concept を見渡して
-    // 共通抽象を発見する discovery を 1 回回す（Synthesis と同じ pattern）。
+    // 共通抽象を discover する。Phase 1: クラスタ集中サンプリングを適用。
+    // バルク投入直後の自動実行なので、メンテよりも K の上限を控えめ（=3）にする。
+    //
+    // 直後の Synthesize 段でも参照できるように、新規 Atom の ClaimSnapshot を
+    // ローカルに蓄積する。`fm.wikiMetas` はクロージャ閉じ込みで再 render するまで
+    // 更新されないため、ここで作った Atom を直に渡さないと Synthesize は
+    // 「Atom 0 件」状態で走ってしまう（過去のバルク投入で発想が全く出なかった主因）。
+    const newAtomSnapshots: ClaimSnapshot[] = [];
+    const atomLabel = tStatic("settings.maintenance.kind.atom");
+    const synthLabel = tStatic("settings.maintenance.kind.synthesis");
     if (isAtomLayerEnabled()) {
       try {
-        const claimSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "claim");
-        if (claimSnapshots.length < 2) {
-          updateStage("atomize", "skipped", `Claim ${claimSnapshots.length} 件（2 件以上で実行）`);
+        const allClaimSnapshots = buildClaimSnapshots(
+          fm.wikiFiles,
+          fm.wikiMetas,
+          fm.getCachedDoc,
+          "claim",
+          Number.POSITIVE_INFINITY,
+        );
+        if (allClaimSnapshots.length < 2) {
+          updateStage("atomize", "skipped", `Claim ${allClaimSnapshots.length} 件（2 件以上で実行）`);
         } else {
-          updateStage("atomize", "running", `${claimSnapshots.length} claims を分析中...`);
+          const claimModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
+          const claimEmbeddings = await Promise.all(
+            allClaimSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
+          );
+          const claimCandidates: AtomCandidate[] = allClaimSnapshots.map((s, i) => ({
+            snapshot: s,
+            similarityText: `${s.title}\n${s.bodyPreview}`,
+            embedding: claimEmbeddings[i],
+            modifiedTime: claimModifiedByFileId.get(s.id) ?? "",
+          }));
+          const clusterCount = pickClusterCount(claimCandidates.length, {
+            effectiveCoverage: 30,
+            maxK: 3,
+          });
+          const seeds = pickFarthestSeeds(claimCandidates, clusterCount);
           const existingAtomTitles = [...fm.wikiMetas.entries()]
             .filter(([, m]) => m.kind === "atom")
             .map(([, m]) => m.title);
-          const atomResult = await atomizeConcepts(
-            claimSnapshots,
-            "ja",
-            { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
+          let createdAtoms = 0;
+          updateStage(
+            "atomize",
+            "running",
+            `${allClaimSnapshots.length} claims / ${seeds.length} clusters を分析中...`,
           );
-          for (const candidate of atomResult.atoms) {
-            const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, "ja");
-            const newId = await fm.handleCreateWikiFile(atomDoc);
-            embedWikiSections(newId, atomDoc).catch(() => {});
-            wikiLog.append(
-              "ingest",
-              [newId],
-              `Atom: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
-            ).catch(() => {});
+          for (let i = 0; i < seeds.length; i++) {
+            const seed = seeds[i];
+            const cluster = buildClusterSlice(claimCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
+            const slice = cluster.map((c) => c.snapshot);
+            updateStage(
+              "atomize",
+              "running",
+              `cluster ${i + 1}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})`,
+            );
+            const atomResult = await atomizeConcepts(
+              slice,
+              "ja",
+              { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
+            );
+            for (const candidate of atomResult.atoms) {
+              const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, "ja");
+              const newId = await fm.handleCreateWikiFile(atomDoc);
+              embedWikiSections(newId, atomDoc).catch(() => {});
+              wikiLog.append(
+                "ingest",
+                [newId],
+                `${atomLabel}: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
+              ).catch(() => {});
+              createdAtoms += 1;
+              existingAtomTitles.push(candidate.title);
+              // Synthesize 段に渡すため新規 Atom を ClaimSnapshot 形に詰めておく。
+              // body は atom 本文ではなく abstraction の summary（candidate.body）が
+              // 最も意味的に近いので preview として使う。
+              newAtomSnapshots.push({
+                id: newId,
+                title: candidate.title,
+                bodyPreview: candidate.body ?? "",
+                level: undefined,
+                relatedClaims: [],
+                sourceSummaryPreviews: [],
+                atomType: candidate.atomType,
+              });
+            }
           }
           updateStage(
             "atomize",
             "done",
-            atomResult.atoms.length > 0 ? `${atomResult.atoms.length} atoms 生成` : "新規 Atom なし",
+            createdAtoms > 0 ? `${createdAtoms} ${atomLabel}` : `新規 ${atomLabel} なし`,
           );
         }
       } catch (err) {
@@ -2993,42 +3095,81 @@ export function NoteApp() {
       updateStage("atomize", "skipped", "Atom Layer が無効");
     }
 
-    // 自動 Synthesis: 実験フラグで Synthesis レイヤが有効なときのみ動作する。
-    // 既定は OFF — 既存ユーザーの Synthesis ファイルは保持されるが新規自動生成は止まる。
-    // Synthesis のソースは Concept ではなく Atom に切り替わる（atomLayer 前提）。
+    // 自動 Synthesis: synthesis レイヤが有効なときのみ。
+    // Phase 1: クラスタ集中サンプリング + バルク経路では K 上限 2 で控えめに実行。
+    // 入力 Atom には wikiMetas 由来（過去の Atom）+ 直前の Atomize で作った新規 Atom を
+    // マージして渡す。`fm.wikiMetas` だけだと新規 Atom がスタールで含まれない。
     if (isSynthesisEnabled()) {
       try {
-        const atomSnapshots = buildClaimSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, "atom");
-        if (atomSnapshots.length < 3) {
-          updateStage("synthesize", "skipped", `Atom ${atomSnapshots.length} 件（3 件以上で実行）`);
+        const existingAtomSnapshots = buildClaimSnapshots(
+          fm.wikiFiles,
+          fm.wikiMetas,
+          fm.getCachedDoc,
+          "atom",
+          Number.POSITIVE_INFINITY,
+        );
+        const allAtomSnapshots = [...existingAtomSnapshots, ...newAtomSnapshots];
+        if (allAtomSnapshots.length < 3) {
+          updateStage("synthesize", "skipped", `Atom ${allAtomSnapshots.length} 件（3 件以上で実行）`);
         } else {
-          updateStage("synthesize", "running", `${atomSnapshots.length} atoms を結晶化中...`);
+          const atomModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
+          const nowIso = new Date().toISOString();
+          const atomEmbeddings = await Promise.all(
+            allAtomSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
+          );
+          const atomCandidates: AtomCandidate[] = allAtomSnapshots.map((s, i) => ({
+            snapshot: s,
+            similarityText: `${s.title}\n${s.bodyPreview}`,
+            embedding: atomEmbeddings[i],
+            // 新規 Atom は wikiFiles にまだ載っていないので最新時刻扱いにする
+            modifiedTime: atomModifiedByFileId.get(s.id) ?? nowIso,
+          }));
+          const clusterCount = pickClusterCount(atomCandidates.length, {
+            effectiveCoverage: 30,
+            maxK: 2,
+          });
+          const seeds = pickFarthestSeeds(atomCandidates, clusterCount);
           const existingSynthesisTitles = [...fm.wikiMetas.entries()]
             .filter(([, m]) => m.kind === "synthesis")
             .map(([, m]) => m.title);
-
-          const synthResult = await fetchSynthesisCandidates(
-            atomSnapshots,
-            existingSynthesisTitles,
-            "ja",
-            getChatSynthesisModelName() || undefined,
+          let createdSyntheses = 0;
+          updateStage(
+            "synthesize",
+            "running",
+            `${allAtomSnapshots.length} atoms / ${seeds.length} clusters を結晶化中...`,
           );
-          for (const candidate of synthResult.candidates) {
-            const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
-            const newId = await fm.handleCreateWikiFile(synthDoc);
-            embedWikiSections(newId, synthDoc).catch(() => {});
-            wikiLog.append(
-              "ingest",
-              [newId],
-              `Synthesis: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
-            ).catch(() => {});
+          for (let i = 0; i < seeds.length; i++) {
+            const seed = seeds[i];
+            const cluster = buildClusterSlice(atomCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
+            const slice = cluster.map((c) => c.snapshot);
+            updateStage(
+              "synthesize",
+              "running",
+              `cluster ${i + 1}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})`,
+            );
+            const synthResult = await fetchSynthesisCandidates(
+              slice,
+              existingSynthesisTitles,
+              "ja",
+              getChatSynthesisModelName() || undefined,
+            );
+            for (const candidate of synthResult.candidates) {
+              const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
+              const newId = await fm.handleCreateWikiFile(synthDoc);
+              embedWikiSections(newId, synthDoc).catch(() => {});
+              wikiLog.append(
+                "ingest",
+                [newId],
+                `${synthLabel}: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
+              ).catch(() => {});
+              createdSyntheses += 1;
+              existingSynthesisTitles.push(candidate.title);
+            }
           }
           updateStage(
             "synthesize",
             "done",
-            synthResult.candidates.length > 0
-              ? `${synthResult.candidates.length} synthesis 生成`
-              : "新規 Synthesis なし",
+            createdSyntheses > 0 ? `${createdSyntheses} ${synthLabel}` : `新規 ${synthLabel} なし`,
           );
         }
       } catch (err) {
@@ -3077,14 +3218,30 @@ export function NoteApp() {
                 if (!doc) continue;
                 const detail = extractWikiDetail(wikiId, doc);
                 if (!detail) continue;
-                const otherConcepts = snapshots
+                const allOtherConcepts = snapshots
                   .filter((s) => s.kind === "claim" && s.id !== wikiId)
                   .map((s) => {
                     const d = fm.getCachedDoc(`wiki:${s.id}`);
                     return d ? extractWikiDetail(s.id, d) : null;
                   })
                   .filter((d): d is NonNullable<typeof d> => d !== null);
-                if (otherConcepts.length === 0) continue;
+                if (allOtherConcepts.length === 0) continue;
+                // ② と同じく cross-update 入力は本文込みで重いので関連度上位 30 件に絞る
+                const ORPHAN_CROSS_UPDATE_CAP = 30;
+                const orphanQueryEmbedding = await getDocEmbedding(wikiId).catch(() => null);
+                const orphanQueryText = `${doc.title}\n${detail.sectionPreviews.join("\n")}`;
+                const orphanCandidateFeatures = await Promise.all(
+                  allOtherConcepts.map(async (d) => ({
+                    detail: d,
+                    embedding: await getDocEmbedding(d.id).catch(() => null),
+                    similarityText: `${d.title}\n${d.sectionPreviews.join("\n")}`,
+                  })),
+                );
+                const otherConcepts = rankCandidatesByRelevance(
+                  { embedding: orphanQueryEmbedding, similarityText: orphanQueryText },
+                  orphanCandidateFeatures,
+                  ORPHAN_CROSS_UPDATE_CAP,
+                ).map((f) => f.detail);
                 const orphanSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
                 const crossResult = await fetchCrossUpdateProposals({
                   newNoteTitle: doc.title,
@@ -3753,54 +3910,100 @@ export function NoteApp() {
   // - 自動 Atomize（ingest 後）はループせず 1 回だけ走る — 意図的に分離している。
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const runAtomizeDiscovery = useCallback(async (
-    onProgress?: (info: { iteration: number; createdSoFar: number }) => void,
+    onProgress?: (info: {
+      iteration: number;
+      createdSoFar: number;
+      clusterLabel?: string;
+      clusterTotal?: number;
+      clusterSize?: number;
+      clusterMemberTitles?: string[];
+    }) => void,
   ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
     if (!isAtomLayerEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Atom layer is disabled" };
     }
-    const claimSnapshots = buildClaimSnapshots(
+    // Phase 1: クラスタ集中サンプリング（Synthesis Discovery と同じ手法）。
+    // 母集団は modifiedTime 上限なしで全 Claim を取得し、farthest-point で
+    // 散らした seed ごとに別領域のクラスタを atomizer に投げる。
+    const allClaimSnapshots = buildClaimSnapshots(
       fm.wikiFiles,
       fm.wikiMetas,
       fm.getCachedDoc,
       "claim",
+      Number.POSITIVE_INFINITY,
     );
-    if (claimSnapshots.length < 2) {
+    if (allClaimSnapshots.length < 2) {
       return { ok: false, created: 0, iterations: 0, error: "Need at least 2 Claims" };
     }
 
-    // Atom は Concept→Atom の抽象化なので、共通抽象が有限 → 収束しやすい。
-    // 上限は余裕をもって 10 に設定。実運用では 3〜5 で 0 件返却に到達することが多い。
-    const MAX_ITERATIONS = 10;
+    const claimModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
+    const claimEmbeddings = await Promise.all(
+      allClaimSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
+    );
+    const claimCandidates: AtomCandidate[] = allClaimSnapshots.map((s, i) => ({
+      snapshot: s,
+      similarityText: `${s.title}\n${s.bodyPreview}`,
+      embedding: claimEmbeddings[i],
+      modifiedTime: claimModifiedByFileId.get(s.id) ?? "",
+    }));
+
+    // クラスタ数（= seed 数 = LLM 呼び出し回数）は母集団から動的に決める。
+    // 1 クラスタあたり effectiveCoverage ≈ 30 件のユニーク貢献を見込み、上限 10。
+    const MAX_ITERATIONS = pickClusterCount(claimCandidates.length, {
+      effectiveCoverage: 30,
+      maxK: 10,
+    });
+    const seeds = pickFarthestSeeds(claimCandidates, MAX_ITERATIONS);
     const existingAtomTitles = [...fm.wikiMetas.entries()]
       .filter(([, m]) => m.kind === "atom")
       .map(([, m]) => m.title);
 
+    const atomLabel = tStatic("settings.maintenance.kind.atom");
+    const claimLabel = tStatic("settings.maintenance.kind.claim");
     const toastId = `atomize-discovery:${Date.now()}`;
     setIngestToast((prev) => ({
       items: [
         ...(prev?.items ?? []),
-        { id: toastId, status: "generating" as const, noteTitle: `Discovering Atoms across ${claimSnapshots.length} Claims` },
+        { id: toastId, status: "generating" as const, noteTitle: `Discovering ${atomLabel} across ${allClaimSnapshots.length} ${claimLabel} (${seeds.length} clusters)` },
       ],
     }));
 
     let totalCreated = 0;
     let lastIteration = 0;
     try {
-      for (let iter = 1; iter <= MAX_ITERATIONS; iter++) {
+      for (let iter = 1; iter <= seeds.length; iter++) {
         lastIteration = iter;
-        onProgress?.({ iteration: iter, createdSoFar: totalCreated });
+        const seed = seeds[iter - 1];
+        const cluster = buildClusterSlice(claimCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
+        const slice = cluster.map((c) => c.snapshot);
+        onProgress?.({
+          iteration: iter,
+          createdSoFar: totalCreated,
+          clusterLabel: seed.snapshot.title,
+          clusterTotal: seeds.length,
+          clusterSize: slice.length,
+          clusterMemberTitles: slice.map((s) => s.title),
+        });
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId
+              ? { ...i, noteTitle: `Discovering · cluster ${iter}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${claimLabel})` }
+              : i
+          ),
+        }));
         const result = await atomizeConcepts(
-          claimSnapshots,
+          slice,
           "ja",
           { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
         );
-        if (result.atoms.length === 0) break; // 収束
+        // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
+        if (result.atoms.length === 0) continue;
         // 既存 Atom との embedding 類似度で post-filter（embedding 未設定なら素通し）
         const existingAtomDocIds = new Set(
           [...fm.wikiMetas.entries()].filter(([, m]) => m.kind === "atom").map(([id]) => id),
         );
         const filtered = await dedupCandidatesByEmbedding(result.atoms, existingAtomDocIds);
-        if (filtered.length === 0) break; // 全部既存と被っていたら収束扱い
+        if (filtered.length === 0) continue; // このクラスタは既存と被り → 次のクラスタへ
         for (const candidate of filtered) {
           const atomDoc = buildAtomDocument(candidate, result.model ?? null, "ja");
           const newId = await fm.handleCreateWikiFile(atomDoc);
@@ -3808,7 +4011,7 @@ export function NoteApp() {
           wikiLog.append(
             "ingest",
             [newId],
-            `Atom: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
+            `${atomLabel}: "${candidate.title}" (from ${candidate.derivedFromConceptTitles.join(" + ")})`,
           ).catch(() => {});
           totalCreated += 1;
           // 次イテレーションの dedup に渡す
@@ -3818,7 +4021,7 @@ export function NoteApp() {
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
-            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} atom(s) in ${lastIteration} iter(s)` }
+            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} ${atomLabel}` }
             : i
         ),
       }));
@@ -3839,50 +4042,99 @@ export function NoteApp() {
   // experimental.synthesis（atomLayer 前提）が ON のときのみ動く。
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const runSynthesisDiscovery = useCallback(async (
-    onProgress?: (info: { iteration: number; createdSoFar: number }) => void,
+    onProgress?: (info: {
+      iteration: number;
+      createdSoFar: number;
+      clusterLabel?: string;
+      clusterTotal?: number;
+      clusterSize?: number;
+      clusterMemberTitles?: string[];
+    }) => void,
   ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
     if (!isSynthesisEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Synthesis layer is disabled" };
     }
-    const atomSnapshots = buildClaimSnapshots(
+
+    // Phase 1: クラスタ集中サンプリング。
+    // 母集団は modifiedTime 上限なしで全 Atom を取得し、シードを farthest-point で
+    // 散らして iteration ごとに別領域のクラスタを synthesizer に投げる。
+    // これにより「直近触れた領域だけ繰り返し見る」問題を解消する。
+    const allAtomSnapshots = buildClaimSnapshots(
       fm.wikiFiles,
       fm.wikiMetas,
       fm.getCachedDoc,
       "atom",
+      Number.POSITIVE_INFINITY,
     );
-    if (atomSnapshots.length < 3) {
+    if (allAtomSnapshots.length < 3) {
       return { ok: false, created: 0, iterations: 0, error: "Need at least 3 Atoms" };
     }
 
-    // Synthesis は Atom の組み合わせから立ち上がる洞察。組み合わせ数が C(n,2..4) で
-    // 爆発するため、原理的には収束しない。1 クリックあたりの上限を低く抑え、
-    // ユーザーが必要に応じて再押下する運用にする（UI コピーでも明示）。
-    const MAX_ITERATIONS = 3;
+    // 各 Atom の代表 embedding（section 平均）を並列取得。未生成は null。
+    const modifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
+    const embeddings = await Promise.all(
+      allAtomSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
+    );
+    const atomCandidates: AtomCandidate[] = allAtomSnapshots.map((s, i) => ({
+      snapshot: s,
+      similarityText: `${s.title}\n${s.bodyPreview}`,
+      embedding: embeddings[i],
+      modifiedTime: modifiedByFileId.get(s.id) ?? "",
+    }));
+
+    // Synthesis は Atom の組み合わせから立ち上がる洞察。組み合わせ数は C(n,2..4) で
+    // 爆発するため、原理的には収束しない。母集団規模からクラスタ数を動的決定し、
+    // 1 クリックの LLM コストを上限 8 で抑える。続きが欲しければユーザーが再押下する。
+    const MAX_ITERATIONS = pickClusterCount(atomCandidates.length, {
+      effectiveCoverage: 30,
+      maxK: 8,
+    });
+    const seeds = pickFarthestSeeds(atomCandidates, MAX_ITERATIONS);
     const existingSynthesisTitles = [...fm.wikiMetas.entries()]
       .filter(([, m]) => m.kind === "synthesis")
       .map(([, m]) => m.title);
 
+    const atomLabel = tStatic("settings.maintenance.kind.atom");
+    const synthLabel = tStatic("settings.maintenance.kind.synthesis");
     const toastId = `synthesis-discovery:${Date.now()}`;
     setIngestToast((prev) => ({
       items: [
         ...(prev?.items ?? []),
-        { id: toastId, status: "generating" as const, noteTitle: `Discovering Syntheses across ${atomSnapshots.length} Atoms` },
+        { id: toastId, status: "generating" as const, noteTitle: `Discovering ${synthLabel} across ${allAtomSnapshots.length} ${atomLabel} (${seeds.length} clusters)` },
       ],
     }));
 
     let totalCreated = 0;
     let lastIteration = 0;
     try {
-      for (let iter = 1; iter <= MAX_ITERATIONS; iter++) {
+      for (let iter = 1; iter <= seeds.length; iter++) {
         lastIteration = iter;
-        onProgress?.({ iteration: iter, createdSoFar: totalCreated });
+        const seed = seeds[iter - 1];
+        const cluster = buildClusterSlice(atomCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
+        const slice = cluster.map((c) => c.snapshot);
+        onProgress?.({
+          iteration: iter,
+          createdSoFar: totalCreated,
+          clusterLabel: seed.snapshot.title,
+          clusterTotal: seeds.length,
+          clusterSize: slice.length,
+          clusterMemberTitles: slice.map((s) => s.title),
+        });
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId
+              ? { ...i, noteTitle: `Discovering · cluster ${iter}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})` }
+              : i
+          ),
+        }));
         const result = await fetchSynthesisCandidates(
-          atomSnapshots,
+          slice,
           existingSynthesisTitles,
           "ja",
           getChatSynthesisModelName() || undefined,
         );
-        if (result.candidates.length === 0) break; // 収束
+        // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
+        if (result.candidates.length === 0) continue;
         // 既存 Synthesis との embedding 類似度で post-filter（embedding 未設定なら素通し）
         const existingSynthDocIds = new Set(
           [...fm.wikiMetas.entries()].filter(([, m]) => m.kind === "synthesis").map(([id]) => id),
@@ -3894,7 +4146,7 @@ export function NoteApp() {
           original: c,
         }));
         const filtered = await dedupCandidatesByEmbedding(candidatesForDedup, existingSynthDocIds);
-        if (filtered.length === 0) break;
+        if (filtered.length === 0) continue;
         for (const f of filtered) {
           const candidate = f.original;
           const synthDoc = buildSynthesisDocument(
@@ -3908,7 +4160,7 @@ export function NoteApp() {
           wikiLog.append(
             "ingest",
             [newId],
-            `Synthesis: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
+            `${synthLabel}: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
           ).catch(() => {});
           totalCreated += 1;
           existingSynthesisTitles.push(candidate.title);
@@ -3917,7 +4169,7 @@ export function NoteApp() {
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
-            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} synthesis(es) in ${lastIteration} iter(s)` }
+            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} ${synthLabel}` }
             : i
         ),
       }));

@@ -109,7 +109,16 @@ export type RegenerateWikiHandler = (
   options?: { model?: string },
 ) => Promise<{ ok: boolean; error?: string }>;
 
-export type DiscoveryProgressInfo = { iteration: number; createdSoFar: number };
+export type DiscoveryProgressInfo = {
+  iteration: number;
+  createdSoFar: number;
+  /** Phase 1 クラスタサンプリング: 現在の iter のクラスタ情報。未設定なら旧表示。 */
+  clusterLabel?: string;
+  clusterTotal?: number;
+  clusterSize?: number;
+  /** クラスタに含まれるアイテム名のプレビュー（先頭 N 件）。中身が見えない問題への対策。 */
+  clusterMemberTitles?: string[];
+};
 export type DiscoveryHandler = (
   onProgress?: (info: DiscoveryProgressInfo) => void,
 ) => Promise<{ ok: boolean; created: number; iterations: number; error?: string }>;
@@ -228,6 +237,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     created?: number;
     iterations?: number;
     error?: string;
+    clusterLabel?: string;
+    clusterTotal?: number;
+    clusterSize?: number;
+    clusterMemberTitles?: string[];
   };
   const [atomizeRunning, setAtomizeRunning] = useState(false);
   const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
@@ -1998,6 +2011,11 @@ type DiscoveryRunState = {
   created?: number;
   iterations?: number;
   error?: string;
+  /** Phase 1 クラスタサンプリング: 現在の iter のクラスタ情報。未設定なら旧表示。 */
+  clusterLabel?: string;
+  clusterTotal?: number;
+  clusterSize?: number;
+  clusterMemberTitles?: string[];
 };
 
 type MaintenanceTabProps = {
@@ -2148,7 +2166,16 @@ function MaintenanceTab({
     setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: 1, created: 0 });
 
     const result = await onRunAtomizeDiscovery((info) => {
-      setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: info.iteration, created: info.createdSoFar });
+      setAtomizeProgress({
+        status: "running",
+        inputCount: conceptCount,
+        iteration: info.iteration,
+        created: info.createdSoFar,
+        clusterLabel: info.clusterLabel,
+        clusterTotal: info.clusterTotal,
+        clusterSize: info.clusterSize,
+        clusterMemberTitles: info.clusterMemberTitles,
+      });
     });
     if (result.ok) {
       setAtomizeProgress({ status: "done", inputCount: conceptCount, created: result.created, iterations: result.iterations });
@@ -2168,7 +2195,16 @@ function MaintenanceTab({
     setSynthesisProgress({ status: "running", inputCount: atomCount, iteration: 1, created: 0 });
 
     const result = await onRunSynthesisDiscovery((info) => {
-      setSynthesisProgress({ status: "running", inputCount: atomCount, iteration: info.iteration, created: info.createdSoFar });
+      setSynthesisProgress({
+        status: "running",
+        inputCount: atomCount,
+        iteration: info.iteration,
+        created: info.createdSoFar,
+        clusterLabel: info.clusterLabel,
+        clusterTotal: info.clusterTotal,
+        clusterSize: info.clusterSize,
+        clusterMemberTitles: info.clusterMemberTitles,
+      });
     });
     if (result.ok) {
       setSynthesisProgress({ status: "done", inputCount: atomCount, created: result.created, iterations: result.iterations });
@@ -2530,16 +2566,35 @@ function DiscoveryCard({
       {progress && (
         <div className="rounded-md border border-border bg-background px-3 py-2 text-xs space-y-1">
           {progress.status === "running" && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span>
-                {t(discoveringKey).replace("{count}", String(progress.inputCount))}
-                {progress.iteration !== undefined && (
-                  <span className="ml-2 opacity-70">
-                    (iter {progress.iteration}{progress.created ? ` / created ${progress.created}` : ""})
-                  </span>
-                )}
-              </span>
+            <div className="flex flex-col gap-1 text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+                <span>
+                  {t(discoveringKey).replace("{count}", String(progress.inputCount))}
+                  {progress.iteration !== undefined && (
+                    <span className="ml-2 opacity-70">
+                      (iter {progress.iteration}{progress.clusterTotal ? `/${progress.clusterTotal}` : ""}{progress.created ? ` / created ${progress.created}` : ""})
+                    </span>
+                  )}
+                </span>
+              </div>
+              {progress.clusterLabel && (
+                <div className="ml-4 text-[11px] opacity-80 break-words">
+                  cluster: 「{progress.clusterLabel}」{progress.clusterSize ? ` (${progress.clusterSize})` : ""}
+                </div>
+              )}
+              {progress.clusterMemberTitles && progress.clusterMemberTitles.length > 0 && (
+                <details className="ml-4 text-[11px] opacity-70">
+                  <summary className="cursor-pointer select-none">
+                    members ({progress.clusterMemberTitles.length})
+                  </summary>
+                  <ul className="mt-1 ml-2 list-disc list-inside space-y-0.5 max-h-40 overflow-y-auto">
+                    {progress.clusterMemberTitles.map((title, idx) => (
+                      <li key={`${idx}-${title}`} className="break-words">{title}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
           {progress.status === "done" && (
