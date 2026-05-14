@@ -377,6 +377,19 @@ export type AssetGalleryViewProps = {
    * コールバック（Phase 2b-media）。親側で saveMediaIndex 経由で永続化する。
    */
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: import("./media-index").MediaSharedRef) => Promise<void> | void;
+  /**
+   * PDF アセットの各ページを画像化して画像アセットに登録するアクション。
+   * 親側で pdf-image-extractor + handleUploadMedia を組み立てて渡す。
+   */
+  onExtractPdfPages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
+  /**
+   * Knowledge ノートの kind 別色を出すためのルックアップ。
+   * 渡されない場合はフォールバック色で描画。
+   */
+  getKnowledgeKind?: import("./MediaDetailModal").KnowledgeKindLookup;
 };
 
 export function AssetGalleryView({
@@ -392,6 +405,8 @@ export function AssetGalleryView({
   onCreateProvNote,
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
+  onExtractPdfPages,
+  getKnowledgeKind,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -880,6 +895,10 @@ export function AssetGalleryView({
             setDetailEntry({ ...entry, sharedRef });
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
+          onExtractPdfPages={onExtractPdfPages}
+          mediaIndex={mediaIndex}
+          getKnowledgeKind={getKnowledgeKind}
+          onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
         />
       )}
 

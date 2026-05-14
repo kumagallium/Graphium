@@ -76,11 +76,25 @@ export type MediaIndexEntry = {
   urlMeta?: UrlMeta;
   /** team-shared storage への共有状態（Phase 2b-media、optional） */
   sharedRef?: MediaSharedRef;
+  /**
+   * このメディアが派生してきた元アセットの fileId 配列（optional）。
+   * 例: PDF から抽出した画像は元 PDF の fileId を保持する。
+   * MediaDetailModal のネットワーク図で「素材同士の派生」を辿るために使う。
+   * 既存ユーザー互換のため optional。
+   */
+  derivedFromAssets?: string[];
 };
+
+/** メディアインデックスのスキーマバージョン。
+ *  - 1: 初期版（block 由来の usedIn のみ集計）
+ *  - 2: document-level の PDF 参照（wikiMeta.derivedFromNotes / sourcePdfFileId）も usedIn に含める
+ *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
+ */
+export const CURRENT_MEDIA_INDEX_VERSION = 2 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1;
+  version: 1 | 2;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -193,7 +207,7 @@ export async function saveMediaIndex(index: MediaIndex): Promise<void> {
 
 /** 空のメディアインデックスを作成 */
 export function createEmptyIndex(): MediaIndex {
-  return { version: 1, updatedAt: new Date().toISOString(), media: [] };
+  return { version: CURRENT_MEDIA_INDEX_VERSION, updatedAt: new Date().toISOString(), media: [] };
 }
 
 /** メディアエントリを追加 */
@@ -220,6 +234,39 @@ export function removeMediaEntry(
   };
 }
 
+/**
+ * document-level でメディアを参照していることを示す blockId 番兵。
+ *
+ * Wiki ノート (`wikiMeta.derivedFromNotes` の `"pdf:{fileId}"`) や
+ * PROV ノート (`sourcePdfFileId`) は、PDF を block として埋め込まず
+ * ドキュメントレベルのフィールドで参照する。ブロック由来の `MediaUsage`
+ * と区別するためにこの値を使う。グラフ表示・ナビゲーションは noteId で
+ * 動くため blockId の中身は無関係だが、将来 block にスクロールしたい
+ * 用途のために区別を残している。
+ */
+export const DOC_REF_BLOCK_ID = "__doc_ref__";
+
+/**
+ * doc から PDF アセットへの document-level 参照（fileId）を集める。
+ * 対象:
+ * - Wiki ノートの `wikiMeta.derivedFromNotes` に含まれる `"pdf:{fileId}"`
+ * - PROV ノートのトップレベル `sourcePdfFileId`
+ */
+export function collectPdfFileIdsFromDoc(doc: {
+  wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
+  sourcePdfFileId?: string | null | undefined;
+}): Set<string> {
+  const ids = new Set<string>();
+  if (doc.sourcePdfFileId) ids.add(doc.sourcePdfFileId);
+  for (const ref of doc.wikiMeta?.derivedFromNotes ?? []) {
+    if (typeof ref === "string" && ref.startsWith("pdf:")) {
+      const fileId = ref.slice(4);
+      if (fileId) ids.add(fileId);
+    }
+  }
+  return ids;
+}
+
 /** 特定ノートの usedIn を更新（ノート保存時に呼ぶ） */
 export function syncUsedIn(
   index: MediaIndex,
@@ -227,13 +274,20 @@ export function syncUsedIn(
   noteTitle: string,
   /** 現在のノートで使われているメディア: { url → blockId } */
   currentMediaMap: Map<string, string>,
+  /**
+   * 現在のノートが document-level で参照する PDF の fileId 集合
+   *  （Wiki の derivedFromNotes "pdf:..." / PROV の sourcePdfFileId）。
+   *  ブロック参照と重複した場合はブロック参照の blockId を優先する。
+   */
+  currentDocRefFileIds: Set<string> = new Set(),
 ): MediaIndex {
   const media = index.media.map((entry) => {
     const blockId = currentMediaMap.get(entry.url);
-    if (blockId) {
+    const isDocRef = currentDocRefFileIds.has(entry.fileId);
+    if (blockId || isDocRef) {
       // このメディアがノートで使われている → usedIn に追加/更新
       const usedIn = entry.usedIn.filter((u) => u.noteId !== noteId);
-      usedIn.push({ noteId, noteTitle, blockId });
+      usedIn.push({ noteId, noteTitle, blockId: blockId ?? DOC_REF_BLOCK_ID });
       return { ...entry, usedIn };
     } else {
       // このメディアがノートで使われていない → usedIn から該当ノートを除去
@@ -340,19 +394,36 @@ async function listUploadFiles(): Promise<{ id: string; name: string; mimeType: 
   return data.files || [];
 }
 
+/** ensureMediaIndex 内で扱う共通の doc shape（block 走査 + document-level 参照に必要なだけ） */
+type IndexableDoc = {
+  title: string;
+  pages: { blocks: any[] }[];
+  wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
+  sourcePdfFileId?: string | null | undefined;
+};
+
 /**
  * メディアインデックスの初期構築・同期
  * 既存インデックスが最新かチェックし、古ければ uploadFiles/ を走査して再構築する。
- * さらに全ノートを読み込んで usedIn を構築する。
+ * さらに全ノート（通常ノート + Wiki ノート）を読み込んで usedIn を構築する。
  *
- * @param noteFiles - Drive のノートファイル一覧（usedIn 構築用に全ノートを読む）
- * @param docCache - ドキュメントキャッシュ（読み込み済みのノートはここから取得）
- * @param loadFileFn - ノート読み込み関数
+ * Wiki ノートは PDF を block ではなく `wikiMeta.derivedFromNotes: ["pdf:{fileId}"]`
+ * として document-level に持つため、走査対象に含めないと PDF アセットの
+ * 利用関係が拾えない。`MediaUsage.noteId` は Wiki ノートの場合 `wiki:{id}` の
+ * prefix 付きで格納する（ナビゲーション側で分岐するため）。
+ *
+ * @param noteFiles - 通常ノートのファイル一覧
+ * @param docCache - ドキュメントキャッシュ（Wiki は `wiki:{id}` キー）
+ * @param loadFileFn - 通常ノート読み込み関数
+ * @param wikiFiles - Wiki ノートのファイル一覧（optional、document-level PDF 参照の集計に使用）
+ * @param loadWikiFileFn - Wiki ノート読み込み関数（wikiFiles を渡す場合は必須）
  */
 export async function ensureMediaIndex(
   noteFiles: { id: string; name: string }[],
-  docCache: Map<string, { title: string; pages: { blocks: any[] }[] }>,
-  loadFileFn: (fileId: string) => Promise<{ title: string; pages: { blocks: any[] }[] }>,
+  docCache: Map<string, IndexableDoc>,
+  loadFileFn: (fileId: string) => Promise<IndexableDoc>,
+  wikiFiles: { id: string; name: string }[] = [],
+  loadWikiFileFn?: (fileId: string) => Promise<IndexableDoc>,
 ): Promise<MediaIndex> {
   const existing = await readMediaIndex();
 
@@ -362,10 +433,12 @@ export async function ensureMediaIndex(
   // 既存の URL ブックマーク（Drive にファイルがないエントリ）を保持
   const existingUrlBookmarks = (existing?.media ?? []).filter((m) => m.type === "url");
 
-  // 既存インデックスがあり、ファイル数が一致し（URL ブックマークを除外して比較）、usedIn も構築済みなら最新とみなす
+  // 既存インデックスがあり、ファイル数が一致し（URL ブックマークを除外して比較）、usedIn も構築済みなら最新とみなす。
+  // ただしスキーマバージョンが旧版（v1: block 由来の usedIn しか集計していない）なら強制再構築する。
   const existingMediaCount = (existing?.media.length ?? 0) - existingUrlBookmarks.length;
   if (
     existing &&
+    existing.version === CURRENT_MEDIA_INDEX_VERSION &&
     existingMediaCount === driveFiles.length &&
     driveFiles.length > 0 &&
     existing.media.some((m) => m.usedIn.length > 0)
@@ -410,38 +483,86 @@ export async function ensureMediaIndex(
     }
   }
 
-  // URL → index のルックアップテーブル
+  // URL → index / fileId → index のルックアップテーブル
   const urlToIdx = new Map<string, number>();
-  media.forEach((m, i) => urlToIdx.set(m.url, i));
+  const fileIdToIdx = new Map<string, number>();
+  media.forEach((m, i) => {
+    urlToIdx.set(m.url, i);
+    fileIdToIdx.set(m.fileId, i);
+  });
 
-  // 全ノートを読み込んで usedIn を構築
-  for (const noteFile of noteFiles) {
-    let doc = docCache.get(noteFile.id);
+  // 走査対象: 通常ノート + Wiki ノート。
+  // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つので、
+  // ここで一緒に走査して usedIn を埋める。
+  // - cacheKey: docCache のキー（Wiki は `wiki:{id}` を使う）
+  // - usageNoteId: MediaUsage.noteId に格納する識別子（Wiki は `wiki:{id}` prefix）
+  type WalkTarget = {
+    id: string;
+    cacheKey: string;
+    usageNoteId: string;
+    load: (id: string) => Promise<IndexableDoc>;
+  };
+  const walkTargets: WalkTarget[] = [];
+  for (const f of noteFiles) {
+    walkTargets.push({ id: f.id, cacheKey: f.id, usageNoteId: f.id, load: loadFileFn });
+  }
+  if (loadWikiFileFn) {
+    for (const f of wikiFiles) {
+      walkTargets.push({
+        id: f.id,
+        cacheKey: `wiki:${f.id}`,
+        usageNoteId: `wiki:${f.id}`,
+        load: loadWikiFileFn,
+      });
+    }
+  }
+
+  for (const target of walkTargets) {
+    let doc = docCache.get(target.cacheKey);
     if (!doc) {
       try {
-        doc = await loadFileFn(noteFile.id);
-        docCache.set(noteFile.id, doc as any);
+        doc = await target.load(target.id);
+        docCache.set(target.cacheKey, doc);
       } catch {
         continue;
       }
     }
     const page = doc.pages[0];
-    if (!page?.blocks) continue;
-    const mediaMap = extractMediaFromBlocks(page.blocks);
-    for (const [url, blockId] of mediaMap) {
-      const idx = urlToIdx.get(url);
-      if (idx !== undefined) {
+    // どの media に追加済みかを記録（ブロックと document-level の重複排除）
+    const addedIdxs = new Set<number>();
+    if (page?.blocks) {
+      const mediaMap = extractMediaFromBlocks(page.blocks);
+      for (const [url, blockId] of mediaMap) {
+        const idx = urlToIdx.get(url);
+        if (idx !== undefined) {
+          media[idx].usedIn.push({
+            noteId: target.usageNoteId,
+            noteTitle: doc.title,
+            blockId,
+          });
+          addedIdxs.add(idx);
+        }
+      }
+    }
+    // Wiki / PROV ノートの document-level PDF 参照を usedIn に反映する。
+    // PDF をブロックとして埋め込まないため、ここで補完しないと
+    // PDF アセットモーダルの「利用ノート」グラフに表示されない。
+    const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+    for (const fileId of docPdfRefs) {
+      const idx = fileIdToIdx.get(fileId);
+      if (idx !== undefined && !addedIdxs.has(idx)) {
         media[idx].usedIn.push({
-          noteId: noteFile.id,
+          noteId: target.usageNoteId,
           noteTitle: doc.title,
-          blockId,
+          blockId: DOC_REF_BLOCK_ID,
         });
+        addedIdxs.add(idx);
       }
     }
   }
 
   const index: MediaIndex = {
-    version: 1,
+    version: CURRENT_MEDIA_INDEX_VERSION,
     updatedAt: new Date().toISOString(),
     media,
   };

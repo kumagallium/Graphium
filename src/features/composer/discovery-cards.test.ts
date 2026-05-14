@@ -100,7 +100,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("この Wiki を整理する");
+    expect(cards[0]?.title).toBe("この Knowledge を整理する");
   });
 
   it("直近 7 日の wikiLog からイベントごとに、wiki タイトル付きでカード化（lint と delete は無視）", () => {
@@ -203,7 +203,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("この Wiki を整理する");
+    expect(cards[0]?.title).toBe("この Knowledge を整理する");
   });
 
   it("ベース + ログで枠が余るときは直近更新ノートで埋める（自ノートと AI/skill ノートは除外）", () => {

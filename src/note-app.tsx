@@ -147,6 +147,7 @@ import {
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
 } from "./features/asset-browser";
+import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
 import { exportProvJsonLd, type WikiEntityInfo } from "./features/prov-export";
@@ -4453,7 +4454,13 @@ export function NoteApp() {
             mediaIndex={fm.mediaIndex}
             mediaType={fm.activeAssetType}
             onBack={() => fm.setActiveAssetType(null)}
-            onNavigateNote={(noteId) => { fm.setActiveAssetType(null); fm.handleOpenFile(noteId); }}
+            onNavigateNote={(noteId) => {
+              fm.setActiveAssetType(null);
+              // PDF アセットの利用ノートグラフから Wiki ノートをクリックしたケース：
+              // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
+              if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
+              else fm.handleOpenFile(noteId);
+            }}
             onDeleteMedia={fm.handleDeleteMedia}
             onRenameMedia={handleRenameMediaWithBlockSync}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
@@ -4556,7 +4563,7 @@ export function NoteApp() {
                 })();
                 return;
               }
-              // PDF 経路
+              // PDF 経路（PROV ノート生成）。画像抽出は onExtractPdfPages 側で扱う。
               if (entry.type === "pdf" && entry.fileId) {
                 const jobId = `prov-pdf:${Date.now()}`;
                 const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
@@ -4590,6 +4597,28 @@ export function NoteApp() {
                 return;
               }
             } : undefined}
+            onExtractPdfPages={async (entry, onProgress) => {
+              // PDF 内部に埋め込まれた画像オブジェクトを抽出して画像アセットに登録する。
+              // ベクター figure / 表は PDF 内部に「画像」として存在しないため対象外。
+              // 失敗時は MediaDetailModal 側でエラーメッセージを表示する。
+              if (entry.type !== "pdf" || !entry.fileId) return { extracted: 0 };
+              const provider = getActiveProvider();
+              const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
+              const blob = await (await fetch(blobUrl)).blob();
+              const images = await extractEmbeddedPdfImages(blob, { onProgress });
+              // 抽出した画像を順次アップロード。進捗 total は抽出フェーズ（ページ数）
+              // とアップロードフェーズ（画像数）で異なるが、ボタン側は数字 progress
+              // のみ見せるので「N/M」が読めれば十分。
+              for (let i = 0; i < images.length; i++) {
+                const file = embeddedImageToFile(images[i], entry.name || "document.pdf");
+                // 派生関係を MediaIndex に記録。これで両モーダルのネットワーク図で
+                // PDF↔画像 を相互に辿れるようになる。
+                await fm.handleUploadMedia(file, { derivedFromAssets: [entry.fileId] });
+                onProgress(i + 1, images.length);
+              }
+              return { extracted: images.length };
+            }}
+            getKnowledgeKind={(rawId) => fm.wikiMetas.get(rawId)?.kind}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
