@@ -3823,14 +3823,18 @@ export function NoteApp() {
           regenIngestSkills,
         );
 
-        if (result.wikis.length > 0) {
-          // 既存 Wiki と同じ kind の出力を優先（タイトルが完全一致するものを最優先）
-          const targetKind = doc.wikiMeta?.kind ?? "claim";
-          const matched =
-            result.wikis.find((w) => w.kind === targetKind && w.title === wikiTitle) ??
-            result.wikis.find((w) => w.kind === targetKind) ??
-            result.wikis[0];
+        // 既存 Wiki と同じ kind の出力のみ採用する。
+        // 旧実装は同 kind が無いとき `result.wikis[0]` にフォールバックしていたが、
+        // これは Atom (Insight) を Claim/Summary に変身させて一覧から消す事故を起こした。
+        // ingest パイプラインは Atom/Synthesis を出さない設計なので、kind 不一致は
+        // 「このパスでは再生成できない」と扱い、保存せずエラートーストで終了する。
+        const targetKind = doc.wikiMeta?.kind ?? "claim";
+        const matched =
+          result.wikis.find((w) => w.kind === targetKind && w.title === wikiTitle) ??
+          result.wikis.find((w) => w.kind === targetKind) ??
+          null;
 
+        if (matched) {
           const newDoc = buildWikiDocument(
             matched,
             // sourceNoteTitle 表示用に primary を 1 件渡す。実際の derivedFromNotes は
@@ -3883,12 +3887,18 @@ export function NoteApp() {
           }));
           return { ok: true };
         } else {
+          // result.wikis が空、または targetKind と一致する出力が無かった。
+          // 後者は Atom (Insight) のように ingest パイプラインが扱わない kind で起きる。
+          const errMsg =
+            result.wikis.length === 0
+              ? "No content generated"
+              : `Regenerate not supported for ${targetKind} via this path (ingest returned ${result.wikis.map((w) => w.kind).join(", ")})`;
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: "No content generated" } : i
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
             ),
           }));
-          return { ok: false, error: "No content generated" };
+          return { ok: false, error: errMsg };
         }
       }
     } catch (err) {
