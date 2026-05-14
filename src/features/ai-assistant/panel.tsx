@@ -11,6 +11,7 @@ import { useAiAssistant } from "./store";
 import { getWikiTitleToIdMap } from "../wiki/retriever";
 import { fetchModels } from "./api";
 import { ensureSidecar } from "../../lib/sidecar";
+import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { useT } from "../../i18n";
 import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -295,14 +296,9 @@ export function AiAssistantPanel({
         </div>
       </div>
 
-      {/* AI 利用不可バナー */}
+      {/* AI 利用不可バナー（sidecar 起動失敗時は診断 UI を出す） */}
       {aiStatus === "no-backend" && (
-        <div className="px-3 py-2.5 border-b border-border bg-muted/50">
-          <div className="flex items-start gap-2 text-xs text-muted-foreground">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span>{t("aiChat.noBackend")}</span>
-          </div>
-        </div>
+        <AiBackendDiagnostic onRecovered={(next) => setAiStatus(next)} />
       )}
       {aiStatus === "no-models" && (
         <div className="px-3 py-2.5 border-b border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">

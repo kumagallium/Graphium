@@ -306,8 +306,13 @@ The same `src/` tree is built three different ways.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers
-- Currently shipped only for macOS Apple Silicon (see `feedback_*` in
-  CLAUDE.md / memory)
+- AI / Knowledge features run inside the app via a Node sidecar:
+  `scripts/fetch-node.mjs` downloads Node 22 and renames it to
+  `binaries/graphium-server-<triple>[.exe]` so Tauri can spawn it as a
+  sidecar. `src/lib/sidecar.ts` resolves `sidecar/server.mjs` via
+  `resolveResource()` and passes it as the first argument.
+- Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
+  Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
 ### 4.3 Self-hosted (Docker)
 
