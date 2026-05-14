@@ -53,6 +53,7 @@ import {
   renameMediaFile,
   renameMediaEntry,
   extractMediaFromBlocks,
+  collectPdfFileIdsFromDoc,
   updateBlockNameByUrl,
   mimeToMediaType,
   readMediaIndex,
@@ -604,14 +605,22 @@ export function useFileManager(authenticated: boolean) {
     if (!authenticated || !noteIndex || files.length === 0) return;
     let cancelled = false;
     (async () => {
-      const idx = await ensureMediaIndex(files, docCacheRef.current, loadFile);
+      // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つため、
+      // PDF アセットの usedIn を埋めるには Wiki も走査対象に含める必要がある。
+      const idx = await ensureMediaIndex(
+        files,
+        docCacheRef.current,
+        loadFile,
+        wikiFiles,
+        storage().loadWikiFile ? loadWikiFile : undefined,
+      );
       if (!cancelled) {
         mediaIndexRef.current = idx;
         setMediaIndex(idx);
       }
     })();
     return () => { cancelled = true; };
-  }, [authenticated, noteIndex, files]);
+  }, [authenticated, noteIndex, files, wikiFiles]);
 
   // activeFileId や files / wikiFiles が変わったらグラフを再構築。
   // Wiki ページ（Concept / Synthesis）を開いているときも、その wiki の派生関係を
@@ -733,7 +742,10 @@ export function useFileManager(authenticated: boolean) {
           const savedFileId = currentFileId ?? activeFileIdRef.current;
           if (savedFileId && doc.pages[0]) {
             const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-            const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap);
+            // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
+            // document-level の PDF 参照も渡して usedIn に反映する。
+            const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+            const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap, docPdfRefs);
             mediaIndexRef.current = updated;
             setMediaIndex(updated);
             saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
@@ -1106,26 +1118,36 @@ export function useFileManager(authenticated: boolean) {
   );
 
   // メディアアップロード（インデックス自動登録付き）
-  const handleUploadMedia = useCallback(async (file: File): Promise<string> => {
-    const result = await uploadMediaFileWithMeta(file);
-    // メディアインデックスに登録
-    const entry: MediaIndexEntry = {
-      fileId: result.fileId,
-      name: result.name,
-      type: mimeToMediaType(result.mimeType),
-      mimeType: result.mimeType,
-      url: result.url,
-      thumbnailUrl: result.url.replace("=s0", "=s200"),
-      uploadedAt: new Date().toISOString(),
-      usedIn: [],
-    };
-    const current = mediaIndexRef.current ?? createEmptyIndex();
-    const updated = addMediaEntry(current, entry);
-    mediaIndexRef.current = updated;
-    setMediaIndex(updated);
-    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
-    return result.url;
-  }, []);
+  //
+  // `options.derivedFromAssets` を渡すと、登録時に派生関係を MediaIndex に記録する。
+  // 例: PDF から抽出した画像をアップロードするとき、元 PDF の fileId を渡せば
+  // 画像モーダルから元 PDF を辿り、PDF モーダルから派生画像を辿れるようになる。
+  const handleUploadMedia = useCallback(
+    async (file: File, options?: { derivedFromAssets?: string[] }): Promise<string> => {
+      const result = await uploadMediaFileWithMeta(file);
+      // メディアインデックスに登録
+      const entry: MediaIndexEntry = {
+        fileId: result.fileId,
+        name: result.name,
+        type: mimeToMediaType(result.mimeType),
+        mimeType: result.mimeType,
+        url: result.url,
+        thumbnailUrl: result.url.replace("=s0", "=s200"),
+        uploadedAt: new Date().toISOString(),
+        usedIn: [],
+        ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
+          ? { derivedFromAssets: options.derivedFromAssets }
+          : {}),
+      };
+      const current = mediaIndexRef.current ?? createEmptyIndex();
+      const updated = addMediaEntry(current, entry);
+      mediaIndexRef.current = updated;
+      setMediaIndex(updated);
+      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      return result.url;
+    },
+    [],
+  );
 
   // メディアリネーム（モーダルから呼ぶ）
   // Drive ファイル名・メディアインデックス・参照ノートのブロック props.name を一括更新
@@ -1304,6 +1326,17 @@ export function useFileManager(authenticated: boolean) {
           setNoteIndex(updated);
           queueSaveIndex(updated);
         }
+        // メディアインデックスの usedIn を同期 — Wiki ノートは PDF を
+        // document-level (`wikiMeta.derivedFromNotes: ["pdf:..."]`) で参照するため、
+        // 保存のたびに反映して PDF アセットモーダルの利用ノートグラフを最新に保つ。
+        if (mediaIndexRef.current) {
+          const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
+          const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+          const updated = syncUsedIn(mediaIndexRef.current, `wiki:${wikiId}`, doc.title, mediaMap, docPdfRefs);
+          mediaIndexRef.current = updated;
+          setMediaIndex(updated);
+          saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+        }
       } catch (err) {
         console.error("Wiki の保存に失敗:", err);
       } finally {
@@ -1464,7 +1497,8 @@ export function useFileManager(authenticated: boolean) {
       // 同じ手順で逆引きを更新する。
       if (mediaIndexRef.current && doc.pages[0]) {
         const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-        const updated = syncUsedIn(mediaIndexRef.current, newFileId, doc.title, mediaMap);
+        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, newFileId, doc.title, mediaMap, docPdfRefs);
         mediaIndexRef.current = updated;
         setMediaIndex(updated);
         saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
@@ -1493,7 +1527,8 @@ export function useFileManager(authenticated: boolean) {
       // pass 1 と pass 2 で blocks が変わっていても、最新状態に追従させる。
       if (mediaIndexRef.current && doc.pages[0]) {
         const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-        const updated = syncUsedIn(mediaIndexRef.current, noteId, doc.title, mediaMap);
+        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, noteId, doc.title, mediaMap, docPdfRefs);
         mediaIndexRef.current = updated;
         setMediaIndex(updated);
         saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
@@ -1547,6 +1582,16 @@ export function useFileManager(authenticated: boolean) {
         noteIndexRef.current = updated;
         setNoteIndex(updated);
         queueSaveIndex(updated);
+      }
+      // メディアインデックスの usedIn を同期 — Knowledge 化（pdf-ingest 等）で
+      // 新しい Wiki が作られた直後に PDF アセットの利用ノートに反映する。
+      if (mediaIndexRef.current) {
+        const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
+        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, `wiki:${newId}`, doc.title, mediaMap, docPdfRefs);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
       }
       return newId;
     },

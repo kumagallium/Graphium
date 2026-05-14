@@ -55,7 +55,7 @@ function baseCardForActiveNote(
   if (entry.source === "ai") {
     return {
       id: `base-clarify-${entry.noteId}`,
-      title: "この Wiki を整理する",
+      title: "この Knowledge を整理する",
       hint: "矛盾や繰り返しを洗い出して書き直すヒントをもらう",
       action: { kind: "custom", key: "clarify-wiki" },
     };

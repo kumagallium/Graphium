@@ -1,8 +1,8 @@
 // ノート間の派生関係からネットワークグラフデータを構築
 // 2ホップ以内の関係ノードを抽出
 
-import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
-import type { MediaIndex } from "../asset-browser/media-index";
+import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/document-types";
+import type { MediaIndex, MediaType } from "../asset-browser/media-index";
 
 export type NoteNode = {
   id: string;
@@ -10,12 +10,18 @@ export type NoteNode = {
   isCurrent: boolean;
   /** 現在ノートからのホップ数（0=自分, 1=直接, 2=2ホップ） */
   hop: number;
-  /** Wiki ドキュメントかどうか（グラフ上で別色・別形状にする） */
+  /** Knowledge（旧 Wiki）ドキュメントかどうか（グラフ上で別色・別形状にする） */
   isWiki?: boolean;
-  /** 外部ソース種別（pdf:/url: prefix が付いた derivedFromNotes 由来）。 */
-  external?: "pdf" | "url";
+  /** Knowledge の kind（kind 別に色分けする） */
+  wikiKind?: WikiKind;
+  /** 外部ソース種別（pdf:/url: prefix が付いた derivedFromNotes 由来 / media: prefix の使用メディア）。 */
+  external?: "pdf" | "url" | "media";
   /** 外部リンク先 URL（PDF は CDN URL、URL は元 URL）。クリックで新規タブで開く。 */
   externalUrl?: string;
+  /** external === "media" のときの MediaIndex の fileId（サムネイル解決やクリック時の参照に使う） */
+  mediaFileId?: string;
+  /** external === "media" のときのメディア種別（画像はサムネイル表示、それ以外はアイコン） */
+  mediaType?: MediaType;
 };
 
 export type NoteEdge = {
@@ -169,6 +175,20 @@ export function buildNoteGraph(
     }
   }
 
+  // 現在ノートで使用されているメディアを media: 仮想ノードとしてエッジ追加。
+  // PDF / URL は既存の pdf: / url: 経路で表示されるので、それ以外の画像・動画・音声・file のみここで加える。
+  // 使用関係は MediaIndex.usedIn に集約されており、通常ノートの noteId は prefix なし、
+  // Knowledge ノートは `wiki:{id}` の形で記録されている。
+  if (currentNoteId && mediaIndex) {
+    const usageKeys = [currentNoteId, `wiki:${currentNoteId}`];
+    for (const m of mediaIndex.media) {
+      if (m.type === "pdf" || m.type === "url") continue; // 既存経路で表示済み
+      if (m.type !== "image" && m.type !== "video" && m.type !== "audio") continue;
+      if (!m.usedIn.some((u) => usageKeys.includes(u.noteId))) continue;
+      addEdge(`media:${m.fileId}`, currentNoteId, "media");
+    }
+  }
+
   // BFS で2ホップ以内のノードを取得
   const hopMap = new Map<string, number>();
   hopMap.set(currentNoteId, 0);
@@ -195,12 +215,13 @@ export function buildNoteGraph(
     fileNameMap.set(f.id, f.name.replace(/\.(graphium|provnote)\.json$/, ""));
   }
 
-  // 外部ソース解決用のメディアマップ（pdf は fileId キー、url ブックマークは url キー）
-  const mediaByFileId = new Map<string, { name: string; url: string }>();
+  // 外部ソース解決用のメディアマップ（pdf は fileId キー、url ブックマークは url キー）。
+  // 画像/動画/音声 のサムネイル表示用に type も保持する。
+  const mediaByFileId = new Map<string, { name: string; url: string; type: MediaType }>();
   const mediaByUrl = new Map<string, string>();
   if (mediaIndex) {
     for (const m of mediaIndex.media) {
-      mediaByFileId.set(m.fileId, { name: m.name, url: m.url });
+      mediaByFileId.set(m.fileId, { name: m.name, url: m.url, type: m.type });
       if (m.type === "url") mediaByUrl.set(m.url, m.name);
     }
   }
@@ -234,15 +255,32 @@ export function buildNoteGraph(
       });
       continue;
     }
+    if (id.startsWith("media:")) {
+      const fileId = id.slice(6);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({
+        id,
+        title: m?.name ?? `Media ${fileId.slice(0, 8)}`,
+        isCurrent: false,
+        hop,
+        external: "media",
+        externalUrl: m?.url,
+        mediaFileId: fileId,
+        mediaType: m?.type,
+      });
+      continue;
+    }
     const title =
       docs.get(id)?.title ?? fileNameMap.get(id) ?? "不明なノート";
     const doc = docs.get(id);
+    const isWiki = doc?.source === "ai";
     nodes.push({
       id,
       title,
       isCurrent: id === currentNoteId,
       hop,
-      isWiki: doc?.source === "ai",
+      isWiki,
+      wikiKind: isWiki ? doc?.wikiMeta?.kind : undefined,
     });
   }
 
