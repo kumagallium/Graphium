@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.6.10](https://github.com/kumagallium/Graphium/compare/v0.6.9...v0.6.10) - 2026-05-14
+- fix(skill): switch to note when clicking sidebar note from Skill list by @kumagallium in https://github.com/kumagallium/Graphium/pull/285
+- fix(wiki): safe bulk regenerate for Insight/Idea (kind guard + Atom path + shrink guard) by @kumagallium in https://github.com/kumagallium/Graphium/pull/284
+- feat(wiki): plain-language register for Atom/Synthesis prompts by @kumagallium in https://github.com/kumagallium/Graphium/pull/287
+- fix(desktop): enable HTML5 drag-and-drop in Tauri webview by @kumagallium in https://github.com/kumagallium/Graphium/pull/288
+- feat(asset): cited-notes graph + embedded image extraction for PDF assets by @kumagallium in https://github.com/kumagallium/Graphium/pull/289
+
 ## [v0.6.9](https://github.com/kumagallium/Graphium/compare/v0.6.8...v0.6.9) - 2026-05-13
 - fix(pdf-export): unblock export in Tauri + flatten oklch for html2canvas by @kumagallium in https://github.com/kumagallium/Graphium/pull/281
 - feat(wiki): cluster-aware sampling for Discovery and Cross-Update by @kumagallium in https://github.com/kumagallium/Graphium/pull/282
