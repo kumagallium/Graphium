@@ -52,7 +52,7 @@ Your job is to scan a set of Claim pages and **factor out** the abstract ideas t
 
 ## What an Atom is
 - **One idea per Atom.** A noun-phrase title for a single, transferable principle / pattern / heuristic.
-- **Context-stripped AND domain-lifted.** It is not enough to remove project names and exact numbers. **Domain-specific nouns must be lifted up at least one level of abstraction.** Atoms read at the level of a textbook chapter title, not a paper abstract.
+- **Context-stripped AND domain-lifted, but in everyday words.** It is not enough to remove project names and exact numbers. **Domain-specific nouns must be lifted up at least one level of abstraction** — but the resulting words must still read like everyday speech, not a textbook chapter title and not a paper abstract. If an English-Japanese reader who is *not* in the source domain cannot picture what is happening in one read, the wording is too heavy. (See "Plain-language register" below.)
 - **Cross-cutting.** Each Atom must \`sourceConceptIds\` >= 2. The whole point is to surface ideas that recur — not to re-describe a single Claim.
 - **Reusable.** A reader from another domain should still grasp the idea without knowing where it came from.
 - **Short.** Title (5-12 words) and 1-3 short paragraphs of body. No headings, no bullet lists. Prose only.
@@ -70,16 +70,39 @@ Why this matters: the Synthesizer used to carry an \`inductive\` mode, and it ov
 
 When you write the Atom title and body, replace specific domain entities with the more abstract category they belong to. Specific names may appear inside the body **only** as a brief illustrative aside ("e.g., …"), never as the load-bearing subject.
 
-Lifting examples (apply this *kind* of move to whatever domain the Claims are in):
+Lifting examples (apply this *kind* of move to whatever domain the Claims are in). Each example shows the lifted form in everyday words, not academic compound nouns:
 
-- "Ti" → "minor dopant element" / "trace addition"
-- "Al-V system alloy" → "multi-component alloy" / "ternary structural alloy"
-- "grain size and Debye temperature" → "bulk structural properties"
-- "React component re-render" → "fine-grained UI update"
-- "Postgres VACUUM" → "background storage maintenance"
-- "lysine residue" → "amino-acid side chain"
+- "Ti" → "わずかに加える元素" / "a small amount of an added element"
+- "Al-V system alloy" → "複数の元素でできた合金" / "an alloy made of several elements"
+- "grain size and Debye temperature" → "合金全体の構造的な性質" / "the overall structural character of the alloy"
+- "React component re-render" → "細かい単位での画面更新" / "screen updates done in small units"
+- "Postgres VACUUM" → "裏で動く保守処理" / "maintenance work that runs in the background"
+- "lysine residue" → "アミノ酸の側鎖" / "the side chain of an amino acid"
 
-If lifting two levels still leaves the claim narrow, lift one more. Stop when the claim would still be intelligible to a reader outside the source domain.
+If lifting two levels still leaves the claim narrow, lift one more. Stop when the claim would still be intelligible to a reader outside the source domain — *and* could be read out loud without sounding like a journal abstract.
+
+## Plain-language register (REQUIRED, complements domain-lifting)
+
+Domain-lifting gives portability; plain-language register gives readability. Both are required — neither replaces the other.
+
+After you have lifted the nouns, take a second pass over the wording itself:
+
+- Prefer everyday verbs over nominalized abstractions. "影響を与える" → "変える" / "効いてくる", "段階的に回復させる" → "少しずつ整える".
+- Prefer concrete nouns over hard compound nouns. "永続ストレージの背景メンテナンス" → "裏で動く保守処理", "支配的な影響" → "大きな効果".
+- Avoid stacking 4+ kanji compounds in a row. If three abstract nouns are colliding ("構造的なバルク特性"), unpack one of them ("合金全体の構造的な性質").
+- The title and the opening sentence should each pass this test: a reader can re-tell them out loud without rehearsing. If you would not say it aloud to a colleague over coffee, simplify the words (but **do not** re-add specific names — keep the abstraction level).
+
+This is not a license to drop precision. The Atom must still name *what* the principle is. Plain words, lifted concept.
+
+## Subject – relation – effect clarity (REQUIRED)
+
+Every Atom title and every body sentence must make three things obvious:
+
+1. **What** the subject is (the lifted entity / process / setting).
+2. **What it acts on or relates to** (the lifted object / counterpart).
+3. **What the effect / relation is** (a concrete verb or an explicit "X does not change Y" statement).
+
+If any of the three is missing or vague ("関連する", "影響する", "重要である" with no object), rewrite. Vague predicates are the most common reason an Atom feels "abstract but empty" — readers cannot picture what is acting on what.
 
 ## Self-check before emitting an Atom
 
@@ -88,24 +111,35 @@ Ask yourself: *"Would this Atom still make sense to a reader who has never heard
 - If **yes** → emit the Atom.
 - If **no** → either (a) lift the nouns one more level and rewrite, or (b) drop the candidate. Prefer dropping over emitting an under-abstracted Atom; the system has a Claim layer for domain-specific knowledge already.
 
-## Bad / Good (read this carefully)
+## Bad / Good (read this carefully — three levels, not two)
+
+Each example shows three rungs: too specific, too academic, and the target (lifted + plain). The middle rung is the trap — it looks like it is doing the work, but the words still keep readers out.
 
 ❌ **Bad — under-abstracted (looks like a Claim summary):**
 > "Ti 添加は Al‑V 系合金の粒径やデバイ温度に顕著な影響を与えない"
 >
 > Why bad: keeps the specific element (Ti), the specific alloy system (Al-V), and specific structural properties (grain size, Debye temp). A reader outside metallurgy gets nothing. This is the Claim layer's job, not the Atom layer's.
 
-✅ **Good — domain-lifted, transferable:**
+⚠️ **Still off — domain-lifted but academic-sounding:**
 > "三元系合金における少量の添加元素は、構造的なバルク特性に支配的な影響を与えないことがある"
-> (or equivalently: "Trace additions in multi-component alloys often leave bulk structural properties unaffected")
 >
-> Why good: "Ti" → "少量の添加元素", "Al-V" → "三元系合金", "粒径・デバイ温度" → "構造的なバルク特性". The claim now reads as a transferable heuristic that someone working on different alloy systems — or even adjacent fields like multi-component crystals — could anchor against.
+> Why off: the nouns are lifted, but the wording reads like a paper abstract. "三元系合金" / "構造的なバルク特性" / "支配的な影響" each stack two or more abstract kanji compounds. A reader who is *not* a metallurgist sees the shape of the claim but cannot picture what is acting on what.
+
+✅ **Good — domain-lifted *and* plain-language:**
+> "複数の元素でできた合金に少量の元素を足しても、合金全体の構造的な性質はあまり変わらないことがあります"
+>
+> Why good: same lifted concept ("Ti" → "少量の元素", "Al-V" → "複数の元素でできた合金", "粒径・デバイ温度" → "合金全体の構造的な性質"), but every chunk is something a non-metallurgist can imagine. Subject ("少量の元素を足すこと") / relation ("合金全体の構造的な性質に") / effect ("あまり変わらない") are all explicit.
 
 ❌ **Bad:**
 > "PostgreSQL の VACUUM はインデックス断片化を回復させる"
 
-✅ **Good:**
+⚠️ **Still off — too academic:**
 > "永続ストレージの背景メンテナンスは、参照構造のフラグメンテーションを段階的に回復させる"
+
+✅ **Good:**
+> "裏で動く保守処理は、参照構造の崩れを少しずつ整えていきます"
+>
+> Subject ("裏で動く保守処理") / object ("参照構造の崩れ") / effect ("少しずつ整える") are obvious; no compound-noun stacking; still domain-lifted (no "Postgres", no "VACUUM").
 
 ## What an Atom is NOT
 - A summary of a single Claim (Claim already is one)
@@ -119,8 +153,8 @@ Respond with valid JSON only:
 {
   "atoms": [
     {
-      "title": "Atom title (5-12 words, domain-lifted)",
-      "body": "1-3 short paragraphs of context-stripped, domain-lifted prose.",
+      "title": "Atom title (5-12 words, domain-lifted, plain everyday wording, subject-relation-effect explicit)",
+      "body": "1-3 short paragraphs of context-stripped, domain-lifted prose written in everyday register. Each sentence states what acts on what, with a concrete verb.",
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
       "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary"
@@ -160,10 +194,13 @@ Guidance:
 - Do not invent citations, URLs, or author names.
 
 ## Style
-${ja ? `- 日本語で書くときは敬体（ですます調）で統一する。常体は使わない。
-- 文末は「〜です」「〜ます」「〜と考えられます」「〜のではないでしょうか」など。
+${ja ? `- 日本語で書くときは **敬体（ですます調）で統一** する。常体（〜だ／〜である／〜した）は **タイトル・本文・例示・どの位置でも** 使わない。
+- 文末は「〜です」「〜ます」「〜と考えられます」「〜のではないでしょうか」「〜することがあります」など。タイトルも体言止めだけで切らず、語尾まで読める形にしてよい（例: 「〜は〜をあまり変えません」）。
+- 「重要である」「関連する」「影響を与える」のような **曖昧な述語は禁止**。何が何に対して何をどうするのかを、必ず具体的な動詞で書き切る。
+- 4 文字以上の漢字熟語が 3 つ以上連続したら、どれか一つを和語・かな書きにほどく。
 - ソース Claim が常体でも、Atom は敬体に統一する。` : `- Plain, calm prose. No hype.
-- One claim per sentence.`}
+- One claim per sentence with an explicit subject, an explicit object, and a concrete verb. Avoid empty predicates like "is important", "is related to", "has an effect on".
+- Prefer plain everyday words to academic compounds, even after domain-lifting.`}
 
 ## Language
 Output in: ${ja ? "Japanese" : "English"}`;
