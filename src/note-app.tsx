@@ -3594,7 +3594,9 @@ export function NoteApp() {
     const selectedModel = options?.model || undefined;
     const openAfter = options?.openAfter ?? false;
     const toastId = `regen:${wikiId}`;
-    const isSynthesis = doc.wikiMeta.kind === "synthesis";
+    const wikiKind = doc.wikiMeta.kind;
+    const isSynthesis = wikiKind === "synthesis";
+    const isAtom = wikiKind === "atom";
 
     setIngestToast((prev) => ({
       items: [
@@ -3604,7 +3606,93 @@ export function NoteApp() {
     }));
 
     try {
-      if (isSynthesis) {
+      if (isAtom) {
+        // Atom (Insight) は ingest パイプラインの出力に含まれないため、専用の
+        // atomize 経由で再生成する。derivedFromClaims に記録された上流 Concept を
+        // ClaimSnapshot に詰めて atomizer に投げ、同タイトルの候補を採用する。
+        const claimIds = doc.wikiMeta.derivedFromClaims ?? [];
+        const snapshots: ClaimSnapshot[] = [];
+        for (const cId of claimIds) {
+          const cDoc = await fm.loadDoc(`wiki:${cId}`);
+          if (!cDoc) continue;
+          const cMeta = fm.wikiMetas.get(cId);
+          // Atom の上流は Claim 前提（atomizer は Concept[] を期待）。
+          // kind が消失していたり別 kind に変身している場合はスキップ。
+          if (!cMeta || cMeta.kind !== "claim") continue;
+          snapshots.push({
+            id: cId,
+            title: cDoc.title,
+            bodyPreview: extractBodyPreview(cDoc, 240),
+            level: cMeta.level,
+            relatedClaims: [],
+            sourceSummaryPreviews: [],
+            atomType: undefined,
+          });
+        }
+
+        if (snapshots.length < 2) {
+          const totalSources = claimIds.length;
+          const errMsg =
+            totalSources === 0
+              ? "Atom has no source Concepts recorded"
+              : `Atom needs ≥2 source Concepts; only ${snapshots.length} of ${totalSources} remain as Claim`;
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+            ),
+          }));
+          return { ok: false, error: errMsg };
+        }
+
+        const atomResult = await atomizeConcepts(snapshots, "ja", {
+          // 同タイトルの再提案を阻害しないため existingAtomTitles は空で渡す
+          model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
+        });
+        const matchedAtom =
+          atomResult.atoms.find((a) => a.title === wikiTitle) ?? atomResult.atoms[0] ?? null;
+        if (!matchedAtom) {
+          const errMsg = "No atom candidate generated";
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+            ),
+          }));
+          return { ok: false, error: errMsg };
+        }
+
+        const newDoc = buildAtomDocument(matchedAtom, atomResult.model ?? null, "ja");
+        // 既存 Atom が持っていた derivedFromClaims を温存する
+        // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
+        //  ユーザーが手動で集めたソース集合とは限らない）
+        const rewritten: GraphiumDocument = {
+          ...newDoc,
+          createdAt: doc.createdAt ?? newDoc.createdAt,
+          modifiedAt: new Date().toISOString(),
+          wikiMeta: {
+            ...newDoc.wikiMeta!,
+            derivedFromClaims: doc.wikiMeta?.derivedFromClaims ?? newDoc.wikiMeta!.derivedFromClaims,
+            generatedBy: {
+              model: atomResult.model ?? selectedModel ?? "unknown",
+              version: "1.0.0",
+            },
+          },
+        };
+        await fm.handleSaveWikiFile(wikiId, rewritten, {
+          activityType: "ai_generation",
+          agentLabel: atomResult.model ?? selectedModel ?? undefined,
+        });
+        embedWikiSections(wikiId, rewritten).catch(() => {});
+        if (openAfter) fm.handleOpenWikiFile(wikiId);
+        const modelLabel = atomResult.model ?? selectedModel ?? "default";
+        wikiLog.append("regenerate", [wikiId], `Regenerated atom "${wikiTitle}" with ${modelLabel} from ${snapshots.length} source(s)`).catch(() => {});
+
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: modelLabel } : i
+          ),
+        }));
+        return { ok: true };
+      } else if (isSynthesis) {
         const sourceConceptIds = doc.wikiMeta.derivedFromNotes;
         const concepts: { id: string; title: string; bodyPreview: string; level?: "principle" | "finding" | "bridge"; relatedClaims: string[] }[] = [];
         for (const cId of sourceConceptIds) {
@@ -3687,6 +3775,23 @@ export function NoteApp() {
               version: "1.0.0",
             };
           }
+
+          // 縮小ガード: 既存 Synthesis (Idea) が育っていた場合、新しい候補が
+          // 極端に短ければ採用しない。merge ingest や手動編集で蓄積された本文を
+          // 一発の synthesize 出力で痩せさせる事故を防ぐ。
+          // 閾値: 既存が 200 文字超 かつ 新出力が既存の 50% 未満。
+          const existingTextLength = extractPlainTextFromDoc(doc).length;
+          const newTextLength = extractPlainTextFromDoc(newDoc).length;
+          if (existingTextLength > 200 && newTextLength < existingTextLength * 0.5) {
+            const errMsg = `New synthesis is shorter than half of the existing body (${newTextLength} < ${existingTextLength}/2). Kept existing.`;
+            setIngestToast((prev) => ({
+              items: (prev?.items ?? []).map((i) =>
+                i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+              ),
+            }));
+            return { ok: false, error: errMsg };
+          }
+
           await fm.handleSaveWikiFile(wikiId, newDoc, {
             activityType: "ai_generation",
             agentLabel: synthResult.model ?? selectedModel ?? undefined,
