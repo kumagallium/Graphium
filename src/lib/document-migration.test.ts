@@ -173,4 +173,181 @@ describe("migrateToLatest", () => {
     expect(doc.pages[0].blocks[0].content[0].styles.inlineMaterial).toBe("ent_b_link");
     expect(doc.pages[0].blocks[0].content[1].content[0].styles.inlineMaterial).toBe("ent_b_link");
   });
+
+  // ──────────────────────────────────────────────
+  // wikiMeta.kind: "concept" → "claim" リネームのマイグレーション
+  //   - 旧 kind / 旧フィールド名 (derivedFromConcepts / conceptRole) を移行
+  //   - 既に "claim" のものは触らない（idempotent）
+  // ──────────────────────────────────────────────
+
+  it('wikiMeta.kind: "concept" を "claim" にリネームする', () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "concept",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.kind).toBe("claim");
+  });
+
+  it("既に kind: 'claim' のものは変更しない（idempotent）", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "claim",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.kind).toBe("claim");
+  });
+
+  it("derivedFromConcepts → derivedFromClaims にリネームする", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "atom",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromConcepts: ["c1", "c2"],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.derivedFromClaims).toEqual(["c1", "c2"]);
+    expect((doc as any).wikiMeta.derivedFromConcepts).toBeUndefined();
+  });
+
+  it("conceptRole → claimRole にリネームする（PR-B1 過渡期データの保険）", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "concept",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      conceptRole: ["finding", "anomaly"],
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.kind).toBe("claim");
+    expect((doc as any).wikiMeta.claimRole).toEqual(["finding", "anomaly"]);
+    expect((doc as any).wikiMeta.conceptRole).toBeUndefined();
+  });
+
+  it("wikiMeta が無い人ノートでは何もしない", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    migrateToLatest(doc);
+    expect(doc.wikiMeta).toBeUndefined();
+  });
+});
+
+describe("migrateToLatest: synthesisMode \"inductive\" 廃止 (PR-B4)", () => {
+  // induction を Synthesis モードから外し、Atomizer 層に移動した。
+  // 過去 inductive で保存されていた Synthesis は読み込み時に undefined にする。
+
+  it("synthesisMode: \"inductive\" は undefined に格下げ", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "synthesis",
+      derivedFromNotes: ["n1", "n2"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      synthesisMode: "inductive",
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.synthesisMode).toBeUndefined();
+  });
+
+  it("他の synthesisMode 値（abductive 等）は触らない", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "synthesis",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      synthesisMode: "abductive",
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.synthesisMode).toBe("abductive");
+  });
+});
+
+describe("migrateToLatest: procedureContext は Claim 専用 (PR-B4.5)", () => {
+  // 砂時計のくびれを通った Atom / Synthesis は context-stripped を contract と
+  // するため、PR-B3 で書き込まれた procedureContext は strip する。
+  // Claim には触らない。
+
+  it("Atom の procedureContext は読み込み時に削除", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "atom",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      procedureContext: {
+        derivedFromNotes: ["n1"],
+        keyTools: ["BallMill"],
+      },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.procedureContext).toBeUndefined();
+  });
+
+  it("Synthesis の procedureContext も読み込み時に削除", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "synthesis",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      procedureContext: { keyTools: ["X"] },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.procedureContext).toBeUndefined();
+  });
+
+  it("Claim の procedureContext は保持される（context あり層）", () => {
+    const doc = baseDoc(5, {
+      id: "p1", title: "p1", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [],
+    });
+    (doc as any).wikiMeta = {
+      kind: "claim",
+      derivedFromNotes: ["n1"],
+      derivedFromChats: [],
+      generatedAt: "2026-04-01T00:00:00Z",
+      generatedBy: { model: "claude-opus-4-7", version: "1.0.0" },
+      procedureContext: {
+        derivedFromNotes: ["n1"],
+        keyTools: ["X"],
+      },
+    };
+    migrateToLatest(doc);
+    expect((doc as any).wikiMeta.procedureContext).toBeDefined();
+    expect((doc as any).wikiMeta.procedureContext.keyTools).toEqual(["X"]);
+  });
 });

@@ -17,7 +17,7 @@ const ALL_TYPES: SharedEntryType[] = [
   "reference",
   "data-manifest",
   "template",
-  "concept",
+  "claim",
   "atom",
   "report",
 ];
@@ -38,7 +38,7 @@ export async function loadAllSharedEntries(
     reference: [],
     "data-manifest": [],
     template: [],
-    concept: [],
+    claim: [],
     atom: [],
     report: [],
   };

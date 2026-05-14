@@ -1,9 +1,26 @@
 # Graphium — Data Model
 
-This document describes the on-disk shapes Graphium uses: notes, AI Wiki
-documents, the navigation index, shared storage entries, and the
-IndexedDB layout of the browser provider. It is the reference for anyone
-who wants to read, write, migrate, or interoperate with Graphium files.
+This document describes the on-disk shapes Graphium uses: notes,
+Knowledge layer documents (Summaries / Claims / Insights / Ideas), the
+navigation index, shared storage entries, and the IndexedDB layout of
+the browser provider. It is the reference for anyone who wants to read,
+write, migrate, or interoperate with Graphium files.
+
+> **Label vs. identifier.** UI labels (English / Japanese) and on-disk
+> identifiers differ on purpose — identifiers are part of the file
+> format and must not break existing data.
+>
+> | UI label (EN / JA) | On-disk `WikiKind` |
+> |---|---|
+> | Summaries / 要約 | `summary` |
+> | Claims / 知見 | `claim` |
+> | Insights / 洞察 | `atom` |
+> | Ideas / 発想 | `synthesis` |
+>
+> Type names (`AtomType`, `SynthesisMode`) and field names
+> (`atomType`, `synthesisMode`) also keep the historical identifiers
+> for the same reason. The rest of this document uses the on-disk
+> identifiers for technical accuracy.
 
 The corresponding source of truth in code:
 
@@ -67,7 +84,7 @@ type GraphiumDocument = {
   // ── document provenance (edit log) ──────────────────
   documentProvenance?: DocumentProvenance;
 
-  // ── AI Wiki metadata (only when source === "ai") ────
+  // ── Knowledge layer metadata (only when source === "ai") ────
   wikiMeta?: WikiMeta;
 
   // ── shared storage refs (Phase 2) ───────────────────
@@ -78,9 +95,13 @@ type GraphiumDocument = {
   skillMeta?: SkillMeta;
 
   // ── external source ─────────────────────────────────
+  // Set when the note was generated from an external URL (URL-to-PROV)
   sourceUrl?: string;
   sourceFetchedAt?: string;
   sourceTitle?: string;
+  // Set when the note was generated from a PDF (PDF-to-PROV)
+  sourcePdfFileId?: string;  // media-index fileId of the source PDF
+  sourcePdfName?: string;    // display filename
 
   createdAt: string;   // ISO 8601
   modifiedAt: string;  // ISO 8601
@@ -175,6 +196,33 @@ sources and the heading structure to produce the PROV-DM graph. Heading
 levels feed a `scopeStack` that infers Activity containment without
 requiring the user to nest blocks.
 
+#### Plan / Execution phase
+
+`[Plan]` and `[Result]` headings live *inside* a Step. They do not
+create new Activities — the surrounding `[Step]` Activity remains the
+sole Activity for both phases. Instead, they switch a *phase context*
+over the inline Entities under them:
+
+- Each Entity node carries a `graphium:phase` property — `"plan"` for
+  Entities under a `[Plan]` heading, `"execution"` otherwise.
+- Plan-phase Entities are emitted with an `_plan` suffix in their
+  `@id` so they coexist as distinct nodes alongside their execution
+  counterparts (e.g. `inline_material_ent_nacl_plan` vs
+  `inline_material_ent_nacl`).
+- When the same `(label, entityId)` pair appears in both phases, the
+  generator emits a `prov:wasDerivedFrom` edge from the execution
+  Entity to the plan Entity, expressing that the actual outcome was
+  derived from the planned intent. The Step Activity that both
+  Entities are `prov:used` by serves as the implicit activity of the
+  PROV-DM derivation's full form.
+
+The `prov:Plan` class itself is intentionally *not* applied to
+individual plan-phase Entities; in PROV-DM `prov:Plan` denotes the
+plan document an agent follows as a whole, not the individual
+materials/tools/parameters within it. The `graphium:phase` attribute
+preserves the planned-vs-executed distinction without misusing that
+class.
+
 ### 2.4 Document provenance (edit log)
 
 `documentProvenance` is a separate concern from the PROV-DM graph above.
@@ -212,13 +260,13 @@ type ScopeChat = {
 Chats are anchored to a scope (a heading, block, or page) so they can be
 re-attached to the same context after edits.
 
-## 3. AI Wiki documents
+## 3. Knowledge layer documents
 
 A Wiki document is a regular `GraphiumDocument` with `source: "ai"` and
 a populated `wikiMeta`. It opens in the same editor as a human note.
 
 ```ts
-type WikiKind = "summary" | "concept" | "atom" | "synthesis";
+type WikiKind = "summary" | "claim" | "atom" | "synthesis";
 
 type WikiMeta = {
   kind: WikiKind;
@@ -233,16 +281,46 @@ type WikiMeta = {
   sectionEmbeddings?: { sectionId: string; modelVersion: string }[];
   language?: string;
 
-  // Concept-only
+  // Claim-only
   level?: "principle" | "finding" | "bridge";
   status?: "candidate" | "verified";
   evidenceSpan?: string;
 
   // Atom-only
-  derivedFromConcepts?: string[];
+  derivedFromClaims?: string[];
 
   // Self-evaluated confidence (Synthesis especially)
   confidence?: number;            // 0.0 – 1.0
+
+  // Semantic types (Phase 1, all optional — additive, back-compatible)
+  claimRole?: ClaimRole[];    // Claim only. Multi-valued.
+  atomType?: AtomType;            // Atom only.
+  synthesisMode?: SynthesisMode;  // Synthesis only.
+  hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
+  procedureContext?: ProcedureContext; // Claim only. Atom/Synthesis are context-stripped by contract.
+};
+
+type ClaimRole =
+  | "finding" | "decision" | "anomaly" | "question"
+  | "setup"   | "interpretation" | "issue";
+
+type AtomType =
+  | "causal" | "correlational" | "mechanistic" | "conditional"
+  | "definitional" | "methodological" | "observational" | "boundary";
+
+type SynthesisMode =
+  | "deductive" | "abductive" | "analogical" | "dialectic";
+  // "inductive" was retired in PR-B4 — induction is the Claim → Atom operation,
+  // not a Synthesis mode. See docs/inference-types.md for the rationale.
+
+type HypothesisStatus = "speculative" | "tested" | "confirmed" | "refuted";
+
+type ProcedureContext = {
+  derivedFromNotes: string[];
+  protocolFingerprint?: string;
+  keyParameters?: { name: string; value: string; necessity: "critical" | "important" | "incidental" }[];
+  keyTools?: string[];
+  validityRange?: string;
 };
 ```
 
@@ -251,7 +329,7 @@ type WikiMeta = {
 | Kind | Role | Carries context? |
 |---|---|---|
 | `summary` | Internal-facing summary of one note. | yes |
-| `concept` | Cross-note synthesis with key elements extracted. | yes |
+| `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
 
@@ -259,9 +337,9 @@ type WikiMeta = {
 `experimental.synthesis` settings. Existing files of these kinds are
 preserved even when generation is disabled.
 
-### 3.2 `level` and `status` for Concepts
+### 3.2 `level` and `status` for Claims
 
-Concepts can be qualified along two axes:
+Claims can be qualified along two axes:
 
 - **`level`** (abstraction):
   - `principle` — a general principle the note actually relied on in its
@@ -286,8 +364,83 @@ which model version. The actual vectors live in
 
 Any block whose ID appears in `wikiMeta.editedSections` is treated as
 human-edited and skipped during re-ingest. This is how a user can
-correct an AI Wiki entry without losing the correction the next time
+correct a Knowledge entry without losing the correction the next time
 ingest runs.
+
+### 3.5 Semantic types (Phase 1)
+
+Three orthogonal type dimensions are attached as metadata on Knowledge
+notes. The user never picks them — the generating LLM auto-infers them.
+All fields are optional and additive: existing Wiki notes from prior
+versions stay valid with these fields absent.
+
+| Field | Where it lives | Vocabulary |
+|---|---|---|
+| `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
+| `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
+| `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
+| `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
+
+These dimensions are **orthogonal to the existing context labels**
+(`procedure / plan / result / material / tool / attribute / output`),
+which carry PROV-DM ontological roles inside a note. The semantic types
+describe **what kind of reasoning move the Wiki note makes** —
+information that the context-label layer cannot express.
+
+`procedureContext` carries the **procedural skeleton** the claim
+depends on: key parameters, key tools, validity range. It lives at the
+Claim layer only — Atom and Synthesis are context-stripped by contract
+(the hourglass waist). When a reader of an Atom or Synthesis needs the
+reproducibility scaffold of an upstream Claim, they walk back via
+`derivedFromNotes` / `derivedFromClaims` and read the source Claim's
+`procedureContext`.
+
+Populated at **Ingest time** (Phase 2.2/2.3): the client computes a
+PROV summary of the source note with `summarizeNoteProv()` and sends it
+to `/api/wiki/ingest` as `provSummary`. The server formats it into a
+markdown block (`formatProvSummaryForPrompt`) that prepends the user
+message, and the system prompt instructs the LLM to fill
+`procedureContext` only on Claims whose validity actually depends on
+the procedure. `parseProcedureContext` then sanitizes the LLM output:
+invalid `necessity` values fall back to `"important"`, name-or-value-
+empty parameters are dropped, and an all-empty `procedureContext` is
+collapsed to `undefined` so the field never appears as a meaningless
+husk in `wikiMeta`.
+
+> History: PR-B3 briefly propagated `procedureContext` into Atom and
+> Synthesis via an intersection-of-source-Claims fallback. PR-B4.5
+> reverted that — having context on Atom contradicted "context-
+> stripped" and made the hourglass model internally inconsistent. The
+> `document-migration` step on load strips `procedureContext` from any
+> Atom / Synthesis docs that still carry it.
+
+#### Semantic types in the PROV-JSON-LD export (Phase 4)
+
+When a note is exported as PROV-JSON-LD (`src/features/prov-export/`),
+the Wiki Knowledge Layer entities carry the semantic types under
+`graphium:*` attributes:
+
+```jsonc
+{
+  "@type": "Entity",
+  "@id": "graphium:wiki/Annealed%20thin%20film%20resists%20oxidation",
+  "graphium:wikiKind": "claim",
+  "graphium:claimRole": ["finding"],
+  "graphium:claimLevel": "finding",
+  "graphium:procedureContext": {
+    "protocolFingerprint": "spin-coat → anneal",
+    "keyParameters": [{ "name": "T_anneal", "value": "650°C", "necessity": "critical" }],
+    "validityRange": "T_anneal ∈ [600, 700]°C"
+  }
+}
+```
+
+`atomType` is emitted for `wikiKind = atom`, `synthesisMode` and
+`hypothesisStatus` for `wikiKind = synthesis`. The export contract is
+the only place where these semantic types cross Graphium's boundary, so
+the field names here are stable even as UI labels shift (Atom →
+Insights, Synthesis → Ideas in PR-271 — internal identifiers are
+unchanged). See ARCHITECTURE.md §3.2 for the full export table.
 
 ## 4. Skill documents
 
@@ -349,12 +502,18 @@ type NoteIndexEntry = {
 
   deletedAt?: string;               // trashed timestamp (user intent)
   archivedAt?: string;              // archived timestamp (system retention)
+
+  // Phase 1 semantic types — mirrored from wikiMeta for fast list-view filtering
+  claimRole?: ClaimRole[];
+  atomType?: AtomType;
+  synthesisMode?: SynthesisMode;
+  hypothesisStatus?: HypothesisStatus;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **12**.
+Defined in `src/features/navigation/index-file.ts`. Currently **14**.
 Bumping rules:
 
 | Version | Change |
@@ -367,6 +526,8 @@ Bumping rules:
 | **10** | Added `deletedAt` for trash. |
 | **11** | Added `atom` to `WikiKind`. |
 | **12** | Added `archivedAt` for soft-archive on auto-merge (preserves references that would otherwise dangle). |
+| **13** | Added `claimRole` / `atomType` / `synthesisMode` / `hypothesisStatus` mirrors from `wikiMeta` (Phase 1 semantic types). |
+| **14** | Renamed `WikiKind` value `"concept"` to `"claim"`. The on-disk migration (`migrateConceptKindToClaim` in `document-migration.ts`) also moves `derivedFromConcepts` → `derivedFromClaims` and `conceptRole` → `claimRole` in `wikiMeta`. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
@@ -383,15 +544,15 @@ either flag — the file path stays the same so any link or
 | State | Flag | Meaning | List/search/graph | Citation/regenerate |
 |---|---|---|---|---|
 | active | (neither) | normal | shown | resolve |
-| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Concept into another) | hidden | resolve |
+| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Claim into another) | hidden | resolve |
 | trashed | `deletedAt` | user delete intent | hidden | not resolved |
 
 Transitions:
 
 - **active → trashed** via the trash action (manual).
-- **active → archived** via auto-merge (the absorbed Concept is archived,
+- **active → archived** via auto-merge (the absorbed Claim is archived,
   not deleted, so notes that cited it keep working).
-- **archived → active** via the restore action. Note that a Concept
+- **archived → active** via the restore action. Note that a Claim
   archived by auto-merge will likely be re-archived on the next merge
   cycle unless the user edits its content to differentiate it.
 - **archived → trashed** via the "Send to trash" action.
@@ -419,7 +580,7 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file and other internal metadata.
-- **Wiki / Skill CRUD** (optional) — separate listings for AI Wiki and
+- **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
 Three backends ship today:
@@ -478,7 +639,7 @@ in `src/lib/storage/shared/types.ts`.
 ```ts
 type SharedEntryType =
   | "note" | "reference" | "data-manifest"
-  | "template" | "concept" | "atom" | "report";
+  | "template" | "claim" | "atom" | "report";
 
 type SharedEntry = {
   id: string;                  // uuidv7

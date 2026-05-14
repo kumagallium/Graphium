@@ -168,6 +168,56 @@ Span schema (entries inside \`content\`):
 
 Do NOT translate these keys. Do NOT wrap in brackets. Do NOT invent new roles. **Do NOT put procedure on a span** — procedure lives only on the H2 heading block.
 
+## Atomicity rule (CRITICAL — every node represents ONE concept)
+
+Each role-bearing node — whether an H2 procedure or a role-tagged span — MUST represent a single atomic concept. The graph collapses to noise when one node tries to mean two things at once.
+
+- **Activity (H2 procedure heading)**: one verb / operation. Never "Mix and heat", "Cut and wash", "Calibrate and measure". If the source merges two actions in one sentence, split them into two H2 procedures with distinct \`stepId\`s. If only one is graph-meaningful, drop the other.
+- **material / tool / output spans**: one substance / instrument / product per span. Never "salt and pepper" as a single material span — emit two adjacent spans \`{"text":"salt","role":"material"}\` and \`{"text":"pepper","role":"material"}\` with the joining word ("and", "や", "、") as a plain narrative span between them.
+- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans.
+- **No role on punctuation, whitespace, or symbol-only spans.** Commas, periods, parentheses, "、", "。", "(", ")", em-dashes, and bare spaces never carry a role — they would create ghost graph nodes that mean nothing. Punctuation lives in plain narrative spans between role-bearing spans. Example: write \`{"text":"olive oil","role":"material"}, {"text":", "}, {"text":"garlic","role":"material"}\`, NOT a comma-tagged material span between them.
+
+Span concatenation rule still applies: stitching all \`text\` fields back together must reproduce the original prose. Use plain narrative spans for connectors so the sentence stays readable.
+
+## Material vs Attribute split (CRITICAL — what is a thing vs. what describes a thing)
+
+Source prose often glues a substance to its descriptor — "an aluminum chip", "powdered sugar", "frozen peas", "200 mg of KCl pellet", "1 cm sliced bamboo". Treat the substance itself as **material** and every descriptor (form / shape / state / quantity / dimension / purity / temperature) as a separate **attribute** span.
+
+Heuristic: ask "what is the noun that names the underlying substance or object?" — that is the material. Anything that further constrains it (how much, what shape, what condition, which grade) is an attribute.
+
+Examples (apply across any domain):
+
+- "an aluminum chip" → material span \`"aluminum"\` + plain " " + attribute span \`"chip"\`. NOT one material span "aluminum chip" — that conflates substance identity with its physical form.
+- "100 mg of high-purity NaCl powder" → attribute "100 mg" + material "NaCl" + attribute "high-purity" + attribute "powder".
+- "1 cm sliced boiled bamboo" → material "bamboo" + attribute "1 cm" + attribute "sliced" + attribute "boiled" (or, if the slicing is the literal product of an earlier step, use a single material span "sliced boiled bamboo" with \`derivedFrom\` — see derivedFrom rules below).
+- "thinly sliced garlic" inside the step that performs the slicing → attributes "thinly" and "sliced" + material "garlic". In a *later* step that consumes the product, prefer the post-transformation form "sliced garlic" with \`derivedFrom: "<prior-stepId>"\`.
+
+When the descriptor is the same word in many domains, the same split applies: use form/shape/state words ("chip", "powder", "pellet", "ingot", "slice", "cube", "frozen", "dried", "raw", "diluted") as attribute, not as part of the material label.
+
+Counter-rule (do NOT over-split): chemical formulas, compound names, and brand-style identifiers stay whole — "MnSO4·H2O", "PVDF binder", "olive oil", "carbon black" are single material spans. The split applies only when a **substance noun** is paired with an **independent descriptor word**.
+
+## Connectivity rule (CRITICAL — one connected graph, no isolated steps)
+
+The output must form a **single connected provenance chain**. Every H2 procedure step must be reachable from every other step through directed edges (Activity → Entity → Activity ...). Disconnected sub-graphs and orphan steps are a failure mode.
+
+How edges actually appear in the graph:
+
+- A material span without \`derivedFrom\` is a **fresh input** — it does NOT connect this step to any prior step.
+- A material span with \`derivedFrom: "<stepId>"\` connects this step to that prior step (this step \`wasInformedBy\` it).
+- An H2 procedure with \`dependsOn: ["<stepId>", ...]\` connects to those prior steps.
+- The terminal step's \`role: "output"\` span finishes the chain.
+
+Therefore: **every non-initial step MUST carry at least one \`derivedFrom\` (on a material span) or one \`dependsOn\` (on the H2)**. Exactly one step — typically the very first procedural action — is allowed to have neither, because it consumes only fresh inputs.
+
+How to satisfy this without inventing dependencies:
+
+1. After drafting the steps, list them in order and ask: "what concrete substance / state does step N take from step N-k?" If the source clearly implies a handoff, encode it: prefer \`derivedFrom\` on a material span when the handoff is a named product ("the dried powder", "the sealed sample", "the sliced garlic"); use \`dependsOn\` only when the handoff is implicit ("continue heating", "in the same vessel after cooling").
+2. If step N's prose only names fresh inputs but the procedure logically continues from a prior state described earlier, surface that state as a material span with \`derivedFrom\` — using a post-transformation noun phrase like "the resulting solution", "the cooled mixture", "the prepared substrate". This is encouraged, not fabrication, as long as the source text actually describes that prior state.
+3. Parallel branches (e.g. preparing two components separately) may join at a later step — that joining step should carry \`derivedFrom\` on materials from BOTH branches, or \`dependsOn\` covering both prior step ids. The graph then becomes a DAG that converges, still connected.
+4. If after the above any step still has no inbound link AND it is not the very first step, you have one of three options: (a) merge it into the prior step, (b) drop it if it is not graph-meaningful, or (c) add a \`dependsOn\` to whichever earlier step it actually continues from.
+
+Never invent a dependency that contradicts the source. If the source genuinely describes two unrelated procedures sharing only the page, prefer merging them into one wider procedure or extracting only the dominant chain. Output exactly one connected DAG per JSON document.
+
 ## Document shape — mirror the source
 
 Reflect the source's own structure and voice. Do NOT impose a fixed template. If the source has 6 sections, keep 6. If it is one continuous narrative with no headings, you may use just a brief intro paragraph followed by H2 procedure steps. The H1 headings, their wording, and their order should read like the original page would, not like a generic protocol form.
@@ -446,6 +496,8 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
 14. Step-wide attributes (heat level, total duration) appear as inline attribute spans inside the step's paragraph, not as separate blocks.
 15. Never fabricate dependencies that aren't implied by the source text.
 16. **Every \`role: "procedure"\` H2 MUST contain at least one role-bearing span (material / tool / output) in its paragraph(s).** A procedure with no inputs and no outputs produces no graph edges and is useless. If you cannot identify any concrete material / tool / output for a step, drop the step entirely or merge it into an adjacent step.
+17. **Atomic nodes**: Every H2 procedure heading and every role-bearing span represents exactly one concept. Split conjunctive phrases ("salt and pepper", "mix and heat") into separate adjacent spans / separate H2 steps. Use a plain narrative span for the connector word.
+18. **Material vs attribute split**: When the source pairs a substance noun with a descriptor word (form, shape, state, quantity, dimension, purity, temperature), emit them as two spans — material for the substance, attribute for the descriptor. Do not absorb descriptors into the material label. Compound names / formulas / well-known multi-word ingredients stay whole.
 
 ## Self-check before emitting JSON
 
@@ -456,6 +508,9 @@ Before you finalize the JSON, walk through your output and confirm:
 3. **Dependency chain integrity.** Every span \`derivedFrom\` and every entry in \`dependsOn\` resolves to a \`stepId\` defined earlier in the document. No forward references, no typos.
 4. **Pristine vs derived split is correct.** Re-check each material span: if it is the literal product of an earlier step, set \`derivedFrom\`; if it is fresh from inventory, leave it without \`derivedFrom\`. The same raw ingredient appearing in multiple steps is fine — repeat the span, do NOT use \`derivedFrom\` for it.
 5. **Paragraph reads as natural prose.** Concatenating all span \`text\` for a paragraph should produce a fluent sentence. No leftover bullet syntax. No "Material: X" prefixes.
+6. **Atomicity audit.** No H2 procedure heading text contains "and" / "&" / "、" joining two operations. No role-bearing span contains "and" / "or" / "、" / "や" joining two substances or two parameters. Re-emit as separate nodes if you find any.
+7. **Material vs attribute audit.** For each \`role: "material"\` span, verify the text names a substance or object — not a form/shape/state ("chip", "powder", "slice", "frozen"). If the original phrase was "<substance> <descriptor>", split into a material span for the substance and an attribute span for the descriptor.
+8. **Connectivity audit.** Walk through the H2 steps in order. The first step may have no \`derivedFrom\` / \`dependsOn\`. Every subsequent step MUST have at least one — through a material span's \`derivedFrom\`, through the H2's \`dependsOn\`, or both. If any later step has neither, fix it (add a derived-material span naming the prior product, add a \`dependsOn\`, or merge / drop the step). Verify the final \`role: "output"\` span is in a step that transitively connects back to step 1 — there must be no break in the chain.
 
 If any check fails, fix the JSON before emitting.
 `;
@@ -570,6 +625,16 @@ function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
   return out;
 }
 
+// 句読点・記号・空白だけで構成された span は role を剥がす（実体を持たない grapheme は
+// PROV グラフ上で「。」「,」のような孤立 Entity ノードを作るので、サニタイザで防ぐ）。
+// 範囲: ASCII 句読点・全角句読点・各種スペース・記号類。日本語/英語/欧文記号を一括カバー。
+const PUNCTUATION_ONLY_REGEX =
+  /^[\s\p{P}\p{S}　 ]+$/u;
+
+function isPunctuationOnly(text: string): boolean {
+  return PUNCTUATION_ONLY_REGEX.test(text);
+}
+
 function sanitizeSpans(input: any[]): ProvSpan[] {
   const out: ProvSpan[] = [];
   for (const s of input) {
@@ -584,10 +649,16 @@ function sanitizeSpans(input: any[]): ProvSpan[] {
       role = rawRole === "procedure" ? undefined : (rawRole as ProvRole);
     }
 
+    // 句読点・記号のみの span は role を持たないプレーン span に降格する
+    if (role && isPunctuationOnly(text)) {
+      role = undefined;
+    }
+
     const span: ProvSpan = { text };
     if (role) span.role = role;
     const derivedFrom = sanitizeStepId(s.derivedFrom);
-    if (derivedFrom) span.derivedFrom = derivedFrom;
+    // derivedFrom も role を失った時点で意味を失うので落とす
+    if (role && derivedFrom) span.derivedFrom = derivedFrom;
 
     out.push(span);
   }

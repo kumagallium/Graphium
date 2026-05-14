@@ -11,6 +11,7 @@ import {
   parseIngesterOutput,
   type ExistingWikiInfo,
 } from "../services/wiki-ingester.js";
+import { formatProvSummaryForPrompt } from "../services/prov-prompt-injection.js";
 import {
   buildLinterSystemPrompt,
   buildLinterUserMessage,
@@ -29,9 +30,11 @@ import {
 import {
   buildSynthesizerSystemPrompt,
   buildSynthesizerUserMessage,
-  parseSynthesizerOutput,
-  type ConceptSnapshot,
+  parseSynthesizerOutputWithStats,
+  SYNTHESIS_CONFIDENCE_THRESHOLD,
+  type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
+import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
 import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
@@ -56,6 +59,12 @@ app.post("/ingest", async (c) => {
     noteTitle: string;
     existingWikiTitles: ExistingWikiInfo[];
     language: string;
+    /**
+     * 提案 v4 Phase 2.2: ノートから抽出した PROV 構造サマリ（任意）。
+     * クライアントが summarizeNoteProv() で生成して送る。手順条件付きの
+     * 知識抽出（procedureContext）を促すためにプロンプトへ注入する。
+     */
+    provSummary?: unknown;
     model?: string;
     skills?: { title: string; prompt: string }[];
   }>();
@@ -80,7 +89,12 @@ app.post("/ingest", async (c) => {
     body.skills,
   );
 
-  const userMessage = `Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
+  // PROV 構造があれば user message の先頭にコンパクトに添える。
+  // 中身が空（activities も results も plan も無い）なら添えても情報がないので省略。
+  const provBlock = formatProvSummaryForPrompt(body.provSummary);
+  const provPrefix = provBlock ? `${provBlock}\n\n` : "";
+
+  const userMessage = `${provPrefix}Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
 
   try {
     const model = createModel(modelConfig);
@@ -370,7 +384,7 @@ app.post("/cross-update", async (c) => {
 // Synthesis（複数 Concept の統合ページ生成）
 app.post("/synthesize", async (c) => {
   const body = await c.req.json<{
-    concepts: ConceptSnapshot[];
+    concepts: ClaimSnapshot[];
     existingSynthesisTitles: string[];
     language: string;
     model?: string;
@@ -387,7 +401,15 @@ app.post("/synthesize", async (c) => {
     return c.json({ candidates: [] });
   }
 
-  const systemPrompt = buildSynthesizerSystemPrompt(body.language || "en", body.skills);
+  // PR-B5: 入力 Atom の atomType から候補モードを推定し、Synthesizer プロンプトを
+  // その候補だけに絞る。Claim 入力 (atomType 無し) や signal 不足の場合は
+  // router が deductive 単独を返すため、最も permissive なデフォルト挙動になる。
+  const routerResult = routeSynthesisMode(body.concepts.map((c) => c.atomType));
+  const systemPrompt = buildSynthesizerSystemPrompt(
+    body.language || "en",
+    body.skills,
+    routerResult.candidateModes,
+  );
   const userMessage = buildSynthesizerUserMessage(
     body.concepts,
     body.existingSynthesisTitles || [],
@@ -403,12 +425,23 @@ app.post("/synthesize", async (c) => {
       maxSteps: 1,
     });
 
-    const candidates = parseSynthesizerOutput(result.message);
+    const stats = parseSynthesizerOutputWithStats(result.message);
+    // PR-B4.5: procedureContext は Synthesis に持たせない（砂時計のくびれ
+    // を通った後の層は context-stripped が contract）。fallback ロジックは
+    // 削除した。
 
     return c.json({
-      candidates,
+      candidates: stats.candidates,
       tokenUsage: result.tokenUsage,
       model: result.model,
+      // 「No synthesis generated」が confidence ガード由来か LLM 出力空かを
+      // クライアントで区別するための統計
+      stats: {
+        rawCount: stats.rawCount,
+        droppedByConfidence: stats.droppedByConfidence,
+        maxDroppedConfidence: stats.maxDroppedConfidence,
+        threshold: SYNTHESIS_CONFIDENCE_THRESHOLD,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";
@@ -423,7 +456,7 @@ app.post("/synthesize", async (c) => {
 //   既存 Atom のタイトル一覧を渡すと重複提案を抑える。
 app.post("/atomize", async (c) => {
   const body = await c.req.json<{
-    concepts: ConceptSnapshot[];
+    concepts: ClaimSnapshot[];
     existingAtomTitles?: string[];
     language: string;
     model?: string;
@@ -450,6 +483,8 @@ app.post("/atomize", async (c) => {
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
     const atoms = parseAtomizerOutput(result.message, idToTitle);
+    // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
+    // fallback ロジックは削除した。
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";

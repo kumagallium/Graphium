@@ -1,7 +1,15 @@
 // .graphium-index.json の型定義と Drive 読み書き
 // 全ノートのメタデータを1ファイルに集約し、一覧・検索・被参照計算を高速化する
 
-import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/document-types";
+import type {
+  AtomType,
+  ClaimRole,
+  GraphiumDocument,
+  GraphiumFile,
+  HypothesisStatus,
+  SynthesisMode,
+  WikiKind,
+} from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { normalizeLabel } from "../context-label/labels";
 
@@ -33,7 +41,15 @@ import { normalizeLabel } from "../context-label/labels";
 //      ノート一覧・検索・最近からは除外し、引用・regenerate・グラフは透過解決する。
 //      ユーザーの削除意思 (deletedAt) と区別するため別フィールド。
 //      アーカイブからは「復元」のみ。完全削除はゴミ箱経由のみ。
-const INDEX_SCHEMA_VERSION = 12;
+// v13: claimRole / atomType / synthesisMode / hypothesisStatus フィールド追加
+//      （提案 v4 Phase 1 の意味的な型）
+//      AI Wiki ノートに対する直交した型情報を一覧 UI でフィルタするため
+//      wikiMeta から mirror する。すべて optional。
+// v14: WikiKind "concept" → "claim" リネーム（提案 v4 で命名を見直したため）。
+//      旧 kind / 旧フィールド名 (derivedFromConcepts / conceptRole) は
+//      document-migration.ts の migrateConceptKindToClaim で読み込み時に
+//      自動移行されるが、index 側のキャッシュは bump で再構築する。
+const INDEX_SCHEMA_VERSION = 14;
 
 export type GraphiumIndex = {
   version: number;
@@ -112,6 +128,18 @@ export type NoteIndexEntry = {
    * 完全削除はゴミ箱に戻してから行う。
    */
   archivedAt?: string;
+  /**
+   * Concept の研究プロセス役割（提案 v4 Phase 1.1）。
+   * wikiMeta.claimRole を mirror する。複数値可。
+   * 一覧 UI でロール単位のフィルタや色分け表示に使う。
+   */
+  claimRole?: ClaimRole[];
+  /** Atom の推論的役割（提案 v4 Phase 1.2）。wikiMeta.atomType を mirror。 */
+  atomType?: AtomType;
+  /** Synthesis の推論モード（提案 v4 Phase 1.3）。wikiMeta.synthesisMode を mirror。 */
+  synthesisMode?: SynthesisMode;
+  /** Synthesis の検証状態。wikiMeta.hypothesisStatus を mirror。 */
+  hypothesisStatus?: HypothesisStatus;
 };
 
 // ── Drive API ──
@@ -353,6 +381,10 @@ export function buildIndexEntry(
     model,
     derivedFromNotes: doc.wikiMeta?.derivedFromNotes,
     inlineLabels: inlineLabels.length > 0 ? inlineLabels : undefined,
+    claimRole: doc.wikiMeta?.claimRole,
+    atomType: doc.wikiMeta?.atomType,
+    synthesisMode: doc.wikiMeta?.synthesisMode,
+    hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
   };
 }
 

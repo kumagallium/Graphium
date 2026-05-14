@@ -1,6 +1,6 @@
 // 現在ノートを根として、上流方向（派生元）に PROV エッジを辿るリネージツリーを構築
 // レイヤー2 PROV: derivedFromNoteId / noteLinks(derived_from) / wikiMeta.derivedFromNotes /
-// wikiMeta.derivedFromConcepts / pdf:/url: 外部ソース
+// wikiMeta.derivedFromClaims / pdf:/url: 外部ソース
 //
 // メモリ memo: Layer1 (Document Provenance) は対象外。Layer2 のみ。
 
@@ -33,7 +33,7 @@ export type LineageRelation =
   | "derivedFrom" // 子側 derivedFromNoteId
   | "noteLink" // 親側 noteLinks(derived_from)
   | "wiki" // wikiMeta.derivedFromNotes (wiki ← 通常ノート)
-  | "wikiConcept" // wikiMeta.derivedFromConcepts (atom ← concept)
+  | "wikiConcept" // wikiMeta.derivedFromClaims (atom ← concept)
   | "external"; // pdf:/url: 外部ソース
 
 const MAX_DEPTH = 10;
@@ -87,12 +87,16 @@ function buildReverseParentIndex(
     if (doc.source !== "ai" && doc.sourceUrl) {
       add(docId, `url:${doc.sourceUrl}`, "external");
     }
+    // 通常ノートの top-level sourcePdfFileId（pdf-to-prov 由来）→ PDF 親
+    if (doc.source !== "ai" && doc.sourcePdfFileId) {
+      add(docId, `pdf:${doc.sourcePdfFileId}`, "external");
+    }
     if (
       doc.source === "ai" &&
       doc.wikiMeta?.kind === "atom" &&
-      doc.wikiMeta?.derivedFromConcepts
+      doc.wikiMeta?.derivedFromClaims
     ) {
-      for (const conceptId of doc.wikiMeta.derivedFromConcepts) {
+      for (const conceptId of doc.wikiMeta.derivedFromClaims) {
         add(docId, conceptId, "wikiConcept");
       }
     }

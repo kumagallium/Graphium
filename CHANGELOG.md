@@ -1,5 +1,52 @@
 # Changelog
 
+## [v0.6.10](https://github.com/kumagallium/Graphium/compare/v0.6.9...v0.6.10) - 2026-05-14
+- fix(skill): switch to note when clicking sidebar note from Skill list by @kumagallium in https://github.com/kumagallium/Graphium/pull/285
+- fix(wiki): safe bulk regenerate for Insight/Idea (kind guard + Atom path + shrink guard) by @kumagallium in https://github.com/kumagallium/Graphium/pull/284
+- feat(wiki): plain-language register for Atom/Synthesis prompts by @kumagallium in https://github.com/kumagallium/Graphium/pull/287
+- fix(desktop): enable HTML5 drag-and-drop in Tauri webview by @kumagallium in https://github.com/kumagallium/Graphium/pull/288
+- feat(asset): cited-notes graph + embedded image extraction for PDF assets by @kumagallium in https://github.com/kumagallium/Graphium/pull/289
+
+## [v0.6.9](https://github.com/kumagallium/Graphium/compare/v0.6.8...v0.6.9) - 2026-05-13
+- fix(pdf-export): unblock export in Tauri + flatten oklch for html2canvas by @kumagallium in https://github.com/kumagallium/Graphium/pull/281
+- feat(wiki): cluster-aware sampling for Discovery and Cross-Update by @kumagallium in https://github.com/kumagallium/Graphium/pull/282
+
+## [v0.6.8](https://github.com/kumagallium/Graphium/compare/v0.6.7...v0.6.8) - 2026-05-12
+- refactor(sidebar): reorganize information architecture by @kumagallium in https://github.com/kumagallium/Graphium/pull/279
+
+## [v0.6.7](https://github.com/kumagallium/Graphium/compare/v0.6.6...v0.6.7) - 2026-05-12
+- refactor(prov): use wasDerivedFrom for Plan/Execution relation by @kumagallium in https://github.com/kumagallium/Graphium/pull/259
+- feat(prov-extractor): add note PROV summary utility (Phase A step 1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/261
+- feat(wiki): semantic types on Concept / Atom / Synthesis (Phase 1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/262
+- fix(wiki): soft-delete wikis and serialize index saves by @kumagallium in https://github.com/kumagallium/Graphium/pull/264
+- feat(wiki): PROV→Claim prompt injection + procedureContext on Claim (Phase 2.2/2.3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/263
+- feat(wiki): show pipeline stages in ingest toast by @kumagallium in https://github.com/kumagallium/Graphium/pull/266
+- fix(wiki): better chat retrieval + markdown rendering + duplicate session fix by @kumagallium in https://github.com/kumagallium/Graphium/pull/267
+- feat(wiki): PROV→Atom/Synthesis cross-Claim integration (PR-B3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/265
+- refactor(wiki): relocate induction from Synthesis to Atom layer (PR-B4) by @kumagallium in https://github.com/kumagallium/Graphium/pull/268
+- refactor(wiki): procedureContext is Claim-only — revert B3/B3.1 propagation (PR-B4.5) by @kumagallium in https://github.com/kumagallium/Graphium/pull/269
+- feat(wiki-lint): i18n the Health Check view by @kumagallium in https://github.com/kumagallium/Graphium/pull/272
+- feat(wiki): synthesis mode router + 4 mode-specific prompts (PR-B5) by @kumagallium in https://github.com/kumagallium/Graphium/pull/270
+- refactor(wiki): rename Knowledge layer labels (Atom→Insights, Synthesis→Ideas, AI→Knowledge) by @kumagallium in https://github.com/kumagallium/Graphium/pull/271
+- feat(wiki-lint): per-issue fix actions (PR-B6 v1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/273
+- feat(wiki): synthesis mode explainer modal (Phase 5.4) by @kumagallium in https://github.com/kumagallium/Graphium/pull/274
+- feat(prov-export): semantic types in PROV-JSON-LD + align modal i18n (Phase 4) by @kumagallium in https://github.com/kumagallium/Graphium/pull/275
+- docs(inference-types): align with new UI labels + fix JA anchor slugs by @kumagallium in https://github.com/kumagallium/Graphium/pull/276
+- feat(sidebar): hide Labels section until first label, JA データ一覧 → データ by @kumagallium in https://github.com/kumagallium/Graphium/pull/277
+- feat(asset/wiki): bulk actions + unify regenerate model selection by @kumagallium in https://github.com/kumagallium/Graphium/pull/278
+
+## [v0.6.6](https://github.com/kumagallium/Graphium/compare/v0.6.5...v0.6.6) - 2026-05-09
+- fix(import): restore image URLs and media usage links on docx/markdown import by @kumagallium in https://github.com/kumagallium/Graphium/pull/255
+- feat: add list view with bulk delete to asset browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/257
+- fix(docx-import): only save images that survive as image blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/258
+
+## [v0.6.5](https://github.com/kumagallium/Graphium/compare/v0.6.4...v0.6.5) - 2026-05-08
+- fix(provenance): remove 100-revision silent cap by @kumagallium in https://github.com/kumagallium/Graphium/pull/248
+- SidePeek coexists inline with right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/250
+- docs: document archive semantics and uncapped revisions by @kumagallium in https://github.com/kumagallium/Graphium/pull/251
+- feat: PDF-to-PROV ingestion + atomic / connected graph rules by @kumagallium in https://github.com/kumagallium/Graphium/pull/252
+- feat(import): Markdown / Obsidian Vault import with [[wikilink]] resolution by @kumagallium in https://github.com/kumagallium/Graphium/pull/254
+
 ## [v0.6.4](https://github.com/kumagallium/Graphium/compare/v0.6.3...v0.6.4) - 2026-05-08
 - Add Layer 2 PROV lineage tree to right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/245
 - feat(archive): soft-archive merged wikis to preserve references by @kumagallium in https://github.com/kumagallium/Graphium/pull/247

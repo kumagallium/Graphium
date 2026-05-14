@@ -1,8 +1,10 @@
 // AI アシスタント サイドパネル
 // 右パネルの Chat タブに表示される継続対話 UI
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useAiAssistant } from "./store";
@@ -519,22 +521,34 @@ function ChatBubble({
 }) {
   const t = useT();
   const isUser = message.role === "user";
-  // [[label:xxx]] マーカーはノート挿入時に消費する内部表示。チャット表示では除去する。
+  // 表示用にノイズを除去する（生データは message.content に残し、ノート挿入時はそちらを使う）:
+  //   - [[label:xxx]]      … ノート挿入時に消費する PROV ラベルマーカー
+  //   - [[m]]X[[/m]] 等    … PROV inline label（material / tool / activity / output）。
+  //                          BlockNote に貼られた時にスタイル付けされるが、人間の閲覧時はノイズ。
   const displayContent = isUser
     ? message.content
-    : message.content.replace(/\[\[label:[a-z]+\]\][ 　]?/g, "");
+    : stripDisplayMarkers(message.content);
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
-        className={`rounded-lg px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap leading-relaxed ${
+        className={`rounded-lg px-3 py-2 text-sm max-w-[90%] leading-relaxed ${
+          isUser ? "whitespace-pre-wrap" : ""
+        } ${
           isUser
             ? "bg-primary text-primary-foreground"
             : "bg-muted text-foreground"
         }`}
       >
-        {isUser
-          ? displayContent
-          : renderWithSourceLinks(displayContent, wikiTitleToId, onOpenWiki)}
+        {isUser ? (
+          displayContent
+        ) : (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={buildMarkdownComponents(wikiTitleToId, onOpenWiki)}
+          >
+            {displayContent}
+          </ReactMarkdown>
+        )}
       </div>
       {!isUser && (onInsert || onReplace || onDerive) && (
         <div className="flex gap-1 mt-1 flex-wrap">
@@ -575,29 +589,43 @@ function ChatBubble({
 }
 
 /**
- * チャット応答内の `[Source: "title"]` を Wiki ページへのクリック可能リンクに変換する。
- * - wikiTitleToId にタイトルが見つかればクリック可能な span を描画
- * - 見つからなければ装飾なしのプレーンテキスト（`[Source: "title"]`）を残す
+ * チャット表示用にノイジーな内部マーカーを除去する。
+ * 生メッセージは別に保持され、ノートにペースト/挿入する際にはそのまま使う。
  */
-function renderWithSourceLinks(
-  content: string,
+function stripDisplayMarkers(content: string): string {
+  return content
+    // 行頭の `[[label:xxx]]` マーカー（ノート挿入時にラベルへ変換される）
+    .replace(/\[\[label:[a-z]+\]\][ 　]?/g, "")
+    // PROV inline label: [[m]]X[[/m]] / [[t]] / [[a]] / [[o]] → 中身だけ残す
+    .replace(/\[\[(m|t|a|o)\]\]([\s\S]*?)\[\[\/\1\]\]/g, "$2");
+}
+
+/**
+ * テキストノード内の `[Source: "title"]` をクリック可能な Wiki リンクに置換する。
+ * react-markdown のカスタムコンポーネントから children を再帰的に処理するために使う。
+ */
+function replaceSourceLinks(
+  text: string,
   wikiTitleToId: Map<string, string> | undefined,
   onOpenWiki: ((wikiId: string) => void) | undefined,
-): ReactNode {
-  if (!content.includes("[Source:")) return content;
-  if (!wikiTitleToId || !onOpenWiki || wikiTitleToId.size === 0) return content;
+  keyPrefix: string,
+): ReactNode[] {
+  if (!text.includes("[Source:") || !wikiTitleToId || !onOpenWiki || wikiTitleToId.size === 0) {
+    return [text];
+  }
   const pattern = /\[Source:\s*"([^"]+)"\]/g;
   const parts: ReactNode[] = [];
   let lastIdx = 0;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(content)) !== null) {
-    if (match.index > lastIdx) parts.push(content.slice(lastIdx, match.index));
+  let n = 0;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIdx) parts.push(text.slice(lastIdx, match.index));
     const title = match[1];
     const wikiId = wikiTitleToId.get(title);
     if (wikiId) {
       parts.push(
         <button
-          key={`src-${match.index}`}
+          key={`${keyPrefix}-src-${n++}`}
           type="button"
           onClick={(e) => { e.stopPropagation(); onOpenWiki(wikiId); }}
           title={`Open Wiki: ${title}`}
@@ -611,6 +639,70 @@ function renderWithSourceLinks(
     }
     lastIdx = pattern.lastIndex;
   }
-  if (lastIdx < content.length) parts.push(content.slice(lastIdx));
-  return <>{parts}</>;
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
+  return parts;
+}
+
+/** react-markdown の children を走査し、文字列ノードに replaceSourceLinks を適用する */
+function processChildren(
+  children: ReactNode,
+  wikiTitleToId: Map<string, string> | undefined,
+  onOpenWiki: ((wikiId: string) => void) | undefined,
+): ReactNode {
+  return Children.map(children, (child, i) => {
+    if (typeof child === "string") {
+      return <>{replaceSourceLinks(child, wikiTitleToId, onOpenWiki, `c${i}`)}</>;
+    }
+    return child;
+  });
+}
+
+/**
+ * チャット用 markdown のカスタムレンダラ。
+ * - 既存の bubble に収まるよう見出し・段落の余白を抑える
+ * - テキストノード内の [Source: "..."] を Wiki リンクに変換
+ */
+function buildMarkdownComponents(
+  wikiTitleToId: Map<string, string> | undefined,
+  onOpenWiki: ((wikiId: string) => void) | undefined,
+): Components {
+  const proc = (children: ReactNode) => processChildren(children, wikiTitleToId, onOpenWiki);
+  return {
+    h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-1">{proc(children)}</h1>,
+    h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 mb-1">{proc(children)}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-semibold mt-1.5 mb-0.5">{proc(children)}</h3>,
+    h4: ({ children }) => <h4 className="text-sm font-semibold mt-1.5 mb-0.5">{proc(children)}</h4>,
+    h5: ({ children }) => <h5 className="text-sm font-semibold mt-1 mb-0.5">{proc(children)}</h5>,
+    h6: ({ children }) => <h6 className="text-sm font-semibold mt-1 mb-0.5">{proc(children)}</h6>,
+    p: ({ children }) => <p className="my-1.5 first:mt-0 last:mb-0">{proc(children)}</p>,
+    ul: ({ children }) => <ul className="list-disc pl-5 my-1.5 space-y-0.5">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal pl-5 my-1.5 space-y-0.5">{children}</ol>,
+    li: ({ children }) => <li>{proc(children)}</li>,
+    strong: ({ children }) => <strong className="font-semibold">{proc(children)}</strong>,
+    em: ({ children }) => <em className="italic">{proc(children)}</em>,
+    hr: () => <hr className="my-2 border-t border-border" />,
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-2 border-border pl-2 my-1.5 text-muted-foreground">{children}</blockquote>
+    ),
+    code: ({ children, className }) => {
+      // インラインコードのみここで装飾。pre 内の code は pre 側で扱う。
+      if (className) return <code className={className}>{children}</code>;
+      return <code className="px-1 py-0.5 rounded bg-background/60 text-xs font-mono">{children}</code>;
+    },
+    pre: ({ children }) => (
+      <pre className="my-1.5 p-2 rounded bg-background/60 text-xs font-mono overflow-x-auto">{children}</pre>
+    ),
+    a: ({ children, href }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
+        {proc(children)}
+      </a>
+    ),
+    table: ({ children }) => (
+      <div className="my-1.5 overflow-x-auto">
+        <table className="text-xs border-collapse">{children}</table>
+      </div>
+    ),
+    th: ({ children }) => <th className="border border-border px-1.5 py-0.5 font-semibold text-left">{proc(children)}</th>,
+    td: ({ children }) => <td className="border border-border px-1.5 py-0.5">{proc(children)}</td>,
+  };
 }

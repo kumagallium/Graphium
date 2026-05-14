@@ -109,7 +109,16 @@ export type RegenerateWikiHandler = (
   options?: { model?: string },
 ) => Promise<{ ok: boolean; error?: string }>;
 
-export type DiscoveryProgressInfo = { iteration: number; createdSoFar: number };
+export type DiscoveryProgressInfo = {
+  iteration: number;
+  createdSoFar: number;
+  /** Phase 1 クラスタサンプリング: 現在の iter のクラスタ情報。未設定なら旧表示。 */
+  clusterLabel?: string;
+  clusterTotal?: number;
+  clusterSize?: number;
+  /** クラスタに含まれるアイテム名のプレビュー（先頭 N 件）。中身が見えない問題への対策。 */
+  clusterMemberTitles?: string[];
+};
 export type DiscoveryHandler = (
   onProgress?: (info: DiscoveryProgressInfo) => void,
 ) => Promise<{ ok: boolean; created: number; iterations: number; error?: string }>;
@@ -160,7 +169,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [model, setModel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
-  const [autoIngestChat, setAutoIngestChat] = useState(true);
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
@@ -214,7 +222,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [toolsData, setToolsData] = useState<ToolsResponse | null>(null);
 
   // Maintenance タブ — Wiki 一括 Regenerate
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["concept", "summary", "atom", "synthesis"]));
+  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["claim", "summary", "atom", "synthesis"]));
   const [bulkModelOverride, setBulkModelOverride] = useState("");
   const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -229,6 +237,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     created?: number;
     iterations?: number;
     error?: string;
+    clusterLabel?: string;
+    clusterTotal?: number;
+    clusterSize?: number;
+    clusterMemberTitles?: string[];
   };
   const [atomizeRunning, setAtomizeRunning] = useState(false);
   const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
@@ -353,7 +365,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
-    setAutoIngestChat(settings.autoIngestChat ?? true);
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
     setCustomLabels(settings.customLabels ?? {});
@@ -739,11 +750,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, chatSynthesisModel, autoIngestChat, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
+    saveSettings({ model, embeddingModel, chatSynthesisModel, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, autoIngestChat, disabledTools, registryUrl, customLabels, latinFont, jpFont, experimental, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, disabledTools, registryUrl, customLabels, latinFont, jpFont, experimental, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -998,25 +1009,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               </p>
             </div>
 
-            {/* チャットの自動 Wiki 取り込み */}
-            <div>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoIngestChat}
-                  onChange={(e) => { setAutoIngestChat(e.target.checked); setSaved(false); }}
-                  className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                />
-                <span className="flex-1">
-                  <span className="text-xs font-semibold text-foreground block">
-                    {t("settings.autoIngestChat")}
-                  </span>
-                  <span className="text-xs text-muted-foreground mt-0.5 block">
-                    {t("settings.autoIngestChatHelp")}
-                  </span>
-                </span>
-              </label>
-            </div>
           </div>
         )}
 
@@ -2019,6 +2011,11 @@ type DiscoveryRunState = {
   created?: number;
   iterations?: number;
   error?: string;
+  /** Phase 1 クラスタサンプリング: 現在の iter のクラスタ情報。未設定なら旧表示。 */
+  clusterLabel?: string;
+  clusterTotal?: number;
+  clusterSize?: number;
+  clusterMemberTitles?: string[];
 };
 
 type MaintenanceTabProps = {
@@ -2086,7 +2083,7 @@ function MaintenanceTab({
   setSynthesisProgress,
   onReembedAllWikis,
 }: MaintenanceTabProps) {
-  const KINDS: WikiKind[] = ["concept", "summary", "atom", "synthesis"];
+  const KINDS: WikiKind[] = ["claim", "summary", "atom", "synthesis"];
   const [cancelling, setCancelling] = useState(false);
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
@@ -2152,13 +2149,13 @@ function MaintenanceTab({
   };
 
   const kindLabel = (k: WikiKind) =>
-    k === "concept" ? t("settings.maintenance.kind.concept")
+    k === "claim" ? t("settings.maintenance.kind.claim")
     : k === "summary" ? t("settings.maintenance.kind.summary")
     : k === "atom" ? t("settings.maintenance.kind.atom")
     : t("settings.maintenance.kind.synthesis");
 
   // ── Atom 候補の発見（auto-loop: 0 件返却 or 上限まで自動継続）──
-  const conceptCount = wikiSummaries.filter((w) => w.kind === "concept").length;
+  const conceptCount = wikiSummaries.filter((w) => w.kind === "claim").length;
   const atomCount = wikiSummaries.filter((w) => w.kind === "atom").length;
   const handleRunAtomizeDiscovery = async () => {
     if (!onRunAtomizeDiscovery || atomizeRunning) return;
@@ -2169,7 +2166,16 @@ function MaintenanceTab({
     setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: 1, created: 0 });
 
     const result = await onRunAtomizeDiscovery((info) => {
-      setAtomizeProgress({ status: "running", inputCount: conceptCount, iteration: info.iteration, created: info.createdSoFar });
+      setAtomizeProgress({
+        status: "running",
+        inputCount: conceptCount,
+        iteration: info.iteration,
+        created: info.createdSoFar,
+        clusterLabel: info.clusterLabel,
+        clusterTotal: info.clusterTotal,
+        clusterSize: info.clusterSize,
+        clusterMemberTitles: info.clusterMemberTitles,
+      });
     });
     if (result.ok) {
       setAtomizeProgress({ status: "done", inputCount: conceptCount, created: result.created, iterations: result.iterations });
@@ -2189,7 +2195,16 @@ function MaintenanceTab({
     setSynthesisProgress({ status: "running", inputCount: atomCount, iteration: 1, created: 0 });
 
     const result = await onRunSynthesisDiscovery((info) => {
-      setSynthesisProgress({ status: "running", inputCount: atomCount, iteration: info.iteration, created: info.createdSoFar });
+      setSynthesisProgress({
+        status: "running",
+        inputCount: atomCount,
+        iteration: info.iteration,
+        created: info.createdSoFar,
+        clusterLabel: info.clusterLabel,
+        clusterTotal: info.clusterTotal,
+        clusterSize: info.clusterSize,
+        clusterMemberTitles: info.clusterMemberTitles,
+      });
     });
     if (result.ok) {
       setSynthesisProgress({ status: "done", inputCount: atomCount, created: result.created, iterations: result.iterations });
@@ -2551,16 +2566,35 @@ function DiscoveryCard({
       {progress && (
         <div className="rounded-md border border-border bg-background px-3 py-2 text-xs space-y-1">
           {progress.status === "running" && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span>
-                {t(discoveringKey).replace("{count}", String(progress.inputCount))}
-                {progress.iteration !== undefined && (
-                  <span className="ml-2 opacity-70">
-                    (iter {progress.iteration}{progress.created ? ` / created ${progress.created}` : ""})
-                  </span>
-                )}
-              </span>
+            <div className="flex flex-col gap-1 text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+                <span>
+                  {t(discoveringKey).replace("{count}", String(progress.inputCount))}
+                  {progress.iteration !== undefined && (
+                    <span className="ml-2 opacity-70">
+                      (iter {progress.iteration}{progress.clusterTotal ? `/${progress.clusterTotal}` : ""}{progress.created ? ` / created ${progress.created}` : ""})
+                    </span>
+                  )}
+                </span>
+              </div>
+              {progress.clusterLabel && (
+                <div className="ml-4 text-[11px] opacity-80 break-words">
+                  cluster: 「{progress.clusterLabel}」{progress.clusterSize ? ` (${progress.clusterSize})` : ""}
+                </div>
+              )}
+              {progress.clusterMemberTitles && progress.clusterMemberTitles.length > 0 && (
+                <details className="ml-4 text-[11px] opacity-70">
+                  <summary className="cursor-pointer select-none">
+                    members ({progress.clusterMemberTitles.length})
+                  </summary>
+                  <ul className="mt-1 ml-2 list-disc list-inside space-y-0.5 max-h-40 overflow-y-auto">
+                    {progress.clusterMemberTitles.map((title, idx) => (
+                      <li key={`${idx}-${title}`} className="break-words">{title}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
           {progress.status === "done" && (

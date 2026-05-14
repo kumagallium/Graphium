@@ -1,7 +1,15 @@
 // findBlockIdsByMediaUrl のユニットテスト
 
 import { describe, it, expect } from "vitest";
-import { findBlockIdsByMediaUrl, updateBlockNameByUrl } from "./media-index";
+import {
+  findBlockIdsByMediaUrl,
+  updateBlockNameByUrl,
+  collectPdfFileIdsFromDoc,
+  syncUsedIn,
+  DOC_REF_BLOCK_ID,
+  CURRENT_MEDIA_INDEX_VERSION,
+  type MediaIndex,
+} from "./media-index";
 
 describe("findBlockIdsByMediaUrl", () => {
   const targetUrl = "https://example.com/image.png";
@@ -106,5 +114,121 @@ describe("updateBlockNameByUrl", () => {
     expect(changed).toBe(true);
     expect(blocks[0].props.name).toBe("renamed");
     expect(blocks[1].props.name).toBe("renamed");
+  });
+});
+
+describe("collectPdfFileIdsFromDoc", () => {
+  it("Wiki ノートの derivedFromNotes から pdf: prefix を抽出する", () => {
+    const doc = {
+      wikiMeta: {
+        derivedFromNotes: ["pdf:abc123", "note:other", "pdf:def456"],
+      },
+    };
+    const ids = collectPdfFileIdsFromDoc(doc);
+    expect(ids).toEqual(new Set(["abc123", "def456"]));
+  });
+
+  it("PROV ノートの sourcePdfFileId を抽出する", () => {
+    const doc = { sourcePdfFileId: "prov-pdf-1" };
+    const ids = collectPdfFileIdsFromDoc(doc);
+    expect(ids).toEqual(new Set(["prov-pdf-1"]));
+  });
+
+  it("Wiki と PROV の両方の参照を合算する", () => {
+    const doc = {
+      wikiMeta: { derivedFromNotes: ["pdf:a"] },
+      sourcePdfFileId: "b",
+    };
+    expect(collectPdfFileIdsFromDoc(doc)).toEqual(new Set(["a", "b"]));
+  });
+
+  it("PDF 参照を持たない通常ノートでは空の Set を返す", () => {
+    expect(collectPdfFileIdsFromDoc({})).toEqual(new Set());
+    expect(collectPdfFileIdsFromDoc({ wikiMeta: { derivedFromNotes: ["note:x"] } }))
+      .toEqual(new Set());
+  });
+
+  it("derivedFromNotes が undefined / 空でもエラーにならない", () => {
+    expect(collectPdfFileIdsFromDoc({ wikiMeta: {} })).toEqual(new Set());
+    expect(collectPdfFileIdsFromDoc({ wikiMeta: null })).toEqual(new Set());
+  });
+
+  it("pdf: の後ろが空文字なら無視する", () => {
+    const doc = { wikiMeta: { derivedFromNotes: ["pdf:"] } };
+    expect(collectPdfFileIdsFromDoc(doc)).toEqual(new Set());
+  });
+});
+
+describe("syncUsedIn (document-level PDF 参照)", () => {
+  function makeIndex(): MediaIndex {
+    return {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: new Date().toISOString(),
+      media: [
+        {
+          fileId: "pdf-1",
+          name: "paper.pdf",
+          type: "pdf",
+          mimeType: "application/pdf",
+          url: "media://pdf-1",
+          thumbnailUrl: "",
+          uploadedAt: new Date().toISOString(),
+          usedIn: [],
+        },
+        {
+          fileId: "img-1",
+          name: "fig.png",
+          type: "image",
+          mimeType: "image/png",
+          url: "media://img-1",
+          thumbnailUrl: "",
+          uploadedAt: new Date().toISOString(),
+          usedIn: [],
+        },
+      ],
+    };
+  }
+
+  it("currentDocRefFileIds が一致する PDF を usedIn に追加（DOC_REF_BLOCK_ID）", () => {
+    const index = makeIndex();
+    const updated = syncUsedIn(index, "wiki:w1", "Wiki Note", new Map(), new Set(["pdf-1"]));
+    const pdf = updated.media.find((m) => m.fileId === "pdf-1")!;
+    expect(pdf.usedIn).toHaveLength(1);
+    expect(pdf.usedIn[0]).toEqual({
+      noteId: "wiki:w1",
+      noteTitle: "Wiki Note",
+      blockId: DOC_REF_BLOCK_ID,
+    });
+    // 無関係なメディアには付かない
+    expect(updated.media.find((m) => m.fileId === "img-1")!.usedIn).toHaveLength(0);
+  });
+
+  it("ブロック参照（mediaMap）と document-level 参照は両立する", () => {
+    const index = makeIndex();
+    const mediaMap = new Map<string, string>([["media://img-1", "block-42"]]);
+    const updated = syncUsedIn(index, "n1", "Note", mediaMap, new Set(["pdf-1"]));
+    expect(updated.media.find((m) => m.fileId === "img-1")!.usedIn).toEqual([
+      { noteId: "n1", noteTitle: "Note", blockId: "block-42" },
+    ]);
+    expect(updated.media.find((m) => m.fileId === "pdf-1")!.usedIn).toEqual([
+      { noteId: "n1", noteTitle: "Note", blockId: DOC_REF_BLOCK_ID },
+    ]);
+  });
+
+  it("同じノートを再 sync すると古い entry が置き換わる（重複しない）", () => {
+    let index = makeIndex();
+    index = syncUsedIn(index, "wiki:w1", "Old Title", new Map(), new Set(["pdf-1"]));
+    index = syncUsedIn(index, "wiki:w1", "New Title", new Map(), new Set(["pdf-1"]));
+    const pdf = index.media.find((m) => m.fileId === "pdf-1")!;
+    expect(pdf.usedIn).toHaveLength(1);
+    expect(pdf.usedIn[0].noteTitle).toBe("New Title");
+  });
+
+  it("currentDocRefFileIds から外れたら usedIn から除去される", () => {
+    let index = makeIndex();
+    index = syncUsedIn(index, "wiki:w1", "Note", new Map(), new Set(["pdf-1"]));
+    expect(index.media.find((m) => m.fileId === "pdf-1")!.usedIn).toHaveLength(1);
+    index = syncUsedIn(index, "wiki:w1", "Note", new Map(), new Set());
+    expect(index.media.find((m) => m.fileId === "pdf-1")!.usedIn).toHaveLength(0);
   });
 });

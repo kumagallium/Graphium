@@ -100,7 +100,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("この Wiki を整理する");
+    expect(cards[0]?.title).toBe("この Knowledge を整理する");
   });
 
   it("直近 7 日の wikiLog からイベントごとに、wiki タイトル付きでカード化（lint と delete は無視）", () => {
@@ -110,7 +110,7 @@ describe("buildDiscoveryCards", () => {
       updatedAt: NOW.toISOString(),
       notes: [
         entry({ noteId: "wiki-1", title: "XRD 測定手順", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
-        entry({ noteId: "wiki-2", title: "T_cal", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "concept" }),
+        entry({ noteId: "wiki-2", title: "T_cal", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "claim" }),
         entry({ noteId: "wiki-3", title: "Cu S-A 要約", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "summary" }),
         entry({ noteId: "wiki-4", title: "S-A + S-B 統合", modifiedAt: NOW.toISOString(), source: "ai", wikiKind: "synthesis" }),
       ],
@@ -203,7 +203,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("この Wiki を整理する");
+    expect(cards[0]?.title).toBe("この Knowledge を整理する");
   });
 
   it("ベース + ログで枠が余るときは直近更新ノートで埋める（自ノートと AI/skill ノートは除外）", () => {

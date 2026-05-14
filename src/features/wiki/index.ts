@@ -3,7 +3,13 @@ export { WikiLogView } from "./WikiLogView";
 export { WikiLintView } from "./WikiLintView";
 export { WikiBanner } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
-export { IngestToast, type IngestToastState, type IngestToastItem } from "./IngestToast";
+export {
+  IngestToast,
+  type IngestToastState,
+  type IngestToastItem,
+  type IngestStage,
+  type IngestStageStatus,
+} from "./IngestToast";
 export {
   ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromMultiSource,
   extractPlainTextFromDoc,
@@ -18,7 +24,7 @@ export {
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
   // Synthesis
-  fetchSynthesisCandidates, buildSynthesisDocument, buildConceptSnapshots,
+  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
   // Discovery 共通: embedding ベース重複検出
@@ -26,6 +32,14 @@ export {
   // インライン引用リンク
   buildNoteIndex,
 } from "./wiki-service";
+export type { ClaimSnapshot } from "../../server/services/wiki-synthesizer";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";
+export {
+  type AtomCandidate,
+  tokenize, jaccard, cosine, similarity,
+  getDocEmbedding,
+  pickFarthestSeeds, buildClusterSlice, pickClusterCount,
+  rankCandidatesByRelevance, type RelevanceFeature,
+} from "./sampling";
 export { wikiLog } from "./wiki-log";
 export type { WikiLogEntry, WikiLogEventType } from "./wiki-log";

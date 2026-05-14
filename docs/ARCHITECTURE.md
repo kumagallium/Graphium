@@ -40,7 +40,7 @@ optional for the editor itself; the editor works without it.
 flowchart TB
     subgraph UI["UI layer"]
         E["Block editor<br/><i>BlockNote.js + Graphium blocks</i>"]
-        N["Navigation<br/><i>note list, AI Wiki nav, search</i>"]
+        N["Navigation<br/><i>note list, Knowledge nav, search</i>"]
         AI["AI Assistant<br/><i>chat, ask, compose</i>"]
     end
 
@@ -49,7 +49,7 @@ flowchart TB
         IL["inline-label<br/>(entity / agent inline)"]
         PG["prov-generator<br/>(blocks → PROV-DM graph)"]
         DP["document-provenance<br/>(per-note edit history)"]
-        WIKI["wiki<br/>(AI Wiki UI + service)"]
+        WIKI["wiki<br/>(Knowledge UI + service)"]
         SH["sharing<br/>(Library / Fork)"]
     end
 
@@ -82,7 +82,7 @@ flowchart TB
 
 Reading top to bottom: UI talks to feature modules, which read and write
 through `src/lib/document-types.ts` and the `StorageProvider` abstraction.
-AI features (Wiki ingest, chat) talk to the Node server. The Node server
+AI features (Knowledge ingest, chat) talk to the Node server. The Node server
 talks to LLM and embedding backends.
 
 ## 3. The four layers in detail
@@ -132,21 +132,65 @@ The generator (`src/features/prov-generator/generator.ts`) uses a
 `scopeStack` that infers *Activity* containment from heading structure,
 so users do not have to nest blocks manually.
 
-### 3.3 Knowledge layer (AI Wiki)
+Inside a Step (Activity), `[Plan]` / `[Result]` phase headings do **not**
+create separate Activities — they only switch a *phase context* over the
+inline Entities they contain. Each Entity gets a `graphium:phase`
+attribute (`"plan"` or `"execution"`); plan-phase Entities are emitted
+as separate nodes with an `_plan` suffix so they coexist with their
+execution counterparts. When the same `(label, entityId)` pair appears
+in both phases, the generator emits a `prov:wasDerivedFrom` edge from
+the execution Entity to the plan Entity, expressing that the actual
+outcome was derived from the planned intent. The shared Step Activity
+that both Entities are `prov:used` by acts as the implicit activity of
+the PROV-DM derivation’s full form.
 
-The Wiki is a set of editable JSON documents that an LLM keeps in sync
-with your notes. Each Wiki document is a real `GraphiumDocument` with
-`source: "ai"` set, so it opens in the same editor.
+#### Wiki Knowledge Layer in the PROV-JSON-LD export
+
+When a note is exported as PROV-JSON-LD (`src/features/prov-export/`),
+the export bundle also includes the Wiki Knowledge Layer (Claims /
+Insights / Ideas) as additional `Entity` nodes, each with a
+`prov:wasDerivedFrom` edge back to its source note(s) and a
+`prov:wasAttributedTo` edge to the generating AI agent.
+
+Each Wiki entity carries the *semantic types* from §3.3 so that external
+PROV tools can see the hourglass structure of the knowledge layer:
+
+| Attribute (`graphium:*`) | Meaning | Present when |
+|---|---|---|
+| `wikiKind` | `summary` / `claim` / `atom` / `synthesis` | always |
+| `claimRole` | research-process role(s) of the Claim | `wikiKind = claim` |
+| `claimLevel` | abstraction level (`principle` / `finding` / `bridge`) | `wikiKind = claim` |
+| `procedureContext` | reproducibility scaffold (parameters, tools, validity range) | `wikiKind = claim` (procedure-bearing Claims only) |
+| `atomType` | inferential character of the Insight (causal / mechanistic / observational / …) | `wikiKind = atom` |
+| `synthesisMode` | reasoning mode of the Idea (deductive / abductive / analogical / dialectic) | `wikiKind = synthesis` |
+| `hypothesisStatus` | verification status (speculative / tested / confirmed / refuted) | `wikiKind = synthesis` |
+| `confidence` | self-rated confidence at generation (0.0–1.0) | optional |
+
+This export contract is the closest external observers get to the
+hourglass: the source note's PROV graph plus the Wiki entities derived
+from it, with semantic types attached so the data is interpretable
+without Graphium's internal vocabulary.
+
+### 3.3 Knowledge layer
+
+The Knowledge layer is a set of editable JSON documents that an LLM keeps
+in sync with your notes. Each Knowledge document is a real
+`GraphiumDocument` with `source: "ai"` set, so it opens in the same
+editor. On disk the documents are still grouped under `data/wiki/` and the
+TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
+`WikiMeta`) — UI labels and prose use "Knowledge / Claims / Insights /
+Ideas" instead.
 
 The pipeline (running on the Node server) has five stages:
 
 | Stage | File | What it does |
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
-| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Atom* claims with citations back to source notes |
-| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` | Weaves Atoms across notes into *Synthesis* pages |
+| **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes |
+| **Idea router** | `src/features/ai-assistant/synthesis-router.ts` | From input Insights' `atomType`, picks the candidate `synthesisMode`s (deductive / abductive / analogical / dialectic) the Synthesizer should consider |
+| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` + `src/server/services/synthesis-prompts/` | Weaves Insights across notes into *Idea* pages. The system prompt is composed from a shared `common.ts` plus one file per mode; the router restricts which modes the LLM sees |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
-| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Atoms, broken citations, redundant Concepts |
+| **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims |
 
 Trigger flow (client-pushed, not server-polled):
 
@@ -167,7 +211,7 @@ sequenceDiagram
     S->>I: run
     I->>FS: read existing wiki pages
     I->>A: hand off changed sections
-    A->>FS: write Atom / Concept pages
+    A->>FS: write Insight / Claim pages
     A->>X: notify changed pages
     X->>FS: propagate to dependents
     X->>L: schedule lint
@@ -187,17 +231,43 @@ Notes:
 - **Embeddings** (per Wiki section) are stored via
   `src/lib/embedding-store.ts` and used as the retrieval substrate for AI
   chat. The retriever is `src/features/wiki/retriever.ts`.
-- **Auto-merge of redundant Concepts.** When the linter / startup-merge
-  flow detects two Concepts that overlap, one is rewritten into the
-  other and the absorbed Concept is **archived, not deleted**. Its file
+- **Auto-merge of redundant Claims.** When the linter / startup-merge
+  flow detects two Claims that overlap, one is rewritten into the
+  other and the absorbed Claim is **archived, not deleted**. Its file
   stays on disk and its index entry gains an `archivedAt` flag, so any
-  note that cited it (or any Synthesis whose `derivedFromNotes` lists
+  note that cited it (or any Idea whose `derivedFromNotes` lists
   it) keeps resolving through `loadDoc`. The archived page is hidden
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
 
-The relationship between Notes, Concept, Atom, and Synthesis is described
+**Idea modes (Phase 1.3).** The Synthesizer can produce four kinds of
+Idea, distinguished by the type of reasoning that grounds the new
+insight:
+
+- `deductive` — independent claims combine into a strategy ("given A, B, C → D"). Most permissive; the default fallback.
+- `abductive` — an observation plus a mechanism / rule → the best explanatory hypothesis. Where most genuine "aha" Ideas live.
+- `analogical` — structural mapping between claims from different domains.
+- `dialectic` — two claims that argue opposite directions of the same effect, resolved by a higher frame.
+
+Induction is **not** an Idea mode in this system; "many similar claims → a
+general rule" is what the Insights layer is for (PR-B4 relocated induction
+to the Atomizer). The Synthesizer specializes in combining heterogeneous
+elements into something new.
+
+The idea router (`src/features/ai-assistant/synthesis-router.ts`)
+inspects the `atomType` of each input Insight and proposes a candidate
+mode set; the LLM picks one. The router only rules in / rules out modes
+that can be decided from `atomType` alone — content judgments (e.g.,
+whether two causal Insights actually argue *opposite* directions for
+`dialectic`, or whether two mechanistic Insights span genuinely different
+*domains* for `analogical`) are deferred to the LLM. Mode-specific
+prompts live in `src/server/services/synthesis-prompts/` (one file per
+mode plus a shared `common.ts`), and the router's candidate set decides
+which of those files are concatenated into the system prompt for a given
+run.
+
+The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
 
 ### 3.4 Storage layer
@@ -335,8 +405,8 @@ people most often need to find.
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
 | ⌘K palette (note search + ask) | `src/features/composer/` |
-| AI Wiki UI and service | `src/features/wiki/` |
-| AI Wiki pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
+| Knowledge UI and service | `src/features/wiki/` |
+| Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
 | Inter-note network graph (Cytoscape) | `src/features/network-graph/` |
 | Storage provider | `src/lib/storage/providers/`, `src/lib/storage/registry.ts` |
 | Note JSON shape and migrations | `src/lib/document-types.ts`, `src/lib/document-migration.ts` |
@@ -348,7 +418,7 @@ people most often need to find.
 | Reference table (related notes) | `src/features/index-table/` |
 | Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
 | Onboarding flow | `src/features/onboarding/` |
-| URL-to-note ingestion | `src/features/url-to-prov/` |
+| URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |
 | Landing page | `src/landing/` |

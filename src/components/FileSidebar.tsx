@@ -38,7 +38,7 @@ export type FileSidebarProps = {
   /** メモセクションがアクティブか */
   memosActive?: boolean;
   /** Wiki カテゴリ別カウント */
-  wikiCounts?: { summary: number; concept: number; atom: number; synthesis: number };
+  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
   /** 実験的レイヤ（Atom/Synthesis）を表示するか */
   showAtomLayer?: boolean;
   showSynthesisLayer?: boolean;
@@ -157,11 +157,11 @@ export function FileSidebar({
       + (mediaCounts.audio ?? 0) + (mediaCounts.url ?? 0) + memoCount;
   }, [mediaCounts, memoCount]);
 
+  // Skill はフッターに移したのでカウントには含めない
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
-    const wsum = (w?.summary ?? 0) + (w?.concept ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0);
-    return wsum + skillCount;
-  }, [wikiCounts, skillCount]);
+    return (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0);
+  }, [wikiCounts]);
 
   // ラベルカウント（ギャラリーの行数 = 同ラベル内のユニーク preview / text 数）
   // Phase D-3-α: インライン由来のハイライト text もユニーク集計に合流する。
@@ -227,8 +227,11 @@ export function FileSidebar({
         </button>
       </div>
 
-      {/* セクション一覧（折り畳み可能） */}
+      {/* セクション一覧（折り畳み可能）
+          IA 構成: ノート → ナレッジ ─divider─ 素材 → ラベル → Library
+          ドキュメント本体（脳の中身）と入口（網を辿る）を視覚的に分ける */}
       <div className="flex-1 overflow-y-auto pb-2">
+        {/* ① 最近のノート */}
         <CollapsibleSection
           storageKey="recent"
           title={t("nav.recentNotes")}
@@ -244,7 +247,110 @@ export function FileSidebar({
           />
         </CollapsibleSection>
 
-        {/* データ */}
+        {/* ② ナレッジ（AI が編む脳）— Notes 直下に配置 */}
+        {onShowWikiList && !aiAvailable && (
+          <CollapsibleSection
+            storageKey="ai"
+            title={(
+              <span className="flex items-center gap-1">
+                {t("sidebar.knowledge")}
+                <Sparkles size={11} className="text-muted-foreground/60" />
+              </span>
+            )}
+            defaultOpen={false}
+          >
+            <AiUpgradeNotice variant="card" />
+          </CollapsibleSection>
+        )}
+        {onShowWikiList && aiAvailable && (
+          <CollapsibleSection
+            storageKey="ai"
+            title={t("sidebar.knowledge")}
+            defaultOpen={true}
+            count={aiTotalCount}
+          >
+            {(() => {
+                // 既定では 要約 / 知見 のみ表示。
+                // 実験フラグでオプトインしたとき、または既存ユーザーが残しているデータが
+                // ある場合（count > 0）は表示してアクセスを保つ。
+                const kinds: WikiKind[] = ["summary", "claim"];
+                if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
+                if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
+                return kinds.map((kind) => {
+                  const count = wikiCounts?.[kind] ?? 0;
+                  const label =
+                    kind === "summary" ? t("wikiList.kindSummary")
+                    : kind === "claim" ? t("wikiList.kindClaim")
+                    : kind === "atom" ? t("wikiList.kindAtom")
+                    : t("wikiList.kindSynthesis");
+                  const isExperimental = kind === "atom" || kind === "synthesis";
+                  return (
+                    <button
+                      key={kind}
+                      onClick={() => onShowWikiList(kind)}
+                      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                        activeWikiKind === kind
+                          ? "bg-primary/10 text-primary font-semibold"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      }`}
+                    >
+                      <span className="text-muted-foreground shrink-0"><Bot size={14} /></span>
+                      <span className="flex-1 text-left flex items-center gap-1.5">
+                        {label}
+                        {isExperimental && (
+                          <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 border border-muted-foreground/30 rounded px-1 py-px">
+                            exp
+                          </span>
+                        )}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-xs text-muted-foreground">{count}</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            {(onShowWikiLog || onShowWikiLint) && (
+              <div className="flex items-center gap-1 px-2 pt-1">
+                {onShowWikiLog && (
+                  <button
+                    onClick={onShowWikiLog}
+                    title="Activity Log"
+                    aria-label="Activity Log"
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                      activeWikiView === "log"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <History size={12} />
+                    <span>Log</span>
+                  </button>
+                )}
+                {onShowWikiLint && (
+                  <button
+                    onClick={onShowWikiLint}
+                    title="Health Check"
+                    aria-label="Health Check"
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                      activeWikiView === "lint"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <ShieldCheck size={12} />
+                    <span>Health</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── divider: 脳の中身（Notes/Knowledge）と入口（Materials/Labels）の区切り ── */}
+        <div className="mx-4 my-3 border-t border-sidebar-border/50" aria-hidden />
+
+        {/* ③ 素材（旧: データ） */}
         <CollapsibleSection
           storageKey="data"
           title={t("asset.dataSection")}
@@ -290,19 +396,15 @@ export function FileSidebar({
           )}
         </CollapsibleSection>
 
-        {/* ラベル */}
+        {/* ④ ラベル: 1 件以上付与されてから表示（progressive disclosure） */}
+        {labelCounts.size > 0 && (
         <CollapsibleSection
           storageKey="labels"
           title={t("label.section")}
           defaultOpen={true}
           count={labelCounts.size}
         >
-          {!noteIndex ? (
-            <p className="text-xs text-muted-foreground/50 px-2 py-1">{t("common.loading")}</p>
-          ) : labelCounts.size === 0 ? (
-            <p className="text-xs text-muted-foreground/50 px-2 py-1">—</p>
-          ) : (
-            [...labelCounts.entries()]
+          {[...labelCounts.entries()]
               .sort((a, b) => b[1] - a[1])
               .map(([label, count]) => {
                 const color = LABEL_HEX[label] ?? "#8fa394";
@@ -324,124 +426,8 @@ export function FileSidebar({
                     <span className="text-xs text-muted-foreground">{count}</span>
                   </button>
                 );
-              })
-          )}
+              })}
         </CollapsibleSection>
-
-        {/* AI Knowledge セクション（バックエンド不在時はロック表示で導線） */}
-        {onShowWikiList && !aiAvailable && (
-          <CollapsibleSection
-            storageKey="ai"
-            title={(
-              <span className="flex items-center gap-1">
-                AI
-                <Sparkles size={11} className="text-muted-foreground/60" />
-              </span>
-            )}
-            defaultOpen={false}
-          >
-            <AiUpgradeNotice variant="card" />
-          </CollapsibleSection>
-        )}
-        {onShowWikiList && aiAvailable && (
-          <CollapsibleSection
-            storageKey="ai"
-            title="AI"
-            defaultOpen={false}
-            count={aiTotalCount}
-          >
-            {(() => {
-                // 既定では Summary / Concept のみ表示。
-                // 実験フラグでオプトインしたとき、または既存ユーザーが残しているデータが
-                // ある場合（count > 0）は表示してアクセスを保つ。
-                const kinds: WikiKind[] = ["summary", "concept"];
-                if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
-                if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
-                return kinds.map((kind) => {
-                  const count = wikiCounts?.[kind] ?? 0;
-                  const label =
-                    kind === "summary" ? "Summary"
-                    : kind === "concept" ? "Concept"
-                    : kind === "atom" ? "Atom"
-                    : "Synthesis";
-                  const isExperimental = kind === "atom" || kind === "synthesis";
-                  return (
-                    <button
-                      key={kind}
-                      onClick={() => onShowWikiList(kind)}
-                      className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                        activeWikiKind === kind
-                          ? "bg-primary/10 text-primary font-semibold"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      }`}
-                    >
-                      <span className="text-muted-foreground shrink-0"><Bot size={14} /></span>
-                      <span className="flex-1 text-left capitalize flex items-center gap-1.5">
-                        {label}
-                        {isExperimental && (
-                          <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 border border-muted-foreground/30 rounded px-1 py-px">
-                            exp
-                          </span>
-                        )}
-                      </span>
-                      {count > 0 && (
-                        <span className="text-xs text-muted-foreground">{count}</span>
-                      )}
-                    </button>
-                  );
-                });
-              })()}
-            {onShowSkillList && (
-              <button
-                onClick={onShowSkillList}
-                className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                  skillActive
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                }`}
-              >
-                <span className="text-muted-foreground shrink-0"><Wrench size={14} /></span>
-                <span className="flex-1 text-left">Skill</span>
-                {skillCount > 0 && (
-                  <span className="text-xs text-muted-foreground">{skillCount}</span>
-                )}
-              </button>
-            )}
-            {(onShowWikiLog || onShowWikiLint) && (
-              <div className="flex items-center gap-1 px-2 pt-1">
-                {onShowWikiLog && (
-                  <button
-                    onClick={onShowWikiLog}
-                    title="Activity Log"
-                    aria-label="Activity Log"
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-                      activeWikiView === "log"
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                    }`}
-                  >
-                    <History size={12} />
-                    <span>Log</span>
-                  </button>
-                )}
-                {onShowWikiLint && (
-                  <button
-                    onClick={onShowWikiLint}
-                    title="Health Check"
-                    aria-label="Health Check"
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-                      activeWikiView === "lint"
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                    }`}
-                  >
-                    <ShieldCheck size={12} />
-                    <span>Health</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </CollapsibleSection>
         )}
 
         {/* Library セクション（Phase 2c — Shared root が設定されていれば表示） */}
@@ -466,8 +452,24 @@ export function FileSidebar({
         )}
       </div>
 
-      {/* フッター */}
+      {/* フッター（メタ群: Skill / 設定 / ゴミ箱 / Release Notes） */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        {onShowSkillList && (
+          <button
+            onClick={onShowSkillList}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              skillActive
+                ? "text-primary font-semibold bg-sidebar-accent/40"
+                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+            }`}
+          >
+            <Wrench size={12} className="shrink-0" />
+            <span className="flex-1 text-left">Skill</span>
+            {skillCount > 0 && (
+              <span className="text-xs">{skillCount}</span>
+            )}
+          </button>
+        )}
         <button
           onClick={onShowSettings}
           className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 transition-colors"

@@ -13,7 +13,7 @@ export const en = {
   // Hero
   "hero.title": "Turn information into knowledge you can reuse, anytime.",
   "hero.subtitle":
-    "A block-based note editor where every claim — yours and the AI's — is anchored to the notes that justify it. PROV-DM provenance, an editable AI Wiki, and content-addressed sharing, all in one place.",
+    "A block-based note editor where every claim — yours and the AI's — is anchored to the notes that justify it. PROV-DM provenance, an editable Knowledge layer, and content-addressed sharing, all in one place.",
   "hero.tryOnline": "Try online",
   "hero.download": "Download desktop",
   "hero.starOnGithub": "Star on GitHub",
@@ -40,7 +40,7 @@ export const en = {
 
   "pillar.extend.title": "Extend",
   "pillar.extend.body":
-    "Plug in an LLM and a second layer emerges: an AI Wiki of Concept, Atom, and Synthesis pages, every claim citing the notes it came from. Reusable Skills (prompt templates) and ⌘K composer ride on top.",
+    "Plug in an LLM and a second layer emerges: a Knowledge layer of Claims, Insights, and Ideas, every claim citing the notes it came from. Reusable Skills (prompt templates) and ⌘K composer ride on top.",
 
   // Built for trust
   "trust.heading": "Built for trust.",
@@ -108,7 +108,7 @@ export const en = {
 export const ja: Record<keyof typeof en, string> = {
   "hero.title": "情報を、いつでも再利用可能な「知識」へと変える。",
   "hero.subtitle":
-    "あなたが書いた一文も、AI が手渡してくれた一文も、その根拠となるノートまで辿れる。PROV-DM 来歴・編集可能な AI Wiki・コンテンツアドレス型の共有を、ひとつのエディタにまとめました。",
+    "あなたが書いた一文も、AI が手渡してくれた一文も、その根拠となるノートまで辿れる。PROV-DM 来歴・編集可能なナレッジ層・コンテンツアドレス型の共有を、ひとつのエディタにまとめました。",
   "hero.tryOnline": "オンラインで試す",
   "hero.download": "デスクトップ版を入手",
   "hero.starOnGithub": "GitHub でスター",
@@ -133,7 +133,7 @@ export const ja: Record<keyof typeof en, string> = {
 
   "pillar.extend.title": "広げる",
   "pillar.extend.body":
-    "LLM をつなぐと、もう一層が立ち上がります。Concept・Atom・Synthesis からなる「AI Wiki」、再利用可能な Skill（プロンプトテンプレート）、⌘K の Composer。AI のすべての主張は、出どころのノートを引用します。",
+    "LLM をつなぐと、もう一層が立ち上がります。知見・洞察・発想からなる「ナレッジ層」、再利用可能な Skill（プロンプトテンプレート）、⌘K の Composer。AI のすべての主張は、出どころのノートを引用します。",
 
   "trust.heading": "信頼できる土台。",
   "trust.sub": "オープン標準、オープンソース、あなたのストレージ。",

@@ -53,6 +53,7 @@ import {
   renameMediaFile,
   renameMediaEntry,
   extractMediaFromBlocks,
+  collectPdfFileIdsFromDoc,
   updateBlockNameByUrl,
   mimeToMediaType,
   readMediaIndex,
@@ -147,6 +148,20 @@ export function useFileManager(authenticated: boolean) {
     noteIndexRef.current = next;
     setRawNoteIndex(next);
   }, []);
+  // インデックス保存をシリアライズするためのチェイン。
+  // bulk delete のように短時間に複数回 saveIndexFile を呼ぶと、
+  // server-fs プロバイダ等で並行 HTTP PUT のレースが起きて
+  // 「ゴミ箱に送ったはずのノートが復活する」事故が発生する。
+  // すべての保存をこの Promise チェインで直列化することで防ぐ。
+  const saveIndexChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const queueSaveIndex = useCallback((index: GraphiumIndex): Promise<unknown> => {
+    const next = saveIndexChainRef.current
+      .catch(() => undefined)
+      .then(() => saveIndexFile(index))
+      .catch((err) => console.warn("インデックス保存失敗:", err));
+    saveIndexChainRef.current = next;
+    return next;
+  }, []);
   // メイン一覧用: deletedAt / archivedAt エントリを除外した index ビュー
   const noteIndex: GraphiumIndex | null = useMemo(() => {
     if (!rawNoteIndex) return null;
@@ -166,6 +181,12 @@ export function useFileManager(authenticated: boolean) {
   const archivedIdSet = useMemo(
     () => new Set(archivedNotes.map((n) => n.noteId)),
     [archivedNotes]
+  );
+  // ゴミ箱内 ID の Set（wikiFiles の一覧フィルタに使う。
+  // ノートは noteIndex 経由でフィルタされるため別途不要）
+  const trashedIdSet = useMemo(
+    () => new Set(trashedNotes.map((n) => n.noteId)),
+    [trashedNotes]
   );
   // 派生ノート作成中フラグ
   const [deriving, setDeriving] = useState(false);
@@ -304,10 +325,14 @@ export function useFileManager(authenticated: boolean) {
               const { id, doc } = r.value;
               metas.set(id, {
                 title: doc.title,
-                kind: doc.wikiMeta?.kind ?? "concept",
+                kind: doc.wikiMeta?.kind ?? "claim",
                 model: doc.wikiMeta?.generatedBy?.model,
                 level: doc.wikiMeta?.level,
                 status: doc.wikiMeta?.status,
+                claimRole: doc.wikiMeta?.claimRole,
+                atomType: doc.wikiMeta?.atomType,
+                synthesisMode: doc.wikiMeta?.synthesisMode,
+                hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
               });
               docCacheRef.current.set(`wiki:${id}`, doc);
             }
@@ -580,14 +605,22 @@ export function useFileManager(authenticated: boolean) {
     if (!authenticated || !noteIndex || files.length === 0) return;
     let cancelled = false;
     (async () => {
-      const idx = await ensureMediaIndex(files, docCacheRef.current, loadFile);
+      // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つため、
+      // PDF アセットの usedIn を埋めるには Wiki も走査対象に含める必要がある。
+      const idx = await ensureMediaIndex(
+        files,
+        docCacheRef.current,
+        loadFile,
+        wikiFiles,
+        storage().loadWikiFile ? loadWikiFile : undefined,
+      );
       if (!cancelled) {
         mediaIndexRef.current = idx;
         setMediaIndex(idx);
       }
     })();
     return () => { cancelled = true; };
-  }, [authenticated, noteIndex, files]);
+  }, [authenticated, noteIndex, files, wikiFiles]);
 
   // activeFileId や files / wikiFiles が変わったらグラフを再構築。
   // Wiki ページ（Concept / Synthesis）を開いているときも、その wiki の派生関係を
@@ -700,7 +733,7 @@ export function useFileManager(authenticated: boolean) {
             const updated = updateIndexEntry(noteIndexRef.current, savedFileId, doc);
             noteIndexRef.current = updated;
             setNoteIndex(updated);
-            saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+            queueSaveIndex(updated);
           }
         }
 
@@ -709,7 +742,10 @@ export function useFileManager(authenticated: boolean) {
           const savedFileId = currentFileId ?? activeFileIdRef.current;
           if (savedFileId && doc.pages[0]) {
             const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-            const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap);
+            // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
+            // document-level の PDF 参照も渡して usedIn に反映する。
+            const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+            const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap, docPdfRefs);
             mediaIndexRef.current = updated;
             setMediaIndex(updated);
             saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
@@ -778,7 +814,7 @@ export function useFileManager(authenticated: boolean) {
           }
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
 
         // 派生先ノートを開く
@@ -897,7 +933,7 @@ export function useFileManager(authenticated: boolean) {
           }
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
 
         // 派生先ノートを開く
@@ -926,7 +962,7 @@ export function useFileManager(authenticated: boolean) {
           const updated = softDeleteIndexEntry(noteIndexRef.current, fileId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
         // 開いていれば閉じる
         if (activeFileId === fileId) {
@@ -949,7 +985,7 @@ export function useFileManager(authenticated: boolean) {
           const updated = restoreIndexEntry(noteIndexRef.current, fileId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
       } catch (err) {
         console.error("ゴミ箱からの復元に失敗:", err);
@@ -965,12 +1001,17 @@ export function useFileManager(authenticated: boolean) {
   const handlePermanentDelete = useCallback(
     async (fileId: string) => {
       try {
+        // インデックスから wiki か note か判定する
+        const entry = noteIndexRef.current?.notes.find((n) => n.noteId === fileId);
+        const isWiki = entry?.source === "ai";
+        const cacheKey = isWiki ? `wiki:${fileId}` : fileId;
+
         // 削除対象のドキュメントを取得（参照クリーンアップ用）
-        let targetDoc = docCacheRef.current.get(fileId);
+        let targetDoc = docCacheRef.current.get(cacheKey);
         if (!targetDoc) {
           // ゴミ箱から完全削除する場合、キャッシュにないことがある
           try {
-            targetDoc = await loadFile(fileId);
+            targetDoc = isWiki ? await loadWikiFile(fileId) : await loadFile(fileId);
           } catch {
             // 既にファイルが無くても続行
           }
@@ -1013,16 +1054,20 @@ export function useFileManager(authenticated: boolean) {
         }
 
         // キャッシュから削除
-        docCacheRef.current.delete(fileId);
+        docCacheRef.current.delete(cacheKey);
 
-        await deleteFile(fileId);
+        if (isWiki) {
+          await deleteWikiFileFromStorage(fileId);
+        } else {
+          await deleteFile(fileId);
+        }
         setRecentNotes(removeFromRecent(fileId));
         // インデックスから除去（完全削除なのでエントリごと消す）
         if (noteIndexRef.current) {
           const updated = removeIndexEntry(noteIndexRef.current, fileId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
         // メディアインデックスから usedIn を除去
         if (mediaIndexRef.current) {
@@ -1031,10 +1076,16 @@ export function useFileManager(authenticated: boolean) {
           setMediaIndex(updated);
           saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
         }
-        if (activeFileId === fileId) {
+        const activeKey = isWiki ? `wiki:${fileId}` : fileId;
+        if (activeFileId === activeKey) {
           setActiveFileId(null);
           setActiveDoc(null);
           setEditorKey((k) => k + 1);
+        }
+        // wiki の場合は wikiFiles state からも除去（次の refreshFiles で確定）
+        if (isWiki) {
+          setWikiFiles((prev) => prev.filter((f) => f.id !== fileId));
+          setWikiMetas((prev) => { const next = new Map(prev); next.delete(fileId); return next; });
         }
         await refreshFiles();
       } catch (err) {
@@ -1067,26 +1118,36 @@ export function useFileManager(authenticated: boolean) {
   );
 
   // メディアアップロード（インデックス自動登録付き）
-  const handleUploadMedia = useCallback(async (file: File): Promise<string> => {
-    const result = await uploadMediaFileWithMeta(file);
-    // メディアインデックスに登録
-    const entry: MediaIndexEntry = {
-      fileId: result.fileId,
-      name: result.name,
-      type: mimeToMediaType(result.mimeType),
-      mimeType: result.mimeType,
-      url: result.url,
-      thumbnailUrl: result.url.replace("=s0", "=s200"),
-      uploadedAt: new Date().toISOString(),
-      usedIn: [],
-    };
-    const current = mediaIndexRef.current ?? createEmptyIndex();
-    const updated = addMediaEntry(current, entry);
-    mediaIndexRef.current = updated;
-    setMediaIndex(updated);
-    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
-    return result.url;
-  }, []);
+  //
+  // `options.derivedFromAssets` を渡すと、登録時に派生関係を MediaIndex に記録する。
+  // 例: PDF から抽出した画像をアップロードするとき、元 PDF の fileId を渡せば
+  // 画像モーダルから元 PDF を辿り、PDF モーダルから派生画像を辿れるようになる。
+  const handleUploadMedia = useCallback(
+    async (file: File, options?: { derivedFromAssets?: string[] }): Promise<string> => {
+      const result = await uploadMediaFileWithMeta(file);
+      // メディアインデックスに登録
+      const entry: MediaIndexEntry = {
+        fileId: result.fileId,
+        name: result.name,
+        type: mimeToMediaType(result.mimeType),
+        mimeType: result.mimeType,
+        url: result.url,
+        thumbnailUrl: result.url.replace("=s0", "=s200"),
+        uploadedAt: new Date().toISOString(),
+        usedIn: [],
+        ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
+          ? { derivedFromAssets: options.derivedFromAssets }
+          : {}),
+      };
+      const current = mediaIndexRef.current ?? createEmptyIndex();
+      const updated = addMediaEntry(current, entry);
+      mediaIndexRef.current = updated;
+      setMediaIndex(updated);
+      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      return result.url;
+    },
+    [],
+  );
 
   // メディアリネーム（モーダルから呼ぶ）
   // Drive ファイル名・メディアインデックス・参照ノートのブロック props.name を一括更新
@@ -1247,10 +1308,14 @@ export function useFileManager(authenticated: boolean) {
           const existing = next.get(wikiId);
           next.set(wikiId, {
             title: doc.title,
-            kind: doc.wikiMeta?.kind ?? existing?.kind ?? "concept",
+            kind: doc.wikiMeta?.kind ?? existing?.kind ?? "claim",
             model: doc.wikiMeta?.generatedBy?.model ?? existing?.model,
             level: doc.wikiMeta?.level ?? existing?.level,
             status: doc.wikiMeta?.status ?? existing?.status,
+            claimRole: doc.wikiMeta?.claimRole ?? existing?.claimRole,
+            atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
+            synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
+            hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
           });
           return next;
         });
@@ -1259,7 +1324,18 @@ export function useFileManager(authenticated: boolean) {
           const updated = updateIndexEntry(noteIndexRef.current, wikiId, doc);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
+        }
+        // メディアインデックスの usedIn を同期 — Wiki ノートは PDF を
+        // document-level (`wikiMeta.derivedFromNotes: ["pdf:..."]`) で参照するため、
+        // 保存のたびに反映して PDF アセットモーダルの利用ノートグラフを最新に保つ。
+        if (mediaIndexRef.current) {
+          const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
+          const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+          const updated = syncUsedIn(mediaIndexRef.current, `wiki:${wikiId}`, doc.title, mediaMap, docPdfRefs);
+          mediaIndexRef.current = updated;
+          setMediaIndex(updated);
+          saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
         }
       } catch (err) {
         console.error("Wiki の保存に失敗:", err);
@@ -1271,28 +1347,29 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
-  // Wiki を削除
+  // Wiki をゴミ箱に送る（ソフトデリート）
+  // - インデックスに deletedAt をセットするだけ。ファイル本体・他ノートからの参照は保持する
+  // - 一覧・サイドバーからは消えるが、引用 / regenerate / グラフ探索からは引き続き解決できる
+  // - 完全削除は TrashView から handlePermanentDelete 経由で行う
+  // - wikiFiles state は触らない。触ると index 再構築 effect が発火し、
+  //   trash エントリを「ai 系の旧エントリ」として除去してしまう。一覧表示の除外は
+  //   フック return 側の `wikiFiles: wikiFiles.filter(...)` が担当する。
   const handleDeleteWikiFile = useCallback(
     async (wikiId: string) => {
       try {
-        docCacheRef.current.delete(`wiki:${wikiId}`);
-        await deleteWikiFileFromStorage(wikiId);
-        // インデックスから除去
         if (noteIndexRef.current) {
-          const updated = removeIndexEntry(noteIndexRef.current, wikiId);
+          const updated = softDeleteIndexEntry(noteIndexRef.current, wikiId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
         if (activeFileId === `wiki:${wikiId}`) {
           setActiveFileId(null);
           setActiveDoc(null);
           setEditorKey((k) => k + 1);
         }
-        setWikiFiles((prev) => prev.filter((f) => f.id !== wikiId));
-        setWikiMetas((prev) => { const next = new Map(prev); next.delete(wikiId); return next; });
       } catch (err) {
-        console.error("Wiki の削除に失敗:", err);
+        console.error("Wiki のゴミ箱への移動に失敗:", err);
       }
     },
     [activeFileId, setActiveFileId]
@@ -1313,7 +1390,7 @@ export function useFileManager(authenticated: boolean) {
           const updated = archiveIndexEntry(noteIndexRef.current, indexId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
         if (activeFileId === `wiki:${wikiId}`) {
           setActiveFileId(null);
@@ -1335,7 +1412,7 @@ export function useFileManager(authenticated: boolean) {
           const updated = restoreFromArchive(noteIndexRef.current, fileId);
           noteIndexRef.current = updated;
           setNoteIndex(updated);
-          saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+          queueSaveIndex(updated);
         }
         // wiki の場合は wikiFiles state にも戻す必要がある — 次回 listWikiFiles で同期される
         await refreshFiles();
@@ -1386,7 +1463,7 @@ export function useFileManager(authenticated: boolean) {
         const updated = updateIndexEntry(noteIndexRef.current, newFileId, doc);
         noteIndexRef.current = updated;
         setNoteIndex(updated);
-        saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+        queueSaveIndex(updated);
       }
 
       return newFileId;
@@ -1412,10 +1489,50 @@ export function useFileManager(authenticated: boolean) {
         const updated = updateIndexEntry(noteIndexRef.current, newFileId, doc);
         noteIndexRef.current = updated;
         setNoteIndex(updated);
-        saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+        queueSaveIndex(updated);
+      }
+
+      // メディアインデックスの usedIn を同期 — Word/Markdown 取り込みで貼られた
+      // 画像が画像モーダルのネットワーク表示に出るようにするため、handleSaveFile と
+      // 同じ手順で逆引きを更新する。
+      if (mediaIndexRef.current && doc.pages[0]) {
+        const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, newFileId, doc.title, mediaMap, docPdfRefs);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
       }
 
       return newFileId;
+    },
+    [],
+  );
+
+  // 取り込み 2 パス目用: 既存ノートに対して link 解決済みの doc を上書き保存する。
+  // recordRevision を呼ばないため、handleCreateNoteFromImport 直後の追加保存でリビジョンが
+  // 二重に積まれない。インデックスとキャッシュも追従更新する。
+  const handleSaveImportedDoc = useCallback(
+    async (noteId: string, doc: GraphiumDocument): Promise<void> => {
+      docCacheRef.current.set(noteId, doc);
+      await saveFile(noteId, doc);
+      if (noteIndexRef.current) {
+        const updated = updateIndexEntry(noteIndexRef.current, noteId, doc);
+        noteIndexRef.current = updated;
+        setNoteIndex(updated);
+        queueSaveIndex(updated);
+      }
+
+      // 取り込み 2 パス目（リンク解決後）でも usedIn を同期しておく。
+      // pass 1 と pass 2 で blocks が変わっていても、最新状態に追従させる。
+      if (mediaIndexRef.current && doc.pages[0]) {
+        const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, noteId, doc.title, mediaMap, docPdfRefs);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      }
     },
     [],
   );
@@ -1440,10 +1557,14 @@ export function useFileManager(authenticated: boolean) {
         const next = new Map(prev);
         next.set(newId, {
           title: doc.title,
-          kind: doc.wikiMeta?.kind ?? "concept",
+          kind: doc.wikiMeta?.kind ?? "claim",
           model: doc.wikiMeta?.generatedBy?.model,
           level: doc.wikiMeta?.level,
           status: doc.wikiMeta?.status,
+          claimRole: doc.wikiMeta?.claimRole,
+          atomType: doc.wikiMeta?.atomType,
+          synthesisMode: doc.wikiMeta?.synthesisMode,
+          hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
         });
         return next;
       });
@@ -1460,7 +1581,17 @@ export function useFileManager(authenticated: boolean) {
         const updated = updateIndexEntry(noteIndexRef.current, newId, doc, newFile);
         noteIndexRef.current = updated;
         setNoteIndex(updated);
-        saveIndexFile(updated).catch((err) => console.warn("インデックス保存失敗:", err));
+        queueSaveIndex(updated);
+      }
+      // メディアインデックスの usedIn を同期 — Knowledge 化（pdf-ingest 等）で
+      // 新しい Wiki が作られた直後に PDF アセットの利用ノートに反映する。
+      if (mediaIndexRef.current) {
+        const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
+        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, `wiki:${newId}`, doc.title, mediaMap, docPdfRefs);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
       }
       return newId;
     },
@@ -1596,6 +1727,15 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
+  // Recent ノートは noteIndex のアクティブエントリに存在するもののみ表示する。
+  // 完全削除・ゴミ箱送りされたノートが localStorage 由来で残るのを防ぐ。
+  // noteIndex 未ロード時はそのまま見せる（読み込み前に空になるのを避ける）。
+  const visibleRecentNotes = useMemo(() => {
+    if (!noteIndex) return recentNotes;
+    const activeIds = new Set(noteIndex.notes.map((n) => n.noteId));
+    return recentNotes.filter((n) => activeIds.has(n.noteId));
+  }, [recentNotes, noteIndex]);
+
   return {
     // 状態
     files,
@@ -1611,7 +1751,7 @@ export function useFileManager(authenticated: boolean) {
     setSourceDoc,
     showNoteList,
     setShowNoteList,
-    recentNotes,
+    recentNotes: visibleRecentNotes,
     noteIndex,
     rawNoteIndex,
     trashedNotes,
@@ -1647,9 +1787,10 @@ export function useFileManager(authenticated: boolean) {
     handleAddUrlBookmark,
     handleCreateNoteFromDocument,
     handleCreateNoteFromImport,
+    handleSaveImportedDoc,
     // Wiki — アーカイブ・ゴミ箱のエントリは UI 表示・グラフから除外する
     // （ファイル本体は残るので、リンクや regenerate からは引き続き透過解決できる）
-    wikiFiles: wikiFiles.filter((f) => !archivedIdSet.has(f.id)),
+    wikiFiles: wikiFiles.filter((f) => !archivedIdSet.has(f.id) && !trashedIdSet.has(f.id)),
     allWikiFiles: wikiFiles,
     wikiMetas,
     activeWikiKind,

@@ -968,6 +968,24 @@ fn shared_blob_delete(root: String, hash: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 任意のパスへバイナリ書き込み。base64 でエンコードされたバイト列を受け取る。
+/// 呼び出し側で `dialog.save()` を使ってユーザーが選んだパスを取得してから渡すこと。
+/// PDF などフロント側で生成したファイルを WKWebView の `<a download>` に頼らず保存するための入口。
+#[tauri::command]
+fn save_bytes_to_path(path: String, content_base64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&content_base64)
+        .map_err(|e| format!("base64 デコード失敗: {e}"))?;
+    let target = PathBuf::from(&path);
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| format!("親ディレクトリ作成失敗: {e}"))?;
+        }
+    }
+    fs::write(&target, bytes).map_err(|e| format!("ファイル書き込み失敗: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1011,6 +1029,7 @@ pub fn run() {
             shared_blob_delete,
             shutdown_ack,
             kill_pid,
+            save_bytes_to_path,
         ])
         .setup(|app| {
             // メニューバー構築

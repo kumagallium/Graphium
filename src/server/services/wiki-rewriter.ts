@@ -52,7 +52,7 @@ This is NOT a simple append — you should reorganize, merge, and improve the ov
 5. **Maintain depth**: Keep the same level of detail or improve it. Don't summarize away useful specifics.
 6. **Preserve citations**: Keep existing inline citations using double brackets (e.g., "[[ノートタイトル]] によると..." or "Based on [[note title]], ..."). When integrating new information, add inline citations with the specific source title in double brackets \`[[title]]\` — never use generic phrases like "the source" or "the new information".
 7. **Prefer fewer, broader sections**: Keep the heading count minimal. Aim for **0-3 sections total**. If the entire content fits in 2-3 short paragraphs, output a single section with an empty heading (\`""\`) — flowing prose with no structure. Only add a heading when it genuinely separates a different topic. **Do not split prose into many small headed sections** ("概要" + "決定" + "理由" + "工夫" + "理念" pattern) — merge into 1-2 wider sections instead.
-8. **Compact length**: A Concept should be readable in under 30 seconds. If the rewrite is becoming long, drop the lower-priority sentences rather than splitting them off.
+8. **Compact length**: A Claim should be readable in under 30 seconds. If the rewrite is becoming long, drop the lower-priority sentences rather than splitting them off.
 
 ## Output Format
 

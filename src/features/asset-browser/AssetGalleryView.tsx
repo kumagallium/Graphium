@@ -2,9 +2,10 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, BookPlus, FlaskConical } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { useRangeSelect } from "../../hooks/use-range-select";
 /** 日付を YYYY-MM-DD 形式でフォーマット */
 function formatDate(isoDate: string): string {
   const d = new Date(isoDate);
@@ -62,8 +63,58 @@ function DeleteConfirmDialog({
   );
 }
 
+// 一括削除確認ダイアログ — 影響を受けるノート数を表示
+function BulkDeleteConfirmDialog({
+  count,
+  refNoteCount,
+  onConfirm,
+  onCancel,
+  deleting,
+}: {
+  count: number;
+  refNoteCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  const t = useT();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+        <h3 className="text-sm font-semibold text-foreground mb-2">
+          {t("asset.bulkDeleteConfirmTitle")}
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          {refNoteCount > 0
+            ? t("asset.bulkDeleteConfirmMessage", {
+                count: String(count),
+                refCount: String(refNoteCount),
+              })
+            : t("asset.bulkDeleteConfirmMessageNoRef", { count: String(count) })}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+          >
+            {deleting ? t("asset.deleting") : t("common.delete")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
-function ImageThumbnail({ entry }: { entry: MediaIndexEntry }) {
+function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,14 +129,22 @@ function ImageThumbnail({ entry }: { entry: MediaIndexEntry }) {
     provider.getMediaBlobUrl(fileId).then(setSrc).catch(() => {});
   }, [entry.thumbnailUrl]);
 
+  const wrapperCls = compact
+    ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
+    : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+  const imgCls = compact
+    ? "w-10 h-10 object-cover rounded bg-muted shrink-0"
+    : "w-full h-32 object-cover rounded-t-md bg-muted";
+  const iconSize = compact ? 16 : 32;
+
   if (!src) {
-    return <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted"><Image size={32} className="text-muted-foreground" /></div>;
+    return <div className={wrapperCls}><Image size={iconSize} className="text-muted-foreground" /></div>;
   }
-  return <img src={src} alt={entry.name} className="w-full h-32 object-cover rounded-t-md bg-muted" loading="lazy" />;
+  return <img src={src} alt={entry.name} className={imgCls} loading="lazy" />;
 }
 
 // 動画サムネイル: Intersection Observer で画面内に入ったときだけ Blob URL を取得
-function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
+function VideoThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loaded, setLoaded] = useState(false);
@@ -119,8 +178,14 @@ function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
     return () => { cancelled = true; };
   }, [entry.url, visible]);
 
+  const wrapperCls = compact
+    ? "relative w-10 h-10 rounded bg-muted overflow-hidden shrink-0"
+    : "relative w-full h-32 rounded-t-md bg-muted overflow-hidden";
+  const iconSize = compact ? 16 : 32;
+  const playSize = compact ? 14 : 24;
+
   return (
-    <div ref={containerRef} className="relative w-full h-32 rounded-t-md bg-muted overflow-hidden">
+    <div ref={containerRef} className={wrapperCls}>
       <video
         ref={videoRef}
         preload="metadata"
@@ -131,19 +196,33 @@ function VideoThumbnail({ entry }: { entry: MediaIndexEntry }) {
       />
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <Video size={32} className="text-muted-foreground" />
+          <Video size={iconSize} className="text-muted-foreground" />
         </div>
       )}
       <span className="absolute inset-0 flex items-center justify-center text-white/80 bg-black/20 pointer-events-none">
-        <Play size={24} fill="currentColor" />
+        <Play size={playSize} fill="currentColor" />
       </span>
     </div>
   );
 }
 
 // URL ブックマークサムネイル: favicon + ドメイン表示
-function UrlThumbnail({ entry }: { entry: MediaIndexEntry }) {
+function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const domain = entry.urlMeta?.domain ?? "";
+  if (compact) {
+    return (
+      <div className="w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0">
+        <img
+          src={getFaviconUrl(domain)}
+          alt=""
+          className="w-5 h-5 rounded"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+      </div>
+    );
+  }
   return (
     <div className="w-full h-32 flex flex-col items-center justify-center gap-2 rounded-t-md bg-muted px-3">
       <img
@@ -159,6 +238,36 @@ function UrlThumbnail({ entry }: { entry: MediaIndexEntry }) {
   );
 }
 
+// 共通サムネイルディスパッチ（gallery/list 両用）
+function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
+  switch (entry.type) {
+    case "image":
+      return <ImageThumbnail entry={entry} compact={compact} />;
+    case "video":
+      return <VideoThumbnail entry={entry} compact={compact} />;
+    case "audio": {
+      const cls = compact
+        ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
+        : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+      return <div className={cls}><Volume2 size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
+    }
+    case "pdf": {
+      const cls = compact
+        ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
+        : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+      return <div className={cls}><FileText size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
+    }
+    case "url":
+      return <UrlThumbnail entry={entry} compact={compact} />;
+    default: {
+      const cls = compact
+        ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
+        : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+      return <div className={cls}><Paperclip size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
+    }
+  }
+}
+
 // メディアカードコンポーネント
 function MediaCard({
   entry,
@@ -172,36 +281,6 @@ function MediaCard({
   onOpenDetail: (entry: MediaIndexEntry) => void;
 }) {
   const t = useT();
-
-  // サムネイル表示
-  const thumbnail = useMemo(() => {
-    switch (entry.type) {
-      case "image":
-        return <ImageThumbnail entry={entry} />;
-      case "video":
-        return <VideoThumbnail entry={entry} />;
-      case "audio":
-        return (
-          <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
-            <Volume2 size={32} className="text-muted-foreground" />
-          </div>
-        );
-      case "pdf":
-        return (
-          <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
-            <FileText size={32} className="text-muted-foreground" />
-          </div>
-        );
-      case "url":
-        return <UrlThumbnail entry={entry} />;
-      default:
-        return (
-          <div className="w-full h-32 flex items-center justify-center rounded-t-md bg-muted">
-            <Paperclip size={32} className="text-muted-foreground" />
-          </div>
-        );
-    }
-  }, [entry]);
 
   return (
     <div className="border border-border rounded-md bg-background hover:border-primary/40 transition-colors group relative">
@@ -219,7 +298,7 @@ function MediaCard({
         onClick={() => onOpenDetail(entry)}
         className="w-full cursor-pointer"
       >
-        {thumbnail}
+        <MediaThumbnail entry={entry} />
       </button>
 
       {/* メタデータ */}
@@ -298,6 +377,19 @@ export type AssetGalleryViewProps = {
    * コールバック（Phase 2b-media）。親側で saveMediaIndex 経由で永続化する。
    */
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: import("./media-index").MediaSharedRef) => Promise<void> | void;
+  /**
+   * PDF アセットの各ページを画像化して画像アセットに登録するアクション。
+   * 親側で pdf-image-extractor + handleUploadMedia を組み立てて渡す。
+   */
+  onExtractPdfPages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
+  /**
+   * Knowledge ノートの kind 別色を出すためのルックアップ。
+   * 渡されない場合はフォールバック色で描画。
+   */
+  getKnowledgeKind?: import("./MediaDetailModal").KnowledgeKindLookup;
 };
 
 export function AssetGalleryView({
@@ -313,6 +405,8 @@ export function AssetGalleryView({
   onCreateProvNote,
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
+  onExtractPdfPages,
+  getKnowledgeKind,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -324,6 +418,26 @@ export function AssetGalleryView({
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  // ビュー切替（gallery / list）— localStorage に永続化
+  const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {
+    try {
+      const v = typeof localStorage !== "undefined" ? localStorage.getItem("graphium:assetViewMode") : null;
+      return v === "list" ? "list" : "gallery";
+    } catch {
+      return "gallery";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("graphium:assetViewMode", viewMode);
+    } catch {
+      // no-op
+    }
+  }, [viewMode]);
+  // 複数選択（list モードのみで利用）
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const acceptByType: Record<MediaType, string> = {
     image: "image/*",
@@ -401,6 +515,70 @@ export function AssetGalleryView({
       setDeleteTarget(null);
     }
   }, [deleteTarget, onDeleteMedia]);
+
+  // ── 複数選択（list モード）──
+  // タイプ／検索／ソートが変わったら選択をクリア
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [mediaType, searchQuery, sortKey, sortAsc]);
+  // 表示中エントリーの順序付き ID（範囲選択用）
+  const orderedIds = useMemo(() => filtered.map((e) => e.fileId), [filtered]);
+  const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
+  const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds.has(e.fileId));
+  const someSelected = selectedIds.size > 0;
+  const toggleSelectAll = useCallback(() => {
+    const ids = filtered.map((e) => e.fileId);
+    if (ids.every((id) => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(ids));
+    }
+  }, [filtered, selectedIds]);
+  // 選択中のエントリーから影響を受けるノート数（重複除外）
+  const selectedRefNoteCount = useMemo(() => {
+    const noteIds = new Set<string>();
+    for (const e of filtered) {
+      if (!selectedIds.has(e.fileId)) continue;
+      for (const u of e.usedIn) noteIds.add(u.noteId);
+    }
+    return noteIds.size;
+  }, [filtered, selectedIds]);
+  const handleBulkDeleteConfirm = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId));
+    setBulkDeleting(true);
+    try {
+      // 順次削除（並列だと mediaIndex の race が起きうる）
+      for (const entry of targets) {
+        await onDeleteMedia(entry);
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteOpen(false);
+    }
+  }, [filtered, selectedIds, onDeleteMedia]);
+
+  // 一括 Knowledge 化（URL/PDF のみ）
+  // onIngestMedia は内部でトーストキューに積む fire-and-forget なので、
+  // 同期的に順次キックすれば各エントリーが個別ジョブとして並走する
+  const bulkActionable = mediaType === "url" || mediaType === "pdf";
+  const handleBulkIngest = useCallback(() => {
+    if (!onIngestMedia || selectedIds.size === 0) return;
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId));
+    for (const entry of targets) {
+      onIngestMedia(entry);
+    }
+    setSelectedIds(new Set());
+  }, [filtered, selectedIds, onIngestMedia]);
+  const handleBulkCreateProvNote = useCallback(() => {
+    if (!onCreateProvNote || selectedIds.size === 0) return;
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId));
+    for (const entry of targets) {
+      onCreateProvNote(entry);
+    }
+    setSelectedIds(new Set());
+  }, [filtered, selectedIds, onCreateProvNote]);
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
@@ -480,10 +658,80 @@ export function AssetGalleryView({
           >
             {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
           </button>
+          {/* ビュー切替 */}
+          <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
+            <button
+              onClick={() => setViewMode("gallery")}
+              title={t("asset.viewGallery")}
+              aria-pressed={viewMode === "gallery"}
+              className={`px-2 py-1 transition-colors ${
+                viewMode === "gallery"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid size={12} />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              title={t("asset.viewList")}
+              aria-pressed={viewMode === "list"}
+              className={`px-2 py-1 transition-colors border-l border-border ${
+                viewMode === "list"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <ListIcon size={12} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ギャラリーグリッド */}
+      {/* 一括アクションバー（list モードで選択時のみ） */}
+      {viewMode === "list" && someSelected && (
+        <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
+          <span className="text-xs text-foreground font-medium">
+            {selectedIds.size} / {filtered.length}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t("asset.deselectAll")}
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {bulkActionable && onIngestMedia && (
+              <button
+                onClick={handleBulkIngest}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("asset.bulkIngestTitle")}
+              >
+                <BookPlus size={12} />
+                {t("asset.bulkIngest", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {bulkActionable && onCreateProvNote && (
+              <button
+                onClick={handleBulkCreateProvNote}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("asset.bulkCreateProvNoteTitle")}
+              >
+                <FlaskConical size={12} />
+                {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            <button
+              onClick={() => setBulkDeleteOpen(true)}
+              className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+            >
+              {t("asset.deleteSelected", { count: String(selectedIds.size) })}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* メイン表示（ギャラリー or リスト） */}
       <div className="flex-1 overflow-auto px-6 py-4">
         {!mediaIndex ? (
           <div className="flex items-center justify-center py-16">
@@ -493,7 +741,7 @@ export function AssetGalleryView({
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
           </div>
-        ) : (
+        ) : viewMode === "gallery" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {filtered.map((entry) => (
               <MediaCard
@@ -505,6 +753,105 @@ export function AssetGalleryView({
               />
             ))}
           </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
+                <th className="py-2 px-2 w-[36px]">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                    title={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+                  />
+                </th>
+                <th className="py-2 px-2 w-[56px]" />
+                <th className="py-2 px-3">{t("asset.colName")}</th>
+                <th className="py-2 px-2 w-[80px] text-center" title={t("asset.colUsedIn")}>
+                  {t("asset.colUsedIn")}
+                </th>
+                <th className="py-2 pl-3 w-[110px]">{t("asset.colDate")}</th>
+                <th className="py-2 px-2 w-[40px]" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((entry, index) => {
+                const isSelected = selectedIds.has(entry.fileId);
+                return (
+                  <tr
+                    key={entry.fileId}
+                    className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
+                      isSelected ? "bg-primary/5" : ""
+                    }`}
+                    onMouseDown={(e) => range.onRowMouseDown(e, index)}
+                    onMouseEnter={() => range.onRowMouseEnter(index)}
+                    onClick={() => {
+                      if (range.shouldSuppressClick()) return;
+                      setDetailEntry(entry);
+                    }}
+                  >
+                    <td
+                      className="py-2 px-2 cursor-pointer"
+                      title={t("asset.dragToRangeSelect")}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        tabIndex={-1}
+                        className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
+                      />
+                    </td>
+                    <td className="py-1 px-2">
+                      <MediaThumbnail entry={entry} compact />
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="text-foreground truncate" title={entry.name}>
+                          {entry.name}
+                        </span>
+                        {entry.type === "url" && (
+                          <a
+                            href={entry.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                            title={t("asset.urlOpen")}
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </div>
+                      {entry.type === "url" && entry.urlMeta?.domain && (
+                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                          {entry.urlMeta.domain}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
+                      {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
+                    </td>
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                      {formatDate(entry.uploadedAt)}
+                    </td>
+                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setDeleteTarget(entry)}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
+                        title={t("common.delete")}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -515,6 +862,17 @@ export function AssetGalleryView({
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteTarget(null)}
           deleting={deleting}
+        />
+      )}
+
+      {/* 一括削除確認ダイアログ */}
+      {bulkDeleteOpen && (
+        <BulkDeleteConfirmDialog
+          count={selectedIds.size}
+          refNoteCount={selectedRefNoteCount}
+          onConfirm={handleBulkDeleteConfirm}
+          onCancel={() => setBulkDeleteOpen(false)}
+          deleting={bulkDeleting}
         />
       )}
 
@@ -537,6 +895,10 @@ export function AssetGalleryView({
             setDetailEntry({ ...entry, sharedRef });
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
+          onExtractPdfPages={onExtractPdfPages}
+          mediaIndex={mediaIndex}
+          getKnowledgeKind={getKnowledgeKind}
+          onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
         />
       )}
 

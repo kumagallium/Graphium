@@ -8,6 +8,14 @@ import { Maximize2, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import type { NoteGraphData } from "./graph-builder";
+import type { WikiKind } from "../../lib/document-types";
+import {
+  knowledgeKindColor,
+  knowledgeKindBorder,
+  KNOWLEDGE_KIND_LEGEND_ORDER,
+} from "./knowledge-colors";
+import { useT } from "../../i18n";
+import { resolveMediaThumbUrl } from "../asset-browser/media-thumbnails";
 
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
@@ -25,18 +33,32 @@ const NODE_COLORS = {
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 const BG_COLOR = "#fafdf7";   // テーマ背景
 
-function getNodeColor(hop: number, isCurrent: boolean, isWiki?: boolean, external?: "pdf" | "url"): string {
+type ExternalKind = "pdf" | "url" | "media";
+
+function getNodeColor(
+  hop: number,
+  isCurrent: boolean,
+  isWiki?: boolean,
+  external?: ExternalKind,
+  wikiKind?: WikiKind,
+): string {
   if (isCurrent) return NODE_COLORS.current;
   if (external) return NODE_COLORS.external;
-  if (isWiki) return NODE_COLORS.wiki;
+  if (isWiki) return knowledgeKindColor(wikiKind);
   if (hop === 1) return NODE_COLORS.hop1;
   return NODE_COLORS.hop2;
 }
 
-function getBorderColor(hop: number, isCurrent: boolean, isWiki?: boolean, external?: "pdf" | "url"): string {
+function getBorderColor(
+  hop: number,
+  isCurrent: boolean,
+  isWiki?: boolean,
+  external?: ExternalKind,
+  wikiKind?: WikiKind,
+): string {
   if (isCurrent) return "#3d6844";
   if (external) return "#6e7378";
-  if (isWiki) return "#7b4fb0";
+  if (isWiki) return knowledgeKindBorder(wikiKind);
   if (hop === 1) return "#4a7da6";
   return "#9cb5a4";
 }
@@ -45,7 +67,7 @@ function getNodeSize(isCurrent: boolean): number {
   return isCurrent ? 40 : 28;
 }
 
-function getNodeShape(isCurrent: boolean, isWiki?: boolean, external?: "pdf" | "url"): string {
+function getNodeShape(isCurrent: boolean, isWiki?: boolean, external?: ExternalKind): string {
   if (isCurrent) return "ellipse";
   if (external) return "rectangle";
   return isWiki ? "diamond" : "ellipse";
@@ -143,6 +165,21 @@ const cytoscapeStyle: cytoscape.StylesheetStyle[] = [
       opacity: 0.08,
     },
   },
+  // 画像 / 動画メディアノード: サムネイルを背景画像として表示
+  // contain で全体を見せる（縦横比は維持、余白は塗り色）。
+  {
+    selector: "node.thumb",
+    style: {
+      "background-image": "data(thumbUrl)" as any,
+      "background-fit": "contain" as any,
+      "background-opacity": 1 as any,
+      "background-color": "#ffffff",
+      "background-clip": "node" as any,
+      shape: "round-rectangle",
+      width: 40,
+      height: 40,
+    },
+  },
 ];
 
 // ── コンポーネント ──
@@ -156,8 +193,43 @@ export function NetworkGraphPanel({
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
 }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+
+  // 画像 / 動画メディアノードのサムネイル静止画 URL を非同期解決して保持する。
+  // プロバイダ依存の URL（media-server:// 等）は Cytoscape の background-image で
+  // 直接読めない（動画はそもそも image MIME ではない）ため、resolveMediaThumbUrl を経由する。
+  const [mediaThumbs, setMediaThumbs] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    const thumbableNodes = data.nodes.filter(
+      (n) =>
+        n.external === "media" &&
+        (n.mediaType === "image" || n.mediaType === "video") &&
+        n.mediaFileId,
+    );
+    if (thumbableNodes.length === 0) {
+      setMediaThumbs(new Map());
+      return;
+    }
+    let cancelled = false;
+    const next = new Map<string, string>();
+    Promise.all(
+      thumbableNodes.map(async (n) => {
+        const url = await resolveMediaThumbUrl({
+          type: n.mediaType,
+          url: n.externalUrl ?? "",
+          fileId: n.mediaFileId!,
+        });
+        if (url) next.set(n.mediaFileId!, url);
+      }),
+    ).then(() => {
+      if (!cancelled) setMediaThumbs(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [data.nodes]);
   const [expanded, setExpanded] = useState(false);
 
   const handleNavigate = useCallback(
@@ -195,28 +267,48 @@ export function NetworkGraphPanel({
       [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
 
     for (const node of data.nodes) {
-      const color = getNodeColor(node.hop, node.isCurrent, node.isWiki, node.external);
+      const color = getNodeColor(node.hop, node.isCurrent, node.isWiki, node.external, node.wikiKind);
+      const mediaIcon =
+        node.external === "media"
+          ? node.mediaType === "video"
+            ? "🎬"
+            : node.mediaType === "audio"
+            ? "🎵"
+            : "🖼️"
+          : "";
       const baseTitle = node.external === "pdf"
         ? `📄 ${node.title}`
         : node.external === "url"
         ? `🔗 ${node.title}`
+        : node.external === "media"
+        ? `${mediaIcon} ${node.title}`
         : node.isWiki
         ? `🤖 ${node.title}`
         : node.title;
+      // 画像 / 動画メディアでサムネイルが解決済みなら背景画像表示にする
+      const thumbUrl =
+        node.external === "media" &&
+        (node.mediaType === "image" || node.mediaType === "video") &&
+        node.mediaFileId
+          ? mediaThumbs.get(node.mediaFileId)
+          : undefined;
+      const hasThumb = !!thumbUrl;
       elements.push({
         data: {
           id: node.id,
           label: truncate(baseTitle, 18),
           fullLabel: baseTitle,
           color,
-          borderColor: getBorderColor(node.hop, node.isCurrent, node.isWiki, node.external),
+          borderColor: getBorderColor(node.hop, node.isCurrent, node.isWiki, node.external, node.wikiKind),
           size: getNodeSize(node.isCurrent),
-          shape: getNodeShape(node.isCurrent, node.isWiki, node.external),
+          shape: hasThumb ? "round-rectangle" : getNodeShape(node.isCurrent, node.isWiki, node.external),
           hop: node.hop,
           isCurrent: node.isCurrent,
           isWiki: !!node.isWiki,
           externalUrl: node.externalUrl,
+          ...(hasThumb ? { thumbUrl } : {}),
         },
+        ...(hasThumb ? { classes: "thumb" } : {}),
       });
     }
 
@@ -334,6 +426,11 @@ export function NetworkGraphPanel({
         }
         return;
       }
+      // 画像/動画/音声メディア: PDF と同じく onOpenMedia 経由でアセットモーダルを開く
+      if (nodeId.startsWith("media:")) {
+        if (onOpenMedia) onOpenMedia(nodeId.slice(6));
+        return;
+      }
       // wiki ノードは "wiki:" プレフィックスを付けて遷移
       const isWiki = !!evt.target.data("isWiki");
       handleNavigate(isWiki ? `wiki:${nodeId}` : nodeId);
@@ -345,7 +442,7 @@ export function NetworkGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, handleNavigate, onOpenMedia, expanded]);
+  }, [data, handleNavigate, onOpenMedia, expanded, mediaThumbs]);
 
   if (data.nodes.length === 0) {
     return (
@@ -356,7 +453,7 @@ export function NetworkGraphPanel({
   }
 
   const legendBar = (
-    <div className="px-3 py-2 border-b border-border flex items-center gap-3 text-[10px] text-muted-foreground">
+    <div className="px-3 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
       <span className="flex items-center gap-1">
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.current }} />
         現在
@@ -369,10 +466,15 @@ export function NetworkGraphPanel({
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop2 }} />
         2ホップ
       </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block w-2.5 h-2.5 rotate-45" style={{ backgroundColor: NODE_COLORS.wiki, width: 8, height: 8 }} />
-        Wiki
-      </span>
+      {KNOWLEDGE_KIND_LEGEND_ORDER.map((kind) => (
+        <span key={kind} className="flex items-center gap-1">
+          <span
+            className="inline-block rotate-45"
+            style={{ backgroundColor: knowledgeKindColor(kind), width: 8, height: 8 }}
+          />
+          {t(`knowledge.kind.${kind}` as any)}
+        </span>
+      ))}
       <span className="ml-auto flex items-center gap-1">
         <span>{data.nodes.length} ノード / {data.edges.length} エッジ</span>
         <button

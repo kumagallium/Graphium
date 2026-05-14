@@ -19,7 +19,7 @@ The line I want the product to live up to:
 
 > **A note editor that turns information into knowledge you can reuse, anytime.**
 
-Everything in this document — the labels, the wiki, the file formats — is in
+Everything in this document — the labels, the Knowledge layer, the file formats — is in
 service of that one line.
 
 ## 2. Why I built it
@@ -57,7 +57,7 @@ not seen them together in one tool.
 | Pillar | What it means |
 |---|---|
 | **Provenance, by standard** | Block-level labels (`[Step]`, `[Plan]`, `[Result]`) map to PROV-DM *Activities*; inline highlights (`[Input]`, `[Tool]`, `[Parameter]`, `[Output]`) map to *Entities* and *Properties*; *Agents* come in from authorship metadata. The result is a graph a machine can verify, not just a search index. |
-| **A wiki the AI keeps for you** | Graphium ingests your notes into an editable AI Wiki — *Concept*, *Atom*, *Synthesis*. Future AI conversations read from this wiki, so their claims cite your notes, not their training data. |
+| **A wiki the AI keeps for you** | Graphium ingests your notes into an editable Knowledge layer — *Claims*, *Insights*, *Ideas*. Future AI conversations read from this layer, so their claims cite your notes, not their training data. |
 | **A block editor for thinking-in-progress** | A [BlockNote.js](https://www.blocknotejs.org/)-based editor tuned for messy-now, structured-later: free writing, `@`-linking between notes, `#`-labeling when you are ready. |
 
 > Surface conveniences that sit on top of these pillars (mobile capture, sync,
@@ -81,8 +81,8 @@ Most note tools store the working brain and pretend it is the crystallized
 one. Graphium keeps them as separate layers and connects them on purpose.
 
 - **Notes** = the working brain. Raw material.
-- **AI Wiki** (and future Knowledge Pack export) = the crystallized brain.
-  Reusable.
+- **Knowledge layer** (and future Knowledge Pack export) = the crystallized
+  brain. Reusable.
 
 The point of the product is the **bridge** between the two — and keeping that
 bridge auditable in both directions.
@@ -90,16 +90,17 @@ bridge auditable in both directions.
 ## 5. The hourglass: where portable knowledge is born
 
 Knowledge in Graphium is shaped like an hourglass on its side. The flow goes
-**Notes → Concept → Atom → Synthesis**, and the unit at each stage carries
-less and less of the original project's context — until the Atom, which is
-the narrow waist where context drops to zero and the claim becomes portable.
+**Notes → Claims → Insights → Ideas**, and the unit at each stage carries
+less and less of the original project's context — until the Insight, which
+is the narrow waist where context drops to zero and the claim becomes
+portable.
 
 ```mermaid
 flowchart LR
     N["<b>NOTES</b><br/><i>raw, messy, dated</i><br/>full project context"]
-    C["<b>CONCEPT</b><br/><i>key ideas extracted</i><br/>still in context"]
-    A(["<b>ATOM</b><br/><i>one context-free claim</i><br/>portable"])
-    S["<b>SYNTHESIS</b><br/><i>atoms rewoven</i><br/>across contexts"]
+    C["<b>CLAIMS</b><br/><i>key findings extracted</i><br/>still in context"]
+    A(["<b>INSIGHTS</b><br/><i>one context-free claim</i><br/>portable"])
+    S["<b>IDEAS</b><br/><i>insights rewoven</i><br/>across contexts"]
 
     N -->|ingest| C
     C -->|strip context| A
@@ -111,23 +112,23 @@ flowchart LR
     style S fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0c4a6e
 ```
 
-> The yellow **Atom** is the waist of the hourglass. Blue boxes (Notes,
-> Concept, Synthesis) carry context; the Atom does not.
+> The yellow **Insight** is the waist of the hourglass. Blue boxes (Notes,
+> Claims, Ideas) carry context; the Insight does not.
 
 - **Notes** carry full context — dates, mistakes, side conversations, the
   reason you did something on a Tuesday afternoon.
-- **Concept** pages extract the load-bearing elements while keeping context,
+- **Claims** pages extract the load-bearing elements while keeping context,
   so a human can still read them as part of the project they came from.
-- **Atom** is the waist. Each Atom is a single context-free claim with
-  citations back to the notes that justify it. This is the unit that
+- **Insights** are the waist. Each Insight is a single context-free claim
+  with citations back to the notes that justify it. This is the unit that
   *travels*.
-- **Synthesis** weaves Atoms across projects into a portable, reusable shape
+- **Ideas** weave Insights across projects into a portable, reusable shape
   — the form a future you, or a future AI, can pick up cold.
 
 The narrow waist is the whole point. Without it, you have a private notebook
 on one side and a generic LLM on the other, but no way to move knowledge
-between them. The Atom is what makes information **into** knowledge you can
-reuse.
+between them. The Insight is what makes information **into** knowledge you
+can reuse.
 
 ## 6. Progressive disclosure: use as much, or as little, as you need
 
@@ -150,7 +151,7 @@ design. I expect most people to live in the middle — marking the
 experiments and decisions that matter, leaving everyday writing alone — and
 I think that is fine.
 
-The same gradient applies to the AI Wiki. You can ignore it, browse it
+The same gradient applies to the Knowledge layer. You can ignore it, browse it
 occasionally, or curate it actively. Each level returns proportional value.
 
 ## 7. What Graphium is not
@@ -164,7 +165,7 @@ Saying what Graphium is *not* is part of saying what it is.
   (Google Drive, iCloud, Dropbox folders), not a requirement.
 - **Not a graph database.** PROV-DM is a side-effect of how you write, not a
   schema you fill in by hand.
-- **Not a closed format.** Notes are JSON; the wiki is JSON; you can read,
+- **Not a closed format.** Notes are JSON; the Knowledge layer is JSON; you can read,
   diff, grep, and back them up without me.
 - **Not a finished product.** Several pillars in this document — sharing,
   packs, mobile — are partial or paused. I would rather ship a stable spine
