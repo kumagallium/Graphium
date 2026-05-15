@@ -1,0 +1,11 @@
+{
+  "version": "0.6.10",
+  "notes": "See the changelog for details.",
+  "pub_date": "2026-05-14T09:58:20Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6QmtvWEdYM1Z1VjB4ZnkrSE9qSnd1NG5GN0xqYzZKYnRMUFVTNDVRNnFxQ0VrZzZsdUdmRW1zbXprVTlsSVo0bEZ4d2VBMnFUc25JbmpYaFM2ajVhMndFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NzUyNzAwCWZpbGU6R3JhcGhpdW1fYWFyY2g2NC5hcHAudGFyLmd6CnhvUGZpdEVJcG15SUllcitjakdWRDFxRytya2NQS2c0eEpWT3lnUjlXUmJwcGhSRjNWTHVMZU1OQWdPYks3N0RtMVlLM0NrUHY2V20rU1orUkR0eUN3PT0K",
+      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.6.10/Graphium_aarch64.app.tar.gz"
+    }
+  }
+}
