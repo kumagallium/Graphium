@@ -2466,7 +2466,10 @@ function NoteEditorInner({
             : "fixed bottom-0 left-0 right-0 z-[100] h-14 border-t justify-center px-2 bg-background/95 backdrop-blur-sm"
         )}>
           {([
-            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: aiAvailable },
+            // Tauri 環境では aiAvailable===false でもタブを残す:
+            // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
+            // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
+            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
