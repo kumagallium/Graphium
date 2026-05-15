@@ -186,3 +186,70 @@ jobs:
         run: |
           TAG="${{ needs.resolve-release.outputs.tag }}"
           gh release upload "$TAG" latest.json --clobber --repo "${{ github.repository }}"
+
+      # main の public/updater/latest.json を更新して GitHub Pages 経由で
+      # 「絶対最新」の latest.json を固定 URL から配信できるようにする。
+      # これにより「直近で Latest フラグが立った release」の latest.json ではなく
+      # 「現時点で公開されている中で最も新しいバージョン」を必ず指す。
+      - name: Publish latest.json to main (for GitHub Pages)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ needs.resolve-release.outputs.tag }}"
+          NEW_VERSION="${TAG#v}"
+
+          # 直前ステップで生成した latest.json を退避してから fresh clone へ移動する
+          GENERATED="$(pwd)/latest.json"
+          if [ ! -f "$GENERATED" ]; then
+            echo "ERROR: latest.json not found at $GENERATED"
+            exit 1
+          fi
+
+          WORKDIR="$(mktemp -d)"
+          git clone --depth=1 --branch main \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" \
+            "$WORKDIR/repo"
+          cd "$WORKDIR/repo"
+
+          # 既存の latest.json と semver 比較。旧バージョン用ワークフローが
+          # 遅れて走った場合、現在公開中のものより小さいなら上書きしない。
+          CURRENT_FILE="public/updater/latest.json"
+          if [ -f "$CURRENT_FILE" ]; then
+            CURRENT_VERSION=$(jq -r '.version' "$CURRENT_FILE" 2>/dev/null || echo "0.0.0")
+          else
+            CURRENT_VERSION="0.0.0"
+          fi
+
+          # NEW_VERSION > CURRENT_VERSION を semver 的に判定
+          HIGHEST=$(printf "%s\n%s\n" "$CURRENT_VERSION" "$NEW_VERSION" | sort -V | tail -n1)
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ] || [ "$HIGHEST" != "$NEW_VERSION" ]; then
+            echo "Skip: current=$CURRENT_VERSION new=$NEW_VERSION — not a newer release"
+            exit 0
+          fi
+
+          mkdir -p public/updater
+          cp "$GENERATED" "$CURRENT_FILE"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CURRENT_FILE"
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "[chore] Publish latest.json for ${TAG} to Pages"
+
+          # tagpr 等が main を更新している可能性があるため pull --rebase してから push
+          for i in 1 2 3; do
+            if git pull --rebase origin main && git push origin main; then
+              echo "Published latest.json for ${TAG}"
+              exit 0
+            fi
+            echo "Push attempt $i failed, retrying..."
+            sleep 5
+          done
+          echo "ERROR: Failed to push after 3 attempts"
+          exit 1
