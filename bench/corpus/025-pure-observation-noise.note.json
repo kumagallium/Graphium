@@ -1,0 +1,7 @@
+{
+  "noteId": "025-pure-observation-noise",
+  "category": "pure-observation",
+  "language": "ja",
+  "title": "オフィスの騒音レベル測定",
+  "body": "オフィスの中央で 1 日分の騒音レベルを測った。\n[Step] 計測\n  [Tool] サウンドメーター (A 特性)、[Parameter] サンプリング 1 Hz\n  [Output] 平均 52 dB、最大 71 dB (13:20)\n13:20 にピークがあった事実は記録するが、原因は推測しない。"
+}

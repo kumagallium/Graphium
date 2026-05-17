@@ -1,0 +1,12 @@
+{
+  "noteId": "018-cross-domain-sgd-b",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["analogical"]
+  },
+  "notes": "SGD。evolution とのペア。Atom は SGD の鞍点停滞 → 局所最適 + 探索ノイズ injection に rung-2 lift。"
+}

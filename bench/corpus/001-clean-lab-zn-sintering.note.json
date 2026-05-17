@@ -1,0 +1,7 @@
+{
+  "noteId": "001-clean-lab-zn-sintering",
+  "category": "clean-lab",
+  "language": "ja",
+  "title": "ZnSb 焼結条件の最適化（800 ℃ / SPS）",
+  "body": "今日は SPS で ZnSb の焼結を 800 ℃ 5 分で行った。XRD で測ったところ、二相が消えてほぼ単相になっていた。\n[Step] 試料調製\n  [Input] ZnSb 粉末 (10 g)、[Tool] SPS 装置 (Dr Sinter)、[Parameter] 圧力 30 MPa\n[Step] 焼結\n  [Parameter] 温度 800 ℃ / 5 分、[Output] ペレット (相対密度 96 %)\n[Step] 評価\n  [Tool] XRD (CuKα)、[Output] 単相判定\n以前の 700 ℃ ではセカンドフェーズが残っていたので、温度を 100 ℃ 上げたことで Zn の拡散が活性化したと考えられる。"
+}

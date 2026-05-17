@@ -1,0 +1,13 @@
+{
+  "name": "modal-qualifier-extraction",
+  "inputs": [
+    "bench/corpus/009-casual-musing-coffee.note.json",
+    "bench/corpus/011-casual-musing-naming.note.json",
+    "bench/corpus/001-clean-lab-zn-sintering.note.json"
+  ],
+  "expected": {
+    "modalQualifierDiversity": ["possibly", "probably"],
+    "rationale": "「もしかして」→ possibly、「考えられる」→ probably のような linguistic cue から modalQualifier が抽出される。"
+  },
+  "rationale": "Phase γ の Modal qualifier 抽出能力テスト。Phase μ-1 時点では fail で OK。"
+}

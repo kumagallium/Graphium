@@ -1,0 +1,12 @@
+{
+  "noteId": "015-cross-domain-immune-a",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["analogical"]
+  },
+  "notes": "免疫系 (生物) と HIDS (ソフト) の domain-bridge ペア前半。Atom は 自己／非自己識別は経験的学習 のような rung-2 lift。"
+}

@@ -1,0 +1,12 @@
+{
+  "noteId": "008-clean-software-rate-limit",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["decision", "finding"],
+    "epistemicStatus": ["interpretation", "observation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["deductive"]
+  },
+  "notes": "NTP 同期前提が rebuttal 候補。"
+}

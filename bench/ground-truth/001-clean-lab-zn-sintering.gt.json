@@ -1,0 +1,12 @@
+{
+  "noteId": "001-clean-lab-zn-sintering",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "decision", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "ZnSb 焼結温度を上げて単相化した観察 + 機序の interpretation。Atom は装置名 (SPS) を残さず rung-2 まで上げる想定。"
+}

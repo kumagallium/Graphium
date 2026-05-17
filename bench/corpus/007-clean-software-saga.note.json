@@ -1,0 +1,7 @@
+{
+  "noteId": "007-clean-software-saga",
+  "category": "clean-software",
+  "language": "ja",
+  "title": "分散トランザクションを Saga パターンで実装",
+  "body": "注文処理サービスで在庫・支払い・配送の 3 サービス横断トランザクションを Saga で組んだ。\n[Step] 補償アクション定義\n  [Input] 各サービスに rollback ハンドラ、[Parameter] timeout 30 s\n[Step] オーケストレーション\n  [Tool] Temporal、[Output] ワークフロー定義 (TypeScript)\n[Step] 障害試験\n  [Output] 支払い失敗時に在庫予約が確実に解放されることを確認\n強整合より結果整合を選ぶ判断は、ユーザー視点で 数秒の inconsistency が許容できる場合に限られる。"
+}

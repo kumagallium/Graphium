@@ -26,7 +26,10 @@
     "tauri:dev": "node scripts/fetch-node.mjs && node scripts/bundle-server.mjs && TAURI_ENV_PLATFORM=darwin tauri dev",
     "tauri:build": "node scripts/fetch-node.mjs && tauri build",
     "bundle:server": "node scripts/bundle-server.mjs",
-    "bundle:node": "node scripts/fetch-node.mjs"
+    "bundle:node": "node scripts/fetch-node.mjs",
+    "bench:run": "tsx bench/runner.ts",
+    "bench:report": "tsx bench/report.ts",
+    "bench:compare": "tsx bench/compare.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",

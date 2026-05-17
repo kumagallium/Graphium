@@ -1,0 +1,12 @@
+{
+  "noteId": "006-clean-software-cache",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["decision", "finding"],
+    "epistemicStatus": ["interpretation", "observation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["deductive"]
+  },
+  "notes": "TTL とトレードオフ。「上流データが変わるエンドポイントは TTL を下げる」が rebuttal 候補。"
+}

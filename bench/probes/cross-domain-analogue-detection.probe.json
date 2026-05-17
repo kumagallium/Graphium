@@ -1,0 +1,15 @@
+{
+  "name": "cross-domain-analogue-detection",
+  "inputs": [
+    "bench/corpus/015-cross-domain-immune-a.note.json",
+    "bench/corpus/016-cross-domain-firewall-b.note.json",
+    "bench/corpus/017-cross-domain-evolution-a.note.json",
+    "bench/corpus/018-cross-domain-sgd-b.note.json"
+  ],
+  "expected": {
+    "synthesisModes": ["analogical"],
+    "atomLiftLevel": "rung-2",
+    "rationale": "免疫⇄HIDS、進化⇄SGD のような cross-domain analogue が検出され、analogical mode で Synthesis が発火する。"
+  },
+  "rationale": "Phase α (rung-2 lift) + Phase β (router rebalance) + Phase δ (relatedAtoms) の合わせ技で発火が改善するべきテスト。"
+}

@@ -1,0 +1,7 @@
+{
+  "noteId": "008-clean-software-rate-limit",
+  "category": "clean-software",
+  "language": "ja",
+  "title": "Token Bucket レート制限の設計",
+  "body": "公開 API のレート制限を Token Bucket で実装した。\n[Step] パラメータ決定\n  [Parameter] capacity 60、refill 1 token/s/ユーザー\n[Step] 実装\n  [Tool] Redis (Lua スクリプトでアトミック更新)\n[Step] 検証\n  [Output] バーストは 60 リクエストまで許容、定常負荷でも公平に分配\n境界条件で時計がずれると過剰許可になるので、サーバー時計の NTP 同期は前提になる。"
+}

@@ -1,0 +1,7 @@
+{
+  "noteId": "024-pure-observation-tide",
+  "category": "pure-observation",
+  "language": "ja",
+  "title": "潮位の変動を一週間記録した",
+  "body": "近所の港で一週間、毎時の潮位を測った。日に 2 回の極大と極小が観察され、その間隔は約 6 時間 12 分だった。\n[Step] 測定\n  [Tool] 簡易水位計、[Output] 時刻つき潮位データ\n推論はしない。データだけ残す。"
+}

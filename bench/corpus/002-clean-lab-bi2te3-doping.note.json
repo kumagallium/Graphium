@@ -1,0 +1,7 @@
+{
+  "noteId": "002-clean-lab-bi2te3-doping",
+  "category": "clean-lab",
+  "language": "ja",
+  "title": "Bi2Te3 への Sb ドーピング ZT 測定",
+  "body": "Bi2Te3 に Sb を 10 at% ドープした試料を作製し、ZT を 0.8 から 1.1 まで上げることができた。\n[Step] 合成\n  [Input] Bi, Te, Sb 粉末、[Tool] アーク溶解炉、[Parameter] アルゴン雰囲気\n[Step] 焼結\n  [Tool] HP (ホットプレス)、[Parameter] 500 ℃ / 1 h\n[Step] 物性測定\n  [Tool] ZEM-3 (Seebeck/抵抗)、[Tool] LFA (熱伝導)、[Output] ZT = 1.1 @ 400 K\nSb 置換でホール濃度が増え、power factor が向上した。同時にフォノン散乱で熱伝導も下がった。"
+}

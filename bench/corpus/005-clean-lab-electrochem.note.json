@@ -1,0 +1,7 @@
+{
+  "noteId": "005-clean-lab-electrochem",
+  "category": "clean-lab",
+  "language": "ja",
+  "title": "Pt/C 触媒の ORR 活性測定",
+  "body": "Pt/C を Nafion でディスク電極にコートし、O2 飽和の 0.1 M HClO4 中で RDE を行った。\n[Step] インク調製\n  [Input] Pt/C (20 wt%, 5 mg)、IPA + Nafion、[Parameter] 超音波 10 分\n[Step] 電気化学測定\n  [Tool] ポテンシオスタット (PARSTAT)、[Parameter] スキャン速度 10 mV/s、1600 rpm\n  [Output] half-wave 電位 E1/2 = 0.88 V vs RHE\n触媒層中の Nafion 量を 30 % に揃えると再現性が出た。"
+}

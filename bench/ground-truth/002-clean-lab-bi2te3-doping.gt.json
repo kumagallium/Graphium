@@ -1,0 +1,12 @@
+{
+  "noteId": "002-clean-lab-bi2te3-doping",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "Sb ドーピングで ZT 改善した観察。Atom は ドーパント置換 → キャリア濃度／フォノン散乱に rung-2 lift する想定。"
+}

@@ -1,0 +1,12 @@
+{
+  "noteId": "023-pure-observation-grass",
+  "expected": {
+    "claimCount": { "min": 1, "max": 2 },
+    "claimRoles": ["finding"],
+    "epistemicStatus": ["observation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "pure observation。Atom も observation のままで mechanism を入れない（Phase α）。"
+}

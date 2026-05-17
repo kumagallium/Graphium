@@ -1,0 +1,7 @@
+{
+  "noteId": "023-pure-observation-grass",
+  "category": "pure-observation",
+  "language": "ja",
+  "title": "庭の芝が朝だけ濡れている",
+  "body": "毎朝、芝の表面に水滴が付いている。日が高くなると消える。今朝は気温 12 ℃ で、隣のコンクリートには水滴がなかった。\n[Step] 観察\n  [Input] 庭の芝、[Output] 水滴の有無\n機序については推測しない。今は観察事実だけ記録する。"
+}

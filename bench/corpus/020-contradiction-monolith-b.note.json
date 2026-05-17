@@ -1,0 +1,8 @@
+{
+  "noteId": "020-contradiction-monolith-b",
+  "category": "contradiction-pair",
+  "pairId": "microservice-vs-monolith",
+  "language": "ja",
+  "title": "モノリスのほうがイテレーションは速い",
+  "body": "小規模チームでは、モノリスのほうが共通言語が揃いやすく、リファクタリングが横断的に効くため、機能追加のイテレーションが速い。\n[Step] 開発\n  [Input] 共有コードベース、[Output] 単一バイナリ\nただし、チームが 50 人を超えるとマージ競合やビルド時間が増え、独立性のメリットが分離コストを上回る境界がある。"
+}

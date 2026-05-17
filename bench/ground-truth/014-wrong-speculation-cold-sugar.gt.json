@@ -1,0 +1,12 @@
+{
+  "noteId": "014-wrong-speculation-cold-sugar",
+  "expected": {
+    "claimCount": { "min": 1, "max": 2 },
+    "claimRoles": ["question", "interpretation"],
+    "epistemicStatus": ["speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "既知の誤り。speculation 扱い。Atom に established として上がってはいけない。"
+}

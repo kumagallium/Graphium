@@ -1,0 +1,12 @@
+{
+  "noteId": "007-clean-software-saga",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["decision", "finding"],
+    "epistemicStatus": ["interpretation", "observation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["deductive"]
+  },
+  "notes": "結果整合の判断条件が rebuttal: 数秒の inconsistency が許容できる場合に限る。"
+}

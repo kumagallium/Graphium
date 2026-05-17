@@ -1,0 +1,8 @@
+{
+  "noteId": "021-contradiction-tdd-a",
+  "category": "contradiction-pair",
+  "pairId": "tdd-vs-prototype",
+  "language": "ja",
+  "title": "TDD で設計は明確になる",
+  "body": "テストファーストで開発すると、API の使用感を先に決める強制力が生まれ、設計が明確になる。\n[Step] テスト先行\n  [Input] 仕様、[Output] 失敗するテスト\nただし要件が固まっていない探索的フェーズでは、テストを書く前にコードを動かして学ぶ方が速いことがある。"
+}

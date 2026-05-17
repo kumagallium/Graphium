@@ -1,0 +1,8 @@
+{
+  "noteId": "022-contradiction-prototype-b",
+  "category": "contradiction-pair",
+  "pairId": "tdd-vs-prototype",
+  "language": "ja",
+  "title": "プロトタイプ先行のほうが学習が速い",
+  "body": "未知のドメインでは、動くプロトタイプを 1 つ作ってから学んだことを定式化するほうが早い。\n[Step] プロトタイプ\n  [Input] 仮説、[Output] 動く実装\nただし、その後に正式実装へ移る際にテストを書かずに進むと、技術的負債が複利で蓄積する。"
+}
