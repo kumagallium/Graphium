@@ -30,7 +30,14 @@ export async function runBench(
   const mode = resolveMode();
   const cfg = getBenchModelConfig();
 
-  const corpus = loadCorpus();
+  let corpus = loadCorpus();
+  const limitRaw = process.env.BENCH_CORPUS_LIMIT;
+  if (limitRaw) {
+    const limit = parseInt(limitRaw, 10);
+    if (Number.isFinite(limit) && limit > 0 && limit < corpus.length) {
+      corpus = corpus.slice(0, limit);
+    }
+  }
   const probes = loadProbes();
   const gtMap = loadGroundTruthMap();
 

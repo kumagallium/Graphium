@@ -224,7 +224,7 @@ function buildAtoms(claims: BenchClaim[]): BenchAtom[] {
   return atoms;
 }
 
-function routeSynthesisMode(atomA: BenchAtom, atomB: BenchAtom): BenchSynthesis["mode"] {
+function dryRunPairMode(atomA: BenchAtom, atomB: BenchAtom): BenchSynthesis["mode"] {
   // 単純化した router（spec の synthesis-router を模した最小実装）
   // baseline 設計: deductive を fallback に含めるため、~比率で deductive 偏重になる。
   // Phase β でこの routing が rebalance される。
@@ -254,7 +254,7 @@ function buildSyntheses(atoms: BenchAtom[]): BenchSynthesis[] {
       if (j - i > 3 && j !== atoms.length - 1) continue;
       const a = atoms[i];
       const b = atoms[j];
-      const mode = routeSynthesisMode(a, b);
+      const mode = dryRunPairMode(a, b);
       const status = lowestEpistemicStatus([a.epistemicStatus, b.epistemicStatus]);
       const hypothesisStatus = status === "speculation" ? "speculative" : "tested";
       out.push({
@@ -293,8 +293,170 @@ export function runDryRunPipeline(corpus: CorpusNote[]): DryRunResult {
   return { pipelineByNote, allClaims, allAtoms, allSyntheses };
 }
 
-// live mode の実装。実 LLM を使う想定だが、Phase μ-1 では interface のみ。
-// 実 PR で実装を埋める（Phase α / β / η は live mode を期待する）。
+// live mode の実装。実 LLM (gpt-oss-120b on Sakura AI Engine など) を使い、
+// production と同じ wiki-ingester / atomizer / synthesizer を直接呼ぶ。
+//
+// 25 ノート corpus に対する LLM call は概ね:
+//   - ingester: 25 call (ノート 1 件ずつ)
+//   - atomizer: 1 call (全 Claim 横断)
+//   - synthesizer: 1 call (全 Atom 横断)
+// 合計 ~27 call/run。
+//
+// epistemicStatus / liftLevel など Phase η / α が後付けする属性は、現状では
+// LLM 出力に対する heuristic 推定で埋める（baseline 確立用）。Phase η 実装時に
+// LLM 側で正規に出させて、ここの heuristic を撤去する想定。
+
+import { createModel } from "../src/server/services/llm.js";
+import { runAgentLoop } from "../src/server/services/agent-loop.js";
+import {
+  buildIngesterSystemPrompt,
+  parseIngesterOutput,
+  type IngesterOutput,
+} from "../src/server/services/wiki-ingester.js";
+import {
+  buildAtomizerSystemPrompt,
+  buildAtomizerUserMessage,
+  parseAtomizerOutput,
+  type AtomCandidate,
+} from "../src/server/services/wiki-atomizer.js";
+import {
+  buildSynthesizerSystemPrompt,
+  buildSynthesizerUserMessage,
+  parseSynthesizerOutputWithStats,
+  type ClaimSnapshot,
+  type SynthesisCandidate,
+} from "../src/server/services/wiki-synthesizer.js";
+import { routeSynthesisMode } from "../src/features/ai-assistant/synthesis-router.js";
+import type { ModelConfig } from "../src/server/config/models.js";
+
+function toModelConfig(): ModelConfig {
+  const cfg = getBenchModelConfig();
+  return {
+    id: "bench-runtime",
+    name: cfg.name,
+    provider: cfg.provider,
+    modelId: cfg.modelId,
+    apiKey: cfg.apiKey,
+    apiBase: cfg.apiBase,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function liftLevelFromText(text: string): "rung-0" | "rung-1" | "rung-2" {
+  // Phase α 前の baseline 用 heuristic。jargon が残っていれば rung-1 とする。
+  return DOMAIN_JARGON.some((j) => new RegExp(`\\b${j}\\b`, "i").test(text))
+    ? "rung-1"
+    : "rung-2";
+}
+
+async function ingestNoteLive(
+  note: CorpusNote,
+  modelConfig: ModelConfig,
+): Promise<BenchClaim[]> {
+  const systemPrompt = buildIngesterSystemPrompt(note.language, [], undefined);
+  const userMessage = `Source note title: "${note.title}"\nUse this exact title for inline citations (e.g., "Based on [${note.title}], ...").\n\n# ${note.title}\n\n${note.body}`;
+  const model = createModel(modelConfig);
+
+  const result = await runAgentLoop({
+    model,
+    modelId: modelConfig.modelId,
+    systemPrompt,
+    messages: [{ role: "user" as const, content: userMessage }],
+    maxSteps: 1,
+  });
+
+  const docs: IngesterOutput[] = parseIngesterOutput(result.message);
+  const claims: BenchClaim[] = [];
+  for (const doc of docs) {
+    if (doc.kind !== "claim") continue;
+    const fullText = `${doc.title}\n${doc.sections.map((s) => s.content).join("\n")}`;
+    const claimRoles = doc.claimRole?.length ? doc.claimRole : detectClaimRoles(fullText);
+    claims.push({
+      sourceNoteId: note.noteId,
+      title: doc.title,
+      body: (doc.sections[0]?.content ?? "").slice(0, 600),
+      claimRoles,
+      epistemicStatus: detectEpistemicStatus(fullText),
+      rebuttalConditions: extractRebuttalConditions(fullText),
+      modalQualifier: detectModalQualifier(fullText),
+    });
+  }
+  return claims;
+}
+
+function claimsToSnapshots(claims: BenchClaim[]): ClaimSnapshot[] {
+  return claims.map((c, idx): ClaimSnapshot => ({
+    id: `claim-${idx}`,
+    title: c.title,
+    bodyPreview: c.body.slice(0, 280),
+    level: c.claimRoles.includes("finding") ? "finding" : undefined,
+    relatedClaims: [],
+  }));
+}
+
+function atomCandidatesToBenchAtoms(
+  atoms: AtomCandidate[],
+  claims: BenchClaim[],
+): BenchAtom[] {
+  return atoms.map((a) => {
+    const sourceIdxs = a.derivedFromClaims
+      .map((id) => parseInt(id.replace(/^claim-/, ""), 10))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n < claims.length);
+    const memberClaims = sourceIdxs.map((i) => claims[i]);
+    const statuses = memberClaims.map((c) => c.epistemicStatus);
+    const status = statuses.length > 0 ? lowestEpistemicStatus(statuses) : "interpretation";
+    const noteIds = Array.from(new Set(memberClaims.map((c) => c.sourceNoteId)));
+    return {
+      title: a.title,
+      body: a.body,
+      atomType: a.atomType,
+      derivedFromClaims: a.derivedFromClaims,
+      derivedFromNoteIds: noteIds,
+      epistemicStatus: status,
+      liftLevel: liftLevelFromText(`${a.title} ${a.body}`),
+    };
+  });
+}
+
+function atomsToConceptSnapshots(atoms: BenchAtom[]): ClaimSnapshot[] {
+  return atoms.map((a, idx) => ({
+    id: `atom-${idx}`,
+    title: a.title,
+    bodyPreview: a.body.slice(0, 280),
+    relatedClaims: [],
+    atomType: a.atomType as ClaimSnapshot["atomType"],
+  }));
+}
+
+function synthesisCandidatesToBenchSyntheses(
+  syntheses: SynthesisCandidate[],
+  atoms: BenchAtom[],
+): BenchSynthesis[] {
+  const out: BenchSynthesis[] = [];
+  for (const s of syntheses) {
+    const idxs = s.sourceConceptIds
+      .map((id) => parseInt(id.replace(/^atom-/, ""), 10))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n < atoms.length);
+    if (idxs.length < 2) continue;
+    const mode = (s.synthesisMode ?? "deductive") as BenchSynthesis["mode"];
+    const body = s.sections.map((sec) => `${sec.heading}\n${sec.content}`).join("\n\n");
+    const statuses = idxs.map((i) => atoms[i].epistemicStatus);
+    const status = lowestEpistemicStatus(statuses);
+    out.push({
+      title: s.title,
+      body,
+      mode,
+      sourceAtomIndices: idxs,
+      hypothesisStatus:
+        s.hypothesisStatus === "speculative" || status === "speculation"
+          ? "speculative"
+          : "tested",
+      externalSources: [],
+    });
+  }
+  return out;
+}
+
 export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResult> {
   const cfg = getBenchModelConfig();
   if (!cfg.apiKey.trim()) {
@@ -302,13 +464,86 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
       "BENCH_API_KEY (または SAKURA_AI_API_KEY) が未設定です。BENCH_MODE=dry-run で実行するか API キーを設定してください。",
     );
   }
-  // Phase μ-1 の foundation スコープでは live mode の実呼び出しは
-  // wiki-ingester / wiki-atomizer / wiki-synthesizer の prompt + parse 結合と
-  // adapter 層が必要。spec §6 の Phase α 着手と同時に this stub を埋める。
-  // それまでは dry-run と同じ heuristic でフォールバックして警告ログを出す。
-  console.warn(
-    `[bench] live mode 呼び出しは Phase α 以降で完成予定です。dry-run heuristic で代替します。` +
-    ` (model=${cfg.modelId} via ${cfg.apiBase})`,
-  );
-  return runDryRunPipeline(corpus);
+  const modelConfig = toModelConfig();
+  console.log(`[bench] live mode: model=${cfg.modelId} via ${cfg.apiBase}`);
+
+  // 1) ingester: ノートごとに直列で呼ぶ（rate limit と無償枠を意識した素直な実装）
+  const pipelineByNote: BenchPipelineOutput[] = [];
+  const allClaims: BenchClaim[] = [];
+  for (let i = 0; i < corpus.length; i++) {
+    const note = corpus[i];
+    process.stdout.write(`[bench] ingest ${i + 1}/${corpus.length} ${note.noteId} ... `);
+    let claims: BenchClaim[] = [];
+    try {
+      claims = await ingestNoteLive(note, modelConfig);
+      process.stdout.write(`${claims.length} claim(s)\n`);
+    } catch (err) {
+      process.stdout.write(`ERROR\n`);
+      console.error(`  ingester error for ${note.noteId}:`, (err as Error).message);
+    }
+    pipelineByNote.push({ noteId: note.noteId, claims });
+    allClaims.push(...claims);
+  }
+
+  // 2) atomizer: 全 Claim を 1 ショットで投げる
+  let allAtoms: BenchAtom[] = [];
+  if (allClaims.length >= 2) {
+    console.log(`[bench] atomize: ${allClaims.length} claims -> ...`);
+    const snapshots = claimsToSnapshots(allClaims);
+    const idToTitle = new Map(snapshots.map((s) => [s.id, s.title]));
+    const systemPrompt = buildAtomizerSystemPrompt("ja");
+    const userMessage = buildAtomizerUserMessage(snapshots, []);
+    try {
+      const model = createModel(modelConfig);
+      const result = await runAgentLoop({
+        model,
+        modelId: modelConfig.modelId,
+        systemPrompt,
+        messages: [{ role: "user" as const, content: userMessage }],
+        maxSteps: 1,
+      });
+      const atomCandidates = parseAtomizerOutput(result.message, idToTitle);
+      allAtoms = atomCandidatesToBenchAtoms(atomCandidates, allClaims);
+      console.log(`[bench] atomize result: ${allAtoms.length} atom(s)`);
+    } catch (err) {
+      console.error("  atomizer error:", (err as Error).message);
+    }
+  } else {
+    console.log("[bench] atomize skipped (claims < 2)");
+  }
+
+  // 3) synthesizer: 全 Atom を 1 ショットで投げる
+  let allSyntheses: BenchSynthesis[] = [];
+  if (allAtoms.length >= 2) {
+    console.log(`[bench] synthesize: ${allAtoms.length} atoms -> ...`);
+    const conceptSnapshots = atomsToConceptSnapshots(allAtoms);
+    const router = routeSynthesisMode(conceptSnapshots.map((c) => c.atomType));
+    const systemPrompt = buildSynthesizerSystemPrompt(
+      "ja",
+      undefined,
+      router.candidateModes,
+    );
+    const userMessage = buildSynthesizerUserMessage(conceptSnapshots, []);
+    try {
+      const model = createModel(modelConfig);
+      const result = await runAgentLoop({
+        model,
+        modelId: modelConfig.modelId,
+        systemPrompt,
+        messages: [{ role: "user" as const, content: userMessage }],
+        maxSteps: 1,
+      });
+      const stats = parseSynthesizerOutputWithStats(result.message);
+      allSyntheses = synthesisCandidatesToBenchSyntheses(stats.candidates, allAtoms);
+      console.log(
+        `[bench] synthesize result: ${allSyntheses.length} synthesis (rawCount=${stats.rawCount}, dropped=${stats.droppedByConfidence})`,
+      );
+    } catch (err) {
+      console.error("  synthesizer error:", (err as Error).message);
+    }
+  } else {
+    console.log("[bench] synthesize skipped (atoms < 2)");
+  }
+
+  return { pipelineByNote, allClaims, allAtoms, allSyntheses };
 }

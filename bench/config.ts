@@ -17,11 +17,15 @@ export type BenchModelConfig = {
 const SAKURA_AI_BASE = "https://api.ai.sakura.ad.jp/v1";
 
 export function getBenchModelConfig(): BenchModelConfig {
+  // 既存の Sakura AI 用 .env 命名規則 (SAKURA_AI_ENDPOINT / SAKURA_AI_MODEL /
+  // SAKURA_AI_API_KEY) を尊重しつつ、bench 個別 override (BENCH_*) も受ける。
   const provider = (process.env.BENCH_PROVIDER ?? "openai-compatible") as BenchModelConfig["provider"];
-  const modelId = process.env.BENCH_MODEL_ID ?? "gpt-oss-120b";
-  const apiBase = process.env.BENCH_API_BASE ?? SAKURA_AI_BASE;
+  const modelId =
+    process.env.BENCH_MODEL_ID ?? process.env.SAKURA_AI_MODEL ?? "gpt-oss-120b";
+  const apiBase =
+    process.env.BENCH_API_BASE ?? process.env.SAKURA_AI_ENDPOINT ?? SAKURA_AI_BASE;
   const apiKey = process.env.BENCH_API_KEY ?? process.env.SAKURA_AI_API_KEY ?? "";
-  const name = process.env.BENCH_MODEL_NAME ?? "gpt-oss-120b (Sakura AI)";
+  const name = process.env.BENCH_MODEL_NAME ?? `${modelId} (Sakura AI)`;
 
   return { provider, name, modelId, apiBase, apiKey };
 }
