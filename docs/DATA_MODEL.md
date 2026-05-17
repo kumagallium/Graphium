@@ -103,6 +103,13 @@ type GraphiumDocument = {
   sourcePdfFileId?: string;  // media-index fileId of the source PDF
   sourcePdfName?: string;    // display filename
 
+  // ── plan note backref ──────────────────────────────
+  // Set on execution notes when one source describes multiple synthesis
+  // procedures and a separate plan note groups them. The plan note has
+  // no `partOfPlanNoteId` (it is the plan). Independent of
+  // `derivedFromNoteId`: membership in a plan is not derivation.
+  partOfPlanNoteId?: string;
+
   createdAt: string;   // ISO 8601
   modifiedAt: string;  // ISO 8601
 };
