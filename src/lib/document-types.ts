@@ -328,6 +328,13 @@ export type GraphiumDocument = {
   sourcePdfFileId?: string;
   /** PDF から生成した場合の表示用ファイル名 */
   sourcePdfName?: string;
+  /**
+   * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
+   * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
+   * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、
+   * 計画ノートに逆参照できるようにする。derivedFromNoteId とは別軸（所属 vs 派生）。
+   */
+  partOfPlanNoteId?: string;
   createdAt: string;
   modifiedAt: string;
 };

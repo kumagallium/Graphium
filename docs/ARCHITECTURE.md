@@ -171,6 +171,45 @@ hourglass: the source note's PROV graph plus the Wiki entities derived
 from it, with semantic types attached so the data is interpretable
 without Graphium's internal vocabulary.
 
+#### URL / PDF → PROV ingestion (the *prov-ingester*)
+
+A complementary pipeline runs in the other direction: external papers /
+recipes / lab protocols come *in* as a URL or PDF and are turned into a
+draft note with PROV labels already on it. The pipeline is intentionally
+small.
+
+| Step | File | What it does |
+|---|---|---|
+| Fetch | `src/server/services/url-fetcher.ts` | Downloads a URL, extracts plain text (HTML / readable subset) |
+| Prompt | `src/server/services/prov-ingester.ts` (generic) or `src/server/services/prov-ingester-profiles/` (per-domain) | Builds the system + user prompt for the LLM |
+| Parse | same module | Validates the LLM JSON and strips invalid spans / roles |
+| Translate | `src/features/url-to-prov/prov-note-builder.ts` | Lifts the parsed output into a `GraphiumDocument` with labels / inline highlights / `provLinks` already attached |
+
+The generic prompt expects the LLM to emit *prose with inline-highlighted
+spans* (Phase F format, 2026-05). Domain profiles can use other wire
+formats and translate into the same Graphium document. The
+`material-science` profile (`prov-ingester-profiles/material-science-prompt.ts`)
+reuses the MatPROV PROV-DM JSON schema as-is (`[{label, @graph}]`); the
+translation layer (`matprov-to-prov-ingester.ts`) walks the graph,
+emits one H2 procedure heading per Activity, and lays Usage / Generation
+Entities into the paragraph as inline `material` / `tool` / `output`
+spans with `derivedFrom` links between steps.
+
+When a profile returns multiple procedures from one source (e.g., a
+paper with several composition variants), `plan-execution-builder.ts`
+splits the output into a **plan note** that groups them plus N
+**execution notes** that each carry the actual PROV graph. The execution
+notes back-reference the plan via `partOfPlanNoteId`
+([DATA_MODEL.md §2](./DATA_MODEL.md#2-the-note-graphiumdocument)).
+
+Quality is tracked by a benchmark harness at
+`tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`
+fixture pairs, runs the prompt through a configurable LLM
+(さくら AI engine OpenAI-compatible API is the default first runner),
+and reports normalized exact-match precision / recall / F1 plus a
+token-F1 sub-metric across five MatPROV-shape sets: Activities,
+Materials, Tools, Edges, Parameters. Run with `pnpm test:benchmark`.
+
 ### 3.3 Knowledge layer
 
 The Knowledge layer is a set of editable JSON documents that an LLM keeps
@@ -418,7 +457,8 @@ people most often need to find.
 | Reference table (related notes) | `src/features/index-table/` |
 | Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
 | Onboarding flow | `src/features/onboarding/` |
-| URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/` |
+| URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts`, `src/server/services/prov-ingester-profiles/` |
+| Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |
 | Landing page | `src/landing/` |
