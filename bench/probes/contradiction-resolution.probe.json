@@ -1,0 +1,15 @@
+{
+  "name": "contradiction-resolution",
+  "inputs": [
+    "bench/corpus/019-contradiction-microservice-a.note.json",
+    "bench/corpus/020-contradiction-monolith-b.note.json",
+    "bench/corpus/021-contradiction-tdd-a.note.json",
+    "bench/corpus/022-contradiction-prototype-b.note.json"
+  ],
+  "expected": {
+    "synthesisModes": ["dialectic"],
+    "rebuttalConditionsCount": 2,
+    "rationale": "2 つ以上の Claim が rebuttalConditions を持ち、dialectic mode で対立を regime separator として整理する Synthesis が出る。"
+  },
+  "rationale": "Phase γ で rebuttal を抽出、Phase β で dialectic 発火条件を緩めることで pass するべき。"
+}

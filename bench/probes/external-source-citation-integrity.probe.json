@@ -1,0 +1,13 @@
+{
+  "name": "external-source-citation-integrity",
+  "inputs": [
+    "bench/corpus/023-pure-observation-grass.note.json",
+    "bench/corpus/024-pure-observation-tide.note.json"
+  ],
+  "expected": {
+    "fakeDoiCount": 0,
+    "fakeUrlCount": 0,
+    "rationale": "Phase ζ の retriever 経由でない外部 sources は出力に含まれない。Phase μ-1 時点では externalSources は常に空配列。"
+  },
+  "rationale": "Phase ζ の hallucination 防御テスト。Phase μ-1 ではベースラインで自動 pass する想定。"
+}

@@ -322,6 +322,8 @@ Graphium is a TypeScript / React app on top of [BlockNote.js](https://www.blockn
 |-----------|------------|
 | Editor | TypeScript / React / BlockNote.js |
 | AI runtime | Vercel AI SDK |
+| Default LLM | `gpt-oss-120b` via [Sakura AI Engine](https://platform.sakura.ad.jp/ai-engine) (OpenAI-compatible) |
+| Opt-in LLMs | Anthropic Claude / OpenAI / Google / any OpenAI-compatible endpoint |
 | Companion server | Node.js / Hono |
 | Storage | IndexedDB (web) / filesystem (Tauri / Docker) |
 | Desktop | Tauri v2 (currently macOS Apple Silicon only; see roadmap) |
@@ -370,6 +372,30 @@ pnpm test           # Run tests (vitest)
 pnpm storybook      # Component catalog (http://localhost:6006)
 pnpm build          # Production build (frontend)
 ```
+
+### Knowledge Layer benchmark (`pnpm bench:*`)
+
+The Wiki pipeline (ingest → atomize → synthesize) is regression-tested by an
+empirical benchmark under `bench/`. The corpus, ground-truth, and probes are
+checked in; each phase of the discovery-mode roadmap declares which metrics it
+must improve, and merges are gated on the delta.
+
+```bash
+pnpm bench:run                     # Run the benchmark, write bench/baseline.json
+pnpm bench:report                  # Render bench/baseline.json as a Markdown table
+pnpm bench:compare main            # Diff metrics against main's baseline.json
+```
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `BENCH_API_KEY` / `SAKURA_AI_API_KEY` | `""` | API key for the bench LLM (production default: gpt-oss-120b on Sakura AI Engine). When unset the runner falls back to **dry-run** mode that uses deterministic heuristics — fine for CI smoke tests, but real merge decisions need live mode. |
+| `BENCH_MODEL_ID` | `gpt-oss-120b` | Override the bench model. |
+| `BENCH_API_BASE` | `https://api.ai.sakura.ad.jp/v1` | Override the API endpoint (any OpenAI-compatible endpoint works). |
+| `BENCH_PROFILE` | `baseline` | Profile name written into the output (`baseline`, `with-alpha`, etc.). |
+| `BENCH_MODE` | auto | Force `live` or `dry-run` regardless of API-key detection. |
+
+Metric definitions, corpus structure, probe list, and CI integration are
+documented in [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 ## Project structure
 

@@ -1,0 +1,7 @@
+{
+  "noteId": "006-clean-software-cache",
+  "category": "clean-software",
+  "language": "ja",
+  "title": "リクエストキャッシュ層の TTL 設計",
+  "body": "API ゲートウェイの前段に Redis ベースのレスポンスキャッシュを置く設計を議論した。\n[Step] 要件整理\n  [Input] レイテンシ目標 < 50 ms、許容 stale 5 分\n[Step] 設計選択\n  [Parameter] TTL = 300 s、stale-while-revalidate 60 s\n  [Tool] Redis 7、cluster mode\n[Step] 影響評価\n  [Output] DB QPS が 1/8 に低下、p99 レイテンシ -40 %\n上流データが頻繁に変わるエンドポイントは TTL を 30 s に下げる必要がある。"
+}

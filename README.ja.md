@@ -322,6 +322,8 @@ Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScrip
 |--------------|------|
 | エディタ | TypeScript / React / BlockNote.js |
 | AI ランタイム | Vercel AI SDK |
+| デフォルト LLM | `gpt-oss-120b`（[Sakura AI Engine](https://platform.sakura.ad.jp/ai-engine) 経由、OpenAI 互換） |
+| オプションの LLM | Anthropic Claude / OpenAI / Google / 任意の OpenAI 互換エンドポイント |
 | コンパニオンサーバ | Node.js / Hono |
 | ストレージ | IndexedDB（Web）/ ファイルシステム（Tauri / Docker） |
 | デスクトップ | Tauri v2（現状は macOS Apple Silicon のみ。今後の対応はロードマップ） |
@@ -370,6 +372,30 @@ pnpm test           # テスト実行（vitest）
 pnpm storybook      # コンポーネントカタログ（http://localhost:6006）
 pnpm build          # プロダクションビルド（フロントエンド）
 ```
+
+### Knowledge Layer のベンチマーク（`pnpm bench:*`）
+
+Wiki パイプライン（ingest → atomize → synthesize）の品質は `bench/` 配下の経験的
+ベンチマークで継続的にチェックしています。corpus・ground-truth・probe は repo に
+チェックインされており、各 Phase は事前に「どのメトリクスが改善するか」を宣言したうえで、
+delta が条件を満たしたときだけ merge されます。
+
+```bash
+pnpm bench:run                     # ベンチを実行し bench/baseline.json を生成
+pnpm bench:report                  # bench/baseline.json を Markdown 表で表示
+pnpm bench:compare main            # main の baseline.json と差分を取る
+```
+
+| 環境変数 | デフォルト | 用途 |
+|---|---|---|
+| `BENCH_API_KEY` / `SAKURA_AI_API_KEY` | `""` | ベンチ用 LLM の API キー（production default: gpt-oss-120b on Sakura AI Engine）。未設定のときは決定的な heuristic で動く **dry-run** モードに切り替わるので CI smoke test には十分。実際の merge 判断には live モードを使う。 |
+| `BENCH_MODEL_ID` | `gpt-oss-120b` | ベンチ用モデル ID。 |
+| `BENCH_API_BASE` | `https://api.ai.sakura.ad.jp/v1` | API エンドポイント。OpenAI 互換ならどこでも可。 |
+| `BENCH_PROFILE` | `baseline` | 出力に書き込まれる profile 名（`baseline`、`with-alpha` など）。 |
+| `BENCH_MODE` | 自動 | `live` か `dry-run` を強制するときに指定。 |
+
+メトリクスの定義、corpus 構成、probe リスト、CI 統合は
+[docs/BENCHMARK.md](docs/BENCHMARK.md) を参照してください。
 
 ## プロジェクト構成
 

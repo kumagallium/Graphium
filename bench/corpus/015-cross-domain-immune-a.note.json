@@ -1,0 +1,8 @@
+{
+  "noteId": "015-cross-domain-immune-a",
+  "category": "cross-domain-pair",
+  "pairId": "immune-vs-firewall",
+  "language": "ja",
+  "title": "免疫系の自己／非自己識別",
+  "body": "免疫系は自己の細胞に対しては寛容を維持しつつ、外来の病原体に対しては選択的に攻撃する。\n[Step] 自己抗原提示\n  [Input] 自己ペプチド、[Tool] MHC class I\n[Step] 非自己認識\n  [Input] 病原体ペプチド、[Output] T 細胞活性化\nこの選択性はゲノムにハードコードされているのではなく、胸腺での負の選択を通じて経験的に学習される。"
+}

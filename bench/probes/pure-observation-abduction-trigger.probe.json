@@ -1,0 +1,14 @@
+{
+  "name": "pure-observation-abduction-trigger",
+  "inputs": [
+    "bench/corpus/023-pure-observation-grass.note.json",
+    "bench/corpus/024-pure-observation-tide.note.json",
+    "bench/corpus/025-pure-observation-noise.note.json"
+  ],
+  "expected": {
+    "atomTypes": ["observational"],
+    "synthesisModes": ["abductive"],
+    "rationale": "観測のみの note が causal/mechanistic に explain されず observational として保存され、abductive Synthesis が発火する。"
+  },
+  "rationale": "Phase α の『観測を causal に explain しない』ルールの効果検証。"
+}

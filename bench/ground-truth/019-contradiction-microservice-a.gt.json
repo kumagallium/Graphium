@@ -1,0 +1,12 @@
+{
+  "noteId": "019-contradiction-microservice-a",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["decision", "finding"],
+    "epistemicStatus": ["interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["dialectic"]
+  },
+  "notes": "microservice 利点 + コンウェイ前提が rebuttal。020 と対立ペア。"
+}

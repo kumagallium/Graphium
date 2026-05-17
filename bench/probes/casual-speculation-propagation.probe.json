@@ -1,0 +1,12 @@
+{
+  "name": "casual-speculation-propagation",
+  "inputs": [
+    "bench/corpus/009-casual-musing-coffee.note.json",
+    "bench/corpus/010-casual-musing-sleep.note.json"
+  ],
+  "expected": {
+    "atomEpistemicStatus": "speculation",
+    "synthesisHypothesisStatus": "speculative"
+  },
+  "rationale": "Phase η が正しく機能していれば、casual musing は Claim → Atom → Synthesis で speculation のまま伝搬する。Phase μ-1 時点では参考値（fail で OK）。"
+}

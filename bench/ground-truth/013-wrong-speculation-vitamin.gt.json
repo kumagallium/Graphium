@@ -1,0 +1,12 @@
+{
+  "noteId": "013-wrong-speculation-vitamin",
+  "expected": {
+    "claimCount": { "min": 1, "max": 2 },
+    "claimRoles": ["question", "interpretation"],
+    "epistemicStatus": ["speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "既知の誤り (ビタミン C メガドーズ)。speculation 扱いで知識層に混入させない。"
+}

@@ -1,0 +1,7 @@
+{
+  "noteId": "003-clean-lab-photocatalyst",
+  "category": "clean-lab",
+  "language": "ja",
+  "title": "TiO2 光触媒の水分解効率",
+  "body": "TiO2 ナノ粒子に Pt を 1 wt% 担持し、UV 照射下で水の還元活性を測った。\n[Step] 担持\n  [Input] TiO2 (P25, 1 g)、H2PtCl6 水溶液、[Tool] 撹拌+乾燥+焼成 350 ℃\n[Step] 反応\n  [Tool] 石英反応器、[Parameter] UV-LED 365 nm 100 mW/cm2\n[Step] 定量\n  [Tool] GC-TCD、[Output] H2 生成速度 12 μmol/g/h\nPt は還元活性点として電子を受け取り、表面で H+ → H2 を促進する。"
+}

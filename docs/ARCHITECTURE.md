@@ -309,6 +309,14 @@ run.
 The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
 
+**Empirical quality control.** The Wiki pipeline's discovery quality is
+regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
+metrics). Each roadmap phase declares which metrics it must improve;
+`pnpm bench:compare main` is required on every PR that touches the
+ingester / atomizer / synthesizer / router. See the README's "Knowledge
+Layer benchmark" section and `docs/internal/benchmark.md` for the metric
+definitions, corpus rationale, and merge rules.
+
 ### 3.4 Storage layer
 
 A single interface (`src/lib/storage/types.ts`) abstracts where notes

@@ -1,0 +1,12 @@
+{
+  "name": "rebuttal-extraction",
+  "inputs": [
+    "bench/corpus/006-clean-software-cache.note.json",
+    "bench/corpus/019-contradiction-microservice-a.note.json"
+  ],
+  "expected": {
+    "rebuttalConditionsCount": { "min": 1 },
+    "rationale": "「ただし〜」「上流が変わる場合は〜」のような note の rebuttal 句が、Claim.rebuttalConditions に抽出される。"
+  },
+  "rationale": "Phase γ で導入する Toulmin Rebuttal の抽出能力テスト。Phase μ-1 時点では fail で OK。"
+}

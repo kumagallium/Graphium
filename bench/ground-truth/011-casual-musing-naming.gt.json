@@ -1,0 +1,12 @@
+{
+  "noteId": "011-casual-musing-naming",
+  "expected": {
+    "claimCount": { "min": 1, "max": 2 },
+    "claimRoles": ["question", "interpretation"],
+    "epistemicStatus": ["speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "「スコープが短ければ短い名前でも問題ない」が rebuttal 候補。speculation。"
+}

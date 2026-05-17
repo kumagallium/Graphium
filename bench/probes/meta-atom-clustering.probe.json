@@ -1,0 +1,15 @@
+{
+  "name": "meta-atom-clustering",
+  "inputs": [
+    "bench/corpus/001-clean-lab-zn-sintering.note.json",
+    "bench/corpus/002-clean-lab-bi2te3-doping.note.json",
+    "bench/corpus/003-clean-lab-photocatalyst.note.json",
+    "bench/corpus/004-clean-lab-cell-culture.note.json",
+    "bench/corpus/005-clean-lab-electrochem.note.json"
+  ],
+  "expected": {
+    "metaAtomCount": { "min": 1 },
+    "rationale": "5 件の lab note から派生する Atom 群が meta-Atom（KJ 中グループ）に集約される。例: 添加物による物性チューニング。"
+  },
+  "rationale": "Phase ε (meta-Atom 層) の発火条件テスト。Phase μ-1 では fail で OK。"
+}

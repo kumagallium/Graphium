@@ -1,0 +1,7 @@
+{
+  "noteId": "004-clean-lab-cell-culture",
+  "category": "clean-lab",
+  "language": "ja",
+  "title": "HeLa 細胞へ siRNA トランスフェクション",
+  "body": "Lipofectamine 3000 で HeLa 細胞に GAPDH 標的の siRNA を導入した。\n[Step] 細胞準備\n  [Input] HeLa cells (継代 12)、DMEM + 10% FBS、[Parameter] 80% コンフルエント\n[Step] トランスフェクション\n  [Input] siRNA 20 nM、[Tool] Lipofectamine 3000、[Parameter] 6 h インキュベーション\n[Step] qPCR 評価\n  [Output] GAPDH mRNA 残存率 18 %\nGAPDH ノックダウンは 48 h で最大化したので、ターゲット遺伝子の機能評価には 48 h ポストの試料を使うのが妥当である。"
+}

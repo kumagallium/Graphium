@@ -1,0 +1,76 @@
+name: Bench
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Bench mode (live / dry-run). Live requires SAKURA_AI_API_KEY secret.'
+        required: false
+        default: 'dry-run'
+        type: choice
+        options:
+          - dry-run
+          - live
+
+# sticky-pull-request-comment needs write access on PRs to post the delta comment.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # bench:compare main で git show が必要
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Bench Tier 1 unit tests
+        run: pnpm vitest run bench/metrics.test.ts
+
+      - name: Bench Tier 2 — full run (dry-run on PR, live on manual dispatch)
+        env:
+          # workflow_dispatch で live を選んだ場合のみ SAKURA_AI_API_KEY を渡す。
+          # PR からは secret に触れないので自動的に dry-run になる。
+          SAKURA_AI_API_KEY: ${{ github.event.inputs.mode == 'live' && secrets.SAKURA_AI_API_KEY || '' }}
+          BENCH_MODE: ${{ github.event.inputs.mode || 'dry-run' }}
+          BENCH_PROFILE: baseline
+          BENCH_OUTPUT: bench/latest-baseline.json
+        run: pnpm bench:run
+
+      - name: Compare against main
+        if: github.event_name == 'pull_request'
+        continue-on-error: true   # bench delta は block ではなく warning（spec §5 CI 統合）
+        run: pnpm bench:compare main > bench/delta.md
+
+      - name: Post delta comment
+        if: github.event_name == 'pull_request' && hashFiles('bench/delta.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: bench/delta.md
+          header: bench-delta
+
+      - name: Upload bench output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ github.event.inputs.mode || 'dry-run' }}-${{ github.run_number }}
+          path: |
+            bench/latest-baseline.json
+            bench/delta.md
+          if-no-files-found: ignore

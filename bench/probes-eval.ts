@@ -1,0 +1,157 @@
+// Phase μ-1: probe ベースの adversarial 評価
+//
+// 各 probe は spec §5 の表に対応する。Phase μ-1 baseline 時点では
+// 多くの probe は fail で OK（Phase α / β / η / γ 等が pass させる対象）。
+
+import type {
+  BenchAtom,
+  BenchClaim,
+  BenchSynthesis,
+  Probe,
+  ProbeResult,
+  CorpusNote,
+} from "./types.ts";
+import { resolveProbeInput } from "./load.ts";
+import { runDryRunPipeline } from "./pipeline.ts";
+
+export function evaluateProbes(
+  probes: Probe[],
+): { probeResults: ProbeResult[]; perProbeRuns: PerProbeRun[] } {
+  const probeResults: ProbeResult[] = [];
+  const perProbeRuns: PerProbeRun[] = [];
+
+  for (const probe of probes) {
+    let inputs: CorpusNote[];
+    try {
+      inputs = probe.inputs.map((p) => resolveProbeInput(p));
+    } catch (err) {
+      probeResults.push({
+        name: probe.name,
+        passed: false,
+        reason: `probe input load failed: ${(err as Error).message}`,
+      });
+      continue;
+    }
+
+    const result = runDryRunPipeline(inputs);
+    perProbeRuns.push({
+      probe: probe.name,
+      claims: result.allClaims,
+      atoms: result.allAtoms,
+      syntheses: result.allSyntheses,
+    });
+
+    const verdict = evaluateProbeExpected(probe, result.allAtoms, result.allSyntheses, result.allClaims);
+    probeResults.push(verdict);
+  }
+
+  return { probeResults, perProbeRuns };
+}
+
+export type PerProbeRun = {
+  probe: string;
+  claims: BenchClaim[];
+  atoms: BenchAtom[];
+  syntheses: BenchSynthesis[];
+};
+
+function evaluateProbeExpected(
+  probe: Probe,
+  atoms: BenchAtom[],
+  syntheses: BenchSynthesis[],
+  claims: BenchClaim[],
+): ProbeResult {
+  const exp = probe.expected as Record<string, unknown>;
+  const reasons: string[] = [];
+  let allPassed = true;
+
+  if (typeof exp.atomEpistemicStatus === "string") {
+    const want = exp.atomEpistemicStatus as string;
+    const ok = atoms.length === 0 || atoms.every((a) => a.epistemicStatus === want);
+    reasons.push(`atomEpistemicStatus=${want}: ${ok ? "ok" : `got ${atoms.map((a) => a.epistemicStatus).join("/")}`}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.synthesisHypothesisStatus === "string") {
+    const want = exp.synthesisHypothesisStatus as string;
+    const ok = syntheses.length === 0 || syntheses.every((s) => s.hypothesisStatus === want);
+    reasons.push(`synthesisHypothesisStatus=${want}: ${ok ? "ok" : `got ${syntheses.map((s) => s.hypothesisStatus).join("/")}`}`);
+    allPassed &&= ok;
+  }
+
+  if (Array.isArray(exp.synthesisModes)) {
+    const want = exp.synthesisModes as string[];
+    const ok = syntheses.some((s) => want.includes(s.mode));
+    reasons.push(`synthesisModes∋${want.join(",")}: ${ok ? "ok" : `got ${[...new Set(syntheses.map((s) => s.mode))].join(",") || "none"}`}`);
+    allPassed &&= ok;
+  }
+
+  if (Array.isArray(exp.atomTypes)) {
+    const want = exp.atomTypes as string[];
+    const ok = atoms.some((a) => a.atomType && want.includes(a.atomType));
+    reasons.push(`atomTypes∋${want.join(",")}: ${ok ? "ok" : `got ${[...new Set(atoms.map((a) => a.atomType))].join(",") || "none"}`}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.atomLiftLevel === "string") {
+    const want = exp.atomLiftLevel as string;
+    const ok = atoms.some((a) => a.liftLevel === want);
+    reasons.push(`atomLiftLevel=${want}: ${ok ? "ok" : `got ${[...new Set(atoms.map((a) => a.liftLevel))].join(",")}`}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.rebuttalConditionsCount === "number") {
+    const want = exp.rebuttalConditionsCount as number;
+    const count = claims.reduce((sum, c) => sum + c.rebuttalConditions.length, 0);
+    const ok = count >= want;
+    reasons.push(`rebuttalConditionsCount>=${want}: ${ok ? "ok" : `got ${count}`}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.rebuttalConditionsCount === "object" && exp.rebuttalConditionsCount !== null) {
+    const min = (exp.rebuttalConditionsCount as { min?: number }).min ?? 0;
+    const count = claims.reduce((sum, c) => sum + c.rebuttalConditions.length, 0);
+    const ok = count >= min;
+    reasons.push(`rebuttalConditionsCount>=${min}: ${ok ? "ok" : `got ${count}`}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.metaAtomCount === "object" && exp.metaAtomCount !== null) {
+    // Phase ε 未実装なので常に 0。期待値が >=1 のときは fail。
+    const min = (exp.metaAtomCount as { min?: number }).min ?? 0;
+    const ok = 0 >= min;
+    reasons.push(`metaAtomCount>=${min}: ${ok ? "ok" : "got 0 (Phase ε 未実装)"}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.fakeDoiCount === "number") {
+    // Phase ζ 未実装。externalSources は常に空配列なので fake DOI も 0 で auto-pass。
+    const want = exp.fakeDoiCount as number;
+    const got = syntheses.reduce((sum, s) => sum + s.externalSources.length, 0);
+    const ok = got === want;
+    reasons.push(`fakeDoiCount=${want}: ${ok ? "ok" : `got ${got}`}`);
+    allPassed &&= ok;
+  }
+
+  if (Array.isArray(exp.modalQualifierDiversity)) {
+    const want = exp.modalQualifierDiversity as string[];
+    const present = new Set(claims.map((c) => c.modalQualifier).filter(Boolean) as string[]);
+    const ok = want.every((w) => present.has(w));
+    reasons.push(`modalQualifierDiversity⊇${want.join(",")}: ${ok ? "ok" : `got ${[...present].join(",") || "none"}`}`);
+    allPassed &&= ok;
+  }
+
+  if (typeof exp.backingCount === "object" && exp.backingCount !== null) {
+    // Phase γ 未実装。常に 0 を返すので min=0 のときのみ pass。
+    const min = (exp.backingCount as { min?: number }).min ?? 0;
+    const ok = 0 >= min;
+    reasons.push(`backingCount>=${min}: ${ok ? "ok" : "got 0 (Phase γ 未実装)"}`);
+    allPassed &&= ok;
+  }
+
+  return {
+    name: probe.name,
+    passed: allPassed,
+    reason: reasons.join(" | "),
+  };
+}

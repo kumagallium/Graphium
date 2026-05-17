@@ -1,0 +1,12 @@
+{
+  "name": "mixed-status-dilution",
+  "inputs": [
+    "bench/corpus/001-clean-lab-zn-sintering.note.json",
+    "bench/corpus/013-wrong-speculation-vitamin.note.json"
+  ],
+  "expected": {
+    "atomEpistemicStatus": "speculation",
+    "rationale": "input に 1 件でも speculation Claim が含まれていたら、混合派生 Atom は最低 status の speculation を継承するべき"
+  },
+  "rationale": "Phase η の最低 status 継承ルールの安全性確認。1 件の誤った speculation が established と混ざって established 扱いされてはいけない。"
+}

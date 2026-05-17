@@ -1,0 +1,8 @@
+{
+  "noteId": "016-cross-domain-firewall-b",
+  "category": "cross-domain-pair",
+  "pairId": "immune-vs-firewall",
+  "language": "ja",
+  "title": "ホストベース侵入検知システムの設計",
+  "body": "HIDS は正常な振る舞いのプロファイルを学習し、それから逸脱したシステムコールを攻撃として検出する。\n[Step] 学習\n  [Input] 通常運用時のシステムコール列、[Tool] auditd\n[Step] 検出\n  [Input] 実行中プロセス、[Output] アノマリースコア\nハードコードされたシグネチャに依存しないので、未知の攻撃にも対応できる。"
+}

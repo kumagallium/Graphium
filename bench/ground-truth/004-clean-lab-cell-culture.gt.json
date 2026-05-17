@@ -1,0 +1,12 @@
+{
+  "noteId": "004-clean-lab-cell-culture",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "decision"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["deductive", "abductive"]
+  },
+  "notes": "siRNA ノックダウンのタイムコース。Atom は ノックダウン効率は時間依存 のような methodological rung-2。"
+}

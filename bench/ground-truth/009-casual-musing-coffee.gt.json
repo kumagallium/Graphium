@@ -1,0 +1,12 @@
+{
+  "noteId": "009-casual-musing-coffee",
+  "expected": {
+    "claimCount": { "min": 1, "max": 2 },
+    "claimRoles": ["question", "interpretation"],
+    "epistemicStatus": ["speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "「もしかして」「たまたまかも」は speculation marker。Atom も speculation で伝搬されるべき (Phase η)。"
+}

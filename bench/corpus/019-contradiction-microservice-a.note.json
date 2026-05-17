@@ -1,0 +1,8 @@
+{
+  "noteId": "019-contradiction-microservice-a",
+  "category": "contradiction-pair",
+  "pairId": "microservice-vs-monolith",
+  "language": "ja",
+  "title": "マイクロサービスは独立デプロイで速度を出す",
+  "body": "マイクロサービス化することで、各チームが他チームのリリースを待たずに独立してデプロイできる。CI/CD が短くなり、変更のフィードバックループも速い。\n[Step] 分離\n  [Input] ドメイン境界、[Output] サービス境界\nただし、組織がコンウェイの法則に従えるだけ成熟していない場合は、サービス境界が機能境界と合致せず、結果として分散モノリスになる。"
+}

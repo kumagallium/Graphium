@@ -1,0 +1,8 @@
+{
+  "noteId": "017-cross-domain-evolution-a",
+  "category": "cross-domain-pair",
+  "pairId": "evolution-vs-ml",
+  "language": "ja",
+  "title": "自然選択は局所最適に陥りやすい",
+  "body": "自然選択は世代ごとに「いま生き残る個体」を選ぶ greedy なプロセスである。中間段階で適応度が下がる経路は探索されにくいので、局所最適に留まる傾向がある。\n[Step] 選択\n  [Input] 個体集団、[Output] 次世代\n大量絶滅などの環境変動は、選択圧をリセットして局所最適から脱出するきっかけになる。"
+}

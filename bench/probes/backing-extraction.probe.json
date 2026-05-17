@@ -1,0 +1,12 @@
+{
+  "name": "backing-extraction",
+  "inputs": [
+    "bench/corpus/003-clean-lab-photocatalyst.note.json",
+    "bench/corpus/008-clean-software-rate-limit.note.json"
+  ],
+  "expected": {
+    "backingCount": { "min": 0 },
+    "rationale": "教科書知識（Marcus 理論など）が Warrant の Backing として抽出される。corpus が backing 言及を含まない場合は 0 で OK。"
+  },
+  "rationale": "Phase γ で導入する Toulmin Backing の抽出能力テスト。Phase μ-1 では参照値。"
+}

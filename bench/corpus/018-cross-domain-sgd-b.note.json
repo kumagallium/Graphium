@@ -1,0 +1,8 @@
+{
+  "noteId": "018-cross-domain-sgd-b",
+  "category": "cross-domain-pair",
+  "pairId": "evolution-vs-ml",
+  "language": "ja",
+  "title": "確率的勾配降下法は鞍点で停滞する",
+  "body": "SGD は損失関数の局所勾配に従って重みを更新するため、勾配がゼロの鞍点に近づくと進みが遅くなる。\n[Step] 更新\n  [Input] ミニバッチ、[Output] 重み更新\n慣性項や乱数注入で鞍点から脱出させる工夫が必要になる。学習率を時折大きく上げる cyclical schedule も同じ意図で使われる。"
+}

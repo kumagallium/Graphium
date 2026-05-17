@@ -1,0 +1,12 @@
+{
+  "noteId": "003-clean-lab-photocatalyst",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "Pt 担持 TiO2 の H2 生成。Atom は 助触媒 → 還元活性点 の rung-2 lift を期待。"
+}
