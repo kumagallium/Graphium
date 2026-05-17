@@ -18,8 +18,9 @@ import { writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadCorpus, loadGroundTruthMap, loadProbes, BENCH_DIR } from "./load.ts";
 import { runDryRunPipeline, runLivePipeline } from "./pipeline.ts";
-import { computeMetrics } from "./metrics.ts";
+import { computeMetricsWithJudges } from "./metrics.ts";
 import { evaluateProbes } from "./probes-eval.ts";
+import { buildJudges } from "./judge.ts";
 import { getBenchModelConfig, resolveMode } from "./config.ts";
 import type { BenchProfile, BenchRunOutput } from "./types.ts";
 
@@ -53,13 +54,21 @@ export async function runBench(
 
   const { probeResults } = evaluateProbes(probes);
 
-  const metrics = computeMetrics({
+  const judges = buildJudges(mode);
+  notes.push(`judge=${judges.kind} (${judges.meta.modelId})`);
+
+  if (mode === "live") {
+    console.log(`[bench] judging lift/novelty via ${judges.kind} judge (${judges.meta.modelId})`);
+  }
+  const judged = await computeMetricsWithJudges({
     claims: pipelineResult.allClaims,
     atoms: pipelineResult.allAtoms,
     syntheses: pipelineResult.allSyntheses,
     gtMap,
     probeResults,
+    judges,
   });
+  const metrics = judged.metrics;
 
   const finishedAt = new Date();
 
@@ -68,6 +77,7 @@ export async function runBench(
     mode,
     modelId: cfg.modelId,
     modelProvider: cfg.provider,
+    judge: { kind: judges.kind, ...judges.meta },
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -79,6 +89,8 @@ export async function runBench(
     allSyntheses: pipelineResult.allSyntheses,
     metrics,
     probeResults,
+    liftJudgments: judged.liftDetails,
+    noveltyJudgments: judged.noveltyDetails,
     notes,
   };
 
@@ -107,6 +119,7 @@ async function main(): Promise<void> {
   console.log(`profile               : ${out.profile}`);
   console.log(`mode                  : ${out.mode}`);
   console.log(`model                 : ${out.modelId} (${out.modelProvider})`);
+  console.log(`judge                 : ${out.judge?.kind ?? "n/a"} (${out.judge?.modelId ?? "n/a"})`);
   console.log(`duration              : ${out.durationMs} ms`);
   console.log(`corpus / probes       : ${out.corpusSize} / ${out.probeCount}`);
   console.log(`claims/atoms/synth    : ${out.metrics.claim_count_total} / ${out.metrics.atom_count_total} / ${out.metrics.synthesis_count_total}`);

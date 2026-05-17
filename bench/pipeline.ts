@@ -349,15 +349,34 @@ function liftLevelFromText(text: string): "rung-0" | "rung-1" | "rung-2" {
     : "rung-2";
 }
 
+/** 出力テキストが「JSON っぽいが parse 失敗した」かを軽く判定する */
+function looksLikeFailedJson(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 80) return false; // 短すぎる出力は単に空回答とみなす
+  if (!t.includes("{") || !t.includes("}")) return false; // そもそも JSON 風でない
+  try {
+    let candidate = t;
+    const m = candidate.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) candidate = m[1].trim();
+    JSON.parse(candidate);
+    return false; // 普通に parse できる
+  } catch {
+    return true; // JSON 風だが parse できなかった
+  }
+}
+
+const PARSE_RETRY_REMINDER =
+  "Your previous response could not be parsed as JSON. Re-emit the same content as a STRICT JSON object only (no markdown, no commentary, no trailing comma). The schema must match the one in the system prompt.";
+
 async function ingestNoteLive(
   note: CorpusNote,
   modelConfig: ModelConfig,
-): Promise<BenchClaim[]> {
+): Promise<{ claims: BenchClaim[]; parseRetried: boolean; parseFailed: boolean }> {
   const systemPrompt = buildIngesterSystemPrompt(note.language, [], undefined);
   const userMessage = `Source note title: "${note.title}"\nUse this exact title for inline citations (e.g., "Based on [${note.title}], ...").\n\n# ${note.title}\n\n${note.body}`;
   const model = createModel(modelConfig);
 
-  const result = await runAgentLoop({
+  let result = await runAgentLoop({
     model,
     modelId: modelConfig.modelId,
     systemPrompt,
@@ -365,7 +384,32 @@ async function ingestNoteLive(
     maxSteps: 1,
   });
 
-  const docs: IngesterOutput[] = parseIngesterOutput(result.message);
+  let docs: IngesterOutput[] = parseIngesterOutput(result.message);
+  let parseRetried = false;
+  let parseFailed = false;
+
+  // 「LLM は応答を返したが parser が捨てた」ケースを retry 対象として 1 回再生成する。
+  // parseIngesterOutput は失敗時に [] を返してエラーを呑むので、テキストの形から
+  // 失敗を逆推定する。
+  if (docs.length === 0 && looksLikeFailedJson(result.message)) {
+    parseRetried = true;
+    result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [
+        { role: "user" as const, content: userMessage },
+        { role: "assistant" as const, content: result.message },
+        { role: "user" as const, content: PARSE_RETRY_REMINDER },
+      ],
+      maxSteps: 1,
+    });
+    docs = parseIngesterOutput(result.message);
+    if (docs.length === 0 && looksLikeFailedJson(result.message)) {
+      parseFailed = true; // retry も失敗
+    }
+  }
+
   const claims: BenchClaim[] = [];
   for (const doc of docs) {
     if (doc.kind !== "claim") continue;
@@ -381,7 +425,7 @@ async function ingestNoteLive(
       modalQualifier: detectModalQualifier(fullText),
     });
   }
-  return claims;
+  return { claims, parseRetried, parseFailed };
 }
 
 function claimsToSnapshots(claims: BenchClaim[]): ClaimSnapshot[] {
@@ -470,19 +514,34 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
   // 1) ingester: ノートごとに直列で呼ぶ（rate limit と無償枠を意識した素直な実装）
   const pipelineByNote: BenchPipelineOutput[] = [];
   const allClaims: BenchClaim[] = [];
+  let parseRetries = 0;
+  let parseFailures = 0;
   for (let i = 0; i < corpus.length; i++) {
     const note = corpus[i];
     process.stdout.write(`[bench] ingest ${i + 1}/${corpus.length} ${note.noteId} ... `);
     let claims: BenchClaim[] = [];
     try {
-      claims = await ingestNoteLive(note, modelConfig);
-      process.stdout.write(`${claims.length} claim(s)\n`);
+      const res = await ingestNoteLive(note, modelConfig);
+      claims = res.claims;
+      if (res.parseRetried) parseRetries += 1;
+      if (res.parseFailed) parseFailures += 1;
+      const suffix = res.parseFailed
+        ? " (parse failed after retry)"
+        : res.parseRetried
+          ? " (recovered by retry)"
+          : "";
+      process.stdout.write(`${claims.length} claim(s)${suffix}\n`);
     } catch (err) {
       process.stdout.write(`ERROR\n`);
       console.error(`  ingester error for ${note.noteId}:`, (err as Error).message);
     }
     pipelineByNote.push({ noteId: note.noteId, claims });
     allClaims.push(...claims);
+  }
+  if (parseRetries > 0 || parseFailures > 0) {
+    console.log(
+      `[bench] ingester JSON parse: retried=${parseRetries}, failed-after-retry=${parseFailures}`,
+    );
   }
 
   // 2) atomizer: 全 Claim を 1 ショットで投げる
@@ -495,14 +554,29 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
     const userMessage = buildAtomizerUserMessage(snapshots, []);
     try {
       const model = createModel(modelConfig);
-      const result = await runAgentLoop({
+      let result = await runAgentLoop({
         model,
         modelId: modelConfig.modelId,
         systemPrompt,
         messages: [{ role: "user" as const, content: userMessage }],
         maxSteps: 1,
       });
-      const atomCandidates = parseAtomizerOutput(result.message, idToTitle);
+      let atomCandidates = parseAtomizerOutput(result.message, idToTitle);
+      if (atomCandidates.length === 0 && looksLikeFailedJson(result.message)) {
+        console.log("[bench] atomize: retrying (parse failed)");
+        result = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt,
+          messages: [
+            { role: "user" as const, content: userMessage },
+            { role: "assistant" as const, content: result.message },
+            { role: "user" as const, content: PARSE_RETRY_REMINDER },
+          ],
+          maxSteps: 1,
+        });
+        atomCandidates = parseAtomizerOutput(result.message, idToTitle);
+      }
       allAtoms = atomCandidatesToBenchAtoms(atomCandidates, allClaims);
       console.log(`[bench] atomize result: ${allAtoms.length} atom(s)`);
     } catch (err) {
@@ -526,14 +600,29 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
     const userMessage = buildSynthesizerUserMessage(conceptSnapshots, []);
     try {
       const model = createModel(modelConfig);
-      const result = await runAgentLoop({
+      let result = await runAgentLoop({
         model,
         modelId: modelConfig.modelId,
         systemPrompt,
         messages: [{ role: "user" as const, content: userMessage }],
         maxSteps: 1,
       });
-      const stats = parseSynthesizerOutputWithStats(result.message);
+      let stats = parseSynthesizerOutputWithStats(result.message);
+      if (stats.rawCount === 0 && stats.candidates.length === 0 && looksLikeFailedJson(result.message)) {
+        console.log("[bench] synthesize: retrying (parse failed)");
+        result = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt,
+          messages: [
+            { role: "user" as const, content: userMessage },
+            { role: "assistant" as const, content: result.message },
+            { role: "user" as const, content: PARSE_RETRY_REMINDER },
+          ],
+          maxSteps: 1,
+        });
+        stats = parseSynthesizerOutputWithStats(result.message);
+      }
       allSyntheses = synthesisCandidatesToBenchSyntheses(stats.candidates, allAtoms);
       console.log(
         `[bench] synthesize result: ${allSyntheses.length} synthesis (rawCount=${stats.rawCount}, dropped=${stats.droppedByConfidence})`,

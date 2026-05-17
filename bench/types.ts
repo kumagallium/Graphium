@@ -91,6 +91,7 @@ export type BenchRunOutput = {
   mode: "live" | "dry-run";
   modelId: string;
   modelProvider: string;
+  judge?: { kind: "heuristic" | "live"; provider: string; modelId: string; modelName: string };
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -102,6 +103,8 @@ export type BenchRunOutput = {
   allSyntheses: BenchSynthesis[];
   metrics: BenchMetrics;
   probeResults: ProbeResult[];
+  liftJudgments?: { passed: boolean; reason: string; atomTitle: string }[];
+  noveltyJudgments?: { passed: boolean; reason: string; synthesisTitle: string }[];
   notes: string[];
 };
 
