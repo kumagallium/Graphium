@@ -3,7 +3,7 @@
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2 } from "lucide-react";
-import { apiBase, isTauri } from "./lib/platform";
+import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { pdfViewerBlock } from "./blocks/pdf-viewer";
@@ -1595,7 +1595,24 @@ function NoteEditorInner({
         }
       } catch (err) {
         console.error("[Composer] submit failed:", err);
-        window.alert(err instanceof Error ? err.message : tStatic("aiChat.runFailed"));
+        const baseMsg = err instanceof Error ? err.message : tStatic("aiChat.runFailed");
+        // ネットワーク系（"failed to fetch" 等）は原因切り分け用に API base と Tauri 判定を併記する。
+        // 検証者がそのままコピーして共有できるよう、複数行の alert で出す。
+        const isNetworkErr = /failed to fetch|networkerror|err_/i.test(baseMsg);
+        if (isNetworkErr) {
+          const detail = [
+            baseMsg,
+            "",
+            `API base: ${apiBase()}`,
+            `Tauri detection: ${tauriDetectionDetail() || "(none — running as web)"}`,
+            `Location protocol: ${window.location?.protocol ?? "unknown"}`,
+            "",
+            "Open the AI Chat tab and tap the (i) icon to copy a full diagnostics report.",
+          ].join("\n");
+          window.alert(detail);
+        } else {
+          window.alert(baseMsg);
+        }
       }
     };
     return () => {
