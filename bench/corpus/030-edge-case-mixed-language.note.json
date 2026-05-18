@@ -1,0 +1,7 @@
+{
+  "noteId": "030-edge-case-mixed-language",
+  "category": "edge-case",
+  "language": "ja",
+  "title": "Reading notes: progressive disclosure と段階的提示",
+  "body": "Reading a paper on 'progressive disclosure' for UI design (Nielsen, 1995). The core idea: show the minimum first, reveal more on demand.\n\n所感: これは Graphium のラベル設計と同じ発想だ。block-level label を一段目、inline highlight を二段目にしているのは、まさに progressive disclosure。ユーザーは [Step] だけ書いて止めても良いし、[Input]/[Output] まで掘っても良い。\n\nQuestion: does the same principle apply to AI-generated content? If the AI shows everything it inferred, the user can't sift; if it shows only the headline, the user can't verify. Maybe the answer is the same — progressive disclosure on the AI output too.\n\nまだ整理しきれていないが、UI の発想を AI の出力にもそのまま使えそうだという仮説。"
+}

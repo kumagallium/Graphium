@@ -1,0 +1,12 @@
+{
+  "noteId": "027-mixed-status-build-time",
+  "expected": {
+    "claimCount": { "min": 2, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "CI ビルド時間短縮の観察と、runner 変更が効いている『気がする』という推測が同居。Ingester は計測事実 (observation) と仮説 (speculation) を分離する。本文中の「A/B で測らないと分からない」は反例条件 (rebuttal) ではなく確証不足の自己言及なので rebuttalConditionsCount=0（独立 reviewer の指摘で修正）。"
+}
