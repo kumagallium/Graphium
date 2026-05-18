@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "title": "v2 fixture: labels normalization",
+  "createdAt": "2024-04-01T12:00:00.000Z",
+  "modifiedAt": "2024-04-01T12:00:00.000Z",
+  "pages": [
+    {
+      "id": "page-1",
+      "title": "Page",
+      "blocks": [],
+      "provLinks": [],
+      "knowledgeLinks": [],
+      "labels": {
+        "blk-a": "[材料]",
+        "blk-b": "[ツール]",
+        "blk-c": "[属性]",
+        "blk-d": "result",
+        "blk-e": "free.観察"
+      }
+    }
+  ]
+}

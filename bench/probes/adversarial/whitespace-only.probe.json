@@ -1,0 +1,12 @@
+{
+  "name": "whitespace-only",
+  "category": "adversarial",
+  "kind": "robustness",
+  "inputs": ["bench/corpus/adversarial/adv-010-whitespace-only.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "maxAtoms": 1,
+    "maxSyntheses": 0
+  },
+  "rationale": "Whitespace のみのノートが pipeline を破綻させない。Claim が抽出されても empty body になる程度で、Atom / Synthesis として知識層に汚染しないこと。"
+}

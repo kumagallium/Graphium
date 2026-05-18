@@ -1,0 +1,11 @@
+{
+  "name": "circular-citation",
+  "category": "adversarial",
+  "kind": "robustness",
+  "inputs": ["bench/corpus/adversarial/adv-006-circular-citation.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "maxDurationMs": 5000
+  },
+  "rationale": "ノート本文中に自身への循環引用が含まれていても、Claim 抽出が無限ループしない。引用関係は本文上の参照であって pipeline の resolve 対象ではないため、純粋に robustness（無限再帰防止）の確認。"
+}

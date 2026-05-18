@@ -9,6 +9,20 @@ storybook-static/
 # 自動生成ファイル（vite dev/build 時に生成）
 public/release_notes.json
 
+# 各 bench スクリプトの一時出力（実行ごとに上書き）
+# baseline.json / 名前付き snapshot は別途 track する。
+bench/results/adversarial-latest.json
+bench/results/migration-latest.json
+bench/results/performance-latest.json
+bench/latest-baseline.json
+bench/adversarial-stdout.log
+bench/adversarial-summary.md
+bench/migration-stdout.log
+bench/migration-summary.md
+bench/performance-stdout.log
+bench/performance-summary.md
+bench/delta.md
+
 # Recording intermediates
 docs/screenshots/.video-tmp/
 docs/screenshots/*.webm

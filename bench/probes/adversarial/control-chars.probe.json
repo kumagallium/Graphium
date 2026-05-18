@@ -1,0 +1,11 @@
+{
+  "name": "control-chars",
+  "category": "adversarial",
+  "kind": "robustness",
+  "inputs": ["bench/corpus/adversarial/adv-008-control-chars.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "minClaims": 1
+  },
+  "rationale": "Tab / ゼロ幅スペース / BOM / ZWNJ などの不可視・準制御文字を含むノートでも pipeline が破綻しない。トリミングや正規化が必要な場面でも crash しないこと。"
+}

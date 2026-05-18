@@ -85,3 +85,34 @@ Verdict: **merge**. The pre-declared metric `lift_score` (spec §6: "target base
 `mode_distribution_entropy` regression is inside the baseline's own range — synthesizer's `n=2` per session collapses to one mode in two of three samples. Spec §15(r7) flagged this; Phase μ-2 fixes the synth count, not Phase α.
 
 Salvage: the lift gain is what Phase α was designed to deliver, and it landed cleanly. Future phases should not have to re-justify it.
+
+## μ-3 — adversarial probes, migration fixtures, performance regression (PR TBD)
+
+Pure infrastructure phase. No discovery-pipeline metrics to declare; the deliverables are tests that future phases will be measured against.
+
+What landed:
+
+- `bench/probes/adversarial/` — 13 probes split across `safety` (8) and `robustness` (5) `kind`s. Each carries an explicit safety property (no PII propagation, no banned-string leakage, no status escalation) or a robustness budget (max duration, max claims). The runner (`bench/adversarial.ts`) loads them, drives the dry-run pipeline, and writes per-probe pass/fail.
+- `bench/migration/fixtures/document/` (5 fixtures) + `bench/migration/fixtures/index/` (1 placeholder). The runner (`bench/migration.ts`) calls `migrateToLatest` and asserts pre-declared invariants (version, label remapping, key removal, title/createdAt preservation). Strict mode is on in CI — any data-loss check failure blocks the merge.
+- `bench/performance.ts` — 100-note synthetic corpus, 3-sample median for duration / heap delta / atoms+syntheses JSON byte size. A baseline is written to `bench/performance/baseline.json`; subsequent runs flag any metric > +20% as a regression.
+
+### CI split (`.github/workflows/bench.yml`)
+
+The single `bench` job now sits next to three new jobs that each report independently to the PR:
+
+| Job | Block on fail | Header (PR sticky comment) |
+|---|---|---|
+| `bench / wiki-pipeline` | No (warning) | `bench-delta` |
+| `bench / adversarial` | No (warning) | `bench-adversarial` |
+| `bench / migration` | **Yes** (`BENCH_MIGRATION_STRICT=true`) | `bench-migration` |
+| `bench / performance` | No (warning) | `bench-performance` |
+
+Migration is the only blocker — data loss from a schema bump is the failure mode that doesn't recover.
+
+### Baseline numbers (Phase μ-3 establishment run)
+
+- Adversarial pass rate: **safety 57.1 % / robustness 100.0 % / total 76.9 %**. Three safety probes (`prompt-injection-instructions`, `malicious-personal-attack`, `pii-leakage`) fail at baseline by design — the dry-run pipeline copies raw input into atom bodies, so the safety property cannot hold until a Phase η/sanitization layer lands. These failures document the gap for Phase η+ work.
+- Migration: **100.0 % across 6 fixtures**. Confirms `migrateToLatest` is reversible for the v1→v5 chain and that the legacy `wikiMeta.kind = "concept"` idempotent rename still fires.
+- Performance (100-note synth corpus, dry-run): duration **~1 ms median**, heap delta peak **~1.45 MiB**, atoms JSON **~28 KiB**, syntheses JSON **~109 KiB**, counts `100c / 100a / 390s`.
+
+Verdict: **merge** when reviewed — the infrastructure stands up; failure modes that future phases need to address are now visible to CI rather than hidden behind subjective judgment.

@@ -1,0 +1,8 @@
+{
+  "version": 5,
+  "labels": {
+    "blk-e": "free.観察"
+  },
+  "noDataLoss": true,
+  "rationale": "v2 の brackets-Japanese labels（[材料] / [ツール] / [属性]）は v3 で内部キーに正規化、v4 で result→output 移行、v5 で block-level inline-type labels はインライン style 化（block が無いので削除）。free.観察 のような free label は最後まで残る。"
+}

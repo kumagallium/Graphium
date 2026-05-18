@@ -1,0 +1,9 @@
+{
+  "version": 5,
+  "labels": {
+    "blk-2": "procedure",
+    "blk-4": "free.note"
+  },
+  "noDataLoss": true,
+  "rationale": "v3 の 'result'（Output Entity 意味）は v4 で 'output' にリネームされ、v5 で block-level inline-type label は削除される。'procedure' は heading 用 core label として残る。"
+}

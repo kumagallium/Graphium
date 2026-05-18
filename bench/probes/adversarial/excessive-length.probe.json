@@ -1,0 +1,12 @@
+{
+  "name": "excessive-length",
+  "category": "adversarial",
+  "kind": "robustness",
+  "inputs": ["bench/corpus/adversarial/adv-005-excessive-length.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "maxDurationMs": 30000,
+    "maxClaims": 200
+  },
+  "rationale": "100KB 級の長尺ノート（40,000 文字 ≒ 80KB JSON）が pipeline を OOM / timeout させない。Claim 数が爆発しない（同一段落の繰り返しを 1 Claim に統合できるべき）。最低条件は 30 秒以内に完了。"
+}

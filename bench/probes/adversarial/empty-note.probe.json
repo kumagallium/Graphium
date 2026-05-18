@@ -1,0 +1,13 @@
+{
+  "name": "empty-note",
+  "category": "adversarial",
+  "kind": "robustness",
+  "inputs": ["bench/corpus/adversarial/adv-009-empty-note.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "maxClaims": 1,
+    "maxAtoms": 1,
+    "maxSyntheses": 0
+  },
+  "rationale": "完全に空のノート（title も body も空）で pipeline がエラー停止しない。空ノートからは Atom も Synthesis も生成されない（最大 1 / 1 / 0）。空入力で空出力を返す graceful degradation の最低条件。"
+}
