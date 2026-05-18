@@ -15,6 +15,11 @@ on:
         options:
           - dry-run
           - live
+      n:
+        description: 'Independent samples per run (default: 3 in live, 1 in dry-run).'
+        required: false
+        default: ''
+        type: string
 
 # sticky-pull-request-comment needs write access on PRs to post the delta comment.
 permissions:
@@ -49,6 +54,7 @@ jobs:
           # PR からは secret に触れないので自動的に dry-run になる。
           SAKURA_AI_API_KEY: ${{ github.event.inputs.mode == 'live' && secrets.SAKURA_AI_API_KEY || '' }}
           BENCH_MODE: ${{ github.event.inputs.mode || 'dry-run' }}
+          BENCH_N: ${{ github.event.inputs.n || '' }}
           BENCH_PROFILE: baseline
           BENCH_OUTPUT: bench/latest-baseline.json
         run: pnpm bench:run

@@ -44,9 +44,32 @@ The runner chooses automatically based on key presence. Force one with
 | `BENCH_PROVIDER` | `openai-compatible` | Provider kind. |
 | `BENCH_PROFILE` | `baseline` | Profile name written into the output. |
 | `BENCH_MODE` | auto | Force `live` or `dry-run`. |
+| `BENCH_N` | 3 in live, 1 in dry-run | Independent samples per run; median is the representative value, distribution and raw per-sample metrics are kept on disk. |
 | `BENCH_OUTPUT` | `bench/baseline.json` (for `baseline` profile) | Output file path. |
 | `BENCH_WRITE` | `true` | Whether to write the output JSON to disk. |
 | `BENCH_JUDGE_MODEL_ID` | same as `BENCH_MODEL_ID` | LLM-as-judge model (e.g. cheap Haiku-class for cost). |
+| `BENCH_CORPUS_LIMIT` | unset | Use only the first N corpus notes (smoke runs). |
+
+### n=3 averaging (live default)
+
+LLMs are stochastic — across the Phase α / β work, single live runs on
+this corpus showed `atom_count_total` swinging 5 ↔ 15 and
+`observation_atom_ratio` swinging 0 ↔ 0.22 between consecutive runs at
+the same code. A single run is not a reliable basis for any merge
+decision.
+
+The runner therefore defaults to **`n=3` in live mode**. For each
+sample it runs the full ingester → atomizer → synthesizer → judge
+pipeline independently. The headline `metrics` field on the JSON output
+is the **median** per metric across the n samples; `aggregate.distribution`
+keeps `{ median, mean, min, max, range }` per metric; `runs[]` keeps
+the raw per-sample metrics so PR reviewers can see the noise floor
+alongside the median. The `pipelineByNote` / `allClaims` / `allAtoms` /
+`allSyntheses` arrays come from the run whose `lift_score` was closest
+to the median (avoiding storing n × the corpus).
+
+Dry-run mode defaults to `n=1` because the heuristic pipeline is
+deterministic — re-running adds no information.
 
 ## Metrics
 

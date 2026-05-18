@@ -97,15 +97,51 @@ export type BenchRunOutput = {
   durationMs: number;
   corpusSize: number;
   probeCount: number;
+  /** 実行した独立サンプル数（n=3 averaging）。1 なら従来の単発実行。 */
+  n: number;
+  /** 代表サンプル（median 採用 run）の生データ。1ノートあたりの Claim 一覧。 */
   pipelineByNote: BenchPipelineOutput[];
   allClaims: BenchClaim[];
   allAtoms: BenchAtom[];
   allSyntheses: BenchSynthesis[];
+  /** 集約後の代表値（n=1 なら唯一の run、n≥2 なら下記 aggregate に従う） */
   metrics: BenchMetrics;
   probeResults: ProbeResult[];
   liftJudgments?: { passed: boolean; reason: string; atomTitle: string }[];
   noveltyJudgments?: { passed: boolean; reason: string; synthesisTitle: string }[];
+  /** n≥2 の場合のみ。各 run の素の metric を残し、ばらつき判断に使える。 */
+  runs?: BenchRunSample[];
+  /** n≥2 の場合のみ。代表 metric の決め方と分布の要約を残す。 */
+  aggregate?: BenchAggregate;
   notes: string[];
+};
+
+/** 1 サンプル分の素データ。代表 run の pipelineByNote 等は BenchRunOutput 側に残す。 */
+export type BenchRunSample = {
+  index: number;            // 0-based
+  startedAt: string;
+  durationMs: number;
+  metrics: BenchMetrics;
+  probePassCount: number;   // probeResults は LLM stub 抜きなので冗長を避けて件数のみ
+};
+
+/** metric ごとに median / mean / min / max を残す。代表値 (metrics) と等価ではない: aggregate.statistic で示す */
+export type BenchAggregate = {
+  /** 代表値の選び方。"median" がデフォルト */
+  statistic: "median" | "mean";
+  /** 代表値が n run のうち何番目の run のものか（パイプライン素データの選定基準） */
+  representativeRunIndex: number;
+  /** メトリクスごとの分布。runs.length と同じ長さの配列 */
+  distribution: Record<keyof BenchMetrics, BenchMetricSummary>;
+};
+
+export type BenchMetricSummary = {
+  median: number;
+  mean: number;
+  min: number;
+  max: number;
+  /** ばらつきの読み取りやすさのため、絶対範囲 (max - min) も持っておく */
+  range: number;
 };
 
 export type BenchMetrics = {

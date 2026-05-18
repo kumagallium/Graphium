@@ -24,13 +24,22 @@ export function renderReport(run: BenchRunOutput): string {
   lines.push(`- started: ${run.startedAt}`);
   lines.push(`- duration: ${run.durationMs} ms`);
   lines.push(`- corpus / probes: ${run.corpusSize} / ${run.probeCount}`);
+  lines.push(`- samples (n): ${run.n ?? 1}${run.aggregate ? ` (statistic=${run.aggregate.statistic})` : ""}`);
   lines.push("");
   lines.push("## Metrics");
   lines.push("");
-  lines.push("| metric | value |");
-  lines.push("|---|---|");
-  for (const [k, v] of Object.entries(run.metrics)) {
-    lines.push(`| ${k} | ${v} |`);
+  if (run.aggregate) {
+    lines.push("| metric | median | mean | min | max | range |");
+    lines.push("|---|---|---|---|---|---|");
+    for (const [k, summary] of Object.entries(run.aggregate.distribution)) {
+      lines.push(`| ${k} | ${summary.median} | ${summary.mean} | ${summary.min} | ${summary.max} | ${summary.range} |`);
+    }
+  } else {
+    lines.push("| metric | value |");
+    lines.push("|---|---|");
+    for (const [k, v] of Object.entries(run.metrics)) {
+      lines.push(`| ${k} | ${v} |`);
+    }
   }
   lines.push("");
   lines.push("## Probes");
@@ -50,6 +59,18 @@ export function renderReport(run: BenchRunOutput): string {
   lines.push("|---|---|");
   for (const [m, c] of Object.entries(modeCounts)) lines.push(`| ${m} | ${c} |`);
   lines.push("");
+  if (run.runs && run.runs.length > 1) {
+    lines.push("## Per-run samples");
+    lines.push("");
+    lines.push("| # | lift | entropy | epi | obs | atoms | syn | duration_ms |");
+    lines.push("|---|---|---|---|---|---|---|---|");
+    for (const s of run.runs) {
+      lines.push(
+        `| ${s.index + 1} | ${s.metrics.lift_score} | ${s.metrics.mode_distribution_entropy} | ${s.metrics.epistemic_preservation} | ${s.metrics.observation_atom_ratio} | ${s.metrics.atom_count_total} | ${s.metrics.synthesis_count_total} | ${s.durationMs} |`,
+      );
+    }
+    lines.push("");
+  }
   if (run.notes.length > 0) {
     lines.push("## Notes");
     lines.push("");

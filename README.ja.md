@@ -393,6 +393,7 @@ pnpm bench:compare main            # main の baseline.json と差分を取る
 | `BENCH_API_BASE` | `https://api.ai.sakura.ad.jp/v1` | API エンドポイント。OpenAI 互換ならどこでも可。 |
 | `BENCH_PROFILE` | `baseline` | 出力に書き込まれる profile 名（`baseline`、`with-alpha` など）。 |
 | `BENCH_MODE` | 自動 | `live` か `dry-run` を強制するときに指定。 |
+| `BENCH_N` | live=3 / dry-run=1 | 1 回の実行で取る独立サンプル数。代表値は median。分布は `aggregate.distribution` と `runs[]` に保存され、PR でばらつきも可視化できる。 |
 
 メトリクスの定義、corpus 構成、probe リスト、CI 統合は
 [docs/BENCHMARK.md](docs/BENCHMARK.md) を参照してください。

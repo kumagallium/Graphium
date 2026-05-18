@@ -51,14 +51,32 @@ export function renderDeltaTable(left: BenchRunOutput, right: BenchRunOutput): s
   const lines: string[] = [];
   lines.push(`# Bench delta`);
   lines.push("");
-  lines.push(`- left  (${left.profile} / ${left.mode} / ${left.startedAt})`);
-  lines.push(`- right (${right.profile} / ${right.mode} / ${right.startedAt})`);
+  const leftMeta = `${left.profile} / ${left.mode} / n=${left.n ?? 1}${left.aggregate ? ` ${left.aggregate.statistic}` : ""} / ${left.startedAt}`;
+  const rightMeta = `${right.profile} / ${right.mode} / n=${right.n ?? 1}${right.aggregate ? ` ${right.aggregate.statistic}` : ""} / ${right.startedAt}`;
+  lines.push(`- left  (${leftMeta})`);
+  lines.push(`- right (${rightMeta})`);
   lines.push("");
   lines.push("| metric | left | right | Δ | Δ% |");
   lines.push("|---|---|---|---|---|");
   for (const d of deltas) {
     const arrow = d.delta > 0 ? "▲" : d.delta < 0 ? "▼" : "·";
     lines.push(`| ${d.metric} | ${d.left} | ${d.right} | ${arrow} ${d.delta} | ${d.pct ?? "-"} |`);
+  }
+  // n>=2 の片側があれば、range も併記（noise floor の可視化）
+  if (left.aggregate || right.aggregate) {
+    lines.push("");
+    lines.push("### Per-sample range (left, right)");
+    lines.push("");
+    lines.push("| metric | left range | right range |");
+    lines.push("|---|---|---|");
+    for (const d of deltas) {
+      const key = d.metric as keyof BenchRunOutput["metrics"];
+      const lRange = left.aggregate?.distribution?.[key];
+      const rRange = right.aggregate?.distribution?.[key];
+      const lCell = lRange ? `${lRange.min}–${lRange.max}` : "—";
+      const rCell = rRange ? `${rRange.min}–${rRange.max}` : "—";
+      lines.push(`| ${d.metric} | ${lCell} | ${rCell} |`);
+    }
   }
   return lines.join("\n");
 }
