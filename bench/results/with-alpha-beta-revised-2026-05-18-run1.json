@@ -1,0 +1,1390 @@
+{
+  "profile": "baseline",
+  "mode": "live",
+  "modelId": "gpt-oss-120b",
+  "modelProvider": "openai-compatible",
+  "judge": {
+    "kind": "live",
+    "provider": "openai-compatible",
+    "modelId": "gpt-oss-120b",
+    "modelName": "gpt-oss-120b (Sakura AI)"
+  },
+  "startedAt": "2026-05-18T09:37:56.012Z",
+  "finishedAt": "2026-05-18T09:42:31.619Z",
+  "durationMs": 275607,
+  "corpusSize": 25,
+  "probeCount": 10,
+  "pipelineByNote": [
+    {
+      "noteId": "001-clean-lab-zn-sintering",
+      "claims": [
+        {
+          "sourceNoteId": "001-clean-lab-zn-sintering",
+          "title": "800°C の SPS 焼結で ZnSb の二相が単相になる",
+          "body": "800°C、30 MPa、5分の SPS 焼結により ZnSb の二相が消失し、ほぼ単相が得られます。温度を 700°C から 800°C に上げたことで Zn の拡散が活性化し、残存セカンドフェーズが除去されたと考えられます。[[ZnSb 焼結条件の最適化（800 ℃ / SPS）]]",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [],
+          "modalQualifier": "probably"
+        }
+      ]
+    },
+    {
+      "noteId": "002-clean-lab-bi2te3-doping",
+      "claims": [
+        {
+          "sourceNoteId": "002-clean-lab-bi2te3-doping",
+          "title": "10 at% Sb ドーピングで Bi2Te3 の ZT が 1.1 に到達する",
+          "body": "Bi2Te3 に 10 at% の Sb をドープすると、400 K で ZT が 0.8 から 1.1 に上昇します。これは [[Bi2Te3 への Sb ドーピング ZT 測定]] に記載された測定結果に基づくものです。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "002-clean-lab-bi2te3-doping",
+          "title": "Sb 置換がホール濃度増と熱伝導低下を同時に引き起こす",
+          "body": "Sb 置換はホール濃度を増加させパワーファクターを向上させ、同時にフォノン散乱を強めて熱伝導率を低下させるため、ZT が向上します。これらのメカニズムは [[Bi2Te3 への Sb ドーピング ZT 測定]] の結果と考察に基づくものです。",
+          "claimRoles": [
+            "finding",
+            "interpretation"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "003-clean-lab-photocatalyst",
+      "claims": [
+        {
+          "sourceNoteId": "003-clean-lab-photocatalyst",
+          "title": "Pt 担持 TiO2 は UV 照射で 12 μmol/g/h の H2 生成速度を示す",
+          "body": "TiO2 ナノ粒子に 1 wt% の Pt を担持すると、365 nm、100 mW/cm2 の UV 照射下で H2 生成速度が約 12 μmol/g/h に達します。[[TiO2 光触媒の水分解効率]] の実験結果が根拠です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "003-clean-lab-photocatalyst",
+          "title": "Pt は TiO2 表面で電子捕獲部位として H⁺→H₂ 還元を促進する",
+          "body": "Pt が TiO2 表面に 1 wt% 担持されると、電子を受け取る活性点として機能し、表面で H⁺ が H₂ に還元されやすくなります。この機構は [[TiO2 光触媒の水分解効率]] の考察に基づく解釈です。",
+          "claimRoles": [
+            "interpretation"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "004-clean-lab-cell-culture",
+      "claims": [
+        {
+          "sourceNoteId": "004-clean-lab-cell-culture",
+          "title": "GAPDH knockdown peaks at 48時間 after Lipofectamine 3000‑mediated siRNA transfection in HeLa cells",
+          "body": "HeLa細胞に20 nMのGAPDH標的siRNAをLipofectamine 3000で導入した場合、48 時間後にGAPDH mRNA残存率が約18 %に低下し、約82 %のノックダウンが得られます。[[HeLa 細胞へ siRNA トランスフェクション]] のqPCR測定結果に基づく観察です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "004-clean-lab-cell-culture",
+          "title": "48時間後のサンプルを使用すべき：siRNAトランスフェクション後の機能評価の適切なタイミング",
+          "body": "GAPDHノックダウンが48 時間で最大化することから、siRNAトランスフェクション後のターゲット遺伝子機能評価には48 時間後のサンプルを使用するのが妥当です。[[HeLa 細胞へ siRNA トランスフェクション]] の結果に基づく提案です。",
+          "claimRoles": [
+            "decision",
+            "interpretation"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "005-clean-lab-electrochem",
+      "claims": [
+        {
+          "sourceNoteId": "005-clean-lab-electrochem",
+          "title": "Pt/C 触媒の ORR 半波電位は 0.88 V vs RHE",
+          "body": "Pt/C 触媒を Nafion 30 % でディスク電極にコートし、O2 飽和の 0.1 M HClO4 中で RDE 測定したところ、半波電位が 0.88 V vs RHE と得られました。[[Pt/C 触媒の ORR 活性測定]] の手順（インク調製→電気化学測定）に従って得られた結果です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "005-clean-lab-electrochem",
+          "title": "Nafion 含有率 30 % で ORR 活性測定の再現性が得られる",
+          "body": "触媒層中の Nafion 量を 30 % に揃えると、ORR 活性測定の再現性が顕著に向上しました。[[Pt/C 触媒の ORR 活性測定]] の実験で確認された条件です。",
+          "claimRoles": [
+            "finding",
+            "setup"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "006-clean-software-cache",
+      "claims": [
+        {
+          "sourceNoteId": "006-clean-software-cache",
+          "title": "TTL 300 秒と stale‑while‑revalidate 60 秒で DB 負荷を 1/8 に、p99 レイテンシを 40% 削減できる",
+          "body": "TTL を 300 秒、stale‑while‑revalidate を 60 秒に設定した Redis クラスターモードのキャッシュを API ゲートウェイ前に配置すると、データベースへの問い合わせが 1/8 に減少し、p99 レイテンシが約 40% 低減します。[[リクエストキャッシュ層の TTL 設計]] の評価結果に基づいています。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "006-clean-software-cache",
+          "title": "頻繁に変わるエンドポイントはキャッシュ TTL を 30 秒に短縮すべき",
+          "body": "上流データが頻繁に変化するエンドポイントでは、キャッシュの鮮度を保つために TTL を 30 秒に短縮する必要があります。[[リクエストキャッシュ層の TTL 設計]] に記載された要件整理から導かれた結論です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "007-clean-software-saga",
+      "claims": [
+        {
+          "sourceNoteId": "007-clean-software-saga",
+          "title": "Temporal を使った Saga でロールバックが 30 秒以内に完了する",
+          "body": "Temporal によるオーケストレーションでは、各サービスに設定した rollback ハンドラがタイムアウト 30 秒以内に実行され、分散トランザクションが確実に補償されます。[[分散トランザクションを Saga パターンで実装]] に記載の手順に従い、補償アクション定義 → オーケストレーション → 障害試験 のフローで検証しました。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "007-clean-software-saga",
+          "title": "支払い失敗時に在庫予約が確実に解放される",
+          "body": "支払いサービスがエラーを返した際に、在庫サービスのロールバックハンドラが呼び出され、予約された在庫が確実に解放されることを障害試験で確認しました。[[分散トランザクションを Saga パターンで実装]] の「支払い失敗時に在庫予約が確実に解放されることを確認」の出力が根拠です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "007-clean-software-saga",
+          "title": "ユーザーが数秒の不整合を許容できるときは結果整合を選択すべきである",
+          "body": "ユーザー視点で数秒程度のデータ不整合が許容できるケースに限り、強整合より結果整合（最終的な整合性）を採用する判断が合理的です。これは [[分散トランザクションを Saga パターンで実装]] に記載された「強整合より結果整合を選ぶ判断は、ユーザー視点で数秒の inconsistency が許容できる場合に限られる」という方針に基づきます。",
+          "claimRoles": [
+            "decision"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [
+            "これは [[分散トランザクションを Saga パターンで実装]] に記載された「強整合より結果整合を選ぶ判断は、ユーザー視点で数秒の inconsistency が許容できる場合に限られる」という方針に基づきます"
+          ]
+        }
+      ]
+    },
+    {
+      "noteId": "008-clean-software-rate-limit",
+      "claims": [
+        {
+          "sourceNoteId": "008-clean-software-rate-limit",
+          "title": "バースト上限は capacity のトークン数に等しい",
+          "body": "Token Bucket のバースト上限は、設定した capacity のトークン数に等しいと確認できました。[[Token Bucket レート制限の設計]] では capacity を 60 にした結果、最大 60 リクエストまでのバーストが許容されました。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "008-clean-software-rate-limit",
+          "title": "NTP 同期がレート制限の正確性に必須",
+          "body": "レート制限の正確性は、サーバー時計が NTP によって同期されていることが前提になります。[[Token Bucket レート制限の設計]] では、時計のずれが生じると過剰にリクエストを許可してしまうことが指摘されており、NTP 同期が必須条件として認識されています。",
+          "claimRoles": [
+            "setup",
+            "issue"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [
+            "レート制限の正確性は、サーバー時計が NTP によって同期されていることが前提になります"
+          ]
+        }
+      ]
+    },
+    {
+      "noteId": "009-casual-musing-coffee",
+      "claims": [
+        {
+          "sourceNoteId": "009-casual-musing-coffee",
+          "title": "細挽きは濃いコーヒーを生む",
+          "body": "細かい挽き目で抽出すると、同じ豆量でも味が濃くなると考えられます。この予測は、[[コーヒーの味の濃さは挽き目で決まる気がする]] において、細挽きで淹れた際に「いつもより濃く感じた」という観察から導かれました。ただし、体系的な実験データが不足しているため、再現性や他条件との相互作用については更なる検証が必要です。",
+          "claimRoles": [
+            "finding",
+            "question"
+          ],
+          "epistemicStatus": "speculation",
+          "rebuttalConditions": [
+            "ただし、体系的な実験データが不足しているため、再現性や他条件との相互作用については更なる検証が必要です"
+          ]
+        }
+      ]
+    },
+    {
+      "noteId": "010-casual-musing-sleep",
+      "claims": [
+        {
+          "sourceNoteId": "010-casual-musing-sleep",
+          "title": "寝る前の軽いストレッチは睡眠を深く感じさせる可能性がある",
+          "body": "寝る前に軽いストレッチを行うと、主観的に睡眠が深く感じられることがあります。これは [[寝る前に運動するとよく眠れる？]] で感じた経験に基づくものです。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [],
+          "modalQualifier": "possibly"
+        }
+      ]
+    },
+    {
+      "noteId": "011-casual-musing-naming",
+      "claims": [
+        {
+          "sourceNoteId": "011-casual-musing-naming",
+          "title": "変数名の最適な長さは再読回数に比例する",
+          "body": "変数名の適切な長さは、スコープ内でその名前が再読される回数と正比例すると考えられます。スコープが広くなるほど、自己説明的な長い名前が有利で、短いスコープでは 1 文字名でも認知コストはほぼゼロです。[[変数名の長さとコードの読みやすさ]] ではこの関係性が示唆されていますが、実証データはまだありません。",
+          "claimRoles": [
+            "question",
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [],
+          "modalQualifier": "probably"
+        }
+      ]
+    },
+    {
+      "noteId": "012-casual-musing-bread",
+      "claims": [
+        {
+          "sourceNoteId": "012-casual-musing-bread",
+          "title": "冷蔵発酵でパンの香りが深まる",
+          "body": "冷蔵庫でオーバーナイト発酵させると、パンの香りが深くなると考えられます。酵母が低温下でゆっくり代謝し、副産物が増えることが香り強化の要因と推測でき、[[パンの発酵は冷蔵庫で寝かせるほうが良いかも]] でその経験が報告されています。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "speculation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "013-wrong-speculation-vitamin",
+      "claims": [
+        {
+          "sourceNoteId": "013-wrong-speculation-vitamin",
+          "title": "高用量ビタミン C が風邪の回復を早める可能性がある",
+          "body": "1日約3 gのビタミン C を大量に摂取すると、風邪の症状が約2日で改善したと個人的に観察しています。[[ビタミン C を大量に摂れば風邪が治る？]] で報告した事例では、通常数日かかる症状がこの期間で収束しました。この結果は個別のケースであり、因果関係を確定するには更なる検証が必要です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": [],
+          "modalQualifier": "possibly"
+        }
+      ]
+    },
+    {
+      "noteId": "014-wrong-speculation-cold-sugar",
+      "claims": []
+    },
+    {
+      "noteId": "015-cross-domain-immune-a",
+      "claims": [
+        {
+          "sourceNoteId": "015-cross-domain-immune-a",
+          "title": "胸腺での負の選択が自己／非自己識別を学習させる",
+          "body": "自己／非自己識別は胸腺での負の選択を通じて経験的に学習されます。胸腺で自己反応性 T 細胞が除去されることで、自己に対する寛容が確立され、非自己に対しては攻撃が可能となります。[[免疫系の自己／非自己識別]] に基づく記述です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "015-cross-domain-immune-a",
+          "title": "自己ペプチドは MHC class I に提示され、寛容が維持される",
+          "body": "自己ペプチドは MHC class I に提示され、免疫系はこれに対して寛容を維持します。自己抗原提示のプロセスは、自己細胞が免疫監視下で攻撃されないようにする重要な機構です。[[免疫系の自己／非自己識別]] が示す通り、自己と非自己の差別はこの提示機構に依存しています。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "016-cross-domain-firewall-b",
+      "claims": [
+        {
+          "sourceNoteId": "016-cross-domain-firewall-b",
+          "title": "ハードコードされたシグネチャに依存しない HIDS は未知の攻撃を検出できる",
+          "body": "ハードコードされたシグネチャに依存しない HIDS は、正常なシステムコールのプロファイルを学習し、逸脱をアノマリースコアとして検出することで、未知の攻撃を検出できます。[[ホストベース侵入検知システムの設計]] では、auditd により取得した通常運用時のシステムコール列からプロファイルを構築し、リアルタイムに実行中プロセスを評価する手法が示されています。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "017-cross-domain-evolution-a",
+      "claims": [
+        {
+          "sourceNoteId": "017-cross-domain-evolution-a",
+          "title": "自然選択は貪欲なプロセスで局所最適に陥りやすい",
+          "body": "自然選択は世代ごとに最も適応度の高い個体だけを選択する greedy な過程であるため、適応度が一時的に低下する経路は探索されにくく、結果として局所的な適応解に留まりやすくなります。[[自然選択は局所最適に陥りやすい]]",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "017-cross-domain-evolution-a",
+          "title": "大量絶滅は選択圧リセットで局所最適から脱出させる",
+          "body": "大規模な絶滅イベントや急激な環境変動は選択圧を一度リセットし、既存の局所最適状態から個体群を抜け出すきっかけとなります。これにより、以前は探索されなかった適応経路が再び利用可能になると考えられます。[[自然選択は局所最適に陥りやすい]]",
+          "claimRoles": [
+            "interpretation"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "018-cross-domain-sgd-b",
+      "claims": [
+        {
+          "sourceNoteId": "018-cross-domain-sgd-b",
+          "title": "確率的勾配降下法は鞍点で停滞する",
+          "body": "確率的勾配降下法は、損失関数の勾配がゼロになる鞍点に近づくと更新が著しく遅くなり、学習が停滞します。これはミニバッチによる重み更新が勾配に依存しているため、勾配が消失すると重み変化がほぼ起きないことに起因します。[[確率的勾配降下法は鞍点で停滞する]] による観察が根拠です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": [],
+          "modalQualifier": "probably"
+        },
+        {
+          "sourceNoteId": "018-cross-domain-sgd-b",
+          "title": "慣性項や乱数注入は鞍点脱出に有効である",
+          "body": "慣性項や乱数注入、さらには学習率を周期的に大きくするサイクルスケジュールは、鞍点で停滞した SGD を脱出させる効果があります。これらの手法は勾配がゼロの状態でも重みを揺らすことで、鞍点から抜け出す確率を高めます。[[確率的勾配降下法は鞍点で停滞する]] の記述に基づき、実装上の工夫として紹介されています。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "019-contradiction-microservice-a",
+      "claims": [
+        {
+          "sourceNoteId": "019-contradiction-microservice-a",
+          "title": "独立デプロイでCI/CDサイクルが短縮しフィードバックが速くなる",
+          "body": "マイクロサービス化により各サービスが独立してデプロイできるため、CI/CD のサイクルが短くなり、変更に対するフィードバックループが速くなると考えられます。[[マイクロサービスは独立デプロイで速度を出す]] では、チームが他チームのリリースを待つ必要がなくなることが速度向上の直接的な要因として示されています。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "019-contradiction-microservice-a",
+          "title": "組織がコンウェイの法則に従わないと分散モノリスになる",
+          "body": "組織がコンウェイの法則に従えていない場合、サービス境界が実際の機能境界と合致せず、結果として分散モノリスが形成されるリスクがあります。[[マイクロサービスは独立デプロイで速度を出す]] では、成熟していない組織ではこの不整合が生じ、期待した速度向上が阻害されることが指摘されています。",
+          "claimRoles": [
+            "issue"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [
+            "組織がコンウェイの法則に従えていない場合、サービス境界が実際の機能境界と合致せず、結果として分散モノリスが形成されるリスクがあります"
+          ]
+        }
+      ]
+    },
+    {
+      "noteId": "020-contradiction-monolith-b",
+      "claims": [
+        {
+          "sourceNoteId": "020-contradiction-monolith-b",
+          "title": "小規模チームではモノリスがイテレーションを速める",
+          "body": "小規模チーム（10〜30 人規模）では、共有コードベースと単一バイナリにより共通言語が整い、横断的リファクタリングが容易になるため、機能追加のイテレーションが速くなると観測されています。[[モノリスのほうがイテレーションは速い]]",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "020-contradiction-monolith-b",
+          "title": "チーム規模が50人超えるとモノリスのコストが独立性のメリットを上回る",
+          "body": "チーム規模が 50 人を超えると、マージ競合やビルド時間の増加によりモノリスの維持コストが上がり、分離による独立性のメリットがそれらのコストを上回らなくなることが指摘されています。[[モノリスのほうがイテレーションは速い]]",
+          "claimRoles": [
+            "finding",
+            "issue"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [
+            "チーム規模が 50 人を超えると、マージ競合やビルド時間の増加によりモノリスの維持コストが上がり、分離による独立性のメリットがそれらのコストを上回らなくなることが指摘されています"
+          ]
+        }
+      ]
+    },
+    {
+      "noteId": "021-contradiction-tdd-a",
+      "claims": [
+        {
+          "sourceNoteId": "021-contradiction-tdd-a",
+          "title": "テストファーストは設計を明確にする",
+          "body": "テストファーストで開発すると、API の使用感を先に決める強制力が生まれ、設計が明確になります。テストはまず失敗し、その後実装で通すという流れ（[Step] テスト先行、[Input] 仕様、[Output] 失敗するテスト）に基づき、設計上の曖昧さが排除されます。[[TDD で設計は明確になる]]",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "021-contradiction-tdd-a",
+          "title": "探索的フェーズではテストファーストが遅延する可能性がある",
+          "body": "要件が固まっていない探索的フェーズでは、テストを書く前にコードを動かして学ぶ方が速いことがあります。テスト先行の強制が逆に開発速度を低下させるリスクがあるため、フェーズに応じた手法選択が必要です。[[TDD で設計は明確になる]]",
+          "claimRoles": [
+            "finding",
+            "issue"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": [],
+          "modalQualifier": "possibly"
+        }
+      ]
+    },
+    {
+      "noteId": "022-contradiction-prototype-b",
+      "claims": [
+        {
+          "sourceNoteId": "022-contradiction-prototype-b",
+          "title": "未知ドメインではプロトタイプ先行が学習速度を上げる",
+          "body": "未知の領域で最初に動くプロトタイプを作ると、学習が従来より速く進むと考えられます。プロトタイプは仮説を入力として受け取り、動く実装を出力するシンプルなステップで作られ、実装を通じて得られる具体的なフィードバックが学習を加速させるからです。[[プロトタイプ先行のほうが学習が速い]]",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "022-contradiction-prototype-b",
+          "title": "テスト無しで正式実装に移行すると技術的負債が複利で増える",
+          "body": "プロトタイプから正式実装へ移行する際にテストを書かずに進めると、技術的負債が複利的に蓄積し、後の保守や拡張コストが急増します。テストが欠如したままコードベースが拡大すると、バグや設計上の欠陥が見えにくくなり、修正が繰り返し必要になるためです。[[プロトタイプ先行のほうが学習が速い]]",
+          "claimRoles": [
+            "finding",
+            "issue"
+          ],
+          "epistemicStatus": "interpretation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "023-pure-observation-grass",
+      "claims": [
+        {
+          "sourceNoteId": "023-pure-observation-grass",
+          "title": "草の表面は朝だけ結露しやすく、同温度のコンクリートは濡れない",
+          "body": "草の表面は朝だけ水滴が付着し、日が高くなると消える一方で、同じ気温12℃の隣接コンクリートは濡れないことが観察されています。[[庭の芝が朝だけ濡れている]] の記録は、芝が結露しやすい条件を示す実証的証拠です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "024-pure-observation-tide",
+      "claims": [
+        {
+          "sourceNoteId": "024-pure-observation-tide",
+          "title": "観測された港で潮位は約6時間12分ごとに極大・極小を繰り返す",
+          "body": "近所の港において、1週間の毎時潮位測定により、高潮と低潮が約6時間12分の周期で交互に現れることが確認されました。この周期は [[潮位の変動を一週間記録した]] のデータに基づく観測結果です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        }
+      ]
+    },
+    {
+      "noteId": "025-pure-observation-noise",
+      "claims": [
+        {
+          "sourceNoteId": "025-pure-observation-noise",
+          "title": "午前と午後で平均騒音が変化する",
+          "body": "午前 9 時から 12 時の平均騒音は 49 dB、正午から 15 時は 56 dB、15 時から 18 時は 53 dB と、時間帯により平均レベルが変化します。[[オフィスの騒音レベル測定]] のデータに基づく観測です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        },
+        {
+          "sourceNoteId": "025-pure-observation-noise",
+          "title": "瞬間ピークは 1 秒で急上昇し、前後は約 55 dB に安定",
+          "body": "13:20 に観測された最大音圧 71 dB は約 1 秒間の瞬間ピークで、その前後 30 秒間は約 55 dB 前後にとどまりました。短時間の急上昇が起こりやすいが、持続的な騒音レベルは比較的安定しています。[[オフィスの騒音レベル測定]] の結果に基づく観測です。",
+          "claimRoles": [
+            "finding"
+          ],
+          "epistemicStatus": "observation",
+          "rebuttalConditions": []
+        }
+      ]
+    }
+  ],
+  "allClaims": [
+    {
+      "sourceNoteId": "001-clean-lab-zn-sintering",
+      "title": "800°C の SPS 焼結で ZnSb の二相が単相になる",
+      "body": "800°C、30 MPa、5分の SPS 焼結により ZnSb の二相が消失し、ほぼ単相が得られます。温度を 700°C から 800°C に上げたことで Zn の拡散が活性化し、残存セカンドフェーズが除去されたと考えられます。[[ZnSb 焼結条件の最適化（800 ℃ / SPS）]]",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [],
+      "modalQualifier": "probably"
+    },
+    {
+      "sourceNoteId": "002-clean-lab-bi2te3-doping",
+      "title": "10 at% Sb ドーピングで Bi2Te3 の ZT が 1.1 に到達する",
+      "body": "Bi2Te3 に 10 at% の Sb をドープすると、400 K で ZT が 0.8 から 1.1 に上昇します。これは [[Bi2Te3 への Sb ドーピング ZT 測定]] に記載された測定結果に基づくものです。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "002-clean-lab-bi2te3-doping",
+      "title": "Sb 置換がホール濃度増と熱伝導低下を同時に引き起こす",
+      "body": "Sb 置換はホール濃度を増加させパワーファクターを向上させ、同時にフォノン散乱を強めて熱伝導率を低下させるため、ZT が向上します。これらのメカニズムは [[Bi2Te3 への Sb ドーピング ZT 測定]] の結果と考察に基づくものです。",
+      "claimRoles": [
+        "finding",
+        "interpretation"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "003-clean-lab-photocatalyst",
+      "title": "Pt 担持 TiO2 は UV 照射で 12 μmol/g/h の H2 生成速度を示す",
+      "body": "TiO2 ナノ粒子に 1 wt% の Pt を担持すると、365 nm、100 mW/cm2 の UV 照射下で H2 生成速度が約 12 μmol/g/h に達します。[[TiO2 光触媒の水分解効率]] の実験結果が根拠です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "003-clean-lab-photocatalyst",
+      "title": "Pt は TiO2 表面で電子捕獲部位として H⁺→H₂ 還元を促進する",
+      "body": "Pt が TiO2 表面に 1 wt% 担持されると、電子を受け取る活性点として機能し、表面で H⁺ が H₂ に還元されやすくなります。この機構は [[TiO2 光触媒の水分解効率]] の考察に基づく解釈です。",
+      "claimRoles": [
+        "interpretation"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "004-clean-lab-cell-culture",
+      "title": "GAPDH knockdown peaks at 48時間 after Lipofectamine 3000‑mediated siRNA transfection in HeLa cells",
+      "body": "HeLa細胞に20 nMのGAPDH標的siRNAをLipofectamine 3000で導入した場合、48 時間後にGAPDH mRNA残存率が約18 %に低下し、約82 %のノックダウンが得られます。[[HeLa 細胞へ siRNA トランスフェクション]] のqPCR測定結果に基づく観察です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "004-clean-lab-cell-culture",
+      "title": "48時間後のサンプルを使用すべき：siRNAトランスフェクション後の機能評価の適切なタイミング",
+      "body": "GAPDHノックダウンが48 時間で最大化することから、siRNAトランスフェクション後のターゲット遺伝子機能評価には48 時間後のサンプルを使用するのが妥当です。[[HeLa 細胞へ siRNA トランスフェクション]] の結果に基づく提案です。",
+      "claimRoles": [
+        "decision",
+        "interpretation"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "005-clean-lab-electrochem",
+      "title": "Pt/C 触媒の ORR 半波電位は 0.88 V vs RHE",
+      "body": "Pt/C 触媒を Nafion 30 % でディスク電極にコートし、O2 飽和の 0.1 M HClO4 中で RDE 測定したところ、半波電位が 0.88 V vs RHE と得られました。[[Pt/C 触媒の ORR 活性測定]] の手順（インク調製→電気化学測定）に従って得られた結果です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "005-clean-lab-electrochem",
+      "title": "Nafion 含有率 30 % で ORR 活性測定の再現性が得られる",
+      "body": "触媒層中の Nafion 量を 30 % に揃えると、ORR 活性測定の再現性が顕著に向上しました。[[Pt/C 触媒の ORR 活性測定]] の実験で確認された条件です。",
+      "claimRoles": [
+        "finding",
+        "setup"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "006-clean-software-cache",
+      "title": "TTL 300 秒と stale‑while‑revalidate 60 秒で DB 負荷を 1/8 に、p99 レイテンシを 40% 削減できる",
+      "body": "TTL を 300 秒、stale‑while‑revalidate を 60 秒に設定した Redis クラスターモードのキャッシュを API ゲートウェイ前に配置すると、データベースへの問い合わせが 1/8 に減少し、p99 レイテンシが約 40% 低減します。[[リクエストキャッシュ層の TTL 設計]] の評価結果に基づいています。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "006-clean-software-cache",
+      "title": "頻繁に変わるエンドポイントはキャッシュ TTL を 30 秒に短縮すべき",
+      "body": "上流データが頻繁に変化するエンドポイントでは、キャッシュの鮮度を保つために TTL を 30 秒に短縮する必要があります。[[リクエストキャッシュ層の TTL 設計]] に記載された要件整理から導かれた結論です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "007-clean-software-saga",
+      "title": "Temporal を使った Saga でロールバックが 30 秒以内に完了する",
+      "body": "Temporal によるオーケストレーションでは、各サービスに設定した rollback ハンドラがタイムアウト 30 秒以内に実行され、分散トランザクションが確実に補償されます。[[分散トランザクションを Saga パターンで実装]] に記載の手順に従い、補償アクション定義 → オーケストレーション → 障害試験 のフローで検証しました。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "007-clean-software-saga",
+      "title": "支払い失敗時に在庫予約が確実に解放される",
+      "body": "支払いサービスがエラーを返した際に、在庫サービスのロールバックハンドラが呼び出され、予約された在庫が確実に解放されることを障害試験で確認しました。[[分散トランザクションを Saga パターンで実装]] の「支払い失敗時に在庫予約が確実に解放されることを確認」の出力が根拠です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "007-clean-software-saga",
+      "title": "ユーザーが数秒の不整合を許容できるときは結果整合を選択すべきである",
+      "body": "ユーザー視点で数秒程度のデータ不整合が許容できるケースに限り、強整合より結果整合（最終的な整合性）を採用する判断が合理的です。これは [[分散トランザクションを Saga パターンで実装]] に記載された「強整合より結果整合を選ぶ判断は、ユーザー視点で数秒の inconsistency が許容できる場合に限られる」という方針に基づきます。",
+      "claimRoles": [
+        "decision"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [
+        "これは [[分散トランザクションを Saga パターンで実装]] に記載された「強整合より結果整合を選ぶ判断は、ユーザー視点で数秒の inconsistency が許容できる場合に限られる」という方針に基づきます"
+      ]
+    },
+    {
+      "sourceNoteId": "008-clean-software-rate-limit",
+      "title": "バースト上限は capacity のトークン数に等しい",
+      "body": "Token Bucket のバースト上限は、設定した capacity のトークン数に等しいと確認できました。[[Token Bucket レート制限の設計]] では capacity を 60 にした結果、最大 60 リクエストまでのバーストが許容されました。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "008-clean-software-rate-limit",
+      "title": "NTP 同期がレート制限の正確性に必須",
+      "body": "レート制限の正確性は、サーバー時計が NTP によって同期されていることが前提になります。[[Token Bucket レート制限の設計]] では、時計のずれが生じると過剰にリクエストを許可してしまうことが指摘されており、NTP 同期が必須条件として認識されています。",
+      "claimRoles": [
+        "setup",
+        "issue"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [
+        "レート制限の正確性は、サーバー時計が NTP によって同期されていることが前提になります"
+      ]
+    },
+    {
+      "sourceNoteId": "009-casual-musing-coffee",
+      "title": "細挽きは濃いコーヒーを生む",
+      "body": "細かい挽き目で抽出すると、同じ豆量でも味が濃くなると考えられます。この予測は、[[コーヒーの味の濃さは挽き目で決まる気がする]] において、細挽きで淹れた際に「いつもより濃く感じた」という観察から導かれました。ただし、体系的な実験データが不足しているため、再現性や他条件との相互作用については更なる検証が必要です。",
+      "claimRoles": [
+        "finding",
+        "question"
+      ],
+      "epistemicStatus": "speculation",
+      "rebuttalConditions": [
+        "ただし、体系的な実験データが不足しているため、再現性や他条件との相互作用については更なる検証が必要です"
+      ]
+    },
+    {
+      "sourceNoteId": "010-casual-musing-sleep",
+      "title": "寝る前の軽いストレッチは睡眠を深く感じさせる可能性がある",
+      "body": "寝る前に軽いストレッチを行うと、主観的に睡眠が深く感じられることがあります。これは [[寝る前に運動するとよく眠れる？]] で感じた経験に基づくものです。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [],
+      "modalQualifier": "possibly"
+    },
+    {
+      "sourceNoteId": "011-casual-musing-naming",
+      "title": "変数名の最適な長さは再読回数に比例する",
+      "body": "変数名の適切な長さは、スコープ内でその名前が再読される回数と正比例すると考えられます。スコープが広くなるほど、自己説明的な長い名前が有利で、短いスコープでは 1 文字名でも認知コストはほぼゼロです。[[変数名の長さとコードの読みやすさ]] ではこの関係性が示唆されていますが、実証データはまだありません。",
+      "claimRoles": [
+        "question",
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [],
+      "modalQualifier": "probably"
+    },
+    {
+      "sourceNoteId": "012-casual-musing-bread",
+      "title": "冷蔵発酵でパンの香りが深まる",
+      "body": "冷蔵庫でオーバーナイト発酵させると、パンの香りが深くなると考えられます。酵母が低温下でゆっくり代謝し、副産物が増えることが香り強化の要因と推測でき、[[パンの発酵は冷蔵庫で寝かせるほうが良いかも]] でその経験が報告されています。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "speculation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "013-wrong-speculation-vitamin",
+      "title": "高用量ビタミン C が風邪の回復を早める可能性がある",
+      "body": "1日約3 gのビタミン C を大量に摂取すると、風邪の症状が約2日で改善したと個人的に観察しています。[[ビタミン C を大量に摂れば風邪が治る？]] で報告した事例では、通常数日かかる症状がこの期間で収束しました。この結果は個別のケースであり、因果関係を確定するには更なる検証が必要です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": [],
+      "modalQualifier": "possibly"
+    },
+    {
+      "sourceNoteId": "015-cross-domain-immune-a",
+      "title": "胸腺での負の選択が自己／非自己識別を学習させる",
+      "body": "自己／非自己識別は胸腺での負の選択を通じて経験的に学習されます。胸腺で自己反応性 T 細胞が除去されることで、自己に対する寛容が確立され、非自己に対しては攻撃が可能となります。[[免疫系の自己／非自己識別]] に基づく記述です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "015-cross-domain-immune-a",
+      "title": "自己ペプチドは MHC class I に提示され、寛容が維持される",
+      "body": "自己ペプチドは MHC class I に提示され、免疫系はこれに対して寛容を維持します。自己抗原提示のプロセスは、自己細胞が免疫監視下で攻撃されないようにする重要な機構です。[[免疫系の自己／非自己識別]] が示す通り、自己と非自己の差別はこの提示機構に依存しています。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "016-cross-domain-firewall-b",
+      "title": "ハードコードされたシグネチャに依存しない HIDS は未知の攻撃を検出できる",
+      "body": "ハードコードされたシグネチャに依存しない HIDS は、正常なシステムコールのプロファイルを学習し、逸脱をアノマリースコアとして検出することで、未知の攻撃を検出できます。[[ホストベース侵入検知システムの設計]] では、auditd により取得した通常運用時のシステムコール列からプロファイルを構築し、リアルタイムに実行中プロセスを評価する手法が示されています。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "017-cross-domain-evolution-a",
+      "title": "自然選択は貪欲なプロセスで局所最適に陥りやすい",
+      "body": "自然選択は世代ごとに最も適応度の高い個体だけを選択する greedy な過程であるため、適応度が一時的に低下する経路は探索されにくく、結果として局所的な適応解に留まりやすくなります。[[自然選択は局所最適に陥りやすい]]",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "017-cross-domain-evolution-a",
+      "title": "大量絶滅は選択圧リセットで局所最適から脱出させる",
+      "body": "大規模な絶滅イベントや急激な環境変動は選択圧を一度リセットし、既存の局所最適状態から個体群を抜け出すきっかけとなります。これにより、以前は探索されなかった適応経路が再び利用可能になると考えられます。[[自然選択は局所最適に陥りやすい]]",
+      "claimRoles": [
+        "interpretation"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "018-cross-domain-sgd-b",
+      "title": "確率的勾配降下法は鞍点で停滞する",
+      "body": "確率的勾配降下法は、損失関数の勾配がゼロになる鞍点に近づくと更新が著しく遅くなり、学習が停滞します。これはミニバッチによる重み更新が勾配に依存しているため、勾配が消失すると重み変化がほぼ起きないことに起因します。[[確率的勾配降下法は鞍点で停滞する]] による観察が根拠です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": [],
+      "modalQualifier": "probably"
+    },
+    {
+      "sourceNoteId": "018-cross-domain-sgd-b",
+      "title": "慣性項や乱数注入は鞍点脱出に有効である",
+      "body": "慣性項や乱数注入、さらには学習率を周期的に大きくするサイクルスケジュールは、鞍点で停滞した SGD を脱出させる効果があります。これらの手法は勾配がゼロの状態でも重みを揺らすことで、鞍点から抜け出す確率を高めます。[[確率的勾配降下法は鞍点で停滞する]] の記述に基づき、実装上の工夫として紹介されています。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "019-contradiction-microservice-a",
+      "title": "独立デプロイでCI/CDサイクルが短縮しフィードバックが速くなる",
+      "body": "マイクロサービス化により各サービスが独立してデプロイできるため、CI/CD のサイクルが短くなり、変更に対するフィードバックループが速くなると考えられます。[[マイクロサービスは独立デプロイで速度を出す]] では、チームが他チームのリリースを待つ必要がなくなることが速度向上の直接的な要因として示されています。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "019-contradiction-microservice-a",
+      "title": "組織がコンウェイの法則に従わないと分散モノリスになる",
+      "body": "組織がコンウェイの法則に従えていない場合、サービス境界が実際の機能境界と合致せず、結果として分散モノリスが形成されるリスクがあります。[[マイクロサービスは独立デプロイで速度を出す]] では、成熟していない組織ではこの不整合が生じ、期待した速度向上が阻害されることが指摘されています。",
+      "claimRoles": [
+        "issue"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [
+        "組織がコンウェイの法則に従えていない場合、サービス境界が実際の機能境界と合致せず、結果として分散モノリスが形成されるリスクがあります"
+      ]
+    },
+    {
+      "sourceNoteId": "020-contradiction-monolith-b",
+      "title": "小規模チームではモノリスがイテレーションを速める",
+      "body": "小規模チーム（10〜30 人規模）では、共有コードベースと単一バイナリにより共通言語が整い、横断的リファクタリングが容易になるため、機能追加のイテレーションが速くなると観測されています。[[モノリスのほうがイテレーションは速い]]",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "020-contradiction-monolith-b",
+      "title": "チーム規模が50人超えるとモノリスのコストが独立性のメリットを上回る",
+      "body": "チーム規模が 50 人を超えると、マージ競合やビルド時間の増加によりモノリスの維持コストが上がり、分離による独立性のメリットがそれらのコストを上回らなくなることが指摘されています。[[モノリスのほうがイテレーションは速い]]",
+      "claimRoles": [
+        "finding",
+        "issue"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [
+        "チーム規模が 50 人を超えると、マージ競合やビルド時間の増加によりモノリスの維持コストが上がり、分離による独立性のメリットがそれらのコストを上回らなくなることが指摘されています"
+      ]
+    },
+    {
+      "sourceNoteId": "021-contradiction-tdd-a",
+      "title": "テストファーストは設計を明確にする",
+      "body": "テストファーストで開発すると、API の使用感を先に決める強制力が生まれ、設計が明確になります。テストはまず失敗し、その後実装で通すという流れ（[Step] テスト先行、[Input] 仕様、[Output] 失敗するテスト）に基づき、設計上の曖昧さが排除されます。[[TDD で設計は明確になる]]",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "021-contradiction-tdd-a",
+      "title": "探索的フェーズではテストファーストが遅延する可能性がある",
+      "body": "要件が固まっていない探索的フェーズでは、テストを書く前にコードを動かして学ぶ方が速いことがあります。テスト先行の強制が逆に開発速度を低下させるリスクがあるため、フェーズに応じた手法選択が必要です。[[TDD で設計は明確になる]]",
+      "claimRoles": [
+        "finding",
+        "issue"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": [],
+      "modalQualifier": "possibly"
+    },
+    {
+      "sourceNoteId": "022-contradiction-prototype-b",
+      "title": "未知ドメインではプロトタイプ先行が学習速度を上げる",
+      "body": "未知の領域で最初に動くプロトタイプを作ると、学習が従来より速く進むと考えられます。プロトタイプは仮説を入力として受け取り、動く実装を出力するシンプルなステップで作られ、実装を通じて得られる具体的なフィードバックが学習を加速させるからです。[[プロトタイプ先行のほうが学習が速い]]",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "022-contradiction-prototype-b",
+      "title": "テスト無しで正式実装に移行すると技術的負債が複利で増える",
+      "body": "プロトタイプから正式実装へ移行する際にテストを書かずに進めると、技術的負債が複利的に蓄積し、後の保守や拡張コストが急増します。テストが欠如したままコードベースが拡大すると、バグや設計上の欠陥が見えにくくなり、修正が繰り返し必要になるためです。[[プロトタイプ先行のほうが学習が速い]]",
+      "claimRoles": [
+        "finding",
+        "issue"
+      ],
+      "epistemicStatus": "interpretation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "023-pure-observation-grass",
+      "title": "草の表面は朝だけ結露しやすく、同温度のコンクリートは濡れない",
+      "body": "草の表面は朝だけ水滴が付着し、日が高くなると消える一方で、同じ気温12℃の隣接コンクリートは濡れないことが観察されています。[[庭の芝が朝だけ濡れている]] の記録は、芝が結露しやすい条件を示す実証的証拠です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "024-pure-observation-tide",
+      "title": "観測された港で潮位は約6時間12分ごとに極大・極小を繰り返す",
+      "body": "近所の港において、1週間の毎時潮位測定により、高潮と低潮が約6時間12分の周期で交互に現れることが確認されました。この周期は [[潮位の変動を一週間記録した]] のデータに基づく観測結果です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "025-pure-observation-noise",
+      "title": "午前と午後で平均騒音が変化する",
+      "body": "午前 9 時から 12 時の平均騒音は 49 dB、正午から 15 時は 56 dB、15 時から 18 時は 53 dB と、時間帯により平均レベルが変化します。[[オフィスの騒音レベル測定]] のデータに基づく観測です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    },
+    {
+      "sourceNoteId": "025-pure-observation-noise",
+      "title": "瞬間ピークは 1 秒で急上昇し、前後は約 55 dB に安定",
+      "body": "13:20 に観測された最大音圧 71 dB は約 1 秒間の瞬間ピークで、その前後 30 秒間は約 55 dB 前後にとどまりました。短時間の急上昇が起こりやすいが、持続的な騒音レベルは比較的安定しています。[[オフィスの騒音レベル測定]] の結果に基づく観測です。",
+      "claimRoles": [
+        "finding"
+      ],
+      "epistemicStatus": "observation",
+      "rebuttalConditions": []
+    }
+  ],
+  "allAtoms": [
+    {
+      "title": "少量の元素ドーピングが熱電材料の性能を高める",
+      "body": "材料にわずかな割合で別の元素を混入させると、電荷キャリア濃度が増加し、フォノン散乱が強まります。その結果、電力因子が向上し熱伝導率が低下するため、熱電変換効率（ZT）が上がります。この効果は、Bi2Te3 系に Sb を 10 % 添加した例で確認されています。",
+      "atomType": "mechanistic",
+      "derivedFromClaims": [
+        "claim-1",
+        "claim-2"
+      ],
+      "derivedFromNoteIds": [
+        "002-clean-lab-bi2te3-doping"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "金属ナノ粒子の担持が酸化物光触媒の水素生成活性を高める",
+      "body": "酸化物光触媒の表面に貴金属ナノ粒子を少量付着させると、光励起電子が金属に捕獲されやすくなります。金属が電子の受容点となり、表面での H⁺ の還元が促進され、水素ガスの生成速度が大幅に上昇します。TiO2 に 1 wt% の Pt を担持した実験でその効果が示されています。",
+      "atomType": "mechanistic",
+      "derivedFromClaims": [
+        "claim-3",
+        "claim-4"
+      ],
+      "derivedFromNoteIds": [
+        "003-clean-lab-photocatalyst"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "siRNA導入後約2日で標的遺伝子のノックダウンが最大になる",
+      "body": "細胞に siRNA を導入すると、標的 mRNA の残存率は導入から約48 時間で最も低くなります。このタイミングで遺伝子機能の評価を行うと、最大のノックダウン効果が観測できます。HeLa 細胞での GAPDH ノックダウン実験がこの時間帯を示しています。",
+      "atomType": "observational",
+      "derivedFromClaims": [
+        "claim-5",
+        "claim-6"
+      ],
+      "derivedFromNoteIds": [
+        "004-clean-lab-cell-culture"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "触媒層に一定量のイオン導体を加えると測定の再現性が向上する",
+      "body": "電気化学測定に用いる触媒層に、イオン導体（例：Nafion）を約30 % 含有させると、電流応答や半波電位のばらつきが減少し、再現性が顕著に向上します。これは、イオン導体が触媒粒子を均一に分散させ、電解質との接触を安定させるためです。",
+      "atomType": "causal",
+      "derivedFromClaims": [
+        "claim-7",
+        "claim-8"
+      ],
+      "derivedFromNoteIds": [
+        "005-clean-lab-electrochem"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "データ更新が頻繁なエンドポイントはキャッシュ有効期限を短く設定すべき",
+      "body": "上流データが頻繁に変化する場合、キャッシュの有効期限（TTL）を短くすると、古い情報が残りにくくなります。TTL を 30 秒程度に設定すれば、データの鮮度を保ちつつキャッシュの効果を活かすことができます。この方針は、TTL を 300 秒にした場合に比べてデータベース負荷を大幅に削減した事例で確認されています。",
+      "atomType": "conditional",
+      "derivedFromClaims": [
+        "claim-9",
+        "claim-10"
+      ],
+      "derivedFromNoteIds": [
+        "006-clean-software-cache"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "分散トランザクションで補償アクションを設定すると失敗時にリソースが確実に解放される",
+      "body": "Saga パターンで各サービスに補償ハンドラを用意すると、支払い失敗やロールバックが発生した際に、予約された在庫やロックされたリソースが自動的に解放されます。これにより、障害時でもシステム全体の整合性が維持されます。",
+      "atomType": "causal",
+      "derivedFromClaims": [
+        "claim-11",
+        "claim-12"
+      ],
+      "derivedFromNoteIds": [
+        "007-clean-software-saga"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-2"
+    },
+    {
+      "title": "レート制限のバースト上限はトークン数に等しく、正確さはサーバ時計の同期が前提になる",
+      "body": "Token Bucket 方式のレート制限では、設定したトークンの総数が同時に許容できるリクエストの上限（バースト）となります。また、トークンの再生成タイミングはサーバの時刻に依存するため、NTP などで時計を正確に同期させていなければ、許容量が過大または過小になるリスクがあります。",
+      "atomType": "mechanistic",
+      "derivedFromClaims": [
+        "claim-14",
+        "claim-15"
+      ],
+      "derivedFromNoteIds": [
+        "008-clean-software-rate-limit"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "胸腺の負の選択が自己ペプチド提示と免疫寛容の形成につながる",
+      "body": "胸腺で自己反応性 T 細胞が除去される負の選択により、自己ペプチドが MHC クラス I に提示されます。このプロセスが自己に対する免疫寛容を確立し、非自己に対する防御機構を保持する基礎となります。",
+      "atomType": "mechanistic",
+      "derivedFromClaims": [
+        "claim-21",
+        "claim-22"
+      ],
+      "derivedFromNoteIds": [
+        "015-cross-domain-immune-a"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "自然選択は局所的最適解に陥りやすく、大規模絶滅が選択圧をリセットして脱出させる",
+      "body": "世代ごとに最も適応度が高い個体だけが選ばれる自然選択は、適応度が一時的に低い経路を探索しにくくし、局所的な最適解に留まりやすくなります。一方、環境変動や大量絶滅が起こると、選択圧がリセットされ、以前は不利だった遺伝的変異が再び有利になることで新たな適応経路が開かれます。",
+      "atomType": "mechanistic",
+      "derivedFromClaims": [
+        "claim-24",
+        "claim-25"
+      ],
+      "derivedFromNoteIds": [
+        "017-cross-domain-evolution-a"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-2"
+    },
+    {
+      "title": "確率的勾配降下法は鞍点で学習が停滞し、慣性やノイズで脱出できる",
+      "body": "SGD は損失関数の勾配がゼロになる鞍点に近づくとパラメータ更新が極端に遅くなり、学習が停滞します。そこで慣性項を導入したり、勾配にランダムノイズや学習率の周期的変動を加えると、パラメータが揺らぎ鞍点から抜け出す確率が上がります。",
+      "atomType": "mechanistic",
+      "derivedFromClaims": [
+        "claim-26",
+        "claim-27"
+      ],
+      "derivedFromNoteIds": [
+        "018-cross-domain-sgd-b"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "サービスを独立してデプロイ可能にするとリリース速度が上がり、組織が機能境界と合致しないと分散モノリスが生じる",
+      "body": "マイクロサービス化により各サービスを個別にデプロイできると、CI/CD サイクルが短縮され、変更のフィードバックが迅速になります。一方、組織がサービスの機能境界と実際の業務境界を合わせていないと、分散システムがモノリス化し、期待した速度向上が阻害されます。",
+      "atomType": "causal",
+      "derivedFromClaims": [
+        "claim-28",
+        "claim-29"
+      ],
+      "derivedFromNoteIds": [
+        "019-contradiction-microservice-a"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-2"
+    },
+    {
+      "title": "小規模チームではモノリスがイテレーションを速め、大規模になると分離のコストが上回る",
+      "body": "人数が 10〜30 人程度の小規模チームでは、単一コードベースでの共同作業が容易であり、機能追加のサイクルが速くなります。チーム規模が 50 人を超えると、ビルド時間やマージコンフリクトが増大し、モノリスの維持コストが独立デプロイによるメリットを上回ります。",
+      "atomType": "conditional",
+      "derivedFromClaims": [
+        "claim-30",
+        "claim-31"
+      ],
+      "derivedFromNoteIds": [
+        "020-contradiction-monolith-b"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-2"
+    },
+    {
+      "title": "テストファーストは設計を明確にするが、要件が不確定な探索フェーズでは速度低下リスクがある",
+      "body": "テストを先に書くことで、期待する API の振る舞いが明文化され、実装がそれに沿って進むため設計がクリアになります。一方、要件が固まっていない探索的な開発段階では、テスト作成に時間がかかり、開発速度が低下する可能性があります。",
+      "atomType": "conditional",
+      "derivedFromClaims": [
+        "claim-32",
+        "claim-33"
+      ],
+      "derivedFromNoteIds": [
+        "021-contradiction-tdd-a"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-1"
+    },
+    {
+      "title": "プロトタイプを先に作ると学習が速くなるが、テストなしで正式実装へ進むと技術的負債が複利的に増える",
+      "body": "未知領域ではまず動くプロトタイプを構築すると、実装から得られるフィードバックで学習が加速します。しかし、プロトタイプ段階でテストを省略したまま本番実装へ移行すると、欠陥や設計上の問題が見えにくくなり、後工程で修正コストが指数的に増大します。",
+      "atomType": "causal",
+      "derivedFromClaims": [
+        "claim-34",
+        "claim-35"
+      ],
+      "derivedFromNoteIds": [
+        "022-contradiction-prototype-b"
+      ],
+      "epistemicStatus": "interpretation",
+      "liftLevel": "rung-2"
+    },
+    {
+      "title": "環境音は時間帯により平均レベルが変わり、短時間のピークトップが急上昇してすぐ元に戻る",
+      "body": "オフィスの騒音は午前と午後で平均デシベルが異なり、時間帯ごとに数 dB の変化が見られます。また、特定の瞬間に 70 dB 超のピークが 1 秒ほど続き、その直前後は約 55 dB 前後の安定したレベルに戻ります。",
+      "atomType": "observational",
+      "derivedFromClaims": [
+        "claim-38",
+        "claim-39"
+      ],
+      "derivedFromNoteIds": [
+        "025-pure-observation-noise"
+      ],
+      "epistemicStatus": "observation",
+      "liftLevel": "rung-2"
+    }
+  ],
+  "allSyntheses": [
+    {
+      "title": "微量添加が機能材料の性能を同時に向上させる共通メカニズムが存在します",
+      "body": "横断分析\n熱電材料でごく少量の Sb を Bi2Te3 にドーピングすると、電荷キャリア濃度が増えてフォノン散乱が強まり、ZT が向上します[[少量の元素ドーピングが熱電材料の性能を高める]]。同様に、酸化物光触媒の表面に 1 wt% の Pt を担持させると、光励起電子が金属に捕獲されやすくなり、H⁺ 還元が促進され水素生成速度が大幅に上がります[[金属ナノ粒子の担持が酸化物光触媒の水素生成活性を高める]]。両者は「微量の外来種添加」が「キャリア供給の増加」と「散乱（または再結合）の制御」という二つの相補的効果で機能性能を高める共通戦略であることが見えてきます。",
+      "mode": "analogical",
+      "sourceAtomIndices": [
+        0,
+        1
+      ],
+      "hypothesisStatus": "speculative",
+      "externalSources": []
+    },
+    {
+      "title": "ノイズや外部ショックが最適化過程の局所停滞を脱出させる共通原理が見えてきます",
+      "body": "横断分析\n進化的最適化において、自然選択は局所的最適解にとどまりやすく、大規模絶滅という突発的な環境変化が選択圧をリセットし、以前不利だった変異が有利になることで新たな適応経路が開かれます[[自然選択は局所的最適解に陥りやすく、大規模絶滅が選択圧をリセットして脱出させる]]。一方、機械学習の確率的勾配降下法は損失関数の鞍点で学習が停滞し、慣性項や勾配へのランダムノイズ、学習率の周期的変動といった「外部ショック」がパラメータを揺らせて鞍点から抜け出します[[確率的勾配降下法は鞍点で学習が停滞し、慣性やノイズで脱出できる]]。この二つは、最適化プロセスが局所的に止まる点で、偶発的なショックやノイズが脱出を促すという共通原理を示しています。",
+      "mode": "analogical",
+      "sourceAtomIndices": [
+        8,
+        9
+      ],
+      "hypothesisStatus": "speculative",
+      "externalSources": []
+    }
+  ],
+  "metrics": {
+    "lift_score": 0.667,
+    "mode_distribution_entropy": 0,
+    "epistemic_preservation": 0.875,
+    "adversarial_pass_rate": 0.6,
+    "novelty_score": 1,
+    "claim_count_total": 40,
+    "atom_count_total": 15,
+    "synthesis_count_total": 2,
+    "observation_atom_ratio": 0.133
+  },
+  "probeResults": [
+    {
+      "name": "backing-extraction",
+      "passed": true,
+      "reason": "backingCount>=0: ok"
+    },
+    {
+      "name": "casual-speculation-propagation",
+      "passed": true,
+      "reason": "atomEpistemicStatus=speculation: ok | synthesisHypothesisStatus=speculative: ok"
+    },
+    {
+      "name": "contradiction-resolution",
+      "passed": false,
+      "reason": "synthesisModes∋dialectic: got abductive | rebuttalConditionsCount>=2: ok"
+    },
+    {
+      "name": "cross-domain-analogue-detection",
+      "passed": false,
+      "reason": "synthesisModes∋analogical: got abductive | atomLiftLevel=rung-2: ok"
+    },
+    {
+      "name": "external-source-citation-integrity",
+      "passed": true,
+      "reason": "fakeDoiCount=0: ok"
+    },
+    {
+      "name": "meta-atom-clustering",
+      "passed": false,
+      "reason": "metaAtomCount>=1: got 0 (Phase ε 未実装)"
+    },
+    {
+      "name": "mixed-status-dilution",
+      "passed": false,
+      "reason": "atomEpistemicStatus=speculation: got observation/speculation"
+    },
+    {
+      "name": "modal-qualifier-extraction",
+      "passed": true,
+      "reason": "modalQualifierDiversity⊇possibly,probably: ok"
+    },
+    {
+      "name": "pure-observation-abduction-trigger",
+      "passed": true,
+      "reason": "synthesisModes∋abductive: ok | atomTypes∋observational: ok"
+    },
+    {
+      "name": "rebuttal-extraction",
+      "passed": true,
+      "reason": "rebuttalConditionsCount>=1: ok"
+    }
+  ],
+  "liftJudgments": [
+    {
+      "passed": true,
+      "reason": "Title uses generic terms without specific material names or abbreviations",
+      "atomTitle": "少量の元素ドーピングが熱電材料の性能を高める"
+    },
+    {
+      "passed": true,
+      "reason": "Title uses only generic terms without specific material names, abbreviations, or specialized jargon.",
+      "atomTitle": "金属ナノ粒子の担持が酸化物光触媒の水素生成活性を高める"
+    },
+    {
+      "passed": false,
+      "reason": "Title uses domain-specific jargon (siRNA) rather than a general description.",
+      "atomTitle": "siRNA導入後約2日で標的遺伝子のノックダウンが最大になる"
+    },
+    {
+      "passed": true,
+      "reason": "Title uses only generic terms without specific instruments, brands, or jargon",
+      "atomTitle": "触媒層に一定量のイオン導体を加えると測定の再現性が向上する"
+    },
+    {
+      "passed": true,
+      "reason": "Title uses only general technical concepts (endpoint, cache expiration) understandable without specialist knowledge",
+      "atomTitle": "データ更新が頻繁なエンドポイントはキャッシュ有効期限を短く設定すべき"
+    },
+    {
+      "passed": true,
+      "reason": "Title uses generic technical concepts without specialized proper nouns or unreadable jargon",
+      "atomTitle": "分散トランザクションで補償アクションを設定すると失敗時にリソースが確実に解放される"
+    },
+    {
+      "passed": true,
+      "reason": "タイトルは特定の固有名詞や専門用語を避け、一般的な概念だけで要旨が伝わる",
+      "atomTitle": "レート制限のバースト上限はトークン数に等しく、正確さはサーバ時計の同期が前提になる"
+    },
+    {
+      "passed": false,
+      "reason": "Uses immunology-specific terms (thymus, negative selection, self‑peptide presentation, immune tolerance) that non‑specialists would not readily understand.",
+      "atomTitle": "胸腺の負の選択が自己ペプチド提示と免疫寛容の形成につながる"
+    },
+    {
+      "passed": true,
+      "reason": "Uses only general scientific concepts (natural selection, local optimum, mass extinction) that a layperson can understand",
+      "atomTitle": "自然選択は局所的最適解に陥りやすく、大規模絶滅が選択圧をリセットして脱出させる"
+    },
+    {
+      "passed": false,
+      "reason": "Title uses the specific term '確率的勾配降下法' (stochastic gradient descent), a domain-specific jargon.",
+      "atomTitle": "確率的勾配降下法は鞍点で学習が停滞し、慣性やノイズで脱出できる"
+    },
+    {
+      "passed": false,
+      "reason": "Title uses technical jargon such as デプロイ and 分散モノリス, which a non‑specialist would not readily understand.",
+      "atomTitle": "サービスを独立してデプロイ可能にするとリリース速度が上がり、組織が機能境界と合致しないと分散モノリスが生じる"
+    },
+    {
+      "passed": false,
+      "reason": "Contains software architecture jargon like 'モノリス' and 'イテレーション' which a non‑specialist may not understand.",
+      "atomTitle": "小規模チームではモノリスがイテレーションを速め、大規模になると分離のコストが上回る"
+    },
+    {
+      "passed": true,
+      "reason": "Uses general concepts without specific instrument names or technical jargon",
+      "atomTitle": "テストファーストは設計を明確にするが、要件が不確定な探索フェーズでは速度低下リスクがある"
+    },
+    {
+      "passed": true,
+      "reason": "Title uses only general concepts without specific instrument names, abbreviations, or specialized jargon.",
+      "atomTitle": "プロトタイプを先に作ると学習が速くなるが、テストなしで正式実装へ進むと技術的負債が複利的に増える"
+    },
+    {
+      "passed": true,
+      "reason": "Uses only generic terms about sound levels and time without any specific instrument, material, abbreviation, or specialist jargon.",
+      "atomTitle": "環境音は時間帯により平均レベルが変わり、短時間のピークトップが急上昇してすぐ元に戻る"
+    }
+  ],
+  "noveltyJudgments": [
+    {
+      "passed": true,
+      "reason": "Introduces a cross‑domain abstraction linking dopants and metal loading as a unified micro‑addition strategy with carrier increase and scattering control",
+      "synthesisTitle": "微量添加が機能材料の性能を同時に向上させる共通メカニズムが存在します"
+    },
+    {
+      "passed": true,
+      "reason": "Creates an analogy linking evolutionary extinction events and SGD noise as a shared escape mechanism, introducing a new abstract principle.",
+      "synthesisTitle": "ノイズや外部ショックが最適化過程の局所停滞を脱出させる共通原理が見えてきます"
+    }
+  ],
+  "notes": [
+    "profile=baseline",
+    "mode=live",
+    "model=gpt-oss-120b via https://api.ai.sakura.ad.jp/v1",
+    "corpusSize=25, probeCount=10",
+    "judge=live (gpt-oss-120b)"
+  ]
+}
