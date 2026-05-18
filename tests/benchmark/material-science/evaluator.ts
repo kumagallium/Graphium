@@ -415,9 +415,12 @@ function compareSets(pred: SpanSets, gold: SpanSets): ProcedureMetric {
   // Activity は「先頭 gerund 抽出」で正規化する（"Annealing ingot" → "annealing"）
   const predActsNormalized = pred.activities.map(headGerund);
   const goldActsNormalized = gold.activities.map(headGerund);
+  // Material は `<past-participle> <form-noun>` を `<past-participle> sample` に揃える
+  const predMatsNormalized = pred.materials.map(canonicalMaterial);
+  const goldMatsNormalized = gold.materials.map(canonicalMaterial);
   return {
     activities: countOverlap(predActsNormalized, goldActsNormalized, /*alreadyNormalized*/ true),
-    materials: countOverlap(pred.materials, gold.materials),
+    materials: countOverlap(predMatsNormalized, goldMatsNormalized, /*alreadyNormalized*/ true),
     tools: countOverlap(pred.tools, gold.tools),
     edges: countOverlap(pred.edges, gold.edges, /*alreadyNormalized*/ true),
     parameters: countOverlap(pred.parameters, gold.parameters, /*alreadyNormalized*/ true),
@@ -538,10 +541,54 @@ function stemPlural(token: string): string {
   return token;
 }
 
+// 中間生成物として使われる form-noun の集合。`<past-participle> <form-noun>` の組み合わせは
+// 同じ過去分詞を共有する `<past-participle> sample`（gold の慣用形式）と等価に扱う。
+// list は普遍的な「容器」「形状」「物質状態」語彙のみで、ドメイン固有語（"alloy" 等）は含めない。
+const INTERMEDIATE_FORM_NOUNS = new Set([
+  "sample",
+  "ingot",
+  "powder",
+  "pellet",
+  "foil",
+  "piece",
+  "crystal",
+  "chip",
+  "granule",
+  "flake",
+  "slice",
+  "block",
+  "mixture",
+  "solution",
+  "precipitate",
+  "slurry",
+  "paste",
+  "compound",
+  "product",
+  "material",
+]);
+
+const PARTICIPLE_FORM_REGEX = /^([a-z]+ed)\s+([a-z]+)$/;
+
+/**
+ * material span を canonical 形に揃える。
+ * `<past-participle> <form-noun>` パターンは `<past-participle> sample` に正規化する
+ * （例: "annealed ingot" → "annealed sample"、"crushed powder" → "crushed sample"）。
+ * 該当しない（"olive oil", "MnSO4", "Cu" など）は normalize の結果をそのまま返す。
+ */
+export function canonicalMaterial(text: string): string {
+  const norm = normalize(text);
+  const m = norm.match(PARTICIPLE_FORM_REGEX);
+  if (m && INTERMEDIATE_FORM_NOUNS.has(m[2])) {
+    return `${m[1]} sample`;
+  }
+  return norm;
+}
+
 function edgeKey(type: "Usage" | "Generation", activity: string, entity: string): string {
-  // edge の比較で activity / entity の表記揺れを吸収するため、headGerund と normalize を使う。
-  // entity は normalize のみ（material/tool の語尾 form noun 差は他の集合で別途扱う）。
-  return `${type}::${headGerund(activity)}::${normalize(entity)}`;
+  // edge の比較で activity / entity の表記揺れを吸収するため:
+  //   - activity 側: headGerund で gerund 抽出
+  //   - entity 側: canonicalMaterial で `<past-participle> <form-noun>` を sample 形に
+  return `${type}::${headGerund(activity)}::${canonicalMaterial(entity)}`;
 }
 
 // ── 集計 / helpers ──────────────────────────────
