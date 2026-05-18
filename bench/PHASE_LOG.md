@@ -165,3 +165,35 @@ Breaking-change checklist (CLAUDE.md):
 - [ ] Live n=3 CI で δ を計測し PR description に貼る
 
 UI (icons / filter / opacity / capture toggle) は本 PR では落とし、design subagent と握る follow-up PR (spec §8 UI 影響) に分離した。
+
+### η v1 evidence (pre-cleanup, against PR #296 baseline)
+
+Live run: CI workflow_dispatch [run 26062627467](https://github.com/kumagallium/Graphium/actions/runs/26062627467) on `feat/wiki-epistemic-status`. Snapshot: `bench/results/with-eta-n3-v1-2026-05-19.json`.
+
+| metric | baseline n=3 median | with-η n=3 median | Δ | with-η range |
+|---|---|---|---|---|
+| `lift_score` | 0.600 | 1.000 | ▲ +0.400 | 0.6 – 1.0 |
+| `mode_distribution_entropy` | 0.500 | 0.000 | ▼ inside | 0.0 – 0.5 |
+| **`epistemic_preservation`** | 0.833 | **0.800** | ▼ −0.033 | 0.80 – 0.84 |
+| `observation_atom_ratio` | 0.000 | 0.000 | · 0 | 0 – 0.1 |
+| `atom_count_total` | 5 | 8 | ▲ +3 | 5 – 10 |
+| `synthesis_count_total` | 2 | 2 | · 0 | |
+
+Per-sample:
+
+| run | lift | entropy | obs_ratio | epi | atoms | syn |
+|---|---|---|---|---|---|---|
+| #1 | 0.6 | 0.0 | 0.1 | 0.80 | 10 | 2 |
+| #2 | 1.0 | 0.5 | 0.0 | 0.80 | 8 | 2 |
+| #3 | 1.0 | 0.0 | 0.0 | 0.84 | 5 | 1 |
+
+Verdict: **NOT YET MERGEABLE.** The pre-declared metric `epistemic_preservation > 0.9` (spec §8) is missed at the median (0.800 vs 0.9 target). The narrow per-sample range (0.04) shows the result is stable — η is consistently doing *something*, but the corpus does not yet exercise its load-bearing capability (intra-note status splitting between observation and speculation in a single note). Every corpus note has a single epistemic register, so η's structural rule has nothing genuinely hard to demonstrate on.
+
+Next step: **wait for the μ-1.1 corpus-honesty PR** to land mixed-status notes, edge cases, an `intra-note-status-splitting` probe, and an independently reviewed ground-truth set. Then re-baseline and re-measure η against the new corpus. The expected outcome is either:
+
+- (a) η's `epistemic_preservation` lifts above 0.9 on the new corpus → merge η
+- (b) it stays below 0.9 even with the new corpus → revise the Ingester prompt (a stronger "Epistemic status" section, or a hard rule that mixed-status notes must produce ≥2 Claims) → retest
+
+Either way, the merge decision is honest only after μ-1.1.
+
+Snapshot stays at `bench/results/with-eta-n3-v1-2026-05-19.json` so the pre-cleanup measurement is not lost.
