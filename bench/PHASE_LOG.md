@@ -85,3 +85,48 @@ Verdict: **merge**. The pre-declared metric `lift_score` (spec §6: "target base
 `mode_distribution_entropy` regression is inside the baseline's own range — synthesizer's `n=2` per session collapses to one mode in two of three samples. Spec §15(r7) flagged this; Phase μ-2 fixes the synth count, not Phase α.
 
 Salvage: the lift gain is what Phase α was designed to deliver, and it landed cleanly. Future phases should not have to re-justify it.
+
+## µ-1.1 — corpus honesty (PR TBD, status: **merge candidate**)
+
+Cleanup of µ-1's known limitations before honest evaluation of Phase η (PR #297).
+
+What landed:
+- 3 mixed-status notes (026 / 027 / 028) — a single body carries both observation (PROV-structured fact) and speculation ("〜のかも" / "気がする"). These are the load-bearing test for Phase η's intra-note splitting; without them, η could not be honestly evaluated.
+- 2 edge-case notes (029 / 030) — very-short TODO and JP/EN mixed reading. Robustness for world-deployable use.
+- 5 corresponding ground-truth files, with 2 of them revised after an independent reviewer pass (027 rebuttalCount 1→0, 030 notes-field expanded).
+- `intra-note-status-splitting` probe (`bench/probes/`) checking that each mixed-status note yields ≥2 Claims and the derived Atom inherits `speculation`.
+- Pattern-based jargon detection (`bench/judge.ts` + `bench/pipeline.ts`) replacing the corpus-specific fixed lists. Patterns: chemical formula (with digits), 3+ char uppercase acronym, product/device id (name + digit). `COMMON_ACRONYM_STOPLIST` keeps generic `API` / `URL` / `AI` etc. out. The known false-negative on single 1-2-char element symbols (`Pt`, `Zn`) is documented in `bench/metrics.test.ts` and is the live LLM judge's responsibility.
+
+### New baseline (n=3 live, 30 notes, 11 probes)
+
+CI workflow_dispatch [run 26064120459](https://github.com/kumagallium/Graphium/actions/runs/26064120459) on `feat/bench-honesty`.
+
+| metric | old (μ-1, post-α) median | new (µ-1.1) median | Δ | new range |
+|---|---|---|---|---|
+| `lift_score` | 0.600 | **1.000** | ▲ +0.400 | 0.833 – 1.000 |
+| `mode_distribution_entropy` | 0.500 | 0.000 | ▼ −0.500 | 0.000 – 0.000 |
+| `epistemic_preservation` | 0.833 | **0.852** | ▲ +0.019 | 0.852 – 0.889 |
+| **`observation_atom_ratio`** | **0.000** | **0.200** | ▲ **+0.200** | 0.167 – 0.200 |
+| `adversarial_pass_rate` | 0.600 | 0.636 | ▲ +0.036 | 0.636 – 0.636 |
+| `novelty_score` | 1.000 | 1.000 | · 0 | 1.000 |
+| `claim_count_total` | 41 | 46 | ▲ +5 | 44 – 49 |
+| `atom_count_total` | 5 | 5 | · 0 | 5 – 12 |
+| `synthesis_count_total` | 2 | 1 | ▼ −1 | 1 – 2 |
+
+Per-sample:
+
+| run | lift | entropy | obs | epi | advers | atoms | syn |
+|---|---|---|---|---|---|---|---|
+| #1 | 1.000 | 0.000 | 0.200 | 0.852 | 0.636 | 5 | 1 |
+| #2 | 1.000 | 0.000 | 0.200 | 0.852 | 0.636 | 5 | 1 |
+| #3 | 0.833 | 0.000 | 0.167 | 0.889 | 0.636 | 12 | 2 |
+
+Verdict: **merge candidate**. The new baseline is honest in two ways the old one wasn't:
+1. `observation_atom_ratio` now lifts off zero **across all three runs** (0.167–0.200), not just one. The mixed-status notes give the Atomizer pure-observation source Claims to draw from.
+2. `epistemic_preservation` rises slightly. More importantly, the per-sample range is narrow (0.037) — the metric is *stable*, which means subsequent phase deltas against it will be readable.
+
+`lift_score` jumping from 0.600 to 1.000 reflects two compounding effects: (a) Phase α's prompt changes are already merged into main, so the new baseline measures post-α atomizer behavior; (b) the pattern-based judge is more lenient on single 1-2-char element symbols (`Pt` / `Zn` alone), a documented limitation. Future cross-domain corpus expansion (Phase μ-2) is where this should be re-checked with the live LLM judge.
+
+The `synthesis_count_total` median ticked down (2 → 1). This is sampling noise — the per-sample range is 1–2. Phase β's deferred entropy work needs synthesis_count to grow before the metric becomes meaningful; corpus expansion alone hasn't moved that bottleneck.
+
+Snapshot at `bench/baseline.json` (the new authoritative reference).
