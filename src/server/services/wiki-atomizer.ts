@@ -111,6 +111,14 @@ Ask yourself: *"Would this Atom still make sense to a reader who has never heard
 - If **yes** → emit the Atom.
 - If **no** → either (a) lift the nouns one more level and rewrite, or (b) drop the candidate. Prefer dropping over emitting an under-abstracted Atom; the system has a Claim layer for domain-specific knowledge already.
 
+Run this **three-step domain-jargon checklist** on the title and body before emitting:
+
+1. **Scan for surviving domain tokens.** Look in both the title and the body for any of: proper nouns (instrument names, library names, person names, project names), abbreviations / acronyms (SPS, VACUUM, ORR, MHC, siRNA, TDD), or domain jargon a non-specialist would not recognize ("単相化", "律速", "ノックダウン", "クロスバリデーション"). If even one such token is a load-bearing subject or object — that is, removing it would make the sentence empty — the Atom is rung-1 at best. Go to step 2.
+
+2. **Lift the surviving token one more level.** Replace the entity with the category it belongs to: "SPS" → "短時間の高温処理", "VACUUM" → "裏で動く保守処理", "ORR 活性" → "還元反応の起こりやすさ", "siRNA トランスフェクション" → "遺伝子の働きを止める導入操作". If you can produce a sentence that still names what is happening but reads naturally without the original token, you have rung-2. Re-run step 1; iterate until clean.
+
+3. **If step 2 cannot be done honestly, drop the candidate.** "Honestly" means the lifted wording still says what the source Claims actually showed — not a generic platitude. If the only way to lift is to dilute the claim into meaninglessness, the right move is to leave the knowledge at the Claim layer and not emit an Atom. **An empty atoms array is better than an under-abstracted Atom.**
+
 ## Bad / Good (read this carefully — three levels, not two)
 
 Each example shows three rungs: too specific, too academic, and the target (lifted + plain). The middle rung is the trap — it looks like it is doing the work, but the words still keep readers out.
@@ -140,6 +148,19 @@ Each example shows three rungs: too specific, too academic, and the target (lift
 > "裏で動く保守処理は、参照構造の崩れを少しずつ整えていきます"
 >
 > Subject ("裏で動く保守処理") / object ("参照構造の崩れ") / effect ("少しずつ整える") are obvious; no compound-noun stacking; still domain-lifted (no "Postgres", no "VACUUM").
+
+❌ **Bad — too specific (rung-0):**
+> "SPS で ZnSb を 800℃ 5 分焼結したらほぼ単相になった"
+
+⚠️ **Still off — rung-1 stop (plain wording, but domain-locked):**
+> "SPS焼結で揮発成分が飛ぶと単相化しやすい"
+>
+> Why off: the **register is already plain**, so it *feels* like an Atom. But "SPS焼結" / "単相化" still anchor the sentence in metallurgy — a reader outside that domain cannot picture what acts on what. This is the most dangerous trap, because the wording quality hides that the abstraction level did not move. **Plain words alone do not earn an Atom; the domain entities must be lifted too.**
+
+✅ **Good — rung-2 (plain *and* domain-lifted):**
+> "短時間の高温処理で揮発しやすい成分がほどよく抜けると、均一な仕上がりに繋がります"
+>
+> Why good: every domain-anchor is replaced with a category-level term ("SPS焼結" → "短時間の高温処理", "亜鉛" → "揮発しやすい成分", "単相化" → "均一な仕上がり"). Subject ("短時間の高温処理") / relation ("揮発しやすい成分が抜ける") / effect ("均一な仕上がり") are all explicit *and* portable to other domains (a paper firing kiln, a coffee roast).
 
 ## What an Atom is NOT
 - A summary of a single Claim (Claim already is one)
@@ -185,6 +206,25 @@ Guidance:
 - Pick the **most informative** type. Prefer \`mechanistic\` over \`causal\` when the mechanism is what makes the Atom transferable. Prefer \`conditional\` over \`causal\` when the boundary is doing the work.
 - Prefer \`correlational\` over \`causal\` when the source Claims only show co-variation. Over-claiming causation is a common LLM failure mode — don't.
 - If genuinely uncertain between two types, omit the field. Better unset than wrong.
+
+## Preserving observational atoms (REQUIRED)
+
+\`observational\` atoms are the load-bearing input for the Synthesizer's **abductive** mode — without them, "observation + candidate mechanism → best explanation" reasoning has nothing to start from. The default LLM failure mode is to *over-explain*: take a pure empirical observation and immediately attach a causal or mechanistic reading, collapsing two distinct atom types into one. **Do not do that.**
+
+When the source Claims describe **what was observed** without committing to **why** it happened, tag the Atom \`observational\` and resist the urge to insert a mechanism into the body.
+
+- Source: "毎朝、芝の表面に水滴がついている。日が高くなると消える。隣のコンクリートには水滴がない。"
+  - ❌ Wrong (over-explained): "蒸散現象により植物体から水分が放出され、表面に凝結する" → tagged \`mechanistic\`. The source Claim never measured transpiration; this invents a mechanism.
+  - ✅ Right (observation preserved): "ある条件下で、植物の表面にだけ水滴が現れることが繰り返し観察されます" → tagged \`observational\`.
+
+- Source: "13:20 にオフィスの騒音が 71 dB のピークを示した（前後 30 秒は 55 dB）"
+  - ❌ Wrong: "昼食帰りの人流が騒音ピークの主要因である" → invents causality the data does not support.
+  - ✅ Right: "ある時間帯に、定常値より十数 dB 高い騒音のピークが瞬間的に観察されます" → tagged \`observational\`.
+
+Heuristics:
+- If the source Claim language is "観察した / 測定した / 〜が見られた / X dB だった" with no mechanism stated, the Atom is **almost always** \`observational\`.
+- If you want to add "because Y" or "due to Y" to the body to make the Atom feel more substantial, **resist**. That is the over-explanation reflex. The Synthesizer will pick this observation up later and propose mechanisms in \`abductive\` mode — that is its job, not yours.
+- When in doubt between \`observational\` and \`mechanistic\`, choose \`observational\`. An under-explained Atom that preserves the empirical signal is more valuable than an over-explained Atom that buries it.
 
 ## Rules (strict)
 - **Each Atom MUST cite >= 2 Claims** in \`sourceConceptIds\`. Use the EXACT id from the Claim list.
