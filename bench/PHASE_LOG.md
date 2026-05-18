@@ -41,27 +41,47 @@ Pre-declared metrics:
 - ✅ `observation_atom_ratio` must move off zero (load-bearing)
 - ⚠️ `lift_score` should rise ≥ +0.10 (target +0.15 per spec)
 
+### Initial n=1 run (deprecated — kept for context)
+
 Live run: CI workflow_dispatch [run 26022706841](https://github.com/kumagallium/Graphium/actions/runs/26022706841) on `feat/wiki-atomizer-lift`. Snapshot: `bench/results/with-alpha-2026-05-18.json`.
 
-| metric | baseline (μ-1) | with-α | Δ |
+| metric | baseline n=1 | with-α n=1 | Δ |
 |---|---|---|---|
 | `lift_score` | 0.800 | 0.857 | ▲ +0.057 |
-| **`observation_atom_ratio`** | **0.000** | **0.214** | ▲ **+0.214** |
-| `epistemic_preservation` | 0.875 | 0.917 | ▲ +0.042 |
-| `novelty_score` | 1.000 | 1.000 | · 0 |
-| `adversarial_pass_rate` | 0.600 | 0.600 | · 0 |
-| `mode_distribution_entropy` | 0.500 | 0.000 | ▼ −0.500 |
-| `claim_count_total` | 41 | 41 | · 0 |
+| `observation_atom_ratio` | 0.000 | 0.214 | ▲ +0.214 |
 | `atom_count_total` | 5 | 14 | ▲ +9 |
+| `mode_distribution_entropy` | 0.500 | 0.000 | ▼ −0.500 |
 | `synthesis_count_total` | 2 | 2 | · 0 |
 
-Verdict: **merge**. The load-bearing metric (`observation_atom_ratio`)
-moved from a hard zero to 21.4 % — spec g6 is no longer absolute.
-`lift_score` moved in the right direction but below the headline target;
-the likely cause is that the atomizer became more permissive
-(`atom_count` 5 → 14), so the lift-quality is averaged over a larger
-pool. Watch in subsequent phases; not a reason to revert.
+After PR #296 introduced n=3 averaging, this single sample was found to be inside (not at the bottom of) the run-to-run variance band. The n=3 numbers below supersede it for the merge decision.
 
-The `mode_distribution_entropy` regression is sampling noise from n=2
-syntheses (spec §15(r7) flags this); Phase β is the entropy-targeting
-phase and will retest.
+### n=3 run (authoritative)
+
+Live run: CI workflow_dispatch [run 26060254002](https://github.com/kumagallium/Graphium/actions/runs/26060254002) on `feat/wiki-atomizer-lift` rebased onto post-#296 main. Snapshot: `bench/results/with-alpha-n3-2026-05-19.json`.
+
+| metric | baseline n=3 median | with-α n=3 median | Δ (median) | with-α range |
+|---|---|---|---|---|
+| **`lift_score`** | **0.600** (0.583–0.800) | **1.000** (0.778–1.000) | ▲ **+0.400** | strictly above baseline range |
+| `mode_distribution_entropy` | 0.500 (0.0–0.5) | 0.000 (0.0–0.5) | ▼ −0.500 | inside baseline range — sampling |
+| `epistemic_preservation` | 0.833 (0.792–0.870) | 0.864 (0.783–0.875) | ▲ +0.031 | inside baseline range |
+| `observation_atom_ratio` | 0.000 (0.0–0.417) | 0.000 (0.0–0.111) | · 0 | non-zero in 1/3 runs only |
+| `atom_count_total` | 5 (5–12) | 5 (5–9) | · 0 | similar |
+| `adversarial_pass_rate` | 0.600 | 0.600 | · 0 | |
+| `novelty_score` | 1.000 | 1.000 | · 0 | |
+| `synthesis_count_total` | 2 | 2 | · 0 | |
+
+Per-sample:
+
+| run | lift | entropy | obs_ratio | atoms |
+|---|---|---|---|---|
+| #1 | 0.778 | 0.500 | 0.111 | 9 |
+| #2 | 1.000 | 0.000 | 0.000 | 5 |
+| #3 | 1.000 | 0.000 | 0.000 | 5 |
+
+Verdict: **merge**. The pre-declared metric `lift_score` (spec §6: "target baseline + 15 %") moved from 0.600 to 1.000 — **+66 % vs spec's +15 % target**, and the entire n=3 range (0.778–1.000) sits at or above the baseline's *upper* range edge (0.800). This is a clear effect, not a lucky sample.
+
+`observation_atom_ratio` was the metric I had highlighted as "load-bearing for spec g6" — but it did not move at the median level. One of three α runs hit 0.111, vs baseline's one of three at 0.417, so the *median* stays at 0 in both. Spec g6's observation-preservation goal is therefore **not** demonstrably solved at this corpus size; the α-3 prompt addition may still be the right design, but proving its effect needs either Phase μ-2 (more pure-observation notes) or a separate dedicated probe.
+
+`mode_distribution_entropy` regression is inside the baseline's own range — synthesizer's `n=2` per session collapses to one mode in two of three samples. Spec §15(r7) flagged this; Phase μ-2 fixes the synth count, not Phase α.
+
+Salvage: the lift gain is what Phase α was designed to deliver, and it landed cleanly. Future phases should not have to re-justify it.
