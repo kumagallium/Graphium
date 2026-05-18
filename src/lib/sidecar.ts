@@ -131,6 +131,15 @@ export async function startSidecar(): Promise<boolean> {
     // 起動されていない → sidecar を起動する
   }
 
+  // ライフサイクルを追跡できるよう、stdout/stderr 以外に
+  // spawn / close / error イベントも記録する。Windows の Node sidecar が
+  // 即死したのに stdout/stderr が空のまま終わるケース（Tauri Shell の
+  // 出力リスナーが接続される前に exit する）を見えるようにするため。
+  //
+  // `let` だとクロージャ内代入を TS が無視して never に narrow するので、
+  // オブジェクト参照経由で持たせる。
+  const exitRef: { info: { code: number | null; signal: string | null } | null } = { info: null };
+
   try {
     const { Command } = await import("@tauri-apps/plugin-shell");
     const { resolveResource } = await import("@tauri-apps/api/path");
@@ -141,7 +150,17 @@ export async function startSidecar(): Promise<boolean> {
     //   - production: <bundle>/Resources/sidecar/server.mjs (mac) /
     //                 <install>/resources/sidecar/server.mjs (win)
     //   - dev:        <project>/src-tauri/sidecar/server.mjs
-    const serverScript = await resolveResource("sidecar/server.mjs");
+    let serverScript: string;
+    try {
+      serverScript = await resolveResource("sidecar/server.mjs");
+      recordLog(`[lifecycle] resolved server.mjs -> ${serverScript}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      recordLog(`[lifecycle] resolveResource failed: ${msg}`);
+      throw e;
+    }
+
+    recordLog(`[lifecycle] dataDir: ${dataDir}`);
 
     const command = Command.sidecar("binaries/graphium-server", [serverScript], {
       env: {
@@ -153,15 +172,30 @@ export async function startSidecar(): Promise<boolean> {
 
     command.stdout.on("data", (line: string) => {
       console.log(`[sidecar] ${line}`);
-      recordLog(line);
+      recordLog(`[stdout] ${line}`);
     });
     command.stderr.on("data", (line: string) => {
       console.error(`[sidecar] ${line}`);
-      recordLog(line);
+      recordLog(`[stderr] ${line}`);
+    });
+    // 子プロセス終了イベント。stdout/stderr が空でも、ここで exit code が分かる。
+    // @tauri-apps/plugin-shell v2 の close payload は { code: number|null, signal: number|null }。
+    // CommandEvents 型から推論されるので注釈は付けない（付けると never に narrowing される）。
+    command.on("close", (payload) => {
+      const code = payload.code;
+      const signal = payload.signal != null ? String(payload.signal) : null;
+      exitRef.info = { code, signal };
+      recordLog(`[lifecycle] process closed code=${code ?? "null"}${signal ? ` signal=${signal}` : ""}`);
+    });
+    // error は string（CommandEvents 型）。
+    command.on("error", (err) => {
+      recordLog(`[lifecycle] process error: ${err}`);
     });
 
+    recordLog(`[lifecycle] spawning binaries/graphium-server ...`);
     const child = await command.spawn();
     sidecarProcess = child;
+    recordLog(`[lifecycle] spawned (pid=${child.pid ?? "?"})`);
 
     console.log("[sidecar] Starting backend server...");
     const healthy = await waitForHealth();
@@ -170,9 +204,16 @@ export async function startSidecar(): Promise<boolean> {
       setState({ status: "ready" });
     } else {
       console.warn("[sidecar] Backend server failed to start");
+      // 既に exit イベントを観測していれば、その exit code を lastError に含める。
+      // stdout/stderr が空のままタイムアウトする Windows ケースで、即死だったのか
+      // 単に起動が遅いのか切り分けられるようにする。
+      const info = exitRef.info;
+      const exitDetail = info
+        ? `（プロセスは既に exit code=${info.code ?? "null"}${info.signal ? ` signal=${info.signal}` : ""} で終了）`
+        : "";
       setState({
         status: "failed",
-        lastError: "ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）",
+        lastError: `ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）${exitDetail}`,
         lastErrorAt: Date.now(),
       });
     }
@@ -180,6 +221,7 @@ export async function startSidecar(): Promise<boolean> {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[sidecar] Failed to spawn:", e);
+    recordLog(`[lifecycle] spawn threw: ${message}`);
     setState({ status: "failed", lastError: message, lastErrorAt: Date.now() });
     return false;
   }
