@@ -306,6 +306,19 @@ function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>
         tokenF1: totals.tokenF1,
       },
       samples: results.map((r) => {
+        // attribute spans の生テキストを抜き出してダンプ（parameter が空のとき診断に使う）
+        const attributeSpans: string[] = [];
+        for (const out of r.predicted) {
+          const walk = (blocks: typeof out.blocks): void => {
+            for (const b of blocks) {
+              for (const s of b.content ?? []) {
+                if (s.role === "attribute" && s.text) attributeSpans.push(s.text);
+              }
+              if (b.children) walk(b.children);
+            }
+          };
+          walk(out.blocks);
+        }
         const predSets: SpanSets = r.predicted
           .map((o) => extractSetsFromOutput(o))
           .reduce(
@@ -326,6 +339,7 @@ function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>
           goldProcedures: r.metric.goldProcedureCount,
           predProcedures: r.metric.predictedProcedureCount,
           metric: r.metric,
+          attributeSpansRaw: dedupe(attributeSpans),
           sets: {
             predicted: {
               activities: dedupe(predSets.activities),

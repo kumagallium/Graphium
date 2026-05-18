@@ -172,9 +172,18 @@ Do NOT translate these keys. Do NOT wrap in brackets. Do NOT invent new roles. *
 
 Each role-bearing node — whether an H2 procedure or a role-tagged span — MUST represent a single atomic concept. The graph collapses to noise when one node tries to mean two things at once.
 
-- **Activity (H2 procedure heading)**: one verb / operation. Never "Mix and heat", "Cut and wash", "Calibrate and measure". If the source merges two actions in one sentence, split them into two H2 procedures with distinct \`stepId\`s. If only one is graph-meaningful, drop the other.
+- **Activity (H2 procedure heading)**: **a single gerund verb (\`-ing\`) — only the verb, no object, no modifier, no continuation**. The heading text MUST be one gerund word (or a multi-word gerund verb name like \`"Spark plasma sintering"\`) and nothing else. It MUST NOT contain objects (\`"the garlic"\`, \`"BN layers"\`, \`"ingot"\`), prepositional phrases (\`"in fused silica tubes"\`, \`"into powder"\`), or conjunctions (\`"and"\`, \`"&"\`, \`"、"\`, \`","\`, \`"+"\`, \`"then"\`, \`"plus"\`).
+  - ✅ \`"Sealing"\`, \`"Quenching"\`, \`"Annealing"\`, \`"Crushing"\`, \`"Weighing"\`, \`"Spark plasma sintering"\` (compound verb name — OK), \`"Slicing"\`, \`"Training"\`
+  - ❌ \`"Sealing in fused silica tubes"\` → \`"Sealing"\` (object/PP goes into the paragraph spans, not the heading)
+  - ❌ \`"Annealing ingot"\` → \`"Annealing"\` (the ingot becomes a \`material\` span in the paragraph)
+  - ❌ \`"Crushing into powder"\` → \`"Crushing"\` (powder is a material output span)
+  - ❌ \`"Load and seal"\` → split into two H2s: \`"Loading"\` and \`"Sealing"\` (or drop \`"Loading"\` if it has no own inputs/outputs)
+  - ❌ \`"Melt and quench"\` → \`"Melting"\` + \`"Quenching"\`
+  - ❌ \`"Crush, coat, and sinter"\` → \`"Crushing"\` + \`"Coating"\` + \`"Sintering"\`
+  - ❌ \`"Mix and heat"\` → \`"Mixing"\` + \`"Heating"\`
+  Drop any sub-action that has no own role-bearing spans rather than merging it into a sibling.
 - **material / tool / output spans**: one substance / instrument / product per span. Never "salt and pepper" as a single material span — emit two adjacent spans \`{"text":"salt","role":"material"}\` and \`{"text":"pepper","role":"material"}\` with the joining word ("and", "や", "、") as a plain narrative span between them.
-- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans. When the source pairs a value with an explicit parameter name, write the span as \`<key>: <value>\` (e.g., \`"temperature: 80 °C"\`, \`"learning_rate: 0.001"\`); otherwise the bare value alone is fine.
+- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans. **ALWAYS use the \`<key>: <value>\` format** (e.g., \`"temperature: 80 °C"\`, \`"purity: 99.999%"\`, \`"form: shot"\`, \`"atmosphere: vacuum"\`, \`"learning_rate: 0.001"\`). Even when the source gives only a bare value, infer a key from context: \`"shot"\` → \`"form: shot"\`, \`"99.999%"\` → \`"purity: 99.999%"\`, \`"under vacuum"\` → \`"atmosphere: vacuum"\`, \`"in argon"\` → \`"atmosphere: argon"\`. See "Object descriptors → attribute spans" below for the recommended key vocabulary.
 - **No role on punctuation, whitespace, or symbol-only spans.** Commas, periods, parentheses, "、", "。", "(", ")", em-dashes, and bare spaces never carry a role — they would create ghost graph nodes that mean nothing. Punctuation lives in plain narrative spans between role-bearing spans. Example: write \`{"text":"olive oil","role":"material"}, {"text":", "}, {"text":"garlic","role":"material"}\`, NOT a comma-tagged material span between them.
 
 Span concatenation rule still applies: stitching all \`text\` fields back together must reproduce the original prose. Use plain narrative spans for connectors so the sentence stays readable.
@@ -195,6 +204,34 @@ Examples (apply across any domain):
 When the descriptor is the same word in many domains, the same split applies: use form/shape/state words ("chip", "powder", "pellet", "ingot", "slice", "cube", "frozen", "dried", "raw", "diluted") as attribute, not as part of the material label.
 
 Counter-rule (do NOT over-split): chemical formulas, compound names, and brand-style identifiers stay whole — "MnSO4·H2O", "PVDF binder", "olive oil", "carbon black" are single material spans. The split applies only when a **substance noun** is paired with an **independent descriptor word**.
+
+## Post-transformation material naming (CRITICAL — products of earlier steps)
+
+When a material span refers to the **product of an earlier step** (and you would set its \`derivedFrom\` to that step's \`stepId\`), name the span using a **post-transformation form** so that the text alone makes the derivation explicit. The pattern is universal across domains:
+
+- **\`<past-participle> sample\`** — generic fallback when no specific noun is natural: \`"sealed sample"\`, \`"annealed sample"\`, \`"quenched sample"\`, \`"crushed sample"\`, \`"spark plasma sintered sample"\`
+- **\`<past-participle> <substance>\`** — when the underlying noun is clear: \`"sliced garlic"\`, \`"trained model"\`, \`"preprocessed dataset"\`, \`"amplified DNA"\`, \`"calcined powder"\`
+- **\`<state> <substance>\`** — for state-of-being changes: \`"cooled mixture"\`, \`"dried powder"\`, \`"frozen sample"\`
+
+The past-participle / state word should match the **gerund of the producing Activity's H2 heading**: an Activity titled \`"Annealing"\` produces an \`"annealed sample"\` (or \`"annealed ingot"\`, \`"annealed powder"\` if the form is clearly stated); an Activity titled \`"Slicing the garlic"\` produces \`"sliced garlic"\`.
+
+Why this matters: without the post-transformation form, downstream readers (and graph consumers) can't tell that \`"ingot"\` in step 5 is the product of step 3 just from reading the text. The \`derivedFrom\` field carries the link, but the prose should reinforce it.
+
+Counter-rule: when the source itself uses a domain-specific named product ("the precipitate", "the pellet", "the slurry"), keep the source's term but prefer compound forms that still echo the transformation: \`"the calcined precipitate"\`, \`"the pressed pellet"\`. Never invent a transformation that didn't happen.
+
+## Object descriptors → attribute spans (CRITICAL — capture purity, form, grade, etc.)
+
+When the source attaches a descriptor to a material — purity (\`"99.999%"\`), physical form (\`"shot"\`, \`"powder"\`, \`"pellet"\`, \`"ingot"\`, \`"foil"\`, \`"piece"\`), grade, particle size, etc. — emit each descriptor as a **separate attribute span next to the material**, not folded into the material's text.
+
+Examples:
+- \`"Cu (shot, 99.999%, Alfa Aesar)"\` → material \`"Cu"\` + attribute \`"form: shot"\` + attribute \`"purity: 99.999%"\` (drop supplier name, see "do NOT extract" below)
+- \`"high-purity NaCl powder"\` → material \`"NaCl"\` + attribute \`"purity: high"\` + attribute \`"form: powder"\`
+- \`"under vacuum"\` next to a step → attribute \`"atmosphere: vacuum"\` on the Activity's paragraph
+- \`"in an inert atmosphere of argon"\` → attribute \`"atmosphere: argon"\`
+
+Recommended \`<key>\` values for object descriptors when the source doesn't name them explicitly: \`purity\`, \`form\`, \`grade\`, \`atmosphere\`, \`temperature\`, \`pressure\`, \`duration\`, \`mass\`, \`concentration\`, \`rotation\`, \`size\`, \`thickness\`, \`diameter\`. Use these as canonical keys when applicable. Other open-set keys are fine when no canonical key fits.
+
+What NOT to extract as attribute: supplier names ("Alfa Aesar", "Sigma-Aldrich"), catalog numbers, brand-only identifiers without parameter meaning — these are reader-reference, not provenance-relevant attributes.
 
 ## Attribute key consistency (lightweight)
 

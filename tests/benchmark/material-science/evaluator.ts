@@ -152,14 +152,90 @@ export function extractSetsFromOutput(output: ProvIngesterOutput): SpanSets {
   return sets;
 }
 
-/** "key: value" の attribute span をパース。`:` を含まない span は parameter から外す */
+/** "key: value" の attribute span をパース。`:` が無いときは bare value として表記から key を推定する */
 function parseAttributeSpan(text: string): { key: string; value: string } | null {
-  const idx = text.indexOf(":");
-  if (idx <= 0) return null;
-  const key = text.slice(0, idx).trim();
-  const value = text.slice(idx + 1).trim();
-  if (!key || !value) return null;
-  return { key, value };
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const idx = trimmed.indexOf(":");
+  if (idx > 0) {
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    if (key && value) return { key, value };
+  }
+  const inferred = inferBareValueKey(trimmed);
+  if (inferred) return inferred;
+  return null;
+}
+
+const FORM_KEYWORDS = new Set([
+  "shot",
+  "shots",
+  "piece",
+  "pieces",
+  "powder",
+  "powders",
+  "pellet",
+  "pellets",
+  "ingot",
+  "ingots",
+  "foil",
+  "foils",
+  "chip",
+  "chips",
+  "slice",
+  "slices",
+  "rod",
+  "rods",
+  "granule",
+  "granules",
+  "flake",
+  "flakes",
+  "wire",
+  "crystal",
+  "crystals",
+]);
+
+const ATMOSPHERE_KEYWORDS = new Set([
+  "vacuum",
+  "air",
+  "argon",
+  "ar",
+  "nitrogen",
+  "n2",
+  "helium",
+  "he",
+  "oxygen",
+  "o2",
+  "hydrogen",
+  "h2",
+]);
+
+const ATMOSPHERE_PHRASE_REGEX = /^(?:under|in|in an?|in the)\s+(.+?)(?:\s+atmosphere)?$/i;
+
+/** key が省略された attribute span から canonical key を推定する */
+function inferBareValueKey(text: string): { key: string; value: string } | null {
+  const lower = text.toLowerCase().trim();
+  if (!lower) return null;
+  // "99.999 %", "99%" — percentage → purity
+  if (/^\d+(?:\.\d+)?\s*%$/.test(lower)) {
+    return { key: "purity", value: text };
+  }
+  // form descriptor 単独
+  if (FORM_KEYWORDS.has(lower)) return { key: "form", value: text };
+  // atmosphere keyword 単独
+  if (ATMOSPHERE_KEYWORDS.has(lower)) return { key: "atmosphere", value: text };
+  // "under vacuum", "in argon", "in an inert atmosphere of argon"
+  const atmosMatch = lower.match(ATMOSPHERE_PHRASE_REGEX);
+  if (atmosMatch) {
+    const tail = atmosMatch[1].trim();
+    if (ATMOSPHERE_KEYWORDS.has(tail) || tail.endsWith(" atmosphere")) {
+      const value = tail.replace(/\s+atmosphere$/, "").trim();
+      if (ATMOSPHERE_KEYWORDS.has(value)) {
+        return { key: "atmosphere", value };
+      }
+    }
+  }
+  return null;
 }
 
 // ── MatProvProcedure[] → SpanSets ──────────────────────────────
@@ -336,8 +412,11 @@ export function evaluateSample(
 }
 
 function compareSets(pred: SpanSets, gold: SpanSets): ProcedureMetric {
+  // Activity は「先頭 gerund 抽出」で正規化する（"Annealing ingot" → "annealing"）
+  const predActsNormalized = pred.activities.map(headGerund);
+  const goldActsNormalized = gold.activities.map(headGerund);
   return {
-    activities: countOverlap(pred.activities, gold.activities),
+    activities: countOverlap(predActsNormalized, goldActsNormalized, /*alreadyNormalized*/ true),
     materials: countOverlap(pred.materials, gold.materials),
     tools: countOverlap(pred.tools, gold.tools),
     edges: countOverlap(pred.edges, gold.edges, /*alreadyNormalized*/ true),
@@ -349,6 +428,26 @@ function compareSets(pred: SpanSets, gold: SpanSets): ProcedureMetric {
       parameters: tokenF1(pred.parameters, gold.parameters),
     },
   };
+}
+
+/**
+ * Activity 文字列から先頭の gerund verb（または "spark plasma sintering" のような複合
+ * gerund 名）を取り出し、normalize した形を返す。
+ *
+ * - 単独 token が "-ing" で終わる → 採用
+ * - 先頭 token が "-ing" で、次の token も "-ing" or 形容詞っぽい複合語（spark plasma
+ *   sintering 等）の場合は連結を維持
+ * - 単純化: 先頭から連続する gerund 風 token と「ハイフン語」を吸収
+ */
+function headGerund(activity: string): string {
+  const norm = normalize(activity);
+  if (!norm) return "";
+  const tokens = norm.split(" ").filter(Boolean);
+  if (tokens.length === 0) return "";
+  // 単純な末尾 gerund 拾い: 末尾が gerund っぽい token を含むまでを採用
+  const idx = tokens.findIndex((t) => t.endsWith("ing"));
+  if (idx === -1) return tokens[0];
+  return tokens.slice(0, idx + 1).join(" ");
 }
 
 function countOverlap(predicted: string[], gold: string[], alreadyNormalized = false): MetricCounts {
@@ -397,21 +496,52 @@ function sumValues(m: Map<string, number>): number {
 }
 
 // ── normalize ──────────────────────────────
+//
+// 主指標は exact match だが、自然語の表記揺れ（括弧内の補足、単複差、定冠詞）まで
+// 落とすために以下の前処理を入れる:
+//   1. 括弧内補足を除去  "spark plasma sintering (Sumitomo SPS-2040)" → "spark plasma sintering"
+//   2. 定冠詞除去        "the sealed sample" → "sealed sample"
+//   3. NFKC + lowercase + 句読点・記号除去 + 空白集約
+//   4. 単複の素朴な正規化（末尾 s / es / ies → 削除）— 名詞語尾の典型ケースのみ
+//
+// 単複正規化は完全ではない（"glass" → "glas" のような誤マッチが理論上発生する）が、
+// "crucibles" vs "crucible" のような頻出ノイズを潰す効果が大きい。token 単位で適用する。
 
 const PUNCT_REGEX = /[\p{P}\p{S}]/gu;
+const PAREN_CONTENT_REGEX = /\s*[\(（][^\)）]*[\)）]\s*/g;
+const LEADING_ARTICLE_REGEX = /^(the|a|an)\s+/;
 
 export function normalize(s: string | undefined | null): string {
   if (!s) return "";
-  return s
+  const stripped = s
     .normalize("NFKC")
+    .replace(PAREN_CONTENT_REGEX, " ")
     .toLowerCase()
     .replace(PUNCT_REGEX, " ")
     .replace(/\s+/g, " ")
     .trim();
+  if (!stripped) return "";
+  const noArticle = stripped.replace(LEADING_ARTICLE_REGEX, "");
+  return noArticle.split(" ").map(stemPlural).join(" ");
+}
+
+/** 末尾の単複を素朴に揃える（ies → y、es → 削除、s → 削除）。3 文字未満の token は触らない */
+function stemPlural(token: string): string {
+  if (token.length < 4) return token;
+  if (token.endsWith("ies")) return token.slice(0, -3) + "y";
+  if (token.endsWith("ses") || token.endsWith("xes") || token.endsWith("zes") || token.endsWith("ches") || token.endsWith("shes")) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith("s") && !token.endsWith("ss") && !token.endsWith("us")) {
+    return token.slice(0, -1);
+  }
+  return token;
 }
 
 function edgeKey(type: "Usage" | "Generation", activity: string, entity: string): string {
-  return `${type}::${normalize(activity)}::${normalize(entity)}`;
+  // edge の比較で activity / entity の表記揺れを吸収するため、headGerund と normalize を使う。
+  // entity は normalize のみ（material/tool の語尾 form noun 差は他の集合で別途扱う）。
+  return `${type}::${headGerund(activity)}::${normalize(entity)}`;
 }
 
 // ── 集計 / helpers ──────────────────────────────
