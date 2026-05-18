@@ -94,13 +94,17 @@ export function routeSynthesisMode(
     reasons.push("≥2 mechanistic atoms → analogical is possible if domains differ (LLM decides).");
   }
 
-  // 4) deductive: Phase β で「真の fallback」化した。abductive / analogical /
-  //    dialectic がひとつでも候補に入っていれば、deductive は候補に入れない。
-  //    どれも候補に入らない時に限って、causal / methodological が見えていれば
-  //    deductive を最 permissive モードとして提示する。
-  if (candidates.length === 0 && (hasCausal || hasMethodological)) {
+  // 4) deductive: causal / methodological の独立組み合わせは deductive 向き。
+  //
+  // Phase β で当初は「他モードが候補に入っていたら deductive を外す」設計だったが、
+  // n=3 の経験的ベンチでは synthesis_count が小さく (n=1-2) deductive を外しても
+  // 単一モードに貼り付くだけで entropy が改善しなかった。むしろ「他モードが推奨
+  // されつつも deductive を fallback として残す」古い挙動のほうが synth 件数を
+  // 確保できる場合があったため、Phase β-revised では deductive 共起を許す形に
+  // 戻している。Phase μ-2 で corpus が拡張され synth 件数が増えたら再評価する。
+  if ((hasCausal || hasMethodological) && !candidates.includes("deductive")) {
     candidates.push("deductive");
-    reasons.push("no abductive/analogical/dialectic signal → deductive (combinational fallback).");
+    reasons.push("causal / methodological combination → deductive (strategy from independent facts).");
   }
 
   // フォールバック: 何もマッチしなければ deductive を最 permissive モードとして残す

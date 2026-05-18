@@ -31,21 +31,11 @@ describe("routeSynthesisMode (heuristic v1)", () => {
   it("offers dialectic as a candidate when ≥2 causal atoms appear (LLM resolves direction)", () => {
     const r = routeSynthesisMode(["causal", "causal"]);
     expect(r.candidateModes).toContain("dialectic");
-    // Phase β: deductive is no longer added as a permissive companion when a
-    // specific mode (dialectic / analogical / abductive) already fired.
-    expect(r.candidateModes).not.toContain("deductive");
-  });
-
-  it("does NOT mix deductive into candidates when abductive already fired (Phase β)", () => {
-    const r = routeSynthesisMode(["observational", "causal"]);
-    expect(r.candidateModes).toContain("abductive");
-    expect(r.candidateModes).not.toContain("deductive");
-  });
-
-  it("does NOT mix deductive into candidates when analogical already fired (Phase β)", () => {
-    const r = routeSynthesisMode(["mechanistic", "mechanistic"]);
-    expect(r.candidateModes).toContain("analogical");
-    expect(r.candidateModes).not.toContain("deductive");
+    // Phase β-revised: deductive remains as a permissive companion. The
+    // original β-1 "remove deductive when other modes fire" rule was
+    // reverted after n=3 showed it collapsed entropy without improving mode
+    // diversity (synthesis_count was too small for the rule to help).
+    expect(r.candidateModes).toContain("deductive");
   });
 
   it("offers abductive when observational coexists with any other known atomType (Phase β widened condition)", () => {
