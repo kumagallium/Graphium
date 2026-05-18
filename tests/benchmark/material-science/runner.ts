@@ -1,8 +1,8 @@
-// Material-science benchmark runner（Phase 5a）。
+// Material-science benchmark runner（v1.2 open-set 化以降）。
 //
 // 1. fixtures/ から (*.input.txt, *.gold.json) のペアを読む
-// 2. material-science prompt + さくら AI engine で抽出
-// 3. evaluator で 4 指標を計算
+// 2. open-set prompt（src/server/services/prov-ingester.ts）+ さくら AI engine で抽出
+// 3. evaluator で 5 集合（Activities / Materials / Tools / Edges / Parameters）を比較
 // 4. reports/ に CSV と JSON を出力、stdout にサマリ表示
 //
 // 使い方:
@@ -17,16 +17,20 @@ import { dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildMaterialScienceSystemPrompt,
-  buildMaterialScienceUserMessage,
-  parseMatProvOutput,
-  type MatProvOutput,
-} from "../../../src/server/services/prov-ingester-profiles/index.js";
+  buildProvIngesterSystemPrompt,
+  buildProvIngesterUserMessage,
+  parseProvIngesterOutput,
+  type ProvIngesterOutput,
+} from "../../../src/server/services/prov-ingester.js";
 import {
   evaluateSample,
   aggregate,
+  extractSetsFromGold,
+  extractSetsFromOutput,
   prf,
+  type MatProvOutput,
   type SampleMetric,
+  type SpanSets,
 } from "./evaluator.js";
 import { readSakuraOptionsFromEnv, runSakuraChat } from "./sakura-runner.js";
 
@@ -42,7 +46,7 @@ type FixturePair = {
 
 type SampleResult = {
   id: string;
-  predicted: MatProvOutput;
+  predicted: ProvIngesterOutput[];
   gold: MatProvOutput;
   metric: SampleMetric;
   durationMs: number;
@@ -74,7 +78,7 @@ async function main() {
     process.exit(2);
   }
 
-  const systemPrompt = buildMaterialScienceSystemPrompt(language);
+  const systemPrompt = buildProvIngesterSystemPrompt(language);
 
   const results: SampleResult[] = [];
   for (const pair of pairs) {
@@ -98,20 +102,23 @@ async function main() {
       continue;
     }
 
-    const userMessage = buildMaterialScienceUserMessage({
+    const userMessage = buildProvIngesterUserMessage({
+      url: `bench://${pair.id}`,
       title: pair.id,
       text: inputText,
     });
-    let predicted: MatProvOutput = [];
+    let predicted: ProvIngesterOutput[] = [];
     let durationMs = 0;
     let tokenUsage: SampleResult["tokenUsage"];
     try {
       const llm = await runSakuraChat(sakura!, systemPrompt, userMessage);
       durationMs = llm.durationMs;
       tokenUsage = llm.usage;
-      predicted = parseMatProvOutput(llm.message);
-      if (predicted.length === 0) {
-        console.log(`  ! parse returned 0 procedures (raw size ${llm.message.length} chars)`);
+      const parsed = parseProvIngesterOutput(llm.message);
+      if (parsed.blocks.length === 0) {
+        console.log(`  ! parse returned 0 blocks (raw size ${llm.message.length} chars)`);
+      } else {
+        predicted = [parsed];
       }
     } catch (err) {
       console.log(`  ! LLM call failed: ${err instanceof Error ? err.message : err}`);
@@ -280,6 +287,10 @@ function buildCsv(results: SampleResult[]): string {
   return rows.join("\n");
 }
 
+function dedupe(arr: string[]): string[] {
+  return Array.from(new Set(arr));
+}
+
 function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>): string {
   return JSON.stringify(
     {
@@ -294,14 +305,43 @@ function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>
         parameters: { ...totals.parameters, ...prf(totals.parameters) },
         tokenF1: totals.tokenF1,
       },
-      samples: results.map((r) => ({
-        id: r.id,
-        durationMs: r.durationMs,
-        tokenUsage: r.tokenUsage,
-        goldProcedures: r.metric.goldProcedureCount,
-        predProcedures: r.metric.predictedProcedureCount,
-        metric: r.metric,
-      })),
+      samples: results.map((r) => {
+        const predSets: SpanSets = r.predicted
+          .map((o) => extractSetsFromOutput(o))
+          .reduce(
+            (acc, cur) => ({
+              activities: acc.activities.concat(cur.activities),
+              materials: acc.materials.concat(cur.materials),
+              tools: acc.tools.concat(cur.tools),
+              edges: acc.edges.concat(cur.edges),
+              parameters: acc.parameters.concat(cur.parameters),
+            }),
+            { activities: [], materials: [], tools: [], edges: [], parameters: [] } as SpanSets,
+          );
+        const goldSets = extractSetsFromGold(r.gold);
+        return {
+          id: r.id,
+          durationMs: r.durationMs,
+          tokenUsage: r.tokenUsage,
+          goldProcedures: r.metric.goldProcedureCount,
+          predProcedures: r.metric.predictedProcedureCount,
+          metric: r.metric,
+          sets: {
+            predicted: {
+              activities: dedupe(predSets.activities),
+              materials: dedupe(predSets.materials),
+              tools: dedupe(predSets.tools),
+              parameters: dedupe(predSets.parameters),
+            },
+            gold: {
+              activities: dedupe(goldSets.activities),
+              materials: dedupe(goldSets.materials),
+              tools: dedupe(goldSets.tools),
+              parameters: dedupe(goldSets.parameters),
+            },
+          },
+        };
+      }),
     },
     null,
     2,

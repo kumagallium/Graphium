@@ -1,39 +1,291 @@
-// MatPROV 形式 ↔ MatPROV 形式の構造比較メトリクス（Phase 5a）。
+// Material-science benchmark の評価層（v1.2 §10）。
 //
-// docs/internal/external-source-extraction-prompt.md §10 の 4 指標を計算する:
-//   (a) Activity の node 数と label の一致率
-//   (b) Entity（material / tool）の node 数と label の一致率
-//   (c) Usage / Generation edge の一致率
-//   (d) parameter key/value の一致率
+// 比較は **Graphium 抽出出力（ProvIngesterOutput, prose+spans）** と
+// **MatPROV gold standard（@graph 形式 JSON）** を双方とも下記 5 集合に正規化してから行う:
+//   - Activities: H2 procedure heading の label / Activity の label
+//   - Materials:  inline material/output span / Entity (type=material) の label
+//   - Tools:      inline tool span / Entity (type=tool) の label
+//   - Edges:      (Usage|Generation, activity-label, entity-label) の triple
+//   - Parameters: (canonical-key, value) の pair
 //
-// 比較ロジック:
-//   - 主指標: 正規化（lowercase + trim + NFKC + 句読点除去）後の exact match
-//   - 副指標: 空白区切り token 集合の F1（precision/recall/F1）
+// Parameter key は synonym map（§10）で canonical 形に正規化してから比較する。
+// material と output は gold 側では区別されない（Generation target も type=material）ため、
+// predicted の material + output を合算して gold の material と比較する。
 //
-// edge の比較は順序を無視。proc 単位で集合 {(activityLabel, entityLabel)} を作って比較する。
-// node や parameter の比較も集合ベース（順序非依存）。
+// LLM の出力ゆれを吸収する仕組み:
+//   - 主指標: 正規化（NFKC + lowercase + 句読点除去 + 空白集約）後の exact match → P/R/F1
+//   - 副指標: 空白 split token の bag F1
 //
-// LLM が複数 procedure を返すケースに対応するため、比較は「proc を 1 対 1 で最良マッチング」
-// した上で各 proc の指標を集計する（Hungarian は重い割に意味が薄いので、greedy で十分）。
+// 複数 procedure を含む gold は flatten して 1 大集合として比較する。現行 prompt は
+// 1 抽出 = 1 ProvIngesterOutput を返すため、predicted 側も常に 1 出力（=1 集合）。
+// 将来 procedureGroup ベースで複数 ProvIngesterOutput を返すようになれば、配列を
+// flatten して比較する。
 
 import type {
-  MatProvActivity,
-  MatProvEntity,
-  MatProvOutput,
-  MatProvProcedure,
-} from "../../../src/server/services/prov-ingester-profiles/matprov-types";
-import {
-  readEntityType,
-  readLabel,
-  readParameters,
-} from "../../../src/server/services/prov-ingester-profiles/matprov-types";
+  ProvIngesterBlock,
+  ProvIngesterOutput,
+  ProvSpan,
+} from "../../../src/server/services/prov-ingester";
+
+// ── MatPROV gold standard の最小型 ──────────────────────────────
+// LLM 出力ではなく gold JSON ファイル読み込み専用なので、軽量に定義する。
+
+type MatProvValue = { "@value": string | string[]; "@language"?: string; "@type"?: string };
+type MatProvLabel = MatProvValue[];
+
+type MatProvEntity = {
+  "@type": "Entity";
+  "@id": string;
+  label?: MatProvLabel;
+  type?: MatProvValue[];
+  [paramKey: string]: unknown;
+};
+
+type MatProvActivity = {
+  "@type": "Activity";
+  "@id": string;
+  label?: MatProvLabel;
+  [paramKey: string]: unknown;
+};
+
+type MatProvEdge = {
+  "@type": "Usage" | "Generation";
+  activity: string;
+  entity: string;
+};
+
+type MatProvGraphItem = MatProvEntity | MatProvActivity | MatProvEdge;
+
+export type MatProvProcedure = { label: string; "@graph": MatProvGraphItem[] };
+export type MatProvOutput = MatProvProcedure[];
+
+function readValueEntry(v: MatProvValue | undefined): string {
+  if (!v) return "";
+  const raw = v["@value"];
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw) && typeof raw[0] === "string") return raw[0];
+  return "";
+}
+
+function readLabel(label: MatProvLabel | undefined): string {
+  return readValueEntry(label?.[0]);
+}
+
+// ── 比較集合 ──────────────────────────────
+
+export type SpanSets = {
+  activities: string[];
+  materials: string[];
+  tools: string[];
+  /** "Usage::<activity-label>::<entity-label>" or "Generation::..." */
+  edges: string[];
+  /** "<canonical-key>::<value>" */
+  parameters: string[];
+};
+
+function emptySets(): SpanSets {
+  return { activities: [], materials: [], tools: [], edges: [], parameters: [] };
+}
+
+function mergeSets(a: SpanSets, b: SpanSets): SpanSets {
+  return {
+    activities: a.activities.concat(b.activities),
+    materials: a.materials.concat(b.materials),
+    tools: a.tools.concat(b.tools),
+    edges: a.edges.concat(b.edges),
+    parameters: a.parameters.concat(b.parameters),
+  };
+}
+
+// ── ProvIngesterOutput → SpanSets ──────────────────────────────
+
+export function extractSetsFromOutput(output: ProvIngesterOutput): SpanSets {
+  const sets = emptySets();
+  let currentActivity: string | null = null;
+
+  const walk = (blocks: ProvIngesterBlock[]): void => {
+    for (const block of blocks) {
+      const isProcedureHeading =
+        block.blockType === "heading" && block.role === "procedure";
+
+      if (isProcedureHeading) {
+        const label = (block.text ?? "").trim();
+        if (label) {
+          sets.activities.push(label);
+          currentActivity = label;
+        }
+      }
+
+      const spans: ProvSpan[] = block.content ?? [];
+      for (const span of spans) {
+        if (!span.text || !span.role) continue;
+        if (span.role === "material") {
+          sets.materials.push(span.text);
+          if (currentActivity) {
+            sets.edges.push(edgeKey("Usage", currentActivity, span.text));
+          }
+        } else if (span.role === "tool") {
+          sets.tools.push(span.text);
+          if (currentActivity) {
+            sets.edges.push(edgeKey("Usage", currentActivity, span.text));
+          }
+        } else if (span.role === "output") {
+          // gold では Generation target も type=material として扱われるので、
+          // 比較の便宜上、output span は material に合算する。
+          sets.materials.push(span.text);
+          if (currentActivity) {
+            sets.edges.push(edgeKey("Generation", currentActivity, span.text));
+          }
+        } else if (span.role === "attribute") {
+          const parsed = parseAttributeSpan(span.text);
+          if (parsed) {
+            sets.parameters.push(`${canonicalKey(parsed.key)}::${normalize(parsed.value)}`);
+          }
+        }
+      }
+
+      if (block.children && block.children.length > 0) walk(block.children);
+    }
+  };
+
+  walk(output.blocks);
+  return sets;
+}
+
+/** "key: value" の attribute span をパース。`:` を含まない span は parameter から外す */
+function parseAttributeSpan(text: string): { key: string; value: string } | null {
+  const idx = text.indexOf(":");
+  if (idx <= 0) return null;
+  const key = text.slice(0, idx).trim();
+  const value = text.slice(idx + 1).trim();
+  if (!key || !value) return null;
+  return { key, value };
+}
+
+// ── MatProvProcedure[] → SpanSets ──────────────────────────────
+
+export function extractSetsFromGold(procedures: MatProvOutput): SpanSets {
+  let acc = emptySets();
+  for (const proc of procedures) {
+    acc = mergeSets(acc, extractSetsFromGoldProcedure(proc));
+  }
+  return acc;
+}
+
+function extractSetsFromGoldProcedure(proc: MatProvProcedure): SpanSets {
+  const sets = emptySets();
+  const entityLabelById = new Map<string, string>();
+  const activityLabelById = new Map<string, string>();
+  const entityTypeById = new Map<string, "material" | "tool" | null>();
+
+  for (const item of proc["@graph"]) {
+    if (item["@type"] === "Entity") {
+      entityLabelById.set(item["@id"], readLabel(item.label));
+      const t = readValueEntry(item.type?.[0]);
+      entityTypeById.set(item["@id"], t === "material" || t === "tool" ? t : null);
+    } else if (item["@type"] === "Activity") {
+      activityLabelById.set(item["@id"], readLabel(item.label));
+    }
+  }
+
+  for (const item of proc["@graph"]) {
+    if (item["@type"] === "Activity") {
+      const label = readLabel(item.label);
+      if (label) sets.activities.push(label);
+      for (const p of readMatprovParams(item)) {
+        sets.parameters.push(`${canonicalKey(p.key)}::${normalize(p.value)}`);
+      }
+    } else if (item["@type"] === "Entity") {
+      const label = readLabel(item.label);
+      const t = entityTypeById.get(item["@id"]);
+      if (label) {
+        if (t === "material") sets.materials.push(label);
+        else if (t === "tool") sets.tools.push(label);
+      }
+      for (const p of readMatprovParams(item)) {
+        sets.parameters.push(`${canonicalKey(p.key)}::${normalize(p.value)}`);
+      }
+    } else if (item["@type"] === "Usage" || item["@type"] === "Generation") {
+      const a = activityLabelById.get(item.activity) ?? item.activity;
+      const e = entityLabelById.get(item.entity) ?? item.entity;
+      sets.edges.push(edgeKey(item["@type"], a, e));
+    }
+  }
+
+  return sets;
+}
+
+function readMatprovParams(
+  node: MatProvActivity | MatProvEntity,
+): Array<{ key: string; value: string }> {
+  const out: Array<{ key: string; value: string }> = [];
+  for (const k of Object.keys(node)) {
+    if (!k.startsWith("matprov:")) continue;
+    const arr = (node as Record<string, unknown>)[k];
+    if (!Array.isArray(arr)) continue;
+    const v = readValueEntry(arr[0] as MatProvValue | undefined);
+    if (v) out.push({ key: k.slice("matprov:".length), value: v });
+  }
+  return out;
+}
+
+// ── Synonym map（v1.2 §10）──────────────────────────────
+// MatPROV の 10 種 key + よく観測される表記揺れを canonical 形にマップする。
+// 観測されない値も将来の同義語追加に備えて配列で受ける。
+
+const KEY_SYNONYMS: Record<string, string[]> = {
+  temperature: ["temperature", "temp", "t"],
+  duration: [
+    "duration",
+    "time",
+    "elapsed_time",
+    "annealing_time",
+    "holding_time",
+    "reaction_time",
+    "incubation_time",
+  ],
+  pressure: ["pressure", "press", "p"],
+  mass: ["mass", "weight", "amount"],
+  length: ["length", "size", "dimension"],
+  purity: ["purity", "grade"],
+  concentration: ["concentration", "conc", "molarity"],
+  rotation: ["rotation", "speed", "rpm", "rotational_speed"],
+  atmosphere: ["atmosphere", "gas", "ambient"],
+  form: ["form", "shape", "morphology", "state"],
+};
+
+// MatPROV modifier の後置形（_start / _end / _rate / _width / _height / _thickness / _diameter）
+const MATPROV_MODIFIERS = ["_start", "_end", "_rate", "_width", "_height", "_thickness", "_diameter"];
+
+const SYNONYM_TO_CANONICAL = new Map<string, string>();
+for (const [canon, syns] of Object.entries(KEY_SYNONYMS)) {
+  for (const s of syns) {
+    SYNONYM_TO_CANONICAL.set(normalizeKeyToken(s), canon);
+    for (const mod of MATPROV_MODIFIERS) {
+      SYNONYM_TO_CANONICAL.set(normalizeKeyToken(s + mod), canon + mod);
+    }
+  }
+}
+
+function normalizeKeyToken(s: string): string {
+  return s
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+/** parameter key を canonical 形に正規化（synonym で見つかればマップ、見つからなければ snake_case 正規化のみ） */
+export function canonicalKey(rawKey: string): string {
+  const norm = normalizeKeyToken(rawKey);
+  return SYNONYM_TO_CANONICAL.get(norm) ?? norm;
+}
+
+// ── 集合比較（exact match + token F1）──────────────────────────────
 
 export type MetricCounts = {
-  /** 一致数（gold ∩ pred、正規化後） */
   matched: number;
-  /** 予測の出力数 */
   predicted: number;
-  /** gold の参照数 */
   gold: number;
 };
 
@@ -49,7 +301,6 @@ export type ProcedureMetric = {
   tools: MetricCounts;
   edges: MetricCounts;
   parameters: MetricCounts;
-  /** 副指標: token-based F1（label を空白 split） */
   tokenF1: {
     activities: TokenF1;
     materials: TokenF1;
@@ -59,163 +310,71 @@ export type ProcedureMetric = {
 };
 
 export type SampleMetric = {
-  /** sample 識別子（DOI 由来 slug 等） */
   id: string;
-  /** procedure 数 (gold / predicted) */
   goldProcedureCount: number;
+  /** open-set output は当面常に 1（procedureGroup 拡張時に増える） */
   predictedProcedureCount: number;
-  /** マッチした procedure ごとの集計（gold index 順） */
-  perProcedure: ProcedureMetric[];
-  /** sample 全体での集計（4 指標を合算） */
   total: ProcedureMetric;
 };
 
 export function evaluateSample(
   id: string,
-  predicted: MatProvOutput,
+  predictedOutputs: ProvIngesterOutput[],
   gold: MatProvOutput,
 ): SampleMetric {
-  // gold procedures と predicted を greedy にマッチさせる（label の正規化一致 → 残りは順序）
-  const matches = greedyMatchProcedures(gold, predicted);
-
-  const perProcedure: ProcedureMetric[] = [];
-  for (const m of matches) {
-    perProcedure.push(evaluateProcedure(m.pred, m.gold));
-  }
-
-  // 余った gold procedure 分は predicted が空のメトリクスとして計上
-  // （これにより recall が正しく下がる）
-  for (let i = matches.length; i < gold.length; i++) {
-    perProcedure.push(evaluateProcedure(emptyProcedure(), gold[i]));
-  }
-
-  // 余った predicted procedure は gold 側を空として計上（precision を下げる）
-  // matches 配列は最大 min(g,p) 個。p > g のときは余剰 pred を追加。
-  const matchedPredIndices = new Set(matches.map((m) => m.predIndex));
-  for (let i = 0; i < predicted.length; i++) {
-    if (matchedPredIndices.has(i)) continue;
-    perProcedure.push(evaluateProcedure(predicted[i], emptyProcedure()));
-  }
+  const predSets = predictedOutputs
+    .map((o) => extractSetsFromOutput(o))
+    .reduce((acc, cur) => mergeSets(acc, cur), emptySets());
+  const goldSets = extractSetsFromGold(gold);
 
   return {
     id,
     goldProcedureCount: gold.length,
-    predictedProcedureCount: predicted.length,
-    perProcedure,
-    total: sumProcedureMetrics(perProcedure),
+    predictedProcedureCount: predictedOutputs.length,
+    total: compareSets(predSets, goldSets),
   };
 }
 
-function emptyProcedure(): MatProvProcedure {
-  return { label: "", "@graph": [] };
-}
-
-// ── 集合構築 ──────────────────────────────────────────────
-
-function collectActivityLabels(p: MatProvProcedure): string[] {
-  const out: string[] = [];
-  for (const item of p["@graph"]) {
-    if (item["@type"] === "Activity") out.push(readLabel(item.label));
-  }
-  return out;
-}
-
-function collectEntityLabels(p: MatProvProcedure, kind: "material" | "tool"): string[] {
-  const out: string[] = [];
-  for (const item of p["@graph"]) {
-    if (item["@type"] !== "Entity") continue;
-    if (readEntityType(item) !== kind) continue;
-    out.push(readLabel(item.label));
-  }
-  return out;
-}
-
-/**
- * Edge の比較キーは (Usage|Generation, activityLabel, entityLabel) の triple とする。
- * @id 単体は LLM ごとに振り直されるため意味を持たない。Activity / Entity の label に置換する。
- */
-function collectEdgeKeys(p: MatProvProcedure): string[] {
-  const entityLabelById = new Map<string, string>();
-  const activityLabelById = new Map<string, string>();
-  for (const item of p["@graph"]) {
-    if (item["@type"] === "Entity") entityLabelById.set(item["@id"], readLabel(item.label));
-    else if (item["@type"] === "Activity")
-      activityLabelById.set(item["@id"], readLabel(item.label));
-  }
-  const out: string[] = [];
-  for (const item of p["@graph"]) {
-    if (item["@type"] !== "Usage" && item["@type"] !== "Generation") continue;
-    const a = activityLabelById.get(item.activity) ?? item.activity;
-    const e = entityLabelById.get(item.entity) ?? item.entity;
-    out.push(`${item["@type"]}::${normalize(a)}::${normalize(e)}`);
-  }
-  return out;
-}
-
-/** parameter は (ownerLabel, paramKey, value) の triple で比較 */
-function collectParameterKeys(p: MatProvProcedure): string[] {
-  const out: string[] = [];
-  for (const item of p["@graph"]) {
-    if (item["@type"] !== "Activity" && item["@type"] !== "Entity") continue;
-    const ownerLabel = readLabel(item.label);
-    for (const param of readParameters(item as MatProvActivity | MatProvEntity)) {
-      out.push(`${normalize(ownerLabel)}::${normalize(param.key)}::${normalize(param.value)}`);
-    }
-  }
-  return out;
-}
-
-// ── procedure 単位の指標 ──────────────────────────────────────────────
-
-function evaluateProcedure(pred: MatProvProcedure, gold: MatProvProcedure): ProcedureMetric {
-  const acts = compareSets(collectActivityLabels(pred), collectActivityLabels(gold));
-  const mats = compareSets(
-    collectEntityLabels(pred, "material"),
-    collectEntityLabels(gold, "material"),
-  );
-  const tools = compareSets(
-    collectEntityLabels(pred, "tool"),
-    collectEntityLabels(gold, "tool"),
-  );
-  const edges = compareSets(collectEdgeKeys(pred), collectEdgeKeys(gold));
-  const params = compareSets(collectParameterKeys(pred), collectParameterKeys(gold));
-
+function compareSets(pred: SpanSets, gold: SpanSets): ProcedureMetric {
   return {
-    activities: acts,
-    materials: mats,
-    tools,
-    edges,
-    parameters: params,
+    activities: countOverlap(pred.activities, gold.activities),
+    materials: countOverlap(pred.materials, gold.materials),
+    tools: countOverlap(pred.tools, gold.tools),
+    edges: countOverlap(pred.edges, gold.edges, /*alreadyNormalized*/ true),
+    parameters: countOverlap(pred.parameters, gold.parameters, /*alreadyNormalized*/ true),
     tokenF1: {
-      activities: tokenF1(collectActivityLabels(pred), collectActivityLabels(gold)),
-      materials: tokenF1(
-        collectEntityLabels(pred, "material"),
-        collectEntityLabels(gold, "material"),
-      ),
-      tools: tokenF1(collectEntityLabels(pred, "tool"), collectEntityLabels(gold, "tool")),
-      parameters: tokenF1(collectParameterKeys(pred), collectParameterKeys(gold)),
+      activities: tokenF1(pred.activities, gold.activities),
+      materials: tokenF1(pred.materials, gold.materials),
+      tools: tokenF1(pred.tools, gold.tools),
+      parameters: tokenF1(pred.parameters, gold.parameters),
     },
   };
 }
 
-function compareSets(predicted: string[], gold: string[]): MetricCounts {
-  const predSet = new Set(predicted.map(normalize).filter(Boolean));
-  const goldSet = new Set(gold.map(normalize).filter(Boolean));
+function countOverlap(predicted: string[], gold: string[], alreadyNormalized = false): MetricCounts {
+  const predSet = new Set(
+    predicted
+      .map((s) => (alreadyNormalized ? s : normalize(s)))
+      .filter(Boolean),
+  );
+  const goldSet = new Set(
+    gold.map((s) => (alreadyNormalized ? s : normalize(s))).filter(Boolean),
+  );
   let matched = 0;
   for (const g of goldSet) if (predSet.has(g)) matched++;
   return { matched, predicted: predSet.size, gold: goldSet.size };
 }
 
 function tokenF1(predicted: string[], gold: string[]): TokenF1 {
-  const predTokens = bagOfTokens(predicted);
-  const goldTokens = bagOfTokens(gold);
+  const predBag = bagOfTokens(predicted);
+  const goldBag = bagOfTokens(gold);
   let overlap = 0;
-  for (const [tok, count] of predTokens) {
-    const g = goldTokens.get(tok) ?? 0;
+  for (const [tok, count] of predBag) {
+    const g = goldBag.get(tok) ?? 0;
     overlap += Math.min(count, g);
   }
-  const predSum = sumValues(predTokens);
-  const goldSum = sumValues(goldTokens);
+  const predSum = sumValues(predBag);
+  const goldSum = sumValues(goldBag);
   const precision = predSum === 0 ? 0 : overlap / predSum;
   const recall = goldSum === 0 ? 0 : overlap / goldSum;
   const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
@@ -237,64 +396,10 @@ function sumValues(m: Map<string, number>): number {
   return s;
 }
 
-// ── procedure マッチング ──────────────────────────────────────────────
-
-type Match = { gold: MatProvProcedure; pred: MatProvProcedure; predIndex: number };
-
-/**
- * gold procedure と predicted procedure を greedy にマッチング。
- *
- * 1. まず gold.label と predicted.label が正規化後一致するペアを優先
- * 2. 残りは順序通り（gold[0]→pred[0]、gold[1]→pred[1] ...）でペアにする
- */
-function greedyMatchProcedures(
-  gold: MatProvOutput,
-  pred: MatProvOutput,
-): Match[] {
-  const used = new Set<number>();
-  const matches: Match[] = [];
-
-  for (let gi = 0; gi < gold.length; gi++) {
-    const g = gold[gi];
-    const goldKey = normalize(g.label);
-    let chosen = -1;
-    if (goldKey) {
-      for (let pi = 0; pi < pred.length; pi++) {
-        if (used.has(pi)) continue;
-        if (normalize(pred[pi].label) === goldKey) {
-          chosen = pi;
-          break;
-        }
-      }
-    }
-    if (chosen === -1) {
-      for (let pi = 0; pi < pred.length; pi++) {
-        if (!used.has(pi)) {
-          chosen = pi;
-          break;
-        }
-      }
-    }
-    if (chosen === -1) break;
-    used.add(chosen);
-    matches.push({ gold: g, pred: pred[chosen], predIndex: chosen });
-  }
-
-  return matches;
-}
-
-// ── normalize ──────────────────────────────────────────────
+// ── normalize ──────────────────────────────
 
 const PUNCT_REGEX = /[\p{P}\p{S}]/gu;
 
-/**
- * label 文字列の正規化。
- * - NFKC（全角→半角等）
- * - lowercase
- * - 句読点・記号除去
- * - 連続空白を 1 個に
- * - trim
- */
 export function normalize(s: string | undefined | null): string {
   if (!s) return "";
   return s
@@ -305,7 +410,18 @@ export function normalize(s: string | undefined | null): string {
     .trim();
 }
 
-// ── 集計 ──────────────────────────────────────────────
+function edgeKey(type: "Usage" | "Generation", activity: string, entity: string): string {
+  return `${type}::${normalize(activity)}::${normalize(entity)}`;
+}
+
+// ── 集計 / helpers ──────────────────────────────
+
+export function prf(c: MetricCounts): { precision: number; recall: number; f1: number } {
+  const precision = c.predicted === 0 ? 0 : c.matched / c.predicted;
+  const recall = c.gold === 0 ? 0 : c.matched / c.gold;
+  const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
+  return { precision, recall, f1 };
+}
 
 function addCounts(a: MetricCounts, b: MetricCounts): MetricCounts {
   return {
@@ -316,8 +432,6 @@ function addCounts(a: MetricCounts, b: MetricCounts): MetricCounts {
 }
 
 function addTokenF1(a: TokenF1, b: TokenF1): TokenF1 {
-  // 個別 procedure の F1 を単純平均ではなく、token 集計レベルで再計算するのが
-  // 正しいが、Phase 5a では運用負荷を抑えるため算術平均で十分（指標の主は exact match）。
   return {
     precision: (a.precision + b.precision) / 2,
     recall: (a.recall + b.recall) / 2,
@@ -325,8 +439,8 @@ function addTokenF1(a: TokenF1, b: TokenF1): TokenF1 {
   };
 }
 
-function sumProcedureMetrics(metrics: ProcedureMetric[]): ProcedureMetric {
-  if (metrics.length === 0) {
+export function aggregate(samples: SampleMetric[]): ProcedureMetric {
+  if (samples.length === 0) {
     const zero: MetricCounts = { matched: 0, predicted: 0, gold: 0 };
     const zeroF1: TokenF1 = { precision: 0, recall: 0, f1: 0 };
     return {
@@ -335,38 +449,22 @@ function sumProcedureMetrics(metrics: ProcedureMetric[]): ProcedureMetric {
       tools: zero,
       edges: zero,
       parameters: zero,
-      tokenF1: {
-        activities: zeroF1,
-        materials: zeroF1,
-        tools: zeroF1,
-        parameters: zeroF1,
-      },
+      tokenF1: { activities: zeroF1, materials: zeroF1, tools: zeroF1, parameters: zeroF1 },
     };
   }
-  return metrics.reduce((acc, cur) => ({
-    activities: addCounts(acc.activities, cur.activities),
-    materials: addCounts(acc.materials, cur.materials),
-    tools: addCounts(acc.tools, cur.tools),
-    edges: addCounts(acc.edges, cur.edges),
-    parameters: addCounts(acc.parameters, cur.parameters),
-    tokenF1: {
-      activities: addTokenF1(acc.tokenF1.activities, cur.tokenF1.activities),
-      materials: addTokenF1(acc.tokenF1.materials, cur.tokenF1.materials),
-      tools: addTokenF1(acc.tokenF1.tools, cur.tokenF1.tools),
-      parameters: addTokenF1(acc.tokenF1.parameters, cur.tokenF1.parameters),
-    },
-  }));
-}
-
-/** precision / recall / F1 を MetricCounts から計算 */
-export function prf(c: MetricCounts): { precision: number; recall: number; f1: number } {
-  const precision = c.predicted === 0 ? 0 : c.matched / c.predicted;
-  const recall = c.gold === 0 ? 0 : c.matched / c.gold;
-  const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
-  return { precision, recall, f1 };
-}
-
-/** 複数 sample の集計 */
-export function aggregate(samples: SampleMetric[]): ProcedureMetric {
-  return sumProcedureMetrics(samples.map((s) => s.total));
+  return samples
+    .map((s) => s.total)
+    .reduce((acc, cur) => ({
+      activities: addCounts(acc.activities, cur.activities),
+      materials: addCounts(acc.materials, cur.materials),
+      tools: addCounts(acc.tools, cur.tools),
+      edges: addCounts(acc.edges, cur.edges),
+      parameters: addCounts(acc.parameters, cur.parameters),
+      tokenF1: {
+        activities: addTokenF1(acc.tokenF1.activities, cur.tokenF1.activities),
+        materials: addTokenF1(acc.tokenF1.materials, cur.tokenF1.materials),
+        tools: addTokenF1(acc.tokenF1.tools, cur.tokenF1.tools),
+        parameters: addTokenF1(acc.tokenF1.parameters, cur.tokenF1.parameters),
+      },
+    }));
 }

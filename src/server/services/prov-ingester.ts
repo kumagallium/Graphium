@@ -174,7 +174,7 @@ Each role-bearing node — whether an H2 procedure or a role-tagged span — MUS
 
 - **Activity (H2 procedure heading)**: one verb / operation. Never "Mix and heat", "Cut and wash", "Calibrate and measure". If the source merges two actions in one sentence, split them into two H2 procedures with distinct \`stepId\`s. If only one is graph-meaningful, drop the other.
 - **material / tool / output spans**: one substance / instrument / product per span. Never "salt and pepper" as a single material span — emit two adjacent spans \`{"text":"salt","role":"material"}\` and \`{"text":"pepper","role":"material"}\` with the joining word ("and", "や", "、") as a plain narrative span between them.
-- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans.
+- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans. When the source pairs a value with an explicit parameter name, write the span as \`<key>: <value>\` (e.g., \`"temperature: 80 °C"\`, \`"learning_rate: 0.001"\`); otherwise the bare value alone is fine.
 - **No role on punctuation, whitespace, or symbol-only spans.** Commas, periods, parentheses, "、", "。", "(", ")", em-dashes, and bare spaces never carry a role — they would create ghost graph nodes that mean nothing. Punctuation lives in plain narrative spans between role-bearing spans. Example: write \`{"text":"olive oil","role":"material"}, {"text":", "}, {"text":"garlic","role":"material"}\`, NOT a comma-tagged material span between them.
 
 Span concatenation rule still applies: stitching all \`text\` fields back together must reproduce the original prose. Use plain narrative spans for connectors so the sentence stays readable.
@@ -195,6 +195,16 @@ Examples (apply across any domain):
 When the descriptor is the same word in many domains, the same split applies: use form/shape/state words ("chip", "powder", "pellet", "ingot", "slice", "cube", "frozen", "dried", "raw", "diluted") as attribute, not as part of the material label.
 
 Counter-rule (do NOT over-split): chemical formulas, compound names, and brand-style identifiers stay whole — "MnSO4·H2O", "PVDF binder", "olive oil", "carbon black" are single material spans. The split applies only when a **substance noun** is paired with an **independent descriptor word**.
+
+## Attribute key consistency (lightweight)
+
+Attribute spans live in open-set vocabulary — there is no fixed list of allowed parameter names. To keep the output usable across many notes, follow three light rules whenever you write a \`<key>: <value>\` attribute span:
+
+- **\`snake_case\` for keys.** \`incubation_time\`, \`learning_rate\`, \`magnetic_field_strength\` — not camelCase, not Title Case, not hyphenated.
+- **Respect the source's wording.** Mirror the parameter name as the source uses it. Do not invent a fancier name, do not translate into another language, do not collapse "incubation time" and "incubation period" into one canonical form if the source distinguishes them.
+- **Same concept → same key inside one document.** If a paper uses "temperature" in step 3 and "T" in step 5 for the same physical quantity, pick one (prefer the more explicit \`temperature\`) and use it for both — within this document only. Do not normalize across documents.
+
+These rules apply to attribute spans only. material / tool / output span text is the literal phrase from the prose and is not subject to snake_case or key consistency rules.
 
 ## Connectivity rule (CRITICAL — one connected graph, no isolated steps)
 

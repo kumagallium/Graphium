@@ -18,36 +18,9 @@ import {
   parseProvIngesterOutput,
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
-import {
-  buildMaterialScienceSystemPrompt,
-  buildMaterialScienceUserMessage,
-  parseMatProvOutput,
-  matProvToProvIngester,
-  type MatProvOutput,
-  type ProvProfile,
-} from "../services/prov-ingester-profiles/index.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 
 const app = new Hono();
-
-const SUPPORTED_PROFILES: ProvProfile[] = ["material-science"];
-
-function isProfile(v: unknown): v is ProvProfile {
-  return typeof v === "string" && (SUPPORTED_PROFILES as string[]).includes(v);
-}
-
-/**
- * material-science profile の LLM 出力をパース → MatPROV procedures に正規化し、
- * 同時に Graphium ProvIngesterOutput の配列に翻訳して返す。
- */
-function processMatProvResponse(raw: string): {
-  procedures: MatProvOutput;
-  procedureOutputs: ProvIngesterOutput[];
-} {
-  const procedures = parseMatProvOutput(raw);
-  const procedureOutputs = procedures.map((p) => matProvToProvIngester(p));
-  return { procedures, procedureOutputs };
-}
 
 // URL から PROV 構造化ブロックを生成
 app.post("/ingest-url", async (c) => {
@@ -55,20 +28,10 @@ app.post("/ingest-url", async (c) => {
     url: string;
     language?: string;
     model?: string;
-    /**
-     * Phase 5a: ドメインプロファイル指定。`material-science` を指定すると
-     * MatPROV 形式 prompt を使い、複数 procedure を返す形に切り替わる。
-     * 未指定なら従来の汎用 prov-ingester prompt。
-     */
-    profile?: string;
   }>();
 
   if (!body.url) {
     return c.json({ error: "url は必須です" }, 400);
-  }
-
-  if (body.profile && !isProfile(body.profile)) {
-    return c.json({ error: `unsupported profile: ${body.profile}` }, 400);
   }
 
   // モデル解決: ヘッダー → body.model → デフォルト
@@ -102,25 +65,15 @@ app.post("/ingest-url", async (c) => {
   }
 
   const language = body.language || "en";
-  const useMaterialScience = body.profile === "material-science";
 
-  // LLM 呼び出し（profile に応じて prompt を切り替える）
-  const systemPrompt = useMaterialScience
-    ? buildMaterialScienceSystemPrompt(language)
-    : buildProvIngesterSystemPrompt(language);
-  const userMessage = useMaterialScience
-    ? buildMaterialScienceUserMessage({
-        url: page.url,
-        title: page.title || body.url,
-        description: page.description,
-        text: page.text,
-      })
-    : buildProvIngesterUserMessage({
-        url: page.url,
-        title: page.title || body.url,
-        description: page.description,
-        text: page.text,
-      });
+  // LLM 呼び出し（open-set 単一 prompt）
+  const systemPrompt = buildProvIngesterSystemPrompt(language);
+  const userMessage = buildProvIngesterUserMessage({
+    url: page.url,
+    title: page.title || body.url,
+    description: page.description,
+    text: page.text,
+  });
 
   try {
     const model = createModel(modelConfig);
@@ -131,27 +84,6 @@ app.post("/ingest-url", async (c) => {
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
     });
-
-    if (useMaterialScience) {
-      const { procedures, procedureOutputs } = processMatProvResponse(result.message);
-      if (procedures.length === 0) {
-        return c.json(
-          { error: "LLM が有効な MatPROV 構造を生成できませんでした。" },
-          502,
-        );
-      }
-      return c.json({
-        profile: "material-science" as const,
-        procedures: procedureOutputs,
-        matprov: procedures,
-        paperTitle: page.title || body.url,
-        sourceUrl: page.url,
-        sourceTitle: page.title,
-        sourceFetchedAt: page.fetchedAt,
-        tokenUsage: result.tokenUsage,
-        model: result.model,
-      });
-    }
 
     const parsed: ProvIngesterOutput = parseProvIngesterOutput(result.message);
 
@@ -186,8 +118,6 @@ app.post("/ingest-pdf", async (c) => {
     title?: string;
     language?: string;
     model?: string;
-    /** Phase 5a: material-science など。未指定なら従来の generic prompt */
-    profile?: string;
   }>();
 
   if (!body.text || body.text.trim().length < 50) {
@@ -195,10 +125,6 @@ app.post("/ingest-pdf", async (c) => {
       { error: "PDF から十分なテキストを取得できませんでした。" },
       400,
     );
-  }
-
-  if (body.profile && !isProfile(body.profile)) {
-    return c.json({ error: `unsupported profile: ${body.profile}` }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -217,24 +143,14 @@ app.post("/ingest-pdf", async (c) => {
       ? "[出力言語: 日本語で書いてください。タイトルも本文もすべて日本語にしてください]"
       : `[Output language: ${language}]`;
   const titleForPrompt = body.title?.trim() || "(untitled PDF)";
-  const useMaterialScience = body.profile === "material-science";
 
-  const userMessage = useMaterialScience
-    ? buildMaterialScienceUserMessage({
-        url: `pdf://${titleForPrompt}`,
-        title: titleForPrompt,
-        description: undefined,
-        text: `${languageHint}\n\n${body.text}`,
-      })
-    : buildProvIngesterUserMessage({
-        url: `pdf://${titleForPrompt}`,
-        title: titleForPrompt,
-        description: undefined,
-        text: `${languageHint}\n\n${body.text}`,
-      });
-  const systemPrompt = useMaterialScience
-    ? buildMaterialScienceSystemPrompt(language)
-    : buildProvIngesterSystemPrompt(language);
+  const userMessage = buildProvIngesterUserMessage({
+    url: `pdf://${titleForPrompt}`,
+    title: titleForPrompt,
+    description: undefined,
+    text: `${languageHint}\n\n${body.text}`,
+  });
+  const systemPrompt = buildProvIngesterSystemPrompt(language);
 
   try {
     const model = createModel(modelConfig);
@@ -245,26 +161,6 @@ app.post("/ingest-pdf", async (c) => {
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
     });
-
-    if (useMaterialScience) {
-      const { procedures, procedureOutputs } = processMatProvResponse(result.message);
-      if (procedures.length === 0) {
-        return c.json(
-          { error: "LLM が有効な MatPROV 構造を生成できませんでした。" },
-          502,
-        );
-      }
-      return c.json({
-        profile: "material-science" as const,
-        procedures: procedureOutputs,
-        matprov: procedures,
-        paperTitle: titleForPrompt,
-        sourceTitle: titleForPrompt,
-        sourceFetchedAt: new Date().toISOString(),
-        tokenUsage: result.tokenUsage,
-        model: result.model,
-      });
-    }
 
     const parsed: ProvIngesterOutput = parseProvIngesterOutput(result.message);
 
