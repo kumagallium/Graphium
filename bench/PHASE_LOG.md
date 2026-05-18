@@ -86,7 +86,7 @@ Verdict: **merge**. The pre-declared metric `lift_score` (spec §6: "target base
 
 Salvage: the lift gain is what Phase α was designed to deliver, and it landed cleanly. Future phases should not have to re-justify it.
 
-## µ-1.1 — corpus honesty (PR TBD, status: **merge candidate**)
+## µ-1.1 — corpus honesty (PR #300, merged 2026-05-19)
 
 Cleanup of µ-1's known limitations before honest evaluation of Phase η (PR #297).
 
@@ -130,3 +130,38 @@ Verdict: **merge candidate**. The new baseline is honest in two ways the old one
 The `synthesis_count_total` median ticked down (2 → 1). This is sampling noise — the per-sample range is 1–2. Phase β's deferred entropy work needs synthesis_count to grow before the metric becomes meaningful; corpus expansion alone hasn't moved that bottleneck.
 
 Snapshot at `bench/baseline.json` (the new authoritative reference).
+
+## η — epistemic status + lowest-status inheritance (PR #297, status: rebased on post-µ-1.1, re-evaluation pending)
+
+Pre-declared metrics (spec §8):
+- `epistemic_preservation` — must clear the spec ζ-end target of 0.9 once n=3 evidence is in
+- `casual-speculation-propagation` adversarial probe — must pass at probe level (Atom inherits `speculation`, Synthesis hypothesisStatus is `speculative`)
+- `lift_score` — must NOT regress below α's 1.0 median
+
+Implementation (3 sub-systems wired through one PR):
+
+- **Schema**: `EpistemicStatus` union added to `src/lib/document-types.ts`, mirrored onto `WikiMeta.epistemicStatus`, `WikiMetaSummary.epistemicStatus`, and `NoteIndexEntry.epistemicStatus`. `INDEX_SCHEMA_VERSION` bumped 14 → 15; existing entries are missing the field, and `ensureIndex` triggers a full index rebuild on the bump (no per-field migration needed). `lowestEpistemicStatus()` helper exported for parsers and tests.
+- **Ingester** (`wiki-ingester.ts`): output schema gains required `epistemicStatus`. New prompt section "Epistemic status (Phase η — REQUIRED for every Claim)" specifies the fixed vocabulary, the "prefer lower when uncertain" rule, and the `meta.captureMode: "speculation"` hard-lock (UI for that toggle ships in a follow-up PR). `parseIngesterOutput` validates the value against `EPISTEMIC_STATUS_VALUES` and drops unknown values to `undefined`.
+- **Atomizer** (`wiki-atomizer.ts`): output schema gains required `epistemicStatus`. New prompt section "Epistemic status inheritance (REQUIRED, structural)" codifies lowest-status propagation. `buildAtomizerUserMessage` now tags each source Claim heading with its status (`[interpretation*]` for missing data), so the LLM cannot pretend it did not see them. `parseAtomizerOutput` accepts an optional `conceptIdToEpistemicStatus` map and, when given, **overrides** the LLM-emitted `epistemicStatus` with the structural minimum across `sourceConceptIds` (safety net against LLM laundering).
+- **Synthesizer** (`wiki-synthesizer.ts`): `ClaimSnapshot` gains `epistemicStatus`. `buildSynthesizerUserMessage` tags each input concept's status and, when any input is `speculation`, injects an explicit "MUST emit hypothesisStatus=speculative" instruction. `parseSynthesizerOutput` accepts the same optional `conceptIdToEpistemicStatus` map and, when given, forces `hypothesisStatus = "speculative"` for outputs whose source-input minimum is `speculation` — regardless of what the LLM emitted.
+- **Router** (`synthesis-router.ts`): `routeSynthesisMode` takes an optional second `epistemicStatuses` arg. **Candidate modes are unchanged** (`atomType` remains the load-bearing signal), but the `rationale` gains a `"epistemic distribution: …"` line, and a new `hasSpeculativeInput` boolean surfaces on the result for downstream logging.
+- **Route wiring** (`src/server/routes/wiki.ts`): `POST /atomize` and `POST /synthesize` both build the `conceptId → epistemicStatus` map from the incoming concepts and thread it into the parser. No new endpoint shape changes — clients that don't send the field still work, the parser just falls back to `interpretation` for missing data.
+
+Test coverage:
+
+- `src/lib/epistemic-status.test.ts` — `lowestEpistemicStatus` ordering and the "all undefined → interpretation" default, 6 cases.
+- `src/server/services/wiki-semantic-types.test.ts` — 11 new cases across ingester / atomizer / synthesizer covering "LLM lies and source inheritance overrides," "missing-status legacy data falls back to interpretation," and "speculation propagates Synthesis → speculative regardless of LLM output."
+- `src/features/ai-assistant/synthesis-router.test.ts` — 5 new cases covering "candidate set is unchanged by status, only rationale and hasSpeculativeInput change."
+- Existing 608 tests stay green. Total 654/654 pass.
+
+Breaking-change checklist (CLAUDE.md):
+
+- [x] `pnpm exec tsc -p tsconfig.json --noEmit` — clean
+- [x] `pnpm exec tsc -p tsconfig.server.json --noEmit` — clean
+- [x] `pnpm vitest run` — 47 files / 654 tests pass
+- [x] `pnpm build` — vite build succeeds
+- [ ] Graphium 起動で既存 v14 index が v15 に自動再構築されることを実地確認
+- [ ] `bench/migration/` 配下に v14 → v15 の fixture を追加 (Phase μ-3 で integrated infrastructure として整備)
+- [ ] Live n=3 CI で δ を計測し PR description に貼る
+
+UI (icons / filter / opacity / capture toggle) は本 PR では落とし、design subagent と握る follow-up PR (spec §8 UI 影響) に分離した。

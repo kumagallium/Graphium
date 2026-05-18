@@ -515,12 +515,19 @@ type NoteIndexEntry = {
   atomType?: AtomType;
   synthesisMode?: SynthesisMode;
   hypothesisStatus?: HypothesisStatus;
+
+  // Phase η: epistemic provenance — mirrored from wikiMeta.epistemicStatus
+  // (low → high: speculation < interpretation < observation < established).
+  // Atomizer / Synthesizer propagate the LOWEST status from sources to derived
+  // pages, so a single speculation Claim cannot pass as established knowledge
+  // through the Atom / Synthesis layers.
+  epistemicStatus?: EpistemicStatus;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **14**.
+Defined in `src/features/navigation/index-file.ts`. Currently **15**.
 Bumping rules:
 
 | Version | Change |
@@ -535,6 +542,7 @@ Bumping rules:
 | **12** | Added `archivedAt` for soft-archive on auto-merge (preserves references that would otherwise dangle). |
 | **13** | Added `claimRole` / `atomType` / `synthesisMode` / `hypothesisStatus` mirrors from `wikiMeta` (Phase 1 semantic types). |
 | **14** | Renamed `WikiKind` value `"concept"` to `"claim"`. The on-disk migration (`migrateConceptKindToClaim` in `document-migration.ts`) also moves `derivedFromConcepts` → `derivedFromClaims` and `conceptRole` → `claimRole` in `wikiMeta`. |
+| **15** | Added `epistemicStatus` (`speculation` / `interpretation` / `observation` / `established`) mirror from `wikiMeta` (Phase η). Existing entries are missing the field; `ensureIndex` rebuilds the index on the bump so Ingester / Atomizer outputs from this point forward populate it. The downstream Atomizer enforces lowest-status inheritance and the Synthesizer forces `hypothesisStatus: "speculative"` whenever any input carries `epistemicStatus: "speculation"` — see `docs/ARCHITECTURE.md` §3.3. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

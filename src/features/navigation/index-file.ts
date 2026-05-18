@@ -4,6 +4,7 @@
 import type {
   AtomType,
   ClaimRole,
+  EpistemicStatus,
   GraphiumDocument,
   GraphiumFile,
   HypothesisStatus,
@@ -49,7 +50,12 @@ import { normalizeLabel } from "../context-label/labels";
 //      旧 kind / 旧フィールド名 (derivedFromConcepts / conceptRole) は
 //      document-migration.ts の migrateConceptKindToClaim で読み込み時に
 //      自動移行されるが、index 側のキャッシュは bump で再構築する。
-const INDEX_SCHEMA_VERSION = 14;
+// v15: epistemicStatus フィールド（Phase η, 提案 v4 Phase 5）。
+//      wikiMeta.epistemicStatus を mirror して一覧 UI のフィルタに使う。
+//      既存エントリは undefined のままで動く（読み込み側で interpretation 扱い）が、
+//      bump によりインデックスを再構築させ、Ingester / Atomizer 由来の epistemic が
+//      mirror に反映されるようにする。
+const INDEX_SCHEMA_VERSION = 15;
 
 export type GraphiumIndex = {
   version: number;
@@ -140,6 +146,12 @@ export type NoteIndexEntry = {
   synthesisMode?: SynthesisMode;
   /** Synthesis の検証状態。wikiMeta.hypothesisStatus を mirror。 */
   hypothesisStatus?: HypothesisStatus;
+  /**
+   * Claim / Atom の認識論的ステータス（Phase η, v15）。
+   * wikiMeta.epistemicStatus を mirror する。一覧 UI で status filter に使う。
+   * Phase η 以前に書かれた既存エントリでは undefined（読み込み側で interpretation 扱い）。
+   */
+  epistemicStatus?: EpistemicStatus;
 };
 
 // ── Drive API ──
@@ -385,6 +397,7 @@ export function buildIndexEntry(
     atomType: doc.wikiMeta?.atomType,
     synthesisMode: doc.wikiMeta?.synthesisMode,
     hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+    epistemicStatus: doc.wikiMeta?.epistemicStatus,
   };
 }
 

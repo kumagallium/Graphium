@@ -82,4 +82,48 @@ describe("routeSynthesisMode (heuristic v1)", () => {
       expect(r.recommendedMode).toBe(r.candidateModes[0]);
     }
   });
+
+  // ── Phase η: epistemicStatus signaling ──
+
+  it("(Phase η) does not change the candidate set based on epistemic status — atomType remains load-bearing", () => {
+    const withoutStatus = routeSynthesisMode(["causal", "causal"]);
+    const withSpeculation = routeSynthesisMode(
+      ["causal", "causal"],
+      ["speculation", "speculation"],
+    );
+    expect(withSpeculation.candidateModes).toEqual(withoutStatus.candidateModes);
+    expect(withSpeculation.recommendedMode).toBe(withoutStatus.recommendedMode);
+  });
+
+  it("(Phase η) sets hasSpeculativeInput=true when at least one input is speculation", () => {
+    const r = routeSynthesisMode(
+      ["observational", "causal"],
+      ["speculation", "interpretation"],
+    );
+    expect(r.hasSpeculativeInput).toBe(true);
+    expect(r.rationale).toContain("speculation");
+  });
+
+  it("(Phase η) leaves hasSpeculativeInput false when no input is speculation", () => {
+    const r = routeSynthesisMode(
+      ["observational", "causal"],
+      ["observation", "interpretation"],
+    );
+    expect(r.hasSpeculativeInput).toBe(false);
+  });
+
+  it("(Phase η) records epistemic distribution in rationale when statuses are provided", () => {
+    const r = routeSynthesisMode(
+      ["observational", "mechanistic", "causal"],
+      ["observation", "interpretation", "observation"],
+    );
+    expect(r.rationale).toContain("observation=2");
+    expect(r.rationale).toContain("interpretation=1");
+  });
+
+  it("(Phase η) leaves rationale unchanged (no status section) when statuses are omitted", () => {
+    const r = routeSynthesisMode(["observational", "causal"]);
+    expect(r.rationale).not.toContain("epistemic distribution");
+    expect(r.hasSpeculativeInput).toBeUndefined();
+  });
 });

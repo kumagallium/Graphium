@@ -230,3 +230,213 @@ describe("parseSynthesizerOutput: synthesisMode + hypothesisStatus", () => {
   });
 });
 
+// ── Phase η: epistemicStatus + lowest-status inheritance ──
+
+describe("parseIngesterOutput: epistemicStatus (Phase η)", () => {
+  it("認識可能な epistemicStatus を採用する", () => {
+    const out = parseIngesterOutput(JSON.stringify({
+      wikis: [{
+        kind: "claim",
+        level: "finding",
+        title: "Claim title",
+        sections: [{ heading: "Body", content: "Content." }],
+        suggestedAction: "create",
+        confidence: 0.85,
+        relatedClaims: [],
+        externalReferences: [],
+        epistemicStatus: "speculation",
+      }],
+    }));
+    expect(out[0]?.epistemicStatus).toBe("speculation");
+  });
+
+  it("認識不能な epistemicStatus は undefined", () => {
+    const out = parseIngesterOutput(JSON.stringify({
+      wikis: [{
+        kind: "claim",
+        level: "finding",
+        title: "Claim",
+        sections: [{ heading: "Body", content: "C" }],
+        suggestedAction: "create",
+        confidence: 0.85,
+        relatedClaims: [],
+        externalReferences: [],
+        epistemicStatus: "certain-truth",
+      }],
+    }));
+    expect(out[0]?.epistemicStatus).toBeUndefined();
+  });
+
+  it("epistemicStatus 欠落でもパース成功し undefined", () => {
+    const out = parseIngesterOutput(JSON.stringify({
+      wikis: [{
+        kind: "claim",
+        level: "finding",
+        title: "C",
+        sections: [{ heading: "B", content: "X" }],
+        suggestedAction: "create",
+        confidence: 0.85,
+        relatedClaims: [],
+        externalReferences: [],
+      }],
+    }));
+    expect(out[0]?.epistemicStatus).toBeUndefined();
+  });
+
+  it("summary kind では epistemicStatus は undefined（claim のみ）", () => {
+    const out = parseIngesterOutput(JSON.stringify({
+      wikis: [{
+        kind: "summary",
+        title: "Summary",
+        sections: [{ heading: "B", content: "X" }],
+        suggestedAction: "create",
+        confidence: 0.9,
+        relatedClaims: [],
+        externalReferences: [],
+        epistemicStatus: "speculation", // 無視されるはず
+      }],
+    }));
+    expect(out[0]?.kind).toBe("summary");
+    expect(out[0]?.epistemicStatus).toBeUndefined();
+  });
+});
+
+describe("parseAtomizerOutput: lowest-status inheritance (Phase η)", () => {
+  const conceptIds = new Map([
+    ["c1", "Concept 1"],
+    ["c2", "Concept 2"],
+    ["c3", "Concept 3"],
+  ]);
+
+  it("source の最低 status を Atom の status に強制 (LLM が established と出しても speculation 入力なら speculation)", () => {
+    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
+      ["c1", "speculation"],
+      ["c2", "observation"],
+    ]);
+    const out = parseAtomizerOutput(
+      JSON.stringify({
+        atoms: [{
+          title: "Atom",
+          body: "B",
+          sourceConceptIds: ["c1", "c2"],
+          confidence: 0.85,
+          atomType: "causal",
+          epistemicStatus: "established", // LLM が嘘をついても無視される
+        }],
+      }),
+      conceptIds,
+      statusMap,
+    );
+    expect(out[0]?.epistemicStatus).toBe("speculation");
+  });
+
+  it("全て observation の入力なら Atom も observation", () => {
+    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
+      ["c1", "observation"],
+      ["c2", "observation"],
+    ]);
+    const out = parseAtomizerOutput(
+      JSON.stringify({
+        atoms: [{
+          title: "A", body: "B", sourceConceptIds: ["c1", "c2"], confidence: 0.85, atomType: "observational",
+        }],
+      }),
+      conceptIds,
+      statusMap,
+    );
+    expect(out[0]?.epistemicStatus).toBe("observation");
+  });
+
+  it("status map なし (legacy 呼び出し) なら LLM 出力をそのまま採用", () => {
+    const out = parseAtomizerOutput(
+      JSON.stringify({
+        atoms: [{
+          title: "A", body: "B", sourceConceptIds: ["c1", "c2"], confidence: 0.85, atomType: "causal",
+          epistemicStatus: "observation",
+        }],
+      }),
+      conceptIds,
+    );
+    expect(out[0]?.epistemicStatus).toBe("observation");
+  });
+
+  it("status map あり / source 全 undefined → interpretation (中立デフォルト)", () => {
+    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
+      ["c1", undefined],
+      ["c2", undefined],
+    ]);
+    const out = parseAtomizerOutput(
+      JSON.stringify({
+        atoms: [{
+          title: "A", body: "B", sourceConceptIds: ["c1", "c2"], confidence: 0.85,
+        }],
+      }),
+      conceptIds,
+      statusMap,
+    );
+    expect(out[0]?.epistemicStatus).toBe("interpretation");
+  });
+});
+
+describe("parseSynthesizerOutput: speculative input forces speculative output (Phase η)", () => {
+  const conceptIds = ["c1", "c2"];
+  const baseCandidate = (overrides: Record<string, unknown> = {}) => ({
+    sourceConceptIds: conceptIds,
+    sourceConceptTitles: ["A", "B"],
+    title: "Synthesis title",
+    sections: [{ heading: "H", content: "C" }],
+    rationale: "R",
+    confidence: 0.9,
+    ...overrides,
+  });
+
+  it("入力に speculation あり → hypothesisStatus を speculative に強制 (LLM が confirmed と出しても)", () => {
+    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
+      ["c1", "speculation"],
+      ["c2", "observation"],
+    ]);
+    const out = parseSynthesizerOutput(
+      JSON.stringify({
+        candidates: [
+          baseCandidate({
+            synthesisMode: "abductive",
+            hypothesisStatus: "confirmed",
+          }),
+        ],
+      }),
+      statusMap,
+    );
+    expect(out[0]?.hypothesisStatus).toBe("speculative");
+  });
+
+  it("入力に speculation なし → LLM 出力の hypothesisStatus をそのまま採用", () => {
+    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
+      ["c1", "observation"],
+      ["c2", "observation"],
+    ]);
+    const out = parseSynthesizerOutput(
+      JSON.stringify({
+        candidates: [
+          baseCandidate({
+            synthesisMode: "abductive",
+            hypothesisStatus: "tested",
+          }),
+        ],
+      }),
+      statusMap,
+    );
+    expect(out[0]?.hypothesisStatus).toBe("tested");
+  });
+
+  it("status map なし (legacy 呼び出し) では従来挙動を維持", () => {
+    const out = parseSynthesizerOutput(
+      JSON.stringify({
+        candidates: [
+          baseCandidate({ synthesisMode: "abductive", hypothesisStatus: "tested" }),
+        ],
+      }),
+    );
+    expect(out[0]?.hypothesisStatus).toBe("tested");
+  });
+});
+

@@ -4,10 +4,12 @@
 import type {
   ClaimLevel,
   ClaimRole,
+  EpistemicStatus,
   KeyParameter,
   ProcedureContext,
   WikiKind,
 } from "../../lib/document-types.js";
+import { EPISTEMIC_STATUS_ORDER } from "../../lib/document-types.js";
 
 /** Claim の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
 const CLAIM_ROLE_VALUES: ClaimRole[] = [
@@ -19,6 +21,9 @@ const CLAIM_ROLE_VALUES: ClaimRole[] = [
   "interpretation",
   "issue",
 ];
+
+/** Phase η: EpistemicStatus として認める値（順序 = 低→高） */
+const EPISTEMIC_STATUS_VALUES = EPISTEMIC_STATUS_ORDER;
 
 /** KeyParameter.necessity として認める値の一覧 */
 const NECESSITY_VALUES: KeyParameter["necessity"][] = ["critical", "important", "incidental"];
@@ -58,6 +63,12 @@ export type IngesterOutput = {
    * 認識不能・パース失敗時は undefined で、機能的には従来通り動作する。
    */
   claimRole?: ClaimRole[];
+  /**
+   * 命題の認識論的ステータス（Phase η）。
+   * claim のみで意味を持つ。LLM が note 中の hedge marker / 観察言語 / 教科書参照
+   * などから自動推定。不明時は undefined (= interpretation 扱い)。
+   */
+  epistemicStatus?: EpistemicStatus;
   /**
    * 主張が依存する手順条件（提案 v4 Phase 2.3）。
    * Claim のみで意味を持つ。LLM が PROV 構造を読んで埋める。
@@ -151,6 +162,7 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
       "level": "principle" | "finding"   // claim のみ。summary では省略
       "evidenceSpan": "string"           // level=principle の場合のみ。下の Principle threshold 参照
       "claimRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // claim のみ。複数可。下の Claim role 参照
+      "epistemicStatus": "speculation" | "interpretation" | "observation" | "established", // claim のみ。下の Epistemic status 参照。REQUIRED for every Claim
       "procedureContext": {                                              // claim のみ。手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
@@ -197,6 +209,32 @@ Guidance:
 - A flagged risk or limitation: \`["issue"]\`.
 - Hardware/protocol pre-conditions: \`["setup"]\`.
 - If none of these clearly fit, omit the field (do **not** pick \`finding\` as a default just to fill the slot).
+
+## Epistemic status (Phase η — REQUIRED for every Claim)
+
+Tag every Claim with **exactly one** \`epistemicStatus\`. This expresses *what kind of evidence the Claim rests on*, independent of \`claimRole\` (which expresses the process move) and \`level\` (which expresses abstraction). The downstream Atomizer / Synthesizer treat status as load-bearing: a single \`speculation\` Claim propagates as \`speculation\` through the Atom and Synthesis layers and is structurally prevented from passing as established knowledge.
+
+Fixed vocabulary (low → high in epistemic strength):
+
+- \`speculation\`: hedge markers (「〜のかも」「もしかして」「気がする」「じゃないかな」"maybe", "might", "I wonder"). The note explicitly signals it is a musing, not a finding.
+- \`interpretation\`: a tentative meaning-making move — possibly grounded in observation but the note does **not** assert it as a fact. Default for "X **might be** because Y" / "考えられる" / "解釈すると…".
+- \`observation\`: measurement / observation language with PROV structure (\`[Step]\` / \`[Output]\` / 「測った」「観察した」「データを取った」), where the Claim is *what was seen* without claiming a mechanism.
+- \`established\`: explicit multi-source confirmation, textbook citation, or "well-known" framing the note treats as ground truth ("教科書では…" / "標準的に〜とされる" / "Marcus 理論によれば").
+
+When uncertain, **prefer the LOWER status**. This is a conservative default: it protects the knowledge layer from speculation leaking upward, at the cost of occasionally underrating an established Claim. The cost of underrating is recoverable (re-rate later); the cost of letting a speculation pass as established is silent contamination of the Atom / Synthesis layers.
+
+Examples:
+
+- Note: 「もしかして、寝る前のストレッチで眠りが深くなるのかも」
+  → epistemicStatus: \`speculation\` (hedge markers present)
+- Note: 「13:20 にオフィスの騒音が 71 dB のピークを示した」
+  → epistemicStatus: \`observation\` (measurement language, no mechanism stated)
+- Note: 「SPS で 800℃ 5 分焼結すると亜鉛蒸発が抑えられ、相純度が上がると考えられる」
+  → epistemicStatus: \`interpretation\` ("考えられる" — tentative mechanism on top of observation)
+- Note: 「光合成は CO₂ と H₂O から糖を作る反応である」
+  → epistemicStatus: \`established\` (textbook-grade statement)
+
+If the source note carries a \`meta.captureMode: "speculation"\` flag (the user explicitly toggled the *Speculation mode* on the note input), **all** Claims from that note must be tagged \`speculation\` regardless of their linguistic surface. The mode is a hard lock — it overrides any inferred status.
 
 ## Procedure context (Phase 2.3 — read this carefully)
 
@@ -399,11 +437,22 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
             : undefined;
         const procedureContext: ProcedureContext | undefined =
           kind === "claim" ? parseProcedureContext(w.procedureContext) : undefined;
+        // Phase η: epistemicStatus を fixed vocabulary でフィルタする。
+        // LLM が不明な値を入れたら undefined にして下流で "interpretation" 扱いに倒す。
+        const rawEpistemic =
+          typeof w.epistemicStatus === "string" ? w.epistemicStatus : undefined;
+        const epistemicStatus: EpistemicStatus | undefined =
+          kind === "claim" &&
+          rawEpistemic &&
+          (EPISTEMIC_STATUS_VALUES as string[]).includes(rawEpistemic)
+            ? (rawEpistemic as EpistemicStatus)
+            : undefined;
         return {
           kind,
           level: finalLevel,
           evidenceSpan: finalLevel === "principle" ? rawEvidence : undefined,
           claimRole: claimRole && claimRole.length > 0 ? claimRole : undefined,
+          epistemicStatus,
           procedureContext,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
