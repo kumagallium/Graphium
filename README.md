@@ -393,6 +393,7 @@ pnpm bench:compare main            # Diff metrics against main's baseline.json
 | `BENCH_API_BASE` | `https://api.ai.sakura.ad.jp/v1` | Override the API endpoint (any OpenAI-compatible endpoint works). |
 | `BENCH_PROFILE` | `baseline` | Profile name written into the output (`baseline`, `with-alpha`, etc.). |
 | `BENCH_MODE` | auto | Force `live` or `dry-run` regardless of API-key detection. |
+| `BENCH_N` | 3 in live, 1 in dry-run | Independent samples per run. Median per metric is reported as the headline; per-sample distribution is kept in `aggregate.distribution` and `runs[]` so PRs can show the noise floor. |
 
 Metric definitions, corpus structure, probe list, and CI integration are
 documented in [docs/BENCHMARK.md](docs/BENCHMARK.md).
