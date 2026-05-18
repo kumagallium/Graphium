@@ -31,7 +31,8 @@ import {
   buildSynthesizerSystemPrompt,
   buildSynthesizerUserMessage,
   parseSynthesizerOutputWithStats,
-  SYNTHESIS_CONFIDENCE_THRESHOLD,
+  DEFAULT_SYNTHESIS_THRESHOLD,
+  SYNTHESIS_THRESHOLDS,
   type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
 import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
@@ -440,7 +441,10 @@ app.post("/synthesize", async (c) => {
         rawCount: stats.rawCount,
         droppedByConfidence: stats.droppedByConfidence,
         maxDroppedConfidence: stats.maxDroppedConfidence,
-        threshold: SYNTHESIS_CONFIDENCE_THRESHOLD,
+        // Phase β: 旧 single threshold は per-mode マップに分解された。
+        // クライアントへは「fallback の default 値」と「mode 別マップ」を両方返す。
+        threshold: DEFAULT_SYNTHESIS_THRESHOLD,
+        thresholds: SYNTHESIS_THRESHOLDS,
       },
     });
   } catch (err) {

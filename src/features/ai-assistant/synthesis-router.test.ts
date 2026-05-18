@@ -31,8 +31,27 @@ describe("routeSynthesisMode (heuristic v1)", () => {
   it("offers dialectic as a candidate when ≥2 causal atoms appear (LLM resolves direction)", () => {
     const r = routeSynthesisMode(["causal", "causal"]);
     expect(r.candidateModes).toContain("dialectic");
-    // deductive should also remain as a permissive fallback
-    expect(r.candidateModes).toContain("deductive");
+    // Phase β: deductive is no longer added as a permissive companion when a
+    // specific mode (dialectic / analogical / abductive) already fired.
+    expect(r.candidateModes).not.toContain("deductive");
+  });
+
+  it("does NOT mix deductive into candidates when abductive already fired (Phase β)", () => {
+    const r = routeSynthesisMode(["observational", "causal"]);
+    expect(r.candidateModes).toContain("abductive");
+    expect(r.candidateModes).not.toContain("deductive");
+  });
+
+  it("does NOT mix deductive into candidates when analogical already fired (Phase β)", () => {
+    const r = routeSynthesisMode(["mechanistic", "mechanistic"]);
+    expect(r.candidateModes).toContain("analogical");
+    expect(r.candidateModes).not.toContain("deductive");
+  });
+
+  it("offers abductive when observational coexists with any other known atomType (Phase β widened condition)", () => {
+    // observational + methodological no longer requires causal/mechanistic
+    const r = routeSynthesisMode(["observational", "methodological"]);
+    expect(r.candidateModes).toContain("abductive");
   });
 
   it("offers analogical as a candidate when ≥2 mechanistic atoms appear (LLM resolves cross-domain)", () => {

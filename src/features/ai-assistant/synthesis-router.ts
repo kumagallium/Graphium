@@ -72,10 +72,12 @@ export function routeSynthesisMode(
   const candidates: SynthesisMode[] = [];
   const reasons: string[] = [];
 
-  // 1) abductive: observational + (causal | mechanistic) が揃えば最有力
-  if (hasObservational && (hasCausal || hasMechanistic)) {
+  // 1) abductive: Phase β で発火条件を緩めた。観測 Atom が混ざっていれば
+  //    candidate Atom の総数が 2 件以上ある時点で候補に入れる。LLM 側で
+  //    実際に「観測 + 仮説」の論理が成り立つか判断する。
+  if (hasObservational && known.length >= 2) {
     candidates.push("abductive");
-    reasons.push("observational + causal/mechanistic → abductive is the strongest candidate.");
+    reasons.push("observational + ≥1 other atomType (known ≥2) → abductive is the strongest candidate.");
   }
 
   // 2) dialectic: causal が 2 件以上あれば「逆向き効果ペア」の可能性を残す
@@ -92,10 +94,13 @@ export function routeSynthesisMode(
     reasons.push("≥2 mechanistic atoms → analogical is possible if domains differ (LLM decides).");
   }
 
-  // 4) deductive: causal / methodological の独立組み合わせは deductive 向き
-  if ((hasCausal || hasMethodological) && !candidates.includes("deductive")) {
+  // 4) deductive: Phase β で「真の fallback」化した。abductive / analogical /
+  //    dialectic がひとつでも候補に入っていれば、deductive は候補に入れない。
+  //    どれも候補に入らない時に限って、causal / methodological が見えていれば
+  //    deductive を最 permissive モードとして提示する。
+  if (candidates.length === 0 && (hasCausal || hasMethodological)) {
     candidates.push("deductive");
-    reasons.push("causal / methodological combination → deductive (strategy from independent facts).");
+    reasons.push("no abductive/analogical/dialectic signal → deductive (combinational fallback).");
   }
 
   // フォールバック: 何もマッチしなければ deductive を最 permissive モードとして残す
