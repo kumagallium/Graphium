@@ -116,7 +116,10 @@ async function main() {
       tokenUsage = llm.usage;
       const parsed = parseProvIngesterOutput(llm.message);
       if (parsed.blocks.length === 0) {
-        console.log(`  ! parse returned 0 blocks (raw size ${llm.message.length} chars)`);
+        console.log(`  ! parse returned 0 blocks (raw size ${llm.message.length} chars). First 500 chars:`);
+        console.log(llm.message.slice(0, 500));
+        console.log(`  ... last 500 chars:`);
+        console.log(llm.message.slice(-500));
       } else {
         predicted = [parsed];
       }

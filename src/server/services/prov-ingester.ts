@@ -160,9 +160,14 @@ Span schema (entries inside \`content\`):
 
 - **procedure** (block-level on an H2 heading only): an action / step / operation. Carries a \`stepId\`.
   Cooking: "sauté garlic" · Lab: "run cyclic voltammetry" · Manufacturing: "anneal at 400°C".
-- **material** (span inside paragraph): an input consumed or transformed by the step (ingredient, reagent, precursor, sample, raw data).
+- **material** (span inside paragraph): a substance that **becomes part of the product** of this step — it is consumed, transformed, or integrated into what the step generates. Includes precursors, reagents, raw ingredients, intermediate samples, input datasets, prior-step products.
   If it is the product of an earlier step, add \`derivedFrom\` to the span.
-- **tool** (span): an instrument used by the step but not consumed (pan, oven, potentiostat, XRD, compiler).
+- **tool** (span): an instrument or apparatus that **facilitates the operation without becoming part of the product**. It stays separate from what is being produced and is typically reusable across runs. Examples: pan, oven, mold, crucible, tube, potentiostat, XRD, compiler, sealing fixture.
+  **Edge cases — read carefully:**
+  - A **quench medium** (ice water, oil, liquid nitrogen — anything the sample is dunked into to cool it and then removed from) is a **tool**, not a material: the cooling fluid does not end up in the final product.
+  - An **anti-contamination coating** (e.g., BN layers sprayed onto a die to prevent current leakage, parchment paper under cookies) is a **tool** for the apparatus, not a material that joins the product.
+  - A **container or carrier** (silica tube holding the sample, crucible holding the powder, baking tray holding the dough) is a **tool**.
+  - Test: "Does this substance end up inside the thing the step produces?" Yes → material. No → tool.
 - **attribute** (span): a parameter / condition / specification (quantity, concentration, temperature, time, pH, voltage, scan rate).
 - **output** (span): an output produced by the step (finished dish, characterization spectrum, measurement value, fabricated device, refined dataset).
 
@@ -213,7 +218,15 @@ When a material span refers to the **product of an earlier step** (and you would
 - **\`<past-participle> <substance>\`** — when the underlying noun is clear: \`"sliced garlic"\`, \`"trained model"\`, \`"preprocessed dataset"\`, \`"amplified DNA"\`, \`"calcined powder"\`
 - **\`<state> <substance>\`** — for state-of-being changes: \`"cooled mixture"\`, \`"dried powder"\`, \`"frozen sample"\`
 
-The past-participle / state word should match the **gerund of the producing Activity's H2 heading**: an Activity titled \`"Annealing"\` produces an \`"annealed sample"\` (or \`"annealed ingot"\`, \`"annealed powder"\` if the form is clearly stated); an Activity titled \`"Slicing the garlic"\` produces \`"sliced garlic"\`.
+The past-participle / state word should match the **gerund of the producing Activity's H2 heading**: an Activity titled \`"Annealing"\` produces an \`"annealed sample"\`; an Activity titled \`"Slicing the garlic"\` produces \`"sliced garlic"\`.
+
+**For multi-word Activity verbs, keep the full verb in the post-transformation name**. Do not shorten:
+- Activity \`"Spark plasma sintering"\` → product \`"spark plasma sintered sample"\` (NOT just \`"sintered sample"\`)
+- Activity \`"Ball-milling"\` → product \`"ball-milled sample"\` (NOT \`"milled sample"\`)
+- Activity \`"Co-precipitating"\` → product \`"co-precipitated sample"\` (NOT \`"precipitated sample"\`)
+- Activity \`"Spark-erosion machining"\` → product \`"spark-erosion machined sample"\`
+
+The full multi-word past participle preserves which Activity produced this material, which the graph consumer relies on.
 
 Why this matters: without the post-transformation form, downstream readers (and graph consumers) can't tell that \`"ingot"\` in step 5 is the product of step 3 just from reading the text. The \`derivedFrom\` field carries the link, but the prose should reinforce it.
 
@@ -236,6 +249,10 @@ Examples (universal across domains):
 - ✅ \`"Warming up"\`, \`"Training"\`, \`"Fine-tuning"\`, each with its own learning_rate / steps
 
 Each subsequent stage should consume the previous stage's product via a \`material\` span with \`derivedFrom: "<prior-stepId>"\`, using a post-transformation noun (the produced \`"raised sample"\` is consumed by the next stage as a material with \`derivedFrom: "raising"\`).
+
+Source sentence example: "The mixture was raised to 1423 K in 6 h and then maintained at this temperature for 12 h before quenching into ice water."
+
+This is **three** distinct stages with different parameter values (ramp duration, holding duration, quench medium). Emit one H2 procedure per stage — \`"Raising"\`, \`"Maintaining"\`, \`"Quenching"\` — each with its own paragraph containing the appropriate \`material\` / \`tool\` / \`attribute\` / \`output\` spans, and each consuming the previous stage's product via a material span with \`derivedFrom\` linking to the prior \`stepId\`. The quench medium (\`"ice water"\`) is a \`tool\` because the sample is removed from it; see the role definitions for the material-vs-tool test.
 
 ## Object descriptors → attribute spans (CRITICAL — capture purity, form, grade, etc.)
 
