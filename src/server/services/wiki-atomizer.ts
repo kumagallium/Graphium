@@ -256,7 +256,7 @@ If the source Claim list is missing \`epistemicStatus\` (legacy data, Phase η-a
 ## Rules (strict)
 - **Each Atom MUST cite >= 2 Claims** in \`sourceConceptIds\`. Use the EXACT id from the Claim list.
 - **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
-- **Quality over quantity.** Generate 0-5 candidates. If the Claims share only narrow domain-bound details and you cannot lift them honestly, **return an empty list**. An empty list is better than an under-abstracted Atom.
+- **Quality over quantity, but don't artificially cap.** Generate 0-8 candidates. If the Claim set surfaces multiple distinct recurring patterns, emit each as its own Atom rather than bundling them. If the Claims share only narrow domain-bound details and you cannot lift them honestly, **return an empty list**. An empty list is better than an under-abstracted Atom, and 3 honest Atoms beat 6 forced ones.
 - Only propose with \`confidence >= 0.7\`. Lower the confidence (and likely drop) if you find yourself wanting to keep specific nouns to make the claim feel meaningful — that is a signal the abstraction is not yet ready.
 - Do not invent citations, URLs, or author names.
 

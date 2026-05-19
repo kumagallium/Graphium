@@ -31,7 +31,8 @@ import {
   buildSynthesizerSystemPrompt,
   buildSynthesizerUserMessage,
   parseSynthesizerOutputWithStats,
-  SYNTHESIS_CONFIDENCE_THRESHOLD,
+  DEFAULT_SYNTHESIS_THRESHOLD,
+  SYNTHESIS_THRESHOLDS,
   type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
 import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
@@ -449,7 +450,8 @@ app.post("/synthesize", async (c) => {
         rawCount: stats.rawCount,
         droppedByConfidence: stats.droppedByConfidence,
         maxDroppedConfidence: stats.maxDroppedConfidence,
-        threshold: SYNTHESIS_CONFIDENCE_THRESHOLD,
+        threshold: DEFAULT_SYNTHESIS_THRESHOLD,
+        thresholds: SYNTHESIS_THRESHOLDS,
       },
     });
   } catch (err) {
