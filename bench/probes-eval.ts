@@ -149,6 +149,22 @@ function evaluateProbeExpected(
     allPassed &&= ok;
   }
 
+  if (typeof exp.claimCountPerNote === "object" && exp.claimCountPerNote !== null) {
+    // Phase η probe: mixed-status note は 1 note あたり 2+ Claim に分離されるべき。
+    const min = (exp.claimCountPerNote as { min?: number }).min ?? 0;
+    const byNote = new Map<string, number>();
+    for (const c of claims) {
+      byNote.set(c.sourceNoteId, (byNote.get(c.sourceNoteId) ?? 0) + 1);
+    }
+    const noteCounts = Array.from(byNote.values());
+    const violators = noteCounts.filter((n) => n < min).length;
+    const ok = noteCounts.length > 0 && violators === 0;
+    reasons.push(
+      `claimCountPerNote>=${min}: ${ok ? "ok" : `${violators}/${noteCounts.length} notes below min (counts: ${noteCounts.join("/")})`}`,
+    );
+    allPassed &&= ok;
+  }
+
   return {
     name: probe.name,
     passed: allPassed,

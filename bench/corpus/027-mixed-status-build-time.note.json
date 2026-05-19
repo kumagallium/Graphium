@@ -1,0 +1,7 @@
+{
+  "noteId": "027-mixed-status-build-time",
+  "category": "mixed-status",
+  "language": "ja",
+  "title": "CI ビルド時間が短くなった件 — 計測と推測",
+  "body": "今週からビルド時間が短くなっている。\n[Step] 計測\n  [Tool] GitHub Actions ログ、[Output] 先週平均 7m20s, 今週平均 4m50s\n[Step] 確認した変更\n  [Input] 直近 2 週間の commit ログ、[Output] node_modules キャッシュ戦略を pnpm store ベースに変更 (PR #842) / runner を ubuntu-22.04 から ubuntu-24.04 に変更 (PR #847)\n\nもしかして、runner 変更のほうが効いている気がする。pnpm store のキャッシュ戦略は前から似たような形だったし、変えても 30 秒程度しか変わらないんじゃないかな。\n\n計測値（7m20s → 4m50s）と変更の事実（PR #842 / #847）は確かだが、どちらが寄与したかは A/B で測らないと分からない。今のうちに片方ずつ revert して計測しておくか、と思いつつ実行してはいない。"
+}

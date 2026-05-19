@@ -1,0 +1,14 @@
+{
+  "name": "intra-note-status-splitting",
+  "inputs": [
+    "bench/corpus/026-mixed-status-recovery.note.json",
+    "bench/corpus/027-mixed-status-build-time.note.json",
+    "bench/corpus/028-mixed-status-sleep-stretch.note.json"
+  ],
+  "expected": {
+    "claimCountPerNote": { "min": 2 },
+    "atomEpistemicStatus": "speculation",
+    "rationale": "各 mixed-status note は本文内に観察事実と推測『〜のかも』が同居する。Ingester は 2 件以上の Claim に分離し、観察 Claim は observation、推測 Claim は speculation でタグ付ける。Atomizer は最低 status 継承（lowest-status inheritance）で導出 Atom を speculation にする。これは Phase η の load-bearing capability の直接テスト。"
+  },
+  "rationale": "Phase η の真のテスト。spec g8（'casual な musing が established な知識と区別なく扱われる risk'）が解決されているかを mixed-status corpus で確認する。Phase μ-1 の casual-musing probe（note 全体が speculation）と違い、これは 1 note 内での分離能力を測る。"
+}

@@ -1,0 +1,12 @@
+{
+  "noteId": "026-mixed-status-recovery",
+  "expected": {
+    "claimCount": { "min": 2, "max": 4 },
+    "claimRoles": ["finding", "interpretation", "question"],
+    "epistemicStatus": ["observation", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "1 note に観測（解熱までの日数、介入内容）と推測（味噌汁が効いた『気がする』）が同居。Ingester は ≥2 件の Claim に分離し、それぞれを observation と speculation に振り分けることが期待される。Phase η の load-bearing test。"
+}

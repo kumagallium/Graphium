@@ -1,0 +1,12 @@
+{
+  "noteId": "029-edge-case-very-short",
+  "expected": {
+    "claimCount": { "min": 0, "max": 1 },
+    "claimRoles": [],
+    "epistemicStatus": [],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": []
+  },
+  "notes": "超短文 TODO note。本文が 1 文しかなく主張は無い。Ingester は wiki-worthy ガードで 0 claim を返すのが期待される挙動（出力させてもただの TODO で knowledge layer の意味は無い）。'graceful degradation' edge case の robustness test。"
+}

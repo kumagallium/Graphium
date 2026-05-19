@@ -138,17 +138,34 @@ function splitIntoClaims(note: CorpusNote): BenchClaim[] {
   });
 }
 
-// 共通 lift 用の jargon 表（領域固有語）。Phase α でこのリストに頼らず LLM 側で lift する。
-const DOMAIN_JARGON = [
-  "ZnSb", "SPS", "XRD", "Bi2Te3", "Sb", "Zn", "Te", "Bi", "Pt",
-  "TiO2", "H2PtCl6", "ZEM-3", "LFA", "HP", "RDE", "ORR", "Nafion",
-  "HClO4", "qPCR", "DMEM", "FBS", "HeLa", "siRNA", "GAPDH",
-  "Lipofectamine", "MHC", "HIDS", "auditd", "SGD", "TDD",
-  "Redis", "Temporal", "NTP", "TTL", "API", "RHE", "PARSTAT", "Dr Sinter",
+// dry-run heuristic で Atom の liftLevel を雑に決めるための jargon 検出。
+// Phase μ-1.1: corpus に登場する固有名詞の固定リストを使うと self-referential bias と
+// μ-2 corpus 拡張で当たらなくなる問題があるので、pattern-based に切り替えた。
+// 本物の lift 判定は live mode の LLM judge が担う（bench/judge.ts createLiveJudges）。
+const COMMON_ACRONYM_STOPLIST = new Set([
+  "AI", "API", "URL", "URI", "JSON", "HTML", "CSS", "JS", "TS", "OS",
+  "PR", "ID", "OK", "NG", "JP", "EN", "UI", "UX", "SQL", "HTTP", "HTTPS",
+  "TLS", "SSL", "TCP", "UDP", "DNS", "CPU", "GPU", "RAM", "ROM",
+  "PDF", "CSV", "TSV", "ML", "DL", "NLP",
+]);
+const JARGON_PATTERNS = [
+  // 化学式: 例 ZnSb / Bi2Te3 / TiO2 / H2PtCl6
+  /\b(?:[A-Z][a-z]?\d+(?:[A-Z][a-z]?\d*){1,}|[A-Z][a-z]?\d+\b|(?:[A-Z][a-z]?){2,}\d+|[A-Z]{2,}\d+)\b/g,
+  // 大文字略語 (2 文字以上、stoplist 除外): 例 SPS / XRD / ORR / MHC
+  /\b[A-Z]{2,}(?:[a-z][A-Z]+)?\b/g,
+  // 装置 / 製品 ID: 例 ZEM-3 / GPT-4
+  /\b[A-Z][a-zA-Z]+(?:[-\s][A-Z]?[a-zA-Z]*)?[-\s]?\d+[A-Za-z]?\b/g,
 ];
-
 function hasJargon(text: string): boolean {
-  return DOMAIN_JARGON.some((j) => new RegExp(`\\b${j}\\b`, "i").test(text));
+  for (const re of JARGON_PATTERNS) {
+    for (const m of text.matchAll(re)) {
+      const token = m[0];
+      if (COMMON_ACRONYM_STOPLIST.has(token.toUpperCase())) continue;
+      if (/^\d+$/.test(token)) continue;
+      return true;
+    }
+  }
+  return false;
 }
 
 function clusterClaimsForAtoms(claims: BenchClaim[]): number[][] {
@@ -343,10 +360,8 @@ function toModelConfig(): ModelConfig {
 }
 
 function liftLevelFromText(text: string): "rung-0" | "rung-1" | "rung-2" {
-  // Phase α 前の baseline 用 heuristic。jargon が残っていれば rung-1 とする。
-  return DOMAIN_JARGON.some((j) => new RegExp(`\\b${j}\\b`, "i").test(text))
-    ? "rung-1"
-    : "rung-2";
+  // jargon パターンが残っていれば rung-1 とする (pattern-based, corpus-agnostic)。
+  return hasJargon(text) ? "rung-1" : "rung-2";
 }
 
 /** 出力テキストが「JSON っぽいが parse 失敗した」かを軽く判定する */
