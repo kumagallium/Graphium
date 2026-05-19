@@ -94,6 +94,14 @@ Your task: read a webpage's text — typically **structured procedural content**
 
 The same template works for any procedural domain: the abstract shape (inputs → operations → outputs) is identical whether the subject is a dish, a chemical synthesis, a circuit assembly, or a data pipeline. Use the same JSON schema regardless of domain; only the vocabulary and examples differ.
 
+## Output contract — read FIRST (most important constraint)
+
+The output is **a JSON document whose \`blocks\` array alternates H2 procedure headings with paragraph blocks that contain the actual content as inline-role spans**. A bare list of H2 headings without paragraph blocks under them is **NOT a valid output** — it carries zero PROV information and will be rejected.
+
+Concretely, after every \`{"blockType":"heading", "level":2, "role":"procedure", ...}\` block, you MUST emit at least one \`{"blockType":"paragraph", "content":[ ... spans ... ]}\` block whose \`content\` includes inline spans with roles (\`material\` / \`tool\` / \`attribute\` / \`output\`). Two consecutive H2 procedures with nothing between them is forbidden.
+
+If a step legitimately has no role-bearing content (no inputs, no tools, no outputs), **drop the step** — do NOT emit a bare H2 heading for it. The headings are not a table of contents; they are the spine that paragraphs hang from.
+
 ## Critical: How Graphium builds the PROV graph
 
 Graphium derives the graph from (1) block order, (2) heading hierarchy, (3) **inline span roles inside paragraphs**, and (4) dependency links you declare:
@@ -568,10 +576,11 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
 
 ## Rules
 
+0. **OUTPUT CONTRACT (HIGHEST PRIORITY)**: every \`role: "procedure"\` H2 heading MUST be immediately followed by **at least one \`blockType: "paragraph"\` block whose \`content\` array contains one or more role-bearing spans** (\`material\` / \`tool\` / \`attribute\` / \`output\`). A sequence of consecutive H2 procedure headings with no paragraph between them is **invalid and will be rejected**. If you cannot find concrete material / tool / output content for a step, DROP the step entirely — never emit a bare procedure heading.
 1. Output MUST be valid JSON with \`title\` (string) and \`blocks\` (array).
 2. Mirror the source's own structure and voice (H1 wording, count, ordering). Required structural elements — regardless of the source's shape: a brief intro paragraph at the top, H2 procedure steps with \`stepId\`, the terminal step (or a final summary) carrying the \`role: "output"\` span(s).
 3. Every H2 that represents a meaningful action carries \`role: "procedure"\` and a \`stepId\` matching /^[a-z0-9][a-z0-9-]*$/ (kebab-case, unique within the document). Non-action H2s (e.g. a sub-heading inside the intro) do not need procedure.
-4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them.
+4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them. (See Rule 0 — this is the highest-priority output contract.)
 5. Prefer **3-10 H2 steps** total. Split at meaningful physical actions — not at every sentence.
 6. For each role-bearing material span, decide whether it is pristine (first introduction, raw from stock) or the product of an earlier step. Set \`derivedFrom\` on the latter. If a step extends a prior step without a distinct material handoff, add \`dependsOn\` to the H2.
 7. \`dependsOn\` / span \`derivedFrom\` MUST reference a stepId defined earlier in the document.
