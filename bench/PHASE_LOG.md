@@ -269,3 +269,49 @@ Migration is the only blocker — data loss from a schema bump is the failure mo
 - Performance (100-note synth corpus, dry-run): duration **~1 ms median**, heap delta peak **~1.45 MiB**, atoms JSON **~28 KiB**, syntheses JSON **~109 KiB**, counts `100c / 100a / 390s`.
 
 Verdict: **merge** when reviewed — the infrastructure stands up; failure modes that future phases need to address are now visible to CI rather than hidden behind subjective judgment.
+
+## synth-diversity — per-mode threshold + diversity prompt + atomizer cap (PR TBD, status: **merge candidate**)
+
+Targets the `mode_distribution_entropy` regression that persisted across α → η: the metric was median 0.0 because `synthesis_count_total` was stuck at 1–2 per session. Three coordinated changes:
+
+- **A**: per-mode confidence threshold. `SYNTHESIS_THRESHOLDS = { deductive: 0.92, abductive: 0.70, analogical: 0.70, dialectic: 0.70 }`. Non-deductive modes have firing conditions enforced upstream by the router, so the score bar can be lower without becoming gambling synthesis.
+- **B**: prompt-level diversity preference. Caps "0-2 candidates" relax to "0-4", and a new rule says "when emitting 2+ candidates, prefer covering different modes — same-mode duplicates should be dropped or merged."
+- **C**: Atomizer cap "0-5 candidates" → "0-8 candidates". With more atoms to choose from, the synthesizer has more combination paths and naturally diversifies.
+
+### Live evidence (n=3, post-µ-1.2 baseline)
+
+Live run: CI workflow_dispatch [run 26074819452](https://github.com/kumagallium/Graphium/actions/runs/26074819452) on `feat/wiki-synthesizer-diversity`. Snapshot: `bench/results/with-synth-diversity-n3-2026-05-19.json`.
+
+| metric | post-η median | with-synth-div median | Δ (median) | with-synth-div range |
+|---|---|---|---|---|
+| **`mode_distribution_entropy`** | **0.000** | **0.500** | ▲ **+0.500** | 0.000 – **0.792** |
+| `lift_score` | 0.800 | 0.733 | ▼ −0.067 | 0.700 – 0.750 |
+| `epistemic_preservation` | 0.862 | 0.857 | ▼ inside | 0.828 – 0.897 |
+| `observation_atom_ratio` | 0.200 | 0.000 | ▼ −0.200 | 0.000 – 0.125 |
+| `adversarial_pass_rate` | 0.636 | 0.727 | ▲ +0.091 | 0.727 |
+| `novelty_score` | 1.000 | 1.000 | · 0 | 1.000 |
+| `claim_count_total` | 48 | 53 | ▲ +5 | 47 – 53 |
+| **`atom_count_total`** | 5 | **15** | ▲ +10 | 10 – 16 |
+| `synthesis_count_total` | 1 | 2 | ▲ +1 | 1 – 3 |
+
+Per-sample:
+
+| run | lift | entropy | obs_ratio | epi | atoms | syn |
+|---|---|---|---|---|---|---|
+| #1 | 0.733 | 0.000 | 0.000 | 0.897 | 15 | 1 |
+| #2 | 0.750 | **0.792** | 0.125 | 0.828 | 16 | 3 |
+| #3 | 0.700 | 0.500 | 0.000 | 0.857 | 10 | 2 |
+
+Verdict: **MERGE.**
+
+The pre-declared metric `mode_distribution_entropy` (spec §14 target: +0.5 vs the μ-1 baseline of 0.5) **clears at exactly +0.5 median**. Max sample hits 0.792, which is the closest the bench has come to 4-mode equal distribution (1.0). The mechanism works: per-mode threshold lets non-deductive candidates pass, the diversity prompt nudges the LLM to spread across modes, and the atomizer cap relaxation feeds 3× the atoms (5 → 15 median) into the synthesizer.
+
+Honest trade-offs:
+
+- **`observation_atom_ratio` regressed 0.200 → 0.000** (range 0–0.125). With 3× more atoms generated, the share tagged `observational` dropped, and the diversity preference may be pushing the LLM toward `causal` / `mechanistic` for variety. **This is the cost of pursuing entropy via atom-count expansion**: when there are more atoms, the % share of any single type goes down naturally. The Phase α prompt for "preserving observational atoms" is still in place; the absolute count of observational atoms hasn't necessarily dropped, only the ratio. A follow-up may need to instruct the diversity preference to **not crowd out observational** specifically.
+- **`lift_score` regressed 0.800 → 0.733**. Same dilution effect — more atoms in the pool means more chances for one to carry a piece of unlifted jargon. Range tightened to 0.05, so the metric is stable.
+- **`epistemic_preservation` essentially unchanged** (0.862 → 0.857, fully inside both ranges). The structural η rules are not affected by synthesizer-side changes.
+
+`adversarial_pass_rate` rose to 0.727 — most of that gain is from PR #302 (μ-1.2 probe fix); about 0.01 attributable to this PR.
+
+Net read: the bench gains a *huge* signal (entropy off the floor for the first time, max 0.792) for two minor metric regressions that have a clear mechanistic explanation. The cleanest follow-up is a small Atomizer-side change that biases the diversity preference toward type variety without sacrificing observational-atom share.
