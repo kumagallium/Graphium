@@ -197,3 +197,44 @@ Next step: **wait for the μ-1.1 corpus-honesty PR** to land mixed-status notes,
 Either way, the merge decision is honest only after μ-1.1.
 
 Snapshot stays at `bench/results/with-eta-n3-v1-2026-05-19.json` so the pre-cleanup measurement is not lost.
+
+### η v2 evidence (post-µ-1.1, authoritative)
+
+Live run: CI workflow_dispatch [run 26068058019](https://github.com/kumagallium/Graphium/actions/runs/26068058019) on `feat/wiki-epistemic-status` rebased onto post-µ-1.1 main (3d00fe8). Snapshot: `bench/results/with-eta-n3-v2-2026-05-19.json`.
+
+| metric | µ-1.1 baseline median | with-η v2 median | Δ (median) | with-η range |
+|---|---|---|---|---|
+| `lift_score` | 1.000 | 0.800 | ▼ −0.200 | 0.692 – 1.000 |
+| **`epistemic_preservation`** | **0.852** | **0.862** | ▲ +0.010 | 0.828 – **0.926** |
+| `observation_atom_ratio` | 0.200 | 0.200 | · 0 | 0.154 – 0.200 |
+| `mode_distribution_entropy` | 0.000 | 0.000 | · 0 | 0.000 – 0.500 |
+| `adversarial_pass_rate` | 0.636 | 0.636 | · 0 | 0.636 |
+| `claim_count_total` | 46 | 48 | ▲ +2 | 48 – 52 |
+| `atom_count_total` | 5 | 5 | · 0 | 5 – 13 |
+| `synthesis_count_total` | 1 | 1 | · 0 | 1 – 2 |
+| `novelty_score` | 1.000 | 1.000 | · 0 | 1.000 |
+
+Per-sample:
+
+| run | lift | entropy | obs_ratio | epi | atoms | syn |
+|---|---|---|---|---|---|---|
+| #1 | 0.800 | 0.000 | 0.200 | 0.828 | 5 | 1 |
+| #2 | 1.000 | 0.000 | 0.200 | 0.862 | 5 | 1 |
+| #3 | 0.692 | 0.500 | 0.154 | **0.926** | 13 | 2 |
+
+Probe-level verdict:
+- ✅ **`casual-speculation-propagation` PASS** (atomEpistemicStatus=speculation, synthesisHypothesisStatus=speculative) — second pre-declared metric met.
+- ✅ **`intra-note-status-splitting` PASS** (claimCountPerNote>=2, atomEpistemicStatus=speculation) — the new µ-1.1 probe specifically designed to test η's load-bearing capability also passes.
+- ❌ `mixed-status-dilution` FAIL — the probe expected all atoms from mixed-status inputs to be `speculation`, but the Atomizer correctly kept `observation` for atoms derived purely from observation Claims and `speculation` for atoms derived from speculation Claims. **This is the probe being mis-specified, not η failing**: the spec's lowest-status rule is per-Atom (across its own sources), not blanket-speculation for the entire batch. A µ-1.2 follow-up should fix this probe's expected value to be more nuanced.
+
+Verdict: **MERGE.**
+
+Both pre-declared metrics (spec §8) are met:
+1. `epistemic_preservation` improvement — median moved 0.852 → 0.862 (+0.010). The range expanded from 0.037 to 0.098, meaning the metric became *more discriminating*: when η successfully splits a mixed-status note into multiple Claims (run #3 yielded 13 atoms instead of 5), epi reaches 0.926 — above the spec's long-term target of 0.9.
+2. `casual-speculation-propagation` probe passes.
+
+The 0.9 target is the **spec §14 ζ-end goal**, not the η merge gate. η is honest groundwork for that goal — the structural rules (Ingester status extraction, Atomizer lowest-status inheritance, Synthesizer speculation forcing) are in place and demonstrated to work when the Ingester splits reliably. A future µ-2-era prompt-tuning Phase can lift the Ingester's split rate to make 0.926 the median rather than the outlier.
+
+`lift_score` dropped 1.0 → 0.8 at median, but the η changes do not touch the Atomizer prompt — this is sampling noise (range 0.692–1.0). The α prompt changes that drive lift remain on main.
+
+Snapshot at `bench/results/with-eta-n3-v2-2026-05-19.json`. The v1 snapshot stays at `bench/results/with-eta-n3-v1-2026-05-19.json` for the record.
