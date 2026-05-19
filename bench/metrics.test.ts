@@ -67,11 +67,23 @@ describe("liftScore", () => {
   });
 
   it("mixed Atoms returns intermediate", () => {
+    // 2 つめの atom は "ORR" (3-char acronym) で pattern-based 判定が catch する。
+    // 単独元素記号 ("Pt") は pattern では catch できない既知の限界（下のテスト参照）。
     const atoms = [
       makeAtom({ title: "短時間の高温処理", body: "揮発しやすい" }),
-      makeAtom({ title: "Pt 担持", body: "還元活性" }),
+      makeAtom({ title: "ORR 活性", body: "還元反応の起こりやすさ" }),
     ];
     expect(liftScore(atoms)).toBe(0.5);
+  });
+
+  it("(known limitation) single element symbols like 'Pt' are NOT caught by pattern-based heuristic", () => {
+    // Phase μ-1.1 で corpus-agnostic patterns に置き換えた結果、単独 1-2 文字の
+    // 元素記号 (Pt, Zn 単独, Si 単独 など) は pattern が catch できない。これは
+    // pattern が「3+ char 大文字略語 / 化学式 (digit を含む) / 装置 ID (digit を含む)」
+    // に絞っているため。元素記号の jargon 性は live LLM judge が判定するのが正規ルート。
+    // この test は heuristic の false-negative を明示的に文書化するためにある。
+    const atoms = [makeAtom({ title: "Pt 担持", body: "還元活性" })];
+    expect(liftScore(atoms)).toBe(1);
   });
 
   it("empty atoms returns 1 (vacuous)", () => {

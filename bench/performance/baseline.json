@@ -1,14 +1,14 @@
 {
-  "recordedAt": "2026-05-18T22:10:23.947Z",
+  "recordedAt": "2026-05-19T00:38:12.419Z",
   "result": {
     "corpusSize": 100,
     "durationMedianMs": 1,
     "durationSamplesMs": [
-      3,
+      2,
       1,
-      1
+      0
     ],
-    "heapDeltaPeakBytes": 1524384,
+    "heapDeltaPeakBytes": 1086360,
     "atomsJsonBytes": 28581,
     "syntheses_json_bytes": 111556,
     "counts": {

@@ -1,0 +1,12 @@
+{
+  "noteId": "030-edge-case-mixed-language",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["interpretation", "question"],
+    "epistemicStatus": ["interpretation", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["analogical", "abductive"]
+  },
+  "notes": "日英混在 note。Nielsen progressive disclosure を Graphium のラベル設計に類推。Ingester は言語切替に動じず Claim を抽出し、Atom は rung-2 (e.g., '段階的開示' / '必要な分だけ提示する設計') にリフトされるのが期待。世界普及視野での language-robustness test。epistemicStatus=[interpretation, speculation] は、Nielsen の原則そのものを established として直接引用しているのではなく、note の主語は『読んで自分の設計に照らした感想と疑問』であるため。independent reviewer の指摘で根拠を明示。"
+}

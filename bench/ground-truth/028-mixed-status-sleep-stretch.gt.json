@@ -1,0 +1,12 @@
+{
+  "noteId": "028-mixed-status-sleep-stretch",
+  "expected": {
+    "claimCount": { "min": 2, "max": 4 },
+    "claimRoles": ["finding", "interpretation", "question"],
+    "epistemicStatus": ["observation", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "ストレッチ自己実験: 睡眠スコア +4 という観察と、ストレッチが原因か就寝時刻の前倒しが原因か分からない（rebuttal）。Phase η の intra-note splitting + Phase γ の rebuttal extraction を同時に試せる note。"
+}

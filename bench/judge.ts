@@ -17,13 +17,54 @@ import { getBenchJudgeConfig } from "./config.ts";
 import { createModel } from "../src/server/services/llm.js";
 import type { ModelConfig } from "../src/server/config/models.js";
 
-const HEURISTIC_JARGON = [
-  "ZnSb", "SPS", "XRD", "Bi2Te3", "Sb", "Zn", "Te", "Bi", "Pt",
-  "TiO2", "H2PtCl6", "ZEM-3", "LFA", "HP", "RDE", "ORR", "Nafion",
-  "HClO4", "qPCR", "DMEM", "FBS", "HeLa", "siRNA", "GAPDH",
-  "Lipofectamine", "MHC", "HIDS", "auditd", "SGD", "TDD",
-  "Redis", "Temporal", "NTP", "TTL", "RHE", "PARSTAT", "Dr Sinter",
-];
+// ─── Pattern-based jargon detection (corpus-agnostic) ────────────────────────────
+//
+// 旧 HEURISTIC_JARGON は corpus に登場する具体トークンの固定リストだったため、
+// (a) pipeline.ts の同じ辞書を判定にも使う self-referential bias、
+// (b) μ-2 で生物 / 経済 / 人文に corpus が広がると辞書が当たらなくなる将来バグ、
+// の二重の問題があった。Pattern-based 判定にして corpus に依存しない一般則にする。
+// 真の品質判定は LLM judge（live mode）が行う。pattern 版はあくまで dry-run /
+// unit-test 用の coarse approximation。
+
+/**
+ * よく現れる略語 / 一般語 (jargon ではない)。これらは domain-specific ではないので
+ * stoplist として除外する。spec §5 にあるように、世界普及視野でも通用する用語に絞る。
+ */
+const COMMON_ACRONYM_STOPLIST = new Set([
+  "AI", "API", "URL", "URI", "JSON", "HTML", "CSS", "JS", "TS", "OS",
+  "PR", "ID", "OK", "NG", "JP", "EN", "UI", "UX", "SQL", "HTTP", "HTTPS",
+  "TLS", "SSL", "TCP", "UDP", "DNS", "CPU", "GPU", "RAM", "ROM",
+  "PDF", "CSV", "TSV", "ML", "DL", "NLP",
+]);
+
+/** 化学式パターン: 例 ZnSb / Bi2Te3 / TiO2 / H2PtCl6 / CO2 / N2O */
+const CHEM_FORMULA_RE = /\b(?:[A-Z][a-z]?\d+(?:[A-Z][a-z]?\d*){1,}|[A-Z][a-z]?\d+\b|(?:[A-Z][a-z]?){2,}\d+|[A-Z]{2,}\d+)\b/g;
+
+/** 3 文字以上の大文字略語: 例 SPS / XRD / ORR / qPCR / DMEM / MHC / NTP */
+const ACRONYM_3PLUS_RE = /\b[A-Z]{2,}(?:[a-z][A-Z]+)?\b/g;
+
+/** 装置 / 製品 ID パターン: 例 ZEM-3 / GPT-4 / Dr Sinter（ハイフン or 数字付き名前） */
+const PRODUCT_ID_RE = /\b[A-Z][a-zA-Z]+(?:[-\s][A-Z]?[a-zA-Z]*)?[-\s]?\d+[A-Za-z]?\b/g;
+
+/**
+ * domain-specific っぽいカタカナ + 英数字の混在: 例 「siRNAトランスフェクション」「NaCl結晶」
+ * 4 文字以上のカタカナ語自体は domain-general としていったん許容する（spec §5 plain-language register）。
+ */
+const KATAKANA_ASCII_HYBRID_RE = /[ァ-ヾー]+[A-Za-z0-9]/g;
+
+function findJargonTokens(text: string): string[] {
+  const matches = new Set<string>();
+  for (const re of [CHEM_FORMULA_RE, ACRONYM_3PLUS_RE, PRODUCT_ID_RE, KATAKANA_ASCII_HYBRID_RE]) {
+    for (const m of text.matchAll(re)) {
+      const token = m[0];
+      if (COMMON_ACRONYM_STOPLIST.has(token.toUpperCase())) continue;
+      // 数字のみは jargon ではない
+      if (/^\d+$/.test(token)) continue;
+      matches.add(token);
+    }
+  }
+  return Array.from(matches);
+}
 
 export type Judgment = { passed: boolean; reason: string };
 export type LiftJudgment = Judgment;
@@ -47,14 +88,14 @@ export type JudgePack = {
 
 function heuristicLift(atom: BenchAtom): Judgment {
   const target = `${atom.title} ${atom.body}`;
-  const matched = HEURISTIC_JARGON.filter((j) => new RegExp(`\\b${j}\\b`, "i").test(target));
+  const matched = findJargonTokens(target);
   if (matched.length > 0) {
     return {
       passed: false,
       reason: `domain-specific tokens remained: ${matched.slice(0, 5).join(", ")}`,
     };
   }
-  return { passed: true, reason: "no domain-specific jargon detected" };
+  return { passed: true, reason: "no domain-specific jargon detected (pattern-based)" };
 }
 
 function heuristicNovelty(synthesisBody: string, sourceTexts: string[]): Judgment {
@@ -71,7 +112,7 @@ export function createHeuristicJudges(): JudgePack {
     kind: "heuristic",
     lift: async (atom) => heuristicLift(atom),
     novelty: async (body, sources) => heuristicNovelty(body, sources),
-    meta: { provider: "heuristic", modelId: "n/a", modelName: "heuristic (jargon dict + substring)" },
+    meta: { provider: "heuristic", modelId: "n/a", modelName: "heuristic (pattern-based jargon + substring)" },
   };
 }
 
