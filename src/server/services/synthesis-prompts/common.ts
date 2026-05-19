@@ -133,7 +133,7 @@ Synthesis sits at the top of an inference chain (note → Summary → Claim → 
 1. **Every load-bearing claim MUST cite its source** using \`[[Claim Title]]\` — the EXACT title from the Claim list below. Generic phrases like "according to the concepts" / "ある Claim によると" are not citations.
 2. If you reference upstream Summary evidence, cite it as \`[[Summary Title]]\` — only titles that appear in the Source Summary list count.
 3. **Do NOT invent external URLs, DOIs, paper titles, or author names.** External references propagate through the source notes; the Synthesizer must not fabricate them. If the source Claims don't carry a citation, omit it.
-4. Lower \`confidence\` when upstream Claims conflict, when evidence is thin, or when the synthesis depends on assumptions not present in the inputs. Do not inflate confidence to make a candidate pass the 0.85 threshold.`;
+4. Lower \`confidence\` when upstream Claims conflict, when evidence is thin, or when the synthesis depends on assumptions not present in the inputs. Do not inflate confidence to make a candidate pass the per-mode threshold (deductive 0.92 / others 0.70).`;
 
 /** 一般ガイドライン（モード非依存） */
 export function buildGuidelines(language: string): string {
@@ -147,10 +147,14 @@ export function buildGuidelines(language: string): string {
 
   return `## Guidelines
 
-- Generate 0-2 candidates (quality over quantity). **Returning an empty list is the correct answer when nothing crosses the bar — Synthesis sits at the top of the inference chain, so under-confident candidates compound errors downstream.**
-- Only propose with confidence >= 0.85 (and treat 0.85 as "barely confident" — most genuine syntheses sit at 0.88-0.95). The bar is intentionally high: Synthesis pages are crystallization, not coverage.
+- Generate 0-4 candidates (quality over quantity, but **don't artificially cap at 1-2 when multiple genuine connections exist**). Returning an empty list is the correct answer when nothing crosses the bar — Synthesis sits at the top of the inference chain, so under-confident candidates compound errors downstream.
+- Confidence thresholds are **per-mode**:
+  - \`deductive\` requires \`confidence >= 0.92\` (this is the most permissive mode and tends to "merge whatever fits", so the bar is intentionally high)
+  - \`abductive\` / \`analogical\` / \`dialectic\` require \`confidence >= 0.70\` (these modes have firing conditions enforced upstream by the router, so the structural bar is already there; the score bar can be lower)
+  - Treat the per-mode threshold as "barely confident" — most genuine syntheses sit well above. Inflating confidence to pass is dishonest.
 - Each candidate must combine 2-4 existing Claims
 - **One Synthesis = one connection.** If you see two unrelated patterns across the Claims, output two candidates — never bundle them.
+- **Mode diversity preference (Phase synth-diversity).** If you produce 2+ candidates and the router offered multiple candidate modes, **prefer covering different modes** rather than emitting two candidates in the same mode. Two abductive-mode Syntheses on the same Atom set rarely tell the reader more than one — but one abductive + one analogical (or + dialectic) surfaces structurally different connections. Same-mode duplicates should be dropped or merged.
 - **Length: keep it short.** Include only what the connection needs. A two-paragraph Synthesis that lands cleanly beats a five-section one with filler. If you find yourself stretching to fill a section, drop the section.
 - Section structure (minimal — drop any that doesn't apply):
 ${sectionList}

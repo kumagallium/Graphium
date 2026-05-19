@@ -166,8 +166,39 @@ export function buildSynthesizerUserMessage(
   return `Analyze the following ${concepts.length} Claim pages and propose synthesis opportunities:${speculationNote}\n\n${conceptDescriptions}${summarySection}${existingNote}`;
 }
 
-/** Synthesizer の confidence 採用閾値（0.85 未満は提案として採用しない） */
-export const SYNTHESIS_CONFIDENCE_THRESHOLD = 0.85;
+/**
+ * Synthesizer の confidence 採用閾値。
+ *
+ * 設計の変遷:
+ * - μ-1: 全 mode 一律 0.85。シンプルで安全側だが deductive の "とりあえず合体" が pass
+ *        しやすく、結果として 1-2 件の synth がほぼ deductive 単一 mode で
+ *        `mode_distribution_entropy` を 0 に貼り付かせていた。
+ * - β 当初案: 全 mode を deductive 0.92 / others 0.85 に。β-1 と一緒に defer。
+ * - 現行 (post-η): per-mode 化。deductive を 0.92 で厳しく保ちつつ、
+ *   abductive / analogical / dialectic は 0.70 まで下げる。router がもともと
+ *   これらの mode を firing condition で絞っているので、threshold を下げても
+ *   gambling synthesis にはなりにくい。synth 件数を増やし、entropy が動ける
+ *   状態にすることが目的。
+ *
+ * `DEFAULT_SYNTHESIS_THRESHOLD` は mode 不明出力 (parser が mode を識別できなかった)
+ * のフォールバック。歴史的経緯から 0.85 を保つ — mode 不明候補は安全側に倒す。
+ */
+export const SYNTHESIS_THRESHOLDS: Record<SynthesisMode, number> = {
+  deductive: 0.92,
+  abductive: 0.7,
+  analogical: 0.7,
+  dialectic: 0.7,
+};
+
+export const DEFAULT_SYNTHESIS_THRESHOLD = 0.85;
+
+function thresholdFor(mode: SynthesisMode | undefined): number {
+  if (mode && mode in SYNTHESIS_THRESHOLDS) return SYNTHESIS_THRESHOLDS[mode];
+  return DEFAULT_SYNTHESIS_THRESHOLD;
+}
+
+/** @deprecated per-mode マップに移行。新規コードでは `DEFAULT_SYNTHESIS_THRESHOLD` か `thresholdFor()` を使う */
+export const SYNTHESIS_CONFIDENCE_THRESHOLD = DEFAULT_SYNTHESIS_THRESHOLD;
 
 /**
  * Synthesizer の LLM 出力をパースし、フィルタ理由の統計も返す。
@@ -209,7 +240,15 @@ export function parseSynthesizerOutputWithStats(
         Array.isArray(c.sections) && c.sections.length > 0;
       if (!structurallyOk) continue;
       const conf = typeof c.confidence === "number" ? c.confidence : 0.7;
-      if (conf < SYNTHESIS_CONFIDENCE_THRESHOLD) {
+      // per-mode threshold (synthesizer-diversity 改修)。mode が出力に無ければ
+      // default 0.85 にフォールバックして安全側に倒す。
+      const rawMode = typeof c.synthesisMode === "string" ? c.synthesisMode : undefined;
+      const mode: SynthesisMode | undefined =
+        rawMode && (SYNTHESIS_MODE_VALUES as string[]).includes(rawMode)
+          ? (rawMode as SynthesisMode)
+          : undefined;
+      const threshold = thresholdFor(mode);
+      if (conf < threshold) {
         droppedByConfidence += 1;
         if (maxDroppedConfidence === undefined || conf > maxDroppedConfidence) {
           maxDroppedConfidence = conf;
@@ -251,14 +290,20 @@ export function parseSynthesizerOutput(
     if (!Array.isArray(candidates)) return [];
 
     return candidates
-      .filter((c: any) =>
-        c.title &&
-        Array.isArray(c.sourceConceptIds) &&
-        c.sourceConceptIds.length >= 2 &&
-        Array.isArray(c.sections) &&
-        c.sections.length > 0 &&
-        (typeof c.confidence === "number" ? c.confidence : 0.7) >= 0.85,
-      )
+      .filter((c: any) => {
+        if (!c.title) return false;
+        if (!Array.isArray(c.sourceConceptIds) || c.sourceConceptIds.length < 2) return false;
+        if (!Array.isArray(c.sections) || c.sections.length === 0) return false;
+        // per-mode threshold: deductive は 0.92 で厳しく、他は 0.70 まで通す。
+        // 出力に mode が無ければ default (0.85) フォールバック。
+        const conf = typeof c.confidence === "number" ? c.confidence : 0.7;
+        const rawMode = typeof c.synthesisMode === "string" ? c.synthesisMode : undefined;
+        const mode: SynthesisMode | undefined =
+          rawMode && (SYNTHESIS_MODE_VALUES as string[]).includes(rawMode)
+            ? (rawMode as SynthesisMode)
+            : undefined;
+        return conf >= thresholdFor(mode);
+      })
       .map((c: any) => {
         const rawMode = typeof c.synthesisMode === "string" ? c.synthesisMode : undefined;
         const synthesisMode: SynthesisMode | undefined =
@@ -299,7 +344,7 @@ export function parseSynthesizerOutput(
             content: String(s.content ?? ""),
           })),
           rationale: String(c.rationale ?? ""),
-          confidence: typeof c.confidence === "number" ? c.confidence : 0.85,
+          confidence: typeof c.confidence === "number" ? c.confidence : DEFAULT_SYNTHESIS_THRESHOLD,
           synthesisMode,
           hypothesisStatus,
         };
