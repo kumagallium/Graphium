@@ -72,6 +72,19 @@ function evaluateProbeExpected(
     allPassed &&= ok;
   }
 
+  // Phase μ-1.2: atomEpistemicStatusAny は「少なくとも 1 件の Atom がこの status を持つ」
+  // を要求する some() 版。input が混合 status の batch (例: clean-lab + wrong-speculation)
+  // では、lowest-status inheritance は per-atom で適用されるため、speculation 入りの混合
+  // ソースから作られた Atom は speculation だが、observation-only ソースから作られた
+  // Atom は observation のままで *両方とも正しい*。 every() を要求する
+  // atomEpistemicStatus はこのケースで過剰に strict になるので、some() 版を提供する。
+  if (typeof exp.atomEpistemicStatusAny === "string") {
+    const want = exp.atomEpistemicStatusAny as string;
+    const ok = atoms.some((a) => a.epistemicStatus === want);
+    reasons.push(`atomEpistemicStatusAny=${want}: ${ok ? "ok" : `got ${atoms.map((a) => a.epistemicStatus).join("/")}`}`);
+    allPassed &&= ok;
+  }
+
   if (typeof exp.synthesisHypothesisStatus === "string") {
     const want = exp.synthesisHypothesisStatus as string;
     const ok = syntheses.length === 0 || syntheses.every((s) => s.hypothesisStatus === want);
