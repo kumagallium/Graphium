@@ -2,7 +2,13 @@
 // 既存の Claim ページ群を分析し、複数ページを統合した
 // 新しい洞察（Synthesis ページ）を生成する
 
-import type { AtomType, HypothesisStatus, SynthesisMode } from "../../lib/document-types.js";
+import type {
+  AtomType,
+  EpistemicStatus,
+  HypothesisStatus,
+  SynthesisMode,
+} from "../../lib/document-types.js";
+import { lowestEpistemicStatus } from "../../lib/document-types.js";
 import { buildSynthesizerSystemPromptV2 } from "./synthesis-prompts/index.js";
 
 /** Synthesis の推論モード（提案 v4 Phase 1.3）として認める値の一覧 */
@@ -76,6 +82,13 @@ export type ClaimSnapshot = {
    * PR-B5 で追加。
    */
   atomType?: AtomType;
+  /**
+   * 入力 Atom / Claim の認識論的ステータス（Phase η）。
+   * Synthesizer は入力 Atom に speculation が混じっていれば、
+   * 出力 Synthesis の hypothesisStatus を speculative に強制する。
+   * undefined は legacy データで、 "interpretation" として扱う。
+   */
+  epistemicStatus?: EpistemicStatus;
 };
 
 /** Ingest 時に適用するスキルの情報 */
@@ -115,13 +128,21 @@ export function buildSynthesizerUserMessage(
 
   const conceptDescriptions = concepts.map((c) => {
     const levelTag = c.level ? ` [${c.level}]` : "";
+    // Phase η: 入力 Atom / Claim の epistemicStatus を可視化する。
+    const epistemicTag = c.epistemicStatus ? ` [${c.epistemicStatus}]` : " [interpretation*]";
     const preview = c.bodyPreview ? `  ${c.bodyPreview}` : "";
     const related = c.relatedClaims.length > 0
       ? `  Related to: ${c.relatedClaims.join(", ")}`
       : "";
     const tail = [preview, related].filter(Boolean).join("\n");
-    return `### ${c.title}${levelTag} (id: ${c.id})${tail ? "\n" + tail : ""}`;
+    return `### ${c.title}${levelTag}${epistemicTag} (id: ${c.id})${tail ? "\n" + tail : ""}`;
   }).join("\n\n");
+
+  // Phase η: 入力に speculation が含まれる場合、Synthesis を speculative に強制する旨を明示。
+  const hasSpeculation = concepts.some((c) => c.epistemicStatus === "speculation");
+  const speculationNote = hasSpeculation
+    ? `\n\n> **Important (Phase η)**: at least one input above carries \`epistemicStatus: "speculation"\`. The Synthesis you produce MUST set \`hypothesisStatus: "speculative"\` regardless of how confident the wording feels — a synthesis derived from a casual musing is still a casual musing.`
+    : "";
 
   // 上流 Summary のプレビュー（誤差伝搬対策: Synthesizer に原料に近い層も見せる）
   const summaryMap = new Map<string, string>();
@@ -142,7 +163,7 @@ export function buildSynthesizerUserMessage(
     ? `\n\n## Existing Syntheses (avoid duplicating these)\n${existingSynthesisTitles.map((t) => `- ${t}`).join("\n")}`
     : "";
 
-  return `Analyze the following ${concepts.length} Claim pages and propose synthesis opportunities:\n\n${conceptDescriptions}${summarySection}${existingNote}`;
+  return `Analyze the following ${concepts.length} Claim pages and propose synthesis opportunities:${speculationNote}\n\n${conceptDescriptions}${summarySection}${existingNote}`;
 }
 
 /** Synthesizer の confidence 採用閾値（0.85 未満は提案として採用しない） */
@@ -156,7 +177,16 @@ export const SYNTHESIS_CONFIDENCE_THRESHOLD = 0.85;
  * こちらを使う。トーストの曖昧な "No synthesis generated" を「品質基準未達」と
  * 「LLM が候補を出さなかった」に分ける。
  */
-export function parseSynthesizerOutputWithStats(text: string): {
+export function parseSynthesizerOutputWithStats(
+  text: string,
+  /**
+   * Phase η: 入力 concept ID → epistemicStatus マップ。指定されると、
+   * 入力に speculation が含まれる Synthesis は hypothesisStatus を
+   * "speculative" に強制する（lowest-status inheritance の Synthesis 版）。
+   * 未指定なら従来通り LLM 出力の hypothesisStatus を採用する。
+   */
+  conceptIdToEpistemicStatus?: Map<string, EpistemicStatus | undefined>,
+): {
   candidates: SynthesisCandidate[];
   rawCount: number;
   droppedByConfidence: number;
@@ -187,7 +217,7 @@ export function parseSynthesizerOutputWithStats(text: string): {
       }
     }
     return {
-      candidates: parseSynthesizerOutput(text),
+      candidates: parseSynthesizerOutput(text, conceptIdToEpistemicStatus),
       rawCount: raw.length,
       droppedByConfidence,
       maxDroppedConfidence,
@@ -200,8 +230,14 @@ export function parseSynthesizerOutputWithStats(text: string): {
 
 /**
  * Synthesizer の LLM 出力をパースする
+ *
+ * @param conceptIdToEpistemicStatus Phase η: 入力の status から speculative 強制を行うため。
+ *   未指定 (legacy 呼び出し) なら従来通り LLM 出力をそのまま採用する。
  */
-export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
+export function parseSynthesizerOutput(
+  text: string,
+  conceptIdToEpistemicStatus?: Map<string, EpistemicStatus | undefined>,
+): SynthesisCandidate[] {
   try {
     let jsonText = text.trim();
     const jsonMatch = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -231,12 +267,28 @@ export function parseSynthesizerOutput(text: string): SynthesisCandidate[] {
             : undefined;
 
         const rawStatus = typeof c.hypothesisStatus === "string" ? c.hypothesisStatus : undefined;
-        const hypothesisStatus: HypothesisStatus | undefined =
+        let hypothesisStatus: HypothesisStatus | undefined =
           rawStatus && (HYPOTHESIS_STATUS_VALUES as string[]).includes(rawStatus)
             ? (rawStatus as HypothesisStatus)
             : synthesisMode
               ? "speculative" // モード判定できているのに status 欠落は speculative にフォールバック
               : undefined;
+        // Phase η: 入力 concept に speculation が含まれていれば hypothesisStatus を
+        // "speculative" に強制する（lowest-status inheritance の Synthesis 版）。
+        // LLM が "tested" / "confirmed" を出していても、speculation 入力からの Synthesis は
+        // 構造的に speculative に固定する。
+        if (conceptIdToEpistemicStatus && conceptIdToEpistemicStatus.size > 0) {
+          const sourceIds = Array.isArray(c.sourceConceptIds)
+            ? c.sourceConceptIds.map(String)
+            : [];
+          const sourceStatuses = sourceIds.map((id: string) =>
+            conceptIdToEpistemicStatus.get(id),
+          );
+          const lowest = lowestEpistemicStatus(sourceStatuses);
+          if (lowest === "speculation") {
+            hypothesisStatus = "speculative";
+          }
+        }
 
         return {
           sourceConceptIds: c.sourceConceptIds.map(String),

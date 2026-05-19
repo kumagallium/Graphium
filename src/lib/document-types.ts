@@ -78,6 +78,64 @@ export type HypothesisStatus =
   | "confirmed"        // 検証済み（複数の独立した支持）
   | "refuted";         // 反証された
 
+/**
+ * 命題の認識論的ステータス（提案 v4 Phase η）。
+ *
+ * Claim / Atom が「どの程度確からしい根拠を持っているか」を構造化する。
+ * 砂時計の各層を上がるにつれて、Atomizer は「入力 Claim の中で最も低い status を継承」する
+ * ルールで status を伝搬する（lowest-status inheritance）。これにより、casual な
+ * speculation が established な知識層に「癌細胞のように」混入することを構造的に防ぐ。
+ *
+ * - `speculation`  「〜のかも」「もしかして」など、根拠なしの musing
+ * - `interpretation` 観察の解釈、tentative な mechanism 提案
+ * - `observation`  観察された事実（PROV 構造あり）
+ * - `established` 複数 source 確認 / 外部文献裏付け
+ *
+ * 順序（低 → 高）: speculation < interpretation < observation < established
+ * 「不明な場合は低い側に倒す」が保守的なデフォルト。
+ */
+export type EpistemicStatus =
+  | "speculation"
+  | "interpretation"
+  | "observation"
+  | "established";
+
+/** EpistemicStatus の順序付け（最低継承の比較に使う） */
+export const EPISTEMIC_STATUS_ORDER: EpistemicStatus[] = [
+  "speculation",
+  "interpretation",
+  "observation",
+  "established",
+];
+
+export function epistemicRank(status: EpistemicStatus | undefined): number {
+  if (!status) return 1; // unknown は interpretation 相当に倒す
+  const idx = EPISTEMIC_STATUS_ORDER.indexOf(status);
+  return idx < 0 ? 1 : idx;
+}
+
+/**
+ * 複数の status から最低を返す（Atomizer / Synthesizer の lowest-status inheritance）。
+ * 入力が空なら "interpretation" を返す（中立的な保守デフォルト）。
+ */
+export function lowestEpistemicStatus(
+  statuses: (EpistemicStatus | undefined)[],
+): EpistemicStatus {
+  let lowest: EpistemicStatus = "established";
+  let lowestRank = epistemicRank(lowest);
+  let seen = false;
+  for (const s of statuses) {
+    if (!s) continue;
+    seen = true;
+    const r = epistemicRank(s);
+    if (r < lowestRank) {
+      lowestRank = r;
+      lowest = s;
+    }
+  }
+  return seen ? lowest : "interpretation";
+}
+
 // 主張が依存する手順条件（再現性の骨格）
 // PROV 構造を「最後まで剥がさない再現性骨格」として保持する。
 // AI が生成時に推定し、後で引用される際に「どんな手順条件下で成立するか」を即座に分かる形にする。
@@ -169,6 +227,17 @@ export type WikiMeta = {
   /** Synthesis の検証状態（特に abductive 型で意味を持つ） */
   hypothesisStatus?: HypothesisStatus;
   /**
+   * 命題の認識論的ステータス（Phase η）。Claim / Atom で主に意味を持つ。
+   *
+   * Ingester が Claim 生成時に推定し、Atomizer は「入力 Claim の中で最も低い
+   * status を継承」する伝搬ルールに従う。Synthesizer は入力 Atom に speculation が
+   * 含まれていれば、Synthesis の `hypothesisStatus` を speculative に強制する。
+   *
+   * undefined は Phase η 以前に生成された既存エントリでも動くようにするための
+   * 後方互換チャネル。実行時には "interpretation" として扱う（保守デフォルト）。
+   */
+  epistemicStatus?: EpistemicStatus;
+  /**
    * 主張が依存する手順条件（再現性の骨格、Phase 2.3）。
    *
    * **Claim でのみ意味を持つ** (PR-B4.5)。Atom は砂時計のくびれであり
@@ -192,6 +261,8 @@ export type WikiMetaSummary = {
   model?: string;
   /** Claim のときのみ意味を持つ抽象度レベル */
   level?: ClaimLevel;
+  /** Claim / Atom の認識論的ステータス（Phase η） */
+  epistemicStatus?: EpistemicStatus;
   /** principle のときのみ意味を持つ確度ステータス */
   status?: ClaimStatus;
   /** Claim の研究プロセス役割（複数可） */

@@ -1,5 +1,0 @@
-{
-  "version": 14,
-  "noteCount": 2,
-  "rationale": "現行 INDEX_SCHEMA_VERSION=14 の placeholder。Phase η 以降が bump（14→15→...）するたびにこのディレクトリへ旧 version fixture を 1 つ追加する。fixture の意図は『ensureIndex が version 不一致を検出して fullRebuild を起動できる』こと。Phase μ-3 時点では「現行 version の round-trip」だけを assert。"
-}

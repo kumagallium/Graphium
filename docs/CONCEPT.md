@@ -130,6 +130,26 @@ on one side and a generic LLM on the other, but no way to move knowledge
 between them. The Insight is what makes information **into** knowledge you
 can reuse.
 
+### Epistemic provenance through the layers
+
+The hourglass also has to refuse to lie about how solid each piece is.
+Every Claim carries an *epistemic status* — `speculation` for a casual
+musing, `interpretation` for a tentative reading of observed data,
+`observation` for "this is what was measured," `established` for
+multi-source confirmation. As Insights factor out across Claims, the
+Insight inherits the **lowest** status among its sources, not an average
+of them. As Ideas weave Insights together, an Idea built on any
+`speculation` Insight is marked speculative regardless of how confident
+the wording feels.
+
+The rule is asymmetric on purpose. A casual "maybe this is true" sketched
+in a notebook should never be able to launder itself, through a couple of
+abstract Insights, into community knowledge. The cost is occasionally
+under-rating something that turned out to be established — and that cost
+is recoverable, the notebook author can re-rate later. The cost of the
+other direction — silent contamination of the knowledge layer with
+speculation that has lost its source's hedge — is not recoverable.
+
 ## 6. Progressive disclosure: use as much, or as little, as you need
 
 A core design choice I keep returning to: **the labels are optional, and

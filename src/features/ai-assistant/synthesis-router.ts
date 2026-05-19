@@ -22,7 +22,7 @@
 // - proposal v4 から逸脱した点があれば、本コメントで理由を残すこと。
 // =============================================================================
 
-import type { AtomType, SynthesisMode } from "../../lib/document-types.js";
+import type { AtomType, EpistemicStatus, SynthesisMode } from "../../lib/document-types.js";
 
 export type SynthesisRouterResult = {
   /**
@@ -34,6 +34,11 @@ export type SynthesisRouterResult = {
   recommendedMode: SynthesisMode;
   /** 推定の根拠（ログ用・デバッグ用） */
   rationale: string;
+  /**
+   * Phase η: 入力 Atom / Claim の epistemicStatus 分布概要（ログ用）。
+   * 入力に speculation が 1 件でも含まれていれば true。
+   */
+  hasSpeculativeInput?: boolean;
 };
 
 const DEFAULT_MODE: SynthesisMode = "deductive";
@@ -42,10 +47,16 @@ const DEFAULT_MODE: SynthesisMode = "deductive";
  * 入力 Atom 群の atomType から候補 mode を推定する。
  *
  * @param atomTypes 入力 Atom の atomType 配列（undefined / 空配列も許容）
+ * @param epistemicStatuses Phase η: 入力 Atom / Claim の epistemicStatus 配列（同じ並び、optional）。
+ *   候補モード集合自体には影響しない（router は atomType ベースの判定を維持）。
+ *   speculation が混じっていれば rationale と `hasSpeculativeInput` でログに残す。
+ *   Synthesizer 側で「入力に speculation 含むなら hypothesisStatus="speculative" 強制」を行う
+ *   ための補助情報。
  * @returns 候補モード + 推奨モード + rationale
  */
 export function routeSynthesisMode(
   atomTypes: (AtomType | undefined)[],
+  epistemicStatuses?: (EpistemicStatus | undefined)[],
 ): SynthesisRouterResult {
   const known = atomTypes.filter((t): t is AtomType => Boolean(t));
 
@@ -104,9 +115,30 @@ export function routeSynthesisMode(
     reasons.push("no specific signal beyond default — falling back to deductive.");
   }
 
+  // Phase η: epistemicStatus 分布を rationale に含める（候補集合自体には影響しない）。
+  let hasSpeculativeInput: boolean | undefined;
+  if (epistemicStatuses && epistemicStatuses.length > 0) {
+    const knownStatuses = epistemicStatuses.filter((s): s is EpistemicStatus => Boolean(s));
+    hasSpeculativeInput = knownStatuses.some((s) => s === "speculation");
+    if (knownStatuses.length > 0) {
+      const counts: Record<string, number> = {};
+      for (const s of knownStatuses) counts[s] = (counts[s] ?? 0) + 1;
+      const breakdown = Object.entries(counts)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ");
+      reasons.push(`epistemic distribution: ${breakdown}.`);
+      if (hasSpeculativeInput) {
+        reasons.push(
+          "speculation present in inputs → Synthesizer should emit hypothesisStatus=\"speculative\" (enforced downstream).",
+        );
+      }
+    }
+  }
+
   return {
     candidateModes: candidates,
     recommendedMode: candidates[0],
     rationale: reasons.join(" "),
+    ...(hasSpeculativeInput !== undefined ? { hasSpeculativeInput } : {}),
   };
 }

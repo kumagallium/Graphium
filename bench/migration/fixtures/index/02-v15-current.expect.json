@@ -1,0 +1,5 @@
+{
+  "version": 15,
+  "noteCount": 2,
+  "rationale": "現行 INDEX_SCHEMA_VERSION=15 (Phase η post-bump) の placeholder。`epistemicStatus` を NoteIndexEntry に mirror した状態。Phase γ / δ / ε / ζ が bump するたびにこのディレクトリへ旧 version fixture を 1 つ追加する。"
+}

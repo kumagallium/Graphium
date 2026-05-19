@@ -1,0 +1,28 @@
+{
+  "version": 15,
+  "updatedAt": "2026-05-19T00:00:00.000Z",
+  "notes": [
+    {
+      "noteId": "note-a",
+      "title": "Sample lab note",
+      "modifiedAt": "2026-05-19T00:00:00.000Z",
+      "createdAt": "2026-05-18T00:00:00.000Z",
+      "headings": [],
+      "labels": {},
+      "links": [],
+      "epistemicStatus": "observation"
+    },
+    {
+      "noteId": "wiki-x",
+      "title": "Sample AI Wiki claim",
+      "modifiedAt": "2026-05-19T00:00:00.000Z",
+      "createdAt": "2026-05-18T00:00:00.000Z",
+      "headings": [],
+      "labels": {},
+      "links": [],
+      "source": "ai",
+      "wikiKind": "claim",
+      "epistemicStatus": "interpretation"
+    }
+  ]
+}
