@@ -219,6 +219,24 @@ Why this matters: without the post-transformation form, downstream readers (and 
 
 Counter-rule: when the source itself uses a domain-specific named product ("the precipitate", "the pellet", "the slurry"), keep the source's term but prefer compound forms that still echo the transformation: \`"the calcined precipitate"\`, \`"the pressed pellet"\`. Never invent a transformation that didn't happen.
 
+## Procedure granularity (CRITICAL — decompose multi-stage actions)
+
+When the source describes a procedure that proceeds through **distinct stages with different parameters**, emit **a separate H2 procedure for each named stage**. Do not merge them into one broad H2 just because the source narrates them in a single sentence.
+
+The clearest signal of distinct stages is a **change of parameter values**. If a sentence describes the temperature being raised to X, then held at X, then cooled to Y, each stage has its own temperature/duration profile and is its own H2.
+
+Examples (universal across domains):
+- ❌ \`"Heat treatment"\` covering "raised to 1423 K in 6 h, maintained at 1423 K for 12 h, quenched into ice water"
+- ✅ Three H2s: \`"Raising"\` (\`temperature: 1423 K\`, \`duration: 6 h\`), \`"Maintaining"\` (\`temperature: 1423 K\`, \`duration: 12 h\`), \`"Quenching"\` (with ice water as the tool span)
+
+- ❌ \`"Marinating and searing"\`
+- ✅ \`"Marinating"\` and \`"Searing"\`, each with their own time/temperature
+
+- ❌ \`"Training"\` covering "warmup for 100 steps then main training for 10000 steps then fine-tune for 1000 steps"
+- ✅ \`"Warming up"\`, \`"Training"\`, \`"Fine-tuning"\`, each with its own learning_rate / steps
+
+Each subsequent stage should consume the previous stage's product via a \`material\` span with \`derivedFrom: "<prior-stepId>"\`, using a post-transformation noun (the produced \`"raised sample"\` is consumed by the next stage as a material with \`derivedFrom: "raising"\`).
+
 ## Object descriptors → attribute spans (CRITICAL — capture purity, form, grade, etc.)
 
 When the source attaches a descriptor to a material — purity (\`"99.999%"\`), physical form (\`"shot"\`, \`"powder"\`, \`"pellet"\`, \`"ingot"\`, \`"foil"\`, \`"piece"\`), grade, particle size, etc. — emit each descriptor as a **separate attribute span next to the material**, not folded into the material's text.
@@ -230,6 +248,12 @@ Examples:
 - \`"in an inert atmosphere of argon"\` → attribute \`"atmosphere: argon"\`
 
 Recommended \`<key>\` values for object descriptors when the source doesn't name them explicitly: \`purity\`, \`form\`, \`grade\`, \`atmosphere\`, \`temperature\`, \`pressure\`, \`duration\`, \`mass\`, \`concentration\`, \`rotation\`, \`size\`, \`thickness\`, \`diameter\`. Use these as canonical keys when applicable. Other open-set keys are fine when no canonical key fits.
+
+**Always extract physical form** when the source names one — even for derived materials. Form words: \`shot\`, \`shots\`, \`piece\`, \`pieces\`, \`powder\`, \`pellet\`, \`ingot\`, \`foil\`, \`rod\`, \`flake\`, \`granule\`, \`crystal\`, \`chip\`, \`slice\`, \`block\`, \`paste\`, \`slurry\`. Examples:
+- \`"shots"\` next to a material → attribute \`"form: shot"\`
+- \`"annealed ingot"\` → material \`"annealed sample"\` + attribute \`"form: ingot"\` (the form is information about the sample, the post-transformation noun goes into the material span)
+- \`"powdered NaCl"\` → material \`"NaCl"\` + attribute \`"form: powder"\`
+- The post-transformation rule and the form-attribute rule **work together**: emit both the canonical \`"<past-participle> sample"\` material span AND a \`"form: <noun>"\` attribute when the source provides the physical state.
 
 What NOT to extract as attribute: supplier names ("Alfa Aesar", "Sigma-Aldrich"), catalog numbers, brand-only identifiers without parameter meaning — these are reader-reference, not provenance-relevant attributes.
 
