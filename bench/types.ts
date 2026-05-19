@@ -20,7 +20,24 @@ export type CorpusCategory =
   | "wrong-speculation"
   | "cross-domain-pair"
   | "contradiction-pair"
-  | "pure-observation";
+  | "pure-observation"
+  // Phase μ-2 additions: cross-language + cross-domain expansion
+  | "clean-en-technical"
+  | "casual-musing-en"
+  | "bio-note"
+  | "econ-note"
+  | "humanities-note"
+  | "cross-language-pair";
+
+// Phase μ-2: ドメインタグ。domain_balance_score の集計で使う。
+// 既存ノートは category から後方互換的に推定できるが、新規ノートは明示する。
+export type CorpusDomain =
+  | "materials"
+  | "software"
+  | "biology"
+  | "economics"
+  | "humanities"
+  | "misc";
 
 export type CorpusNote = {
   noteId: string;
@@ -28,7 +45,10 @@ export type CorpusNote = {
   language: "ja" | "en";
   title: string;
   body: string;
+  /** cross-domain-pair / cross-language-pair の対応関係を示す ID */
   pairId?: string;
+  /** Phase μ-2 で追加。未指定なら category から推定（後方互換）。 */
+  domain?: CorpusDomain;
 };
 
 export type GroundTruth = {
@@ -155,6 +175,11 @@ export type BenchMetrics = {
   atom_count_total: number;
   synthesis_count_total: number;
   observation_atom_ratio: number;
+  // Phase μ-2 で追加
+  /** 同一概念の JP / EN ペア (pairId) が同じ Atom クラスタに集約された割合 */
+  cross_language_consistency: number;
+  /** 全ドメインで発見品質 (lift × novelty × epistemic_preservation の domain 別積) が均等な度合い */
+  domain_balance_score: number;
 };
 
 export type ProbeResult = {

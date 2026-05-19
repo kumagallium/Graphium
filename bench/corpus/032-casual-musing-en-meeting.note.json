@@ -1,0 +1,8 @@
+{
+  "noteId": "032-casual-musing-en-meeting",
+  "category": "casual-musing-en",
+  "language": "en",
+  "domain": "misc",
+  "title": "Standups might be a lagging indicator of bad backlog hygiene",
+  "body": "Every time standup gets painful, it's not really about the meeting itself. Usually a few tickets are stale, no one knows the priority, and the meeting just surfaces it. Maybe long standups are basically a smoke detector for backlog drift? Haven't really measured this — could just be the team I'm currently on."
+}

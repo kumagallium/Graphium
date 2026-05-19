@@ -1,0 +1,12 @@
+{
+  "noteId": "030-casual-musing-en-pasta",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["question", "interpretation"],
+    "epistemicStatus": ["speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "Casual EN musing about pasta-water salt. Explicit 'maybe / could be confirmation bias / need to try blind' markers; epistemicStatus should be speculation throughout. Same pattern as JP casual-musing notes."
+}

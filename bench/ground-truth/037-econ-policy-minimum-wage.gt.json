@@ -1,0 +1,12 @@
+{
+  "noteId": "037-econ-policy-minimum-wage",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["dialectic", "abductive"]
+  },
+  "notes": "Seattle minimum-wage two-paper comparison. Inherently dialectic: two established findings disagree, and the note's resolution is a meta-interpretation about measurement unit. Atomizer should preserve the disagreement, not collapse into one position; rebuttalConditions ≥ 1."
+}

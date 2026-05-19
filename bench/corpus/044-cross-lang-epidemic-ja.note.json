@@ -1,0 +1,9 @@
+{
+  "noteId": "044-cross-lang-epidemic-ja",
+  "category": "cross-language-pair",
+  "language": "ja",
+  "domain": "biology",
+  "pairId": "epidemic-R0",
+  "title": "感染症の初期成長は R0 とロジスティックで近似できる",
+  "body": "新興感染症の流行初期は基本再生産数 R0 による指数成長で近似でき、感受性集団が枯渇するにつれてロジスティック的に飽和する。\n[Step] モデル化\n  [Input] SIR モデル、[Tool] R + deSolve\n[Step] フィッティング\n  [Output] R0 ≈ 2.4、収束サイズは集団の約 78 %\n指数成長近似が成り立つのは流行初期だけで、接触減衰や免疫獲得が効き始めると破綻する。SIR は最小モデルとしての解釈枠であって、現実の介入を予測する力はそこから先の構造に依存する。"
+}

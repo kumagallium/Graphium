@@ -7,10 +7,11 @@ benchmark spec is in `docs/internal/wiki-discovery-mode-fullspec-2026-05.md`
 
 Conventions:
 
-- `bench/baseline.json` stays fixed at Phase μ-1's snapshot. Every phase
+- `bench/baseline.json` stays fixed for each corpus snapshot. Every phase
   is measured against that snapshot, **not** against the previous phase.
   The fixed baseline lets each phase's claim be re-verified months
-  later.
+  later. A phase that **changes the corpus itself** (Phase μ-2 / μ-3)
+  resets the baseline, since the old numbers are no longer comparable.
 - Per-phase live runs are committed to `bench/results/<phase>-<date>.json`.
   These are the durable record of "what the metric was the day the PR
   merged" so the numbers cannot drift after the fact.

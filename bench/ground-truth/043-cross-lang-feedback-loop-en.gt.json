@@ -1,0 +1,12 @@
+{
+  "noteId": "043-cross-lang-feedback-loop-en",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["deductive", "abductive"]
+  },
+  "notes": "EN half of the feedback-loop pair (pairId=feedback-loop). Mirrors 042. Both notes share the same numerical observations, so a well-lifted Atom must merge them — that is the load-bearing case for cross_language_consistency."
+}

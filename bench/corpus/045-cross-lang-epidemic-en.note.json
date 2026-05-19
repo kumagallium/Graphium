@@ -1,0 +1,9 @@
+{
+  "noteId": "045-cross-lang-epidemic-en",
+  "category": "cross-language-pair",
+  "language": "en",
+  "domain": "biology",
+  "pairId": "epidemic-R0",
+  "title": "Epidemic early-phase growth tracks R0 and saturates logistically",
+  "body": "Early outbreaks of a novel infection grow approximately exponentially at a rate set by the basic reproduction number R0, and saturate as susceptibles deplete.\n[Step] Modelling\n  [Input] SIR compartments, [Tool] R + deSolve\n[Step] Fit\n  [Output] R0 ≈ 2.4, final attack rate ≈ 78%\nThe exponential approximation holds only for the very early phase; once contact reduction or immunity kicks in, the curve bends. SIR is a minimal interpretive scaffold, not a policy-prediction tool — what matters for intervention lives in the structure layered on top of it."
+}

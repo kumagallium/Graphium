@@ -1,0 +1,12 @@
+{
+  "noteId": "051-bio-genome-recombination",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["established", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "Literature-derived note on PRDM9 recombination hotspots. The 'recombination landscape evolves rapidly' interpretation is described as standard / established in pop-gen — so epistemicStatus is established + interpretation, no novel speculation. Atom must lift past PRDM9 / Zn-finger jargon."
+}

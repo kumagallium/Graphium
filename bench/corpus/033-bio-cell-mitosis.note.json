@@ -1,0 +1,8 @@
+{
+  "noteId": "033-bio-cell-mitosis",
+  "category": "bio-note",
+  "language": "ja",
+  "domain": "biology",
+  "title": "HeLa 細胞のノコダゾール処理で M 期同期",
+  "body": "今日は HeLa を 100 ng/mL のノコダゾールで 16 時間処理し、M 期同期を試みた。\n[Step] 同期処理\n  [Input] HeLa S3 (継代 14)、[Tool] ノコダゾール 100 ng/mL\n[Step] 解放\n  [Parameter] PBS 洗浄 ×3、新鮮培地で解放\n[Step] FACS 解析\n  [Tool] PI 染色 + FACS、[Output] G2/M 画分 88 %\n14 時間処理だと G2/M 画分が 70 % 程度しか上がらなかったため、スピンドル毒の作用には飽和的な時間依存性があると考えられる。"
+}

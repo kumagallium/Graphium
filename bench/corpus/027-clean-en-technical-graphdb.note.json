@@ -1,0 +1,8 @@
+{
+  "noteId": "027-clean-en-technical-graphdb",
+  "category": "clean-en-technical",
+  "language": "en",
+  "domain": "software",
+  "title": "Property graph index design for 2-hop neighbour queries",
+  "body": "Our recommender service has to fetch 2-hop neighbours under 50 ms p95.\n[Step] Schema\n  [Input] users / items / interactions, [Tool] Neo4j 5.20\n[Step] Index\n  [Parameter] composite index on (user_id, interaction_type), [Output] 2-hop p95 = 32 ms\n[Step] Validation\n  [Tool] cypher EXPLAIN, [Output] expand-into operator picked up the index\nWith only a single-property index the planner kept choosing a label scan, which spiked p95 to 180 ms. Composite key was needed for the planner to prefer index seek over scan."
+}

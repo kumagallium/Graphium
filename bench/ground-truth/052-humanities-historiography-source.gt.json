@@ -1,0 +1,12 @@
+{
+  "noteId": "052-humanities-historiography-source",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["abductive", "dialectic"]
+  },
+  "notes": "Methodological note on observer bias in medieval Japanese estate documents. Observation about who held the brush + interpretation about how quantitative studies absorb (or fail to absorb) the bias. The 'difficult to fold into quantitative analyses' clause is a structural rebuttal condition."
+}

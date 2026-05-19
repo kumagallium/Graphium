@@ -1,0 +1,8 @@
+{
+  "noteId": "028-clean-en-technical-perovskite",
+  "category": "clean-en-technical",
+  "language": "en",
+  "domain": "materials",
+  "title": "Cs-doping suppresses hysteresis in MAPbI3 solar cells",
+  "body": "Adding 5 mol% CsI to MAPbI3 precursor reduced J–V hysteresis from 18% to 4%.\n[Step] Precursor mixing\n  [Input] PbI2, MAI, CsI, [Tool] DMF/DMSO solvent (4:1)\n[Step] Spin coating\n  [Parameter] 4000 rpm 30 s, anti-solvent drop at 10 s, [Output] 480 nm absorber\n[Step] Device IV\n  [Tool] Keithley 2400 + AM1.5G, [Output] PCE 19.1%, HI = 0.04\nThe hysteresis index dropped likely because Cs+ stabilises the perovskite lattice and reduces ion migration along grain boundaries."
+}

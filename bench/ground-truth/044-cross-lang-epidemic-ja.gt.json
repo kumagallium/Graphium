@@ -1,0 +1,12 @@
+{
+  "noteId": "044-cross-lang-epidemic-ja",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["deductive", "abductive"]
+  },
+  "notes": "JP half of the epidemic-R0 pair. Standard SIR / R0 story with an explicit boundary clause ('approximation only holds early; breaks once contact reduction kicks in') — that boundary is a rebuttal condition. Pairs with 045."
+}

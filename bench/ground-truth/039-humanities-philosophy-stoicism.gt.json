@@ -1,0 +1,12 @@
+{
+  "noteId": "039-humanities-philosophy-stoicism",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["interpretation"],
+    "epistemicStatus": ["interpretation", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive", "dialectic"]
+  },
+  "notes": "Personal reading note on Epictetus prohairesis translation. The author explicitly says 'this is my current reading, not the disciplinary consensus' — meaning interpretation tinged with speculation. No structured rebuttalConditions; the caveat is about the reading itself, not boundary conditions."
+}

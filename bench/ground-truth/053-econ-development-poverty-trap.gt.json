@@ -1,0 +1,12 @@
+{
+  "noteId": "053-econ-development-poverty-trap",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["interpretation", "established", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["dialectic", "abductive"]
+  },
+  "notes": "Poverty-trap literature reconciliation note. Mixes established findings from two papers with a personal interpretation that's hedged ('not confident enough to treat it as settled'). Dialectic synthesis mode is natural. The 'two literatures arguing about different objects' clause yields a rebuttal condition."
+}
