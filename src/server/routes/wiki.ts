@@ -404,7 +404,10 @@ app.post("/synthesize", async (c) => {
   // PR-B5: 入力 Atom の atomType から候補モードを推定し、Synthesizer プロンプトを
   // その候補だけに絞る。Claim 入力 (atomType 無し) や signal 不足の場合は
   // router が deductive 単独を返すため、最も permissive なデフォルト挙動になる。
-  const routerResult = routeSynthesisMode(body.concepts.map((c) => c.atomType));
+  const routerResult = routeSynthesisMode(
+    body.concepts.map((c) => c.atomType),
+    body.concepts.map((c) => c.epistemicStatus),
+  );
   const systemPrompt = buildSynthesizerSystemPrompt(
     body.language || "en",
     body.skills,
@@ -413,6 +416,12 @@ app.post("/synthesize", async (c) => {
   const userMessage = buildSynthesizerUserMessage(
     body.concepts,
     body.existingSynthesisTitles || [],
+  );
+
+  // Phase η: parser に id→epistemicStatus map を渡して、speculation 入りの場合
+  // hypothesisStatus="speculative" を強制させる（lowest-status inheritance の Synthesis 版）。
+  const conceptIdToEpistemic = new Map(
+    body.concepts.map((c) => [c.id, c.epistemicStatus]),
   );
 
   try {
@@ -425,7 +434,7 @@ app.post("/synthesize", async (c) => {
       maxSteps: 1,
     });
 
-    const stats = parseSynthesizerOutputWithStats(result.message);
+    const stats = parseSynthesizerOutputWithStats(result.message, conceptIdToEpistemic);
     // PR-B4.5: procedureContext は Synthesis に持たせない（砂時計のくびれ
     // を通った後の層は context-stripped が contract）。fallback ロジックは
     // 削除した。
@@ -482,7 +491,11 @@ app.post("/atomize", async (c) => {
       maxSteps: 1,
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
-    const atoms = parseAtomizerOutput(result.message, idToTitle);
+    // Phase η: source Claim の epistemicStatus も parser に渡し、lowest-status inheritance を強制する。
+    const idToEpistemic = new Map(
+      body.concepts.map((c) => [c.id, c.epistemicStatus]),
+    );
+    const atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });

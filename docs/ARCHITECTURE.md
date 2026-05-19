@@ -309,6 +309,23 @@ run.
 The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
 
+**Epistemic provenance (Phase η).** Every Claim and every Insight carries an
+`epistemicStatus` (`speculation` / `interpretation` / `observation` /
+`established`, low → high). The Ingester sets the Claim's status from the
+note's linguistic surface (hedge markers → `speculation`, measurement language
+without mechanism → `observation`, textbook framing → `established`). The
+Atomizer then propagates the **lowest** status from a candidate Insight's
+source Claims to the Insight itself — a structural rule, not a judgment call,
+so a single `speculation` Claim cannot launder itself into an `established`
+Insight by sharing a pattern with two `observation` Claims. The Synthesizer
+honors the same contract at the Idea layer: whenever any input Insight carries
+`epistemicStatus: "speculation"`, the resulting Idea's `hypothesisStatus` is
+forced to `"speculative"` regardless of what the LLM produced. Together these
+three rules let the knowledge layer absorb casual musings (the "maybe this
+is true" half of a notebook) without contaminating the layers above. The
+schema mirror is on `NoteIndexEntry.epistemicStatus` and the on-disk version
+is `INDEX_SCHEMA_VERSION = 15`.
+
 **Empirical quality control.** The Wiki pipeline's discovery quality is
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;

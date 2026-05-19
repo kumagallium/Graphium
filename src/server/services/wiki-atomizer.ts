@@ -10,7 +10,8 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
-import type { AtomType } from "../../lib/document-types.js";
+import type { AtomType, EpistemicStatus } from "../../lib/document-types.js";
+import { lowestEpistemicStatus, EPISTEMIC_STATUS_ORDER } from "../../lib/document-types.js";
 import type { ClaimSnapshot } from "./wiki-synthesizer.js";
 
 /** Atom の推論的役割（提案 v4 Phase 1.2）として認める値の一覧 */
@@ -24,6 +25,9 @@ const ATOM_TYPE_VALUES: AtomType[] = [
   "observational",
   "boundary",
 ];
+
+/** Phase η: EpistemicStatus として認める値（順序 = 低→高） */
+const EPISTEMIC_STATUS_VALUES = EPISTEMIC_STATUS_ORDER;
 
 export type AtomCandidate = {
   /** 短く言い切る atom タイトル（1 アイデアを表す名詞句） */
@@ -41,6 +45,12 @@ export type AtomCandidate = {
    * AI が主張の論理的性格から自動推定。認識不能・パース失敗時は undefined。
    */
   atomType?: AtomType;
+  /**
+   * Atom の認識論的ステータス（Phase η）。
+   * **入力 Claim の中で最も低い status を継承** する伝搬ルール（lowest-status inheritance）に従う。
+   * LLM が誤った status を出した場合、parser 側のセーフティネットで強制的に最低値に補正する。
+   */
+  epistemicStatus?: EpistemicStatus;
   // procedureContext は意図的に持たない (PR-B4.5)。Atom は context-stripped。
 };
 
@@ -178,7 +188,8 @@ Respond with valid JSON only:
       "body": "1-3 short paragraphs of context-stripped, domain-lifted prose written in everyday register. Each sentence states what acts on what, with a concrete verb.",
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
-      "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary"
+      "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary",
+      "epistemicStatus": "speculation" | "interpretation" | "observation" | "established"   // REQUIRED. Must equal the LOWEST status among the source Claims. See "Epistemic status inheritance" below.
     }
   ]
 }
@@ -226,6 +237,22 @@ Heuristics:
 - If you want to add "because Y" or "due to Y" to the body to make the Atom feel more substantial, **resist**. That is the over-explanation reflex. The Synthesizer will pick this observation up later and propose mechanisms in \`abductive\` mode — that is its job, not yours.
 - When in doubt between \`observational\` and \`mechanistic\`, choose \`observational\`. An under-explained Atom that preserves the empirical signal is more valuable than an over-explained Atom that buries it.
 
+## Epistemic status inheritance (Phase η — REQUIRED, structural)
+
+Each source Claim listed alongside this Atomization carries an \`epistemicStatus\` (one of \`speculation\` / \`interpretation\` / \`observation\` / \`established\`, low → high). For every Atom you emit, set its own \`epistemicStatus\` to the **LOWEST** status among its \`sourceConceptIds\`. This is a structural propagation rule, not a judgment call. **Do not "promote" by reasoning** — even if the lift made the Atom feel more certain than the underlying Claims, the Atom's evidential weight cannot exceed its weakest source.
+
+Rationale: the Atom layer is what the Synthesis layer reads from. A single \`speculation\` Claim left over from one casual musing must not be laundered into an \`established\` Atom just because it shares an abstract pattern with two other \`observation\` Claims — that would let a "maybe this is true" musing pass as community knowledge. The lowest-status rule is how the knowledge layer stays honest.
+
+Concrete examples:
+
+- Source Claim A (\`observation\`) + Source Claim B (\`observation\`) → Atom \`observation\`.
+- Source Claim A (\`observation\`) + Source Claim B (\`speculation\`) → Atom **\`speculation\`** (not interpretation).
+- Source Claim A (\`established\`) + Source Claim B (\`interpretation\`) → Atom \`interpretation\`.
+
+If the lowest source is \`speculation\`, also consider whether the Atom should be dropped altogether: an Atom that only exists because someone made a guess once is rarely a load-bearing pattern. Drop is fine. **Honest \`speculation\` Atoms are acceptable**, but they should be Atoms only when the speculation recurs across notes — i.e., 2+ Claims independently surfaced the same musing.
+
+If the source Claim list is missing \`epistemicStatus\` (legacy data, Phase η-aware Ingester not yet rerun), treat the missing status as \`interpretation\` for inheritance purposes.
+
 ## Rules (strict)
 - **Each Atom MUST cite >= 2 Claims** in \`sourceConceptIds\`. Use the EXACT id from the Claim list.
 - **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
@@ -256,20 +283,30 @@ export function buildAtomizerUserMessage(
 
   const blocks = concepts.map((c) => {
     const levelTag = c.level ? ` [${c.level}]` : "";
+    // Phase η: source Claim の epistemicStatus を可視化し、最低継承ルールを LLM に守らせる。
+    const epistemicTag = c.epistemicStatus ? ` [${c.epistemicStatus}]` : " [interpretation*]";
     const preview = c.bodyPreview ? `  ${c.bodyPreview}` : "";
-    return `### ${c.title}${levelTag} (id: ${c.id})${preview ? "\n" + preview : ""}`;
+    return `### ${c.title}${levelTag}${epistemicTag} (id: ${c.id})${preview ? "\n" + preview : ""}`;
   });
 
   const existingNote = existingAtomTitles.length > 0
     ? `\n\n## Existing Atoms (do NOT duplicate these)\n${existingAtomTitles.map((t) => `- ${t}`).join("\n")}`
     : "";
 
-  return `Scan the following ${concepts.length} Claim pages and factor out the recurring abstract ideas (Atoms) that span 2+ Claims.\n\n${blocks.join("\n\n")}${existingNote}`;
+  const statusLegend = `\n\n_The bracketed second tag on each Claim heading is its \`epistemicStatus\` (low → high: speculation < interpretation < observation < established). \`[interpretation*]\` marks a Claim whose status was missing in the source data — treat as interpretation for the lowest-status inheritance rule._`;
+
+  return `Scan the following ${concepts.length} Claim pages and factor out the recurring abstract ideas (Atoms) that span 2+ Claims.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
 }
 
 export function parseAtomizerOutput(
   text: string,
   conceptIdToTitle: Map<string, string>,
+  /**
+   * Phase η: source Claim の epistemicStatus マップ。lowest-status inheritance を
+   * parser 側で強制するために使う。マップが空 or 未指定なら継承ルールは適用せず、
+   * LLM が出した raw status をそのまま採用する（後方互換）。
+   */
+  conceptIdToEpistemicStatus?: Map<string, EpistemicStatus | undefined>,
 ): AtomCandidate[] {
   try {
     let jsonText = text.trim();
@@ -299,6 +336,22 @@ export function parseAtomizerOutput(
           ? (rawAtomType as AtomType)
           : undefined;
 
+      // Phase η: epistemicStatus の決定。
+      // 1. source Claim の status が分かるなら lowest-status inheritance を強制する。
+      //    LLM が出した raw status は使わず、source の最低を入れる（セーフティネット）。
+      // 2. source map がないなら raw status を fixed-vocabulary フィルタにかけて採用。
+      const rawEpistemic =
+        typeof a.epistemicStatus === "string" ? a.epistemicStatus : undefined;
+      let epistemicStatus: EpistemicStatus | undefined;
+      if (conceptIdToEpistemicStatus && conceptIdToEpistemicStatus.size > 0) {
+        const sourceStatuses = validIds.map((id: string) => conceptIdToEpistemicStatus.get(id));
+        epistemicStatus = lowestEpistemicStatus(sourceStatuses);
+      } else if (rawEpistemic && (EPISTEMIC_STATUS_VALUES as string[]).includes(rawEpistemic)) {
+        epistemicStatus = rawEpistemic as EpistemicStatus;
+      } else {
+        epistemicStatus = undefined;
+      }
+
       out.push({
         title: String(a.title).trim(),
         body: String(a.body).trim(),
@@ -306,6 +359,7 @@ export function parseAtomizerOutput(
         derivedFromConceptTitles: titles,
         confidence,
         atomType,
+        epistemicStatus,
       });
     }
     return out;
