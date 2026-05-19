@@ -1,0 +1,7 @@
+{
+  "noteId": "adv-008-control-chars",
+  "category": "casual-musing",
+  "language": "ja",
+  "title": "制御文字を含むノート",
+  "body": "Tab\t混じり\tテキスト\t\t\tスペース 非破壊 混入\n\n​ゼロ幅​スペース​混入​\n\nZWNJ:‌語‌境‌界\n\nBOM-like prefix: ﻿先頭にBOMっぽい記号がある段落。\n\n制御文字エスケープのリテラル表記 (\\b\\b\\b) を含む段落。actual control bytes are not embedded; this probe tests parser robustness against escaped-looking sequences."
+}

@@ -86,7 +86,7 @@ Verdict: **merge**. The pre-declared metric `lift_score` (spec §6: "target base
 
 Salvage: the lift gain is what Phase α was designed to deliver, and it landed cleanly. Future phases should not have to re-justify it.
 
-## µ-1.1 — corpus honesty (PR #300, merged 2026-05-19)
+## µ-1.1 — corpus honesty (PR [#300](https://github.com/kumagallium/Graphium/pull/300), merged 2026-05-19)
 
 Cleanup of µ-1's known limitations before honest evaluation of Phase η (PR #297).
 
@@ -131,7 +131,7 @@ The `synthesis_count_total` median ticked down (2 → 1). This is sampling noise
 
 Snapshot at `bench/baseline.json` (the new authoritative reference).
 
-## η — epistemic status + lowest-status inheritance (PR #297, status: rebased on post-µ-1.1, re-evaluation pending)
+## η — epistemic status + lowest-status inheritance (PR [#297](https://github.com/kumagallium/Graphium/pull/297), status: rebased on post-µ-1.1, re-evaluation pending)
 
 Pre-declared metrics (spec §8):
 - `epistemic_preservation` — must clear the spec ζ-end target of 0.9 once n=3 evidence is in
@@ -238,3 +238,34 @@ The 0.9 target is the **spec §14 ζ-end goal**, not the η merge gate. η is ho
 `lift_score` dropped 1.0 → 0.8 at median, but the η changes do not touch the Atomizer prompt — this is sampling noise (range 0.692–1.0). The α prompt changes that drive lift remain on main.
 
 Snapshot at `bench/results/with-eta-n3-v2-2026-05-19.json`. The v1 snapshot stays at `bench/results/with-eta-n3-v1-2026-05-19.json` for the record.
+
+## μ-3 — adversarial probes, migration fixtures, performance regression (PR [#299](https://github.com/kumagallium/Graphium/pull/299), merged TBD)
+
+Pure infrastructure phase. No discovery-pipeline metrics to declare; the deliverables are tests that future phases will be measured against.
+
+What landed:
+
+- `bench/probes/adversarial/` — 13 probes split across `safety` (8) and `robustness` (5) `kind`s. Each carries an explicit safety property (no PII propagation, no banned-string leakage, no status escalation) or a robustness budget (max duration, max claims). The runner (`bench/adversarial.ts`) loads them, drives the dry-run pipeline, and writes per-probe pass/fail.
+- `bench/migration/fixtures/document/` (5 fixtures) + `bench/migration/fixtures/index/` (2 fixtures: `01-v14-pre-eta` + `02-v15-current`). The runner (`bench/migration.ts`) calls `migrateToLatest` and asserts pre-declared invariants (version, label remapping, key removal, title/createdAt preservation). The v14 / v15 index pair closes the Phase η PR #297 checklist item "`bench/migration/` 配下に v14 → v15 の fixture を追加". Strict mode is on in CI — any data-loss check failure blocks the merge.
+- `bench/performance.ts` — 100-note synthetic corpus, 3-sample median for duration / heap delta / atoms+syntheses JSON byte size. A baseline is written to `bench/performance/baseline.json`; subsequent runs flag any metric > +20% as a regression.
+
+### CI split (`.github/workflows/bench.yml`)
+
+The single `bench` job now sits next to three new jobs that each report independently to the PR:
+
+| Job | Block on fail | Header (PR sticky comment) |
+|---|---|---|
+| `bench / wiki-pipeline` | No (warning) | `bench-delta` |
+| `bench / adversarial` | No (warning) | `bench-adversarial` |
+| `bench / migration` | **Yes** (`BENCH_MIGRATION_STRICT=true`) | `bench-migration` |
+| `bench / performance` | No (warning) | `bench-performance` |
+
+Migration is the only blocker — data loss from a schema bump is the failure mode that doesn't recover.
+
+### Baseline numbers (Phase μ-3 establishment run)
+
+- Adversarial pass rate: **safety 57.1 % / robustness 100.0 % / total 76.9 %**. Three safety probes (`prompt-injection-instructions`, `malicious-personal-attack`, `pii-leakage`) fail at baseline by design — the dry-run pipeline copies raw input into atom bodies, so the safety property cannot hold until a Phase η/sanitization layer lands. These failures document the gap for Phase η+ work.
+- Migration: **100.0 % across 7 fixtures** (5 document + 2 index). Confirms `migrateToLatest` is reversible for the v1→v5 chain, the legacy `wikiMeta.kind = "concept"` idempotent rename still fires, and the index v14 → v15 detection (Phase η) works.
+- Performance (100-note synth corpus, dry-run): duration **~1 ms median**, heap delta peak **~1.45 MiB**, atoms JSON **~28 KiB**, syntheses JSON **~109 KiB**, counts `100c / 100a / 390s`.
+
+Verdict: **merge** when reviewed — the infrastructure stands up; failure modes that future phases need to address are now visible to CI rather than hidden behind subjective judgment.

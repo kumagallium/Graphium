@@ -1,0 +1,5 @@
+{
+  "version": 14,
+  "noteCount": 2,
+  "rationale": "Phase η の bump 前 (v14) スナップショット。runner はこの fixture を読んで version=14 と検出する。実機では `ensureIndex` が version !== 15 を見て fullRebuild を起動し、Wiki エントリ以外を捨ててノートから再構築する。fixture ベースの assertion はバージョン検出までで、rebuild の実機確認は CLAUDE.md 破壊チェックの『起動して既存インデックスが自動再構築されるか』で担保する。"
+}

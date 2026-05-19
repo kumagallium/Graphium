@@ -21,6 +21,9 @@ not a question you can answer by reading diffs; you need to *measure*.
 pnpm bench:run                     # Run the benchmark, write bench/baseline.json
 pnpm bench:report                  # Render the latest output as a Markdown table
 pnpm bench:compare main            # Diff metrics against main's baseline.json
+pnpm bench:adversarial             # Run safety / robustness probes (no LLM call)
+pnpm bench:performance             # Run the perf regression test (no LLM call)
+pnpm test:migration                # Replay migration fixtures, assert no data loss
 ```
 
 The runner has two modes:
@@ -103,17 +106,53 @@ exercise specific pipeline behaviors:
 
 ## Probes
 
-Ten adversarial scenarios in `bench/probes/`. Many are expected to *fail*
-on the bare-pipeline baseline; each is the target metric for a specific
-upcoming phase (e.g. `casual-speculation-propagation` is what Phase η
-must pass).
+Two kinds of probes live next to the corpus:
+
+- **Spec probes** (`bench/probes/*.probe.json`, 10 files) — discovery-behavior
+  checks paired one-to-one with upcoming Phases. Most are expected to *fail*
+  on the bare-pipeline baseline (e.g. `casual-speculation-propagation` is
+  what Phase η must pass).
+- **Adversarial probes** (`bench/probes/adversarial/*.probe.json`, ≥10
+  files) — safety and robustness checks. `safety` probes assert that
+  malicious / PII / injection content does not propagate downstream;
+  `robustness` probes assert that pathological inputs (empty, whitespace,
+  100 KB body, mixed-language, circular reference) do not crash or stall
+  the pipeline. Run with `pnpm bench:adversarial`.
+
+## Migration fixtures
+
+`bench/migration/fixtures/` stores frozen snapshots of older document /
+index schemas. `pnpm test:migration` replays each fixture through the
+production migration code and asserts the pre-declared invariants
+(version bumped, key labels remapped, `title` / `createdAt` preserved).
+In CI this job runs with `BENCH_MIGRATION_STRICT=true` — any data-loss
+failure blocks the merge. New schema-bump Phases (η / γ / δ / ε / ζ)
+add their pre-bump fixture to this directory.
+
+## Performance regression
+
+`pnpm bench:performance` runs the dry-run pipeline against a 100-note
+synthetic corpus and records duration, peak heap delta, and the byte
+size of `atoms` / `syntheses` JSON. Numbers are compared to
+`bench/performance/baseline.json`; a metric exceeding +20 % is flagged
+as a regression (warning, not block). Update the baseline with
+`BENCH_PERF_UPDATE_BASELINE=true pnpm bench:performance`.
 
 ## CI
 
-`.github/workflows/bench.yml` runs the Tier 1 unit tests
-(`bench/metrics.test.ts`) plus a dry-run bench on every PR, and posts a
-delta comment against `main`. A `workflow_dispatch` lets a maintainer run
-the live mode against the org's API-key secret when needed.
+`.github/workflows/bench.yml` runs four jobs in parallel on every PR:
+
+| Job | Source | Blocks merge? |
+|---|---|---|
+| `bench / wiki-pipeline` | `pnpm bench:run` (dry-run by default) | No (warning) |
+| `bench / adversarial` | `pnpm bench:adversarial` | No (warning) |
+| `bench / migration` | `pnpm test:migration` (`STRICT=true`) | **Yes** |
+| `bench / performance` | `pnpm bench:performance` | No (warning) |
+
+Each posts an independent sticky comment to the PR (`bench-delta` /
+`bench-adversarial` / `bench-migration` / `bench-performance` headers).
+A `workflow_dispatch` lets a maintainer run the live LLM mode against
+the org's API-key secret when needed.
 
 ## For contributors writing a roadmap phase
 

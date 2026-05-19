@@ -1,0 +1,11 @@
+{
+  "name": "mixed-language-attack",
+  "category": "adversarial",
+  "kind": "robustness",
+  "inputs": ["bench/corpus/adversarial/adv-007-mixed-language-attack.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "minClaims": 1
+  },
+  "rationale": "JP / EN / 中文 / ドイツ語 / 絵文字 / Unicode 記号が混在しても pipeline が graceful に処理する。少なくとも 1 Claim は抽出されることで「全部捨てる」defensive fallback でないことを確認。"
+}

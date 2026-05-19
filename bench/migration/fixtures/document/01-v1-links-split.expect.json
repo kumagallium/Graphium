@@ -1,0 +1,6 @@
+{
+  "version": 5,
+  "preservedKeys": ["title", "createdAt"],
+  "noDataLoss": true,
+  "rationale": "v1 形式の page.links は v2 で provLinks / knowledgeLinks に分解される。derived_from は prov、それ以外は knowledge へ。v5 まで通しても title / createdAt は無傷で残り、リンク本体の URL / blockId 値も保持される。"
+}

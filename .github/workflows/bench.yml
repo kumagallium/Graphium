@@ -27,7 +27,9 @@ permissions:
   pull-requests: write
 
 jobs:
+  # 既存 (Phase μ-1): wiki pipeline benchmark
   bench:
+    name: bench / wiki-pipeline
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,4 +81,172 @@ jobs:
           path: |
             bench/latest-baseline.json
             bench/delta.md
+          if-no-files-found: ignore
+
+  # Phase μ-3: adversarial probes (safety / robustness)
+  # LLM call なしの dry-run 完結なので毎 PR で走らせる。
+  adversarial:
+    name: bench / adversarial
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run adversarial probes
+        run: pnpm bench:adversarial | tee bench/adversarial-stdout.log
+
+      - name: Generate adversarial summary
+        if: always()
+        run: |
+          {
+            echo "## Adversarial probes"
+            echo ""
+            echo "<details><summary>Click to expand probe results</summary>"
+            echo ""
+            echo '```'
+            cat bench/adversarial-stdout.log
+            echo '```'
+            echo ""
+            echo "</details>"
+          } > bench/adversarial-summary.md
+
+      - name: Post adversarial summary
+        if: github.event_name == 'pull_request' && hashFiles('bench/adversarial-summary.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: bench/adversarial-summary.md
+          header: bench-adversarial
+
+      - name: Upload adversarial artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-adversarial-${{ github.run_number }}
+          path: |
+            bench/results/adversarial-latest.json
+            bench/adversarial-stdout.log
+            bench/adversarial-summary.md
+          if-no-files-found: ignore
+
+  # Phase μ-3: migration fixture tests (data-loss は CI block)
+  migration:
+    name: bench / migration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run migration fixtures
+        env:
+          # データロス系の失敗は CI を block する。これは破壊的変更検知の最後の砦。
+          BENCH_MIGRATION_STRICT: 'true'
+        run: pnpm test:migration | tee bench/migration-stdout.log
+
+      - name: Generate migration summary
+        if: always()
+        run: |
+          {
+            echo "## Migration fixtures"
+            echo ""
+            echo "<details><summary>Click to expand migration results</summary>"
+            echo ""
+            echo '```'
+            cat bench/migration-stdout.log
+            echo '```'
+            echo ""
+            echo "</details>"
+          } > bench/migration-summary.md
+
+      - name: Post migration summary
+        if: github.event_name == 'pull_request' && hashFiles('bench/migration-summary.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: bench/migration-summary.md
+          header: bench-migration
+
+      - name: Upload migration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-migration-${{ github.run_number }}
+          path: |
+            bench/results/migration-latest.json
+            bench/migration-stdout.log
+            bench/migration-summary.md
+          if-no-files-found: ignore
+
+  # Phase μ-3: performance regression test (warning, not block)
+  performance:
+    name: bench / performance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run performance regression test
+        # noisy なので block せず warning のみ。20%以上の悪化は summary に視覚化される。
+        run: pnpm bench:performance | tee bench/performance-stdout.log
+
+      - name: Generate performance summary
+        if: always()
+        run: |
+          {
+            echo "## Performance regression"
+            echo ""
+            echo "<details><summary>Click to expand performance results</summary>"
+            echo ""
+            echo '```'
+            cat bench/performance-stdout.log
+            echo '```'
+            echo ""
+            echo "</details>"
+          } > bench/performance-summary.md
+
+      - name: Post performance summary
+        if: github.event_name == 'pull_request' && hashFiles('bench/performance-summary.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: bench/performance-summary.md
+          header: bench-performance
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-performance-${{ github.run_number }}
+          path: |
+            bench/results/performance-latest.json
+            bench/performance/baseline.json
+            bench/performance-stdout.log
+            bench/performance-summary.md
           if-no-files-found: ignore

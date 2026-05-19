@@ -1,0 +1,10 @@
+{
+  "version": 5,
+  "wikiKind": "claim",
+  "removedKeys": [
+    "wikiMeta.derivedFromConcepts",
+    "wikiMeta.conceptRole"
+  ],
+  "noDataLoss": true,
+  "rationale": "v5 への version bump はないが、wikiMeta.kind=concept は idempotent に claim にリネームされる。旧フィールド derivedFromConcepts / conceptRole は新名 derivedFromClaims / claimRole に rename。version field とは独立に毎回正規化される（migrateConceptKindToClaim）。"
+}

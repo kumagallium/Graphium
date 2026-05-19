@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "v1 fixture: links field split test",
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "modifiedAt": "2024-01-15T10:00:00.000Z",
+  "pages": [
+    {
+      "id": "page-1",
+      "title": "Page",
+      "blocks": [],
+      "links": [
+        {
+          "id": "lnk-1",
+          "type": "derived_from",
+          "sourceBlockId": "blk-1",
+          "targetNoteId": "note-x"
+        },
+        {
+          "id": "lnk-2",
+          "type": "concept-relation",
+          "sourceBlockId": "blk-2",
+          "targetNoteId": "note-y"
+        }
+      ]
+    }
+  ]
+}

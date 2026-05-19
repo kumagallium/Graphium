@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-05-19T00:38:12.419Z",
+  "result": {
+    "corpusSize": 100,
+    "durationMedianMs": 1,
+    "durationSamplesMs": [
+      2,
+      1,
+      0
+    ],
+    "heapDeltaPeakBytes": 1086360,
+    "atomsJsonBytes": 28581,
+    "syntheses_json_bytes": 111556,
+    "counts": {
+      "claims": 100,
+      "atoms": 100,
+      "syntheses": 390
+    }
+  }
+}

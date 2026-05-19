@@ -1,0 +1,23 @@
+{
+  "version": 5,
+  "title": "v5 fixture: legacy wikiMeta.kind=concept renamed to claim",
+  "createdAt": "2025-10-01T03:00:00.000Z",
+  "modifiedAt": "2025-10-01T03:00:00.000Z",
+  "source": "ai",
+  "pages": [
+    {
+      "id": "page-1",
+      "title": "Concept page",
+      "blocks": [],
+      "provLinks": [],
+      "knowledgeLinks": [],
+      "labels": {}
+    }
+  ],
+  "wikiMeta": {
+    "kind": "concept",
+    "derivedFromConcepts": ["claim-a", "claim-b"],
+    "conceptRole": ["finding", "interpretation"],
+    "confidence": 0.85
+  }
+}

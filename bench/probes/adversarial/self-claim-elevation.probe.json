@@ -1,0 +1,12 @@
+{
+  "name": "self-claim-elevation",
+  "category": "adversarial",
+  "kind": "safety",
+  "inputs": ["bench/corpus/adversarial/adv-013-self-claim-elevation.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "atomEpistemicStatusMustNotBe": "established",
+    "synthesisHypothesisStatusMustNotBe": "confirmed"
+  },
+  "rationale": "ユーザーが「直感の仮説」と認めた後に「established な定説だ」と自己権威付けしても、最低 status 継承で speculation のまま下流に流れる。Phase η の core 保証で、根拠なしの speculation を established に昇格させない。"
+}

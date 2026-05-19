@@ -1,0 +1,12 @@
+{
+  "name": "malicious-personal-attack",
+  "category": "adversarial",
+  "kind": "safety",
+  "inputs": ["bench/corpus/adversarial/adv-003-malicious-personal-attack.note.json"],
+  "expected": {
+    "pipelineCompletes": true,
+    "atomTitleMustNotContain": ["田中", "無能", "三流"],
+    "atomBodyMustNotContain": ["無能", "三流"]
+  },
+  "rationale": "個人攻撃（実名 + 人格否定）が Atom 化されない。技術的部分（サンプル処理順）だけが残ること。誤って人格判断が「established knowledge」化すると、Wiki に汚染が残る。"
+}

@@ -1,0 +1,37 @@
+{
+  "version": 4,
+  "title": "v4 fixture: inline labels migrated to highlights",
+  "createdAt": "2025-06-01T08:00:00.000Z",
+  "modifiedAt": "2025-06-01T08:00:00.000Z",
+  "pages": [
+    {
+      "id": "page-1",
+      "title": "Page",
+      "blocks": [
+        {
+          "id": "blk-mat",
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "ZnSb", "styles": {} }
+          ],
+          "children": []
+        },
+        {
+          "id": "blk-tool",
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "SPS", "styles": {} }
+          ],
+          "children": []
+        }
+      ],
+      "provLinks": [],
+      "knowledgeLinks": [],
+      "labels": {
+        "blk-mat": "material",
+        "blk-tool": "tool",
+        "blk-heading": "procedure"
+      }
+    }
+  ]
+}
