@@ -1,8 +1,0 @@
-{
-  "noteId": "034-bio-evolution-finch",
-  "category": "bio-note",
-  "language": "en",
-  "domain": "biology",
-  "title": "Beak depth in Daphne Major finches tracked seed hardness after 2004 drought",
-  "body": "Re-analysed the long-term Geospiza fortis dataset for 1998–2010.\n[Step] Phenotyping\n  [Input] caliper beak measurements, n = 312 individuals/year, [Tool] dial caliper, ±0.1 mm\n[Step] Seed survey\n  [Tool] quadrat survey, [Output] hard-seed fraction rose from 0.18 to 0.61 after 2004\n[Step] Trend\n  [Output] mean beak depth shifted +0.43 mm by 2007 (p < 0.01)\nThe direction of selection matches the shift in seed hardness, supporting the established interpretation that drought-driven food composition is the proximate cause. Within-generation phenotypic plasticity cannot be ruled out without offspring-of-survivor data."
-}

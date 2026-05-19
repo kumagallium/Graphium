@@ -1,8 +1,0 @@
-{
-  "noteId": "038-econ-finance-volatility",
-  "category": "econ-note",
-  "language": "ja",
-  "domain": "economics",
-  "title": "TOPIX のリアライズドボラティリティは月末に上がる傾向",
-  "body": "2020〜2024 年の TOPIX 日次リターンから 5 分足リアライズドボラティリティを再計算した。\n[Step] データ整理\n  [Input] 日経 NQN 5 分足、[Tool] R + xts\n[Step] 集計\n  [Output] 月末 3 営業日の平均 RV は月内中央値の 1.24 倍\nヘッジファンドのリバランスや投信の月末リバランスによる需給インバランスが寄与している可能性が高いが、決算月効果との交絡を除けていない。あくまで観測事実として記録する。"
-}

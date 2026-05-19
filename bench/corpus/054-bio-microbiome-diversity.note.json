@@ -1,0 +1,8 @@
+{
+  "noteId": "054-bio-microbiome-diversity",
+  "category": "bio-note",
+  "language": "en",
+  "domain": "biology",
+  "title": "Antibiotic course collapsed gut microbiome alpha-diversity within 5 days",
+  "body": "Personal experiment: 16S sequencing of stool samples around a 7-day amoxicillin course.\n[Step] Sampling\n  [Input] daily home stool sample, [Tool] Zymo DNA/RNA Shield kit\n[Step] Sequencing\n  [Tool] external 16S V3–V4 service, [Output] Shannon index 3.4 → 1.9 by day 5\n[Step] Recovery\n  [Output] Shannon partially recovered to 2.8 by day 28, not back to baseline\nN = 1 so this is not generalisable, but the direction matches the published literature on broad-spectrum antibiotic effects. Whether full recovery requires months or never reaches baseline depends on diet and the specific antibiotic — out of scope for this single experiment."
+}

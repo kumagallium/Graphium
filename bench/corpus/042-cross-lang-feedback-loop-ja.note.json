@@ -1,9 +1,0 @@
-{
-  "noteId": "042-cross-lang-feedback-loop-ja",
-  "category": "cross-language-pair",
-  "language": "ja",
-  "domain": "software",
-  "pairId": "feedback-loop",
-  "title": "フィードバックループの安定性とゲイン余裕",
-  "body": "制御系の安定性はフィードバックループのゲイン余裕と位相余裕で評価できる。\n[Step] 線形化\n  [Input] 平衡点近傍、[Tool] ボード線図\n[Step] 余裕計測\n  [Output] ゲイン余裕 12 dB、位相余裕 55°\nゲイン余裕が小さいほど、わずかなプラント変動でループが発振しやすくなる。これは古典制御の標準的な解釈で、PID 系の現場調整でも使われている。"
-}

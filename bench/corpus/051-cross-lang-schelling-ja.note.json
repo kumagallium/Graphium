@@ -1,0 +1,9 @@
+{
+  "noteId": "051-cross-lang-schelling-ja",
+  "category": "cross-language-pair",
+  "language": "ja",
+  "domain": "economics",
+  "pairId": "schelling-segregation",
+  "title": "シェリングの居住分離モデルにおける個人選好と全体結果の乖離",
+  "body": "Schelling の居住分離モデルでは、個人の「同種が一定割合いてほしい」という弱い選好でも、集団全体としては強い空間的分離を生じる。\n[Step] シミュレーション\n  [Input] 50×50 格子、寛容度 30%、[Tool] NetLogo\n[Step] 観察\n  [Output] 寛容度 30% でも 100 step で同種クラスタが大きく成長\nミクロな選好とマクロな結果が直感的に一致しない、という創発の例として古典化している。実際の居住分離はこのモデル以外の経路（差別・所得・制度）も寄与しているので、シェリング由来の説明だけを実証として使うのは無理がある。"
+}

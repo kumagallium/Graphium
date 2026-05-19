@@ -1,0 +1,9 @@
+{
+  "noteId": "052-cross-lang-schelling-en",
+  "category": "cross-language-pair",
+  "language": "en",
+  "domain": "economics",
+  "pairId": "schelling-segregation",
+  "title": "Schelling's segregation model: weak preferences, strong aggregate outcomes",
+  "body": "In Schelling's residential segregation model, even a mild same-group preference at the individual level produces strong spatial separation at the population level.\n[Step] Simulation\n  [Input] 50×50 lattice, tolerance threshold 30%, [Tool] NetLogo\n[Step] Observation\n  [Output] at tolerance 30%, large mono-type clusters form within ~100 steps\nThe model is the canonical illustration that micro-preferences and macro-outcomes can diverge. Real-world segregation is shaped by additional channels (discrimination, income, institutions), so using Schelling alone as empirical evidence overreaches what the model can support."
+}

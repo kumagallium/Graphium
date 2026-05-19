@@ -1,0 +1,12 @@
+{
+  "noteId": "037-casual-musing-en-meeting",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["question", "interpretation"],
+    "epistemicStatus": ["speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive"]
+  },
+  "notes": "Casual EN musing: standups as backlog smoke detector. 'Maybe / could just be the team I'm on' — speculation. Atomizer should not anchor on 'standup' specifically; the underlying claim generalises to meeting-as-symptom."
+}

@@ -1,0 +1,12 @@
+{
+  "noteId": "047-cross-lang-feedback-loop-ja",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["deductive", "abductive"]
+  },
+  "notes": "JP half of the feedback-loop pair (pairId=feedback-loop). Same concept as 048; both should fold into one Atom for cross_language_consistency to pass. Atom title must be language-neutral (e.g. 'closed-loop stability / control margin'), not 'ボード線図' or 'Bode plot'."
+}

@@ -1,9 +1,0 @@
-{
-  "noteId": "043-cross-lang-feedback-loop-en",
-  "category": "cross-language-pair",
-  "language": "en",
-  "domain": "software",
-  "pairId": "feedback-loop",
-  "title": "Feedback-loop stability via gain and phase margin",
-  "body": "The stability of a closed-loop control system can be characterised by its gain margin and phase margin.\n[Step] Linearisation\n  [Input] equilibrium operating point, [Tool] Bode plot\n[Step] Margin measurement\n  [Output] gain margin = 12 dB, phase margin = 55°\nA smaller gain margin means the loop is closer to sustained oscillation under modest plant variation. This is a textbook interpretation in classical control and is still the basis of practical PID tuning on the shop floor."
-}

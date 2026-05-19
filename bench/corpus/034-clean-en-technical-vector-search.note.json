@@ -1,0 +1,8 @@
+{
+  "noteId": "034-clean-en-technical-vector-search",
+  "category": "clean-en-technical",
+  "language": "en",
+  "domain": "software",
+  "title": "HNSW recall vs latency tradeoff at efSearch sweep",
+  "body": "Tuned HNSW parameters on a 1M sentence-embedding corpus.\n[Step] Index build\n  [Input] 1M × 768d float32, [Tool] hnswlib, [Parameter] M=16, efConstruction=200\n[Step] Sweep\n  [Parameter] efSearch ∈ {32, 64, 128, 256}, [Output] recall@10 = 0.81, 0.92, 0.97, 0.99\n[Step] Latency\n  [Tool] single-thread bench, [Output] p99 = 1.1, 1.8, 3.5, 7.2 ms\nefSearch=128 hits the knee of the curve. Above 128 we pay nearly linear latency for diminishing recall, which matches the published HNSW behaviour."
+}

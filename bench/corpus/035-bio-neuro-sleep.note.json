@@ -1,8 +1,0 @@
-{
-  "noteId": "035-bio-neuro-sleep",
-  "category": "bio-note",
-  "language": "ja",
-  "domain": "biology",
-  "title": "ノンレム徐波睡眠時のグリンパティック流量増大",
-  "body": "覚醒時よりノンレム徐波睡眠時の方が脳脊髄液 (CSF) のグリンパティック流量が高いことが Xie ら (2013) で報告されている。\n[Step] 文献整理\n  [Input] Xie et al. Science 2013、[Tool] PubMed\n[Step] 解釈\n  [Output] アミロイド β のクリアランス効率が睡眠依存的に上がる仮説\nヒトでの直接観測はまだ少なく、in vivo MRI で間接的に確認されているのみという理解。睡眠不足が AD リスクを上げる疫学とは整合するが、因果はまだ確証されていない。"
-}

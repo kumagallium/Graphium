@@ -1,8 +1,0 @@
-{
-  "noteId": "053-econ-development-poverty-trap",
-  "category": "econ-note",
-  "language": "en",
-  "domain": "economics",
-  "title": "S-shaped income dynamics: poverty trap evidence is mixed",
-  "body": "The Banerjee–Duflo critique of strict poverty trap models pushed back on Sachs-style 'big push' arguments.\n[Step] Survey\n  [Input] Banerjee & Duflo 2011, Kraay & McKenzie 2014, Balboni et al. 2022 Bangladesh asset transfers\n[Step] Observation\n  [Output] strict S-shaped income dynamics show up in some asset-transfer experiments (Balboni et al.) but not in cross-country growth data\n[Step] Interpretation\n  [Output] poverty traps may exist at the household-asset level without being visible at the country level\nThe two literatures are arguing about different objects. Reconciliation may not be a single yes/no answer about traps but a question of which assets, at which scale, exhibit non-convex returns. I am not confident enough in this to treat it as settled."
-}

@@ -1,0 +1,8 @@
+{
+  "noteId": "042-econ-policy-minimum-wage",
+  "category": "econ-note",
+  "language": "en",
+  "domain": "economics",
+  "title": "Seattle 2015 minimum-wage step-up: short-run employment effect is contested",
+  "body": "Re-read both the Berkeley IRLE study and the UW Evans School study on Seattle's $13 minimum wage phase.\n[Step] Comparison\n  [Input] IRLE city-level wages vs. UW administrative payroll data\n[Step] Findings\n  [Output] IRLE: no measurable employment loss; UW: hours fell, total earnings fell\n[Step] Interpretation\n  [Output] The two papers operationalised 'low-wage worker' differently, which can flip the sign\nThe headline conclusion depends almost entirely on the unit of measurement (workers vs. hours, single-site vs. multi-site firms). Saying minimum wage 'works' or 'doesn't work' from these papers alone overstates the evidence."
+}
