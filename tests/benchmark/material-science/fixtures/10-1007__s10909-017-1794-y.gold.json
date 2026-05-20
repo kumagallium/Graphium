@@ -1,0 +1,331 @@
+[
+  {
+    "label": "La5Ni2Si3_polycrystalline",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e0",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "La",
+              "lanthanum"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": [
+              "99.9 wt% or better",
+              "99.9 wt%"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Ni",
+              "Nickel"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": [
+              "99.9 wt% or better",
+              "99.9 wt%"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Si",
+              "Silicon"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": [
+              "99.9 wt% or better",
+              "99.9 wt%"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": [
+              "argon arc-melting",
+              "arc-melting",
+              "melting"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "ultra-high purity argon",
+              "ultra-high purity Ar",
+              "argon",
+              "Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "argon arc-melted sample",
+              "arc-melted sample",
+              "melted sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e0"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e2"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e3"
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "remelting",
+              "melting"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "remelted sample",
+              "melted sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "900 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": "1 week",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e4"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "evacuated quartz ampoule",
+              "quartz ampoule",
+              "ampoule"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e5"
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": "quenching",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e5"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "quenched sample",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "cold water",
+              "water"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e8"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e6"
+      }
+    ]
+  }
+]

@@ -1,0 +1,758 @@
+[
+  {
+    "label": "TinO2n-1_fspsed_without_felt",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e0",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "TinO2n-1",
+              "Titanium suboxide"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": [
+              "50 to 500 μm",
+              "50 μm to 500 μm"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "sps device",
+              "FCT HPD 25"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": "preparing",
+            "@language": "en"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "16 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1000 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "3 min",
+              "3 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "vacuum",
+              "vacuum (5 Pa)"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature_rate": [
+          {
+            "@value": "100 °C/min",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e0"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e6"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "prepared sample",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e1"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "alumina paper rings",
+              "alumina paper ring",
+              "paper rings",
+              "paper ring"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "40 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "graphite paper",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "graphite punch",
+              "punch"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "40 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "sintering",
+              "flash spark plasma sintering",
+              "FSPS"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "sintered sample",
+              "flash spark plasma sintered sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e5"
+      }
+    ]
+  },
+  {
+    "label": "TinO2n-1_fspsed_with_felt",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e0",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "TinO2n-1",
+              "Titanium suboxide"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": [
+              "50 to 500 μm",
+              "50 μm to 500 μm"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "sps device",
+              "FCT HPD 25"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": "preparing",
+            "@language": "en"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "16 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1000 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "3 min",
+              "3 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "vacuum",
+              "vacuum (5 Pa)"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature_rate": [
+          {
+            "@value": "100 °C/min",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e0"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e7"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "prepared sample",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e1"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "alumina paper rings",
+              "alumina paper ring",
+              "paper rings",
+              "paper ring"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "40 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "graphite paper",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "graphite punch",
+              "punch"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "40 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "porous graphite felt",
+              "graphite felt",
+              "felt"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "40 mm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "felt",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "sintering",
+              "flash spark plasma sintering",
+              "FSPS"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e5"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "sintered sample",
+              "flash spark plasma sintered sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e6"
+      }
+    ]
+  },
+  {
+    "label": "TinO2n-1_cspsed",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e0",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "TinO2n-1",
+              "Titanium suboxide"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": [
+              "50 to 500 μm",
+              "50 μm to 500 μm"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "sps device",
+              "FCT HPD 25"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": "preparing",
+            "@language": "en"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "16 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1000 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "3 min",
+              "3 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "vacuum",
+              "vacuum (5 Pa)"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature_rate": [
+          {
+            "@value": "100 °C/min",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e0"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e3"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "prepared sample",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e1"
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "sintering",
+              "conventional spark plasma sintering",
+              "spark plasma sintering",
+              "CSPS"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1300-1500 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "5-15 min",
+              "5-15 minutes",
+              "5 to 15 min",
+              "5 to 15 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "sintered sample",
+              "conventional spark plasma sintered sample",
+              "spark plasma sintered sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e2"
+      }
+    ]
+  }
+]

@@ -1,0 +1,537 @@
+[
+  {
+    "label": "Mg1−xZnxFe2O4_sol-gel_autocombustion",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "Mg(NO3)2·6H2O",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "label": [
+          {
+            "@value": "Zn(NO3)2·6H2O",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": "Fe(NO3)3·9H2O",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": [
+              "citric acid",
+              "C6H8O7·H2O",
+              "citric acid (C6H8O7·H2O)"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "label": [
+          {
+            "@value": [
+              "ammonia",
+              "ammonia (NH3·H2O)",
+              "NH3·H2O"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "label": [
+          {
+            "@value": "deionized water",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "label": [
+          {
+            "@value": "dissolved sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "label": [
+          {
+            "@value": [
+              "added sample",
+              "changed the pH sample",
+              "mixed sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "label": [
+          {
+            "@value": [
+              "heated sample",
+              "dried gel sample",
+              "stirred sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "dried gel",
+              "gel"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "label": [
+          {
+            "@value": [
+              "dried sample",
+              "dried gel sample",
+              "dried gel"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "dried gel",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "label": [
+          {
+            "@value": [
+              "burnt sample",
+              "self-propagating combusted sample",
+              "combusted sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "loose powder",
+              "powder"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "label": [
+          {
+            "@value": "ground sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e13",
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e14",
+        "label": [
+          {
+            "@value": [
+              "thermostat water bath",
+              "water bath"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e15",
+        "label": [
+          {
+            "@value": [
+              "dry oven",
+              "oven"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": "dissolving",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": [
+              "adding",
+              "changing the pH",
+              "mixing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": [
+              "heating",
+              "drying",
+              "stirring"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "80 °C",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": "drying",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "120 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "2 h",
+              "2 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a5",
+        "label": [
+          {
+            "@value": [
+              "burning",
+              "self-propagating combustion",
+              "combustion",
+              "combusting"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": "air",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "room temperature",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a6",
+        "label": [
+          {
+            "@value": "grinding",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a7",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "800 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "3 h",
+              "3 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e6"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e7"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e5"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e8"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e8"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e14"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e15"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e10"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e10"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a5",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a6",
+        "entity": "e11"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a6",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a7",
+        "entity": "e12"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a7",
+        "entity": "e13"
+      }
+    ]
+  }
+]

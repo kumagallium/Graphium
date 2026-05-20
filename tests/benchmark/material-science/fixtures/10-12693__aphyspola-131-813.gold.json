@@ -1,0 +1,679 @@
+[
+  {
+    "label": "SMC_synthesis",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "Ni80Fe14.7Mo4.5Mn0.5Si0.3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "label": [
+          {
+            "@value": [
+              "hardened steel vial",
+              "steel vial",
+              "vial"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": [
+              "steel balls",
+              "steel ball",
+              "balls",
+              "ball"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "mechanical alloying",
+              "alloying"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:rotation": [
+          {
+            "@value": "350 rpm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": "air",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": [
+              "mechanically alloyed sample",
+              "alloyed sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "label": [
+          {
+            "@value": "metal nitrates",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "label": [
+          {
+            "@value": "citric acid",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "label": [
+          {
+            "@value": [
+              "NH4OH",
+              "NH4OH (26% aqueous)"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:concentration": [
+          {
+            "@value": "26 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "aqueous",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "label": [
+          {
+            "@value": "distilled water",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": "dissolving",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "label": [
+          {
+            "@value": "dissolved sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "aqueous",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": "adjusting",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "label": [
+          {
+            "@value": "adjusted sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": "heating",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "70 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "4 hours",
+              "4 h"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "label": [
+          {
+            "@value": "heated sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "viscous gel",
+              "gel"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a5",
+        "label": [
+          {
+            "@value": "mixing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "label": [
+          {
+            "@value": "mixed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e13",
+        "label": [
+          {
+            "@value": [
+              "laboratory dryer",
+              "dryer"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a6",
+        "label": [
+          {
+            "@value": "heating",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "200 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "12 hours",
+              "12 h"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e14",
+        "label": [
+          {
+            "@value": "heated sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a7",
+        "label": [
+          {
+            "@value": "compacting",
+            "@language": "en"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "800 MPa",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e15",
+        "label": [
+          {
+            "@value": "compacted sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "toroidal",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": [
+              "24 mm, 17 mm",
+              "24, 17 mm"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_height": [
+          {
+            "@value": "3 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e16",
+        "label": [
+          {
+            "@value": "compacted sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "cylindrical",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_height": [
+          {
+            "@value": "3 mm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "10 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e17",
+        "label": [
+          {
+            "@value": [
+              "microwave furnace",
+              "fornace"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a8",
+        "label": [
+          {
+            "@value": [
+              "heat treating",
+              "heating"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "800 °C",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "30 minutes",
+              "30 min"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "nitrogen",
+              "N2"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e18",
+        "label": [
+          {
+            "@value": [
+              "heat-treated sample",
+              "heated sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e5"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e6"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e8"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e10"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e10"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e4"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a5",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a6",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a6",
+        "entity": "e13"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a6",
+        "entity": "e14"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a7",
+        "entity": "e14"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a7",
+        "entity": "e15"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a8",
+        "entity": "e15"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a7",
+        "entity": "e16"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a8",
+        "entity": "e16"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a8",
+        "entity": "e17"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a8",
+        "entity": "e18"
+      }
+    ]
+  }
+]

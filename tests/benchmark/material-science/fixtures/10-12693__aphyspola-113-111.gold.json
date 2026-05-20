@@ -1,0 +1,482 @@
+[
+  {
+    "label": "Fe61Co20Nb7B12_planar-flow-casting-annealing",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "Fe61Co20Nb7B12",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": [
+              "planar-flow cast sample",
+              "cast sample",
+              "prepared sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "amorphous ribbons",
+              "amorphous ribbon",
+              "ribbons",
+              "ribbon"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length": [
+          {
+            "@value": "10 cm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_width": [
+          {
+            "@value": "6-10 mm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_thickness": [
+          {
+            "@value": "17-21 µm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "planar-flow casting",
+              "casting",
+              "preparing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "vacuum, Ar",
+              "vacuum or Ar",
+              "vacuum and Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": [
+              "500 °C, 540 °C, and 580 °C",
+              "500 °C, 540 °C, 580 °C",
+              "500, 540, and 580 °C",
+              "500, 540, 580 °C"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "1 h",
+              "1 hour"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e3"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e4"
+      }
+    ]
+  },
+  {
+    "label": "Fe57Co20V4Nb7B12_planar-flow-casting-annealing",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "Fe57Co20V4Nb7B12",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": [
+              "planar-flow cast sample",
+              "cast sample",
+              "prepared sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "amorphous ribbons",
+              "amorphous ribbon",
+              "ribbons",
+              "ribbon"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length": [
+          {
+            "@value": "10 cm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_width": [
+          {
+            "@value": "6-10 mm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_thickness": [
+          {
+            "@value": "17-21 µm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "planar-flow casting",
+              "casting",
+              "preparing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "vacuum, Ar",
+              "vacuum or Ar",
+              "vacuum and Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": [
+              "500 °C, 540 °C, and 580 °C",
+              "500 °C, 540 °C, 580 °C",
+              "500, 540, and 580 °C",
+              "500, 540, 580 °C"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "1 h",
+              "1 hour"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e3"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e4"
+      }
+    ]
+  },
+  {
+    "label": "Fe57Co20Cr4Nb7B12_planar-flow-casting-annealing",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "Fe57Co20Cr4Nb7B12",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": [
+              "planar-flow cast sample",
+              "cast sample",
+              "prepared sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "amorphous ribbons",
+              "amorphous ribbon",
+              "ribbons",
+              "ribbon"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length": [
+          {
+            "@value": "10 cm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_width": [
+          {
+            "@value": "6-10 mm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:length_thickness": [
+          {
+            "@value": "17-21 µm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "planar-flow casting",
+              "casting",
+              "preparing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "vacuum, Ar",
+              "vacuum or Ar",
+              "vacuum and Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": [
+              "500 °C, 540 °C, and 580 °C",
+              "500 °C, 540 °C, 580 °C",
+              "500, 540, and 580 °C",
+              "500, 540, 580 °C"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "1 h",
+              "1 hour"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e3"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e4"
+      }
+    ]
+  }
+]
