@@ -1,0 +1,8 @@
+{
+  "noteId": "055-humanities-translation-loss",
+  "category": "humanities-note",
+  "language": "en",
+  "domain": "humanities",
+  "title": "Translation 'loss' is structural, not just lexical",
+  "body": "Comparing four English renderings of Tanizaki's In Praise of Shadows.\n[Step] Passage selection\n  [Input] paragraphs on lacquerware in candlelight\n[Step] Cross-translation\n  [Output] all four translators preserve the propositional content; none preserve the cadence of the original 'と' enumerations\n[Step] Observation\n  [Output] the felt slowness of the prose is in the syntactic rhythm, not in any single word\nThe loss-in-translation cliche is usually framed as lexical (a word with no equivalent). The structural channel — clause length, enumeration rhythm, sentence-ending modality — is harder to talk about and may be the larger source of distortion. This is a personal reading, not a translation-studies thesis."
+}

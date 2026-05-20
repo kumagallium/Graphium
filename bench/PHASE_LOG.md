@@ -7,10 +7,11 @@ benchmark spec is in `docs/internal/wiki-discovery-mode-fullspec-2026-05.md`
 
 Conventions:
 
-- `bench/baseline.json` stays fixed at Phase μ-1's snapshot. Every phase
+- `bench/baseline.json` stays fixed for each corpus snapshot. Every phase
   is measured against that snapshot, **not** against the previous phase.
   The fixed baseline lets each phase's claim be re-verified months
-  later.
+  later. A phase that **changes the corpus itself** (Phase μ-2 / μ-3)
+  resets the baseline, since the old numbers are no longer comparable.
 - Per-phase live runs are committed to `bench/results/<phase>-<date>.json`.
   These are the durable record of "what the metric was the day the PR
   merged" so the numbers cannot drift after the fact.
@@ -315,3 +316,131 @@ Honest trade-offs:
 `adversarial_pass_rate` rose to 0.727 — most of that gain is from PR #302 (μ-1.2 probe fix); about 0.01 attributable to this PR.
 
 Net read: the bench gains a *huge* signal (entropy off the floor for the first time, max 0.792) for two minor metric regressions that have a clear mechanistic explanation. The cleanest follow-up is a small Atomizer-side change that biases the diversity preference toward type variety without sacrificing observational-atom share.
+
+## μ-2 — cross-language + cross-domain corpus expansion (PR [#301](https://github.com/kumagallium/Graphium/pull/301), merged TBD)
+
+Spec: `docs/internal/wiki-discovery-mode-fullspec-2026-05.md` §5 "Phase μ-2".
+Branch: `feat/wiki-benchmark-corpus-expansion`.
+
+Phase μ-2 is a corpus + metric expansion, not a pipeline change.
+Built parallel to μ-1.1 / η / μ-3 / β (synth-diversity) and rebased on
+top of all four; landed **after** the post-β baseline so the comparison
+surface here is "post-β baseline (30 notes) → μ-2 baseline (58 notes)"
+with two new metrics added.
+
+### What landed
+
+- **Corpus**: 30 → **58 notes** (notes 031–058 added by μ-2; 026–030 are
+  μ-1.1's mixed-status / edge-case set; 001–025 are μ-1's original).
+  6 domains (materials / software / biology / economics / humanities /
+  misc) and 2 languages (JP + EN). Six new categories:
+  `clean-en-technical` (4), `casual-musing-en` (3), `bio-note` (5),
+  `econ-note` (5), `humanities-note` (5), `cross-language-pair` (3 JP↔EN
+  pairs sharing a `pairId`: feedback-loop / epidemic-R0 /
+  schelling-segregation).
+- **Ground-truth**: drafted by the implementer, then reviewed by an
+  independent LLM session. The review flagged notes 029 (now 034), 044
+  (now 049), and 045 (now 050) — `epistemicStatus` was missing a status
+  that the matching `claimRoles` implied. Fixed before commit. All three
+  cross-language pair twins (047↔048, 049↔050, 051↔052 post-renumber)
+  carry byte-identical `expected` blocks.
+- **New metrics**: `cross_language_consistency` (whether `pairId` twins
+  fold into the same Atom) and `domain_balance_score` (per-domain Atom
+  lift rate combined with normalised entropy). Both wired through
+  `metrics.ts`, `runner.ts`, `compare.ts`, and `metrics.test.ts`. Both
+  added to `BenchMetrics` in `types.ts` and to the n=3 aggregator's
+  metric key list.
+- **Types**: `CorpusCategory` gained six entries; `CorpusNote` gained an
+  optional `domain` field; `load.ts` exposes `resolveDomain()` which
+  falls back to category-based inference for the 30 notes that pre-date
+  the field.
+- **Renumber**: μ-2 was originally drafted at notes 026–053; rebased on
+  top of μ-1.1 (which had landed 026–030) the μ-2 set was renumbered to
+  031–058 to avoid collision.
+
+### Baseline regen (n=3 live, 58 notes, 11 probes, post-β pipeline)
+
+CI workflow_dispatch [run 26095765011](https://github.com/kumagallium/Graphium/actions/runs/26095765011)
+on `feat/wiki-benchmark-corpus-expansion` rebased onto post-β main
+(7974c7c). Snapshot also archived to
+`bench/results/baseline-mu2-live-58notes-postbeta-2026-05-20.json`
+(byte-identical to the committed `bench/baseline.json`). The previous
+μ-1 live snapshot stays at
+`bench/results/baseline-mu1-live-25notes-2026-05-17.json`.
+
+| metric | post-β (μ-1.1 corpus) median | μ-2 (58 notes) median | Δ (median) | μ-2 range |
+|---|---|---|---|---|
+| `lift_score` | 0.733 | 0.600 | ▼ −0.133 | 0.600 – 0.875 |
+| **`mode_distribution_entropy`** | 0.500 | **0.792** | ▲ +0.292 | 0.000 – 0.792 |
+| `epistemic_preservation` | 0.857 | **0.877** | ▲ +0.020 | 0.860 – 0.895 |
+| `adversarial_pass_rate` | 0.727 | 0.727 | · 0 | 0.727 |
+| `novelty_score` | 1.000 | 1.000 | · 0 | 1.000 |
+| `observation_atom_ratio` | 0.000 | **0.200** | ▲ +0.200 | 0.000 – 0.250 |
+| `claim_count_total` | 53 | 104 | ▲ +51 | 104 – 108 |
+| `atom_count_total` | 15 | 10 | ▼ −5 | 8 – 20 |
+| `synthesis_count_total` | 2 | **3** | ▲ +1 | 3 |
+| **`cross_language_consistency`** (NEW) | — | 0.000 | new | **0.000 – 1.000** |
+| **`domain_balance_score`** (NEW) | — | 0.709 | new | 0.396 – 0.790 |
+
+Per-sample (μ-2 on post-β pipeline):
+
+| run | lift | entropy | epi | obs | xlc | dom | atoms | syn |
+|---|---|---|---|---|---|---|---|---|
+| #1 | 0.600 | **0.792** | 0.860 | 0.250 | 0.000 | 0.396 | 20 | 3 |
+| #2 | 0.875 | 0.000 | 0.877 | 0.000 | 0.000 | 0.790 | 8 | 3 |
+| #3 | 0.600 | **0.792** | 0.895 | 0.200 | **1.000** | 0.709 | 10 | 3 |
+
+Notes on the two new metrics:
+
+- `cross_language_consistency` hit **1.0 in run #3** (the post-β
+  pipeline). Run #3 had `synthesis_count_total = 3` *and* `atom_count =
+  10`, the sweet spot where the atomizer kept enough atoms to make
+  pair-twin co-location possible without dropping back to 5. The median
+  of 0 still understates this — runs #1 / #2 produced atom sets where
+  none of the three JP/EN twins happened to land in the same atom. The
+  bench is now sensitive to atomizer-side merging decisions; phase γ
+  (relatedAtoms) is the natural place to make 1.0 the median.
+- `domain_balance_score = 0.709` median (range 0.396 – 0.790). The wider
+  variance reflects atom-count variance more than corpus geometry: when
+  the atomizer keeps 20 atoms (run #1) the lift rate is uneven across
+  domains (0.396), and when it keeps 8 (run #2) the surviving atoms are
+  more uniformly lifted (0.790). Downstream phases should aim for
+  `mean ≥ 0.7` with `range ≤ 0.2`.
+
+Notes on the existing metrics shifting:
+
+- **`mode_distribution_entropy` jumped 0.500 → 0.792** — μ-2 gives β
+  more raw material to spread modes across. β's diversity preference now
+  has 58 notes' worth of structural variety to play with, and runs #1
+  and #3 both hit 0.792 (3 distinct modes from 3 syntheses). This is
+  arguably the most consequential finding of the rebase: μ-2 + β
+  together turn the entropy metric into a usable signal.
+- **`observation_atom_ratio` recovered 0.000 → 0.200** — β had
+  regressed obs-ratio to 0 on the μ-1.1 corpus because diversity
+  preference crowded out the observational tag. With μ-2's richer
+  observation-heavy corpus (bio findings, econ measurements, pure
+  observation notes), 2 of 3 runs now land at ≥0.2.
+- `lift_score` dropped 0.733 → 0.600 at median. As in μ-1.1, this is the
+  pattern-judge false-negative on single-element symbols (`Pt`, `Zn`)
+  becoming visible because μ-2 introduced many such tokens (`MgB2`,
+  `PRDM9`, `HNSW`, `R0`, `TOPIX`). The live LLM judge is the long-term
+  arbiter per μ-1.1's documented design.
+- `epistemic_preservation` improved +0.020, range narrow (0.035). The
+  expanded corpus exercises more interpretation / speculation /
+  established boundary cases and η's status inheritance keeps the
+  median stable.
+- `claim_count_total` nearly doubled (53 → 104) on the 2× larger
+  corpus, matching the linear scaling expectation. `atom_count_total`
+  median dipped slightly (15 → 10): β's atomizer cap was set against
+  the 30-note corpus; with 58 notes the same cap proportionally
+  compresses more aggressively. Not a regression — a calibration
+  question for a future phase if the median needs to climb further.
+
+Verdict: **merge** as a corpus + metric expansion. The live μ-2 baseline
+is now the comparison surface for all downstream phases on the 58-note
+corpus. Two μ-2-specific findings worth banking:
+1. `cross_language_consistency = 1.0 in run #3` is the first existence
+   proof that the post-β pipeline can merge JP↔EN concept twins.
+2. `mode_distribution_entropy` median jumped from 0.5 (post-β on the
+   30-note corpus) to 0.792 (post-β on the 58-note corpus) — the
+   broader corpus measurably amplifies β's diversity gain.

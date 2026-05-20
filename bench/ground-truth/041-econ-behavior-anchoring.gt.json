@@ -1,0 +1,12 @@
+{
+  "noteId": "041-econ-behavior-anchoring",
+  "expected": {
+    "claimCount": { "min": 1, "max": 3 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation", "speculation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "Small-N anecdotal evidence of anchoring in real-estate negotiation. The author explicitly flags small sample size and confounding (area / period / property) — so a rebuttal condition should surface and the status should mix interpretation with speculation."
+}

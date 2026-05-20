@@ -1,9 +1,10 @@
 // Phase μ-1: corpus / ground-truth / probes のローダー
+// Phase μ-2: ドメイン解決ヘルパーを追加
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CorpusNote, GroundTruth, Probe } from "./types.ts";
+import type { CorpusDomain, CorpusNote, GroundTruth, Probe } from "./types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const BENCH_DIR = __dirname;
@@ -47,4 +48,40 @@ export function resolveProbeInput(relPath: string): CorpusNote {
 
 export function corpusFileBaseName(relPath: string): string {
   return basename(relPath).replace(/\.note\.json$/, "");
+}
+
+// Phase μ-2: ノートのドメインを決定する。
+// 明示の domain が無ければ category から推定する（既存 25 ノートは domain 未設定）。
+export function resolveDomain(note: CorpusNote): CorpusDomain {
+  if (note.domain) return note.domain;
+  switch (note.category) {
+    case "clean-lab":
+    case "wrong-speculation":
+      // wrong-speculation は body 内容が栄養/医療寄りなのでひとまず "biology" に寄せる
+      return note.category === "clean-lab" ? "materials" : "biology";
+    case "clean-software":
+    case "contradiction-pair":
+      return "software";
+    case "cross-domain-pair":
+      // 既存の cross-domain pair (免疫/HIDS, 進化/SGD) は biology と software をまたぐ。
+      // 個別の domain は明示の方が良いが、後方互換として misc を返す。
+      return "misc";
+    case "casual-musing":
+    case "pure-observation":
+      return "misc";
+    case "clean-en-technical":
+      return "materials";
+    case "casual-musing-en":
+      return "misc";
+    case "bio-note":
+      return "biology";
+    case "econ-note":
+      return "economics";
+    case "humanities-note":
+      return "humanities";
+    case "cross-language-pair":
+      return "misc";
+    default:
+      return "misc";
+  }
 }

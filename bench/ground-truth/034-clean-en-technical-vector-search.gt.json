@@ -1,0 +1,12 @@
+{
+  "noteId": "034-clean-en-technical-vector-search",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["deductive", "abductive"]
+  },
+  "notes": "HNSW recall/latency sweep. Observation: efSearch=128 is the knee. The author's own knee-finding judgement is interpretation; the anchor to published HNSW behaviour adds established. Atomizer should lift past HNSW / hnswlib jargon."
+}

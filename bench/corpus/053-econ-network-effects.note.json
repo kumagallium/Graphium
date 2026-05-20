@@ -1,0 +1,8 @@
+{
+  "noteId": "053-econ-network-effects",
+  "category": "econ-note",
+  "language": "en",
+  "domain": "economics",
+  "title": "Two-sided platforms can stall at the cold-start tipping point",
+  "body": "Looking at five marketplace launches I have data on (rideshare, freelance, B2B parts).\n[Step] Cohort tracking\n  [Input] weekly GMV in months 1–18\n[Step] Observation\n  [Output] three of five never crossed the inflection where GMV growth becomes self-sustaining; two did\n[Step] Pattern\n  [Output] the survivors hand-curated one side of the market for the first ~6 months\nThe textbook two-sided-network story (each side attracts the other) only fires once both sides clear a threshold. Below threshold, the same dynamic works in reverse and the platform actively bleeds liquidity. This is not novel theory — it matches Rochet & Tirole — but my data hasn't ruled out selection effects in which platforms even agreed to share numbers with me."
+}

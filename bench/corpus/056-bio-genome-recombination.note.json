@@ -1,0 +1,8 @@
+{
+  "noteId": "056-bio-genome-recombination",
+  "category": "bio-note",
+  "language": "ja",
+  "domain": "biology",
+  "title": "ヒトゲノムの組換えホットスポットと PRDM9 結合",
+  "body": "ヒトの減数分裂における組換えはゲノム全体に均一ではなく、数 kb の「ホットスポット」に集中する。\n[Step] 文献\n  [Input] Baudat et al. 2010 Science, Myers et al. 2010\n[Step] 観察\n  [Output] PRDM9 の Zn フィンガー結合モチーフがホットスポット位置と高い相関\n[Step] 解釈\n  [Output] PRDM9 が二本鎖切断を誘導する候補メカニズム\nチンパンジーとは PRDM9 結合モチーフが異なり、ホットスポット位置もずれている。これは「組換え地形は急速に進化する」という現代集団遺伝学の解釈の標準的な裏付け。"
+}

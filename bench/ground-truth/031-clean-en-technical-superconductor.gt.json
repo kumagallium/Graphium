@@ -1,0 +1,12 @@
+{
+  "noteId": "031-clean-en-technical-superconductor",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "MgB2 thin film deposition. Step-block lab note with a clear observation (Tc = 38.5 K, single orientation) and an interpretation about Mg incorporation. Atomizer should lift past MgB2 / Al2O3 / HPCVD specifics."
+}

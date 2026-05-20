@@ -1,0 +1,12 @@
+{
+  "noteId": "054-bio-microbiome-diversity",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation", "established"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 1,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "N=1 personal antibiotic / 16S experiment. Observation of alpha-diversity collapse + interpretation matching established literature. Explicit 'N=1, not generalisable' caveat → ≥1 rebuttalCondition. Atom must lift past amoxicillin / 16S V3-V4 specifics."
+}

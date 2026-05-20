@@ -1,0 +1,8 @@
+{
+  "noteId": "031-clean-en-technical-superconductor",
+  "category": "clean-en-technical",
+  "language": "en",
+  "domain": "materials",
+  "title": "MgB2 thin film deposition by HPCVD at 720 °C",
+  "body": "We deposited MgB2 thin films on (0001) Al2O3 substrates using hybrid physical–chemical vapor deposition.\n[Step] Substrate prep\n  [Input] Al2O3 wafer, [Tool] ultrasonic acetone bath (10 min)\n[Step] Deposition\n  [Parameter] T = 720 °C, P(B2H6) = 350 mTorr, [Output] 250 nm film\n[Step] Characterisation\n  [Tool] XRD (Cu Kα), four-probe Tc measurement, [Output] Tc = 38.5 K, single (0001) orientation\nLast week's 680 °C run gave a much broader transition. Raising the substrate temperature likely improved Mg incorporation and reduced impurity phases."
+}

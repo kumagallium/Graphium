@@ -85,24 +85,38 @@ All metrics are normalized to 0–1. Implementation in `bench/metrics.ts`.
 | `epistemic_preservation` | Fraction of notes whose extracted Claim epistemic status matches ground-truth. |
 | `adversarial_pass_rate` | Fraction of probes whose expected behavior is observed. |
 | `novelty_score` | Fraction of Syntheses whose body is not a paraphrase of source Atoms. |
+| `cross_language_consistency` | Fraction of `cross-language-pair` notes (same `pairId`, JP↔EN) that collapse into a single Atom. 1.0 when the corpus has no pairs (vacuous). |
+| `domain_balance_score` | Per-domain Atom lift-rate, combined as `meanPass × normalizedEntropy`. Penalises both low lift and uneven lift across domains; 0 when only one domain has signal. |
 
 Auxiliary counts (`claim_count_total`, `atom_count_total`,
 `synthesis_count_total`, `observation_atom_ratio`) are recorded alongside.
 
 ## Corpus
 
-The starting corpus is 25 notes (Japanese, multi-domain) categorized to
-exercise specific pipeline behaviors:
+The corpus is 53 notes across 6 domains and 2 languages (JP + EN),
+designed to exercise both pipeline behaviour and corpus-level
+generalisation:
 
 | Category | Count | What it stresses |
 |---|---|---|
-| clean-lab | 5 | Standard experiment notes with PROV structure |
-| clean-software | 3 | Design discussions |
-| casual-musing | 4 | "Maybe…?" speculations — should propagate as `speculation` |
-| wrong-speculation | 2 | Known-incorrect speculations — should not contaminate the knowledge layer |
-| cross-domain-pair | 2 pairs | Pairs that should fire `analogical` synthesis |
-| contradiction-pair | 2 pairs | Pairs with Rebuttal — should fire `dialectic` synthesis |
-| pure-observation | 3 | No mechanism stated — should stay `observational`, fire `abductive` |
+| clean-lab | 5 | Standard JP experiment notes with PROV structure |
+| clean-software | 3 | JP software design discussions |
+| casual-musing | 4 | JP "maybe…?" speculations — should propagate as `speculation` |
+| wrong-speculation | 2 | JP known-incorrect speculations — should not contaminate the knowledge layer |
+| cross-domain-pair | 2 pairs | JP pairs that should fire `analogical` synthesis |
+| contradiction-pair | 2 pairs | JP pairs with Rebuttal — should fire `dialectic` synthesis |
+| pure-observation | 3 | JP notes without mechanism — should stay `observational`, fire `abductive` |
+| clean-en-technical | 4 | EN lab / software notes — language portability of lift |
+| casual-musing-en | 3 | EN speculations — `speculation` propagation must not be JP-only |
+| bio-note | 5 (3 JP + 2 EN) | Biology domain coverage |
+| econ-note | 5 (3 JP + 2 EN) | Economics domain coverage |
+| humanities-note | 5 (3 JP + 2 EN) | Humanities domain coverage |
+| cross-language-pair | 3 pairs (6 notes) | Same concept written in JP and EN — drives `cross_language_consistency` |
+
+Phase μ-2 added the bottom six categories (notes 026–053). Ground-truth
+annotations for the new notes were drafted by the implementer and then
+reviewed by an independent LLM session before merge; revisions from that
+review are folded into the committed `bench/ground-truth/`.
 
 ## Probes
 

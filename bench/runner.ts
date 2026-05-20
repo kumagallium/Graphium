@@ -84,6 +84,8 @@ function aggregateMetrics(samples: BenchRunSample[]): {
     "atom_count_total",
     "synthesis_count_total",
     "observation_atom_ratio",
+    "cross_language_consistency",
+    "domain_balance_score",
   ];
   const distribution = {} as Record<keyof BenchMetrics, BenchMetricSummary>;
   for (const k of keys) {
@@ -178,6 +180,7 @@ export async function runBench(
       gtMap,
       probeResults,
       judges,
+      corpus,
     });
     const runEnd = new Date();
     runs.push({
@@ -281,6 +284,8 @@ async function main(): Promise<void> {
   console.log(summaryLine("adversarial_pass_rate", "adversarial_pass_rate", out));
   console.log(summaryLine("novelty_score", "novelty_score", out));
   console.log(summaryLine("observation_atom_ratio", "observation_atom_ratio", out));
+  console.log(summaryLine("cross_language_consistency", "cross_language_consistency", out));
+  console.log(summaryLine("domain_balance_score", "domain_balance_score", out));
   if (out.runs) {
     console.log("\nper-run lift / entropy / obs_ratio:");
     for (const r of out.runs) {

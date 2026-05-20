@@ -1,0 +1,12 @@
+{
+  "noteId": "032-clean-en-technical-graphdb",
+  "expected": {
+    "claimCount": { "min": 1, "max": 4 },
+    "claimRoles": ["finding", "decision", "interpretation"],
+    "epistemicStatus": ["observation", "interpretation"],
+    "atomLiftLevel": "rung-2",
+    "rebuttalConditionsCount": 0,
+    "synthesisMode": ["abductive", "deductive"]
+  },
+  "notes": "Property-graph index tuning note. Observation: composite index dropped p95 from 180 ms to 32 ms. Interpretation about query planner choosing index seek over label scan. Atomizer should lift past Neo4j / Cypher specifics."
+}
