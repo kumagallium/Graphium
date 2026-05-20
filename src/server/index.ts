@@ -11,6 +11,20 @@ import { setDataDir as setProfilesDataDir } from "./config/profiles.js";
 import { setSidecarIdentity } from "./routes/health.js";
 import { createApp } from "./app.js";
 
+// 起動段階を stderr に同期書きで残す（Tauri sidecar の Windows 経路で
+// stdout/stderr が無音のまま hang する症状を切り分けるため）。
+// console.log は内部でバッファされるが、process.stderr.write は
+// pipe に対しても synchronous なので、確実に Tauri 側まで届く。
+function bootLog(msg: string): void {
+  try {
+    process.stderr.write(`[server-boot] ${msg}\n`);
+  } catch {
+    // stderr が壊れている環境（テスト等）は無視
+  }
+}
+
+bootLog("imports complete, resolving data dir");
+
 // データディレクトリ設定（環境変数 or デフォルト）
 // デスクトップアプリ（sidecar）では ~/Documents/Graphium/server-data を使用
 import { homedir } from "node:os";
@@ -29,12 +43,15 @@ function resolveDataDir(): string {
   }
 }
 const dataDir = resolveDataDir();
+bootLog(`dataDir=${dataDir}`);
 console.log(`[server] Data directory: ${dataDir}`);
 setModelsDataDir(dataDir);
 setProfilesDataDir(dataDir);
 setSidecarIdentity({ pid: process.pid, dataDir });
+bootLog("data dir config wired, creating app");
 
 const app = createApp({ mode: "node" });
+bootLog("app created");
 
 // 本番環境: 静的ファイル配信（SERVE_STATIC 環境変数で有効化）
 const staticDir = process.env.SERVE_STATIC;
@@ -49,12 +66,22 @@ if (staticDir && existsSync(staticDir)) {
 
 // サーバー起動
 const port = Number(process.env.PORT ?? 3001);
+bootLog(`calling serve() on port=${port}`);
 
-serve({ fetch: app.fetch, port }, () => {
-  console.log(`Graphium backend running on http://localhost:${port}`);
-  if (staticDir) {
-    console.log(`Serving static files from ${staticDir}`);
-  }
-});
+try {
+  serve({ fetch: app.fetch, port }, (info: { port: number }) => {
+    bootLog(`listening on port=${info.port}`);
+    console.log(`Graphium backend running on http://localhost:${port}`);
+    if (staticDir) {
+      console.log(`Serving static files from ${staticDir}`);
+    }
+  });
+} catch (e) {
+  // serve() が同期的に throw した場合（port bind 失敗等）はここで stderr に
+  // 詳細を残す。これが無いと sidecar 側からは「無音タイムアウト」に見える。
+  const msg = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
+  bootLog(`serve() threw: ${msg}`);
+  process.exit(98);
+}
 
 export default app;
