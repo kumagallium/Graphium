@@ -80,6 +80,11 @@ export type BenchClaim = {
   epistemicStatus: string; // Phase μ-1 では heuristic で推定（Phase η で正式採用）
   rebuttalConditions: string[];
   modalQualifier?: string;
+  /**
+   * Toulmin Backing（Phase γ）。Ingester が抽出した教科書 / 外部論文 / 内部 Claim
+   * 裏付け配列。dry-run / heuristic では空。live mode で Ingester 出力から拾う。
+   */
+  backing?: { source: string; citation: string; url?: string; internalClaimId?: string }[];
 };
 
 export type BenchAtom = {
@@ -90,6 +95,8 @@ export type BenchAtom = {
   derivedFromNoteIds: string[];
   epistemicStatus: string; // 入力 Claim の最低 status
   liftLevel: "rung-0" | "rung-1" | "rung-2";
+  /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal を Atom 層に伝播したもの（atomizer 出力から拾う） */
+  rebuttalConditions?: string[];
 };
 
 export type BenchSynthesis = {

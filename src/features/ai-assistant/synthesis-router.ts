@@ -57,6 +57,12 @@ const DEFAULT_MODE: SynthesisMode = "deductive";
 export function routeSynthesisMode(
   atomTypes: (AtomType | undefined)[],
   epistemicStatuses?: (EpistemicStatus | undefined)[],
+  /**
+   * Phase γ: 入力 Atom / Claim の rebuttalConditions 配列（同じ並び、optional）。
+   * 2 件以上が rebuttal を持っている場合、causal でなくても dialectic を候補入りさせる。
+   * Toulmin の Rebuttal が「regime separator の素材」として効くため。
+   */
+  rebuttalConditionsByInput?: (string[] | undefined)[],
 ): SynthesisRouterResult {
   const known = atomTypes.filter((t): t is AtomType => Boolean(t));
 
@@ -94,6 +100,21 @@ export function routeSynthesisMode(
   if (causalCount >= 2) {
     candidates.push("dialectic");
     reasons.push("≥2 causal atoms → dialectic is possible if they argue opposite directions (LLM decides).");
+  }
+
+  // 2.5) Phase γ: ≥2 inputs carry Toulmin rebuttalConditions → dialectic を候補入り
+  //    causal trigger を満たさなくても、共通の rebuttal axis があれば regime separator として
+  //    dialectic が成立しうる。LLM が rebuttal の axis が一致するかを最終判断する。
+  if (rebuttalConditionsByInput) {
+    const withRebuttal = rebuttalConditionsByInput.filter(
+      (rb) => rb && rb.length > 0,
+    ).length;
+    if (withRebuttal >= 2 && !candidates.includes("dialectic")) {
+      candidates.push("dialectic");
+      reasons.push(
+        `≥2 inputs carry rebuttalConditions (${withRebuttal}) → dialectic candidate added (Toulmin rebuttals can act as regime separators).`,
+      );
+    }
   }
 
   // 3) analogical: mechanistic が 2 件以上あれば「異領域ペア」の可能性を残す

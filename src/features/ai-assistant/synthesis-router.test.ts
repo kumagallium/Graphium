@@ -126,4 +126,44 @@ describe("routeSynthesisMode (heuristic v1)", () => {
     expect(r.rationale).not.toContain("epistemic distribution");
     expect(r.hasSpeculativeInput).toBeUndefined();
   });
+
+  // ── Phase γ: rebuttalConditions signaling ──
+
+  it("(Phase γ) adds dialectic candidate when ≥2 inputs carry rebuttalConditions even without causal trigger", () => {
+    const r = routeSynthesisMode(
+      ["mechanistic", "conditional"],
+      undefined,
+      [["above 80°C catalyst decays"], ["below pH 5 the reaction inverts"]],
+    );
+    expect(r.candidateModes).toContain("dialectic");
+    expect(r.rationale).toContain("rebuttalConditions");
+  });
+
+  it("(Phase γ) does not add dialectic when only one input carries a rebuttal", () => {
+    const r = routeSynthesisMode(
+      ["mechanistic", "conditional"],
+      undefined,
+      [["above 80°C catalyst decays"], undefined],
+    );
+    expect(r.candidateModes).not.toContain("dialectic");
+  });
+
+  it("(Phase γ) deduplicates dialectic when both causal trigger and rebuttal trigger fire", () => {
+    const r = routeSynthesisMode(
+      ["causal", "causal"],
+      undefined,
+      [["limit A"], ["limit B"]],
+    );
+    const dialecticCount = r.candidateModes.filter((m) => m === "dialectic").length;
+    expect(dialecticCount).toBe(1);
+  });
+
+  it("(Phase γ) ignores empty rebuttalConditions arrays", () => {
+    const r = routeSynthesisMode(
+      ["mechanistic", "conditional"],
+      undefined,
+      [[], []],
+    );
+    expect(r.candidateModes).not.toContain("dialectic");
+  });
 });

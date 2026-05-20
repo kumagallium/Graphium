@@ -89,6 +89,13 @@ export type ClaimSnapshot = {
    * undefined は legacy データで、 "interpretation" として扱う。
    */
   epistemicStatus?: EpistemicStatus;
+  /**
+   * 反例条件（Toulmin Rebuttal, Phase γ）。
+   * Atomizer は「2+ Claim が共通の rebuttal を持つ」ことを判定して Atom 側へ伝播する。
+   * Synthesizer の dialectic 候補抽出（≥2 Atom が rebuttal を持つ）でも使う。
+   * 空配列 / undefined は「ノートに rebuttal の記述なし」。
+   */
+  rebuttalConditions?: string[];
 };
 
 /** Ingest 時に適用するスキルの情報 */

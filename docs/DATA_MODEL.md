@@ -387,6 +387,10 @@ versions stay valid with these fields absent.
 | `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
 | `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
 | `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
+| `epistemicStatus` | Claim, Atom | speculation, interpretation, observation, established (Phase η — see §3.6) |
+| `rebuttalConditions[]` | Claim, Atom | free-form short strings; Atom level only carries rebuttals that 2+ source Claims share (Phase γ) |
+| `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
+| `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
 
 These dimensions are **orthogonal to the existing context labels**
 (`procedure / plan / result / material / tool / attribute / output`),
@@ -448,6 +452,96 @@ the only place where these semantic types cross Graphium's boundary, so
 the field names here are stable even as UI labels shift (Atom →
 Insights, Synthesis → Ideas in PR-271 — internal identifiers are
 unchanged). See ARCHITECTURE.md §3.2 for the full export table.
+
+### 3.6 Toulmin extension (Phase γ)
+
+Phase γ adds the three Toulmin (1958) elements that were previously absent
+from the Knowledge Layer schema: **Rebuttal**, **Backing**, and **Modal
+qualifier**. The earlier layers already covered Claim, Data (evidence),
+Warrant (implicit in claim text + level), and Qualifier-of-confidence
+(`confidence` field). With Phase γ the Knowledge Layer carries all six
+Toulmin elements explicitly.
+
+| Toulmin element | Field | Layer | Notes |
+|---|---|---|---|
+| Claim | (the document body) | Claim, Atom, Synthesis | |
+| Data (evidence) | `derivedFromNotes`, `externalReferences` | Claim, Atom | |
+| Warrant | implicit in body | Claim, Atom | |
+| **Backing** | `backing[]` | **Claim only** | grounding for the Warrant: textbook / external paper / internal Claim |
+| **Modal qualifier** | `modalQualifier` | **Claim only** | user-facing certainty: necessarily / probably / possibly / rarely |
+| **Rebuttal** | `rebuttalConditions[]` | **Claim and Atom** | conditions under which the Claim breaks down. Atom layer only carries rebuttals that 2+ source Claims share (Atomizer's propagation rule) |
+
+Why the asymmetry — Atom carries `rebuttalConditions` but not `backing` /
+`modalQualifier`:
+
+- **Rebuttal** describes when the Claim's relation between subject and
+  effect ceases to hold. That structural boundary often transfers
+  cleanly through domain-lifting (e.g., "above a temperature threshold"
+  / "below a population threshold" are both expressible as
+  "above/below a regime boundary"). When 2+ source Claims share the
+  same rebuttal axis, lifting it to Atom level is itself a useful
+  abstraction.
+- **Backing** is the grounding of the *Warrant* — the inferential rule
+  the Claim is leaning on. The Warrant of an Atom is no longer the
+  Warrant of any single source Claim (the lift has stripped the
+  specifics), so importing the Claim-level backing would be a category
+  error.
+- **Modal qualifier** is the *speaker's expressed certainty* about a
+  specific Claim. When the Atom factors out the recurring abstract
+  idea, the original speaker's hedging is no longer attached to the
+  lifted statement.
+
+#### Atomizer propagation rule
+
+The Atomizer applies a strict guard when emitting an Atom-level
+`rebuttalConditions`:
+
+1. Look at the `rebuttalConditions` array of each source Claim.
+2. Only propagate when **2 or more source Claims** carry a rebuttal.
+3. Domain-lift the rebuttal wording the same way the Atom's title and
+   body are lifted — replace specific domain entities with the
+   abstract category they belong to.
+4. If only one Claim has a rebuttal, leave the Atom's
+   `rebuttalConditions` empty. A single Claim's rebuttal stays at the
+   Claim layer.
+
+`parseAtomizerOutput()` enforces this guard server-side: when the
+caller passes a `conceptIdToRebuttals` map, atoms emitted by the LLM
+without ≥2 source rebuttals get their `rebuttalConditions` reset to
+`undefined`. This is a structural propagation rule, not a judgment
+call — the same shape as Phase η's lowest-status inheritance.
+
+#### Downstream effects on the Synthesizer
+
+Atom-level `rebuttalConditions` feed two downstream signals:
+
+1. **Synthesis router (`routeSynthesisMode`)**: when ≥2 input Atoms
+   carry `rebuttalConditions`, `dialectic` is added to the candidate
+   mode set even if the `causal` ≥ 2 trigger is not met. Toulmin
+   rebuttals are first-class candidates for the "regime separator"
+   that dialectic synthesis requires.
+2. **Dialectic prompt (`dialectic.ts`)**: the system prompt instructs
+   the LLM to read both Atoms' `rebuttalConditions` before writing the
+   dialectic. If the two rebuttals lie on the same axis (temperature,
+   scale, time horizon) at opposite ends, that axis becomes the regime
+   separator that the dialectic synthesis names.
+
+#### Honesty defaults
+
+The Ingester treats these fields conservatively:
+
+- **Do NOT invent rebuttals** when the source note has no boundary
+  language. The default is an empty array.
+- **Do NOT fabricate backing citations**. If the user wrote "教科書に
+  よると…" without naming the textbook, the backing entry uses
+  `{ source: "textbook", citation: "<the user's framing>" }` — never
+  a made-up title.
+- When `modalQualifier` is ambiguous, default to `probably` rather
+  than picking a stronger or weaker qualifier on a guess.
+
+These defaults match the conservative spirit of Phase η's
+`epistemicStatus`: it is safer to under-tag a claim than to falsely
+launder it into established certainty.
 
 ## 4. Skill documents
 
@@ -522,12 +616,24 @@ type NoteIndexEntry = {
   // pages, so a single speculation Claim cannot pass as established knowledge
   // through the Atom / Synthesis layers.
   epistemicStatus?: EpistemicStatus;
+
+  // Phase γ: Toulmin extension — mirrored from wikiMeta.
+  //   rebuttalConditions: Claim and Atom. Conditions under which the Claim
+  //                       breaks down. Atom only carries those that 2+ source
+  //                       Claims share (Atomizer propagation rule).
+  //   backing:            Claim only. Grounding of the Warrant (textbook /
+  //                       external paper / internal Claim).
+  //   modalQualifier:     Claim only. User-facing certainty
+  //                       (necessarily / probably / possibly / rarely).
+  rebuttalConditions?: string[];
+  backing?: BackingEntry[];
+  modalQualifier?: ModalQualifier;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **15**.
+Defined in `src/features/navigation/index-file.ts`. Currently **16**.
 Bumping rules:
 
 | Version | Change |
@@ -543,6 +649,7 @@ Bumping rules:
 | **13** | Added `claimRole` / `atomType` / `synthesisMode` / `hypothesisStatus` mirrors from `wikiMeta` (Phase 1 semantic types). |
 | **14** | Renamed `WikiKind` value `"concept"` to `"claim"`. The on-disk migration (`migrateConceptKindToClaim` in `document-migration.ts`) also moves `derivedFromConcepts` → `derivedFromClaims` and `conceptRole` → `claimRole` in `wikiMeta`. |
 | **15** | Added `epistemicStatus` (`speculation` / `interpretation` / `observation` / `established`) mirror from `wikiMeta` (Phase η). Existing entries are missing the field; `ensureIndex` rebuilds the index on the bump so Ingester / Atomizer outputs from this point forward populate it. The downstream Atomizer enforces lowest-status inheritance and the Synthesizer forces `hypothesisStatus: "speculative"` whenever any input carries `epistemicStatus: "speculation"` — see `docs/ARCHITECTURE.md` §3.3. |
+| **16** | Added Toulmin extension mirrors from `wikiMeta` (Phase γ): `rebuttalConditions` (Claim and Atom), `backing` (Claim only), `modalQualifier` (Claim only). Atom-side `rebuttalConditions` only carries a value when the upstream Atomizer's propagation rule (2+ source Claims share a rebuttal) fired. The Synthesis router uses Atom-side `rebuttalConditions` to add `dialectic` to the candidate mode set even when the `causal` ≥ 2 trigger is not met — Toulmin rebuttals are first-class regime separators. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

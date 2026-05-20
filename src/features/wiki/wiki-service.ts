@@ -169,8 +169,15 @@ export function buildWikiDocument(
     evidenceSpan: ingesterOutput.evidenceSpan,
     // Phase 1.1: LLM が推定した research-process role を保存（claim のみ意味を持つ）
     claimRole: ingesterOutput.kind === "claim" ? ingesterOutput.claimRole : undefined,
+    // Phase η: epistemicStatus を保存（claim のみ。index-file が一覧 UI にミラーする）
+    epistemicStatus: ingesterOutput.kind === "claim" ? ingesterOutput.epistemicStatus : undefined,
     // Phase 2.3: LLM が推定した手順条件（PROV-AI ブリッジ）
     procedureContext: ingesterOutput.kind === "claim" ? ingesterOutput.procedureContext : undefined,
+    // Phase γ: Toulmin Rebuttal / Backing / Modal qualifier（claim のみ意味を持つ）
+    rebuttalConditions:
+      ingesterOutput.kind === "claim" ? ingesterOutput.rebuttalConditions : undefined,
+    backing: ingesterOutput.kind === "claim" ? ingesterOutput.backing : undefined,
+    modalQualifier: ingesterOutput.kind === "claim" ? ingesterOutput.modalQualifier : undefined,
   };
 
   return {
@@ -1828,7 +1835,12 @@ export type AtomCandidate = {
   confidence: number;
   /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
   atomType?: import("../../lib/document-types").AtomType;
+  /** Phase η: 入力 Claim の最低 status を継承した epistemicStatus */
+  epistemicStatus?: import("../../lib/document-types").EpistemicStatus;
+  /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal が Atom 層に伝播したもの */
+  rebuttalConditions?: string[];
   // PR-B4.5: procedureContext は Atom には持たない（砂時計のくびれ）
+  // Toulmin の backing / modalQualifier も Atom には持たない（Claim 層のみ）
 };
 
 export type AtomizeResult = { atoms: AtomCandidate[]; model?: string };
@@ -1935,6 +1947,13 @@ export function buildAtomDocument(
     confidence: candidate.confidence,
     // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
     atomType: candidate.atomType,
+    // Phase η: source Claim から継承した最低 status（lowest-status inheritance, parser 側で強制）
+    epistemicStatus: candidate.epistemicStatus,
+    // Phase γ: 2+ Claim 共通の Rebuttal を Atom 層に伝播したもの。Atom には backing / modalQualifier は持たない。
+    rebuttalConditions:
+      candidate.rebuttalConditions && candidate.rebuttalConditions.length > 0
+        ? candidate.rebuttalConditions
+        : undefined,
     // PR-B4.5: procedureContext は Atom に持たない（context-stripped）
   };
 
