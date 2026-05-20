@@ -155,10 +155,12 @@ function evaluateProbeExpected(
   }
 
   if (typeof exp.backingCount === "object" && exp.backingCount !== null) {
-    // Phase γ 未実装。常に 0 を返すので min=0 のときのみ pass。
+    // Phase γ で Ingester に Toulmin Backing 抽出を導入。BenchClaim.backing に拾われたら
+    // 件数で評価する。
     const min = (exp.backingCount as { min?: number }).min ?? 0;
-    const ok = 0 >= min;
-    reasons.push(`backingCount>=${min}: ${ok ? "ok" : "got 0 (Phase γ 未実装)"}`);
+    const count = claims.reduce((sum, c) => sum + (c.backing?.length ?? 0), 0);
+    const ok = count >= min;
+    reasons.push(`backingCount>=${min}: ${ok ? "ok" : `got ${count}`}`);
     allPassed &&= ok;
   }
 

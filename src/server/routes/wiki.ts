@@ -408,6 +408,7 @@ app.post("/synthesize", async (c) => {
   const routerResult = routeSynthesisMode(
     body.concepts.map((c) => c.atomType),
     body.concepts.map((c) => c.epistemicStatus),
+    body.concepts.map((c) => c.rebuttalConditions),
   );
   const systemPrompt = buildSynthesizerSystemPrompt(
     body.language || "en",
@@ -497,7 +498,12 @@ app.post("/atomize", async (c) => {
     const idToEpistemic = new Map(
       body.concepts.map((c) => [c.id, c.epistemicStatus]),
     );
-    const atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic);
+    // Phase γ: source Claim の rebuttalConditions を parser に渡し、共通 rebuttal 伝播ガードを強制する
+    // （2+ Claim が rebuttal を持つ場合のみ Atom に propagate）。
+    const idToRebuttals = new Map(
+      body.concepts.map((c) => [c.id, c.rebuttalConditions]),
+    );
+    const atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });

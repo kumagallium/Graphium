@@ -108,6 +108,69 @@ export const EPISTEMIC_STATUS_ORDER: EpistemicStatus[] = [
   "established",
 ];
 
+// ──────────────────────────────────────────────
+// Toulmin extension（Phase γ）
+//
+// Toulmin (1958) の 6 要素のうち、現状で欠落している
+//   Rebuttal（反例条件 / Claim が破綻する regime）
+//   Backing（Warrant の裏付け、教科書知識 / 外部論文 / 内部 Claim）
+//   Modal qualifier（ユーザー主観的な確からしさの程度）
+// を Claim / Atom スキーマに明示フィールドとして追加する。
+//
+// 既存ユーザーへの影響: 全て optional。Phase γ 以前に生成された Claim / Atom は
+// undefined のまま読み取り可能で、UI / Synthesizer 側は空配列 / undefined を
+// 「情報なし」として扱う。
+// ──────────────────────────────────────────────
+
+/**
+ * Warrant の裏付け（Toulmin の Backing）。
+ *
+ * externalReferences との違い:
+ *   externalReferences = Claim 自体の根拠（measurement / paper that observed it）
+ *   backing            = Claim を支える Warrant（inferential rule）の根拠
+ *
+ * 例: Claim「塩基性条件で酸化膜還元の律速段階が切り替わる」に対して、
+ *   backing = { source: "textbook", citation: "Marcus 理論の電子移動律速の原理" }
+ *   externalReferences = { url: "...", citation: "速度を測定した論文" }
+ */
+export type BackingEntry = {
+  /** "textbook" | "external-paper" | "internal-claim" */
+  source: string;
+  /** 一文での説明 */
+  citation: string;
+  /** 外部参照の URL（任意） */
+  url?: string;
+  /** 内部 Claim を Warrant 根拠として参照する場合の ID */
+  internalClaimId?: string;
+};
+
+/**
+ * 確からしさの程度（Toulmin の Modal qualifier）。
+ *
+ * `confidence`（system 側の自己評価, 0-1）と異なり、
+ * ノートの言語表現から推定したユーザー主観的な確からしさ。
+ */
+export type ModalQualifier =
+  | "necessarily" // 「必ず」「必然的に」「常に」
+  | "probably" // 「おそらく」「だいたい」「ほぼ」
+  | "possibly" // 「かもしれない」「可能性がある」
+  | "rarely"; // 「まれに」「ごく一部で」
+
+export const MODAL_QUALIFIER_VALUES: ModalQualifier[] = [
+  "necessarily",
+  "probably",
+  "possibly",
+  "rarely",
+];
+
+/** BackingEntry.source として認める値（fixed vocabulary）。 */
+export const BACKING_SOURCE_VALUES = [
+  "textbook",
+  "external-paper",
+  "internal-claim",
+] as const;
+export type BackingSource = (typeof BACKING_SOURCE_VALUES)[number];
+
 export function epistemicRank(status: EpistemicStatus | undefined): number {
   if (!status) return 1; // unknown は interpretation 相当に倒す
   const idx = EPISTEMIC_STATUS_ORDER.indexOf(status);
@@ -248,6 +311,30 @@ export type WikiMeta = {
    * procedureContext を on-demand で参照する。
    */
   procedureContext?: ProcedureContext;
+  /**
+   * 反例条件（Toulmin の Rebuttal, Phase γ）。
+   * Claim が破綻する条件、または「ただし」付きで限定される regime の自然言語列。
+   * Claim と Atom の両方で意味を持つ。
+   *
+   * Atom への propagate ルール: 入力 Claim 群が **共通の** rebuttal を持つときだけ
+   * 伝播する（2+ Claim に共通）。単一 Claim 由来の rebuttal は Claim 層に留める。
+   *
+   * 空配列 / undefined は「ノートに rebuttal の記述がない」を意味する。
+   * LLM が無理に rebuttal を捻り出すことを禁じるため、デフォルトは空。
+   */
+  rebuttalConditions?: string[];
+  /**
+   * Warrant の裏付け（Toulmin の Backing, Phase γ）。
+   * Claim を支える inferential rule の根拠（教科書 / 外部論文 / 内部 Claim）。
+   * **Claim のみで意味を持つ**（Atom は context-stripped なので backing も剥がす）。
+   */
+  backing?: BackingEntry[];
+  /**
+   * 確からしさの程度（Toulmin の Modal qualifier, Phase γ）。
+   * ノート言語表現から推定したユーザー主観的確からしさ。
+   * **Claim のみで意味を持つ**。`confidence` (system 自己評価) とは別軸。
+   */
+  modalQualifier?: ModalQualifier;
 };
 
 /**
@@ -273,6 +360,20 @@ export type WikiMetaSummary = {
   synthesisMode?: SynthesisMode;
   /** Synthesis の検証状態 */
   hypothesisStatus?: HypothesisStatus;
+  /**
+   * Toulmin Rebuttal（Phase γ）。一覧 UI のフィルタ / バッジ用に件数を即時参照したい
+   * 場面が多いので、配列そのままを mirror する（小さい想定）。Claim / Atom で意味を持つ。
+   */
+  rebuttalConditions?: string[];
+  /**
+   * Toulmin Backing（Phase γ）。Claim でのみ意味を持つ。
+   * 一覧 UI では「教科書裏付けあり Claim」のフィルタ等に使う。
+   */
+  backing?: BackingEntry[];
+  /**
+   * Toulmin Modal qualifier（Phase γ）。Claim でのみ意味を持つ。
+   */
+  modalQualifier?: ModalQualifier;
 };
 
 // Graphium ファイルのメタデータ

@@ -253,7 +253,12 @@ function dryRunPairMode(atomA: BenchAtom, atomB: BenchAtom): BenchSynthesis["mod
   // pairId のノート同士は意図的なペア
   const pairAtoms = atomA.derivedFromNoteIds.concat(atomB.derivedFromNoteIds);
   const obsOnly = atomA.atomType === "observational" && atomB.atomType === "observational";
-  const bothHaveRebuttal = false; // baseline では rebuttalConditions が atom に伝播していない
+  // Phase γ: 両 Atom が rebuttalConditions を持っていれば dialectic 候補に乗せる。
+  // Atomizer の伝播ガードで「2+ Claim 共通の rebuttal のみ Atom に上がる」が保証されているので、
+  // ここでは値の有無だけ見れば十分。
+  const bothHaveRebuttal =
+    (atomA.rebuttalConditions?.length ?? 0) > 0 &&
+    (atomB.rebuttalConditions?.length ?? 0) > 0;
 
   if (obsOnly) return "abductive";
   if (aDom !== bDom && (atomA.atomType !== atomB.atomType)) return "analogical";
@@ -430,14 +435,21 @@ async function ingestNoteLive(
     if (doc.kind !== "claim") continue;
     const fullText = `${doc.title}\n${doc.sections.map((s) => s.content).join("\n")}`;
     const claimRoles = doc.claimRole?.length ? doc.claimRole : detectClaimRoles(fullText);
+    // Phase γ: Ingester が rebuttalConditions / modalQualifier / backing を出すように
+    // なったので、LLM 出力を primary に、heuristic を fallback に使う。これにより
+    // bench は「LLM が Toulmin を正しく抽出できるか」を測れる。
     claims.push({
       sourceNoteId: note.noteId,
       title: doc.title,
       body: (doc.sections[0]?.content ?? "").slice(0, 600),
       claimRoles,
-      epistemicStatus: detectEpistemicStatus(fullText),
-      rebuttalConditions: extractRebuttalConditions(fullText),
-      modalQualifier: detectModalQualifier(fullText),
+      epistemicStatus: doc.epistemicStatus ?? detectEpistemicStatus(fullText),
+      rebuttalConditions:
+        doc.rebuttalConditions && doc.rebuttalConditions.length > 0
+          ? doc.rebuttalConditions
+          : extractRebuttalConditions(fullText),
+      modalQualifier: doc.modalQualifier ?? detectModalQualifier(fullText),
+      backing: doc.backing,
     });
   }
   return { claims, parseRetried, parseFailed };
@@ -450,6 +462,12 @@ function claimsToSnapshots(claims: BenchClaim[]): ClaimSnapshot[] {
     bodyPreview: c.body.slice(0, 280),
     level: c.claimRoles.includes("finding") ? "finding" : undefined,
     relatedClaims: [],
+    // Phase η: epistemicStatus を Atomizer に渡す（lowest-status inheritance）
+    epistemicStatus: c.epistemicStatus as ClaimSnapshot["epistemicStatus"],
+    // Phase γ: rebuttalConditions を Atomizer に渡し、「2+ Claim 共通 rebuttal のみ伝播」
+    // という propagation rule を LLM + parser に守らせる。
+    rebuttalConditions:
+      c.rebuttalConditions && c.rebuttalConditions.length > 0 ? c.rebuttalConditions : undefined,
   }));
 }
 
@@ -473,6 +491,10 @@ function atomCandidatesToBenchAtoms(
       derivedFromNoteIds: noteIds,
       epistemicStatus: status,
       liftLevel: liftLevelFromText(`${a.title} ${a.body}`),
+      // Phase γ: parseAtomizerOutput 側で「2+ Claim 共通の rebuttal のみ伝播」ガードが
+      // かかっているので、ここはそのまま受ける。
+      rebuttalConditions:
+        a.rebuttalConditions && a.rebuttalConditions.length > 0 ? a.rebuttalConditions : undefined,
     };
   });
 }
@@ -484,6 +506,10 @@ function atomsToConceptSnapshots(atoms: BenchAtom[]): ClaimSnapshot[] {
     bodyPreview: a.body.slice(0, 280),
     relatedClaims: [],
     atomType: a.atomType as ClaimSnapshot["atomType"],
+    epistemicStatus: a.epistemicStatus as ClaimSnapshot["epistemicStatus"],
+    // Phase γ: dialectic 候補 trigger に効かせるため Synthesizer 入力にも持ち込む
+    rebuttalConditions:
+      a.rebuttalConditions && a.rebuttalConditions.length > 0 ? a.rebuttalConditions : undefined,
   }));
 }
 
@@ -576,7 +602,15 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
         messages: [{ role: "user" as const, content: userMessage }],
         maxSteps: 1,
       });
-      let atomCandidates = parseAtomizerOutput(result.message, idToTitle);
+      // Phase η + γ: source の epistemicStatus / rebuttalConditions マップを parser に渡し、
+      // (a) lowest-status inheritance、(b) 2+ Claim 共通 rebuttal のみ伝播、を強制する。
+      const idToEpistemic = new Map(
+        snapshots.map((s) => [s.id, s.epistemicStatus]),
+      );
+      const idToRebuttals = new Map(
+        snapshots.map((s) => [s.id, s.rebuttalConditions]),
+      );
+      let atomCandidates = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
       if (atomCandidates.length === 0 && looksLikeFailedJson(result.message)) {
         console.log("[bench] atomize: retrying (parse failed)");
         result = await runAgentLoop({
@@ -606,7 +640,11 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
   if (allAtoms.length >= 2) {
     console.log(`[bench] synthesize: ${allAtoms.length} atoms -> ...`);
     const conceptSnapshots = atomsToConceptSnapshots(allAtoms);
-    const router = routeSynthesisMode(conceptSnapshots.map((c) => c.atomType));
+    const router = routeSynthesisMode(
+      conceptSnapshots.map((c) => c.atomType),
+      conceptSnapshots.map((c) => c.epistemicStatus),
+      conceptSnapshots.map((c) => c.rebuttalConditions),
+    );
     const systemPrompt = buildSynthesizerSystemPrompt(
       "ja",
       undefined,

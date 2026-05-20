@@ -2,14 +2,20 @@
 // ノートコンテンツを LLM に渡して Wiki ドキュメントの構造化データを生成する
 
 import type {
+  BackingEntry,
   ClaimLevel,
   ClaimRole,
   EpistemicStatus,
   KeyParameter,
+  ModalQualifier,
   ProcedureContext,
   WikiKind,
 } from "../../lib/document-types.js";
-import { EPISTEMIC_STATUS_ORDER } from "../../lib/document-types.js";
+import {
+  BACKING_SOURCE_VALUES,
+  EPISTEMIC_STATUS_ORDER,
+  MODAL_QUALIFIER_VALUES,
+} from "../../lib/document-types.js";
 
 /** Claim の研究プロセス役割（提案 v4 Phase 1.1）として認める値の一覧 */
 const CLAIM_ROLE_VALUES: ClaimRole[] = [
@@ -75,6 +81,22 @@ export type IngesterOutput = {
    * Procedure-independent な命題（純粋に概念的なもの）では undefined。
    */
   procedureContext?: ProcedureContext;
+  /**
+   * 反例条件（Toulmin Rebuttal, Phase γ）。Claim のみで意味を持つ。
+   * ノート本文に「ただし X の場合は」「except when」等の記述が無ければ空配列。
+   * LLM に無理な捻出は禁止（Do NOT invent）。
+   */
+  rebuttalConditions?: string[];
+  /**
+   * Warrant の裏付け（Toulmin Backing, Phase γ）。Claim のみで意味を持つ。
+   * 教科書・外部論文・内部 Claim を Warrant（推論則）の根拠として明示している場合のみ抽出。
+   */
+  backing?: BackingEntry[];
+  /**
+   * 確からしさの程度（Toulmin Modal qualifier, Phase γ）。Claim のみで意味を持つ。
+   * 不明時は "probably" にフォールバックする保守的デフォルト。
+   */
+  modalQualifier?: ModalQualifier;
   /** 関連する既存 Claim（引用付き） */
   relatedClaims: RelatedClaimRef[];
   /** 根拠となる外部参照 URL（引用付き） */
@@ -163,6 +185,11 @@ Respond with valid JSON only (no markdown wrapper, no explanation outside JSON):
       "evidenceSpan": "string"           // level=principle の場合のみ。下の Principle threshold 参照
       "claimRole": ["finding" | "decision" | "anomaly" | "question" | "setup" | "interpretation" | "issue"], // claim のみ。複数可。下の Claim role 参照
       "epistemicStatus": "speculation" | "interpretation" | "observation" | "established", // claim のみ。下の Epistemic status 参照。REQUIRED for every Claim
+      "rebuttalConditions": ["string"],                                  // claim のみ。Toulmin Rebuttal。下の "Rebuttal conditions" 参照。記述なしなら []
+      "backing": [                                                      // claim のみ。Toulmin Backing。下の "Backing" 参照。記述なしなら []
+        { "source": "textbook" | "external-paper" | "internal-claim", "citation": "one-sentence", "url": "https://... (optional)", "internalClaimId": "id (optional)" }
+      ],
+      "modalQualifier": "necessarily" | "probably" | "possibly" | "rarely", // claim のみ。Toulmin Modal qualifier。下の "Modal qualifier" 参照
       "procedureContext": {                                              // claim のみ。手順依存の主張のときだけ。下の Procedure context 参照
         "derivedFromNotes": ["sourceNoteId"],
         "protocolFingerprint": "step1 → step2 → step3",                // 主要ステップを自然言語で短く
@@ -235,6 +262,79 @@ Examples:
   → epistemicStatus: \`established\` (textbook-grade statement)
 
 If the source note carries a \`meta.captureMode: "speculation"\` flag (the user explicitly toggled the *Speculation mode* on the note input), **all** Claims from that note must be tagged \`speculation\` regardless of their linguistic surface. The mode is a hard lock — it overrides any inferred status.
+
+## Rebuttal conditions (Phase γ — Toulmin Rebuttal)
+
+If the source note mentions conditions under which the Claim **breaks down** — such as "X works except when Y", "this holds provided Z", "but when W happens, the result inverts", 「ただし〜の場合は」「〜のときは逆」「〜を超えると効かない」 — extract them into \`rebuttalConditions\` as an array of short natural-language strings.
+
+A rebuttal is a *boundary condition* that flips or invalidates the Claim, not a generic limitation. "More work is needed" is **not** a rebuttal. "Above 80°C the catalyst loses activity" **is** a rebuttal.
+
+Rules:
+- Quote the condition in the note's own words; do not extrapolate.
+- Each entry is one boundary condition. If the note lists two, use two array entries.
+- **If the note states no rebuttal, return an empty array.** Do NOT invent rebuttals to fill the slot.
+
+Examples:
+
+- Claim: "酸化を抑えると相純度が上がる"
+  - rebuttalConditions: ["ただし反応温度が分解点を超える場合は逆効果になる"]
+- Claim: "TDD で速度が上がる"
+  - rebuttalConditions: ["プロトタイプ段階では型がまだ流動的なので逆に遅くなる"]
+- Claim: "光合成は CO₂ と H₂O から糖を作る反応である"
+  - rebuttalConditions: []  // textbook 級の established Claim、note に boundary 記述なし
+
+## Backing (Phase γ — Toulmin Backing)
+
+If the source note **explicitly grounds the Warrant** (the inferential rule that connects evidence to Claim) on a textbook principle, an external paper, or another internal Claim, extract it as \`backing\`. Backing is the foundation **for the Warrant**, not for the Claim itself.
+
+Distinguish from \`externalReferences\`:
+
+- \`externalReferences\` = evidence FOR the Claim (e.g., a paper that measured the same effect).
+- \`backing\` = grounding FOR the inferential rule (e.g., the theoretical principle the Claim leans on).
+
+Schema per entry:
+
+- \`source\`: one of \`"textbook"\` | \`"external-paper"\` | \`"internal-claim"\`.
+- \`citation\`: one-sentence description of what the backing contributes.
+- \`url\`: optional, only when the note carries a specific URL for an external paper.
+- \`internalClaimId\`: optional, only when the backing is another existing Claim (use the id from "Existing Wikis").
+
+Rules:
+- **Only extract backing that the note explicitly invokes.** If the user is silently relying on background knowledge but the note never names it, leave \`backing\` empty.
+- Each entry must be a single backing source — do not bundle ("textbook + paper + Marcus theory" is three entries, not one).
+- **No invented citations.** If the note says "教科書によると" without naming the textbook, that is still a textbook-level backing — use \`{ source: "textbook", citation: "教科書水準の電子移動律速の原理" }\` rather than fabricating a title.
+
+Examples:
+
+- Note: 「Marcus 理論の電子移動律速の原理から考えると、塩基性条件で律速段階が切り替わるのは自然に説明できる」
+  - backing: [{ source: "textbook", citation: "Marcus 理論による電子移動律速の原理" }]
+- Note: 「[[既存 Claim: pH 依存性]] と同じ仕組みで律速段階が切り替わる」（既存 Claim を Warrant の裏付けにしている）
+  - backing: [{ source: "internal-claim", citation: "同じ pH 依存メカニズムが Warrant を支える", internalClaimId: "<id from existing wikis>" }]
+- Note: ノートが Warrant の根拠を明示していない
+  - backing: []
+
+## Modal qualifier (Phase γ — Toulmin Modal qualifier)
+
+Set \`modalQualifier\` based on the note's **own language** for certainty. This is *user-facing certainty*, distinct from the system's \`confidence\` score (which measures extraction reliability) and from \`epistemicStatus\` (which measures the kind of evidence).
+
+Fixed vocabulary:
+
+- \`necessarily\`: 「必ず」「必然的に」「常に」 / "always", "must", "necessarily"
+- \`probably\`: 「おそらく」「だいたい」「ほぼ」 / "probably", "usually", "in most cases" — the **default** when the note asserts the Claim without explicit hedging
+- \`possibly\`: 「かもしれない」「可能性がある」「〜得る」 / "may", "might", "could"
+- \`rarely\`: 「まれに」「ごく一部で」「例外的に」 / "rarely", "in rare cases"
+
+Rules:
+- Pick the qualifier that **best matches the strongest claim sentence** in the note for this Claim. If the note hedges in one sentence and asserts in another, take the asserted form.
+- **When uncertain, default to \`probably\`.** This is the maximally-honest neutral position: it conveys "I'm asserting this but not declaring a universal law".
+- \`epistemicStatus = "speculation"\` does **not** force \`modalQualifier = "possibly"\` — a speculation can still be expressed with certainty ("これは絶対に酸化のせい" — speculation by evidence type, but \`necessarily\` by user's expressed certainty). Keep the two axes independent.
+
+Examples:
+
+- Note: 「塩基性条件では必ず律速段階が切り替わる」 → \`modalQualifier: "necessarily"\`
+- Note: 「pH 11 を超えると速度が約 2 倍になる」（直接断定） → \`modalQualifier: "probably"\` (default for plain assertion)
+- Note: 「もしかすると寝る前のストレッチで眠りが深くなるのかも」 → \`modalQualifier: "possibly"\`
+- Note: 「まれに pH 11 でも切り替わらないバッチがある」 → \`modalQualifier: "rarely"\`
 
 ## Procedure context (Phase 2.3 — read this carefully)
 
@@ -437,6 +537,10 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
             : undefined;
         const procedureContext: ProcedureContext | undefined =
           kind === "claim" ? parseProcedureContext(w.procedureContext) : undefined;
+        // Phase γ: Toulmin Rebuttal / Backing / Modal qualifier。Claim 以外は剥がす。
+        const rebuttalConditions = kind === "claim" ? parseRebuttalConditions(w.rebuttalConditions) : undefined;
+        const backing = kind === "claim" ? parseBacking(w.backing) : undefined;
+        const modalQualifier = kind === "claim" ? parseModalQualifier(w.modalQualifier) : undefined;
         // Phase η: epistemicStatus を fixed vocabulary でフィルタする。
         // LLM が不明な値を入れたら undefined にして下流で "interpretation" 扱いに倒す。
         const rawEpistemic =
@@ -454,6 +558,9 @@ export function parseIngesterOutput(text: string): IngesterOutput[] {
           claimRole: claimRole && claimRole.length > 0 ? claimRole : undefined,
           epistemicStatus,
           procedureContext,
+          rebuttalConditions,
+          backing,
+          modalQualifier,
           title: String(w.title),
           sections: w.sections.map((s: any) => ({
             heading: String(s.heading ?? ""),
@@ -551,6 +658,70 @@ export function parseProcedureContext(raw: unknown): ProcedureContext | undefine
     keyTools: keyTools.length > 0 ? keyTools : undefined,
     validityRange,
   };
+}
+
+/**
+ * LLM が返した rebuttalConditions 配列をサニタイズする（Phase γ）。
+ *
+ * - 文字列要素のみ拾い、trim 後の空文字列は捨てる
+ * - 重複は保持する（rebuttal が同一文言で 2 つ来る場合は LLM 側のミスなので無視）
+ * - 結果が 0 件なら undefined を返す（空配列を文書に保存しない）
+ */
+export function parseRebuttalConditions(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (trimmed.length === 0) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * LLM が返した backing 配列をサニタイズする（Phase γ）。
+ *
+ * - source は fixed vocabulary 外なら entry を捨てる
+ * - citation が空文字列なら entry を捨てる
+ * - url / internalClaimId は optional、空文字列なら undefined 化
+ * - 結果が 0 件なら undefined を返す
+ */
+export function parseBacking(raw: unknown): BackingEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: BackingEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const obj = item as Record<string, unknown>;
+    const source = typeof obj.source === "string" ? obj.source.trim() : "";
+    if (!(BACKING_SOURCE_VALUES as readonly string[]).includes(source)) continue;
+    const citation = typeof obj.citation === "string" ? obj.citation.trim() : "";
+    if (citation.length === 0) continue;
+    const url =
+      typeof obj.url === "string" && obj.url.trim().length > 0 ? obj.url.trim() : undefined;
+    const internalClaimId =
+      typeof obj.internalClaimId === "string" && obj.internalClaimId.trim().length > 0
+        ? obj.internalClaimId.trim()
+        : undefined;
+    out.push({ source, citation, url, internalClaimId });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * LLM が返した modalQualifier をサニタイズする（Phase γ）。
+ *
+ * - fixed vocabulary 以外なら undefined。下流は default "probably" 扱いするが、
+ *   parser 側で勝手にデフォルト埋めはしない（LLM が値を出さなかった事実を残す）。
+ */
+export function parseModalQualifier(raw: unknown): ModalQualifier | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!(MODAL_QUALIFIER_VALUES as string[]).includes(trimmed)) return undefined;
+  return trimmed as ModalQualifier;
 }
 
 /**

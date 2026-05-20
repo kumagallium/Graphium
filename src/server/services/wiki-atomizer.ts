@@ -51,7 +51,15 @@ export type AtomCandidate = {
    * LLM が誤った status を出した場合、parser 側のセーフティネットで強制的に最低値に補正する。
    */
   epistemicStatus?: EpistemicStatus;
+  /**
+   * 共通 Rebuttal（Toulmin Rebuttal の Atom 伝播, Phase γ）。
+   * 入力 Claim 群のうち **2 件以上** が共通する rebuttal を持つ場合だけ、
+   * Atomizer が「domain-lifted した形」で伝播する。1 Claim 由来の rebuttal は Claim 層に留める。
+   * 空配列 / undefined は「共通 rebuttal なし」を意味する。
+   */
+  rebuttalConditions?: string[];
   // procedureContext は意図的に持たない (PR-B4.5)。Atom は context-stripped。
+  // Toulmin の backing / modalQualifier も Atom に持たない（Claim 層のみ）。
 };
 
 export function buildAtomizerSystemPrompt(language: string): string {
@@ -189,7 +197,8 @@ Respond with valid JSON only:
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
       "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary",
-      "epistemicStatus": "speculation" | "interpretation" | "observation" | "established"   // REQUIRED. Must equal the LOWEST status among the source Claims. See "Epistemic status inheritance" below.
+      "epistemicStatus": "speculation" | "interpretation" | "observation" | "established",   // REQUIRED. Must equal the LOWEST status among the source Claims. See "Epistemic status inheritance" below.
+      "rebuttalConditions": ["string"]                                                       // OPTIONAL. Empty array unless 2+ source Claims share a similar rebuttal. See "Shared rebuttal propagation" below.
     }
   ]
 }
@@ -253,6 +262,26 @@ If the lowest source is \`speculation\`, also consider whether the Atom should b
 
 If the source Claim list is missing \`epistemicStatus\` (legacy data, Phase η-aware Ingester not yet rerun), treat the missing status as \`interpretation\` for inheritance purposes.
 
+## Shared rebuttal propagation (Phase γ — Toulmin Rebuttal at the Atom layer)
+
+Each source Claim may carry a \`rebuttalConditions\` array (Toulmin Rebuttal: conditions under which the Claim breaks down — quoted from the source note). When you emit an Atom, decide whether the Atom should carry a *common* rebuttal by following this rule:
+
+1. Look at the \`rebuttalConditions\` of the source Claims tagged to this Atom.
+2. **Only propagate when 2+ source Claims share a similar rebuttal.** A single Claim's rebuttal stays in the Claim layer; lifting it to the Atom would over-generalize a one-off boundary into a recurring pattern.
+3. When you do propagate, **lift the wording the same way you lift the Atom title and body**: replace domain-specific entities with their abstract category, strip lab/project names. The Atom-level rebuttal must read at the same rung of abstraction as the Atom itself.
+4. **Do NOT invent rebuttals**: if no two source Claims share a rebuttal, return an empty \`rebuttalConditions\` array.
+5. Atoms do not carry \`backing\` or \`modalQualifier\` — those stay in the Claim layer (backing supports a Claim-level Warrant; modal qualifier reflects user certainty about a Claim, both irrelevant once the Atom is context-stripped).
+
+Examples:
+
+- Source Claim A: rebuttalConditions = ["ただし反応温度が分解点を超える場合は逆効果になる"]
+  Source Claim B: rebuttalConditions = ["但し焼結温度が高すぎると揮発成分が抜けて純度が落ちる"]
+  → Both share a "高温で逆転" pattern. Atom \`rebuttalConditions\` = ["処理温度が高すぎる領域ではこの効果は逆転することがあります"]
+- Source Claim A: rebuttalConditions = ["プロトタイプ段階では型が流動的で逆に遅くなる"]
+  Source Claim B: rebuttalConditions = []
+  → Only one Claim has a rebuttal. Atom \`rebuttalConditions\` = [] (Claim-layer rebuttal stays at Claim layer).
+- Source Claims A and B both report success without any rebuttal → Atom \`rebuttalConditions\` = [].
+
 ## Rules (strict)
 - **Each Atom MUST cite >= 2 Claims** in \`sourceConceptIds\`. Use the EXACT id from the Claim list.
 - **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
@@ -286,14 +315,20 @@ export function buildAtomizerUserMessage(
     // Phase η: source Claim の epistemicStatus を可視化し、最低継承ルールを LLM に守らせる。
     const epistemicTag = c.epistemicStatus ? ` [${c.epistemicStatus}]` : " [interpretation*]";
     const preview = c.bodyPreview ? `  ${c.bodyPreview}` : "";
-    return `### ${c.title}${levelTag}${epistemicTag} (id: ${c.id})${preview ? "\n" + preview : ""}`;
+    // Phase γ: source Claim の rebuttalConditions を可視化して、共通 rebuttal の伝播判定を可能にする。
+    const rebuttals = c.rebuttalConditions ?? [];
+    const rebuttalSection =
+      rebuttals.length > 0
+        ? `\n  Rebuttals:\n${rebuttals.map((r) => `    - ${r}`).join("\n")}`
+        : "";
+    return `### ${c.title}${levelTag}${epistemicTag} (id: ${c.id})${preview ? "\n" + preview : ""}${rebuttalSection}`;
   });
 
   const existingNote = existingAtomTitles.length > 0
     ? `\n\n## Existing Atoms (do NOT duplicate these)\n${existingAtomTitles.map((t) => `- ${t}`).join("\n")}`
     : "";
 
-  const statusLegend = `\n\n_The bracketed second tag on each Claim heading is its \`epistemicStatus\` (low → high: speculation < interpretation < observation < established). \`[interpretation*]\` marks a Claim whose status was missing in the source data — treat as interpretation for the lowest-status inheritance rule._`;
+  const statusLegend = `\n\n_The bracketed second tag on each Claim heading is its \`epistemicStatus\` (low → high: speculation < interpretation < observation < established). \`[interpretation*]\` marks a Claim whose status was missing in the source data — treat as interpretation for the lowest-status inheritance rule._\n_Each Claim may also list \`Rebuttals:\` — Toulmin Rebuttal conditions extracted by the Ingester. Use them to decide whether to propagate a common rebuttal to the Atom (see "Shared rebuttal propagation")._`;
 
   return `Scan the following ${concepts.length} Claim pages and factor out the recurring abstract ideas (Atoms) that span 2+ Claims.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
 }
@@ -307,6 +342,13 @@ export function parseAtomizerOutput(
    * LLM が出した raw status をそのまま採用する（後方互換）。
    */
   conceptIdToEpistemicStatus?: Map<string, EpistemicStatus | undefined>,
+  /**
+   * Phase γ: source Claim の rebuttalConditions マップ。
+   * 「2+ Claim が rebuttal を持つ場合のみ Atom に伝播」というルールを parser 側で
+   * 強制するために使う。マップが空 or 未指定なら LLM が出した raw を fixed schema 通り
+   * に受け取る（後方互換）。
+   */
+  conceptIdToRebuttals?: Map<string, string[] | undefined>,
 ): AtomCandidate[] {
   try {
     let jsonText = text.trim();
@@ -352,6 +394,31 @@ export function parseAtomizerOutput(
         epistemicStatus = undefined;
       }
 
+      // Phase γ: rebuttalConditions の処理。
+      // 1. LLM 出力を文字列配列としてサニタイズ。
+      // 2. source Claim マップが与えられている場合、「2+ Claim が rebuttal を持つ」
+      //    という伝播ガードを強制する。満たさなければ空配列に倒す。
+      //    これにより LLM が単一 Claim の rebuttal を勝手に Atom へ持ち上げることを防ぐ。
+      const rawRebuttals = Array.isArray(a.rebuttalConditions)
+        ? a.rebuttalConditions
+            .map((r: unknown) => (typeof r === "string" ? r.trim() : ""))
+            .filter((r: string) => r.length > 0)
+        : [];
+      let rebuttalConditions: string[] | undefined;
+      if (conceptIdToRebuttals && conceptIdToRebuttals.size > 0) {
+        const sourceWithRebuttal = validIds.reduce((acc: number, id: string) => {
+          const rb = conceptIdToRebuttals.get(id);
+          return acc + (rb && rb.length > 0 ? 1 : 0);
+        }, 0);
+        rebuttalConditions = sourceWithRebuttal >= 2 && rawRebuttals.length > 0
+          ? Array.from(new Set(rawRebuttals)) as string[]
+          : undefined;
+      } else if (rawRebuttals.length > 0) {
+        rebuttalConditions = Array.from(new Set(rawRebuttals)) as string[];
+      } else {
+        rebuttalConditions = undefined;
+      }
+
       out.push({
         title: String(a.title).trim(),
         body: String(a.body).trim(),
@@ -360,6 +427,7 @@ export function parseAtomizerOutput(
         confidence,
         atomType,
         epistemicStatus,
+        rebuttalConditions,
       });
     }
     return out;

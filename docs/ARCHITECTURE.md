@@ -322,9 +322,41 @@ honors the same contract at the Idea layer: whenever any input Insight carries
 `epistemicStatus: "speculation"`, the resulting Idea's `hypothesisStatus` is
 forced to `"speculative"` regardless of what the LLM produced. Together these
 three rules let the knowledge layer absorb casual musings (the "maybe this
-is true" half of a notebook) without contaminating the layers above. The
-schema mirror is on `NoteIndexEntry.epistemicStatus` and the on-disk version
-is `INDEX_SCHEMA_VERSION = 15`.
+is true" half of a notebook) without contaminating the layers above.
+
+**Toulmin extension (Phase γ).** The Knowledge Layer adds the three Toulmin
+(1958) elements that were previously absent: **Rebuttal**, **Backing**, and
+**Modal qualifier**.
+
+- **Rebuttal** (`rebuttalConditions[]`) names the boundary conditions under
+  which a Claim breaks down ("works except when temperature exceeds the
+  decomposition point", "only holds while the user count stays below the
+  inflection"). It is extracted at the Claim layer by the Ingester from the
+  note's own "ただし〜" / "except when" phrasing, and the Atomizer **only**
+  propagates it to the Insight layer when 2+ source Claims share a rebuttal
+  on the same axis — a single Claim's boundary stays at the Claim layer.
+- **Backing** (`backing[]`) grounds the Warrant (the inferential rule the
+  Claim is leaning on) in a textbook principle, external paper, or another
+  internal Claim. It stays at the Claim layer only — Insights are
+  context-stripped, so the original Claim's Warrant no longer applies.
+- **Modal qualifier** (`modalQualifier`) records the user's expressed
+  certainty about a Claim (`necessarily` / `probably` / `possibly` /
+  `rarely`), distinct from the system's `confidence` score and from
+  `epistemicStatus`. Like backing, it is Claim-only — once the Insight
+  factors out a recurring pattern, the original speaker's hedging no longer
+  attaches.
+
+Atom-side `rebuttalConditions` feed the Synthesis router: when ≥2 input
+Insights carry rebuttals, `dialectic` is added to the candidate mode set
+even if the `causal` ≥ 2 trigger is not met. The dialectic prompt then
+instructs the LLM to read both Insights' rebuttals before writing the
+synthesis and use the shared rebuttal axis as the regime separator. Toulmin
+rebuttals are first-class candidates for the higher frame that dialectic
+synthesis requires.
+
+The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
+modalQualifier}` and the on-disk version is now
+`INDEX_SCHEMA_VERSION = 16`.
 
 **Empirical quality control.** The Wiki pipeline's discovery quality is
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +

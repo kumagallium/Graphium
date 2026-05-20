@@ -3,11 +3,13 @@
 
 import type {
   AtomType,
+  BackingEntry,
   ClaimRole,
   EpistemicStatus,
   GraphiumDocument,
   GraphiumFile,
   HypothesisStatus,
+  ModalQualifier,
   SynthesisMode,
   WikiKind,
 } from "../../lib/document-types";
@@ -55,7 +57,12 @@ import { normalizeLabel } from "../context-label/labels";
 //      既存エントリは undefined のままで動く（読み込み側で interpretation 扱い）が、
 //      bump によりインデックスを再構築させ、Ingester / Atomizer 由来の epistemic が
 //      mirror に反映されるようにする。
-const INDEX_SCHEMA_VERSION = 15;
+// v16: Toulmin extension（Phase γ）。
+//      rebuttalConditions（Claim/Atom）/ backing（Claim のみ）/ modalQualifier（Claim のみ）
+//      の 3 フィールドを wikiMeta から mirror する。バッジ表示・フィルタ・将来の
+//      dialectic 候補抽出（rebuttal 持ち Atom が 2+）で参照する。
+//      既存 Phase γ 以前のエントリは undefined / 空配列で動く（後方互換）。
+const INDEX_SCHEMA_VERSION = 16;
 
 export type GraphiumIndex = {
   version: number;
@@ -152,6 +159,24 @@ export type NoteIndexEntry = {
    * Phase η 以前に書かれた既存エントリでは undefined（読み込み側で interpretation 扱い）。
    */
   epistemicStatus?: EpistemicStatus;
+  /**
+   * Toulmin Rebuttal（Phase γ, v16）。Claim / Atom の wikiMeta.rebuttalConditions を mirror。
+   * 一覧 UI で「rebuttal 付き Claim/Atom」のフィルタ・バッジ表示に使う。
+   * Atom 側は「共通 rebuttal が伝播した」ことを意味する（spec §9, γ-6）。
+   */
+  rebuttalConditions?: string[];
+  /**
+   * Toulmin Backing（Phase γ, v16）。Claim のみ。wikiMeta.backing を mirror。
+   * 教科書裏付け / 外部論文裏付け / 内部 Claim 裏付け の有無を一覧から把握するため
+   * 配列をそのまま mirror する。
+   */
+  backing?: BackingEntry[];
+  /**
+   * Toulmin Modal qualifier（Phase γ, v16）。Claim のみ。
+   * wikiMeta.modalQualifier を mirror。一覧 UI で「necessarily / probably / possibly / rarely」
+   * のバッジ表示に使う。
+   */
+  modalQualifier?: ModalQualifier;
 };
 
 // ── Drive API ──
@@ -398,6 +423,15 @@ export function buildIndexEntry(
     synthesisMode: doc.wikiMeta?.synthesisMode,
     hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
     epistemicStatus: doc.wikiMeta?.epistemicStatus,
+    rebuttalConditions:
+      doc.wikiMeta?.rebuttalConditions && doc.wikiMeta.rebuttalConditions.length > 0
+        ? doc.wikiMeta.rebuttalConditions
+        : undefined,
+    backing:
+      doc.wikiMeta?.backing && doc.wikiMeta.backing.length > 0
+        ? doc.wikiMeta.backing
+        : undefined,
+    modalQualifier: doc.wikiMeta?.modalQualifier,
   };
 }
 
