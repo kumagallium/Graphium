@@ -20,6 +20,7 @@
     "test": "vitest",
     "test:benchmark": "tsx --env-file .env tests/benchmark/material-science/runner.ts",
     "test:benchmark:fetch": "tsx --env-file .env tests/benchmark/material-science/fetch-dataset.ts",
+    "test:benchmark:fetch-notion": "tsx --env-file .env tests/benchmark/material-science/fetch-notion-fixture.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "tauri": "tauri",

@@ -45,18 +45,39 @@ The MatPROV Hugging Face dataset (`MatPROV-project/MatPROV`) ships only
 1. Fetch gold standards:
 
    ```
-   tsx tests/benchmark/material-science/fetch-dataset.ts --count 10 --offset 0
+   pnpm test:benchmark:fetch -- --count 10 --offset 0
    ```
 
    This writes `<slug>.gold.json` and `<slug>.input.txt` placeholders.
 
-2. Manually fill each `<slug>.input.txt` with the synthesis paragraph(s) from
-   the source paper. Fixtures with empty / placeholder-only `input.txt` are
-   skipped by the runner.
+2. Fill each `<slug>.input.txt` with the synthesis paragraph(s) from the
+   source paper. Two options:
+
+   **a) Manual paste**: open the PDF, copy the Methods / Experimental
+   section, paste into the file.
+
+   **b) Notion-managed fixtures**: if you keep extracted paragraphs in
+   Notion under a "論文からの参考部分" heading per page, fetch via:
+
+   ```
+   pnpm test:benchmark:fetch-notion <notion-url-or-id> <fixture-slug>
+   ```
+
+   Requires `NOTION_TOKEN` in `.env` (Notion Integration secret) and the
+   target page Shared to that Integration. Default section title is
+   `論文からの参考部分`; override with `--section "<heading>"`.
+
+   Fixtures with empty / placeholder-only `input.txt` are skipped by the
+   runner.
+
+`fixtures/.gitignore` excludes `*.input.txt` (paper text is copyrighted),
+with an exception for the `seed-*` files which come from MatPROV's own
+open-source prompt example. Gold standards (`*.gold.json`) are
+commit-friendly because they are derived PROV graphs, not paper text.
 
 Phase 5a ships with one seed fixture (`seed-cu2dfexs`) using the example
-paragraph from the MatPROV paper (NeurIPS 2025 AI4Mat workshop). Expand to
-5-10 samples once paper paragraphs are licensed for inclusion.
+paragraph from the MatPROV paper (NeurIPS 2025 AI4Mat workshop). Expand
+to 5–10 samples by populating additional `*.input.txt` files locally.
 
 ## Metrics
 
