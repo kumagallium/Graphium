@@ -150,12 +150,73 @@ describe("evaluateSample", () => {
 });
 
 describe("extractSetsFromGold", () => {
-  it("Entity / Activity / edge を集合化する", () => {
+  it("Entity / Activity / edge を synonym list 付きで集合化する", () => {
     const sets = extractSetsFromGold(gold);
-    expect(sets.activities).toEqual(["Sealing"]);
-    expect(sets.materials.sort()).toEqual(["Cu", "sealed sample"].sort());
-    expect(sets.tools).toEqual(["silica tube"]);
+    expect(sets.activities.map((a) => a.synonyms)).toEqual([["Sealing"]]);
+    expect(sets.materials.map((m) => m.synonyms[0]).sort()).toEqual(
+      ["Cu", "sealed sample"].sort(),
+    );
+    expect(sets.tools.map((t) => t.synonyms)).toEqual([["silica tube"]]);
     expect(sets.edges).toHaveLength(3); // 2 Usage + 1 Generation
-    expect(sets.parameters).toContain("atmosphere::vacuum");
+    const atmoParam = sets.parameters.find(
+      (p) => p.canonicalKey === "atmosphere" && p.valueSyns.some((v) => v === "vacuum"),
+    );
+    expect(atmoParam).toBeDefined();
+  });
+
+  it("@value が配列の synonym list を全部拾う", () => {
+    const goldWithSyns: MatProvOutput = [
+      {
+        label: "synonym-test",
+        "@graph": [
+          {
+            "@type": "Entity",
+            "@id": "e1",
+            label: [{ "@value": ["SPEX-8000 shaker", "SPEX-8000", "shaker"] }],
+            type: [{ "@value": "tool" }],
+          },
+        ],
+      },
+    ];
+    const sets = extractSetsFromGold(goldWithSyns);
+    expect(sets.tools).toHaveLength(1);
+    expect(sets.tools[0].synonyms.sort()).toEqual(
+      ["SPEX-8000 shaker", "SPEX-8000", "shaker"].sort(),
+    );
+  });
+
+  it("synonym のいずれかが pred と一致すれば match 扱い", () => {
+    const goldWithSyns: MatProvOutput = [
+      {
+        label: "synonym-test",
+        "@graph": [
+          { "@type": "Activity", "@id": "a1", label: [{ "@value": ["sealing"] }] },
+          {
+            "@type": "Entity",
+            "@id": "e1",
+            label: [{ "@value": ["SPEX-8000 shaker", "SPEX-8000", "shaker"] }],
+            type: [{ "@value": "tool" }],
+          },
+          { "@type": "Usage", activity: "a1", entity: "e1" },
+        ],
+      },
+    ];
+    // pred は短い "shaker" だけ出した
+    const pred: ProvIngesterOutput = {
+      title: "x",
+      blocks: [
+        { blockType: "heading", level: 2, role: "procedure", text: "Sealing" },
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "Seal with " },
+            { text: "shaker", role: "tool" },
+            { text: "." },
+          ],
+        },
+      ],
+    };
+    const m = evaluateSample("syn", [pred], goldWithSyns);
+    expect(m.total.tools.matched).toBe(1);
   });
 });

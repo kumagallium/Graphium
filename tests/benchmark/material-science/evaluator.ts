@@ -71,7 +71,31 @@ function readLabel(label: MatProvLabel | undefined): string {
   return readValueEntry(label?.[0]);
 }
 
+/**
+ * gold ノードの label.@value から synonym list を取り出す。
+ * MatPROV gold は label.@value が string か string[] のどちらか。後者は同じ実体の
+ * 別名（例: ["SPEX-8000 shaker", "SPEX-8000", "shaker"]）で、評価では **どれかが
+ * pred と一致すれば match** とみなす（MatPROV 論文の評価方針と整合）。
+ */
+function readLabelSynonyms(label: MatProvLabel | undefined): string[] {
+  if (!label) return [];
+  const out: string[] = [];
+  for (const entry of label) {
+    const raw = entry?.["@value"];
+    if (typeof raw === "string") out.push(raw);
+    else if (Array.isArray(raw)) {
+      for (const s of raw) if (typeof s === "string") out.push(s);
+    }
+  }
+  return out;
+}
+
 // ── 比較集合 ──────────────────────────────
+//
+// pred 側は LLM が「1 概念につき 1 ラベル」を出すので flat string array。
+// gold 側は MatPROV のラベルが synonym list を持つ（例: SPEX-8000 shaker | SPEX-8000 |
+// shaker）ので、各エントリは synonym 群として保持し、いずれかが match すれば
+// match とみなす（MatPROV 論文の評価方針と整合）。
 
 export type SpanSets = {
   activities: string[];
@@ -83,11 +107,41 @@ export type SpanSets = {
   parameters: string[];
 };
 
+export type GoldSynonymEntry = { synonyms: string[] };
+export type GoldEdgeEntry = {
+  type: "Usage" | "Generation";
+  activitySyns: string[];
+  entitySyns: string[];
+};
+export type GoldParamEntry = { canonicalKey: string; valueSyns: string[] };
+
+export type GoldSpanSets = {
+  activities: GoldSynonymEntry[];
+  materials: GoldSynonymEntry[];
+  tools: GoldSynonymEntry[];
+  edges: GoldEdgeEntry[];
+  parameters: GoldParamEntry[];
+};
+
 function emptySets(): SpanSets {
   return { activities: [], materials: [], tools: [], edges: [], parameters: [] };
 }
 
+function emptyGoldSets(): GoldSpanSets {
+  return { activities: [], materials: [], tools: [], edges: [], parameters: [] };
+}
+
 function mergeSets(a: SpanSets, b: SpanSets): SpanSets {
+  return {
+    activities: a.activities.concat(b.activities),
+    materials: a.materials.concat(b.materials),
+    tools: a.tools.concat(b.tools),
+    edges: a.edges.concat(b.edges),
+    parameters: a.parameters.concat(b.parameters),
+  };
+}
+
+function mergeGoldSets(a: GoldSpanSets, b: GoldSpanSets): GoldSpanSets {
   return {
     activities: a.activities.concat(b.activities),
     materials: a.materials.concat(b.materials),
@@ -238,69 +292,75 @@ function inferBareValueKey(text: string): { key: string; value: string } | null 
   return null;
 }
 
-// ── MatProvProcedure[] → SpanSets ──────────────────────────────
+// ── MatProvProcedure[] → GoldSpanSets ──────────────────────────────
 
-export function extractSetsFromGold(procedures: MatProvOutput): SpanSets {
-  let acc = emptySets();
+export function extractSetsFromGold(procedures: MatProvOutput): GoldSpanSets {
+  let acc = emptyGoldSets();
   for (const proc of procedures) {
-    acc = mergeSets(acc, extractSetsFromGoldProcedure(proc));
+    acc = mergeGoldSets(acc, extractSetsFromGoldProcedure(proc));
   }
   return acc;
 }
 
-function extractSetsFromGoldProcedure(proc: MatProvProcedure): SpanSets {
-  const sets = emptySets();
-  const entityLabelById = new Map<string, string>();
-  const activityLabelById = new Map<string, string>();
+function extractSetsFromGoldProcedure(proc: MatProvProcedure): GoldSpanSets {
+  const sets = emptyGoldSets();
+  const entitySynsById = new Map<string, string[]>();
+  const activitySynsById = new Map<string, string[]>();
   const entityTypeById = new Map<string, "material" | "tool" | null>();
 
   for (const item of proc["@graph"]) {
     if (item["@type"] === "Entity") {
-      entityLabelById.set(item["@id"], readLabel(item.label));
+      entitySynsById.set(item["@id"], readLabelSynonyms(item.label));
       const t = readValueEntry(item.type?.[0]);
       entityTypeById.set(item["@id"], t === "material" || t === "tool" ? t : null);
     } else if (item["@type"] === "Activity") {
-      activityLabelById.set(item["@id"], readLabel(item.label));
+      activitySynsById.set(item["@id"], readLabelSynonyms(item.label));
     }
   }
 
   for (const item of proc["@graph"]) {
     if (item["@type"] === "Activity") {
-      const label = readLabel(item.label);
-      if (label) sets.activities.push(label);
-      for (const p of readMatprovParams(item)) {
-        sets.parameters.push(`${canonicalKey(p.key)}::${normalize(p.value)}`);
+      const syns = readLabelSynonyms(item.label);
+      if (syns.length > 0) sets.activities.push({ synonyms: syns });
+      for (const p of readMatprovParamSynonyms(item)) {
+        sets.parameters.push({ canonicalKey: canonicalKey(p.key), valueSyns: p.syns });
       }
     } else if (item["@type"] === "Entity") {
-      const label = readLabel(item.label);
+      const syns = entitySynsById.get(item["@id"]) ?? [];
       const t = entityTypeById.get(item["@id"]);
-      if (label) {
-        if (t === "material") sets.materials.push(label);
-        else if (t === "tool") sets.tools.push(label);
+      if (syns.length > 0) {
+        if (t === "material") sets.materials.push({ synonyms: syns });
+        else if (t === "tool") sets.tools.push({ synonyms: syns });
       }
-      for (const p of readMatprovParams(item)) {
-        sets.parameters.push(`${canonicalKey(p.key)}::${normalize(p.value)}`);
+      for (const p of readMatprovParamSynonyms(item)) {
+        sets.parameters.push({ canonicalKey: canonicalKey(p.key), valueSyns: p.syns });
       }
     } else if (item["@type"] === "Usage" || item["@type"] === "Generation") {
-      const a = activityLabelById.get(item.activity) ?? item.activity;
-      const e = entityLabelById.get(item.entity) ?? item.entity;
-      sets.edges.push(edgeKey(item["@type"], a, e));
+      const activitySyns = activitySynsById.get(item.activity) ?? [item.activity];
+      const entitySyns = entitySynsById.get(item.entity) ?? [item.entity];
+      sets.edges.push({ type: item["@type"], activitySyns, entitySyns });
     }
   }
 
   return sets;
 }
 
-function readMatprovParams(
+/** matprov:* の配列内に複数 @value がある場合、全部 synonym として収集 */
+function readMatprovParamSynonyms(
   node: MatProvActivity | MatProvEntity,
-): Array<{ key: string; value: string }> {
-  const out: Array<{ key: string; value: string }> = [];
+): Array<{ key: string; syns: string[] }> {
+  const out: Array<{ key: string; syns: string[] }> = [];
   for (const k of Object.keys(node)) {
     if (!k.startsWith("matprov:")) continue;
     const arr = (node as Record<string, unknown>)[k];
     if (!Array.isArray(arr)) continue;
-    const v = readValueEntry(arr[0] as MatProvValue | undefined);
-    if (v) out.push({ key: k.slice("matprov:".length), value: v });
+    const syns: string[] = [];
+    for (const entry of arr) {
+      const v = (entry as MatProvValue | undefined)?.["@value"];
+      if (typeof v === "string") syns.push(v);
+      else if (Array.isArray(v)) for (const s of v) if (typeof s === "string") syns.push(s);
+    }
+    if (syns.length > 0) out.push({ key: k.slice("matprov:".length), syns });
   }
   return out;
 }
@@ -411,26 +471,189 @@ export function evaluateSample(
   };
 }
 
-function compareSets(pred: SpanSets, gold: SpanSets): ProcedureMetric {
-  // Activity は「先頭 gerund 抽出」で正規化する（"Annealing ingot" → "annealing"）
-  const predActsNormalized = pred.activities.map(headGerund);
-  const goldActsNormalized = gold.activities.map(headGerund);
-  // Material は `<past-participle> <form-noun>` を `<past-participle> sample` に揃える
-  const predMatsNormalized = pred.materials.map(canonicalMaterial);
-  const goldMatsNormalized = gold.materials.map(canonicalMaterial);
+function compareSets(pred: SpanSets, gold: GoldSpanSets): ProcedureMetric {
   return {
-    activities: countOverlap(predActsNormalized, goldActsNormalized, /*alreadyNormalized*/ true),
-    materials: countOverlap(predMatsNormalized, goldMatsNormalized, /*alreadyNormalized*/ true),
-    tools: countOverlap(pred.tools, gold.tools),
-    edges: countOverlap(pred.edges, gold.edges, /*alreadyNormalized*/ true),
-    parameters: countOverlap(pred.parameters, gold.parameters, /*alreadyNormalized*/ true),
+    activities: matchSynonymEntries(pred.activities, gold.activities, headGerund),
+    materials: matchSynonymEntries(pred.materials, gold.materials, canonicalMaterial),
+    tools: matchSynonymEntries(pred.tools, gold.tools, normalize),
+    edges: matchEdges(pred.edges, gold.edges),
+    parameters: matchParameters(pred.parameters, gold.parameters),
     tokenF1: {
-      activities: tokenF1(pred.activities, gold.activities),
-      materials: tokenF1(pred.materials, gold.materials),
-      tools: tokenF1(pred.tools, gold.tools),
-      parameters: tokenF1(pred.parameters, gold.parameters),
+      activities: tokenF1(pred.activities, flattenSynonyms(gold.activities)),
+      materials: tokenF1(pred.materials, flattenSynonyms(gold.materials)),
+      tools: tokenF1(pred.tools, flattenSynonyms(gold.tools)),
+      parameters: tokenF1(
+        pred.parameters,
+        gold.parameters
+          .filter((p) => p.valueSyns[0])
+          .map((p) => `${p.canonicalKey}::${p.valueSyns[0]}`),
+      ),
     },
   };
+}
+
+function flattenSynonyms(entries: GoldSynonymEntry[]): string[] {
+  // token-F1 では 1 エンティティ 1 ラベル相当の token bag を作りたいので、primary synonym だけ取る
+  return entries.map((e) => e.synonyms[0]).filter((s): s is string => Boolean(s));
+}
+
+/**
+ * synonym-aware の集合比較。gold 各エントリは synonym list を持ち、いずれかが
+ * pred と一致すれば match。
+ *
+ * gold 側の dedup: 同じ primary label を持つエントリ（例: "Cu" が複数 Entity として
+ * 別 procedure に登場するケース）は 1 つに集約。LLM 出力は flat list で同一 label を
+ * 1 度しか出さないため、これを別カウントすると recall が不当に下がる。
+ *
+ * pred 側の dedup: normalized 文字列の集合化。
+ */
+function matchSynonymEntries(
+  predicted: string[],
+  gold: GoldSynonymEntry[],
+  normFn: (s: string) => string,
+): MetricCounts {
+  const predNorm = new Set(predicted.map(normFn).filter(Boolean));
+
+  // gold dedup: 先頭 synonym（primary）を normalize した文字列をキーに集約。
+  // 同一 primary に複数エントリがあるときは synonym list が最も多いものを採用（最も permissive）。
+  const uniqueGold = new Map<string, string[]>();
+  for (const g of gold) {
+    const norms = g.synonyms.map(normFn).filter(Boolean);
+    if (norms.length === 0) continue;
+    const primary = norms[0];
+    const existing = uniqueGold.get(primary);
+    if (!existing || norms.length > existing.length) {
+      uniqueGold.set(primary, norms);
+    }
+  }
+
+  const predUsed = new Set<string>();
+  let matched = 0;
+  for (const syns of uniqueGold.values()) {
+    for (const s of syns) {
+      if (predNorm.has(s) && !predUsed.has(s)) {
+        predUsed.add(s);
+        matched++;
+        break;
+      }
+    }
+  }
+  return { matched, predicted: predNorm.size, gold: uniqueGold.size };
+}
+
+/**
+ * Edge matching。pred edge は serialized string、gold edge は (activitySyns, entitySyns)
+ * の組。pred と gold の全 (activity, entity) synonym 組合せから edge key を作って match。
+ */
+function matchEdges(predicted: string[], gold: GoldEdgeEntry[]): MetricCounts {
+  const predSet = new Set(predicted.filter(Boolean));
+
+  // gold edge dedup: 先頭 synonym で作った primary edge key で集約。
+  const uniqueGold = new Map<string, GoldEdgeEntry>();
+  for (const ge of gold) {
+    if (ge.activitySyns.length === 0 || ge.entitySyns.length === 0) continue;
+    const primaryKey = `${ge.type}::${headGerund(ge.activitySyns[0])}::${canonicalMaterial(ge.entitySyns[0])}`;
+    if (!uniqueGold.has(primaryKey)) uniqueGold.set(primaryKey, ge);
+  }
+
+  const predUsed = new Set<string>();
+  let matched = 0;
+  for (const ge of uniqueGold.values()) {
+    let found = false;
+    for (const a of ge.activitySyns) {
+      if (found) break;
+      for (const e of ge.entitySyns) {
+        const key = `${ge.type}::${headGerund(a)}::${canonicalMaterial(e)}`;
+        if (predSet.has(key) && !predUsed.has(key)) {
+          predUsed.add(key);
+          matched++;
+          found = true;
+          break;
+        }
+      }
+    }
+  }
+  return { matched, predicted: predSet.size, gold: uniqueGold.size };
+}
+
+/**
+ * Parameter matching。pred の "canonicalKey::normalizedValue" と gold の同じキーの
+ * synonym 全候補を比較。Value 側で min↔minute / h↔hour 等の synonym 展開も行う。
+ */
+function matchParameters(predicted: string[], gold: GoldParamEntry[]): MetricCounts {
+  const predSet = new Set(predicted.filter(Boolean));
+
+  // gold parameter dedup: (canonicalKey, normalized first value) で集約。
+  // 同じ (purity, 99.999%) が複数 Entity に紐づくケース（Cu の purity と Fe の purity が
+  // 同じ 99.999% のような場合）を 1 つにまとめる。LLM 出力は flat list で entity binding を
+  // 持たないため、別カウントすると recall が不当に下がる。
+  const uniqueGold = new Map<string, GoldParamEntry>();
+  for (const gp of gold) {
+    if (gp.valueSyns.length === 0) continue;
+    const primaryKey = `${gp.canonicalKey}::${normalize(gp.valueSyns[0])}`;
+    if (!uniqueGold.has(primaryKey)) uniqueGold.set(primaryKey, gp);
+  }
+
+  const predUsed = new Set<string>();
+  let matched = 0;
+  for (const gp of uniqueGold.values()) {
+    let found = false;
+    for (const raw of gp.valueSyns) {
+      if (found) break;
+      const candidates = expandValueSynonyms(normalize(raw)).map(
+        (v) => `${gp.canonicalKey}::${v}`,
+      );
+      for (const key of candidates) {
+        if (predSet.has(key) && !predUsed.has(key)) {
+          predUsed.add(key);
+          matched++;
+          found = true;
+          break;
+        }
+      }
+    }
+  }
+  return { matched, predicted: predSet.size, gold: uniqueGold.size };
+}
+
+/**
+ * normalize 済み value 文字列に対し、時間単位の表記揺れを展開する。
+ * 例: "1 4 min" → ["1 4 min", "1 4 minute"]、"6 h" → ["6 h", "6 hour"]
+ *
+ * 数値の直後に置かれる time-unit token のみ展開する（誤展開を避けるため、
+ * 単独で "h" や "s" が出てくる材料ラベル等には影響しない）。
+ */
+const TIME_UNIT_MAP: Record<string, string> = {
+  s: "second",
+  sec: "second",
+  m: "minute", // bare "m" は時々観測される（minute の略）
+  min: "minute",
+  mins: "minute",
+  h: "hour",
+  hr: "hour",
+  hrs: "hour",
+  d: "day",
+};
+function expandValueSynonyms(value: string): string[] {
+  const out = new Set<string>([value]);
+  const tokens = value.split(" ");
+  // 末尾 token が time-unit synonym ならその expanded を加える
+  if (tokens.length >= 2) {
+    const last = tokens[tokens.length - 1];
+    const prev = tokens[tokens.length - 2];
+    const isNumber = /^\d+(?:\.\d+)?$/.test(prev);
+    if (isNumber && Object.prototype.hasOwnProperty.call(TIME_UNIT_MAP, last)) {
+      const expanded = [...tokens.slice(0, -1), TIME_UNIT_MAP[last]].join(" ");
+      out.add(expanded);
+    }
+    // 逆方向: gold が "6 hour" / pred が "6 h" の場合も拾う
+    for (const [abbr, full] of Object.entries(TIME_UNIT_MAP)) {
+      if (last === full && isNumber) {
+        out.add([...tokens.slice(0, -1), abbr].join(" "));
+      }
+    }
+  }
+  return Array.from(out);
 }
 
 /**
@@ -565,6 +788,14 @@ const INTERMEDIATE_FORM_NOUNS = new Set([
   "compound",
   "product",
   "material",
+  "particle",
+  "particles",
+  "grain",
+  "rod",
+  "bar",
+  "sheet",
+  "fiber",
+  "film",
 ]);
 
 const PARTICIPLE_FORM_REGEX = /^([a-z]+ed)\s+([a-z]+)$/;

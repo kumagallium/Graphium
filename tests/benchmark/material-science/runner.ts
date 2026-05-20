@@ -335,6 +335,11 @@ function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>
             { activities: [], materials: [], tools: [], edges: [], parameters: [] } as SpanSets,
           );
         const goldSets = extractSetsFromGold(r.gold);
+        // synonym entry の dump 用フォーマット: "A | B | C" のように `|` で連結
+        const fmtSyns = (entries: { synonyms: string[] }[]) =>
+          entries.map((e) => e.synonyms.join(" | "));
+        const fmtParams = (entries: { canonicalKey: string; valueSyns: string[] }[]) =>
+          entries.map((e) => `${e.canonicalKey}::${e.valueSyns.join(" | ")}`);
         return {
           id: r.id,
           durationMs: r.durationMs,
@@ -351,10 +356,10 @@ function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>
               parameters: dedupe(predSets.parameters),
             },
             gold: {
-              activities: dedupe(goldSets.activities),
-              materials: dedupe(goldSets.materials),
-              tools: dedupe(goldSets.tools),
-              parameters: dedupe(goldSets.parameters),
+              activities: dedupe(fmtSyns(goldSets.activities)),
+              materials: dedupe(fmtSyns(goldSets.materials)),
+              tools: dedupe(fmtSyns(goldSets.tools)),
+              parameters: dedupe(fmtParams(goldSets.parameters)),
             },
           },
         };
