@@ -1,0 +1,1032 @@
+[
+  {
+    "label": "FeNb0.8Ti0.2Sb_ball-milling-time",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Fe",
+              "Iron"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.97 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "piece",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Nb",
+              "Niobium"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.8 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "foil",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Ti",
+              "Titanium"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.99 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "rod",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Sb",
+              "Antimony"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.999 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "block",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": [
+              "levitation melting",
+              "melting",
+              "preparing"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "argon",
+              "Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "3 min",
+              "3 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e4"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e5"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "levitation melted sample",
+              "melted sample",
+              "prepared sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "remelting",
+              "melting"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e5"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e6"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "remelted sample",
+              "melted sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": [
+              "ball-milling",
+              "mechanical ball-milling"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "argon",
+              "Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "1 to 16 h",
+              "1 to 16 hours",
+              "1-16 h",
+              "1-16 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e6"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "ball-milled sample",
+              "mechanical ball-milled sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Mixer Mill MM200",
+              "Mixer Mill",
+              "MM200"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e10"
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintering",
+              "SPS",
+              "sintering",
+              "compacting"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1123 K",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "10 min",
+              "10 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "65 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": "vacuum",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "graphite die",
+              "die"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "SPS-1050",
+              "SPS"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e8"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintered sample",
+              "sintered sample",
+              "SPS sample",
+              "compacted sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1023 K",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "2 d",
+              "2 days"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e8"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e9"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "label": "Fe1+xNb0.75Ti0.25Sb_composition-variation",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Fe",
+              "Iron"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.97 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "piece",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Nb",
+              "Niobium"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.8 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "foil",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Ti",
+              "Titanium"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.99 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "rod",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Sb",
+              "Antimony"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.999 %",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "block",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": [
+              "levitation melting",
+              "melting",
+              "preparing"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "argon",
+              "Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "3 min",
+              "3 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:concentration": [
+          {
+            "@value": "0-0.08",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e4"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e5"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "levitation melted sample",
+              "melted sample",
+              "prepared sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "remelting",
+              "melting"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e5"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e6"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "remelted sample",
+              "melted sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": [
+              "ball-milling",
+              "mechanical ball-milling"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "argon",
+              "Ar"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "8 h",
+              "8 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e6"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e10"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "ball-milled sample",
+              "mechanical ball-milled sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "Mixer Mill MM200",
+              "Mixer Mill",
+              "MM200"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintering",
+              "SPS",
+              "sintering",
+              "compacting"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1123 K",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "10 min",
+              "10 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "65 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": "vacuum",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "graphite die",
+              "die"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "SPS-1050",
+              "SPS"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e8"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintered sample",
+              "sintered sample",
+              "SPS sample",
+              "compacted sample"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1023 K",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "2 d",
+              "2 days"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e8"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e9"
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ]
+      }
+    ]
+  }
+]
