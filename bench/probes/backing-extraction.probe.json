@@ -1,12 +1,12 @@
 {
   "name": "backing-extraction",
   "inputs": [
-    "bench/corpus/040-bio-neuro-sleep.note.json",
+    "bench/corpus/039-bio-evolution-finch.note.json",
     "bench/corpus/053-econ-network-effects.note.json"
   ],
   "expected": {
     "backingCount": { "min": 1 },
-    "rationale": "「Xie ら (2013) で報告されている」「textbook two-sided-network story」「Rochet & Tirole」のような note の Warrant 根拠が、Claim.backing として 1 件以上抽出される。"
+    "rationale": "「supporting the established interpretation that drought-driven food composition is the proximate cause」(039) / 「the textbook two-sided-network story」「matches Rochet & Tirole」(053) は Warrant の根拠を明示する idiom。少なくとも 1 件は Claim.backing として抽出される。"
   },
-  "rationale": "Phase γ で導入する Toulmin Backing の抽出能力を測る。inputs は外部文献 / 教科書を明示的に Warrant 根拠として引いているノート。"
+  "rationale": "Phase γ で導入する Toulmin Backing の抽出能力を測る。inputs は外部論文 / 教科書 / established interpretation を Warrant の根拠として明示的に invoke しているノート。Xie 2013 のような『測定論文』を data として引用するだけのノート (040) は意図的に外している (それは externalReferences の領分)。"
 }
