@@ -173,6 +173,14 @@ function splitIntoClaims(note: CorpusNote): BenchClaim[] {
   const stepBlocks = text.split(/\n(?=\[Step\])/).map((b) => b.trim()).filter(Boolean);
   const claimChunks = stepBlocks.length >= 2 ? stepBlocks : [text];
 
+  // Phase γ-follow-up 2: pairId は cross-domain / cross-language pair の検出専用。
+  // contradiction-pair も pairId を持つが、それは「同ドメインの対立」なので analogical
+  // ではなく dialectic が正しい mode。pipeline 側で混ぜないために、ここでカテゴリ別に
+  // pairId を attach するかを決める。
+  const isAnalogicalPair =
+    note.category === "cross-domain-pair" || note.category === "cross-language-pair";
+  const claimPairId = isAnalogicalPair ? note.pairId : undefined;
+
   return claimChunks.map((chunk, idx): BenchClaim => {
     const status = detectEpistemicStatus(chunk);
     const backings = detectBacking(chunk);
@@ -185,7 +193,7 @@ function splitIntoClaims(note: CorpusNote): BenchClaim[] {
       rebuttalConditions: extractRebuttalConditions(chunk),
       modalQualifier: detectModalQualifier(chunk),
       backing: backings.length > 0 ? backings : undefined,
-      pairId: note.pairId,
+      pairId: claimPairId,
     };
   });
 }
