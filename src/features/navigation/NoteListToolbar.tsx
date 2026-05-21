@@ -3,7 +3,15 @@
 import { useCallback, useRef, useState } from "react";
 import { useT, getDisplayLabelName } from "../../i18n";
 
-export type SortKey = "outgoingLinkCount" | "incomingLinkCount" | "modifiedAt" | "createdAt" | "title";
+export type SortKey =
+  | "outgoingLinkCount"
+  | "incomingLinkCount"
+  | "modifiedAt"
+  | "createdAt"
+  | "title"
+  | "labels"
+  | "knowledgeCount"
+  | "author";
 export type SortDirection = "asc" | "desc";
 
 const SORT_KEYS: { key: SortKey; labelKey: string }[] = [
@@ -13,6 +21,9 @@ const SORT_KEYS: { key: SortKey; labelKey: string }[] = [
   { key: "createdAt", labelKey: "nav.createdDate" },
   { key: "title", labelKey: "nav.title" },
 ];
+// 2026-05-21 ユーザー要望「全ての列が並び替え対象になるよう」に従い、列ヘッダから
+// labels / knowledgeCount / author でもソートできる。ツールバー側の SORT_KEYS には
+// あえて入れない（一覧上で使うことが少ない sort key を吸い込んで肥大化させない）。
 
 // データに保存された内部ラベル名でフィルタリング
 const CORE_LABELS = ["procedure", "plan", "result", "material", "tool", "attribute", "output"];
