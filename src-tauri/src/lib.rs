@@ -2,14 +2,178 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::thread;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 /// 終了処理の状態。フロントから shutdown_ack が来ると true、
 /// 次の CloseRequested ではそのまま閉じる（無限ループ防止）
 static SHUTDOWN_ACK: AtomicBool = AtomicBool::new(false);
+
+// --- ネイティブ sidecar（Tauri Shell プラグインを介さない node 起動経路） ---
+//
+// Windows での Tauri Shell の挙動（spawn は成功するが stdout/stderr が
+// renderer まで届かず close も飛ばない）を回避するため、Rust 側から
+// 直接 node プロセスを起動して、stdout/stderr/exit を Tauri event で
+// renderer に流す。
+//
+// AppState には現在の子プロセスの PID だけ保持する。Child 自体は
+// stdout/stderr/wait を扱うスレッドへ move する（Child は Clone できないので、
+// kill するときは PID を taskkill / kill -TERM で叩く）。
+#[derive(Default)]
+struct NativeSidecarState(Mutex<Option<u32>>);
+
+/// 子プロセスを Rust 側で起動する。
+/// 戻り値は spawn できた PID。renderer 側はその後 `sidecar-log` /
+/// `sidecar-closed` イベントをリッスンしてバックエンドの状態を追う。
+#[tauri::command]
+fn start_native_sidecar(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, NativeSidecarState>,
+    data_dir: String,
+    port: Option<u16>,
+) -> Result<u32, String> {
+    let port = port.unwrap_or(3001);
+
+    let emit_log = |app: &tauri::AppHandle, line: String| {
+        let _ = app.emit("sidecar-log", line);
+    };
+
+    emit_log(&app, "[native] start_native_sidecar called".to_string());
+
+    // 既存の子プロセスが残っていたら先に kill しておく。
+    {
+        let mut guard = state.0.lock().unwrap();
+        if let Some(old_pid) = guard.take() {
+            emit_log(&app, format!("[native] killing previous sidecar pid={old_pid}"));
+            let _ = kill_pid(old_pid);
+        }
+    }
+
+    // node 実行ファイルを resolve。fetch-node.mjs が
+    //   - Windows: src-tauri/sidecar/node.exe
+    //   - macOS / Linux: src-tauri/sidecar/node
+    // を配置している前提。tauri.conf.json の resources に "sidecar/node*"
+    // を入れているので、bundle に同梱されている。
+    let node_filename = if cfg!(windows) { "sidecar/node.exe" } else { "sidecar/node" };
+    let node_path = app
+        .path()
+        .resolve(node_filename, tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("resolve {node_filename} failed: {e}"))?;
+    let server_script = app
+        .path()
+        .resolve("sidecar/server.mjs", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("resolve sidecar/server.mjs failed: {e}"))?;
+
+    emit_log(
+        &app,
+        format!(
+            "[native] node={} server={} dataDir={} port={}",
+            node_path.display(),
+            server_script.display(),
+            data_dir,
+            port
+        ),
+    );
+
+    if !node_path.exists() {
+        return Err(format!("node binary not found at {}", node_path.display()));
+    }
+    if !server_script.exists() {
+        return Err(format!("server.mjs not found at {}", server_script.display()));
+    }
+
+    let mut cmd = Command::new(&node_path);
+    cmd.arg(&server_script)
+        .env("PORT", port.to_string())
+        .env(
+            "CORS_ORIGINS",
+            "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
+        )
+        .env("DATA_DIR", &data_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        // Windows 子プロセスにコンソールウィンドウを出さない。
+        // CREATE_NO_WINDOW = 0x08000000
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    let pid = child.id();
+
+    emit_log(&app, format!("[native] spawned pid={pid}"));
+
+    // stdout を行単位で emit
+    if let Some(stdout) = child.stdout.take() {
+        let app_clone = app.clone();
+        thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                let _ = app_clone.emit("sidecar-log", format!("[stdout] {line}"));
+            }
+        });
+    }
+    // stderr も同様
+    if let Some(stderr) = child.stderr.take() {
+        let app_clone = app.clone();
+        thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                let _ = app_clone.emit("sidecar-log", format!("[stderr] {line}"));
+            }
+        });
+    }
+
+    // wait を別スレッドで監視。終了したら sidecar-closed を emit。
+    {
+        let app_clone = app.clone();
+        thread::spawn(move || match child.wait() {
+            Ok(status) => {
+                let code = status.code();
+                let _ = app_clone.emit(
+                    "sidecar-closed",
+                    format!("exit code={code:?} success={}", status.success()),
+                );
+            }
+            Err(e) => {
+                let _ = app_clone.emit("sidecar-closed", format!("wait failed: {e}"));
+            }
+        });
+    }
+
+    // PID だけ保持する（kill 用）
+    {
+        let mut guard = state.0.lock().unwrap();
+        *guard = Some(pid);
+    }
+
+    Ok(pid)
+}
+
+/// ネイティブ sidecar を停止する。PID を控えていれば taskkill / kill する。
+#[tauri::command]
+fn stop_native_sidecar(state: tauri::State<'_, NativeSidecarState>) -> Result<(), String> {
+    let pid = {
+        let mut guard = state.0.lock().unwrap();
+        guard.take()
+    };
+    if let Some(pid) = pid {
+        let _ = kill_pid(pid);
+    }
+    Ok(())
+}
 
 /// フロントエンドから呼ぶ「sidecar の後始末が終わったので終了してよい」通知
 #[tauri::command]
@@ -1030,7 +1194,10 @@ pub fn run() {
             shutdown_ack,
             kill_pid,
             save_bytes_to_path,
+            start_native_sidecar,
+            stop_native_sidecar,
         ])
+        .manage(NativeSidecarState::default())
         .setup(|app| {
             // メニューバー構築
             let file_menu = SubmenuBuilder::new(app, "File")
