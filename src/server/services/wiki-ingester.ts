@@ -151,7 +151,7 @@ Write so a future reader **wants to keep reading**. Most generated notes fail be
 - One claim per sentence. Short sentences. Mix sentence lengths so the rhythm doesn't flatten.
 - Section headings are **optional landing spots, not a checklist**. Drop any section rather than fill it with filler. For short Claims, flowing prose with no headings is fine.
 - A Claim should read like a short note from a colleague, not a structured report.${ja ? `
-- **日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した／〜と気づいた）は使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜と見ています」「〜のではないでしょうか」のいずれかに揃える。これは絶対ルールで、たとえノート原文が常体でも、生成する文章は敬体にする。` : ""}${skillSection}
+- **日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます／〜でしょうか）は使わない。** 文末は「〜だ」「〜である」「〜した」「〜になる」「〜と考えられる」「〜と見られる」「〜のではないか」のいずれかに揃える。これは絶対ルールで、たとえノート原文が敬体でも、生成する文章は常体にする。タイトル・本文・例示・引用直前のどこでも常体に統一する。` : ""}${skillSection}
 
 ### Tone calibration (Bad / Good)
 

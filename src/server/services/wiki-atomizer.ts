@@ -235,7 +235,7 @@ Each example shows three rungs: too specific, too academic, and the target (lift
 > Why off: the nouns are lifted, but the wording reads like a paper abstract. "三元系合金" / "構造的なバルク特性" / "支配的な影響" each stack two or more abstract kanji compounds. A reader who is *not* a metallurgist sees the shape of the claim but cannot picture what is acting on what.
 
 ✅ **Good — domain-lifted *and* plain-language:**
-> "複数の元素でできた合金に少量の元素を足しても、合金全体の構造的な性質はあまり変わらないことがあります"
+> "複数の元素でできた合金に少量の元素を足しても、合金全体の構造的な性質はあまり変わらないことがある"
 >
 > Why good: same lifted concept ("Ti" → "少量の元素", "Al-V" → "複数の元素でできた合金", "粒径・デバイ温度" → "合金全体の構造的な性質"), but every chunk is something a non-metallurgist can imagine. Subject ("少量の元素を足すこと") / relation ("合金全体の構造的な性質に") / effect ("あまり変わらない") are all explicit.
 
@@ -246,7 +246,7 @@ Each example shows three rungs: too specific, too academic, and the target (lift
 > "永続ストレージの背景メンテナンスは、参照構造のフラグメンテーションを段階的に回復させる"
 
 ✅ **Good:**
-> "裏で動く保守処理は、参照構造の崩れを少しずつ整えていきます"
+> "裏で動く保守処理は、参照構造の崩れを少しずつ整えていく"
 >
 > Subject ("裏で動く保守処理") / object ("参照構造の崩れ") / effect ("少しずつ整える") are obvious; no compound-noun stacking; still domain-lifted (no "Postgres", no "VACUUM").
 
@@ -259,7 +259,7 @@ Each example shows three rungs: too specific, too academic, and the target (lift
 > Why off: the **register is already plain**, so it *feels* like an Atom. But "SPS焼結" / "単相化" still anchor the sentence in metallurgy — a reader outside that domain cannot picture what acts on what. This is the most dangerous trap, because the wording quality hides that the abstraction level did not move. **Plain words alone do not earn an Atom; the domain entities must be lifted too.**
 
 ✅ **Good — rung-2 (plain *and* domain-lifted):**
-> "短時間の高温処理で揮発しやすい成分がほどよく抜けると、均一な仕上がりに繋がります"
+> "短時間の高温処理で揮発しやすい成分がほどよく抜けると、均一な仕上がりに繋がる"
 >
 > Why good: every domain-anchor is replaced with a category-level term ("SPS焼結" → "短時間の高温処理", "亜鉛" → "揮発しやすい成分", "単相化" → "均一な仕上がり"). Subject ("短時間の高温処理") / relation ("揮発しやすい成分が抜ける") / effect ("均一な仕上がり") are all explicit *and* portable to other domains (a paper firing kiln, a coffee roast).
 
@@ -318,11 +318,11 @@ When the source Claims describe **what was observed** without committing to **wh
 
 - Source: "毎朝、芝の表面に水滴がついている。日が高くなると消える。隣のコンクリートには水滴がない。"
   - ❌ Wrong (over-explained): "蒸散現象により植物体から水分が放出され、表面に凝結する" → tagged \`mechanistic\`. The source Claim never measured transpiration; this invents a mechanism.
-  - ✅ Right (observation preserved): "ある条件下で、植物の表面にだけ水滴が現れることが繰り返し観察されます" → tagged \`observational\`.
+  - ✅ Right (observation preserved): "ある条件下で、植物の表面にだけ水滴が現れることが繰り返し観察される" → tagged \`observational\`.
 
 - Source: "13:20 にオフィスの騒音が 71 dB のピークを示した（前後 30 秒は 55 dB）"
   - ❌ Wrong: "昼食帰りの人流が騒音ピークの主要因である" → invents causality the data does not support.
-  - ✅ Right: "ある時間帯に、定常値より十数 dB 高い騒音のピークが瞬間的に観察されます" → tagged \`observational\`.
+  - ✅ Right: "ある時間帯に、定常値より十数 dB 高い騒音のピークが瞬間的に観察される" → tagged \`observational\`.
 
 Heuristics:
 - If the source Claim language is "観察した / 測定した / 〜が見られた / X dB だった" with no mechanism stated, the Atom is **almost always** \`observational\`.
@@ -359,7 +359,7 @@ Examples:
 
 - Source Claim A: rebuttalConditions = ["ただし反応温度が分解点を超える場合は逆効果になる"]
   Source Claim B: rebuttalConditions = ["但し焼結温度が高すぎると揮発成分が抜けて純度が落ちる"]
-  → Both share a "高温で逆転" pattern. Atom \`rebuttalConditions\` = ["処理温度が高すぎる領域ではこの効果は逆転することがあります"]
+  → Both share a "高温で逆転" pattern. Atom \`rebuttalConditions\` = ["処理温度が高すぎる領域ではこの効果は逆転することがある"]
 - Source Claim A: rebuttalConditions = ["プロトタイプ段階では型が流動的で逆に遅くなる"]
   Source Claim B: rebuttalConditions = []
   → Only one Claim has a rebuttal. Atom \`rebuttalConditions\` = [] (Claim-layer rebuttal stays at Claim layer).
@@ -373,11 +373,11 @@ Examples:
 - Do not invent citations, URLs, or author names.
 
 ## Style
-${ja ? `- 日本語で書くときは **敬体（ですます調）で統一** する。常体（〜だ／〜である／〜した）は **タイトル・本文・例示・どの位置でも** 使わない。
-- 文末は「〜です」「〜ます」「〜と考えられます」「〜のではないでしょうか」「〜することがあります」など。タイトルも体言止めだけで切らず、語尾まで読める形にしてよい（例: 「〜は〜をあまり変えません」）。
+${ja ? `- 日本語で書くときは **常体（である調 / だ調）で統一** する。敬体（〜です／〜ます／〜でしょうか）は **タイトル・本文・例示・どの位置でも** 使わない。
+- 文末は「〜だ」「〜である」「〜になる」「〜と考えられる」「〜のではないか」「〜することがある」など。タイトルも体言止めだけで切らず、語尾まで読める形にしてよい（例: 「〜は〜をあまり変えない」）。
 - 「重要である」「関連する」「影響を与える」のような **曖昧な述語は禁止**。何が何に対して何をどうするのかを、必ず具体的な動詞で書き切る。
 - 4 文字以上の漢字熟語が 3 つ以上連続したら、どれか一つを和語・かな書きにほどく。
-- ソース Claim が常体でも、Atom は敬体に統一する。` : `- Plain, calm prose. No hype.
+- ソース Claim が敬体でも、Atom は常体に統一する。` : `- Plain, calm prose. No hype.
 - One claim per sentence with an explicit subject, an explicit object, and a concrete verb. Avoid empty predicates like "is important", "is related to", "has an effect on".
 - Prefer plain everyday words to academic compounds, even after domain-lifting.`}
 
