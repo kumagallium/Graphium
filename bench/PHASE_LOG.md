@@ -732,3 +732,71 @@ now fires both at the LLM layer (representative synthesis: 政策評価 ⇄
 evolution ⇄ SGD via pairId). No regressions on previously-passing
 probes. The next target is contradiction-resolution's dialectic
 selection — same pattern, separate PR.
+
+## γ-follow-up 3 — dialectic selection on contradiction pairs (PR [#309](https://github.com/kumagallium/Graphium/pull/309), merged 2026-05-21)
+
+Closing γ series' last open probe. After γ + backing-fix + analogical-tighten landed, `contradiction-resolution` was the one adversarial probe still FAIL: the router added dialectic to the candidate set when 2+ inputs carried `rebuttalConditions`, but the LLM (and dry-run heuristic) kept choosing other modes — abductive, then briefly "analogical,abductive" once the pairId carriage was wired in.
+
+What landed:
+- `synthesis-prompts/dialectic.ts`: explicit 3-step contradiction-detection criteria (does A and B argue opposite directions of the same axis? do their rebuttal conditions describe the same boundary from different sides? is the regime separator the variable in dispute?) + worked example from the microservice ⇄ monolith corpus pair.
+- `synthesis-prompts/abductive.ts`: explicit "if 2+ inputs have rebuttalConditions or opposing causal directions, prefer dialectic" guard. Abductive's gravitational pull on contradiction pairs was the proximate cause of mis-selection.
+- `bench/pipeline.ts` (dry-run): heuristic for `bothHaveRebuttal` already existed; this PR strengthens it so the dry-run pipeline emits dialectic when the router would have included it (closes the dry-run blind-spot pattern documented in memory `feedback_probe_dry_run_blind_spot.md`).
+
+Pre-declared metrics:
+- ✅ `contradiction-resolution` probe pass
+- ✅ `adversarial_pass_rate` ≥ 0.818 (regression guard; ideal 0.909 if both contradiction-resolution and meta-atom-clustering became OK — meta-atom-clustering is Phase ε)
+
+### Live run (n=3, gpt-oss-120b on Sakura AI Engine, 58 notes / 11 probes)
+
+CI workflow_dispatch [run 26223055959](https://github.com/kumagallium/Graphium/actions/runs/26223055959) on `main` at `36f7bf6` (PR #313 was an unrelated settings UI change; bench-relevant code at γ-follow-up 3 = `82cd466`). Snapshot: `bench/results/dialectic-contradiction-resolution-2026-05-21.json`. This run **also replaces `bench/baseline.json`** as the post-γ-follow-up 3 fixed reference for subsequent phases.
+
+| metric                          | pre (post-γ-follow-up 2) median | post (γ-follow-up 3) median | post range     | note |
+|---------------------------------|---------------------------------|------------------------------|----------------|------|
+| **`adversarial_pass_rate`**     | 0.818                           | **0.909**                    | 0.909          | ✅ pre-declared ideal hit |
+| **contradiction-resolution probe** | FAIL                         | **OK**                       | —              | ✅ flips after 3 prior attempts |
+| backing-extraction              | OK                              | OK                           | —              | held |
+| cross-domain-analogue           | OK                              | OK                           | —              | held |
+| rebuttal / modal-qualifier      | OK                              | OK                           | —              | held |
+| meta-atom-clustering            | FAIL                            | FAIL                         | —              | Phase ε pending (expected) |
+| `epistemic_preservation`        | 0.927                           | 0.927                        | 0.912 – 0.964  | held above 0.9 |
+| `lift_score`                    | 0.550                           | 0.714                        | 0.563 – 0.750  | recovered to inside μ-2's healthy band |
+| `mode_distribution_entropy`     | 0.459                           | 0.500                        | 0.000 – 0.500  | held |
+| `observation_atom_ratio`        | 0.375                           | 0.190                        | 0.125 – 0.625  | within historical noise band |
+| `novelty_score`                 | 1.000                           | 1.000                        | 1.000          | held |
+| `cross_language_consistency`    | 0.667                           | 0.333                        | 0.000 – 0.667  | wide range, within prior bench noise |
+| `domain_balance_score`          | 0.520                           | 0.631                        | 0.624 – 0.721  | tracks lift_score more closely |
+| `atom_count_total`              | 9                               | 16                           | 8 – 21         | atomizer firing more this run |
+| `synthesis_count_total`         | 3                               | 2                            | 2 – 4          | within prior range |
+
+Per-sample:
+
+| run | lift  | entropy | obs   | epi   | advers | atoms | syn |
+|-----|-------|---------|-------|-------|--------|-------|-----|
+| #1  | 0.714 | 0.500   | 0.190 | 0.927 | 0.909  | 21    | 4   |
+| #2  | 0.563 | 0.000   | 0.625 | 0.912 | 0.909  | 16    | 2   |
+| #3  | 0.750 | 0.500   | 0.125 | 0.964 | 0.909  | 8     | 2   |
+
+### Probe-level shifts
+
+| probe                              | pre  | post  | note |
+|------------------------------------|------|-------|------|
+| contradiction-resolution           | FAIL | **OK** | dry-run pipeline now emits dialectic when both inputs carry rebuttalConditions on the same axis; live LLM does the same shape via the dialectic prompt's 3-step criteria. |
+| meta-atom-clustering               | FAIL | FAIL  | Phase ε pending; only remaining adversarial FAIL. |
+| backing-extraction                 | OK   | OK    | held |
+| casual-speculation-propagation     | OK   | OK    | held |
+| cross-domain-analogue-detection    | OK   | OK    | held |
+| external-source-citation-integrity | OK   | OK    | held |
+| intra-note-status-splitting        | OK   | OK    | held |
+| mixed-status-dilution              | OK   | OK    | held |
+| modal-qualifier-extraction         | OK   | OK    | held |
+| pure-observation-abduction-trigger | OK   | OK    | held |
+| rebuttal-extraction                | OK   | OK    | held |
+
+### Load-bearing findings
+
+1. **The dry-run blind-spot pattern held for the third time in γ series.** Backing (γ-follow-up), analogical (γ-follow-up 2), and now dialectic (γ-follow-up 3) all needed prompt strengthening **and** a matching dry-run heuristic to move the probe metric. Each time the live LLM behavior changed first and the probe was the lagging indicator. This pattern is now codified in memory `feedback_probe_dry_run_blind_spot.md` and called out in the handoff so future phases don't re-discover it.
+2. **Abductive's gravitational pull on contradiction pairs was the proximate cause.** The router was already including dialectic in the candidate set when rebuttalConditions count ≥ 2, but the LLM kept selecting abductive because the abductive rubric was happy to absorb "two opposing causal mechanisms" as competing hypotheses. Adding the explicit "if rebuttalConditions ≥ 2, prefer dialectic" hint in abductive's prompt removed the conflict.
+3. **`lift_score` recovered from 0.550 → 0.714 in this run.** The drop in γ-follow-up 2 was sample-narrow (one run at 0.444). The post-γ-follow-up 3 run sits in 0.563 – 0.750 with median 0.714, well above the regression threshold. No specific lift-related change in this PR — the recovery is likely sampling, but it confirms that 0.550 was not a regression cliff. μ-1.3 (PR #314 in flight) will refactor the rubric so this metric and `domain_balance_score` share judgments going forward, which should narrow run-to-run variance on both.
+4. **`adversarial_pass_rate` hit the pre-declared ideal of 0.909.** 10 of 11 probes pass; only `meta-atom-clustering` remains FAIL, and that one is gated on Phase ε which is intentionally not in this PR's scope.
+
+Verdict: **merged**. Pre-declared metric met. γ series probe-suite is now at its design ceiling (10/11) given Phase ε is pending. The next bench-moving target is Phase ε (meta-atom-clustering) or μ-1.3 (judge rubric unification, which doesn't change the probe metrics but tightens lift / domain_balance reporting). Both are queued; see the 2026-05-21 handoff for ordering.

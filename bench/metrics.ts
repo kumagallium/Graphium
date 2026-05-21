@@ -11,6 +11,11 @@
 //
 // 1 と 5 は LLM-as-judge を介す async 版が正規。同期 heuristic 版は
 // test と dry-run fallback のために残してある。
+//
+// μ-1.3 (2026-05-21): live mode では `domain_balance_score` も同じ JudgePack を
+// 経由する。lift_score を計算するときに per-atom judgment を一度だけ取り、
+// その配列を `domainBalanceScoreFromJudgments` に渡し直す（同じ LLM call を
+// 2 metric で共有 → 二重課金回避 + rubric の不整合排除）。
 
 import type {
   BenchAtom,
@@ -21,7 +26,7 @@ import type {
   GroundTruth,
   ProbeResult,
 } from "./types.ts";
-import type { JudgePack } from "./judge.ts";
+import type { JudgePack, Judgment } from "./judge.ts";
 import { judgeAtomLift, judgeSynthesisNovelty } from "./judge.ts";
 import { resolveDomain } from "./load.ts";
 
@@ -35,22 +40,51 @@ export function liftScore(atoms: BenchAtom[]): number {
 }
 
 /**
+ * 1 atom 1 LLM call で lift 判定を一括取得する。返却順は引数 `atoms` と同順。
+ *
+ * μ-1.3: lift_score と domain_balance_score の両方が同じ JudgePack に依存する
+ * ため、judge を 2 回走らせるのを避ける + 同じ rubric で測ることを担保する。
+ * 呼び出し側は得られた judgments[] を `liftScoreFromJudgments` /
+ * `domainBalanceScoreFromJudgments` に流して、各 metric を pure compute で導く。
+ */
+export async function judgeAllAtomLifts(
+  atoms: BenchAtom[],
+  judges: JudgePack,
+): Promise<Judgment[]> {
+  const out: Judgment[] = new Array(atoms.length);
+  for (let i = 0; i < atoms.length; i++) {
+    out[i] = await judges.lift(atoms[i]);
+  }
+  return out;
+}
+
+/** judgments[] → lift_score。判定なし (atoms 0) は 1.0 (vacuous true)。 */
+export function liftScoreFromJudgments(judgments: Judgment[]): number {
+  if (judgments.length === 0) return 1;
+  const passed = judgments.filter((j) => j.passed).length;
+  return round3(passed / judgments.length);
+}
+
+/**
  * LLM-as-judge 版。判定モデルが lift / novelty を rubric に従って評価する。
  * pipeline.ts の live mode で呼ばれる正規ルート。
+ *
+ * 内部で `judgeAllAtomLifts` を呼ぶラッパー。すでに judgments を持っている
+ * 呼び出し側 (computeMetricsWithJudges) はこの関数を経由せず直接
+ * `judgeAllAtomLifts` + `liftScoreFromJudgments` の組を使う。
  */
 export async function liftScoreWithJudge(
   atoms: BenchAtom[],
   judges: JudgePack,
 ): Promise<{ score: number; details: { passed: boolean; reason: string; atomTitle: string }[] }> {
   if (atoms.length === 0) return { score: 1, details: [] };
-  const details: { passed: boolean; reason: string; atomTitle: string }[] = [];
-  let lifted = 0;
-  for (const atom of atoms) {
-    const j = await judges.lift(atom);
-    details.push({ passed: j.passed, reason: j.reason, atomTitle: atom.title });
-    if (j.passed) lifted += 1;
-  }
-  return { score: round3(lifted / atoms.length), details };
+  const judgments = await judgeAllAtomLifts(atoms, judges);
+  const details = judgments.map((j, i) => ({
+    passed: j.passed,
+    reason: j.reason,
+    atomTitle: atoms[i].title,
+  }));
+  return { score: liftScoreFromJudgments(judgments), details };
 }
 
 export function modeDistributionEntropy(syntheses: BenchSynthesis[]): number {
@@ -215,14 +249,35 @@ export function domainBalanceScore(
   corpus: CorpusNote[],
   atoms: BenchAtom[],
 ): number {
+  // dry-run / test 用 sync 版。heuristic で per-atom 判定する。
+  const judgments = atoms.map((a) => judgeAtomLift(a));
+  return domainBalanceScoreFromJudgments(corpus, atoms, judgments);
+}
+
+/**
+ * μ-1.3 で導入。judgments[] を渡せば LLM judge の結果からそのまま per-domain
+ * pass rate を計算できる。`computeMetricsWithJudges` は lift_score 用に計算した
+ * judgments[] をこちらにも流し、heuristic / LLM の rubric が割れないようにする。
+ */
+export function domainBalanceScoreFromJudgments(
+  corpus: CorpusNote[],
+  atoms: BenchAtom[],
+  judgments: Judgment[],
+): number {
   if (atoms.length === 0) return 1;
+  if (judgments.length !== atoms.length) {
+    throw new Error(
+      `domainBalanceScoreFromJudgments: judgments length ${judgments.length} !== atoms length ${atoms.length}`,
+    );
+  }
   const domainByNoteId = new Map(
     corpus.map((n) => [n.noteId, resolveDomain(n)]),
   );
 
   type DomainStats = { pass: number; total: number };
   const stats = new Map<string, DomainStats>();
-  for (const atom of atoms) {
+  for (let i = 0; i < atoms.length; i++) {
+    const atom = atoms[i];
     const domains = atom.derivedFromNoteIds
       .map((id) => domainByNoteId.get(id))
       .filter((d): d is NonNullable<typeof d> => Boolean(d));
@@ -230,7 +285,7 @@ export function domainBalanceScore(
     const repDomain = domains[0]; // 代表 domain は最初のソース note の domain
     const s = stats.get(repDomain) ?? { pass: 0, total: 0 };
     s.total += 1;
-    if (judgeAtomLift(atom).passed) s.pass += 1;
+    if (judgments[i].passed) s.pass += 1;
     stats.set(repDomain, s);
   }
   const totals = Array.from(stats.values());
@@ -282,6 +337,10 @@ export function computeMetrics(args: {
 
 /**
  * Live mode で正規に呼ばれる metric 集計（lift / novelty を LLM judge 経由で計算する）。
+ *
+ * μ-1.3 から、lift 判定は per-atom で 1 回だけ取り (`judgeAllAtomLifts`)、その
+ * 結果配列を `lift_score` と `domain_balance_score` の両方で共有する。LLM call の
+ * 二重課金を避けつつ、2 metric の rubric を必ず一致させるため。
  */
 export async function computeMetricsWithJudges(args: {
   claims: BenchClaim[];
@@ -297,11 +356,16 @@ export async function computeMetricsWithJudges(args: {
   liftDetails: { passed: boolean; reason: string; atomTitle: string }[];
   noveltyDetails: { passed: boolean; reason: string; synthesisTitle: string }[];
 }> {
-  const lift = await liftScoreWithJudge(args.atoms, args.judges);
+  const liftJudgments = await judgeAllAtomLifts(args.atoms, args.judges);
+  const liftDetails = liftJudgments.map((j, i) => ({
+    passed: j.passed,
+    reason: j.reason,
+    atomTitle: args.atoms[i].title,
+  }));
   const novelty = await noveltyScoreWithJudge(args.atoms, args.syntheses, args.judges);
   return {
     metrics: {
-      lift_score: lift.score,
+      lift_score: liftScoreFromJudgments(liftJudgments),
       mode_distribution_entropy: modeDistributionEntropy(args.syntheses),
       epistemic_preservation: epistemicPreservation(args.claims, args.gtMap),
       adversarial_pass_rate: adversarialPassRate(args.probeResults),
@@ -311,9 +375,9 @@ export async function computeMetricsWithJudges(args: {
       synthesis_count_total: args.syntheses.length,
       observation_atom_ratio: observationAtomRatio(args.atoms),
       cross_language_consistency: crossLanguageConsistency(args.corpus, args.atoms),
-      domain_balance_score: domainBalanceScore(args.corpus, args.atoms),
+      domain_balance_score: domainBalanceScoreFromJudgments(args.corpus, args.atoms, liftJudgments),
     },
-    liftDetails: lift.details,
+    liftDetails,
     noveltyDetails: novelty.details,
   };
 }

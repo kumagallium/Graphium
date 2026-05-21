@@ -171,6 +171,13 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   // 設定値
   const [model, setModel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
+  // 埋め込みモデル接続テストの結果。保存前に、選んだモデルが実際に
+  // /v1/embeddings に対応するかを 1 リクエストで確認できる。
+  const [embTestState, setEmbTestState] = useState<{
+    status: "idle" | "running" | "success" | "error";
+    message?: string;
+    dimensions?: number;
+  }>({ status: "idle" });
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
   // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
   // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
@@ -554,6 +561,54 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   }, []);
 
   // ── モデル追加フロー ──
+  // 埋め込みモデルへの接続テスト。/api/embeddings/test に 1 リクエスト送って、
+  // 成功なら次元数を、失敗ならプロバイダーが返したエラー文をそのまま表示する。
+  // モデル設定が未保存でも、UI の選択値を直接 X-LLM-API-Key として注入してテストする。
+  const handleTestEmbedding = useCallback(async () => {
+    setEmbTestState({ status: "running" });
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (embeddingModel) {
+        const cfg = getLLMModels().find((m) => m.name === embeddingModel);
+        if (cfg) {
+          headers["X-LLM-API-Key"] = JSON.stringify({
+            provider: cfg.provider,
+            modelId: cfg.modelId,
+            apiKey: cfg.apiKey,
+            apiBase: cfg.apiBase,
+            name: cfg.name,
+          });
+        }
+      }
+      // embeddingModel 未選択 (= chat と同じ) の場合は header を付けず、サーバー側の
+      // default model でテストする。Tauri モードでは models.json から取られる。
+
+      const res = await fetch(`${apiBase()}/embeddings/test`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `Error ${res.status}`);
+      }
+      setEmbTestState({
+        status: "success",
+        dimensions: typeof data.dimensions === "number" ? data.dimensions : undefined,
+      });
+    } catch (err) {
+      setEmbTestState({
+        status: "error",
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }, [embeddingModel]);
+
+  // embedding モデル選択を変えたら、過去のテスト結果は無効化する。
+  useEffect(() => {
+    if (embTestState.status !== "idle") setEmbTestState({ status: "idle" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embeddingModel]);
+
   const handleFetchAvailable = useCallback(async () => {
     // 既存プロバイダーモードの場合
     if (addMode === "existing" && sourceModelId) {
@@ -988,8 +1043,36 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               </div>
+              {/* 接続テストボタンと結果表示 */}
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleTestEmbedding}
+                  disabled={embTestState.status === "running" || (models.length === 0)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {embTestState.status === "running"
+                    ? t("settings.embeddingModel.testing")
+                    : t("settings.embeddingModel.test")}
+                </button>
+                {embTestState.status === "success" && (
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                    ✓ {embTestState.dimensions
+                      ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
+                      : t("settings.embeddingModel.testSuccessNoDim")}
+                  </span>
+                )}
+                {embTestState.status === "error" && (
+                  <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
+                    ⚠ {embTestState.message ?? "Unknown error"}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-2">
                 Embedding requires OpenAI or OpenAI-compatible provider. Leave empty to use text-match fallback.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("settings.embeddingModel.note")}
               </p>
             </div>
 

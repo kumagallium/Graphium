@@ -29,6 +29,68 @@ const ATOM_TYPE_VALUES: AtomType[] = [
 /** Phase η: EpistemicStatus として認める値（順序 = 低→高） */
 const EPISTEMIC_STATUS_VALUES = EPISTEMIC_STATUS_ORDER;
 
+// ─── Post-emit rung-1 guard (Atomizer-strengthen 2026-05) ──────────────────────
+//
+// 設計判断:
+//   prompt で「rung-1 を出すな」と何度言っても、LLM は corpus 固有の固有名詞
+//   ("Al3V", "Klemens-Callaway", "PROV-DM", "ローレンツ数" 等) を捨てきれない。
+//   これは前 baseline (lift_score median 0.714) で目視確認 + bench で再現済。
+//
+//   そこで parse 後に programmatic guard を挟む。LLM が rung-1 で押し通そうと
+//   しても、emit する前に title を pattern にかけて以下のいずれかが残っていれば
+//   drop する。**An empty atoms array is better than an under-abstracted Atom**
+//   という prompt の原則を、コード側で強制する形。
+//
+//   pattern は corpus-agnostic (化学式・3+char 略語・hyphenated 人名物理式 etc.)
+//   にとどめ、コーパス固有の jargon 辞書は持たない。これにより μ-2 で生物 / 経済 /
+//   人文に corpus が広がっても判定が破綻しない。jargon らしさの最終判定は LLM judge
+//   (bench/judge.ts の LIFT_RUBRIC) が引き受ける。
+//
+//   一致した token は title-only でなく body 冒頭も見る (短く言い切る title が
+//   無事でも body の最初の主語が rung-1 だと結局 specific になるため)。
+
+/** 化学式: 数字つき (ZnSb2, Bi2Te3, TiO2, H2PtCl6) */
+const CHEM_FORMULA_DIGIT_RE = /\b(?:[A-Z][a-z]?\d+(?:[A-Z][a-z]?\d*){0,}|(?:[A-Z][a-z]?){2,}\d+|[A-Z]{2,}\d+)\b/g;
+
+/** 2 種以上の元素記号が数字なしで連結 (ZnSb, AlV, BiTe, NaCl) */
+const CHEM_FORMULA_NODIGIT_RE = /\b(?:H|He|Li|Be|B|C|N|O|F|Ne|Na|Mg|Al|Si|P|S|Cl|Ar|K|Ca|Sc|Ti|V|Cr|Mn|Fe|Co|Ni|Cu|Zn|Ga|Ge|As|Se|Br|Kr|Rb|Sr|Y|Zr|Nb|Mo|Tc|Ru|Rh|Pd|Ag|Cd|In|Sn|Sb|Te|I|Xe|Cs|Ba|La|Ce|Pr|Nd|Pm|Sm|Eu|Gd|Tb|Dy|Ho|Er|Tm|Yb|Lu|Hf|Ta|W|Re|Os|Ir|Pt|Au|Hg|Tl|Pb|Bi|Po|At|Rn)(?:H|He|Li|Be|B|C|N|O|F|Ne|Na|Mg|Al|Si|P|S|Cl|Ar|K|Ca|Sc|Ti|V|Cr|Mn|Fe|Co|Ni|Cu|Zn|Ga|Ge|As|Se|Br|Kr|Rb|Sr|Y|Zr|Nb|Mo|Tc|Ru|Rh|Pd|Ag|Cd|In|Sn|Sb|Te|I|Xe|Cs|Ba|La|Ce|Pr|Nd|Pm|Sm|Eu|Gd|Tb|Dy|Ho|Er|Tm|Yb|Lu|Hf|Ta|W|Re|Os|Ir|Pt|Au|Hg|Tl|Pb|Bi|Po|At|Rn)+\b/g;
+
+/** 3+ char 大文字略語 (SPS, ORR, qPCR, PROV) */
+const ACRONYM_3PLUS_RE = /\b[A-Z]{3,}(?:[a-z][A-Z]+)?\b/g;
+
+/** Hyphenated 大文字始まり複合 (Klemens-Callaway, Klein-Nishina, von-Neumann) */
+const HYPHENATED_PROPER_RE = /\b[A-Z][a-zA-Z]+-[A-Z][a-zA-Z]+\b/g;
+
+/** 既知 stoplist (共通略語 / 一般用語) */
+const COMMON_ACRONYM_STOPLIST = new Set([
+  "AI", "API", "URL", "URI", "JSON", "HTML", "CSS", "JS", "TS", "OS",
+  "PR", "ID", "OK", "NG", "JP", "EN", "UI", "UX", "SQL", "HTTP", "HTTPS",
+  "TLS", "SSL", "TCP", "UDP", "DNS", "CPU", "GPU", "RAM", "ROM",
+  "PDF", "CSV", "TSV", "ML", "DL", "NLP",
+]);
+
+/**
+ * title (と body 冒頭 120 字) に rung-1 シグナルが残っていれば、対応する token を返す。
+ * 空配列 = clean (rung-2 候補)。
+ */
+export function detectRung1Tokens(title: string, body: string): string[] {
+  const target = `${title}\n${body.slice(0, 120)}`;
+  const matches = new Set<string>();
+  const push = (re: RegExp) => {
+    for (const m of target.matchAll(re)) {
+      const token = m[0];
+      if (COMMON_ACRONYM_STOPLIST.has(token.toUpperCase())) continue;
+      if (/^\d+$/.test(token)) continue;
+      matches.add(token);
+    }
+  };
+  push(CHEM_FORMULA_DIGIT_RE);
+  push(CHEM_FORMULA_NODIGIT_RE);
+  push(ACRONYM_3PLUS_RE);
+  push(HYPHENATED_PROPER_RE);
+  return Array.from(matches);
+}
+
 export type AtomCandidate = {
   /** 短く言い切る atom タイトル（1 アイデアを表す名詞句） */
   title: string;
@@ -131,9 +193,30 @@ Ask yourself: *"Would this Atom still make sense to a reader who has never heard
 
 Run this **three-step domain-jargon checklist** on the title and body before emitting:
 
-1. **Scan for surviving domain tokens.** Look in both the title and the body for any of: proper nouns (instrument names, library names, person names, project names), abbreviations / acronyms (SPS, VACUUM, ORR, MHC, siRNA, TDD), or domain jargon a non-specialist would not recognize ("単相化", "律速", "ノックダウン", "クロスバリデーション"). If even one such token is a load-bearing subject or object — that is, removing it would make the sentence empty — the Atom is rung-1 at best. Go to step 2.
+1. **Scan for surviving domain tokens.** Look in both the title and the body for any of:
+   - **Proper nouns**: instrument / device names (SPS, GPT-4, Dr Sinter), library / framework / DB names (PostgreSQL, React, Redis, BlockNote), person names tied to a law / formula (Klemens-Callaway, Klein-Nishina, Bayes), project / standard / spec names (PROV-DM, OAuth, JIRA).
+   - **Material / chemical specifics**: chemical formulas with digits (ZnSb, Bi2Te3, TiO2), bare two-letter element compounds without a digit (ZnSb, AlV, BiTe), single element symbols used as load-bearing subject ("Pt 担持", "Zn 蒸発").
+   - **Abbreviations / acronyms**: 3+ letter all-caps (SPS, VACUUM, ORR, MHC, qPCR, siRNA, TDD, ZT, CI, TTL, MPS, Saga); compound acronyms (PROV-DM, gRPC).
+   - **Domain jargon a non-specialist would not recognize**: 物理 / 材料系 ("単相化", "律速", "ローレンツ数", "デバイ温度", "ホットプレス", "ホール濃度", "パワーファクター", "格子熱伝導率", "点欠陥散乱", "焼結", "ゼーベック", "クライペーロン"); 生命科学系 ("ノックダウン", "トランスフェクション", "in vitro", "PCR"); ソフトウェア系 ("マイクロサービス", "クロスバリデーション", "シャーディング", "リードレプリカ").
 
-2. **Lift the surviving token one more level.** Replace the entity with the category it belongs to: "SPS" → "短時間の高温処理", "VACUUM" → "裏で動く保守処理", "ORR 活性" → "還元反応の起こりやすさ", "siRNA トランスフェクション" → "遺伝子の働きを止める導入操作". If you can produce a sentence that still names what is happening but reads naturally without the original token, you have rung-2. Re-run step 1; iterate until clean.
+   If even one such token is a load-bearing subject or object — that is, removing it would make the sentence empty — the Atom is rung-1 at best. Go to step 2.
+
+2. **Lift the surviving token one more level.** Replace the entity with the category it belongs to:
+   - "SPS" → "短時間の高温処理"
+   - "VACUUM" → "裏で動く保守処理"
+   - "ORR 活性" → "還元反応の起こりやすさ"
+   - "siRNA トランスフェクション" → "遺伝子の働きを止める導入操作"
+   - "Al3V 系合金" → "複数の元素でできた合金"
+   - "ZnSb / Bi2Te3" → "電気を流しつつ熱は通しにくい材料" / "二種類の元素でできた化合物"
+   - "Klemens-Callaway モデル" → "格子の振動から熱の伝わりを見積もる古典的なモデル"
+   - "ローレンツ数" → "電気の流れやすさと熱の伝わりやすさの比"
+   - "PROV-DM" → "由来を辿れるかたちで作業を記述する規格"
+   - "ホール濃度" → "電気を運ぶ粒子の密度"
+   - "ホットプレス" → "高温で押し固める処理"
+   - "パワーファクター" → "電気エネルギーへの変換しやすさ"
+   - "格子熱伝導率" → "熱が結晶の振動として伝わる効率"
+
+   If you can produce a sentence that still names what is happening but reads naturally without the original token, you have rung-2. Re-run step 1; iterate until clean.
 
 3. **If step 2 cannot be done honestly, drop the candidate.** "Honestly" means the lifted wording still says what the source Claims actually showed — not a generic platitude. If the only way to lift is to dilute the claim into meaninglessness, the right move is to leave the knowledge at the Claim layer and not emit an Atom. **An empty atoms array is better than an under-abstracted Atom.**
 
@@ -419,9 +502,24 @@ export function parseAtomizerOutput(
         rebuttalConditions = undefined;
       }
 
+      const titleTrim = String(a.title).trim();
+      const bodyTrim = String(a.body).trim();
+
+      // Post-emit rung-1 guard. prompt 強化だけでは LLM が rung-1 を押し込むケース
+      // (Al3V / Klemens-Callaway / PROV-DM など) が残るため、parse 後に programmatic
+      // 検知して drop する。corpus-agnostic な pattern (化学式・3+char 略語・hyphenated
+      // 人名物理式) に限定 — jargon-likeness の最終判定は LLM judge に委ねる。
+      const rung1 = detectRung1Tokens(titleTrim, bodyTrim);
+      if (rung1.length > 0) {
+        console.warn(
+          `[atomizer] dropped rung-1 atom candidate (tokens: ${rung1.slice(0, 5).join(", ")}): "${titleTrim}"`,
+        );
+        continue;
+      }
+
       out.push({
-        title: String(a.title).trim(),
-        body: String(a.body).trim(),
+        title: titleTrim,
+        body: bodyTrim,
         derivedFromClaims: validIds,
         derivedFromConceptTitles: titles,
         confidence,
