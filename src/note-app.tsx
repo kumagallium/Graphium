@@ -424,6 +424,10 @@ type NoteEditorProps = {
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
   provWikiEntities?: WikiEntityInfo[];
+  /** WikiBanner 等の外部 UI から SidePeek を開くための ref。
+   *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
+   *  composerSubmitRef と同じ流儀。 */
+  openSidePeekRef?: React.MutableRefObject<((noteId: string) => void) | null>;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -516,6 +520,7 @@ function NoteEditorInner({
   composerSubmitRef,
   archived = false,
   provWikiEntities,
+  openSidePeekRef,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -1603,6 +1608,16 @@ function NoteEditorInner({
     };
   }, [composerSubmitRef]);
 
+  // WikiBanner 等の外部 UI から SidePeek を開けるよう、setSidePeekNoteId を ref に登録する。
+  // ノート未開時は ref が null のままになり、呼び出し側はフォールバックで全画面遷移する。
+  useEffect(() => {
+    if (!openSidePeekRef) return;
+    openSidePeekRef.current = (noteId: string) => setSidePeekNoteId(noteId);
+    return () => {
+      if (openSidePeekRef.current) openSidePeekRef.current = null;
+    };
+  }, [openSidePeekRef]);
+
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
     async (question: string, answer: string) => {
@@ -2592,6 +2607,10 @@ export function NoteApp() {
   const composerSubmitRef = useRef<
     ((submission: ComposerSubmission) => void | Promise<void>) | null
   >(null);
+  // WikiBanner から SidePeek を開くための ref。NoteEditorInner が useEffect で
+  // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
+  // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
+  const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
   const handleComposerSubmit = useCallback(
     async (submission: ComposerSubmission) => {
       const handler = composerSubmitRef.current;
@@ -5092,6 +5111,21 @@ export function NoteApp() {
                   fm.handleDeleteWikiFile(wikiId);
                   wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
                 }}
+                noteIndex={fm.noteIndex}
+                onNavigateNote={(noteId: string) => {
+                  // @mention / Graph ノード経路と同じく SidePeek で開く。
+                  // ノート未開時など ref が登録されていない場合は全画面遷移にフォールバック。
+                  const openSidePeek = openSidePeekRef.current;
+                  if (openSidePeek) {
+                    openSidePeek(noteId);
+                    return;
+                  }
+                  if (noteId.startsWith("wiki:")) {
+                    fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
+                  } else {
+                    fm.handleOpenFile(noteId);
+                  }
+                }}
               />
             );
           })()}
@@ -5171,6 +5205,7 @@ export function NoteApp() {
             aiAvailable={aiAvailable ?? false}
             onOpenComposer={composer.openComposer}
             composerSubmitRef={composerSubmitRef}
+            openSidePeekRef={openSidePeekRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
               const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");

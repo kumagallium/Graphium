@@ -641,6 +641,12 @@ export const ja: Record<string, string> = {
   "wikiBanner.procedureTools": "重要ツール",
   "wikiBanner.procedureParameters": "重要パラメータ",
   "wikiBanner.procedureValidity": "成立範囲",
+  // 派生元表示（world-model-grounding Phase 1）— どのノート / Claim から来たかを辿る
+  "wikiBanner.derivedFromTitle": "派生元",
+  "wikiBanner.derivedFromHint": "この知識片がどこから派生したか（ソースノート・ソース Claim）。既存の来歴情報のみを使い、スコア化や外部検索は行わない。",
+  "wikiBanner.derivedFromNotesLabel": "ノート",
+  "wikiBanner.derivedFromClaimsLabel": "ソース Claim",
+  "wikiBanner.derivedFromMissing": "(不明)",
   "wikiList.colTitle": "タイトル",
   "wikiList.colType": "種別",
   "wikiList.colSources": "生成元",

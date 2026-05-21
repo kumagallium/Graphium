@@ -641,6 +641,12 @@ export const en: Record<string, string> = {
   "wikiBanner.procedureTools": "Key tools",
   "wikiBanner.procedureParameters": "Key parameters",
   "wikiBanner.procedureValidity": "Validity range",
+  // derived-from（world-model-grounding Phase 1）— 派生元のノート / Claim を一覧する
+  "wikiBanner.derivedFromTitle": "Derived from",
+  "wikiBanner.derivedFromHint": "Where this knowledge piece was drawn from (source notes and source claims). Existing provenance only — no scoring or external search.",
+  "wikiBanner.derivedFromNotesLabel": "Notes",
+  "wikiBanner.derivedFromClaimsLabel": "Source claims",
+  "wikiBanner.derivedFromMissing": "(unknown)",
   "wikiList.colTitle": "Title",
   "wikiList.colType": "Type",
   "wikiList.colSources": "Sources",

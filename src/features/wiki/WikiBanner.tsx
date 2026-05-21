@@ -1,9 +1,10 @@
 // Wiki ドキュメント用バナー
 // エディタ上部に表示: AI 生成バッジ、アクションボタン
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
 import type { ProcedureContext, SynthesisMode, WikiMeta } from "../../lib/document-types";
+import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import { useT } from "../../i18n";
 import { SynthesisModeModal } from "./SynthesisModeModal";
 
@@ -63,6 +64,19 @@ type Props = {
   archived?: boolean;
   /** アーカイブから復元するハンドラ（archived === true のときのみ有効） */
   onRestoreFromArchive?: () => void;
+  /**
+   * 派生元（derivedFromNotes / derivedFromClaims）のタイトル解決に使うインデックス。
+   * 未指定や該当 ID が見つからない場合は ID を fallback として表示する。
+   */
+  noteIndex?: GraphiumIndex | null;
+  /**
+   * 派生元のリストエントリをクリックしたときの遷移ハンドラ。
+   * Wiki エントリの場合は `wiki:` プレフィックス付きで渡す。未指定時はリンクではなく
+   * 静的テキストとして表示する。
+   * 規約: @mention / Graph ノードクリックと同じく既存の SidePeek で開く。
+   * 深い系譜は右パネルの Graph→Lineage タブが受け持つので、ここは一次親に絞る。
+   */
+  onNavigateNote?: (noteId: string) => void;
 };
 
 function formatDate(isoDate: string): string {
@@ -82,6 +96,8 @@ export function WikiBanner({
   loading = false,
   archived = false,
   onRestoreFromArchive,
+  noteIndex,
+  onNavigateNote,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -312,12 +328,212 @@ export function WikiBanner({
         <ProcedureContextSection ctx={wikiMeta.procedureContext} />
       )}
 
+      {/* 派生元セクション（world-model-grounding Phase 1）—
+          derivedFromNotes / derivedFromClaims が空でないときだけ表示。
+          スコアは付けず、どのノート/Claim から来たかを控えめに辿れるだけ。 */}
+      {(hasDerivedFrom(wikiMeta)) && (
+        <DerivedFromSection
+          wikiMeta={wikiMeta}
+          noteIndex={noteIndex ?? null}
+          onNavigateNote={onNavigateNote}
+        />
+      )}
+
       {/* Synthesis モード説明モーダル（Phase 5.4） */}
       <SynthesisModeModal
         open={modeModal !== null}
         mode={modeModal}
         onClose={() => setModeModal(null)}
       />
+    </div>
+  );
+}
+
+// 派生元セクションのヘルパー: derivedFromNotes と derivedFromClaims の
+// いずれかに有効な ID が 1 件でも含まれているかを判定する。
+function hasDerivedFrom(meta: WikiMeta): boolean {
+  const notes = (meta.derivedFromNotes ?? []).filter((id) => Boolean(id));
+  const claims = (meta.derivedFromClaims ?? []).filter((id) => Boolean(id));
+  return notes.length > 0 || claims.length > 0;
+}
+
+type DerivedFromEntry = {
+  /** クリック時に渡す ID（wiki エントリの場合は "wiki:" プレフィックスを付ける） */
+  navigateId: string;
+  /** UI に出すラベル（タイトルが解けない場合は ID） */
+  label: string;
+  /** タイトルを index から解決できたか。false なら「不明」扱いの薄い表示にする */
+  resolved: boolean;
+};
+
+function resolveDerivedEntries(
+  ids: readonly string[] | undefined,
+  noteIndex: GraphiumIndex | null,
+): DerivedFromEntry[] {
+  if (!ids || ids.length === 0) return [];
+  // 同一 ID の重複登録は表示上 1 件にまとめる（順序は最初の出現を保つ）。
+  const seen = new Set<string>();
+  const entries: DerivedFromEntry[] = [];
+  const indexById = new Map<string, NoteIndexEntry>();
+  if (noteIndex) {
+    for (const entry of noteIndex.notes) indexById.set(entry.noteId, entry);
+  }
+  for (const id of ids) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const entry = indexById.get(id);
+    if (entry) {
+      const isWiki = entry.source === "ai";
+      entries.push({
+        navigateId: isWiki ? `wiki:${entry.noteId}` : entry.noteId,
+        label: entry.title || entry.noteId,
+        resolved: true,
+      });
+    } else {
+      // index に存在しない場合はゴミ箱・別ストア・古いデータの可能性。
+      // ナビゲートしてもエラーになりうるので、resolved=false でテキスト表示のみ。
+      entries.push({ navigateId: id, label: id, resolved: false });
+    }
+  }
+  return entries;
+}
+
+function DerivedFromSection({
+  wikiMeta,
+  noteIndex,
+  onNavigateNote,
+}: {
+  wikiMeta: WikiMeta;
+  noteIndex: GraphiumIndex | null;
+  onNavigateNote?: (noteId: string) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+
+  const noteEntries = useMemo(
+    () => resolveDerivedEntries(wikiMeta.derivedFromNotes, noteIndex),
+    [wikiMeta.derivedFromNotes, noteIndex],
+  );
+  const claimEntries = useMemo(
+    () => resolveDerivedEntries(wikiMeta.derivedFromClaims, noteIndex),
+    [wikiMeta.derivedFromClaims, noteIndex],
+  );
+
+  if (noteEntries.length === 0 && claimEntries.length === 0) return null;
+
+  const totalCount = noteEntries.length + claimEntries.length;
+
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: open ? "6px 10px 8px" : "4px 10px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 11,
+        color: "var(--ink-2)",
+      }}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "1px 4px",
+          margin: 0,
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-2)",
+          font: "inherit",
+          cursor: "pointer",
+        }}
+        title={t("wikiBanner.derivedFromHint")}
+      >
+        <ChevronDown
+          size={11}
+          style={{
+            transform: open ? "rotate(0)" : "rotate(-90deg)",
+            transition: "transform 120ms",
+          }}
+        />
+        <span style={{ fontWeight: 500 }}>{t("wikiBanner.derivedFromTitle")}</span>
+        <span style={{ color: "var(--ink-4)", fontWeight: 400 }}>({totalCount})</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 4, lineHeight: 1.55 }}>
+          {noteEntries.length > 0 && (
+            <DerivedFromGroup
+              label={t("wikiBanner.derivedFromNotesLabel")}
+              entries={noteEntries}
+              onNavigateNote={onNavigateNote}
+              missingLabel={t("wikiBanner.derivedFromMissing")}
+            />
+          )}
+          {claimEntries.length > 0 && (
+            <DerivedFromGroup
+              label={t("wikiBanner.derivedFromClaimsLabel")}
+              entries={claimEntries}
+              onNavigateNote={onNavigateNote}
+              missingLabel={t("wikiBanner.derivedFromMissing")}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DerivedFromGroup({
+  label,
+  entries,
+  onNavigateNote,
+  missingLabel,
+}: {
+  label: string;
+  entries: DerivedFromEntry[];
+  onNavigateNote?: (noteId: string) => void;
+  missingLabel: string;
+}) {
+  return (
+    <div>
+      <span style={{ color: "var(--ink-3)" }}>{label}: </span>
+      {entries.map((entry, i) => (
+        <span key={entry.navigateId + i}>
+          {i > 0 && <span style={{ color: "var(--ink-4)" }}>, </span>}
+          {entry.resolved && onNavigateNote ? (
+            <button
+              type="button"
+              onClick={() => onNavigateNote(entry.navigateId)}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                margin: 0,
+                color: "var(--forest-ink, var(--ink-2))",
+                font: "inherit",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+                textDecorationColor: "var(--rule)",
+                cursor: "pointer",
+              }}
+              title={entry.label}
+            >
+              {entry.label}
+            </button>
+          ) : entry.resolved ? (
+            <span>{entry.label}</span>
+          ) : (
+            <span
+              style={{ color: "var(--ink-4)", fontStyle: "italic" }}
+              title={entry.navigateId}
+            >
+              {missingLabel}
+            </span>
+          )}
+        </span>
+      ))}
     </div>
   );
 }
