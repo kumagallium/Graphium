@@ -49,6 +49,11 @@ export type Settings = {
    *  バックグラウンド処理（ingest/lint/rewrite）よりも能力を要求する場面があるため、
    *  個別にもう一段上のモデルを当てられるようにする。 */
   chatSynthesisModel: string;
+  /** 世界モデル照合用モデル名（PR 2B / 空文字 = `model` と同じ）。
+   *  KB ヒットしなかった主張をモデル内部知識で判定する。プロンプトは厳密 JSON 出力を要求する。
+   *  判定結果は appdata の grounding-kb-cache に「正規化主張 + keywords + verdict」として沈殿し、
+   *  次回以降は KB ヒットで即答される（使うほど安くなる）。 */
+  groundingModel: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
   /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる） */
@@ -67,6 +72,7 @@ const DEFAULT_SETTINGS: Settings = {
   model: "",
   embeddingModel: "",
   chatSynthesisModel: "",
+  groundingModel: "",
   disabledTools: [],
   registryUrl: "",
   customLabels: {},
@@ -204,6 +210,26 @@ export function getChatSynthesisLLMModel(): LLMModelConfig | undefined {
  */
 export function getChatSynthesisModelName(): string {
   return getChatSynthesisModel() || getSelectedModel() || "";
+}
+
+/** 世界モデル照合用モデル名を取得する（PR 2B v2: Chat & Ideas モデルにエイリアス）。
+ *
+ * 当初は専用スロット（Settings.groundingModel）を持っていたが、ユーザー指摘
+ * 「モデル設定が 4 つも多すぎ」と、独自 chain が想定外モデル（Anthropic）を引いた
+ * 不具合（PR 2B 触行中に発覚）を受けて、Chat & Ideas モデルを直接使う方式に変更した。
+ * Synthesize / Atomize と同じ経路になるので、設定齟齬が起きない。
+ *
+ * `Settings.groundingModel` フィールドは将来「専用スロットを再導入したい」場合に
+ * 復活できるよう型だけ残してあるが、現状は読まれていない。
+ */
+export function getGroundingLLMModel(): LLMModelConfig | undefined {
+  return getChatSynthesisLLMModel();
+}
+
+/** 世界モデル照合モデル名（string）を取得する。`getGroundingLLMModel` と同流儀で
+ *  Chat & Ideas モデル名にエイリアスする。 */
+export function getGroundingModelName(): string {
+  return getChatSynthesisModelName();
 }
 
 /** Embedding 用の LLMModelConfig を取得する。

@@ -1,29 +1,42 @@
-// World-model grounding service (Phase 2 / PR 2A).
+// World-model grounding service (Phase 2).
 //
-// kickoff §1.3 を踏まえ、grounding は WikiMeta の自己記述メタとして持ち、
-// epistemicStatus / hypothesisStatus は読むだけで書き換えない（別レーン）。
-// PR 2A では蒸留 KB のみ。LLM fallback / 自動照合トリガは PR 2B で追加。
+// PR 2A: KB のみで verdict 判定。
+// PR 2B: KB miss → LLM 判定（groundingModel）→ 結果を appdata KB cache に沈殿。
+//        判定結果は次回以降の KB ヒットで即答される（使うほど安くなる）。
 //
-// 公開 API は意図的に小さく:
-//   checkValidity()  ... claimText から validity を計算（KB のみ）
-//   attachValidity() ... WikiMeta に validity を不変的に attach（純関数）
-//
-// PR 2B でこの index.ts に LLM fallback を追加する想定。retriever は呼び出し戦略
-// の中身として隠す。
+// kickoff §1.3 / PR 2A 方針 §7 の不変条件:
+// - epistemicStatus / hypothesisStatus は読むだけで書き換えない（別レーン）
+// - 第 3 の provenance サブシステムを作らない
+// - LLM/KB 未登録でエラーにせず degrade
+// - 沈殿の鉄則は kb-cache.ts の isValidForCaching で強制
 
 import type { GroundingProfile, WikiMeta } from "../../lib/document-types";
 import { checkValidityFromKB } from "./distilled-kb-retriever";
+import { appendToKbCache } from "./kb-cache";
+import { checkValidityViaModel } from "./llm-fallback";
 
 export type CheckValidityOptions = {
   /** デフォルト "materials"。将来複数ドメインで切り替える */
   domain?: string;
   /** public/grounding-kb/ 配信の base URL。デフォルトは import.meta.env.BASE_URL */
   baseUrl?: string;
+  /** LLM 判定時の言語（rationale を日本語/英語で書き分け）。デフォルト "en" */
+  language?: string;
 };
 
+function defaultBaseUrl(): string {
+  return typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
+    ? import.meta.env.BASE_URL
+    : "/";
+}
+
 /**
- * claim 本文を蒸留 KB と照合し、validity を返す。
- * KB ヒットがない場合は undefined（=照合済みだが verdict 未付与の温存）。
+ * claim 本文を世界モデルと照合し、validity を返す。
+ *
+ * 経路:
+ *   1. KB ヒット（seed + cache を merge した検索）→ 即答（LLM を呼ばない）
+ *   2. KB ミス → groundingModel で判定 → 結果を appdata cache に沈殿（4 値かつ contract を満たす場合のみ）
+ *   3. 双方失敗 → checkedAt のみ返す（「照合済み・verdict 不明」を表現）
  */
 export async function checkValidity(
   _wikiMeta: WikiMeta,
@@ -31,27 +44,92 @@ export async function checkValidity(
   options?: CheckValidityOptions,
 ): Promise<GroundingProfile["validity"] | undefined> {
   const domain = options?.domain ?? "materials";
-  const baseUrl =
-    options?.baseUrl ??
-    (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
-      ? import.meta.env.BASE_URL
-      : "/");
-  const match = await checkValidityFromKB(claimText, { domain, baseUrl });
+  const baseUrl = options?.baseUrl ?? defaultBaseUrl();
+  const language = options?.language ?? "en";
   const checkedAt = new Date().toISOString();
-  if (!match) {
-    // KB ヒットなし: verdict は付けず、照合済み事実だけ残す
+
+  // 1. KB ヒット即答
+  const kbMatch = await checkValidityFromKB(claimText, { domain, baseUrl });
+  if (kbMatch) {
+    console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict });
     return {
+      score: kbMatch.score,
+      verdict: kbMatch.verdict,
+      rationale: kbMatch.rationale,
+      sources: kbMatch.sources,
+      matchedKeywords: kbMatch.matchedKeywords,
+      // cache から hit した entry でも、seed と区別したい場合は entryId で判別できる
+      // が、UI 表示はシンプルに "distilled-kb@v1" で統一する。
       checkedBy: "distilled-kb@v1",
       checkedAt,
     };
   }
+  console.info("[world-grounding] KB miss, calling LLM fallback...");
+
+  // 2. KB ミス → LLM fallback
+  const outcome = await checkValidityViaModel(claimText, { domain, language });
+  if (outcome.kind === "failure") {
+    console.warn("[world-grounding] LLM fallback failure:", outcome.failure);
+    // 失敗理由を checkedBy / rationale に詰める。UI 側で出し分け可能にする
+    const reasonLabel =
+      outcome.failure.reason === "no-model"
+        ? "no-engine"
+        : outcome.failure.reason === "http-error"
+          ? "engine-error"
+          : outcome.failure.reason === "network-error"
+            ? "engine-error"
+            : "engine-error";
+    return {
+      checkedBy: reasonLabel,
+      checkedAt,
+      rationale: outcome.failure.message,
+    };
+  }
+  const modelResult = outcome.result;
+  console.info("[world-grounding] LLM judged", { verdict: modelResult.verdict, model: modelResult.model });
+
+  // 沈殿: verdict + normalizedClaim + keywords が揃った時だけ KB cache に追加。
+  // 鉄則: not_found (verdict null) / 壊れた entry は kb-cache 側で reject される。
+  if (modelResult.verdict && modelResult.normalizedClaim && modelResult.keywords?.length) {
+    const cached = await appendToKbCache(
+      {
+        id: `gen-${cryptoRandomId()}`,
+        verdict: modelResult.verdict,
+        claim: modelResult.normalizedClaim,
+        rationale: modelResult.rationale,
+        keywords: modelResult.keywords,
+        sources: modelResult.sources?.map((s) => ({
+          kind: "distilled" as const,
+          ref: s.ref,
+          url: s.url,
+        })),
+        generatedByModel: modelResult.model,
+        version: 1,
+      },
+      domain,
+    );
+    console.info("[world-grounding] sedimented into KB cache:", cached);
+  }
+
+  // verdict が null（LLM が「判定不能」と返した）でも checkedAt は記録する
+  if (!modelResult.verdict) {
+    return {
+      checkedBy: modelResult.model,
+      checkedAt,
+      rationale: modelResult.rationale || undefined,
+    };
+  }
+
   return {
-    score: match.score,
-    verdict: match.verdict,
-    rationale: match.rationale,
-    sources: match.sources,
-    matchedKeywords: match.matchedKeywords,
-    checkedBy: "distilled-kb@v1",
+    verdict: modelResult.verdict,
+    rationale: modelResult.rationale,
+    sources: modelResult.sources?.map((s) => ({
+      kind: "distilled" as const,
+      ref: s.ref,
+      url: s.url,
+    })),
+    matchedKeywords: modelResult.keywords,
+    checkedBy: modelResult.model,
     checkedAt,
   };
 }
@@ -76,12 +154,27 @@ export function attachValidity(
     validity,
   };
   if (validity === undefined) {
-    // 明示クリア: undefined キーを保持しない
     const { validity: _omit, ...rest } = nextGrounding;
     return { ...meta, grounding: Object.keys(rest).length > 0 ? rest : undefined };
   }
   return { ...meta, grounding: nextGrounding };
 }
 
+function cryptoRandomId(): string {
+  // node / browser 両対応の UUID 生成
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 export type { GroundingMatch, KbEntry, KbFile } from "./distilled-kb-retriever";
-export { checkValidityFromKB, loadKb } from "./distilled-kb-retriever";
+export { checkValidityFromKB, loadKb, loadSeedKb } from "./distilled-kb-retriever";
+export {
+  appendToKbCache,
+  isValidForCaching,
+  loadKbCache,
+  mergeKb,
+} from "./kb-cache";
+export type { WorldGroundingModelResult } from "./llm-fallback";
+export { checkValidityViaModel } from "./llm-fallback";

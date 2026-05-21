@@ -275,11 +275,21 @@ describe("checkValidity facade", () => {
     }
   });
 
-  it("KB ヒットなしは verdict 未付与 + checkedBy / checkedAt のみで返す（照合済み事実だけ残す）", async () => {
+  it("KB miss + LLM 未登録（or 失敗）は verdict 未付与 + checkedBy='no-engine' で degrade（PR 2B 新挙動）", async () => {
+    // PR 2B: KB miss 時は LLM fallback を試みる。テスト環境では groundingModel 未設定 +
+    // localStorage 空のため、checkValidityViaModel が null を返し、checkedBy: "no-engine" に degrade する。
     const meta = baseMeta();
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify(sampleKb), { status: 200 })) as typeof fetch;
+    // KB JSON は seed のみ返し、LLM endpoint への fetch は呼ばれてはいけない
+    // （getGroundingModelName() が空文字 → checkValidityViaModel が早期 null）
+    globalThis.fetch = (async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("grounding-kb/")) {
+        return new Response(JSON.stringify(sampleKb), { status: 200 });
+      }
+      // LLM endpoint が呼ばれてしまったら 503（テスト中の意図しないネットワーク）
+      return new Response("not reached", { status: 503 });
+    }) as typeof fetch;
     clearKbCacheForTest();
     try {
       const validity = await checkValidity(meta, "全く別ドメインの本文", {
@@ -287,7 +297,8 @@ describe("checkValidity facade", () => {
         baseUrl: "/test-baseurl/",
       });
       expect(validity?.verdict).toBeUndefined();
-      expect(validity?.checkedBy).toBe("distilled-kb@v1");
+      // PR 2B: degrade のとき checkedBy は "no-engine"（KB ヒット時の "distilled-kb@v1" と区別）
+      expect(validity?.checkedBy).toBe("no-engine");
       expect(validity?.checkedAt).toBeTruthy();
       expect(validity?.matchedKeywords).toBeUndefined();
     } finally {

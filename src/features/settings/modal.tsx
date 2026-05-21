@@ -172,6 +172,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [model, setModel] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("");
   const [chatSynthesisModel, setChatSynthesisModel] = useState("");
+  // PR 2B v2: groundingModel は型に残すが UI からは外し（Chat & Ideas モデル直接使用）、
+  // saveSettings には localStorage 既存値をそのまま書き戻す pass-through 用に保持する
+  const [groundingModelStored, setGroundingModelStored] = useState("");
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [registryUrl, setRegistryUrl] = useState("");
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
@@ -368,6 +371,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setModel(settings.model);
     setEmbeddingModel(settings.embeddingModel ?? "");
     setChatSynthesisModel(settings.chatSynthesisModel ?? "");
+    setGroundingModelStored(settings.groundingModel ?? "");
     setDisabledTools(settings.disabledTools ?? []);
     setRegistryUrl(settings.registryUrl ?? "");
     setCustomLabels(settings.customLabels ?? {});
@@ -753,11 +757,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, chatSynthesisModel, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
+    saveSettings({ model, embeddingModel, chatSynthesisModel, groundingModel: groundingModelStored, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, disabledTools, registryUrl, customLabels, latinFont, jpFont, experimental, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, customLabels, latinFont, jpFont, experimental, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -812,7 +816,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         })}
       </div>
 
-      <ModalBody className="w-full min-w-[460px] max-w-lg" onKeyDown={handleKeyDown}>
+      {/* Grounding KB タブは KB entry の table 表示で行が長いので、他のタブより少し広く取る */}
+      <ModalBody
+        className={`w-full min-w-[460px] ${tab === "grounding" ? "max-w-3xl" : "max-w-lg"}`}
+        onKeyDown={handleKeyDown}
+      >
         {/* ── Display タブ ── */}
         {tab === "display" && (
           <div className="space-y-4">
@@ -1012,6 +1020,12 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                 {t("settings.chatSynthesisModelHelp")}
               </p>
             </div>
+
+            {/* World-grounding は Chat & Ideas モデルを直接使う（PR 2B v2 で専用 dropdown を撤去）。
+                ユーザーが個別に設定しなくても済むよう、上の「Chat & Ideas モデル」が grounding にも自動適用される。 */}
+            <p className="text-xs text-muted-foreground italic">
+              {t("settings.groundingModelInfo")}
+            </p>
 
           </div>
         )}
@@ -2701,6 +2715,9 @@ function GroundingKbTab() {
     <div className="space-y-4">
       <div className="text-xs text-muted-foreground">
         {t("settings.grounding.intro")}
+      </div>
+      <div className="text-xs text-muted-foreground/80 italic">
+        {t("settings.grounding.domainNote")}
       </div>
 
       {/* ドメインセレクタ（PR 2A は materials のみ） */}

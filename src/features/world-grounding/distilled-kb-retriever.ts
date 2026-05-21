@@ -80,12 +80,10 @@ function matchKeyword(normalizedText: string, keyword: string): boolean {
 }
 
 /**
- * KB JSON を fetch して返す。失敗時は null（fail-open: 照合スキップ）。
- *
- * @param domain "materials" 等。public/grounding-kb/<domain>.v1.json に存在しないと null
- * @param baseUrl テスト・カスタムビルド用。通常は import.meta.env.BASE_URL に揃える
+ * seed KB JSON（public/grounding-kb/<domain>.v1.json）を fetch して返す。
+ * 失敗時は null（fail-open: 照合スキップ）。モジュール cache あり。
  */
-export async function loadKb(
+export async function loadSeedKb(
   domain: string,
   baseUrl: string,
 ): Promise<KbFile | null> {
@@ -109,6 +107,26 @@ export async function loadKb(
 
   kbCache.set(cacheKey, promise);
   return promise;
+}
+
+/**
+ * KB を返す。seed (public/) + appdata cache を merge した結果。
+ * cache 側は dynamic import で読む（モジュール循環回避）。
+ */
+export async function loadKb(
+  domain: string,
+  baseUrl: string,
+): Promise<KbFile | null> {
+  const [seed, cacheLayer] = await Promise.all([
+    loadSeedKb(domain, baseUrl),
+    // dynamic import: tree-shake 可、テストでモック容易
+    import("./kb-cache").then((m) => m.loadKbCache(domain)).catch(() => null),
+  ]);
+  if (!seed && !cacheLayer) return null;
+  const merged = await import("./kb-cache").then((m) =>
+    m.mergeKb(seed, cacheLayer),
+  );
+  return merged;
 }
 
 /** テスト用のキャッシュ初期化。本番コードからは呼ばない。 */

@@ -286,6 +286,29 @@ Notes:
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
 
+**World-model grounding retriever (Phase 2 / PR 2B).** A separate lane
+that scores a knowledge piece against external world knowledge. Strictly
+**user-triggered** (banner button or list-view bulk action) and never
+runs on file open. Two-layer retrieval:
+
+| Layer | Source | Cost | Updated by |
+|---|---|---|---|
+| seed KB | `public/grounding-kb/<domain>.v1.json` (build-bundled) | free | manual curation, PR review |
+| cache KB | `appdata` key `grounding-kb-cache-<domain>` (per-user) | free on hit | LLM-judged results sediment here automatically |
+| LLM judge | `POST /api/world-grounding/check` → `groundingModel` (Settings → AI) | one model call | called only on KB miss |
+
+`src/features/world-grounding/index.ts → checkValidity` is the facade:
+KB lookup first (cheap), miss → LLM judge → sediment back into the
+cache layer if the result passes the sedimentation rules
+(`kb-cache.ts → isValidForCaching`: 4-value verdict + non-empty
+`generatedByModel` + non-empty `claim` / `keywords`). The next check
+on a similar claim is served from the cache layer at no LLM cost.
+
+The lane is strictly separate from `epistemicStatus` /
+`hypothesisStatus` — `attachValidity` never writes those fields. See
+[DATA_MODEL.md §3.7](./DATA_MODEL.md) for the contract and
+sedimentation rules.
+
 **Idea modes (Phase 1.3).** The Synthesizer can produce four kinds of
 Idea, distinguished by the type of reasoning that grounds the new
 insight:
