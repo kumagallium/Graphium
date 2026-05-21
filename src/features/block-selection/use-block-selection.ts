@@ -30,6 +30,10 @@ export function useBlockSelection(editor: any): BlockSelectionState {
     const tiptap = editor._tiptapEditor;
 
     const handleUpdate = () => {
+      // IME 変換中（composition）は state を触らない。
+      // テキスト挿入トランザクションごとに React re-render が走ると、
+      // 日本語入力の確定タイミングと競合して文字が重複・改行が乱れる。
+      if (tiptap.view?.composing) return;
       const selection = editor.getSelection?.();
       if (selection && selection.blocks && selection.blocks.length >= 2) {
         const ids = selection.blocks.map((b: any) => b.id);
@@ -44,13 +48,13 @@ export function useBlockSelection(editor: any): BlockSelectionState {
       }
     };
 
-    // ProseMirror のトランザクション（選択変更を含む）を監視
+    // 複数ブロック選択は「選択範囲が変わった瞬間」だけ気にすれば足りる。
+    // `transaction` は文字挿入のたびにも発火し、IME 中に大量に呼ばれて
+    // composition を乱す。selectionUpdate のみに絞る。
     tiptap.on("selectionUpdate", handleUpdate);
-    tiptap.on("transaction", handleUpdate);
 
     return () => {
       tiptap.off("selectionUpdate", handleUpdate);
-      tiptap.off("transaction", handleUpdate);
     };
   }, [editor]);
 

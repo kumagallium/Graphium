@@ -87,6 +87,10 @@ export function InlineAnchorController() {
     if (!tiptap) return;
 
     const update = () => {
+      // IME 変換中は何もしない。
+      // 文字挿入トランザクションごとに DOM 座標計算 + setState が走ると、
+      // 日本語入力の確定タイミングと競合して文字が重複・改行が乱れる。
+      if (tiptap.view?.composing) return;
       const sel = tiptap.state.selection;
       if (!sel?.empty) {
         setFloating(null);
@@ -154,13 +158,14 @@ export function InlineAnchorController() {
       });
     };
 
+    // 浮上ボタンは「カーソル位置が highlight に入ったか」を見るだけなので
+    // selectionUpdate で十分。`transaction` は文字挿入のたびにも発火し、
+    // IME 中に setState を連発して composition を乱すので張らない。
     tiptap.on("selectionUpdate", update);
-    tiptap.on("transaction", update);
     const onBlur = () => setFloating(null);
     tiptap.on("blur", onBlur);
     return () => {
       tiptap.off("selectionUpdate", update);
-      tiptap.off("transaction", update);
       tiptap.off("blur", onBlur);
     };
   }, [editor]);
