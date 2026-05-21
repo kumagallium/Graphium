@@ -471,6 +471,41 @@ export function evaluateSample(
   };
 }
 
+/**
+ * Reference benchmark：pred も MatPROV @graph 形式の場合の評価。
+ * MatPROV 形式 prompt を使った時のモデル天井計測用。pred と gold の両方を
+ * GoldSpanSets として抽出して、pred は primary synonym で flat にしてから
+ * 既存の compareSets で比較する。
+ */
+export function evaluateMatProvSample(
+  id: string,
+  predicted: MatProvOutput,
+  gold: MatProvOutput,
+): SampleMetric {
+  const goldSets = extractSetsFromGold(gold);
+  const predGoldSets = extractSetsFromGold(predicted);
+  const predSets: SpanSets = {
+    activities: predGoldSets.activities.map((a) => a.synonyms[0]).filter(Boolean),
+    materials: predGoldSets.materials.map((m) => m.synonyms[0]).filter(Boolean),
+    tools: predGoldSets.tools.map((t) => t.synonyms[0]).filter(Boolean),
+    edges: predGoldSets.edges.flatMap((e) => {
+      const a = e.activitySyns[0];
+      const en = e.entitySyns[0];
+      return a && en ? [`${e.type}::${headGerund(a)}::${canonicalMaterial(en)}`] : [];
+    }),
+    parameters: predGoldSets.parameters.flatMap((p) => {
+      const v = p.valueSyns[0];
+      return v ? [`${p.canonicalKey}::${normalize(v)}`] : [];
+    }),
+  };
+  return {
+    id,
+    goldProcedureCount: gold.length,
+    predictedProcedureCount: predicted.length,
+    total: compareSets(predSets, goldSets),
+  };
+}
+
 function compareSets(pred: SpanSets, gold: GoldSpanSets): ProcedureMetric {
   return {
     activities: matchSynonymEntries(pred.activities, gold.activities, headGerund),

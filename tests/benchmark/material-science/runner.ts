@@ -24,6 +24,7 @@ import {
 } from "../../../src/server/services/prov-ingester.js";
 import {
   evaluateSample,
+  evaluateMatProvSample,
   aggregate,
   extractSetsFromGold,
   extractSetsFromOutput,
@@ -33,6 +34,11 @@ import {
   type SpanSets,
 } from "./evaluator.js";
 import { readSakuraOptionsFromEnv, runSakuraChat } from "./sakura-runner.js";
+import {
+  buildMaterialScienceSystemPrompt,
+  buildMaterialScienceUserMessage,
+} from "./matprov-prompt.js";
+import { parseMatProvOutput } from "./matprov-parser.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(__dirname, "fixtures");
@@ -58,6 +64,7 @@ async function main() {
   const filterPattern = args.fixture ? new RegExp(args.fixture) : null;
   const dryRun = args.dryRun ?? false;
   const language = args.language ?? "en";
+  const promptMode: "open-set" | "matprov" = args.prompt === "matprov" ? "matprov" : "open-set";
 
   const pairs = listFixtures(filterPattern);
   if (pairs.length === 0) {
@@ -68,6 +75,7 @@ async function main() {
     process.exit(1);
   }
   console.log(`Found ${pairs.length} fixture(s).`);
+  console.log(`Prompt mode: ${promptMode}`);
 
   const sakura = readSakuraOptionsFromEnv();
   if (!dryRun && !sakura) {
@@ -78,7 +86,10 @@ async function main() {
     process.exit(2);
   }
 
-  const systemPrompt = buildProvIngesterSystemPrompt(language);
+  const systemPrompt =
+    promptMode === "matprov"
+      ? buildMaterialScienceSystemPrompt(language)
+      : buildProvIngesterSystemPrompt(language);
 
   const results: SampleResult[] = [];
   for (const pair of pairs) {
@@ -96,38 +107,64 @@ async function main() {
         id: pair.id,
         predicted: [],
         gold,
-        metric: evaluateSample(pair.id, [], gold),
+        metric:
+          promptMode === "matprov"
+            ? evaluateMatProvSample(pair.id, [], gold)
+            : evaluateSample(pair.id, [], gold),
         durationMs: 0,
       });
       continue;
     }
 
-    const userMessage = buildProvIngesterUserMessage({
-      url: `bench://${pair.id}`,
-      title: pair.id,
-      text: inputText,
-    });
+    const userMessage =
+      promptMode === "matprov"
+        ? buildMaterialScienceUserMessage({
+            url: `bench://${pair.id}`,
+            title: pair.id,
+            text: inputText,
+          })
+        : buildProvIngesterUserMessage({
+            url: `bench://${pair.id}`,
+            title: pair.id,
+            text: inputText,
+          });
     let predicted: ProvIngesterOutput[] = [];
+    let predictedMatprov: MatProvOutput = [];
     let durationMs = 0;
     let tokenUsage: SampleResult["tokenUsage"];
     try {
       const llm = await runSakuraChat(sakura!, systemPrompt, userMessage);
       durationMs = llm.durationMs;
       tokenUsage = llm.usage;
-      const parsed = parseProvIngesterOutput(llm.message);
-      if (parsed.blocks.length === 0) {
-        const dumpPath = join(REPORTS_DIR, `raw-${pair.id}-${Date.now()}.txt`);
-        mkdirSync(REPORTS_DIR, { recursive: true });
-        writeFileSync(dumpPath, llm.message);
-        console.log(`  ! parse returned 0 blocks (raw size ${llm.message.length} chars). Dumped to ${dumpPath}`);
+      if (promptMode === "matprov") {
+        const parsed = parseMatProvOutput(llm.message) as MatProvOutput;
+        if (parsed.length === 0) {
+          const dumpPath = join(REPORTS_DIR, `raw-matprov-${pair.id}-${Date.now()}.txt`);
+          mkdirSync(REPORTS_DIR, { recursive: true });
+          writeFileSync(dumpPath, llm.message);
+          console.log(`  ! matprov parse returned 0 procedures (raw size ${llm.message.length} chars). Dumped to ${dumpPath}`);
+        } else {
+          predictedMatprov = parsed;
+        }
       } else {
-        predicted = [parsed];
+        const parsed = parseProvIngesterOutput(llm.message);
+        if (parsed.blocks.length === 0) {
+          const dumpPath = join(REPORTS_DIR, `raw-${pair.id}-${Date.now()}.txt`);
+          mkdirSync(REPORTS_DIR, { recursive: true });
+          writeFileSync(dumpPath, llm.message);
+          console.log(`  ! parse returned 0 blocks (raw size ${llm.message.length} chars). Dumped to ${dumpPath}`);
+        } else {
+          predicted = [parsed];
+        }
       }
     } catch (err) {
       console.log(`  ! LLM call failed: ${err instanceof Error ? err.message : err}`);
     }
 
-    const metric = evaluateSample(pair.id, predicted, gold);
+    const metric =
+      promptMode === "matprov"
+        ? evaluateMatProvSample(pair.id, predictedMatprov, gold)
+        : evaluateSample(pair.id, predicted, gold);
     printSampleSummary(metric);
     results.push({ id: pair.id, predicted, gold, metric, durationMs, tokenUsage });
   }
@@ -151,12 +188,14 @@ function parseArgs(argv: string[]): {
   fixture?: string;
   dryRun?: boolean;
   language?: string;
+  prompt?: string;
 } {
-  const out: { fixture?: string; dryRun?: boolean; language?: string } = {};
+  const out: { fixture?: string; dryRun?: boolean; language?: string; prompt?: string } = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--fixture") out.fixture = argv[++i];
     else if (argv[i] === "--dry-run") out.dryRun = true;
     else if (argv[i] === "--language") out.language = argv[++i];
+    else if (argv[i] === "--prompt") out.prompt = argv[++i];
   }
   return out;
 }

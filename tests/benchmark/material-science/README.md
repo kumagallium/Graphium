@@ -18,10 +18,28 @@ material-science/
 ## Run
 
 ```
-pnpm test:benchmark              # all fixtures with usable input.txt
-pnpm test:benchmark --fixture seed-cu2dfexs    # filter by regex
-pnpm test:benchmark --dry-run    # skip LLM call, only structure check
+pnpm test:benchmark              # production open-set prompt (canonical metric)
+pnpm test:benchmark -- --fixture seed-cu2dfexs    # filter by regex
+pnpm test:benchmark -- --dry-run                  # skip LLM call, only structure check
 ```
+
+### MatPROV-format reference run (diagnostic only)
+
+```
+pnpm test:benchmark -- --prompt matprov
+```
+
+Switches the prompt to the original Phase 5a MatPROV `@graph` format
+(`matprov-prompt.ts`) and parses output via `matprov-parser.ts`. Pred
+and gold are both `MatProvOutput`, compared via `evaluateMatProvSample`.
+
+Use this as a **reference ceiling**: same model, same fixtures, but
+domain-specific prompt. The delta vs the canonical (open-set) numbers
+isolates the cost of open-set generalization from model strength.
+
+Do NOT replace the canonical run with this — it does not exercise the
+production prompt path. It is purely a diagnostic to attribute the
+benchmark gap.
 
 ## Environment
 
