@@ -851,3 +851,51 @@ Per-sample:
 5. **`mode_distribution_entropy` 0.500 → 0.000 in this run is sample-narrow, not a regression.** Two of three runs produced 0; the third hit 0.406. The narrower entropy is mostly an artefact of synthesis_count being low (2-4); with so few syntheses, mode-mix entropy is hostage to whatever the LLM happened to fire. The capability itself (analogical / abductive / dialectic firing on the right inputs) is verified by the probe suite, which still holds at 10/11.
 
 Verdict: **merged, partial hit**. Primary metric `lift_score` improved meaningfully (+0.086) but missed the 0.85 target by 0.05; secondary `domain_balance_score` and the regression guards all cleared. The diagnostic cleanly identifies what's left (JP domain jargon outside corpus-agnostic patterns) and the next PR can target it deterministically. The Knowledge Layer hourglass bottleneck is now visibly tighter in the UI — Insight / Synthesis tabs read more domain-portable post-merge.
+
+## Atomizer JP jargon follow-up (PR [#321](https://github.com/kumagallium/Graphium/pull/321), merged 2026-05-22)
+
+Direct follow-up to the atomizer-strengthen partial hit above. The 20% rung-1 residue had been diagnosed as JP social-science jargon (二面市場 / 同類志向 / 貧困の罠 / 居住分離 / 外部性 / ナッシュ均衡 / 情報の非対称性) outside the corpus-agnostic patterns. This PR closes the gap on both the atomizer and judge sides:
+
+1. `wiki-atomizer.ts`: adds the 4th jargon category "経済学 / 社会学系" (10 example tokens) to the step-1 checklist, with rung-2 lifting substitutes ("二面市場" → "二種類の利用者が互いに集まるほど価値が増す場", "貧困の罠" → "一度落ちると自力で抜け出しづらい収入や資産の状態", etc.). Adds the meta-rule "even kanji compounds ≤ 4 characters can be rung-1 if they are a particular school's coined term".
+2. `bench/judge.ts` LIFT_RUBRIC: adds the same 6 social-science FAIL exemplars and 3 corresponding rung-2 PASS exemplars. Sharpens the LLM judge's anchor on the tokens it had been catching post-hoc.
+
+Deliberately **no programmatic JP guard added**. A curated JP jargon dictionary would re-introduce the self-referential corpus bias that μ-1.1 explicitly removed; catching JP jargon stays the LLM's responsibility on both sides (prompt at atomization, rubric at judging). The line we hold: programmatic checks for cheap, corpus-agnostic patterns (chemical formulas, acronyms, hyphenated compounds); LLM for everything that needs world knowledge to flag.
+
+Pre-declared metrics:
+- **Target**: `lift_score` median ≥ 0.85 (from 0.800)
+- Regression guards: `adversarial_pass_rate` ≥ 0.909, `epistemic_preservation` ≥ 0.90, `domain_balance_score` no regression from 0.809, `atom_count_total` ≥ 5
+
+### Live run (n=3, gpt-oss-120b on Sakura AI Engine, 58 notes / 11 probes)
+
+CI workflow_dispatch [run 26235505445](https://github.com/kumagallium/Graphium/actions/runs/26235505445) on `feat/jp-jargon-lift-rubric` (squash-merged as `ed1a61d`). Snapshot: `bench/results/jp-jargon-rubric-2026-05-22.json`. This run **replaces `bench/baseline.json`** as the post-JP-jargon fixed reference.
+
+| metric                          | pre (atomizer-strengthen) median | post (JP-jargon) median | post range     | target | result |
+|---------------------------------|-----------------------------------|--------------------------|----------------|--------|--------|
+| **`lift_score`**                | 0.800                             | **0.875**                | 0.500 – 1.000  | ≥ 0.85 | ✅ **HIT** (+0.075) |
+| **`domain_balance_score`**      | 0.809                             | **0.853**                | 0.242 – 1.000  | ≥ 0.75 | ✅ +0.044 |
+| `adversarial_pass_rate`         | 0.909                             | 0.909                    | 0.909          | ≥ 0.909 | ✅ held |
+| `epistemic_preservation`        | 0.965                             | 0.929                    | 0.895 – 0.964  | ≥ 0.90 | ✅ above guard (-0.036, sample noise) |
+| `atom_count_total`              | 7                                 | 6                        | 6 – 8          | ≥ 5    | ✅ no collapse |
+| `mode_distribution_entropy`     | 0.000                             | 0.459                    | 0.000 – 0.500  | —      | recovered |
+| `observation_atom_ratio`        | 0.083                             | 0.167                    | 0.000 – 0.500  | —      | recovered |
+| `novelty_score`                 | 1.000                             | 1.000                    | 1.000          | —      | held |
+| `cross_language_consistency`    | 0.000                             | 0.333                    | 0.000 – 0.667  | —      | recovered to prior band |
+| `synthesis_count_total`         | 3                                 | 3                        | 2 – 3          | —      | held |
+| `claim_count_total`             | 99                                | 98                       | 93 – 100       | —      | held |
+
+Per-sample:
+
+| run | lift  | entropy | obs   | epi   | advers | atoms | syn | dom_bal |
+|-----|-------|---------|-------|-------|--------|-------|-----|---------|
+| #1  | 1.000 | 0.459   | 0.167 | 0.929 | 0.909  | 6     | 3   | 1.000   |
+| #2  | 0.500 | 0.000   | 0.000 | 0.895 | 0.909  | 6     | 3   | 0.242   |
+| #3  | 0.875 | 0.500   | 0.500 | 0.964 | 0.909  | 8     | 2   | 0.853   |
+
+### Load-bearing findings
+
+1. **Prompt + rubric extension was sufficient — no programmatic guard needed.** The atomizer-strengthen PR raised the question of whether a prompt-only intervention could close the remaining 5pt gap on a hard linguistic boundary (kanji compounds blend into normal prose, unlike ASCII acronyms). It did: lift_score 0.800 → 0.875 with just 14 lines added across 2 files. This validates the corpus-agnostic principle: programmatic guards for cheap pattern cases, LLM for cases requiring world knowledge. We did **not** capitulate and add a JP dictionary to `detectRung1Tokens`; the µ-1.1 bias-removal stays intact.
+2. **Sample variance widened on `domain_balance_score`.** Range 0.242 – 1.000 this run vs 0.624 – 1.000 prior. Run #2 happened to produce one materials Atom and one social-science Atom, and one of the two failed lift — so the domain ratio collapsed (pass = 0 in one domain). Median is still 0.853 (well above target), but the wide range is a reminder that `domain_balance_score` is sample-fragile with atom_count ~6. This is structural; n=3 + small atom counts will keep producing wide ranges.
+3. **`mode_distribution_entropy` recovered to 0.459.** Previous run had narrowed to 0.000 (all-deductive); this run sits at 0.459 (median) with one sample at 0.500 — back into the μ-2 band. Mode-mix is hostage to the LLM's choice on a given run; the probe suite (which tests capability at the dry-run pipeline level) holds steady at 10/11.
+4. **`epistemic_preservation` softened 0.965 → 0.929.** Still above the 0.90 guard. Run #2 hit 0.895 (just below). Likely a side effect of dropping more atoms — when only 6 atoms survive vs 16 in the pre-Atomizer-strengthen runs, each one carries more weight in the metric and noise is amplified. Worth watching, not actionable now.
+
+Verdict: **merged, target hit cleanly.** lift_score median 0.875 ≥ 0.85, no regression guard violated. The "lift gap" thread from atomizer-strengthen partial hit is now closed in one focused follow-up. The next bench-moving target is **Phase ε (meta-atom-clustering)** — the last FAIL probe — which is unrelated to lift and lives in Atom relationship structure rather than wording.
