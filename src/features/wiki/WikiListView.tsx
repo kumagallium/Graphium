@@ -2,8 +2,10 @@
 // Summary / Claim / Synthesis カテゴリ別に Wiki ドキュメント一覧をテーブル形式で表示
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
-import { useCallback, useMemo, useState } from "react";
-import { Bot, Search, Trash2, RefreshCw, Globe2 } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Bot, Filter, Search, Trash2, RefreshCw, Globe2 } from "lucide-react";
+import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
+import { cn } from "../../lib/utils";
 import type {
   AtomType,
   ClaimRole,
@@ -211,6 +213,12 @@ export function WikiListView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // 列フィルタ。Type 列は wikiKind ごとに claimRole / atomType / synthesisMode を対象にする。
+  // wikiKind が切り替わると意味が変わるので、別 kind の選択は引きずらない。
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [typeFilterOpen, setTypeFilterOpen] = useState(false);
+  const [typeFilterPos, setTypeFilterPos] = useState({ top: 0, left: 0 });
+  const typeFilterBtnRef = useRef<HTMLButtonElement>(null);
 
   // 被参照カウント（このページを参照している「distinct なノート/wiki」の数）
   // 1 ノートが本文で同じ wiki を複数回引用しても 1 と数える。
@@ -284,6 +292,48 @@ export function WikiListView({
       }));
   }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById]);
 
+  // Type 列フィルタの選択肢を、現在の wikiEntries から動的に集計する。
+  // claim → claimRole（複数可）, atom → atomType, synthesis → synthesisMode。
+  // summary は意味的に 1 値しか取らないので filter は出さない。
+  const typeFilterOptions = useMemo<FilterOption[]>(() => {
+    const counts = new Map<string, number>();
+    for (const e of wikiEntries) {
+      if (wikiKind === "claim") {
+        for (const role of e.claimRole ?? []) {
+          counts.set(role, (counts.get(role) ?? 0) + 1);
+        }
+      } else if (wikiKind === "atom" && e.atomType) {
+        counts.set(e.atomType, (counts.get(e.atomType) ?? 0) + 1);
+      } else if (wikiKind === "synthesis" && e.synthesisMode) {
+        counts.set(e.synthesisMode, (counts.get(e.synthesisMode) ?? 0) + 1);
+      }
+    }
+    const tNs =
+      wikiKind === "claim"
+        ? "wikiTypes.claimRole"
+        : wikiKind === "atom"
+          ? "wikiTypes.atomType"
+          : wikiKind === "synthesis"
+            ? "wikiTypes.synthesisMode"
+            : null;
+    if (!tNs) return [];
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({
+        value,
+        label: t(`${tNs}.${value}` as never),
+        count,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
+  }, [wikiEntries, wikiKind, t]);
+
+  // wikiKind が変わったら typeFilter をリセット（別 kind の選択肢は意味が違う）
+  const lastWikiKindRef = useRef(wikiKind);
+  if (lastWikiKindRef.current !== wikiKind) {
+    lastWikiKindRef.current = wikiKind;
+    if (typeFilter.length > 0) setTypeFilter([]);
+    if (typeFilterOpen) setTypeFilterOpen(false);
+  }
+
   const handleSort = useCallback((key: SortKey) => {
     setSortKey((prev) => {
       if (prev === key) {
@@ -300,6 +350,21 @@ export function WikiListView({
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter((e) => e.title.toLowerCase().includes(q));
+    }
+    if (typeFilter.length > 0) {
+      const set = new Set(typeFilter);
+      result = result.filter((e) => {
+        if (wikiKind === "claim") {
+          return (e.claimRole ?? []).some((r) => set.has(r));
+        }
+        if (wikiKind === "atom") {
+          return e.atomType ? set.has(e.atomType) : false;
+        }
+        if (wikiKind === "synthesis") {
+          return e.synthesisMode ? set.has(e.synthesisMode) : false;
+        }
+        return true;
+      });
     }
     const sorted = [...result].sort((a, b) => {
       let cmp = 0;
@@ -341,7 +406,7 @@ export function WikiListView({
       return sortDir === "desc" ? -cmp : cmp;
     });
     return sorted;
-  }, [wikiEntries, searchQuery, sortKey, sortDir]);
+  }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind]);
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
@@ -484,11 +549,44 @@ export function WikiListView({
                 >
                   {t("wikiList.colTitle")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th
-                  className="py-2 px-3 w-[140px] cursor-pointer hover:text-foreground"
-                  onClick={() => handleSort("kind")}
-                >
-                  {t("wikiList.colType")}{sortKey === "kind" && (sortDir === "desc" ? " ↓" : " ↑")}
+                <th className="py-2 px-3 w-[140px]">
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="hover:text-foreground"
+                      onClick={() => handleSort("kind")}
+                    >
+                      {t("wikiList.colType")}{sortKey === "kind" && (sortDir === "desc" ? " ↓" : " ↑")}
+                    </button>
+                    {wikiKind !== "summary" && typeFilterOptions.length > 0 && (
+                      <button
+                        ref={typeFilterBtnRef}
+                        type="button"
+                        onClick={() => {
+                          if (typeFilterBtnRef.current) {
+                            const rect = typeFilterBtnRef.current.getBoundingClientRect();
+                            setTypeFilterPos({ top: rect.bottom + 4, left: rect.left });
+                          }
+                          setTypeFilterOpen((v) => !v);
+                        }}
+                        className={cn(
+                          "inline-flex items-center justify-center w-5 h-5 rounded transition-colors",
+                          typeFilter.length > 0
+                            ? "text-primary bg-primary/10 hover:bg-primary/15"
+                            : "text-text-tertiary hover:text-foreground hover:bg-muted",
+                        )}
+                        aria-label={t("wikiList.filterType")}
+                        title={t("wikiList.filterType")}
+                      >
+                        <Filter size={12} strokeWidth={2.25} />
+                      </button>
+                    )}
+                    {typeFilter.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-primary">
+                        ({typeFilter.length})
+                      </span>
+                    )}
+                  </div>
                 </th>
                 <th
                   className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums"
@@ -631,6 +729,22 @@ export function WikiListView({
           </table>
         )}
       </div>
+
+      {typeFilterOpen && wikiKind !== "summary" && (
+        <FilterPopup
+          position={typeFilterPos}
+          onClose={() => setTypeFilterOpen(false)}
+          title={t("wikiList.filterType")}
+          options={typeFilterOptions}
+          selected={typeFilter}
+          onChange={setTypeFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+          emptyText={t("wikiList.filterEmpty")}
+          noMatchText={t("wikiList.noMatching")}
+          minWidth={220}
+        />
+      )}
 
       {deleteTarget && (
         <DeleteConfirmDialog
