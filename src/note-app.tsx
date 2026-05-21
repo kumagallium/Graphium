@@ -1657,7 +1657,14 @@ function NoteEditorInner({
   const handleAiDeriveFromChat = useCallback(
     async (question: string, answer: string) => {
       if (!fileId || !editorRef.current) return;
-      const chatTitle = await generateTitle(answer).catch(() => question.slice(0, 25));
+      // 派生タイトルはユーザーの質問を要約する（AI 応答を渡すと回答内の主張が拾われ、
+      // トピック中心の探しやすいタイトルにならない）。
+      // 引用テキストがある場合は質問と一緒に渡す（「単語の意味を教えて」だけでは何の単語か
+      // 分からないため、引用元の単語をタイトルに含められるようにする）。
+      const titleSource = aiAssistant.quotedMarkdown
+        ? `引用テキスト:\n${aiAssistant.quotedMarkdown}\n\n質問:\n${question}`
+        : question;
+      const chatTitle = await generateTitle(titleSource).catch(() => question.slice(0, 25));
       const doc = buildAiDerivedDocument({
         title: chatTitle,
         quotedMarkdown: aiAssistant.quotedMarkdown || question,
