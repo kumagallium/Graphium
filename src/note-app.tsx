@@ -1395,10 +1395,26 @@ function NoteEditorInner({
         }
         // 会話履歴を組み立ててサーバーに送る。
         // サーバーは stateless（session を保持しない）。履歴の正本はノート側の ScopeChat。
-        const history: AgentChatMessage[] = aiAssistant.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+        // 初回 user message は store に表示用の素の質問しか入っていないので、
+        // backend 履歴では quotedMarkdown を改めて挟んで context を維持する
+        // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
+        const history: AgentChatMessage[] = aiAssistant.messages.map((m, idx) => {
+          if (idx === 0 && m.role === "user" && aiAssistant.quotedMarkdown) {
+            return {
+              role: m.role,
+              content: [
+                "以下の内容について質問があります。",
+                "",
+                "---",
+                aiAssistant.quotedMarkdown,
+                "---",
+                "",
+                m.content,
+              ].join("\n"),
+            };
+          }
+          return { role: m.role, content: m.content };
+        });
         const response = await runAgent({
           message: userMessage,
           messages: [...history, { role: "user", content: userMessage }],
