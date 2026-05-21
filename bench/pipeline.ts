@@ -293,6 +293,15 @@ function buildAtoms(claims: BenchClaim[]): BenchAtom[] {
     const pairIds = Array.from(
       new Set(memberClaims.map((c) => c.pairId).filter((p): p is string => Boolean(p))),
     );
+    // Phase γ-follow-up 3: dry-run でも rebuttalConditions を Atom 層に propagate する。
+    // live mode の Atomizer は「2+ Claim 共通 rebuttal のみ伝播」ガードがかかっているが、
+    // dry-run cluster は 1 ノート = 1 cluster なので「単一 Claim の rebuttal」を素直に
+    // 持ち上げる方が contradiction-resolution probe の意図に合う (probe の corpus は
+    // 1 ノート 1 rebuttal の構成で、cluster 横断的な propagation rule の対象外)。
+    // 重複は除去する。
+    const rebuttals = Array.from(
+      new Set(memberClaims.flatMap((c) => c.rebuttalConditions ?? [])),
+    );
     atoms.push({
       title,
       body: memberClaims.map((c) => c.body.split("\n")[0]).join(" / ").slice(0, 400),
@@ -302,6 +311,7 @@ function buildAtoms(claims: BenchClaim[]): BenchAtom[] {
       epistemicStatus: status,
       liftLevel: level,
       pairIds: pairIds.length > 0 ? pairIds : undefined,
+      rebuttalConditions: rebuttals.length > 0 ? rebuttals : undefined,
     });
   }
   return atoms;
@@ -325,17 +335,26 @@ function dryRunPairMode(atomA: BenchAtom, atomB: BenchAtom): BenchSynthesis["mod
   const sharedPair = [...aPairs].some((p) => bPairs.has(p));
   if (sharedPair && aDom !== bDom) return "analogical";
 
-  const obsOnly = atomA.atomType === "observational" && atomB.atomType === "observational";
   // Phase γ: 両 Atom が rebuttalConditions を持っていれば dialectic 候補に乗せる。
   // Atomizer の伝播ガードで「2+ Claim 共通の rebuttal のみ Atom に上がる」が保証されているので、
   // ここでは値の有無だけ見れば十分。
+  //
+  // Phase γ-follow-up 3: この判定は obsOnly → abductive の **前** に置く。理由は
+  // contradiction-pair corpus が [Step]/[Output] を含むため、roles に "finding" が混じり
+  // dry-run の atomType 推定が "observational" に倒れる傾向があるため。observational only
+  // でも、両側に rebuttalConditions があるなら router 上は dialectic 候補が立つ。dry-run
+  // でもその意思決定 (LLM の代替) を再現するために dialectic を先に分岐する。
+  // probe-evaluator は live LLM ではなく dry-run 出力しか見ないので、この順序が
+  // contradiction-resolution probe の合否を直接決める (memory:
+  // feedback_probe_dry_run_blind_spot.md)。
   const bothHaveRebuttal =
     (atomA.rebuttalConditions?.length ?? 0) > 0 &&
     (atomB.rebuttalConditions?.length ?? 0) > 0;
+  if (bothHaveRebuttal) return "dialectic";
 
+  const obsOnly = atomA.atomType === "observational" && atomB.atomType === "observational";
   if (obsOnly) return "abductive";
   if (aDom !== bDom && (atomA.atomType !== atomB.atomType)) return "analogical";
-  if (bothHaveRebuttal) return "dialectic";
   return "deductive"; // baseline で偏重するパス
 }
 
