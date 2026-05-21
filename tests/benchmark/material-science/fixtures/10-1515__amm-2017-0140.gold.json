@@ -1,0 +1,288 @@
+[
+  {
+    "label": "Bi0.5Sb1.5Te3_nanocomposite",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": [
+              "Bismuth",
+              "Bi"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.999 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "label": [
+          {
+            "@value": [
+              "Antimony",
+              "Sb"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.99 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": [
+              "Tellurium",
+              "Te"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.999 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": [
+              "Ga2O3 nanoparticles",
+              "Ga2O3"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "label": [
+          {
+            "@value": [
+              "gas atomized sample",
+              "atomized sample",
+              "prepared sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "label": [
+          {
+            "@value": [
+              "Planetary miller P100",
+              "Planetary miller"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "label": [
+          {
+            "@value": [
+              "ball-milled sample",
+              "milled sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintered sample",
+              "sps sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "gas atomization",
+              "preparing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": "ball-milling",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintering",
+              "SPS"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "50 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "673 K",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e5"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e5"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e4"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e6"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e8"
+      }
+    ]
+  }
+]

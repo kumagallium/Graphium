@@ -1,0 +1,606 @@
+[
+  {
+    "label": "Ti2NiCoSnSb_ball-milling",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": [
+              "Ti",
+              "Titanium"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.5 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "label": [
+          {
+            "@value": [
+              "Ni",
+              "Nickel"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.5 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": [
+              "Co",
+              "Cobalt"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.5 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": [
+              "Sn",
+              "Tin"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.5 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "label": [
+          {
+            "@value": [
+              "Sb",
+              "Antimony"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:purity": [
+          {
+            "@value": "99.5 %",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "label": [
+          {
+            "@value": [
+              "vacuum arc melted sample",
+              "melted sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "label": [
+          {
+            "@value": [
+              "remelted sample",
+              "melted sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "label": [
+          {
+            "@value": [
+              "hand crushed sample",
+              "crushed sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "label": [
+          {
+            "@value": "mortar",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "label": [
+          {
+            "@value": "pestle",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "label": [
+          {
+            "@value": [
+              "Fritsch Pulverisette P-5 high energy planetary ball mill ",
+              "Pulverisette P-5 high energy planetary ball mill",
+              "high energy planetary ball mill",
+              "planetary ball mill"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "label": [
+          {
+            "@value": [
+              "WC vial",
+              "WC vials",
+              "tungsten carbide (WC) vial",
+              "tungsten carbide (WC) vials",
+              "tungsten carbide vial",
+              "tungsten carbide vials"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e13",
+        "label": [
+          {
+            "@value": [
+              "WC ball",
+              "WC balls",
+              "tungsten carbide (WC) ball",
+              "tungsten carbide (WC) balls",
+              "tungsten carbide ball",
+              "tungsten carbide balls"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "10 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e14",
+        "label": [
+          {
+            "@value": "Toluene",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e15",
+        "label": [
+          {
+            "@value": [
+              "ball-milled sample",
+              "planetary ball milled sample",
+              "milled sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": [
+              "microcrystalline, nanocrystalline",
+              "microcrystalline and nanocrystalline"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e16",
+        "label": [
+          {
+            "@value": [
+              "Dr. Sinter SPS-650",
+              "Dr. Sinter",
+              "SPS-650"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e17",
+        "label": [
+          {
+            "@value": [
+              "spark plasma sintered sample",
+              "sintered sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:length_diameter": [
+          {
+            "@value": "20 mm",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": [
+              "VAM",
+              "vacuum arc melting",
+              "melting"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": [
+              "remelting",
+              "melting"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": [
+              "hand crushing",
+              "crusing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": [
+              "ball-milling",
+              "planetary ball milling"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:rotation": [
+          {
+            "@value": "300 rpm",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "1, 5 h",
+              "1 and 5 h",
+              "1 h, 5 h",
+              "1 h and 5 h"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a5",
+        "label": [
+          {
+            "@value": [
+              "SPS",
+              "spark plasma sintering",
+              "sintering"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "1373 K",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "5 min",
+              "5 minutes"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:pressure": [
+          {
+            "@value": "50 MPa",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature_rate": [
+          {
+            "@value": "100 K/min",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e5"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e6"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e6"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e7"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e10"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e8"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e8"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e13"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e14"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e15"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e15"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e16"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a5",
+        "entity": "e17"
+      }
+    ]
+  }
+]

@@ -1,0 +1,681 @@
+[
+  {
+    "label": "R2Fe14B_synthesis",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "R2O3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "label": [
+          {
+            "@value": "Fe2O3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": "B2O3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": "CaCO3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "label": [
+          {
+            "@value": "fired sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "label": [
+          {
+            "@value": [
+              "Ca",
+              "Calcium"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "label": [
+          {
+            "@value": [
+              "SPEX-8000 shaker",
+              "SPEX-8000",
+              "shaker"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "label": [
+          {
+            "@value": [
+              "milled sample",
+              "shook sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "label": [
+          {
+            "@value": [
+              "argon-filled glove box",
+              "glove box"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "label": [
+          {
+            "@value": [
+              "quartz tube",
+              "tube"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "label": [
+          {
+            "@value": "diffusion pump",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "label": [
+          {
+            "@value": "sealed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e13",
+        "label": [
+          {
+            "@value": [
+              "box furnace",
+              "furnace"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e14",
+        "label": [
+          {
+            "@value": "annealed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e15",
+        "label": [
+          {
+            "@value": [
+              "water-glycerol solution",
+              "water-glycerol"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e16",
+        "label": [
+          {
+            "@value": "washed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e17",
+        "label": [
+          {
+            "@value": [
+              "dilute acetic acid solution",
+              "acetic acid solution",
+              "acetic acid"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:concentration": [
+          {
+            "@value": "0.1 vol.%",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e18",
+        "label": [
+          {
+            "@value": [
+              "removed sample",
+              "washed sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ],
+        "matprov:form": [
+          {
+            "@value": "powder",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e19",
+        "label": [
+          {
+            "@value": "ethanol",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e20",
+        "label": [
+          {
+            "@value": "washed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e21",
+        "label": [
+          {
+            "@value": [
+              "heat-treated sample",
+              "heated sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": "firing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": [
+              "milling",
+              "shaking"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "4 h",
+              "4 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": [
+              "Ar",
+              "argon"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": "sealing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": "annealing",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": [
+              "800 - 900 °C",
+              "800 to 900 °C"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a5",
+        "label": [
+          {
+            "@value": "washing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a6",
+        "label": [
+          {
+            "@value": [
+              "removing",
+              "washing"
+            ],
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a7",
+        "label": [
+          {
+            "@value": "washing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a8",
+        "label": [
+          {
+            "@value": [
+              "heat-treating",
+              "heating"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:atmosphere": [
+          {
+            "@value": "vacuum",
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": [
+              "300 - 400 °C",
+              "300 to 400 °C"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "1 - 4 minutes",
+              "1 to 4 minutes",
+              "1 - 4 min",
+              "1 to 4 min"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e5"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e5"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e6"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e8"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e8"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e10"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e11"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e13"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e14"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e14"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a5",
+        "entity": "e15"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a5",
+        "entity": "e16"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a6",
+        "entity": "e16"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a6",
+        "entity": "e17"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a6",
+        "entity": "e18"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a7",
+        "entity": "e18"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a7",
+        "entity": "e19"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a7",
+        "entity": "e20"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a8",
+        "entity": "e20"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a8",
+        "entity": "e21"
+      }
+    ]
+  }
+]

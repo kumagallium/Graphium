@@ -69,14 +69,14 @@ export async function runSakuraChat(
       { role: "user", content: userMessage },
     ],
     temperature: opts.temperature ?? 0,
-    max_tokens: opts.maxTokens ?? 8192,
+    max_tokens: opts.maxTokens ?? 32768,
   };
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${opts.apiKey}`,
   };
 
-  const retries = opts.retries ?? 1;
+  const retries = opts.retries ?? 3;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const started = Date.now();

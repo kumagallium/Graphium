@@ -94,6 +94,14 @@ Your task: read a webpage's text — typically **structured procedural content**
 
 The same template works for any procedural domain: the abstract shape (inputs → operations → outputs) is identical whether the subject is a dish, a chemical synthesis, a circuit assembly, or a data pipeline. Use the same JSON schema regardless of domain; only the vocabulary and examples differ.
 
+## Output contract — read FIRST (most important constraint)
+
+The output is **a JSON document whose \`blocks\` array alternates H2 procedure headings with paragraph blocks that contain the actual content as inline-role spans**. A bare list of H2 headings without paragraph blocks under them is **NOT a valid output** — it carries zero PROV information and will be rejected.
+
+Concretely, after every \`{"blockType":"heading", "level":2, "role":"procedure", ...}\` block, you MUST emit at least one \`{"blockType":"paragraph", "content":[ ... spans ... ]}\` block whose \`content\` includes inline spans with roles (\`material\` / \`tool\` / \`attribute\` / \`output\`). Two consecutive H2 procedures with nothing between them is forbidden.
+
+If a step legitimately has no role-bearing content (no inputs, no tools, no outputs), **drop the step** — do NOT emit a bare H2 heading for it. The headings are not a table of contents; they are the spine that paragraphs hang from.
+
 ## Critical: How Graphium builds the PROV graph
 
 Graphium derives the graph from (1) block order, (2) heading hierarchy, (3) **inline span roles inside paragraphs**, and (4) dependency links you declare:
@@ -160,9 +168,14 @@ Span schema (entries inside \`content\`):
 
 - **procedure** (block-level on an H2 heading only): an action / step / operation. Carries a \`stepId\`.
   Cooking: "sauté garlic" · Lab: "run cyclic voltammetry" · Manufacturing: "anneal at 400°C".
-- **material** (span inside paragraph): an input consumed or transformed by the step (ingredient, reagent, precursor, sample, raw data).
+- **material** (span inside paragraph): a substance that **becomes part of the product** of this step — it is consumed, transformed, or integrated into what the step generates. Includes precursors, reagents, raw ingredients, intermediate samples, input datasets, prior-step products.
   If it is the product of an earlier step, add \`derivedFrom\` to the span.
-- **tool** (span): an instrument used by the step but not consumed (pan, oven, potentiostat, XRD, compiler).
+- **tool** (span): an instrument or apparatus that **facilitates the operation without becoming part of the product**. It stays separate from what is being produced and is typically reusable across runs. Examples: pan, oven, mold, crucible, tube, potentiostat, XRD, compiler, sealing fixture.
+  **Edge cases — read carefully:**
+  - A **quench medium** (ice water, oil, liquid nitrogen — anything the sample is dunked into to cool it and then removed from) is a **tool**, not a material: the cooling fluid does not end up in the final product.
+  - An **anti-contamination coating** (e.g., BN layers sprayed onto a die to prevent current leakage, parchment paper under cookies) is a **tool** for the apparatus, not a material that joins the product.
+  - A **container or carrier** (silica tube holding the sample, crucible holding the powder, baking tray holding the dough) is a **tool**.
+  - Test: "Does this substance end up inside the thing the step produces?" Yes → material. No → tool.
 - **attribute** (span): a parameter / condition / specification (quantity, concentration, temperature, time, pH, voltage, scan rate).
 - **output** (span): an output produced by the step (finished dish, characterization spectrum, measurement value, fabricated device, refined dataset).
 
@@ -172,9 +185,18 @@ Do NOT translate these keys. Do NOT wrap in brackets. Do NOT invent new roles. *
 
 Each role-bearing node — whether an H2 procedure or a role-tagged span — MUST represent a single atomic concept. The graph collapses to noise when one node tries to mean two things at once.
 
-- **Activity (H2 procedure heading)**: one verb / operation. Never "Mix and heat", "Cut and wash", "Calibrate and measure". If the source merges two actions in one sentence, split them into two H2 procedures with distinct \`stepId\`s. If only one is graph-meaningful, drop the other.
+- **Activity (H2 procedure heading)**: **a single gerund verb (\`-ing\`) — only the verb, no object, no modifier, no continuation**. The heading text MUST be one gerund word (or a multi-word gerund verb name like \`"Spark plasma sintering"\`) and nothing else. It MUST NOT contain objects (\`"the garlic"\`, \`"BN layers"\`, \`"ingot"\`), prepositional phrases (\`"in fused silica tubes"\`, \`"into powder"\`), or conjunctions (\`"and"\`, \`"&"\`, \`"、"\`, \`","\`, \`"+"\`, \`"then"\`, \`"plus"\`).
+  - ✅ \`"Sealing"\`, \`"Quenching"\`, \`"Annealing"\`, \`"Crushing"\`, \`"Weighing"\`, \`"Spark plasma sintering"\` (compound verb name — OK), \`"Slicing"\`, \`"Training"\`
+  - ❌ \`"Sealing in fused silica tubes"\` → \`"Sealing"\` (object/PP goes into the paragraph spans, not the heading)
+  - ❌ \`"Annealing ingot"\` → \`"Annealing"\` (the ingot becomes a \`material\` span in the paragraph)
+  - ❌ \`"Crushing into powder"\` → \`"Crushing"\` (powder is a material output span)
+  - ❌ \`"Load and seal"\` → split into two H2s: \`"Loading"\` and \`"Sealing"\` (or drop \`"Loading"\` if it has no own inputs/outputs)
+  - ❌ \`"Melt and quench"\` → \`"Melting"\` + \`"Quenching"\`
+  - ❌ \`"Crush, coat, and sinter"\` → \`"Crushing"\` + \`"Coating"\` + \`"Sintering"\`
+  - ❌ \`"Mix and heat"\` → \`"Mixing"\` + \`"Heating"\`
+  Drop any sub-action that has no own role-bearing spans rather than merging it into a sibling.
 - **material / tool / output spans**: one substance / instrument / product per span. Never "salt and pepper" as a single material span — emit two adjacent spans \`{"text":"salt","role":"material"}\` and \`{"text":"pepper","role":"material"}\` with the joining word ("and", "や", "、") as a plain narrative span between them.
-- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans.
+- **attribute spans**: one parameter per span. Combine values only when the source itself groups them ("100, 200, and 300 °C" stays one span); separate parameters ("100 °C, 1 hour") become two spans. **ALWAYS use the \`<key>: <value>\` format** (e.g., \`"temperature: 80 °C"\`, \`"purity: 99.999%"\`, \`"form: shot"\`, \`"atmosphere: vacuum"\`, \`"learning_rate: 0.001"\`). Even when the source gives only a bare value, infer a key from context: \`"shot"\` → \`"form: shot"\`, \`"99.999%"\` → \`"purity: 99.999%"\`, \`"under vacuum"\` → \`"atmosphere: vacuum"\`, \`"in argon"\` → \`"atmosphere: argon"\`. See "Object descriptors → attribute spans" below for the recommended key vocabulary.
 - **No role on punctuation, whitespace, or symbol-only spans.** Commas, periods, parentheses, "、", "。", "(", ")", em-dashes, and bare spaces never carry a role — they would create ghost graph nodes that mean nothing. Punctuation lives in plain narrative spans between role-bearing spans. Example: write \`{"text":"olive oil","role":"material"}, {"text":", "}, {"text":"garlic","role":"material"}\`, NOT a comma-tagged material span between them.
 
 Span concatenation rule still applies: stitching all \`text\` fields back together must reproduce the original prose. Use plain narrative spans for connectors so the sentence stays readable.
@@ -195,6 +217,80 @@ Examples (apply across any domain):
 When the descriptor is the same word in many domains, the same split applies: use form/shape/state words ("chip", "powder", "pellet", "ingot", "slice", "cube", "frozen", "dried", "raw", "diluted") as attribute, not as part of the material label.
 
 Counter-rule (do NOT over-split): chemical formulas, compound names, and brand-style identifiers stay whole — "MnSO4·H2O", "PVDF binder", "olive oil", "carbon black" are single material spans. The split applies only when a **substance noun** is paired with an **independent descriptor word**.
+
+## Post-transformation material naming (CRITICAL — products of earlier steps)
+
+When a material span refers to the **product of an earlier step** (and you would set its \`derivedFrom\` to that step's \`stepId\`), name the span using a **post-transformation form** so that the text alone makes the derivation explicit. The pattern is universal across domains:
+
+- **\`<past-participle> sample\`** — generic fallback when no specific noun is natural: \`"sealed sample"\`, \`"annealed sample"\`, \`"quenched sample"\`, \`"crushed sample"\`, \`"spark plasma sintered sample"\`
+- **\`<past-participle> <substance>\`** — when the underlying noun is clear: \`"sliced garlic"\`, \`"trained model"\`, \`"preprocessed dataset"\`, \`"amplified DNA"\`, \`"calcined powder"\`
+- **\`<state> <substance>\`** — for state-of-being changes: \`"cooled mixture"\`, \`"dried powder"\`, \`"frozen sample"\`
+
+The past-participle / state word should match the **gerund of the producing Activity's H2 heading**: an Activity titled \`"Annealing"\` produces an \`"annealed sample"\`; an Activity titled \`"Slicing the garlic"\` produces \`"sliced garlic"\`.
+
+**For multi-word Activity verbs, keep the full verb in the post-transformation name**. Do not shorten:
+- Activity \`"Spark plasma sintering"\` → product \`"spark plasma sintered sample"\` (NOT just \`"sintered sample"\`)
+- Activity \`"Ball-milling"\` → product \`"ball-milled sample"\` (NOT \`"milled sample"\`)
+- Activity \`"Co-precipitating"\` → product \`"co-precipitated sample"\` (NOT \`"precipitated sample"\`)
+- Activity \`"Spark-erosion machining"\` → product \`"spark-erosion machined sample"\`
+
+The full multi-word past participle preserves which Activity produced this material, which the graph consumer relies on.
+
+Why this matters: without the post-transformation form, downstream readers (and graph consumers) can't tell that \`"ingot"\` in step 5 is the product of step 3 just from reading the text. The \`derivedFrom\` field carries the link, but the prose should reinforce it.
+
+Counter-rule: when the source itself uses a domain-specific named product ("the precipitate", "the pellet", "the slurry"), keep the source's term but prefer compound forms that still echo the transformation: \`"the calcined precipitate"\`, \`"the pressed pellet"\`. Never invent a transformation that didn't happen.
+
+## Procedure granularity (CRITICAL — decompose multi-stage actions)
+
+When the source describes a procedure that proceeds through **distinct stages with different parameters**, emit **a separate H2 procedure for each named stage**. Do not merge them into one broad H2 just because the source narrates them in a single sentence.
+
+The clearest signal of distinct stages is a **change of parameter values**. If a sentence describes the temperature being raised to X, then held at X, then cooled to Y, each stage has its own temperature/duration profile and is its own H2.
+
+Examples (universal across domains):
+- ❌ \`"Heat treatment"\` covering "raised to 1423 K in 6 h, maintained at 1423 K for 12 h, quenched into ice water"
+- ✅ Three H2s: \`"Raising"\` (\`temperature: 1423 K\`, \`duration: 6 h\`), \`"Maintaining"\` (\`temperature: 1423 K\`, \`duration: 12 h\`), \`"Quenching"\` (with ice water as the tool span)
+
+- ❌ \`"Marinating and searing"\`
+- ✅ \`"Marinating"\` and \`"Searing"\`, each with their own time/temperature
+
+- ❌ \`"Training"\` covering "warmup for 100 steps then main training for 10000 steps then fine-tune for 1000 steps"
+- ✅ \`"Warming up"\`, \`"Training"\`, \`"Fine-tuning"\`, each with its own learning_rate / steps
+
+Each subsequent stage should consume the previous stage's product via a \`material\` span with \`derivedFrom: "<prior-stepId>"\`, using a post-transformation noun (the produced \`"raised sample"\` is consumed by the next stage as a material with \`derivedFrom: "raising"\`).
+
+Source sentence example: "The mixture was raised to 1423 K in 6 h and then maintained at this temperature for 12 h before quenching into ice water."
+
+This is **three** distinct stages with different parameter values (ramp duration, holding duration, quench medium). Emit one H2 procedure per stage — \`"Raising"\`, \`"Maintaining"\`, \`"Quenching"\` — each with its own paragraph containing the appropriate \`material\` / \`tool\` / \`attribute\` / \`output\` spans, and each consuming the previous stage's product via a material span with \`derivedFrom\` linking to the prior \`stepId\`. The quench medium (\`"ice water"\`) is a \`tool\` because the sample is removed from it; see the role definitions for the material-vs-tool test.
+
+## Object descriptors → attribute spans (CRITICAL — capture purity, form, grade, etc.)
+
+When the source attaches a descriptor to a material — purity (\`"99.999%"\`), physical form (\`"shot"\`, \`"powder"\`, \`"pellet"\`, \`"ingot"\`, \`"foil"\`, \`"piece"\`), grade, particle size, etc. — emit each descriptor as a **separate attribute span next to the material**, not folded into the material's text.
+
+Examples:
+- \`"Cu (shot, 99.999%, Alfa Aesar)"\` → material \`"Cu"\` + attribute \`"form: shot"\` + attribute \`"purity: 99.999%"\` (drop supplier name, see "do NOT extract" below)
+- \`"high-purity NaCl powder"\` → material \`"NaCl"\` + attribute \`"purity: high"\` + attribute \`"form: powder"\`
+- \`"under vacuum"\` next to a step → attribute \`"atmosphere: vacuum"\` on the Activity's paragraph
+- \`"in an inert atmosphere of argon"\` → attribute \`"atmosphere: argon"\`
+
+Recommended \`<key>\` values for object descriptors when the source doesn't name them explicitly: \`purity\`, \`form\`, \`grade\`, \`atmosphere\`, \`temperature\`, \`pressure\`, \`duration\`, \`mass\`, \`concentration\`, \`rotation\`, \`size\`, \`thickness\`, \`diameter\`. Use these as canonical keys when applicable. Other open-set keys are fine when no canonical key fits.
+
+**Always extract physical form** when the source names one — even for derived materials. Form words: \`shot\`, \`shots\`, \`piece\`, \`pieces\`, \`powder\`, \`pellet\`, \`ingot\`, \`foil\`, \`rod\`, \`flake\`, \`granule\`, \`crystal\`, \`chip\`, \`slice\`, \`block\`, \`paste\`, \`slurry\`. Examples:
+- \`"shots"\` next to a material → attribute \`"form: shot"\`
+- \`"annealed ingot"\` → material \`"annealed sample"\` + attribute \`"form: ingot"\` (the form is information about the sample, the post-transformation noun goes into the material span)
+- \`"powdered NaCl"\` → material \`"NaCl"\` + attribute \`"form: powder"\`
+- The post-transformation rule and the form-attribute rule **work together**: emit both the canonical \`"<past-participle> sample"\` material span AND a \`"form: <noun>"\` attribute when the source provides the physical state.
+
+What NOT to extract as attribute: supplier names ("Alfa Aesar", "Sigma-Aldrich"), catalog numbers, brand-only identifiers without parameter meaning — these are reader-reference, not provenance-relevant attributes.
+
+## Attribute key consistency (lightweight)
+
+Attribute spans live in open-set vocabulary — there is no fixed list of allowed parameter names. To keep the output usable across many notes, follow three light rules whenever you write a \`<key>: <value>\` attribute span:
+
+- **\`snake_case\` for keys.** \`incubation_time\`, \`learning_rate\`, \`magnetic_field_strength\` — not camelCase, not Title Case, not hyphenated.
+- **Respect the source's wording.** Mirror the parameter name as the source uses it. Do not invent a fancier name, do not translate into another language, do not collapse "incubation time" and "incubation period" into one canonical form if the source distinguishes them.
+- **Same concept → same key inside one document.** If a paper uses "temperature" in step 3 and "T" in step 5 for the same physical quantity, pick one (prefer the more explicit \`temperature\`) and use it for both — within this document only. Do not normalize across documents.
+
+These rules apply to attribute spans only. material / tool / output span text is the literal phrase from the prose and is not subject to snake_case or key consistency rules.
 
 ## Connectivity rule (CRITICAL — one connected graph, no isolated steps)
 
@@ -480,10 +576,11 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
 
 ## Rules
 
+0. **OUTPUT CONTRACT (HIGHEST PRIORITY)**: every \`role: "procedure"\` H2 heading MUST be immediately followed by **at least one \`blockType: "paragraph"\` block whose \`content\` array contains one or more role-bearing spans** (\`material\` / \`tool\` / \`attribute\` / \`output\`). A sequence of consecutive H2 procedure headings with no paragraph between them is **invalid and will be rejected**. If you cannot find concrete material / tool / output content for a step, DROP the step entirely — never emit a bare procedure heading.
 1. Output MUST be valid JSON with \`title\` (string) and \`blocks\` (array).
 2. Mirror the source's own structure and voice (H1 wording, count, ordering). Required structural elements — regardless of the source's shape: a brief intro paragraph at the top, H2 procedure steps with \`stepId\`, the terminal step (or a final summary) carrying the \`role: "output"\` span(s).
 3. Every H2 that represents a meaningful action carries \`role: "procedure"\` and a \`stepId\` matching /^[a-z0-9][a-z0-9-]*$/ (kebab-case, unique within the document). Non-action H2s (e.g. a sub-heading inside the intro) do not need procedure.
-4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them.
+4. Each H2 step is followed by **one or two prose paragraphs** (\`blockType: "paragraph"\` with \`content\` spans). Inside that prose, the materials / tools / attributes / outputs used by the step appear as **inline spans with role**. Do NOT use bulletListItem to list them. (See Rule 0 — this is the highest-priority output contract.)
 5. Prefer **3-10 H2 steps** total. Split at meaningful physical actions — not at every sentence.
 6. For each role-bearing material span, decide whether it is pristine (first introduction, raw from stock) or the product of an earlier step. Set \`derivedFrom\` on the latter. If a step extends a prior step without a distinct material handoff, add \`dependsOn\` to the H2.
 7. \`dependsOn\` / span \`derivedFrom\` MUST reference a stepId defined earlier in the document.

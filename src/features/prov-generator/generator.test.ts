@@ -1987,3 +1987,120 @@ describe("階層的 parameter の親解決", () => {
     expect(fryAct?.["graphium:attributes"]?.some((a: any) => a["rdfs:label"] === "フライパンで中火 5分")).toBe(true);
   });
 });
+
+// ──────────────────────────────────
+// informed_by + inline output の entity 統合（v5+, "の結果" placeholder 抑制）
+// ──────────────────────────────────
+
+describe("informed_by + inline_output（synthetic placeholder の抑制）", () => {
+  const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
+    type: "text",
+    text,
+    styles,
+  });
+
+  const buildTwoStepDoc = (params: {
+    prevOutputText?: string;
+    currMaterialText?: string;
+    currMaterialStyle?: "inlineMaterial" | "inlineTool";
+  }) => {
+    const blocks: any[] = [
+      { id: "h-prev", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+    ];
+    if (params.prevOutputText !== undefined) {
+      blocks.push({
+        id: "p-prev",
+        type: "paragraph",
+        content: [styled(params.prevOutputText, { inlineOutput: "ent_prev_out" })],
+        children: [],
+      });
+    }
+    blocks.push({ id: "h-curr", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step B" }], children: [] });
+    if (params.currMaterialText !== undefined) {
+      blocks.push({
+        id: "p-curr",
+        type: "paragraph",
+        content: [
+          styled(params.currMaterialText, {
+            [params.currMaterialStyle ?? "inlineMaterial"]: "ent_curr_mat",
+          }),
+        ],
+        children: [],
+      });
+    }
+    const labels = new Map([
+      ["h-prev", "procedure"],
+      ["h-curr", "procedure"],
+    ]);
+    const links = [
+      {
+        id: "link-1",
+        sourceBlockId: "h-curr",
+        targetBlockId: "h-prev",
+        type: "informed_by" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    return generateProvDocument({ blocks, labels, links });
+  };
+
+  it("prev に inline_output があれば synthetic 'の結果' は作らず inline_output を proxy にする", () => {
+    const doc = buildTwoStepDoc({
+      prevOutputText: "annealed sample",
+      currMaterialText: undefined, // current 側に material 無し → unification 不成立 → proxy 経路
+    });
+    const synthetic = doc["@graph"].filter((n) => n["@id"].startsWith("result_synthetic_"));
+    expect(synthetic).toHaveLength(0);
+    // inline_output が proxy として使われている
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).toContain("inline_output_ent_prev_out");
+  });
+
+  it("prev の inline_output と current の inline_material が同 label なら 1 Entity に merge する", () => {
+    const doc = buildTwoStepDoc({
+      prevOutputText: "annealed sample",
+      currMaterialText: "annealed sample",
+    });
+    const entities = doc["@graph"].filter((n) => n["@type"] === "prov:Entity");
+    // "annealed sample" を表す Entity は inline_output_ent_prev_out 1 個のみ
+    const merged = entities.filter((e) => e["rdfs:label"] === "annealed sample");
+    expect(merged).toHaveLength(1);
+    expect(merged[0]["@id"]).toBe("inline_output_ent_prev_out");
+    // synthetic placeholder も作られない
+    const synthetic = doc["@graph"].filter((n) => n["@id"].startsWith("result_synthetic_"));
+    expect(synthetic).toHaveLength(0);
+    // current の inline_material は graph 上から消えている
+    const orphan = doc["@graph"].filter((n) => n["@id"] === "inline_material_ent_curr_mat");
+    expect(orphan).toHaveLength(0);
+    // merged entity が両方向に edge を持つ
+    const mergedEnt = merged[0] as any;
+    const usedBy = doc["@graph"]
+      .filter((n) => n["@type"] === "prov:Activity")
+      .filter((act: any) =>
+        (act["prov:used"] ?? []).some((u: any) => u["@id"] === merged[0]["@id"]),
+      );
+    expect(usedBy.map((a) => a["@id"])).toContain("activity_h-curr");
+    expect(mergedEnt["prov:wasGeneratedBy"]?.["@id"]).toBe("activity_h-prev");
+  });
+
+  it("inline_output / inline_material どちらも無ければ従来通り synthetic placeholder を作る", () => {
+    const doc = buildTwoStepDoc({});
+    const synthetic = doc["@graph"].filter((n) => n["@id"] === "result_synthetic_h-prev");
+    expect(synthetic).toHaveLength(1);
+  });
+
+  it("inline_tool も derivedFrom 経由で inline_output と merge する（label が一致すれば）", () => {
+    const doc = buildTwoStepDoc({
+      prevOutputText: "calibrated furnace",
+      currMaterialText: "calibrated furnace",
+      currMaterialStyle: "inlineTool",
+    });
+    const merged = doc["@graph"].filter(
+      (n) => n["@type"] === "prov:Entity" && n["rdfs:label"] === "calibrated furnace",
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]["@id"]).toBe("inline_output_ent_prev_out");
+  });
+});

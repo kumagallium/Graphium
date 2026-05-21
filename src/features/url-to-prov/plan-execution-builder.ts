@@ -1,10 +1,14 @@
-// Plan ノート + 実施ノートの組み立て（Phase 5a, §6 出力構造）。
+// Plan ノート + 実施ノートの組み立て（external-source-extraction-prompt.md §6）。
 //
-// MatPROV プロファイルの抽出結果は配列（procedure[]）で、論文 1 本に対し
-// procedure が N 本入りうる。Graphium 側の出力は以下のように分ける:
+// 抽出器の出力は `ProvIngesterOutput[]` で受け取る。要素 1 個が 1 procedure に対応する:
 //   - N == 1 → 単一の実施ノート（plan ノートは作らない）
 //   - N >= 2 → 1 つの plan ノート + N 個の実施ノート
 //             実施ノートに partOfPlanNoteId（plan ノートのファイル ID）を付ける
+//
+// 現在の open-set prompt は 1 回の抽出につき 1 ProvIngesterOutput を返すため、
+// 呼び出し側は通常 `[output]` として N=1 で渡す（→ plan ノートは作られない）。
+// 将来、LLM 出力を procedureGroup 単位で複数 ProvIngesterOutput に分割するように
+// なれば、その配列をそのまま渡すだけで plan + 実施構造に展開される。
 //
 // ノートファイル ID はストレージプロバイダーが保存時に発番するため、ここでは
 // ドキュメント自体は組み立てるが ID 解決は呼び出し側の責務とする。設計は
@@ -16,11 +20,7 @@
 // この helper は (1) (2) 用のドキュメント組み立てだけを担う。
 
 import type { GraphiumDocument } from "../../lib/document-types";
-import type { MatProvOutput, MatProvProcedure } from "../../server/services/prov-ingester-profiles";
-import {
-  buildBlocksFromProcedure,
-  matProvToProvIngester,
-} from "../../server/services/prov-ingester-profiles";
+import type { ProvIngesterOutput } from "../../server/services/prov-ingester";
 import { buildProvNoteDocument } from "./prov-note-builder";
 
 export type PlanExecutionSourceMeta = {
@@ -49,62 +49,45 @@ export type PlanExecutionBuildResult = {
 };
 
 /**
- * MatPROV 形式 procedures から plan/execution ノートを組み立てる。
+ * 抽出結果（procedure ごとの ProvIngesterOutput 配列）から plan/execution
+ * ノートを組み立てる。
  *
  * planNote.partOfPlanNoteId は当然 undefined。executionNote.partOfPlanNoteId は
  * **未設定で返す**（plan ID が確定するのは保存後なので、呼び出し側で patch する）。
  */
 export function buildPlanAndExecutionNotes(
-  procedures: MatProvOutput,
+  procedures: ProvIngesterOutput[],
   sourceMeta: PlanExecutionSourceMeta,
 ): PlanExecutionBuildResult {
   if (procedures.length === 0) {
     return { planNote: null, executionNotes: [], procedureLabels: [] };
   }
 
-  const procedureLabels = procedures.map((p) => safeProcedureLabel(p));
+  const procedureLabels = procedures.map((p, i) => safeProcedureLabel(p, i));
 
-  // 実施ノート列を組み立て
-  const executionNotes: GraphiumDocument[] = procedures.map((procedure) => {
-    const out = matProvToProvIngester(procedure);
-    return buildProvNoteDocument({
-      title: out.title,
-      blocks: out.blocks,
+  const executionNotes: GraphiumDocument[] = procedures.map((procedure) =>
+    buildProvNoteDocument({
+      title: procedure.title,
+      blocks: procedure.blocks,
       sourceUrl: sourceMeta.sourceUrl,
       sourcePdfFileId: sourceMeta.sourcePdfFileId,
       sourceTitle: sourceMeta.sourceTitle,
       sourceFetchedAt: sourceMeta.sourceFetchedAt,
       model: sourceMeta.model,
       tokenUsage: sourceMeta.tokenUsage,
-    });
-  });
+    }),
+  );
 
   if (procedures.length === 1) {
     return { planNote: null, executionNotes, procedureLabels };
   }
 
-  const planNote = buildPlanNote(procedures, sourceMeta, procedureLabels);
+  const planNote = buildPlanNote(procedures.length, sourceMeta, procedureLabels);
   return { planNote, executionNotes, procedureLabels };
 }
 
-/** procedure.label が空のときのフォールバック */
-function safeProcedureLabel(p: MatProvProcedure): string {
-  return p.label?.trim() || extractDefaultLabel(p) || "Procedure";
-}
-
-function extractDefaultLabel(p: MatProvProcedure): string {
-  // @graph の中で最初の Activity の label を使う
-  for (const item of p["@graph"]) {
-    if (item["@type"] === "Activity") {
-      const label = item.label;
-      if (Array.isArray(label) && label[0]) {
-        const v = label[0]["@value"];
-        if (typeof v === "string") return v;
-        if (Array.isArray(v) && typeof v[0] === "string") return v[0];
-      }
-    }
-  }
-  return "";
+function safeProcedureLabel(p: ProvIngesterOutput, index: number): string {
+  return p.title?.trim() || `Procedure ${index + 1}`;
 }
 
 /**
@@ -118,7 +101,7 @@ function extractDefaultLabel(p: MatProvProcedure): string {
  * patch するため、ここではプレースホルダ的に title のみを bullet 行に書く。
  */
 function buildPlanNote(
-  procedures: MatProvOutput,
+  procedureCount: number,
   sourceMeta: PlanExecutionSourceMeta,
   procedureLabels: string[],
 ): GraphiumDocument {
@@ -159,7 +142,7 @@ function buildPlanNote(
     content: [
       {
         type: "text",
-        text: `This source describes ${procedures.length} distinct synthesis procedures.`,
+        text: `This source describes ${procedureCount} distinct procedures.`,
         styles: {},
       },
     ],
@@ -247,6 +230,3 @@ export function withPartOfPlanNoteId(
 ): GraphiumDocument {
   return { ...doc, partOfPlanNoteId: planNoteId };
 }
-
-// 内部利用（テスト用に export しておく）
-export { buildBlocksFromProcedure };

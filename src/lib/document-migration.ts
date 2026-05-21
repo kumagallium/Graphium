@@ -53,7 +53,56 @@ export function migrateToLatest(doc: GraphiumDocument): GraphiumDocument {
   // ことで、古いファイルを読むたびに idempotent に正規化する。
   migrateConceptKindToClaim(doc);
 
+  // 未知の inline style を strip する（version 非依存、毎回 idempotent）。
+  // 過去に bug や手動編集で `inlineProcedure` のような schema 外の style キーが
+  // ノートに紛れ込むと BlockNote の `useCreateBlockNote` が initialContent の
+  // ロードに失敗して画面全体が落ちる。schema に登録されている 4 種以外の
+  // `inline*` キーは安全のため除去する。
+  stripUnknownInlineStyles(doc);
+
   return doc;
+}
+
+const KNOWN_INLINE_STYLE_KEYS = new Set([
+  "inlineMaterial",
+  "inlineTool",
+  "inlineAttribute",
+  "inlineOutput",
+]);
+
+/**
+ * BlockNote schema に登録されていない `inline*` style を strip する。
+ * BlockNote default の `bold` / `italic` / `underline` / `strike` / `code` /
+ * `textColor` / `backgroundColor` 等は触らない（"inline" 接頭辞ではないため）。
+ */
+function stripUnknownInlineStyles(doc: GraphiumDocument): void {
+  for (const page of doc.pages ?? []) {
+    walkBlocksForStyleCleanup(page.blocks ?? []);
+  }
+}
+
+function walkBlocksForStyleCleanup(blocks: any[]): void {
+  for (const b of blocks) {
+    cleanupContentStyles(b?.content);
+    if (Array.isArray(b?.children) && b.children.length > 0) {
+      walkBlocksForStyleCleanup(b.children);
+    }
+  }
+}
+
+function cleanupContentStyles(content: any): void {
+  if (!Array.isArray(content)) return;
+  for (const c of content) {
+    if (c?.type === "text" && c.styles && typeof c.styles === "object") {
+      for (const key of Object.keys(c.styles)) {
+        if (key.startsWith("inline") && !KNOWN_INLINE_STYLE_KEYS.has(key)) {
+          delete c.styles[key];
+        }
+      }
+    } else if (c?.type === "link" && Array.isArray(c.content)) {
+      cleanupContentStyles(c.content);
+    }
+  }
 }
 
 /**

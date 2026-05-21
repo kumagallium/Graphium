@@ -1,8 +1,8 @@
-// Material-science benchmark runner（Phase 5a）。
+// Material-science benchmark runner（v1.2 open-set 化以降）。
 //
 // 1. fixtures/ から (*.input.txt, *.gold.json) のペアを読む
-// 2. material-science prompt + さくら AI engine で抽出
-// 3. evaluator で 4 指標を計算
+// 2. open-set prompt（src/server/services/prov-ingester.ts）+ さくら AI engine で抽出
+// 3. evaluator で 5 集合（Activities / Materials / Tools / Edges / Parameters）を比較
 // 4. reports/ に CSV と JSON を出力、stdout にサマリ表示
 //
 // 使い方:
@@ -17,18 +17,28 @@ import { dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildMaterialScienceSystemPrompt,
-  buildMaterialScienceUserMessage,
-  parseMatProvOutput,
-  type MatProvOutput,
-} from "../../../src/server/services/prov-ingester-profiles/index.js";
+  buildProvIngesterSystemPrompt,
+  buildProvIngesterUserMessage,
+  parseProvIngesterOutput,
+  type ProvIngesterOutput,
+} from "../../../src/server/services/prov-ingester.js";
 import {
   evaluateSample,
+  evaluateMatProvSample,
   aggregate,
+  extractSetsFromGold,
+  extractSetsFromOutput,
   prf,
+  type MatProvOutput,
   type SampleMetric,
+  type SpanSets,
 } from "./evaluator.js";
 import { readSakuraOptionsFromEnv, runSakuraChat } from "./sakura-runner.js";
+import {
+  buildMaterialScienceSystemPrompt,
+  buildMaterialScienceUserMessage,
+} from "./matprov-prompt.js";
+import { parseMatProvOutput } from "./matprov-parser.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(__dirname, "fixtures");
@@ -42,7 +52,7 @@ type FixturePair = {
 
 type SampleResult = {
   id: string;
-  predicted: MatProvOutput;
+  predicted: ProvIngesterOutput[];
   gold: MatProvOutput;
   metric: SampleMetric;
   durationMs: number;
@@ -54,6 +64,7 @@ async function main() {
   const filterPattern = args.fixture ? new RegExp(args.fixture) : null;
   const dryRun = args.dryRun ?? false;
   const language = args.language ?? "en";
+  const promptMode: "open-set" | "matprov" = args.prompt === "matprov" ? "matprov" : "open-set";
 
   const pairs = listFixtures(filterPattern);
   if (pairs.length === 0) {
@@ -64,6 +75,7 @@ async function main() {
     process.exit(1);
   }
   console.log(`Found ${pairs.length} fixture(s).`);
+  console.log(`Prompt mode: ${promptMode}`);
 
   const sakura = readSakuraOptionsFromEnv();
   if (!dryRun && !sakura) {
@@ -74,7 +86,10 @@ async function main() {
     process.exit(2);
   }
 
-  const systemPrompt = buildMaterialScienceSystemPrompt(language);
+  const systemPrompt =
+    promptMode === "matprov"
+      ? buildMaterialScienceSystemPrompt(language)
+      : buildProvIngesterSystemPrompt(language);
 
   const results: SampleResult[] = [];
   for (const pair of pairs) {
@@ -92,32 +107,64 @@ async function main() {
         id: pair.id,
         predicted: [],
         gold,
-        metric: evaluateSample(pair.id, [], gold),
+        metric:
+          promptMode === "matprov"
+            ? evaluateMatProvSample(pair.id, [], gold)
+            : evaluateSample(pair.id, [], gold),
         durationMs: 0,
       });
       continue;
     }
 
-    const userMessage = buildMaterialScienceUserMessage({
-      title: pair.id,
-      text: inputText,
-    });
-    let predicted: MatProvOutput = [];
+    const userMessage =
+      promptMode === "matprov"
+        ? buildMaterialScienceUserMessage({
+            url: `bench://${pair.id}`,
+            title: pair.id,
+            text: inputText,
+          })
+        : buildProvIngesterUserMessage({
+            url: `bench://${pair.id}`,
+            title: pair.id,
+            text: inputText,
+          });
+    let predicted: ProvIngesterOutput[] = [];
+    let predictedMatprov: MatProvOutput = [];
     let durationMs = 0;
     let tokenUsage: SampleResult["tokenUsage"];
     try {
       const llm = await runSakuraChat(sakura!, systemPrompt, userMessage);
       durationMs = llm.durationMs;
       tokenUsage = llm.usage;
-      predicted = parseMatProvOutput(llm.message);
-      if (predicted.length === 0) {
-        console.log(`  ! parse returned 0 procedures (raw size ${llm.message.length} chars)`);
+      if (promptMode === "matprov") {
+        const parsed = parseMatProvOutput(llm.message) as MatProvOutput;
+        if (parsed.length === 0) {
+          const dumpPath = join(REPORTS_DIR, `raw-matprov-${pair.id}-${Date.now()}.txt`);
+          mkdirSync(REPORTS_DIR, { recursive: true });
+          writeFileSync(dumpPath, llm.message);
+          console.log(`  ! matprov parse returned 0 procedures (raw size ${llm.message.length} chars). Dumped to ${dumpPath}`);
+        } else {
+          predictedMatprov = parsed;
+        }
+      } else {
+        const parsed = parseProvIngesterOutput(llm.message);
+        if (parsed.blocks.length === 0) {
+          const dumpPath = join(REPORTS_DIR, `raw-${pair.id}-${Date.now()}.txt`);
+          mkdirSync(REPORTS_DIR, { recursive: true });
+          writeFileSync(dumpPath, llm.message);
+          console.log(`  ! parse returned 0 blocks (raw size ${llm.message.length} chars). Dumped to ${dumpPath}`);
+        } else {
+          predicted = [parsed];
+        }
       }
     } catch (err) {
       console.log(`  ! LLM call failed: ${err instanceof Error ? err.message : err}`);
     }
 
-    const metric = evaluateSample(pair.id, predicted, gold);
+    const metric =
+      promptMode === "matprov"
+        ? evaluateMatProvSample(pair.id, predictedMatprov, gold)
+        : evaluateSample(pair.id, predicted, gold);
     printSampleSummary(metric);
     results.push({ id: pair.id, predicted, gold, metric, durationMs, tokenUsage });
   }
@@ -141,12 +188,14 @@ function parseArgs(argv: string[]): {
   fixture?: string;
   dryRun?: boolean;
   language?: string;
+  prompt?: string;
 } {
-  const out: { fixture?: string; dryRun?: boolean; language?: string } = {};
+  const out: { fixture?: string; dryRun?: boolean; language?: string; prompt?: string } = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--fixture") out.fixture = argv[++i];
     else if (argv[i] === "--dry-run") out.dryRun = true;
     else if (argv[i] === "--language") out.language = argv[++i];
+    else if (argv[i] === "--prompt") out.prompt = argv[++i];
   }
   return out;
 }
@@ -280,6 +329,10 @@ function buildCsv(results: SampleResult[]): string {
   return rows.join("\n");
 }
 
+function dedupe(arr: string[]): string[] {
+  return Array.from(new Set(arr));
+}
+
 function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>): string {
   return JSON.stringify(
     {
@@ -294,14 +347,62 @@ function buildJson(results: SampleResult[], totals: ReturnType<typeof aggregate>
         parameters: { ...totals.parameters, ...prf(totals.parameters) },
         tokenF1: totals.tokenF1,
       },
-      samples: results.map((r) => ({
-        id: r.id,
-        durationMs: r.durationMs,
-        tokenUsage: r.tokenUsage,
-        goldProcedures: r.metric.goldProcedureCount,
-        predProcedures: r.metric.predictedProcedureCount,
-        metric: r.metric,
-      })),
+      samples: results.map((r) => {
+        // attribute spans の生テキストを抜き出してダンプ（parameter が空のとき診断に使う）
+        const attributeSpans: string[] = [];
+        for (const out of r.predicted) {
+          const walk = (blocks: typeof out.blocks): void => {
+            for (const b of blocks) {
+              for (const s of b.content ?? []) {
+                if (s.role === "attribute" && s.text) attributeSpans.push(s.text);
+              }
+              if (b.children) walk(b.children);
+            }
+          };
+          walk(out.blocks);
+        }
+        const predSets: SpanSets = r.predicted
+          .map((o) => extractSetsFromOutput(o))
+          .reduce(
+            (acc, cur) => ({
+              activities: acc.activities.concat(cur.activities),
+              materials: acc.materials.concat(cur.materials),
+              tools: acc.tools.concat(cur.tools),
+              edges: acc.edges.concat(cur.edges),
+              parameters: acc.parameters.concat(cur.parameters),
+            }),
+            { activities: [], materials: [], tools: [], edges: [], parameters: [] } as SpanSets,
+          );
+        const goldSets = extractSetsFromGold(r.gold);
+        // synonym entry の dump 用フォーマット: "A | B | C" のように `|` で連結
+        const fmtSyns = (entries: { synonyms: string[] }[]) =>
+          entries.map((e) => e.synonyms.join(" | "));
+        const fmtParams = (entries: { canonicalKey: string; valueSyns: string[] }[]) =>
+          entries.map((e) => `${e.canonicalKey}::${e.valueSyns.join(" | ")}`);
+        return {
+          id: r.id,
+          durationMs: r.durationMs,
+          tokenUsage: r.tokenUsage,
+          goldProcedures: r.metric.goldProcedureCount,
+          predProcedures: r.metric.predictedProcedureCount,
+          metric: r.metric,
+          attributeSpansRaw: dedupe(attributeSpans),
+          sets: {
+            predicted: {
+              activities: dedupe(predSets.activities),
+              materials: dedupe(predSets.materials),
+              tools: dedupe(predSets.tools),
+              parameters: dedupe(predSets.parameters),
+            },
+            gold: {
+              activities: dedupe(fmtSyns(goldSets.activities)),
+              materials: dedupe(fmtSyns(goldSets.materials)),
+              tools: dedupe(fmtSyns(goldSets.tools)),
+              parameters: dedupe(fmtParams(goldSets.parameters)),
+            },
+          },
+        };
+      }),
     },
     null,
     2,

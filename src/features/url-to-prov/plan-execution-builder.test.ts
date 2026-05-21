@@ -3,44 +3,56 @@ import {
   buildPlanAndExecutionNotes,
   withPartOfPlanNoteId,
 } from "./plan-execution-builder";
-import type { MatProvOutput } from "../../server/services/prov-ingester-profiles";
+import type { ProvIngesterOutput } from "../../server/services/prov-ingester";
 
 const sourceMeta = {
   paperTitle: "Test paper",
   sourceUrl: "https://example.com/paper",
   sourceTitle: "Test paper",
-  sourceFetchedAt: "2026-05-17T00:00:00.000Z",
+  sourceFetchedAt: "2026-05-18T00:00:00.000Z",
 };
 
-const singleProcedure: MatProvOutput = [
+const single: ProvIngesterOutput[] = [
   {
-    label: "Cu_simple",
-    "@graph": [
-      { "@type": "Activity", "@id": "a1", label: [{ "@value": "sealing" }] },
-      { "@type": "Entity", "@id": "e1", label: [{ "@value": "Cu" }], type: [{ "@value": "material" }] },
-      { "@type": "Usage", activity: "a1", entity: "e1" },
+    title: "Cu_simple",
+    blocks: [
+      {
+        blockType: "heading",
+        level: 2,
+        role: "procedure",
+        stepId: "sealing",
+        text: "Sealing",
+      },
+      {
+        blockType: "paragraph",
+        content: [
+          { text: "Seal " },
+          { text: "Cu", role: "material" },
+          { text: " in the tube." },
+        ],
+      },
     ],
   },
 ];
 
-const multiProcedure: MatProvOutput = [
+const multi: ProvIngesterOutput[] = [
   {
-    label: "Cu2-deltaS",
-    "@graph": [
-      { "@type": "Activity", "@id": "a1", label: [{ "@value": "sealing" }] },
+    title: "Cu2-deltaS",
+    blocks: [
+      { blockType: "heading", level: 2, text: "Sealing", role: "procedure", stepId: "sealing" },
     ],
   },
   {
-    label: "Cu2-deltaFexS",
-    "@graph": [
-      { "@type": "Activity", "@id": "a1", label: [{ "@value": "sealing" }] },
+    title: "Cu2-deltaFexS",
+    blocks: [
+      { blockType: "heading", level: 2, text: "Sealing", role: "procedure", stepId: "sealing" },
     ],
   },
 ];
 
 describe("buildPlanAndExecutionNotes", () => {
   it("1 procedure では plan ノートを作らない", () => {
-    const r = buildPlanAndExecutionNotes(singleProcedure, sourceMeta);
+    const r = buildPlanAndExecutionNotes(single, sourceMeta);
     expect(r.planNote).toBeNull();
     expect(r.executionNotes).toHaveLength(1);
     expect(r.executionNotes[0].title).toBe("Cu_simple");
@@ -48,15 +60,24 @@ describe("buildPlanAndExecutionNotes", () => {
   });
 
   it("複数 procedure では plan + 各実施ノートを返す", () => {
-    const r = buildPlanAndExecutionNotes(multiProcedure, sourceMeta);
+    const r = buildPlanAndExecutionNotes(multi, sourceMeta);
     expect(r.planNote).not.toBeNull();
     expect(r.executionNotes).toHaveLength(2);
     expect(r.procedureLabels).toEqual(["Cu2-deltaS", "Cu2-deltaFexS"]);
     expect(r.planNote!.title).toBe("Test paper");
-    // plan ノート本文にプロシージャ名が含まれる（bullet list）
     const planText = JSON.stringify(r.planNote!.pages[0].blocks);
     expect(planText).toContain("Cu2-deltaS");
     expect(planText).toContain("Cu2-deltaFexS");
+  });
+
+  it("title が空の procedure は連番ラベルでフォールバック", () => {
+    const withoutTitle: ProvIngesterOutput[] = [
+      { title: "", blocks: multi[0].blocks },
+      { title: "Cu2-deltaFexS", blocks: multi[1].blocks },
+    ];
+    const r = buildPlanAndExecutionNotes(withoutTitle, sourceMeta);
+    expect(r.procedureLabels[0]).toBe("Procedure 1");
+    expect(r.procedureLabels[1]).toBe("Cu2-deltaFexS");
   });
 
   it("空配列は両方空で返す", () => {
@@ -68,7 +89,7 @@ describe("buildPlanAndExecutionNotes", () => {
 
 describe("withPartOfPlanNoteId", () => {
   it("partOfPlanNoteId を付与した新オブジェクトを返す", () => {
-    const r = buildPlanAndExecutionNotes(singleProcedure, sourceMeta);
+    const r = buildPlanAndExecutionNotes(single, sourceMeta);
     const original = r.executionNotes[0];
     expect(original.partOfPlanNoteId).toBeUndefined();
     const patched = withPartOfPlanNoteId(original, "plan-123");

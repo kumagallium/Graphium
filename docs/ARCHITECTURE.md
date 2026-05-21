@@ -181,34 +181,40 @@ small.
 | Step | File | What it does |
 |---|---|---|
 | Fetch | `src/server/services/url-fetcher.ts` | Downloads a URL, extracts plain text (HTML / readable subset) |
-| Prompt | `src/server/services/prov-ingester.ts` (generic) or `src/server/services/prov-ingester-profiles/` (per-domain) | Builds the system + user prompt for the LLM |
+| Prompt | `src/server/services/prov-ingester.ts` | Single open-set prompt for any procedural domain (cooking / lab / manufacturing / ML / …) — builds the system + user prompt for the LLM |
 | Parse | same module | Validates the LLM JSON and strips invalid spans / roles |
 | Translate | `src/features/url-to-prov/prov-note-builder.ts` | Lifts the parsed output into a `GraphiumDocument` with labels / inline highlights / `provLinks` already attached |
 
-The generic prompt expects the LLM to emit *prose with inline-highlighted
-spans* (Phase F format, 2026-05). Domain profiles can use other wire
-formats and translate into the same Graphium document. The
-`material-science` profile (`prov-ingester-profiles/material-science-prompt.ts`)
-reuses the MatPROV PROV-DM JSON schema as-is (`[{label, @graph}]`); the
-translation layer (`matprov-to-prov-ingester.ts`) walks the graph,
-emits one H2 procedure heading per Activity, and lays Usage / Generation
-Entities into the paragraph as inline `material` / `tool` / `output`
-spans with `derivedFrom` links between steps.
+The prompt asks the LLM to emit *prose with inline-highlighted spans*
+(Phase F format, 2026-05): paragraphs whose `content` is a list of spans,
+where role-bearing spans (`material` / `tool` / `attribute` / `output`)
+get inline highlights and plain narrative spans carry the connectors.
+The vocabulary is open — there is no fixed list of allowed parameter
+names. The prompt only enforces a few lightweight conventions
+(`<key>: <value>` attribute spans, `snake_case` keys, "same concept →
+same key inside one document").
 
-When a profile returns multiple procedures from one source (e.g., a
-paper with several composition variants), `plan-execution-builder.ts`
-splits the output into a **plan note** that groups them plus N
-**execution notes** that each carry the actual PROV graph. The execution
-notes back-reference the plan via `partOfPlanNoteId`
-([DATA_MODEL.md §2](./DATA_MODEL.md#2-the-note-graphiumdocument)).
+When the LLM returns multiple procedures from one source (e.g., a paper
+with several composition variants), `plan-execution-builder.ts` splits
+the output into a **plan note** that groups them plus N **execution
+notes** that each carry the actual PROV graph. The execution notes
+back-reference the plan via `partOfPlanNoteId`
+([DATA_MODEL.md §2](./DATA_MODEL.md#2-the-note-graphiumdocument)). The
+current prompt returns one `ProvIngesterOutput` per call so the builder
+typically runs with N = 1; the infrastructure is ready for a future
+`procedureGroup` extension that returns multiple outputs at once.
 
 Quality is tracked by a benchmark harness at
 `tests/benchmark/material-science/`. It loads `(input.txt, gold.json)`
-fixture pairs, runs the prompt through a configurable LLM
-(さくら AI engine OpenAI-compatible API is the default first runner),
-and reports normalized exact-match precision / recall / F1 plus a
-token-F1 sub-metric across five MatPROV-shape sets: Activities,
-Materials, Tools, Edges, Parameters. Run with `pnpm test:benchmark`.
+fixture pairs (gold is in MatPROV PROV-DM JSON-LD format), normalizes
+both predicted spans and gold `@graph` items into five comparable sets
+(Activities / Materials / Tools / Edges / Parameters), and reports
+normalized exact-match precision / recall / F1 plus a token-F1
+sub-metric. Parameter keys are normalized through a synonym map
+(`temperature` ⇔ `temp` ⇔ `T`, `duration` ⇔ `time` ⇔ …) so open-set
+output stays comparable to MatPROV-style canonical keys. The first
+runner is the さくら AI engine OpenAI-compatible API. Run with
+`pnpm test:benchmark`.
 
 ### 3.3 Knowledge layer
 
@@ -514,7 +520,7 @@ people most often need to find.
 | Reference table (related notes) | `src/features/index-table/` |
 | Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
 | Onboarding flow | `src/features/onboarding/` |
-| URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts`, `src/server/services/prov-ingester-profiles/` |
+| URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |

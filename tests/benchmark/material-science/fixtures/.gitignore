@@ -1,0 +1,9 @@
+# Paper paragraph text — copyrighted, do not commit. Seed example is an
+# exception (it comes from MatPROV's own published prompt file, which is
+# part of an open-source repository).
+*.input.txt
+!seed-*.input.txt
+
+# gold standards from HF dataset are commit-friendly (extracted PROV graphs,
+# no paper text). New fetches via `pnpm test:benchmark:fetch` write
+# `<slug>.gold.json` here.

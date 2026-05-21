@@ -1,0 +1,385 @@
+[
+  {
+    "label": "Sm0.5Ca0.5−xSrxMnO3_solid-state reaction",
+    "@graph": [
+      {
+        "@type": "Entity",
+        "@id": "e1",
+        "label": [
+          {
+            "@value": "MnCO3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e2",
+        "label": [
+          {
+            "@value": "Sm2O3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e3",
+        "label": [
+          {
+            "@value": "SrCO3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e4",
+        "label": [
+          {
+            "@value": "CaCO3",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e5",
+        "label": [
+          {
+            "@value": [
+              "agate mortar",
+              "mortar"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e6",
+        "label": [
+          {
+            "@value": [
+              "pestle",
+              "agate pestle"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e7",
+        "label": [
+          {
+            "@value": "weighed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e12",
+        "label": [
+          {
+            "@value": "mixed sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e8",
+        "label": [
+          {
+            "@value": [
+              "planetary ball mill",
+              "ball mill"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "tool",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e9",
+        "label": [
+          {
+            "@value": [
+              "ball-milled sample",
+              "milled sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e10",
+        "label": [
+          {
+            "@value": "calcined sample",
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Entity",
+        "@id": "e11",
+        "label": [
+          {
+            "@value": [
+              "sintered sample",
+              "pelleted sample"
+            ],
+            "@language": "en"
+          }
+        ],
+        "type": [
+          {
+            "@value": "material",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a1",
+        "label": [
+          {
+            "@value": "weighing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a0",
+        "label": [
+          {
+            "@value": "mixing",
+            "@language": "en"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a2",
+        "label": [
+          {
+            "@value": [
+              "ball-milling",
+              "milling"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "6 h",
+              "6 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a3",
+        "label": [
+          {
+            "@value": "calcining",
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": "800 °C",
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Activity",
+        "@id": "a4",
+        "label": [
+          {
+            "@value": [
+              "sintering",
+              "pelletizing"
+            ],
+            "@language": "en"
+          }
+        ],
+        "matprov:temperature": [
+          {
+            "@value": [
+              "850 °C, 900 °C, 950 °C, 980 °C, 1020 °C and 1050 °C",
+              "850, 900, 950, 980, 1020 and 1050 °C",
+              "850 °C, 900 °C, 950 °C, 980 °C, 1020 °C, 1050 °C",
+              "850, 900, 950, 980, 1020, 1050 °C"
+            ],
+            "@type": "xsd:string"
+          }
+        ],
+        "matprov:duration": [
+          {
+            "@value": [
+              "12 h",
+              "12 hours"
+            ],
+            "@type": "xsd:string"
+          }
+        ]
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e1"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e2"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e3"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a1",
+        "entity": "e4"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e5"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e6"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a1",
+        "entity": "e7"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e8"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a2",
+        "entity": "e9"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a3",
+        "entity": "e9"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a3",
+        "entity": "e10"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a4",
+        "entity": "e10"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a4",
+        "entity": "e11"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a0",
+        "entity": "e7"
+      },
+      {
+        "@type": "Generation",
+        "activity": "a0",
+        "entity": "e12"
+      },
+      {
+        "@type": "Usage",
+        "activity": "a2",
+        "entity": "e12"
+      }
+    ]
+  }
+]

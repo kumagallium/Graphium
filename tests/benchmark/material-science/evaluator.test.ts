@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { MatProvOutput } from "../../../src/server/services/prov-ingester-profiles/matprov-types";
-import { evaluateSample, normalize, prf } from "./evaluator";
+import type { ProvIngesterOutput } from "../../../src/server/services/prov-ingester";
+import {
+  canonicalKey,
+  evaluateSample,
+  extractSetsFromGold,
+  extractSetsFromOutput,
+  normalize,
+  prf,
+  type MatProvOutput,
+} from "./evaluator";
 
 const gold: MatProvOutput = [
   {
@@ -8,7 +16,7 @@ const gold: MatProvOutput = [
     "@graph": [
       { "@type": "Entity", "@id": "e1", label: [{ "@value": "Cu" }], type: [{ "@value": "material" }] },
       { "@type": "Entity", "@id": "e2", label: [{ "@value": "silica tube" }], type: [{ "@value": "tool" }] },
-      { "@type": "Activity", "@id": "a1", label: [{ "@value": "Sealing" }] },
+      { "@type": "Activity", "@id": "a1", label: [{ "@value": "Sealing" }], "matprov:atmosphere": [{ "@value": "vacuum" }] },
       { "@type": "Usage", activity: "a1", entity: "e1" },
       { "@type": "Usage", activity: "a1", entity: "e2" },
       { "@type": "Entity", "@id": "e3", label: [{ "@value": "sealed sample" }], type: [{ "@value": "material" }] },
@@ -17,22 +25,78 @@ const gold: MatProvOutput = [
   },
 ];
 
-describe("evaluator", () => {
+const matchingOutput: ProvIngesterOutput = {
+  title: "Cu_simple",
+  blocks: [
+    { blockType: "heading", level: 2, role: "procedure", stepId: "sealing", text: "Sealing" },
+    {
+      blockType: "paragraph",
+      content: [
+        { text: "Place " },
+        { text: "Cu", role: "material" },
+        { text: " in a " },
+        { text: "silica tube", role: "tool" },
+        { text: " under " },
+        { text: "atmosphere: vacuum", role: "attribute" },
+        { text: " to obtain the " },
+        { text: "sealed sample", role: "output" },
+        { text: "." },
+      ],
+    },
+  ],
+};
+
+describe("normalize / canonicalKey", () => {
   it("normalize は lowercase + 句読点除去 + 空白集約", () => {
     expect(normalize("Spark Plasma Sintering!")).toBe("spark plasma sintering");
     expect(normalize("99.999 %")).toBe("99 999");
     expect(normalize("  Cu  ")).toBe("cu");
   });
 
-  it("完全一致ペアでは P=R=F1=1", () => {
-    const m = evaluateSample("t1", gold, gold);
-    const acts = prf(m.total.activities);
-    const mats = prf(m.total.materials);
-    expect(acts.precision).toBe(1);
-    expect(acts.recall).toBe(1);
-    expect(acts.f1).toBe(1);
-    expect(mats.precision).toBe(1);
-    expect(mats.recall).toBe(1);
+  it("canonicalKey は synonym map で表記揺れを吸収する", () => {
+    expect(canonicalKey("temperature")).toBe("temperature");
+    expect(canonicalKey("temp")).toBe("temperature");
+    expect(canonicalKey("T")).toBe("temperature");
+    expect(canonicalKey("time")).toBe("duration");
+    expect(canonicalKey("temperature_start")).toBe("temperature_start");
+    // 未知 key は snake_case 正規化だけ
+    expect(canonicalKey("Magnetic Field Strength")).toBe("magnetic_field_strength");
+  });
+});
+
+describe("extractSetsFromOutput", () => {
+  it("H2 procedure の text を Activity 集合に入れる", () => {
+    const sets = extractSetsFromOutput(matchingOutput);
+    expect(sets.activities).toEqual(["Sealing"]);
+  });
+
+  it("material/tool/output span を集合化、output は material 側に合算する", () => {
+    const sets = extractSetsFromOutput(matchingOutput);
+    expect(sets.materials.sort()).toEqual(["Cu", "sealed sample"].sort());
+    expect(sets.tools).toEqual(["silica tube"]);
+  });
+
+  it("attribute span は key:value で parameters 集合に入る", () => {
+    const sets = extractSetsFromOutput(matchingOutput);
+    expect(sets.parameters).toContain(`atmosphere::vacuum`);
+  });
+
+  it("scope 内 span から Usage/Generation edge を導く", () => {
+    const sets = extractSetsFromOutput(matchingOutput);
+    expect(sets.edges).toContain("Usage::sealing::cu");
+    expect(sets.edges).toContain("Usage::sealing::silica tube");
+    expect(sets.edges).toContain("Generation::sealing::sealed sample");
+  });
+});
+
+describe("evaluateSample", () => {
+  it("ProvIngesterOutput と gold @graph が完全一致なら F1=1（5 集合とも）", () => {
+    const m = evaluateSample("t1", [matchingOutput], gold);
+    expect(prf(m.total.activities).f1).toBe(1);
+    expect(prf(m.total.materials).f1).toBe(1);
+    expect(prf(m.total.tools).f1).toBe(1);
+    expect(prf(m.total.edges).f1).toBe(1);
+    expect(prf(m.total.parameters).f1).toBe(1);
   });
 
   it("予測が空のときは P=R=F1=0", () => {
@@ -47,35 +111,112 @@ describe("evaluator", () => {
     expect(acts.f1).toBe(0);
   });
 
-  it("activity label の大文字差は normalize でマッチ扱い", () => {
-    const pred: MatProvOutput = [
-      {
-        label: "Cu_simple",
-        "@graph": [{ "@type": "Activity", "@id": "x1", label: [{ "@value": "SEALING" }] }],
-      },
-    ];
-    const m = evaluateSample("t3", pred, gold);
+  it("Activity label の大文字差は normalize でマッチ扱い", () => {
+    const out: ProvIngesterOutput = {
+      title: "x",
+      blocks: [
+        { blockType: "heading", level: 2, role: "procedure", text: "SEALING" },
+      ],
+    };
+    const m = evaluateSample("t3", [out], gold);
     expect(m.total.activities.matched).toBe(1);
   });
 
-  it("Usage edge は (Usage, activity-label, entity-label) で比較され @id 差を吸収する", () => {
-    const pred: MatProvOutput = [
+  it("parameter key の synonym（temp→temperature）はマッチ扱い", () => {
+    const goldT: MatProvOutput = [
       {
-        label: "Cu_simple",
+        label: "x",
         "@graph": [
-          { "@type": "Entity", "@id": "xCu", label: [{ "@value": "Cu" }], type: [{ "@value": "material" }] },
-          { "@type": "Entity", "@id": "xTube", label: [{ "@value": "silica tube" }], type: [{ "@value": "tool" }] },
-          { "@type": "Activity", "@id": "xA", label: [{ "@value": "sealing" }] },
-          { "@type": "Usage", activity: "xA", entity: "xCu" },
-          { "@type": "Usage", activity: "xA", entity: "xTube" },
-          { "@type": "Entity", "@id": "xSeal", label: [{ "@value": "sealed sample" }], type: [{ "@value": "material" }] },
-          { "@type": "Generation", activity: "xA", entity: "xSeal" },
+          { "@type": "Activity", "@id": "a1", label: [{ "@value": "annealing" }], "matprov:temperature": [{ "@value": "773 K" }] },
         ],
       },
     ];
-    const m = evaluateSample("t4", pred, gold);
-    expect(m.total.edges.matched).toBe(3); // 2 Usage + 1 Generation
-    expect(m.total.edges.gold).toBe(3);
-    expect(m.total.edges.predicted).toBe(3);
+    const out: ProvIngesterOutput = {
+      title: "x",
+      blocks: [
+        { blockType: "heading", level: 2, role: "procedure", text: "annealing" },
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "anneal at " },
+            { text: "temp: 773 K", role: "attribute" },
+          ],
+        },
+      ],
+    };
+    const m = evaluateSample("t4", [out], goldT);
+    expect(m.total.parameters.matched).toBe(1);
+  });
+});
+
+describe("extractSetsFromGold", () => {
+  it("Entity / Activity / edge を synonym list 付きで集合化する", () => {
+    const sets = extractSetsFromGold(gold);
+    expect(sets.activities.map((a) => a.synonyms)).toEqual([["Sealing"]]);
+    expect(sets.materials.map((m) => m.synonyms[0]).sort()).toEqual(
+      ["Cu", "sealed sample"].sort(),
+    );
+    expect(sets.tools.map((t) => t.synonyms)).toEqual([["silica tube"]]);
+    expect(sets.edges).toHaveLength(3); // 2 Usage + 1 Generation
+    const atmoParam = sets.parameters.find(
+      (p) => p.canonicalKey === "atmosphere" && p.valueSyns.some((v) => v === "vacuum"),
+    );
+    expect(atmoParam).toBeDefined();
+  });
+
+  it("@value が配列の synonym list を全部拾う", () => {
+    const goldWithSyns: MatProvOutput = [
+      {
+        label: "synonym-test",
+        "@graph": [
+          {
+            "@type": "Entity",
+            "@id": "e1",
+            label: [{ "@value": ["SPEX-8000 shaker", "SPEX-8000", "shaker"] }],
+            type: [{ "@value": "tool" }],
+          },
+        ],
+      },
+    ];
+    const sets = extractSetsFromGold(goldWithSyns);
+    expect(sets.tools).toHaveLength(1);
+    expect(sets.tools[0].synonyms.sort()).toEqual(
+      ["SPEX-8000 shaker", "SPEX-8000", "shaker"].sort(),
+    );
+  });
+
+  it("synonym のいずれかが pred と一致すれば match 扱い", () => {
+    const goldWithSyns: MatProvOutput = [
+      {
+        label: "synonym-test",
+        "@graph": [
+          { "@type": "Activity", "@id": "a1", label: [{ "@value": ["sealing"] }] },
+          {
+            "@type": "Entity",
+            "@id": "e1",
+            label: [{ "@value": ["SPEX-8000 shaker", "SPEX-8000", "shaker"] }],
+            type: [{ "@value": "tool" }],
+          },
+          { "@type": "Usage", activity: "a1", entity: "e1" },
+        ],
+      },
+    ];
+    // pred は短い "shaker" だけ出した
+    const pred: ProvIngesterOutput = {
+      title: "x",
+      blocks: [
+        { blockType: "heading", level: 2, role: "procedure", text: "Sealing" },
+        {
+          blockType: "paragraph",
+          content: [
+            { text: "Seal with " },
+            { text: "shaker", role: "tool" },
+            { text: "." },
+          ],
+        },
+      ],
+    };
+    const m = evaluateSample("syn", [pred], goldWithSyns);
+    expect(m.total.tools.matched).toBe(1);
   });
 });

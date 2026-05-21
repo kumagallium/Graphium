@@ -911,22 +911,82 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
-  // ── informed_by → 前手順の結果を経由してリンク ──
+  // ── informed_by → 前手順の結果を経由してリンク + Entity unification ──
+  //
+  // PROV-DM の wasInformedBy(B, A) は ∃E. wasGeneratedBy(E, A) ∧ used(B, E) を意味する。
+  // すなわち「B が A の出力 Entity E を使った」というチェーン。
+  //
+  // 二つの正規化を行う:
+  //
+  //   (1) **Entity の unification（同一実体の 2 ノード化を回避）**:
+  //       B の material/tool span のテキスト label が A の output span の label と一致したら、
+  //       B 側の inline_material/_tool ノードを A 側の inline_output ノードに **merge** する。
+  //       これにより「Step A が生成した X」と「Step B が使う X」が同じ PROV Entity になり、
+  //       グラフから重複ノードが消える。derivedFrom を持つ material/tool span が
+  //       LLM の意図する「前手順の生成物」であるとき、この unification が自然に成立する。
+  //
+  //   (2) **synthetic placeholder の抑制**:
+  //       A に explicit な inline_output Entity が既にある場合、`result_synthetic_*` の
+  //       「〜の結果」 placeholder は作らない。代わりに inline_output を proxy として
+  //       used edge を張る。explicit output も B 側 material も無いときだけ
+  //       fallback として synthetic を作る（grafh connectivity 維持のため）。
+  const findOutputEntitiesForActivity = (actId: string) =>
+    nodes.filter(
+      (n) => n["@id"].startsWith("inline_output_") && blockToActivityId.get(n.blockId) === actId,
+    );
+  const findMatToolEntitiesForActivity = (actId: string) =>
+    nodes.filter(
+      (n) =>
+        (n["@id"].startsWith("inline_material_") || n["@id"].startsWith("inline_tool_")) &&
+        blockToActivityId.get(n.blockId) === actId,
+    );
+  const labelForMatch = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
   for (const link of validLinks) {
-    if (link.type === "informed_by") {
-      const prevActId = `activity_${link.targetBlockId}`;
-      const currentActId = `activity_${link.sourceBlockId}`;
+    if (link.type !== "informed_by") continue;
 
-      // 前手順の結果 Entity を探す
-      const resultNode = nodes.find(
-        (n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === prevActId
+    const prevActId = `activity_${link.targetBlockId}`;
+    const currentActId = `activity_${link.sourceBlockId}`;
+
+    // (a) explicit output Entity of prev activity（v5+ では inline_output_*）
+    const prevOutputs = findOutputEntitiesForActivity(prevActId);
+
+    // (b) current activity の material/tool で、prev output と label が一致するものを merge
+    const currMatTools = findMatToolEntitiesForActivity(currentActId);
+    const unifiedFromIds = new Set<string>();
+    for (const curr of currMatTools) {
+      const match = prevOutputs.find((o) => labelForMatch(o.label) === labelForMatch(curr.label));
+      if (!match) continue;
+      // reroute all relations referencing curr to match
+      for (const rel of relations as InternalRelation[]) {
+        if (rel.from === curr["@id"]) rel.from = match["@id"];
+        if (rel.to === curr["@id"]) rel.to = match["@id"];
+      }
+      unifiedFromIds.add(curr["@id"]);
+    }
+    if (unifiedFromIds.size > 0) {
+      // unified node を nodes 配列から除去
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        if (unifiedFromIds.has(nodes[i]["@id"])) nodes.splice(i, 1);
+      }
+      // wasInformedBy は (b) の merged Entity を介してすでに表現済み。追加 edge は不要。
+      continue;
+    }
+
+    // (c) merge 不成立。informed_by → used を張るための proxy を決める
+    let proxyId: string;
+    if (prevOutputs.length > 0) {
+      // explicit output があれば、その先頭を proxy として使う（synthetic を作らない）
+      proxyId = prevOutputs[0]["@id"];
+    } else {
+      // 旧形式の result_* ノード（後方互換）も拾う
+      const legacyResult = nodes.find(
+        (n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === prevActId,
       );
-
-      let resultId: string;
-      if (resultNode) {
-        resultId = resultNode["@id"];
+      if (legacyResult) {
+        proxyId = legacyResult["@id"];
       } else {
-        // 結果が明示されていない場合は合成 Entity を生成
+        // 何も無いので synthetic placeholder を作る（graph connectivity の最終 fallback）
         const syntheticId = `result_synthetic_${link.targetBlockId}`;
         if (!nodes.find((n) => n["@id"] === syntheticId)) {
           const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? "前手順";
@@ -942,11 +1002,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
             to: prevActId,
           });
         }
-        resultId = syntheticId;
+        proxyId = syntheticId;
       }
-
-      relations.push({ "@type": "prov:used", from: currentActId, to: resultId, linkId: link.id });
     }
+
+    relations.push({ "@type": "prov:used", from: currentActId, to: proxyId, linkId: link.id });
   }
 
   if (import.meta.env.DEV) {

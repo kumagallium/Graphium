@@ -351,3 +351,91 @@ describe("migrateToLatest: procedureContext は Claim 専用 (PR-B4.5)", () => {
     expect((doc as any).wikiMeta.procedureContext.keyTools).toEqual(["X"]);
   });
 });
+
+describe("migrateToLatest: 未知の inline style を strip する", () => {
+  it("inlineProcedure のような schema 外 style キーを除去する（version 据え置き）", () => {
+    const doc: GraphiumDocument = {
+      version: 5,
+      title: "T",
+      pages: [
+        {
+          id: "main",
+          title: "T",
+          blocks: [
+            {
+              id: "b1",
+              type: "paragraph",
+              props: {},
+              content: [
+                {
+                  type: "text",
+                  text: "変換",
+                  styles: { inlineProcedure: "ent_procedure_xxx", bold: true },
+                },
+                {
+                  type: "text",
+                  text: "ok",
+                  styles: { inlineMaterial: "ent_m_yyy" },
+                },
+              ],
+              children: [],
+            },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        },
+      ],
+      createdAt: "2026-05-19T00:00:00Z",
+      modifiedAt: "2026-05-19T00:00:00Z",
+    };
+    migrateToLatest(doc);
+    const block = doc.pages[0].blocks[0];
+    expect(block.content[0].styles.inlineProcedure).toBeUndefined();
+    expect(block.content[0].styles.bold).toBe(true); // 標準 style は残す
+    expect(block.content[1].styles.inlineMaterial).toBe("ent_m_yyy"); // 既知 inline style は残す
+  });
+
+  it("link ブロック内の text の styles もクリーンアップする", () => {
+    const doc: GraphiumDocument = {
+      version: 5,
+      title: "T",
+      pages: [
+        {
+          id: "main",
+          title: "T",
+          blocks: [
+            {
+              id: "b1",
+              type: "paragraph",
+              props: {},
+              content: [
+                {
+                  type: "link",
+                  href: "https://example.com",
+                  content: [
+                    {
+                      type: "text",
+                      text: "link",
+                      styles: { inlineProcedure: "ent_x", italic: true },
+                    },
+                  ],
+                },
+              ],
+              children: [],
+            },
+          ],
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        },
+      ],
+      createdAt: "2026-05-19T00:00:00Z",
+      modifiedAt: "2026-05-19T00:00:00Z",
+    };
+    migrateToLatest(doc);
+    const linkContent = (doc.pages[0].blocks[0].content as any)[0].content[0];
+    expect(linkContent.styles.inlineProcedure).toBeUndefined();
+    expect(linkContent.styles.italic).toBe(true);
+  });
+});
