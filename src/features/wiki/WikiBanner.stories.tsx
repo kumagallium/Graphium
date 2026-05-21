@@ -33,10 +33,13 @@ function Wrapper({
   wikiMeta,
   loading = false,
   noteIndex,
+  withWorldCheck = false,
 }: {
   wikiMeta: WikiMeta;
   loading?: boolean;
   noteIndex?: GraphiumIndex | null;
+  /** true なら「世界照合」ボタンを出す（onCheckWorldValidity を配線する）。 */
+  withWorldCheck?: boolean;
 }) {
   return (
     <div style={{ background: "var(--paper-2)", padding: "16px 0", minWidth: 640 }}>
@@ -47,6 +50,11 @@ function Wrapper({
         loading={loading}
         noteIndex={noteIndex ?? null}
         onNavigateNote={(noteId) => console.info("[story] onNavigateNote", noteId)}
+        onCheckWorldValidity={
+          withWorldCheck
+            ? () => console.info("[story] onCheckWorldValidity")
+            : undefined
+        }
       />
       <div style={{ padding: "8px 32px", fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--mono)" }}>
         ↑ Regenerate は設定で選んだモデル（Default / Chat & Synthesis）を使います
@@ -168,6 +176,137 @@ export const WithDerivedFromUnresolved: StoryObj = {
         kind: "atom",
         derivedFromNotes: ["note-abc123", "note-missing-999"],
         derivedFromClaims: ["claim-xyz789", "claim-missing-000"],
+      }}
+    />
+  ),
+};
+
+// ── 世界モデル照合 verdict バッジ（Phase 2 / PR 2A） ──
+// 「世界照合」ボタンと 4 verdict（established / supported / weak / contested）の見た目確認。
+// 別レーン契約: epistemicStatus / hypothesisStatus は触らない。
+
+const VERDICT_CHECK_META = {
+  checkedBy: "distilled-kb@v1",
+  checkedAt: "2026-05-21T10:00:00Z",
+} as const;
+
+export const WorldCheckButton: StoryObj = {
+  name: "世界照合 — 未照合（ボタンのみ）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "未照合状態。バッジは出ず、Regenerate の前に dashed border の「世界照合」ボタンが控えめに出る。クリックで蒸留 KB と突き合わせる（LLM なし）。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      withWorldCheck
+      wikiMeta={{ ...baseMeta, kind: "claim" }}
+    />
+  ),
+};
+
+export const WithValidityEstablished: StoryObj = {
+  name: "世界照合 — established（教科書的確立）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "蒸留 KB の `established` エントリと一致した状態。濃い緑バッジで「Established」を提示。tooltip に rationale / checkedBy / checkedAt が出る。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      withWorldCheck
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        grounding: {
+          validity: {
+            ...VERDICT_CHECK_META,
+            verdict: "established",
+            score: 0.75,
+            rationale: "Coble sintering / Herring scaling（焼結教科書の標準扱い）",
+            sources: [
+              { kind: "distilled", ref: "R. M. German, Sintering Theory and Practice" },
+            ],
+          },
+        },
+      }}
+    />
+  ),
+};
+
+export const WithValiditySupported: StoryObj = {
+  name: "世界照合 — supported（支持されているが議論残り）",
+  render: () => (
+    <Wrapper
+      withWorldCheck
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        grounding: {
+          validity: {
+            ...VERDICT_CHECK_META,
+            verdict: "supported",
+            score: 0.5,
+            rationale: "豊富な実験例があるが完全な予測は難しい",
+          },
+        },
+      }}
+    />
+  ),
+};
+
+export const WithValidityWeak: StoryObj = {
+  name: "世界照合 — weak（裏付け弱い）",
+  render: () => (
+    <Wrapper
+      withWorldCheck
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        grounding: {
+          validity: {
+            ...VERDICT_CHECK_META,
+            verdict: "weak",
+            score: 0.4,
+            rationale: "実機構は議論中（急速昇温・短保持の効果説）",
+          },
+        },
+      }}
+    />
+  ),
+};
+
+export const WithValidityContested: StoryObj = {
+  name: "世界照合 — contested（反例あり）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "KB の contested エントリと一致。赤系バッジで「反例あり」を提示する。別レーン契約により epistemicStatus / hypothesisStatus は変更されない。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      withWorldCheck
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        epistemicStatus: "interpretation",
+        grounding: {
+          validity: {
+            ...VERDICT_CHECK_META,
+            verdict: "contested",
+            score: 0.6,
+            rationale: "凝集の律速段階は系・温度・界面状態に強く依存し、一律比較は実験で支持されない",
+          },
+        },
       }}
     />
   ),

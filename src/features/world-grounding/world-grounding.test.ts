@@ -1,0 +1,257 @@
+import { describe, expect, it } from "vitest";
+
+import type { WikiMeta } from "../../lib/document-types";
+import { attachValidity } from "./index";
+import {
+  checkValidityFromKB,
+  clearKbCacheForTest,
+  type KbFile,
+} from "./distilled-kb-retriever";
+
+const NOW = "2026-05-21T10:00:00.000Z";
+
+function baseMeta(overrides: Partial<WikiMeta> = {}): WikiMeta {
+  return {
+    kind: "claim",
+    derivedFromNotes: ["note-x"],
+    derivedFromChats: [],
+    generatedAt: NOW,
+    generatedBy: { model: "test-model", version: "1.0.0" },
+    epistemicStatus: "interpretation",
+    hypothesisStatus: "speculative",
+    level: "principle",
+    status: "candidate",
+    ...overrides,
+  };
+}
+
+describe("world-grounding is a separate lane from epistemicStatus / hypothesisStatus", () => {
+  it("attachValidity は epistemicStatus を書き換えない", () => {
+    const meta = baseMeta({ epistemicStatus: "interpretation" });
+    const next = attachValidity(meta, {
+      verdict: "established",
+      checkedBy: "distilled-kb@v1",
+      checkedAt: NOW,
+    });
+    expect(next.epistemicStatus).toBe("interpretation");
+  });
+
+  it("attachValidity は hypothesisStatus を書き換えない", () => {
+    const meta = baseMeta({ hypothesisStatus: "speculative" });
+    const next = attachValidity(meta, {
+      verdict: "supported",
+      checkedBy: "distilled-kb@v1",
+      checkedAt: NOW,
+    });
+    expect(next.hypothesisStatus).toBe("speculative");
+  });
+
+  it("verdict 'contested' でも hypothesisStatus は refuted に変わらない", () => {
+    const meta = baseMeta({ hypothesisStatus: "speculative" });
+    const next = attachValidity(meta, {
+      verdict: "contested",
+      checkedBy: "distilled-kb@v1",
+      checkedAt: NOW,
+    });
+    expect(next.hypothesisStatus).toBe("speculative");
+    expect(next.grounding?.validity?.verdict).toBe("contested");
+  });
+
+  it("attachValidity は claimRole / level / status / confidence など他フィールドを温存する", () => {
+    const meta = baseMeta({
+      claimRole: ["finding"],
+      level: "principle",
+      status: "verified",
+      confidence: 0.82,
+    });
+    const next = attachValidity(meta, {
+      verdict: "weak",
+      checkedBy: "distilled-kb@v1",
+      checkedAt: NOW,
+    });
+    expect(next.claimRole).toEqual(["finding"]);
+    expect(next.level).toBe("principle");
+    expect(next.status).toBe("verified");
+    expect(next.confidence).toBe(0.82);
+  });
+
+  it("既存 grounding.suggests があっても attachValidity は suggests を温存する", () => {
+    const meta = baseMeta({
+      grounding: {
+        suggests: {
+          field: "epistemicStatus",
+          to: "established",
+          reason: "KB が established と一致",
+        },
+      },
+    });
+    const next = attachValidity(meta, {
+      verdict: "established",
+      checkedBy: "distilled-kb@v1",
+      checkedAt: NOW,
+    });
+    expect(next.grounding?.suggests?.field).toBe("epistemicStatus");
+    expect(next.grounding?.suggests?.to).toBe("established");
+    expect(next.grounding?.validity?.verdict).toBe("established");
+    // epistemicStatus 本体は触らない
+    expect(next.epistemicStatus).toBe("interpretation");
+  });
+
+  it("validity を undefined で attach すると grounding.validity が消える", () => {
+    const meta = baseMeta({
+      grounding: {
+        validity: {
+          verdict: "weak",
+          checkedBy: "distilled-kb@v1",
+          checkedAt: NOW,
+        },
+      },
+    });
+    const next = attachValidity(meta, undefined);
+    expect(next.grounding?.validity).toBeUndefined();
+  });
+
+  it("validity だけ消しても suggests は残る", () => {
+    const meta = baseMeta({
+      grounding: {
+        validity: {
+          verdict: "weak",
+          checkedBy: "distilled-kb@v1",
+          checkedAt: NOW,
+        },
+        suggests: {
+          field: "hypothesisStatus",
+          to: "confirmed",
+          reason: "test",
+        },
+      },
+    });
+    const next = attachValidity(meta, undefined);
+    expect(next.grounding?.validity).toBeUndefined();
+    expect(next.grounding?.suggests?.to).toBe("confirmed");
+  });
+});
+
+describe("distilled-kb retriever", () => {
+  const sampleKb: KbFile = {
+    version: 1,
+    domain: "materials",
+    checkedBy: "distilled-kb@v1",
+    entries: [
+      {
+        id: "mat-test-est",
+        verdict: "established",
+        claim: "焼結温度を上げると粒成長が促進される",
+        rationale: "Coble sintering",
+        keywords: ["焼結", "粒成長", "sintering", "grain growth"],
+      },
+      {
+        id: "mat-test-con",
+        verdict: "contested",
+        claim: "ナノ粒子の凝集は常に体積拡散より速い",
+        rationale: "実験で支持されない",
+        keywords: ["ナノ粒子", "凝集", "nanoparticle", "agglomeration"],
+      },
+      {
+        id: "mat-test-weak",
+        verdict: "weak",
+        claim: "SPS のパルス電流が粒成長を抑える",
+        rationale: "実機構は議論中",
+        keywords: ["SPS", "パルス電流", "粒成長", "spark plasma"],
+      },
+    ],
+  };
+
+  it("KB マッチなし（語彙ヒット 0）は null を返す（degrade）", async () => {
+    const result = await checkValidityFromKB(
+      "今日の昼食はそばだった。研究とは無関係。",
+      { kb: sampleKb },
+    );
+    expect(result).toBeNull();
+  });
+
+  it("keywords 1 件のみ一致は null（最低 2 件で degrade）", async () => {
+    const result = await checkValidityFromKB(
+      "焼結の話だけ。", // "焼結" は 1 件のみ
+      { kb: sampleKb },
+    );
+    expect(result).toBeNull();
+  });
+
+  it("keywords 2 件一致で verdict を返す", async () => {
+    const result = await checkValidityFromKB(
+      "焼結温度を高めると粒成長が起きる",
+      { kb: sampleKb },
+    );
+    expect(result).not.toBeNull();
+    expect(result?.verdict).toBe("established");
+    expect(result?.matchedKeywords.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("contested エントリの語彙一致で contested を返す", async () => {
+    const result = await checkValidityFromKB(
+      "ナノ粒子の凝集について検討する",
+      { kb: sampleKb },
+    );
+    expect(result?.verdict).toBe("contested");
+  });
+
+  it("英語の keywords も部分一致で拾う", async () => {
+    const result = await checkValidityFromKB(
+      "sintering temperature drives grain growth in materials",
+      { kb: sampleKb },
+    );
+    expect(result?.verdict).toBe("established");
+  });
+
+  it("NFKC 正規化で全角・半角を吸収する", async () => {
+    const result = await checkValidityFromKB(
+      "ナノ粒子の凝集（全角カッコ）と nanoparticle agglomeration",
+      { kb: sampleKb },
+    );
+    expect(result?.verdict).toBe("contested");
+  });
+
+  it("複数 entry がマッチする場合は matchedKeywords が多い方を返す", async () => {
+    const result = await checkValidityFromKB(
+      "SPS による粒成長 (spark plasma) でパルス電流を使う sintering",
+      { kb: sampleKb },
+    );
+    // "SPS" / "パルス電流" / "粒成長" / "spark plasma" → weak エントリが優位
+    // "焼結"=未含, "sintering" / "粒成長" → established 2 件
+    // weak entry: SPS/パルス電流/粒成長/spark plasma = 4 件
+    expect(result?.verdict).toBe("weak");
+  });
+
+  it("空 KB は null（fail-open）", async () => {
+    const emptyKb: KbFile = { ...sampleKb, entries: [] };
+    const result = await checkValidityFromKB("焼結温度と粒成長", { kb: emptyKb });
+    expect(result).toBeNull();
+  });
+
+  it("空文字 claimText は null", async () => {
+    const result = await checkValidityFromKB("", { kb: sampleKb });
+    expect(result).toBeNull();
+  });
+});
+
+describe("loadKb cache + fetch (fail-open)", () => {
+  it("ネットワーク不在の base URL は null を返す（cache キャッシュも null）", async () => {
+    clearKbCacheForTest();
+    // テスト環境では fetch が存在しないか相対 URL に解決できない想定
+    // global.fetch をモックして 404 を返す
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("not found", { status: 404 })) as typeof fetch;
+    try {
+      const result = await checkValidityFromKB("焼結温度と粒成長", {
+        domain: "materials",
+        baseUrl: "/test-missing/",
+      });
+      expect(result).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
+  });
+});

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "domain": "materials",
+  "checkedBy": "distilled-kb@v1",
+  "entries": [
+    {
+      "id": "mat-001",
+      "verdict": "established",
+      "claim": "焼結温度を上げると粒成長が促進される（焼結後期）",
+      "rationale": "Coble sintering / Herring scaling など、焼結後期の粒成長と温度依存は教科書の標準扱い。",
+      "keywords": ["焼結", "粒成長", "後期", "sintering", "grain growth"],
+      "sources": [
+        { "kind": "distilled", "ref": "R. M. German, Sintering: From Empirical Observations to Scientific Principles, Elsevier", "note": "粒成長の章" }
+      ]
+    },
+    {
+      "id": "mat-002",
+      "verdict": "established",
+      "claim": "多結晶金属では結晶粒径が小さいほど降伏応力が高い（ホール・ペッチ関係）",
+      "rationale": "Hall-Petch 関係。十分大きな粒径領域では実験と理論が広く一致している。",
+      "keywords": ["ホール・ペッチ", "Hall-Petch", "結晶粒径", "降伏応力", "grain size", "yield stress"],
+      "sources": [
+        { "kind": "distilled", "ref": "G. E. Dieter, Mechanical Metallurgy, McGraw-Hill" }
+      ]
+    },
+    {
+      "id": "mat-003",
+      "verdict": "established",
+      "claim": "拡散係数は温度に対してアレニウス型で指数関数的に増加する",
+      "rationale": "Arrhenius 型 D = D0 exp(-Q/RT)。固体拡散全般の標準モデル。",
+      "keywords": ["アレニウス", "Arrhenius", "拡散", "拡散係数", "diffusion coefficient", "温度依存"],
+      "sources": [
+        { "kind": "distilled", "ref": "P. G. Shewmon, Diffusion in Solids, TMS" }
+      ]
+    },
+    {
+      "id": "mat-004",
+      "verdict": "established",
+      "claim": "メカニカルアロイングは固溶限を非平衡的に拡張できる",
+      "rationale": "Mechanical alloying では強い塑性変形と界面エネルギー導入により、平衡相図を超えた固溶が報告されている。",
+      "keywords": ["メカニカルアロイング", "mechanical alloying", "MA", "固溶限", "非平衡", "solid solubility"],
+      "sources": [
+        { "kind": "distilled", "ref": "C. Suryanarayana, Mechanical Alloying and Milling, Marcel Dekker" }
+      ]
+    },
+    {
+      "id": "mat-005",
+      "verdict": "established",
+      "claim": "金属の熱伝導率はフォノン成分と電子成分に分けられ、自由電子金属では電子寄与が支配的（Wiedemann-Franz 則）",
+      "rationale": "Wiedemann-Franz 則 κ/σT = L は自由電子金属で広く成立する。",
+      "keywords": ["熱伝導率", "Wiedemann-Franz", "フォノン", "電子寄与", "thermal conductivity", "phonon"],
+      "sources": [
+        { "kind": "distilled", "ref": "N. W. Ashcroft & N. D. Mermin, Solid State Physics, Saunders" }
+      ]
+    },
+    {
+      "id": "mat-006",
+      "verdict": "supported",
+      "claim": "ペロブスカイト構造 ABO3 の B サイト置換で強誘電性・磁性などの物性を制御できる",
+      "rationale": "BaTiO3 系・(La,Sr)MnO3 系など豊富な実験例があり工学的にも広く使われる。一方、置換に伴う複雑な相転移・不安定相も観測され完全な予測は難しい。",
+      "keywords": ["ペロブスカイト", "perovskite", "ABO3", "B サイト置換", "B-site substitution", "強誘電", "磁性"],
+      "sources": [
+        { "kind": "distilled", "ref": "M. E. Lines & A. M. Glass, Principles and Applications of Ferroelectrics, Oxford" }
+      ]
+    },
+    {
+      "id": "mat-007",
+      "verdict": "supported",
+      "claim": "DFT の LDA / GGA は強相関電子系で系統的にバンドギャップを過小評価する",
+      "rationale": "標準 LDA/GGA の self-interaction error により、Mott 絶縁体や酸化物の Eg が小さく出る。DFT+U / hybrid functional で部分的に補正される。",
+      "keywords": ["DFT", "LDA", "GGA", "バンドギャップ", "band gap", "強相関", "強相関電子系", "underestimation"],
+      "sources": [
+        { "kind": "distilled", "ref": "R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, Cambridge" }
+      ]
+    },
+    {
+      "id": "mat-008",
+      "verdict": "contested",
+      "claim": "ナノ粒子の凝集は常に体積拡散より速い",
+      "rationale": "凝集の律速段階は系・温度・界面状態・表面修飾に強く依存し、一律な大小関係は実験で支持されない。",
+      "keywords": ["ナノ粒子", "凝集", "拡散", "nanoparticle", "agglomeration", "diffusion"]
+    },
+    {
+      "id": "mat-009",
+      "verdict": "contested",
+      "claim": "メカニカルアロイングの処理時間を長くするほど常に均質性が上がる",
+      "rationale": "過剰なミリングでは媒体・容器からの汚染、酸化、再凝集が支配的になり均質性は下がりうる。最適時間が存在する。",
+      "keywords": ["メカニカルアロイング", "mechanical alloying", "MA", "ミリング", "milling time", "均質性", "homogeneity"]
+    },
+    {
+      "id": "mat-010",
+      "verdict": "contested",
+      "claim": "結晶粒微細化は常に Hall-Petch 則に従って強度を上げる",
+      "rationale": "超微細粒（< 約 20 nm）領域では粒界滑り支配となり inverse Hall-Petch が観測される。",
+      "keywords": ["Hall-Petch", "ホール・ペッチ", "inverse Hall-Petch", "粒界滑り", "ultrafine grain", "ナノ結晶"]
+    },
+    {
+      "id": "mat-011",
+      "verdict": "contested",
+      "claim": "アモルファス試料では X 線回折ピークが完全に出ない",
+      "rationale": "短距離秩序由来のブロードなハロパターンは必ず観測される。「鋭いピークが立たない」が正確な表現。",
+      "keywords": ["アモルファス", "amorphous", "X 線回折", "XRD", "ハロ", "halo", "ピーク"]
+    },
+    {
+      "id": "mat-012",
+      "verdict": "contested",
+      "claim": "ガラス転移温度 Tg は冷却速度に依存しない物質固有の値である",
+      "rationale": "Tg は構造緩和の時間スケールが観測時間と等しくなる温度なので、冷却速度 / 加熱速度に対数的に依存する。",
+      "keywords": ["ガラス転移", "Tg", "glass transition", "冷却速度", "cooling rate", "構造緩和"]
+    },
+    {
+      "id": "mat-013",
+      "verdict": "weak",
+      "claim": "SPS（放電プラズマ焼結）はパルス電流自体の効果で粒成長を抑制する",
+      "rationale": "粒成長抑制の主因は急速昇温・短保持時間にあるという解釈が支配的で、パルス電流の電場・スパーク効果は議論が続いている。",
+      "keywords": ["SPS", "放電プラズマ焼結", "spark plasma sintering", "パルス電流", "pulsed current", "粒成長抑制"]
+    },
+    {
+      "id": "mat-014",
+      "verdict": "weak",
+      "claim": "メカニカルアロイング中の局所温度は数百℃以上に達する",
+      "rationale": "直接測定が困難で、衝突モデルから推定された数百℃の値が広く引用されるが、推定値の不確かさが大きい。",
+      "keywords": ["メカニカルアロイング", "mechanical alloying", "局所温度", "local temperature", "ボール衝突", "ball collision"]
+    },
+    {
+      "id": "mat-015",
+      "verdict": "established",
+      "claim": "真空中焼結は酸化物形成自由エネルギーの観点から低酸素分圧で酸化を抑制する",
+      "rationale": "Ellingham 線図に基づく標準扱い。多くの金属で酸化を熱力学的に抑制できる温度域がある。",
+      "keywords": ["真空焼結", "vacuum sintering", "Ellingham", "酸化", "酸素分圧", "oxygen partial pressure"],
+      "sources": [
+        { "kind": "distilled", "ref": "D. R. Gaskell, Introduction to the Thermodynamics of Materials, Taylor & Francis", "note": "Ellingham 線図の章" }
+      ]
+    }
+  ]
+}

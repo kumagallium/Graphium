@@ -125,6 +125,7 @@ import {
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
+import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
@@ -2611,6 +2612,8 @@ export function NoteApp() {
   // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
   // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
   const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
+  // 世界モデル照合（Phase 2 / PR 2A）— 照合中の Wiki ID を覚えてバナーボタンを disable する
+  const [worldCheckingWikiId, setWorldCheckingWikiId] = useState<string | null>(null);
   const handleComposerSubmit = useCallback(
     async (submission: ComposerSubmission) => {
       const handler = composerSubmitRef.current;
@@ -5126,6 +5129,31 @@ export function NoteApp() {
                     fm.handleOpenFile(noteId);
                   }
                 }}
+                onCheckWorldValidity={async () => {
+                  // 世界モデル照合（PR 2A）: 蒸留 KB のみ。LLM 呼び出しなし。
+                  // 別レーン契約: epistemicStatus / hypothesisStatus は触らない（attachValidity で保証）。
+                  if (!fm.activeFileId || !fm.activeDoc?.wikiMeta) return;
+                  const wikiId = fm.activeFileId.replace("wiki:", "");
+                  if (worldCheckingWikiId === wikiId) return;
+                  setWorldCheckingWikiId(wikiId);
+                  try {
+                    const claimText = `${fm.activeDoc.title}\n\n${extractPlainTextFromDoc(fm.activeDoc)}`;
+                    const validity = await checkValidity(fm.activeDoc.wikiMeta, claimText);
+                    const next: GraphiumDocument = {
+                      ...fm.activeDoc,
+                      wikiMeta: attachValidity(fm.activeDoc.wikiMeta, validity),
+                      modifiedAt: new Date().toISOString(),
+                    };
+                    await fm.handleSaveWikiFile(wikiId, next);
+                  } catch (err) {
+                    console.error("[world-grounding] check failed:", err);
+                  } finally {
+                    setWorldCheckingWikiId((cur) => (cur === wikiId ? null : cur));
+                  }
+                }}
+                worldCheckLoading={
+                  wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
+                }
               />
             );
           })()}
