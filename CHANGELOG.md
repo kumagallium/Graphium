@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.6.11](https://github.com/kumagallium/Graphium/compare/v0.6.10...v0.6.11) - 2026-05-21
+- fix(updater): publish latest.json to Pages so users jump to absolute latest by @kumagallium in https://github.com/kumagallium/Graphium/pull/290
+- Phase 5a: material-science extraction profile + benchmark harness by @kumagallium in https://github.com/kumagallium/Graphium/pull/292
+- feat(bench): Phase μ-1 benchmark foundation for the Wiki pipeline by @kumagallium in https://github.com/kumagallium/Graphium/pull/293
+- feat(bench): n=3 averaging for live runs + new median baseline by @kumagallium in https://github.com/kumagallium/Graphium/pull/296
+- feat(wiki): Phase α — rung-2 lift and observational atom preservation by @kumagallium in https://github.com/kumagallium/Graphium/pull/294
+- feat(bench): µ-1.1 corpus honesty — mixed-status, edge cases, pattern judge, reviewed gt by @kumagallium in https://github.com/kumagallium/Graphium/pull/300
+- feat(wiki): Phase η — epistemic status + lowest-status inheritance by @kumagallium in https://github.com/kumagallium/Graphium/pull/297
+- feat(bench): Phase μ-3 — adversarial probes, migration fixtures, perf regression by @kumagallium in https://github.com/kumagallium/Graphium/pull/299
+- fix(bench): µ-1.2 — mixed-status-dilution probe uses per-atom inheritance by @kumagallium in https://github.com/kumagallium/Graphium/pull/302
+- feat(wiki): synthesizer diversity — per-mode threshold + diversity preference + atomizer cap by @kumagallium in https://github.com/kumagallium/Graphium/pull/303
+- feat(bench): Phase μ-2 corpus expansion + cross-language / domain-balance metrics by @kumagallium in https://github.com/kumagallium/Graphium/pull/301
+- feat(wiki): Phase γ — Toulmin Rebuttal / Backing / Modal qualifier by @kumagallium in https://github.com/kumagallium/Graphium/pull/304
+- refactor(ingester): open-set single prompt (drop profile layer, v1.3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/298
+- feat(memo): promote memo to a first-class entrance by @kumagallium in https://github.com/kumagallium/Graphium/pull/306
+- fix(wiki): sharpen Backing extraction disambiguation in Ingester prompt by @kumagallium in https://github.com/kumagallium/Graphium/pull/305
+- feat(wiki): show immediate derivation sources in WikiBanner (world-grounding Phase 1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/308
+- fix(wiki): tighten analogical mode selection on cross-domain inputs by @kumagallium in https://github.com/kumagallium/Graphium/pull/307
+
 ## [v0.6.10](https://github.com/kumagallium/Graphium/compare/v0.6.9...v0.6.10) - 2026-05-14
 - fix(skill): switch to note when clicking sidebar note from Skill list by @kumagallium in https://github.com/kumagallium/Graphium/pull/285
 - fix(wiki): safe bulk regenerate for Insight/Idea (kind guard + Atom path + shrink guard) by @kumagallium in https://github.com/kumagallium/Graphium/pull/284
