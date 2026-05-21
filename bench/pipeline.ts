@@ -118,6 +118,55 @@ function detectModalQualifier(text: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Toulmin Backing の heuristic 検出（Phase γ-follow-up）。
+ * 本来は live LLM の出力を使うが、dry-run pipeline / probe evaluator のために最低限の
+ * 検出を入れる。idiom が一致したら 1 件以上の backing として扱う。
+ *
+ * カバーする idiom（Ingester プロンプトと同じ集合）:
+ * - JP: 「〜理論から」「〜原理から」「教科書では」「定石として」「established な」
+ * - EN: "matches X" / "textbook story" / "the standard X" / "as X formalized" /
+ *       "established interpretation" / "well-known" / "published [literature/result]"
+ */
+function detectBacking(text: string): { source: string; citation: string }[] {
+  const out: { source: string; citation: string }[] = [];
+  // textbook 系
+  const textbookIdioms = [
+    /教科書では?[^\n。]{0,80}/,
+    /定石として[^\n。]{0,80}/,
+    /[一-龠ぁ-んァ-ヶa-zA-Z]+理論[^\n。]{0,30}から[^\n。]{0,80}/,
+    /[一-龠ぁ-んァ-ヶa-zA-Z]+原理[^\n。]{0,30}から[^\n。]{0,80}/,
+    /\b(?:the\s+)?textbook[^.\n]{0,100}\bstory\b[^.\n]{0,80}/i,
+    /\bthe\s+standard\s+[^.\n]{0,80}story\b/i,
+    /\bestablished\s+interpretation\b[^.\n]{0,80}/i,
+    /\bwell[-\s]known[^.\n]{0,80}/i,
+    /\bpublished\s+(?:literature|behaviour|behavior|results?)\b[^.\n]{0,80}/i,
+  ];
+  for (const re of textbookIdioms) {
+    const m = text.match(re);
+    if (m) out.push({ source: "textbook", citation: m[0].slice(0, 120).trim() });
+  }
+  // external-paper 系: 「matches X」「as X formalized」「matches the published」「[Author] et al. ([year])」
+  const paperIdioms = [
+    /\bmatches\s+(?:the\s+)?[A-Z][^.\n]{0,80}/i,
+    /\bas\s+[A-Z][a-zA-Z'’]+\s+(?:formalized|formalised|showed|demonstrated|proved|argued)\b[^.\n]{0,80}/i,
+    /\b[A-Z][a-zA-Z'’]+\s+(?:&|and)\s+[A-Z][a-zA-Z'’]+\b/,  // "Rochet & Tirole"
+    /\b[A-Z][a-zA-Z'’]+\s+et\s+al\.?\s*\(?\d{4}\)?/,        // "Smith et al. 2013"
+  ];
+  for (const re of paperIdioms) {
+    const m = text.match(re);
+    if (m) out.push({ source: "external-paper", citation: m[0].slice(0, 120).trim() });
+  }
+  // 重複除去
+  const seen = new Set<string>();
+  return out.filter((b) => {
+    const k = `${b.source}::${b.citation}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 function splitIntoClaims(note: CorpusNote): BenchClaim[] {
   const text = note.body;
   // [Step] ブロックがあれば各 Step を 1 claim とする。なければ全体を 1 claim。
@@ -126,6 +175,7 @@ function splitIntoClaims(note: CorpusNote): BenchClaim[] {
 
   return claimChunks.map((chunk, idx): BenchClaim => {
     const status = detectEpistemicStatus(chunk);
+    const backings = detectBacking(chunk);
     return {
       sourceNoteId: note.noteId,
       title: claimChunks.length > 1 ? `${note.title} (#${idx + 1})` : note.title,
@@ -134,6 +184,7 @@ function splitIntoClaims(note: CorpusNote): BenchClaim[] {
       epistemicStatus: status,
       rebuttalConditions: extractRebuttalConditions(chunk),
       modalQualifier: detectModalQualifier(chunk),
+      backing: backings.length > 0 ? backings : undefined,
     };
   });
 }
@@ -449,7 +500,15 @@ async function ingestNoteLive(
           ? doc.rebuttalConditions
           : extractRebuttalConditions(fullText),
       modalQualifier: doc.modalQualifier ?? detectModalQualifier(fullText),
-      backing: doc.backing,
+      // Phase γ-follow-up: LLM が backing を返さなかった場合は heuristic で補う
+      // (rebuttal / modalQualifier と同じ "LLM primary, heuristic fallback" ポリシー)。
+      backing:
+        doc.backing && doc.backing.length > 0
+          ? doc.backing
+          : (() => {
+              const h = detectBacking(fullText);
+              return h.length > 0 ? h : undefined;
+            })(),
     });
   }
   return { claims, parseRetried, parseFailed };
