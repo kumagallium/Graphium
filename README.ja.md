@@ -244,16 +244,16 @@ pnpm dev --port 5174   # → http://localhost:5174/Graphium/
     <td><b>プロヴェナンスグラフ（PROV-DM）</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/sandbox.png" alt="エディタ" width="400" /></td>
-    <td><img src="docs/screenshots/prov-generator.png" alt="プロヴェナンスグラフ" width="400" /></td>
+    <td><img src="docs/screenshots/editor.png" alt="エディタ" width="400" /></td>
+    <td><img src="docs/screenshots/prov-graph.png" alt="プロヴェナンスグラフ" width="400" /></td>
   </tr>
   <tr>
     <td><b>ノート間ネットワークグラフ</b></td>
-    <td><b>ラベルギャラリー（インデックステーブル）</b></td>
+    <td><b>ドキュメントのプロヴェナンス履歴</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/graph.png" alt="ネットワークグラフ" width="400" /></td>
-    <td><img src="docs/screenshots/label-gallery.png" alt="ラベルギャラリー" width="400" /></td>
+    <td><img src="docs/screenshots/network-graph.png" alt="ネットワークグラフ" width="400" /></td>
+    <td><img src="docs/screenshots/history.png" alt="プロヴェナンス履歴" width="400" /></td>
   </tr>
 </table>
 
