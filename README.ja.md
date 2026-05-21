@@ -56,11 +56,15 @@ Graphium は **段階的開示（progressive disclosure）** を設計の中心�
 | プラットフォーム | ファイル | 確認方法 |
 |----------------|---------|---------|
 | **macOS** (Apple Silicon — M1/M2/M3/M4) | `Graphium_x.x.x_aarch64.dmg` | Apple メニュー → このMacについて → 「Apple M...」|
+| **Windows** (x64) | `Graphium_x.x.x_x64-setup.exe`（または `Graphium_x.x.x_x64_en-US.msi`） | 設定 → システム → バージョン情報 → システムの種類「x64 ベース」|
 
 **[→ Releases からダウンロード](https://github.com/kumagallium/Graphium/releases/latest)**
 
+> **Windows での初回起動時の警告について**
+> Windows 版はまだコード署名していないため、初回起動時に SmartScreen が「Windows によって PC が保護されました」と警告します。「**詳細情報** → **実行**」で起動できます。コード署名はロードマップに含まれています。
+
 > **その他のプラットフォーム**
-> デスクトップ版は現在 macOS Apple Silicon 向けのみ提供しています。Windows / Linux / Intel macOS をお使いの場合は、[GitHub Pages のブラウザ版](https://kumagallium.github.io/Graphium/)（インストール不要）をご利用いただくか、下記の [Docker セットアップ](#option-2-run-with-docker--editor-only) でセルフホストしてください。他プラットフォームへの再対応はロードマップに含まれています。テスト協力者を歓迎します ([Issues](https://github.com/kumagallium/Graphium/issues))。
+> Linux / Intel macOS 向けデスクトップ版は提供していません。これらをお使いの場合は、[GitHub Pages のブラウザ版](https://kumagallium.github.io/Graphium/)（インストール不要）をご利用いただくか、下記の [Docker セットアップ](#option-2-run-with-docker--editor-only) でセルフホストしてください。これらのプラットフォームへの対応はロードマップに含まれています。テスト協力者を歓迎します ([Issues](https://github.com/kumagallium/Graphium/issues))。
 
 ### モバイル（停止中）
 
@@ -326,7 +330,7 @@ Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScrip
 | オプションの LLM | Anthropic Claude / OpenAI / Google / 任意の OpenAI 互換エンドポイント |
 | コンパニオンサーバ | Node.js / Hono |
 | ストレージ | IndexedDB（Web）/ ファイルシステム（Tauri / Docker） |
-| デスクトップ | Tauri v2（現状は macOS Apple Silicon のみ。今後の対応はロードマップ） |
+| デスクトップ | Tauri v2（macOS Apple Silicon + Windows x64。Linux / Intel macOS は今後のロードマップ） |
 | グラフ可視化 | Cytoscape.js |
 | ビルド・パッケージ管理 | Vite / pnpm |
 

@@ -56,11 +56,15 @@ Download the desktop app to save notes as plain JSON files on your filesystem. P
 | Platform | File | How to check |
 |----------|------|-------------|
 | **macOS** (Apple Silicon — M1/M2/M3/M4) | `Graphium_x.x.x_aarch64.dmg` | Apple menu →  About This Mac → "Apple M..." |
+| **Windows** (x64) | `Graphium_x.x.x_x64-setup.exe` (or `Graphium_x.x.x_x64_en-US.msi`) | Settings → System → About → System type "x64-based" |
 
 **[→ Download from Releases](https://github.com/kumagallium/Graphium/releases/latest)**
 
+> **First-run warning on Windows**
+> The Windows build is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC" on first launch. Click **More info → Run anyway** to proceed. Code signing is on the roadmap.
+
 > **Other platforms**
-> The desktop build currently ships only for macOS Apple Silicon. If you are on Windows, Linux, or Intel macOS, please use the [browser version on GitHub Pages](https://kumagallium.github.io/Graphium/) (no install) or self-host with the [Docker setup](#option-2-run-with-docker--editor-only) described below. Bringing the desktop app back to other platforms is on the roadmap; see [issues](https://github.com/kumagallium/Graphium/issues) if you'd like to help test.
+> Linux and Intel macOS desktop builds are not provided. Please use the [browser version on GitHub Pages](https://kumagallium.github.io/Graphium/) (no install) or self-host with the [Docker setup](#option-2-run-with-docker--editor-only) described below. Bringing the desktop app to those platforms is on the roadmap; see [issues](https://github.com/kumagallium/Graphium/issues) if you'd like to help test.
 
 ### Mobile (paused)
 
@@ -326,7 +330,7 @@ Graphium is a TypeScript / React app on top of [BlockNote.js](https://www.blockn
 | Opt-in LLMs | Anthropic Claude / OpenAI / Google / any OpenAI-compatible endpoint |
 | Companion server | Node.js / Hono |
 | Storage | IndexedDB (web) / filesystem (Tauri / Docker) |
-| Desktop | Tauri v2 (currently macOS Apple Silicon only; see roadmap) |
+| Desktop | Tauri v2 (macOS Apple Silicon + Windows x64; Linux / Intel macOS on roadmap) |
 | Graph visualization | Cytoscape.js |
 | Build / pkg manager | Vite / pnpm |
 
