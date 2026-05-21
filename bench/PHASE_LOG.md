@@ -800,3 +800,54 @@ Per-sample:
 4. **`adversarial_pass_rate` hit the pre-declared ideal of 0.909.** 10 of 11 probes pass; only `meta-atom-clustering` remains FAIL, and that one is gated on Phase ε which is intentionally not in this PR's scope.
 
 Verdict: **merged**. Pre-declared metric met. γ series probe-suite is now at its design ceiling (10/11) given Phase ε is pending. The next bench-moving target is Phase ε (meta-atom-clustering) or μ-1.3 (judge rubric unification, which doesn't change the probe metrics but tightens lift / domain_balance reporting). Both are queued; see the 2026-05-21 handoff for ordering.
+
+## Atomizer rung-2 strengthen (PR [#317](https://github.com/kumagallium/Graphium/pull/317), merged 2026-05-21)
+
+After µ-1.3 landed and the judge rubric was unified, `lift_score` plateaued at median 0.714. UI dogfooding of the Insight / Synthesis tabs confirmed the diagnosis: the Atomizer kept emitting Atoms with corpus-actual rung-1 tokens (Al3V, Klemens-Callaway, PROV-DM, ローレンツ数, ホール濃度, ZnSb) that the prompt's existing examples (SPS, VACUUM, ORR) didn't anchor on. The dry-run pipeline used the same blind spot, so the probe metric didn't notice.
+
+Three layers of defence landed in one PR:
+
+1. **Prompt** (`wiki-atomizer.ts`): jargon checklist restructured into 4 explicit categories (proper noun / material specifics / acronym / domain jargon) with a corpus-actual example list; lifting examples added for Al3V → "複数の元素でできた合金", Klemens-Callaway → "格子の振動から熱の伝わりを見積もる古典的なモデル", PROV-DM → "由来を辿れるかたちで作業を記述する規格", ローレンツ数 → "電気の流れやすさと熱の伝わりやすさの比", etc.
+2. **Programmatic post-emit guard** (`wiki-atomizer.ts:detectRung1Tokens`): runs corpus-agnostic patterns (digit-bearing + digit-less 2-element chemical formulas, 3+ char uppercase acronyms, hyphenated proper compounds) on the title + body head and drops candidates with surviving load-bearing tokens. Enforces "empty atoms array is better than under-abstracted Atom" in code, not just in the prompt.
+3. **Bench-side parity** (`bench/judge.ts` LIFT_RUBRIC + `bench/pipeline.ts` JARGON_PATTERNS): LIFT_RUBRIC FAIL examples updated to corpus-actual jargon across 4 categories; patterns extended with `CHEM_FORMULA_NODIGIT_RE` and `HYPHENATED_PROPER_RE`; acronym threshold tightened 2+ → 3+ to remove false positives on common 2-char tokens. Per memory `feedback_probe_dry_run_blind_spot.md`: prompt strengthening must always come with a matching dry-run heuristic.
+
+Pre-declared metrics:
+- **Target**: `lift_score` median ≥ 0.85 (from 0.714)
+- **Secondary**: `domain_balance_score` median ≥ 0.75 (from 0.631)
+- Regression guards: `adversarial_pass_rate` ≥ 0.909, `epistemic_preservation` ≥ 0.90, `atom_count_total` ≥ 5 (collapse guard)
+
+### Live run (n=3, gpt-oss-120b on Sakura AI Engine, 58 notes / 11 probes)
+
+CI workflow_dispatch [run 26227274875](https://github.com/kumagallium/Graphium/actions/runs/26227274875) on `feat/atomizer-rung2-strengthen` (squash-merged as `81e53ce`). Snapshot: `bench/results/atomizer-rung2-strengthen-2026-05-21.json`. This run **replaces `bench/baseline.json`** as the post-atomizer-strengthen fixed reference.
+
+| metric                          | pre (γ-follow-up 3) median | post (atomizer-strengthen) median | post range     | target | result |
+|---------------------------------|----------------------------|------------------------------------|----------------|--------|--------|
+| **`lift_score`**                | 0.714                      | **0.800**                          | 0.583 – 1.000  | ≥ 0.85 | ⚠️ partial (miss by 0.05; max sample hit 1.000) |
+| **`domain_balance_score`**      | 0.631                      | **0.809**                          | 0.671 – 1.000  | ≥ 0.75 | ✅ hit (+0.178) |
+| `adversarial_pass_rate`         | 0.909                      | 0.909                              | 0.909          | ≥ 0.909 | ✅ held |
+| `epistemic_preservation`        | 0.927                      | **0.965**                          | 0.947 – 0.982  | ≥ 0.90 | ✅ +0.038 |
+| `atom_count_total`              | 16                         | 7                                  | 5 – 12         | ≥ 5    | ✅ no collapse |
+| `mode_distribution_entropy`     | 0.500                      | 0.000                              | 0.000 – 0.406  | —      | narrow this run (sample variance) |
+| `observation_atom_ratio`        | 0.190                      | 0.083                              | 0.000 – 0.200  | —      | within prior range |
+| `novelty_score`                 | 1.000                      | 1.000                              | 1.000          | —      | held |
+| `cross_language_consistency`    | 0.333                      | 0.000                              | 0.000 – 0.333  | —      | sample-narrow, atom count fell so fewer chances |
+| `synthesis_count_total`         | 2                          | 3                                  | 2 – 4          | —      | small +1, atoms more usable downstream |
+| `claim_count_total`             | 101                        | 99                                 | 96 – 106       | —      | held |
+
+Per-sample:
+
+| run | lift  | entropy | obs   | epi   | advers | atoms | syn |
+|-----|-------|---------|-------|-------|--------|-------|-----|
+| #1  | 0.800 | 0.000   | 0.200 | 0.947 | 0.909  | 5     | 3   |
+| #2  | 0.583 | 0.406   | 0.083 | 0.965 | 0.909  | 12    | 4   |
+| #3  | 1.000 | 0.000   | 0.000 | 0.982 | 0.909  | 7     | 2   |
+
+### Load-bearing findings
+
+1. **`lift_score` moved +0.086 — the largest single-PR lift improvement since the α series.** The post-emit guard genuinely drops rung-1 candidates (atom_count 16 → 7 median; one sample hit perfect 1.0 lift). The 0.05 gap to the pre-declared 0.85 target is real, not noise, and traces to a clean cause (see finding 2). The bench numbers and the UI dogfood observation that started this work are now consistent.
+2. **Residual 20 % rung-1 is JP domain jargon outside the corpus-agnostic pattern's reach.** Inspecting `liftJudgments` shows the surviving FAILs ("二面市場 / 同類志向 / 貧困の罠 / ホットプレス / 居住分離") are all JP economics / sociology / materials jargon. The pattern guards catch chemical formulas, acronyms, and hyphenated proper names — they cannot catch domain-specific JP compound nouns without a curated jargon list (which the project deliberately avoided as corpus-specific bias). The LLM judge catches them correctly, which is why the metric reports them as FAIL. This is the next target: extend `LIFT_RUBRIC` with JP jargon examples, and either (a) accept the LLM judge as the final arbiter while the pattern handles only the cheap cases, or (b) add a minimal LLM-driven post-emit double-check inside the atomizer.
+3. **`domain_balance_score` and `epistemic_preservation` both improved.** Domain balance jumped 0.631 → 0.809 (+0.178), which makes sense: when the guard drops the rung-1 atoms that were over-represented in the materials domain, the remaining rung-2 atoms are more evenly spread across domains. Epistemic preservation also climbed 0.927 → 0.965 — a smaller, well-curated atom set carries source statuses more faithfully than a large, partially-confused one.
+4. **`atom_count_total` 16 → 7 is the design's load-bearing trade.** "Empty atoms array is better than an under-abstracted Atom" is the prompt's stated principle, now in code. atom_count_total ≥ 5 was the explicit collapse guard, and the run held at min 5 / median 7 / max 12 — well above the guard. synthesis_count_total 2 → 3 confirms the remaining Atoms are still usable as Synthesizer inputs.
+5. **`mode_distribution_entropy` 0.500 → 0.000 in this run is sample-narrow, not a regression.** Two of three runs produced 0; the third hit 0.406. The narrower entropy is mostly an artefact of synthesis_count being low (2-4); with so few syntheses, mode-mix entropy is hostage to whatever the LLM happened to fire. The capability itself (analogical / abductive / dialectic firing on the right inputs) is verified by the probe suite, which still holds at 10/11.
+
+Verdict: **merged, partial hit**. Primary metric `lift_score` improved meaningfully (+0.086) but missed the 0.85 target by 0.05; secondary `domain_balance_score` and the regression guards all cleared. The diagnostic cleanly identifies what's left (JP domain jargon outside corpus-agnostic patterns) and the next PR can target it deterministically. The Knowledge Layer hourglass bottleneck is now visibly tighter in the UI — Insight / Synthesis tabs read more domain-portable post-merge.
