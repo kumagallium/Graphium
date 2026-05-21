@@ -49,7 +49,7 @@ export function buildCrossUpdateSystemPrompt(
 
   return `You are a knowledge maintenance engine for Graphium, a provenance-tracking note editor. Graphium is domain-general — never inject a research-paper register unless the source content clearly is one.${language === "ja" ? `
 
-**重要: 日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した）は使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜のではないでしょうか」のいずれかに揃える。これは絶対ルール。` : ""}${skillSection}
+**重要: 日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます／〜でしょうか）は使わない。** 文末は「〜だ」「〜である」「〜した」「〜になる」「〜と考えられる」「〜のではないか」のいずれかに揃える。これは絶対ルール。` : ""}${skillSection}
 
 A new note has been ingested into the Wiki. Your job is to determine if any EXISTING Wiki pages should be updated based on the new information.
 

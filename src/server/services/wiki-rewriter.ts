@@ -41,7 +41,7 @@ export function buildRewriterSystemPrompt(
 Your task is to **rewrite a Wiki page** by integrating new information into the existing content.
 This is NOT a simple append — you should reorganize, merge, and improve the overall structure. Graphium is domain-general — never inject a research-paper register unless the source content clearly is one.${language === "ja" ? `
 
-**重要: 日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した）は使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜のではないでしょうか」のいずれかに揃える。これは絶対ルールで、既存セクションの内容が常体でも、書き直し時には敬体に統一する（ただし [EDITED] でマークされたセクションはそのまま保持）。` : ""}${skillSection}
+**重要: 日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます／〜でしょうか）は使わない。** 文末は「〜だ」「〜である」「〜した」「〜になる」「〜と考えられる」「〜のではないか」のいずれかに揃える。これは絶対ルールで、既存セクションの内容が敬体でも、書き直し時には常体に統一する（ただし [EDITED] でマークされたセクションはそのまま保持）。` : ""}${skillSection}
 
 ## Rules
 

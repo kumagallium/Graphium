@@ -16,8 +16,8 @@ export function buildVoiceSection(language: string, skills?: SynthesizerSkill[])
 
   const jaVoiceNote = language === "ja"
     ? `
-- **日本語で書くときは必ず敬体（ですます調）で統一する。常体（〜だ／〜である／〜した）は、タイトル・本文・見出し・例示・引用直前のどこでも使わない。** 文末は「〜です」「〜ます」「〜でした」「〜ました」「〜と考えています」「〜と見ています」「〜のではないでしょうか」「〜のように見えてきます」のいずれかに揃える。これは絶対ルールで、ソース Claim が常体でも、Synthesis は敬体にする。
-- **タイトルも敬体寄りでよい。** 体言止めだけにこだわらず、必要なら語尾まで読める形（「〜は〜を〜します」「〜が〜に〜してきます」）にする。タイトルだけ常体・本文だけ敬体、という温度差は避ける。`
+- **日本語で書くときは必ず常体（である調 / だ調）で統一する。敬体（〜です／〜ます／〜でしょうか）は、タイトル・本文・見出し・例示・引用直前のどこでも使わない。** 文末は「〜だ」「〜である」「〜になる」「〜した」「〜と考えられる」「〜と見られる」「〜のではないか」「〜のように見えてくる」のいずれかに揃える。これは絶対ルールで、ソース Claim が敬体でも、Synthesis は常体にする。
+- **タイトルも常体寄りでよい。** 体言止めだけにこだわらず、必要なら語尾まで読める形（「〜は〜を〜する」「〜が〜に〜してくる」）にする。タイトルだけ敬体・本文だけ常体、という温度差は避ける。`
     : "";
 
   return `## Voice (read this first)
@@ -61,9 +61,9 @@ Empty predicates ("関連する", "影響する", "重要である" with no obje
 > Why off: "支配的になる" / "温度律速" / "pH 律速" are domain-correct but heavy. A reader who hasn't seen those phrases stalls on the wording instead of seeing the connection.
 
 ✅ Specific, plain register, names the connection:
-> 温度・pH・表面積はそれぞれ単独で効くのではなく、表面積が大きくなるほど pH の効き方の方が強く出てきます。[[酸化膜の pH 依存性]] と [[反応速度と表面積]] を重ねると、表面積が小さいうちは温度で決まり、大きくなると pH で決まる、という分かれ方が見えてきます。
+> 温度・pH・表面積はそれぞれ単独で効くのではなく、表面積が大きくなるほど pH の効き方の方が強く出てくる。[[酸化膜の pH 依存性]] と [[反応速度と表面積]] を重ねると、表面積が小さいうちは温度で決まり、大きくなると pH で決まる、という分かれ方が見えてくる。
 >
-> Why good: same connection, but each chunk is something a non-specialist can picture. Subject (表面積) / object (pH と温度の効き方) / verb (強く出てくる・決まる) are explicit, and the whole passage is 敬体 — including the opening sentence.`;
+> Why good: same connection, but each chunk is something a non-specialist can picture. Subject (表面積) / object (pH と温度の効き方) / verb (強く出てくる・決まる) are explicit, and the whole passage is 常体 — including the opening sentence.`;
 }
 
 /** What makes a good Synthesis（モード非依存） */
@@ -96,7 +96,7 @@ Respond with valid JSON only (no markdown wrapper):
     {
       "sourceConceptIds": ["id1", "id2"],
       "sourceConceptTitles": ["Title 1", "Title 2"],
-      "title": "Synthesis page title — plain everyday wording, subject-relation-effect explicit, 敬体 if Japanese",
+      "title": "Synthesis page title — plain everyday wording, subject-relation-effect explicit, 常体 (である調) if Japanese",
       "sections": [
         { "heading": "Section heading", "content": "Section content" }
       ],
