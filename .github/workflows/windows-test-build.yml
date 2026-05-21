@@ -1,0 +1,83 @@
+name: Windows Test Build
+
+# 手動トリガー専用。配布前の動作確認用に Windows .exe を生成して
+# Artifacts に上げるだけ（GitHub Release への upload はしない）。
+# 通常のリリース経路は tauri-build.yml の release イベントトリガーに任せる。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch / tag / SHA to build (default: current branch)"
+        required: false
+        default: ""
+  # Verify Windows build still works on PRs that touch desktop-build paths.
+  pull_request:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - "scripts/fetch-node.mjs"
+      - "scripts/bundle-server.mjs"
+      - "src/lib/sidecar.ts"
+      - ".github/workflows/windows-test-build.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Bundle Node.js runtime for sidecar
+        run: node scripts/fetch-node.mjs
+
+      - name: Bundle server
+        run: node scripts/bundle-server.mjs
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build Tauri app (Windows)
+        run: pnpm exec tauri build --target x86_64-pc-windows-msvc
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Copy-Item -Path src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi -Destination artifacts/ -ErrorAction SilentlyContinue
+          Copy-Item -Path src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe -Destination artifacts/ -ErrorAction SilentlyContinue
+          Get-ChildItem artifacts
+
+      - name: Upload installers as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphium-windows-x64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14

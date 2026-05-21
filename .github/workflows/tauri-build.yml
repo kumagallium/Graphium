@@ -37,11 +37,9 @@ jobs:
             });
             core.setOutput('release_id', release.id);
 
-  # Currently macOS Apple Silicon only.
-  # Windows / Linux / Intel macOS were dropped in v0.3.8 because the bundled
-  # sidecar (Node.js runtime) only ships for arm64 macOS, and the developer
-  # has no realistic way to verify other platforms' release builds end-to-end.
-  # See ideas: G-MULTIOS-RESUME for the conditions to bring them back.
+  # macOS Apple Silicon + Windows x64.
+  # Linux / Intel macOS are still off because there's no developer with
+  # those targets to verify release builds end-to-end (see CONTRIBUTING).
   build:
     needs: resolve-release
     strategy:
@@ -51,6 +49,9 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macOS (Apple Silicon)
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows (x64)
 
     name: Build (${{ matrix.label }})
     runs-on: ${{ matrix.platform }}
@@ -125,9 +126,12 @@ jobs:
 
           mkdir -p /tmp/assets
 
-          # macOS Apple Silicon only — see build job comment for rationale
+          # tauri-action upload patterns:
+          #   macOS arm64: Graphium_aarch64.app.tar.gz
+          #   Windows x64 NSIS updater bundle: Graphium_${VERSION}_x64-setup.nsis.zip
           ASSETS=(
             "Graphium_aarch64.app.tar.gz"
+            "Graphium_${VERSION}_x64-setup.nsis.zip"
           )
 
           for ASSET in "${ASSETS[@]}"; do
@@ -162,6 +166,7 @@ jobs:
           }
 
           DARWIN_AARCH64_SIG=$(read_sig "Graphium_aarch64.app.tar.gz")
+          WINDOWS_X86_64_SIG=$(read_sig "Graphium_${VERSION}_x64-setup.nsis.zip")
 
           cat > latest.json <<EOF
           {
@@ -172,6 +177,10 @@ jobs:
               "darwin-aarch64": {
                 "signature": "${DARWIN_AARCH64_SIG}",
                 "url": "${BASE_URL}/Graphium_aarch64.app.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "${WINDOWS_X86_64_SIG}",
+                "url": "${BASE_URL}/Graphium_${VERSION}_x64-setup.nsis.zip"
               }
             }
           }

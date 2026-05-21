@@ -41,6 +41,10 @@ src-tauri/sidecar/server.mjs
 
 # Bundled Node.js runtime (downloaded by scripts/fetch-node.mjs, ~50MB)
 src-tauri/sidecar/node
+src-tauri/sidecar/node.exe
+
+# Tauri sidecar binaries (Node copy renamed per host target triple, ~50MB)
+src-tauri/binaries/graphium-server-*
 
 # fetch-node temp dir (cleaned up automatically, but ignore in case)
 .tmp-node-fetch/

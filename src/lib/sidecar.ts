@@ -1,15 +1,21 @@
 // Tauri sidecar（バックエンドサーバー）のライフサイクル管理
 // Tauri 環境でのみ使用される
+//
+// 経路:
+//   1. Rust 側の `start_native_sidecar` Tauri command で node を spawn する
+//      （Tauri Shell プラグインを介さない経路）。
+//   2. stdout/stderr/exit は Rust 側で `sidecar-log` / `sidecar-closed`
+//      イベントとして emit され、ここで listen → recordLog する。
+//
+// Windows での Tauri Shell の挙動（spawn 成功・出力 0 行・close 飛ばず）を
+// 避けるためにこの設計。Mac でも同経路を使う（OS で分岐しない）。
 
 import { isTauri } from "./platform";
 
 const HEALTH_URL = "http://localhost:3001/api/health";
+const SIDECAR_PORT = 3001;
 const MAX_RETRIES = 20;
 const RETRY_INTERVAL_MS = 500;
-
-type SidecarChild = {
-  kill: () => Promise<void>;
-};
 
 export type SidecarStatus = "idle" | "starting" | "ready" | "failed";
 
@@ -19,9 +25,14 @@ export type SidecarState = {
   lastErrorAt: number | null;
 };
 
-let sidecarProcess: SidecarChild | null = null;
 let recentLogLines: string[] = [];
-const RECENT_LOG_LIMIT = 20;
+const RECENT_LOG_LIMIT = 80;
+// Rust 側 event listener の cleanup。startSidecar を複数回呼んだ場合に
+// 古い listener を解除するため。
+let logUnlisten: (() => void) | null = null;
+let closedUnlisten: (() => void) | null = null;
+// 現在の sidecar PID（Rust 側に保持されているもののコピー）。
+let currentPid: number | null = null;
 
 const state: SidecarState = {
   status: "idle",
@@ -131,28 +142,56 @@ export async function startSidecar(): Promise<boolean> {
     // 起動されていない → sidecar を起動する
   }
 
+  // Rust 側の start_native_sidecar に切り替え。Tauri Shell プラグインを介さず、
+  // std::process::Command で直接 node を spawn して stdout/stderr/exit を
+  // Tauri event で renderer に流す。Windows での「spawn 成功・出力 0 行・close
+  // 飛ばず」症状を回避するための変更。
+  //
+  // exit ref を let で持つと TS のクロージャ内代入 narrowing で never になるので
+  // オブジェクト参照経由で持つ。
+  const exitRef: { info: string | null } = { info: null };
+
   try {
-    const { Command } = await import("@tauri-apps/plugin-shell");
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { listen } = await import("@tauri-apps/api/event");
 
-    const command = Command.sidecar("binaries/graphium-server", [], {
-      env: {
-        PORT: "3001",
-        CORS_ORIGINS: "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
-        DATA_DIR: dataDir,
-      },
-    });
+    recordLog(`[lifecycle] dataDir: ${dataDir}`);
 
-    command.stdout.on("data", (line: string) => {
-      console.log(`[sidecar] ${line}`);
+    // 古い listener が残っていたら解除（再起動時の重複防止）
+    if (logUnlisten) {
+      try { logUnlisten(); } catch { /* noop */ }
+      logUnlisten = null;
+    }
+    if (closedUnlisten) {
+      try { closedUnlisten(); } catch { /* noop */ }
+      closedUnlisten = null;
+    }
+
+    // Rust 側から流れてくる sidecar-log を recordLog に流す。
+    // payload は文字列 1 行。
+    logUnlisten = await listen<string>("sidecar-log", (event) => {
+      const line = typeof event.payload === "string" ? event.payload : String(event.payload);
       recordLog(line);
     });
-    command.stderr.on("data", (line: string) => {
-      console.error(`[sidecar] ${line}`);
-      recordLog(line);
+    closedUnlisten = await listen<string>("sidecar-closed", (event) => {
+      const detail = typeof event.payload === "string" ? event.payload : String(event.payload);
+      exitRef.info = detail;
+      recordLog(`[lifecycle] process closed ${detail}`);
     });
 
-    const child = await command.spawn();
-    sidecarProcess = child;
+    recordLog(`[lifecycle] invoking start_native_sidecar ...`);
+    try {
+      const pid = await invoke<number>("start_native_sidecar", {
+        dataDir,
+        port: SIDECAR_PORT,
+      });
+      currentPid = pid;
+      recordLog(`[lifecycle] start_native_sidecar returned pid=${pid}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      recordLog(`[lifecycle] start_native_sidecar threw: ${msg}`);
+      throw e;
+    }
 
     console.log("[sidecar] Starting backend server...");
     const healthy = await waitForHealth();
@@ -161,9 +200,13 @@ export async function startSidecar(): Promise<boolean> {
       setState({ status: "ready" });
     } else {
       console.warn("[sidecar] Backend server failed to start");
+      // exit イベントを観測していれば、その内容を lastError に含める。
+      const exitDetail = exitRef.info
+        ? `（プロセスは既に ${exitRef.info} で終了）`
+        : "";
       setState({
         status: "failed",
-        lastError: "ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）",
+        lastError: `ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）${exitDetail}`,
         lastErrorAt: Date.now(),
       });
     }
@@ -171,6 +214,7 @@ export async function startSidecar(): Promise<boolean> {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[sidecar] Failed to spawn:", e);
+    recordLog(`[lifecycle] spawn threw: ${message}`);
     setState({ status: "failed", lastError: message, lastErrorAt: Date.now() });
     return false;
   }
@@ -189,7 +233,7 @@ export async function ensureSidecar(): Promise<boolean> {
     // 応答なし → 再起動を試みる
   }
   console.warn("[sidecar] Backend not responding, attempting restart...");
-  sidecarProcess = null;
+  currentPid = null;
   return startSidecar();
 }
 
@@ -202,14 +246,23 @@ export async function restartSidecar(): Promise<boolean> {
 
 /** sidecar サーバーを停止する */
 export async function stopSidecar(): Promise<void> {
-  if (sidecarProcess) {
+  if (currentPid != null) {
     try {
-      await sidecarProcess.kill();
-      console.log("[sidecar] Backend server stopped");
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("stop_native_sidecar");
+      console.log("[sidecar] Backend server stop requested");
     } catch (e) {
       console.error("[sidecar] Failed to stop:", e);
     }
-    sidecarProcess = null;
+    currentPid = null;
+  }
+  if (logUnlisten) {
+    try { logUnlisten(); } catch { /* noop */ }
+    logUnlisten = null;
+  }
+  if (closedUnlisten) {
+    try { closedUnlisten(); } catch { /* noop */ }
+    closedUnlisten = null;
   }
   setState({ status: "idle" });
 }

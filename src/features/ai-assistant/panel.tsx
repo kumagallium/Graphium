@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign } from "lucide-react";
+import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -11,6 +11,7 @@ import { useAiAssistant } from "./store";
 import { getWikiTitleToIdMap } from "../wiki/retriever";
 import { fetchModels } from "./api";
 import { ensureSidecar } from "../../lib/sidecar";
+import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { useT } from "../../i18n";
 import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -258,6 +259,15 @@ export function AiAssistantPanel({
   // 引用元ブロックがある → 置換ボタンを表示
   const canReplace = sourceBlockIds.length > 0 && !!onReplaceBlocks;
 
+  // 診断 UI 手動展開（接続できているように見えても、検証者が
+  // バックエンド情報をコピーできる経路を用意しておく）
+  const [showManualDiag, setShowManualDiag] = useState(false);
+  const aiStatusForCtx = aiStatus;
+  const buildDiagContext = useCallback(
+    () => `aiStatus=${aiStatusForCtx ?? "checking"}`,
+    [aiStatusForCtx],
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* ヘッダー */}
@@ -292,17 +302,37 @@ export function AiAssistantPanel({
               <Trash2 size={12} />
             </button>
           )}
+          {/* 診断 UI を任意のタイミングで開ける入口（接続成功時にも検証情報を吸い出せる） */}
+          <button
+            onClick={() => setShowManualDiag((v) => !v)}
+            title={t("aiChat.diagnostics")}
+            className={`p-1 rounded transition-colors ${
+              showManualDiag
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            <Info size={12} />
+          </button>
         </div>
       </div>
 
-      {/* AI 利用不可バナー */}
-      {aiStatus === "no-backend" && (
-        <div className="px-3 py-2.5 border-b border-border bg-muted/50">
-          <div className="flex items-start gap-2 text-xs text-muted-foreground">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span>{t("aiChat.noBackend")}</span>
-          </div>
-        </div>
+      {/* ヘッダーの (i) からいつでも開ける診断 UI */}
+      {showManualDiag && (
+        <AiBackendDiagnostic
+          variant="manual"
+          onClose={() => setShowManualDiag(false)}
+          onRecovered={(next) => setAiStatus(next)}
+          extraContext={buildDiagContext}
+        />
+      )}
+
+      {/* AI 利用不可バナー（sidecar 起動失敗時は診断 UI を自動表示） */}
+      {aiStatus === "no-backend" && !showManualDiag && (
+        <AiBackendDiagnostic
+          onRecovered={(next) => setAiStatus(next)}
+          extraContext={buildDiagContext}
+        />
       )}
       {aiStatus === "no-models" && (
         <div className="px-3 py-2.5 border-b border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">

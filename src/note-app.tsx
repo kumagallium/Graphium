@@ -3,7 +3,7 @@
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2 } from "lucide-react";
-import { apiBase, isTauri } from "./lib/platform";
+import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { pdfViewerBlock } from "./blocks/pdf-viewer";
@@ -1600,7 +1600,24 @@ function NoteEditorInner({
         }
       } catch (err) {
         console.error("[Composer] submit failed:", err);
-        window.alert(err instanceof Error ? err.message : tStatic("aiChat.runFailed"));
+        const baseMsg = err instanceof Error ? err.message : tStatic("aiChat.runFailed");
+        // ネットワーク系（"failed to fetch" 等）は原因切り分け用に API base と Tauri 判定を併記する。
+        // 検証者がそのままコピーして共有できるよう、複数行の alert で出す。
+        const isNetworkErr = /failed to fetch|networkerror|err_/i.test(baseMsg);
+        if (isNetworkErr) {
+          const detail = [
+            baseMsg,
+            "",
+            `API base: ${apiBase()}`,
+            `Tauri detection: ${tauriDetectionDetail() || "(none — running as web)"}`,
+            `Location protocol: ${window.location?.protocol ?? "unknown"}`,
+            "",
+            "Open the AI Chat tab and tap the (i) icon to copy a full diagnostics report.",
+          ].join("\n");
+          window.alert(detail);
+        } else {
+          window.alert(baseMsg);
+        }
       }
     };
     return () => {
@@ -2481,7 +2498,10 @@ function NoteEditorInner({
             : "fixed bottom-0 left-0 right-0 z-[100] h-14 border-t justify-center px-2 bg-background/95 backdrop-blur-sm"
         )}>
           {([
-            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: aiAvailable },
+            // Tauri 環境では aiAvailable===false でもタブを残す:
+            // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
+            // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
+            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
