@@ -897,8 +897,9 @@ export function useFileManager(authenticated: boolean) {
   );
 
   // AI 派生ノートを作成（構築済みの GraphiumDocument を受け取って保存）
+  // 戻り値は新ファイル ID。呼び出し元はこれを使って SidePeek 等で開く。
   const handleAiDeriveNote = useCallback(
-    async (doc: GraphiumDocument) => {
+    async (doc: GraphiumDocument): Promise<string> => {
       setDeriving(true);
       try {
         // ドキュメント来歴: AI 派生ノート作成を記録
@@ -908,8 +909,12 @@ export function useFileManager(authenticated: boolean) {
         const now = new Date().toISOString();
 
         // 元ノートに noteLinks を追加して保存（Drive から最新を読み直して provenance を引き継ぐ）
-        if (activeFileIdRef.current && doc.derivedFromBlockId) {
-          const latestDoc = await loadFile(activeFileIdRef.current);
+        // Wiki / Skill ノートは別ストレージで管理されており、通常ノート用の loadFile は使えない。
+        // back-link を張らずに派生だけ進める（Wiki は LLM 生成なので来歴更新の対象外）。
+        const activeId = activeFileIdRef.current;
+        const isAuxiliaryNote = activeId?.startsWith("wiki:") || activeId?.startsWith("skill:");
+        if (activeId && doc.derivedFromBlockId && !isAuxiliaryNote) {
+          const latestDoc = await loadFile(activeId);
           const noteLinks = latestDoc.noteLinks ?? [];
           noteLinks.push({
             targetNoteId: newFileId,
@@ -919,8 +924,8 @@ export function useFileManager(authenticated: boolean) {
           let updatedDoc: GraphiumDocument = { ...latestDoc, noteLinks, modifiedAt: now };
           // ドキュメント来歴: 派生元として記録
           updatedDoc = await recordRevision(updatedDoc, latestDoc.pages[0], "derive_source", { force: true });
-          await saveFile(activeFileIdRef.current, updatedDoc);
-          docCacheRef.current.set(activeFileIdRef.current, updatedDoc);
+          await saveFile(activeId, updatedDoc);
+          docCacheRef.current.set(activeId, updatedDoc);
           setActiveDoc(updatedDoc);
         }
 
@@ -941,8 +946,8 @@ export function useFileManager(authenticated: boolean) {
           queueSaveIndex(updated);
         }
 
-        // 派生先ノートを開く
-        handleOpenFile(newFileId);
+        // 派生先ノートの ID を返す（呼び出し元で SidePeek 等を開く）
+        return newFileId;
       } catch (err) {
         console.error("AI 派生ノートの作成に失敗:", err);
         throw err; // モーダル側でエラー表示
@@ -950,7 +955,7 @@ export function useFileManager(authenticated: boolean) {
         setDeriving(false);
       }
     },
-    [activeDoc, handleOpenFile, setActiveFileId],
+    [activeDoc, setActiveFileId],
   );
 
   // ゴミ箱に送る（ソフトデリート）

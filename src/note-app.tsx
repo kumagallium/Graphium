@@ -365,7 +365,8 @@ type NoteEditorProps = {
   initialDoc: GraphiumDocument | null;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
-  onAiDeriveNote: (doc: GraphiumDocument) => Promise<void>;
+  /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
+  onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
   onNavigateNote: (noteId: string, cachedDoc?: GraphiumDocument) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
@@ -1394,10 +1395,26 @@ function NoteEditorInner({
         }
         // 会話履歴を組み立ててサーバーに送る。
         // サーバーは stateless（session を保持しない）。履歴の正本はノート側の ScopeChat。
-        const history: AgentChatMessage[] = aiAssistant.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+        // 初回 user message は store に表示用の素の質問しか入っていないので、
+        // backend 履歴では quotedMarkdown を改めて挟んで context を維持する
+        // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
+        const history: AgentChatMessage[] = aiAssistant.messages.map((m, idx) => {
+          if (idx === 0 && m.role === "user" && aiAssistant.quotedMarkdown) {
+            return {
+              role: m.role,
+              content: [
+                "以下の内容について質問があります。",
+                "",
+                "---",
+                aiAssistant.quotedMarkdown,
+                "---",
+                "",
+                m.content,
+              ].join("\n"),
+            };
+          }
+          return { role: m.role, content: m.content };
+        });
         const response = await runAgent({
           message: userMessage,
           messages: [...history, { role: "user", content: userMessage }],
@@ -1640,7 +1657,14 @@ function NoteEditorInner({
   const handleAiDeriveFromChat = useCallback(
     async (question: string, answer: string) => {
       if (!fileId || !editorRef.current) return;
-      const chatTitle = await generateTitle(answer).catch(() => question.slice(0, 25));
+      // 派生タイトルはユーザーの質問を要約する（AI 応答を渡すと回答内の主張が拾われ、
+      // トピック中心の探しやすいタイトルにならない）。
+      // 引用テキストがある場合は質問と一緒に渡す（「単語の意味を教えて」だけでは何の単語か
+      // 分からないため、引用元の単語をタイトルに含められるようにする）。
+      const titleSource = aiAssistant.quotedMarkdown
+        ? `引用テキスト:\n${aiAssistant.quotedMarkdown}\n\n質問:\n${question}`
+        : question;
+      const chatTitle = await generateTitle(titleSource).catch(() => question.slice(0, 25));
       const doc = buildAiDerivedDocument({
         title: chatTitle,
         quotedMarkdown: aiAssistant.quotedMarkdown || question,
@@ -5292,7 +5316,18 @@ export function NoteApp() {
               fm.handleDelete(id);
               router.navigate({ view: "home" });
             } : undefined}
-            onAiDeriveNote={fm.handleAiDeriveNote}
+            onAiDeriveNote={async (doc) => {
+              // 派生先ノートは SidePeek で開く（@mention / ノートリンク経路と同じ）。
+              // ref が登録されていない（NoteEditorInner 未マウント等）場合は全画面遷移にフォールバック。
+              const newFileId = await fm.handleAiDeriveNote(doc);
+              const openSidePeek = openSidePeekRef.current;
+              if (openSidePeek) {
+                openSidePeek(newFileId);
+              } else {
+                fm.handleOpenFile(newFileId);
+              }
+              return newFileId;
+            }}
             onNavigateNote={(noteId: string, cachedDoc?: import("./lib/document-types").GraphiumDocument) => {
               if (noteId.startsWith("wiki:")) {
                 fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
