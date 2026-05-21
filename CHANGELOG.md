@@ -1,5 +1,42 @@
 # Changelog
 
+## [v0.7.0](https://github.com/kumagallium/Graphium/compare/v0.6.10...v0.7.0) - 2026-05-21
+
+This is a **minor release**. Knowledge-layer index format moves from v14 → v16 (Phase η + γ schema additions). Existing notes are migrated automatically on first launch — no user action required.
+
+### 🧠 Knowledge Layer — Discovery Mode foundation lands
+
+The Wiki pipeline (Summary → Claim → Atom / Insight → Synthesis / Idea) gets its full empirical scaffolding. The 6-element Toulmin model is now complete (Phase γ), epistemic provenance flows through the layers without speculation contamination (Phase η), and the synthesizer's mode selection is rebalanced so analogical / dialectic / abductive each fire when they should.
+
+- Phase α — rung-2 lift and observational atom preservation in the Atomizer ([#294](https://github.com/kumagallium/Graphium/pull/294))
+- Phase η — `epistemicStatus` (speculation / interpretation / observation / established) with lowest-status inheritance through Atom / Synthesis ([#297](https://github.com/kumagallium/Graphium/pull/297)) — **INDEX bump v14 → v15**
+- Phase γ — Toulmin Rebuttal / Backing / Modal qualifier on Claim and Atom; new dialectic-router trigger from shared rebuttalConditions ([#304](https://github.com/kumagallium/Graphium/pull/304)) — **INDEX bump v15 → v16**
+- Phase γ-follow-up — sharpened Backing extraction disambiguation (Warrant grounding vs Claim evidence) ([#305](https://github.com/kumagallium/Graphium/pull/305))
+- Phase γ-follow-up 2 — tightened analogical mode selection so cross-domain inputs win over abductive ([#307](https://github.com/kumagallium/Graphium/pull/307))
+- Synthesizer diversity — per-mode threshold + diversity preference + atomizer cap relaxation ([#303](https://github.com/kumagallium/Graphium/pull/303))
+- Open-set single-prompt Ingester (v1.3) — profile layer removed ([#298](https://github.com/kumagallium/Graphium/pull/298))
+
+### 📊 Benchmark — empirical quality control becomes load-bearing
+
+The Wiki pipeline now runs against a 58-note corpus with 11 adversarial probes, n=3 averaging on every live run, and CI-enforced perf / migration / adversarial / wiki-pipeline jobs. Each phase declares pre-merge metrics; rollouts that don't move the needle are reverted instead of merged.
+
+- Phase 5a — material-science extraction profile + benchmark harness ([#292](https://github.com/kumagallium/Graphium/pull/292))
+- Phase μ-1 — benchmark foundation (corpus + probes + metrics + live + dry-run pipelines) ([#293](https://github.com/kumagallium/Graphium/pull/293))
+- Phase μ-1.1 — corpus honesty (mixed-status, edge cases, pattern judge, reviewed ground-truth) ([#300](https://github.com/kumagallium/Graphium/pull/300))
+- Phase μ-1.2 — mixed-status-dilution probe uses per-atom inheritance ([#302](https://github.com/kumagallium/Graphium/pull/302))
+- Phase μ-2 — corpus expansion (25 → 58 notes) + cross-language / domain-balance metrics ([#301](https://github.com/kumagallium/Graphium/pull/301))
+- Phase μ-3 — adversarial probes, migration fixtures, perf regression suite ([#299](https://github.com/kumagallium/Graphium/pull/299))
+- n=3 averaging for live runs + new median baseline ([#296](https://github.com/kumagallium/Graphium/pull/296))
+
+### 🎨 UI surface — new entrances
+
+- `Memo` is promoted to a first-class entrance (no longer buried inside other surfaces) ([#306](https://github.com/kumagallium/Graphium/pull/306))
+- `WikiBanner` now surfaces the immediate derivation sources of each Knowledge note (world-model-grounding Phase 1) ([#308](https://github.com/kumagallium/Graphium/pull/308))
+
+### 🛠 Infrastructure
+
+- Updater publishes `latest.json` to Pages so existing users jump to the absolute latest version on next launch ([#290](https://github.com/kumagallium/Graphium/pull/290))
+
 ## [v0.6.10](https://github.com/kumagallium/Graphium/compare/v0.6.9...v0.6.10) - 2026-05-14
 - fix(skill): switch to note when clicking sidebar note from Skill list by @kumagallium in https://github.com/kumagallium/Graphium/pull/285
 - fix(wiki): safe bulk regenerate for Insight/Idea (kind guard + Atom path + shrink guard) by @kumagallium in https://github.com/kumagallium/Graphium/pull/284
