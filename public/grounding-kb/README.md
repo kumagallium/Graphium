@@ -33,6 +33,7 @@ LLM を呼ばずに verdict を返せる軽量レイヤとして機能する。
   version: 1,
   domain: string,                    // ファイル名と一致
   checkedBy: string,                 // PR 2A は "distilled-kb@v1" 固定
+  seedSource?: string,               // "manual-curated@v1" or "model-cache@<v>"（PR 2B 以降）
   entries: Array<{
     id: string,                      // 一意。CHANGELOG 用にも使う
     verdict: "established" | "supported" | "weak" | "contested",
@@ -41,12 +42,28 @@ LLM を呼ばずに verdict を返せる軽量レイヤとして機能する。
     keywords: string[],              // retriever の部分一致語彙（多言語可）
     sources?: Array<{                // optional。contested は無くてもよい
       kind: "distilled",
-      ref: string,
-      note?: string,
+      ref: string,                   // 教科書 / 論文 / 記事タイトル等
+      note?: string,                 // 章番号など補足
+      url?: string,                  // optional。Wikipedia や DOI 等の解決可能 URL
     }>,
+    version?: number,                // エントリ単位のスキーマ版（PR 2A は省略 = 1）
+    generatedByModel?: string,       // "manual-curated@v1" or "<model-id>"（PR 2B 以降の沈殿）
   }>,
 }
 ```
+
+## PR 2A → PR 2B の予定
+
+PR 2A は **手キュレーション seed のみ**。次の PR 2B で:
+
+- `groundingModel` 設定スロット + LLM fallback（KB miss → モデル判定）
+- KB を「育つキャッシュ」化（2 層: public/ シード + appdata/ 沈殿）
+- `not_found` は沈殿させない / 沈殿には `generatedByModel` 必須 / 形 1（個別判断）は共有しない
+
+の鉄則を実装する。今は型と `seedSource` だけ先に入れておく。
+
+URL を入れる場合は実在を確認できるものに限る（誤誘導を避けるため）。Wikipedia
+記事 / DOI / 出版社公式ページなどが第一候補。
 
 ## キュレーション原則
 

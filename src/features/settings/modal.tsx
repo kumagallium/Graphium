@@ -37,6 +37,9 @@ import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/l
 import type { WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
 import { AiUpgradeNotice } from "../../components/AiUpgradeNotice";
+import { Globe2 } from "lucide-react";
+import { loadKb, type KbFile, type KbEntry } from "../world-grounding";
+import type { GroundingValidityVerdict } from "../../lib/document-types";
 import {
   loadAuthorIdentity,
   saveAuthorIdentity,
@@ -94,7 +97,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "labels" | "experimental" | "maintenance";
+type Tab = "display" | "storage" | "ai" | "labels" | "experimental" | "grounding" | "maintenance";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -784,13 +787,14 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
       {/* タブ */}
       <div className="flex border-b border-border px-6">
-        {(["display", "storage", "ai", "labels", "experimental", "maintenance"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "labels", "experimental", "grounding", "maintenance"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
             : tabId === "ai" ? "settings.section.ai"
             : tabId === "labels" ? "settings.tab.labels"
             : tabId === "experimental" ? "settings.tab.experimental"
+            : tabId === "grounding" ? "settings.tab.grounding"
             : "settings.tab.maintenance";
           return (
             <button
@@ -1885,6 +1889,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
           </div>
         )}
 
+        {/* ── Grounding KB タブ（world-model-grounding Phase 2 / PR 2A） ── */}
+        {tab === "grounding" && <GroundingKbTab />}
+
         {/* ── Maintenance タブ ── */}
         {tab === "maintenance" && (
           <div className="space-y-5">
@@ -2618,6 +2625,223 @@ function DiscoveryCard({
       <Button size="sm" onClick={onRun} disabled={running || inputCount < minInput}>
         {running ? t(runningKey) : t(runKey)}
       </Button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Grounding KB タブ（world-model-grounding Phase 2 / PR 2A）
+// 蒸留 KB の中身を確認・チューニング用のデバッグビューアー。
+// 編集 UI は付けず、JSON 直編集 → リロードを促す（PR 2A スコープ）。
+// ─────────────────────────────────────────────────────────────
+
+const KB_DOMAINS = ["materials"] as const;
+type KbDomain = (typeof KB_DOMAINS)[number];
+
+const VERDICT_FILTERS: Array<"all" | GroundingValidityVerdict> = [
+  "all",
+  "established",
+  "supported",
+  "weak",
+  "contested",
+];
+
+function GroundingKbTab() {
+  const { t } = useLocale();
+  const [domain, setDomain] = useState<KbDomain>("materials");
+  const [kb, setKb] = useState<KbFile | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | GroundingValidityVerdict>("all");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const baseUrl =
+      typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
+        ? import.meta.env.BASE_URL
+        : "/";
+    loadKb(domain, baseUrl)
+      .then((file) => {
+        if (cancelled) return;
+        if (!file) {
+          setError("KB not found or invalid");
+          setKb(null);
+        } else {
+          setKb(file);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setKb(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [domain]);
+
+  const filtered: KbEntry[] = useMemo(() => {
+    if (!kb) return [];
+    const q = query.trim().toLowerCase();
+    return kb.entries.filter((e) => {
+      if (filter !== "all" && e.verdict !== filter) return false;
+      if (!q) return true;
+      const hay = `${e.id} ${e.claim} ${e.rationale} ${e.keywords.join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [kb, filter, query]);
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-muted-foreground">
+        {t("settings.grounding.intro")}
+      </div>
+
+      {/* ドメインセレクタ（PR 2A は materials のみ） */}
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-semibold text-foreground">
+          {t("settings.grounding.domain")}:
+        </label>
+        <select
+          value={domain}
+          onChange={(e) => setDomain(e.target.value as KbDomain)}
+          className="text-xs rounded border border-border bg-background px-2 py-1"
+        >
+          {KB_DOMAINS.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+        {kb && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {t("settings.grounding.count", { count: String(kb.entries.length) })}
+          </span>
+        )}
+      </div>
+
+      {/* フィルタ chips */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {VERDICT_FILTERS.map((v) => (
+          <button
+            key={v}
+            onClick={() => setFilter(v)}
+            className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+              filter === v
+                ? "border-primary text-primary bg-primary/10"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {v === "all"
+              ? t("settings.grounding.filterAll")
+              : t(`wikiBanner.worldVerdict.${v}` as any)}
+          </button>
+        ))}
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("settings.grounding.searchPlaceholder")}
+          className="ml-auto px-2 py-1 text-xs rounded border border-border bg-background w-48"
+        />
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          {t("settings.grounding.loading")}
+        </div>
+      )}
+      {error && (
+        <div className="text-xs text-red-500">
+          {t("settings.grounding.loadError")}: {error}
+        </div>
+      )}
+
+      {kb && !loading && filtered.length === 0 && (
+        <div className="text-xs text-muted-foreground py-4">
+          {t("settings.grounding.empty")}
+        </div>
+      )}
+
+      <div className="space-y-2 max-h-[420px] overflow-auto">
+        {filtered.map((entry) => (
+          <KbEntryRow key={entry.id} entry={entry} />
+        ))}
+      </div>
+
+      <div className="text-[11px] text-muted-foreground border-t border-border pt-3">
+        {t("settings.grounding.editHint")}{" "}
+        <code className="text-[10px] bg-muted px-1 rounded">
+          public/grounding-kb/{domain}.v1.json
+        </code>
+      </div>
+    </div>
+  );
+}
+
+function KbEntryRow({ entry }: { entry: KbEntry }) {
+  const { t } = useLocale();
+  const palette: Record<GroundingValidityVerdict, string> = {
+    established: "text-emerald-700 bg-emerald-500/10",
+    supported: "text-emerald-600 bg-emerald-500/5",
+    weak: "text-amber-700 bg-amber-500/10",
+    contested: "text-rose-700 bg-rose-500/10",
+  };
+  return (
+    <div className="rounded border border-border p-2 text-xs">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <span
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+            palette[entry.verdict]
+          }`}
+        >
+          <Globe2 size={9} />
+          {t(`wikiBanner.worldVerdict.${entry.verdict}` as any)}
+        </span>
+        <code className="text-[10px] text-muted-foreground">{entry.id}</code>
+      </div>
+      <div className="text-foreground mb-1">{entry.claim}</div>
+      <div className="text-muted-foreground mb-1">{entry.rationale}</div>
+      <div className="flex items-start gap-1 flex-wrap">
+        <span className="text-[10px] text-muted-foreground">keywords:</span>
+        {entry.keywords.map((k, i) => (
+          <code key={k + i} className="text-[10px] bg-muted px-1 rounded">
+            {k}
+          </code>
+        ))}
+      </div>
+      {entry.sources && entry.sources.length > 0 && (
+        <div className="flex items-start gap-1 flex-wrap mt-1">
+          <span className="text-[10px] text-muted-foreground">sources:</span>
+          {entry.sources.map((s, i) => (
+            <span key={i} className="text-[10px]">
+              {s.url ? (
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                  title={s.url}
+                >
+                  {s.ref}
+                </a>
+              ) : (
+                s.ref
+              )}
+              {i < entry.sources!.length - 1 && (
+                <span className="text-muted-foreground">; </span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

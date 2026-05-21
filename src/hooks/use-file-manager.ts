@@ -323,6 +323,7 @@ export function useFileManager(authenticated: boolean) {
           for (const r of results) {
             if (r.status === "fulfilled") {
               const { id, doc } = r.value;
+              const validity = doc.wikiMeta?.grounding?.validity;
               metas.set(id, {
                 title: doc.title,
                 kind: doc.wikiMeta?.kind ?? "claim",
@@ -333,6 +334,9 @@ export function useFileManager(authenticated: boolean) {
                 atomType: doc.wikiMeta?.atomType,
                 synthesisMode: doc.wikiMeta?.synthesisMode,
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+                groundingValidity: validity
+                  ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+                  : undefined,
               });
               docCacheRef.current.set(`wiki:${id}`, doc);
             }
@@ -1306,6 +1310,7 @@ export function useFileManager(authenticated: boolean) {
         setWikiMetas((prev) => {
           const next = new Map(prev);
           const existing = next.get(wikiId);
+          const validity = doc.wikiMeta?.grounding?.validity;
           next.set(wikiId, {
             title: doc.title,
             kind: doc.wikiMeta?.kind ?? existing?.kind ?? "claim",
@@ -1316,6 +1321,12 @@ export function useFileManager(authenticated: boolean) {
             atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
             synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
             hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
+            // 世界モデル照合 validity の最小 mirror（Phase 2 / PR 2A）。
+            // 一覧 verdict 列 / フィルタ / bulk 用。INDEX bump はしないので
+            // NoteIndexEntry には伝播させない。
+            groundingValidity: validity
+              ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+              : existing?.groundingValidity,
           });
           return next;
         });
@@ -1555,6 +1566,7 @@ export function useFileManager(authenticated: boolean) {
       // wikiMetas を即座に更新（サイドバーに反映）
       setWikiMetas((prev) => {
         const next = new Map(prev);
+        const validity = doc.wikiMeta?.grounding?.validity;
         next.set(newId, {
           title: doc.title,
           kind: doc.wikiMeta?.kind ?? "claim",
@@ -1565,6 +1577,9 @@ export function useFileManager(authenticated: boolean) {
           atomType: doc.wikiMeta?.atomType,
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+          groundingValidity: validity
+            ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+            : undefined,
         });
         return next;
       });

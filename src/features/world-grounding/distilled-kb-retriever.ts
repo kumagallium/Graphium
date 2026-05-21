@@ -23,12 +23,30 @@ export type KbEntry = {
   rationale: string;
   keywords: string[];
   sources?: GroundingSource[];
+  /**
+   * このエントリのスキーマバージョン（PR 2A は省略可で 1 として扱う）。
+   * 後段で entry 単位に再蒸留が走るとき互換チェックに使う。
+   */
+  version?: number;
+  /**
+   * このエントリを生成した出所。
+   * - "manual-curated@v1" : 人手キュレーション（PR 2A seed の既定）
+   * - "<model-id>"        : モデル判定の沈殿（PR 2B で書き込み）
+   */
+  generatedByModel?: string;
 };
 
 export type KbFile = {
   version: 1;
   domain: string;
   checkedBy: string;
+  /**
+   * KB ファイル全体の出所種別。
+   * - "manual-curated@v1": 手キュレーションの seed
+   * - "model-cache@<v>":   モデル判定が沈殿したキャッシュ（PR 2B 以降）
+   * 既定は "manual-curated@v1"（読み込み時に補完）。
+   */
+  seedSource?: string;
   entries: KbEntry[];
 };
 

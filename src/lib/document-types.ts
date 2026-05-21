@@ -357,7 +357,7 @@ export type GroundingValidityVerdict = "contested" | "weak" | "supported" | "est
 
 export type GroundingSource =
   // PR 2A: 蒸留KB のみ。PR 2B で kind: "model" / "search" を追加する。
-  | { kind: "distilled"; ref: string; note?: string };
+  | { kind: "distilled"; ref: string; note?: string; url?: string };
 
 export type GroundingProfile = {
   validity?: {
@@ -369,6 +369,11 @@ export type GroundingProfile = {
     rationale?: string;
     /** 照合に使った情報源。PR 2A では `distilled` 種別のみ。 */
     sources?: GroundingSource[];
+    /**
+     * 蒸留 KB 照合で実際にヒットした keyword 一覧（PR 2A）。UI で「何がトリガーしたか」
+     * を見せるための監査用フィールド。LLM fallback 経路は埋めなくてよい（undefined）。
+     */
+    matchedKeywords?: string[];
     /** 照合元の identity。PR 2A は "distilled-kb@v1" 固定。 */
     checkedBy?: string;
     /** 照合した時刻（ISO8601）。L3 鮮度判定や stale 表示に使う。 */
@@ -422,6 +427,15 @@ export type WikiMetaSummary = {
    * Toulmin Modal qualifier（Phase γ）。Claim でのみ意味を持つ。
    */
   modalQualifier?: ModalQualifier;
+  /**
+   * 世界モデル照合 validity（Phase 2 / PR 2A）。
+   * 一覧 UI の verdict 列・フィルタ・bulk 操作で使う最小限のフィールドだけ mirror する。
+   * `INDEX_SCHEMA_VERSION` は bump しない（`NoteIndexEntry` には mirror しない方針）。
+   */
+  groundingValidity?: {
+    verdict?: GroundingValidityVerdict;
+    checkedAt?: string;
+  };
 };
 
 // Graphium ファイルのメタデータ

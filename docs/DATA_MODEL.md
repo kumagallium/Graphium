@@ -558,15 +558,16 @@ piece of knowledge stand against the world outside the user's notes?"**
 type GroundingValidityVerdict = "contested" | "weak" | "supported" | "established";
 
 type GroundingSource =
-  | { kind: "distilled"; ref: string; note?: string };
+  | { kind: "distilled"; ref: string; note?: string; url?: string };
   // PR 2B will add kind: "model" | "search".
 
 type GroundingProfile = {
   validity?: {
-    score?: number;                          // 0..1
+    score?: number;                          // 0..1 (raw, not directly surfaced in PR 2A UI)
     verdict?: GroundingValidityVerdict;
     rationale?: string;
     sources?: GroundingSource[];
+    matchedKeywords?: string[];              // KB keywords that hit (PR 2A audit field)
     checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
     checkedAt?: string;                      // ISO 8601
   };
@@ -598,10 +599,20 @@ for adding the mirror columns and bumping the schema version (see §5.1).
 
 PR 2A scope: `validity` populated by the distilled KB
 (`public/grounding-kb/<domain>.v1.json`) via keyword retrieval, no LLM
-and no external search. PR 2B adds an LLM fallback (gated behind a
-new `groundingModel` settings slot), automatic grounding at Wiki
-generation time, and exports the verdict to `graphium:worldValidity` in
-the PROV-JSON-LD bridge (see ARCHITECTURE.md §3.2 once updated).
+and no external search. Grounding is **user-triggered only** (banner
+button or bulk action on the list view) — there is no open-time or
+periodic auto-check (PR 2A plan §4 / kickoff §4 cost-floor rule). The
+verdict is presented as the KB's positioning of the claim, not as a
+judgment of the user's stance — the final call stays with the user
+(SPEC §8-1 / §8-4).
+
+KB entries carry an optional `generatedByModel` field. PR 2A seeds it
+implicitly as `"manual-curated@v1"` (the KB-level `seedSource`
+defaults to the same). PR 2B will flip the validity engine: LLM is the
+primary judge and the distilled KB becomes a per-piece cache of model
+verdicts. Sedimentation rules (no `not_found` cached, `generatedByModel`
+required, form-1 individual judgments never shared) are documented in
+`public/grounding-kb/README.md`.
 
 ## 4. Skill documents
 

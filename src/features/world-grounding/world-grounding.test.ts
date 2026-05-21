@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WikiMeta } from "../../lib/document-types";
-import { attachValidity } from "./index";
+import { attachValidity, checkValidity } from "./index";
 import {
   checkValidityFromKB,
   clearKbCacheForTest,
@@ -232,6 +232,68 @@ describe("distilled-kb retriever", () => {
   it("空文字 claimText は null", async () => {
     const result = await checkValidityFromKB("", { kb: sampleKb });
     expect(result).toBeNull();
+  });
+});
+
+describe("checkValidity facade", () => {
+  const sampleKb: KbFile = {
+    version: 1,
+    domain: "materials",
+    checkedBy: "distilled-kb@v1",
+    entries: [
+      {
+        id: "mat-x",
+        verdict: "established",
+        claim: "test",
+        rationale: "established rationale",
+        keywords: ["焼結", "粒成長", "sintering"],
+        sources: [{ kind: "distilled", ref: "Wikipedia: Sintering", url: "https://example.test/sintering" }],
+      },
+    ],
+  };
+
+  it("matchedKeywords が validity に保存される（UI で「何が hit したか」を見せる用）", async () => {
+    const meta = baseMeta();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(sampleKb), { status: 200 })) as typeof fetch;
+    clearKbCacheForTest();
+    try {
+      const validity = await checkValidity(meta, "焼結温度を上げると粒成長が促進される", {
+        domain: "materials",
+        baseUrl: "/test-baseurl/",
+      });
+      expect(validity?.verdict).toBe("established");
+      expect(validity?.matchedKeywords).toEqual(expect.arrayContaining(["焼結", "粒成長"]));
+      expect(validity?.sources?.[0]).toMatchObject({
+        kind: "distilled",
+        url: "https://example.test/sintering",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
+  });
+
+  it("KB ヒットなしは verdict 未付与 + checkedBy / checkedAt のみで返す（照合済み事実だけ残す）", async () => {
+    const meta = baseMeta();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(sampleKb), { status: 200 })) as typeof fetch;
+    clearKbCacheForTest();
+    try {
+      const validity = await checkValidity(meta, "全く別ドメインの本文", {
+        domain: "materials",
+        baseUrl: "/test-baseurl/",
+      });
+      expect(validity?.verdict).toBeUndefined();
+      expect(validity?.checkedBy).toBe("distilled-kb@v1");
+      expect(validity?.checkedAt).toBeTruthy();
+      expect(validity?.matchedKeywords).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
   });
 });
 

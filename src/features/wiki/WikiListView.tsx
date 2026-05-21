@@ -3,10 +3,11 @@
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useState } from "react";
-import { Bot, Search, Trash2, RefreshCw } from "lucide-react";
+import { Bot, Search, Trash2, RefreshCw, Globe2 } from "lucide-react";
 import type {
   AtomType,
   ClaimRole,
+  GroundingValidityVerdict,
   SynthesisMode,
   WikiKind,
   WikiMetaSummary,
@@ -30,6 +31,10 @@ function formatDate(iso: string): string {
 type SortKey = "title" | "modifiedAt" | "createdAt" | "sources" | "incoming" | "outgoing";
 type SortDirection = "asc" | "desc";
 
+// PR 2A 方針 §5: 一覧の verdict 列は残すが **ソートは外す**。
+// verdict は「妥当度ランキング」ではなく KB からの位置づけとして読まれるべきなので、
+// 一覧で並び替えできる UI は誤った含意（強い→弱い順）を与える。
+
 type Props = {
   noteIndex: GraphiumIndex | null;
   wikiKind: WikiKind;
@@ -43,6 +48,11 @@ type Props = {
   onDeleteWiki: (wikiId: string) => Promise<void>;
   /** 一括再生成（任意）— 提供時のみアクションバーに表示 */
   onRegenerateWiki?: (wikiId: string) => Promise<unknown> | void;
+  /**
+   * 一括世界照合（任意, Phase 2 / PR 2A）— 提供時のみアクションバーに表示。
+   * Summary は対象外。蒸留 KB のみで照合するため fire-and-forget で並列実行を許容する。
+   */
+  onWorldCheckWiki?: (wikiId: string) => Promise<unknown> | void;
 };
 
 // 削除確認ダイアログ
@@ -178,6 +188,7 @@ export function WikiListView({
   onBack,
   onDeleteWiki,
   onRegenerateWiki,
+  onWorldCheckWiki,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -254,6 +265,8 @@ export function WikiListView({
         sources: sourcesCountById.get(f.id) ?? 0,
         incoming: incomingRefCount.get(f.id) ?? 0,
         outgoing: outgoingRefCountById.get(f.id) ?? 0,
+        // 世界モデル照合 verdict（Phase 2 / PR 2A） — summary 以外で意味を持つ
+        worldGrounding: wikiMetas.get(f.id)!.groundingValidity,
       }));
   }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById]);
 
@@ -352,6 +365,22 @@ export function WikiListView({
         </span>
         {someSelected && (
           <div className="ml-auto flex items-center gap-2">
+            {onWorldCheckWiki && wikiKind !== "summary" && (
+              <button
+                onClick={() => {
+                  // 一括世界照合（Phase 2 / PR 2A）— 蒸留 KB のみで照合するため fire-and-forget OK
+                  for (const id of selectedIds) {
+                    void onWorldCheckWiki(id);
+                  }
+                  setSelectedIds(new Set());
+                }}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                title={t("wikiList.worldCheckSelectedTitle")}
+              >
+                <Globe2 size={12} />
+                {t("wikiList.worldCheckSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onRegenerateWiki && (
               <button
                 onClick={() => {
@@ -448,6 +477,14 @@ export function WikiListView({
                 >
                   {t("wikiList.colIncoming")}{sortKey === "incoming" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
+                {wikiKind !== "summary" && (
+                  <th
+                    className="py-2 pl-3 w-[110px]"
+                    title={t("wikiList.colWorldVerdictTooltip")}
+                  >
+                    {t("wikiList.colWorldVerdict")}
+                  </th>
+                )}
                 <th className="py-2 px-2 w-[120px]">{t("wikiList.colModel")}</th>
                 <th
                   className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
@@ -518,6 +555,11 @@ export function WikiListView({
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                     {entry.incoming > 0 ? entry.incoming : <span className="text-muted-foreground/40">—</span>}
                   </td>
+                  {wikiKind !== "summary" && (
+                    <td className="py-2 pl-3 text-xs">
+                      <WorldVerdictCell grounding={entry.worldGrounding} />
+                    </td>
+                  )}
                   <td className="py-2 px-2 text-xs text-muted-foreground truncate" title={entry.model ?? ""}>
                     {entry.model ? (
                       <span className="inline-flex items-center gap-1">
@@ -560,4 +602,47 @@ export function WikiListView({
       )}
     </div>
   );
+}
+
+// 世界モデル照合 verdict のセル（Phase 2 / PR 2A）。
+// - verdict あり: 色付き verdict ラベル + Globe アイコン
+// - 照合済 / マッチなし: 薄い ◯ + "—"
+// - 未照合: 薄い "—"（自動照合がまだ走っていない）
+function WorldVerdictCell({
+  grounding,
+}: {
+  grounding?: { verdict?: GroundingValidityVerdict; checkedAt?: string };
+}) {
+  const t = useT();
+  const verdict = grounding?.verdict;
+  if (verdict) {
+    const palette: Record<GroundingValidityVerdict, { fg: string; bg: string }> = {
+      established: { fg: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+      supported: { fg: "text-emerald-600 dark:text-emerald-500", bg: "bg-emerald-500/5" },
+      weak: { fg: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10" },
+      contested: { fg: "text-rose-700 dark:text-rose-400", bg: "bg-rose-500/10" },
+    };
+    const p = palette[verdict];
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium ${p.bg} ${p.fg}`}
+        title={`${t("wikiBanner.worldVerdictLabel")}: ${t(`wikiBanner.worldVerdict.${verdict}` as any)}`}
+      >
+        <Globe2 size={10} />
+        {t(`wikiBanner.worldVerdict.${verdict}` as any)}
+      </span>
+    );
+  }
+  if (grounding?.checkedAt) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-muted-foreground/60 text-[11px]"
+        title={t("wikiBanner.worldNoMatchHint")}
+      >
+        <Globe2 size={10} />
+        {t("wikiList.colWorldVerdictNoMatch")}
+      </span>
+    );
+  }
+  return <span className="text-muted-foreground/40">—</span>;
 }

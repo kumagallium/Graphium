@@ -50,6 +50,7 @@ export async function checkValidity(
     verdict: match.verdict,
     rationale: match.rationale,
     sources: match.sources,
+    matchedKeywords: match.matchedKeywords,
     checkedBy: "distilled-kb@v1",
     checkedAt,
   };

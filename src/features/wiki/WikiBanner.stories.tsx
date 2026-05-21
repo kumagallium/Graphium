@@ -214,7 +214,7 @@ export const WithValidityEstablished: StoryObj = {
     docs: {
       description: {
         story:
-          "蒸留 KB の `established` エントリと一致した状態。濃い緑バッジで「Established」を提示。tooltip に rationale / checkedBy / checkedAt が出る。",
+          "蒸留 KB の `established` エントリと一致した状態。濃い緑バッジで「Established」を提示。バッジは hover で簡易情報、バナー下部の「世界照合 詳細」折り畳みで rationale / sources / checkedBy / checkedAt をクリックで読める（派生元セクションと同じトーン）。",
       },
     },
   },
@@ -230,8 +230,10 @@ export const WithValidityEstablished: StoryObj = {
             verdict: "established",
             score: 0.75,
             rationale: "Coble sintering / Herring scaling（焼結教科書の標準扱い）",
+            matchedKeywords: ["焼結", "sintering", "粒成長"],
             sources: [
               { kind: "distilled", ref: "R. M. German, Sintering Theory and Practice" },
+              { kind: "distilled", ref: "Wikipedia: Sintering", url: "https://en.wikipedia.org/wiki/Sintering" },
             ],
           },
         },
