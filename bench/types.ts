@@ -85,6 +85,12 @@ export type BenchClaim = {
    * 裏付け配列。dry-run / heuristic では空。live mode で Ingester 出力から拾う。
    */
   backing?: { source: string; citation: string; url?: string; internalClaimId?: string }[];
+  /**
+   * cross-domain-pair / cross-language-pair の対応 ID（CorpusNote.pairId から伝播）。
+   * Phase γ-follow-up 2: 同 pairId の Claim/Atom が異 noteId にまたがれば
+   * 「意図的な cross-domain ペア」とみなし、dry-run synthesizer の analogical 判定に使う。
+   */
+  pairId?: string;
 };
 
 export type BenchAtom = {
@@ -97,6 +103,11 @@ export type BenchAtom = {
   liftLevel: "rung-0" | "rung-1" | "rung-2";
   /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal を Atom 層に伝播したもの（atomizer 出力から拾う） */
   rebuttalConditions?: string[];
+  /**
+   * 含まれる Claim の pairId 集合（cross-domain-pair / cross-language-pair の検出用）。
+   * 通常は 0 / 1 件、複数 pair を跨ぐ atom では 2+ 件。
+   */
+  pairIds?: string[];
 };
 
 export type BenchSynthesis = {

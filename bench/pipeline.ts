@@ -185,6 +185,7 @@ function splitIntoClaims(note: CorpusNote): BenchClaim[] {
       rebuttalConditions: extractRebuttalConditions(chunk),
       modalQualifier: detectModalQualifier(chunk),
       backing: backings.length > 0 ? backings : undefined,
+      pairId: note.pairId,
     };
   });
 }
@@ -279,6 +280,11 @@ function buildAtoms(claims: BenchClaim[]): BenchAtom[] {
     const memberClaims = cluster.map((i) => claims[i]);
     const { title, level } = buildAtomTitle(memberClaims);
     const status = lowestEpistemicStatus(memberClaims.map((c) => c.epistemicStatus));
+    // Phase γ-follow-up 2: pairId 集合を atom レベルに集約。
+    // 通常は 0/1 件、複数 pair を跨ぐ atom では 2+ 件。
+    const pairIds = Array.from(
+      new Set(memberClaims.map((c) => c.pairId).filter((p): p is string => Boolean(p))),
+    );
     atoms.push({
       title,
       body: memberClaims.map((c) => c.body.split("\n")[0]).join(" / ").slice(0, 400),
@@ -287,6 +293,7 @@ function buildAtoms(claims: BenchClaim[]): BenchAtom[] {
       derivedFromNoteIds: Array.from(new Set(memberClaims.map((c) => c.sourceNoteId))),
       epistemicStatus: status,
       liftLevel: level,
+      pairIds: pairIds.length > 0 ? pairIds : undefined,
     });
   }
   return atoms;
@@ -301,8 +308,15 @@ function dryRunPairMode(atomA: BenchAtom, atomB: BenchAtom): BenchSynthesis["mod
   const aDom = aNotes.join(",");
   const bDom = bNotes.join(",");
 
-  // pairId のノート同士は意図的なペア
-  const pairAtoms = atomA.derivedFromNoteIds.concat(atomB.derivedFromNoteIds);
+  // Phase γ-follow-up 2: pairId による cross-domain 検出。
+  // CorpusNote.pairId は cross-domain-pair / cross-language-pair の対応を明示するので、
+  // 同 pairId が両 atom に現れて、かつ derivedFromNoteIds が異なるなら、コーパス作者が
+  // 意図した「cross-domain ペア」を捉えていることになる。analogical を最優先。
+  const aPairs = new Set(atomA.pairIds ?? []);
+  const bPairs = new Set(atomB.pairIds ?? []);
+  const sharedPair = [...aPairs].some((p) => bPairs.has(p));
+  if (sharedPair && aDom !== bDom) return "analogical";
+
   const obsOnly = atomA.atomType === "observational" && atomB.atomType === "observational";
   // Phase γ: 両 Atom が rebuttalConditions を持っていれば dialectic 候補に乗せる。
   // Atomizer の伝播ガードで「2+ Claim 共通の rebuttal のみ Atom に上がる」が保証されているので、
