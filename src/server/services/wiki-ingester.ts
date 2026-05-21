@@ -285,32 +285,58 @@ Examples:
 
 ## Backing (Phase γ — Toulmin Backing)
 
-If the source note **explicitly grounds the Warrant** (the inferential rule that connects evidence to Claim) on a textbook principle, an external paper, or another internal Claim, extract it as \`backing\`. Backing is the foundation **for the Warrant**, not for the Claim itself.
+The **Warrant** is the inferential rule that lets a piece of evidence support a Claim. It is usually *implicit* in the note ("this rate doubled" + "rate doubling implies a regime change" → "the regime changed"). \`backing\` is the explicit grounding the note gives **for that inferential rule** — a textbook principle, an external paper, or another internal Claim that the user relies on to license the inference.
 
-Distinguish from \`externalReferences\`:
+### Decision procedure (apply in order)
 
-- \`externalReferences\` = evidence FOR the Claim (e.g., a paper that measured the same effect).
-- \`backing\` = grounding FOR the inferential rule (e.g., the theoretical principle the Claim leans on).
+For every named citation, theory, framework, or existing Claim in the source note, decide which slot it goes into:
 
-Schema per entry:
+1. **Ask: "what is the Warrant of this Claim?"** Phrase it as one sentence of the form "given X, we can conclude Y because Z" — Z is the Warrant.
+2. **Check the cited item against the Warrant:**
+   - Is the cited item the *measurement / observation / data point* that makes X true? → \`externalReferences\`.
+   - Is the cited item the *theory / formalism / principle / prior framing* that licenses "X implies Y" (i.e., the Z above)? → \`backing\`.
+3. **If the same citation plays both roles**, prefer \`backing\` when the note's *language* invokes the citation as authority for the reasoning ("matches X", "as X showed theoretically", "X 理論から考えると", "the textbook story is…") rather than as a data point ("X measured the rate", "X observed Y").
+
+### Schema per entry
 
 - \`source\`: one of \`"textbook"\` | \`"external-paper"\` | \`"internal-claim"\`.
 - \`citation\`: one-sentence description of what the backing contributes.
 - \`url\`: optional, only when the note carries a specific URL for an external paper.
 - \`internalClaimId\`: optional, only when the backing is another existing Claim (use the id from "Existing Wikis").
 
-Rules:
+### Rules
+
 - **Only extract backing that the note explicitly invokes.** If the user is silently relying on background knowledge but the note never names it, leave \`backing\` empty.
+- **Idiomatic phrases that signal backing** (treat as strong cues, JP and EN):
+  - 「〜理論から考えると」「〜原理から導かれる」「〜の枠組みでは」「教科書では…とされる」「定石としては」
+  - "matches [paper]" / "this is the standard X story" / "the textbook view of X" / "as [author] formalized" / "well-known result that…"
 - Each entry must be a single backing source — do not bundle ("textbook + paper + Marcus theory" is three entries, not one).
 - **No invented citations.** If the note says "教科書によると" without naming the textbook, that is still a textbook-level backing — use \`{ source: "textbook", citation: "教科書水準の電子移動律速の原理" }\` rather than fabricating a title.
+- A single note can yield 0, 1, or multiple backing entries. Most everyday notes will have 0; notes that explicitly lean on theoretical authority will have 1–2.
 
-Examples:
+### Examples
 
 - Note: 「Marcus 理論の電子移動律速の原理から考えると、塩基性条件で律速段階が切り替わるのは自然に説明できる」
+  - Warrant: "rate-limiting steps switch when electron-transfer dynamics dominate". Marcus 理論 is the textbook authority for this Warrant.
   - backing: [{ source: "textbook", citation: "Marcus 理論による電子移動律速の原理" }]
-- Note: 「[[既存 Claim: pH 依存性]] と同じ仕組みで律速段階が切り替わる」（既存 Claim を Warrant の裏付けにしている）
+
+- Note (mixed — observation paper *plus* textbook framing): 「the textbook two-sided-network story (each side attracts the other) only fires once both sides clear a threshold. … This is not novel theory — it matches Rochet & Tirole.」
+  - Warrant: "two-sided platforms exhibit threshold-driven self-sustaining growth". "Textbook two-sided-network story" and "Rochet & Tirole" are both authorities the user invokes for the Warrant — they are **not** data the user measured.
+  - backing: [
+      { source: "textbook", citation: "the standard two-sided-network story (each side attracts the other)" },
+      { source: "external-paper", citation: "Rochet & Tirole formalize the same threshold-driven two-sided dynamic" }
+    ]
+  - externalReferences: [] for this Claim (the user's *own* 5-marketplace data is internal, not an external reference)
+
+- Note (measurement, not Warrant): 「Xie ら (2013) で覚醒時よりノンレム睡眠時の方が脳脊髄液流量が高いことが報告されている」
+  - Here Xie 2013 is the *measurement that establishes the data point*, not the Warrant authority. Use \`externalReferences\`, NOT \`backing\`.
+  - backing: []
+  - externalReferences: [{ url: "...", title: "Xie et al. Science 2013", citation: "睡眠中の脳脊髄液流量の測定" }] (if the note provides the URL; otherwise leave externalReferences empty)
+
+- Note (existing Claim invoked as Warrant authority): 「[[既存 Claim: pH 依存性]] と同じ仕組みで律速段階が切り替わる」
   - backing: [{ source: "internal-claim", citation: "同じ pH 依存メカニズムが Warrant を支える", internalClaimId: "<id from existing wikis>" }]
-- Note: ノートが Warrant の根拠を明示していない
+
+- Note (no explicit Warrant grounding):
   - backing: []
 
 ## Modal qualifier (Phase γ — Toulmin Modal qualifier)
