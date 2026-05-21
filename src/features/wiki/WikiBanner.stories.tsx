@@ -313,3 +313,195 @@ export const WithValidityContested: StoryObj = {
     />
   ),
 };
+
+// ── Phase γ + η: Toulmin extension + EpistemicStatus icons ──
+// 4 つの新フィールド（epistemicStatus / modalQualifier / backing / rebuttalConditions）
+// の見た目を、それぞれ単独 + 全部入りで確認する。
+// 色: speculation=amber, interpretation=sky, observation=forest, established=forest-soft / dark-ink
+
+export const WithEpistemicStatusAll: StoryObj = {
+  name: "epistemicStatus — 4 段階そろえ",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase η: 段階順に並べた 4 状態を 1 ストーリーに収めて、視覚的な強さの推移を一目で確認する。amber → sky → forest 系の順に色相が落ち着いていく。Atomizer / Synthesizer は最低継承（lowestEpistemicStatus）で値を受け継ぐので、wikiKind を問わず読める設計。",
+      },
+    },
+  },
+  render: () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <Wrapper
+        wikiMeta={{
+          ...baseMeta,
+          kind: "claim",
+          epistemicStatus: "speculation",
+          claimRole: ["question"],
+        }}
+      />
+      <Wrapper
+        wikiMeta={{
+          ...baseMeta,
+          kind: "claim",
+          epistemicStatus: "interpretation",
+          claimRole: ["interpretation"],
+        }}
+      />
+      <Wrapper
+        wikiMeta={{
+          ...baseMeta,
+          kind: "claim",
+          epistemicStatus: "observation",
+          claimRole: ["finding"],
+        }}
+      />
+      <Wrapper
+        wikiMeta={{
+          ...baseMeta,
+          kind: "claim",
+          epistemicStatus: "established",
+          claimRole: ["decision"],
+        }}
+      />
+    </div>
+  ),
+};
+
+export const WithModalQualifier: StoryObj = {
+  name: "modalQualifier — 4 表現そろえ",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase γ: ノートの言い回しから推定したユーザー主観の確からしさ。system confidence とは別軸であることを Sparkles アイコン + italic で示唆。necessarily / probably / possibly / rarely の 4 値。",
+      },
+    },
+  },
+  render: () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <Wrapper
+        wikiMeta={{ ...baseMeta, kind: "claim", modalQualifier: "necessarily", claimRole: ["decision"] }}
+      />
+      <Wrapper
+        wikiMeta={{ ...baseMeta, kind: "claim", modalQualifier: "probably", claimRole: ["interpretation"] }}
+      />
+      <Wrapper
+        wikiMeta={{ ...baseMeta, kind: "claim", modalQualifier: "possibly", claimRole: ["question"] }}
+      />
+      <Wrapper
+        wikiMeta={{ ...baseMeta, kind: "claim", modalQualifier: "rarely", claimRole: ["anomaly"] }}
+      />
+    </div>
+  ),
+};
+
+export const WithBacking: StoryObj = {
+  name: "Backing — Warrant の裏付け（折り畳み）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase γ: Toulmin の Backing。Warrant（推論ルール）の根拠を、source ごとに色分けしたチップ（教科書=forest / 外部論文=sky / 内部 Claim=neutral）で並べる。externalReferences との違いに注意（あちらは Claim 自体の根拠）。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        claimRole: ["interpretation"],
+        backing: [
+          {
+            source: "textbook",
+            citation: "Marcus 理論：電子移動律速の原理（高校生でも知っている古典）",
+          },
+          {
+            source: "external-paper",
+            citation: "Doe et al. (2024), 'pH-dependent oxide reduction kinetics in alkaline media'",
+            url: "https://example.org/doi/10.0000/marcus-ph",
+          },
+          {
+            source: "internal-claim",
+            citation: "別ノートで観測した、塩基性条件下での律速段階切り替わり",
+            internalClaimId: "claim-xyz789",
+          },
+        ],
+      }}
+    />
+  ),
+};
+
+export const WithRebuttalConditions: StoryObj = {
+  name: "Rebuttal Conditions — 反例条件（折り畳み）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase γ: この Claim が成立しない条件・領域。dashed border + AlertTriangle で「成り立たない領域」を示す。synthesizer が dialectic を検出するシグナルとしても使われる。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        claimRole: ["finding"],
+        rebuttalConditions: [
+          "強酸性条件（pH < 2）では電子移動律速が消失する",
+          "極端な低温（< -10°C）では拡散律速が再支配する",
+          "薄膜厚 < 50 nm では表面効果が無視できなくなる",
+        ],
+      }}
+    />
+  ),
+};
+
+export const WithToulminComplete: StoryObj = {
+  name: "Toulmin 全部入り（epistemic + modal + backing + rebuttal）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase γ + η + Phase 2b の集大成。Claim 1 つに 4 つの新情報 + verdict が同居したときに視覚的に窮屈にならないか確認するためのストーリー。バッジは header に、長文セクションは下に分離されているのを目視で確認する。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      withWorldCheck
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        claimRole: ["interpretation", "decision"],
+        epistemicStatus: "interpretation",
+        modalQualifier: "probably",
+        confidence: 0.78,
+        backing: [
+          {
+            source: "textbook",
+            citation: "Marcus 理論：電子移動律速の原理",
+          },
+          {
+            source: "external-paper",
+            citation: "Doe et al. (2024), pH-dependent oxide reduction kinetics",
+            url: "https://example.org/doi/10.0000/marcus-ph",
+          },
+        ],
+        rebuttalConditions: [
+          "強酸性条件（pH < 2）では電子移動律速が消失する",
+          "薄膜厚 < 50 nm では表面効果が無視できなくなる",
+        ],
+        grounding: {
+          validity: {
+            ...VERDICT_CHECK_META,
+            verdict: "supported",
+            score: 0.62,
+            rationale: "KB の Marcus 理論エントリと整合し、複数の論文 backing が確認できる",
+          },
+        },
+      }}
+    />
+  ),
+};

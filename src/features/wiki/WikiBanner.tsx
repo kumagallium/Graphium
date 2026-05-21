@@ -2,9 +2,28 @@
 // エディタ上部に表示: AI 生成バッジ、アクションボタン
 
 import { useMemo, useState } from "react";
-import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw, Globe2 } from "lucide-react";
+import {
+  RefreshCw,
+  Trash2,
+  ChevronDown,
+  Archive,
+  RotateCcw,
+  Globe2,
+  HelpCircle,
+  Lightbulb,
+  Eye,
+  ShieldCheck,
+  BookOpen,
+  ExternalLink,
+  Link as LinkIcon,
+  AlertTriangle,
+  Sparkles,
+} from "lucide-react";
 import type {
+  BackingEntry,
+  EpistemicStatus,
   GroundingValidityVerdict,
+  ModalQualifier,
   ProcedureContext,
   SynthesisMode,
   WikiMeta,
@@ -248,6 +267,19 @@ export function WikiBanner({
           <WorldCheckedNoMatchBadge validity={wikiMeta.grounding.validity} />
         ) : null}
 
+        {/* Phase η: epistemicStatus バッジ — claim だけでなく atom / synthesis にも出す。
+            Atomizer / Synthesizer が最低継承で値を引き継ぐ設計（document-types.ts）なので、
+            wiki kind を問わず情報があるなら一目で読めるようにする。 */}
+        {wikiMeta.epistemicStatus && (
+          <EpistemicStatusBadge status={wikiMeta.epistemicStatus} />
+        )}
+
+        {/* Phase γ: modalQualifier バッジ — claim のみ（document-types.ts でも claim 専用）。
+            system confidence とは別軸であることを Sparkles アイコン + italic で示唆。 */}
+        {wikiMeta.kind === "claim" && wikiMeta.modalQualifier && (
+          <ModalQualifierBadge qualifier={wikiMeta.modalQualifier} />
+        )}
+
         {archived && (
           <span
             style={{
@@ -395,6 +427,19 @@ export function WikiBanner({
           折り畳みパターンで並べる。バッジは hover、詳細は展開、と役割を分ける。 */}
       {wikiMeta.grounding?.validity?.checkedAt && (
         <WorldGroundingDetailSection validity={wikiMeta.grounding.validity} />
+      )}
+
+      {/* Phase γ: Backing — claim でのみ表示（document-types.ts でも claim 専用フィールド）。
+          Warrant の裏付けが入っていれば折り畳みセクションで読めるようにする。 */}
+      {wikiMeta.kind === "claim" && wikiMeta.backing && wikiMeta.backing.length > 0 && (
+        <BackingSection backing={wikiMeta.backing} />
+      )}
+
+      {/* Phase γ: Rebuttal Conditions — claim と atom で持ち得る（document-types.ts §Toulmin）。
+          synthesizer が dialectic を検出するシグナルとしても使われるので、ユーザーにも
+          見える場所に置く。空配列 / 未定義のときはセクションごと出さない。 */}
+      {wikiMeta.rebuttalConditions && wikiMeta.rebuttalConditions.length > 0 && (
+        <RebuttalConditionsSection conditions={wikiMeta.rebuttalConditions} />
       )}
 
       {/* Synthesis モード説明モーダル（Phase 5.4） */}
@@ -933,6 +978,340 @@ function ProcedureContextSection({ ctx }: { ctx: ProcedureContext }) {
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Phase η: epistemicStatus を控えめなピルで表示する。
+// 段階順: speculation < interpretation < observation < established。
+// アイコンと色相で「地に足が付く度合い」を視覚化する（amber → sky → forest 系）。
+// ──────────────────────────────────────────────
+function EpistemicStatusBadge({ status }: { status: EpistemicStatus }) {
+  const t = useT();
+  const palette: Record<
+    EpistemicStatus,
+    { color: string; bg: string; border: string; Icon: typeof HelpCircle }
+  > = {
+    speculation: {
+      color: "var(--amber-ink, #b45309)",
+      bg: "var(--amber-soft, var(--paper))",
+      border: "var(--amber, var(--rule))",
+      Icon: HelpCircle,
+    },
+    interpretation: {
+      color: "var(--sky-ink, var(--ink-2))",
+      bg: "var(--sky-soft, var(--paper))",
+      border: "var(--sky, var(--rule))",
+      Icon: Lightbulb,
+    },
+    observation: {
+      color: "var(--forest-ink)",
+      bg: "var(--paper)",
+      border: "var(--forest, var(--rule))",
+      Icon: Eye,
+    },
+    established: {
+      color: "var(--forest-ink)",
+      bg: "var(--forest-soft, var(--paper))",
+      border: "var(--forest, var(--rule))",
+      Icon: ShieldCheck,
+    },
+  };
+  const p = palette[status];
+  const label = t(`wikiTypes.epistemicStatus.${status}` as never);
+  const hint = t("wikiBanner.epistemicStatusHint");
+  return (
+    <span
+      title={`${t("wikiBanner.epistemicStatusLabel")}: ${label}\n${hint}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: "var(--pill)",
+        border: `1px solid ${p.border}`,
+        background: p.bg,
+        color: p.color,
+        fontSize: 12,
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      <p.Icon size={11} />
+      {label}
+    </span>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Phase γ: modalQualifier（ユーザー主観の確からしさ表現）を控えめなピルで表示。
+// system confidence とは別軸なので、混同しないように冒頭にスペードアイコンを付ける。
+// ──────────────────────────────────────────────
+function ModalQualifierBadge({ qualifier }: { qualifier: ModalQualifier }) {
+  const t = useT();
+  const palette: Record<ModalQualifier, { color: string; bg: string; border: string }> = {
+    necessarily: {
+      color: "var(--forest-ink)",
+      bg: "var(--paper)",
+      border: "var(--forest, var(--rule))",
+    },
+    probably: {
+      color: "var(--sky-ink, var(--ink-2))",
+      bg: "var(--paper)",
+      border: "var(--sky, var(--rule))",
+    },
+    possibly: {
+      color: "var(--amber-ink, #b45309)",
+      bg: "var(--paper)",
+      border: "var(--amber, var(--rule))",
+    },
+    rarely: {
+      color: "var(--ember, #b54708)",
+      bg: "var(--paper)",
+      border: "var(--ember, var(--rule))",
+    },
+  };
+  const p = palette[qualifier];
+  const label = t(`wikiTypes.modalQualifier.${qualifier}` as never);
+  const hint = t("wikiBanner.modalQualifierHint");
+  return (
+    <span
+      title={`${t("wikiBanner.modalQualifierLabel")}: ${label}\n${hint}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: "var(--pill)",
+        border: `1px solid ${p.border}`,
+        background: p.bg,
+        color: p.color,
+        fontSize: 12,
+        lineHeight: 1.4,
+        fontWeight: 500,
+        fontStyle: "italic",
+      }}
+    >
+      <Sparkles size={10} />
+      {label}
+    </span>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Phase γ: Backing セクション（Toulmin の Warrant 裏付け）。
+// 折り畳みパターンは WorldGroundingDetailSection に揃える。
+// source ごとにアイコンと色を変えて、教科書 / 外部論文 / 内部 Claim を一目で識別できるようにする。
+// ──────────────────────────────────────────────
+function BackingSection({ backing }: { backing: BackingEntry[] }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (backing.length === 0) return null;
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: open ? "6px 10px 8px" : "4px 10px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 11,
+        color: "var(--ink-2)",
+      }}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "1px 4px",
+          margin: 0,
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-2)",
+          font: "inherit",
+          cursor: "pointer",
+        }}
+        title={t("wikiBanner.backingHint")}
+      >
+        <ChevronDown
+          size={11}
+          style={{
+            transform: open ? "rotate(0)" : "rotate(-90deg)",
+            transition: "transform 120ms",
+          }}
+        />
+        <BookOpen size={11} />
+        <span style={{ fontWeight: 500 }}>{t("wikiBanner.backingTitle")}</span>
+        <span style={{ color: "var(--ink-4)", fontWeight: 400 }}>· {backing.length}</span>
+      </button>
+      {open && (
+        <ul
+          style={{
+            marginTop: 6,
+            paddingLeft: 16,
+            lineHeight: 1.55,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          {backing.map((b, i) => (
+            <li key={i}>
+              <BackingSourceChip source={b.source} />{" "}
+              <span>{b.citation}</span>
+              {b.url && (
+                <>
+                  {" "}
+                  <a
+                    href={b.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      color: "var(--sky-ink, var(--ink-2))",
+                      textDecoration: "none",
+                      fontFamily: "var(--mono)",
+                    }}
+                  >
+                    <ExternalLink size={10} style={{ verticalAlign: "-1px" }} />
+                  </a>
+                </>
+              )}
+              {b.internalClaimId && (
+                <span
+                  style={{
+                    marginLeft: 6,
+                    color: "var(--ink-4)",
+                    fontFamily: "var(--mono)",
+                  }}
+                >
+                  <LinkIcon size={10} style={{ verticalAlign: "-1px" }} /> {b.internalClaimId}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function BackingSourceChip({ source }: { source: string }) {
+  const t = useT();
+  // 既知 source は固定パレット。未知 source は中立的に。
+  const palette: Record<string, { color: string; border: string; Icon: typeof BookOpen }> = {
+    textbook: {
+      color: "var(--forest-ink)",
+      border: "var(--forest, var(--rule))",
+      Icon: BookOpen,
+    },
+    "external-paper": {
+      color: "var(--sky-ink, var(--ink-2))",
+      border: "var(--sky, var(--rule))",
+      Icon: ExternalLink,
+    },
+    "internal-claim": {
+      color: "var(--ink-2)",
+      border: "var(--rule)",
+      Icon: LinkIcon,
+    },
+  };
+  const p = palette[source] ?? {
+    color: "var(--ink-2)",
+    border: "var(--rule)",
+    Icon: BookOpen,
+  };
+  const knownSources = ["textbook", "external-paper", "internal-claim"];
+  const label = knownSources.includes(source)
+    ? t(`wikiBanner.backingSource.${source}` as never)
+    : source;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: "0 6px",
+        borderRadius: "var(--pill)",
+        border: `1px solid ${p.border}`,
+        background: "var(--paper)",
+        color: p.color,
+        fontSize: 10,
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      <p.Icon size={9} />
+      {label}
+    </span>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Phase γ: Rebuttal Conditions セクション。
+// 折り畳みは BackingSection と同じトーン。AlertTriangle で「成り立たない条件」を象徴。
+// ──────────────────────────────────────────────
+function RebuttalConditionsSection({ conditions }: { conditions: string[] }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (conditions.length === 0) return null;
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: open ? "6px 10px 8px" : "4px 10px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 11,
+        color: "var(--ink-2)",
+      }}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "1px 4px",
+          margin: 0,
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-2)",
+          font: "inherit",
+          cursor: "pointer",
+        }}
+        title={t("wikiBanner.rebuttalHint")}
+      >
+        <ChevronDown
+          size={11}
+          style={{
+            transform: open ? "rotate(0)" : "rotate(-90deg)",
+            transition: "transform 120ms",
+          }}
+        />
+        <AlertTriangle size={11} style={{ color: "var(--amber-ink, #b45309)" }} />
+        <span style={{ fontWeight: 500 }}>{t("wikiBanner.rebuttalTitle")}</span>
+        <span style={{ color: "var(--ink-4)", fontWeight: 400 }}>· {conditions.length}</span>
+      </button>
+      {open && (
+        <ul
+          style={{
+            marginTop: 6,
+            paddingLeft: 16,
+            lineHeight: 1.55,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          {conditions.map((c, i) => (
+            <li key={i}>{c}</li>
+          ))}
+        </ul>
       )}
     </div>
   );
