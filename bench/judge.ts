@@ -161,7 +161,8 @@ rung-1 (FAIL) examples — fail if ANY of the following kinds of tokens is load-
   - Material / chemistry: "SPS 焼結条件で ZnSb が単相化する", "Bi2Te3 に Sb をドープすると ZT が向上する", "Al3V 系合金で熱伝導率が低下する", "Pt/C 触媒の ORR 活性が向上する"
   - Named formula / theory / law: "Klemens-Callaway モデルで格子熱伝導率を予測できる", "温度依存ローレンツ数を導入すると熱物性予測が改善する"
   - Specific standard / spec: "PROV-DM で合成手順をモジュール化できる", "OAuth でトークン更新する"
-  - Domain abbreviations / jargon: "ホットプレスで単相形成が安定する", "ホール濃度の増加でパワーファクターが向上する", "siRNA でノックダウンする", "Redis でレートリミットを実装する"
+  - Domain abbreviations / jargon: "ホットプレスで単相形成が安定する", "ホール濃度の増加でパワーファクターが向上する", "siRNA でノックダウンする", "Redis でレートリミットを実装する", "律速段階が水酸化物の脱離から電子移動に切り替わる"
+  - Economics / sociology / social-science academic terms: "二面市場は臨界規模を超えて初めて正のネットワーク効果が現れる", "個人のわずかな同類志向が全体で強い居住分離を生む", "貧困の罠は世帯レベルで顕在化しやすく国レベルでは見えにくい", "ナッシュ均衡では各人が一方的に行動を変えても損になる", "外部性が大きい財は市場だけでは最適に供給されない", "情報の非対称性は逆選択を生む". 日本語の漢字 4 字以下でも、特定学派の造語は rung-1。
 
 rung-2 (PASS) examples — describe the same mechanism without naming the specific instance:
   - "短時間の高温処理で揮発成分の分布が変わる"
@@ -170,6 +171,9 @@ rung-2 (PASS) examples — describe the same mechanism without naming the specif
   - "助触媒の担持で還元活性点が増える"
   - "由来を辿れるかたちで作業を記述する仕組みは、工程の組み替えと再利用を扱いやすくする"
   - "トークンバケットで burst を許容しつつ定常負荷を平等化する"
+  - "二種類の利用者が互いに集まるほど価値が増す場では、片方を呼び込める仕組みが先に立ち上がる"
+  - "似た立場の人と関わることを選びやすい傾向が積み重なると、属性ごとに住む場所が分かれていく"
+  - "ある状態に一度落ちると自力で抜け出しづらい仕組みが、個人レベルでは見えるのに集計レベルでは見えにくい"
 
 Respond with ONLY a single JSON object (no markdown):
 {"passed": true | false, "reason": "<one short sentence>"}
