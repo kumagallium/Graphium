@@ -52,15 +52,28 @@ LLM を呼ばずに verdict を返せる軽量レイヤとして機能する。
 }
 ```
 
-## PR 2A → PR 2B の予定
+## 2 層構造（PR 2B 以降）
 
-PR 2A は **手キュレーション seed のみ**。次の PR 2B で:
+PR 2B から KB は **seed + cache の 2 層** になっている:
 
-- `groundingModel` 設定スロット + LLM fallback（KB miss → モデル判定）
-- KB を「育つキャッシュ」化（2 層: public/ シード + appdata/ 沈殿）
-- `not_found` は沈殿させない / 沈殿には `generatedByModel` 必須 / 形 1（個別判断）は共有しない
+| 層 | 場所 | 内容 | 編集 |
+|---|---|---|---|
+| seed | `public/grounding-kb/<domain>.v1.json` | 手キュレーション固定 | このファイルを直接編集（PR レビュー対象） |
+| cache | `appdata` キー `grounding-kb-cache-<domain>` | モデル判定の沈殿 | アプリが自動 append。**手で編集しない** |
 
-の鉄則を実装する。今は型と `seedSource` だけ先に入れておく。
+`loadKb(domain)` は両層を merge して返す（entry id 重複は cache 優先）。Settings →
+**Grounding KB** タブで両層の合成結果を一覧できる。`generatedByModel` で seed
+（`manual-curated@v1`）か model 判定かを見分けられる。
+
+## 沈殿の鉄則（コードで強制）
+
+`src/features/world-grounding/kb-cache.ts → isValidForCaching` が以下を assert:
+
+1. `verdict` が 4 値（established / supported / weak / contested）でない entry は沈殿しない（`not_found` 非沈殿）
+2. `generatedByModel` が空 / `manual-curated@v1` の entry は沈殿しない（seed 専用印）
+3. `claim` / `keywords` が空の entry は沈殿しない（retriever で hit しない壊れた entry）
+4. PR 2B は **ローカル個人 cache のみ**。共有 KB（形 2）への沈殿経路は別 PR で convergence
+   check (kickoff §6) と一緒に検討する。
 
 URL を入れる場合は実在を確認できるものに限る（誤誘導を避けるため）。Wikipedia
 記事 / DOI / 出版社公式ページなどが第一候補。

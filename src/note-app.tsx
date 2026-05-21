@@ -2716,13 +2716,16 @@ export function NoteApp() {
             id: toastId,
             status: "generating" as const,
             noteTitle: `Checking "${wikiTitle}" against world KB`,
-            detail: "distilled-kb@v1 (no LLM)",
+            detail: "KB → model (cached on hit)",
           },
         ],
       }));
       try {
         const claimText = `${doc.title}\n\n${extractPlainTextFromDoc(doc)}`;
-        const validity = await checkValidity(doc.wikiMeta, claimText);
+        const validity = await checkValidity(doc.wikiMeta, claimText, {
+          // LLM 判定時の rationale を現在のロケールで書かせる
+          language: getLocale(),
+        });
         const next: GraphiumDocument = {
           ...doc,
           wikiMeta: attachValidity(doc.wikiMeta, validity),
@@ -2734,9 +2737,28 @@ export function NoteApp() {
         if (fm.activeFileId === `wiki:${wikiId}`) {
           fm.handleOpenWikiFile(wikiId);
         }
-        const resultMsg = validity?.verdict
-          ? `Verdict: ${validity.verdict}`
-          : "No KB match (checked, no verdict)";
+        // checkedBy で「KB ヒット」「LLM 判定」「engine 無し / API エラー」を出し分ける（PR 2B）
+        const checkedBy = validity?.checkedBy ?? "distilled-kb@v1";
+        const isKbHit = checkedBy === "distilled-kb@v1";
+        const isNoEngine = checkedBy === "no-engine";
+        const isEngineError = checkedBy === "engine-error";
+        let resultMsg: string;
+        if (isNoEngine) {
+          // モデル未登録 + KB miss — Settings でモデルを設定するよう促す
+          resultMsg = "KB miss, no model registered (Settings → AI)";
+        } else if (isEngineError) {
+          // モデルは登録されているが API 呼び出しが失敗した
+          const reason = validity?.rationale ?? "unknown error";
+          resultMsg = `KB miss, model call failed: ${reason}`;
+        } else if (validity?.verdict) {
+          const sourcePart = isKbHit ? "from KB" : `judged by ${checkedBy}`;
+          resultMsg = `verdict: ${validity.verdict} (${sourcePart})`;
+        } else if (isKbHit) {
+          resultMsg = "KB checked, no match";
+        } else {
+          // LLM が verdict: null を返した（out of domain と言った）
+          resultMsg = `${checkedBy} returned: out of domain`;
+        }
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === toastId

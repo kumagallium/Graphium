@@ -597,22 +597,48 @@ into `NoteIndexEntry` or `WikiMetaSummary`. When a future PR surfaces
 the verdict in list filters / quadrant badges, that PR is responsible
 for adding the mirror columns and bumping the schema version (see §5.1).
 
-PR 2A scope: `validity` populated by the distilled KB
-(`public/grounding-kb/<domain>.v1.json`) via keyword retrieval, no LLM
-and no external search. Grounding is **user-triggered only** (banner
-button or bulk action on the list view) — there is no open-time or
-periodic auto-check (PR 2A plan §4 / kickoff §4 cost-floor rule). The
-verdict is presented as the KB's positioning of the claim, not as a
-judgment of the user's stance — the final call stays with the user
-(SPEC §8-1 / §8-4).
+Grounding is **user-triggered only** (banner button or bulk action on
+the list view) — there is no open-time or periodic auto-check (PR 2A
+plan §4 / kickoff §4 cost-floor rule). The verdict is presented as the
+KB's positioning of the claim, not as a judgment of the user's stance
+— the final call stays with the user (SPEC §8-1 / §8-4).
 
-KB entries carry an optional `generatedByModel` field. PR 2A seeds it
-implicitly as `"manual-curated@v1"` (the KB-level `seedSource`
-defaults to the same). PR 2B will flip the validity engine: LLM is the
-primary judge and the distilled KB becomes a per-piece cache of model
-verdicts. Sedimentation rules (no `not_found` cached, `generatedByModel`
-required, form-1 individual judgments never shared) are documented in
-`public/grounding-kb/README.md`.
+PR 2B flips the validity engine into a **two-layer KB + LLM fallback**:
+
+1. KB lookup (seed `public/grounding-kb/<domain>.v1.json` merged with
+   user-local `appdata` cache `grounding-kb-cache-<domain>`) — hit
+   returns instantly with no LLM call.
+2. KB miss → user's configured `groundingModel` (Settings → AI tab)
+   judges the claim via `POST /api/world-grounding/check`. The model
+   must output strict JSON with `verdict` (4 values or `null`),
+   `rationale`, a domain-general `normalizedClaim`, and `keywords`.
+3. If the model returns a 4-value verdict with `normalizedClaim` and
+   `keywords`, the result is **sedimented** into the local appdata
+   cache as a new KB entry tagged with `generatedByModel`. The next
+   check on a similar claim is served from the KB at no LLM cost — the
+   KB grows by use.
+
+Sedimentation rules (enforced in code by
+`src/features/world-grounding/kb-cache.ts → isValidForCaching`):
+
+- **`not_found` is never cached.** `verdict: null` (out of domain) is
+  *not* written. Re-checking later goes back to the model, preserving
+  the chance for a future verdict.
+- **`generatedByModel` is required.** Entries marked `manual-curated@v1`
+  are seed-only and refused by the cache.
+- **`claim` and `keywords` must be non-empty** or the entry is
+  unindexable.
+- **Form-1 (individual judgments / note contents) are never cached.**
+  The model is instructed to emit a domain-general `normalizedClaim` —
+  experiment-specific parameters / sample IDs / lab names are stripped
+  before sedimentation. PR 2B keeps the cache strictly local; a shared
+  cache layer would need convergence-validation (kickoff §6) and is out
+  of scope.
+
+The `groundingModel` Settings slot follows the same degrade pattern as
+`chatSynthesisModel` — when empty, falls back to the default model;
+when no model is registered at all the check returns `checkedAt`-only
+and the badge shows "checked · no KB match" without erroring.
 
 ## 4. Skill documents
 
