@@ -2,9 +2,10 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download } from "lucide-react";
+import { BookOpen, Download, Filter } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { MenuItem } from "@/ui/menu-item";
+import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
 import {
   IndexFileNoteListSource,
   type NoteListEntry,
@@ -15,6 +16,7 @@ import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
+import { cn } from "../../lib/utils";
 
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
@@ -25,6 +27,16 @@ const LABEL_HEX: Record<string, string> = {
   attribute: "#c08b3e",
   result: "#c26356",
 };
+
+// FilterPopup の左側に置く小さな色チップ
+function LabelDot({ color }: { color: string }) {
+  return (
+    <span
+      className="block w-2.5 h-2.5 rounded-full"
+      style={{ backgroundColor: color }}
+    />
+  );
+}
 
 
 // 削除確認ダイアログ
@@ -112,7 +124,15 @@ export function NoteListView({
   const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
+  const [authorFilter, setAuthorFilter] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  // 列ヘッダから開く filter popup の表示状態と位置
+  const [labelFilterOpen, setLabelFilterOpen] = useState(false);
+  const [labelFilterPos, setLabelFilterPos] = useState({ top: 0, left: 0 });
+  const labelFilterBtnRef = useRef<HTMLButtonElement>(null);
+  const [authorFilterOpen, setAuthorFilterOpen] = useState(false);
+  const [authorFilterPos, setAuthorFilterPos] = useState({ top: 0, left: 0 });
+  const authorFilterBtnRef = useRef<HTMLButtonElement>(null);
   // 選択状態
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // 削除確認ダイアログ
@@ -176,11 +196,17 @@ export function NoteListView({
       result = result.filter((e) => e.title.toLowerCase().includes(q));
     }
 
-    // ラベルフィルタ（AND）
+    // ラベルフィルタ（AND） — 列ヘッダから絞り込み
     if (labelFilter.length > 0) {
       result = result.filter((e) =>
         labelFilter.every((label) => e.labels.includes(label))
       );
+    }
+
+    // 著者フィルタ（OR） — 列ヘッダから絞り込み
+    if (authorFilter.length > 0) {
+      const set = new Set(authorFilter);
+      result = result.filter((e) => set.has(e.author ?? ""));
     }
 
     // ソート
@@ -217,7 +243,37 @@ export function NoteListView({
     });
 
     return sorted;
-  }, [entries, searchQuery, labelFilter, sortKey, sortDir]);
+  }, [entries, searchQuery, labelFilter, authorFilter, sortKey, sortDir]);
+
+  // 列ヘッダ filter の選択肢を entries から動的に集計
+  const labelFilterOptions = useMemo<FilterOption[]>(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries) {
+      for (const label of e.labels) {
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({
+        value,
+        label: getDisplayLabelName(value),
+        count,
+        icon: <LabelDot color={LABEL_HEX[value] ?? "#8fa394"} />,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
+  }, [entries]);
+
+  const authorFilterOptions = useMemo<FilterOption[]>(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries) {
+      const a = e.author ?? "";
+      if (!a) continue;
+      counts.set(a, (counts.get(a) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({ value, label: value, count }))
+      .sort((a, b) => a.label.localeCompare(b.label, "ja"));
+  }, [entries]);
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.noteId), [filtered]);
@@ -485,8 +541,6 @@ export function NoteListView({
         sortKey={sortKey}
         sortDir={sortDir}
         onSort={handleSort}
-        labelFilter={labelFilter}
-        onLabelFilterChange={setLabelFilter}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
@@ -539,11 +593,44 @@ export function NoteListView({
                 >
                   {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th
-                  className="py-2 px-3 w-[140px] cursor-pointer hover:text-foreground"
-                  onClick={() => handleSort("labels")}
-                >
-                  {t("nav.labels")}{sortKey === "labels" && (sortDir === "desc" ? " ↓" : " ↑")}
+                <th className="py-2 px-3 w-[140px]">
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="hover:text-foreground"
+                      onClick={() => handleSort("labels")}
+                    >
+                      {t("nav.labels")}{sortKey === "labels" && (sortDir === "desc" ? " ↓" : " ↑")}
+                    </button>
+                    {labelFilterOptions.length > 0 && (
+                      <button
+                        ref={labelFilterBtnRef}
+                        type="button"
+                        onClick={() => {
+                          if (labelFilterBtnRef.current) {
+                            const rect = labelFilterBtnRef.current.getBoundingClientRect();
+                            setLabelFilterPos({ top: rect.bottom + 4, left: rect.left });
+                          }
+                          setLabelFilterOpen((v) => !v);
+                        }}
+                        className={cn(
+                          "inline-flex items-center justify-center w-5 h-5 rounded transition-colors",
+                          labelFilter.length > 0
+                            ? "text-primary bg-primary/10 hover:bg-primary/15"
+                            : "text-text-tertiary hover:text-foreground hover:bg-muted",
+                        )}
+                        aria-label={t("nav.filterLabels")}
+                        title={t("nav.filterLabels")}
+                      >
+                        <Filter size={12} strokeWidth={2.25} />
+                      </button>
+                    )}
+                    {labelFilter.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-primary">
+                        ({labelFilter.length})
+                      </span>
+                    )}
+                  </div>
                 </th>
                 <th
                   className="py-2 px-2 w-[56px] text-center cursor-pointer hover:text-foreground"
@@ -555,12 +642,44 @@ export function NoteListView({
                   </span>
                   {sortKey === "knowledgeCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th
-                  className="py-2 px-2 w-[96px] cursor-pointer hover:text-foreground"
-                  onClick={() => handleSort("author")}
-                  title={t("nav.authorTooltip")}
-                >
-                  {t("nav.author")}{sortKey === "author" && (sortDir === "desc" ? " ↓" : " ↑")}
+                <th className="py-2 px-2 w-[96px]" title={t("nav.authorTooltip")}>
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="hover:text-foreground"
+                      onClick={() => handleSort("author")}
+                    >
+                      {t("nav.author")}{sortKey === "author" && (sortDir === "desc" ? " ↓" : " ↑")}
+                    </button>
+                    {authorFilterOptions.length > 0 && (
+                      <button
+                        ref={authorFilterBtnRef}
+                        type="button"
+                        onClick={() => {
+                          if (authorFilterBtnRef.current) {
+                            const rect = authorFilterBtnRef.current.getBoundingClientRect();
+                            setAuthorFilterPos({ top: rect.bottom + 4, left: rect.left });
+                          }
+                          setAuthorFilterOpen((v) => !v);
+                        }}
+                        className={cn(
+                          "inline-flex items-center justify-center w-5 h-5 rounded transition-colors",
+                          authorFilter.length > 0
+                            ? "text-primary bg-primary/10 hover:bg-primary/15"
+                            : "text-text-tertiary hover:text-foreground hover:bg-muted",
+                        )}
+                        aria-label={t("nav.filterAuthor")}
+                        title={t("nav.filterAuthor")}
+                      >
+                        <Filter size={12} strokeWidth={2.25} />
+                      </button>
+                    )}
+                    {authorFilter.length > 0 && (
+                      <span className="text-[10px] tabular-nums text-primary">
+                        ({authorFilter.length})
+                      </span>
+                    )}
+                  </div>
                 </th>
                 <th
                   className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
@@ -733,6 +852,36 @@ export function NoteListView({
           </table>
         )}
       </div>
+
+      {/* 列ヘッダ filter popup（portal で描画されるのでテーブル外でも OK） */}
+      {labelFilterOpen && (
+        <FilterPopup
+          position={labelFilterPos}
+          onClose={() => setLabelFilterOpen(false)}
+          title={t("nav.filterLabels")}
+          options={labelFilterOptions}
+          selected={labelFilter}
+          onChange={setLabelFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+          noMatchText={t("nav.noMatchingNotes")}
+          minWidth={220}
+        />
+      )}
+      {authorFilterOpen && (
+        <FilterPopup
+          position={authorFilterPos}
+          onClose={() => setAuthorFilterOpen(false)}
+          title={t("nav.filterAuthor")}
+          options={authorFilterOptions}
+          selected={authorFilter}
+          onChange={setAuthorFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+          noMatchText={t("nav.noMatchingNotes")}
+          minWidth={220}
+        />
+      )}
 
       {/* 削除確認ダイアログ */}
       {deleteTarget && (
