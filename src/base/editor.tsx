@@ -46,6 +46,7 @@ import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
+import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 
 type SlashMenuItem = {
   title: string;
@@ -132,6 +133,15 @@ export function SandboxEditor({
     initialContent: initialContent?.length ? (initialContent as any) : undefined,
     uploadFile,
     resolveFileUrl,
+    // Tab / Shift-Tab を常にインデント操作に振る。
+    // デフォルトの "prefer-navigate-ui" は FormattingToolbar / FilePanel が
+    // 開いている時に Tab/Shift-Tab を非処理にして UI 側にフォーカスを移すが、
+    // 箇条書きの最中にうっかり Toolbar が残っていると Shift+Tab だけが
+    // 反応しなくなり「左に戻れない」体験になる。執筆中は常にインデント
+    // が効くほうが直感的。
+    tabBehavior: "prefer-indent",
+    // 「子持ちの空 list item を Backspace」した時に、子のインデントを保つ。
+    extensions: [preserveChildIndentOnBackspaceExtension],
   });
 
   // エディタインスタンスを外部に公開
