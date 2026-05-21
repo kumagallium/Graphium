@@ -38,7 +38,12 @@ import type { WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
 import { AiUpgradeNotice } from "../../components/AiUpgradeNotice";
 import { Globe2 } from "lucide-react";
-import { loadKb, type KbFile, type KbEntry } from "../world-grounding";
+import {
+  loadKb,
+  removeFromKbCache,
+  type KbEntry,
+  type KbFile,
+} from "../world-grounding";
 import type { GroundingValidityVerdict } from "../../lib/document-types";
 import {
   loadAuthorIdentity,
@@ -2727,13 +2732,11 @@ function DiscoveryCard({
 }
 
 // ─────────────────────────────────────────────────────────────
-// Grounding KB タブ（world-model-grounding Phase 2 / PR 2A）
-// 蒸留 KB の中身を確認・チューニング用のデバッグビューアー。
-// 編集 UI は付けず、JSON 直編集 → リロードを促す（PR 2A スコープ）。
+// Grounding KB タブ（world-model-grounding Phase 2 / PR 2C）
+// 蒸留 KB の中身を確認・チューニング用のビューアー。
+// - PR 2C: domain 分割を廃止。entry の分野ラベルは tags (多値) で表現
+// - 沈殿 entry には削除ボタンが付く。seed entry は読み取り専用
 // ─────────────────────────────────────────────────────────────
-
-const KB_DOMAINS = ["materials"] as const;
-type KbDomain = (typeof KB_DOMAINS)[number];
 
 const VERDICT_FILTERS: Array<"all" | GroundingValidityVerdict> = [
   "all",
@@ -2743,14 +2746,19 @@ const VERDICT_FILTERS: Array<"all" | GroundingValidityVerdict> = [
   "contested",
 ];
 
+/** seed (手キュレーション) か model 沈殿かを判定する */
+function isSeedEntry(entry: KbEntry): boolean {
+  return !entry.generatedByModel || entry.generatedByModel === "manual-curated@v1";
+}
+
 function GroundingKbTab() {
   const { t } = useLocale();
-  const [domain, setDomain] = useState<KbDomain>("materials");
   const [kb, setKb] = useState<KbFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | GroundingValidityVerdict>("all");
+  const [verdictFilter, setVerdictFilter] = useState<"all" | GroundingValidityVerdict>("all");
   const [query, setQuery] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -2760,7 +2768,7 @@ function GroundingKbTab() {
       typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
         ? import.meta.env.BASE_URL
         : "/";
-    loadKb(domain, baseUrl)
+    loadKb(baseUrl)
       .then((file) => {
         if (cancelled) return;
         if (!file) {
@@ -2781,59 +2789,55 @@ function GroundingKbTab() {
     return () => {
       cancelled = true;
     };
-  }, [domain]);
+  }, [reloadTick]);
 
   const filtered: KbEntry[] = useMemo(() => {
     if (!kb) return [];
     const q = query.trim().toLowerCase();
     return kb.entries.filter((e) => {
-      if (filter !== "all" && e.verdict !== filter) return false;
+      if (verdictFilter !== "all" && e.verdict !== verdictFilter) return false;
       if (!q) return true;
       const hay = `${e.id} ${e.claim} ${e.rationale} ${e.keywords.join(" ")}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [kb, filter, query]);
+  }, [kb, verdictFilter, query]);
+
+  const handleDelete = async (entry: KbEntry) => {
+    if (isSeedEntry(entry)) return; // UI で既に disabled、念のため
+    const confirmed = window.confirm(
+      t("settings.grounding.confirmDelete", { id: entry.id }),
+    );
+    if (!confirmed) return;
+    const ok = await removeFromKbCache(entry.id);
+    if (!ok) {
+      setError(t("settings.grounding.deleteFailed"));
+      return;
+    }
+    setError(null);
+    // KB を再ロード（seed + 残存 cache を merge し直す）
+    setReloadTick((n) => n + 1);
+  };
 
   return (
     <div className="space-y-4">
       <div className="text-xs text-muted-foreground">
         {t("settings.grounding.intro")}
       </div>
-      <div className="text-xs text-muted-foreground/80 italic">
-        {t("settings.grounding.domainNote")}
-      </div>
 
-      {/* ドメインセレクタ（PR 2A は materials のみ） */}
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-semibold text-foreground">
-          {t("settings.grounding.domain")}:
-        </label>
-        <select
-          value={domain}
-          onChange={(e) => setDomain(e.target.value as KbDomain)}
-          className="text-xs rounded border border-border bg-background px-2 py-1"
-        >
-          {KB_DOMAINS.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-        {kb && (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {t("settings.grounding.count", { count: String(kb.entries.length) })}
-          </span>
-        )}
-      </div>
+      {kb && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+          {t("settings.grounding.count", { count: String(kb.entries.length) })}
+        </div>
+      )}
 
-      {/* フィルタ chips */}
+      {/* verdict フィルタ chips */}
       <div className="flex items-center gap-2 flex-wrap">
         {VERDICT_FILTERS.map((v) => (
           <button
             key={v}
-            onClick={() => setFilter(v)}
+            onClick={() => setVerdictFilter(v)}
             className={`px-2 py-1 text-[11px] rounded border transition-colors ${
-              filter === v
+              verdictFilter === v
                 ? "border-primary text-primary bg-primary/10"
                 : "border-border text-muted-foreground hover:text-foreground"
             }`}
@@ -2843,12 +2847,16 @@ function GroundingKbTab() {
               : t(`wikiBanner.worldVerdict.${v}` as any)}
           </button>
         ))}
+      </div>
+
+      {/* 検索ボックス（独立行で全幅） */}
+      <div>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("settings.grounding.searchPlaceholder")}
-          className="ml-auto px-2 py-1 text-xs rounded border border-border bg-background w-48"
+          className="w-full px-2 py-1 text-xs rounded border border-border bg-background"
         />
       </div>
 
@@ -2872,21 +2880,27 @@ function GroundingKbTab() {
 
       <div className="space-y-2 max-h-[420px] overflow-auto">
         {filtered.map((entry) => (
-          <KbEntryRow key={entry.id} entry={entry} />
+          <KbEntryRow key={entry.id} entry={entry} onDelete={handleDelete} />
         ))}
       </div>
 
       <div className="text-[11px] text-muted-foreground border-t border-border pt-3">
         {t("settings.grounding.editHint")}{" "}
         <code className="text-[10px] bg-muted px-1 rounded">
-          public/grounding-kb/{domain}.v1.json
+          public/grounding-kb/seed.v1.json
         </code>
       </div>
     </div>
   );
 }
 
-function KbEntryRow({ entry }: { entry: KbEntry }) {
+function KbEntryRow({
+  entry,
+  onDelete,
+}: {
+  entry: KbEntry;
+  onDelete: (entry: KbEntry) => void;
+}) {
   const { t } = useLocale();
   const palette: Record<GroundingValidityVerdict, string> = {
     established: "text-emerald-700 bg-emerald-500/10",
@@ -2894,6 +2908,7 @@ function KbEntryRow({ entry }: { entry: KbEntry }) {
     weak: "text-amber-700 bg-amber-500/10",
     contested: "text-rose-700 bg-rose-500/10",
   };
+  const seed = isSeedEntry(entry);
   return (
     <div className="rounded border border-border p-2 text-xs">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -2906,6 +2921,42 @@ function KbEntryRow({ entry }: { entry: KbEntry }) {
           {t(`wikiBanner.worldVerdict.${entry.verdict}` as any)}
         </span>
         <code className="text-[10px] text-muted-foreground">{entry.id}</code>
+        <span
+          className={`text-[10px] px-1 py-0.5 rounded ${
+            seed
+              ? "bg-muted text-muted-foreground"
+              : "bg-blue-500/10 text-blue-600"
+          }`}
+          title={
+            seed
+              ? t("settings.grounding.seedBadgeTooltip")
+              : t("settings.grounding.cacheBadgeTooltip", {
+                  model: entry.generatedByModel ?? "",
+                })
+          }
+        >
+          {seed
+            ? t("settings.grounding.seedBadge")
+            : t("settings.grounding.cacheBadge")}
+        </span>
+        <button
+          type="button"
+          onClick={() => onDelete(entry)}
+          disabled={seed}
+          aria-label={t("settings.grounding.deleteAria")}
+          title={
+            seed
+              ? t("settings.grounding.deleteSeedBlocked")
+              : t("settings.grounding.deleteTooltip")
+          }
+          className={`ml-auto p-1 rounded transition-colors ${
+            seed
+              ? "text-muted-foreground/40 cursor-not-allowed"
+              : "text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+          }`}
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
       <div className="text-foreground mb-1">{entry.claim}</div>
       <div className="text-muted-foreground mb-1">{entry.rationale}</div>

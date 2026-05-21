@@ -1,4 +1,4 @@
-// World-model grounding service (Phase 2 / PR 2B).
+// World-model grounding service (Phase 2 / PR 2B + 2C).
 //
 // LLM 判定エンジン: 主張を渡し、KB の見地から verdict (4 値) と
 // 正規化主張・keywords・rationale・sources を返させる。
@@ -8,6 +8,10 @@
 // - LLM は「判定エンジン」、KB は前段キャッシュ
 // - verdict は KB の位置づけ。「ユーザーの主張への評価」ではない
 // - 判定不能なら null を返し、null は沈殿させない（鉄則）
+//
+// PR 2C: domain 分割と tags 生成を撤廃。Graphium は汎用ノートエディタなので、
+// LLM が単一 domain / tag に分類できない claim を抱えると無駄な分類問題が増えるだけ。
+// null verdict の意味も「out-of-domain」から「自身の知識ベースで信頼できる根拠なし」に純化。
 
 import type { GroundingValidityVerdict } from "../../lib/document-types.js";
 
@@ -90,15 +94,20 @@ text outside the optional \`\`\`json fence). Schema:
 }
 
 Verdict semantics:
-- "established": The claim aligns with textbook-confirmed knowledge in the **given domain**.
-- "supported":   The claim is broadly supported in the **given domain** but has known limits / debate.
-- "weak":        The claim has thin grounding or relies on contested mechanisms in the **given domain**.
-- "contested":   The given domain's literature has counter-evidence or known overgeneralization patterns.
-- null:          The claim is **outside the given domain** (e.g. a cooking claim handed to the "materials" domain), OR you have no relevant knowledge in this domain. **Out-of-domain claims MUST return null — do NOT stretch the verdict to fit.**
+- "established": The claim aligns with textbook-confirmed knowledge.
+- "supported":   The claim is broadly supported but has known limits / debate.
+- "weak":        The claim has thin grounding or relies on contested mechanisms.
+- "contested":   Established literature has counter-evidence or known overgeneralization patterns.
+- null:          Your knowledge base does not contain reliable evidence for or against this claim — return null rather than guessing. **Do not stretch the verdict to fit.**
+
+Subject coverage: Treat the claim across ALL human knowledge — natural science,
+engineering, social science, humanities, daily life (cooking, learning, craft),
+mathematics, software. Do not constrain yourself to any single field.
 
 Rules:
 - "normalizedClaim" MUST be domain-general: strip experiment-specific parameters,
-  sample IDs, lab names. This is what the KB caches as a reusable entry.
+  sample IDs, lab names, personal anecdote details. This is what the KB caches
+  as a reusable entry.
 - "keywords" should be retrievable terms that another similar claim would contain.
 - "sources" MAY be empty. Only include sources you are confident exist.
 - **URL whitelist** — In "sources[].url", only include URLs from these safe
@@ -110,8 +119,8 @@ Rules:
   paper PDFs.** If you do not know an exact safe URL for a source, OMIT the
   "url" field — only the "ref" text. A missing URL is far better than a broken
   one.
-- If verdict is null, "rationale" should explain why (out of domain / insufficient
-  knowledge), and normalizedClaim / keywords / sources MAY be omitted.
+- If verdict is null, "rationale" should explain why (insufficient knowledge
+  for or against), and normalizedClaim / keywords / sources MAY be omitted.
 
 ${langInstruction}`;
 }
@@ -121,11 +130,8 @@ ${langInstruction}`;
  */
 export function buildWorldGroundingUserMessage(input: {
   claimText: string;
-  domain: string;
 }): string {
-  return `Domain: ${input.domain}
-
-Claim to judge:
+  return `Claim to judge:
 ${input.claimText.trim()}
 
 Output strict JSON now.`;

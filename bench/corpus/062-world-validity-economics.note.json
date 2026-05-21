@@ -1,0 +1,8 @@
+{
+  "noteId": "062-world-validity-economics",
+  "category": "econ-note",
+  "domain": "economics",
+  "language": "ja",
+  "title": "インフレ率と金利政策の遅延",
+  "body": "中央銀行はインフレ率の目標を超えると金利を上げる。金利政策は時間遅れがあるため、データが揃ってから動くと遅すぎる。市場のボラティリティはランダムウォークに近いと仮定されることがある。"
+}

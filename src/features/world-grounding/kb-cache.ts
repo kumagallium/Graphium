@@ -1,7 +1,10 @@
-// World-model grounding KB cache (Phase 2 / PR 2B).
+// World-model grounding KB cache (Phase 2 / PR 2B + 2C).
 //
-// KB は「seed (public/grounding-kb/) + cache (appdata)」の 2 層構造。
+// KB は「seed (public/grounding-kb/seed.v1.json) + cache (appdata)」の 2 層構造。
 // このファイルは appdata 側の沈殿キャッシュを担当する。
+//
+// PR 2C: domain 分割を撤廃。cache は単一キー `grounding-kb-cache` に集約する。
+// 旧 `grounding-kb-cache-materials` がある環境では、初回 load 時に新キーへマイグレートする。
 //
 // 沈殿の鉄則（コードで強制、kickoff §6 / PR 2B plan §F）:
 //   1. verdict が 4 値のどれでもない（null など）entry は沈殿しない（not_found 非沈殿）
@@ -17,26 +20,69 @@
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { KbEntry, KbFile } from "./distilled-kb-retriever";
 
-const CACHE_KEY_PREFIX = "grounding-kb-cache";
+const CACHE_KEY = "grounding-kb-cache";
+/** PR 2C migration: 旧 domain 別キーから新キーへ吸い上げる。 */
+const LEGACY_DOMAIN_KEYS = ["grounding-kb-cache-materials"];
 
-function cacheKey(domain: string): string {
-  // domain は alphanumeric + `-` を想定。万一危険な文字が入っても StorageProvider 側で
-  // safeId() でサニタイズされるが、念のため空文字を弾く。
-  if (!domain || !/^[a-z0-9-]+$/i.test(domain)) {
-    throw new Error(`invalid grounding-kb domain: ${domain}`);
+/** マイグレーション済みかをセッション単位で記憶する（appdata 読みを毎回走らせない） */
+let migrationDone = false;
+
+/**
+ * 旧 domain 別 cache キー（PR 2B 時代）を新統合キーへ移行する。
+ * - 旧キーに entries があれば新キーへ append
+ * - 旧キーは null で上書き（削除）
+ * - 失敗しても fail-open（次回起動で再試行）
+ */
+async function migrateLegacyKbCache(): Promise<void> {
+  if (migrationDone) return;
+  migrationDone = true;
+  const provider = getActiveProvider();
+  if (!provider.readAppData || !provider.writeAppData) return;
+  try {
+    const current = (await provider.readAppData(CACHE_KEY)) as KbFile | null;
+    const baseEntries: KbEntry[] = current?.entries ?? [];
+    const existingIds = new Set(baseEntries.map((e) => e.id));
+    const migratedEntries: KbEntry[] = [...baseEntries];
+    let anyMigrated = false;
+    for (const legacyKey of LEGACY_DOMAIN_KEYS) {
+      const legacy = (await provider.readAppData(legacyKey)) as KbFile | null;
+      if (!legacy || !Array.isArray(legacy.entries) || legacy.entries.length === 0) {
+        continue;
+      }
+      for (const entry of legacy.entries) {
+        if (existingIds.has(entry.id)) continue;
+        migratedEntries.push(entry);
+        existingIds.add(entry.id);
+      }
+      anyMigrated = true;
+      await provider.writeAppData(legacyKey, null);
+    }
+    if (anyMigrated) {
+      const next: KbFile = {
+        version: 1,
+        checkedBy: current?.checkedBy ?? "distilled-kb@v1",
+        seedSource: current?.seedSource ?? "model-cache@v1",
+        entries: migratedEntries,
+      };
+      await provider.writeAppData(CACHE_KEY, next);
+      console.info("[world-grounding] migrated legacy domain caches into", CACHE_KEY);
+    }
+  } catch (err) {
+    console.warn("[world-grounding] kb-cache migration failed:", err);
   }
-  return `${CACHE_KEY_PREFIX}-${domain}`;
 }
 
 /**
- * appdata から該当ドメインの cache KB を読む。
+ * appdata から cache KB を読む。
  * 未保存 / プロバイダ未対応 / 失敗時は null（fail-open）。
+ * 旧 domain 別キーがあれば初回読み込み時に統合キーへマイグレートする。
  */
-export async function loadKbCache(domain: string): Promise<KbFile | null> {
+export async function loadKbCache(): Promise<KbFile | null> {
+  await migrateLegacyKbCache();
   const provider = getActiveProvider();
   if (!provider.readAppData) return null;
   try {
-    const raw = (await provider.readAppData(cacheKey(domain))) as KbFile | null;
+    const raw = (await provider.readAppData(CACHE_KEY)) as KbFile | null;
     if (!raw || typeof raw !== "object" || raw.version !== 1) return null;
     if (!Array.isArray(raw.entries)) return null;
     return raw;
@@ -65,16 +111,12 @@ export function isValidForCaching(entry: KbEntry): boolean {
 /**
  * cache に entry を append する。鉄則を満たさない entry は静かに無視する（false 返却）。
  */
-export async function appendToKbCache(
-  entry: KbEntry,
-  domain: string,
-): Promise<boolean> {
+export async function appendToKbCache(entry: KbEntry): Promise<boolean> {
   if (!isValidForCaching(entry)) return false;
   const provider = getActiveProvider();
   if (!provider.writeAppData || !provider.readAppData) return false;
-  const current = (await loadKbCache(domain)) ?? {
+  const current = (await loadKbCache()) ?? {
     version: 1 as const,
-    domain,
     checkedBy: "distilled-kb@v1",
     seedSource: "model-cache@v1",
     entries: [],
@@ -85,10 +127,40 @@ export async function appendToKbCache(
     entries: [...current.entries, entry],
   };
   try {
-    await provider.writeAppData(cacheKey(domain), next);
+    await provider.writeAppData(CACHE_KEY, next);
     return true;
   } catch (err) {
     console.warn("[world-grounding] kb-cache write failed:", err);
+    return false;
+  }
+}
+
+/**
+ * cache から指定 id の entry を削除する。
+ * seed entry（generatedByModel undefined or "manual-curated@v1"）は appdata cache には
+ * 居ないはずだが、ユーザー操作上は seed の削除は別経路（README 編集）に委ねる。
+ *
+ * 返り値:
+ * - `true`:  該当 entry が cache 上に存在し、書き戻しが成功した
+ * - `false`: 該当 entry が cache に無い / プロバイダ未対応 / 書き込み失敗
+ */
+export async function removeFromKbCache(entryId: string): Promise<boolean> {
+  if (!entryId || typeof entryId !== "string") return false;
+  const provider = getActiveProvider();
+  if (!provider.writeAppData || !provider.readAppData) return false;
+  const current = await loadKbCache();
+  if (!current || !Array.isArray(current.entries)) return false;
+  const remaining = current.entries.filter((e) => e.id !== entryId);
+  if (remaining.length === current.entries.length) return false; // not found
+  const next: KbFile = {
+    ...current,
+    entries: remaining,
+  };
+  try {
+    await provider.writeAppData(CACHE_KEY, next);
+    return true;
+  } catch (err) {
+    console.warn("[world-grounding] kb-cache remove failed:", err);
     return false;
   }
 }
@@ -111,7 +183,6 @@ export function mergeKb(seed: KbFile | null, cache: KbFile | null): KbFile | nul
   ];
   return {
     version: 1,
-    domain: base.domain,
     checkedBy: base.checkedBy,
     seedSource: base.seedSource,
     entries: merged,
@@ -119,8 +190,12 @@ export function mergeKb(seed: KbFile | null, cache: KbFile | null): KbFile | nul
 }
 
 /** テスト用: cache をクリアする（本番コードからは呼ばない）。 */
-export async function clearKbCacheForTest(domain: string): Promise<void> {
+export async function clearKbCacheForTest(): Promise<void> {
   const provider = getActiveProvider();
   if (!provider.writeAppData) return;
-  await provider.writeAppData(cacheKey(domain), null);
+  migrationDone = false;
+  await provider.writeAppData(CACHE_KEY, null);
+  for (const legacyKey of LEGACY_DOMAIN_KEYS) {
+    await provider.writeAppData(legacyKey, null);
+  }
 }

@@ -3,6 +3,9 @@
 // PR 2A: KB のみで verdict 判定。
 // PR 2B: KB miss → LLM 判定（groundingModel）→ 結果を appdata KB cache に沈殿。
 //        判定結果は次回以降の KB ヒットで即答される（使うほど安くなる）。
+// PR 2C: domain 分割と tags 生成を撤廃。Graphium は汎用ノートエディタなので、
+//        LLM に「これは何分野か」を決めさせる構造は持ち込まない。
+//        KB は単一ファイル（seed.v1.json）+ 単一 appdata cache に集約。
 //
 // kickoff §1.3 / PR 2A 方針 §7 の不変条件:
 // - epistemicStatus / hypothesisStatus は読むだけで書き換えない（別レーン）
@@ -16,8 +19,6 @@ import { appendToKbCache } from "./kb-cache";
 import { checkValidityViaModel } from "./llm-fallback";
 
 export type CheckValidityOptions = {
-  /** デフォルト "materials"。将来複数ドメインで切り替える */
-  domain?: string;
   /** public/grounding-kb/ 配信の base URL。デフォルトは import.meta.env.BASE_URL */
   baseUrl?: string;
   /** LLM 判定時の言語（rationale を日本語/英語で書き分け）。デフォルト "en" */
@@ -43,13 +44,12 @@ export async function checkValidity(
   claimText: string,
   options?: CheckValidityOptions,
 ): Promise<GroundingProfile["validity"] | undefined> {
-  const domain = options?.domain ?? "materials";
   const baseUrl = options?.baseUrl ?? defaultBaseUrl();
   const language = options?.language ?? "en";
   const checkedAt = new Date().toISOString();
 
   // 1. KB ヒット即答
-  const kbMatch = await checkValidityFromKB(claimText, { domain, baseUrl });
+  const kbMatch = await checkValidityFromKB(claimText, { baseUrl });
   if (kbMatch) {
     console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict });
     return {
@@ -67,7 +67,7 @@ export async function checkValidity(
   console.info("[world-grounding] KB miss, calling LLM fallback...");
 
   // 2. KB ミス → LLM fallback
-  const outcome = await checkValidityViaModel(claimText, { domain, language });
+  const outcome = await checkValidityViaModel(claimText, { language });
   if (outcome.kind === "failure") {
     console.warn("[world-grounding] LLM fallback failure:", outcome.failure);
     // 失敗理由を checkedBy / rationale に詰める。UI 側で出し分け可能にする
@@ -91,23 +91,20 @@ export async function checkValidity(
   // 沈殿: verdict + normalizedClaim + keywords が揃った時だけ KB cache に追加。
   // 鉄則: not_found (verdict null) / 壊れた entry は kb-cache 側で reject される。
   if (modelResult.verdict && modelResult.normalizedClaim && modelResult.keywords?.length) {
-    const cached = await appendToKbCache(
-      {
-        id: `gen-${cryptoRandomId()}`,
-        verdict: modelResult.verdict,
-        claim: modelResult.normalizedClaim,
-        rationale: modelResult.rationale,
-        keywords: modelResult.keywords,
-        sources: modelResult.sources?.map((s) => ({
-          kind: "distilled" as const,
-          ref: s.ref,
-          url: s.url,
-        })),
-        generatedByModel: modelResult.model,
-        version: 1,
-      },
-      domain,
-    );
+    const cached = await appendToKbCache({
+      id: `gen-${cryptoRandomId()}`,
+      verdict: modelResult.verdict,
+      claim: modelResult.normalizedClaim,
+      rationale: modelResult.rationale,
+      keywords: modelResult.keywords,
+      sources: modelResult.sources?.map((s) => ({
+        kind: "distilled" as const,
+        ref: s.ref,
+        url: s.url,
+      })),
+      generatedByModel: modelResult.model,
+      version: 1,
+    });
     console.info("[world-grounding] sedimented into KB cache:", cached);
   }
 
@@ -175,6 +172,7 @@ export {
   isValidForCaching,
   loadKbCache,
   mergeKb,
+  removeFromKbCache,
 } from "./kb-cache";
 export type { WorldGroundingModelResult } from "./llm-fallback";
 export { checkValidityViaModel } from "./llm-fallback";

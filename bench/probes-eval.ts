@@ -3,6 +3,9 @@
 // 各 probe は spec §5 の表に対応する。Phase μ-1 baseline 時点では
 // 多くの probe は fail で OK（Phase α / β / η / γ 等が pass させる対象）。
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import type {
   BenchAtom,
   BenchClaim,
@@ -11,8 +14,59 @@ import type {
   ProbeResult,
   CorpusNote,
 } from "./types.ts";
-import { resolveProbeInput } from "./load.ts";
+import { REPO_ROOT, resolveProbeInput } from "./load.ts";
 import { runDryRunPipeline } from "./pipeline.ts";
+
+// ─── World-model grounding probe heuristic (PR 2C) ────────────────────────────
+//
+// dry-run pipeline は世界照合 (world-grounding) を呼ばないが、PR 2C で domain
+// 分割を撤廃した後の seed KB が「汎用 corpus 上で keyword retriever を問題なく
+// 回せる」ことを bench で確認したい。そこで seed.v1.json を Node 側で直接読み込み、
+// CorpusNote.title + body を keyword 一致で照合する軽量 heuristic を probe 用に
+// 提供する。live LLM 判定の評価は Phase 5 で別 probe として導入する。
+
+type WorldKbEntry = { keywords: string[]; verdict: string };
+
+let cachedSeedKb: WorldKbEntry[] | null = null;
+function loadSeedKbForBench(): WorldKbEntry[] {
+  if (cachedSeedKb) return cachedSeedKb;
+  try {
+    const path = join(REPO_ROOT, "public/grounding-kb/seed.v1.json");
+    const raw = readFileSync(path, "utf-8");
+    const json = JSON.parse(raw) as { entries: WorldKbEntry[] };
+    cachedSeedKb = Array.isArray(json.entries) ? json.entries : [];
+  } catch {
+    cachedSeedKb = [];
+  }
+  return cachedSeedKb;
+}
+
+function normalizeWorldKbText(s: string): string {
+  return s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** CorpusNote の title + body に対し、seed KB の keyword 2+ ヒット件数を返す */
+function countWorldKbHits(inputs: CorpusNote[]): { hits: number; total: number } {
+  const kb = loadSeedKbForBench();
+  if (kb.length === 0) return { hits: 0, total: inputs.length };
+  let hits = 0;
+  for (const note of inputs) {
+    const norm = normalizeWorldKbText(`${note.title}\n${note.body}`);
+    let matched = false;
+    for (const entry of kb) {
+      if (!Array.isArray(entry.keywords) || entry.keywords.length === 0) continue;
+      const hitCount = entry.keywords.filter((k) =>
+        norm.includes(normalizeWorldKbText(k)),
+      ).length;
+      if (hitCount >= 2) {
+        matched = true;
+        break;
+      }
+    }
+    if (matched) hits++;
+  }
+  return { hits, total: inputs.length };
+}
 
 export function evaluateProbes(
   probes: Probe[],
@@ -41,7 +95,13 @@ export function evaluateProbes(
       syntheses: result.allSyntheses,
     });
 
-    const verdict = evaluateProbeExpected(probe, result.allAtoms, result.allSyntheses, result.allClaims);
+    const verdict = evaluateProbeExpected(
+      probe,
+      result.allAtoms,
+      result.allSyntheses,
+      result.allClaims,
+      inputs,
+    );
     probeResults.push(verdict);
   }
 
@@ -60,6 +120,7 @@ function evaluateProbeExpected(
   atoms: BenchAtom[],
   syntheses: BenchSynthesis[],
   claims: BenchClaim[],
+  inputs: CorpusNote[],
 ): ProbeResult {
   const exp = probe.expected as Record<string, unknown>;
   const reasons: string[] = [];
@@ -161,6 +222,18 @@ function evaluateProbeExpected(
     const count = claims.reduce((sum, c) => sum + (c.backing?.length ?? 0), 0);
     const ok = count >= min;
     reasons.push(`backingCount>=${min}: ${ok ? "ok" : `got ${count}`}`);
+    allPassed &&= ok;
+  }
+
+  // PR 2C: world-validity probe — seed KB が混合 domain corpus に対して
+  // keyword retriever を問題なく回せることを assert する dry-run heuristic
+  if (typeof exp.worldValidityKbHitCount === "object" && exp.worldValidityKbHitCount !== null) {
+    const min = (exp.worldValidityKbHitCount as { min?: number }).min ?? 0;
+    const { hits, total } = countWorldKbHits(inputs);
+    const ok = hits >= min;
+    reasons.push(
+      `worldValidityKbHitCount>=${min}: ${ok ? "ok" : `got ${hits}/${total} KB hits`}`,
+    );
     allPassed &&= ok;
   }
 

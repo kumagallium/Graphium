@@ -1,0 +1,8 @@
+{
+  "noteId": "060-world-validity-materials",
+  "category": "clean-lab",
+  "domain": "materials",
+  "language": "ja",
+  "title": "焼結温度と粒成長の関係",
+  "body": "焼結後期で焼結温度を上げると粒成長が促進される。sintering の標準的な挙動として grain growth は教科書でも扱われており、Coble sintering / Herring scaling が引用される。"
+}
