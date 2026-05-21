@@ -365,7 +365,8 @@ type NoteEditorProps = {
   initialDoc: GraphiumDocument | null;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
-  onAiDeriveNote: (doc: GraphiumDocument) => Promise<void>;
+  /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
+  onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
   onNavigateNote: (noteId: string, cachedDoc?: GraphiumDocument) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
@@ -5292,7 +5293,18 @@ export function NoteApp() {
               fm.handleDelete(id);
               router.navigate({ view: "home" });
             } : undefined}
-            onAiDeriveNote={fm.handleAiDeriveNote}
+            onAiDeriveNote={async (doc) => {
+              // 派生先ノートは SidePeek で開く（@mention / ノートリンク経路と同じ）。
+              // ref が登録されていない（NoteEditorInner 未マウント等）場合は全画面遷移にフォールバック。
+              const newFileId = await fm.handleAiDeriveNote(doc);
+              const openSidePeek = openSidePeekRef.current;
+              if (openSidePeek) {
+                openSidePeek(newFileId);
+              } else {
+                fm.handleOpenFile(newFileId);
+              }
+              return newFileId;
+            }}
             onNavigateNote={(noteId: string, cachedDoc?: import("./lib/document-types").GraphiumDocument) => {
               if (noteId.startsWith("wiki:")) {
                 fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
