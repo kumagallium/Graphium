@@ -8,11 +8,11 @@ import { useMemo, type ReactNode } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   Image, FileText, Video, Volume2, Link, StickyNote, Bot, History,
-  PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, ShieldCheck,
+  PanelLeftClose, Trash2, Settings as SettingsIcon, Wrench, ShieldCheck, ArrowRight,
 } from "lucide-react";
 import { FileSidebar } from "./FileSidebar";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { RecentNotes, type RecentNote } from "../features/navigation";
+import { type RecentNote } from "../features/navigation";
 import type { GraphiumIndex } from "../features/navigation/index-file";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { useT, getDisplayLabelName, LocaleProvider } from "../i18n";
@@ -124,10 +124,12 @@ const COMMON_PROPS = {
 // ── 提案版 FileSidebar（IA 見直し版） ─────────────────────────
 //
 // 違い:
-//   1) 並び: 最近のノート → ナレッジ → ─── → 素材 → ラベル
+//   1) 並び: 最近のノート → メモ → ナレッジ → ─── → 素材 → ラベル
 //   2) 改名: "データ" → "素材"
 //   3) 視覚区切り: ドキュメント本体（脳の中身）と入口（網を辿る）の間に divider
 //   4) Skill: ナレッジセクションから外し、フッター（メタ）に移動
+//   5) ヘッダー: Quick Memo（プライマリ）+ New Note（セカンダリ）を 2 段で配置
+//   6) メモ: 素材から独立させ、ノートと同列の第一級セクションに昇格
 
 const LABEL_HEX: Record<string, string> = {
   procedure: "#5b8fb9",
@@ -166,7 +168,7 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
   }, [mediaIndex]);
 
   const dataCount = (mediaCounts.image ?? 0) + (mediaCounts.pdf ?? 0)
-    + (mediaCounts.video ?? 0) + (mediaCounts.audio ?? 0) + (mediaCounts.url ?? 0) + memoCount;
+    + (mediaCounts.video ?? 0) + (mediaCounts.audio ?? 0) + (mediaCounts.url ?? 0);
 
   const wikiTotalCount = (wikiCounts?.summary ?? 0) + (wikiCounts?.claim ?? 0)
     + (wikiCounts?.atom ?? 0) + (wikiCounts?.synthesis ?? 0);
@@ -177,12 +179,6 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
       for (const l of note.labels) map.set(l.label, (map.get(l.label) ?? 0) + 1);
     }
     return map;
-  }, [noteIndex]);
-
-  const wikiNoteIdSet = useMemo(() => {
-    const s = new Set<string>();
-    for (const note of noteIndex?.notes ?? []) if (note.wikiKind) s.add(note.noteId);
-    return s;
   }, [noteIndex]);
 
   return (
@@ -199,25 +195,49 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
           </button>
         </div>
         <button
+          className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        >
+          <span>{t("sidebar.newMemo")}</span>
+          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">⌘⇧M</span>
+        </button>
+        <button
           onClick={onNewNote}
-          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90"
+          className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
         >
           {t("sidebar.newNote")}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-2">
-        {/* ── ① ノート（自分が書く脳） ── */}
-        <CollapsibleSection storageKey="proposal-recent" title={t("nav.recentNotes")} defaultOpen={true}>
-          <RecentNotes
-            notes={recentNotes}
-            activeFileId={activeFileId}
-            onSelect={onSelect}
-            onShowNoteList={onShowNoteList}
-            loading={filesLoading}
-            excludeNoteIds={wikiNoteIdSet}
-          />
-        </CollapsibleSection>
+        {/* ── ① ノート（見出し風リンク） ── */}
+        <button
+          onClick={onShowNoteList}
+          className="w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold text-sidebar-foreground/40 hover:text-sidebar-foreground/70 transition-colors"
+        >
+          <span className="shrink-0 -ml-0.5" aria-hidden>
+            <ArrowRight size={12} />
+          </span>
+          <span className="flex-1 text-left">{t("nav.notes")}</span>
+          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{recentNotes.length}</span>
+        </button>
+
+        {/* ── ①' メモ（見出し風リンク） — ノートと同列 ── */}
+        <button
+          onClick={onShowMemos}
+          className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
+            memosActive
+              ? "text-primary"
+              : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+          }`}
+        >
+          <span className="shrink-0 -ml-0.5" aria-hidden>
+            <ArrowRight size={12} />
+          </span>
+          <span className="flex-1 text-left">{t("memo.title")}</span>
+          {memoCount > 0 && (
+            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{memoCount}</span>
+          )}
+        </button>
 
         {/* ── ② ナレッジ（AI が編む脳） — Notes の直下に昇格 ── */}
         <CollapsibleSection
@@ -306,18 +326,6 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
               </button>
             );
           })}
-          <button
-            onClick={onShowMemos}
-            className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-              memosActive
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            }`}
-          >
-            <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
-            <span className="flex-1 text-left">{t("memo.title")}</span>
-            {memoCount > 0 && <span className="text-xs text-muted-foreground">{memoCount}</span>}
-          </button>
         </CollapsibleSection>
 
         {/* ── ④ ラベル ── */}
