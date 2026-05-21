@@ -795,7 +795,7 @@ export function MemoGalleryView({
             <p className="text-sm text-muted-foreground">{t("memo.emptyDesktop")}</p>
           </div>
         ) : viewMode === "gallery" ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {captures.map((entry) => (
               <MemoCard
                 key={entry.id}
