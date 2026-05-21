@@ -1,14 +1,73 @@
 // PC 向けメモギャラリービュー
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { StickyNote, Trash2, ClipboardCopy, Network, History, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StickyNote, Trash2, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
+import { useRangeSelect } from "../../hooks/use-range-select";
+
+/** 作成日を YYYY-MM-DD でフォーマット（リスト表示用） */
+function formatCreatedDate(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+// ── 一括削除確認ダイアログ（メモ用、AssetGalleryView と同パターン） ──
+
+function BulkDeleteConfirmDialog({
+  count,
+  refNoteCount,
+  onConfirm,
+  onCancel,
+  deleting,
+}: {
+  count: number;
+  refNoteCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  const t = useT();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+        <h3 className="text-sm font-semibold text-foreground mb-2">
+          {t("memo.bulkDeleteConfirmTitle")}
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          {refNoteCount > 0
+            ? t("memo.bulkDeleteConfirmMessage", {
+                count: String(count),
+                refCount: String(refNoteCount),
+              })
+            : t("memo.bulkDeleteConfirmMessageNoRef", { count: String(count) })}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="px-3 py-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+          >
+            {deleting ? t("asset.deleting") : t("common.delete")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // fcose レイアウト登録
 ensureCytoscapePlugins();
@@ -540,6 +599,67 @@ export function MemoGalleryView({
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
 
+  // ビュー切替（gallery / list）— localStorage に永続化（AssetGalleryView と同パターン）
+  const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {
+    try {
+      const v = typeof localStorage !== "undefined" ? localStorage.getItem("graphium:memoViewMode") : null;
+      return v === "list" ? "list" : "gallery";
+    } catch {
+      return "gallery";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("graphium:memoViewMode", viewMode);
+    } catch {
+      // no-op
+    }
+  }, [viewMode]);
+
+  // 複数選択（list モードのみで利用）
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // ビューモード切替時に選択をクリア
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [viewMode]);
+
+  // captures が変わったら、もう存在しない id を選択から除外（個別削除との整合）
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const valid = new Set<string>();
+      const liveIds = new Set(captures.map((c) => c.id));
+      for (const id of prev) if (liveIds.has(id)) valid.add(id);
+      return valid.size === prev.size ? prev : valid;
+    });
+  }, [captures]);
+
+  // captures の順序付き ID（範囲選択用）
+  const orderedIds = useMemo(() => captures.map((e) => e.id), [captures]);
+  const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
+  const allSelected = captures.length > 0 && captures.every((e) => selectedIds.has(e.id));
+  const someSelected = selectedIds.size > 0;
+  const toggleSelectAll = useCallback(() => {
+    const ids = captures.map((e) => e.id);
+    if (ids.every((id) => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(ids));
+    }
+  }, [captures, selectedIds]);
+
+  // 選択中のメモが挿入されているノート数（重複除外）
+  const selectedRefNoteCount = useMemo(() => {
+    const noteIds = new Set<string>();
+    for (const e of captures) {
+      if (!selectedIds.has(e.id)) continue;
+      for (const u of e.usedIn ?? []) noteIds.add(u.noteId);
+    }
+    return noteIds.size;
+  }, [captures, selectedIds]);
+
   const handleCreateSubmit = useCallback(
     async (text: string) => {
       if (!onCreateMemo) return;
@@ -561,6 +681,21 @@ export function MemoGalleryView({
     setPendingInsert(null);
   }, [pendingInsert, onInsertMemo]);
 
+  const handleBulkDeleteConfirm = useCallback(async () => {
+    if (!onDeleteMemo || selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      // 順次削除（並列だと captureIndex の race が起きうる）
+      for (const id of selectedIds) {
+        await onDeleteMemo(id);
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteOpen(false);
+    }
+  }, [selectedIds, onDeleteMemo]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
@@ -575,16 +710,45 @@ export function MemoGalleryView({
         <span className="text-xs text-muted-foreground">
           {loading ? t("common.loading") : t("memo.count", { count: String(captures.length) })}
         </span>
-        {onCreateMemo && (
-          <button
-            onClick={() => setShowCaptureDialog(true)}
-            disabled={creating}
-            className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
-          >
-            <Plus size={12} />
-            {t("memo.new")}
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {/* ビュー切替 */}
+          <div className="inline-flex rounded border border-border overflow-hidden">
+            <button
+              onClick={() => setViewMode("gallery")}
+              title={t("memo.viewGallery")}
+              aria-pressed={viewMode === "gallery"}
+              className={`px-2 py-1 transition-colors ${
+                viewMode === "gallery"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid size={12} />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              title={t("memo.viewList")}
+              aria-pressed={viewMode === "list"}
+              className={`px-2 py-1 transition-colors border-l border-border ${
+                viewMode === "list"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <ListIcon size={12} />
+            </button>
+          </div>
+          {onCreateMemo && (
+            <button
+              onClick={() => setShowCaptureDialog(true)}
+              disabled={creating}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              <Plus size={12} />
+              {t("memo.new")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 挿入先のヒント */}
@@ -594,7 +758,32 @@ export function MemoGalleryView({
         </div>
       )}
 
-      {/* カード一覧 */}
+      {/* 一括アクションバー（list モードで選択時のみ） */}
+      {viewMode === "list" && someSelected && (
+        <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
+          <span className="text-xs text-foreground font-medium">
+            {selectedIds.size} / {captures.length}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t("memo.deselectAll")}
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {onDeleteMemo && (
+              <button
+                onClick={() => setBulkDeleteOpen(true)}
+                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+              >
+                {t("memo.deleteSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 一覧（gallery or list） */}
       <div className="flex-1 overflow-auto px-6 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-16">
@@ -605,7 +794,7 @@ export function MemoGalleryView({
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">{t("memo.emptyDesktop")}</p>
           </div>
-        ) : (
+        ) : viewMode === "gallery" ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
             {captures.map((entry) => (
               <MemoCard
@@ -618,6 +807,85 @@ export function MemoGalleryView({
               />
             ))}
           </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
+                <th className="py-2 px-2 w-[36px]">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                    title={allSelected ? t("memo.deselectAll") : t("memo.selectAll")}
+                  />
+                </th>
+                <th className="py-2 px-3">{t("memo.colText")}</th>
+                <th className="py-2 px-2 w-[60px] text-center" title={t("memo.colUsedIn")}>
+                  {t("memo.colUsedIn")}
+                </th>
+                <th className="py-2 pl-3 w-[110px]">{t("memo.colDate")}</th>
+                <th className="py-2 px-2 w-[40px]" />
+              </tr>
+            </thead>
+            <tbody>
+              {captures.map((entry, index) => {
+                const isSelected = selectedIds.has(entry.id);
+                const usedCount = entry.usedIn?.length ?? 0;
+                return (
+                  <tr
+                    key={entry.id}
+                    className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
+                      isSelected ? "bg-primary/5" : ""
+                    }`}
+                    onMouseDown={(e) => range.onRowMouseDown(e, index)}
+                    onMouseEnter={() => range.onRowMouseEnter(index)}
+                    onClick={() => {
+                      if (range.shouldSuppressClick()) return;
+                      setDetailEntry(entry);
+                    }}
+                  >
+                    <td
+                      className="py-2 px-2 cursor-pointer"
+                      title={t("memo.dragToRangeSelect")}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        tabIndex={-1}
+                        className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
+                      />
+                    </td>
+                    <td className="py-2 px-3 min-w-0">
+                      <span className="text-foreground line-clamp-1 whitespace-pre-wrap break-all" title={entry.text}>
+                        {entry.text}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
+                      {usedCount > 0 ? usedCount : <span className="text-muted-foreground/30">—</span>}
+                    </td>
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
+                      {formatCreatedDate(entry.createdAt)}
+                    </td>
+                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                      {onDeleteMemo && (
+                        <button
+                          onClick={() => onDeleteMemo(entry.id)}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
+                          title={t("common.delete")}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -641,12 +909,24 @@ export function MemoGalleryView({
         />
       )}
 
-      {/* 新規作成ダイアログ */}
+      {/* 新規作成ダイアログ（デスクトップギャラリーは中央寄せの軽量モーダル） */}
       {showCaptureDialog && onCreateMemo && (
         <CaptureDialog
+          variant="centered"
           onSubmit={handleCreateSubmit}
           onClose={() => setShowCaptureDialog(false)}
           submitting={creating ?? false}
+        />
+      )}
+
+      {/* 一括削除確認ダイアログ */}
+      {bulkDeleteOpen && (
+        <BulkDeleteConfirmDialog
+          count={selectedIds.size}
+          refNoteCount={selectedRefNoteCount}
+          onConfirm={handleBulkDeleteConfirm}
+          onCancel={() => setBulkDeleteOpen(false)}
+          deleting={bulkDeleting}
         />
       )}
     </div>

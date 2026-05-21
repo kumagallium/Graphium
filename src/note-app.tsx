@@ -128,7 +128,7 @@ import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
@@ -2625,6 +2625,8 @@ export function NoteApp() {
   const [lintLoading, setLintLoading] = useState(false);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
+  // Quick Memo ダイアログ（サイドバー / ⌘+⇧+M で開く、画面非依存の入口）
+  const [showQuickMemoDialog, setShowQuickMemoDialog] = useState(false);
 
   const isDesktop = useIsDesktop();
   // Cmd+\ / Ctrl+\ で集中モード切替（デスクトップのみ）
@@ -2709,6 +2711,25 @@ export function NoteApp() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [composer]);
+
+  // ⌘+⇧+M: どこからでも Quick Memo ダイアログを開く。
+  // メモは「気軽な思いつきを書き留める原料」なので、画面状態に依存せず
+  // ノート編集中でも一覧画面でも同じ操作で開けるよう document レベルで購読する。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        setShowQuickMemoDialog(true);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  // ノートにはグローバルショートカットを設けない。
+  // 理由: ⌘⇧N はブラウザのシークレットウィンドウと衝突して preventDefault が効かないため、
+  // 学習させたショートカットが裏切る体験になる。サイドバーの「+ ノート」ボタンが常設の入口。
+  // ノートはじっくり書くもの、メモは即記録、というメンタルモデルの非対称さも UI で素直に表現する。
 
   // Composer が開いた瞬間だけ wikiLog の直近イベントを取得してカード計算に使う
   // (常時 subscribe しない理由: ログは IndexedDB なので軽量、開いた時だけで十分)
@@ -4339,12 +4360,14 @@ export function NoteApp() {
     activeFileId: fm.activeFileId,
     onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
     onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
+    onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
     onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
+    noteListActive: fm.showNoteList,
     mediaIndex: fm.mediaIndex,
     onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
@@ -5366,6 +5389,17 @@ export function NoteApp() {
             setShowSkillList(false);
             fm.handleOpenSkillFile(newId);
           }}
+        />
+      )}
+      {showQuickMemoDialog && (
+        <CaptureDialog
+          variant={isDesktop ? "centered" : "fullscreen"}
+          onSubmit={async (text) => {
+            await capture.handleCreateCapture(text);
+            setShowQuickMemoDialog(false);
+          }}
+          onClose={() => setShowQuickMemoDialog(false)}
+          submitting={capture.capturing}
         />
       )}
       </div>

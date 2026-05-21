@@ -103,7 +103,10 @@ export const en: Record<string, string> = {
   "upgrade.footer": "Enable AI",
 
   // ── サイドバー ──
-  "sidebar.newNote": "+ New Note",
+  "sidebar.newNote": "+ Note",
+  "sidebar.newNoteTooltip": "Open a new note",
+  "sidebar.newMemo": "+ Memo",
+  "sidebar.newMemoTooltip": "Capture a quick memo (⌘+⇧+M)",
   "sidebar.provTemplate": "+ PROV Template",
   "sidebar.refresh": "Reload",
   "sidebar.collapse": "Collapse sidebar (⌘+\\)",
@@ -244,6 +247,7 @@ export const en: Record<string, string> = {
 
   // ── ナビゲーション ──
   "nav.noteList": "All Notes",
+  "nav.notes": "Notes",
   "nav.openNoteList": "Open all notes",
   "nav.recentNotes": "Recent Notes",
   "nav.showAll": "Show all",
@@ -846,6 +850,7 @@ export const en: Record<string, string> = {
   "memo.placeholder": "Write your memo here...",
   "memo.saving": "Saving to Google Drive...",
   "memo.hint": "Tap the send button to save",
+  "memo.hintDesktop": "Press ⌘+Enter to save",
   "memo.insert": "Insert into note",
   "memo.emptyDesktop": "No memos yet. Click \"New Memo\" or create one from the mobile view.",
   "memo.usedCount": "Used in {count}",
@@ -867,6 +872,18 @@ export const en: Record<string, string> = {
   "memo.slashSub": "Insert from saved memos",
   "memo.pickTitle": "Select memo",
   "memo.searchPlaceholder": "Search memos...",
+  "memo.viewGallery": "Gallery",
+  "memo.viewList": "List",
+  "memo.selectAll": "Select all",
+  "memo.deselectAll": "Clear selection",
+  "memo.deleteSelected": "Delete {count}",
+  "memo.colText": "Text",
+  "memo.colUsedIn": "Used",
+  "memo.colDate": "Created",
+  "memo.bulkDeleteConfirmTitle": "Delete selected memos",
+  "memo.bulkDeleteConfirmMessage": "Delete {count} selected memos. {refCount} of them have already been inserted into notes. Those note bodies will not be affected.",
+  "memo.bulkDeleteConfirmMessageNoRef": "Delete {count} selected memos. This cannot be undone.",
+  "memo.dragToRangeSelect": "Drag or shift-click to select a range",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

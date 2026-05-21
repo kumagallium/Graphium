@@ -1,11 +1,11 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
 import type { WikiKind } from "../lib/document-types";
-import { RecentNotes, type RecentNote } from "../features/navigation";
+import { type RecentNote } from "../features/navigation";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
@@ -15,12 +15,16 @@ export type FileSidebarProps = {
   activeFileId: string | null;
   onSelect: (fileId: string) => void;
   onNewNote: () => void;
+  /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
+  onNewMemo?: () => void;
   onRefresh: () => void;
   onShowReleaseNotes: () => void;
   onShowSettings: () => void;
   agentConfigured: boolean;
   recentNotes: RecentNote[];
   onShowNoteList: () => void;
+  /** ノート一覧画面がアクティブか（ハイライト用） */
+  noteListActive?: boolean;
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
@@ -102,12 +106,14 @@ export function FileSidebar({
   activeFileId,
   onSelect,
   onNewNote,
+  onNewMemo,
   onRefresh,
   onShowReleaseNotes,
   onShowSettings,
   agentConfigured,
   recentNotes,
   onShowNoteList,
+  noteListActive = false,
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
@@ -140,22 +146,27 @@ export function FileSidebar({
   const t = useT();
   const mediaCounts = mediaIndex ? countByType(mediaIndex) : null;
 
-  // wiki エントリの noteId 集合。最近のノートから AI Knowledge を除外するための索引。
-  const wikiNoteIdSet = useMemo(() => {
-    const s = new Set<string>();
-    if (!noteIndex) return s;
-    for (const note of noteIndex.notes) {
-      if (note.wikiKind) s.add(note.noteId);
-    }
-    return s;
-  }, [noteIndex]);
-
-  // セクション右上に出す件数バッジの集計
+  // セクション右上に出す件数バッジの集計（メモは独立セクションに移したので含めない）
   const dataCount = useMemo(() => {
-    if (!mediaCounts) return memoCount;
+    if (!mediaCounts) return 0;
     return (mediaCounts.image ?? 0) + (mediaCounts.pdf ?? 0) + (mediaCounts.video ?? 0)
-      + (mediaCounts.audio ?? 0) + (mediaCounts.url ?? 0) + memoCount;
-  }, [mediaCounts, memoCount]);
+      + (mediaCounts.audio ?? 0) + (mediaCounts.url ?? 0);
+  }, [mediaCounts]);
+
+  // ノート見出し横に出す件数バッジ（人間が書いた active ノートのみ）
+  // wiki/skill 派生は別カテゴリ、archive/trash は除外。
+  const noteCount = useMemo(() => {
+    if (!noteIndex) return 0;
+    let n = 0;
+    for (const note of noteIndex.notes) {
+      if (note.wikiKind) continue;
+      if (note.source === "skill") continue;
+      if (note.deletedAt) continue;
+      if (note.archivedAt) continue;
+      n++;
+    }
+    return n;
+  }, [noteIndex]);
 
   // Skill はフッターに移したのでカウントには含めない
   const aiTotalCount = useMemo(() => {
@@ -219,33 +230,78 @@ export function FileSidebar({
             )}
           </div>
         </div>
+        {/* 入口は縦並びの対等な雙子ボタン:
+            メモは「思いつきの原料」、ノートは「構造を持つ脳の中身」。
+            ショートカットはメモ（⌘⇧M）のみ。実動作は metaKey/ctrlKey 両対応で Win/Linux でも反応する。
+            ノートに ⌘⇧N を割り当てないのは、ブラウザの「新規シークレットウィンドウ」と衝突して
+            preventDefault が効かないため。期待を裏切るより、サイドバーボタン経由に一本化する。
+            「メモ=即速度、ノート=じっくり」の非対称さを UI でも素直に表現する。
+            パディングは py-1.5 で抑えて、ロゴが視覚的なトップにくるようにヒエラルキーを保つ。 */}
+        {onNewMemo && (
+          <button
+            onClick={onNewMemo}
+            title={t("sidebar.newMemoTooltip")}
+            className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+          >
+            <span>{t("sidebar.newMemo")}</span>
+            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">⌘⇧M</span>
+          </button>
+        )}
         <button
           onClick={onNewNote}
-          className="w-full text-left rounded-md px-3 py-2 mb-1.5 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          title={t("sidebar.newNoteTooltip")}
+          className="w-full text-left rounded-lg px-3 py-1.5 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
         >
           {t("sidebar.newNote")}
         </button>
       </div>
 
-      {/* セクション一覧（折り畳み可能）
-          IA 構成: ノート → ナレッジ ─divider─ 素材 → ラベル → Library
-          ドキュメント本体（脳の中身）と入口（網を辿る）を視覚的に分ける */}
+      {/* セクション一覧
+          IA 構成: ノート → メモ → ナレッジ ─divider─ 素材 → ラベル → Library
+          ノート / メモ は CollapsibleSection ヘッダーと完全に同じスタイル（text-xs font-semibold）
+          に揃え、視覚階層を「セクション見出し」レイヤーで統一する。
+          中身を持たない（クリックで一覧画面に遷移する）ので、シェブロンは出さない。 */}
       <div className="flex-1 overflow-y-auto pb-2">
-        {/* ① 最近のノート */}
-        <CollapsibleSection
-          storageKey="recent"
-          title={t("nav.recentNotes")}
-          defaultOpen={true}
+        {/* ① ノート（見出し風リンク — CollapsibleSection ヘッダーと同階層）
+            ArrowRight を静的に置いて、CollapsibleSection の Chevron と同じ左端位置に揃える。
+            Chevron ではなく Arrow なのは、「クリックで開閉する」誤解を避けるため。
+            → の形は「別の場所に進む」のメンタルモデルが世界共通で、ナビ項目として誤読されない。 */}
+        <button
+          onClick={onShowNoteList}
+          className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 text-xs font-semibold transition-colors ${
+            noteListActive
+              ? "text-primary"
+              : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+          }`}
         >
-          <RecentNotes
-            notes={recentNotes}
-            activeFileId={activeFileId}
-            onSelect={onSelect}
-            onShowNoteList={onShowNoteList}
-            loading={filesLoading}
-            excludeNoteIds={wikiNoteIdSet}
-          />
-        </CollapsibleSection>
+          <span className="shrink-0 -ml-0.5" aria-hidden>
+            <ArrowRight size={12} />
+          </span>
+          <span className="flex-1 text-left">{t("nav.notes")}</span>
+          {noteCount > 0 && (
+            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{noteCount}</span>
+          )}
+        </button>
+
+        {/* ②' メモ（見出し風リンク） — ノートと同列 */}
+        {onShowMemos && (
+          <button
+            onClick={onShowMemos}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
+              memosActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <ArrowRight size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("memo.title")}</span>
+            {memoCount > 0 && (
+              <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{memoCount}</span>
+            )}
+          </button>
+        )}
 
         {/* ② ナレッジ（AI が編む脳）— Notes 直下に配置 */}
         {onShowWikiList && !aiAvailable && (
@@ -378,22 +434,6 @@ export function FileSidebar({
               </button>
             );
           })}
-          {onShowMemos && (
-            <button
-              onClick={onShowMemos}
-              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                memosActive
-                  ? "bg-primary/10 text-primary font-semibold"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              }`}
-            >
-              <span className="text-muted-foreground shrink-0"><StickyNote size={14} /></span>
-              <span className="flex-1 text-left">{t("memo.title")}</span>
-              {memoCount > 0 && (
-                <span className="text-xs text-muted-foreground">{memoCount}</span>
-              )}
-            </button>
-          )}
         </CollapsibleSection>
 
         {/* ④ ラベル: 1 件以上付与されてから表示（progressive disclosure） */}
