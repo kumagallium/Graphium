@@ -1,11 +1,13 @@
-// World-model grounding API route (Phase 2 / PR 2B).
+// World-model grounding API route (Phase 2 / PR 2B + 2C).
 // POST /api/world-grounding/check
 //
-// 入力: claimText / domain / language / model（任意）
+// 入力: claimText / language / model（任意）
 // 出力: { result: WorldGroundingResult | null, model, tokenUsage } または { result: null, error }
 //
 // 失敗時は HTTP 4xx ではなく { result: null, error } で degrade。
 // 呼び出し側 facade は result.verdict が null なら cache に書かない（鉄則）。
+//
+// PR 2C: body の `domain` を廃止。LLM が `tags` を生成して result に含める。
 
 import { Hono } from "hono";
 import { createModel } from "../services/llm.js";
@@ -22,16 +24,12 @@ const app = new Hono();
 app.post("/check", async (c) => {
   const body = await c.req.json<{
     claimText: string;
-    domain: string;
     language?: string;
     model?: string;
   }>();
 
   if (!body.claimText || typeof body.claimText !== "string") {
     return c.json({ result: null, error: "claimText is required" }, 400);
-  }
-  if (!body.domain || typeof body.domain !== "string") {
-    return c.json({ result: null, error: "domain is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
@@ -43,7 +41,6 @@ app.post("/check", async (c) => {
   const systemPrompt = buildWorldGroundingSystemPrompt(body.language || "en");
   const userMessage = buildWorldGroundingUserMessage({
     claimText: body.claimText,
-    domain: body.domain,
   });
 
   try {

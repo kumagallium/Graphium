@@ -135,7 +135,6 @@ describe("world-grounding is a separate lane from epistemicStatus / hypothesisSt
 describe("distilled-kb retriever", () => {
   const sampleKb: KbFile = {
     version: 1,
-    domain: "materials",
     checkedBy: "distilled-kb@v1",
     entries: [
       {
@@ -238,7 +237,6 @@ describe("distilled-kb retriever", () => {
 describe("checkValidity facade", () => {
   const sampleKb: KbFile = {
     version: 1,
-    domain: "materials",
     checkedBy: "distilled-kb@v1",
     entries: [
       {
@@ -260,7 +258,6 @@ describe("checkValidity facade", () => {
     clearKbCacheForTest();
     try {
       const validity = await checkValidity(meta, "焼結温度を上げると粒成長が促進される", {
-        domain: "materials",
         baseUrl: "/test-baseurl/",
       });
       expect(validity?.verdict).toBe("established");
@@ -293,7 +290,6 @@ describe("checkValidity facade", () => {
     clearKbCacheForTest();
     try {
       const validity = await checkValidity(meta, "全く別ドメインの本文", {
-        domain: "materials",
         baseUrl: "/test-baseurl/",
       });
       expect(validity?.verdict).toBeUndefined();
@@ -318,10 +314,37 @@ describe("loadKb cache + fetch (fail-open)", () => {
       new Response("not found", { status: 404 })) as typeof fetch;
     try {
       const result = await checkValidityFromKB("焼結温度と粒成長", {
-        domain: "materials",
         baseUrl: "/test-missing/",
       });
       expect(result).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
+  });
+
+  it("loadSeedKb は固定ファイル名 seed.v1.json を fetch する（PR 2C: domain 引数なし）", async () => {
+    clearKbCacheForTest();
+    const fetchedUrls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      fetchedUrls.push(url);
+      return new Response(
+        JSON.stringify({
+          version: 1,
+          checkedBy: "distilled-kb@v1",
+          entries: [],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    try {
+      const { loadSeedKb } = await import("./distilled-kb-retriever");
+      await loadSeedKb("/world-grounding-test-base/");
+      expect(fetchedUrls).toEqual([
+        "/world-grounding-test-base/grounding-kb/seed.v1.json",
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
       clearKbCacheForTest();

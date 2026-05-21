@@ -4,12 +4,14 @@
 // kickoff §1.3「WikiMeta.grounding に自己記述で持つ」「サブシステムを増やさない」方針。
 //
 // 設計:
-//   - KB JSON は public/grounding-kb/<domain>.v1.json として配信
+//   - KB JSON は public/grounding-kb/seed.v1.json 固定で配信
 //   - 読み込みは module キャッシュで lazy（最初の checkValidityFromKB 呼び出しで fetch）
 //   - 正規化は NFKC + lowercase（既存 bench/material-science/evaluator.ts の方針と同じ流儀）
 //   - マッチなしは null（degrade。verdict 未付与で WikiMeta.grounding.validity は undefined のまま）
 //
-// PR 2A スコープ: 材料科学 1 ドメインのみ。LLM fallback は PR 2B で追加する。
+// PR 2C で domain 分割を撤廃した。entry は単一の seed.v1.json + 単一の appdata cache に
+// 集約される。分野ラベル（tags / domain）は持たない — LLM に分類を強いると語彙が乱立し、
+// retriever / 沈殿 / フィルタのいずれにも実質的な利益が無いため。
 
 import type {
   GroundingSource,
@@ -24,21 +26,20 @@ export type KbEntry = {
   keywords: string[];
   sources?: GroundingSource[];
   /**
-   * このエントリのスキーマバージョン（PR 2A は省略可で 1 として扱う）。
+   * このエントリのスキーマバージョン（省略時は 1）。
    * 後段で entry 単位に再蒸留が走るとき互換チェックに使う。
    */
   version?: number;
   /**
    * このエントリを生成した出所。
-   * - "manual-curated@v1" : 人手キュレーション（PR 2A seed の既定）
-   * - "<model-id>"        : モデル判定の沈殿（PR 2B で書き込み）
+   * - "manual-curated@v1" : 人手キュレーション（seed の既定）
+   * - "<model-id>"        : モデル判定の沈殿（PR 2B 以降）
    */
   generatedByModel?: string;
 };
 
 export type KbFile = {
   version: 1;
-  domain: string;
   checkedBy: string;
   /**
    * KB ファイル全体の出所種別。
@@ -62,6 +63,7 @@ export type GroundingMatch = {
 };
 
 const MIN_MATCHED_KEYWORDS = 2;
+const SEED_FILENAME = "seed.v1.json";
 
 // 同一 KB を複数回ロードしないようにモジュールキャッシュを持つ。
 // テストでは clearKbCacheForTest() でリセットする。
@@ -80,19 +82,16 @@ function matchKeyword(normalizedText: string, keyword: string): boolean {
 }
 
 /**
- * seed KB JSON（public/grounding-kb/<domain>.v1.json）を fetch して返す。
+ * seed KB JSON（public/grounding-kb/seed.v1.json）を fetch して返す。
  * 失敗時は null（fail-open: 照合スキップ）。モジュール cache あり。
  */
-export async function loadSeedKb(
-  domain: string,
-  baseUrl: string,
-): Promise<KbFile | null> {
-  const cacheKey = `${baseUrl}|${domain}`;
+export async function loadSeedKb(baseUrl: string): Promise<KbFile | null> {
+  const cacheKey = baseUrl;
   const cached = kbCache.get(cacheKey);
   if (cached) return cached;
 
   const promise = (async () => {
-    const url = `${baseUrl}grounding-kb/${domain}.v1.json`;
+    const url = `${baseUrl}grounding-kb/${SEED_FILENAME}`;
     try {
       const res = await fetch(url);
       if (!res.ok) return null;
@@ -113,14 +112,11 @@ export async function loadSeedKb(
  * KB を返す。seed (public/) + appdata cache を merge した結果。
  * cache 側は dynamic import で読む（モジュール循環回避）。
  */
-export async function loadKb(
-  domain: string,
-  baseUrl: string,
-): Promise<KbFile | null> {
+export async function loadKb(baseUrl: string): Promise<KbFile | null> {
   const [seed, cacheLayer] = await Promise.all([
-    loadSeedKb(domain, baseUrl),
+    loadSeedKb(baseUrl),
     // dynamic import: tree-shake 可、テストでモック容易
-    import("./kb-cache").then((m) => m.loadKbCache(domain)).catch(() => null),
+    import("./kb-cache").then((m) => m.loadKbCache()).catch(() => null),
   ]);
   if (!seed && !cacheLayer) return null;
   const merged = await import("./kb-cache").then((m) =>
@@ -144,15 +140,13 @@ export function clearKbCacheForTest(): void {
  *
  * @param claimText 照合対象の自然文（WikiMeta のタイトル + 本文等を結合したもの）
  * @param options.kb 既にロード済みの KbFile（テスト・カスタムビルド用）
- * @param options.domain "materials" 等
  * @param options.baseUrl public/ 配下を fetch する base URL
  */
 export async function checkValidityFromKB(
   claimText: string,
-  options: { domain: string; baseUrl: string } | { kb: KbFile },
+  options: { baseUrl: string } | { kb: KbFile },
 ): Promise<GroundingMatch | null> {
-  const kb =
-    "kb" in options ? options.kb : await loadKb(options.domain, options.baseUrl);
+  const kb = "kb" in options ? options.kb : await loadKb(options.baseUrl);
   if (!kb || kb.entries.length === 0) return null;
 
   const normText = normalize(claimText);

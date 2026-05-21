@@ -1,0 +1,13 @@
+{
+  "name": "world-validity-multi-domain",
+  "inputs": [
+    "bench/corpus/060-world-validity-materials.note.json",
+    "bench/corpus/061-world-validity-cooking.note.json",
+    "bench/corpus/062-world-validity-economics.note.json",
+    "bench/corpus/063-world-validity-software.note.json"
+  ],
+  "expected": {
+    "worldValidityKbHitCount": { "min": 1 }
+  },
+  "rationale": "PR 2C で domain 分割を撤廃した後、汎用ノート（料理 / 経済 / software）を含む混合 corpus に対して seed KB（現状 materials 中心）が問題なく retriever を回せることを確認する。最低 1 件（materials note）が KB ヒットすれば pass。非マッチ domain で keyword が誤当たりしないことも示す。Phase 5（live LLM 判定）でこの probe を拡張する。"
+}

@@ -1,9 +1,11 @@
-// World-model grounding LLM fallback client (Phase 2 / PR 2B).
+// World-model grounding LLM fallback client (Phase 2 / PR 2B + 2C).
 //
 // サーバー endpoint POST /api/world-grounding/check を呼び出し、verdict / rationale /
 // normalizedClaim / keywords / sources を取得する。
 //
-// 失敗時は null を返す（fail-open: facade 側で「verdict なし checkedAt のみ」に degrade）。
+// 失敗時は failure ペイロードを返す（facade 側で「verdict なし checkedAt のみ」に degrade）。
+//
+// PR 2C: domain 引数 と tags 生成を廃止（汎用ノートエディタとして分類問題を持ち込まない）。
 
 import { apiBase, isTauri } from "../../lib/platform";
 import {
@@ -58,7 +60,6 @@ function buildHeaders(): Record<string, string> {
 }
 
 export type CheckValidityViaModelOptions = {
-  domain: string;
   language?: string;
 };
 
@@ -72,7 +73,7 @@ export type CheckValidityViaModelOutcome =
  */
 export async function checkValidityViaModel(
   claimText: string,
-  options: CheckValidityViaModelOptions,
+  options: CheckValidityViaModelOptions = {},
 ): Promise<CheckValidityViaModelOutcome> {
   const modelName = getGroundingModelName();
   if (!modelName) {
@@ -85,7 +86,6 @@ export async function checkValidityViaModel(
       headers: buildHeaders(),
       body: JSON.stringify({
         claimText,
-        domain: options.domain,
         language: options.language ?? "en",
         model: modelName,
       }),

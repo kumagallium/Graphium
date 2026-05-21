@@ -164,14 +164,40 @@ describe("parseWorldGroundingOutput", () => {
   });
 });
 
-describe("buildWorldGroundingUserMessage", () => {
-  it("domain と claim を含む", () => {
+describe("buildWorldGroundingUserMessage (PR 2C: domain 引数廃止)", () => {
+  it("claim を含み strict JSON を要求する", () => {
     const msg = buildWorldGroundingUserMessage({
       claimText: "test claim",
-      domain: "materials",
     });
-    expect(msg).toMatch(/materials/);
     expect(msg).toMatch(/test claim/);
     expect(msg).toMatch(/strict JSON/i);
+  });
+
+  it("user message に domain 文字列を含まない（PR 2C で削除）", () => {
+    const msg = buildWorldGroundingUserMessage({
+      claimText: "test claim",
+    });
+    expect(msg).not.toMatch(/Domain:/);
+  });
+});
+
+describe("system prompt: PR 2C で domain hard-coding / tags 生成 / out-of-domain ルールを撤廃", () => {
+  it("prompt から 'materials domain' 系のハードコードと out-of-domain ルールが消えている", () => {
+    const sys = buildWorldGroundingSystemPrompt("en");
+    // PR 2B では '"materials" domain' や 'the given domain' のように
+    // 単一 domain に hard-bind する文言があった。PR 2C で全削除する。
+    expect(sys).not.toMatch(/"materials"\s+domain/i);
+    expect(sys).not.toMatch(/the\s+given\s+domain/i);
+    expect(sys).not.toMatch(/out[\s-]?of[\s-]?domain/i);
+  });
+
+  it("tags 生成も prompt から削除されている（PR 2C で分類問題を持ち込まない）", () => {
+    const sys = buildWorldGroundingSystemPrompt("en");
+    expect(sys).not.toMatch(/"tags"/);
+  });
+
+  it("null verdict の意味が「知識ベースに信頼できる根拠なし」に変わっている", () => {
+    const sys = buildWorldGroundingSystemPrompt("en");
+    expect(sys).toMatch(/does not contain reliable evidence/);
   });
 });

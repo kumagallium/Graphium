@@ -603,11 +603,20 @@ plan §4 / kickoff §4 cost-floor rule). The verdict is presented as the
 KB's positioning of the claim, not as a judgment of the user's stance
 — the final call stays with the user (SPEC §8-1 / §8-4).
 
-PR 2B flips the validity engine into a **two-layer KB + LLM fallback**:
+PR 2B flips the validity engine into a **two-layer KB + LLM fallback**, and
+PR 2C drops both domain partitioning *and* subject tagging so the KB works
+across any topic (cooking, economics, software, materials — Graphium is a
+general-purpose note editor, not a materials-only tool). LLM-driven subject
+classification was considered and rejected: it ran into the same
+boundary-case problem domain partitioning did (one claim often spans
+"materials / chemistry / food-science" with no canonical label) without
+giving the retriever or the cache anything useful in return — the retriever
+already matches on `keywords`, and a filter UI surfacing one auto-coined
+label per entry would just be noise:
 
-1. KB lookup (seed `public/grounding-kb/<domain>.v1.json` merged with
-   user-local `appdata` cache `grounding-kb-cache-<domain>`) — hit
-   returns instantly with no LLM call.
+1. KB lookup — seed `public/grounding-kb/seed.v1.json` (single file, no
+   domain split) merged with user-local `appdata` cache `grounding-kb-cache`
+   (single key). Hit returns instantly with no LLM call.
 2. KB miss → user's configured `groundingModel` (Settings → AI tab)
    judges the claim via `POST /api/world-grounding/check`. The model
    must output strict JSON with `verdict` (4 values or `null`),
@@ -621,9 +630,9 @@ PR 2B flips the validity engine into a **two-layer KB + LLM fallback**:
 Sedimentation rules (enforced in code by
 `src/features/world-grounding/kb-cache.ts → isValidForCaching`):
 
-- **`not_found` is never cached.** `verdict: null` (out of domain) is
-  *not* written. Re-checking later goes back to the model, preserving
-  the chance for a future verdict.
+- **`not_found` is never cached.** `verdict: null` (insufficient evidence
+  for or against) is *not* written. Re-checking later goes back to the
+  model, preserving the chance for a future verdict.
 - **`generatedByModel` is required.** Entries marked `manual-curated@v1`
   are seed-only and refused by the cache.
 - **`claim` and `keywords` must be non-empty** or the entry is
@@ -631,14 +640,24 @@ Sedimentation rules (enforced in code by
 - **Form-1 (individual judgments / note contents) are never cached.**
   The model is instructed to emit a domain-general `normalizedClaim` —
   experiment-specific parameters / sample IDs / lab names are stripped
-  before sedimentation. PR 2B keeps the cache strictly local; a shared
+  before sedimentation. The cache stays strictly local; a shared
   cache layer would need convergence-validation (kickoff §6) and is out
   of scope.
+
+PR 2C migration: when a user that ran PR 2B has a `grounding-kb-cache-materials`
+key in their appdata, the first `loadKbCache()` call after the update folds
+those entries into the unified `grounding-kb-cache` and deletes the legacy
+key. No data loss.
 
 The `groundingModel` Settings slot follows the same degrade pattern as
 `chatSynthesisModel` — when empty, falls back to the default model;
 when no model is registered at all the check returns `checkedAt`-only
 and the badge shows "checked · no KB match" without erroring.
+
+The Settings → Grounding KB tab now exposes per-entry deletion for
+sedimented (model-judged) entries. Seed entries are read-only from the
+UI; editing them requires changing `public/grounding-kb/seed.v1.json`
+through a PR.
 
 ## 4. Skill documents
 
