@@ -1,5 +1,24 @@
 # Changelog
 
+## [v0.8.0](https://github.com/kumagallium/Graphium/compare/v0.7.0...v0.8.0) - 2026-05-21
+- feat: Windows x64 desktop build + native sidecar spawn by @kumagallium in https://github.com/kumagallium/Graphium/pull/253
+- fix(wiki): sharpen dialectic selection on contradiction pairs (Phase γ-follow-up 3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/309
+- [fix] Clear activeWikiKind when creating new note from Wiki list by @kumagallium in https://github.com/kumagallium/Graphium/pull/311
+- feat(wiki): world-grounding Phase 2 / PR 2A — KB-only verdict + bulk + KB viewer by @kumagallium in https://github.com/kumagallium/Graphium/pull/312
+- feat(ai): embedding model test button in settings by @kumagallium in https://github.com/kumagallium/Graphium/pull/313
+- chore(bench): refresh baseline for post-γ-follow-up 3 + PHASE_LOG entry by @kumagallium in https://github.com/kumagallium/Graphium/pull/315
+- feat(bench): µ-1.3 — domain_balance_score も同じ JudgePack 経由に統一 by @kumagallium in https://github.com/kumagallium/Graphium/pull/314
+- feat(wiki): Atomizer の rung-2 制約を corpus-aware に強化 by @kumagallium in https://github.com/kumagallium/Graphium/pull/317
+- chore(bench): refresh baseline for atomizer-rung2-strengthen + PHASE_LOG entry by @kumagallium in https://github.com/kumagallium/Graphium/pull/318
+- feat(wiki): world-grounding Phase 2 / PR 2B — LLM judgment + KB grows as cache by @kumagallium in https://github.com/kumagallium/Graphium/pull/316
+- feat(ui): list-view datetime format + column-header sort coverage by @kumagallium in https://github.com/kumagallium/Graphium/pull/319
+- fix(wiki): unify Japanese voice to 常体 (である調) across all generators by @kumagallium in https://github.com/kumagallium/Graphium/pull/320
+- feat(wiki,bench): extend rung-1 vocabulary with social-science JP jargon by @kumagallium in https://github.com/kumagallium/Graphium/pull/321
+- chore(bench): refresh baseline for JP-jargon follow-up + PHASE_LOG entry by @kumagallium in https://github.com/kumagallium/Graphium/pull/323
+- feat(ai-chat): derive-as-note opens in SidePeek + context/title polish by @kumagallium in https://github.com/kumagallium/Graphium/pull/324
+- fix(editor): stabilize bullet-list keyboard behavior by @kumagallium in https://github.com/kumagallium/Graphium/pull/322
+- feat(wiki): world-grounding PR 2C — drop domain partitioning and tags by @kumagallium in https://github.com/kumagallium/Graphium/pull/325
+
 ## [v0.7.0](https://github.com/kumagallium/Graphium/compare/v0.6.10...v0.7.0) - 2026-05-21
 
 This is a **minor release**. Knowledge-layer index format moves from v14 → v16 (Phase η + γ schema additions). Existing notes are migrated automatically on first launch — no user action required.
