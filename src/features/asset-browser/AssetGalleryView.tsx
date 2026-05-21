@@ -6,19 +6,14 @@ import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, P
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
-/** 日付を YYYY-MM-DD 形式でフォーマット */
-function formatDate(isoDate: string): string {
-  const d = new Date(isoDate);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
-}
+import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl } from "./media-index";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 
-type SortKey = "uploadedAt" | "name";
+type SortKey = "uploadedAt" | "name" | "usedIn";
 
 // 削除確認ダイアログ
 function DeleteConfirmDialog({
@@ -498,6 +493,8 @@ export function AssetGalleryView({
       let cmp = 0;
       if (sortKey === "uploadedAt") {
         cmp = new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+      } else if (sortKey === "usedIn") {
+        cmp = a.usedIn.length - b.usedIn.length;
       } else {
         cmp = a.name.localeCompare(b.name);
       }
@@ -767,11 +764,25 @@ export function AssetGalleryView({
                   />
                 </th>
                 <th className="py-2 px-2 w-[56px]" />
-                <th className="py-2 px-3">{t("asset.colName")}</th>
-                <th className="py-2 px-2 w-[80px] text-center" title={t("asset.colUsedIn")}>
-                  {t("asset.colUsedIn")}
+                <th
+                  className="py-2 px-3 cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("name")}
+                >
+                  {t("asset.colName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
                 </th>
-                <th className="py-2 pl-3 w-[110px]">{t("asset.colDate")}</th>
+                <th
+                  className="py-2 px-2 w-[80px] text-center cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("usedIn")}
+                  title={t("asset.colUsedIn")}
+                >
+                  {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
+                </th>
+                <th
+                  className="py-2 pl-3 w-[130px] cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("uploadedAt")}
+                >
+                  {t("asset.colDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
+                </th>
                 <th className="py-2 px-2 w-[40px]" />
               </tr>
             </thead>
@@ -835,8 +846,8 @@ export function AssetGalleryView({
                     <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
                       {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
                     </td>
-                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                      {formatDate(entry.uploadedAt)}
+                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                      {formatDateTime(entry.uploadedAt)}
                     </td>
                     <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                       <button

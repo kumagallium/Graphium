@@ -14,16 +14,7 @@ import { NoteListToolbar, type SortKey, type SortDirection } from "./NoteListToo
 import { useT, getDisplayLabelName } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useRangeSelect } from "../../hooks/use-range-select";
-
-// 日付を YYYY-MM-DD 形式で表示
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { formatDateTime } from "../../lib/format-datetime";
 
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
@@ -210,6 +201,16 @@ export function NoteListView({
           break;
         case "title":
           cmp = a.title.localeCompare(b.title, "ja");
+          break;
+        case "labels":
+          // 先頭ラベルで比較（ラベル無しは最後）
+          cmp = (a.labels[0] ?? "￿").localeCompare(b.labels[0] ?? "￿", "ja");
+          break;
+        case "knowledgeCount":
+          cmp = a.knowledgeCount - b.knowledgeCount;
+          break;
+        case "author":
+          cmp = (a.author ?? "￿").localeCompare(b.author ?? "￿", "ja");
           break;
       }
       return sortDir === "desc" ? -cmp : cmp;
@@ -518,7 +519,12 @@ export function NoteListView({
                     />
                   </th>
                 )}
-                <th className="py-2 px-3">{t("nav.noteColumn")}</th>
+                <th
+                  className="py-2 px-3 cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("title")}
+                >
+                  {t("nav.noteColumn")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
+                </th>
                 <th
                   className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("outgoingLinkCount")}
@@ -533,13 +539,29 @@ export function NoteListView({
                 >
                   {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-3 w-[140px]">{t("nav.labels")}</th>
-                <th className="py-2 px-2 w-[56px] text-center" title={t("nav.knowledgeColumnTooltip")}>
+                <th
+                  className="py-2 px-3 w-[140px] cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("labels")}
+                >
+                  {t("nav.labels")}{sortKey === "labels" && (sortDir === "desc" ? " ↓" : " ↑")}
+                </th>
+                <th
+                  className="py-2 px-2 w-[56px] text-center cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("knowledgeCount")}
+                  title={t("nav.knowledgeColumnTooltip")}
+                >
                   <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
                     <BookOpen size={14} />
                   </span>
+                  {sortKey === "knowledgeCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-2 w-[96px]" title={t("nav.authorTooltip")}>{t("nav.author")}</th>
+                <th
+                  className="py-2 px-2 w-[96px] cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("author")}
+                  title={t("nav.authorTooltip")}
+                >
+                  {t("nav.author")}{sortKey === "author" && (sortDir === "desc" ? " ↓" : " ↑")}
+                </th>
                 <th
                   className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("createdAt")}
@@ -687,11 +709,11 @@ export function NoteListView({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {formatDate(entry.createdAt)}
+                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDateTime(entry.createdAt)}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {formatDate(entry.modifiedAt)}
+                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDateTime(entry.modifiedAt)}
                   </td>
                   {/* 個別削除ボタン（ホバーで表示） */}
                   {onDeleteNotes && (

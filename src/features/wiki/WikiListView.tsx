@@ -17,21 +17,35 @@ import type { GraphiumIndex } from "../navigation/index-file";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
+import { formatDateTime } from "../../lib/format-datetime";
 
-// 日付を YYYY-MM-DD 形式で表示
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-type SortKey = "title" | "modifiedAt" | "createdAt" | "sources" | "incoming" | "outgoing";
+type SortKey =
+  | "title"
+  | "kind"
+  | "modifiedAt"
+  | "createdAt"
+  | "sources"
+  | "incoming"
+  | "outgoing"
+  | "verdict"
+  | "model";
 type SortDirection = "asc" | "desc";
 
-// PR 2A 方針 §5: 一覧の verdict 列は残すが **ソートは外す**。
+// 世界モデル照合 verdict のソート順。値が小さいほど "established" 寄りで先頭に。
+// undefined（KB マッチなし / 未照合）は最後に並べる。
+const VERDICT_ORDER: Record<string, number> = {
+  established: 0,
+  supported: 1,
+  weak: 2,
+  contested: 3,
+};
+function verdictRank(verdict?: string): number {
+  if (!verdict) return 99;
+  return VERDICT_ORDER[verdict] ?? 50;
+}
+
+// PR 2A 方針 §5: 当初は一覧の verdict 列のソートを外していたが、
+// 2026-05-21 のユーザー要望「全ての列が並び替え対象になるように」に従って sort を許可した。
 // verdict は「妥当度ランキング」ではなく KB からの位置づけとして読まれるべきなので、
 // 一覧で並び替えできる UI は誤った含意（強い→弱い順）を与える。
 
@@ -293,6 +307,15 @@ export function WikiListView({
         case "title":
           cmp = a.title.localeCompare(b.title, "ja");
           break;
+        case "kind":
+          // 種別の sort は意味的な順序ではなく単純に文字列比較（atomType / synthesisMode の
+          // 中の細目で並ぶ）。kindLabel の i18n まで巻き込むと一覧の挙動が i18n に依存する
+          // ことになるので、保存値の atomType / synthesisMode を直接比較する。
+          cmp = (a.atomType ?? a.synthesisMode ?? "").localeCompare(
+            b.atomType ?? b.synthesisMode ?? "",
+            "en",
+          );
+          break;
         case "modifiedAt":
           cmp = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();
           break;
@@ -307,6 +330,12 @@ export function WikiListView({
           break;
         case "outgoing":
           cmp = a.outgoing - b.outgoing;
+          break;
+        case "verdict":
+          cmp = verdictRank(a.worldGrounding?.verdict) - verdictRank(b.worldGrounding?.verdict);
+          break;
+        case "model":
+          cmp = (a.model ?? "").localeCompare(b.model ?? "", "en");
           break;
       }
       return sortDir === "desc" ? -cmp : cmp;
@@ -455,7 +484,12 @@ export function WikiListView({
                 >
                   {t("wikiList.colTitle")}{sortKey === "title" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-3 w-[140px]">{t("wikiList.colType")}</th>
+                <th
+                  className="py-2 px-3 w-[140px] cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("kind")}
+                >
+                  {t("wikiList.colType")}{sortKey === "kind" && (sortDir === "desc" ? " ↓" : " ↑")}
+                </th>
                 <th
                   className="py-2 pl-3 w-[80px] cursor-pointer hover:text-foreground tabular-nums"
                   onClick={() => handleSort("sources")}
@@ -479,13 +513,19 @@ export function WikiListView({
                 </th>
                 {wikiKind !== "summary" && (
                   <th
-                    className="py-2 pl-3 w-[110px]"
+                    className="py-2 pl-3 w-[110px] cursor-pointer hover:text-foreground"
+                    onClick={() => handleSort("verdict")}
                     title={t("wikiList.colWorldVerdictTooltip")}
                   >
-                    {t("wikiList.colWorldVerdict")}
+                    {t("wikiList.colWorldVerdict")}{sortKey === "verdict" && (sortDir === "desc" ? " ↓" : " ↑")}
                   </th>
                 )}
-                <th className="py-2 px-2 w-[120px]">{t("wikiList.colModel")}</th>
+                <th
+                  className="py-2 px-2 w-[120px] cursor-pointer hover:text-foreground"
+                  onClick={() => handleSort("model")}
+                >
+                  {t("wikiList.colModel")}{sortKey === "model" && (sortDir === "desc" ? " ↓" : " ↑")}
+                </th>
                 <th
                   className="py-2 pl-3 w-[100px] cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("createdAt")}
@@ -570,11 +610,11 @@ export function WikiListView({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {formatDate(entry.createdAt)}
+                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDateTime(entry.createdAt)}
                   </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
-                    {formatDate(entry.modifiedAt)}
+                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDateTime(entry.modifiedAt)}
                   </td>
                   <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
                     <button
