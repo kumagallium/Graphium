@@ -638,10 +638,11 @@ export function useFileManager(authenticated: boolean) {
     setActiveFileId(null);
     setActiveDoc(null);
     setEditorKey((k) => k + 1);
-    // ギャラリービューを閉じる
+    // ギャラリービュー・Wiki リストを閉じる（残っているとレンダリング条件で前のビューが優先される）
     setActiveAssetType(null);
     setActiveLabel(null);
     setShowNoteList(false);
+    setActiveWikiKind(null);
   }, [setActiveFileId]);
 
   // PROV テンプレートから作成
