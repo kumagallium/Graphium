@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "domain": "materials",
+  "checkedBy": "distilled-kb@v1",
+  "seedSource": "manual-curated@v1",
+  "entries": [
+    {
+      "id": "mat-001",
+      "verdict": "established",
+      "claim": "焼結温度を上げると粒成長が促進される（焼結後期）",
+      "rationale": "Coble sintering / Herring scaling など、焼結後期の粒成長と温度依存は教科書の標準扱い。",
+      "keywords": ["焼結", "粒成長", "後期", "sintering", "grain growth"],
+      "sources": [
+        { "kind": "distilled", "ref": "R. M. German, Sintering: From Empirical Observations to Scientific Principles, Elsevier", "note": "粒成長の章" },
+        { "kind": "distilled", "ref": "Wikipedia: Sintering", "url": "https://en.wikipedia.org/wiki/Sintering" }
+      ]
+    },
+    {
+      "id": "mat-002",
+      "verdict": "established",
+      "claim": "多結晶金属では結晶粒径が小さいほど降伏応力が高い（ホール・ペッチ関係）",
+      "rationale": "Hall-Petch 関係。十分大きな粒径領域では実験と理論が広く一致している。",
+      "keywords": ["ホール・ペッチ", "Hall-Petch", "結晶粒径", "降伏応力", "grain size", "yield stress"],
+      "sources": [
+        { "kind": "distilled", "ref": "G. E. Dieter, Mechanical Metallurgy, McGraw-Hill" },
+        { "kind": "distilled", "ref": "Wikipedia: Grain boundary strengthening", "url": "https://en.wikipedia.org/wiki/Grain_boundary_strengthening" }
+      ]
+    },
+    {
+      "id": "mat-003",
+      "verdict": "established",
+      "claim": "拡散係数は温度に対してアレニウス型で指数関数的に増加する",
+      "rationale": "Arrhenius 型 D = D0 exp(-Q/RT)。固体拡散全般の標準モデル。",
+      "keywords": ["アレニウス", "Arrhenius", "拡散", "拡散係数", "diffusion coefficient", "温度依存"],
+      "sources": [
+        { "kind": "distilled", "ref": "P. G. Shewmon, Diffusion in Solids, TMS" },
+        { "kind": "distilled", "ref": "Wikipedia: Arrhenius equation", "url": "https://en.wikipedia.org/wiki/Arrhenius_equation" }
+      ]
+    },
+    {
+      "id": "mat-004",
+      "verdict": "established",
+      "claim": "メカニカルアロイングは固溶限を非平衡的に拡張できる",
+      "rationale": "Mechanical alloying では強い塑性変形と界面エネルギー導入により、平衡相図を超えた固溶が報告されている。",
+      "keywords": ["メカニカルアロイング", "mechanical alloying", "MA", "固溶限", "非平衡", "solid solubility"],
+      "sources": [
+        { "kind": "distilled", "ref": "C. Suryanarayana, Mechanical Alloying and Milling, Marcel Dekker" },
+        { "kind": "distilled", "ref": "Wikipedia: Mechanical alloying", "url": "https://en.wikipedia.org/wiki/Mechanical_alloying" }
+      ]
+    },
+    {
+      "id": "mat-005",
+      "verdict": "established",
+      "claim": "金属の熱伝導率はフォノン成分と電子成分に分けられ、自由電子金属では電子寄与が支配的（Wiedemann-Franz 則）",
+      "rationale": "Wiedemann-Franz 則 κ/σT = L は自由電子金属で広く成立する。",
+      "keywords": ["熱伝導率", "Wiedemann-Franz", "フォノン", "電子寄与", "thermal conductivity", "phonon"],
+      "sources": [
+        { "kind": "distilled", "ref": "N. W. Ashcroft & N. D. Mermin, Solid State Physics, Saunders" },
+        { "kind": "distilled", "ref": "Wikipedia: Wiedemann–Franz law", "url": "https://en.wikipedia.org/wiki/Wiedemann%E2%80%93Franz_law" }
+      ]
+    },
+    {
+      "id": "mat-006",
+      "verdict": "supported",
+      "claim": "ペロブスカイト構造 ABO3 の B サイト置換で強誘電性・磁性などの物性を制御できる",
+      "rationale": "BaTiO3 系・(La,Sr)MnO3 系など豊富な実験例があり工学的にも広く使われる。一方、置換に伴う複雑な相転移・不安定相も観測され完全な予測は難しい。",
+      "keywords": ["ペロブスカイト", "perovskite", "ABO3", "B サイト置換", "B-site substitution", "強誘電", "磁性"],
+      "sources": [
+        { "kind": "distilled", "ref": "M. E. Lines & A. M. Glass, Principles and Applications of Ferroelectrics, Oxford" },
+        { "kind": "distilled", "ref": "Wikipedia: Perovskite (structure)", "url": "https://en.wikipedia.org/wiki/Perovskite_(structure)" }
+      ]
+    },
+    {
+      "id": "mat-007",
+      "verdict": "supported",
+      "claim": "DFT の LDA / GGA は強相関電子系で系統的にバンドギャップを過小評価する",
+      "rationale": "標準 LDA/GGA の self-interaction error により、Mott 絶縁体や酸化物の Eg が小さく出る。DFT+U / hybrid functional で部分的に補正される。",
+      "keywords": ["DFT", "LDA", "GGA", "バンドギャップ", "band gap", "強相関", "強相関電子系", "underestimation"],
+      "sources": [
+        { "kind": "distilled", "ref": "R. M. Martin, Electronic Structure: Basic Theory and Practical Methods, Cambridge" },
+        { "kind": "distilled", "ref": "Wikipedia: Density functional theory", "url": "https://en.wikipedia.org/wiki/Density_functional_theory" }
+      ]
+    },
+    {
+      "id": "mat-008",
+      "verdict": "contested",
+      "claim": "ナノ粒子の凝集は常に体積拡散より速い",
+      "rationale": "凝集の律速段階は系・温度・界面状態・表面修飾に強く依存し、一律な大小関係は実験で支持されない。",
+      "keywords": ["ナノ粒子", "凝集", "拡散", "nanoparticle", "agglomeration", "diffusion"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Nanoparticle", "url": "https://en.wikipedia.org/wiki/Nanoparticle" }
+      ]
+    },
+    {
+      "id": "mat-009",
+      "verdict": "contested",
+      "claim": "メカニカルアロイングの処理時間を長くするほど常に均質性が上がる",
+      "rationale": "過剰なミリングでは媒体・容器からの汚染、酸化、再凝集が支配的になり均質性は下がりうる。最適時間が存在する。",
+      "keywords": ["メカニカルアロイング", "mechanical alloying", "MA", "ミリング", "milling time", "均質性", "homogeneity"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Mechanical alloying", "url": "https://en.wikipedia.org/wiki/Mechanical_alloying", "note": "Contamination の節" }
+      ]
+    },
+    {
+      "id": "mat-010",
+      "verdict": "contested",
+      "claim": "結晶粒微細化は常に Hall-Petch 則に従って強度を上げる",
+      "rationale": "超微細粒（< 約 20 nm）領域では粒界滑り支配となり inverse Hall-Petch が観測される。",
+      "keywords": ["Hall-Petch", "ホール・ペッチ", "inverse Hall-Petch", "粒界滑り", "ultrafine grain", "ナノ結晶"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Grain boundary strengthening", "url": "https://en.wikipedia.org/wiki/Grain_boundary_strengthening", "note": "Inverse Hall-Petch の節" }
+      ]
+    },
+    {
+      "id": "mat-011",
+      "verdict": "contested",
+      "claim": "アモルファス試料では X 線回折ピークが完全に出ない",
+      "rationale": "短距離秩序由来のブロードなハロパターンは必ず観測される。「鋭いピークが立たない」が正確な表現。",
+      "keywords": ["アモルファス", "amorphous", "X 線回折", "XRD", "ハロ", "halo", "ピーク"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Amorphous solid", "url": "https://en.wikipedia.org/wiki/Amorphous_solid" }
+      ]
+    },
+    {
+      "id": "mat-012",
+      "verdict": "contested",
+      "claim": "ガラス転移温度 Tg は冷却速度に依存しない物質固有の値である",
+      "rationale": "Tg は構造緩和の時間スケールが観測時間と等しくなる温度なので、冷却速度 / 加熱速度に対数的に依存する。",
+      "keywords": ["ガラス転移", "Tg", "glass transition", "冷却速度", "cooling rate", "構造緩和"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Glass transition", "url": "https://en.wikipedia.org/wiki/Glass_transition" }
+      ]
+    },
+    {
+      "id": "mat-013",
+      "verdict": "weak",
+      "claim": "SPS（放電プラズマ焼結）はパルス電流自体の効果で粒成長を抑制する",
+      "rationale": "粒成長抑制の主因は急速昇温・短保持時間にあるという解釈が支配的で、パルス電流の電場・スパーク効果は議論が続いている。",
+      "keywords": ["SPS", "放電プラズマ焼結", "spark plasma sintering", "パルス電流", "pulsed current", "粒成長抑制"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Spark plasma sintering", "url": "https://en.wikipedia.org/wiki/Spark_plasma_sintering" }
+      ]
+    },
+    {
+      "id": "mat-014",
+      "verdict": "weak",
+      "claim": "メカニカルアロイング中の局所温度は数百℃以上に達する",
+      "rationale": "直接測定が困難で、衝突モデルから推定された数百℃の値が広く引用されるが、推定値の不確かさが大きい。",
+      "keywords": ["メカニカルアロイング", "mechanical alloying", "局所温度", "local temperature", "ボール衝突", "ball collision"],
+      "sources": [
+        { "kind": "distilled", "ref": "Wikipedia: Mechanical alloying", "url": "https://en.wikipedia.org/wiki/Mechanical_alloying" }
+      ]
+    },
+    {
+      "id": "mat-015",
+      "verdict": "established",
+      "claim": "真空中焼結は酸化物形成自由エネルギーの観点から低酸素分圧で酸化を抑制する",
+      "rationale": "Ellingham 線図に基づく標準扱い。多くの金属で酸化を熱力学的に抑制できる温度域がある。",
+      "keywords": ["真空焼結", "vacuum sintering", "Ellingham", "酸化", "酸素分圧", "oxygen partial pressure"],
+      "sources": [
+        { "kind": "distilled", "ref": "D. R. Gaskell, Introduction to the Thermodynamics of Materials, Taylor & Francis", "note": "Ellingham 線図の章" },
+        { "kind": "distilled", "ref": "Wikipedia: Ellingham diagram", "url": "https://en.wikipedia.org/wiki/Ellingham_diagram" }
+      ]
+    },
+    {
+      "id": "mat-016",
+      "verdict": "established",
+      "claim": "格子熱伝導率はフォノンの群速度・比熱・平均自由行程で決まり、欠陥や境界による散乱で平均自由行程が短くなる",
+      "rationale": "Debye–Callaway モデル κ_lat ∝ Cv·v·ℓ。点欠陥・粒界・界面はフォノン散乱中心として平均自由行程を短くし、κ_lat を低下させる。固体物理・熱電材料の標準扱い。",
+      "keywords": ["格子熱伝導", "lattice thermal conductivity", "フォノン", "phonon", "平均自由行程", "mean free path", "Callaway"],
+      "sources": [
+        { "kind": "distilled", "ref": "J. M. Ziman, Electrons and Phonons, Oxford" },
+        { "kind": "distilled", "ref": "Wikipedia: Phonon scattering", "url": "https://en.wikipedia.org/wiki/Phonon_scattering" }
+      ]
+    },
+    {
+      "id": "mat-017",
+      "verdict": "established",
+      "claim": "少量の置換元素添加は質量・歪み揺らぎを持ち込み点欠陥散乱を強めて格子熱伝導率を下げる",
+      "rationale": "Klemens / Callaway の点欠陥散乱モデル: 散乱項は質量比 ΔM/M と原子半径比 Δr/r の二乗に比例する。熱電材料での κ_lat 低減（ZT 向上）の主要戦略。",
+      "keywords": ["点欠陥散乱", "point defect scattering", "mass disorder", "質量揺らぎ", "添加元素", "doping", "Klemens", "格子熱伝導"],
+      "sources": [
+        { "kind": "distilled", "ref": "P. G. Klemens, Phys. Rev. 119, 507 (1960)" },
+        { "kind": "distilled", "ref": "Wikipedia: Thermoelectric materials", "url": "https://en.wikipedia.org/wiki/Thermoelectric_materials" }
+      ]
+    },
+    {
+      "id": "mat-018",
+      "verdict": "established",
+      "claim": "熱電性能指数 ZT = S²σT / κ は出力因子 S²σ を上げるか熱伝導率 κ を下げると改善する",
+      "rationale": "ZT は熱電材料の基本指標。電気と熱の輸送がトレードオフ関係にあるため、phonon glass / electron crystal 設計で κ_lat だけ選択的に下げる戦略が広く採られる。",
+      "keywords": ["熱電", "thermoelectric", "ZT", "出力因子", "power factor", "Seebeck", "熱伝導率"],
+      "sources": [
+        { "kind": "distilled", "ref": "G. J. Snyder & E. S. Toberer, Nature Mater. 7, 105 (2008)" },
+        { "kind": "distilled", "ref": "Wikipedia: Thermoelectric effect", "url": "https://en.wikipedia.org/wiki/Thermoelectric_effect" }
+      ]
+    },
+    {
+      "id": "mat-019",
+      "verdict": "supported",
+      "claim": "ナノ構造化（粒界増加・ナノ析出・超格子）は短波長フォノンを選択的に散乱して κ_lat を下げる",
+      "rationale": "nanostructuring は中波長〜短波長フォノンを散乱し、電子は粒径より十分小さい平均自由行程を持つため σ への影響が小さい。BiSbTe / PbTe 系で実験的に大きな ZT 向上が報告されているが、効果量は系依存。",
+      "keywords": ["ナノ構造", "nanostructuring", "粒界", "grain boundary", "超格子", "superlattice", "格子熱伝導", "熱電"],
+      "sources": [
+        { "kind": "distilled", "ref": "B. Poudel et al., Science 320, 634 (2008)" },
+        { "kind": "distilled", "ref": "Wikipedia: Thermoelectric materials", "url": "https://en.wikipedia.org/wiki/Thermoelectric_materials", "note": "Nanomaterials の節" }
+      ]
+    }
+  ]
+}

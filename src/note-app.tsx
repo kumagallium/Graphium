@@ -125,6 +125,7 @@ import {
 } from "./features/wiki";
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
+import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
@@ -2631,6 +2632,8 @@ export function NoteApp() {
   // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
   // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
   const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
+  // 世界モデル照合（Phase 2 / PR 2A）— 照合中の Wiki ID を覚えてバナーボタンを disable する
+  const [worldCheckingWikiId, setWorldCheckingWikiId] = useState<string | null>(null);
   const handleComposerSubmit = useCallback(
     async (submission: ComposerSubmission) => {
       const handler = composerSubmitRef.current;
@@ -2686,6 +2689,79 @@ export function NoteApp() {
   const capture = useCapture(authenticated);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
+
+  // 世界モデル照合 共通ハンドラ（Phase 2 / PR 2A）。
+  // 照合発火はすべて **ユーザー起動**（バナー単発 / 一覧 bulk）に統一する。
+  // 開くたびの自動発火はしない（kickoff §4 + PR 2A 方針 §4: 頼んでいない判定の押し付けを避ける）。
+  // PR 2B で LLM fallback / KB-as-cache を入れる際は trigger の意味が増えるが、
+  // 現状は 2 つだけ。
+  const handleWorldCheckWiki = useCallback(
+    async (
+      wikiId: string,
+      trigger: "manual" | "bulk" = "manual",
+    ): Promise<void> => {
+      const cached = fm.getCachedDoc(`wiki:${wikiId}`);
+      const doc = cached ?? (await fm.loadDoc(`wiki:${wikiId}`));
+      if (!doc?.wikiMeta) return;
+      // Summary は対象外（PR 2A §1 の主張系: claim/atom/synthesis 用）
+      if (doc.wikiMeta.kind === "summary") return;
+      if (worldCheckingWikiId === wikiId) return;
+      const wikiTitle = doc.title ?? wikiId;
+      const toastId = `wgrd:${wikiId}`;
+      setWorldCheckingWikiId(wikiId);
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []),
+          {
+            id: toastId,
+            status: "generating" as const,
+            noteTitle: `Checking "${wikiTitle}" against world KB`,
+            detail: "distilled-kb@v1 (no LLM)",
+          },
+        ],
+      }));
+      try {
+        const claimText = `${doc.title}\n\n${extractPlainTextFromDoc(doc)}`;
+        const validity = await checkValidity(doc.wikiMeta, claimText);
+        const next: GraphiumDocument = {
+          ...doc,
+          wikiMeta: attachValidity(doc.wikiMeta, validity),
+          modifiedAt: new Date().toISOString(),
+        };
+        // activityType 無しで保存 — document-provenance に phantom revision を作らない（PR 2A 方針 §2）
+        await fm.handleSaveWikiFile(wikiId, next);
+        // activeDoc は handleSaveWikiFile では更新されないので、現在開いているノートなら再同期する
+        if (fm.activeFileId === `wiki:${wikiId}`) {
+          fm.handleOpenWikiFile(wikiId);
+        }
+        const resultMsg = validity?.verdict
+          ? `Verdict: ${validity.verdict}`
+          : "No KB match (checked, no verdict)";
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId
+              ? { ...i, status: "success" as const, detail: undefined, result: resultMsg }
+              : i
+          ),
+        }));
+        // PR 2A は trigger 未使用だが、PR 2B 以降で auto-trigger 経路が増えた時の互換のため引数は残す
+        void trigger;
+      } catch (err) {
+        console.error("[world-grounding] check failed:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId
+              ? { ...i, status: "error" as const, detail: undefined, result: msg }
+              : i
+          ),
+        }));
+      } finally {
+        setWorldCheckingWikiId((cur) => (cur === wikiId ? null : cur));
+      }
+    },
+    [fm, worldCheckingWikiId],
+  );
 
   // Phase 4 (PR-B7): PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer の
   // 意味的な型（atomType / synthesisMode / procedureContext / ...）を組み立てる。
@@ -4989,6 +5065,7 @@ export function NoteApp() {
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
+            onWorldCheckWiki={(wikiId) => handleWorldCheckWiki(wikiId, "bulk")}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -5146,6 +5223,14 @@ export function NoteApp() {
                     fm.handleOpenFile(noteId);
                   }
                 }}
+                onCheckWorldValidity={
+                  fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner
+                    ? undefined
+                    : () => void handleWorldCheckWiki(wikiIdForBanner, "manual")
+                }
+                worldCheckLoading={
+                  wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
+                }
               />
             );
           })()}

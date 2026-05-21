@@ -335,6 +335,59 @@ export type WikiMeta = {
    * **Claim のみで意味を持つ**。`confidence` (system 自己評価) とは別軸。
    */
   modalQualifier?: ModalQualifier;
+  /**
+   * 世界モデル照合の結果（world-model-grounding, Phase 2）。
+   *
+   * 別レーン契約: epistemicStatus / hypothesisStatus は読むだけで書き換えない。
+   * 照合元（蒸留KB / モデル / 検索）が信号を返さなければ undefined のまま温存する。
+   * 昇格を促す場合は `suggests` フィールドで提案表示するだけ。
+   *
+   * PR 2A スコープ: validity（蒸留KB ヒット時のみ）。novelty / quadrant / staleAfter は
+   * Phase 5 で外部 retriever（ζ 統合）と一緒に解放する。
+   */
+  grounding?: GroundingProfile;
+};
+
+// ── World-model grounding (Phase 2) ──
+// kickoff §1.1 / DESIGN_NOTE_world-model-grounding.ja.md を参照。
+// 既存 epistemicStatus / hypothesisStatus とは別レーン。verdict 文字列に
+// `established` が含まれるが epistemicStatus の `established` とは別軸・別意味。
+
+export type GroundingValidityVerdict = "contested" | "weak" | "supported" | "established";
+
+export type GroundingSource =
+  // PR 2A: 蒸留KB のみ。PR 2B で kind: "model" / "search" を追加する。
+  | { kind: "distilled"; ref: string; note?: string; url?: string };
+
+export type GroundingProfile = {
+  validity?: {
+    /** 照合スコア（0..1）。retriever / モデルが返した raw score を保持する。 */
+    score?: number;
+    /** 照合結果の verdict。蒸留KB ヒットなし時は undefined のまま。 */
+    verdict?: GroundingValidityVerdict;
+    /** verdict 根拠の自然言語説明（教科書名・反証パターン等）。 */
+    rationale?: string;
+    /** 照合に使った情報源。PR 2A では `distilled` 種別のみ。 */
+    sources?: GroundingSource[];
+    /**
+     * 蒸留 KB 照合で実際にヒットした keyword 一覧（PR 2A）。UI で「何がトリガーしたか」
+     * を見せるための監査用フィールド。LLM fallback 経路は埋めなくてよい（undefined）。
+     */
+    matchedKeywords?: string[];
+    /** 照合元の identity。PR 2A は "distilled-kb@v1" 固定。 */
+    checkedBy?: string;
+    /** 照合した時刻（ISO8601）。L3 鮮度判定や stale 表示に使う。 */
+    checkedAt?: string;
+  };
+  /**
+   * 既存 status への作用は「提案」のみ。
+   * hypothesisStatus / epistemicStatus を grounding が書き換えてはいけない（別レーン）。
+   */
+  suggests?: {
+    field: "hypothesisStatus" | "epistemicStatus";
+    to: string;
+    reason: string;
+  };
 };
 
 /**
@@ -374,6 +427,15 @@ export type WikiMetaSummary = {
    * Toulmin Modal qualifier（Phase γ）。Claim でのみ意味を持つ。
    */
   modalQualifier?: ModalQualifier;
+  /**
+   * 世界モデル照合 validity（Phase 2 / PR 2A）。
+   * 一覧 UI の verdict 列・フィルタ・bulk 操作で使う最小限のフィールドだけ mirror する。
+   * `INDEX_SCHEMA_VERSION` は bump しない（`NoteIndexEntry` には mirror しない方針）。
+   */
+  groundingValidity?: {
+    verdict?: GroundingValidityVerdict;
+    checkedAt?: string;
+  };
 };
 
 // Graphium ファイルのメタデータ

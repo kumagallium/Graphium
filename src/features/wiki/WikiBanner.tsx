@@ -2,8 +2,13 @@
 // エディタ上部に表示: AI 生成バッジ、アクションボタン
 
 import { useMemo, useState } from "react";
-import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw } from "lucide-react";
-import type { ProcedureContext, SynthesisMode, WikiMeta } from "../../lib/document-types";
+import { RefreshCw, Trash2, ChevronDown, Archive, RotateCcw, Globe2 } from "lucide-react";
+import type {
+  GroundingValidityVerdict,
+  ProcedureContext,
+  SynthesisMode,
+  WikiMeta,
+} from "../../lib/document-types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import { useT } from "../../i18n";
 import { SynthesisModeModal } from "./SynthesisModeModal";
@@ -77,6 +82,14 @@ type Props = {
    * 深い系譜は右パネルの Graph→Lineage タブが受け持つので、ここは一次親に絞る。
    */
   onNavigateNote?: (noteId: string) => void;
+  /**
+   * 世界モデル照合トリガ（world-model-grounding Phase 2 / PR 2A）。
+   * 押されると蒸留 KB と照合し、verdict バッジを更新する想定。
+   * 未指定時はボタンを出さない（grounding 未対応のコンテキスト用）。
+   */
+  onCheckWorldValidity?: () => void;
+  /** 照合中。ボタンを disable してスピナー的に表示する。 */
+  worldCheckLoading?: boolean;
 };
 
 function formatDate(isoDate: string): string {
@@ -98,6 +111,8 @@ export function WikiBanner({
   onRestoreFromArchive,
   noteIndex,
   onNavigateNote,
+  onCheckWorldValidity,
+  worldCheckLoading = false,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -223,6 +238,16 @@ export function WikiBanner({
           </span>
         )}
 
+        {/* 世界モデル照合の verdict バッジ（Phase 2 / PR 2A）。
+            別レーン: epistemicStatus / hypothesisStatus には影響しない。
+            checkedAt があって verdict なしのときも「照合済み / マッチなし」を薄く表示する
+            （UX フィードバック: ボタン押下→何も起きないように見える事故を防ぐ）。 */}
+        {wikiMeta.grounding?.validity?.verdict ? (
+          <WorldVerdictBadge validity={wikiMeta.grounding.validity} />
+        ) : wikiMeta.grounding?.validity?.checkedAt ? (
+          <WorldCheckedNoMatchBadge validity={wikiMeta.grounding.validity} />
+        ) : null}
+
         {archived && (
           <span
             style={{
@@ -274,6 +299,31 @@ export function WikiBanner({
           )}
           {!archived && (
           <>
+          {/* 世界照合（Phase 2 / PR 2A）— 蒸留KB 突き合わせ。LLM 呼び出しなし。 */}
+          {onCheckWorldValidity && (
+            <button
+              onClick={onCheckWorldValidity}
+              disabled={loading || worldCheckLoading}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                borderRadius: "var(--r-1)",
+                border: "1px dashed var(--rule)",
+                background: "var(--paper)",
+                color: "var(--ink-2)",
+                fontSize: 11,
+                cursor: "pointer",
+                opacity: loading || worldCheckLoading ? 0.5 : 1,
+              }}
+              title={t("wikiBanner.worldCheckHint")}
+            >
+              <Globe2 size={12} />
+              {t("wikiBanner.worldCheck")}
+            </button>
+          )}
+
           {/* Regenerate — モデルは設定（Default / Chat & Synthesis）に従う */}
           <button
             onClick={onRegenerate}
@@ -339,6 +389,14 @@ export function WikiBanner({
         />
       )}
 
+      {/* 世界照合 詳細セクション（world-model-grounding Phase 2 / PR 2A）—
+          照合履歴がある場合だけ表示。verdict だけでは見えない rationale / sources /
+          checkedBy / checkedAt を tooltip を hover せずに読めるよう、派生元と同じ
+          折り畳みパターンで並べる。バッジは hover、詳細は展開、と役割を分ける。 */}
+      {wikiMeta.grounding?.validity?.checkedAt && (
+        <WorldGroundingDetailSection validity={wikiMeta.grounding.validity} />
+      )}
+
       {/* Synthesis モード説明モーダル（Phase 5.4） */}
       <SynthesisModeModal
         open={modeModal !== null}
@@ -346,6 +404,266 @@ export function WikiBanner({
         onClose={() => setModeModal(null)}
       />
     </div>
+  );
+}
+
+// 世界モデル照合 verdict バッジ（Phase 2 / PR 2A）。
+// 色は既存パレットに揃え、confidence チップと並ぶ高さで控えめに表示する。
+// verdict 別の意味は kickoff §1.1 を参照。i18n は wikiBanner.worldVerdict.* / worldCheckedBy / worldRationale。
+function WorldVerdictBadge({
+  validity,
+}: {
+  validity: NonNullable<NonNullable<WikiMeta["grounding"]>["validity"]>;
+}) {
+  const t = useT();
+  const verdict = validity.verdict as GroundingValidityVerdict;
+  const palette: Record<
+    GroundingValidityVerdict,
+    { color: string; bg: string; border: string }
+  > = {
+    established: {
+      color: "var(--forest-ink)",
+      bg: "var(--forest-soft, var(--paper))",
+      border: "var(--forest, var(--rule))",
+    },
+    supported: {
+      color: "var(--forest-ink)",
+      bg: "var(--paper)",
+      border: "var(--forest, var(--rule))",
+    },
+    weak: {
+      color: "var(--amber-ink, #b45309)",
+      bg: "var(--amber-soft, var(--paper))",
+      border: "var(--amber, var(--rule))",
+    },
+    contested: {
+      color: "var(--ember, #b54708)",
+      bg: "var(--paper)",
+      border: "var(--ember, var(--rule))",
+    },
+  };
+  const p = palette[verdict];
+  const label = t(`wikiBanner.worldVerdict.${verdict}` as any);
+  const checkedBy = validity.checkedBy ?? "";
+  const checkedAt = validity.checkedAt
+    ? new Date(validity.checkedAt).toLocaleString()
+    : "";
+  const rationale = validity.rationale ?? "";
+  // tooltip にすべての meta 情報を入れる（rationale → checkedBy → checkedAt）
+  const titleParts: string[] = [`${t("wikiBanner.worldVerdictLabel")}: ${label}`];
+  if (rationale) titleParts.push(`${t("wikiBanner.worldRationale")}: ${rationale}`);
+  if (checkedBy) titleParts.push(`${t("wikiBanner.worldCheckedBy")}: ${checkedBy}`);
+  if (checkedAt) titleParts.push(checkedAt);
+  return (
+    <span
+      title={titleParts.join("\n")}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: "var(--pill)",
+        border: `1px solid ${p.border}`,
+        background: p.bg,
+        color: p.color,
+        fontSize: 12,
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      <Globe2 size={11} />
+      {label}
+    </span>
+  );
+}
+
+// 世界照合 詳細セクション（PR 2A）。
+// バッジが verdict だけを示すのに対して、こちらは「なぜそう判定したか」を読める。
+// 派生元セクションと同じ折り畳みトーン（dashed border / デフォルト閉）。
+function WorldGroundingDetailSection({
+  validity,
+}: {
+  validity: NonNullable<NonNullable<WikiMeta["grounding"]>["validity"]>;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const verdict = validity.verdict;
+  const verdictLabel = verdict
+    ? t(`wikiBanner.worldVerdict.${verdict}` as any)
+    : t("wikiBanner.worldNoMatch");
+  const checkedAt = validity.checkedAt
+    ? new Date(validity.checkedAt).toLocaleString()
+    : "";
+  const checkedBy = validity.checkedBy ?? "";
+  const sources = validity.sources ?? [];
+  const matched = validity.matchedKeywords ?? [];
+  // PR 2A は KB の keywords がヒットしたかどうかの「件数」を見せる。
+  // %（score） は KB entry の keywords 総数に依存して見え方が変わるので、誤解防止のため
+  // バッジ脇には出さない。score は型として保持（PR 2B 以降の LLM 評価で再利用予定）。
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: open ? "6px 10px 8px" : "4px 10px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 11,
+        color: "var(--ink-2)",
+      }}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "1px 4px",
+          margin: 0,
+          background: "transparent",
+          border: "none",
+          color: "var(--ink-2)",
+          font: "inherit",
+          cursor: "pointer",
+        }}
+        title={t("wikiBanner.worldDetailHint")}
+      >
+        <ChevronDown
+          size={11}
+          style={{
+            transform: open ? "rotate(0)" : "rotate(-90deg)",
+            transition: "transform 120ms",
+          }}
+        />
+        <Globe2 size={11} />
+        <span style={{ fontWeight: 500 }}>{t("wikiBanner.worldDetailTitle")}</span>
+        <span style={{ color: "var(--ink-4)", fontWeight: 400 }}>· {verdictLabel}</span>
+        {matched.length > 0 && (
+          <span
+            style={{ color: "var(--ink-4)", fontWeight: 400 }}
+            title={t("wikiBanner.worldMatchedKeywordsHint")}
+          >
+            · {t("wikiBanner.worldMatchedKeywordsCount", {
+              count: String(matched.length),
+            })}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div style={{ marginTop: 4, lineHeight: 1.55 }}>
+          {validity.rationale && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>
+                {t("wikiBanner.worldRationale")}:{" "}
+              </span>
+              {validity.rationale}
+            </div>
+          )}
+          {matched.length > 0 && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>
+                {t("wikiBanner.worldMatchedKeywords")}:{" "}
+              </span>
+              {matched.map((kw, i) => (
+                <span key={kw + i}>
+                  {i > 0 && <span style={{ color: "var(--ink-4)" }}>, </span>}
+                  <code
+                    style={{
+                      fontFamily: "var(--mono)",
+                      background: "var(--paper-2, var(--paper))",
+                      padding: "0 4px",
+                      borderRadius: 2,
+                    }}
+                  >
+                    {kw}
+                  </code>
+                </span>
+              ))}
+            </div>
+          )}
+          {sources.length > 0 && (
+            <div>
+              <span style={{ color: "var(--ink-3)" }}>
+                {t("wikiBanner.worldSources")}:{" "}
+              </span>
+              {sources.map((s, i) => (
+                <span key={i}>
+                  {i > 0 && <span style={{ color: "var(--ink-4)" }}>; </span>}
+                  {s.url ? (
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: "var(--forest-ink, var(--ink-2))",
+                        textDecoration: "underline",
+                        textDecorationStyle: "dotted",
+                      }}
+                      title={s.url}
+                    >
+                      {s.ref}
+                    </a>
+                  ) : (
+                    <span>{s.ref}</span>
+                  )}
+                  {s.note && (
+                    <span style={{ color: "var(--ink-4)" }}> ({s.note})</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ color: "var(--ink-4)", marginTop: 2 }}>
+            {checkedBy && (
+              <>
+                {t("wikiBanner.worldCheckedBy")}: {checkedBy}
+              </>
+            )}
+            {checkedBy && checkedAt && " · "}
+            {checkedAt}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 「照合済み・マッチなし」薄表示。
+// verdict は付かなかったが、照合は走った（checkedAt あり）状態を可視化する。
+// バッジは ink-4 に近い色で、確定verdict バッジとは明確に違うトーン。
+function WorldCheckedNoMatchBadge({
+  validity,
+}: {
+  validity: NonNullable<NonNullable<WikiMeta["grounding"]>["validity"]>;
+}) {
+  const t = useT();
+  const checkedAt = validity.checkedAt
+    ? new Date(validity.checkedAt).toLocaleString()
+    : "";
+  const checkedBy = validity.checkedBy ?? "";
+  const titleParts: string[] = [t("wikiBanner.worldNoMatchHint")];
+  if (checkedBy) titleParts.push(`${t("wikiBanner.worldCheckedBy")}: ${checkedBy}`);
+  if (checkedAt) titleParts.push(checkedAt);
+  return (
+    <span
+      title={titleParts.join("\n")}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: "var(--pill)",
+        border: "1px dashed var(--rule)",
+        background: "var(--paper)",
+        color: "var(--ink-4)",
+        fontSize: 11,
+        lineHeight: 1.4,
+        fontWeight: 400,
+      }}
+    >
+      <Globe2 size={10} />
+      {t("wikiBanner.worldNoMatch")}
+    </span>
   );
 }
 

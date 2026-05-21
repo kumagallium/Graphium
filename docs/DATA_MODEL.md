@@ -305,6 +305,11 @@ type WikiMeta = {
   synthesisMode?: SynthesisMode;  // Synthesis only.
   hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
   procedureContext?: ProcedureContext; // Claim only. Atom/Synthesis are context-stripped by contract.
+
+  // World-model grounding (Phase 2 / PR 2A onwards). Separate lane from epistemicStatus
+  // and hypothesisStatus: writers never overwrite those fields; promotion is `suggests` only.
+  // PR 2A populates `validity` from a distilled KB (no LLM, no external search).
+  grounding?: GroundingProfile;
 };
 
 type ClaimRole =
@@ -542,6 +547,72 @@ The Ingester treats these fields conservatively:
 These defaults match the conservative spirit of Phase η's
 `epistemicStatus`: it is safer to under-tag a claim than to falsely
 launder it into established certainty.
+
+### 3.7 World-model grounding (Phase 2)
+
+Phase 2 adds a `grounding` field on `WikiMeta` that answers a different
+question from `epistemicStatus` / `hypothesisStatus`: **"how does this
+piece of knowledge stand against the world outside the user's notes?"**
+
+```ts
+type GroundingValidityVerdict = "contested" | "weak" | "supported" | "established";
+
+type GroundingSource =
+  | { kind: "distilled"; ref: string; note?: string; url?: string };
+  // PR 2B will add kind: "model" | "search".
+
+type GroundingProfile = {
+  validity?: {
+    score?: number;                          // 0..1 (raw, not directly surfaced in PR 2A UI)
+    verdict?: GroundingValidityVerdict;
+    rationale?: string;
+    sources?: GroundingSource[];
+    matchedKeywords?: string[];              // KB keywords that hit (PR 2A audit field)
+    checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
+    checkedAt?: string;                      // ISO 8601
+  };
+  // Promotion of an existing status field is "suggest" only — never write.
+  suggests?: { field: "hypothesisStatus" | "epistemicStatus"; to: string; reason: string };
+};
+```
+
+The lane is **strictly separate** from the existing layers:
+
+- `grounding` writers never overwrite `epistemicStatus` or
+  `hypothesisStatus`. `attachValidity()` in
+  `src/features/world-grounding/index.ts` is the only attach path and
+  is regression-tested for this invariant.
+- `verdict` shares the spelling `established` with one of the
+  `epistemicStatus` enum values, but the two are independent axes.
+  `epistemicStatus` is the speaker's own epistemic stance about the
+  Claim; `grounding.validity.verdict` is how a curated KB sees the
+  Claim against the broader literature.
+- The verdict is allowed to be **absent**. When the distilled KB has no
+  hit, `validity` still records `{ checkedBy, checkedAt }` so the UI
+  can say "checked but unmatched" without lying.
+
+`INDEX_SCHEMA_VERSION` does NOT bump when `grounding` lands. The field
+is read only by the detail-view (WikiBanner badges) and is not mirrored
+into `NoteIndexEntry` or `WikiMetaSummary`. When a future PR surfaces
+the verdict in list filters / quadrant badges, that PR is responsible
+for adding the mirror columns and bumping the schema version (see §5.1).
+
+PR 2A scope: `validity` populated by the distilled KB
+(`public/grounding-kb/<domain>.v1.json`) via keyword retrieval, no LLM
+and no external search. Grounding is **user-triggered only** (banner
+button or bulk action on the list view) — there is no open-time or
+periodic auto-check (PR 2A plan §4 / kickoff §4 cost-floor rule). The
+verdict is presented as the KB's positioning of the claim, not as a
+judgment of the user's stance — the final call stays with the user
+(SPEC §8-1 / §8-4).
+
+KB entries carry an optional `generatedByModel` field. PR 2A seeds it
+implicitly as `"manual-curated@v1"` (the KB-level `seedSource`
+defaults to the same). PR 2B will flip the validity engine: LLM is the
+primary judge and the distilled KB becomes a per-piece cache of model
+verdicts. Sedimentation rules (no `not_found` cached, `generatedByModel`
+required, form-1 individual judgments never shared) are documented in
+`public/grounding-kb/README.md`.
 
 ## 4. Skill documents
 
