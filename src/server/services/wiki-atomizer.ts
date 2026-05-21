@@ -197,7 +197,7 @@ Run this **three-step domain-jargon checklist** on the title and body before emi
    - **Proper nouns**: instrument / device names (SPS, GPT-4, Dr Sinter), library / framework / DB names (PostgreSQL, React, Redis, BlockNote), person names tied to a law / formula (Klemens-Callaway, Klein-Nishina, Bayes), project / standard / spec names (PROV-DM, OAuth, JIRA).
    - **Material / chemical specifics**: chemical formulas with digits (ZnSb, Bi2Te3, TiO2), bare two-letter element compounds without a digit (ZnSb, AlV, BiTe), single element symbols used as load-bearing subject ("Pt 担持", "Zn 蒸発").
    - **Abbreviations / acronyms**: 3+ letter all-caps (SPS, VACUUM, ORR, MHC, qPCR, siRNA, TDD, ZT, CI, TTL, MPS, Saga); compound acronyms (PROV-DM, gRPC).
-   - **Domain jargon a non-specialist would not recognize**: 物理 / 材料系 ("単相化", "律速", "ローレンツ数", "デバイ温度", "ホットプレス", "ホール濃度", "パワーファクター", "格子熱伝導率", "点欠陥散乱", "焼結", "ゼーベック", "クライペーロン"); 生命科学系 ("ノックダウン", "トランスフェクション", "in vitro", "PCR"); ソフトウェア系 ("マイクロサービス", "クロスバリデーション", "シャーディング", "リードレプリカ").
+   - **Domain jargon a non-specialist would not recognize**: 物理 / 材料系 ("単相化", "律速", "ローレンツ数", "デバイ温度", "ホットプレス", "ホール濃度", "パワーファクター", "格子熱伝導率", "点欠陥散乱", "焼結", "ゼーベック", "クライペーロン"); 生命科学系 ("ノックダウン", "トランスフェクション", "in vitro", "PCR"); ソフトウェア系 ("マイクロサービス", "クロスバリデーション", "シャーディング", "リードレプリカ"); 経済学 / 社会学系 ("二面市場", "ネットワーク効果", "貧困の罠", "同類志向", "居住分離", "限界効用", "ナッシュ均衡", "外部性", "情報の非対称性", "共有地の悲劇"). 学術用語 / 学派固有の造語に該当するものは、たとえ漢字 4 字以下であっても rung-1 と判定する。
 
    If even one such token is a load-bearing subject or object — that is, removing it would make the sentence empty — the Atom is rung-1 at best. Go to step 2.
 
@@ -215,6 +215,14 @@ Run this **three-step domain-jargon checklist** on the title and body before emi
    - "ホットプレス" → "高温で押し固める処理"
    - "パワーファクター" → "電気エネルギーへの変換しやすさ"
    - "格子熱伝導率" → "熱が結晶の振動として伝わる効率"
+   - "二面市場" → "二種類の利用者が互いに集まるほど価値が増す場"
+   - "ネットワーク効果" → "参加する人が増えるほど一人ひとりの便益が増える性質"
+   - "貧困の罠" → "一度落ちると自力で抜け出しづらい収入や資産の状態"
+   - "同類志向" → "似た立場の相手と関わることを選びやすい傾向"
+   - "居住分離" → "属性ごとに住む場所が分かれていく現象"
+   - "外部性" → "ある活動が当事者以外にも影響を及ぼす性質"
+   - "情報の非対称性" → "売り手と買い手で持っている情報の量が違うこと"
+   - "ナッシュ均衡" → "各人が現状を変えるとかえって損をする状態"
 
    If you can produce a sentence that still names what is happening but reads naturally without the original token, you have rung-2. Re-run step 1; iterate until clean.
 
