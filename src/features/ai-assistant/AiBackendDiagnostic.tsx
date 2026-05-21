@@ -201,6 +201,9 @@ function DiagnosticsPanel({ state, copied, onCopy, extraContext }: DiagnosticsPa
           {log.length > 0 ? log.join("\n") : t("aiChat.diagEmptyLog")}
         </pre>
       </details>
+      <div className="text-muted-foreground text-[10px] italic leading-relaxed">
+        {t("aiChat.diagBootLogHint")}
+      </div>
     </div>
   );
 }

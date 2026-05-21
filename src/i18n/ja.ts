@@ -538,6 +538,7 @@ export const ja: Record<string, string> = {
   "aiChat.diagLastError": "直近のエラー",
   "aiChat.diagRecentLog": "バックエンドの直近ログ",
   "aiChat.diagEmptyLog": "(ログ未取得 — バックエンドが起動できなかった可能性があります)",
+  "aiChat.diagBootLogHint": "Documents/Graphium/sidecar-boot.log があれば、その中身も送ってください。stderr が無音のときでも起動状況が記録されます。",
   "aiChat.emptyChat": "(空のチャット)",
   "aiChat.messageCount": "{count} メッセージ",
   "aiChat.pageScope": "ページ全体",

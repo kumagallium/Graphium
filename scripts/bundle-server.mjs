@@ -23,10 +23,32 @@ await build({
   //    無音終了を防ぐ。
   banner: {
     js: [
-      "process.stderr.write('[boot] sidecar process started node=' + process.version + ' platform=' + process.platform + ' pid=' + process.pid + '\\n');",
-      "process.on('uncaughtException', (e) => { try { process.stderr.write('[fatal-uncaught] ' + (e && e.stack ? e.stack : String(e)) + '\\n'); } catch(_) {} process.exit(99); });",
-      "process.on('unhandledRejection', (e) => { try { process.stderr.write('[fatal-rejection] ' + (e && e.stack ? e.stack : String(e)) + '\\n'); } catch(_) {} });",
+      // createRequire を最初に作って、同期 require が使えるようにする。
       "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+      // boot ログをファイルにも書き出す（stderr pipe を経由しない経路）。
+      // Windows で stderr が Tauri Shell まで届かない症状を切り分けるため。
+      // - ファイルにも stderr にも書かれない → bundle 自体が実行されていない
+      // - ファイルだけ書かれる → stderr pipe が機能していない（Tauri Shell 側の問題）
+      // - 両方書かれる → bundle は走っている。続く [server-boot] までの間で hang
+      [
+        "try {",
+        "  const fs = require('node:fs');",
+        "  const os = require('node:os');",
+        "  const path = require('node:path');",
+        "  const bootLogPath = path.join(os.homedir(), 'Documents', 'Graphium', 'sidecar-boot.log');",
+        "  fs.mkdirSync(path.dirname(bootLogPath), { recursive: true });",
+        "  const line = '[' + new Date().toISOString() + '] boot node=' + process.version + ' platform=' + process.platform + ' arch=' + process.arch + ' pid=' + process.pid + ' argv=' + JSON.stringify(process.argv) + ' execPath=' + process.execPath + ' cwd=' + process.cwd() + '\\n';",
+        "  fs.appendFileSync(bootLogPath, line);",
+        "  globalThis.__BOOT_LOG_PATH__ = bootLogPath;",
+        "  globalThis.__BOOT_LOG_APPEND__ = function(msg) { try { fs.appendFileSync(bootLogPath, '[' + new Date().toISOString() + '] ' + msg + '\\n'); } catch(_) {} };",
+        "} catch (e) {",
+        "  try { process.stderr.write('[boot-file-error] ' + (e && e.message ? e.message : String(e)) + '\\n'); } catch(_) {}",
+        "}",
+      ].join("\n"),
+      "process.stderr.write('[boot] sidecar process started node=' + process.version + ' platform=' + process.platform + ' pid=' + process.pid + '\\n');",
+      "process.on('uncaughtException', (e) => { try { process.stderr.write('[fatal-uncaught] ' + (e && e.stack ? e.stack : String(e)) + '\\n'); } catch(_) {} try { globalThis.__BOOT_LOG_APPEND__ && globalThis.__BOOT_LOG_APPEND__('fatal-uncaught ' + (e && e.stack ? e.stack : String(e))); } catch(_) {} process.exit(99); });",
+      "process.on('unhandledRejection', (e) => { try { process.stderr.write('[fatal-rejection] ' + (e && e.stack ? e.stack : String(e)) + '\\n'); } catch(_) {} try { globalThis.__BOOT_LOG_APPEND__ && globalThis.__BOOT_LOG_APPEND__('fatal-rejection ' + (e && e.stack ? e.stack : String(e))); } catch(_) {} });",
+      "process.on('exit', (code) => { try { globalThis.__BOOT_LOG_APPEND__ && globalThis.__BOOT_LOG_APPEND__('process exit code=' + code); } catch(_) {} });",
     ].join("\n"),
   },
   minify: true,

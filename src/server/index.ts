@@ -15,11 +15,20 @@ import { createApp } from "./app.js";
 // stdout/stderr が無音のまま hang する症状を切り分けるため）。
 // console.log は内部でバッファされるが、process.stderr.write は
 // pipe に対しても synchronous なので、確実に Tauri 側まで届く。
+//
+// stderr が pipe ごと届かないケース（Windows）に備え、bundle banner で
+// 仕込んでいる sidecar-boot.log にも append する。
 function bootLog(msg: string): void {
   try {
     process.stderr.write(`[server-boot] ${msg}\n`);
   } catch {
     // stderr が壊れている環境（テスト等）は無視
+  }
+  try {
+    const append = (globalThis as unknown as { __BOOT_LOG_APPEND__?: (s: string) => void }).__BOOT_LOG_APPEND__;
+    if (typeof append === "function") append(`server-boot ${msg}`);
+  } catch {
+    // ファイル書き出しエラーは無視（診断専用なので落とさない）
   }
 }
 

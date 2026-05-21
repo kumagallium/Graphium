@@ -538,6 +538,7 @@ export const en: Record<string, string> = {
   "aiChat.diagLastError": "Last error",
   "aiChat.diagRecentLog": "Recent backend log",
   "aiChat.diagEmptyLog": "(no log captured — backend may have failed to spawn)",
+  "aiChat.diagBootLogHint": "Also send Documents/Graphium/sidecar-boot.log if it exists — it captures startup even when stderr is silent.",
   "aiChat.emptyChat": "(empty chat)",
   "aiChat.messageCount": "{count} messages",
   "aiChat.pageScope": "Page",
