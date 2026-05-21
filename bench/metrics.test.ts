@@ -13,7 +13,12 @@ import {
   observationAtomRatio,
   crossLanguageConsistency,
   domainBalanceScore,
+  domainBalanceScoreFromJudgments,
+  liftScoreFromJudgments,
+  judgeAllAtomLifts,
+  computeMetricsWithJudges,
 } from "./metrics.ts";
+import type { JudgePack, Judgment } from "./judge.ts";
 import type {
   BenchAtom,
   BenchClaim,
@@ -303,5 +308,144 @@ describe("domainBalanceScore", () => {
     // materials pass-rate = 0, biology pass-rate = 1 → only one non-zero domain remains
     // sumPass = 1 across 2 domains: p = [0, 1] → entropy = 0 → score = 0
     expect(domainBalanceScore(corpus, atoms)).toBe(0);
+  });
+});
+
+// μ-1.3: judge pack 経由で lift_score / domain_balance_score を共有する仕組みの単体テスト。
+// 実 LLM は呼ばず、scripted JudgePack で「passed の配列を返す」だけのスタブを使う。
+
+/**
+ * 引数 atoms と同じ長さの passed[] を返すスタブ JudgePack。
+ * lift(atom) は atoms 内の index を見て passed[index] を返すので、
+ * テスト側は atom index → expected verdict を直接指定できる。
+ */
+function makeScriptedJudges(atoms: BenchAtom[], passed: boolean[]): JudgePack {
+  if (atoms.length !== passed.length) {
+    throw new Error(`scripted judges: atoms ${atoms.length} !== passed ${passed.length}`);
+  }
+  return {
+    kind: "heuristic",
+    lift: async (atom) => {
+      const i = atoms.indexOf(atom);
+      if (i < 0) return { passed: true, reason: "unknown atom" };
+      return { passed: passed[i], reason: passed[i] ? "scripted pass" : "scripted fail" };
+    },
+    novelty: async (_body, _sources) => ({ passed: true, reason: "scripted novelty pass" }),
+    meta: { provider: "test", modelId: "scripted", modelName: "scripted (test)" },
+  };
+}
+
+describe("judgeAllAtomLifts + liftScoreFromJudgments", () => {
+  it("returns one judgment per atom, in input order", async () => {
+    const atoms = [
+      makeAtom({ title: "a0" }),
+      makeAtom({ title: "a1" }),
+      makeAtom({ title: "a2" }),
+    ];
+    const judges = makeScriptedJudges(atoms, [true, false, true]);
+    const judgments = await judgeAllAtomLifts(atoms, judges);
+    expect(judgments.map((j) => j.passed)).toEqual([true, false, true]);
+    expect(liftScoreFromJudgments(judgments)).toBe(0.667);
+  });
+
+  it("empty atoms returns vacuous 1.0 and empty judgments", async () => {
+    const judges = makeScriptedJudges([], []);
+    const judgments = await judgeAllAtomLifts([], judges);
+    expect(judgments).toEqual([]);
+    expect(liftScoreFromJudgments(judgments)).toBe(1);
+  });
+});
+
+describe("domainBalanceScoreFromJudgments", () => {
+  it("uses provided judgments instead of heuristic — same data as the sync path", () => {
+    const corpus = [
+      makeNote({ noteId: "m1", domain: "materials" }),
+      makeNote({ noteId: "b1", domain: "biology" }),
+    ];
+    const atoms = [
+      makeAtom({ title: "anything", derivedFromNoteIds: ["m1"] }),
+      makeAtom({ title: "anything", derivedFromNoteIds: ["b1"] }),
+    ];
+    // judgments を逆向き(materials fail / biology pass)に差し込めば
+    // sync 版が判定する内容に関わらず、provided judgments が反映される。
+    const judgments: Judgment[] = [
+      { passed: false, reason: "scripted" },
+      { passed: true, reason: "scripted" },
+    ];
+    // materials pass-rate = 0, biology pass-rate = 1 → entropy = 0, score = 0
+    expect(domainBalanceScoreFromJudgments(corpus, atoms, judgments)).toBe(0);
+  });
+
+  it("rewards even distribution when judgments pass uniformly across domains", () => {
+    const corpus = [
+      makeNote({ noteId: "m1", domain: "materials" }),
+      makeNote({ noteId: "b1", domain: "biology" }),
+    ];
+    const atoms = [
+      // sync 版なら heuristic で判定するところ、judgments を渡せば
+      // body/title の jargon 性に依らず provided verdict が使われる。
+      makeAtom({ title: "ZnSb 焼結", body: "SPS 850 °C", derivedFromNoteIds: ["m1"] }),
+      makeAtom({ title: "HeLa culture", body: "DMEM 培地", derivedFromNoteIds: ["b1"] }),
+    ];
+    const judgments: Judgment[] = [
+      { passed: true, reason: "scripted" },
+      { passed: true, reason: "scripted" },
+    ];
+    expect(domainBalanceScoreFromJudgments(corpus, atoms, judgments)).toBe(1);
+  });
+
+  it("throws if judgments length does not match atoms length", () => {
+    const corpus = [makeNote({ noteId: "m1", domain: "materials" })];
+    const atoms = [
+      makeAtom({ derivedFromNoteIds: ["m1"] }),
+      makeAtom({ derivedFromNoteIds: ["m1"] }),
+    ];
+    expect(() =>
+      domainBalanceScoreFromJudgments(corpus, atoms, [{ passed: true, reason: "x" }]),
+    ).toThrow();
+  });
+});
+
+describe("computeMetricsWithJudges — lift_score / domain_balance_score consistency", () => {
+  it("lift_score and domain_balance_score derive from the SAME judgments (one LLM-equivalent call per atom)", async () => {
+    // atoms[0] は materials 領域 (fail)、atoms[1] は biology 領域 (pass)、
+    // atoms[2] は biology 領域 (fail)。LLM judge (scripted) は 3 call で完了。
+    // 同じ判定が両 metric に流れることを以下で確認する:
+    //   - lift_score = 1/3 = 0.333  (atoms[1] のみ pass)
+    //   - domain_balance: materials pass-rate=0, biology pass-rate=0.5
+    //     → meanPass = 0.25, normalized entropy with p=[0, 1] → 0 → score = 0
+    const corpus = [
+      makeNote({ noteId: "m1", domain: "materials" }),
+      makeNote({ noteId: "b1", domain: "biology" }),
+    ];
+    const atoms = [
+      makeAtom({ derivedFromNoteIds: ["m1"], title: "x" }),
+      makeAtom({ derivedFromNoteIds: ["b1"], title: "y" }),
+      makeAtom({ derivedFromNoteIds: ["b1"], title: "z" }),
+    ];
+    const judges = makeScriptedJudges(atoms, [false, true, false]);
+    let liftCalls = 0;
+    const wrapped: JudgePack = {
+      ...judges,
+      lift: async (atom) => {
+        liftCalls += 1;
+        return judges.lift(atom);
+      },
+    };
+    const result = await computeMetricsWithJudges({
+      claims: [],
+      atoms,
+      syntheses: [],
+      gtMap: new Map(),
+      probeResults: [],
+      judges: wrapped,
+      corpus,
+    });
+    expect(liftCalls).toBe(atoms.length);
+    expect(result.metrics.lift_score).toBe(0.333);
+    // materials は 0, biology は 0.5 だが p=[0,1] となり entropy 0 → balance 0
+    expect(result.metrics.domain_balance_score).toBe(0);
+    // liftDetails の verdict が judgments と一致 (順序保存も確認)
+    expect(result.liftDetails.map((d) => d.passed)).toEqual([false, true, false]);
   });
 });
