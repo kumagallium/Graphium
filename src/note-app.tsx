@@ -4601,6 +4601,118 @@ export function NoteApp() {
     }
   }, [fm]);
 
+  // Phase ε: Atom 全集合から KJ 中グループ（meta-Atom）を発見する discovery 呼び出し。
+  // - Maintenance タブの「中グループを発見」ボタンから呼ばれる。
+  // - meta-atomizer は 1 回の LLM 呼び出しで 0-5 件を返す設計（quality bar に達しないと空）
+  //   なので、auto-loop / クラスタリングはせず単発で全 Atom を投げる。
+  // - 既存 meta-Atom は削除しない: ボタンを繰り返し押すことで「比較・選定」できる UX。
+  //   重複検出は embedding 類似度で行い、既存 meta-Atom と被るものは捨てる。
+  // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
+  const runMetaAtomizeDiscovery = useCallback(async (
+    onProgress?: (info: {
+      iteration: number;
+      createdSoFar: number;
+      clusterLabel?: string;
+      clusterTotal?: number;
+      clusterSize?: number;
+      clusterMemberTitles?: string[];
+    }) => void,
+  ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
+    if (!isMetaAtomLayerEnabled()) {
+      return { ok: false, created: 0, iterations: 0, error: "meta-Atom layer is disabled" };
+    }
+    // 母集団: 既存 Atom 全件（modifiedTime 上限なし）
+    const allAtomSnapshots = buildClaimSnapshots(
+      fm.wikiFiles,
+      fm.wikiMetas,
+      fm.getCachedDoc,
+      "atom",
+      Number.POSITIVE_INFINITY,
+    );
+    if (allAtomSnapshots.length < 6) {
+      return { ok: false, created: 0, iterations: 0, error: "Need at least 6 Insights" };
+    }
+
+    const atomLabel = tStatic("settings.maintenance.kind.atom");
+    const metaAtomLabel = tStatic("settings.maintenance.kind.metaAtom");
+    const toastId = `meta-atomize-discovery:${Date.now()}`;
+    setIngestToast((prev) => ({
+      items: [
+        ...(prev?.items ?? []),
+        { id: toastId, status: "generating" as const, noteTitle: `Discovering ${metaAtomLabel} across ${allAtomSnapshots.length} ${atomLabel}` },
+      ],
+    }));
+
+    let totalCreated = 0;
+    try {
+      onProgress?.({
+        iteration: 1,
+        createdSoFar: 0,
+        clusterLabel: undefined,
+        clusterTotal: 1,
+        clusterSize: allAtomSnapshots.length,
+        clusterMemberTitles: allAtomSnapshots.map((s) => s.title),
+      });
+
+      // wiki-service の MetaAtomInput 形に詰める
+      const metaAtomInputs: MetaAtomInput[] = allAtomSnapshots.map((s) => ({
+        id: s.id,
+        title: s.title,
+        bodyPreview: s.bodyPreview,
+        epistemicStatus: s.epistemicStatus,
+        atomType: s.atomType,
+      }));
+      const result = await metaAtomizeAtoms(metaAtomInputs, "ja", {
+        model: getChatSynthesisModelName() || undefined,
+      });
+
+      // 既存 meta-Atom との embedding 類似度で post-filter（embedding 未設定なら素通し）
+      const existingMetaAtomDocIds = new Set(
+        [...fm.wikiMetas.entries()].filter(([, m]) => m.kind === "meta-atom").map(([id]) => id),
+      );
+      const candidatesForDedup = result.metaAtoms.map((m) => ({
+        title: m.title,
+        body: m.body,
+        original: m,
+      }));
+      const filtered = await dedupCandidatesByEmbedding(candidatesForDedup, existingMetaAtomDocIds);
+
+      for (const f of filtered) {
+        const candidate = f.original;
+        const metaDoc = buildMetaAtomDocument(candidate, result.model ?? null, "ja");
+        const newId = await fm.handleCreateWikiFile(metaDoc);
+        embedWikiSections(newId, metaDoc).catch(() => {});
+        wikiLog
+          .append(
+            "ingest",
+            [newId],
+            `${metaAtomLabel}: "${candidate.title}" (from ${candidate.derivedFromAtomTitles.slice(0, 3).join(" + ")}${candidate.derivedFromAtoms.length > 3 ? " ..." : ""})`,
+          )
+          .catch(() => {});
+        totalCreated += 1;
+      }
+
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId
+            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} ${metaAtomLabel}` }
+            : i,
+        ),
+      }));
+      return { ok: true, created: totalCreated, iterations: 1 };
+    } catch (err) {
+      console.error("Meta-atomize discovery failed:", err);
+      setIngestToast((prev) => ({
+        items: (prev?.items ?? []).map((i) =>
+          i.id === toastId
+            ? { ...i, status: "error" as const, detail: undefined, result: err instanceof Error ? err.message : "Failed" }
+            : i,
+        ),
+      }));
+      return { ok: false, created: totalCreated, iterations: 1, error: err instanceof Error ? err.message : "Failed" };
+    }
+  }, [fm]);
+
   // Settings → Maintenance タブから呼ばれる Wiki サマリー
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const wikiSummariesForSettings = useMemo(() => {
@@ -5673,6 +5785,7 @@ export function NoteApp() {
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}
         onRunAtomizeDiscovery={runAtomizeDiscovery}
+        onRunMetaAtomizeDiscovery={runMetaAtomizeDiscovery}
         onRunSynthesisDiscovery={runSynthesisDiscovery}
         onReembedAllWikis={async (onProgress) => {
           // 全 Wiki を順次 embed し直す。キャッシュにない wiki は storage から読み出す。

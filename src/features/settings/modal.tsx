@@ -162,6 +162,9 @@ type SettingsModalProps = {
   /** Maintenance タブの「Atom を発見」ハンドラ（atomLayer 有効時のみ表示）。
    *  全 Concept を見渡し、複数 Concept にまたがる共通抽象を auto-loop で発見する。 */
   onRunAtomizeDiscovery?: DiscoveryHandler;
+  /** Maintenance タブの「中グループを発見」ハンドラ（metaAtomLayer 有効時のみ表示）。
+   *  Phase ε: Atom 全集合を 1 ショットで投げて KJ 中グループ（表札つき軸）を 0-5 件抽出する。 */
+  onRunMetaAtomizeDiscovery?: DiscoveryHandler;
   /** Maintenance タブの「Synthesis を発見」ハンドラ（synthesis 有効時のみ表示）。
    *  全 Atom を見渡し、Atom 同士の結合から立ち上がる新しい洞察を auto-loop で発見する。 */
   onRunSynthesisDiscovery?: DiscoveryHandler;
@@ -169,7 +172,7 @@ type SettingsModalProps = {
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
 };
 
-export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onRunSynthesisDiscovery, onReembedAllWikis }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onRunMetaAtomizeDiscovery, onRunSynthesisDiscovery, onReembedAllWikis }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
 
@@ -262,6 +265,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   };
   const [atomizeRunning, setAtomizeRunning] = useState(false);
   const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
+  // Maintenance タブ — Atom 集合から KJ 中グループ（meta-Atom）を発見（metaAtomLayer 有効時のみ）
+  const [metaAtomizeRunning, setMetaAtomizeRunning] = useState(false);
+  const [metaAtomizeProgress, setMetaAtomizeProgress] = useState<DiscoveryUiState | null>(null);
   // Maintenance タブ — Atom をまたぐ Synthesis 候補を発見（synthesis 有効時のみ）
   const [synthesisRunning, setSynthesisRunning] = useState(false);
   const [synthesisProgress, setSynthesisProgress] = useState<DiscoveryUiState | null>(null);
@@ -2089,8 +2095,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               wikiSummaries={wikiSummaries ?? []}
               onRegenerateWiki={onRegenerateWiki}
               onRunAtomizeDiscovery={onRunAtomizeDiscovery}
+              onRunMetaAtomizeDiscovery={onRunMetaAtomizeDiscovery}
               onRunSynthesisDiscovery={onRunSynthesisDiscovery}
               atomLayerEnabled={experimental.atomLayer}
+              metaAtomLayerEnabled={experimental.atomLayer && experimental.metaAtomLayer}
               synthesisLayerEnabled={experimental.atomLayer && experimental.synthesis}
               availableModels={models}
               defaultModel={model || defaultModel}
@@ -2110,6 +2118,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               setAtomizeRunning={setAtomizeRunning}
               atomizeProgress={atomizeProgress}
               setAtomizeProgress={setAtomizeProgress}
+              metaAtomizeRunning={metaAtomizeRunning}
+              setMetaAtomizeRunning={setMetaAtomizeRunning}
+              metaAtomizeProgress={metaAtomizeProgress}
+              setMetaAtomizeProgress={setMetaAtomizeProgress}
               synthesisRunning={synthesisRunning}
               setSynthesisRunning={setSynthesisRunning}
               synthesisProgress={synthesisProgress}
@@ -2154,8 +2166,10 @@ type MaintenanceTabProps = {
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
   onRunAtomizeDiscovery?: DiscoveryHandler;
+  onRunMetaAtomizeDiscovery?: DiscoveryHandler;
   onRunSynthesisDiscovery?: DiscoveryHandler;
   atomLayerEnabled: boolean;
+  metaAtomLayerEnabled: boolean;
   synthesisLayerEnabled: boolean;
   availableModels: ModelInfo[];
   defaultModel: string;
@@ -2175,6 +2189,10 @@ type MaintenanceTabProps = {
   setAtomizeRunning: (b: boolean) => void;
   atomizeProgress: DiscoveryRunState | null;
   setAtomizeProgress: (p: DiscoveryRunState | null) => void;
+  metaAtomizeRunning: boolean;
+  setMetaAtomizeRunning: (b: boolean) => void;
+  metaAtomizeProgress: DiscoveryRunState | null;
+  setMetaAtomizeProgress: (p: DiscoveryRunState | null) => void;
   synthesisRunning: boolean;
   setSynthesisRunning: (b: boolean) => void;
   synthesisProgress: DiscoveryRunState | null;
@@ -2187,8 +2205,10 @@ function MaintenanceTab({
   wikiSummaries,
   onRegenerateWiki,
   onRunAtomizeDiscovery,
+  onRunMetaAtomizeDiscovery,
   onRunSynthesisDiscovery,
   atomLayerEnabled,
+  metaAtomLayerEnabled,
   synthesisLayerEnabled,
   availableModels,
   defaultModel,
@@ -2208,13 +2228,20 @@ function MaintenanceTab({
   setAtomizeRunning,
   atomizeProgress,
   setAtomizeProgress,
+  metaAtomizeRunning,
+  setMetaAtomizeRunning,
+  metaAtomizeProgress,
+  setMetaAtomizeProgress,
   synthesisRunning,
   setSynthesisRunning,
   synthesisProgress,
   setSynthesisProgress,
   onReembedAllWikis,
 }: MaintenanceTabProps) {
-  const KINDS: WikiKind[] = ["claim", "summary", "atom", "synthesis"];
+  // Phase ε: bulk regenerate のフィルタには meta-atom も含める
+  //（個別の再生成は現状 ingest パイプライン経由ができないので errors-out するが、
+  //   一覧に出して可視化はする — atom と同じ挙動）。
+  const KINDS: WikiKind[] = ["claim", "summary", "atom", "meta-atom", "synthesis"];
   const [cancelling, setCancelling] = useState(false);
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);
@@ -2283,11 +2310,13 @@ function MaintenanceTab({
     k === "claim" ? t("settings.maintenance.kind.claim")
     : k === "summary" ? t("settings.maintenance.kind.summary")
     : k === "atom" ? t("settings.maintenance.kind.atom")
+    : k === "meta-atom" ? t("settings.maintenance.kind.metaAtom")
     : t("settings.maintenance.kind.synthesis");
 
   // ── Atom 候補の発見（auto-loop: 0 件返却 or 上限まで自動継続）──
   const conceptCount = wikiSummaries.filter((w) => w.kind === "claim").length;
   const atomCount = wikiSummaries.filter((w) => w.kind === "atom").length;
+  const metaAtomCount = wikiSummaries.filter((w) => w.kind === "meta-atom").length;
   const handleRunAtomizeDiscovery = async () => {
     if (!onRunAtomizeDiscovery || atomizeRunning) return;
     if (conceptCount < 2) return;
@@ -2314,6 +2343,39 @@ function MaintenanceTab({
       setAtomizeProgress({ status: "error", inputCount: conceptCount, error: result.error });
     }
     setAtomizeRunning(false);
+  };
+
+  // ── meta-Atom 候補の発見（Phase ε / KJ 中グループ抽出）──
+  //   atomize / synthesize と違い、meta-atomizer は 1 回の LLM 呼び出しで 0-5 件まで
+  //   出力するように prompt 側で設計されている（quality bar に達しない時は空を返す仕様）。
+  //   したがって auto-loop / クラスタリングは行わず、Atom 全集合を 1 ショットで投げる。
+  //   既存 meta-Atom は削除しない（"発見" を繰り返しても重複は parser の used-set で内的に防止される）。
+  const handleRunMetaAtomizeDiscovery = async () => {
+    if (!onRunMetaAtomizeDiscovery || metaAtomizeRunning) return;
+    if (atomCount < 6) return;
+    if (!window.confirm(t("settings.maintenance.metaAtomize.confirm").replace("{count}", String(atomCount)))) return;
+
+    setMetaAtomizeRunning(true);
+    setMetaAtomizeProgress({ status: "running", inputCount: atomCount, iteration: 1, created: 0 });
+
+    const result = await onRunMetaAtomizeDiscovery((info) => {
+      setMetaAtomizeProgress({
+        status: "running",
+        inputCount: atomCount,
+        iteration: info.iteration,
+        created: info.createdSoFar,
+        clusterLabel: info.clusterLabel,
+        clusterTotal: info.clusterTotal,
+        clusterSize: info.clusterSize,
+        clusterMemberTitles: info.clusterMemberTitles,
+      });
+    });
+    if (result.ok) {
+      setMetaAtomizeProgress({ status: "done", inputCount: atomCount, created: result.created, iterations: result.iterations });
+    } else {
+      setMetaAtomizeProgress({ status: "error", inputCount: atomCount, error: result.error });
+    }
+    setMetaAtomizeRunning(false);
   };
 
   // ── Synthesis 候補の発見（同じ auto-loop パターン。Atom が 3 件以上必要）──
@@ -2363,6 +2425,27 @@ function MaintenanceTab({
           doneKey="settings.maintenance.atomize.doneCount"
           runKey="settings.maintenance.atomize.run"
           runningKey="settings.maintenance.atomize.running"
+        />
+      )}
+
+      {/* meta-Atom 候補の発見（metaAtomLayer 有効時のみ表示）。
+          全 Atom 集合を 1 ショットで投げて KJ 中グループ（表札つき軸）を抽出する。
+          ボタンを繰り返し押せば毎回新しい meta-Atom が生成される — 古いものは残るので
+          確認 → 比較 → 不要分は手動でトラッシュ、というワークフロー。 */}
+      {metaAtomLayerEnabled && onRunMetaAtomizeDiscovery && (
+        <DiscoveryCard
+          t={t}
+          titleKey="settings.maintenance.metaAtomize.title"
+          helpKey="settings.maintenance.metaAtomize.help"
+          inputCount={atomCount}
+          minInput={6}
+          progress={metaAtomizeProgress}
+          running={metaAtomizeRunning}
+          onRun={handleRunMetaAtomizeDiscovery}
+          discoveringKey="settings.maintenance.metaAtomize.discovering"
+          doneKey="settings.maintenance.metaAtomize.doneCount"
+          runKey="settings.maintenance.metaAtomize.run"
+          runningKey="settings.maintenance.metaAtomize.running"
         />
       )}
 
