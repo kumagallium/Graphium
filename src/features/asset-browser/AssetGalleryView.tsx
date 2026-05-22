@@ -387,6 +387,16 @@ export type AssetGalleryViewProps = {
    * 渡されない場合はフォールバック色で描画。
    */
   getKnowledgeKind?: KnowledgeKindLookup;
+  /**
+   * 親（note-app）からフォーカスしたい素材を指定する。
+   * 例: ノートのグラフから画像ノードをクリック → そのアセットを Full view で開く。
+   * mediaType と組み合わせて使う前提（mediaType=entry.type に切替えられた直後を想定）。
+   * 渡されると AssetGalleryView 内部の detailEntry / detailFullMode に反映し、
+   * 反映後に onFocusConsumed を呼んで親側の state をクリアする。
+   */
+  focusFileId?: string | null;
+  focusFullMode?: boolean;
+  onFocusConsumed?: () => void;
 };
 
 export function AssetGalleryView({
@@ -404,6 +414,9 @@ export function AssetGalleryView({
   onSharedRefUpdated,
   onExtractPdfPages,
   getKnowledgeKind,
+  focusFileId,
+  focusFullMode,
+  onFocusConsumed,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -421,6 +434,22 @@ export function AssetGalleryView({
     setDetailEntry(null);
     setDetailFullMode(false);
   }, [mediaType]);
+
+  // 親から focusFileId が降ってきたら、その entry を SidePeek / Full view で開く。
+  // ノートのグラフから画像ノードクリック → このアセットを Full view で表示、の経路。
+  // mediaType 変更直後に走るので、上の clear useEffect の後に置く（declaration 順）。
+  useEffect(() => {
+    if (!focusFileId || !mediaIndex) return;
+    const target = mediaIndex.media.find((m) => m.fileId === focusFileId);
+    if (!target) {
+      // 見つからない（削除済み等）。consumed として親をクリアする。
+      onFocusConsumed?.();
+      return;
+    }
+    setDetailEntry(target);
+    setDetailFullMode(focusFullMode ?? false);
+    onFocusConsumed?.();
+  }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
