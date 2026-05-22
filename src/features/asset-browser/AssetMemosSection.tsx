@@ -3,11 +3,12 @@
 // PR3-a: 構造化された `sourceAsset.fileId` 一致を優先しつつ、
 // 旧仕様（テキスト末尾の `— {filename}`）にも後方互換として対応する。
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo } from "react";
 import { Trash2, FileText } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "../mobile-capture";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndexEntry } from "./media-index";
+import { MemoComposer } from "./MemoComposer";
 
 export type AssetMemosSectionProps = {
   entry: MediaIndexEntry;
@@ -40,87 +41,6 @@ export function filterMemosByAsset(
   return captureIndex.captures
     .filter((c) => c.sourceAsset?.fileId === entry.fileId || c.text.includes(needle))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-}
-
-/**
- * 上部の直接入力欄。
- * - Enter で送信、Shift+Enter で改行（ChatGPT / Slack と同じパターン）
- * - 送信後はクリアしてフォーカス維持 → 連投できる
- * - 自動高さ拡張（auto + scrollHeight）
- *
- * 「クリック → 入力 → Enter」だけで完結することを優先。確定ボタンは出さない。
- */
-function MemoComposer({ onSubmit }: { onSubmit: (text: string) => void | Promise<void> }) {
-  const [text, setText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const ref = useRef<HTMLTextAreaElement | null>(null);
-
-  const adjustHeight = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  };
-
-  const handleSubmit = async () => {
-    const trimmed = text.trim();
-    if (!trimmed || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSubmit(trimmed);
-      setText("");
-      requestAnimationFrame(() => {
-        adjustHeight();
-        ref.current?.focus();
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      void handleSubmit();
-    }
-  };
-
-  return (
-    <div
-      style={{
-        padding: "8px 12px",
-        borderBottom: "1px solid var(--color-border-subtle)",
-        background: "var(--color-surface)",
-      }}
-    >
-      <textarea
-        ref={ref}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          adjustHeight();
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder="メモを追加…（Enter で保存・Shift+Enter で改行）"
-        rows={1}
-        disabled={submitting}
-        style={{
-          width: "100%",
-          resize: "none",
-          border: "1px solid var(--color-border-subtle)",
-          borderRadius: 6,
-          padding: "6px 8px",
-          fontSize: 12,
-          lineHeight: 1.55,
-          color: "var(--color-foreground)",
-          background: "var(--color-background)",
-          outline: "none",
-          fontFamily: "inherit",
-          overflowY: "auto",
-        }}
-      />
-    </div>
-  );
 }
 
 export function AssetMemosSection({
