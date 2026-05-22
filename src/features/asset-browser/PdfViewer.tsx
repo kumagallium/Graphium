@@ -19,6 +19,7 @@ import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
+import { normalizePdfSelectionText } from "./pdf-selection-text";
 
 export type PdfViewerProps = {
   entry: MediaIndexEntry;
@@ -147,7 +148,9 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
         return;
       }
 
-      const text = selection.toString().trim();
+      // PDF の text layer は視覚的な行単位で改行が入っている。
+      // ハイフネーション解消と段落内改行の除去をかけて、読みやすい形に整える。
+      const text = normalizePdfSelectionText(selection.toString());
       if (!text) {
         setPill(null);
         return;

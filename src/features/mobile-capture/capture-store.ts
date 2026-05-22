@@ -2,6 +2,7 @@
 // メディアインデックスと同じパターンで、Google Drive / Local / Filesystem に対応
 
 import { getActiveProvider } from "../../lib/storage/registry";
+import type { MediaType } from "../asset-browser/media-index";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -24,6 +25,24 @@ export type MemoEditRecord = {
   previousText: string;
 };
 
+/**
+ * メモの出典素材（PR3-a で追加）
+ *
+ * Quote→Memo 経由で作られたメモが「どの素材のどの位置から派生したか」を
+ * 構造化して保持するためのフィールド。
+ * - fileId: 素材の MediaIndexEntry.fileId
+ * - type: PDF / image / url 等の媒体種別
+ * - pageNumber: PDF のページ番号（あれば）
+ *
+ * optional なので未設定の旧メモも従来通り動く。後方互換のためフィルタは
+ * sourceAsset 一致 OR テキスト一致 の OR で両対応する。
+ */
+export type MemoSourceAsset = {
+  fileId: string;
+  type: MediaType;
+  pageNumber?: number;
+};
+
 /** 付箋キャプチャ1件 */
 export type CaptureEntry = {
   /** 一意 ID */
@@ -40,6 +59,8 @@ export type CaptureEntry = {
   usedIn?: MemoUsage[];
   /** 編集履歴（変更前テキストを保持） */
   editHistory?: MemoEditRecord[];
+  /** 出典素材（Quote→Memo で保存された場合のみ） */
+  sourceAsset?: MemoSourceAsset;
 };
 
 /** キャプチャインデックス全体 */

@@ -129,7 +129,7 @@ import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
@@ -479,7 +479,7 @@ function NoteEditor(props: NoteEditorProps) {
 const KNOWN_BLOCK_TYPES = new Set([
   "paragraph", "heading", "bulletListItem", "numberedListItem",
   "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "pdf", "bookmark",
+  "codeBlock", "pdf", "bookmark", "quote",
 ]);
 
 // インラインコンテンツから未知の型を除去（mention 等）
@@ -2178,17 +2178,17 @@ function NoteEditorInner({
         onClose={() => setMemoPickerOpen(false)}
         captureIndex={captureIndexProp ?? null}
         onSelect={(entry: CaptureEntry) => {
-          // カーソル位置の後に paragraph ブロックとして挿入
+          // メモを 1 ブロックに集約して挿入する。
+          // - 出典付き（Quote→Memo など）: quote ブロック 1 個。本文 inline + 「 — 出典」inline（italic+gray）
+          // - 出典なし: paragraph 1 個
+          // 段落区切りは inline では表現できないのでスペースに丸める（buildMemoInsertBlock 側で処理）
           const editor = editorRef.current;
           if (!editor) return;
-          const blocks = entry.text.split("\n").map((line: string) => ({
-            type: "paragraph",
-            content: [{ type: "text" as const, text: line, styles: {} }],
-          }));
-          if (blocks.length === 0) return;
+          const block = buildMemoInsertBlock(entry);
+          if (!block) return;
           const currentBlock = editor.getTextCursorPosition()?.block;
           if (currentBlock) {
-            editor.insertBlocks(blocks, currentBlock, "after");
+            editor.insertBlocks([block], currentBlock, "after");
             // スラッシュだけの空ブロックを削除
             const content = currentBlock.content;
             if (Array.isArray(content) && content.length <= 1) {
@@ -4845,7 +4845,13 @@ export function NoteApp() {
             onSaveSelectionAsMemo={(source) => {
               const sourceLabel = buildCitationSourceLabel(source);
               const memoText = `${source.selectionText}\n\n— ${sourceLabel}`;
-              void capture.handleCreateCapture(memoText);
+              // PR3-a: 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
+              // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
+              void capture.handleCreateCapture(memoText, {
+                fileId: source.entry.fileId,
+                type: source.entry.type,
+                ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
+              });
               // 軽い通知だけ出して、ユーザーは PDF を読み続けられるようにする
               const id = `quote-toast:${Date.now()}`;
               setIngestToast((prev) => ({
@@ -4860,6 +4866,14 @@ export function NoteApp() {
             }}
             captureIndex={capture.captureIndex}
             onDeleteMemo={capture.handleDeleteCapture}
+            onCreateMemoForAsset={async (assetEntry, text) => {
+              // Memos タブの入力欄から保存されたメモも sourceAsset を埋める
+              // ことで、Quote→Memo と同じ扱いで素材↔メモを辿れるようにする。
+              await capture.handleCreateCapture(text, {
+                fileId: assetEntry.fileId,
+                type: assetEntry.type,
+              });
+            }}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
