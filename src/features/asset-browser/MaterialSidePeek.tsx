@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { MediaPreview } from "./media-preview";
+import type { CitationSource } from "./SelectionPill";
 import {
   AssetGraphPanel,
   shouldShowAssetGraph,
@@ -116,6 +117,10 @@ export type MaterialSidePeekProps = {
   getKnowledgeKind?: KnowledgeKindLookup;
   /** Full view 側で使う */
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
+  /** PDF 内テキストの選択を Note に引用ブロックとして挿入 */
+  onQuoteToNote?: (source: CitationSource) => void;
+  /** PDF 内テキストの選択を AI Composer Ask に quotedMarkdown として渡す */
+  onQuoteToChat?: (source: CitationSource) => void;
   /**
    * inline=true: 親 flex に flex item として組み込まれる（ノートのサイドピーク同等）
    * inline=false（デフォルト）: 画面右端から portal で fixed 表示
@@ -138,6 +143,8 @@ export function MaterialSidePeek({
   mediaIndex,
   getKnowledgeKind,
   onSwitchAsset,
+  onQuoteToNote,
+  onQuoteToChat,
   inline = false,
 }: MaterialSidePeekProps) {
   // ESC で閉じる
@@ -208,7 +215,7 @@ export function MaterialSidePeek({
           minHeight: 0,
         }}
       >
-        <MediaPreview entry={entry} />
+        <MediaPreview entry={entry} onQuoteToNote={onQuoteToNote} onQuoteToChat={onQuoteToChat} />
       </div>
 
       {/* メタデータ（Name 編集可） */}

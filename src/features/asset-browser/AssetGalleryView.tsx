@@ -12,6 +12,7 @@ import { getFaviconUrl } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
+import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 
@@ -397,6 +398,17 @@ export type AssetGalleryViewProps = {
   focusFileId?: string | null;
   focusFullMode?: boolean;
   onFocusConsumed?: () => void;
+  /**
+   * PDF text-layer の選択を Note に引用ブロックとして挿入する。
+   * note-app から渡される。未指定（編集中ノートがない等）なら SelectionPill の
+   * Quote→Note ボタンが非表示になる。
+   */
+  onQuoteToNote?: (source: CitationSource) => void;
+  /**
+   * PDF text-layer の選択を AI Composer Ask に quotedMarkdown として渡す。
+   * 未指定なら Quote→Chat ボタンが非表示になる。
+   */
+  onQuoteToChat?: (source: CitationSource) => void;
 };
 
 export function AssetGalleryView({
@@ -417,6 +429,8 @@ export function AssetGalleryView({
   focusFileId,
   focusFullMode,
   onFocusConsumed,
+  onQuoteToNote,
+  onQuoteToChat,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -651,6 +665,8 @@ export function AssetGalleryView({
         getKnowledgeKind={getKnowledgeKind}
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
         onDelete={(entry) => setDeleteTarget(entry)}
+        onQuoteToNote={onQuoteToNote}
+        onQuoteToChat={onQuoteToChat}
       />
     );
   }
@@ -991,6 +1007,8 @@ export function AssetGalleryView({
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+          onQuoteToNote={onQuoteToNote}
+          onQuoteToChat={onQuoteToChat}
         />
       )}
 

@@ -18,6 +18,7 @@ import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { MediaPreview } from "./media-preview";
+import type { CitationSource } from "./SelectionPill";
 import { AssetGraphPanel, shouldShowAssetGraph, type KnowledgeKindLookup } from "./asset-graph-panel";
 import { MaterialDetailHeader } from "./material-detail-header";
 import { MaterialMetadataSection } from "./material-metadata-section";
@@ -42,6 +43,10 @@ export type MaterialFullViewProps = {
   mediaIndex?: MediaIndex | null;
   getKnowledgeKind?: KnowledgeKindLookup;
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
+  /** PDF 内テキストの選択を Note に引用ブロックとして挿入 */
+  onQuoteToNote?: (source: CitationSource) => void;
+  /** PDF 内テキストの選択を AI Composer Ask に quotedMarkdown として渡す */
+  onQuoteToChat?: (source: CitationSource) => void;
 };
 
 export function MaterialFullView({
@@ -59,6 +64,8 @@ export function MaterialFullView({
   mediaIndex,
   getKnowledgeKind,
   onSwitchAsset,
+  onQuoteToNote,
+  onQuoteToChat,
 }: MaterialFullViewProps) {
   const t = useT();
   const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
@@ -123,7 +130,7 @@ export function MaterialFullView({
               minHeight: 0,
             }}
           >
-            <MediaPreview entry={entry} />
+            <MediaPreview entry={entry} onQuoteToNote={onQuoteToNote} onQuoteToChat={onQuoteToChat} />
           </div>
         </div>
 

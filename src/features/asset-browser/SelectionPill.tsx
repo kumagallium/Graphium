@@ -18,10 +18,10 @@ export type CitationSource = {
 
 export type SelectionPillProps = {
   source: CitationSource;
-  /** Note に引用ブロックとして挿入 */
-  onQuoteToNote: (source: CitationSource) => void;
-  /** Composer Ask の quotedMarkdown として渡す */
-  onQuoteToChat: (source: CitationSource) => void;
+  /** Note に引用ブロックとして挿入。未指定ならボタンを表示しない */
+  onQuoteToNote?: (source: CitationSource) => void;
+  /** Composer Ask の quotedMarkdown として渡す。未指定ならボタンを表示しない */
+  onQuoteToChat?: (source: CitationSource) => void;
   /** 取り消し（選択解除） */
   onDismiss?: () => void;
   /** viewport 上の位置（選択範囲の上に配置）。指定しない場合は inline で親が制御。 */
@@ -66,51 +66,57 @@ export function SelectionPill({
       data-selection-pill
       onClick={(e) => e.stopPropagation()}
     >
-      <button
-        type="button"
-        onClick={() => onQuoteToNote(source)}
-        title="Insert as citation block in the active note"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "6px 8px",
-          borderRadius: 6,
-          border: "none",
-          background: "transparent",
-          color: "var(--color-foreground)",
-          fontSize: 12,
-          cursor: "pointer",
-        }}
-        className="hover:bg-muted transition-colors"
-      >
-        <Quote size={14} />
-        Quote → Note
-      </button>
+      {onQuoteToNote && (
+        <button
+          type="button"
+          onClick={() => onQuoteToNote(source)}
+          title="Insert as citation block in the active note"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "6px 8px",
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: "var(--color-foreground)",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+          className="hover:bg-muted transition-colors"
+        >
+          <Quote size={14} />
+          Quote → Note
+        </button>
+      )}
 
-      <div style={{ width: 1, height: 18, background: "var(--color-border)" }} />
+      {onQuoteToNote && onQuoteToChat && (
+        <div style={{ width: 1, height: 18, background: "var(--color-border)" }} />
+      )}
 
-      <button
-        type="button"
-        onClick={() => onQuoteToChat(source)}
-        title="Use as quote in AI Composer (Ask)"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "6px 8px",
-          borderRadius: 6,
-          border: "none",
-          background: "transparent",
-          color: "var(--color-foreground)",
-          fontSize: 12,
-          cursor: "pointer",
-        }}
-        className="hover:bg-muted transition-colors"
-      >
-        <MessageSquare size={14} />
-        Quote → Chat
-      </button>
+      {onQuoteToChat && (
+        <button
+          type="button"
+          onClick={() => onQuoteToChat(source)}
+          title="Use as quote in AI Composer (Ask)"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "6px 8px",
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: "var(--color-foreground)",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+          className="hover:bg-muted transition-colors"
+        >
+          <MessageSquare size={14} />
+          Quote → Chat
+        </button>
+      )}
 
       {onDismiss && (
         <>
