@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.9.0](https://github.com/kumagallium/Graphium/compare/v0.8.0...v0.9.0) - 2026-05-22
+
+### Highlights
+
+- **List views**: filter by column header (Wiki: Type / Note: Labels / Note: Author) via new FilterPopup.
+- **WikiBanner**: surfaces Phase γ + η fields the Atomizer was already producing — epistemic status, modal qualifier, backing (Warrant root), and rebuttal conditions. Existing notes pick this up on next view; previously generated Wiki gain richer detail when regenerated.
+- **Knowledge layer prep (invisible)**: Phase δ wires `relatedAtoms` (axial coding) and Phase ε adds the meta-Atom layer (KJ 中グループ). No UI surface yet, but the data is captured by new generations and the Synthesizer biases toward `analogical` when Atoms declare `applies-to-different-domain`.
+- **Index schema**: bumped 16 → 18 (γ → δ → ε). Existing indexes auto-rebuild on first load — no user action needed.
+- **Internal adversarial probe suite** reaches 12/12 with the Phase ε layer (a dry-run completeness marker for the spec; not a measure of AI output quality).
+
+### Changes
+
+- docs(readme): list Windows x64 desktop build alongside macOS by @kumagallium in https://github.com/kumagallium/Graphium/pull/327
+- feat(list-views): column-header filter popups for Wiki/Note by @kumagallium in https://github.com/kumagallium/Graphium/pull/326
+- docs: sync README.ja screenshots and add Windows to LP desktop body by @kumagallium in https://github.com/kumagallium/Graphium/pull/330
+- docs: promote editor+graph hero image to the top of README by @kumagallium in https://github.com/kumagallium/Graphium/pull/331
+- feat(wiki-banner): surface Toulmin Backing/Rebuttal/ModalQualifier + epistemic icons by @kumagallium in https://github.com/kumagallium/Graphium/pull/329
+- feat(wiki): Phase δ — Atom-to-Atom dimensional relations (axial coding) + INDEX v17 by @kumagallium in https://github.com/kumagallium/Graphium/pull/332
+- revert(wiki-banner): restore D0 placement and card styling by @kumagallium in https://github.com/kumagallium/Graphium/pull/333
+- feat(asset-browser): material-as-note Storybook foundation (WIP) by @kumagallium in https://github.com/kumagallium/Graphium/pull/334
+- feat(wiki): Phase ε — meta-Atom layer (KJ 中グループ) + INDEX v18 — adversarial 0.917 → 1.000 by @kumagallium in https://github.com/kumagallium/Graphium/pull/335
+
 ## [v0.8.0](https://github.com/kumagallium/Graphium/compare/v0.7.0...v0.8.0) - 2026-05-21
 - feat: Windows x64 desktop build + native sidecar spawn by @kumagallium in https://github.com/kumagallium/Graphium/pull/253
 - fix(wiki): sharpen dialectic selection on contradiction pairs (Phase γ-follow-up 3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/309
