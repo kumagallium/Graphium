@@ -584,6 +584,41 @@ export function AssetGalleryView({
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
+  // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）
+  if (detailEntry && detailFullMode) {
+    return (
+      <MaterialFullView
+        entry={detailEntry}
+        onClose={() => {
+          setDetailEntry(null);
+          setDetailFullMode(false);
+        }}
+        onToggleFull={() => setDetailFullMode(false)}
+        onNavigateNote={(noteId) => {
+          setDetailEntry(null);
+          setDetailFullMode(false);
+          onNavigateNote(noteId);
+        }}
+        onRename={async (entry, newName) => {
+          setDetailEntry({ ...entry, name: newName });
+          await onRenameMedia(entry, newName);
+        }}
+        onIngest={onIngestMedia}
+        onCreateProvNote={onCreateProvNote}
+        knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
+        onSharedRefUpdated={async (entry, sharedRef) => {
+          setDetailEntry({ ...entry, sharedRef });
+          if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
+        }}
+        onExtractPdfPages={onExtractPdfPages}
+        mediaIndex={mediaIndex}
+        getKnowledgeKind={getKnowledgeKind}
+        onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+        onDelete={(entry) => setDeleteTarget(entry)}
+      />
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* ヘッダー */}
@@ -891,8 +926,8 @@ export function AssetGalleryView({
         />
       )}
 
-      {/* メディア詳細: サイドピーク（軽量）→ Full ボタンで MaterialFullView に切替 */}
-      {detailEntry && !detailFullMode && (
+      {/* メディア詳細: サイドピーク（Full mode は早期 return で別ルートに渡す） */}
+      {detailEntry && (
         <MaterialSidePeek
           entry={detailEntry}
           onClose={() => {
@@ -920,37 +955,6 @@ export function AssetGalleryView({
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
-        />
-      )}
-      {detailEntry && detailFullMode && (
-        <MaterialFullView
-          entry={detailEntry}
-          onClose={() => {
-            setDetailEntry(null);
-            setDetailFullMode(false);
-          }}
-          onToggleFull={() => setDetailFullMode(false)}
-          onNavigateNote={(noteId) => {
-            setDetailEntry(null);
-            setDetailFullMode(false);
-            onNavigateNote(noteId);
-          }}
-          onRename={async (entry, newName) => {
-            setDetailEntry({ ...entry, name: newName });
-            await onRenameMedia(entry, newName);
-          }}
-          onIngest={onIngestMedia}
-          onCreateProvNote={onCreateProvNote}
-          knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
-          onSharedRefUpdated={async (entry, sharedRef) => {
-            setDetailEntry({ ...entry, sharedRef });
-            if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
-          }}
-          onExtractPdfPages={onExtractPdfPages}
-          mediaIndex={mediaIndex}
-          getKnowledgeKind={getKnowledgeKind}
-          onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
-          onDelete={(entry) => setDeleteTarget(entry)}
         />
       )}
 

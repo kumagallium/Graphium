@@ -1,6 +1,16 @@
 // 素材詳細ビューの共通ヘッダー
 // MaterialSidePeek と MaterialFullView から共有して使う。
-// 構成: 閉じる / type アイコン / 名前（編集可） / メタチップ / アクション群 / Full toggle / 削除
+//
+// variant ごとに構成が変わる:
+//
+//   "sidePeek": サイドピーク用のコンパクトな inline-style ヘッダー
+//     [X 閉じる] [type] [名前] [meta] [Knowledge/PROV/Extract/Share buttons] [Maximize] [Delete]
+//
+//   "titleBar": フル画面用、Note の title bar と同じ Tailwind クラス
+//     [type] [filename (編集可)] [meta] ………… [Minimize] [3-dot menu]
+//     3-dot メニュー内に Knowledge / PROV / Extract / Share / Delete を集約。
+//     X 閉じるは無し（フル画面は左ナビをオーバーレイしない inline 描画なので、
+//     ESC や Minimize 経由 / サイドバーで遷移する）。
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -25,6 +35,7 @@ import {
 import { useT } from "../../i18n";
 import type { MediaIndexEntry, MediaSharedRef, MediaType } from "./media-index";
 import { ShareMediaDialog, SharedBadge } from "./share-media-dialog";
+import { MaterialActionsMenu } from "./material-actions-menu";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -70,11 +81,6 @@ export type MaterialDetailHeaderProps = {
   fullMode?: boolean;
   /** 削除 */
   onDelete?: (entry: MediaIndexEntry) => void;
-  /**
-   * "sidePeek": 旧 SidePeek 互換のコンパクトな inline-style ヘッダー（小さい）。
-   * "titleBar": Note のタイトルバーと同じ Tailwind クラス + サイズ感（フル画面用）。
-   * 既定: "sidePeek"
-   */
   variant?: "sidePeek" | "titleBar";
 };
 
@@ -94,6 +100,7 @@ export function MaterialDetailHeader({
   variant = "sidePeek",
 }: MaterialDetailHeaderProps) {
   const t = useT();
+  const titleBarMode = variant === "titleBar";
 
   // ── 名前編集 ──
   const [editing, setEditing] = useState(false);
@@ -123,7 +130,7 @@ export function MaterialDetailHeader({
     }
   }, [editName, entry, onRename]);
 
-  // ── PDF ページ画像抽出 ──
+  // ── PDF ページ画像抽出（SidePeek 用、titleBar 側は menu に集約） ──
   const [extracting, setExtracting] = useState(false);
   const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null);
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -151,29 +158,101 @@ export function MaterialDetailHeader({
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf");
   const canExtract = !!onExtractPdfPages && entry.type === "pdf";
 
-  const titleBarMode = variant === "titleBar";
+  // 名前 + メタチップを共通レンダリング
+  const renderNameBlock = () => (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+      {editing ? (
+        <input
+          type="text"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          onBlur={handleRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleRename();
+            if (e.key === "Escape") {
+              setEditing(false);
+              setEditName(entry.name);
+            }
+          }}
+          disabled={renaming}
+          autoFocus
+          className="text-sm font-semibold text-foreground bg-transparent border-b-2 border-primary outline-none min-w-[120px] flex-1"
+        />
+      ) : (
+        <span
+          className={`text-sm font-medium truncate ${titleBarMode ? "text-muted-foreground" : "text-foreground"} ${onRename ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+          title={onRename ? t("asset.clickToRename") : entry.name}
+          onClick={() => { if (onRename) setEditing(true); }}
+        >
+          {entry.name}
+        </span>
+      )}
+      <span className="text-[10px] text-muted-foreground shrink-0">
+        {entry.type === "url" ? entry.urlMeta?.domain ?? "" : entry.mimeType}
+      </span>
+      {usageNoteCount > 0 && (
+        <span className="text-[10px] text-muted-foreground shrink-0">
+          {t("asset.usedInCount", { count: String(usageNoteCount) })}
+        </span>
+      )}
+      {isShared && <SharedBadge />}
+    </div>
+  );
 
+  // ── titleBar variant ──
+  if (titleBarMode) {
+    return (
+      <div className="px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: 4,
+            borderRadius: 4,
+            background: TYPE_HEX[entry.type] + "18",
+            color: TYPE_HEX[entry.type],
+            flexShrink: 0,
+          }}
+        >
+          <TypeIcon type={entry.type} size={12} />
+        </span>
+        {renderNameBlock()}
+        {onToggleFull && (
+          <button
+            onClick={onToggleFull}
+            title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          >
+            {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        )}
+        <MaterialActionsMenu
+          entry={entry}
+          onIngest={onIngest}
+          onCreateProvNote={onCreateProvNote}
+          onExtractPdfPages={onExtractPdfPages}
+          onSharedRefUpdated={onSharedRefUpdated}
+          onNavigateNote={onNavigateNote}
+          knowledgeWikiNoteId={knowledgeWikiNoteId}
+          onDelete={onDelete}
+        />
+      </div>
+    );
+  }
+
+  // ── sidePeek variant（既存の inline-style ヘッダー） ──
   return (
     <>
       <div
-        className={
-          titleBarMode
-            ? "px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0"
-            : undefined
-        }
-        style={
-          titleBarMode
-            ? undefined
-            : {
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 12px",
-                borderBottom: "1px solid var(--color-border-subtle)",
-                background: "var(--color-surface)",
-                flexShrink: 0,
-              }
-        }
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 12px",
+          borderBottom: "1px solid var(--color-border-subtle)",
+          background: "var(--color-surface)",
+          flexShrink: 0,
+        }}
       >
         <button
           onClick={onClose}
@@ -204,43 +283,7 @@ export function MaterialDetailHeader({
           <TypeIcon type={entry.type} size={12} />
         </span>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-          {editing ? (
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onBlur={handleRename}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleRename();
-                if (e.key === "Escape") {
-                  setEditing(false);
-                  setEditName(entry.name);
-                }
-              }}
-              disabled={renaming}
-              autoFocus
-              className="text-sm font-semibold text-foreground bg-transparent border-b-2 border-primary outline-none min-w-[120px] flex-1"
-            />
-          ) : (
-            <span
-              className={`text-sm font-medium truncate ${titleBarMode ? "text-muted-foreground" : "text-foreground"} ${onRename ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
-              title={onRename ? t("asset.clickToRename") : entry.name}
-              onClick={() => { if (onRename) setEditing(true); }}
-            >
-              {entry.name}
-            </span>
-          )}
-          <span className="text-[10px] text-muted-foreground shrink-0">
-            {entry.type === "url" ? entry.urlMeta?.domain ?? "" : entry.mimeType}
-          </span>
-          {usageNoteCount > 0 && (
-            <span className="text-[10px] text-muted-foreground shrink-0">
-              {t("asset.usedInCount", { count: String(usageNoteCount) })}
-            </span>
-          )}
-          {isShared && <SharedBadge />}
-        </div>
+        {renderNameBlock()}
 
         <div className="flex items-center gap-1 shrink-0">
           {canIngest && (
@@ -344,7 +387,6 @@ export function MaterialDetailHeader({
         </div>
       </div>
 
-      {/* PDF 抽出エラー */}
       {extractError && (
         <div className="px-3 py-2 border-b border-border bg-red-50 text-xs text-red-600 flex items-start gap-1.5 shrink-0">
           <AlertCircle size={12} className="mt-0.5 shrink-0" />

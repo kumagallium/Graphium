@@ -1,14 +1,16 @@
 // 素材全画面ビュー（material as note の Full mode）
-// ノート全画面と同じレイアウトパターン:
-//   - 上部: ヘッダー（共通の MaterialDetailHeader）
-//   - 中央: ビューア（画像など大きく表示） + 下部 Metadata セクション
-//   - 右: アイコンレール（縦並び w-10）+ rightTab 選択時のみ展開パネル（w-[480px]）
-//   - 右パネルには Asset graph を表示
 //
-// MaterialSidePeek の fullMode をやめて、こちらを独立コンポーネントとして使う。
+// レイアウト方針 (2026-05-22 議論):
+//   - 左ナビゲーションサイドバーをオーバーレイしない。AssetGalleryView と同じく
+//     `<main>` の中で flex-1 で描画する（fixed/portal は使わない）。
+//   - 構成は Note のフル画面に揃える:
+//       上: タイトルバー（filename + chip + meta + Minimize + 3-dot menu）
+//       中: viewer（中央、大）+ 下に Metadata セクション
+//       右: アイコンレール（w-10）+ 選択時のみ展開する右パネル（asset graph）
+//   - X 閉じるは存在しない（ESC または Minimize でサイドピークに戻る）
+//   - 削除や Knowledge / PROV / Extract / Share は 3-dot メニューの中に集約
 
-import { useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { Network } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
@@ -63,21 +65,22 @@ export function MaterialFullView({
     setRightTab((cur) => (cur === tab ? null : tab));
   };
 
+  // ESC キーで閉じる（呼び出し側で fullMode → false に戻す想定）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
 
-  const body = (
+  return (
     <div
       data-material-full-view
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "var(--color-background)",
-        zIndex: 110,
-        display: "flex",
-        flexDirection: "column",
-      }}
+      className="flex-1 flex flex-col overflow-hidden bg-background min-w-0"
     >
-      {/* ヘッダー（Note の title bar と同じ styling） */}
       <MaterialDetailHeader
         entry={entry}
         onClose={onClose}
@@ -96,7 +99,6 @@ export function MaterialFullView({
 
       {/* コンテンツ行: 中央 viewer + 右パネル + 右レール */}
       <div className="flex flex-1 min-h-0">
-        {/* 中央: viewer + metadata（縦に並べる、Note の本文領域に相当） */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div
             style={{
@@ -119,7 +121,6 @@ export function MaterialFullView({
           />
         </div>
 
-        {/* 右タブパネル（rightTab が指定されているときのみ展開） */}
         {rightTab && (
           <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden relative z-10">
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
@@ -142,7 +143,6 @@ export function MaterialFullView({
           </div>
         )}
 
-        {/* 右アイコンレール（Note の右レールと同じパターン） */}
         <div
           className={cn(
             "shrink-0 border-border bg-muted/50 flex items-center gap-1 relative z-10",
@@ -167,6 +167,4 @@ export function MaterialFullView({
       </div>
     </div>
   );
-
-  return createPortal(body, document.body);
 }
