@@ -31,7 +31,7 @@ If you point the desktop app's save folder at a synced cloud folder (Google Driv
 
 Graphium does not use any third-party services for storage or authentication.
 
-If you configure an LLM provider (optional, opt-in) for AI features, your prompts are sent to that provider per their terms — Graphium does not relay or log this traffic.
+If you configure an LLM provider (optional, opt-in) for AI features, your prompts are sent to that provider per their terms — Graphium does not relay or log this traffic. On the macOS desktop app, the API key you enter is stored in the macOS Keychain rather than on disk. The first launch of a version that supports Keychain storage automatically migrates any previously-stored plaintext key out of `models.json` and into the Keychain.
 
 ## Children's Privacy
 

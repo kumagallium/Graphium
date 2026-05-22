@@ -449,6 +449,17 @@ The same `src/` tree is built three different ways.
   `binaries/graphium-server-<triple>[.exe]` so Tauri can spawn it as a
   sidecar. `src/lib/sidecar.ts` resolves `sidecar/server.mjs` via
   `resolveResource()` and passes it as the first argument.
+- LLM API keys are stored in the macOS Keychain (service
+  `com.graphium.app`, account `<model-id>`) rather than on disk. The
+  sidecar is started with `GRAPHIUM_USE_KEYCHAIN=1` on macOS, and the
+  first read of an existing `models.json` migrates any plaintext
+  `apiKey` field into the Keychain and rewrites the file without it.
+  On non-Tauri deployments (Docker / dev), keys continue to live in
+  `data/models.json` as before.
+- Sidecar stdout/stderr is appended to `~/Library/Logs/Graphium/sidecar.log`
+  on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
+  platforms). The file is rotated to `sidecar.log.1` once it exceeds
+  5 MB, so old entries do not grow without bound.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
