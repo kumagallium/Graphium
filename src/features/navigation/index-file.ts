@@ -2,6 +2,7 @@
 // 全ノートのメタデータを1ファイルに集約し、一覧・検索・被参照計算を高速化する
 
 import type {
+  AtomRelation,
   AtomType,
   BackingEntry,
   ClaimRole,
@@ -62,7 +63,15 @@ import { normalizeLabel } from "../context-label/labels";
 //      の 3 フィールドを wikiMeta から mirror する。バッジ表示・フィルタ・将来の
 //      dialectic 候補抽出（rebuttal 持ち Atom が 2+）で参照する。
 //      既存 Phase γ 以前のエントリは undefined / 空配列で動く（後方互換）。
-const INDEX_SCHEMA_VERSION = 16;
+// v17: Phase δ — relatedAtoms（Atom 間 dimensional 関係, axial coding 補完）。
+//      AtomRelation[] を mirror する。一覧 UI での「関係つき Atom」のバッジ表示、
+//      Synthesizer の analogical / dialectic 発火判定（applies-to-different-domain
+//      関係を持つ Atom ペアの優先化）で参照する。
+//      既存 Phase δ 以前のエントリは undefined のまま読める（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v16 インデックスが v17 として
+//      再構築される（index-file.ts の ensureIndex 内 `existing.version !==
+//      INDEX_SCHEMA_VERSION` フォールバックで full rebuild）。
+const INDEX_SCHEMA_VERSION = 17;
 
 export type GraphiumIndex = {
   version: number;
@@ -177,6 +186,13 @@ export type NoteIndexEntry = {
    * のバッジ表示に使う。
    */
   modalQualifier?: ModalQualifier;
+  /**
+   * Phase δ (v17): Atom 間の dimensional 関係。wikiMeta.relatedAtoms を mirror する。
+   * 一覧 UI で「関係つき Atom」のバッジ表示、Synthesizer の analogical / dialectic
+   * 発火判定（applies-to-different-domain ペアの優先化）で参照する。
+   * 0-3 件想定なので配列をそのまま mirror する（軽量）。
+   */
+  relatedAtoms?: AtomRelation[];
 };
 
 // ── Drive API ──
@@ -432,6 +448,10 @@ export function buildIndexEntry(
         ? doc.wikiMeta.backing
         : undefined,
     modalQualifier: doc.wikiMeta?.modalQualifier,
+    relatedAtoms:
+      doc.wikiMeta?.relatedAtoms && doc.wikiMeta.relatedAtoms.length > 0
+        ? doc.wikiMeta.relatedAtoms
+        : undefined,
   };
 }
 

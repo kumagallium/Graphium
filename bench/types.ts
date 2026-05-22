@@ -108,6 +108,22 @@ export type BenchAtom = {
    * 通常は 0 / 1 件、複数 pair を跨ぐ atom では 2+ 件。
    */
   pairIds?: string[];
+  /**
+   * Phase δ: Atom 間 dimensional 関係。
+   * `targetAtomTitle` は同じ batch 内の別 Atom のタイトル（dry-run では title=id とみなす）。
+   * dry-run では cross-domain-pair / cross-language-pair の検出から
+   * `applies-to-different-domain` を自動付与する。
+   */
+  relatedAtoms?: {
+    targetAtomTitle: string;
+    relationType:
+      | "extends"
+      | "is-special-case-of"
+      | "shares-mechanism"
+      | "shares-precondition"
+      | "contradicts"
+      | "applies-to-different-domain";
+  }[];
 };
 
 export type BenchSynthesis = {

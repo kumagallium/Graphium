@@ -171,6 +171,43 @@ export const BACKING_SOURCE_VALUES = [
 ] as const;
 export type BackingSource = (typeof BACKING_SOURCE_VALUES)[number];
 
+/**
+ * Phase δ: Atom 間の dimensional 関係（GT 流の axial coding 補完）。
+ *
+ * 設計意図: Atom が単独で島になることを防ぎ、Synthesizer の analogical モードが
+ * 「同じ relation で結ばれた cross-domain ペア」を効率的に発見できるようにする。
+ *
+ * relation の意味:
+ * - extends: 既存 Atom を一般化 / 細分化する
+ * - is-special-case-of: 既存 Atom の特殊ケースである
+ * - shares-mechanism: 同じ機構を別現象で実現している
+ * - shares-precondition: 同じ前提条件が要る別現象
+ * - contradicts: 同じ axis 上で逆向きの主張
+ * - applies-to-different-domain: 構造同型を別領域で観察した analogical pair
+ */
+export const ATOM_RELATION_TYPE_VALUES = [
+  "extends",
+  "is-special-case-of",
+  "shares-mechanism",
+  "shares-precondition",
+  "contradicts",
+  "applies-to-different-domain",
+] as const;
+export type AtomRelationType = (typeof ATOM_RELATION_TYPE_VALUES)[number];
+
+/**
+ * Atom 間の関係エントリ。
+ *
+ * `atomId` は内部 ID（WikiMeta 上の Atom）を指す。存在しない / アーカイブ済みの ID は
+ * UI 側で「不明」フォールバック扱いになる（DerivedFromSection と同じ流儀）。
+ * `citation` は 1 文以内で関係を説明する自然言語（quality-over-quantity ルール）。
+ */
+export type AtomRelation = {
+  atomId: string;
+  relationType: AtomRelationType;
+  citation: string;
+};
+
 export function epistemicRank(status: EpistemicStatus | undefined): number {
   if (!status) return 1; // unknown は interpretation 相当に倒す
   const idx = EPISTEMIC_STATUS_ORDER.indexOf(status);
@@ -335,6 +372,13 @@ export type WikiMeta = {
    * **Claim のみで意味を持つ**。`confidence` (system 自己評価) とは別軸。
    */
   modalQualifier?: ModalQualifier;
+  /**
+   * Atom 間 dimensional 関係（Phase δ, axial coding 補完）。
+   * Claim でも持ち得る（Claim → 既存 Atom への参照）が、現状は Atom スコープで
+   * 抽出される。Synthesizer の analogical / dialectic 発火判定に使われる。
+   * 0-3 件を quality-over-quantity で。空 / undefined は「関係なし」と等価。
+   */
+  relatedAtoms?: AtomRelation[];
   /**
    * 世界モデル照合の結果（world-model-grounding, Phase 2）。
    *
