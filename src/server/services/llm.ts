@@ -14,9 +14,22 @@ import type { ModelConfig } from "../config/models.js";
 export function createModel(config: ModelConfig): LanguageModel {
   switch (config.provider) {
     case "anthropic": {
+      // `createAnthropic` に baseURL を渡さないと SDK は環境変数 `ANTHROPIC_BASE_URL` を
+      // 読み、最終フォールバックで `https://api.anthropic.com/v1` を使う。
+      // 環境に `ANTHROPIC_BASE_URL=https://api.anthropic.com`（/v1 なし）が
+      // セットされていると、SDK は `${env}/messages` を叩いて 404 を返す。
+      // また `fetchAnthropicModels` は historically apiBase に `/v1` を付けない形で
+      // 保存していたケースがあるので、ユーザー指定値も末尾を正規化する。
+      // → 環境変数の影響を断ち切るため、常に明示的に baseURL を渡す。
+      const ANTHROPIC_DEFAULT_BASE = "https://api.anthropic.com/v1";
+      const normalizedBase = (() => {
+        if (!config.apiBase) return ANTHROPIC_DEFAULT_BASE;
+        const trimmed = config.apiBase.replace(/\/$/, "");
+        return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+      })();
       const provider = createAnthropic({
         apiKey: config.apiKey,
-        ...(config.apiBase ? { baseURL: config.apiBase } : {}),
+        baseURL: normalizedBase,
       });
       return provider(config.modelId);
     }

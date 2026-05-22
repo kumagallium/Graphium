@@ -608,7 +608,6 @@ export const en: Record<string, string> = {
   "wikiList.kindSummary": "Summaries",
   "wikiList.kindClaim": "Claims",
   "wikiList.kindAtom": "Insights",
-  "wikiList.kindMetaAtom": "Clusters",
   "wikiList.kindSynthesis": "Ideas",
   // Phase 1 semantic-type badge labels
   "wikiTypes.claimRole.finding": "Finding",
@@ -674,10 +673,9 @@ export const en: Record<string, string> = {
   // derived-from（world-model-grounding Phase 1 + Phase δ/ε integration）—
   // 派生元のノート / Claim / Atom / Atom 間関係を一つの折り畳みにまとめる
   "wikiBanner.derivedFromTitle": "Derived from",
-  "wikiBanner.derivedFromHint": "Where this knowledge piece was drawn from — source notes, claims, atoms, and dimensional relations between atoms. Existing provenance only.",
+  "wikiBanner.derivedFromHint": "Where this knowledge piece was drawn from — source notes, claims, and dimensional relations between atoms. Existing provenance only.",
   "wikiBanner.derivedFromNotesLabel": "Notes",
   "wikiBanner.derivedFromClaimsLabel": "Source claims",
-  "wikiBanner.derivedFromAtomsLabel": "Source atoms",
   "wikiBanner.relatedAtomsLabel": "Related atoms",
   "wikiBanner.relatedAtomsHint": "Dimensional relations to other atoms (axial coding). Used by the synthesizer to suggest analogical / dialectic pairs.",
   "wikiBanner.derivedFromMissing": "(unknown)",

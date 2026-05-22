@@ -139,7 +139,6 @@ export function WikiBanner({
     wikiMeta.kind === "summary" ? t("wikiList.kindSummary")
     : wikiMeta.kind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiMeta.kind === "atom" ? t("wikiList.kindAtom")
-    : wikiMeta.kind === "meta-atom" ? t("wikiList.kindMetaAtom")
     : t("wikiList.kindClaim");
 
   const [modeModal, setModeModal] = useState<SynthesisMode | null>(null);
@@ -717,19 +716,16 @@ function WorldCheckedNoMatchBadge({
   );
 }
 
-// 派生元セクションのヘルパー: derivedFromNotes と derivedFromClaims の
-// いずれかに有効な ID が 1 件でも含まれているかを判定する。
-// Phase δ (relatedAtoms) と Phase ε (derivedFromAtoms) も「派生元」と同じ折り畳みに
-// 同居させるため、ここで一括判定する（B案: 折り畳み数を増やさない統合方針）。
+// 派生元セクションのヘルパー: derivedFromNotes / derivedFromClaims / Phase δ
+// relatedAtoms のいずれかに有効な ID が 1 件でも含まれているかを判定する。
+// （旧 Phase ε derivedFromAtoms は撤退済み）
 function hasDerivedFrom(meta: WikiMeta): boolean {
   const notes = (meta.derivedFromNotes ?? []).filter((id) => Boolean(id));
   const claims = (meta.derivedFromClaims ?? []).filter((id) => Boolean(id));
-  const sourceAtoms = (meta.derivedFromAtoms ?? []).filter((id) => Boolean(id));
   const relatedAtoms = (meta.relatedAtoms ?? []).filter((r) => Boolean(r.atomId));
   return (
     notes.length > 0 ||
     claims.length > 0 ||
-    sourceAtoms.length > 0 ||
     relatedAtoms.length > 0
   );
 }
@@ -840,11 +836,6 @@ function DerivedFromSection({
     () => resolveDerivedEntries(wikiMeta.derivedFromClaims, noteIndex),
     [wikiMeta.derivedFromClaims, noteIndex],
   );
-  // Phase ε: meta-atom の派生元 Atom 群。meta-atom 以外では fields が undefined のはず。
-  const sourceAtomEntries = useMemo(
-    () => resolveDerivedEntries(wikiMeta.derivedFromAtoms, noteIndex),
-    [wikiMeta.derivedFromAtoms, noteIndex],
-  );
   // Phase δ: Atom 間 dimensional 関係。relationType と citation を上乗せして表示する。
   const relatedAtomEntries = useMemo(
     () => resolveRelatedAtomEntries(wikiMeta.relatedAtoms, noteIndex),
@@ -854,7 +845,6 @@ function DerivedFromSection({
   if (
     noteEntries.length === 0 &&
     claimEntries.length === 0 &&
-    sourceAtomEntries.length === 0 &&
     relatedAtomEntries.length === 0
   )
     return null;
@@ -862,7 +852,6 @@ function DerivedFromSection({
   const totalCount =
     noteEntries.length +
     claimEntries.length +
-    sourceAtomEntries.length +
     relatedAtomEntries.length;
 
   return (
@@ -918,16 +907,6 @@ function DerivedFromSection({
             <DerivedFromGroup
               label={t("wikiBanner.derivedFromClaimsLabel")}
               entries={claimEntries}
-              onNavigateNote={onNavigateNote}
-              missingLabel={t("wikiBanner.derivedFromMissing")}
-            />
-          )}
-          {/* Phase ε: meta-atom の派生元 Atom 群（最低 3 件・最大 ~8 件想定）。
-              ID リストだけなので既存の DerivedFromGroup を再利用する。 */}
-          {sourceAtomEntries.length > 0 && (
-            <DerivedFromGroup
-              label={t("wikiBanner.derivedFromAtomsLabel")}
-              entries={sourceAtomEntries}
               onNavigateNote={onNavigateNote}
               missingLabel={t("wikiBanner.derivedFromMissing")}
             />

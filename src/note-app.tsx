@@ -4575,7 +4575,6 @@ export function NoteApp() {
       let summary = 0;
       let claim = 0;
       let atom = 0;
-      let metaAtom = 0;
       let synthesis = 0;
       for (const wf of fm.wikiFiles) {
         const meta = fm.wikiMetas.get(wf.id);
@@ -4583,10 +4582,9 @@ export function NoteApp() {
         if (meta.kind === "summary") summary++;
         else if (meta.kind === "claim") claim++;
         else if (meta.kind === "atom") atom++;
-        else if (meta.kind === "meta-atom") metaAtom++;
         else if (meta.kind === "synthesis") synthesis++;
       }
-      return { summary, claim, atom, "meta-atom": metaAtom, synthesis };
+      return { summary, claim, atom, synthesis };
     })(),
     showAtomLayer: experimentalFlags.atomLayer,
     showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,

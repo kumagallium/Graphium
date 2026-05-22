@@ -608,7 +608,6 @@ export const ja: Record<string, string> = {
   "wikiList.kindSummary": "要約",
   "wikiList.kindClaim": "知見",
   "wikiList.kindAtom": "洞察",
-  "wikiList.kindMetaAtom": "クラスター",
   "wikiList.kindSynthesis": "発想",
   // 提案 v4 Phase 1: 意味的な型のラベル（バッジ表示用）
   "wikiTypes.claimRole.finding": "発見・観察",
@@ -674,10 +673,9 @@ export const ja: Record<string, string> = {
   // 派生元表示（world-model-grounding Phase 1 + Phase δ/ε 統合）—
   // ノート / Claim / Atom / Atom 間関係を 1 つの折り畳みにまとめる
   "wikiBanner.derivedFromTitle": "派生元",
-  "wikiBanner.derivedFromHint": "この知識片がどこから派生したか — ソースノート・ソース Claim・派生元 Atom・Atom 間の dimensional 関係を一覧する。既存の来歴情報のみ。",
+  "wikiBanner.derivedFromHint": "この知識片がどこから派生したか — ソースノート・ソース Claim・Atom 間の dimensional 関係を一覧する。既存の来歴情報のみ。",
   "wikiBanner.derivedFromNotesLabel": "ノート",
   "wikiBanner.derivedFromClaimsLabel": "ソース Claim",
-  "wikiBanner.derivedFromAtomsLabel": "派生元 Atom",
   "wikiBanner.relatedAtomsLabel": "関連 Atom",
   "wikiBanner.relatedAtomsHint": "他の Atom との dimensional 関係（axial coding）。Synthesizer が analogical / dialectic ペア候補を選ぶシグナルにも使う。",
   "wikiBanner.derivedFromMissing": "(不明)",

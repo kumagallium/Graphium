@@ -71,13 +71,14 @@ import { normalizeLabel } from "../context-label/labels";
 //      bump を必ず実地確認する: Graphium 起動時に v16 インデックスが v17 として
 //      再構築される（index-file.ts の ensureIndex 内 `existing.version !==
 //      INDEX_SCHEMA_VERSION` フォールバックで full rebuild）。
-// v18: Phase ε — meta-atom 層（KJ 中グループ + 表札）。
-//      WikiKind に "meta-atom" が増えるので wikiKind カラムが新値を取り得る。
-//      derivedFromAtoms（meta-atom のみ最低 3 件、それ以外は undefined）を mirror する。
-//      Synthesizer は Atom + meta-Atom 混合入力を受け付ける（snapshot 型は同形なので
-//      既存ロジックを破らない）。既存 Phase ε 以前のエントリは meta-atom が一切存在
-//      しないので動作上は無影響。
-const INDEX_SCHEMA_VERSION = 18;
+// v18: Phase ε — meta-atom 層（KJ 中グループ + 表札）。撤退済み（v19）。
+// v19: meta-atom 層を撤退。WikiKind から "meta-atom" を外し、derivedFromAtoms の
+//      mirror も削除。撤退理由は document-types.ts のコメント参照。
+//      bump を必ず実地確認する: Graphium 起動時に v18 インデックスが v19 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+//      meta-atom が混じった旧データは ensureIndex の再構築で kind が落ち、
+//      WikiKind 列挙から外れた "meta-atom" は型ガードで吸収される。
+const INDEX_SCHEMA_VERSION = 19;
 
 export type GraphiumIndex = {
   version: number;
@@ -199,13 +200,6 @@ export type NoteIndexEntry = {
    * 0-3 件想定なので配列をそのまま mirror する（軽量）。
    */
   relatedAtoms?: AtomRelation[];
-  /**
-   * Phase ε (v18): meta-atom の派生元 Atom ID 列。
-   * `wikiKind === "meta-atom"` のときだけ意味を持つ。最低 3 件。
-   * 一覧 UI で「何件まとまった meta-atom か」を表示するため mirror する。
-   * 他 kind ではこのフィールドは undefined になる。
-   */
-  derivedFromAtoms?: string[];
 };
 
 // ── Drive API ──
@@ -464,12 +458,6 @@ export function buildIndexEntry(
     relatedAtoms:
       doc.wikiMeta?.relatedAtoms && doc.wikiMeta.relatedAtoms.length > 0
         ? doc.wikiMeta.relatedAtoms
-        : undefined,
-    derivedFromAtoms:
-      doc.wikiMeta?.kind === "meta-atom" &&
-      doc.wikiMeta?.derivedFromAtoms &&
-      doc.wikiMeta.derivedFromAtoms.length > 0
-        ? doc.wikiMeta.derivedFromAtoms
         : undefined,
   };
 }
