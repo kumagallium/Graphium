@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.8.1](https://github.com/kumagallium/Graphium/compare/v0.8.0...v0.8.1) - 2026-05-22
+- docs(readme): list Windows x64 desktop build alongside macOS by @kumagallium in https://github.com/kumagallium/Graphium/pull/327
+- feat(list-views): column-header filter popups for Wiki/Note by @kumagallium in https://github.com/kumagallium/Graphium/pull/326
+- docs: sync README.ja screenshots and add Windows to LP desktop body by @kumagallium in https://github.com/kumagallium/Graphium/pull/330
+- docs: promote editor+graph hero image to the top of README by @kumagallium in https://github.com/kumagallium/Graphium/pull/331
+- feat(wiki-banner): surface Toulmin Backing/Rebuttal/ModalQualifier + epistemic icons by @kumagallium in https://github.com/kumagallium/Graphium/pull/329
+- feat(wiki): Phase δ — Atom-to-Atom dimensional relations (axial coding) + INDEX v17 by @kumagallium in https://github.com/kumagallium/Graphium/pull/332
+- revert(wiki-banner): restore D0 placement and card styling by @kumagallium in https://github.com/kumagallium/Graphium/pull/333
+- feat(asset-browser): material-as-note Storybook foundation (WIP) by @kumagallium in https://github.com/kumagallium/Graphium/pull/334
+- feat(wiki): Phase ε — meta-Atom layer (KJ 中グループ) + INDEX v18 — adversarial 0.917 → 1.000 by @kumagallium in https://github.com/kumagallium/Graphium/pull/335
+
 ## [v0.8.0](https://github.com/kumagallium/Graphium/compare/v0.7.0...v0.8.0) - 2026-05-21
 - feat: Windows x64 desktop build + native sidecar spawn by @kumagallium in https://github.com/kumagallium/Graphium/pull/253
 - fix(wiki): sharpen dialectic selection on contradiction pairs (Phase γ-follow-up 3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/309
