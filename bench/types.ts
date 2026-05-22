@@ -135,6 +135,21 @@ export type BenchSynthesis = {
   externalSources: { title: string; url?: string }[];
 };
 
+/**
+ * Phase ε: meta-Atom（KJ 中グループの表札）。
+ * 3+ Atom を 1 つの抽象軸に集約した、Atom より一段上の層。
+ */
+export type BenchMetaAtom = {
+  title: string;
+  body: string;
+  /** 派生元 Atom のインデックス（allAtoms 配列上の位置）。最低 3 件 */
+  derivedFromAtomIndices: number[];
+  /** 派生元 Atom の最低継承 */
+  epistemicStatus: string;
+  /** 自己評価 0-1 */
+  confidence: number;
+};
+
 export type BenchPipelineOutput = {
   noteId: string;
   claims: BenchClaim[];
@@ -157,6 +172,9 @@ export type BenchRunOutput = {
   pipelineByNote: BenchPipelineOutput[];
   allClaims: BenchClaim[];
   allAtoms: BenchAtom[];
+  /** Phase ε: 全 Atom から集約された meta-Atom（KJ 中グループ）。
+   *  入力 Atom 数が少ない（< 3）と空配列。 */
+  allMetaAtoms: BenchMetaAtom[];
   allSyntheses: BenchSynthesis[];
   /** 集約後の代表値（n=1 なら唯一の run、n≥2 なら下記 aggregate に従う） */
   metrics: BenchMetrics;

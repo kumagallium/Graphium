@@ -14,7 +14,11 @@ import type { DocumentProvenance } from "../features/document-provenance/types";
 //
 // experimental.atomLayer / experimental.synthesis 設定で生成可否を制御する。
 // 既存ユーザーの synthesis ファイルは削除しないため、atom 同様に kind 文字列としては常に有効。
-export type WikiKind = "summary" | "claim" | "atom" | "synthesis";
+//
+// Phase ε (2026-05-22): "meta-atom" を追加。KJ 法の二段目（中グループ + 表札）に相当する
+// 層で、3 件以上の Atom を 1 つの抽象軸でまとめる。20-30 件規模の Atom 群が分かれている
+// ときに、Synthesizer が読みやすい粒度で再集約するための層。
+export type WikiKind = "summary" | "claim" | "atom" | "meta-atom" | "synthesis";
 
 // Claim の抽象度レベル（claim のみで意味を持つ）
 // principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
@@ -379,6 +383,14 @@ export type WikiMeta = {
    * 0-3 件を quality-over-quantity で。空 / undefined は「関係なし」と等価。
    */
   relatedAtoms?: AtomRelation[];
+  /**
+   * Phase ε: meta-atom の派生元 Atom ID 列。
+   * `kind === "meta-atom"` のときだけ意味を持つ。最低 3 件（meta-atomizer prompt の
+   * 縛り）。クラスタの「表札」が title / body、`epistemicStatus` は派生元の最低継承、
+   * `confidence` は LLM 自己評価（0-1）。
+   * 他の kind（claim / atom / summary / synthesis）では undefined のまま。
+   */
+  derivedFromAtoms?: string[];
   /**
    * 世界モデル照合の結果（world-model-grounding, Phase 2）。
    *

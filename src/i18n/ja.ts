@@ -608,6 +608,7 @@ export const ja: Record<string, string> = {
   "wikiList.kindSummary": "要約",
   "wikiList.kindClaim": "知見",
   "wikiList.kindAtom": "洞察",
+  "wikiList.kindMetaAtom": "クラスター",
   "wikiList.kindSynthesis": "発想",
   // 提案 v4 Phase 1: 意味的な型のラベル（バッジ表示用）
   "wikiTypes.claimRole.finding": "発見・観察",

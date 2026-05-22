@@ -11,6 +11,7 @@
 import type {
   BenchAtom,
   BenchClaim,
+  BenchMetaAtom,
   BenchPipelineOutput,
   BenchSynthesis,
   CorpusNote,
@@ -394,6 +395,7 @@ export type DryRunResult = {
   pipelineByNote: BenchPipelineOutput[];
   allClaims: BenchClaim[];
   allAtoms: BenchAtom[];
+  allMetaAtoms: BenchMetaAtom[];
   allSyntheses: BenchSynthesis[];
 };
 
@@ -447,7 +449,66 @@ export function runDryRunPipeline(corpus: CorpusNote[]): DryRunResult {
 
   const allSyntheses = buildSyntheses(allAtoms);
 
-  return { pipelineByNote, allClaims, allAtoms, allSyntheses };
+  // Phase ε: meta-Atom（KJ 中グループ）を Atom 群から擬似抽出する。
+  // dry-run heuristic は「同 atomType + 異 noteId × 3+」のシンプル基準。
+  // - 同じ atomType の Atom が異なるノート由来で 3+ 集まれば、それを「再現する型」として
+  //   1 つの meta-Atom にまとめる
+  // - epistemicStatus は最低継承
+  // - cap 5（spec の quality bar）
+  const allMetaAtoms = buildMetaAtoms(allAtoms);
+
+  return { pipelineByNote, allClaims, allAtoms, allMetaAtoms, allSyntheses };
+}
+
+function buildMetaAtoms(atoms: BenchAtom[]): BenchMetaAtom[] {
+  if (atoms.length < 3) return [];
+  // atomType ごとに集約。derivedFromNoteIds の和集合に異 noteId が 2+ あることを条件にする
+  // （= 単一 note 由来クラスタを meta-Atom 扱いしない）。
+  const buckets = new Map<string, number[]>();
+  for (let i = 0; i < atoms.length; i++) {
+    const t = atoms[i].atomType ?? "_untyped";
+    if (!buckets.has(t)) buckets.set(t, []);
+    buckets.get(t)!.push(i);
+  }
+  const out: BenchMetaAtom[] = [];
+  for (const [type, idxs] of buckets) {
+    if (idxs.length < 3) continue;
+    const noteIds = new Set<string>();
+    for (const i of idxs) {
+      for (const n of atoms[i].derivedFromNoteIds) noteIds.add(n);
+    }
+    if (noteIds.size < 2) continue;
+    const statuses = idxs.map((i) => atoms[i].epistemicStatus);
+    const lowest = lowestStatus(statuses);
+    const memberTitles = idxs.slice(0, 5).map((i) => atoms[i].title);
+    out.push({
+      title: `「${type}」型の繰り返し構造 (${idxs.length} atoms)`,
+      body: `${idxs.length} 件の atomType=${type} Atom が ${noteIds.size} ノートにまたがって再現される共通軸。代表 Atom: ${memberTitles.join(" / ")}`,
+      derivedFromAtomIndices: idxs,
+      epistemicStatus: lowest,
+      confidence: 0.75,
+    });
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+// dry-run 用の最低継承ヘルパー（lib の lowestEpistemicStatus と同等の振る舞いを文字列で再現）
+function lowestStatus(statuses: string[]): string {
+  const order = ["speculation", "interpretation", "observation", "established"];
+  let lowest = "established";
+  let lowestRank = 3;
+  let seen = false;
+  for (const s of statuses) {
+    const r = order.indexOf(s);
+    if (r < 0) continue;
+    seen = true;
+    if (r < lowestRank) {
+      lowestRank = r;
+      lowest = s;
+    }
+  }
+  return seen ? lowest : "interpretation";
 }
 
 // live mode の実装。実 LLM (gpt-oss-120b on Sakura AI Engine など) を使い、
@@ -830,5 +891,14 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
     console.log("[bench] synthesize skipped (atoms < 2)");
   }
 
-  return { pipelineByNote, allClaims, allAtoms, allSyntheses };
+  // Phase ε: live でも meta-Atom 抽出をヒューリスティック付与する。
+  // 本来は wiki-meta-atomizer.ts を呼びたいが、現状の live bench scaffold は
+  // 1 つの synth pass しか持っていないので、まずは dry-run と同じ atomType 集約で
+  // 推定値を出す（probe metric の整合性のため）。将来は LLM 呼び出しに差し替える。
+  const allMetaAtoms = buildMetaAtoms(allAtoms);
+  if (allMetaAtoms.length > 0) {
+    console.log(`[bench] meta-atomize (heuristic): ${allMetaAtoms.length} meta-atom(s)`);
+  }
+
+  return { pipelineByNote, allClaims, allAtoms, allMetaAtoms, allSyntheses };
 }
