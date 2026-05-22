@@ -90,7 +90,7 @@ export const en = {
   "start.online.cta": "Open the preview",
   "start.desktop.title": "Desktop app",
   "start.desktop.body":
-    "macOS Apple Silicon today. Local files, AI features, optional cloud sync via OS-level Drive / iCloud / Dropbox folders.",
+    "macOS Apple Silicon and Windows x64 today (Intel macOS and Linux on the roadmap). Local files, AI features, optional cloud sync via OS-level Drive / iCloud / Dropbox folders.",
   "start.desktop.cta": "Download",
   "start.selfhost.title": "Self-host with Docker",
   "start.selfhost.body":
@@ -180,7 +180,7 @@ export const ja: Record<keyof typeof en, string> = {
   "start.online.cta": "プレビューを開く",
   "start.desktop.title": "デスクトップアプリ",
   "start.desktop.body":
-    "現在は macOS Apple Silicon に対応。ファイルシステム保存、AI 機能、Drive / iCloud / Dropbox 同期フォルダによる任意のクラウド同期。",
+    "現在は macOS Apple Silicon と Windows x64 に対応（Intel macOS / Linux はロードマップ）。ファイルシステム保存、AI 機能、Drive / iCloud / Dropbox 同期フォルダによる任意のクラウド同期。",
   "start.desktop.cta": "ダウンロード",
   "start.selfhost.title": "Docker でセルフホスト",
   "start.selfhost.body":
