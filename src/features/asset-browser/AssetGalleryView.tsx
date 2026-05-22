@@ -10,6 +10,7 @@ import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
+import { MaterialFullView } from "./MaterialFullView";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
@@ -890,24 +891,21 @@ export function AssetGalleryView({
         />
       )}
 
-      {/* メディア詳細サイドピーク（→ Full ボタンでフルスクリーン） */}
-      {detailEntry && (
+      {/* メディア詳細: サイドピーク（軽量）→ Full ボタンで MaterialFullView に切替 */}
+      {detailEntry && !detailFullMode && (
         <MaterialSidePeek
           entry={detailEntry}
           onClose={() => {
             setDetailEntry(null);
             setDetailFullMode(false);
           }}
-          onToggleFull={() => setDetailFullMode((v) => !v)}
-          fullMode={detailFullMode}
+          onToggleFull={() => setDetailFullMode(true)}
           onNavigateNote={(noteId) => {
-            // 遷移時はサイドピークを閉じてから親に遷移を依頼
             setDetailEntry(null);
             setDetailFullMode(false);
             onNavigateNote(noteId);
           }}
           onRename={async (entry, newName) => {
-            // 楽観的更新: サイドピーク内の表示を即座に反映
             setDetailEntry({ ...entry, name: newName });
             await onRenameMedia(entry, newName);
           }}
@@ -922,6 +920,37 @@ export function AssetGalleryView({
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+        />
+      )}
+      {detailEntry && detailFullMode && (
+        <MaterialFullView
+          entry={detailEntry}
+          onClose={() => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+          }}
+          onToggleFull={() => setDetailFullMode(false)}
+          onNavigateNote={(noteId) => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+            onNavigateNote(noteId);
+          }}
+          onRename={async (entry, newName) => {
+            setDetailEntry({ ...entry, name: newName });
+            await onRenameMedia(entry, newName);
+          }}
+          onIngest={onIngestMedia}
+          onCreateProvNote={onCreateProvNote}
+          knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
+          onSharedRefUpdated={async (entry, sharedRef) => {
+            setDetailEntry({ ...entry, sharedRef });
+            if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
+          }}
+          onExtractPdfPages={onExtractPdfPages}
+          mediaIndex={mediaIndex}
+          getKnowledgeKind={getKnowledgeKind}
+          onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+          onDelete={(entry) => setDeleteTarget(entry)}
         />
       )}
 

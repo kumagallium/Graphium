@@ -866,6 +866,7 @@ export const en: Record<string, string> = {
   "asset.clickToRename": "Click to rename",
   "asset.openInFull": "Open in full view",
   "asset.exitFull": "Exit full view",
+  "asset.rightPanel.graph": "Asset graph",
   "asset.sortDate": "Date",
   "asset.sortName": "Name",
   "asset.pickTitle": "Select {type}",

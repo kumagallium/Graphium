@@ -866,6 +866,7 @@ export const ja: Record<string, string> = {
   "asset.clickToRename": "クリックで名前を変更",
   "asset.openInFull": "全画面表示",
   "asset.exitFull": "全画面表示を解除",
+  "asset.rightPanel.graph": "アセットグラフ",
   "asset.sortDate": "日付",
   "asset.sortName": "名前",
   "asset.pickTitle": "{type} を選択",
