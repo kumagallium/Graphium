@@ -240,20 +240,18 @@ Notes are saved to your browser's IndexedDB by default. AI features require the 
 
 <table>
   <tr>
-    <td><b>Editor with context labels</b></td>
-    <td><b>Provenance graph (PROV-DM)</b></td>
+    <td colspan="2"><b>Editor with context labels and the provenance graph that builds up as you write</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/editor.png" alt="Editor" width="400" /></td>
-    <td><img src="docs/screenshots/prov-graph.png" alt="Provenance graph" width="400" /></td>
+    <td colspan="2"><img src="docs/screenshots/editor-with-graph_en.png" alt="Editor with the provenance graph generated from a bread-making note" width="820" /></td>
   </tr>
   <tr>
     <td><b>Document provenance history</b></td>
-    <td></td>
+    <td><b>Note network graph</b></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/history.png" alt="Document provenance" width="400" /></td>
-    <td></td>
+    <td><img src="docs/screenshots/network-graph.png" alt="Note network graph" width="400" /></td>
   </tr>
 </table>
 
