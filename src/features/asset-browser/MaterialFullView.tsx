@@ -12,7 +12,7 @@
 //   - Asset graph は full mode の **デフォルトで開く**（利用可能なら）
 //   - Metadata は右パネルのタブとして提供（Graph と相互排他）
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Network, Info, StickyNote } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
@@ -91,6 +91,20 @@ export function MaterialFullView({
     }
   }, [graphAvailable, rightTab]);
 
+  // Quote→Memo の保存をラップする。保存ハンドラを呼んだ直後に右パネルを
+  // Memos へ切り替えて、ユーザーが「保存されたメモが今ここに並んだ」ことを
+  // すぐ確認できるようにする。Memos タブは captureIndex が渡されているとき
+  // のみ存在するため、それ以外では切り替えない。
+  const handleSaveSelectionAsMemo = useCallback(
+    (source: CitationSource) => {
+      onSaveSelectionAsMemo?.(source);
+      if (captureIndex) {
+        setRightTab("memos");
+      }
+    },
+    [onSaveSelectionAsMemo, captureIndex],
+  );
+
   // ESC キーで閉じる（呼び出し側で fullMode → false に戻す想定）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -135,7 +149,12 @@ export function MaterialFullView({
               minHeight: 0,
             }}
           >
-            <MediaPreview entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />
+            <MediaPreview
+              entry={entry}
+              onSaveSelectionAsMemo={
+                onSaveSelectionAsMemo ? handleSaveSelectionAsMemo : undefined
+              }
+            />
           </div>
         </div>
 
