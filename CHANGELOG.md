@@ -1,6 +1,17 @@
 # Changelog
 
-## [v0.8.1](https://github.com/kumagallium/Graphium/compare/v0.8.0...v0.8.1) - 2026-05-22
+## [v0.9.0](https://github.com/kumagallium/Graphium/compare/v0.8.0...v0.9.0) - 2026-05-22
+
+### Highlights
+
+- **List views**: filter by column header (Wiki: Type / Note: Labels / Note: Author) via new FilterPopup.
+- **WikiBanner**: surfaces Phase γ + η fields the Atomizer was already producing — epistemic status, modal qualifier, backing (Warrant root), and rebuttal conditions. Existing notes pick this up on next view; previously generated Wiki gain richer detail when regenerated.
+- **Knowledge layer prep (invisible)**: Phase δ wires `relatedAtoms` (axial coding) and Phase ε adds the meta-Atom layer (KJ 中グループ). No UI surface yet, but the data is captured by new generations and the Synthesizer biases toward `analogical` when Atoms declare `applies-to-different-domain`.
+- **Index schema**: bumped 16 → 18 (γ → δ → ε). Existing indexes auto-rebuild on first load — no user action needed.
+- **Internal adversarial probe suite** reaches 12/12 with the Phase ε layer (a dry-run completeness marker for the spec; not a measure of AI output quality).
+
+### Changes
+
 - docs(readme): list Windows x64 desktop build alongside macOS by @kumagallium in https://github.com/kumagallium/Graphium/pull/327
 - feat(list-views): column-header filter popups for Wiki/Note by @kumagallium in https://github.com/kumagallium/Graphium/pull/326
 - docs: sync README.ja screenshots and add Windows to LP desktop body by @kumagallium in https://github.com/kumagallium/Graphium/pull/330
