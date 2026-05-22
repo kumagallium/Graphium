@@ -142,17 +142,14 @@ export function WikiBanner({
 
   const [modeModal, setModeModal] = useState<SynthesisMode | null>(null);
 
-  // 2026-05-22 デザイン議論で D1 配置（タイトルバー下にバナー）+ B+C styling（ソフト境界 +
-  // 折り畳み 14px）を採用。バナー上端は title bar の border-b が境界として機能し、
-  // 下端は dashed underline で本文（H1 / 段落）と区切る。background は透過。
-  // archived 時はうっすら濁った背景にして「現役ではない」感を出す。
+  // 2026-05-22: D1 配置（透過 + 下 dashed）は右パネル展開時に視覚的な
+  // 一体感が崩れたため、従来のカード型に戻す。将来 D2 配置を検討する。
   const containerStyle = {
-    margin: "0 32px",
-    padding: "10px 14px 12px",
-    borderRadius: 0,
-    border: "none",
-    borderBottom: "1px dashed var(--rule)",
-    background: archived ? "var(--paper-3)" : "transparent",
+    margin: "14px 32px 6px",
+    borderRadius: "var(--r-3)",
+    border: "1px solid var(--rule)",
+    background: archived ? "var(--paper-3)" : "var(--paper-2)",
+    padding: "10px 14px",
   };
 
   return (
