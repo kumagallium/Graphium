@@ -6,7 +6,7 @@ import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getFaviconUrl } from "../asset-browser/media-index";
-import { MediaPreview } from "../asset-browser/MediaDetailModal";
+import { MediaPreview } from "../asset-browser/media-preview";
 import { UrlBookmarkModal } from "../asset-browser/UrlBookmarkModal";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";

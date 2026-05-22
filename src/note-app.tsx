@@ -4794,7 +4794,7 @@ export function NoteApp() {
             onExtractPdfPages={async (entry, onProgress) => {
               // PDF 内部に埋め込まれた画像オブジェクトを抽出して画像アセットに登録する。
               // ベクター figure / 表は PDF 内部に「画像」として存在しないため対象外。
-              // 失敗時は MediaDetailModal 側でエラーメッセージを表示する。
+              // 失敗時は MaterialSidePeek 側でエラーメッセージを表示する。
               if (entry.type !== "pdf" || !entry.fileId) return { extracted: 0 };
               const provider = getActiveProvider();
               const blobUrl = await provider.getMediaBlobUrl(entry.fileId);

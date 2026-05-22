@@ -864,6 +864,8 @@ export const en: Record<string, string> = {
   "asset.legendNote": "Note",
   "asset.clickToNavigate": "Click node to open note",
   "asset.clickToRename": "Click to rename",
+  "asset.openInFull": "Open in full view",
+  "asset.exitFull": "Exit full view",
   "asset.sortDate": "Date",
   "asset.sortName": "Name",
   "asset.pickTitle": "Select {type}",

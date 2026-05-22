@@ -9,7 +9,8 @@ import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl } from "./media-index";
-import { MediaDetailModal } from "./MediaDetailModal";
+import { MaterialSidePeek } from "./MaterialSidePeek";
+import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 
@@ -384,7 +385,7 @@ export type AssetGalleryViewProps = {
    * Knowledge ノートの kind 別色を出すためのルックアップ。
    * 渡されない場合はフォールバック色で描画。
    */
-  getKnowledgeKind?: import("./MediaDetailModal").KnowledgeKindLookup;
+  getKnowledgeKind?: KnowledgeKindLookup;
 };
 
 export function AssetGalleryView({
@@ -410,6 +411,8 @@ export function AssetGalleryView({
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
+  // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
+  const [detailFullMode, setDetailFullMode] = useState(false);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -887,14 +890,24 @@ export function AssetGalleryView({
         />
       )}
 
-      {/* メディア詳細モーダル */}
+      {/* メディア詳細サイドピーク（→ Full ボタンでフルスクリーン） */}
       {detailEntry && (
-        <MediaDetailModal
+        <MaterialSidePeek
           entry={detailEntry}
-          onClose={() => setDetailEntry(null)}
-          onNavigateNote={onNavigateNote}
+          onClose={() => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+          }}
+          onToggleFull={() => setDetailFullMode((v) => !v)}
+          fullMode={detailFullMode}
+          onNavigateNote={(noteId) => {
+            // 遷移時はサイドピークを閉じてから親に遷移を依頼
+            setDetailEntry(null);
+            setDetailFullMode(false);
+            onNavigateNote(noteId);
+          }}
           onRename={async (entry, newName) => {
-            // 楽観的更新: モーダル内の表示を即座に反映
+            // 楽観的更新: サイドピーク内の表示を即座に反映
             setDetailEntry({ ...entry, name: newName });
             await onRenameMedia(entry, newName);
           }}
@@ -902,7 +915,6 @@ export function AssetGalleryView({
           onCreateProvNote={onCreateProvNote}
           knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
           onSharedRefUpdated={async (entry, sharedRef) => {
-            // モーダル内表示を即時反映 + 親に永続化を依頼
             setDetailEntry({ ...entry, sharedRef });
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
