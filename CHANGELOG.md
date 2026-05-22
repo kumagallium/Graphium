@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.9.1](https://github.com/kumagallium/Graphium/compare/v0.9.0...v0.9.1) - 2026-05-22
+- feat(asset-browser): replace MediaDetailModal with MaterialSidePeek + full-view overlay by @kumagallium in https://github.com/kumagallium/Graphium/pull/336
+- feat(wiki-banner): surface Phase δ/ε inside the existing Derived-from collapsible by @kumagallium in https://github.com/kumagallium/Graphium/pull/337
+- feat(asset-browser): PDF text-layer + Quote-to-Memo from MaterialSidePeek by @kumagallium in https://github.com/kumagallium/Graphium/pull/339
+- feat(asset-browser): Memo↔asset structured provenance + composer UX by @kumagallium in https://github.com/kumagallium/Graphium/pull/341
+- style(asset-browser): polish MemoComposer to match design.md by @kumagallium in https://github.com/kumagallium/Graphium/pull/343
+
 ## [v0.9.0](https://github.com/kumagallium/Graphium/compare/v0.8.0...v0.9.0) - 2026-05-22
 
 ### Highlights
