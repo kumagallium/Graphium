@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type {
+  AtomRelation,
   BackingEntry,
   EpistemicStatus,
   GroundingValidityVerdict,
@@ -718,10 +719,19 @@ function WorldCheckedNoMatchBadge({
 
 // 派生元セクションのヘルパー: derivedFromNotes と derivedFromClaims の
 // いずれかに有効な ID が 1 件でも含まれているかを判定する。
+// Phase δ (relatedAtoms) と Phase ε (derivedFromAtoms) も「派生元」と同じ折り畳みに
+// 同居させるため、ここで一括判定する（B案: 折り畳み数を増やさない統合方針）。
 function hasDerivedFrom(meta: WikiMeta): boolean {
   const notes = (meta.derivedFromNotes ?? []).filter((id) => Boolean(id));
   const claims = (meta.derivedFromClaims ?? []).filter((id) => Boolean(id));
-  return notes.length > 0 || claims.length > 0;
+  const sourceAtoms = (meta.derivedFromAtoms ?? []).filter((id) => Boolean(id));
+  const relatedAtoms = (meta.relatedAtoms ?? []).filter((r) => Boolean(r.atomId));
+  return (
+    notes.length > 0 ||
+    claims.length > 0 ||
+    sourceAtoms.length > 0 ||
+    relatedAtoms.length > 0
+  );
 }
 
 type DerivedFromEntry = {
@@ -765,6 +775,51 @@ function resolveDerivedEntries(
   return entries;
 }
 
+// Phase δ: relatedAtoms 用の解決エントリ。base = DerivedFromEntry に
+// relationType / citation を上乗せして表示するための内部型。
+type RelatedAtomEntry = DerivedFromEntry & {
+  relationType: AtomRelation["relationType"];
+  citation: string;
+};
+
+function resolveRelatedAtomEntries(
+  relations: readonly AtomRelation[] | undefined,
+  noteIndex: GraphiumIndex | null,
+): RelatedAtomEntry[] {
+  if (!relations || relations.length === 0) return [];
+  // 同一 atomId 重複は表示上 1 件にまとめる（resolveDerivedEntries と同じ流儀）。
+  const seen = new Set<string>();
+  const out: RelatedAtomEntry[] = [];
+  const indexById = new Map<string, NoteIndexEntry>();
+  if (noteIndex) {
+    for (const entry of noteIndex.notes) indexById.set(entry.noteId, entry);
+  }
+  for (const r of relations) {
+    if (!r.atomId || seen.has(r.atomId)) continue;
+    seen.add(r.atomId);
+    const indexEntry = indexById.get(r.atomId);
+    if (indexEntry) {
+      const isWiki = indexEntry.source === "ai";
+      out.push({
+        navigateId: isWiki ? `wiki:${indexEntry.noteId}` : indexEntry.noteId,
+        label: indexEntry.title || indexEntry.noteId,
+        resolved: true,
+        relationType: r.relationType,
+        citation: r.citation,
+      });
+    } else {
+      out.push({
+        navigateId: r.atomId,
+        label: r.atomId,
+        resolved: false,
+        relationType: r.relationType,
+        citation: r.citation,
+      });
+    }
+  }
+  return out;
+}
+
 function DerivedFromSection({
   wikiMeta,
   noteIndex,
@@ -785,10 +840,30 @@ function DerivedFromSection({
     () => resolveDerivedEntries(wikiMeta.derivedFromClaims, noteIndex),
     [wikiMeta.derivedFromClaims, noteIndex],
   );
+  // Phase ε: meta-atom の派生元 Atom 群。meta-atom 以外では fields が undefined のはず。
+  const sourceAtomEntries = useMemo(
+    () => resolveDerivedEntries(wikiMeta.derivedFromAtoms, noteIndex),
+    [wikiMeta.derivedFromAtoms, noteIndex],
+  );
+  // Phase δ: Atom 間 dimensional 関係。relationType と citation を上乗せして表示する。
+  const relatedAtomEntries = useMemo(
+    () => resolveRelatedAtomEntries(wikiMeta.relatedAtoms, noteIndex),
+    [wikiMeta.relatedAtoms, noteIndex],
+  );
 
-  if (noteEntries.length === 0 && claimEntries.length === 0) return null;
+  if (
+    noteEntries.length === 0 &&
+    claimEntries.length === 0 &&
+    sourceAtomEntries.length === 0 &&
+    relatedAtomEntries.length === 0
+  )
+    return null;
 
-  const totalCount = noteEntries.length + claimEntries.length;
+  const totalCount =
+    noteEntries.length +
+    claimEntries.length +
+    sourceAtomEntries.length +
+    relatedAtomEntries.length;
 
   return (
     <div
@@ -847,8 +922,116 @@ function DerivedFromSection({
               missingLabel={t("wikiBanner.derivedFromMissing")}
             />
           )}
+          {/* Phase ε: meta-atom の派生元 Atom 群（最低 3 件・最大 ~8 件想定）。
+              ID リストだけなので既存の DerivedFromGroup を再利用する。 */}
+          {sourceAtomEntries.length > 0 && (
+            <DerivedFromGroup
+              label={t("wikiBanner.derivedFromAtomsLabel")}
+              entries={sourceAtomEntries}
+              onNavigateNote={onNavigateNote}
+              missingLabel={t("wikiBanner.derivedFromMissing")}
+            />
+          )}
+          {/* Phase δ: Atom 間 dimensional 関係。relationType + citation を含めて
+              読めるよう独自のグループで描画する（0-3 件）。 */}
+          {relatedAtomEntries.length > 0 && (
+            <RelatedAtomsGroup
+              label={t("wikiBanner.relatedAtomsLabel")}
+              entries={relatedAtomEntries}
+              onNavigateNote={onNavigateNote}
+              missingLabel={t("wikiBanner.derivedFromMissing")}
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Phase δ: Atom 間 dimensional 関係（axial coding）の表示グループ。
+// 1 件ずつ「関係種別ピル + リンク + citation」を縦に並べる。
+// DerivedFromGroup と違って citation が文として表示されるので、件数が 3 件しか
+// 来ない quality-over-quantity ルールに対して読みやすさを優先する。
+function RelatedAtomsGroup({
+  label,
+  entries,
+  onNavigateNote,
+  missingLabel,
+}: {
+  label: string;
+  entries: RelatedAtomEntry[];
+  onNavigateNote?: (noteId: string) => void;
+  missingLabel: string;
+}) {
+  const t = useT();
+  return (
+    <div style={{ marginTop: 4 }}>
+      <span style={{ color: "var(--ink-3)" }}>{label}: </span>
+      <div style={{ marginTop: 2, display: "flex", flexDirection: "column", gap: 4 }}>
+        {entries.map((entry, i) => {
+          const relationLabel = t(
+            `wikiTypes.atomRelation.${entry.relationType}` as never,
+          );
+          return (
+            <div
+              key={entry.navigateId + i}
+              style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  padding: "0 6px",
+                  borderRadius: "var(--pill)",
+                  background: "var(--paper)",
+                  border: "1px solid var(--rule)",
+                  color: "var(--ink-3)",
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  whiteSpace: "nowrap",
+                }}
+                title={t("wikiBanner.relatedAtomsHint")}
+              >
+                {relationLabel}
+              </span>
+              {entry.resolved && onNavigateNote ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigateNote(entry.navigateId)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    color: "var(--forest-ink, var(--ink-2))",
+                    font: "inherit",
+                    textDecoration: "underline",
+                    textDecorationStyle: "dotted",
+                    textDecorationColor: "var(--rule)",
+                    cursor: "pointer",
+                  }}
+                  title={entry.label}
+                >
+                  {entry.label}
+                </button>
+              ) : entry.resolved ? (
+                <span>{entry.label}</span>
+              ) : (
+                <span
+                  style={{ color: "var(--ink-4)", fontStyle: "italic" }}
+                  title={entry.navigateId}
+                >
+                  {missingLabel}
+                </span>
+              )}
+              {entry.citation && (
+                <span style={{ color: "var(--ink-3)", fontSize: 13 }}>
+                  — {entry.citation}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

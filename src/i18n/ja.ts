@@ -626,6 +626,13 @@ export const ja: Record<string, string> = {
   "wikiTypes.atomType.methodological": "方法",
   "wikiTypes.atomType.observational": "経験的観測",
   "wikiTypes.atomType.boundary": "限界・境界",
+  // atomRelation (Phase δ): Atom 間の dimensional 関係（axial coding）。
+  "wikiTypes.atomRelation.extends": "拡張",
+  "wikiTypes.atomRelation.is-special-case-of": "特殊ケース",
+  "wikiTypes.atomRelation.shares-mechanism": "同じ機構を共有",
+  "wikiTypes.atomRelation.shares-precondition": "同じ前提を共有",
+  "wikiTypes.atomRelation.contradicts": "反対方向",
+  "wikiTypes.atomRelation.applies-to-different-domain": "別領域の同型",
   "wikiTypes.synthesisMode.deductive": "演繹",
   "wikiTypes.synthesisMode.abductive": "アブダクション",
   "wikiTypes.synthesisMode.analogical": "類推",
@@ -664,11 +671,15 @@ export const ja: Record<string, string> = {
   "wikiBanner.procedureTools": "重要ツール",
   "wikiBanner.procedureParameters": "重要パラメータ",
   "wikiBanner.procedureValidity": "成立範囲",
-  // 派生元表示（world-model-grounding Phase 1）— どのノート / Claim から来たかを辿る
+  // 派生元表示（world-model-grounding Phase 1 + Phase δ/ε 統合）—
+  // ノート / Claim / Atom / Atom 間関係を 1 つの折り畳みにまとめる
   "wikiBanner.derivedFromTitle": "派生元",
-  "wikiBanner.derivedFromHint": "この知識片がどこから派生したか（ソースノート・ソース Claim）。既存の来歴情報のみを使い、スコア化や外部検索は行わない。",
+  "wikiBanner.derivedFromHint": "この知識片がどこから派生したか — ソースノート・ソース Claim・派生元 Atom・Atom 間の dimensional 関係を一覧する。既存の来歴情報のみ。",
   "wikiBanner.derivedFromNotesLabel": "ノート",
   "wikiBanner.derivedFromClaimsLabel": "ソース Claim",
+  "wikiBanner.derivedFromAtomsLabel": "派生元 Atom",
+  "wikiBanner.relatedAtomsLabel": "関連 Atom",
+  "wikiBanner.relatedAtomsHint": "他の Atom との dimensional 関係（axial coding）。Synthesizer が analogical / dialectic ペア候補を選ぶシグナルにも使う。",
   "wikiBanner.derivedFromMissing": "(不明)",
   // 世界モデル照合（Phase 2 / PR 2A）— 蒸留KB のみ。LLM fallback / 自動照合は PR 2B
   "wikiBanner.worldCheck": "世界照合",
