@@ -240,20 +240,18 @@ pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 
 <table>
   <tr>
-    <td><b>コンテキストラベル付きエディタ & サイドバー</b></td>
-    <td><b>プロヴェナンスグラフ（PROV-DM）</b></td>
+    <td colspan="2"><b>コンテキストラベル付きエディタと、書き進めるたびに右側で組み上がっていく来歴グラフ</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/editor.png" alt="エディタ" width="400" /></td>
-    <td><img src="docs/screenshots/prov-graph.png" alt="プロヴェナンスグラフ" width="400" /></td>
+    <td colspan="2"><img src="docs/screenshots/editor-with-graph_ja.png" alt="パン作りのノートから生成される来歴グラフ" width="820" /></td>
   </tr>
   <tr>
-    <td><b>ノート間ネットワークグラフ</b></td>
     <td><b>ドキュメントのプロヴェナンス履歴</b></td>
+    <td><b>ノート間ネットワークグラフ</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/network-graph.png" alt="ネットワークグラフ" width="400" /></td>
     <td><img src="docs/screenshots/history.png" alt="プロヴェナンス履歴" width="400" /></td>
+    <td><img src="docs/screenshots/network-graph.png" alt="ネットワークグラフ" width="400" /></td>
   </tr>
 </table>
 
