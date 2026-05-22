@@ -5,6 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Component, type ReactNode } from "react";
 import { NetworkGraphPanel } from "./view";
 import type { NoteGraphData } from "./graph-builder";
+import { LocaleProvider } from "../../i18n";
 
 // ── エラーバウンダリ（Cytoscape 初期化エラーを吸収） ──
 class ErrorBoundary extends Component<
@@ -34,6 +35,13 @@ function Safe({ children }: { children: ReactNode }) {
 const meta: Meta = {
   title: "Organisms/NetworkGraph",
   parameters: { layout: "padded" },
+  decorators: [
+    (Story) => (
+      <LocaleProvider>
+        <Story />
+      </LocaleProvider>
+    ),
+  ],
 };
 export default meta;
 
