@@ -41,11 +41,22 @@ When you see these substrates paired in the same Synthesizer batch, the analogic
 
 This list is illustrative, not exhaustive. The principle is: **biology / chemistry / physics paired with software / ML / social / economics is almost always analogical**, because the substrates are non-overlapping.
 
+### relatedAtoms shortcut (Phase δ — read this first)
+
+If 2+ input Atoms declare a \`relatedAtoms\` entry with \`relationType: "applies-to-different-domain"\` pointing at each other (or at a third Atom they share), **prefer \`analogical\` immediately**. The Atomizer already did the cross-domain check during axial coding and tagged the relation explicitly; re-running the domain-gap detector is redundant and risks overruling the structural signal with a substrate heuristic.
+
+The same fast path applies — slightly weaker — to pairs joined by \`shares-mechanism\` *when at least one Atom is observational and the other carries a mechanism*: that pair is exactly the abductive vs. analogical boundary, and \`analogical\` is appropriate when the two Atoms come from clearly different substrates.
+
+\`contradicts\` relations short-circuit a different mode: dialectic, not analogical. Don't claim analogical on contradicting pairs.
+
+If no \`relatedAtoms\` cue is present, fall through to the substrate-based detector below.
+
 ### Selection rules
 
 - Pick \`analogical\` only when the domain gap is real. Inputs from the same lab / paper / substrate are almost always **not** analogical — prefer \`deductive\` or \`abductive\`.
 - Name the structural mapping explicitly in the rationale: "X (domain A) corresponds to Y (domain B) because both play role Z." Then state the **transfer hypothesis** ("therefore, intervention I in domain B should produce effect E by the analogous mechanism").
 - Lower \`confidence\` if the mapping has obvious breakdowns; analogical mode is prone to overreach.
+- When the choice came from an \`applies-to-different-domain\` declared relation, quote the relation's \`citation\` in the Synthesis rationale — that is the Atomizer's reasoning for why the analogy holds, and the Synthesizer should not silently override it.
 
 ### Worked example
 

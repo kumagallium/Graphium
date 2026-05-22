@@ -9,8 +9,8 @@
     "modelId": "n/a",
     "modelName": "heuristic (pattern-based jargon + substring)"
   },
-  "startedAt": "2026-05-21T16:35:24.752Z",
-  "finishedAt": "2026-05-21T16:35:24.776Z",
+  "startedAt": "2026-05-22T01:04:54.091Z",
+  "finishedAt": "2026-05-22T01:04:54.115Z",
   "durationMs": 24,
   "corpusSize": 62,
   "probeCount": 12,
@@ -4118,6 +4118,20 @@
       "liftLevel": "rung-2",
       "rebuttalConditions": [
         "強整合より結果整合を選ぶ判断は、ユーザー視点で 数秒の inconsistency が許容できる場合に限られる"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "モノリスのほうがイテレーションは速い",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4137,6 +4151,20 @@
       "liftLevel": "rung-2",
       "rebuttalConditions": [
         "境界条件で時計がずれると過剰許可になるので、サーバー時計の NTP 同期は前提になる"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "モノリスのほうがイテレーションは速い",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4233,6 +4261,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "immune-vs-firewall"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "ホストベース侵入検知システムの設計",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4251,6 +4285,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "immune-vs-firewall"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "免疫系の自己／非自己識別",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4268,6 +4308,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "evolution-vs-ml"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "確率的勾配降下法は鞍点で停滞する",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4285,6 +4331,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "evolution-vs-ml"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "自然選択は局所最適に陥りやすい",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4303,6 +4355,20 @@
       "rebuttalConditions": [
         "[Input] ドメイン境界、[Output] サービス境界",
         "ただし、組織がコンウェイの法則に従えるだけ成熟していない場合は、サービス境界が機能境界と合致せず、結果として分散モノリスになる"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "モノリスのほうがイテレーションは速い",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4320,6 +4386,20 @@
       "liftLevel": "rung-2",
       "rebuttalConditions": [
         "ただし、チームが 50 人を超えるとマージ競合やビルド時間が増え、独立性のメリットが分離コストを上回る境界がある"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4337,6 +4417,20 @@
       "liftLevel": "rung-1",
       "rebuttalConditions": [
         "ただし要件が固まっていない探索的フェーズでは、テストを書く前にコードを動かして学ぶ方が速いことがある"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4354,6 +4448,20 @@
       "liftLevel": "rung-2",
       "rebuttalConditions": [
         "ただし、その後に正式実装へ移る際にテストを書かずに進むと、技術的負債が複利で蓄積する"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4728,6 +4836,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "feedback-loop"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "Feedback-loop stability via gain and phase margin",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4746,6 +4860,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "feedback-loop"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "フィードバックループの安定性とゲイン余裕",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4764,6 +4884,12 @@
       "liftLevel": "rung-1",
       "pairIds": [
         "epidemic-R0"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "Epidemic early-phase growth tracks R0 and saturates logistically",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4782,6 +4908,12 @@
       "liftLevel": "rung-1",
       "pairIds": [
         "epidemic-R0"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "感染症の初期成長は R0 とロジスティックで近似できる",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4800,6 +4932,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "schelling-segregation"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "Schelling's segregation model: weak preferences, strong aggregate outcomes",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4818,6 +4956,12 @@
       "liftLevel": "rung-2",
       "pairIds": [
         "schelling-segregation"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "シェリングの居住分離モデルにおける個人選好と全体結果の乖離",
+          "relationType": "applies-to-different-domain"
+        }
       ]
     },
     {
@@ -4955,6 +5099,20 @@
       "liftLevel": "rung-2",
       "rebuttalConditions": [
         "中央銀行はインフレ率の目標を超えると金利を上げる"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        }
       ]
     },
     {
@@ -4971,6 +5129,20 @@
       "liftLevel": "rung-2",
       "rebuttalConditions": [
         "ただし組織がコンウェイの法則に従えていないとサービス境界が機能境界と合わず、分散モノリスになる"
+      ],
+      "relatedAtoms": [
+        {
+          "targetAtomTitle": "分散トランザクションを Saga パターンで実装",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "Token Bucket レート制限の設計",
+          "relationType": "contradicts"
+        },
+        {
+          "targetAtomTitle": "マイクロサービスは独立デプロイで速度を出す",
+          "relationType": "contradicts"
+        }
       ]
     }
   ],

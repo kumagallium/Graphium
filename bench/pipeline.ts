@@ -408,6 +408,43 @@ export function runDryRunPipeline(corpus: CorpusNote[]): DryRunResult {
   }
 
   const allAtoms = buildAtoms(allClaims);
+
+  // Phase δ: dry-run でも relatedAtoms を自動付与する。
+  // - 同 pairId を持つ別 Atom がいて、derivedFromNoteIds が異なるなら
+  //   `applies-to-different-domain` （analogical mode の load-bearing signal）。
+  // - 両方 rebuttalConditions を持つ別 Atom がいるなら `contradicts`（dialectic）。
+  // 上限 3 件 / 重複除去は live Atomizer parser と同じ流儀。
+  // memory: feedback_probe_dry_run_blind_spot — bench prompt 強化 PR には必ず dry-run heuristic を併設する
+  for (let i = 0; i < allAtoms.length; i++) {
+    const atomA = allAtoms[i];
+    const aPairs = new Set(atomA.pairIds ?? []);
+    const aHasRebuttal = (atomA.rebuttalConditions?.length ?? 0) > 0;
+    const relations: NonNullable<BenchAtom["relatedAtoms"]> = [];
+    for (let j = 0; j < allAtoms.length; j++) {
+      if (i === j) continue;
+      const atomB = allAtoms[j];
+      const bPairs = new Set(atomB.pairIds ?? []);
+      const sharedPair = [...aPairs].some((p) => bPairs.has(p));
+      const sameNoteSet =
+        atomA.derivedFromNoteIds.length === atomB.derivedFromNoteIds.length &&
+        atomA.derivedFromNoteIds.every((id) => atomB.derivedFromNoteIds.includes(id));
+      if (sharedPair && !sameNoteSet) {
+        relations.push({
+          targetAtomTitle: atomB.title,
+          relationType: "applies-to-different-domain",
+        });
+        continue;
+      }
+      const bHasRebuttal = (atomB.rebuttalConditions?.length ?? 0) > 0;
+      if (aHasRebuttal && bHasRebuttal && !sameNoteSet) {
+        relations.push({ targetAtomTitle: atomB.title, relationType: "contradicts" });
+      }
+    }
+    if (relations.length > 0) {
+      atomA.relatedAtoms = relations.slice(0, 3);
+    }
+  }
+
   const allSyntheses = buildSyntheses(allAtoms);
 
   return { pipelineByNote, allClaims, allAtoms, allSyntheses };

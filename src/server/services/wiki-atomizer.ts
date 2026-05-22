@@ -10,8 +10,12 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
-import type { AtomType, EpistemicStatus } from "../../lib/document-types.js";
-import { lowestEpistemicStatus, EPISTEMIC_STATUS_ORDER } from "../../lib/document-types.js";
+import type { AtomRelation, AtomType, EpistemicStatus } from "../../lib/document-types.js";
+import {
+  ATOM_RELATION_TYPE_VALUES,
+  lowestEpistemicStatus,
+  EPISTEMIC_STATUS_ORDER,
+} from "../../lib/document-types.js";
 import type { ClaimSnapshot } from "./wiki-synthesizer.js";
 
 /** Atom の推論的役割（提案 v4 Phase 1.2）として認める値の一覧 */
@@ -120,6 +124,14 @@ export type AtomCandidate = {
    * 空配列 / undefined は「共通 rebuttal なし」を意味する。
    */
   rebuttalConditions?: string[];
+  /**
+   * Atom 間 dimensional 関係（Phase δ, axial coding 補完）。
+   * 同じバッチ内の別 Atom（または既存 Atom）への参照を 0-3 件、quality-over-quantity で。
+   * Synthesizer の analogical / dialectic 発火判定で参照される（applies-to-different-domain
+   * / shares-mechanism / contradicts ペアの優先化）。
+   * 空配列 / undefined は「関係宣言なし」を意味する。
+   */
+  relatedAtoms?: AtomRelation[];
   // procedureContext は意図的に持たない (PR-B4.5)。Atom は context-stripped。
   // Toulmin の backing / modalQualifier も Atom に持たない（Claim 層のみ）。
 };
@@ -289,7 +301,14 @@ Respond with valid JSON only:
       "confidence": 0.0-1.0,
       "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary",
       "epistemicStatus": "speculation" | "interpretation" | "observation" | "established",   // REQUIRED. Must equal the LOWEST status among the source Claims. See "Epistemic status inheritance" below.
-      "rebuttalConditions": ["string"]                                                       // OPTIONAL. Empty array unless 2+ source Claims share a similar rebuttal. See "Shared rebuttal propagation" below.
+      "rebuttalConditions": ["string"],                                                      // OPTIONAL. Empty array unless 2+ source Claims share a similar rebuttal. See "Shared rebuttal propagation" below.
+      "relatedAtoms": [                                                                      // OPTIONAL. 0-3 entries. See "Relating to existing Atoms (axial structure)" below.
+        {
+          "atomId": "atom-id-from-this-batch",                                               // ID of another Atom in this batch (use the title verbatim if no ID assigned yet).
+          "relationType": "extends" | "is-special-case-of" | "shares-mechanism" | "shares-precondition" | "contradicts" | "applies-to-different-domain",
+          "citation": "one-sentence explanation of the relation, in plain everyday wording"
+        }
+      ]
     }
   ]
 }
@@ -372,6 +391,36 @@ Examples:
   Source Claim B: rebuttalConditions = []
   → Only one Claim has a rebuttal. Atom \`rebuttalConditions\` = [] (Claim-layer rebuttal stays at Claim layer).
 - Source Claims A and B both report success without any rebuttal → Atom \`rebuttalConditions\` = [].
+
+## Relating to existing Atoms (axial structure, Phase δ)
+
+If two or more Atoms you are emitting in this batch (or one of your Atoms + an Atom that already exists in the "Existing Atoms" list above) stand in a clear dimensional relation, declare it in \`relatedAtoms\`. This makes the Atom layer act as an axial-coding map — not a flat pile — and is the signal the Synthesizer uses to choose between deductive / abductive / **analogical** / dialectic modes.
+
+**Fixed vocabulary (use EXACTLY one per relation, lower-case, hyphenated):**
+
+- \`extends\`: this Atom generalizes or sharpens another Atom (same axis, one rung up or down). "Atom A: 短期的成功が長期コストを生む" extends "Atom B: 一時凌ぎが負債になる".
+- \`is-special-case-of\`: this Atom is a narrower instance of another Atom. Inverse of \`extends\`.
+- \`shares-mechanism\`: two Atoms describe different phenomena that proceed through *the same underlying mechanism*. "高温で粒成長が抑制される" shares-mechanism with "短時間処理で組織が均一に保たれる" (both: 駆動力を時間で潰す).
+- \`shares-precondition\`: two Atoms require the *same enabling condition* to hold, even if their effects differ. "リーダー交代で組織が活性化する" and "新規入社者で議論が活性化する" both require "外部視点の流入".
+- \`contradicts\`: two Atoms make opposing claims on the same axis (load-bearing for the Synthesizer's \`dialectic\` mode). Use sparingly — only when both Atoms are honest and the contradiction is over the same axis, not just different framings.
+- \`applies-to-different-domain\`: two Atoms describe **the same structural pattern observed in different domains**. This is the load-bearing signal for the Synthesizer's \`analogical\` mode. "ある時間帯に騒音が短時間ピークを示す" applies-to-different-domain "市場価格がランチタイムに短時間でジャンプする" — same pattern (短時間ピーク), different substrates (環境音 / 経済).
+
+**Rules:**
+
+1. **0-3 relations per Atom, quality-over-quantity.** Empty array is fine and common. Force-fitting a relation hurts the Synthesizer more than a missing one.
+2. **Both ends of the relation must be honest Atoms.** Do not invent an Atom just so another Atom has a relation target.
+3. **\`atomId\` MUST point at an Atom in this batch OR in the "Existing Atoms" list.** When emitting Atoms together in this batch (and you haven't been given IDs yet), use the Atom's title string as the \`atomId\` value. The parser will resolve titles to IDs after assignment.
+4. **\`citation\` is one short sentence** (≤ 30 words) in plain everyday wording, explaining how the two Atoms relate. No hedging like "may be related" — if you cannot state the relation crisply, drop the entry.
+5. **Symmetric relations (\`shares-mechanism\`, \`shares-precondition\`, \`contradicts\`, \`applies-to-different-domain\`) should be declared on both Atoms** when both Atoms are in this batch. The parser deduplicates; emitting from both sides makes the relation visible regardless of which Atom the reader lands on first.
+6. **\`extends\` / \`is-special-case-of\` are directional.** Declare them on the more-specific end only (i.e., the special case names the general principle), to avoid double counting.
+
+**When NOT to emit relatedAtoms:**
+
+- Only one Atom in the batch and no existing Atoms — skip (no targets exist).
+- The relation would be \`shares-mechanism\` but the "shared mechanism" is just "both are causal" / "both are interventions". Too generic. Skip.
+- You are tempted to declare \`applies-to-different-domain\` but the two Atoms come from the *same* domain just dressed differently. The Atom layer already domain-lifted both — if they sit in the same lifted concept space, that is convergent abstraction, not cross-domain analogy.
+
+This section is the structural backbone for analogical-mode Synthesis. **Honest relations help; forced relations actively hurt downstream synthesis.**
 
 ## Rules (strict)
 - **Each Atom MUST cite >= 2 Claims** in \`sourceConceptIds\`. Use the EXACT id from the Claim list.
@@ -525,6 +574,31 @@ export function parseAtomizerOutput(
         continue;
       }
 
+      // Phase δ: relatedAtoms をサニタイズ。
+      // - 配列でなければ undefined。
+      // - relationType が fixed vocabulary に無いエントリは捨てる。
+      // - atomId / citation が空のエントリは捨てる（hallucination 防御）。
+      // - 同じバッチ内 / 既存 Atom への参照解決はこの段では行わない。呼び出し側（書き戻し時に
+      //   タイトル → ID 解決 or 後段の cross-update）で行う。
+      const rawRelations = Array.isArray(a.relatedAtoms) ? a.relatedAtoms : [];
+      const sanitizedRelations: AtomRelation[] = [];
+      for (const r of rawRelations) {
+        if (!r || typeof r !== "object") continue;
+        const atomId = typeof r.atomId === "string" ? r.atomId.trim() : "";
+        const relationType = typeof r.relationType === "string" ? r.relationType.trim() : "";
+        const citation = typeof r.citation === "string" ? r.citation.trim() : "";
+        if (!atomId || !citation) continue;
+        if (!(ATOM_RELATION_TYPE_VALUES as readonly string[]).includes(relationType)) continue;
+        sanitizedRelations.push({
+          atomId,
+          relationType: relationType as AtomRelation["relationType"],
+          citation,
+        });
+      }
+      // 0-3 件の上限を強制（quality-over-quantity ルール、prompt 通り）。
+      const relatedAtoms: AtomRelation[] | undefined =
+        sanitizedRelations.length > 0 ? sanitizedRelations.slice(0, 3) : undefined;
+
       out.push({
         title: titleTrim,
         body: bodyTrim,
@@ -534,6 +608,7 @@ export function parseAtomizerOutput(
         atomType,
         epistemicStatus,
         rebuttalConditions,
+        relatedAtoms,
       });
     }
     return out;

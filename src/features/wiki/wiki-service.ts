@@ -1839,6 +1839,8 @@ export type AtomCandidate = {
   epistemicStatus?: import("../../lib/document-types").EpistemicStatus;
   /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal が Atom 層に伝播したもの */
   rebuttalConditions?: string[];
+  /** Phase δ: Atom 間 dimensional 関係（axial coding）。0-3 件、parser 側で fixed vocabulary を検証済み。 */
+  relatedAtoms?: import("../../lib/document-types").AtomRelation[];
   // PR-B4.5: procedureContext は Atom には持たない（砂時計のくびれ）
   // Toulmin の backing / modalQualifier も Atom には持たない（Claim 層のみ）
 };
@@ -1953,6 +1955,12 @@ export function buildAtomDocument(
     rebuttalConditions:
       candidate.rebuttalConditions && candidate.rebuttalConditions.length > 0
         ? candidate.rebuttalConditions
+        : undefined,
+    // Phase δ: Atom 間 dimensional 関係（axial coding）。Atomizer parser でサニタイズ + 上限 3 済み。
+    // 後段の cross-update 等で title → 正式 atomId 解決が行われる前提で、ここではそのまま保存する。
+    relatedAtoms:
+      candidate.relatedAtoms && candidate.relatedAtoms.length > 0
+        ? candidate.relatedAtoms
         : undefined,
     // PR-B4.5: procedureContext は Atom に持たない（context-stripped）
   };

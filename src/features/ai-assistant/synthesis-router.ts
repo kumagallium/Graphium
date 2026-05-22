@@ -63,6 +63,15 @@ export function routeSynthesisMode(
    * Toulmin の Rebuttal が「regime separator の素材」として効くため。
    */
   rebuttalConditionsByInput?: (string[] | undefined)[],
+  /**
+   * Phase δ: 入力 Atom の relationType 配列（同じ並び、optional）。
+   * 各エントリは「この Atom が relatedAtoms で宣言している relationType の集合」を表す。
+   * `applies-to-different-domain` を 2 件以上が宣言していれば analogical を最有力候補に押し出す。
+   * `shares-mechanism` の 2 件以上は analogical の候補入りを補強する。
+   * `contradicts` の 2 件以上は dialectic の候補入りを補強する。
+   * substrate ヒューリスティクス（atomType=mechanistic ベース）より優先する。
+   */
+  relationTypesByInput?: (string[] | undefined)[],
 ): SynthesisRouterResult {
   const known = atomTypes.filter((t): t is AtomType => Boolean(t));
 
@@ -122,6 +131,40 @@ export function routeSynthesisMode(
   if (mechanisticCount >= 2) {
     candidates.push("analogical");
     reasons.push("≥2 mechanistic atoms → analogical is possible if domains differ (LLM decides).");
+  }
+
+  // 3.5) Phase δ: relatedAtoms の relationType を見て候補集合を補強する。
+  //      Atomizer が axial coding で明示した構造シグナルを substrate ヒューリスティクスより優先。
+  if (relationTypesByInput && relationTypesByInput.length > 0) {
+    let appliesDiffDomain = 0;
+    let sharesMechanism = 0;
+    let contradictsCount = 0;
+    for (const rels of relationTypesByInput) {
+      if (!rels) continue;
+      if (rels.includes("applies-to-different-domain")) appliesDiffDomain++;
+      if (rels.includes("shares-mechanism")) sharesMechanism++;
+      if (rels.includes("contradicts")) contradictsCount++;
+    }
+    if (appliesDiffDomain >= 2) {
+      // analogical を候補集合の先頭へ昇格（既に居れば順序入れ替え、居なければ unshift）
+      const idx = candidates.indexOf("analogical");
+      if (idx >= 0) candidates.splice(idx, 1);
+      candidates.unshift("analogical");
+      reasons.push(
+        `≥2 inputs declared "applies-to-different-domain" relations (${appliesDiffDomain}) → analogical promoted to top candidate (Atomizer-declared cross-domain signal).`,
+      );
+    } else if (sharesMechanism >= 2 && !candidates.includes("analogical")) {
+      candidates.push("analogical");
+      reasons.push(
+        `≥2 inputs declared "shares-mechanism" relations (${sharesMechanism}) → analogical added as candidate.`,
+      );
+    }
+    if (contradictsCount >= 2 && !candidates.includes("dialectic")) {
+      candidates.push("dialectic");
+      reasons.push(
+        `≥2 inputs declared "contradicts" relations (${contradictsCount}) → dialectic added as candidate (Atomizer-declared axial opposition).`,
+      );
+    }
   }
 
   // 4) deductive: causal / methodological の独立組み合わせは deductive 向き
