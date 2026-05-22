@@ -178,23 +178,6 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
-/**
- * 引用挿入リクエスト型。素材 viewer の SelectionPill から発火し、
- * note-app の state にキューされて NoteEditor 側で実体化される（pendingMemoInsert と同じ機構）。
- */
-type PendingCitationInsert = {
-  /** 選択テキスト本体 */
-  text: string;
-  /** 出典ラベル（例: "filename.pdf · p.3"） */
-  sourceLabel: string;
-};
-
-/** Composer Ask に渡す quoted markdown のリクエスト */
-type PendingChatQuote = {
-  /** openChat に渡す quotedMarkdown（出典付きの blockquote markdown） */
-  quotedMarkdown: string;
-};
-
 /** CitationSource から人間可読の出典ラベルを組み立てる */
 function buildCitationSourceLabel(source: CitationSource): string {
   if (source.entry.type === "pdf") {
@@ -206,16 +189,6 @@ function buildCitationSourceLabel(source: CitationSource): string {
     return source.entry.urlMeta?.domain ?? source.entry.name;
   }
   return source.entry.name;
-}
-
-/** CitationSource を Composer に渡す quotedMarkdown 文字列にする */
-function buildQuotedMarkdown(source: CitationSource): string {
-  const label = buildCitationSourceLabel(source);
-  const quoted = source.selectionText
-    .split("\n")
-    .map((line) => `> ${line}`)
-    .join("\n");
-  return `${quoted}\n>\n> — ${label}`;
 }
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
@@ -437,14 +410,6 @@ type NoteEditorProps = {
   pendingMemoInsert?: { text: string } | null;
   /** メモ挿入完了コールバック */
   onMemoInserted?: () => void;
-  /** 引用挿入リクエスト（素材 viewer から）。pendingMemoInsert と同じ機構 */
-  pendingCitationInsert?: PendingCitationInsert | null;
-  /** 引用挿入完了コールバック */
-  onCitationInserted?: () => void;
-  /** Composer Ask 起動リクエスト（素材 viewer の Quote → Chat から） */
-  pendingChatQuote?: PendingChatQuote | null;
-  /** Composer Ask 起動完了コールバック */
-  onChatQuoteConsumed?: () => void;
   /** メモピッカー用のキャプチャインデックス */
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
   /** エディタ参照を親に伝播するコールバック */
@@ -569,10 +534,6 @@ function NoteEditorInner({
   onAddUrlBookmark,
   pendingMemoInsert,
   onMemoInserted,
-  pendingCitationInsert,
-  onCitationInserted,
-  pendingChatQuote,
-  onChatQuoteConsumed,
   captureIndex: captureIndexProp,
   onEditorRef,
   onIngestToWiki,
@@ -1274,47 +1235,6 @@ function NoteEditorInner({
     markDirty();
     onMemoInserted?.();
   }, [pendingMemoInsert, markDirty, onMemoInserted]);
-
-  // ── 引用挿入（素材 viewer の SelectionPill から） ──
-  // BlockNote の quote ブロックに選択テキスト、続けて出典 paragraph を末尾に追加する。
-  useEffect(() => {
-    if (!pendingCitationInsert || !editorRef.current) return;
-    const editor = editorRef.current;
-    const blocks = [
-      {
-        type: "quote",
-        content: [
-          { type: "text" as const, text: pendingCitationInsert.text, styles: {} },
-        ],
-      },
-      {
-        type: "paragraph",
-        content: [
-          {
-            type: "text" as const,
-            text: `— ${pendingCitationInsert.sourceLabel}`,
-            styles: { italic: true },
-          },
-        ],
-      },
-    ];
-    const allBlocks = editor.document;
-    const lastBlock = allBlocks[allBlocks.length - 1];
-    if (lastBlock) {
-      editor.insertBlocks(blocks, lastBlock, "after");
-    }
-    markDirty();
-    onCitationInserted?.();
-  }, [pendingCitationInsert, markDirty, onCitationInserted]);
-
-  // ── Composer Ask 起動（素材 viewer の Quote → Chat から） ──
-  // AssetGalleryView を閉じた直後に NoteEditor が re-mount されるパス前提で、
-  // pendingChatQuote が立っていれば openChat を呼んで Chat タブを起動する。
-  useEffect(() => {
-    if (!pendingChatQuote) return;
-    aiAssistant.openChat({ sourceBlockIds: [], quotedMarkdown: pendingChatQuote.quotedMarkdown });
-    onChatQuoteConsumed?.();
-  }, [pendingChatQuote, aiAssistant, onChatQuoteConsumed]);
 
   // ── PROV 生成 ──
   const { provDoc, generateProv, triggerRegeneration } = useProvGeneration(
@@ -2799,14 +2719,8 @@ export function NoteApp() {
   const [lintLoading, setLintLoading] = useState(false);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
-  // 引用挿入リクエスト（素材 SidePeek の SelectionPill → 編集中ノート）。
-  // PR2: PDF text-layer 内の選択を Quote → Note したときにここに積み、AssetGalleryView を閉じて
-  // NoteEditor 側の useEffect が消費する。
-  const [pendingCitationInsert, setPendingCitationInsert] = useState<PendingCitationInsert | null>(null);
-  // Composer Ask への引用渡しリクエスト（素材 SidePeek の SelectionPill → AI Chat）。
-  // AiAssistantProvider が NoteEditor 内にあるため、ここでは pending として積んで
-  // NoteEditor 側で aiAssistant.openChat を呼ぶ。
-  const [pendingChatQuote, setPendingChatQuote] = useState<PendingChatQuote | null>(null);
+  // 引用は capture.handleCreateCapture でメモ化する単純フローに変更したため、
+  // 旧 pendingCitationInsert / pendingChatQuote state は撤去（git 履歴参照）。
   // Quick Memo ダイアログ（サイドバー / ⌘+⇧+M で開く、画面非依存の入口）
   const [showQuickMemoDialog, setShowQuickMemoDialog] = useState(false);
 
@@ -4924,19 +4838,28 @@ export function NoteApp() {
               return { extracted: images.length };
             }}
             getKnowledgeKind={(rawId) => fm.wikiMetas.get(rawId)?.kind}
-            // 編集中ノートがあるときだけ Quote → Note / Quote → Chat を有効化する。
-            // ボタン側は undefined を渡すと非表示になる（SelectionPill が optional 化されている）。
-            onQuoteToNote={fm.activeFileId ? (source) => {
-              setPendingCitationInsert({
-                text: source.selectionText,
-                sourceLabel: buildCitationSourceLabel(source),
-              });
-              fm.setActiveAssetType(null);
-            } : undefined}
-            onQuoteToChat={fm.activeFileId && aiAvailable ? (source) => {
-              setPendingChatQuote({ quotedMarkdown: buildQuotedMarkdown(source) });
-              fm.setActiveAssetType(null);
-            } : undefined}
+            // 引用は毎回「新規メモ」として保存する。
+            // どのノートに入るかが不明瞭という UX 問題を回避するため、ノート直挿入はやめて
+            // メモを介する 1 ステップに揃えた。後でメモピッカーから任意のノートに引用できる。
+            // PDF スコープのチャットは未実装のため Save → Chat は出さない（別 PR で扱う）。
+            onSaveSelectionAsMemo={(source) => {
+              const sourceLabel = buildCitationSourceLabel(source);
+              const memoText = `${source.selectionText}\n\n— ${sourceLabel}`;
+              void capture.handleCreateCapture(memoText);
+              // 軽い通知だけ出して、ユーザーは PDF を読み続けられるようにする
+              const id = `quote-toast:${Date.now()}`;
+              setIngestToast((prev) => ({
+                items: [
+                  ...(prev?.items ?? []),
+                  { id, status: "success" as const, noteTitle: sourceLabel, result: tStatic("asset.quoteToMemoSaved") },
+                ],
+              }));
+              window.setTimeout(() => {
+                setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
+              }, 2500);
+            }}
+            captureIndex={capture.captureIndex}
+            onDeleteMemo={capture.handleDeleteCapture}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
@@ -5512,10 +5435,6 @@ export function NoteApp() {
               }
               setPendingMemoInsert(null);
             }}
-            pendingCitationInsert={pendingCitationInsert}
-            onCitationInserted={() => setPendingCitationInsert(null)}
-            pendingChatQuote={pendingChatQuote}
-            onChatQuoteConsumed={() => setPendingChatQuote(null)}
             captureIndex={capture.captureIndex}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
             isWikiDoc={fm.activeDoc?.source === "ai"}

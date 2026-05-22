@@ -81,14 +81,14 @@ export const PillOnly: Story = {
     <div style={{ display: "flex", gap: 24, flexDirection: "column", alignItems: "flex-start" }}>
       <SelectionPill
         source={PDF_SOURCE}
-        onQuoteToNote={(s) => console.log("Quote to note:", s)}
-        onQuoteToChat={(s) => console.log("Quote to chat:", s)}
+        
+        onSaveAsMemo={(s) => console.log("Save as memo:", s)}
         onDismiss={() => console.log("dismiss")}
       />
       <SelectionPill
         source={URL_SOURCE}
-        onQuoteToNote={(s) => console.log("Quote to note:", s)}
-        onQuoteToChat={(s) => console.log("Quote to chat:", s)}
+        
+        onSaveAsMemo={(s) => console.log("Save as memo:", s)}
       />
     </div>
   ),
@@ -145,12 +145,8 @@ export const OverPdfViewer: Story = {
             >
               <SelectionPill
                 source={PDF_SOURCE}
-                onQuoteToNote={() => {
-                  console.log("Quote to note");
-                  setPillVisible(false);
-                }}
-                onQuoteToChat={() => {
-                  console.log("Quote to chat");
+                onSaveAsMemo={() => {
+                  console.log("Save as memo");
                   setPillVisible(false);
                 }}
                 onDismiss={() => setPillVisible(false)}
@@ -225,8 +221,8 @@ export const OverUrlViewer: Story = {
       >
         <SelectionPill
           source={URL_SOURCE}
-          onQuoteToNote={(s) => console.log("Quote to note:", s)}
-          onQuoteToChat={(s) => console.log("Quote to chat:", s)}
+          
+          onSaveAsMemo={(s) => console.log("Save as memo:", s)}
         />
       </div>
     </div>
@@ -366,12 +362,8 @@ export const FullFlowDemo: Story = {
               <div style={{ position: "absolute", top: 100, left: 80 }}>
                 <SelectionPill
                   source={PDF_SOURCE}
-                  onQuoteToNote={(s) => {
+                  onSaveAsMemo={(s) => {
                     setQuotes((q) => [...q, s]);
-                    setPillVisible(false);
-                  }}
-                  onQuoteToChat={(s) => {
-                    console.log("would open Composer with quote:", s);
                     setPillVisible(false);
                   }}
                   onDismiss={() => setPillVisible(false)}

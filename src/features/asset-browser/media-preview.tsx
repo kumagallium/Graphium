@@ -130,13 +130,11 @@ function UrlPreview({ entry }: { entry: MediaIndexEntry }) {
 
 export type MediaPreviewProps = {
   entry: MediaIndexEntry;
-  /** PDF text-layer 内の選択を Note に引用挿入 — 未指定で Quote→Note ボタン非表示 */
-  onQuoteToNote?: (source: CitationSource) => void;
-  /** PDF text-layer 内の選択を Composer Ask に渡す — 未指定で Quote→Chat ボタン非表示 */
-  onQuoteToChat?: (source: CitationSource) => void;
+  /** PDF text-layer 内の選択を新規メモとして保存 */
+  onSaveSelectionAsMemo?: (source: CitationSource) => void;
 };
 
-export function MediaPreview({ entry, onQuoteToNote, onQuoteToChat }: MediaPreviewProps) {
+export function MediaPreview({ entry, onSaveSelectionAsMemo }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
       return <ResolvedImage entry={entry} />;
@@ -145,9 +143,7 @@ export function MediaPreview({ entry, onQuoteToNote, onQuoteToChat }: MediaPrevi
     case "audio":
       return <BlobMediaPlayer entry={entry} tag="audio" />;
     case "pdf":
-      return (
-        <PdfViewer entry={entry} onQuoteToNote={onQuoteToNote} onQuoteToChat={onQuoteToChat} />
-      );
+      return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
       return <UrlPreview entry={entry} />;
     default:

@@ -1,8 +1,9 @@
 // 素材 viewer 内でテキスト選択時に出るフローティング pill
 // PDF / URL embed / 画像 OCR テキストなどから共通で使う想定。
-// Storybook Step 5 設計用 — 実際の選択イベント結合は別フェーズ。
+// 引用は一旦「メモに保存」だけに揃え、PDF スコープのチャットは別 PR で扱う。
 
-import { Quote, MessageSquare, BookOpen } from "lucide-react";
+import { StickyNote, BookOpen } from "lucide-react";
+import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
 
 export type CitationSource = {
@@ -18,14 +19,16 @@ export type CitationSource = {
 
 export type SelectionPillProps = {
   source: CitationSource;
-  /** Note に引用ブロックとして挿入。未指定ならボタンを表示しない */
-  onQuoteToNote?: (source: CitationSource) => void;
-  /** Composer Ask の quotedMarkdown として渡す。未指定ならボタンを表示しない */
-  onQuoteToChat?: (source: CitationSource) => void;
+  /** 選択範囲を新規メモとして保存 */
+  onSaveAsMemo: (source: CitationSource) => void;
   /** 取り消し（選択解除） */
   onDismiss?: () => void;
-  /** viewport 上の位置（選択範囲の上に配置）。指定しない場合は inline で親が制御。 */
-  position?: { top: number; left: number };
+  /**
+   * viewport 上の位置。指定しない場合は inline で親が制御。
+   * placement="above" (default): top を pill 下端として上方向に配置（選択範囲の上に出す）
+   * placement="below": top を pill 上端として下方向に配置（選択範囲の下に出す）
+   */
+  position?: { top: number; left: number; placement?: "above" | "below" };
 };
 
 /**
@@ -34,18 +37,20 @@ export type SelectionPillProps = {
  */
 export function SelectionPill({
   source,
-  onQuoteToNote,
-  onQuoteToChat,
+  onSaveAsMemo,
   onDismiss,
   position,
 }: SelectionPillProps) {
+  const t = useT();
+  const placement = position?.placement ?? "above";
   const containerStyle: React.CSSProperties = position
     ? {
         position: "fixed",
         top: position.top,
         left: position.left,
-        transform: "translate(-50%, -100%)",
-        marginTop: -8,
+        // above: 自身の高さ分上に引き上げる / below: そのまま下に置く
+        transform: placement === "above" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
+        marginTop: placement === "above" ? -8 : 0,
         zIndex: 200,
       }
     : { position: "relative", display: "inline-block" };
@@ -66,57 +71,27 @@ export function SelectionPill({
       data-selection-pill
       onClick={(e) => e.stopPropagation()}
     >
-      {onQuoteToNote && (
-        <button
-          type="button"
-          onClick={() => onQuoteToNote(source)}
-          title="Insert as citation block in the active note"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 8px",
-            borderRadius: 6,
-            border: "none",
-            background: "transparent",
-            color: "var(--color-foreground)",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-          className="hover:bg-muted transition-colors"
-        >
-          <Quote size={14} />
-          Quote → Note
-        </button>
-      )}
-
-      {onQuoteToNote && onQuoteToChat && (
-        <div style={{ width: 1, height: 18, background: "var(--color-border)" }} />
-      )}
-
-      {onQuoteToChat && (
-        <button
-          type="button"
-          onClick={() => onQuoteToChat(source)}
-          title="Use as quote in AI Composer (Ask)"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 8px",
-            borderRadius: 6,
-            border: "none",
-            background: "transparent",
-            color: "var(--color-foreground)",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-          className="hover:bg-muted transition-colors"
-        >
-          <MessageSquare size={14} />
-          Quote → Chat
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => onSaveAsMemo(source)}
+        title={t("asset.quoteToMemoTooltip")}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "6px 8px",
+          borderRadius: 6,
+          border: "none",
+          background: "transparent",
+          color: "var(--color-foreground)",
+          fontSize: 12,
+          cursor: "pointer",
+        }}
+        className="hover:bg-muted transition-colors"
+      >
+        <StickyNote size={14} />
+        {t("asset.quoteToMemo")}
+      </button>
 
       {onDismiss && (
         <>
@@ -124,7 +99,7 @@ export function SelectionPill({
           <button
             type="button"
             onClick={onDismiss}
-            title="Dismiss"
+            title={t("asset.quoteDismiss")}
             style={{
               display: "inline-flex",
               alignItems: "center",

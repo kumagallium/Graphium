@@ -18,7 +18,6 @@ import {
   type KnowledgeKindLookup,
 } from "./asset-graph-panel";
 import { MaterialDetailHeader } from "./material-detail-header";
-import { MaterialMetadataSection } from "./material-metadata-section";
 
 // SidePeek 用の Asset graph 折り畳みセクション。
 // 親 SidePeek の縦スタックの一段として収まる想定（高さ固定 + 内部 grid）。
@@ -117,10 +116,8 @@ export type MaterialSidePeekProps = {
   getKnowledgeKind?: KnowledgeKindLookup;
   /** Full view 側で使う */
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
-  /** PDF 内テキストの選択を Note に引用ブロックとして挿入 */
-  onQuoteToNote?: (source: CitationSource) => void;
-  /** PDF 内テキストの選択を AI Composer Ask に quotedMarkdown として渡す */
-  onQuoteToChat?: (source: CitationSource) => void;
+  /** PDF 内テキストの選択を新規メモとして保存 */
+  onSaveSelectionAsMemo?: (source: CitationSource) => void;
   /**
    * inline=true: 親 flex に flex item として組み込まれる（ノートのサイドピーク同等）
    * inline=false（デフォルト）: 画面右端から portal で fixed 表示
@@ -143,8 +140,7 @@ export function MaterialSidePeek({
   mediaIndex,
   getKnowledgeKind,
   onSwitchAsset,
-  onQuoteToNote,
-  onQuoteToChat,
+  onSaveSelectionAsMemo,
   inline = false,
 }: MaterialSidePeekProps) {
   // ESC で閉じる
@@ -215,15 +211,10 @@ export function MaterialSidePeek({
           minHeight: 0,
         }}
       >
-        <MediaPreview entry={entry} onQuoteToNote={onQuoteToNote} onQuoteToChat={onQuoteToChat} />
+        <MediaPreview entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />
       </div>
 
-      {/* メタデータ（Name 編集可） */}
-      <MaterialMetadataSection
-        entry={entry}
-        onNavigateNote={onNavigateNote}
-        onRename={onRename}
-      />
+      {/* Metadata は SidePeek では非表示（面積圧迫のため）— Full view の右パネルから確認 */}
 
       {/* Asset graph（関連ノート + 派生）— default open で discoverability 確保 */}
       {onNavigateNote && (
