@@ -608,6 +608,7 @@ export const en: Record<string, string> = {
   "wikiList.kindSummary": "Summaries",
   "wikiList.kindClaim": "Claims",
   "wikiList.kindAtom": "Insights",
+  "wikiList.kindMetaAtom": "Clusters",
   "wikiList.kindSynthesis": "Ideas",
   // Phase 1 semantic-type badge labels
   "wikiTypes.claimRole.finding": "Finding",

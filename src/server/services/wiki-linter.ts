@@ -53,7 +53,7 @@ export type LintReport = {
 export type WikiSnapshot = {
   id: string;
   title: string;
-  kind: "summary" | "claim" | "atom" | "synthesis";
+  kind: "summary" | "claim" | "atom" | "meta-atom" | "synthesis";
   derivedFromNotes: string[];
   relatedClaims: string[];
   /** 本文先頭のプレビュー（1ノート1知見前提で sections は廃止） */

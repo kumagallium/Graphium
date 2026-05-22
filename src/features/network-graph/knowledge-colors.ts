@@ -14,12 +14,14 @@ import type { WikiKind } from "../../lib/document-types";
  * Knowledge kind 別の塗り色。
  *  - summary  : 紫（要約は Knowledge の中心的存在として既存色を継承）
  *  - atom     : 青緑（原子＝データの粒）
+ *  - meta-atom: 青緑をやや深く（atom を集約した中グループの粒、KJ 表札）
  *  - claim    : 紅葉色（主張＝注目）— メディアのゴールド/オレンジと衝突しない色相
  *  - synthesis: 紫紺（統合＝重み）
  */
 export const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
   summary: "#9b6dcc",
   atom: "#6ba89e",
+  "meta-atom": "#4d8a80",
   claim: "#c46d56",
   synthesis: "#6c5ca8",
 } as const;
@@ -28,6 +30,7 @@ export const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
 export const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
   summary: "#7b4fb0",
   atom: "#4f8a80",
+  "meta-atom": "#356360",
   claim: "#9b5644",
   synthesis: "#544591",
 } as const;
@@ -48,10 +51,11 @@ export function knowledgeKindBorder(kind: WikiKind | undefined): string {
   return KNOWLEDGE_KIND_BORDERS[kind] ?? KNOWLEDGE_FALLBACK_BORDER;
 }
 
-/** 凡例に並べる順序（要約 → 主張 → 原子 → 統合） */
+/** 凡例に並べる順序（要約 → 主張 → 原子 → meta-原子 → 統合） */
 export const KNOWLEDGE_KIND_LEGEND_ORDER: WikiKind[] = [
   "summary",
   "claim",
   "atom",
+  "meta-atom",
   "synthesis",
 ];

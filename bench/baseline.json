@@ -9,9 +9,9 @@
     "modelId": "n/a",
     "modelName": "heuristic (pattern-based jargon + substring)"
   },
-  "startedAt": "2026-05-22T01:04:54.091Z",
-  "finishedAt": "2026-05-22T01:04:54.115Z",
-  "durationMs": 24,
+  "startedAt": "2026-05-22T01:54:14.287Z",
+  "finishedAt": "2026-05-22T01:54:14.312Z",
+  "durationMs": 25,
   "corpusSize": 62,
   "probeCount": 12,
   "n": 1,
@@ -7770,7 +7770,7 @@
     "lift_score": 0.597,
     "mode_distribution_entropy": 0.798,
     "epistemic_preservation": 0.912,
-    "adversarial_pass_rate": 0.917,
+    "adversarial_pass_rate": 1,
     "novelty_score": 0.882,
     "claim_count_total": 168,
     "atom_count_total": 62,
@@ -7812,8 +7812,8 @@
     },
     {
       "name": "meta-atom-clustering",
-      "passed": false,
-      "reason": "metaAtomCount>=1: got 0 (Phase ε 未実装)"
+      "passed": true,
+      "reason": "metaAtomCount>=1: ok (got 1)"
     },
     {
       "name": "mixed-status-dilution",

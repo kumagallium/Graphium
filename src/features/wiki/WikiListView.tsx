@@ -443,6 +443,7 @@ export function WikiListView({
     wikiKind === "summary" ? t("wikiList.kindSummary")
     : wikiKind === "synthesis" ? t("wikiList.kindSynthesis")
     : wikiKind === "atom" ? t("wikiList.kindAtom")
+    : wikiKind === "meta-atom" ? t("wikiList.kindMetaAtom")
     : t("wikiList.kindClaim");
 
   return (

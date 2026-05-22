@@ -9,6 +9,7 @@ import { join } from "node:path";
 import type {
   BenchAtom,
   BenchClaim,
+  BenchMetaAtom,
   BenchSynthesis,
   Probe,
   ProbeResult,
@@ -93,6 +94,7 @@ export function evaluateProbes(
       claims: result.allClaims,
       atoms: result.allAtoms,
       syntheses: result.allSyntheses,
+      metaAtoms: result.allMetaAtoms,
     });
 
     const verdict = evaluateProbeExpected(
@@ -100,6 +102,7 @@ export function evaluateProbes(
       result.allAtoms,
       result.allSyntheses,
       result.allClaims,
+      result.allMetaAtoms,
       inputs,
     );
     probeResults.push(verdict);
@@ -113,6 +116,7 @@ export type PerProbeRun = {
   claims: BenchClaim[];
   atoms: BenchAtom[];
   syntheses: BenchSynthesis[];
+  metaAtoms: BenchMetaAtom[];
 };
 
 function evaluateProbeExpected(
@@ -120,6 +124,7 @@ function evaluateProbeExpected(
   atoms: BenchAtom[],
   syntheses: BenchSynthesis[],
   claims: BenchClaim[],
+  metaAtoms: BenchMetaAtom[],
   inputs: CorpusNote[],
 ): ProbeResult {
   const exp = probe.expected as Record<string, unknown>;
@@ -191,10 +196,12 @@ function evaluateProbeExpected(
   }
 
   if (typeof exp.metaAtomCount === "object" && exp.metaAtomCount !== null) {
-    // Phase ε 未実装なので常に 0。期待値が >=1 のときは fail。
+    // Phase ε: dry-run pipeline が atomType 集約で meta-Atom を擬似生成する。
+    // live mode では wiki-meta-atomizer の LLM 呼び出しに置き換わる予定。
     const min = (exp.metaAtomCount as { min?: number }).min ?? 0;
-    const ok = 0 >= min;
-    reasons.push(`metaAtomCount>=${min}: ${ok ? "ok" : "got 0 (Phase ε 未実装)"}`);
+    const count = metaAtoms.length;
+    const ok = count >= min;
+    reasons.push(`metaAtomCount>=${min}: ${ok ? `ok (got ${count})` : `got ${count}`}`);
     allPassed &&= ok;
   }
 
