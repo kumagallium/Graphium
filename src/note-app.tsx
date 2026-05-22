@@ -368,6 +368,12 @@ type NoteEditorProps = {
   /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
   onNavigateNote: (noteId: string, cachedDoc?: GraphiumDocument) => void;
+  /**
+   * ノート右パネルの Graph タブから素材ノードクリックされたときの遷移ハンドラ。
+   * Material gallery に切り替えて該当 fileId を Full view で開く想定。
+   * 未指定なら graph 上のメディアノードは反応しない（旧 blob: open はやめた）。
+   */
+  onOpenMedia?: (fileId: string) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
   onRefreshFiles: () => void;
@@ -499,6 +505,7 @@ function NoteEditorInner({
   onDeriveNote,
   onAiDeriveNote,
   onNavigateNote,
+  onOpenMedia,
   onRefreshFiles,
   saving,
   files,
@@ -2491,14 +2498,7 @@ function NoteEditorInner({
                   lineageTree={lineageTree}
                   onNavigate={onNavigateNote}
                   onPeek={(noteId) => setSidePeekNoteId(noteId)}
-                  onOpenMedia={async (fileId) => {
-                    try {
-                      const blobUrl = await getActiveProvider().getMediaBlobUrl(fileId);
-                      window.open(blobUrl, "_blank", "noopener,noreferrer");
-                    } catch (err) {
-                      console.error("メディアのオープンに失敗:", err);
-                    }
-                  }}
+                  onOpenMedia={onOpenMedia}
                 />
               )}
               {rightTab === "prov" && (
@@ -2650,6 +2650,10 @@ export function NoteApp() {
   const [showMemos, setShowMemos] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
+  // 「この fileId を Full view で開いて」と渡すための一時 state。
+  // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
+  const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean } | null>(null);
 
   // Cmd+K Composer（統一された AI 呼び出し口 / UX Audit #04）
   // Ask のみ UI 公開。他モードの実装は NoteEditorInner 内のハンドラに保持（将来用）。
@@ -4649,6 +4653,9 @@ export function NoteApp() {
           <AssetGalleryView
             mediaIndex={fm.mediaIndex}
             mediaType={fm.activeAssetType}
+            focusFileId={focusedMaterial?.fileId}
+            focusFullMode={focusedMaterial?.fullMode}
+            onFocusConsumed={() => setFocusedMaterial(null)}
             onBack={() => fm.setActiveAssetType(null)}
             onNavigateNote={(noteId) => {
               fm.setActiveAssetType(null);
@@ -4796,7 +4803,7 @@ export function NoteApp() {
             onExtractPdfPages={async (entry, onProgress) => {
               // PDF 内部に埋め込まれた画像オブジェクトを抽出して画像アセットに登録する。
               // ベクター figure / 表は PDF 内部に「画像」として存在しないため対象外。
-              // 失敗時は MediaDetailModal 側でエラーメッセージを表示する。
+              // 失敗時は MaterialSidePeek 側でエラーメッセージを表示する。
               if (entry.type !== "pdf" || !entry.fileId) return { extracted: 0 };
               const provider = getActiveProvider();
               const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
@@ -5351,6 +5358,18 @@ export function NoteApp() {
               } else {
                 fm.handleOpenFile(noteId, cachedDoc);
               }
+            }}
+            onOpenMedia={(fileId: string) => {
+              // ノート右パネルのグラフから素材ノードクリック → Material gallery に切り替え
+              // て該当 fileId を Full view で開く（旧 blob: open に代わる導線）。
+              const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+              if (!target) {
+                console.error("メディアが見つかりません:", fileId);
+                return;
+              }
+              fm.setActiveAssetType(target.type);
+              setFocusedMaterial({ fileId, fullMode: true });
+              router.navigate({ view: "assets", mediaType: target.type });
             }}
             getCachedDoc={fm.getCachedDoc}
             onRefreshFiles={fm.refreshFiles}

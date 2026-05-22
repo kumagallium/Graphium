@@ -146,8 +146,8 @@ const SinglePeek = ({ entry }: { entry: MediaIndexEntry }) => (
       entry={entry}
       inline
       onClose={() => console.log("close")}
-      onOpenFull={(e) => console.log("openFull", e.fileId)}
-      onDelete={(e) => console.log("delete", e.fileId)}
+      onToggleFull={() => console.log("toggleFull")}
+      onDelete={(e: MediaIndexEntry) => console.log("delete", e.fileId)}
       onNavigateNote={(id) => console.log("navigateNote", id)}
     />
   </div>
@@ -224,8 +224,8 @@ export const ListWithSidePeek: Story = {
               entry={active}
               inline
               onClose={() => setActiveId(null)}
-              onOpenFull={(e) => console.log("openFull", e.fileId)}
-              onDelete={(e) => console.log("delete", e.fileId)}
+              onToggleFull={() => console.log("toggleFull")}
+              onDelete={(e: MediaIndexEntry) => console.log("delete", e.fileId)}
               onNavigateNote={(id) => console.log("navigateNote", id)}
             />
           )}
@@ -258,8 +258,8 @@ export const OverlayMode: Story = {
       <MaterialSidePeek
         entry={IMAGE}
         onClose={() => console.log("close")}
-        onOpenFull={(e) => console.log("openFull", e.fileId)}
-        onDelete={(e) => console.log("delete", e.fileId)}
+        onToggleFull={() => console.log("toggleFull")}
+        onDelete={(e: MediaIndexEntry) => console.log("delete", e.fileId)}
         onNavigateNote={(id) => console.log("navigateNote", id)}
       />
     </div>

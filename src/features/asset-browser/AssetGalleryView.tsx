@@ -9,7 +9,9 @@ import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl } from "./media-index";
-import { MediaDetailModal } from "./MediaDetailModal";
+import { MaterialSidePeek } from "./MaterialSidePeek";
+import { MaterialFullView } from "./MaterialFullView";
+import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 
@@ -384,7 +386,17 @@ export type AssetGalleryViewProps = {
    * Knowledge ノートの kind 別色を出すためのルックアップ。
    * 渡されない場合はフォールバック色で描画。
    */
-  getKnowledgeKind?: import("./MediaDetailModal").KnowledgeKindLookup;
+  getKnowledgeKind?: KnowledgeKindLookup;
+  /**
+   * 親（note-app）からフォーカスしたい素材を指定する。
+   * 例: ノートのグラフから画像ノードをクリック → そのアセットを Full view で開く。
+   * mediaType と組み合わせて使う前提（mediaType=entry.type に切替えられた直後を想定）。
+   * 渡されると AssetGalleryView 内部の detailEntry / detailFullMode に反映し、
+   * 反映後に onFocusConsumed を呼んで親側の state をクリアする。
+   */
+  focusFileId?: string | null;
+  focusFullMode?: boolean;
+  onFocusConsumed?: () => void;
 };
 
 export function AssetGalleryView({
@@ -402,6 +414,9 @@ export function AssetGalleryView({
   onSharedRefUpdated,
   onExtractPdfPages,
   getKnowledgeKind,
+  focusFileId,
+  focusFullMode,
+  onFocusConsumed,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -410,6 +425,31 @@ export function AssetGalleryView({
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
+  // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
+  const [detailFullMode, setDetailFullMode] = useState(false);
+  // サイドバーで別の素材タイプ（Images / PDFs / URLs ...）に切り替えたら
+  // 開きっぱなしの SidePeek / Full view を必ず畳む。
+  // これを忘れると、Full view 中はその素材が固定描画され続けてサイドバーが効かなく見える。
+  useEffect(() => {
+    setDetailEntry(null);
+    setDetailFullMode(false);
+  }, [mediaType]);
+
+  // 親から focusFileId が降ってきたら、その entry を SidePeek / Full view で開く。
+  // ノートのグラフから画像ノードクリック → このアセットを Full view で表示、の経路。
+  // mediaType 変更直後に走るので、上の clear useEffect の後に置く（declaration 順）。
+  useEffect(() => {
+    if (!focusFileId || !mediaIndex) return;
+    const target = mediaIndex.media.find((m) => m.fileId === focusFileId);
+    if (!target) {
+      // 見つからない（削除済み等）。consumed として親をクリアする。
+      onFocusConsumed?.();
+      return;
+    }
+    setDetailEntry(target);
+    setDetailFullMode(focusFullMode ?? false);
+    onFocusConsumed?.();
+  }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -579,6 +619,41 @@ export function AssetGalleryView({
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
+
+  // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）
+  if (detailEntry && detailFullMode) {
+    return (
+      <MaterialFullView
+        entry={detailEntry}
+        onClose={() => {
+          setDetailEntry(null);
+          setDetailFullMode(false);
+        }}
+        onToggleFull={() => setDetailFullMode(false)}
+        onNavigateNote={(noteId) => {
+          setDetailEntry(null);
+          setDetailFullMode(false);
+          onNavigateNote(noteId);
+        }}
+        onRename={async (entry, newName) => {
+          setDetailEntry({ ...entry, name: newName });
+          await onRenameMedia(entry, newName);
+        }}
+        onIngest={onIngestMedia}
+        onCreateProvNote={onCreateProvNote}
+        knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
+        onSharedRefUpdated={async (entry, sharedRef) => {
+          setDetailEntry({ ...entry, sharedRef });
+          if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
+        }}
+        onExtractPdfPages={onExtractPdfPages}
+        mediaIndex={mediaIndex}
+        getKnowledgeKind={getKnowledgeKind}
+        onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+        onDelete={(entry) => setDeleteTarget(entry)}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
@@ -887,14 +962,21 @@ export function AssetGalleryView({
         />
       )}
 
-      {/* メディア詳細モーダル */}
+      {/* メディア詳細: サイドピーク（Full mode は早期 return で別ルートに渡す） */}
       {detailEntry && (
-        <MediaDetailModal
+        <MaterialSidePeek
           entry={detailEntry}
-          onClose={() => setDetailEntry(null)}
-          onNavigateNote={onNavigateNote}
+          onClose={() => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+          }}
+          onToggleFull={() => setDetailFullMode(true)}
+          onNavigateNote={(noteId) => {
+            setDetailEntry(null);
+            setDetailFullMode(false);
+            onNavigateNote(noteId);
+          }}
           onRename={async (entry, newName) => {
-            // 楽観的更新: モーダル内の表示を即座に反映
             setDetailEntry({ ...entry, name: newName });
             await onRenameMedia(entry, newName);
           }}
@@ -902,7 +984,6 @@ export function AssetGalleryView({
           onCreateProvNote={onCreateProvNote}
           knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
           onSharedRefUpdated={async (entry, sharedRef) => {
-            // モーダル内表示を即時反映 + 親に永続化を依頼
             setDetailEntry({ ...entry, sharedRef });
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}

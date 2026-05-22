@@ -1,5 +1,5 @@
 // Knowledge ノード（旧 Wiki）の kind 別カラーパレット。
-// network-graph の view.tsx と asset-browser の MediaDetailModal の双方から共有する。
+// network-graph の view.tsx と asset-browser の asset-graph-panel の双方から共有する。
 //
 // 設計方針（design.md 準拠）:
 //  - ブランドグリーン（#4B7A52）と落ち着いた青（#5b8fb9 通常ノート色）の周辺で

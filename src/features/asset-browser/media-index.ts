@@ -79,7 +79,7 @@ export type MediaIndexEntry = {
   /**
    * このメディアが派生してきた元アセットの fileId 配列（optional）。
    * 例: PDF から抽出した画像は元 PDF の fileId を保持する。
-   * MediaDetailModal のネットワーク図で「素材同士の派生」を辿るために使う。
+   * MaterialSidePeek の asset graph で「素材同士の派生」を辿るために使う。
    * 既存ユーザー互換のため optional。
    */
   derivedFromAssets?: string[];
