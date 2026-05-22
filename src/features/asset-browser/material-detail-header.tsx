@@ -70,6 +70,12 @@ export type MaterialDetailHeaderProps = {
   fullMode?: boolean;
   /** 削除 */
   onDelete?: (entry: MediaIndexEntry) => void;
+  /**
+   * "sidePeek": 旧 SidePeek 互換のコンパクトな inline-style ヘッダー（小さい）。
+   * "titleBar": Note のタイトルバーと同じ Tailwind クラス + サイズ感（フル画面用）。
+   * 既定: "sidePeek"
+   */
+  variant?: "sidePeek" | "titleBar";
 };
 
 export function MaterialDetailHeader({
@@ -85,6 +91,7 @@ export function MaterialDetailHeader({
   onToggleFull,
   fullMode = false,
   onDelete,
+  variant = "sidePeek",
 }: MaterialDetailHeaderProps) {
   const t = useT();
 
@@ -144,18 +151,29 @@ export function MaterialDetailHeader({
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf");
   const canExtract = !!onExtractPdfPages && entry.type === "pdf";
 
+  const titleBarMode = variant === "titleBar";
+
   return (
     <>
       <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "8px 12px",
-          borderBottom: "1px solid var(--color-border-subtle)",
-          background: "var(--color-surface)",
-          flexShrink: 0,
-        }}
+        className={
+          titleBarMode
+            ? "px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0"
+            : undefined
+        }
+        style={
+          titleBarMode
+            ? undefined
+            : {
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 12px",
+                borderBottom: "1px solid var(--color-border-subtle)",
+                background: "var(--color-surface)",
+                flexShrink: 0,
+              }
+        }
       >
         <button
           onClick={onClose}
@@ -206,7 +224,7 @@ export function MaterialDetailHeader({
             />
           ) : (
             <span
-              className={`text-sm font-medium text-foreground truncate ${onRename ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+              className={`text-sm font-medium truncate ${titleBarMode ? "text-muted-foreground" : "text-foreground"} ${onRename ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
               title={onRename ? t("asset.clickToRename") : entry.name}
               onClick={() => { if (onRename) setEditing(true); }}
             >

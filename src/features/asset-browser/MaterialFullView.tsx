@@ -77,7 +77,7 @@ export function MaterialFullView({
         flexDirection: "column",
       }}
     >
-      {/* ヘッダー */}
+      {/* ヘッダー（Note の title bar と同じ styling） */}
       <MaterialDetailHeader
         entry={entry}
         onClose={onClose}
@@ -91,6 +91,7 @@ export function MaterialFullView({
         onToggleFull={onToggleFull}
         fullMode
         onDelete={onDelete}
+        variant="titleBar"
       />
 
       {/* コンテンツ行: 中央 viewer + 右パネル + 右レール */}
