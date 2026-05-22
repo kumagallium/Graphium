@@ -868,6 +868,8 @@ export const en: Record<string, string> = {
   "asset.exitFull": "Exit full view",
   "asset.rightPanel.graph": "Asset graph",
   "asset.rightPanel.metadata": "Metadata",
+  "asset.graph.expand": "Expand graph",
+  "asset.graph.close": "Close",
   "asset.sortDate": "Date",
   "asset.sortName": "Name",
   "asset.pickTitle": "Select {type}",

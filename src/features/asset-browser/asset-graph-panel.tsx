@@ -3,6 +3,8 @@
 // 形にしたもの。表示するか自体は呼び出し側で判定する（showGraph 判定はこのコンポーネントの中）。
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Maximize2, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { useT } from "../../i18n";
@@ -258,6 +260,9 @@ export type AssetGraphPanelProps = {
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
   /** 凡例を表示するか（コンパクト表示時は省略可） */
   showLegend?: boolean;
+  /** 拡大表示（Maximize2）ボタンを出すか。既定 true。
+   *  ノートの NetworkGraphView と同じ pattern で portal modal で全画面表示する。 */
+  enableExpand?: boolean;
 };
 
 export function AssetGraphPanel({
@@ -267,10 +272,22 @@ export function AssetGraphPanel({
   onNavigateNote,
   onSwitchAsset,
   showLegend = true,
+  enableExpand = true,
 }: AssetGraphPanelProps) {
   const t = useT();
   const graphContainerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  // ESC で拡大解除（ノート graph と同じ挙動）
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [expanded]);
 
   // サムネイル URL を解決
   const [assetThumbUrls, setAssetThumbUrls] = useState<Map<string, string>>(new Map());
@@ -374,12 +391,13 @@ export function AssetGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [entry, mediaIndex, getKnowledgeKind, onNavigateNote, onSwitchAsset, assetThumbUrls]);
+  }, [entry, mediaIndex, getKnowledgeKind, onNavigateNote, onSwitchAsset, assetThumbUrls, expanded]);
 
-  return (
-    <div className="flex flex-col h-full">
+  // 凡例 + 拡大トグル（拡大時 / 通常時で共通）
+  const legendBar = (showLegend || enableExpand) ? (
+    <div className="px-4 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground shrink-0">
       {showLegend && (
-        <div className="px-4 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <>
           <span className="flex items-center gap-1">
             <span
               className="inline-block w-2.5 h-2.5 rounded-sm"
@@ -406,11 +424,51 @@ export function AssetGraphPanel({
               {t(`knowledge.kind.${kind}` as any)}
             </span>
           ))}
-          <span className="ml-auto text-[10px] text-muted-foreground/60">
+        </>
+      )}
+      <span className="ml-auto flex items-center gap-2">
+        {showLegend && (
+          <span className="text-[10px] text-muted-foreground/60">
             {t("asset.clickToNavigate")}
           </span>
+        )}
+        {enableExpand && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title={expanded ? t("asset.graph.close") + " (Esc)" : t("asset.graph.expand")}
+          >
+            {expanded ? <X size={12} /> : <Maximize2 size={12} />}
+          </button>
+        )}
+      </span>
+    </div>
+  ) : null;
+
+  // 拡大時は portal で画面全体に重ねる（ノート NetworkGraphView と同じ pattern）
+  if (expanded) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[120] flex items-center justify-center p-6"
+        style={{ background: "rgba(0, 0, 0, 0.45)" }}
+        onClick={() => setExpanded(false)}
+      >
+        <div
+          className="relative flex flex-col rounded-lg shadow-2xl overflow-hidden"
+          style={{ background: BG_COLOR, width: "min(1400px, 95vw)", height: "92vh" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {legendBar}
+          <div ref={graphContainerRef} className="flex-1" />
         </div>
-      )}
+      </div>,
+      document.body,
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {legendBar}
       <div
         ref={graphContainerRef}
         className="flex-1"
