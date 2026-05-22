@@ -226,12 +226,13 @@ TypeScript types use the historical `Wiki*` prefix (`WikiKind`,
 `WikiMeta`) — UI labels and prose use "Knowledge / Claims / Insights /
 Ideas" instead.
 
-The pipeline (running on the Node server) has five stages:
+The pipeline (running on the Node server) has six stages:
 
 | Stage | File | What it does |
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes |
+| **Meta-Atomizer** | `src/server/services/wiki-meta-atomizer.ts` | KJ-style mid-group extractor. When 6+ Insights are available, names the recurring *axes* across 3+ Insights and emits *meta-Insight* pages (kind=`meta-atom`). Off by default — opt in via the **Mid-groups** experimental flag. The Synthesizer treats meta-Insights and Insights interchangeably |
 | **Idea router** | `src/features/ai-assistant/synthesis-router.ts` | From input Insights' `atomType`, picks the candidate `synthesisMode`s (deductive / abductive / analogical / dialectic) the Synthesizer should consider |
 | **Synthesizer** | `src/server/services/wiki-synthesizer.ts` + `src/server/services/synthesis-prompts/` | Weaves Insights across notes into *Idea* pages. The system prompt is composed from a shared `common.ts` plus one file per mode; the router restricts which modes the LLM sees |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
@@ -245,7 +246,7 @@ sequenceDiagram
     participant W as wiki-service.ts (client)
     participant S as Server (Hono)
     participant I as Ingester
-    participant A as Atomizer / Synthesizer
+    participant A as Atomizer / Meta-Atomizer / Synthesizer
     participant X as Cross-updater
     participant L as Linter
     participant FS as Wiki files (JSON)

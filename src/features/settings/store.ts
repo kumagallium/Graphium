@@ -29,13 +29,17 @@ export const JP_FONTS: readonly JpFont[] = ["", "zen-kaku", "biz-udp"] as const;
  * 実験的機能のオン/オフ。
  * - atomLayer: Concept をさらに抽象化した Atom 層を有効にする。
  *              Concept が新規に作成・更新された後、追加で Atom を自動生成する。
- * - synthesis: Atom を組み合わせた "結晶化" 知識（Synthesis）を有効にする。
+ * - metaAtomLayer: Atom をさらに集約した meta-Atom 層（KJ 中グループ）を有効にする。
+ *              Atomize の後に 6 件以上の Atom 集合に対して KJ 中グループの「表札」を
+ *              自動抽出する。atomLayer が ON のときのみ意味を持つ。
+ * - synthesis: Atom（+ meta-Atom）を組み合わせた "結晶化" 知識（Synthesis）を有効にする。
  *              Atom 層に依存するため atomLayer が ON の時のみ意味を持つ。
- * 既定はどちらも OFF（デフォルトのフローは Note → Summary → Concept のみ）。
+ * 既定はすべて OFF（デフォルトのフローは Note → Summary → Concept のみ）。
  * 既存ユーザーの Synthesis ファイルは保持され、フラグ ON で UI に再表示される。
  */
 export type ExperimentalSettings = {
   atomLayer: boolean;
+  metaAtomLayer: boolean;
   synthesis: boolean;
 };
 
@@ -80,6 +84,7 @@ const DEFAULT_SETTINGS: Settings = {
   jpFont: "",
   experimental: {
     atomLayer: false,
+    metaAtomLayer: false,
     synthesis: false,
   },
 };
@@ -150,6 +155,11 @@ export function loadSettings(): Settings {
       chatSynthesisModel: migratedChatSynth,
       experimental: {
         atomLayer: typeof exp?.atomLayer === "boolean" ? exp.atomLayer : false,
+        // meta-Atom 層は Atom 依存のため、atomLayer OFF なら強制的に OFF とする
+        metaAtomLayer:
+          typeof exp?.metaAtomLayer === "boolean" && exp?.atomLayer === true
+            ? exp.metaAtomLayer
+            : false,
         // Synthesis は Atom 依存のため、atomLayer OFF なら強制的に OFF とする
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
       },
@@ -252,6 +262,12 @@ export function isAgentConfigured(): boolean {
 /** Atom レイヤ（実験的）が有効かどうか */
 export function isAtomLayerEnabled(): boolean {
   return loadSettings().experimental.atomLayer === true;
+}
+
+/** meta-Atom レイヤ（実験的）が有効かどうか。atomLayer が前提のため両方 ON でないと true にならない */
+export function isMetaAtomLayerEnabled(): boolean {
+  const e = loadSettings().experimental;
+  return e.atomLayer === true && e.metaAtomLayer === true;
 }
 
 /** Synthesis レイヤ（実験的）が有効かどうか。atomLayer が前提のため両方 ON でないと true にならない */

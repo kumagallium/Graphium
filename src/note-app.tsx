@@ -76,7 +76,7 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
-import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isMetaAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -116,6 +116,8 @@ import {
   rankCandidatesByRelevance,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
+  // meta-Atom（Phase ε / 実験的）
+  metaAtomizeAtoms, buildMetaAtomDocument, type MetaAtomInput,
   // Discovery 共通: embedding ベース重複検出
   dedupCandidatesByEmbedding,
   // インライン引用リンク
@@ -3151,6 +3153,7 @@ export function NoteApp() {
     const pipelineId = `pipeline:${Date.now()}`;
     const pipelineStages: IngestStage[] = [
       { key: "atomize", label: "Atomize", status: "pending" },
+      { key: "meta-atomize", label: "Meta-Atomize", status: "pending" },
       { key: "synthesize", label: "Synthesize", status: "pending" },
       { key: "lint", label: "Lint", status: "pending" },
     ];
@@ -3292,10 +3295,97 @@ export function NoteApp() {
       updateStage("atomize", "skipped", "Atom Layer が無効");
     }
 
+    // 自動 Meta-Atomize: experimental.metaAtomLayer 有効時、Atom 集合から KJ 中グループ
+    // （表札つきの「軸」）を抽出する。生成された meta-Atom は新規 Wiki ドキュメントとして
+    // 保存され、直後の Synthesize 段では Atom と並列の入力（snapshot 形が同じ）として渡される。
+    //
+    // 閾値は 6 件（2 軸 × 3 Atom）。それ未満は LLM 呼び出しを skip して費用と時間を節約。
+    const newMetaAtomSnapshots: ClaimSnapshot[] = [];
+    const metaAtomLabel = tStatic("settings.maintenance.kind.metaAtom");
+    if (isMetaAtomLayerEnabled()) {
+      try {
+        const existingAtomSnapshotsForMeta = buildClaimSnapshots(
+          fm.wikiFiles,
+          fm.wikiMetas,
+          fm.getCachedDoc,
+          "atom",
+          Number.POSITIVE_INFINITY,
+        );
+        const allAtomsForMeta = [...existingAtomSnapshotsForMeta, ...newAtomSnapshots];
+        if (allAtomsForMeta.length < 6) {
+          updateStage(
+            "meta-atomize",
+            "skipped",
+            `Atom ${allAtomsForMeta.length} 件（6 件以上で実行）`,
+          );
+        } else {
+          updateStage(
+            "meta-atomize",
+            "running",
+            `${allAtomsForMeta.length} ${atomLabel} を分析中...`,
+          );
+          // wiki-service に渡す MetaAtomInput を組み立てる
+          const metaAtomInputs: MetaAtomInput[] = allAtomsForMeta.map((s) => ({
+            id: s.id,
+            title: s.title,
+            bodyPreview: s.bodyPreview,
+            epistemicStatus: s.epistemicStatus,
+            atomType: s.atomType,
+          }));
+          const metaResult = await metaAtomizeAtoms(metaAtomInputs, "ja", {
+            model: getChatSynthesisModelName() || undefined,
+          });
+          let createdMetaAtoms = 0;
+          for (const candidate of metaResult.metaAtoms) {
+            const metaDoc = buildMetaAtomDocument(candidate, metaResult.model ?? null, "ja");
+            const newId = await fm.handleCreateWikiFile(metaDoc);
+            embedWikiSections(newId, metaDoc).catch(() => {});
+            wikiLog
+              .append(
+                "ingest",
+                [newId],
+                `${metaAtomLabel}: "${candidate.title}" (from ${candidate.derivedFromAtomTitles.slice(0, 3).join(" + ")}${candidate.derivedFromAtoms.length > 3 ? " ..." : ""})`,
+              )
+              .catch(() => {});
+            createdMetaAtoms += 1;
+            // Synthesize 段に渡すため新規 meta-Atom も ClaimSnapshot 形に詰める。
+            // Synthesizer は kind を見ずに同じ snapshot を扱えるよう設計されている（Phase ε 仕様）。
+            newMetaAtomSnapshots.push({
+              id: newId,
+              title: candidate.title,
+              bodyPreview: candidate.body ?? "",
+              level: undefined,
+              relatedClaims: [],
+              sourceSummaryPreviews: [],
+              // meta-Atom 自身は atomType を持たないので undefined
+              atomType: undefined,
+            });
+          }
+          updateStage(
+            "meta-atomize",
+            "done",
+            createdMetaAtoms > 0
+              ? `${createdMetaAtoms} ${metaAtomLabel}`
+              : `新規 ${metaAtomLabel} なし`,
+          );
+        }
+      } catch (err) {
+        console.error("Meta-atomize failed:", err);
+        updateStage(
+          "meta-atomize",
+          "error",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    } else {
+      updateStage("meta-atomize", "skipped", "meta-Atom Layer が無効");
+    }
+
     // 自動 Synthesis: synthesis レイヤが有効なときのみ。
     // Phase 1: クラスタ集中サンプリング + バルク経路では K 上限 2 で控えめに実行。
     // 入力 Atom には wikiMetas 由来（過去の Atom）+ 直前の Atomize で作った新規 Atom を
     // マージして渡す。`fm.wikiMetas` だけだと新規 Atom がスタールで含まれない。
+    // Phase ε: meta-Atom も同形の snapshot として加える（Synthesizer は両者を等価に扱う）。
     if (isSynthesisEnabled()) {
       try {
         const existingAtomSnapshots = buildClaimSnapshots(
@@ -3305,7 +3395,21 @@ export function NoteApp() {
           "atom",
           Number.POSITIVE_INFINITY,
         );
-        const allAtomSnapshots = [...existingAtomSnapshots, ...newAtomSnapshots];
+        // Phase ε: 既存の meta-Atom もスナップショットに加える（kind=meta-atom を取り込む）。
+        // wikiMetas で kind === "meta-atom" のエントリを buildClaimSnapshots と同じ整形で詰める。
+        const existingMetaAtomSnapshots = buildClaimSnapshots(
+          fm.wikiFiles,
+          fm.wikiMetas,
+          fm.getCachedDoc,
+          "meta-atom",
+          Number.POSITIVE_INFINITY,
+        );
+        const allAtomSnapshots = [
+          ...existingAtomSnapshots,
+          ...existingMetaAtomSnapshots,
+          ...newAtomSnapshots,
+          ...newMetaAtomSnapshots,
+        ];
         if (allAtomSnapshots.length < 3) {
           updateStage("synthesize", "skipped", `Atom ${allAtomSnapshots.length} 件（3 件以上で実行）`);
         } else {
@@ -4573,6 +4677,7 @@ export function NoteApp() {
       return { summary, claim, atom, "meta-atom": metaAtom, synthesis };
     })(),
     showAtomLayer: experimentalFlags.atomLayer,
+    showMetaAtomLayer: experimentalFlags.atomLayer && experimentalFlags.metaAtomLayer,
     showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,

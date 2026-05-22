@@ -27,6 +27,9 @@ export {
   fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
+  // meta-Atom（Phase ε / 実験的）
+  metaAtomizeAtoms, buildMetaAtomDocument,
+  type MetaAtomInput, type MetaAtomCandidate, type MetaAtomizeResult,
   // Discovery 共通: embedding ベース重複検出
   dedupCandidatesByEmbedding,
   // インライン引用リンク

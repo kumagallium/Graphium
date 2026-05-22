@@ -42,6 +42,12 @@ import {
   parseAtomizerOutput,
 } from "../services/wiki-atomizer.js";
 import {
+  buildMetaAtomizerSystemPrompt,
+  buildMetaAtomizerUserMessage,
+  parseMetaAtomizerOutput,
+  type AtomForMetaAtomization,
+} from "../services/wiki-meta-atomizer.js";
+import {
   buildRewriterSystemPrompt,
   buildRewriterUserMessage,
   parseRewriterOutput,
@@ -511,6 +517,46 @@ app.post("/atomize", async (c) => {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki atomize error:", err);
     return c.json({ atoms: [], error: message });
+  }
+});
+
+// Meta-Atomize（KJ 中グループ抽出: 3+ Atom にまたがる軸を表札化する）
+//   experimental.metaAtomLayer 有効時にクライアントから呼ばれる。
+//   Atom[] を入力し、3 件以上の Atom にまたがる meta-Atom 候補 0〜5 件を返す。
+//   入力は最低 6 件（2 軸 × 3 Atom）を想定。それ未満ならクライアント側で skip する。
+app.post("/meta-atomize", async (c) => {
+  const body = await c.req.json<{
+    atoms: AtomForMetaAtomization[];
+    language: string;
+    model?: string;
+  }>();
+
+  if (!body.atoms || body.atoms.length < 6) {
+    return c.json({ metaAtoms: [] });
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) return c.json({ metaAtoms: [] });
+
+  const systemPrompt = buildMetaAtomizerSystemPrompt(body.language || "en");
+  const userMessage = buildMetaAtomizerUserMessage(body.atoms);
+
+  try {
+    const model = createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt,
+      messages: [{ role: "user" as const, content: userMessage }],
+      maxSteps: 1,
+    });
+    const atomsById = new Map(body.atoms.map((a) => [a.id, a]));
+    const metaAtoms = parseMetaAtomizerOutput(result.message, atomsById);
+    return c.json({ metaAtoms, model: result.model, tokenUsage: result.tokenUsage });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "不明なエラー";
+    console.error("Wiki meta-atomize error:", err);
+    return c.json({ metaAtoms: [], error: message });
   }
 });
 

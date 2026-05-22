@@ -1988,6 +1988,200 @@ export function buildAtomDocument(
   };
 }
 
+// ── meta-Atom（Phase ε）──
+
+export type MetaAtomInput = {
+  /** 入力 Atom の wiki ファイル ID */
+  id: string;
+  /** Atom のタイトル */
+  title: string;
+  /** Atom の本文プレビュー（最初の 1-2 段落） */
+  bodyPreview: string;
+  /** Phase η: 入力 Atom の epistemicStatus（最低継承の対象） */
+  epistemicStatus?: import("../../lib/document-types").EpistemicStatus;
+  /** Phase 1.2: Atom の推論的役割 */
+  atomType?: import("../../lib/document-types").AtomType;
+};
+
+export type MetaAtomCandidate = {
+  /** 表札（KJ 中グループの命名）。5-12 word。 */
+  title: string;
+  /** 1-2 段落の axis 説明。 */
+  body: string;
+  /** 派生元 Atom の内部 ID（最低 3 件） */
+  derivedFromAtoms: string[];
+  /** 派生元 Atom のタイトル列（id と同じ並び）。表示用。 */
+  derivedFromAtomTitles: string[];
+  /** 自己評価 0-1 */
+  confidence: number;
+  /** 派生元 Atom の epistemicStatus 最低継承 */
+  epistemicStatus: import("../../lib/document-types").EpistemicStatus;
+};
+
+export type MetaAtomizeResult = { metaAtoms: MetaAtomCandidate[]; model?: string };
+
+/**
+ * 複数の Atom を入力し、KJ 中グループ（meta-Atom）候補を 0〜5 件返す。
+ * 各候補は最低 3 件の Atom にまたがる「軸」の表札。
+ * experimental.metaAtomLayer 有効時にクライアントから呼ぶ。
+ *
+ * 入力 Atom 数が 6 件未満なら meta-Atom を作る価値が薄いので空配列を返す
+ * （サーバー側も同じ判定で skip するが、不要な往復を避けるためここでもガード）。
+ */
+export async function metaAtomizeAtoms(
+  atoms: MetaAtomInput[],
+  language: string,
+  options?: { model?: string },
+): Promise<MetaAtomizeResult> {
+  if (atoms.length < 6) return { metaAtoms: [] };
+
+  // サーバー側 prompt 入力（タイトルを別管理にしたいので id→title マップを残す）
+  const titleById = new Map(atoms.map((a) => [a.id, a.title]));
+  const payloadAtoms = atoms.map((a) => ({
+    id: a.id,
+    title: a.title,
+    bodyPreview: a.bodyPreview,
+    epistemicStatus: a.epistemicStatus,
+    atomType: a.atomType,
+  }));
+
+  const res = await fetch(`${API_BASE}/meta-atomize`, {
+    method: "POST",
+    headers: wikiHeaders("chatSynthesis"),
+    body: JSON.stringify({
+      atoms: payloadAtoms,
+      language,
+      ...(options?.model ? { model: options.model } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Meta-atomize API failed (${res.status}): ${detail.slice(0, 200) || "no body"}`);
+  }
+  // サーバー側は内部例外時 200 + { metaAtoms: [], error: "..." } を返す
+  const data = await res.json() as {
+    metaAtoms?: Array<{
+      title: string;
+      body: string;
+      derivedFromAtoms: string[];
+      confidence: number;
+      epistemicStatus: import("../../lib/document-types").EpistemicStatus;
+    }>;
+    model?: string;
+    error?: string;
+  };
+  if (data.error) throw new Error(`Meta-atomize failed on server: ${data.error}`);
+
+  const metaAtoms: MetaAtomCandidate[] = (data.metaAtoms ?? []).map((m) => ({
+    title: m.title,
+    body: m.body,
+    derivedFromAtoms: m.derivedFromAtoms,
+    derivedFromAtomTitles: m.derivedFromAtoms.map((id) => titleById.get(id) ?? id),
+    confidence: m.confidence,
+    epistemicStatus: m.epistemicStatus,
+  }));
+
+  return { metaAtoms, model: data.model };
+}
+
+/**
+ * MetaAtomCandidate から GraphiumDocument を構築する。
+ * 構造は Atom と並列（Synthesizer は kind を見ずに同じ snapshot 形で扱える）。
+ * 派生元 Atom は「Source Atoms」セクションとして @リンク化される。
+ */
+export function buildMetaAtomDocument(
+  candidate: MetaAtomCandidate,
+  model: string | null,
+  language?: string,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const blocks: any[] = candidate.body
+    .split(/\n{2,}/)
+    .map((para) => para.trim())
+    .filter((para) => para.length > 0)
+    .map((para) => ({
+      id: crypto.randomUUID(),
+      type: "paragraph",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+      content: [{ type: "text", text: para, styles: {} }],
+      children: [],
+    }));
+
+  // Source Atoms セクション
+  const knowledgeLinks: any[] = [];
+  if (candidate.derivedFromAtoms.length > 0) {
+    blocks.push({
+      id: crypto.randomUUID(),
+      type: "heading",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
+      content: [{ type: "text", text: "Source Atoms", styles: {} }],
+      children: [],
+    });
+    for (let i = 0; i < candidate.derivedFromAtoms.length; i++) {
+      const atomId = candidate.derivedFromAtoms[i];
+      const atomTitle = candidate.derivedFromAtomTitles[i] ?? atomId;
+      const blockId = crypto.randomUUID();
+      blocks.push({
+        id: blockId,
+        type: "bulletListItem",
+        props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+        content: [
+          { type: "text", text: `@🤖 ${atomTitle}`, styles: { textColor: "blue" } },
+        ],
+        children: [],
+      });
+      knowledgeLinks.push({
+        id: crypto.randomUUID(),
+        sourceBlockId: blockId,
+        targetBlockId: "",
+        targetNoteId: atomId,
+        type: "reference",
+        layer: "knowledge",
+        createdBy: "ai",
+      });
+    }
+  }
+
+  const wikiMeta: WikiMeta = {
+    kind: "meta-atom",
+    derivedFromNotes: [],
+    derivedFromChats: [],
+    // Claim 層から見ると派生元は Atom 経由になるので空。意味的な派生元は derivedFromAtoms で表現。
+    derivedFromClaims: [],
+    derivedFromAtoms: candidate.derivedFromAtoms,
+    generatedAt: now,
+    generatedBy: { model: model ?? "unknown", version: "1.0.0" },
+    lastIngestedAt: now,
+    language: language ?? undefined,
+    confidence: candidate.confidence,
+    // Phase η: 派生元 Atom から継承した最低 status（meta-atomizer parser 側で強制）
+    epistemicStatus: candidate.epistemicStatus,
+    // meta-Atom は KJ 中グループの「軸そのもの」のため procedureContext / Toulmin はない
+  };
+
+  return {
+    version: 2,
+    title: candidate.title,
+    pages: [{
+      id: "main",
+      title: candidate.title,
+      blocks,
+      labels: {},
+      provLinks: [],
+      knowledgeLinks,
+    }],
+    source: "ai",
+    wikiMeta,
+    generatedBy: {
+      agent: "ai",
+      sessionId: `wiki-meta-atomize-${now}`,
+      model: model ?? undefined,
+    },
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
 /**
  * 既存の Concept ページからスナップショットを構築する（Synthesis 入力用）
  *
@@ -2009,9 +2203,11 @@ export function buildClaimSnapshots(
   /**
    * Synthesizer に渡すソースの kind。
    * Atom レイヤを有効にした構成では "atom" を渡し、Atom 同士の結晶化として Synthesis を生成する。
+   * Phase ε: "meta-atom" を渡すと既存の meta-Atom を同形 snapshot として返す
+   * （Synthesizer は kind を問わず両者を等価に扱える設計）。
    * 既定の "claim" は legacy 経路（実験フラグ OFF 時には呼ばれない想定）。
    */
-  sourceKind: "claim" | "atom" = "claim",
+  sourceKind: "claim" | "atom" | "meta-atom" = "claim",
   /** 件数上限（既定: MAX_SNAPSHOTS_PER_RUN）。直近更新優先で切り詰める */
   limit: number = MAX_SNAPSHOTS_PER_RUN,
 ): ClaimSnapshot[] {
@@ -2062,6 +2258,7 @@ export function buildClaimSnapshots(
       // on-demand に source Claim を引く設計。
       // PR-B5: Atom source の場合は atomType を伝搬し、サーバー側 synthesis-router で
       // モード候補の推定に使う（"claim" source では undefined のまま）。
+      // Phase ε: meta-Atom 自身は atomType を持たない（軸そのもの）ので undefined。
       atomType: sourceKind === "atom" ? meta.atomType : undefined,
     });
   }

@@ -43,8 +43,9 @@ export type FileSidebarProps = {
   memosActive?: boolean;
   /** Wiki カテゴリ別カウント */
   wikiCounts?: { summary: number; claim: number; atom: number; "meta-atom": number; synthesis: number };
-  /** 実験的レイヤ（Atom/Synthesis）を表示するか */
+  /** 実験的レイヤ（Atom/meta-Atom/Synthesis）を表示するか */
   showAtomLayer?: boolean;
+  showMetaAtomLayer?: boolean;
   showSynthesisLayer?: boolean;
   /** Wiki リスト表示 */
   onShowWikiList?: (kind: WikiKind) => void;
@@ -126,6 +127,7 @@ export function FileSidebar({
   memosActive = false,
   wikiCounts,
   showAtomLayer = false,
+  showMetaAtomLayer = false,
   showSynthesisLayer = false,
   onShowWikiList,
   activeWikiKind,
@@ -331,8 +333,9 @@ export function FileSidebar({
                 // ある場合（count > 0）は表示してアクセスを保つ。
                 const kinds: WikiKind[] = ["summary", "claim"];
                 if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
-                // Phase ε: meta-atom は atom 実験フラグに相乗り（atom 層がオンならセットで出す）
-                if (showAtomLayer || (wikiCounts?.["meta-atom"] ?? 0) > 0) kinds.push("meta-atom");
+                // Phase ε: meta-atom は独立フラグ。データが既にあるユーザー（count > 0）には
+                // フラグ OFF でも表示してアクセスを保つ。
+                if (showMetaAtomLayer || (wikiCounts?.["meta-atom"] ?? 0) > 0) kinds.push("meta-atom");
                 if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;

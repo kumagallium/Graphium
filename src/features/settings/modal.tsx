@@ -192,7 +192,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
   const [latinFont, setLatinFont] = useState<LatinFont>("");
   const [jpFont, setJpFont] = useState<JpFont>("");
-  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false });
+  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, metaAtomLayer: false, synthesis: false });
 
   // サーバーデータ
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -389,7 +389,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setCustomLabels(settings.customLabels ?? {});
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
-    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false });
+    setExperimental(settings.experimental ?? { atomLayer: false, metaAtomLayer: false, synthesis: false });
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -1951,7 +1951,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                     const next = e.target.checked;
                     setExperimental((prev) => ({
                       atomLayer: next,
-                      // Atom OFF にするとき Synthesis も強制 OFF（依存関係）
+                      // Atom OFF にするとき meta-Atom も Synthesis も強制 OFF（依存関係）
+                      metaAtomLayer: next ? prev.metaAtomLayer : false,
                       synthesis: next ? prev.synthesis : false,
                     }));
                     setSaved(false);
@@ -1963,6 +1964,27 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                   </span>
                   <span className="block text-[11px] text-muted-foreground leading-relaxed mt-0.5">
                     {t("settings.experimental.atom.help")}
+                  </span>
+                </span>
+              </label>
+
+              <label className={`flex items-start gap-3 ${experimental.atomLayer ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}>
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={experimental.metaAtomLayer}
+                  disabled={!experimental.atomLayer}
+                  onChange={(e) => {
+                    setExperimental((prev) => ({ ...prev, metaAtomLayer: e.target.checked }));
+                    setSaved(false);
+                  }}
+                />
+                <span className="flex-1">
+                  <span className="block text-xs font-semibold text-foreground">
+                    {t("settings.experimental.metaAtom.title")}
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground leading-relaxed mt-0.5">
+                    {t("settings.experimental.metaAtom.help")}
                   </span>
                 </span>
               </label>
