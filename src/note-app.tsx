@@ -4845,7 +4845,13 @@ export function NoteApp() {
             onSaveSelectionAsMemo={(source) => {
               const sourceLabel = buildCitationSourceLabel(source);
               const memoText = `${source.selectionText}\n\n— ${sourceLabel}`;
-              void capture.handleCreateCapture(memoText);
+              // PR3-a: 出典素材を構造化して保持する。テキストの末尾ラベルに加えて
+              // sourceAsset.fileId を埋めておくことで、ファイル名変更後もメモ↔素材を辿れる。
+              void capture.handleCreateCapture(memoText, {
+                fileId: source.entry.fileId,
+                type: source.entry.type,
+                ...(source.pageNumber !== undefined ? { pageNumber: source.pageNumber } : {}),
+              });
               // 軽い通知だけ出して、ユーザーは PDF を読み続けられるようにする
               const id = `quote-toast:${Date.now()}`;
               setIngestToast((prev) => ({

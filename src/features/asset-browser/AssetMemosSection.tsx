@@ -1,7 +1,7 @@
 // この素材から保存した Memo の一覧
 // MaterialFullView の右パネル「Memos」タブで使う。
-// メモのテキストに含まれる出典ラベル `— {filename}` を文字列マッチで絞り込む。
-// PR2 の Quote→Memo で保存したメモは末尾に `— filename · p.N` がつく仕様。
+// PR3-a: 構造化された `sourceAsset.fileId` 一致を優先しつつ、
+// 旧仕様（テキスト末尾の `— {filename}`）にも後方互換として対応する。
 
 import { useMemo } from "react";
 import { Trash2, FileText } from "lucide-react";
@@ -17,15 +17,23 @@ export type AssetMemosSectionProps = {
 };
 
 /**
- * テキスト内に出典ラベル `— {entry.name}` が含まれているメモを抽出する。
- * 完全一致ではなく substring 一致なのは、ユーザーが後でメモを編集しても
- * 出典行が残っていれば拾えるようにするため。
+ * 素材 `entry` から派生したメモを抽出する。
+ *
+ * 判定は OR 条件:
+ * 1. 構造化された `sourceAsset.fileId` が一致する（PR3-a 以降の Quote→Memo）
+ * 2. テキスト内に出典ラベル `— {entry.name}` が含まれる（旧仕様の後方互換）
+ *
+ * テキスト一致を残しているのは、PR3-a 以前に保存された既存メモや、
+ * ユーザーが手で書いた出典行を取り逃さないため。
  */
-function filterMemosByAsset(captureIndex: CaptureIndex | null | undefined, entry: MediaIndexEntry): CaptureEntry[] {
+export function filterMemosByAsset(
+  captureIndex: CaptureIndex | null | undefined,
+  entry: MediaIndexEntry,
+): CaptureEntry[] {
   if (!captureIndex) return [];
   const needle = `— ${entry.name}`;
   return captureIndex.captures
-    .filter((c) => c.text.includes(needle))
+    .filter((c) => c.sourceAsset?.fileId === entry.fileId || c.text.includes(needle))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
