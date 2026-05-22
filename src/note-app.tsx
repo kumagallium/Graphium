@@ -430,6 +430,12 @@ type NoteEditorProps = {
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
   openSidePeekRef?: React.MutableRefObject<((noteId: string) => void) | null>;
+  /**
+   * タイトルバー直下に挟みたい UI（WikiBanner / SkillBanner 等）。
+   * 2026-05-22 デザイン議論 D1 案: バナーは title bar の下に置いて、ノートと一貫した
+   * 「title bar が最上段」レイアウトを保つ。
+   */
+  subHeaderSlot?: React.ReactNode;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -523,6 +529,7 @@ function NoteEditorInner({
   archived = false,
   provWikiEntities,
   openSidePeekRef,
+  subHeaderSlot,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -2248,6 +2255,9 @@ function NoteEditorInner({
           t={t}
         />
       </div>
+
+      {/* タイトルバー直下のサブヘッダー（WikiBanner / SkillBanner 用、D1 配置） */}
+      {subHeaderSlot}
 
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
@@ -5226,62 +5236,75 @@ export function NoteApp() {
           />
         ) : (
           <>
-          {/* Skill バナー（Skill ドキュメントの場合） */}
-          {fm.activeDoc?.source === "skill" && fm.activeDoc?.skillMeta && (
-            <SkillBanner availableForIngest={fm.activeDoc.skillMeta.availableForIngest} />
-          )}
-          {/* Wiki バナー（AI 生成ドキュメントの場合） */}
-          {fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta && (() => {
-            const wikiIdForBanner = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
-            const isArchived = wikiIdForBanner ? fm.archivedIdSet.has(wikiIdForBanner) : false;
-            return (
-              <WikiBanner
-                wikiMeta={fm.activeDoc.wikiMeta}
-                loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
-                archived={isArchived}
-                onRestoreFromArchive={isArchived && wikiIdForBanner
-                  ? () => fm.handleRestoreFromArchive(wikiIdForBanner)
-                  : undefined}
-                onRegenerate={() => {
-                  if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
-                  const wikiId = fm.activeFileId.replace("wiki:", "");
-                  void regenerateWikiById(wikiId, { openAfter: true });
-                }}
-                onDelete={() => {
-                  if (!fm.activeFileId) return;
-                  const wikiId = fm.activeFileId.replace("wiki:", "");
-                  const title = fm.activeDoc?.title ?? wikiId;
-                  fm.handleDeleteWikiFile(wikiId);
-                  wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
-                }}
-                noteIndex={fm.noteIndex}
-                onNavigateNote={(noteId: string) => {
-                  // @mention / Graph ノード経路と同じく SidePeek で開く。
-                  // ノート未開時など ref が登録されていない場合は全画面遷移にフォールバック。
-                  const openSidePeek = openSidePeekRef.current;
-                  if (openSidePeek) {
-                    openSidePeek(noteId);
-                    return;
-                  }
-                  if (noteId.startsWith("wiki:")) {
-                    fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
-                  } else {
-                    fm.handleOpenFile(noteId);
-                  }
-                }}
-                onCheckWorldValidity={
-                  fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner
-                    ? undefined
-                    : () => void handleWorldCheckWiki(wikiIdForBanner, "manual")
-                }
-                worldCheckLoading={
-                  wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
-                }
-              />
-            );
-          })()}
           <NoteEditor
             key={fm.editorKey}
+            // 2026-05-22 デザイン議論 D1: WikiBanner / SkillBanner は NoteEditor の
+            // タイトルバー直下に挟む（subHeaderSlot 経由）。以前は title bar の上に
+            // 置いていたが、区切り線の重複と「タイトルバー上にバナーが乗る違和感」を
+            // 解消するため title bar を最上段に維持する配置に変更した。
+            subHeaderSlot={(() => {
+              const skillNode =
+                fm.activeDoc?.source === "skill" && fm.activeDoc?.skillMeta ? (
+                  <SkillBanner
+                    availableForIngest={fm.activeDoc.skillMeta.availableForIngest}
+                  />
+                ) : null;
+              const wikiIdForBanner = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
+              const isArchivedBanner = wikiIdForBanner ? fm.archivedIdSet.has(wikiIdForBanner) : false;
+              const wikiNode =
+                fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta ? (
+                  <WikiBanner
+                    wikiMeta={fm.activeDoc.wikiMeta}
+                    loading={ingestToast?.items?.some((i) => i.id?.startsWith("regen:") && i.status === "generating")}
+                    archived={isArchivedBanner}
+                    onRestoreFromArchive={isArchivedBanner && wikiIdForBanner
+                      ? () => fm.handleRestoreFromArchive(wikiIdForBanner)
+                      : undefined}
+                    onRegenerate={() => {
+                      if (!fm.activeDoc?.wikiMeta || !fm.activeFileId) return;
+                      const wikiId = fm.activeFileId.replace("wiki:", "");
+                      void regenerateWikiById(wikiId, { openAfter: true });
+                    }}
+                    onDelete={() => {
+                      if (!fm.activeFileId) return;
+                      const wikiId = fm.activeFileId.replace("wiki:", "");
+                      const title = fm.activeDoc?.title ?? wikiId;
+                      fm.handleDeleteWikiFile(wikiId);
+                      wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
+                    }}
+                    noteIndex={fm.noteIndex}
+                    onNavigateNote={(noteId: string) => {
+                      // @mention / Graph ノード経路と同じく SidePeek で開く。
+                      // ノート未開時など ref が登録されていない場合は全画面遷移にフォールバック。
+                      const openSidePeek = openSidePeekRef.current;
+                      if (openSidePeek) {
+                        openSidePeek(noteId);
+                        return;
+                      }
+                      if (noteId.startsWith("wiki:")) {
+                        fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
+                      } else {
+                        fm.handleOpenFile(noteId);
+                      }
+                    }}
+                    onCheckWorldValidity={
+                      fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner
+                        ? undefined
+                        : () => void handleWorldCheckWiki(wikiIdForBanner, "manual")
+                    }
+                    worldCheckLoading={
+                      wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
+                    }
+                  />
+                ) : null;
+              if (!skillNode && !wikiNode) return undefined;
+              return (
+                <>
+                  {skillNode}
+                  {wikiNode}
+                </>
+              );
+            })()}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             archived={(() => {
