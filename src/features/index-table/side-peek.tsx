@@ -76,7 +76,7 @@ function SidePeekSideMenu() {
 const KNOWN_BLOCK_TYPES = new Set([
   "paragraph", "heading", "bulletListItem", "numberedListItem",
   "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock",
+  "codeBlock", "quote",
 ]);
 
 function sanitizeBlocks(blocks: any[]): any[] {
