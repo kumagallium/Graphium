@@ -751,7 +751,7 @@ export function AssetGalleryView({
             ))}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[700px] text-sm">
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                 <th className="py-2 px-2 w-[36px]">

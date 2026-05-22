@@ -558,7 +558,7 @@ export function NoteListView({
             </p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[960px] text-sm">
             <thead>
               <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
                 {/* チェックボックス列 */}
