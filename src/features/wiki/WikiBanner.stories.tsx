@@ -318,69 +318,6 @@ export const WithRelatedAtoms: StoryObj = {
   ),
 };
 
-// ── Phase ε: meta-atom の派生元 Atom 群（KJ 中グループの表札）──
-
-export const WithMetaAtomDerivedAtoms: StoryObj = {
-  name: "Phase ε: meta-atom 派生元 Atom 群",
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "Phase ε: meta-atom は KJ 法の中グループ + 表札に相当する。`derivedFromAtoms` は KJ クラスタとしてまとめた Atom の noteId 列（最低 3 件）。タイトル / 本文が表札、`epistemicStatus` は派生元の最低継承、`confidence` は LLM 自己評価（0-1）。派生元と同じ折り畳み内に提示する。",
-      },
-    },
-  },
-  render: () => (
-    <Wrapper
-      noteIndex={sampleNoteIndex}
-      wikiMeta={{
-        ...baseMeta,
-        kind: "meta-atom",
-        derivedFromAtoms: [
-          "atom-grain-001",
-          "atom-sps-002",
-          "atom-polymer-003",
-        ],
-        confidence: 0.72,
-      }}
-    />
-  ),
-};
-
-// ── Phase δ + ε 混在: meta-atom が他 Atom と関係を持つケース ──
-
-export const WithDerivedFromFullStack: StoryObj = {
-  name: "派生元フルスタック（notes + claims + atoms + relations）",
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "極端ケース: 1 つの折り畳みに 4 種類が全部入る。「ノート / ソース Claim / 派生元 Atom / 関連 Atom」の順で並ぶ。実運用では 4 種類同時はほぼ起きないが、折り畳み数を 1 に抑える設計の限界確認用。",
-      },
-    },
-  },
-  render: () => (
-    <Wrapper
-      noteIndex={sampleNoteIndex}
-      wikiMeta={{
-        ...baseMeta,
-        kind: "meta-atom",
-        derivedFromNotes: ["note-abc123"],
-        derivedFromClaims: ["claim-xyz789"],
-        derivedFromAtoms: ["atom-grain-001", "atom-sps-002", "atom-polymer-003"],
-        relatedAtoms: [
-          {
-            atomId: "atom-grain-001",
-            relationType: "extends",
-            citation: "粒成長 Atom 群を 1 段抽象化して中グループ化した。",
-          },
-        ],
-        confidence: 0.81,
-      }}
-    />
-  ),
-};
-
 // ── 世界モデル照合 verdict バッジ（Phase 2 / PR 2A） ──
 // 「世界照合」ボタンと 4 verdict（established / supported / weak / contested）の見た目確認。
 // 別レーン契約: epistemicStatus / hypothesisStatus は触らない。

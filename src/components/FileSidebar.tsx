@@ -42,7 +42,7 @@ export type FileSidebarProps = {
   /** メモセクションがアクティブか */
   memosActive?: boolean;
   /** Wiki カテゴリ別カウント */
-  wikiCounts?: { summary: number; claim: number; atom: number; "meta-atom": number; synthesis: number };
+  wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
   /** 実験的レイヤ（Atom/Synthesis）を表示するか */
   showAtomLayer?: boolean;
   showSynthesisLayer?: boolean;
@@ -331,8 +331,6 @@ export function FileSidebar({
                 // ある場合（count > 0）は表示してアクセスを保つ。
                 const kinds: WikiKind[] = ["summary", "claim"];
                 if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
-                // Phase ε: meta-atom は atom 実験フラグに相乗り（atom 層がオンならセットで出す）
-                if (showAtomLayer || (wikiCounts?.["meta-atom"] ?? 0) > 0) kinds.push("meta-atom");
                 if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;
@@ -340,9 +338,8 @@ export function FileSidebar({
                     kind === "summary" ? t("wikiList.kindSummary")
                     : kind === "claim" ? t("wikiList.kindClaim")
                     : kind === "atom" ? t("wikiList.kindAtom")
-                    : kind === "meta-atom" ? t("wikiList.kindMetaAtom")
                     : t("wikiList.kindSynthesis");
-                  const isExperimental = kind === "atom" || kind === "meta-atom" || kind === "synthesis";
+                  const isExperimental = kind === "atom" || kind === "synthesis";
                   return (
                     <button
                       key={kind}

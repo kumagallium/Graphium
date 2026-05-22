@@ -15,10 +15,12 @@ import type { DocumentProvenance } from "../features/document-provenance/types";
 // experimental.atomLayer / experimental.synthesis 設定で生成可否を制御する。
 // 既存ユーザーの synthesis ファイルは削除しないため、atom 同様に kind 文字列としては常に有効。
 //
-// Phase ε (2026-05-22): "meta-atom" を追加。KJ 法の二段目（中グループ + 表札）に相当する
-// 層で、3 件以上の Atom を 1 つの抽象軸でまとめる。20-30 件規模の Atom 群が分かれている
-// ときに、Synthesizer が読みやすい粒度で再集約するための層。
-export type WikiKind = "summary" | "claim" | "atom" | "meta-atom" | "synthesis";
+// 2026-05-23: Phase ε で導入した "meta-atom" を撤退。LLM が「軸を発明する」task は
+// 構造的に苦手（領域 lifting / 概念発明が分布外）で、Anthropic Opus 4.7 でも品質が
+// 領域内に閉じる結果が続いた。代替として「テーマを人間が与えて Synthesizer がそれを
+// lens に書く」方向に舵を切る — その設計は別 PR で行う。撤退の窓が開いている
+// （v0.9.0 以降にユーザーが meta-atom データを残していない）うちに kind ごと外す。
+export type WikiKind = "summary" | "claim" | "atom" | "synthesis";
 
 // Claim の抽象度レベル（claim のみで意味を持つ）
 // principle: ノートが推論ステップで依拠した一般原理（教科書知識でも、本人の研究で実際に使われたもの）
@@ -383,14 +385,6 @@ export type WikiMeta = {
    * 0-3 件を quality-over-quantity で。空 / undefined は「関係なし」と等価。
    */
   relatedAtoms?: AtomRelation[];
-  /**
-   * Phase ε: meta-atom の派生元 Atom ID 列。
-   * `kind === "meta-atom"` のときだけ意味を持つ。最低 3 件（meta-atomizer prompt の
-   * 縛り）。クラスタの「表札」が title / body、`epistemicStatus` は派生元の最低継承、
-   * `confidence` は LLM 自己評価（0-1）。
-   * 他の kind（claim / atom / summary / synthesis）では undefined のまま。
-   */
-  derivedFromAtoms?: string[];
   /**
    * 世界モデル照合の結果（world-model-grounding, Phase 2）。
    *

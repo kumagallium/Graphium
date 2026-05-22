@@ -107,7 +107,7 @@ const COMMON_PROPS = {
   memoCount: 0,
   onShowMemos: () => {},
   memosActive: false,
-  wikiCounts: { summary: 9, claim: 14, atom: 3, "meta-atom": 1, synthesis: 4 },
+  wikiCounts: { summary: 9, claim: 14, atom: 3, synthesis: 4 },
   showAtomLayer: true,
   showSynthesisLayer: true,
   onShowWikiList: (_kind: import("../lib/document-types").WikiKind) => {},
