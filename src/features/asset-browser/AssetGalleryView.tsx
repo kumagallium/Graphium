@@ -408,6 +408,11 @@ export type AssetGalleryViewProps = {
   captureIndex?: import("../mobile-capture").CaptureIndex | null;
   /** Memos タブからメモを削除 */
   onDeleteMemo?: (memoId: string) => void;
+  /**
+   * Memos タブの入力欄から、対象素材に紐づくメモを直接追加する。
+   * 親側で sourceAsset の付与・トースト等を行う。
+   */
+  onCreateMemoForAsset?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
 };
 
 export function AssetGalleryView({
@@ -431,6 +436,7 @@ export function AssetGalleryView({
   onSaveSelectionAsMemo,
   captureIndex,
   onDeleteMemo,
+  onCreateMemoForAsset,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -668,6 +674,11 @@ export function AssetGalleryView({
         onSaveSelectionAsMemo={onSaveSelectionAsMemo}
         captureIndex={captureIndex}
         onDeleteMemo={onDeleteMemo}
+        onCreateMemo={
+          onCreateMemoForAsset
+            ? (text) => onCreateMemoForAsset(detailEntry, text)
+            : undefined
+        }
       />
     );
   }

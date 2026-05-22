@@ -51,6 +51,11 @@ export type MaterialFullViewProps = {
   captureIndex?: CaptureIndex | null;
   /** Memos タブからメモを削除する */
   onDeleteMemo?: (memoId: string) => void;
+  /**
+   * Memos タブの入力欄から新規メモを追加する。
+   * 親側で sourceAsset の付与・トースト等を行う想定。
+   */
+  onCreateMemo?: (text: string) => void | Promise<void>;
 };
 
 export function MaterialFullView({
@@ -71,6 +76,7 @@ export function MaterialFullView({
   onSaveSelectionAsMemo,
   captureIndex,
   onDeleteMemo,
+  onCreateMemo,
 }: MaterialFullViewProps) {
   const t = useT();
   const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
@@ -193,6 +199,7 @@ export function MaterialFullView({
                   entry={entry}
                   captureIndex={captureIndex}
                   onDeleteMemo={onDeleteMemo}
+                  onCreateMemo={onCreateMemo}
                 />
               )}
             </div>

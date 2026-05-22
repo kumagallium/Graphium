@@ -4866,6 +4866,14 @@ export function NoteApp() {
             }}
             captureIndex={capture.captureIndex}
             onDeleteMemo={capture.handleDeleteCapture}
+            onCreateMemoForAsset={async (assetEntry, text) => {
+              // Memos タブの入力欄から保存されたメモも sourceAsset を埋める
+              // ことで、Quote→Memo と同じ扱いで素材↔メモを辿れるようにする。
+              await capture.handleCreateCapture(text, {
+                fileId: assetEntry.fileId,
+                type: assetEntry.type,
+              });
+            }}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView
