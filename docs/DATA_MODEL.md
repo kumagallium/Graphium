@@ -405,6 +405,7 @@ versions stay valid with these fields absent.
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
+| `theme` | Synthesis | Free-form lens the human chose when triggering the Synthesizer (e.g. "home cooking", "team management"). Drives the prompt to re-cast the connection in the theme's vocabulary and reader. Stays orthogonal to `synthesisMode` (theme = *for whom*, mode = *how*). Undefined for legacy / no-theme runs. (2026-05-23, index v20) |
 
 These dimensions are **orthogonal to the existing context labels**
 (`procedure / plan / result / material / tool / attribute / output`),
@@ -593,10 +594,48 @@ turned out to be structurally hostile to current LLMs: even with the
 strongest Anthropic Opus, outputs collapsed back into the source
 domain rather than producing a domain-lifted axis.
 
-The replacement direction shifts axis-naming responsibility to a
-**human-provided theme** that drives the Synthesizer. That work is
-tracked in a follow-up PR; documentation for the new shape lives in
-§3.6.3 once it lands.
+The replacement is the **theme-driven Synthesizer** (§3.6.3).
+
+### 3.6.3 Theme-driven Synthesizer (v20, 2026-05-23)
+
+Instead of asking the LLM to invent a cross-Atom axis (which it cannot
+do reliably), the user supplies the axis directly as a **theme** —
+a short free-form lens such as "home cooking", "team management", or
+"learning". The Synthesizer then:
+
+1. Picks an Atom cluster via the existing farthest-seeds sampler.
+2. For each cluster, uses `pickTopSynthesisModes` to choose the top
+   1–2 inference modes (deductive / abductive / analogical /
+   dialectic) from the same router that already serves the auto path.
+3. Calls `/api/wiki/synthesize` once per (cluster, mode) with both
+   `theme` and `candidateModes: [mode]`. The prompt header carries a
+   theme-lens section that forces vocabulary, examples, and reader
+   stance into the theme's world.
+4. Saves each result as a regular `synthesis` doc with
+   `wikiMeta.theme` populated.
+
+Theme and mode stay orthogonal: theme answers "for whom / in what
+world", mode answers "what kind of reasoning produced this". The
+existing `synthesisMode` field keeps its meaning; nothing about
+existing syntheses is migrated, they just carry `theme: undefined`.
+
+Theme is intentionally lightweight:
+
+- Free-form string, no enum.
+- No dedicated entity — the same `synthesis` kind hosts it.
+- Recent themes are remembered as a `localStorage` history
+  (`graphium-synthesis-theme-history`, max 10) and surfaced as a
+  `<datalist>` suggestion in the Maintenance UI. There is no theme
+  registry on disk for now.
+- Granularity is the user's call. "Home cooking" works, so does
+  "home cooking — fermentation in the family kitchen".
+
+Why a separate layer didn't happen: in the rejected meta-atom design,
+the axis was a *new wiki document* between Atom and Synthesis. With
+the theme, the axis is just a *query parameter* — the human types it
+into the discovery UI when they want a fresh batch. This keeps the
+kind graph shallow (`summary → claim → atom → synthesis`) and avoids
+the layer-management cost that meta-atom would have added.
 
 
 ### 3.7 World-model grounding (Phase 2)
@@ -806,7 +845,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **19**.
+Defined in `src/features/navigation/index-file.ts`. Currently **20**.
 Bumping rules:
 
 | Version | Change |
@@ -826,6 +865,7 @@ Bumping rules:
 | **17** | Added `relatedAtoms` (Phase δ — Atom-to-Atom dimensional relations, axial coding). Fixed `relationType` vocabulary (`extends` / `is-special-case-of` / `shares-mechanism` / `shares-precondition` / `contradicts` / `applies-to-different-domain`), 0–3 entries with a `citation` short sentence each. Mirrored from `wikiMeta.relatedAtoms` for list-view badging and Synthesizer pair selection. Existing pre-Phase-δ entries stay readable with the field undefined (back-compat). |
 | **18** | Added `meta-atom` to `WikiKind` and `derivedFromAtoms` mirror (Phase ε — KJ-style mid-cluster + headline). Withdrawn at v19. |
 | **19** | Withdrew Phase ε. Removed `"meta-atom"` from `WikiKind` and the `derivedFromAtoms` mirror. LLM-driven axis invention proved unreliable (outputs collapsed to the source domain even at Anthropic Opus). Existing meta-atom JSON files on disk are tolerated by `ensureIndex` — their wiki kind falls outside the new enum and the index entry is rebuilt as a regular note-less placeholder until the user trashes it. The replacement is a human-provided theme threaded through the Synthesizer, landing in a follow-up PR. |
+| **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

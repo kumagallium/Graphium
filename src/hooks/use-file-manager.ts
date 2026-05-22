@@ -334,6 +334,7 @@ export function useFileManager(authenticated: boolean) {
                 atomType: doc.wikiMeta?.atomType,
                 synthesisMode: doc.wikiMeta?.synthesisMode,
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+                theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
                 groundingValidity: validity
                   ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
                   : undefined,
@@ -1327,6 +1328,10 @@ export function useFileManager(authenticated: boolean) {
             atomType: doc.wikiMeta?.atomType ?? existing?.atomType,
             synthesisMode: doc.wikiMeta?.synthesisMode ?? existing?.synthesisMode,
             hypothesisStatus: doc.wikiMeta?.hypothesisStatus ?? existing?.hypothesisStatus,
+            theme:
+              doc.wikiMeta?.kind === "synthesis"
+                ? (doc.wikiMeta?.theme ?? existing?.theme)
+                : undefined,
             // 世界モデル照合 validity の最小 mirror（Phase 2 / PR 2A）。
             // 一覧 verdict 列 / フィルタ / bulk 用。INDEX bump はしないので
             // NoteIndexEntry には伝播させない。
@@ -1583,6 +1588,7 @@ export function useFileManager(authenticated: boolean) {
           atomType: doc.wikiMeta?.atomType,
           synthesisMode: doc.wikiMeta?.synthesisMode,
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+          theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
           groundingValidity: validity
             ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
             : undefined,

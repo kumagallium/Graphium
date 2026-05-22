@@ -129,6 +129,8 @@ export type DiscoveryProgressInfo = {
 };
 export type DiscoveryHandler = (
   onProgress?: (info: DiscoveryProgressInfo) => void,
+  /** 任意オプション。テーマ駆動 Synthesizer など、handler によっては未使用。 */
+  options?: { theme?: string },
 ) => Promise<{ ok: boolean; created: number; iterations: number; error?: string }>;
 
 type BulkFailedItem = { id: string; title: string; error?: string };
@@ -264,6 +266,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [atomizeProgress, setAtomizeProgress] = useState<DiscoveryUiState | null>(null);
   // Maintenance タブ — Atom をまたぐ Synthesis 候補を発見（synthesis 有効時のみ）
   const [synthesisRunning, setSynthesisRunning] = useState(false);
+  // 2026-05-23: テーマ駆動 Synthesizer の入力。最近使ったテーマは localStorage に履歴として保存し、
+  // datalist でサジェスト表示する（専用エンティティは設けない、軽量設計）。
+  const [synthesisTheme, setSynthesisTheme] = useState<string>("");
+  const [synthesisThemeHistory, setSynthesisThemeHistory] = useState<string[]>([]);
   const [synthesisProgress, setSynthesisProgress] = useState<DiscoveryUiState | null>(null);
 
   // モデル追加フォーム
@@ -390,6 +396,17 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false });
+    // テーマ履歴を localStorage から読む（最大 10 件、最近使用順）
+    try {
+      const raw = localStorage.getItem("graphium-synthesis-theme-history");
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      const history = Array.isArray(parsed)
+        ? parsed.filter((s): s is string => typeof s === "string").slice(0, 10)
+        : [];
+      setSynthesisThemeHistory(history);
+    } catch {
+      setSynthesisThemeHistory([]);
+    }
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -2092,6 +2109,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               setSynthesisRunning={setSynthesisRunning}
               synthesisProgress={synthesisProgress}
               setSynthesisProgress={setSynthesisProgress}
+              synthesisTheme={synthesisTheme}
+              setSynthesisTheme={setSynthesisTheme}
+              synthesisThemeHistory={synthesisThemeHistory}
+              setSynthesisThemeHistory={setSynthesisThemeHistory}
               onReembedAllWikis={onReembedAllWikis}
             />
           </div>
@@ -2157,6 +2178,11 @@ type MaintenanceTabProps = {
   setSynthesisRunning: (b: boolean) => void;
   synthesisProgress: DiscoveryRunState | null;
   setSynthesisProgress: (p: DiscoveryRunState | null) => void;
+  // 2026-05-23: テーマ駆動 Synthesizer の入力（任意）と履歴。
+  synthesisTheme: string;
+  setSynthesisTheme: (s: string) => void;
+  synthesisThemeHistory: string[];
+  setSynthesisThemeHistory: (s: string[]) => void;
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
 };
 
@@ -2190,6 +2216,10 @@ function MaintenanceTab({
   setSynthesisRunning,
   synthesisProgress,
   setSynthesisProgress,
+  synthesisTheme,
+  setSynthesisTheme,
+  synthesisThemeHistory,
+  setSynthesisThemeHistory,
   onReembedAllWikis,
 }: MaintenanceTabProps) {
   const KINDS: WikiKind[] = ["claim", "summary", "atom", "synthesis"];
@@ -2295,26 +2325,44 @@ function MaintenanceTab({
   };
 
   // ── Synthesis 候補の発見（同じ auto-loop パターン。Atom が 3 件以上必要）──
+  // 2026-05-23: テーマ駆動オプションを追加。テーマが入力されていれば各クラスタで
+  // 上位 1-2 モードを auto-pick して、theme × atom 群 × mode で N 件のエッセイを生成。
+  // テーマ空欄なら従来通り server-side router 任せで動く（後方互換）。
   const handleRunSynthesisDiscovery = async () => {
     if (!onRunSynthesisDiscovery || synthesisRunning) return;
     if (atomCount < 3) return;
     if (!window.confirm(t("settings.maintenance.synthesize.confirm").replace("{count}", String(atomCount)))) return;
 
+    const theme = synthesisTheme.trim();
+    // テーマ履歴に追加（最近使用順、重複除去、最大 10 件）
+    if (theme) {
+      const next = [theme, ...synthesisThemeHistory.filter((t) => t !== theme)].slice(0, 10);
+      setSynthesisThemeHistory(next);
+      try {
+        localStorage.setItem("graphium-synthesis-theme-history", JSON.stringify(next));
+      } catch {
+        // localStorage が一時的に書けない場合は無視
+      }
+    }
+
     setSynthesisRunning(true);
     setSynthesisProgress({ status: "running", inputCount: atomCount, iteration: 1, created: 0 });
 
-    const result = await onRunSynthesisDiscovery((info) => {
-      setSynthesisProgress({
-        status: "running",
-        inputCount: atomCount,
-        iteration: info.iteration,
-        created: info.createdSoFar,
-        clusterLabel: info.clusterLabel,
-        clusterTotal: info.clusterTotal,
-        clusterSize: info.clusterSize,
-        clusterMemberTitles: info.clusterMemberTitles,
-      });
-    });
+    const result = await onRunSynthesisDiscovery(
+      (info) => {
+        setSynthesisProgress({
+          status: "running",
+          inputCount: atomCount,
+          iteration: info.iteration,
+          created: info.createdSoFar,
+          clusterLabel: info.clusterLabel,
+          clusterTotal: info.clusterTotal,
+          clusterSize: info.clusterSize,
+          clusterMemberTitles: info.clusterMemberTitles,
+        });
+      },
+      theme ? { theme } : undefined,
+    );
     if (result.ok) {
       setSynthesisProgress({ status: "done", inputCount: atomCount, created: result.created, iterations: result.iterations });
     } else {
@@ -2345,22 +2393,48 @@ function MaintenanceTab({
       )}
 
       {/* Synthesis 候補の発見（synthesis 有効時のみ表示）。
-          全 Atom をまたぐ新しい洞察を auto-loop で discover する。 */}
+          全 Atom をまたぐ新しい洞察を auto-loop で discover する。
+          2026-05-23: テーマ駆動オプション付き。テーマが空欄でも従来動作で叩ける。 */}
       {synthesisLayerEnabled && onRunSynthesisDiscovery && (
-        <DiscoveryCard
-          t={t}
-          titleKey="settings.maintenance.synthesize.title"
-          helpKey="settings.maintenance.synthesize.help"
-          inputCount={atomCount}
-          minInput={3}
-          progress={synthesisProgress}
-          running={synthesisRunning}
-          onRun={handleRunSynthesisDiscovery}
-          discoveringKey="settings.maintenance.synthesize.discovering"
-          doneKey="settings.maintenance.synthesize.doneCount"
-          runKey="settings.maintenance.synthesize.run"
-          runningKey="settings.maintenance.synthesize.running"
-        />
+        <div className="space-y-2">
+          {/* テーマ入力（任意）。datalist で過去テーマをサジェスト。 */}
+          <label className="block">
+            <span className="block text-xs font-semibold text-foreground mb-1">
+              {t("settings.maintenance.synthesize.themeLabel")}
+            </span>
+            <input
+              type="text"
+              value={synthesisTheme}
+              onChange={(e) => setSynthesisTheme(e.target.value)}
+              placeholder={t("settings.maintenance.synthesize.themePlaceholder")}
+              list="graphium-synthesis-theme-history"
+              disabled={synthesisRunning}
+              className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
+            />
+            <datalist id="graphium-synthesis-theme-history">
+              {synthesisThemeHistory.map((th) => (
+                <option key={th} value={th} />
+              ))}
+            </datalist>
+            <span className="block text-[11px] text-muted-foreground leading-relaxed mt-1">
+              {t("settings.maintenance.synthesize.themeHelp")}
+            </span>
+          </label>
+          <DiscoveryCard
+            t={t}
+            titleKey="settings.maintenance.synthesize.title"
+            helpKey="settings.maintenance.synthesize.help"
+            inputCount={atomCount}
+            minInput={3}
+            progress={synthesisProgress}
+            running={synthesisRunning}
+            onRun={handleRunSynthesisDiscovery}
+            discoveringKey="settings.maintenance.synthesize.discovering"
+            doneKey="settings.maintenance.synthesize.doneCount"
+            runKey="settings.maintenance.synthesize.run"
+            runningKey="settings.maintenance.synthesize.running"
+          />
+        </div>
       )}
 
       {/* 全 Wiki の embedding を再生成。

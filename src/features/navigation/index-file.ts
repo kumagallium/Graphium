@@ -74,11 +74,13 @@ import { normalizeLabel } from "../context-label/labels";
 // v18: Phase ε — meta-atom 層（KJ 中グループ + 表札）。撤退済み（v19）。
 // v19: meta-atom 層を撤退。WikiKind から "meta-atom" を外し、derivedFromAtoms の
 //      mirror も削除。撤退理由は document-types.ts のコメント参照。
-//      bump を必ず実地確認する: Graphium 起動時に v18 インデックスが v19 として
+// v20: Synthesis に theme フィールド（人間指定の lens）を mirror。
+//      wikiMeta.theme をそのまま index に流して一覧 UI のテーマ別グルーピング・
+//      フィルタリングに使う。旧 synthesis は theme=undefined のまま残し、UI 側で
+//      「テーマなし」バケットとして扱う（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v19 インデックスが v20 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-//      meta-atom が混じった旧データは ensureIndex の再構築で kind が落ち、
-//      WikiKind 列挙から外れた "meta-atom" は型ガードで吸収される。
-const INDEX_SCHEMA_VERSION = 19;
+const INDEX_SCHEMA_VERSION = 20;
 
 export type GraphiumIndex = {
   version: number;
@@ -169,6 +171,12 @@ export type NoteIndexEntry = {
   synthesisMode?: SynthesisMode;
   /** Synthesis の検証状態。wikiMeta.hypothesisStatus を mirror。 */
   hypothesisStatus?: HypothesisStatus;
+  /**
+   * Synthesis のテーマ（v20）。wikiMeta.theme を mirror。
+   * 一覧 UI でテーマ別グルーピング / フィルタリングに使う。
+   * 旧 synthesis（v20 以前生成）は undefined のまま。
+   */
+  theme?: string;
   /**
    * Claim / Atom の認識論的ステータス（Phase η, v15）。
    * wikiMeta.epistemicStatus を mirror する。一覧 UI で status filter に使う。
@@ -445,6 +453,10 @@ export function buildIndexEntry(
     atomType: doc.wikiMeta?.atomType,
     synthesisMode: doc.wikiMeta?.synthesisMode,
     hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
+    theme:
+      doc.wikiMeta?.kind === "synthesis" && typeof doc.wikiMeta?.theme === "string" && doc.wikiMeta.theme.trim()
+        ? doc.wikiMeta.theme.trim()
+        : undefined,
     epistemicStatus: doc.wikiMeta?.epistemicStatus,
     rebuttalConditions:
       doc.wikiMeta?.rebuttalConditions && doc.wikiMeta.rebuttalConditions.length > 0

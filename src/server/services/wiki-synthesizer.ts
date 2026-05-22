@@ -115,8 +115,9 @@ export function buildSynthesizerSystemPrompt(
   language: string,
   skills?: SynthesizerSkill[],
   candidateModes?: SynthesisMode[],
+  theme?: string,
 ): string {
-  return buildSynthesizerSystemPromptV2({ language, skills, candidateModes });
+  return buildSynthesizerSystemPromptV2({ language, skills, candidateModes, theme });
 }
 
 /**

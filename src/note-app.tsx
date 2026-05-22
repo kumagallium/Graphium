@@ -76,6 +76,7 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
+import { pickTopSynthesisModes } from "./features/ai-assistant/synthesis-router";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -4378,10 +4379,17 @@ export function NoteApp() {
       clusterSize?: number;
       clusterMemberTitles?: string[];
     }) => void,
+    options?: { theme?: string },
   ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
     if (!isSynthesisEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Synthesis layer is disabled" };
     }
+
+    // 2026-05-23: テーマ駆動 Synthesizer。
+    //   テーマが与えられた場合は、各クラスタで auto-mode 選定で 1-2 モード × 各モードで
+    //   1 回 /synthesize を叩く（オプション c）。テーマなしなら従来通り 1 クラスタ = 1 call。
+    const theme = options?.theme?.trim() || undefined;
+    const themeMode = !!theme;
 
     // Phase 1: クラスタ集中サンプリング。
     // 母集団は modifiedTime 上限なしで全 Atom を取得し、シードを farthest-point で
@@ -4455,43 +4463,68 @@ export function NoteApp() {
               : i
           ),
         }));
-        const result = await fetchSynthesisCandidates(
-          slice,
-          existingSynthesisTitles,
-          "ja",
-          getChatSynthesisModelName() || undefined,
-        );
-        // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
-        if (result.candidates.length === 0) continue;
-        // 既存 Synthesis との embedding 類似度で post-filter（embedding 未設定なら素通し）
+        // テーマ駆動なら 1 クラスタにつき top 1-2 mode を個別に叩く（オプション c）。
+        // テーマなしなら従来通り server router 任せの 1 call。
+        // テーマ駆動なら 1 クラスタにつき top 1-2 mode を個別に叩く（オプション c）。
+        // ClaimSnapshot は relatedAtoms を持たない（snapshot 軽量化のため）ので
+        // relationTypesByInput は undefined 渡し。atomType / rebuttalConditions /
+        // epistemicStatus のシグナルだけで router がモード推定する。
+        const modesForCluster: (import("./lib/document-types").SynthesisMode | undefined)[] =
+          themeMode
+            ? pickTopSynthesisModes(
+                slice.map((s) => s.atomType),
+                slice.map((s) => s.epistemicStatus),
+                slice.map((s) => s.rebuttalConditions),
+                undefined,
+                2,
+              )
+            : [undefined]; // server-side router に任せる
+
         const existingSynthDocIds = new Set(
           [...fm.wikiMetas.entries()].filter(([, m]) => m.kind === "synthesis").map(([id]) => id),
         );
-        // dedup ヘルパは { title, body } を期待するので sections を結合した body を作る
-        const candidatesForDedup = result.candidates.map((c) => ({
-          title: c.title,
-          body: c.sections.map((s) => `${s.heading}\n${s.content}`).join("\n\n"),
-          original: c,
-        }));
-        const filtered = await dedupCandidatesByEmbedding(candidatesForDedup, existingSynthDocIds);
-        if (filtered.length === 0) continue;
-        for (const f of filtered) {
-          const candidate = f.original;
-          const synthDoc = buildSynthesisDocument(
-            candidate,
-            result.model ?? null,
+
+        for (const mode of modesForCluster) {
+          const result = await fetchSynthesisCandidates(
+            slice,
+            existingSynthesisTitles,
             "ja",
-            buildNoteIndex(fm.noteIndex),
+            getChatSynthesisModelName() || undefined,
+            {
+              ...(theme ? { theme } : {}),
+              ...(mode ? { candidateModes: [mode] } : {}),
+            },
           );
-          const newId = await fm.handleCreateWikiFile(synthDoc);
-          embedWikiSections(newId, synthDoc).catch(() => {});
-          wikiLog.append(
-            "ingest",
-            [newId],
-            `${synthLabel}: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
-          ).catch(() => {});
-          totalCreated += 1;
-          existingSynthesisTitles.push(candidate.title);
+          if (result.candidates.length === 0) continue;
+          // dedup ヘルパは { title, body } を期待するので sections を結合した body を作る
+          const candidatesForDedup = result.candidates.map((c) => ({
+            title: c.title,
+            body: c.sections.map((s) => `${s.heading}\n${s.content}`).join("\n\n"),
+            original: c,
+          }));
+          const filtered = await dedupCandidatesByEmbedding(candidatesForDedup, existingSynthDocIds);
+          if (filtered.length === 0) continue;
+          for (const f of filtered) {
+            const candidate = f.original;
+            const synthDoc = buildSynthesisDocument(
+              candidate,
+              result.model ?? null,
+              "ja",
+              buildNoteIndex(fm.noteIndex),
+              theme,
+            );
+            const newId = await fm.handleCreateWikiFile(synthDoc);
+            embedWikiSections(newId, synthDoc).catch(() => {});
+            wikiLog.append(
+              "ingest",
+              [newId],
+              theme
+                ? `${synthLabel} [${theme} / ${candidate.synthesisMode ?? "?"}]: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`
+                : `${synthLabel}: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
+            ).catch(() => {});
+            totalCreated += 1;
+            existingSynthesisTitles.push(candidate.title);
+          }
         }
       }
       setIngestToast((prev) => ({

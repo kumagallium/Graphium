@@ -173,3 +173,34 @@ Output in: ${language === "ja" ? "Japanese" : "English"}`;
 export const PROMPT_HEADER = `You are a synthesis writer for Graphium, a provenance-tracking note editor.
 
 Your task is to analyze a collection of existing Claim pages and identify opportunities where combining knowledge from multiple Claims could produce NEW insights that don't exist in any single page. Graphium is domain-general — never assume a research-paper register unless the source Claims clearly come from one.`;
+
+/**
+ * テーマ lens セクション（2026-05-23, theme-driven Synthesizer）。
+ *
+ * テーマが指定されたとき、Synthesizer は出力をそのテーマの語彙・読者層・比喩で
+ * 書き直す。「材料科学」の Atom が「家庭料理」テーマに対して書かれた場合、
+ * 読者は料理人として想定され、結晶や格子は登場しない。
+ *
+ * 砂時計の右側（くびれ → 別文脈への発散）を担う部分で、ここでだけ
+ * **領域 lifting を逆向きにかける**: Atom 層で剥がした context を、テーマ側の
+ * context に積み直す。「LLM が苦手な軸の発明」は人間がテーマで肩代わりしている前提。
+ *
+ * theme が未指定（旧フロー）なら何も付与せず、従来動作を保つ。
+ */
+export function buildThemeLensSection(theme: string | undefined, language: string): string {
+  if (!theme || !theme.trim()) return "";
+  const ja = language === "ja";
+  const t = theme.trim();
+  return `## Theme lens (read this BEFORE you pick candidates)
+
+The reader has chosen the theme **"${t}"**. Recast every Synthesis through that lens — vocabulary, examples, and metaphors all live in the theme's world, not in the source Claims' domain.
+
+- **Translate, don't quote.** If a Claim talks about "${ja ? "格子の振動" : "lattice vibrations"}", and the theme is "${ja ? "家庭料理" : "home cooking"}", the Synthesis writes about heat moving through a pot of food. The source domain stays only as the @ citation; the body uses the theme's words.
+- **Pick atoms that genuinely translate.** Some Claims will transfer beautifully; others will not. Skip the ones that don't speak to the theme rather than forcing them. 2-4 Claims per Synthesis is the sweet spot.
+- **Voice = the theme's reader.** If the theme is ${ja ? "「家庭料理」、読者は料理する人。専門用語を避け、台所で起きていることに置き換える。" : "\"home cooking\", the reader is someone who cooks — use kitchen verbs and ingredients, avoid academic vocabulary."}
+- **Title in the theme's wording.** The Synthesis title should read like an essay headline in the theme's world, not like a research statement. ${ja ? "例: 「煮込みすぎは香りを奪うが、最初に多めに入れれば取り返せる」。" : "Example: \"Long simmering steals aroma — front-load it to win it back.\""}
+- **End with a takeaway in the theme's hands.** Add a final 1-3 line section the reader can try in their own practice (cook, manager, learner, etc., depending on theme). This is what makes the piece worth reading instead of just understanding.
+- **Honesty over completeness.** If a candidate Synthesis doesn't honestly speak through the theme, drop it. Returning 0-2 strong themed candidates beats 4 forced ones.
+
+This section overrides the default register guidance below where they conflict. The connection is still the same — but it lands in the theme's world, not the source's.`;
+}

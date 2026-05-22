@@ -11,6 +11,7 @@ import type { SynthesisMode } from "../../../lib/document-types.js";
 import {
   buildGuidelines,
   buildLanguageDirective,
+  buildThemeLensSection,
   buildVoiceSection,
   CITATION_RULES,
   HYPOTHESIS_STATUS_RULES,
@@ -79,18 +80,31 @@ export type BuildSystemPromptOptions = {
    * 空配列 / undefined のときは全 4 モードを提示する（後方互換）。
    */
   candidateModes?: SynthesisMode[];
+  /**
+   * テーマ（人間が指定した lens）。指定があれば、theme lens セクションが
+   * PROMPT_HEADER の直後に挿入され、出力をテーマの語彙・読者層に書き直すよう
+   * モデルに強く要求する（2026-05-23 theme-driven Synthesizer）。
+   * 未指定（旧フロー）なら従来動作を保つ。
+   */
+  theme?: string;
 };
 
 /**
  * 4 モード対応の Synthesizer system prompt を構築する。
  * candidateModes を絞ると、その mode のみが詳細説明される。
+ * theme が指定されると、テーマ lens セクションを挿入する。
  */
 export function buildSynthesizerSystemPromptV2(opts: BuildSystemPromptOptions): string {
-  const { language, skills, candidateModes } = opts;
+  const { language, skills, candidateModes, theme } = opts;
   const modes = normalizeCandidateModes(candidateModes);
+
+  const themeSection = buildThemeLensSection(theme, language);
 
   return [
     PROMPT_HEADER,
+    // テーマ lens は HEADER の直後に置く: モードや citation rule よりも上流に
+    // 効かせて、最初から出力の register を theme 側に倒す。
+    ...(themeSection ? [themeSection] : []),
     buildVoiceSection(language, skills),
     SYNTHESIS_DEFINITION,
     OUTPUT_FORMAT,
