@@ -27,6 +27,17 @@ export type UrlMeta = {
   description?: string;
   /** OGP 画像 URL */
   ogImage?: string;
+  /**
+   * Reader Mode (PR3-d) で抽出した本文の冒頭抜粋。
+   * AssetGalleryView の URL カードに表示し、引用元の手がかりにする。
+   * optional — 旧データには無くて良い。
+   */
+  excerpt?: string;
+  /**
+   * Reader Mode で検出した本文の言語コード（"en" / "ja" 等）。
+   * 表示時のフォント切替・i18n 表示の余地として保持。
+   */
+  lang?: string;
 };
 
 /**
@@ -220,6 +231,50 @@ export function addMediaEntry(
     updatedAt: new Date().toISOString(),
     media: [...index.media, entry],
   };
+}
+
+/**
+ * 既存 URL メディアエントリの urlMeta を partial 更新する（PR3-d Phase 4）。
+ * Reader Mode で抽出した excerpt / lang を後追いで書き戻す用途。
+ *
+ * 該当 fileId が無ければ no-op。`type === "url"` 以外のエントリも no-op。
+ * 永続化失敗時は warning ログのみで握り潰す（UI 表示には影響しない）。
+ */
+export async function persistUrlMetaPatch(
+  fileId: string,
+  patch: Partial<Pick<UrlMeta, "excerpt" | "lang">>,
+): Promise<void> {
+  if (!patch.excerpt && !patch.lang) return;
+  const index = await readMediaIndex();
+  if (!index) return;
+  let changed = false;
+  const nextMedia = index.media.map((m) => {
+    if (m.fileId !== fileId || m.type !== "url") return m;
+    const nextMeta: UrlMeta = {
+      ...(m.urlMeta ?? { domain: extractDomain(m.url) }),
+      ...patch,
+    };
+    // 値が完全に同じなら no-op（無駄な書き込みを避ける）
+    if (
+      m.urlMeta?.excerpt === nextMeta.excerpt &&
+      m.urlMeta?.lang === nextMeta.lang
+    ) {
+      return m;
+    }
+    changed = true;
+    return { ...m, urlMeta: nextMeta };
+  });
+  if (!changed) return;
+  const next: MediaIndex = {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    media: nextMedia,
+  };
+  try {
+    await saveMediaIndex(next);
+  } catch (err) {
+    console.warn("urlMeta 書き戻し失敗:", err);
+  }
 }
 
 /** メディアエントリを削除 */

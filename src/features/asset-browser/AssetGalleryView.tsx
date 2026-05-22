@@ -321,9 +321,9 @@ function MediaCard({
         <p className="text-[10px] text-muted-foreground mt-0.5">
           {formatDate(entry.uploadedAt)}
         </p>
-        {entry.type === "url" && entry.urlMeta?.description && (
+        {entry.type === "url" && (entry.urlMeta?.excerpt || entry.urlMeta?.description) && (
           <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-            {entry.urlMeta.description}
+            {entry.urlMeta.excerpt || entry.urlMeta.description}
           </p>
         )}
         {/* 使用されているノート */}
