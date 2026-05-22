@@ -343,6 +343,7 @@ type ProcedureContext = {
 | `summary` | Internal-facing summary of one note. | yes |
 | `claim` | Cross-note claim extracted from notes (fact-based; the hourglass widens here). | yes |
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
+| `meta-atom` | KJ-style mid-cluster of 3+ Atoms with a label headline (Phase ε). | **no** (still in the waist; meta-atom 表札 stays context-free) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
 
 `atom` and `synthesis` are gated by `experimental.atomLayer` and
@@ -396,6 +397,8 @@ versions stay valid with these fields absent.
 | `rebuttalConditions[]` | Claim, Atom | free-form short strings; Atom level only carries rebuttals that 2+ source Claims share (Phase γ) |
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
+| `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
+| `derivedFromAtoms[]` | meta-atom | Atom note IDs that the meta-atom groups (Phase ε). Minimum 3 entries — enforced by the meta-atomizer prompt. Undefined for other kinds. |
 
 These dimensions are **orthogonal to the existing context labels**
 (`procedure / plan / result / material / tool / attribute / output`),
@@ -547,6 +550,58 @@ The Ingester treats these fields conservatively:
 These defaults match the conservative spirit of Phase η's
 `epistemicStatus`: it is safer to under-tag a claim than to falsely
 launder it into established certainty.
+
+### 3.6.1 Atom-to-Atom dimensional relations (Phase δ)
+
+`relatedAtoms[]` captures axial-coding relations between Atoms. Each
+entry is `{ atomId, relationType, citation }` where:
+
+- `atomId` is the noteId of another Atom (or, in principle, a Claim).
+  Unresolved or archived IDs surface in WikiBanner as `(unknown)` with
+  the link disabled.
+- `relationType` is drawn from a fixed vocabulary defined in
+  `src/lib/document-types.ts`:
+  `extends`, `is-special-case-of`, `shares-mechanism`,
+  `shares-precondition`, `contradicts`,
+  `applies-to-different-domain`.
+- `citation` is a one-sentence natural-language description of the
+  relation, quality-over-quantity (max ~3 relations per Atom).
+
+The Atomizer parser sanitises every entry and caps the array at 3.
+Downstream the Synthesis router uses `applies-to-different-domain`
+pairs as a strong analogical signal, and `contradicts` pairs as a
+strong dialectic signal — these complement the rebuttal-condition
+heuristic above.
+
+Surface: WikiBanner renders `relatedAtoms` inside the "Derived from"
+collapsible (the same section as `derivedFromNotes` /
+`derivedFromClaims` / `derivedFromAtoms`). Keeping the collapsible
+count low is deliberate: every extra collapsible section costs
+readability.
+
+### 3.6.2 Meta-Atom layer (Phase ε)
+
+A `meta-atom` is the KJ-style mid-cluster: 3 or more Atoms grouped
+under a single label headline (the meta-atom's `title` is the 表札).
+
+| Field | Behaviour |
+|---|---|
+| `kind` | `"meta-atom"`. |
+| `derivedFromAtoms[]` | noteIds of the source Atoms. Minimum 3 — enforced by the meta-atomizer prompt. Undefined for non-meta-atom kinds. |
+| `title` / body | The cluster label and rationale; both stay context-free (the hourglass waist is still in effect — meta-atom does not re-introduce procedural context). |
+| `epistemicStatus` | Inherits the **lowest** status of the source Atoms (same propagation rule as the Atomizer's Phase η contract). |
+| `confidence` | LLM self-evaluation 0–1 of how cohesive the cluster is. |
+
+Meta-atoms are surfaced as a new `kind === "meta-atom"` branch in
+WikiBanner's type badge, and `derivedFromAtoms` is rendered as a
+"Source atoms" sub-group inside the existing "Derived from"
+collapsible (alongside notes / claims / related atoms).
+
+The Synthesizer accepts mixed Atom + meta-Atom inputs without changing
+its snapshot type — meta-atoms behave like Atoms with stricter
+provenance (the cluster is fixed when emitted; meta-atom title/body
+are not re-derived per synthesis run).
+
 
 ### 3.7 World-model grounding (Phase 2)
 
@@ -744,12 +799,23 @@ type NoteIndexEntry = {
   rebuttalConditions?: string[];
   backing?: BackingEntry[];
   modalQualifier?: ModalQualifier;
+
+  // Phase δ (v17): Atom-to-Atom dimensional relations — mirrored from
+  //   wikiMeta.relatedAtoms. 0–3 entries, used by list views to badge
+  //   "Atoms with relations" and by the Synthesizer to prioritise
+  //   analogical / dialectic pairings.
+  relatedAtoms?: AtomRelation[];
+
+  // Phase ε (v18): meta-atom source Atoms — mirrored from
+  //   wikiMeta.derivedFromAtoms. Meaningful only when wikiKind === "meta-atom"
+  //   (minimum 3 entries by prompt contract); undefined for other kinds.
+  derivedFromAtoms?: string[];
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **16**.
+Defined in `src/features/navigation/index-file.ts`. Currently **18**.
 Bumping rules:
 
 | Version | Change |
@@ -766,6 +832,8 @@ Bumping rules:
 | **14** | Renamed `WikiKind` value `"concept"` to `"claim"`. The on-disk migration (`migrateConceptKindToClaim` in `document-migration.ts`) also moves `derivedFromConcepts` → `derivedFromClaims` and `conceptRole` → `claimRole` in `wikiMeta`. |
 | **15** | Added `epistemicStatus` (`speculation` / `interpretation` / `observation` / `established`) mirror from `wikiMeta` (Phase η). Existing entries are missing the field; `ensureIndex` rebuilds the index on the bump so Ingester / Atomizer outputs from this point forward populate it. The downstream Atomizer enforces lowest-status inheritance and the Synthesizer forces `hypothesisStatus: "speculative"` whenever any input carries `epistemicStatus: "speculation"` — see `docs/ARCHITECTURE.md` §3.3. |
 | **16** | Added Toulmin extension mirrors from `wikiMeta` (Phase γ): `rebuttalConditions` (Claim and Atom), `backing` (Claim only), `modalQualifier` (Claim only). Atom-side `rebuttalConditions` only carries a value when the upstream Atomizer's propagation rule (2+ source Claims share a rebuttal) fired. The Synthesis router uses Atom-side `rebuttalConditions` to add `dialectic` to the candidate mode set even when the `causal` ≥ 2 trigger is not met — Toulmin rebuttals are first-class regime separators. |
+| **17** | Added `relatedAtoms` (Phase δ — Atom-to-Atom dimensional relations, axial coding). Fixed `relationType` vocabulary (`extends` / `is-special-case-of` / `shares-mechanism` / `shares-precondition` / `contradicts` / `applies-to-different-domain`), 0–3 entries with a `citation` short sentence each. Mirrored from `wikiMeta.relatedAtoms` for list-view badging and Synthesizer pair selection. Existing pre-Phase-δ entries stay readable with the field undefined (back-compat). |
+| **18** | Added `meta-atom` to `WikiKind` and `derivedFromAtoms` mirror (Phase ε — KJ-style mid-cluster + headline). `derivedFromAtoms` is required-on-emit (minimum 3 entries) only when `wikiKind === "meta-atom"`; other kinds keep the field undefined. The Synthesizer accepts mixed Atom + meta-Atom inputs since the snapshot type is identical. Pre-Phase-ε entries are unaffected (no meta-atom exists in the corpus before the bump). |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

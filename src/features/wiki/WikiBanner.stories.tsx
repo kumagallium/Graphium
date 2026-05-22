@@ -158,6 +158,40 @@ const sampleNoteIndex: GraphiumIndex = {
       source: "ai",
       wikiKind: "claim",
     },
+    // Phase δ/ε ストーリー用ダミー Atom エントリ群
+    {
+      noteId: "atom-grain-001",
+      title: "Atom: 粒成長は時間 t^{1/3} に従う",
+      modifiedAt: "2026-05-20T11:00:00Z",
+      createdAt: "2026-05-20T11:00:00Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      source: "ai",
+      wikiKind: "atom",
+    },
+    {
+      noteId: "atom-sps-002",
+      title: "Atom: SPS では短時間でも緻密化が進む",
+      modifiedAt: "2026-05-20T12:00:00Z",
+      createdAt: "2026-05-20T12:00:00Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      source: "ai",
+      wikiKind: "atom",
+    },
+    {
+      noteId: "atom-polymer-003",
+      title: "Atom: 高分子の架橋密度が機械強度を支配する",
+      modifiedAt: "2026-05-20T13:00:00Z",
+      createdAt: "2026-05-20T13:00:00Z",
+      headings: [],
+      labels: [],
+      outgoingLinks: [],
+      source: "ai",
+      wikiKind: "atom",
+    },
   ],
 };
 
@@ -235,6 +269,113 @@ export const WithDerivedFromUnresolved: StoryObj = {
         kind: "atom",
         derivedFromNotes: ["note-abc123", "note-missing-999"],
         derivedFromClaims: ["claim-xyz789", "claim-missing-000"],
+      }}
+    />
+  ),
+};
+
+// ── Phase δ: Atom 間 dimensional 関係（axial coding）──
+// relatedAtoms を派生元と同じ折り畳みの中に表示する（B案: 折り畳み数を増やさない統合）。
+// 関係種別ピル + リンク + citation の 3 段重ね。
+
+export const WithRelatedAtoms: StoryObj = {
+  name: "Phase δ: Atom 間 dimensional 関係",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase δ: Atom 間の dimensional 関係（axial coding）。`relatedAtoms` を派生元の折り畳み内に表示する。関係種別（extends / shares-mechanism / contradicts / applies-to-different-domain など）を controllable な fixed vocabulary で示し、citation で 1 文の関係説明を添える。Synthesizer の analogical / dialectic ペア選択シグナルとしても使われる。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      wikiMeta={{
+        ...baseMeta,
+        kind: "atom",
+        atomType: "mechanistic",
+        derivedFromNotes: ["note-abc123"],
+        relatedAtoms: [
+          {
+            atomId: "atom-grain-001",
+            relationType: "shares-mechanism",
+            citation: "両方とも拡散律速で説明される粒成長の系。",
+          },
+          {
+            atomId: "atom-polymer-003",
+            relationType: "applies-to-different-domain",
+            citation: "セラミックの粒成長と高分子の架橋成長は同じ τ^{1/3} スケーリングを示す。",
+          },
+          {
+            atomId: "atom-missing-relation-999",
+            relationType: "contradicts",
+            citation: "凝集律速説と一致しないデータが報告されている。",
+          },
+        ],
+      }}
+    />
+  ),
+};
+
+// ── Phase ε: meta-atom の派生元 Atom 群（KJ 中グループの表札）──
+
+export const WithMetaAtomDerivedAtoms: StoryObj = {
+  name: "Phase ε: meta-atom 派生元 Atom 群",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Phase ε: meta-atom は KJ 法の中グループ + 表札に相当する。`derivedFromAtoms` は KJ クラスタとしてまとめた Atom の noteId 列（最低 3 件）。タイトル / 本文が表札、`epistemicStatus` は派生元の最低継承、`confidence` は LLM 自己評価（0-1）。派生元と同じ折り畳み内に提示する。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      wikiMeta={{
+        ...baseMeta,
+        kind: "meta-atom",
+        derivedFromAtoms: [
+          "atom-grain-001",
+          "atom-sps-002",
+          "atom-polymer-003",
+        ],
+        confidence: 0.72,
+      }}
+    />
+  ),
+};
+
+// ── Phase δ + ε 混在: meta-atom が他 Atom と関係を持つケース ──
+
+export const WithDerivedFromFullStack: StoryObj = {
+  name: "派生元フルスタック（notes + claims + atoms + relations）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "極端ケース: 1 つの折り畳みに 4 種類が全部入る。「ノート / ソース Claim / 派生元 Atom / 関連 Atom」の順で並ぶ。実運用では 4 種類同時はほぼ起きないが、折り畳み数を 1 に抑える設計の限界確認用。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      wikiMeta={{
+        ...baseMeta,
+        kind: "meta-atom",
+        derivedFromNotes: ["note-abc123"],
+        derivedFromClaims: ["claim-xyz789"],
+        derivedFromAtoms: ["atom-grain-001", "atom-sps-002", "atom-polymer-003"],
+        relatedAtoms: [
+          {
+            atomId: "atom-grain-001",
+            relationType: "extends",
+            citation: "粒成長 Atom 群を 1 段抽象化して中グループ化した。",
+          },
+        ],
+        confidence: 0.81,
       }}
     />
   ),

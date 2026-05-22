@@ -626,6 +626,13 @@ export const en: Record<string, string> = {
   "wikiTypes.atomType.methodological": "Methodological",
   "wikiTypes.atomType.observational": "Observational",
   "wikiTypes.atomType.boundary": "Boundary",
+  // atomRelation (Phase δ): Atom-to-Atom dimensional relations (axial coding).
+  "wikiTypes.atomRelation.extends": "Extends",
+  "wikiTypes.atomRelation.is-special-case-of": "Special case of",
+  "wikiTypes.atomRelation.shares-mechanism": "Shares mechanism with",
+  "wikiTypes.atomRelation.shares-precondition": "Shares precondition with",
+  "wikiTypes.atomRelation.contradicts": "Contradicts",
+  "wikiTypes.atomRelation.applies-to-different-domain": "Same shape in another domain",
   "wikiTypes.synthesisMode.deductive": "Deductive",
   "wikiTypes.synthesisMode.abductive": "Abductive",
   "wikiTypes.synthesisMode.analogical": "Analogical",
@@ -664,11 +671,15 @@ export const en: Record<string, string> = {
   "wikiBanner.procedureTools": "Key tools",
   "wikiBanner.procedureParameters": "Key parameters",
   "wikiBanner.procedureValidity": "Validity range",
-  // derived-from（world-model-grounding Phase 1）— 派生元のノート / Claim を一覧する
+  // derived-from（world-model-grounding Phase 1 + Phase δ/ε integration）—
+  // 派生元のノート / Claim / Atom / Atom 間関係を一つの折り畳みにまとめる
   "wikiBanner.derivedFromTitle": "Derived from",
-  "wikiBanner.derivedFromHint": "Where this knowledge piece was drawn from (source notes and source claims). Existing provenance only — no scoring or external search.",
+  "wikiBanner.derivedFromHint": "Where this knowledge piece was drawn from — source notes, claims, atoms, and dimensional relations between atoms. Existing provenance only.",
   "wikiBanner.derivedFromNotesLabel": "Notes",
   "wikiBanner.derivedFromClaimsLabel": "Source claims",
+  "wikiBanner.derivedFromAtomsLabel": "Source atoms",
+  "wikiBanner.relatedAtomsLabel": "Related atoms",
+  "wikiBanner.relatedAtomsHint": "Dimensional relations to other atoms (axial coding). Used by the synthesizer to suggest analogical / dialectic pairs.",
   "wikiBanner.derivedFromMissing": "(unknown)",
   // world-grounding (Phase 2 / PR 2A) — 蒸留KB のみ。LLM fallback / auto-trigger は PR 2B
   "wikiBanner.worldCheck": "Check world",
