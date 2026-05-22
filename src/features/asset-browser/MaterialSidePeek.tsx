@@ -1,15 +1,90 @@
 // 素材サイドピーク（material as note）
 // 軽量の右側スライドインビュー。
-// 構成: ヘッダー（共通） + viewer + Metadata（共通、Name 編集可）
-// Asset graph は Full view 側に表示する（このサイドピークには含めない）。
+// 構成: ヘッダー（共通） + viewer + Metadata（共通、Name 編集可）+ Asset graph
+//
+// Asset graph も含めるのは discoverability のため：素材ノードをグラフ経由で
+// 辿れる価値が Full view まで上げないと気づけないという問題があったので、
+// SidePeek 段階でも折り畳みセクションとして見えるようにしている（default open）。
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { MediaPreview } from "./media-preview";
-import type { KnowledgeKindLookup } from "./asset-graph-panel";
+import {
+  AssetGraphPanel,
+  shouldShowAssetGraph,
+  type KnowledgeKindLookup,
+} from "./asset-graph-panel";
 import { MaterialDetailHeader } from "./material-detail-header";
 import { MaterialMetadataSection } from "./material-metadata-section";
+
+// SidePeek 用の Asset graph 折り畳みセクション。
+// 親 SidePeek の縦スタックの一段として収まる想定（高さ固定 + 内部 grid）。
+function GraphSection({
+  entry,
+  mediaIndex,
+  getKnowledgeKind,
+  onNavigateNote,
+  onSwitchAsset,
+}: {
+  entry: MediaIndexEntry;
+  mediaIndex?: MediaIndex | null;
+  getKnowledgeKind?: KnowledgeKindLookup;
+  onNavigateNote: (noteId: string) => void;
+  onSwitchAsset?: (entry: MediaIndexEntry) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  if (!shouldShowAssetGraph(entry, mediaIndex)) return null;
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--color-border-subtle)",
+        background: "var(--color-card)",
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+        height: open ? 240 : 32,
+        transition: "height 0.2s ease-out",
+        overflow: "hidden",
+      }}
+    >
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 12px",
+          color: "var(--color-text-secondary)",
+          fontSize: 11,
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          textAlign: "left",
+          flexShrink: 0,
+        }}
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        Asset graph
+      </button>
+      {open && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <AssetGraphPanel
+            entry={entry}
+            mediaIndex={mediaIndex}
+            getKnowledgeKind={getKnowledgeKind}
+            onNavigateNote={onNavigateNote}
+            onSwitchAsset={onSwitchAsset}
+            showLegend={false}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export type MaterialSidePeekProps = {
   entry: MediaIndexEntry;
@@ -60,6 +135,9 @@ export function MaterialSidePeek({
   onExtractPdfPages,
   onSharedRefUpdated,
   knowledgeWikiNoteId,
+  mediaIndex,
+  getKnowledgeKind,
+  onSwitchAsset,
   inline = false,
 }: MaterialSidePeekProps) {
   // ESC で閉じる
@@ -139,6 +217,17 @@ export function MaterialSidePeek({
         onNavigateNote={onNavigateNote}
         onRename={onRename}
       />
+
+      {/* Asset graph（関連ノート + 派生）— default open で discoverability 確保 */}
+      {onNavigateNote && (
+        <GraphSection
+          entry={entry}
+          mediaIndex={mediaIndex}
+          getKnowledgeKind={getKnowledgeKind}
+          onNavigateNote={onNavigateNote}
+          onSwitchAsset={onSwitchAsset}
+        />
+      )}
     </div>
   );
 
