@@ -414,6 +414,13 @@ export function AssetGalleryView({
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
   // サイドピーク中に「Open in full」を押すとフルスクリーンオーバーレイ化
   const [detailFullMode, setDetailFullMode] = useState(false);
+  // サイドバーで別の素材タイプ（Images / PDFs / URLs ...）に切り替えたら
+  // 開きっぱなしの SidePeek / Full view を必ず畳む。
+  // これを忘れると、Full view 中はその素材が固定描画され続けてサイドバーが効かなく見える。
+  useEffect(() => {
+    setDetailEntry(null);
+    setDetailFullMode(false);
+  }, [mediaType]);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
