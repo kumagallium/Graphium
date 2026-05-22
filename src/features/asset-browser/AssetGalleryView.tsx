@@ -12,6 +12,7 @@ import { getFaviconUrl } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
+import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
 
@@ -397,6 +398,16 @@ export type AssetGalleryViewProps = {
   focusFileId?: string | null;
   focusFullMode?: boolean;
   onFocusConsumed?: () => void;
+  /**
+   * PDF text-layer の選択を新規メモとして保存する。
+   * note-app から渡される。AssetGalleryView はノートを開かないため、
+   * 引用は「メモに保存」の 1 ステップに揃えた（後でメモピッカーから任意のノートに引用できる）。
+   */
+  onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** Memos タブ用のキャプチャインデックス */
+  captureIndex?: import("../mobile-capture").CaptureIndex | null;
+  /** Memos タブからメモを削除 */
+  onDeleteMemo?: (memoId: string) => void;
 };
 
 export function AssetGalleryView({
@@ -417,6 +428,9 @@ export function AssetGalleryView({
   focusFileId,
   focusFullMode,
   onFocusConsumed,
+  onSaveSelectionAsMemo,
+  captureIndex,
+  onDeleteMemo,
 }: AssetGalleryViewProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -651,6 +665,9 @@ export function AssetGalleryView({
         getKnowledgeKind={getKnowledgeKind}
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
         onDelete={(entry) => setDeleteTarget(entry)}
+        onSaveSelectionAsMemo={onSaveSelectionAsMemo}
+        captureIndex={captureIndex}
+        onDeleteMemo={onDeleteMemo}
       />
     );
   }
@@ -991,6 +1008,7 @@ export function AssetGalleryView({
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
+          onSaveSelectionAsMemo={onSaveSelectionAsMemo}
         />
       )}
 

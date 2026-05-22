@@ -8,14 +8,16 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
 import { getFaviconUrl } from "./media-index";
+import { PdfViewer } from "./PdfViewer";
+import type { CitationSource } from "./SelectionPill";
 
-/** 動画・音声・PDF 用: Blob URL を非同期取得して再生するラッパー */
+/** 動画・音声用: Blob URL を非同期取得して再生するラッパー */
 function BlobMediaPlayer({
   entry,
   tag,
 }: {
   entry: MediaIndexEntry;
-  tag: "video" | "audio" | "iframe";
+  tag: "video" | "audio";
 }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -66,20 +68,17 @@ function BlobMediaPlayer({
       />
     );
   }
-  if (tag === "audio") {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 w-full">
-        <audio
-          ref={mediaRef as React.RefObject<HTMLAudioElement>}
-          src={blobUrl}
-          controls
-          preload="auto"
-          className="w-full max-w-sm"
-        />
-      </div>
-    );
-  }
-  return <iframe src={blobUrl} title={entry.name} className="w-full h-full rounded border-0" />;
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 w-full">
+      <audio
+        ref={mediaRef as React.RefObject<HTMLAudioElement>}
+        src={blobUrl}
+        controls
+        preload="auto"
+        className="w-full max-w-sm"
+      />
+    </div>
+  );
 }
 
 function ResolvedImage({ entry }: { entry: MediaIndexEntry }) {
@@ -129,7 +128,13 @@ function UrlPreview({ entry }: { entry: MediaIndexEntry }) {
   );
 }
 
-export function MediaPreview({ entry }: { entry: MediaIndexEntry }) {
+export type MediaPreviewProps = {
+  entry: MediaIndexEntry;
+  /** PDF text-layer 内の選択を新規メモとして保存 */
+  onSaveSelectionAsMemo?: (source: CitationSource) => void;
+};
+
+export function MediaPreview({ entry, onSaveSelectionAsMemo }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
       return <ResolvedImage entry={entry} />;
@@ -138,7 +143,7 @@ export function MediaPreview({ entry }: { entry: MediaIndexEntry }) {
     case "audio":
       return <BlobMediaPlayer entry={entry} tag="audio" />;
     case "pdf":
-      return <BlobMediaPlayer entry={entry} tag="iframe" />;
+      return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
       return <UrlPreview entry={entry} />;
     default:

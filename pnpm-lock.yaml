@@ -92,6 +92,9 @@ importers:
       mammoth:
         specifier: ^1.12.0
         version: 1.12.0
+      pdfjs-dist:
+        specifier: 5.4.296
+        version: 5.4.296
       prosemirror-state:
         specifier: 1.4.4
         version: 1.4.4

@@ -13,16 +13,19 @@
 //   - Metadata は右パネルのタブとして提供（Graph と相互排他）
 
 import { useEffect, useState } from "react";
-import { Network, Info } from "lucide-react";
+import { Network, Info, StickyNote } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { MediaPreview } from "./media-preview";
+import type { CitationSource } from "./SelectionPill";
 import { AssetGraphPanel, shouldShowAssetGraph, type KnowledgeKindLookup } from "./asset-graph-panel";
 import { MaterialDetailHeader } from "./material-detail-header";
 import { MaterialMetadataSection } from "./material-metadata-section";
+import { AssetMemosSection } from "./AssetMemosSection";
+import type { CaptureIndex } from "../mobile-capture";
 
-type RightTab = "graph" | "metadata" | null;
+type RightTab = "graph" | "metadata" | "memos" | null;
 
 export type MaterialFullViewProps = {
   entry: MediaIndexEntry;
@@ -42,6 +45,12 @@ export type MaterialFullViewProps = {
   mediaIndex?: MediaIndex | null;
   getKnowledgeKind?: KnowledgeKindLookup;
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
+  /** PDF 内テキストの選択を新規メモとして保存 */
+  onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** Memos タブ用のキャプチャインデックス。未指定なら Memos タブを出さない */
+  captureIndex?: CaptureIndex | null;
+  /** Memos タブからメモを削除する */
+  onDeleteMemo?: (memoId: string) => void;
 };
 
 export function MaterialFullView({
@@ -59,6 +68,9 @@ export function MaterialFullView({
   mediaIndex,
   getKnowledgeKind,
   onSwitchAsset,
+  onSaveSelectionAsMemo,
+  captureIndex,
+  onDeleteMemo,
 }: MaterialFullViewProps) {
   const t = useT();
   const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
@@ -123,7 +135,7 @@ export function MaterialFullView({
               minHeight: 0,
             }}
           >
-            <MediaPreview entry={entry} />
+            <MediaPreview entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />
           </div>
         </div>
 
@@ -133,7 +145,9 @@ export function MaterialFullView({
               <span className="text-xs font-bold tracking-wide text-foreground">
                 {rightTab === "graph"
                   ? t("asset.rightPanel.graph")
-                  : t("asset.rightPanel.metadata")}
+                  : rightTab === "metadata"
+                  ? t("asset.rightPanel.metadata")
+                  : t("asset.rightPanel.memos")}
               </span>
             </div>
             <div className="flex-1 overflow-auto">
@@ -153,6 +167,13 @@ export function MaterialFullView({
                   onNavigateNote={onNavigateNote}
                   onRename={onRename}
                   variant="plain"
+                />
+              )}
+              {rightTab === "memos" && (
+                <AssetMemosSection
+                  entry={entry}
+                  captureIndex={captureIndex}
+                  onDeleteMemo={onDeleteMemo}
                 />
               )}
             </div>
@@ -192,6 +213,20 @@ export function MaterialFullView({
           >
             <Info size={18} />
           </button>
+          {captureIndex && (
+            <button
+              onClick={() => toggleRight("memos")}
+              title={t("asset.rightPanel.memos")}
+              className={cn(
+                "flex items-center justify-center rounded-md transition-colors w-8 h-8",
+                rightTab === "memos"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+              )}
+            >
+              <StickyNote size={18} />
+            </button>
+          )}
         </div>
       </div>
     </div>

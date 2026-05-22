@@ -176,6 +176,20 @@ import { EmptyNoteGuide } from "./features/onboarding";
 
 import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
+import type { CitationSource } from "./features/asset-browser/SelectionPill";
+
+/** CitationSource から人間可読の出典ラベルを組み立てる */
+function buildCitationSourceLabel(source: CitationSource): string {
+  if (source.entry.type === "pdf") {
+    return source.pageNumber
+      ? `${source.entry.name} · p.${source.pageNumber}`
+      : source.entry.name;
+  }
+  if (source.entry.type === "url") {
+    return source.entry.urlMeta?.domain ?? source.entry.name;
+  }
+  return source.entry.name;
+}
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
 function NoteHeaderMenu({
@@ -2705,6 +2719,8 @@ export function NoteApp() {
   const [lintLoading, setLintLoading] = useState(false);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
   const [pendingMemoInsert, setPendingMemoInsert] = useState<{ captureId: string; text: string; deleteAfter: boolean } | null>(null);
+  // 引用は capture.handleCreateCapture でメモ化する単純フローに変更したため、
+  // 旧 pendingCitationInsert / pendingChatQuote state は撤去（git 履歴参照）。
   // Quick Memo ダイアログ（サイドバー / ⌘+⇧+M で開く、画面非依存の入口）
   const [showQuickMemoDialog, setShowQuickMemoDialog] = useState(false);
 
@@ -4822,6 +4838,28 @@ export function NoteApp() {
               return { extracted: images.length };
             }}
             getKnowledgeKind={(rawId) => fm.wikiMetas.get(rawId)?.kind}
+            // 引用は毎回「新規メモ」として保存する。
+            // どのノートに入るかが不明瞭という UX 問題を回避するため、ノート直挿入はやめて
+            // メモを介する 1 ステップに揃えた。後でメモピッカーから任意のノートに引用できる。
+            // PDF スコープのチャットは未実装のため Save → Chat は出さない（別 PR で扱う）。
+            onSaveSelectionAsMemo={(source) => {
+              const sourceLabel = buildCitationSourceLabel(source);
+              const memoText = `${source.selectionText}\n\n— ${sourceLabel}`;
+              void capture.handleCreateCapture(memoText);
+              // 軽い通知だけ出して、ユーザーは PDF を読み続けられるようにする
+              const id = `quote-toast:${Date.now()}`;
+              setIngestToast((prev) => ({
+                items: [
+                  ...(prev?.items ?? []),
+                  { id, status: "success" as const, noteTitle: sourceLabel, result: tStatic("asset.quoteToMemoSaved") },
+                ],
+              }));
+              window.setTimeout(() => {
+                setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
+              }, 2500);
+            }}
+            captureIndex={capture.captureIndex}
+            onDeleteMemo={capture.handleDeleteCapture}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView

@@ -3,11 +3,9 @@
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useState, useCallback, useEffect } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
+import { Document, Page } from "react-pdf";
 import { getActiveProvider } from "../../lib/storage/registry";
-
-// pdf.js ワーカーの設定（react-pdf v10 推奨）
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import "../../lib/pdfjs-config";
 
 export const PdfViewerBlock = createReactBlockSpec(
   {
