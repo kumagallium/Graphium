@@ -78,12 +78,25 @@ function TypeBadge({
   );
 }
 
+/**
+ * バナーのデザインバリアント（Storybook 上で A/B/C/B+C 比較するためのフラグ）。
+ * 合意が取れたら 1 つに固定して、この prop は撤去する予定。
+ *
+ * - "current" : 現状（bordered card、本文 11px）
+ * - "soft"    : 案 B — 背景透過 + dashed underline でノートと視覚的に連続させる
+ * - "type"    : 案 C — 折り畳み本文を 14px、ラベルを 12px、line-height 1.5 に補正
+ * - "both"    : 案 B + C（design subagent 推奨候補）
+ */
+export type WikiBannerDesignVariant = "current" | "soft" | "type" | "both";
+
 type Props = {
   wikiMeta: WikiMeta;
   /** 再生成。モデルは設定（Default / Chat & Synthesis）に従う — UI で個別選択させない */
   onRegenerate: () => void;
   onDelete: () => void;
   loading?: boolean;
+  /** デザイン比較用（Storybook 専用 — 合意後に撤去）。未指定時は "current"。 */
+  designVariant?: WikiBannerDesignVariant;
   /** アーカイブ済みフラグ。true のとき編集系ボタンを抑制し、復元 UI を出す */
   archived?: boolean;
   /** アーカイブから復元するハンドラ（archived === true のときのみ有効） */
@@ -132,6 +145,7 @@ export function WikiBanner({
   onNavigateNote,
   onCheckWorldValidity,
   worldCheckLoading = false,
+  designVariant = "current",
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -141,17 +155,29 @@ export function WikiBanner({
     : t("wikiList.kindClaim");
 
   const [modeModal, setModeModal] = useState<SynthesisMode | null>(null);
+  const softBoundary = designVariant === "soft" || designVariant === "both";
+  const typeFixed = designVariant === "type" || designVariant === "both";
 
-  return (
-    <div
-      style={{
+  // 外枠スタイル — soft variant は背景透過 + 下端 dashed underline でノートと連続させる
+  const containerStyle = softBoundary
+    ? {
+        margin: "14px 32px 6px",
+        borderRadius: 0,
+        border: "none",
+        borderBottom: "1px dashed var(--rule)",
+        background: "transparent",
+        padding: "10px 14px 12px",
+      }
+    : {
         margin: "14px 32px 6px",
         borderRadius: "var(--r-3)",
         border: "1px solid var(--rule)",
         background: archived ? "var(--paper-3)" : "var(--paper-2)",
         padding: "10px 14px",
-      }}
-    >
+      };
+
+  return (
+    <div style={containerStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {/* AI バッジ — 緑の AI マーカーで「AI 生成」をアンカリングし、ピル外枠は控えめに */}
         <span
@@ -407,7 +433,7 @@ export function WikiBanner({
       {wikiMeta.kind === "claim" &&
         wikiMeta.procedureContext &&
         hasProcedureContextContent(wikiMeta.procedureContext) && (
-        <ProcedureContextSection ctx={wikiMeta.procedureContext} />
+        <ProcedureContextSection ctx={wikiMeta.procedureContext} typeFixed={typeFixed} />
       )}
 
       {/* 派生元セクション（world-model-grounding Phase 1）—
@@ -418,6 +444,7 @@ export function WikiBanner({
           wikiMeta={wikiMeta}
           noteIndex={noteIndex ?? null}
           onNavigateNote={onNavigateNote}
+          typeFixed={typeFixed}
         />
       )}
 
@@ -426,20 +453,26 @@ export function WikiBanner({
           checkedBy / checkedAt を tooltip を hover せずに読めるよう、派生元と同じ
           折り畳みパターンで並べる。バッジは hover、詳細は展開、と役割を分ける。 */}
       {wikiMeta.grounding?.validity?.checkedAt && (
-        <WorldGroundingDetailSection validity={wikiMeta.grounding.validity} />
+        <WorldGroundingDetailSection
+          validity={wikiMeta.grounding.validity}
+          typeFixed={typeFixed}
+        />
       )}
 
       {/* Phase γ: Backing — claim でのみ表示（document-types.ts でも claim 専用フィールド）。
           Warrant の裏付けが入っていれば折り畳みセクションで読めるようにする。 */}
       {wikiMeta.kind === "claim" && wikiMeta.backing && wikiMeta.backing.length > 0 && (
-        <BackingSection backing={wikiMeta.backing} />
+        <BackingSection backing={wikiMeta.backing} typeFixed={typeFixed} />
       )}
 
       {/* Phase γ: Rebuttal Conditions — claim と atom で持ち得る（document-types.ts §Toulmin）。
           synthesizer が dialectic を検出するシグナルとしても使われるので、ユーザーにも
           見える場所に置く。空配列 / 未定義のときはセクションごと出さない。 */}
       {wikiMeta.rebuttalConditions && wikiMeta.rebuttalConditions.length > 0 && (
-        <RebuttalConditionsSection conditions={wikiMeta.rebuttalConditions} />
+        <RebuttalConditionsSection
+          conditions={wikiMeta.rebuttalConditions}
+          typeFixed={typeFixed}
+        />
       )}
 
       {/* Synthesis モード説明モーダル（Phase 5.4） */}
@@ -527,8 +560,10 @@ function WorldVerdictBadge({
 // 派生元セクションと同じ折り畳みトーン（dashed border / デフォルト閉）。
 function WorldGroundingDetailSection({
   validity,
+  typeFixed = false,
 }: {
   validity: NonNullable<NonNullable<WikiMeta["grounding"]>["validity"]>;
+  typeFixed?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -542,6 +577,7 @@ function WorldGroundingDetailSection({
   const checkedBy = validity.checkedBy ?? "";
   const sources = validity.sources ?? [];
   const matched = validity.matchedKeywords ?? [];
+  const bodySize = typeFixed ? 14 : 11;
   // PR 2A は KB の keywords がヒットしたかどうかの「件数」を見せる。
   // %（score） は KB entry の keywords 総数に依存して見え方が変わるので、誤解防止のため
   // バッジ脇には出さない。score は型として保持（PR 2B 以降の LLM 評価で再利用予定）。
@@ -553,7 +589,8 @@ function WorldGroundingDetailSection({
         borderRadius: "var(--r-2)",
         background: "var(--paper)",
         border: "1px dashed var(--rule)",
-        fontSize: 11,
+        fontSize: bodySize,
+        lineHeight: 1.55,
         color: "var(--ink-2)",
       }}
     >
@@ -765,10 +802,12 @@ function DerivedFromSection({
   wikiMeta,
   noteIndex,
   onNavigateNote,
+  typeFixed = false,
 }: {
   wikiMeta: WikiMeta;
   noteIndex: GraphiumIndex | null;
   onNavigateNote?: (noteId: string) => void;
+  typeFixed?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -785,6 +824,7 @@ function DerivedFromSection({
   if (noteEntries.length === 0 && claimEntries.length === 0) return null;
 
   const totalCount = noteEntries.length + claimEntries.length;
+  const bodySize = typeFixed ? 14 : 11;
 
   return (
     <div
@@ -794,7 +834,8 @@ function DerivedFromSection({
         borderRadius: "var(--r-2)",
         background: "var(--paper)",
         border: "1px dashed var(--rule)",
-        fontSize: 11,
+        fontSize: bodySize,
+        lineHeight: 1.55,
         color: "var(--ink-2)",
       }}
     >
@@ -911,9 +952,16 @@ function hasProcedureContextContent(ctx: ProcedureContext): boolean {
   );
 }
 
-function ProcedureContextSection({ ctx }: { ctx: ProcedureContext }) {
+function ProcedureContextSection({
+  ctx,
+  typeFixed = false,
+}: {
+  ctx: ProcedureContext;
+  typeFixed?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const t = useT();
+  const bodySize = typeFixed ? 14 : 11;
   return (
     <div
       style={{
@@ -922,7 +970,8 @@ function ProcedureContextSection({ ctx }: { ctx: ProcedureContext }) {
         borderRadius: "var(--r-2)",
         background: "var(--paper)",
         border: "1px dashed var(--rule)",
-        fontSize: 11,
+        fontSize: bodySize,
+        lineHeight: 1.55,
         color: "var(--ink-2)",
       }}
     >
@@ -1105,10 +1154,18 @@ function ModalQualifierBadge({ qualifier }: { qualifier: ModalQualifier }) {
 // 折り畳みパターンは WorldGroundingDetailSection に揃える。
 // source ごとにアイコンと色を変えて、教科書 / 外部論文 / 内部 Claim を一目で識別できるようにする。
 // ──────────────────────────────────────────────
-function BackingSection({ backing }: { backing: BackingEntry[] }) {
+function BackingSection({
+  backing,
+  typeFixed = false,
+}: {
+  backing: BackingEntry[];
+  typeFixed?: boolean;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   if (backing.length === 0) return null;
+  const bodySize = typeFixed ? 14 : 11;
+  const lineHeight = typeFixed ? 1.55 : 1.55; // body は元から 1.55 のまま
   return (
     <div
       style={{
@@ -1117,7 +1174,8 @@ function BackingSection({ backing }: { backing: BackingEntry[] }) {
         borderRadius: "var(--r-2)",
         background: "var(--paper)",
         border: "1px dashed var(--rule)",
-        fontSize: 11,
+        fontSize: bodySize,
+        lineHeight,
         color: "var(--ink-2)",
       }}
     >
@@ -1254,10 +1312,17 @@ function BackingSourceChip({ source }: { source: string }) {
 // Phase γ: Rebuttal Conditions セクション。
 // 折り畳みは BackingSection と同じトーン。AlertTriangle で「成り立たない条件」を象徴。
 // ──────────────────────────────────────────────
-function RebuttalConditionsSection({ conditions }: { conditions: string[] }) {
+function RebuttalConditionsSection({
+  conditions,
+  typeFixed = false,
+}: {
+  conditions: string[];
+  typeFixed?: boolean;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   if (conditions.length === 0) return null;
+  const bodySize = typeFixed ? 14 : 11;
   return (
     <div
       style={{
@@ -1266,7 +1331,8 @@ function RebuttalConditionsSection({ conditions }: { conditions: string[] }) {
         borderRadius: "var(--r-2)",
         background: "var(--paper)",
         border: "1px dashed var(--rule)",
-        fontSize: 11,
+        fontSize: bodySize,
+        lineHeight: 1.55,
         color: "var(--ink-2)",
       }}
     >
