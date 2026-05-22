@@ -44,8 +44,14 @@ export type MaterialMetadataSectionProps = {
   onNavigateNote?: (noteId: string) => void;
   /** Name を inline 編集するためのハンドラ。未指定なら読み取り専用表示 */
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
-  /** デフォルトで開くか（既定: true） */
+  /** デフォルトで開くか（既定: true）。"plain" 時は無視される（常に open） */
   defaultOpen?: boolean;
+  /**
+   * "collapsible"（既定）: 自前で「Metadata」トグルボタン + 内容を出す。SidePeek 用。
+   * "plain": 内容だけを出す（呼び出し側のパネルが container/タイトル役を担う）。
+   *          MaterialFullView の右パネル内で使うとき向け。
+   */
+  variant?: "collapsible" | "plain";
 };
 
 export function MaterialMetadataSection({
@@ -53,8 +59,10 @@ export function MaterialMetadataSection({
   onNavigateNote,
   onRename,
   defaultOpen = true,
+  variant = "collapsible",
 }: MaterialMetadataSectionProps) {
   const t = useT();
+  const collapsible = variant === "collapsible";
   const [open, setOpen] = useState(defaultOpen);
   const derivedCount = entry.derivedFromAssets?.length ?? 0;
 
@@ -86,44 +94,60 @@ export function MaterialMetadataSection({
     }
   }, [editName, entry, onRename]);
 
+  const contentStyle: React.CSSProperties = collapsible
+    ? {
+        padding: "0 12px 12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        overflow: "auto",
+        maxHeight: 280,
+      }
+    : {
+        padding: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        overflow: "auto",
+      };
+
+  const showContent = collapsible ? open : true;
+
   return (
     <div
-      style={{
-        borderTop: "1px solid var(--color-border-subtle)",
-        background: "var(--color-card)",
-        flexShrink: 0,
-      }}
+      style={
+        collapsible
+          ? {
+              borderTop: "1px solid var(--color-border-subtle)",
+              background: "var(--color-card)",
+              flexShrink: 0,
+            }
+          : undefined
+      }
     >
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "8px 12px",
-          color: "var(--color-text-secondary)",
-          fontSize: 11,
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: 0.4,
-          textAlign: "left",
-        }}
-      >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        Metadata
-      </button>
-      {open && (
-        <div
+      {collapsible && (
+        <button
+          onClick={() => setOpen(!open)}
           style={{
-            padding: "0 12px 12px",
+            width: "100%",
             display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            overflow: "auto",
-            maxHeight: 280,
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 12px",
+            color: "var(--color-text-secondary)",
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: 0.4,
+            textAlign: "left",
           }}
         >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Metadata
+        </button>
+      )}
+      {showContent && (
+        <div style={contentStyle}>
           <MetaRow label="Name">
             {editing ? (
               <input

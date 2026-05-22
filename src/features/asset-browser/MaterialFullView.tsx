@@ -5,13 +5,15 @@
 //     `<main>` の中で flex-1 で描画する（fixed/portal は使わない）。
 //   - 構成は Note のフル画面に揃える:
 //       上: タイトルバー（filename + chip + meta + Minimize + 3-dot menu）
-//       中: viewer（中央、大）+ 下に Metadata セクション
-//       右: アイコンレール（w-10）+ 選択時のみ展開する右パネル（asset graph）
+//       中: viewer（中央、大きく）
+//       右: アイコンレール（w-10）+ 選択時のみ展開する右パネル（asset graph / metadata）
 //   - X 閉じるは存在しない（ESC または Minimize でサイドピークに戻る）
 //   - 削除や Knowledge / PROV / Extract / Share は 3-dot メニューの中に集約
+//   - Asset graph は full mode の **デフォルトで開く**（利用可能なら）
+//   - Metadata は右パネルのタブとして提供（Graph と相互排他）
 
 import { useEffect, useState } from "react";
-import { Network } from "lucide-react";
+import { Network, Info } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
@@ -20,7 +22,7 @@ import { AssetGraphPanel, shouldShowAssetGraph, type KnowledgeKindLookup } from 
 import { MaterialDetailHeader } from "./material-detail-header";
 import { MaterialMetadataSection } from "./material-metadata-section";
 
-type RightTab = "graph" | null;
+type RightTab = "graph" | "metadata" | null;
 
 export type MaterialFullViewProps = {
   entry: MediaIndexEntry;
@@ -59,11 +61,23 @@ export function MaterialFullView({
   onSwitchAsset,
 }: MaterialFullViewProps) {
   const t = useT();
-  const [rightTab, setRightTab] = useState<RightTab>(null);
+  const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
+
+  // デフォルト rightTab: Graph が使えるなら graph、ダメなら metadata
+  const [rightTab, setRightTab] = useState<RightTab>(() =>
+    graphAvailable ? "graph" : "metadata",
+  );
 
   const toggleRight = (tab: RightTab) => {
     setRightTab((cur) => (cur === tab ? null : tab));
   };
+
+  // entry / mediaIndex が変わって graph 可能性が変化したとき、整合させる
+  useEffect(() => {
+    if (rightTab === "graph" && !graphAvailable) {
+      setRightTab("metadata");
+    }
+  }, [graphAvailable, rightTab]);
 
   // ESC キーで閉じる（呼び出し側で fullMode → false に戻す想定）
   useEffect(() => {
@@ -73,8 +87,6 @@ export function MaterialFullView({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
 
   return (
     <div
@@ -113,22 +125,18 @@ export function MaterialFullView({
           >
             <MediaPreview entry={entry} />
           </div>
-          <MaterialMetadataSection
-            entry={entry}
-            onNavigateNote={onNavigateNote}
-            onRename={onRename}
-            defaultOpen={false}
-          />
         </div>
 
         {rightTab && (
           <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden relative z-10">
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
               <span className="text-xs font-bold tracking-wide text-foreground">
-                {rightTab === "graph" ? t("asset.rightPanel.graph") : ""}
+                {rightTab === "graph"
+                  ? t("asset.rightPanel.graph")
+                  : t("asset.rightPanel.metadata")}
               </span>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-auto">
               {rightTab === "graph" && onNavigateNote && (
                 <AssetGraphPanel
                   entry={entry}
@@ -139,10 +147,19 @@ export function MaterialFullView({
                   showLegend
                 />
               )}
+              {rightTab === "metadata" && (
+                <MaterialMetadataSection
+                  entry={entry}
+                  onNavigateNote={onNavigateNote}
+                  onRename={onRename}
+                  variant="plain"
+                />
+              )}
             </div>
           </div>
         )}
 
+        {/* 右アイコンレール（Note の右レールと同じパターン） */}
         <div
           className={cn(
             "shrink-0 border-border bg-muted/50 flex items-center gap-1 relative z-10",
@@ -163,6 +180,18 @@ export function MaterialFullView({
               <Network size={18} />
             </button>
           )}
+          <button
+            onClick={() => toggleRight("metadata")}
+            title={t("asset.rightPanel.metadata")}
+            className={cn(
+              "flex items-center justify-center rounded-md transition-colors w-8 h-8",
+              rightTab === "metadata"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+            )}
+          >
+            <Info size={18} />
+          </button>
         </div>
       </div>
     </div>

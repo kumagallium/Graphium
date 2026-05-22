@@ -867,6 +867,7 @@ export const ja: Record<string, string> = {
   "asset.openInFull": "全画面表示",
   "asset.exitFull": "全画面表示を解除",
   "asset.rightPanel.graph": "アセットグラフ",
+  "asset.rightPanel.metadata": "メタデータ",
   "asset.sortDate": "日付",
   "asset.sortName": "名前",
   "asset.pickTitle": "{type} を選択",

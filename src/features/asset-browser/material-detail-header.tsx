@@ -241,6 +241,7 @@ export function MaterialDetailHeader({
   }
 
   // ── sidePeek variant（既存の inline-style ヘッダー） ──
+  // ナビゲーション系（閉じる / 全画面）は Note SidePeek と揃えて左側に置く。
   return (
     <>
       <div
@@ -268,6 +269,24 @@ export function MaterialDetailHeader({
         >
           <X size={14} />
         </button>
+
+        {/* 全画面切替は閉じるの直後（Note SidePeek の Fullscreen ボタンと同じ位置） */}
+        {onToggleFull && (
+          <button
+            onClick={onToggleFull}
+            title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: 6,
+              borderRadius: 4,
+              color: "var(--color-text-secondary)",
+            }}
+            className="hover:bg-muted transition-colors"
+          >
+            {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        )}
 
         <span
           style={{
@@ -352,22 +371,6 @@ export function MaterialDetailHeader({
           )}
           <ShareMediaDialog entry={entry} onSharedRefUpdated={onSharedRefUpdated} />
 
-          {onToggleFull && (
-            <button
-              onClick={onToggleFull}
-              title={fullMode ? t("asset.exitFull") : t("asset.openInFull")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                padding: 6,
-                borderRadius: 4,
-                color: "var(--color-text-secondary)",
-              }}
-              className="hover:bg-muted transition-colors"
-            >
-              {fullMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
-          )}
           {onDelete && (
             <button
               onClick={() => onDelete(entry)}
