@@ -333,6 +333,21 @@ export type WikiMeta = {
   /** Synthesis の検証状態（特に abductive 型で意味を持つ） */
   hypothesisStatus?: HypothesisStatus;
   /**
+   * Synthesis の「テーマ」(2026-05-23, theme-driven Synthesizer)。
+   *
+   * 人間がテーマ（「家庭料理」「組織」「学習」など）を与えると、Synthesizer は
+   * そのテーマを lens に Atom 群を読み直してエッセイ風の発想を書き出す。これにより
+   * 「軸を発明する」task を人間が担い、LLM は得意な「翻訳と執筆」だけを担当する分業に
+   * なる（旧 meta-atom 層が解決できなかった lifting 問題への代替アプローチ）。
+   *
+   * 後方互換: theme なしで生成された旧 synthesis は `undefined`。UI は「テーマなし」
+   * バケットに入れる。新規生成では原則 theme が付く（UI で必須入力）。
+   *
+   * 粒度は自由文（「家庭料理」級の気軽な分野ワードを想定）。タグ管理は localStorage
+   * の履歴サジェストで吸収し、専用エンティティは設けない（フェーズ 1）。
+   */
+  theme?: string;
+  /**
    * 命題の認識論的ステータス（Phase η）。Claim / Atom で主に意味を持つ。
    *
    * Ingester が Claim 生成時に推定し、Atomizer は「入力 Claim の中で最も低い
@@ -461,6 +476,12 @@ export type WikiMetaSummary = {
   atomType?: AtomType;
   /** Synthesis の推論モード */
   synthesisMode?: SynthesisMode;
+  /**
+   * Synthesis のテーマ（人間が指定した lens）。
+   * 2026-05-23 theme-driven Synthesizer 導入。一覧 UI でテーマ別グルーピングするため
+   * Summary にも mirror する。旧 synthesis は undefined のまま。
+   */
+  theme?: string;
   /** Synthesis の検証状態 */
   hypothesisStatus?: HypothesisStatus;
   /**

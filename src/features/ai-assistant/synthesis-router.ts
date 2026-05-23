@@ -206,3 +206,33 @@ export function routeSynthesisMode(
     ...(hasSpeculativeInput !== undefined ? { hasSpeculativeInput } : {}),
   };
 }
+
+/**
+ * テーマ駆動 Synthesizer 向け: クラスタを「最も相性の良い 1〜2 モード」で個別に
+ * 叩くためのモード選定（2026-05-23）。
+ *
+ * 既存の router は「LLM に候補を提示してその中から 1 つ選ばせる」契約だが、
+ * テーマ駆動では **モード × クラスタ** で複数本のエッセイを並行生成したいので、
+ * router の出力上位 N 個を取り出して、各モード単独で /synthesize を叩く形に
+ * 使う想定。聴牌生成（後続）でも同じヘルパを使い回せるようにここに置く。
+ *
+ * @param atomTypes / epistemicStatuses / rebuttalConditionsByInput / relationTypesByInput
+ *   `routeSynthesisMode` と同じシグネチャ
+ * @param maxModes 取り出す上位モード数。デフォルト 2。
+ * @returns 上位 N 個のモード（推奨順）。最低 1 個含む。
+ */
+export function pickTopSynthesisModes(
+  atomTypes: (AtomType | undefined)[],
+  epistemicStatuses?: (EpistemicStatus | undefined)[],
+  rebuttalConditionsByInput?: (string[] | undefined)[],
+  relationTypesByInput?: (string[] | undefined)[],
+  maxModes: number = 2,
+): SynthesisMode[] {
+  const result = routeSynthesisMode(
+    atomTypes,
+    epistemicStatuses,
+    rebuttalConditionsByInput,
+    relationTypesByInput,
+  );
+  return result.candidateModes.slice(0, Math.max(1, maxModes));
+}

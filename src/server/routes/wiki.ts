@@ -36,6 +36,7 @@ import {
   type ClaimSnapshot,
 } from "../services/wiki-synthesizer.js";
 import { routeSynthesisMode } from "../../features/ai-assistant/synthesis-router.js";
+import type { SynthesisMode } from "../../lib/document-types.js";
 import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
@@ -383,6 +384,10 @@ app.post("/cross-update", async (c) => {
 });
 
 // Synthesis（複数 Concept の統合ページ生成）
+//   theme: 人間指定の lens（2026-05-23）。指定があれば Synthesizer は出力を
+//          そのテーマの語彙・読者層・比喩で書き直す。指定なしなら従来動作。
+//   candidateModes: 呼び出し側がモード候補を直接渡せる（B3 のモード自動選定で利用）。
+//          指定なしなら router が atomType / rebuttalConditions から推定する。
 app.post("/synthesize", async (c) => {
   const body = await c.req.json<{
     concepts: ClaimSnapshot[];
@@ -390,6 +395,8 @@ app.post("/synthesize", async (c) => {
     language: string;
     model?: string;
     skills?: { title: string; prompt: string }[];
+    theme?: string;
+    candidateModes?: SynthesisMode[];
   }>();
 
   if (!body.concepts || body.concepts.length < 2) {
@@ -405,15 +412,21 @@ app.post("/synthesize", async (c) => {
   // PR-B5: 入力 Atom の atomType から候補モードを推定し、Synthesizer プロンプトを
   // その候補だけに絞る。Claim 入力 (atomType 無し) や signal 不足の場合は
   // router が deductive 単独を返すため、最も permissive なデフォルト挙動になる。
-  const routerResult = routeSynthesisMode(
-    body.concepts.map((c) => c.atomType),
-    body.concepts.map((c) => c.epistemicStatus),
-    body.concepts.map((c) => c.rebuttalConditions),
-  );
+  // 2026-05-23: 呼び出し側が candidateModes を直接渡せば、router を skip して
+  // そのモード候補で叩く（テーマ駆動の auto-mode 選定で使う経路）。
+  const effectiveCandidateModes =
+    body.candidateModes && body.candidateModes.length > 0
+      ? body.candidateModes
+      : routeSynthesisMode(
+          body.concepts.map((c) => c.atomType),
+          body.concepts.map((c) => c.epistemicStatus),
+          body.concepts.map((c) => c.rebuttalConditions),
+        ).candidateModes;
   const systemPrompt = buildSynthesizerSystemPrompt(
     body.language || "en",
     body.skills,
-    routerResult.candidateModes,
+    effectiveCandidateModes,
+    body.theme,
   );
   const userMessage = buildSynthesizerUserMessage(
     body.concepts,

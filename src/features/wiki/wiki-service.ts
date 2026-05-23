@@ -1632,6 +1632,12 @@ type SynthesisResult = {
 
 /**
  * Synthesis の候補を取得する
+ *
+ * 2026-05-23: テーマ駆動 Synthesizer を追加。
+ *   - theme: 人間が指定した lens（「家庭料理」等）。指定があれば prompt が
+ *     その lens で書き直すよう要求する。
+ *   - candidateModes: 呼び出し側でモード候補を絞れる（テーマ駆動の auto-mode 選定で利用）。
+ *     未指定なら従来通り server 側 router が atomType から推定する。
  */
 export async function fetchSynthesisCandidates(
   concepts: ClaimSnapshot[],
@@ -1641,6 +1647,11 @@ export async function fetchSynthesisCandidates(
    *  Tauri モードではヘッダーで API キーを送らないため、ここで明示しないと
    *  ユーザーが Settings で選んだ Chat & Synthesis モデルが反映されない。 */
   model?: string,
+  /** テーマ駆動オプション（v20+） */
+  options?: {
+    theme?: string;
+    candidateModes?: import("../../lib/document-types").SynthesisMode[];
+  },
 ): Promise<SynthesisResult> {
   if (concepts.length < 3) return { candidates: [] };
 
@@ -1652,6 +1663,10 @@ export async function fetchSynthesisCandidates(
       existingSynthesisTitles,
       language,
       ...(model ? { model } : {}),
+      ...(options?.theme ? { theme: options.theme } : {}),
+      ...(options?.candidateModes && options.candidateModes.length > 0
+        ? { candidateModes: options.candidateModes }
+        : {}),
     }),
   });
 
@@ -1672,6 +1687,10 @@ export function buildSynthesisDocument(
   model: string | null,
   language?: string,
   noteIndex?: NoteIndex,
+  /** 2026-05-23: テーマ駆動 Synthesizer の lens（人間が指定）。
+   *  指定があれば wikiMeta.theme として保存し、一覧 UI のテーマ別グルーピングに使う。
+   *  指定なしなら従来通り theme=undefined。 */
+  theme?: string,
 ): GraphiumDocument {
   const now = new Date().toISOString();
   const converted = convertSectionsToBlocks(candidate.sections, noteIndex);
@@ -1730,6 +1749,8 @@ export function buildSynthesisDocument(
     synthesisMode: candidate.synthesisMode,
     hypothesisStatus: candidate.hypothesisStatus
       ?? (candidate.synthesisMode ? "speculative" : undefined),
+    // 2026-05-23: テーマ駆動 Synthesizer の lens。
+    ...(theme && theme.trim() ? { theme: theme.trim() } : {}),
     // PR-B4.5: procedureContext は Synthesis に持たない（context-stripped）
   };
 
