@@ -2333,7 +2333,10 @@ function MaintenanceTab({
     if (atomCount < 3) return;
     if (!window.confirm(t("settings.maintenance.synthesize.confirm").replace("{count}", String(atomCount)))) return;
 
-    const theme = synthesisTheme.trim();
+    // テーマは自由文だが prompt に直接挿入されるので length cap を入れる
+    // （シングルユーザー前提でも、誤入力やコピペ事故で長文が prompt を埋めるのを防ぐ）。
+    // 「家庭料理」「組織における信頼形成のメカニズム」など、200 文字あれば十分な粒度。
+    const theme = synthesisTheme.trim().slice(0, 200);
     // テーマ履歴に追加（最近使用順、重複除去、最大 10 件）
     if (theme) {
       const next = [theme, ...synthesisThemeHistory.filter((t) => t !== theme)].slice(0, 10);

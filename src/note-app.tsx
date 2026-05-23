@@ -4388,7 +4388,10 @@ export function NoteApp() {
     // 2026-05-23: テーマ駆動 Synthesizer。
     //   テーマが与えられた場合は、各クラスタで auto-mode 選定で 1-2 モード × 各モードで
     //   1 回 /synthesize を叩く（オプション c）。テーマなしなら従来通り 1 クラスタ = 1 call。
-    const theme = options?.theme?.trim() || undefined;
+    //   UI 側でも slice(0, 200) しているが、別経路（CLI / 将来の API）から呼ばれた時の
+    //   防御として、ここでも length cap を入れる（prompt に直接埋め込まれる文字列なので）。
+    const trimmedTheme = options?.theme?.trim().slice(0, 200) || "";
+    const theme = trimmedTheme || undefined;
     const themeMode = !!theme;
 
     // Phase 1: クラスタ集中サンプリング。
@@ -4465,7 +4468,6 @@ export function NoteApp() {
         }));
         // テーマ駆動なら 1 クラスタにつき top 1-2 mode を個別に叩く（オプション c）。
         // テーマなしなら従来通り server router 任せの 1 call。
-        // テーマ駆動なら 1 クラスタにつき top 1-2 mode を個別に叩く（オプション c）。
         // ClaimSnapshot は relatedAtoms を持たない（snapshot 軽量化のため）ので
         // relationTypesByInput は undefined 渡し。atomType / rebuttalConditions /
         // epistemicStatus のシグナルだけで router がモード推定する。
