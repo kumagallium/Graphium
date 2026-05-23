@@ -8,11 +8,14 @@ export const bookmarkBlock: CustomBlockEntry = {
   spec: BookmarkBlock,
 };
 
-// スラッシュメニューからピッカーを開くグローバルコールバック
-let bookmarkPickerCallback: (() => void) | null = null;
+// ブックマークピッカーを開くコールバック。エディタ単位で登録する
+// （main editor / SidePeek / list-SidePeek の各々が自分用のピッカーを持つ）。
+const bookmarkPickerCallbacks = new WeakMap<object, () => void>();
 
-export function setBookmarkPickerCallback(cb: (() => void) | null) {
-  bookmarkPickerCallback = cb;
+export function setBookmarkPickerCallback(editor: any, cb: (() => void) | null) {
+  if (!editor) return;
+  if (cb) bookmarkPickerCallbacks.set(editor, cb);
+  else bookmarkPickerCallbacks.delete(editor);
 }
 
 // スラッシュメニュー用アイテム（ピッカーモーダルを開く）
@@ -20,8 +23,8 @@ export const bookmarkSlashItem = {
   title: t("slash.bookmark"),
   subtext: t("slash.bookmarkSub"),
   group: t("asset.slashGroup"),
-  onItemClick: () => {
-    bookmarkPickerCallback?.();
+  onItemClick: (editor: any) => {
+    bookmarkPickerCallbacks.get(editor)?.();
   },
   aliases: ["bookmark", "link", "url", "ブックマーク", "リンク"],
 };

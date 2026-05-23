@@ -3,11 +3,14 @@
 
 import { t } from "../../i18n";
 
-// メモピッカーを開くグローバルコールバック（note-app.tsx で登録）
-let _openMemoPickerCallback: (() => void) | null = null;
+// メモピッカーを開くコールバック。エディタ単位で登録する
+// （main editor / SidePeek / list-SidePeek の各々が自分用のピッカーを持つ）。
+const _memoPickerCallbacks = new WeakMap<object, () => void>();
 
-export function setMemoPickerCallback(fn: typeof _openMemoPickerCallback) {
-  _openMemoPickerCallback = fn;
+export function setMemoPickerCallback(editor: any, fn: (() => void) | null) {
+  if (!editor) return;
+  if (fn) _memoPickerCallbacks.set(editor, fn);
+  else _memoPickerCallbacks.delete(editor);
 }
 
 type SlashMenuItem = {
@@ -25,8 +28,8 @@ export function getMemoSlashMenuItem(): SlashMenuItem {
     subtext: t("memo.slashSub"),
     group: t("asset.slashGroup"),
     aliases: ["memo", "メモ", "めも", "sticky", "付箋"],
-    onItemClick: (_editor: any) => {
-      _openMemoPickerCallback?.();
+    onItemClick: (editor: any) => {
+      _memoPickerCallbacks.get(editor)?.();
     },
   };
 }

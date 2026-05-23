@@ -15,6 +15,23 @@ import {
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { SandboxEditor } from "../../base/editor";
+import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
+import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
+import {
+  getMediaSlashMenuItems,
+  DEFAULT_MEDIA_SLASH_TITLES,
+  MediaPickerModal,
+  setMediaPickerCallback,
+  extractDomain,
+} from "@features/asset-browser";
+import type { MediaIndex, MediaIndexEntry, MediaType } from "@features/asset-browser";
+import {
+  getMemoSlashMenuItem,
+  setMemoPickerCallback,
+  MemoPickerModal,
+  buildMemoInsertBlock,
+} from "@features/mobile-capture";
+import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
 import { LabelDropdownPortal } from "@features/context-label/ui";
@@ -46,6 +63,13 @@ type SidePeekProps = {
    * inline=false（デフォルト）: 従来通り画面右端から portal で fixed 表示。
    */
   inline?: boolean;
+  /** スラッシュメニューのメディア / メモピッカー用。未指定だと slash 経由の挿入はできない。 */
+  mediaIndex?: MediaIndex | null;
+  captureIndex?: CaptureIndex | null;
+  /** /image, /video 等の新規アップロード経路。未指定だと既存メディアからの挿入のみ。 */
+  uploadFile?: (file: File) => Promise<string>;
+  /** /bookmark で新規 URL を追加したとき、アセットブラウザに登録する経路。 */
+  onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -73,10 +97,15 @@ function SidePeekSideMenu() {
 }
 
 // 既知のブロック型（未登録ブロック除去用）
+// メインエディタ（note-app.tsx）と揃える。カスタムブロックは
+// src/blocks/registry.ts の CUSTOM_BLOCK_TYPES から自動で取り込む。
+// 取りこぼすと、Peek を開いた瞬間に保存済みカスタムブロックが除去された
+// まま auto-save されてデータが壊れる。
 const KNOWN_BLOCK_TYPES = new Set([
   "paragraph", "heading", "bulletListItem", "numberedListItem",
   "checkListItem", "table", "image", "video", "audio", "file",
   "codeBlock", "quote",
+  ...CUSTOM_BLOCK_TYPES,
 ]);
 
 function sanitizeBlocks(blocks: any[]): any[] {
@@ -88,7 +117,11 @@ function sanitizeBlocks(blocks: any[]): any[] {
     }));
 }
 
-function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge, archived = false, inline = false }: SidePeekProps) {
+function SidePeekInner({
+  noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
+  archived = false, inline = false,
+  mediaIndex, captureIndex, uploadFile, onAddUrlBookmark,
+}: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -97,6 +130,12 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
   const labelStoreRef = useRef(labelStore);
   labelStoreRef.current = labelStore;
   const editorRef = useRef<any>(null);
+  // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
+  const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
+  // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
+  const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
+  const [memoPickerOpen, setMemoPickerOpen] = useState(false);
+  const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,7 +226,110 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
+    setSidePeekEditor(editor);
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStoreRef.current, linkStore);
+  }, []);
+
+  // SidePeek エディタごとに picker callback を登録する。
+  // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
+  // どちらのエディタからクリックされたかを WeakMap で識別する。
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    setMediaPickerCallback(sidePeekEditor, setPickerMediaType);
+    setMemoPickerCallback(sidePeekEditor, () => setMemoPickerOpen(true));
+    setBookmarkPickerCallback(sidePeekEditor, () => setUrlSlashPickerOpen(true));
+    return () => {
+      setMediaPickerCallback(sidePeekEditor, null);
+      setMemoPickerCallback(sidePeekEditor, null);
+      setBookmarkPickerCallback(sidePeekEditor, null);
+    };
+  }, [sidePeekEditor]);
+
+  // スラッシュ用に「直前のスラッシュブロック」を退避する。
+  // BlockNote はスラッシュアイテム選択時点で `/` を含む空ブロックの中身を消すが、
+  // 完全に空のパラグラフが残るため、挿入後に削除して見た目をすっきりさせる。
+  // currentBlock を都度取り直すと、ピッカーモーダル表示中にフォーカスが移って
+  // cursor position が変わる可能性があるので、useState で記憶する。
+
+  // 既存メディアから image/video/audio/pdf 挿入
+  const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const currentBlock = editor.getTextCursorPosition()?.block;
+    if (!currentBlock) {
+      setPickerMediaType(null);
+      return;
+    }
+    const newBlock = entry.type === "pdf"
+      ? { type: "pdf", props: { url: entry.url, name: entry.name } }
+      : {
+          type: entry.type === "video" ? "video" : entry.type === "audio" ? "audio" : "image",
+          props: { url: entry.url, name: entry.name },
+        };
+    editor.insertBlocks([newBlock], currentBlock, "after");
+    const content = currentBlock.content;
+    if (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    ) {
+      editor.removeBlocks([currentBlock]);
+    }
+    setPickerMediaType(null);
+  }, []);
+
+  // 既存 URL ピッカーから bookmark 挿入
+  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const currentBlock = editor.getTextCursorPosition()?.block;
+    if (!currentBlock) {
+      setUrlSlashPickerOpen(false);
+      return;
+    }
+    editor.insertBlocks(
+      [{
+        type: "bookmark",
+        props: {
+          url: entry.url,
+          title: entry.name,
+          description: entry.urlMeta?.description ?? "",
+          ogImage: entry.urlMeta?.ogImage ?? "",
+          domain: entry.urlMeta?.domain ?? extractDomain(entry.url),
+        },
+      }],
+      currentBlock,
+      "after",
+    );
+    const content = currentBlock.content;
+    if (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    ) {
+      editor.removeBlocks([currentBlock]);
+    }
+    setUrlSlashPickerOpen(false);
+  }, []);
+
+  // メモピッカーから挿入
+  const handleMemoSelect = useCallback((entry: CaptureEntry) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const block = buildMemoInsertBlock(entry);
+    if (!block) return;
+    const currentBlock = editor.getTextCursorPosition()?.block;
+    if (currentBlock) {
+      editor.insertBlocks([block], currentBlock, "after");
+      const content = currentBlock.content;
+      if (Array.isArray(content) && content.length <= 1) {
+        const text = content[0]?.text?.trim() ?? "";
+        if (text === "" || text === "/memo") {
+          editor.removeBlocks([currentBlock]);
+        }
+      }
+    }
+    setMemoPickerOpen(false);
   }, []);
 
   // 初期コンテンツ（cachedDoc を優先し、レンダリング時に即利用可能にする）
@@ -528,12 +670,33 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
               <SandboxEditor
                 key={noteId}
                 editable={!archived}
+                blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}
-                extraSlashMenuItems={[...buildLabelSlashMenuItems()]}
+                // メインエディタと同じ slash items を出す。
+                // 各 slash item の onItemClick はクリック時のエディタを
+                // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
+                // SidePeek のエディタに挿入される。
+                extraSlashMenuItems={[
+                  ...buildLabelSlashMenuItems(),
+                  ...getMediaSlashMenuItems(),
+                  bookmarkSlashItem,
+                  getMemoSlashMenuItem(),
+                ]}
+                excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
                 onHashtagSelect={(blockId, label) => labelStoreRef.current.setLabel(blockId, label)}
+                // メインエディタと同様にメディア URL を解決する。
+                // これがないと image / video / audio のブロックが
+                // local-media:// 等の生 URL のままになり、BlockNote
+                // デフォルトの「ファイル読み込み中」状態で止まって見える。
+                resolveFileUrl={async (url: string) => {
+                  const p = getActiveProvider();
+                  const fid = p.extractFileId(url);
+                  if (fid) return p.getMediaBlobUrl(fid);
+                  return url;
+                }}
               />
             </div>
           </>
@@ -546,6 +709,37 @@ function SidePeekInner({ noteId, cachedDoc, onClose, onNavigate, wikiEntries, on
           to { transform: translateX(0); }
         }
       `}</style>
+
+      {/* スラッシュメニューのピッカーモーダル。
+          SidePeek overlay (z-index:100) より前面に出すため、
+          z-index:200 の wrapper で stacking context を切る。
+          (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen ? "auto" : "none" }}>
+        {pickerMediaType && (
+          <MediaPickerModal
+            mediaIndex={mediaIndex ?? null}
+            mediaType={pickerMediaType}
+            onSelect={handlePickerSelect}
+            onClose={() => setPickerMediaType(null)}
+            onUpload={uploadFile}
+          />
+        )}
+        {urlSlashPickerOpen && (
+          <MediaPickerModal
+            mediaIndex={mediaIndex ?? null}
+            mediaType="url"
+            onSelect={handleUrlSlashPickerSelect}
+            onClose={() => setUrlSlashPickerOpen(false)}
+            onAddUrlBookmark={onAddUrlBookmark}
+          />
+        )}
+        <MemoPickerModal
+          open={memoPickerOpen}
+          onClose={() => setMemoPickerOpen(false)}
+          captureIndex={captureIndex ?? null}
+          onSelect={handleMemoSelect}
+        />
+      </div>
     </div>
   );
 

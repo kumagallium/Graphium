@@ -4,14 +4,22 @@
 import { t } from "../../i18n";
 import type { MediaType } from "./media-index";
 
-// メディアピッカーを開くグローバルコールバック
-// note-app.tsx 側で登録する
-let _openPickerCallback: ((type: MediaType) => void) | null = null;
+// メディアピッカーを開くコールバック。
+// エディタ単位で登録する（main editor / SidePeek / list-SidePeek の各々が
+// 自分用のピッカーを持つ）。スラッシュアイテムは click 時の editor を
+// キーにレジストリを引いて、呼び出し元エディタのピッカーを開く。
+// 単一の global 変数だと、NoteEditorInner が unmount されている画面
+// （notes 一覧から listSidePeek を開いたとき等）でピッカーが死ぬ。
+export type MediaPickerRequest = { type: MediaType; editor: any };
+const _pickerCallbacks = new WeakMap<object, (type: MediaType) => void>();
 
 export function setMediaPickerCallback(
-  fn: typeof _openPickerCallback,
+  editor: any,
+  fn: ((type: MediaType) => void) | null,
 ) {
-  _openPickerCallback = fn;
+  if (!editor) return;
+  if (fn) _pickerCallbacks.set(editor, fn);
+  else _pickerCallbacks.delete(editor);
 }
 
 type SlashMenuItem = {
@@ -33,8 +41,8 @@ function createMediaSlashItem(
     subtext: t(subtextKey),
     group: t("asset.slashGroup"),
     aliases,
-    onItemClick: (_editor: any) => {
-      _openPickerCallback?.(mediaType);
+    onItemClick: (editor: any) => {
+      _pickerCallbacks.get(editor)?.(mediaType);
     },
   };
 }
