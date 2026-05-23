@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,6 +10,76 @@ use std::sync::Mutex;
 use std::thread;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
+
+// --- sidecar ログファイル ---
+//
+// sidecar の stdout/stderr は従来 Tauri の event でしか拾えず、DevTools を開かないと
+// 障害解析ができなかった。Apple Developer 公証で配布範囲を広げる前に、ファイルベースの
+// 永続ログを残す。
+//
+// レイアウト（macOS）: `~/Library/Logs/Graphium/sidecar.log`
+//   それ以外: `dirs::data_local_dir()/com.graphium.app/logs/sidecar.log`
+// 単純なローテーション: 5 MB を超えたら sidecar.log.1 にリネームして新規作成。
+// 直近 2 世代だけ保持し、ディスクが膨らみ続けるのを防ぐ。
+
+const SIDECAR_LOG_FILE: &str = "sidecar.log";
+const SIDECAR_LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+fn sidecar_log_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = dirs::home_dir()?;
+        let dir = home.join("Library").join("Logs").join("Graphium");
+        Some(dir)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let base = dirs::data_local_dir()?;
+        Some(base.join(APP_IDENTIFIER).join("logs"))
+    }
+}
+
+fn sidecar_log_path() -> Option<PathBuf> {
+    sidecar_log_dir().map(|d| d.join(SIDECAR_LOG_FILE))
+}
+
+fn rotate_sidecar_log_if_needed(path: &PathBuf) {
+    let Ok(meta) = fs::metadata(path) else { return };
+    if meta.len() < SIDECAR_LOG_MAX_BYTES {
+        return;
+    }
+    let rotated = path.with_extension("log.1");
+    let _ = fs::remove_file(&rotated);
+    let _ = fs::rename(path, &rotated);
+}
+
+fn open_sidecar_log_file() -> Option<std::fs::File> {
+    let dir = sidecar_log_dir()?;
+    if let Err(e) = fs::create_dir_all(&dir) {
+        eprintln!("[sidecar-log] ディレクトリ作成失敗 {}: {e}", dir.display());
+        return None;
+    }
+    let path = dir.join(SIDECAR_LOG_FILE);
+    rotate_sidecar_log_if_needed(&path);
+    match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(f) => Some(f),
+        Err(e) => {
+            eprintln!("[sidecar-log] ファイル open 失敗 {}: {e}", path.display());
+            None
+        }
+    }
+}
+
+/// ログファイルに 1 行書く。失敗しても黙って捨てる（診断専用なので main 経路を壊さない）。
+fn append_sidecar_log(file: &Mutex<Option<std::fs::File>>, prefix: &str, line: &str) {
+    if let Ok(mut guard) = file.lock() {
+        if let Some(f) = guard.as_mut() {
+            let ts = humantime::format_rfc3339(std::time::SystemTime::now()).to_string();
+            let _ = writeln!(f, "[{ts}] {prefix}{line}");
+            let _ = f.flush();
+        }
+    }
+}
 
 /// 終了処理の状態。フロントから shutdown_ack が来ると true、
 /// 次の CloseRequested ではそのまま閉じる（無限ループ防止）
@@ -96,6 +166,9 @@ fn start_native_sidecar(
             "http://localhost:5174,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
         )
         .env("DATA_DIR", &data_dir)
+        // macOS の Keychain 経由で API キーを扱うよう sidecar に明示する。
+        // 旧形式（models.json に平文）が残っていれば sidecar 側で Keychain へ移行する。
+        .env("GRAPHIUM_USE_KEYCHAIN", if cfg!(target_os = "macos") { "1" } else { "0" })
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -115,23 +188,45 @@ fn start_native_sidecar(
 
     emit_log(&app, format!("[native] spawned pid={pid}"));
 
-    // stdout を行単位で emit
+    // ファイルへの永続ログを開く。失敗しても sidecar 自体は起動させる。
+    let log_file: std::sync::Arc<Mutex<Option<std::fs::File>>> =
+        std::sync::Arc::new(Mutex::new(open_sidecar_log_file()));
+    if let Some(path) = sidecar_log_path() {
+        emit_log(&app, format!("[native] sidecar log file: {}", path.display()));
+    }
+    append_sidecar_log(
+        &log_file,
+        "[meta] ",
+        &format!(
+            "spawned pid={pid} node={} server={} dataDir={} port={}",
+            node_path.display(),
+            server_script.display(),
+            data_dir,
+            port
+        ),
+    );
+
+    // stdout を行単位で emit + ファイルへ append
     if let Some(stdout) = child.stdout.take() {
         let app_clone = app.clone();
+        let log_clone = log_file.clone();
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
                 let _ = app_clone.emit("sidecar-log", format!("[stdout] {line}"));
+                append_sidecar_log(&log_clone, "[stdout] ", &line);
             }
         });
     }
     // stderr も同様
     if let Some(stderr) = child.stderr.take() {
         let app_clone = app.clone();
+        let log_clone = log_file.clone();
         thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
                 let _ = app_clone.emit("sidecar-log", format!("[stderr] {line}"));
+                append_sidecar_log(&log_clone, "[stderr] ", &line);
             }
         });
     }
@@ -139,16 +234,18 @@ fn start_native_sidecar(
     // wait を別スレッドで監視。終了したら sidecar-closed を emit。
     {
         let app_clone = app.clone();
+        let log_clone = log_file.clone();
         thread::spawn(move || match child.wait() {
             Ok(status) => {
                 let code = status.code();
-                let _ = app_clone.emit(
-                    "sidecar-closed",
-                    format!("exit code={code:?} success={}", status.success()),
-                );
+                let msg = format!("exit code={code:?} success={}", status.success());
+                let _ = app_clone.emit("sidecar-closed", msg.clone());
+                append_sidecar_log(&log_clone, "[meta] ", &msg);
             }
             Err(e) => {
-                let _ = app_clone.emit("sidecar-closed", format!("wait failed: {e}"));
+                let msg = format!("wait failed: {e}");
+                let _ = app_clone.emit("sidecar-closed", msg.clone());
+                append_sidecar_log(&log_clone, "[meta] ", &msg);
             }
         });
     }

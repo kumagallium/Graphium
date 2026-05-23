@@ -1,9 +1,19 @@
-// 登録済みモデルの永続化（JSON ファイル）
+// 登録済みモデルの永続化（JSON ファイル + Keychain）
 // Node モード: data/models.json に保存する
 // Vercel モード: ファイル I/O を行わない（API キーはリクエストヘッダーから取得）
+//
+// Tauri デスクトップ版（GRAPHIUM_USE_KEYCHAIN=1）では、API キーは macOS Keychain に
+// 保存し、ファイルには metadata のみを書く。旧形式（apiKey をファイルに含む）の
+// データは初回読み込み時に Keychain へ移行し、ファイルから消す。
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import {
+  isKeychainEnabled,
+  getApiKey,
+  setApiKey,
+  deleteApiKey,
+} from "./keychain.js";
 
 export type ServerMode = "node" | "vercel";
 
@@ -22,8 +32,12 @@ export type ModelConfig = {
   createdAt: string;
 };
 
+/** ファイルに書く形式。Keychain 有効時は apiKey を含まない */
+type StoredModelConfig = Omit<ModelConfig, "apiKey"> & { apiKey?: string };
+
 let serverMode: ServerMode = "node";
 let dataDir = join(process.cwd(), "data");
+let migrated = false;
 
 /** サーバーモードを設定する（Vercel ではファイル I/O を無効化） */
 export function setServerMode(mode: ServerMode): void {
@@ -37,6 +51,8 @@ export function getServerMode(): ServerMode {
 /** データディレクトリを設定する（テスト・Docker 用） */
 export function setDataDir(dir: string): void {
   dataDir = dir;
+  // dataDir が変わったら次の読み込みで再度移行を試みる
+  migrated = false;
 }
 
 function modelsPath(): string {
@@ -49,18 +65,68 @@ function ensureDataDir(): void {
   }
 }
 
-function readModels(): ModelConfig[] {
+function readRawStored(): StoredModelConfig[] {
   try {
     const raw = readFileSync(modelsPath(), "utf-8");
-    return JSON.parse(raw) as ModelConfig[];
+    return JSON.parse(raw) as StoredModelConfig[];
   } catch {
     return [];
   }
 }
 
-function writeModels(models: ModelConfig[]): void {
+function writeRawStored(models: StoredModelConfig[]): void {
   ensureDataDir();
   writeFileSync(modelsPath(), JSON.stringify(models, null, 2), "utf-8");
+}
+
+/**
+ * 旧形式（apiKey がファイルに平文で含まれる）から Keychain へ一度だけ移行する。
+ * 移行後は apiKey フィールドを除いたファイルを書き戻し、平文を残さない。
+ */
+function migrateIfNeeded(): void {
+  if (migrated || !isKeychainEnabled()) {
+    migrated = true;
+    return;
+  }
+  const stored = readRawStored();
+  let changed = false;
+  for (const m of stored) {
+    if (m.apiKey && m.apiKey.length > 0) {
+      try {
+        setApiKey(m.id, m.apiKey);
+        delete m.apiKey;
+        changed = true;
+      } catch (e) {
+        // 一件失敗しても他のモデルの移行は続行する。失敗したエントリは次回起動で
+        // 再試行されるよう、apiKey をそのまま残す（ファイル書き戻し対象外）。
+        console.warn(
+          `[models] Keychain migration failed for ${m.id}: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+      }
+    }
+  }
+  if (changed) {
+    writeRawStored(stored);
+  }
+  migrated = true;
+}
+
+/** ストア済みのレコードに Keychain から取得した API キーをマージする */
+function hydrate(stored: StoredModelConfig[]): ModelConfig[] {
+  if (isKeychainEnabled()) {
+    return stored.map((m) => ({
+      ...m,
+      apiKey: getApiKey(m.id) ?? m.apiKey ?? "",
+    }));
+  }
+  return stored.map((m) => ({ ...m, apiKey: m.apiKey ?? "" }));
+}
+
+function readModels(): ModelConfig[] {
+  migrateIfNeeded();
+  return hydrate(readRawStored());
 }
 
 export function listModels(): ModelConfig[] {
@@ -85,15 +151,36 @@ export function addModel(
   if (serverMode === "vercel") {
     throw new Error("Vercel モードではモデルの永続化はできません");
   }
-  const models = readModels();
-  const model: ModelConfig = {
-    ...input,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-  };
-  models.push(model);
-  writeModels(models);
-  return model;
+  migrateIfNeeded();
+  const stored = readRawStored();
+  const id = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  if (isKeychainEnabled()) {
+    setApiKey(id, input.apiKey);
+    const record: StoredModelConfig = {
+      id,
+      name: input.name,
+      provider: input.provider,
+      modelId: input.modelId,
+      apiBase: input.apiBase,
+      createdAt,
+    };
+    stored.push(record);
+    writeRawStored(stored);
+  } else {
+    const record: StoredModelConfig = {
+      id,
+      name: input.name,
+      provider: input.provider,
+      modelId: input.modelId,
+      apiKey: input.apiKey,
+      apiBase: input.apiBase,
+      createdAt,
+    };
+    stored.push(record);
+    writeRawStored(stored);
+  }
+  return { ...input, id, createdAt };
 }
 
 export function updateModel(
@@ -103,24 +190,54 @@ export function updateModel(
   if (serverMode === "vercel") {
     throw new Error("Vercel モードではモデルの永続化はできません");
   }
-  const models = readModels();
-  const idx = models.findIndex((m) => m.id === id);
+  migrateIfNeeded();
+  const stored = readRawStored();
+  const idx = stored.findIndex((m) => m.id === id);
   if (idx < 0) return undefined;
-  const updated = { ...models[idx], ...input };
-  // apiKey が空なら既存のキーを維持（表示名のみ更新のケース）
-  if (!input.apiKey) updated.apiKey = models[idx].apiKey;
-  models[idx] = updated;
-  writeModels(models);
-  return updated;
+  const existing = stored[idx];
+  const next: StoredModelConfig = { ...existing };
+  if (input.name !== undefined) next.name = input.name;
+  if (input.provider !== undefined) next.provider = input.provider;
+  if (input.modelId !== undefined) next.modelId = input.modelId;
+  if (input.apiBase !== undefined) next.apiBase = input.apiBase;
+
+  // apiKey 更新（空文字なら既存維持）
+  let newKey: string | undefined;
+  if (input.apiKey) {
+    newKey = input.apiKey;
+  }
+
+  if (isKeychainEnabled()) {
+    if (newKey) {
+      setApiKey(id, newKey);
+    }
+    delete next.apiKey;
+    stored[idx] = next;
+    writeRawStored(stored);
+    return {
+      ...next,
+      apiBase: next.apiBase,
+      apiKey: getApiKey(id) ?? "",
+    };
+  } else {
+    if (newKey) next.apiKey = newKey;
+    stored[idx] = next;
+    writeRawStored(stored);
+    return { ...next, apiKey: next.apiKey ?? "" };
+  }
 }
 
 export function removeModel(id: string): boolean {
   if (serverMode === "vercel") {
     throw new Error("Vercel モードではモデルの永続化はできません");
   }
-  const models = readModels();
-  const filtered = models.filter((m) => m.id !== id);
-  if (filtered.length === models.length) return false;
-  writeModels(filtered);
+  migrateIfNeeded();
+  const stored = readRawStored();
+  const filtered = stored.filter((m) => m.id !== id);
+  if (filtered.length === stored.length) return false;
+  writeRawStored(filtered);
+  if (isKeychainEnabled()) {
+    deleteApiKey(id);
+  }
   return true;
 }
