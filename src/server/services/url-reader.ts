@@ -27,6 +27,12 @@ export type ReaderArticle = {
   textContent: string;
   /** Readability の自動要約（先頭 1-2 段落、空文字の可能性あり） */
   excerpt: string;
+  /**
+   * 記事内の代表画像 URL（先頭の意味のある `<img>` を絶対 URL で）。
+   * tracker 1x1 / data URI / 拡張子非画像は除外する。
+   * 見つからなければ null。
+   */
+  leadImage: string | null;
   fetchedAt: string;
 };
 
@@ -106,6 +112,10 @@ export function extractReaderFromHtml(html: string, url: string): ReaderArticle 
     } satisfies ReaderError;
   }
 
+  // 記事の lead image を抽出する（OGP より記事ごとの hero 画像を優先したい）
+  // article.content は parsed HTML 断片なので、別の JSDOM で wrap して走査する
+  const leadImage = extractLeadImage(article.content, url);
+
   return {
     url,
     title: article.title ?? "",
@@ -115,8 +125,49 @@ export function extractReaderFromHtml(html: string, url: string): ReaderArticle 
     content: sanitizeReaderHtml(article.content),
     textContent: normalizeWhitespace(article.textContent),
     excerpt: article.excerpt ?? "",
+    leadImage,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * 本文 HTML から先頭の意味ある `<img>` を 1 件抽出して絶対 URL で返す。
+ *
+ * 除外条件:
+ *   - width / height が 1 (tracker pixel)
+ *   - data: URI（インライン画像、ほとんどはアイコン）
+ *   - blank.gif / spacer.gif / pixel.gif 等の汎用空画像
+ *   - srcset の先頭は src のフォールバック扱い
+ */
+export function extractLeadImage(contentHtml: string, baseUrl: string): string | null {
+  const dom = new JSDOM(`<!doctype html><html><body>${contentHtml}</body></html>`, { url: baseUrl });
+  const imgs = Array.from(dom.window.document.querySelectorAll("img"));
+  for (const img of imgs) {
+    const w = parseInt(img.getAttribute("width") ?? "", 10);
+    const h = parseInt(img.getAttribute("height") ?? "", 10);
+    if (w === 1 || h === 1) continue;
+
+    // src を取得。`<img data-src=...>` の lazy-load パターンも軽く拾う
+    const rawSrc =
+      img.getAttribute("src") ||
+      img.getAttribute("data-src") ||
+      img.getAttribute("data-original") ||
+      "";
+    if (!rawSrc) continue;
+    if (rawSrc.startsWith("data:")) continue;
+    if (/(blank|spacer|pixel|transparent)\.(gif|png|webp)$/i.test(rawSrc)) continue;
+
+    try {
+      const absolute = new URL(rawSrc, baseUrl).toString();
+      // http(s) のみ受け付ける（mailto:/javascript: 等を弾く）
+      if (!/^https?:/i.test(absolute)) continue;
+      return absolute;
+    } catch {
+      // 不正な URL → skip
+      continue;
+    }
+  }
+  return null;
 }
 
 /**

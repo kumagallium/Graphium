@@ -28,6 +28,7 @@ type ReaderArticle = {
   content: string;
   textContent: string;
   excerpt: string;
+  leadImage: string | null;
   fetchedAt: string;
 };
 
@@ -98,6 +99,7 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
         void persistUrlMetaPatch(entry.fileId, {
           excerpt: article.excerpt || undefined,
           lang: article.lang || undefined,
+          leadImage: article.leadImage || undefined,
         });
       } catch (err) {
         if (cancelled) return;

@@ -10,10 +10,17 @@ import { getFaviconUrl, type MediaIndexEntry } from "./media-index";
 export function UrlPreviewCard({ entry }: { entry: MediaIndexEntry }) {
   const t = useT();
   const domain = entry.urlMeta?.domain ?? "";
+  // 表示優先度: leadImage (Reader 抽出) → ogImage (publisher 提供) → favicon
+  const hero = entry.urlMeta?.leadImage || entry.urlMeta?.ogImage;
   return (
     <div className="flex flex-col items-center justify-center gap-4 max-w-sm text-center px-6">
-      {entry.urlMeta?.ogImage ? (
-        <img src={entry.urlMeta.ogImage} alt="" className="max-w-full max-h-48 rounded object-cover" />
+      {hero ? (
+        <img
+          src={hero}
+          alt=""
+          className="max-w-full max-h-48 rounded object-cover"
+          referrerPolicy="no-referrer"
+        />
       ) : (
         <img
           src={getFaviconUrl(domain, 128)}

@@ -38,6 +38,12 @@ export type UrlMeta = {
    * 表示時のフォント切替・i18n 表示の余地として保持。
    */
   lang?: string;
+  /**
+   * Reader Mode で抽出した記事内の代表画像 URL。
+   * publisher 提供の `ogImage` よりも記事固有の hero 画像を優先したい用途。
+   * 表示優先度: leadImage → ogImage → favicon。
+   */
+  leadImage?: string;
 };
 
 /**
@@ -242,9 +248,9 @@ export function addMediaEntry(
  */
 export async function persistUrlMetaPatch(
   fileId: string,
-  patch: Partial<Pick<UrlMeta, "excerpt" | "lang">>,
+  patch: Partial<Pick<UrlMeta, "excerpt" | "lang" | "leadImage">>,
 ): Promise<void> {
-  if (!patch.excerpt && !patch.lang) return;
+  if (!patch.excerpt && !patch.lang && !patch.leadImage) return;
   const index = await readMediaIndex();
   if (!index) return;
   let changed = false;
@@ -257,7 +263,8 @@ export async function persistUrlMetaPatch(
     // 値が完全に同じなら no-op（無駄な書き込みを避ける）
     if (
       m.urlMeta?.excerpt === nextMeta.excerpt &&
-      m.urlMeta?.lang === nextMeta.lang
+      m.urlMeta?.lang === nextMeta.lang &&
+      m.urlMeta?.leadImage === nextMeta.leadImage
     ) {
       return m;
     }

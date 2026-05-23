@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   extractReaderFromHtml,
   sanitizeReaderHtml,
+  extractLeadImage,
   getCachedReaderArticle,
   setCachedReaderArticle,
   clearReaderCache,
@@ -110,6 +111,52 @@ describe("sanitizeReaderHtml", () => {
     expect(out).not.toContain("<object");
     expect(out).not.toContain("<embed");
     expect(out).not.toContain("<link");
+  });
+});
+
+describe("extractLeadImage", () => {
+  const base = "https://example.com/article";
+
+  it("先頭の意味ある img を絶対 URL で返す", () => {
+    const html = '<p>intro</p><img src="/hero.jpg" alt="hero"><p>body</p>';
+    expect(extractLeadImage(html, base)).toBe("https://example.com/hero.jpg");
+  });
+
+  it("width=1 / height=1 の tracker pixel をスキップ", () => {
+    const html =
+      '<img src="https://t.example.net/pixel.gif" width="1" height="1">' +
+      '<img src="https://cdn.example.com/photo.jpg">';
+    expect(extractLeadImage(html, base)).toBe("https://cdn.example.com/photo.jpg");
+  });
+
+  it("data: URI をスキップ", () => {
+    const html =
+      '<img src="data:image/gif;base64,R0lGODlh">' +
+      '<img src="https://cdn.example.com/photo.jpg">';
+    expect(extractLeadImage(html, base)).toBe("https://cdn.example.com/photo.jpg");
+  });
+
+  it("blank.gif / spacer.gif / pixel.gif をスキップ", () => {
+    const html =
+      '<img src="/img/spacer.gif">' +
+      '<img src="/img/blank.png">' +
+      '<img src="/img/real.jpg">';
+    expect(extractLeadImage(html, base)).toBe("https://example.com/img/real.jpg");
+  });
+
+  it("data-src / data-original の lazy-load 形式も拾う", () => {
+    const html = '<img data-src="/lazy.jpg" alt="lazy">';
+    expect(extractLeadImage(html, base)).toBe("https://example.com/lazy.jpg");
+  });
+
+  it("img が無ければ null", () => {
+    expect(extractLeadImage("<p>no images here</p>", base)).toBeNull();
+  });
+
+  it("不正な src（javascript: 等）はスキップ", () => {
+    const html =
+      '<img src="javascript:alert(1)">' + '<img src="https://cdn.example.com/photo.jpg">';
+    expect(extractLeadImage(html, base)).toBe("https://cdn.example.com/photo.jpg");
   });
 });
 
