@@ -272,10 +272,24 @@ export async function persistUrlMetaPatch(
   };
   try {
     await saveMediaIndex(next);
+    // in-memory の useFileManager.mediaIndex が disk と乖離しないよう、
+    // 再読込トリガを broadcast する。リスナは useFileManager 側。
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "urlMeta-patch", fileId } }),
+      );
+    }
   } catch (err) {
     console.warn("urlMeta 書き戻し失敗:", err);
   }
 }
+
+/**
+ * メディアインデックスが外部で書き換えられたことを伝えるイベント名。
+ * `persistUrlMetaPatch` 等の disk 経由更新が in-memory state と
+ * 乖離しないよう、useFileManager が listen して `refreshMediaIndex` を呼ぶ。
+ */
+export const MEDIA_INDEX_CHANGED_EVENT = "graphium:media-index-changed";
 
 /** メディアエントリを削除 */
 export function removeMediaEntry(
