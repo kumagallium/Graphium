@@ -28,6 +28,8 @@ export {
   generateUrlBookmarkId,
   extractDomain,
   getFaviconUrl,
+  persistUrlMetaPatch,
+  MEDIA_INDEX_CHANGED_EVENT,
 } from "./media-index";
 export type {
   MediaIndex,

@@ -207,16 +207,44 @@ function VideoThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
 // URL ブックマークサムネイル: favicon + ドメイン表示
 function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; compact?: boolean }) {
   const domain = entry.urlMeta?.domain ?? "";
+  // 表示優先度: leadImage (Reader 抽出) → ogImage (publisher 提供) → favicon
+  const hero = entry.urlMeta?.leadImage || entry.urlMeta?.ogImage;
+  const [heroFailed, setHeroFailed] = useState(false);
+  const showHero = hero && !heroFailed;
+
   if (compact) {
     return (
-      <div className="w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0">
+      <div className="w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0 overflow-hidden">
+        {showHero ? (
+          <img
+            src={hero}
+            alt=""
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            onError={() => setHeroFailed(true)}
+          />
+        ) : (
+          <img
+            src={getFaviconUrl(domain)}
+            alt=""
+            className="w-5 h-5 rounded"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+  if (showHero) {
+    return (
+      <div className="w-full h-32 rounded-t-md bg-muted overflow-hidden">
         <img
-          src={getFaviconUrl(domain)}
-          alt=""
-          className="w-5 h-5 rounded"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
+          src={hero}
+          alt={entry.name}
+          className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setHeroFailed(true)}
         />
       </div>
     );
@@ -321,9 +349,9 @@ function MediaCard({
         <p className="text-[10px] text-muted-foreground mt-0.5">
           {formatDate(entry.uploadedAt)}
         </p>
-        {entry.type === "url" && entry.urlMeta?.description && (
+        {entry.type === "url" && (entry.urlMeta?.excerpt || entry.urlMeta?.description) && (
           <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-            {entry.urlMeta.description}
+            {entry.urlMeta.excerpt || entry.urlMeta.description}
           </p>
         )}
         {/* 使用されているノート */}
@@ -922,7 +950,7 @@ export function AssetGalleryView({
                     <td className="py-1 px-2">
                       <MediaThumbnail entry={entry} compact />
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-2 px-3 max-w-0 w-full">
                       <div className="flex items-center gap-1 min-w-0">
                         <span className="text-foreground truncate" title={entry.name}>
                           {entry.name}
@@ -943,6 +971,14 @@ export function AssetGalleryView({
                       {entry.type === "url" && entry.urlMeta?.domain && (
                         <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                           {entry.urlMeta.domain}
+                        </p>
+                      )}
+                      {entry.type === "url" && (entry.urlMeta?.excerpt || entry.urlMeta?.description) && (
+                        <p
+                          className="text-[10px] text-muted-foreground truncate mt-0.5 italic"
+                          title={entry.urlMeta.excerpt || entry.urlMeta.description}
+                        >
+                          {entry.urlMeta.excerpt || entry.urlMeta.description}
                         </p>
                       )}
                     </td>

@@ -77,13 +77,16 @@ function ThumbCell({ entry }: { entry: MediaIndexEntry }) {
       </div>
     );
   }
-  if (entry.type === "url" && entry.urlMeta?.ogImage) {
+  // 表示優先度: leadImage (Reader 抽出) → ogImage (publisher 提供) → fallback アイコン
+  const hero = entry.type === "url" ? (entry.urlMeta?.leadImage || entry.urlMeta?.ogImage) : undefined;
+  if (hero) {
     return (
       <div className="w-10 h-10 rounded bg-muted overflow-hidden shrink-0">
         <img
-          src={entry.urlMeta.ogImage}
+          src={hero}
           alt=""
           className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = "none";
           }}

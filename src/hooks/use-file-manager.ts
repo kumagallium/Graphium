@@ -58,6 +58,7 @@ import {
   mimeToMediaType,
   readMediaIndex,
   ensureMediaIndex,
+  MEDIA_INDEX_CHANGED_EVENT,
   type MediaIndex,
   type MediaIndexEntry,
   type MediaType,
@@ -364,6 +365,18 @@ export function useFileManager(authenticated: boolean) {
       console.error("メディアインデックスの再読み込みに失敗:", err);
     }
   }, []);
+
+  // disk 経由で media-index が外部から書き換えられた時の同期
+  // 例: URL Reader Mode (PR3-d) が persistUrlMetaPatch で urlMeta.excerpt を
+  // 書き戻すと、in-memory state と disk が乖離するので再読込で揃える。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onChanged = () => {
+      void refreshMediaIndex();
+    };
+    window.addEventListener(MEDIA_INDEX_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(MEDIA_INDEX_CHANGED_EVENT, onChanged);
+  }, [refreshMediaIndex]);
 
   // ネットワークグラフを構築（全ノートの派生関係を取得）
   const rebuildGraph = useCallback(
