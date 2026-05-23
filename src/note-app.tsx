@@ -6,8 +6,8 @@ import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSqua
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
-import { pdfViewerBlock } from "./blocks/pdf-viewer";
-import { bookmarkBlock, bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
   useLabelStore,
@@ -477,10 +477,12 @@ function NoteEditor(props: NoteEditorProps) {
 
 // BlockNote スキーマに存在しないブロック型を再帰的に除去する
 // 保存済みノートに未登録ブロック（sampleScope 等）が含まれる場合のクラッシュ防止
+// カスタムブロックは src/blocks/registry.ts の CUSTOM_BLOCK_TYPES から自動で取り込む。
 const KNOWN_BLOCK_TYPES = new Set([
   "paragraph", "heading", "bulletListItem", "numberedListItem",
   "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "pdf", "bookmark", "quote",
+  "codeBlock", "quote",
+  ...CUSTOM_BLOCK_TYPES,
 ]);
 
 // インラインコンテンツから未知の型を除去（mention 等）
@@ -561,6 +563,13 @@ function NoteEditorInner({
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   const editorRef = useRef<any>(null);
+  // picker callbacks をエディタ単位で登録するために、エディタ実体を state でも持つ。
+  // editorRef.current は ref なので useEffect の依存に乗せられない。
+  const [mainEditor, setMainEditor] = useState<any>(null);
+  // スラッシュメニューのピッカー（media / bookmark / memo）が
+  // どのエディタから呼ばれたかを記憶する。SidePeek からも同じ slash
+  // items を使うため、選択結果を呼び出し元のエディタに挿入する必要がある。
+  const pickerEditorRef = useRef<any>(null);
   // このノートを派生元として参照する wiki エントリ（Knowledge 化済み判定用）
   const knowledgeMap = useMemo(() => buildKnowledgeMap(noteIndex ?? null), [noteIndex]);
   const wikiEntriesForCurrentNote: NoteIndexEntry[] = fileId ? (knowledgeMap.get(fileId) ?? []) : [];
@@ -624,23 +633,28 @@ function NoteEditorInner({
   // ── メモピッカーモーダル ──
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
 
-  // スラッシュメニューからピッカーを開くコールバック登録
+  // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
+  // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
   useEffect(() => {
-    setMediaPickerCallback((type: MediaType) => setPickerMediaType(type));
-    return () => { setMediaPickerCallback(null); };
-  }, []);
-
-  // スラッシュメニューからメモピッカーを開くコールバック登録
-  useEffect(() => {
-    setMemoPickerCallback(() => setMemoPickerOpen(true));
-    return () => { setMemoPickerCallback(null); };
-  }, []);
-
-  // スラッシュメニューから URL ブックマークピッカーを開くコールバック登録
-  useEffect(() => {
-    setBookmarkPickerCallback(() => setUrlSlashPickerOpen(true));
-    return () => { setBookmarkPickerCallback(null); };
-  }, []);
+    if (!mainEditor) return;
+    setMediaPickerCallback(mainEditor, (type) => {
+      pickerEditorRef.current = mainEditor;
+      setPickerMediaType(type);
+    });
+    setMemoPickerCallback(mainEditor, () => {
+      pickerEditorRef.current = mainEditor;
+      setMemoPickerOpen(true);
+    });
+    setBookmarkPickerCallback(mainEditor, () => {
+      pickerEditorRef.current = mainEditor;
+      setUrlSlashPickerOpen(true);
+    });
+    return () => {
+      setMediaPickerCallback(mainEditor, null);
+      setMemoPickerCallback(mainEditor, null);
+      setBookmarkPickerCallback(mainEditor, null);
+    };
+  }, [mainEditor]);
 
   // スラッシュメニューからテンプレートピッカーを開くコールバック登録
   useEffect(() => {
@@ -727,8 +741,9 @@ function NoteEditorInner({
   }, [labelStore, linkStore]);
 
   // ピッカーで選択されたメディアをエディタに挿入
+  // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
   const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
-    const editor = editorRef.current;
+    const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
 
     const currentBlock = editor.getTextCursorPosition()?.block;
@@ -818,8 +833,9 @@ function NoteEditorInner({
   }, [onAddUrlBookmark, removeBlockMetadata]);
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
+  // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
   const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
-    const editor = editorRef.current;
+    const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
@@ -856,6 +872,7 @@ function NoteEditorInner({
   // エディタ参照を保持
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
+    setMainEditor(editor);
     onEditorRef?.(editor);
     // ラベル自動設定をセットアップ
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStore, linkStore);
@@ -2183,7 +2200,8 @@ function NoteEditorInner({
           // - 出典付き（Quote→Memo など）: quote ブロック 1 個。本文 inline + 「 — 出典」inline（italic+gray）
           // - 出典なし: paragraph 1 個
           // 段落区切りは inline では表現できないのでスペースに丸める（buildMemoInsertBlock 側で処理）
-          const editor = editorRef.current;
+          // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
+          const editor = pickerEditorRef.current ?? editorRef.current;
           if (!editor) return;
           const block = buildMemoInsertBlock(entry);
           if (!block) return;
@@ -2318,7 +2336,7 @@ function NoteEditorInner({
             <SandboxEditor
               key={fileId || "new"}
               editable={!archived}
-              blocks={[pdfViewerBlock, bookmarkBlock]}
+              blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
               extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, memoSlashItem]}
@@ -2460,6 +2478,10 @@ function NoteEditorInner({
               onNavigateNote(noteId, savedDoc);
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
+            mediaIndex={mediaIndex ?? null}
+            captureIndex={captureIndexProp ?? null}
+            uploadFile={uploadFile}
+            onAddUrlBookmark={onAddUrlBookmark}
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -2467,6 +2489,10 @@ function NoteEditorInner({
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             onClose={() => setSidePeekNoteId(null)}
+            mediaIndex={mediaIndex ?? null}
+            captureIndex={captureIndexProp ?? null}
+            uploadFile={uploadFile}
+            onAddUrlBookmark={onAddUrlBookmark}
             onNavigate={(noteId, savedDoc) => {
               setSidePeekNoteId(null);
               onNavigateNote(noteId, savedDoc);
@@ -5593,6 +5619,10 @@ export function NoteApp() {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);
               })()}
+              mediaIndex={fm.mediaIndex ?? null}
+              captureIndex={capture.captureIndex ?? null}
+              uploadFile={fm.handleUploadMedia}
+              onAddUrlBookmark={fm.handleAddUrlBookmark}
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
