@@ -171,11 +171,14 @@ export function FileSidebar({
     return n;
   }, [noteIndex]);
 
-  // Skill はフッターに移したのでカウントには含めない
+  // Skill はフッターに移したのでカウントには含めない。
+  // 聴牌は synthesis 内のサブ項目数字に含めるので、ナレッジ全体の合計にも含める。
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
-    return (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0);
-  }, [wikiCounts]);
+    return (
+      (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0) + (tenpaiCount ?? 0)
+    );
+  }, [wikiCounts, tenpaiCount]);
 
   // ラベルカウント（ギャラリーの行数 = 同ラベル内のユニーク preview / text 数）
   // Phase D-3-α: インライン由来のハイライト text もユニーク集計に合流する。
@@ -336,7 +339,13 @@ export function FileSidebar({
                 if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
                 if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
                 return kinds.map((kind) => {
-                  const count = wikiCounts?.[kind] ?? 0;
+                  // 発想カテゴリは聴牌（まだ揃っていない発想の予兆）も同じ数字に含める。
+                  // 聴牌は [[project-tenpai-layer-design]] の α 案に従い、サイドバーでは
+                  // 別バッジで強調せず「発想の一部」として扱う。区別は WikiListView を開いた時、
+                  // 行の薄紫背景と Sparkles アイコンによって行う。
+                  const baseCount = wikiCounts?.[kind] ?? 0;
+                  const count =
+                    kind === "synthesis" ? baseCount + (tenpaiCount ?? 0) : baseCount;
                   const label =
                     kind === "summary" ? t("wikiList.kindSummary")
                     : kind === "claim" ? t("wikiList.kindClaim")
@@ -364,16 +373,6 @@ export function FileSidebar({
                       </span>
                       {count > 0 && (
                         <span className="text-xs text-muted-foreground">{count}</span>
-                      )}
-                      {/* 発想（synthesis）行のみ、聴牌件数を「もうすぐ揃う」バッジで併記する。
-                          [[project-three-layer-ai-interaction]] の聴牌は feed 層に住む方針。 */}
-                      {kind === "synthesis" && (tenpaiCount ?? 0) > 0 && (
-                        <span
-                          className="text-[10px] tabular-nums rounded px-1 py-px bg-primary/10 text-primary"
-                          title="もうすぐ揃いそうな発想"
-                        >
-                          🀄 {tenpaiCount}
-                        </span>
                       )}
                     </button>
                   );
