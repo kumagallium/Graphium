@@ -76,13 +76,9 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
-import { pickTopSynthesisModes, pickTenpaiModes } from "./features/ai-assistant/synthesis-router";
-import {
-  TENPAI_MIN_ATOM_COUNT,
-  tenpaiHintIdOf,
-  tenpaiMissingKeyOf,
-  type TenpaiHint,
-} from "./features/ai-assistant/tenpai-types";
+import { pickTopSynthesisModes } from "./features/ai-assistant/synthesis-router";
+import { computeTenpaiHints } from "./features/ai-assistant/tenpai-hints";
+import { type TenpaiHint } from "./features/ai-assistant/tenpai-types";
 import { useTenpaiDismissals } from "./features/ai-assistant/tenpai-state";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
@@ -4598,90 +4594,19 @@ export function NoteApp() {
 
   // 聴牌（tenpai）hint: 現在の atom 群から「もう少しで揃いそうな発想」を計算し、
   // 発想（synthesis）レイヤの WikiListView と FileSidebar の発想バッジに反映する。
-  //
-  // 設計判断（[[project-three-layer-ai-interaction]] の feed 層への統合, 2026-05-25）:
-  // - hint 本体は永続化しない（atom 状態から都度生成。AI Wiki cycle と一貫）
-  // - 表示先は発想一覧（WikiListView kind="synthesis"）に時系列で混在
-  // - ingest 完了 hook と wiki 一覧変化で自動再計算する
-  //
-  // ── clustering 戦略（2026-05-26 改訂）──
-  // 旧: 全 atom フラットに pickTenpaiModes を呼ぶ → atom が育つと「ちょうど 1 件」を
-  //     満たさず永久に発火しなくなる構造的問題があった（実データで 0 件発火）。
-  // 新: claim 経由で「source note」を辿り、同じ note を根に持つ atom 群でクラスタリング
-  //     してから note 単位で pickTenpaiModes を呼ぶ。重複 hint は id で dedupe。
-  //
-  // UX intent: 「これだ！」感覚は「いま書いてるノートに近いところ」で立ち上がる。
-  // synthesis 本来の「ノートまたぎ抽象」は B 案（LLM 聴牌）で別途扱う方針。
-  //
-  // データ参照: Atom は context-stripped（wikiMeta.derivedFromNotes は常に空）なので、
-  // 1) atom.wikiMeta.derivedFromClaims から source claim 群を取得
-  // 2) 各 claim doc の wikiMeta.derivedFromNotes から source note を取得
-  // の 2 段ホップで note を解決する。両 doc とも use-file-manager.ts の docCacheRef に
-  // 起動時 prefetch されているので追加 I/O は発生しない。
+  // 計算ロジックは bench / unit test から呼べるよう features/ai-assistant/tenpai-hints.ts
+  // に純粋関数として切り出してある。設計判断は [[project-tenpai-layer-design]] と
+  // [[project-atom-provenance-chain]] を参照。
   const { isDismissed: isTenpaiDismissed, dismiss: dismissTenpai } = useTenpaiDismissals();
-  const tenpaiHintsAll = useMemo<TenpaiHint[]>(() => {
-    type AtomEntry = {
-      id: string;
-      title: string;
-      meta: import("./lib/document-types").WikiMetaSummary;
-      sourceNotes: string[];
-    };
-    const atomEntries: AtomEntry[] = [];
-    for (const wf of fm.wikiFiles) {
-      const meta = fm.wikiMetas.get(wf.id);
-      if (!meta || meta.kind !== "atom") continue;
-      const cached = fm.getCachedDoc(`wiki:${wf.id}`);
-      const title = cached?.title ?? wf.name ?? wf.id;
-      // claim 経由で source note を集める（重複は Set で dedupe）。
-      const noteSet = new Set<string>();
-      const claimIds = cached?.wikiMeta?.derivedFromClaims ?? [];
-      for (const claimId of claimIds) {
-        const claimDoc = fm.getCachedDoc(`wiki:${claimId}`);
-        for (const noteId of claimDoc?.wikiMeta?.derivedFromNotes ?? []) {
-          noteSet.add(noteId);
-        }
-      }
-      atomEntries.push({ id: wf.id, title, meta, sourceNotes: [...noteSet] });
-    }
-    if (atomEntries.length < TENPAI_MIN_ATOM_COUNT) return [];
-
-    // note → atom[] の逆引きを作る。同じ atom が複数 note クラスターに属することがある。
-    const noteToAtoms = new Map<string, AtomEntry[]>();
-    for (const a of atomEntries) {
-      for (const noteId of a.sourceNotes) {
-        const list = noteToAtoms.get(noteId);
-        if (list) list.push(a);
-        else noteToAtoms.set(noteId, [a]);
-      }
-    }
-
-    // 各 note クラスターで pickTenpaiModes を呼び、結果を id で dedupe して集約。
-    // クラスターサイズが TENPAI_MIN_ATOM_COUNT 未満の note は判定しない（誤発火抑制）。
-    const seen = new Set<string>();
-    const hints: TenpaiHint[] = [];
-    for (const cluster of noteToAtoms.values()) {
-      if (cluster.length < TENPAI_MIN_ATOM_COUNT) continue;
-      const atomTypes = cluster.map((a) => a.meta.atomType);
-      const candidates = pickTenpaiModes(atomTypes, undefined, 2);
-      for (const c of candidates) {
-        const involvedAtoms = c.basisIndices.map((i) => ({
-          id: cluster[i].id,
-          title: cluster[i].title,
-        }));
-        const id = tenpaiHintIdOf(c.mode, involvedAtoms.map((a) => a.id));
-        if (seen.has(id)) continue;
-        seen.add(id);
-        hints.push({
-          id,
-          mode: c.mode,
-          missingKey: tenpaiMissingKeyOf(c.mode, c.missing),
-          involvedAtoms,
-          generatedAt: new Date().toISOString(),
-        });
-      }
-    }
-    return hints;
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+  const tenpaiHintsAll = useMemo<TenpaiHint[]>(
+    () =>
+      computeTenpaiHints({
+        wikiFiles: fm.wikiFiles,
+        wikiMetas: fm.wikiMetas,
+        getCachedDoc: fm.getCachedDoc,
+      }),
+    [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc],
+  );
 
   // dismiss されたものは表示しない（cooldown 期限内）。
   // Sidebar バッジ / WikiListView 双方で同じ filter 結果を使う。
