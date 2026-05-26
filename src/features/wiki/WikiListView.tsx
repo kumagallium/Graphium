@@ -717,7 +717,7 @@ export function WikiListView({
                         className="inline-flex items-center rounded bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5"
                         title={t("tenpai.title")}
                       >
-                        🀄 {t(`tenpai.mode.${entry.tenpaiMode}` as never)}
+                        {t(`tenpai.mode.${entry.tenpaiMode}` as never)}
                       </span>
                     )}
                   </td>
