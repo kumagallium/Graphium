@@ -4604,37 +4604,83 @@ export function NoteApp() {
   // - 表示先は発想一覧（WikiListView kind="synthesis"）に時系列で混在
   // - ingest 完了 hook と wiki 一覧変化で自動再計算する
   //
-  // 注: fm.wikiMetas は WikiMetaSummary（軽量 mirror）で `relatedAtoms` を持たないため
-  // Phase δ の relationType シグナルは渡さず atomType だけで判定する。relationType 強化は
-  // follow-up（doc を lazy load する形）で行う。
+  // ── clustering 戦略（2026-05-26 改訂）──
+  // 旧: 全 atom フラットに pickTenpaiModes を呼ぶ → atom が育つと「ちょうど 1 件」を
+  //     満たさず永久に発火しなくなる構造的問題があった（実データで 0 件発火）。
+  // 新: claim 経由で「source note」を辿り、同じ note を根に持つ atom 群でクラスタリング
+  //     してから note 単位で pickTenpaiModes を呼ぶ。重複 hint は id で dedupe。
+  //
+  // UX intent: 「これだ！」感覚は「いま書いてるノートに近いところ」で立ち上がる。
+  // synthesis 本来の「ノートまたぎ抽象」は B 案（LLM 聴牌）で別途扱う方針。
+  //
+  // データ参照: Atom は context-stripped（wikiMeta.derivedFromNotes は常に空）なので、
+  // 1) atom.wikiMeta.derivedFromClaims から source claim 群を取得
+  // 2) 各 claim doc の wikiMeta.derivedFromNotes から source note を取得
+  // の 2 段ホップで note を解決する。両 doc とも use-file-manager.ts の docCacheRef に
+  // 起動時 prefetch されているので追加 I/O は発生しない。
   const { isDismissed: isTenpaiDismissed, dismiss: dismissTenpai } = useTenpaiDismissals();
   const tenpaiHintsAll = useMemo<TenpaiHint[]>(() => {
-    const atomEntries: Array<{ id: string; title: string; meta: import("./lib/document-types").WikiMetaSummary }> = [];
+    type AtomEntry = {
+      id: string;
+      title: string;
+      meta: import("./lib/document-types").WikiMetaSummary;
+      sourceNotes: string[];
+    };
+    const atomEntries: AtomEntry[] = [];
     for (const wf of fm.wikiFiles) {
       const meta = fm.wikiMetas.get(wf.id);
       if (!meta || meta.kind !== "atom") continue;
       const cached = fm.getCachedDoc(`wiki:${wf.id}`);
       const title = cached?.title ?? wf.name ?? wf.id;
-      atomEntries.push({ id: wf.id, title, meta });
+      // claim 経由で source note を集める（重複は Set で dedupe）。
+      const noteSet = new Set<string>();
+      const claimIds = cached?.wikiMeta?.derivedFromClaims ?? [];
+      for (const claimId of claimIds) {
+        const claimDoc = fm.getCachedDoc(`wiki:${claimId}`);
+        for (const noteId of claimDoc?.wikiMeta?.derivedFromNotes ?? []) {
+          noteSet.add(noteId);
+        }
+      }
+      atomEntries.push({ id: wf.id, title, meta, sourceNotes: [...noteSet] });
     }
     if (atomEntries.length < TENPAI_MIN_ATOM_COUNT) return [];
 
-    const atomTypes = atomEntries.map((a) => a.meta.atomType);
-    const candidates = pickTenpaiModes(atomTypes, undefined, 2);
+    // note → atom[] の逆引きを作る。同じ atom が複数 note クラスターに属することがある。
+    const noteToAtoms = new Map<string, AtomEntry[]>();
+    for (const a of atomEntries) {
+      for (const noteId of a.sourceNotes) {
+        const list = noteToAtoms.get(noteId);
+        if (list) list.push(a);
+        else noteToAtoms.set(noteId, [a]);
+      }
+    }
 
-    return candidates.map((c) => {
-      const involvedAtoms = c.basisIndices.map((i) => ({
-        id: atomEntries[i].id,
-        title: atomEntries[i].title,
-      }));
-      return {
-        id: tenpaiHintIdOf(c.mode, involvedAtoms.map((a) => a.id)),
-        mode: c.mode,
-        missingKey: tenpaiMissingKeyOf(c.mode, c.missing),
-        involvedAtoms,
-        generatedAt: new Date().toISOString(),
-      };
-    });
+    // 各 note クラスターで pickTenpaiModes を呼び、結果を id で dedupe して集約。
+    // クラスターサイズが TENPAI_MIN_ATOM_COUNT 未満の note は判定しない（誤発火抑制）。
+    const seen = new Set<string>();
+    const hints: TenpaiHint[] = [];
+    for (const cluster of noteToAtoms.values()) {
+      if (cluster.length < TENPAI_MIN_ATOM_COUNT) continue;
+      const atomTypes = cluster.map((a) => a.meta.atomType);
+      const candidates = pickTenpaiModes(atomTypes, undefined, 2);
+      for (const c of candidates) {
+        const involvedAtoms = c.basisIndices.map((i) => ({
+          id: cluster[i].id,
+          title: cluster[i].title,
+        }));
+        const id = tenpaiHintIdOf(c.mode, involvedAtoms.map((a) => a.id));
+        if (seen.has(id)) continue;
+        seen.add(id);
+        hints.push({
+          id,
+          mode: c.mode,
+          missingKey: tenpaiMissingKeyOf(c.mode, c.missing),
+          involvedAtoms,
+          generatedAt: new Date().toISOString(),
+        });
+      }
+    }
+    return hints;
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
   // dismiss されたものは表示しない（cooldown 期限内）。

@@ -695,7 +695,7 @@ export function WikiListView({
                 // 実在ファイルではないので checkbox / open / delete を出さず、dismiss だけを置く。
                 <tr
                   key={entry.id}
-                  className="border-b border-border/50 bg-primary/[0.03] group"
+                  className="border-b border-border/50 bg-primary/[0.06] border-l-2 border-l-primary/40 group"
                 >
                   <td className="py-2 px-2" />
                   <td className="py-2 px-3">
