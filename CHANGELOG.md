@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.9.2](https://github.com/kumagallium/Graphium/compare/v0.9.1...v0.9.2) - 2026-05-26
+- chore(wiki): withdraw Phase ε meta-atom layer + fix Anthropic /v1 baseURL by @kumagallium in https://github.com/kumagallium/Graphium/pull/342
+- feat(security): move LLM API keys to macOS Keychain + persist sidecar log by @kumagallium in https://github.com/kumagallium/Graphium/pull/346
+- feat(wiki): theme-driven Synthesizer — human-supplied lens (INDEX v20) by @kumagallium in https://github.com/kumagallium/Graphium/pull/344
+- fix(side-peek): make custom blocks and slash pickers work in SidePeek by @kumagallium in https://github.com/kumagallium/Graphium/pull/347
+- feat(asset-browser): URL Reader Mode + highlight quote (PR3-d) by @kumagallium in https://github.com/kumagallium/Graphium/pull/348
+- feat(ai-assistant): tenpai hints in the synthesis feed by @kumagallium in https://github.com/kumagallium/Graphium/pull/349
+- Fold tenpai count into synthesis sidebar entry, drop 🀄 icon by @kumagallium in https://github.com/kumagallium/Graphium/pull/350
+- docs(concept): honest scope for the hourglass in §5 by @kumagallium in https://github.com/kumagallium/Graphium/pull/351
+- docs(concept-ja): backfill missing "Epistemic provenance" subsection in §5 by @kumagallium in https://github.com/kumagallium/Graphium/pull/352
+- chore(bench): hourglass-review research infrastructure (Phase A) by @kumagallium in https://github.com/kumagallium/Graphium/pull/353
+- Cluster atoms by source note for tenpai detection by @kumagallium in https://github.com/kumagallium/Graphium/pull/354
+- Make tenpai missing-piece copy concrete with referential phrasing by @kumagallium in https://github.com/kumagallium/Graphium/pull/355
+- Extract tenpai computation into pure function (prep for bench harness) by @kumagallium in https://github.com/kumagallium/Graphium/pull/356
+- bench(tenpai): coverage harness with silence_rate and mode distribution by @kumagallium in https://github.com/kumagallium/Graphium/pull/357
+
 ## [v0.9.1](https://github.com/kumagallium/Graphium/compare/v0.9.0...v0.9.1) - 2026-05-22
 - feat(asset-browser): replace MediaDetailModal with MaterialSidePeek + full-view overlay by @kumagallium in https://github.com/kumagallium/Graphium/pull/336
 - feat(wiki-banner): surface Phase δ/ε inside the existing Derived-from collapsible by @kumagallium in https://github.com/kumagallium/Graphium/pull/337
