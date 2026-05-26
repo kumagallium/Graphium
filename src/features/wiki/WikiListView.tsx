@@ -3,7 +3,7 @@
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Trash2, RefreshCw, Globe2, Sparkles, X } from "lucide-react";
+import { Bot, Filter, Search, Trash2, RefreshCw, Globe2 } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -16,7 +16,6 @@ import type {
 } from "../../lib/document-types";
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
-import type { TenpaiHint } from "../ai-assistant/tenpai-types";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -70,14 +69,6 @@ type Props = {
    * Summary は対象外。蒸留 KB のみで照合するため fire-and-forget で並列実行を許容する。
    */
   onWorldCheckWiki?: (wikiId: string) => Promise<unknown> | void;
-  /**
-   * 聴牌（tenpai）hint 配列。`wikiKind="synthesis"` のときだけ意味を持ち、
-   * 発想一覧に時系列で混在表示される（[[project-three-layer-ai-interaction]] の feed 層統合）。
-   * 各 hint は「もう少しで揃いそうな発想」を表し、本物の wiki エントリではない。
-   */
-  tenpaiHints?: TenpaiHint[];
-  /** 聴牌カードの dismiss ハンドラ。クリックすると当該 hint を localStorage cooldown に入れる。 */
-  onDismissTenpai?: (id: string) => void;
 };
 
 // 削除確認ダイアログ
@@ -214,8 +205,6 @@ export function WikiListView({
   onDeleteWiki,
   onRegenerateWiki,
   onWorldCheckWiki,
-  tenpaiHints,
-  onDismissTenpai,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -300,42 +289,9 @@ export function WikiListView({
         outgoing: outgoingRefCountById.get(f.id) ?? 0,
         // 世界モデル照合 verdict（Phase 2 / PR 2A） — summary 以外で意味を持つ
         worldGrounding: wikiMetas.get(f.id)!.groundingValidity,
-        // 聴牌（tenpai）専用フィールド。real wiki エントリでは未設定。
-        isTenpai: false,
-        tenpaiMode: undefined as SynthesisMode | undefined,
-        tenpaiMissingKey: undefined as string | undefined,
-        tenpaiInvolvedAtoms: undefined as TenpaiHint["involvedAtoms"] | undefined,
       }));
-
-    // 聴牌 hint を発想一覧に同じ shape で混在させる（[[project-three-layer-ai-interaction]]）。
-    // generatedAt を modifiedAt として扱い、デフォルト並び（modifiedAt desc）で上部寄りに出るが、
-    // ユーザーが他列でソートすると自然に流れに混ざる。
-    const tenpai = (wikiKind === "synthesis" && tenpaiHints && tenpaiHints.length > 0)
-      ? tenpaiHints.map((h) => ({
-          id: h.id,
-          title: h.involvedAtoms.map((a) => a.title).join(" / "),
-          modifiedAt: h.generatedAt,
-          createdAt: h.generatedAt,
-          kind: "synthesis" as WikiKind,
-          level: undefined,
-          status: undefined,
-          model: undefined,
-          claimRole: undefined,
-          atomType: undefined,
-          synthesisMode: undefined,
-          hypothesisStatus: undefined,
-          sources: 0,
-          incoming: 0,
-          outgoing: 0,
-          worldGrounding: undefined,
-          isTenpai: true,
-          tenpaiMode: h.mode as SynthesisMode | undefined,
-          tenpaiMissingKey: h.missingKey as string | undefined,
-          tenpaiInvolvedAtoms: h.involvedAtoms as TenpaiHint["involvedAtoms"] | undefined,
-        }))
-      : [];
-    return [...real, ...tenpai];
-  }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById, tenpaiHints]);
+    return real;
+  }, [wikiFiles, wikiMetas, wikiKind, sourcesCountById, incomingRefCount, outgoingRefCountById]);
 
   // Type 列フィルタの選択肢を、現在の wikiEntries から動的に集計する。
   // claim → claimRole（複数可）, atom → atomType, synthesis → synthesisMode。
@@ -453,15 +409,11 @@ export function WikiListView({
     return sorted;
   }, [wikiEntries, searchQuery, sortKey, sortDir, typeFilter, wikiKind]);
 
-  // ドラッグ範囲選択（チェックボックス列）。orderedIds は filtered と同じ長さ・順序を
-  // 保つ（range select が index → id を引くため）。聴牌行のチェックボックスは非表示なので
-  // 選択状態に入っても UI に出ない（実害なし）。
+  // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.id), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
-  // 全選択 / 「全部選択済み」判定は実在 wiki 行のみを対象にする
-  // （聴牌行は delete 系一括操作の対象にしない）。
-  const selectableEntries = useMemo(() => filtered.filter((e) => !e.isTenpai), [filtered]);
+  const selectableEntries = filtered;
   const toggleSelectAll = useCallback(() => {
     const ids = selectableEntries.map((e) => e.id);
     const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
@@ -690,61 +642,7 @@ export function WikiListView({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((entry, index) => entry.isTenpai ? (
-                // 聴牌（tenpai）行: 「もう少しで揃いそうな発想」を本物の発想と同じ行流れに混ぜる。
-                // 実在ファイルではないので checkbox / open / delete を出さず、dismiss だけを置く。
-                <tr
-                  key={entry.id}
-                  className="border-b border-border/50 bg-primary/[0.06] border-l-2 border-l-primary/40 group"
-                >
-                  <td className="py-2 px-2" />
-                  <td className="py-2 px-3">
-                    <div className="flex items-start gap-2">
-                      <Sparkles size={14} className="text-primary shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <div className="text-foreground/90 truncate" title={entry.title}>
-                          {entry.title}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
-                          {entry.tenpaiMissingKey ? t(entry.tenpaiMissingKey as never) : ""}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-2 px-3 text-xs">
-                    {entry.tenpaiMode && (
-                      <span
-                        className="inline-flex items-center rounded bg-primary/10 text-primary text-[10px] font-semibold px-1.5 py-0.5"
-                        title={t("tenpai.title")}
-                      >
-                        {t(`tenpai.mode.${entry.tenpaiMode}` as never)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground/40 tabular-nums">—</td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground/40 tabular-nums">—</td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground/40 tabular-nums">—</td>
-                  {wikiKind !== "summary" && (
-                    <td className="py-2 pl-3 text-xs text-muted-foreground/40">—</td>
-                  )}
-                  <td className="py-2 px-2 text-xs text-muted-foreground/40">—</td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                    {formatDateTime(entry.createdAt)}
-                  </td>
-                  <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                    {formatDateTime(entry.modifiedAt)}
-                  </td>
-                  <td className="py-2 px-2">
-                    <button
-                      onClick={() => onDismissTenpai?.(entry.id)}
-                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1"
-                      title={t("tenpai.dismiss")}
-                    >
-                      <X size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ) : (
+              {filtered.map((entry, index) => (
                 <tr
                   key={entry.id}
                   className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
