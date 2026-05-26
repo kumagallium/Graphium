@@ -95,6 +95,12 @@ less and less of the original project's context — until the Insight, which
 is the narrow waist where context drops to zero and the claim becomes
 portable.
 
+The hourglass describes how Graphium **generates** portable knowledge from
+raw notes. It is the central generator, not the whole system. Other parts of
+Graphium — provenance export, world-knowledge checks, cross-page updates,
+lint warnings — sit around this core with their own jobs. They read from the
+hourglass output but do not change its shape.
+
 ```mermaid
 flowchart LR
     N["<b>NOTES</b><br/><i>raw, messy, dated</i><br/>full project context"]
@@ -149,6 +155,14 @@ under-rating something that turned out to be established — and that cost
 is recoverable, the notebook author can re-rate later. The cost of the
 other direction — silent contamination of the knowledge layer with
 speculation that has lost its source's hedge — is not recoverable.
+
+The asymmetry is also concrete in the code: the structurally-enforced
+distinction is **between `speculation` and everything else**. Once a
+source is `interpretation` or higher, the layer treats it the same way —
+the four-level ladder propagates as a label, but the only branch that
+changes downstream behavior is whether `speculation` is present. The
+other distinctions are kept for humans reading the page, not for the
+generator's own decisions.
 
 ## 6. Progressive disclosure: use as much, or as little, as you need
 
