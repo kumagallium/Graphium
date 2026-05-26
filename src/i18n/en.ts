@@ -409,9 +409,9 @@ export const en: Record<string, string> = {
   "tenpai.title": "Almost-ready ideas",
   "tenpai.dismiss": "Snooze (will reappear in 7 days)",
   // Mode × missing-piece i18n keys (matches pickTenpaiModes output)
-  "tenpai.missing.dialectic.one-more-causal": "One more causal claim would let this be argued as an opposing position.",
-  "tenpai.missing.analogical.one-more-mechanism": "One more mechanism from a different domain would make this a stronger analogy.",
-  "tenpai.missing.abductive.need-mechanism": "A mechanism Insight that explains the observation would let this stand as an abductive idea.",
+  "tenpai.missing.dialectic.one-more-causal": "One more causal claim opposing this one would let you frame the two as a dialectic.",
+  "tenpai.missing.analogical.one-more-mechanism": "A mechanism from a different domain that shares structure with this one would turn it into an analogy.",
+  "tenpai.missing.abductive.need-mechanism": "A mechanism that explains this observation would let it stand as an abductive idea.",
   // Mode display names (for badge on the tenpai card)
   "tenpai.mode.dialectic": "Dialectic",
   "tenpai.mode.analogical": "Analogical",

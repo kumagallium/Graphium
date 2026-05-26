@@ -409,9 +409,9 @@ export const ja: Record<string, string> = {
   "tenpai.title": "もうすぐ揃いそうな発想",
   "tenpai.dismiss": "見送る（7 日後に再表示）",
   // モード × 欠片の i18n key（pickTenpaiModes の出力に対応）
-  "tenpai.missing.dialectic.one-more-causal": "因果の主張がもう 1 つあれば、対立する立場として論じられます。",
-  "tenpai.missing.analogical.one-more-mechanism": "別領域の機構がもう 1 つあれば、類推として強くなります。",
-  "tenpai.missing.abductive.need-mechanism": "観察を説明する機構の洞察が 1 つあれば、推論として立ちます。",
+  "tenpai.missing.dialectic.one-more-causal": "この主張に対立する向きの因果がもう 1 つあれば、両者を突き合わせた発想にできます。",
+  "tenpai.missing.analogical.one-more-mechanism": "この機構と通じる構造を持つ別領域の機構があれば、類推の発想にできます。",
+  "tenpai.missing.abductive.need-mechanism": "この観察を説明する機構の洞察があれば、観察を起点とした仮説の発想にできます。",
   // モード表示名（聴牌カードのバッジ用）
   "tenpai.mode.dialectic": "弁証",
   "tenpai.mode.analogical": "類推",
