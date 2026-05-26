@@ -1,5 +1,5 @@
 // URL Reader Mode (PR3-d)
-// @mozilla/readability + jsdom で URL を「読める形」に変換して返す。
+// @mozilla/readability + linkedom で URL を「読める形」に変換して返す。
 // PDF Quote-to-Memo (PR2 #339) と対称な体験を URL アセットに与えるための
 // バックエンド。/api/url/reader から呼ばれる。
 //
@@ -7,8 +7,14 @@
 //   - url-fetcher.ts: LLM ingest 用の軽量パス。タイトル + プレーンテキスト + 抜粋
 //   - url-reader.ts: Reader View 用。Readability で本文 HTML を抽出し、選択 →
 //     Memo 化のために textContent も一緒に返す
+//
+// linkedom を使う理由: jsdom はパッケージ内部資産（default-stylesheet.css /
+// data/patch.json 等）をランタイムで読み込むため、esbuild の ESM single-file
+// bundle に載せると sidecar 起動時に確実にクラッシュする（0.9.2 で実害発生）。
+// linkedom は ESM ネイティブ・依存資産ゼロで bundle 可能。Readability が要求
+// する DOM インタフェースは linkedom 側で満たされている。
 
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 
 const USER_AGENT = "Graphium/1.0 (Reader)";
@@ -89,10 +95,30 @@ export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> 
  * HTML 文字列から Reader 表現を抽出する（fetch 部分を切り離してテスト可能に）。
  */
 export function extractReaderFromHtml(html: string, url: string): ReaderArticle {
-  // JSDOM を生成。`runScripts` は指定しないので JS は実行されない（安全）。
-  // url は Readability の相対リンク解決と「同一サイト判定」に使われる。
-  const dom = new JSDOM(html, { url });
-  const doc = dom.window.document;
+  // linkedom で document を生成。スクリプトは実行されないため安全。
+  // linkedom は `parseHTML(html, options)` に url を渡せないので、`<base href>`
+  // を head に注入することで Readability の相対 URL 解決と documentURI/baseURI
+  // を機能させる（既存の <base> がある場合はユーザー側を尊重して触らない）。
+  const baseUrl = encodeAttr(url);
+  let preparedHtml = html;
+  if (!/<base[\s>]/i.test(html)) {
+    if (/<head[^>]*>/i.test(html)) {
+      preparedHtml = html.replace(/<head[^>]*>/i, (m) => `${m}<base href="${baseUrl}">`);
+    } else if (/<html[^>]*>/i.test(html)) {
+      // <head> が無い場合は <html> の直後に <head><base/></head> を差し込む
+      preparedHtml = html.replace(/<html[^>]*>/i, (m) => `${m}<head><base href="${baseUrl}"></head>`);
+    } else {
+      preparedHtml = `<!doctype html><html><head><base href="${baseUrl}"></head><body>${html}</body></html>`;
+    }
+  }
+  const { document: doc } = parseHTML(preparedHtml);
+  // linkedom の document.documentURI は read-only な getter のみ提供されるケースが
+  // あるため、Readability が直接 documentURI を読みに来るパスに備えて明示設定する。
+  try {
+    Object.defineProperty(doc, "documentURI", { value: url, configurable: true });
+  } catch {
+    // 既に固定の getter で設定されていたら諦める（Readability は baseURI 経由でも動く）
+  }
 
   // lang は <html lang="..."> から事前に拾う（Readability が削るケースに備える）
   const lang = doc.documentElement.getAttribute("lang");
@@ -140,8 +166,12 @@ export function extractReaderFromHtml(html: string, url: string): ReaderArticle 
  *   - srcset の先頭は src のフォールバック扱い
  */
 export function extractLeadImage(contentHtml: string, baseUrl: string): string | null {
-  const dom = new JSDOM(`<!doctype html><html><body>${contentHtml}</body></html>`, { url: baseUrl });
-  const imgs = Array.from(dom.window.document.querySelectorAll("img"));
+  // 相対 URL 解決はこの関数内で `new URL(rawSrc, baseUrl)` を明示的に行うので、
+  // 文書側の baseURI は不要。linkedom に素の HTML だけ渡せばよい。
+  const { document: doc } = parseHTML(
+    `<!doctype html><html><body>${contentHtml}</body></html>`,
+  );
+  const imgs = Array.from(doc.querySelectorAll("img"));
   for (const img of imgs) {
     const w = parseInt(img.getAttribute("width") ?? "", 10);
     const h = parseInt(img.getAttribute("height") ?? "", 10);
@@ -210,6 +240,19 @@ function normalizeWhitespace(text: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * 注入用 `<base href="...">` の値として URL を埋め込めるように
+ * HTML 属性で問題になる文字（&, ", <, >）だけ最小エスケープする。
+ * URL 自体は RFC 的に "/<>& を生で持たないので、防衛的に処理する程度で十分。
+ */
+function encodeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // ── 取得結果のメモリ LRU キャッシュ ──
