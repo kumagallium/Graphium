@@ -404,6 +404,18 @@ export const en: Record<string, string> = {
   "settings.maintenance.synthesize.themeLabel": "Theme (optional)",
   "settings.maintenance.synthesize.themePlaceholder": "e.g. home cooking, team management, learning, parenting",
   "settings.maintenance.synthesize.themeHelp": "When a theme is given, Insights are read through that theme's eyes and rewritten for that reader. Each cluster fans out into 1-2 mode variants, so you get a small spread of ideas in one click. Leave empty to use the default behaviour.",
+
+  // ── Tenpai hints: almost-ready idea seeds threaded into the synthesis feed in time order ──
+  "tenpai.title": "Almost-ready ideas",
+  "tenpai.dismiss": "Snooze (will reappear in 7 days)",
+  // Mode × missing-piece i18n keys (matches pickTenpaiModes output)
+  "tenpai.missing.dialectic.one-more-causal": "One more causal claim would let this be argued as an opposing position.",
+  "tenpai.missing.analogical.one-more-mechanism": "One more mechanism from a different domain would make this a stronger analogy.",
+  "tenpai.missing.abductive.need-mechanism": "A mechanism Insight that explains the observation would let this stand as an abductive idea.",
+  // Mode display names (for badge on the tenpai card)
+  "tenpai.mode.dialectic": "Dialectic",
+  "tenpai.mode.analogical": "Analogical",
+  "tenpai.mode.abductive": "Abductive",
   "settings.maintenance.conceptSummaryModel": "Claims / Summaries model",
   "settings.maintenance.synthesisAtomModel": "Ideas / Insights model (also used when generating Insights from Claims)",
   "settings.maintenance.modelOverride": "Model override (optional)",

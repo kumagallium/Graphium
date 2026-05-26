@@ -23,6 +23,7 @@
 // =============================================================================
 
 import type { AtomType, EpistemicStatus, SynthesisMode } from "../../lib/document-types.js";
+import type { TenpaiMissingReason } from "./tenpai-types.js";
 
 export type SynthesisRouterResult = {
   /**
@@ -235,4 +236,116 @@ export function pickTopSynthesisModes(
     relationTypesByInput,
   );
   return result.candidateModes.slice(0, Math.max(1, maxModes));
+}
+
+// === 聴牌（tenpai）: 「もう少しで揃う」モード推定 ===========================
+//
+// `routeSynthesisMode` は「**今**揃っているモード」を返す契約。聴牌は逆に
+// 「**あと 1 つで揃う**モード」を返したい。判定の閾値は同じだが「未達だが
+// もう少しで満たす」側の分岐を別関数として置く。
+//
+// 出力は AI が半能動的に「これがあれば完成」と提案する hint カードの素材。
+// deductive は最 permissive な fallback なので聴牌対象から外す（既に常に
+// 出せるモードを「もうすぐ揃う」と言っても情報量がない）。
+//
+// 共通シグナル（atomType / rebuttalConditions / relationType）の解釈は
+// routeSynthesisMode と一貫させ、判定境界を「= 1 件」「= 0 件」側にずらす。
+
+export type TenpaiCandidate = {
+  mode: SynthesisMode;
+  /** 何が欠けているか（i18n 化前の構造化シグナル） */
+  missing: TenpaiMissingReason;
+  /** hint の根拠となった atom の index 配列（呼び出し側で atom id に変換する） */
+  basisIndices: number[];
+};
+
+/**
+ * 入力 Atom 群から「もうすぐ揃う」合成モードを推定する。
+ *
+ * @param atomTypes 入力 Atom の atomType 配列（同じ並び）
+ * @param relationTypesByInput Phase δ: relatedAtoms の relationType 配列
+ * @param maxHints 返す候補上限。デフォルト 2。
+ * @returns 聴牌候補（推奨順、最大 maxHints 件）。揃いそうなものが無ければ空配列
+ */
+export function pickTenpaiModes(
+  atomTypes: (AtomType | undefined)[],
+  relationTypesByInput?: (string[] | undefined)[],
+  maxHints: number = 2,
+): TenpaiCandidate[] {
+  const candidates: TenpaiCandidate[] = [];
+
+  // index 集合（undefined を含めずに位置を保つ）
+  const indicesOf = (t: AtomType): number[] => {
+    const out: number[] = [];
+    atomTypes.forEach((x, i) => {
+      if (x === t) out.push(i);
+    });
+    return out;
+  };
+
+  const causalIdx = indicesOf("causal");
+  const mechanisticIdx = indicesOf("mechanistic");
+  const observationalIdx = indicesOf("observational");
+
+  // dialectic: causal が 1 件のみ。あと 1 つで「逆向きペア」になる
+  // routeSynthesisMode は causal >= 2 で dialectic を候補入りさせるため、
+  // 1 件丁度を聴牌として扱う。
+  if (causalIdx.length === 1) {
+    candidates.push({
+      mode: "dialectic",
+      missing: { kind: "one-more-causal" },
+      basisIndices: causalIdx,
+    });
+  }
+
+  // analogical: mechanistic が 1 件のみ。あと 1 つで「異領域ペア」になる
+  if (mechanisticIdx.length === 1) {
+    candidates.push({
+      mode: "analogical",
+      missing: { kind: "one-more-mechanism" },
+      basisIndices: mechanisticIdx,
+    });
+  }
+
+  // abductive: observational はあるが causal / mechanistic がゼロ
+  // 観察を説明する機構の atom が 1 つあれば abductive に届く
+  if (
+    observationalIdx.length >= 1 &&
+    causalIdx.length === 0 &&
+    mechanisticIdx.length === 0
+  ) {
+    candidates.push({
+      mode: "abductive",
+      missing: { kind: "need-mechanism" },
+      basisIndices: observationalIdx,
+    });
+  }
+
+  // Phase δ シグナルでの強化:
+  // relationType="contradicts" が 1 件しかなければ dialectic 候補に追加
+  // （routeSynthesisMode は contradicts >= 2 で dialectic を入れる）
+  if (relationTypesByInput && relationTypesByInput.length > 0) {
+    let contradictsCount = 0;
+    const contradictsIdx: number[] = [];
+    relationTypesByInput.forEach((rels, i) => {
+      if (rels && rels.includes("contradicts")) {
+        contradictsCount++;
+        contradictsIdx.push(i);
+      }
+    });
+    if (
+      contradictsCount === 1 &&
+      !candidates.some((c) => c.mode === "dialectic")
+    ) {
+      candidates.push({
+        mode: "dialectic",
+        missing: { kind: "one-more-causal" },
+        basisIndices: contradictsIdx,
+      });
+    }
+  }
+
+  // deductive は fallback のため聴牌に含めない（明示）
+
+  return candidates.slice(0, Math.max(0, maxHints));
 }
