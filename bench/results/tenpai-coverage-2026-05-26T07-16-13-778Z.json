@@ -1,0 +1,71 @@
+{
+  "ranAt": "2026-05-26T07:16:13.778Z",
+  "wikiFiles": 313,
+  "kinds": {
+    "atom": 38,
+    "claim": 126,
+    "synthesis": 47
+  },
+  "atomTypeDistribution": {
+    "conditional": 10,
+    "causal": 5,
+    "methodological": 7,
+    "observational": 7,
+    "mechanistic": 7,
+    "correlational": 1,
+    "(none)": 1
+  },
+  "clusterSizeHistogram": {
+    "1": 19,
+    "2": 8,
+    "3": 12,
+    "4": 3,
+    "5": 4,
+    "6": 1,
+    "7": 2,
+    "8": 2
+  },
+  "atomSourceCountHistogram": {
+    "1": 2,
+    "2": 18,
+    "3": 7,
+    "4": 2,
+    "5": 1,
+    "6": 3,
+    "8": 1,
+    "9": 2,
+    "11": 1,
+    "12": 1
+  },
+  "uniqueSourceNotes": 51,
+  "clustersBigEnough": 5,
+  "tenpaiMinAtomCount": 6,
+  "hintsFired": 2,
+  "modeDistribution": {
+    "dialectic": 2
+  },
+  "firedClusters": 5,
+  "silenceRate": 0,
+  "hintSamples": [
+    {
+      "mode": "dialectic",
+      "missingKey": "tenpai.missing.dialectic.one-more-causal",
+      "involvedAtoms": [
+        {
+          "id": "99ed3a9e-406f-48d7-b3a8-8ac4d18c5541",
+          "title": "異なる元素の置換は格子欠陥で熱伝導率を下げる"
+        }
+      ]
+    },
+    {
+      "mode": "dialectic",
+      "missingKey": "tenpai.missing.dialectic.one-more-causal",
+      "involvedAtoms": [
+        {
+          "id": "e8f01cda-2107-48c9-8766-5e215ba77f0f",
+          "title": "別の元素を少しずつ置き換えると、熱の伝わりにくさと電気的な性能が同時に良くなる"
+        }
+      ]
+    }
+  ]
+}
