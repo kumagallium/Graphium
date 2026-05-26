@@ -76,7 +76,14 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
-import { pickTopSynthesisModes } from "./features/ai-assistant/synthesis-router";
+import { pickTopSynthesisModes, pickTenpaiModes } from "./features/ai-assistant/synthesis-router";
+import {
+  TENPAI_MIN_ATOM_COUNT,
+  tenpaiHintIdOf,
+  tenpaiMissingKeyOf,
+  type TenpaiHint,
+} from "./features/ai-assistant/tenpai-types";
+import { useTenpaiDismissals } from "./features/ai-assistant/tenpai-state";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -4589,6 +4596,54 @@ export function NoteApp() {
     });
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
+  // 聴牌（tenpai）hint: 現在の atom 群から「もう少しで揃いそうな発想」を計算し、
+  // 発想（synthesis）レイヤの WikiListView と FileSidebar の発想バッジに反映する。
+  //
+  // 設計判断（[[project-three-layer-ai-interaction]] の feed 層への統合, 2026-05-25）:
+  // - hint 本体は永続化しない（atom 状態から都度生成。AI Wiki cycle と一貫）
+  // - 表示先は発想一覧（WikiListView kind="synthesis"）に時系列で混在
+  // - ingest 完了 hook と wiki 一覧変化で自動再計算する
+  //
+  // 注: fm.wikiMetas は WikiMetaSummary（軽量 mirror）で `relatedAtoms` を持たないため
+  // Phase δ の relationType シグナルは渡さず atomType だけで判定する。relationType 強化は
+  // follow-up（doc を lazy load する形）で行う。
+  const { isDismissed: isTenpaiDismissed, dismiss: dismissTenpai } = useTenpaiDismissals();
+  const tenpaiHintsAll = useMemo<TenpaiHint[]>(() => {
+    const atomEntries: Array<{ id: string; title: string; meta: import("./lib/document-types").WikiMetaSummary }> = [];
+    for (const wf of fm.wikiFiles) {
+      const meta = fm.wikiMetas.get(wf.id);
+      if (!meta || meta.kind !== "atom") continue;
+      const cached = fm.getCachedDoc(`wiki:${wf.id}`);
+      const title = cached?.title ?? wf.name ?? wf.id;
+      atomEntries.push({ id: wf.id, title, meta });
+    }
+    if (atomEntries.length < TENPAI_MIN_ATOM_COUNT) return [];
+
+    const atomTypes = atomEntries.map((a) => a.meta.atomType);
+    const candidates = pickTenpaiModes(atomTypes, undefined, 2);
+
+    return candidates.map((c) => {
+      const involvedAtoms = c.basisIndices.map((i) => ({
+        id: atomEntries[i].id,
+        title: atomEntries[i].title,
+      }));
+      return {
+        id: tenpaiHintIdOf(c.mode, involvedAtoms.map((a) => a.id)),
+        mode: c.mode,
+        missingKey: tenpaiMissingKeyOf(c.mode, c.missing),
+        involvedAtoms,
+        generatedAt: new Date().toISOString(),
+      };
+    });
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+
+  // dismiss されたものは表示しない（cooldown 期限内）。
+  // Sidebar バッジ / WikiListView 双方で同じ filter 結果を使う。
+  const tenpaiHints = useMemo(
+    () => tenpaiHintsAll.filter((h) => !isTenpaiDismissed(h.id)),
+    [tenpaiHintsAll, isTenpaiDismissed],
+  );
+
   // 認証読み込み中
   if (authLoading) {
     return (
@@ -4647,6 +4702,8 @@ export function NoteApp() {
       }
       return { summary, claim, atom, synthesis };
     })(),
+    /** 聴牌（tenpai）件数。発想カテゴリのバッジに併記する。 */
+    tenpaiCount: tenpaiHints.length,
     showAtomLayer: experimentalFlags.atomLayer,
     showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
@@ -5242,6 +5299,8 @@ export function NoteApp() {
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={(wikiId) => handleWorldCheckWiki(wikiId, "bulk")}
+            tenpaiHints={fm.activeWikiKind === "synthesis" ? tenpaiHints : undefined}
+            onDismissTenpai={dismissTenpai}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView

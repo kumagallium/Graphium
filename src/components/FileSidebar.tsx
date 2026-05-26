@@ -43,6 +43,8 @@ export type FileSidebarProps = {
   memosActive?: boolean;
   /** Wiki カテゴリ別カウント */
   wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
+  /** 聴牌（tenpai）件数。発想カテゴリの行に併記する。 */
+  tenpaiCount?: number;
   /** 実験的レイヤ（Atom/Synthesis）を表示するか */
   showAtomLayer?: boolean;
   showSynthesisLayer?: boolean;
@@ -125,6 +127,7 @@ export function FileSidebar({
   onShowMemos,
   memosActive = false,
   wikiCounts,
+  tenpaiCount,
   showAtomLayer = false,
   showSynthesisLayer = false,
   onShowWikiList,
@@ -361,6 +364,16 @@ export function FileSidebar({
                       </span>
                       {count > 0 && (
                         <span className="text-xs text-muted-foreground">{count}</span>
+                      )}
+                      {/* 発想（synthesis）行のみ、聴牌件数を「もうすぐ揃う」バッジで併記する。
+                          [[project-three-layer-ai-interaction]] の聴牌は feed 層に住む方針。 */}
+                      {kind === "synthesis" && (tenpaiCount ?? 0) > 0 && (
+                        <span
+                          className="text-[10px] tabular-nums rounded px-1 py-px bg-primary/10 text-primary"
+                          title="もうすぐ揃いそうな発想"
+                        >
+                          🀄 {tenpaiCount}
+                        </span>
                       )}
                     </button>
                   );

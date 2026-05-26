@@ -404,6 +404,18 @@ export const ja: Record<string, string> = {
   "settings.maintenance.synthesize.themeLabel": "テーマ（任意）",
   "settings.maintenance.synthesize.themePlaceholder": "例: 家庭料理 / 組織 / 学習 / 子育て",
   "settings.maintenance.synthesize.themeHelp": "テーマを与えると、洞察をそのテーマの読者向けに読み替えて書きます。クラスタごとに 1〜2 のモードで複数の発想が並びます。空欄なら従来通りで動きます。",
+
+  // ── 聴牌（tenpai）hint: 発想一覧に「もうすぐ揃いそうな種」を時系列で混ぜる（feed 統合） ──
+  "tenpai.title": "もうすぐ揃いそうな発想",
+  "tenpai.dismiss": "見送る（7 日後に再表示）",
+  // モード × 欠片の i18n key（pickTenpaiModes の出力に対応）
+  "tenpai.missing.dialectic.one-more-causal": "因果の主張がもう 1 つあれば、対立する立場として論じられます。",
+  "tenpai.missing.analogical.one-more-mechanism": "別領域の機構がもう 1 つあれば、類推として強くなります。",
+  "tenpai.missing.abductive.need-mechanism": "観察を説明する機構の洞察が 1 つあれば、推論として立ちます。",
+  // モード表示名（聴牌カードのバッジ用）
+  "tenpai.mode.dialectic": "弁証",
+  "tenpai.mode.analogical": "類推",
+  "tenpai.mode.abductive": "仮説",
   "settings.maintenance.conceptSummaryModel": "知見 / 要約モデル",
   "settings.maintenance.synthesisAtomModel": "発想 / 洞察モデル（知見 → 洞察の生成にも使われます）",
   "settings.maintenance.modelOverride": "モデル指定（任意）",
