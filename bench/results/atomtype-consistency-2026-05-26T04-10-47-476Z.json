@@ -1,0 +1,204 @@
+{
+  "probeName": "atom-type-exclusivity-inter-trial",
+  "timestamp": "2026-05-26T04:10:47.476Z",
+  "modelId": "gpt-oss-120b",
+  "k": 5,
+  "claimCount": 7,
+  "claims": [
+    {
+      "id": "claim-0",
+      "title": "800°C・5分の SPS 焼結で二相が消失し単相が得られる",
+      "sourceNoteId": "001-clean-lab-zn-sintering"
+    },
+    {
+      "id": "claim-1",
+      "title": "胸腺の負の選択が自己／非自己識別を学習させる",
+      "sourceNoteId": "015-cross-domain-immune-a"
+    },
+    {
+      "id": "claim-2",
+      "title": "HIDS は正常システムコールプロファイルを学習し、逸脱をアノマリースコアで検出できる",
+      "sourceNoteId": "016-cross-domain-firewall-b"
+    },
+    {
+      "id": "claim-3",
+      "title": "独立デプロイで CI/CD が短縮しフィードバックが速くなる",
+      "sourceNoteId": "019-contradiction-microservice-a"
+    },
+    {
+      "id": "claim-4",
+      "title": "Conway の法則に従えないと分散モノリスになる",
+      "sourceNoteId": "019-contradiction-microservice-a"
+    },
+    {
+      "id": "claim-5",
+      "title": "朝の低温で芝は露で濡れ、近くのコンクリートは乾燥する",
+      "sourceNoteId": "023-pure-observation-grass"
+    },
+    {
+      "id": "claim-6",
+      "title": "潮位は約6時間12分ごとに極大・極小を繰り返す",
+      "sourceNoteId": "024-pure-observation-tide"
+    }
+  ],
+  "trials": [
+    {
+      "trial": 1,
+      "atoms": [
+        {
+          "title": "システムは通常パターンを学習し異常を検出できる",
+          "atomType": "mechanistic",
+          "sourceClaimIds": [
+            "claim-1",
+            "claim-2"
+          ]
+        },
+        {
+          "title": "独立したコンポーネントは導入速度を上げモノリスを防ぐ",
+          "atomType": "causal",
+          "sourceClaimIds": [
+            "claim-3",
+            "claim-4"
+          ]
+        },
+        {
+          "title": "温度や加工条件が材料や表面の状態を決める",
+          "atomType": "conditional",
+          "sourceClaimIds": [
+            "claim-0",
+            "claim-5"
+          ]
+        },
+        {
+          "title": "自然環境は一定周期で変化を繰り返す",
+          "atomType": "observational",
+          "sourceClaimIds": [
+            "claim-5",
+            "claim-6"
+          ]
+        }
+      ]
+    },
+    {
+      "trial": 2,
+      "atoms": [
+        {
+          "title": "学習した正常パターンでシステムの異常を検知できる",
+          "atomType": "mechanistic",
+          "sourceClaimIds": [
+            "claim-1",
+            "claim-2"
+          ]
+        },
+        {
+          "title": "環境条件が材料の状態や表面を変えることがある",
+          "atomType": "observational",
+          "sourceClaimIds": [
+            "claim-0",
+            "claim-5"
+          ]
+        }
+      ]
+    },
+    {
+      "trial": 3,
+      "atoms": [
+        {
+          "title": "学習した普通のパターンで異常や外来要素を見分けられる",
+          "atomType": "mechanistic",
+          "sourceClaimIds": [
+            "claim-1",
+            "claim-2"
+          ]
+        },
+        {
+          "title": "環境条件が違うと現れる現象が場所によって異なる",
+          "atomType": "observational",
+          "sourceClaimIds": [
+            "claim-5",
+            "claim-6"
+          ]
+        }
+      ]
+    },
+    {
+      "trial": 4,
+      "atoms": []
+    },
+    {
+      "trial": 5,
+      "atoms": [
+        {
+          "title": "正常なパターンの学習は異常検出を可能にする",
+          "atomType": "causal",
+          "sourceClaimIds": [
+            "claim-1",
+            "claim-2"
+          ]
+        },
+        {
+          "title": "境界が合致すれば開発が速くモノリス化が防げる",
+          "atomType": "causal",
+          "sourceClaimIds": [
+            "claim-3",
+            "claim-4"
+          ]
+        }
+      ]
+    }
+  ],
+  "perClaimAtomTypeHistogram": {
+    "claim-1": {
+      "mechanistic": 3,
+      "causal": 1
+    },
+    "claim-2": {
+      "mechanistic": 3,
+      "causal": 1
+    },
+    "claim-3": {
+      "causal": 2
+    },
+    "claim-4": {
+      "causal": 2
+    },
+    "claim-0": {
+      "conditional": 1,
+      "observational": 1
+    },
+    "claim-5": {
+      "conditional": 1,
+      "observational": 3
+    },
+    "claim-6": {
+      "observational": 2
+    }
+  },
+  "pairwiseConfusionMatrix": {
+    "mechanistic": {
+      "mechanistic": 12,
+      "causal": 6
+    },
+    "causal": {
+      "mechanistic": 6,
+      "causal": 4
+    },
+    "conditional": {
+      "observational": 1
+    },
+    "observational": {
+      "conditional": 1,
+      "observational": 8
+    }
+  },
+  "focusPairs": [
+    [
+      "causal",
+      "mechanistic"
+    ],
+    [
+      "observational",
+      "correlational"
+    ]
+  ]
+}

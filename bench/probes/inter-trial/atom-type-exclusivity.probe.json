@@ -1,0 +1,21 @@
+{
+  "name": "atom-type-exclusivity-inter-trial",
+  "inputs": [
+    "bench/corpus/001-clean-lab-zn-sintering.note.json",
+    "bench/corpus/015-cross-domain-immune-a.note.json",
+    "bench/corpus/016-cross-domain-firewall-b.note.json",
+    "bench/corpus/019-contradiction-microservice-a.note.json",
+    "bench/corpus/023-pure-observation-grass.note.json",
+    "bench/corpus/024-pure-observation-tide.note.json"
+  ],
+  "expected": {
+    "measurement": "inter-trial-atomtype-confusion",
+    "k": 5,
+    "focusPairs": [
+      ["causal", "mechanistic"],
+      ["observational", "correlational"]
+    ],
+    "rationale": "8 atomType の排他性を、同一 Claim 集合に対する K 独立試行で測る。Claim 単位で「どの atomType の Atom に入ったか」の分布を取り、(type_i, type_j) のペア出現を confusion matrix に集計する。pass/fail は付けない（数値の現状把握のみ）。"
+  },
+  "rationale": "observations: dead-axis 観察 (A-1) で claimRole/level がほぼ未使用なのに対し、atomType は router の分岐キーとして load-bearing。その atomType が「LLM 呼び出しの揺らぎでどれだけ排他的に決まるか」を測る。causal/mechanistic と observational/correlational の 2 ペアは hourglass design doc で混同しやすいと指摘された組み合わせ。bench/atomtype-consistency.ts で評価。本 probe は通常の単発 bench runner では評価しない（K 独立試行が必要なため）。"
+}

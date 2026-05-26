@@ -1,0 +1,1048 @@
+{
+  "timestamp": "2026-05-26T02:26:37.505Z",
+  "kbEntries": 19,
+  "kindCounts": {
+    "claim": 126,
+    "atom": 38,
+    "synthesis": 47,
+    "summary": 94
+  },
+  "atom": {
+    "hitCount": 10,
+    "total": 38,
+    "hitRate": 0.2631578947368421,
+    "verdictDistribution": {
+      "contested": 2,
+      "established": 8
+    }
+  },
+  "synthesis": {
+    "selfTextHitRate": {
+      "hitCount": 20,
+      "total": 47,
+      "rate": 0.425531914893617
+    },
+    "sourceAtomGateHitRate": {
+      "hitCount": 0,
+      "total": 47,
+      "rate": 0,
+      "sourceConceptIdsMissing": 47
+    }
+  },
+  "details": {
+    "atoms": [
+      {
+        "id": "02860493-46a8-42a0-a869-a92dee75214d",
+        "title": "ナノ粒子にした材料は高温での押し固めでも単相を保ち成長が抑えられる",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "066239f4-3a6a-487d-93f1-fdf838acd6c8",
+        "title": "母体に少量の別元素を足すと電気を運ぶ粒子の量や動きやすさが変わる",
+        "atomType": "causal",
+        "match": null
+      },
+      {
+        "id": "0fb40280-aa90-483a-ba04-d34a1c5fdacd",
+        "title": "揮発しやすい成分は前もって余分に加えると組成のずれを補える",
+        "atomType": "methodological",
+        "match": null
+      },
+      {
+        "id": "10ba5b42-3940-4e8c-8dd6-01dd9ed88670",
+        "title": "湿式で材料を混ぜ合わせると複合相が減り単純相が増える",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "1b13e497-2fd5-4cbe-a4be-4c143f0ad4fc",
+        "title": "ほどよい温度で押し固めると、狙った組成のものが揃って現れる",
+        "atomType": "observational",
+        "match": null
+      },
+      {
+        "id": "1f1d0b68-6573-4ecb-8972-c02b29682661",
+        "title": "高温圧縮処理では目的相と過剰元素が同時に検出されます",
+        "atomType": "observational",
+        "match": {
+          "entryId": "mat-011",
+          "verdict": "contested",
+          "matchedKeywords": [
+            "X 線回折",
+            "ピーク"
+          ]
+        }
+      },
+      {
+        "id": "358fe1cc-495c-475a-90b0-32a46d44eb75",
+        "title": "少量の元素添加は材料の構造と熱輸送特性を変えることがあります",
+        "atomType": "causal",
+        "match": null
+      },
+      {
+        "id": "37980665-a22e-40b1-9d20-a76cb40c7be5",
+        "title": "合金の熱容量が古典的予測を上回るのは寄与項が欠けているから",
+        "atomType": "mechanistic",
+        "match": null
+      },
+      {
+        "id": "382207a3-701f-4c36-a618-a7652481c9b0",
+        "title": "目的の相だけを得たいとき、処理温度を下げるよりも汚染源を断つほうが効く",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "3af0d6be-90db-45c2-a920-1e9dfb9469b4",
+        "title": "補正パラメータを温度に応じて変えると、計算と実測が高温域でよく合うようになる",
+        "atomType": "methodological",
+        "match": null
+      },
+      {
+        "id": "3be4902b-4e1f-4b1b-9094-ef3f9181e0ae",
+        "title": "細かく砕いた材料は高温圧縮後も単相を保ち粒子がほとんど成長しません",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "49818de5-8e1a-4b09-b9bf-c87f7e499b18",
+        "title": "単純な熱的モデルは寄与項を除くと予測が外れやすい",
+        "atomType": "mechanistic",
+        "match": null
+      },
+      {
+        "id": "4aaa1bf3-6cfb-4491-af91-f45a91715390",
+        "title": "少量の元素を入れ替えても母体の結晶構造はそのまま保たれることがある",
+        "atomType": "observational",
+        "match": null
+      },
+      {
+        "id": "64a5af5c-bc02-4280-b0cf-675bd7463e0f",
+        "title": "小規模・未成熟なチームではモノリスが開発速度を上げることがある",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "73cca8ea-70f6-4281-8af7-b9fca07ec9d6",
+        "title": "合金に少量の元素を入れ替えると、結晶の寸法は入れた量に応じて少しずつ変わる",
+        "atomType": "observational",
+        "match": null
+      },
+      {
+        "id": "7b491084-2cf3-4434-8e9f-57761866391e",
+        "title": "粉砕を伴う合成では容器の大きさと粉砕媒体の量が出来上がりを左右する",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "7be426ea-623a-4035-b11f-3d6ab82d750a",
+        "title": "結晶の粒を細かくすると熱の伝わりが鈍くなる",
+        "atomType": "correlational",
+        "match": null
+      },
+      {
+        "id": "7ee3f931-ba34-4ed7-8b6e-70403aebed27",
+        "title": "サイズの違う元素を置き換えると、熱の伝わりが鈍くなる",
+        "atomType": "mechanistic",
+        "match": null
+      },
+      {
+        "id": "8f8ae70e-9e61-4a9a-bf01-9a0b20a9c557",
+        "title": "温度依存性を考慮すると高温で格子熱伝導率が実測と合致します",
+        "atomType": "methodological",
+        "match": null
+      },
+      {
+        "id": "9115d55d-fffd-4f86-b809-dee2de60c137",
+        "title": "高温で押し固める処理は、目的とは別の相を生み出してしまうことがある",
+        "atomType": "observational",
+        "match": null
+      },
+      {
+        "id": "92dcdf63-c31d-4c95-9992-b9e3793cbd03",
+        "title": "バンドギャップをもつ相は半導体的な抵抗変化を示す",
+        "atomType": "mechanistic",
+        "match": null
+      },
+      {
+        "id": "99ed3a9e-406f-48d7-b3a8-8ac4d18c5541",
+        "title": "異なる元素の置換は格子欠陥で熱伝導率を下げる",
+        "atomType": "causal",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン"
+          ]
+        }
+      },
+      {
+        "id": "9e291736-1941-4f5b-8f3d-a72be8d02cbc",
+        "title": "高温処理は揮発性成分の損失を招き、過剰添加が必要になる",
+        "atomType": "causal",
+        "match": {
+          "entryId": "mat-001",
+          "verdict": "established",
+          "matchedKeywords": [
+            "焼結",
+            "sintering"
+          ]
+        }
+      },
+      {
+        "id": "9f197c3a-8612-4659-94c6-8ab8ccf0b131",
+        "title": "格子の振動から熱の伝わりを見積もる古典モデルは、実測値とよく合うことがある",
+        "atomType": "methodological",
+        "match": {
+          "entryId": "mat-016",
+          "verdict": "established",
+          "matchedKeywords": [
+            "格子熱伝導",
+            "フォノン",
+            "Callaway"
+          ]
+        }
+      },
+      {
+        "id": "a61fa08f-2d13-4155-9927-9f2dfa3ef983",
+        "title": "処理時間を延ばしすぎると、揮発しやすい成分が抜けて狙いの相が失われていく",
+        "atomType": "observational",
+        "match": {
+          "entryId": "mat-009",
+          "verdict": "contested",
+          "matchedKeywords": [
+            "MA",
+            "ミリング"
+          ]
+        }
+      },
+      {
+        "id": "a9208423-5c79-4632-9514-9941a3217669",
+        "title": "粉砕時間が長すぎると欠陥が蓄積し性能が低下し、適切な短時間で最大性能が得られる",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "ad80b878-6c0c-4ab9-bbf2-4a3002e7384a",
+        "title": "処理を強くしすぎると、ねらった中間状態が崩れていく",
+        "atomType": "observational",
+        "match": null
+      },
+      {
+        "id": "bdd1d4c2-b667-43b1-b836-18f99d721877",
+        "title": "別種の原子を少し混ぜると、結晶を伝わる熱の流れが鈍くなる",
+        "atomType": "mechanistic",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン"
+          ]
+        }
+      },
+      {
+        "id": "c642a253-d853-4cc5-a236-51943a8375ec",
+        "title": "グラフベースのモデリング枠組みは分岐・収束構造を柔軟に表現できます",
+        "atomType": "methodological",
+        "match": null
+      },
+      {
+        "id": "cc0d852b-cc71-43c2-871f-a771df27cfd9",
+        "title": "電子が動く側と正孔が動く側で、運びやすさが大きく違うことがある",
+        "match": null
+      },
+      {
+        "id": "d2ac9447-e9d4-4751-b76b-44e5fe33b5b8",
+        "title": "別の元素を少し混ぜると、熱の伝わりやすさが下がる",
+        "atomType": "mechanistic",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱電",
+            "熱伝導率"
+          ]
+        }
+      },
+      {
+        "id": "d493bc49-1a32-4c3e-b183-1e45703b851a",
+        "title": "ゼーベック係数の符号転換は温度によるキャリア移動度の相対変化で説明できます",
+        "atomType": "mechanistic",
+        "match": null
+      },
+      {
+        "id": "e1958221-8d49-4e24-bd1f-d841e53b7729",
+        "title": "短時間の高温処理は揮発しやすい成分を失います",
+        "atomType": "conditional",
+        "match": {
+          "entryId": "mat-001",
+          "verdict": "established",
+          "matchedKeywords": [
+            "焼結",
+            "sintering"
+          ]
+        }
+      },
+      {
+        "id": "e1b01378-accb-4809-b586-62bd3eb72fa3",
+        "title": "理論モデルを使って全熱伝導率から格子寄与を分離できる",
+        "atomType": "methodological",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "電子寄与"
+          ]
+        }
+      },
+      {
+        "id": "e8e2f38b-ccf8-4dd2-b81a-6bdc27fd7384",
+        "title": "開発チームが小規模なときは統合コードベースが速度を高め、大規模になると分割サービスが有利になる",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "e8f01cda-2107-48c9-8766-5e215ba77f0f",
+        "title": "別の元素を少しずつ置き換えると、熱の伝わりにくさと電気的な性能が同時に良くなる",
+        "atomType": "causal",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱電",
+            "ZT",
+            "熱伝導率"
+          ]
+        }
+      },
+      {
+        "id": "f71b94f4-68f1-4073-adaa-85aa02b67c6f",
+        "title": "粉砕処理の時間には性能が最も上がる最適点があり、長すぎると逆に下がる",
+        "atomType": "conditional",
+        "match": null
+      },
+      {
+        "id": "fc649f4b-77db-41a2-b9eb-84caa8ab4b57",
+        "title": "揮発しやすい成分は仕込み時にあらかじめ多めに入れておく必要がある",
+        "atomType": "methodological",
+        "match": null
+      }
+    ],
+    "syntheses": [
+      {
+        "id": "0013498c-0791-4068-a812-bcf92774c42c",
+        "title": "低加工強度と揮発性成分の過剰添加を同時に行うと相純度が最大化する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "00172ceb-0b9f-4f90-9023-ab071c21d3a9",
+        "title": "元素置換で変化したキャリア濃度を温度依存ローレンツ数に組み込むと高温熱伝導率予測が向上します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "00b8d279-c84d-499e-a498-4eb92e5a9eb1",
+        "title": "細かく分けた課題は学習効果を上げるが、過度な練習は逆に阻害する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "0615c080-dfe7-4b46-aef6-0e95ef9ecc43",
+        "title": "高搬移度によるパワーファクター補填で格子熱伝導低減を活かす ZT 向上戦略",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "078b3197-7ef5-482c-a70c-5e16f8624637",
+        "title": "ひずみ場散乱と点欠陥散乱の相加的効果による格子熱伝導率低減",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "09364224-f8f6-4f4b-adfb-8a04286275fc",
+        "title": "混ぜすぎは味と形を崩す、最適なかき混ぜ時間が鍵だ",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "14638704-20df-4dc0-b34f-9d74afdc2dad",
+        "title": "元素置換による格子熱伝導率低下は、格子ひずみ場揺らぎと欠陥散乱の両方を組み込んだモデルで予測できると考えています",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "29feff4b-6617-47d3-ab3d-c3861e510b40",
+        "title": "微量置換で相転移なしに格子定数を連続調整できる設計指針です",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "2f802f4f-8cad-45c9-8d83-6d6f92feba2f",
+        "title": "熱容量と熱伝導率の高温予測には、電子寄与と低有効質量を同時に考慮すべきです",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "3005d107-1666-46cc-8fe8-0d4a68d96569",
+        "title": "小規模統合構造が高速になる現象は、粒子微細化でも熱輸送抑制と加工速度向上を同時に示す",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "3b3ab3fc-3f6c-4c03-99be-ebe7999c7fe8",
+        "title": "低加工強度とナノ粉砕、酸化防止を組み合わせると単相保持と粒子成長抑制が実現します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "42fbae59-dbc8-4130-ab4e-0ce19a1b3cb5",
+        "title": "粒子サイズ縮小とサイズ差元素添加を併用すると格子熱伝導率が相乗的に低下します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "469ddf8e-f197-4e79-8019-a5b0adf6313a",
+        "title": "粉砕時間は欠陥増加と揮発成分損失を抑える最適点を持つ",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "496659d8-df6b-4152-ad07-83cf96d6e342",
+        "title": "ナノ粒子粉砕と短時間高温圧縮の併用で単相保持が可能になる",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "496cdf35-4b49-46fc-a7e2-f2219f6f0ad3",
+        "title": "温度依存パラメータを組み込めば高温領域の熱伝導予測誤差が体系的に縮小する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "53c96a99-ca08-41ba-b12a-1375c9cb6f48",
+        "title": "粒径縮小が熱拡散抑制をもたらすのは、チーム規模縮小が情報速度向上をもたらすことと構造的に類似する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "5c7d2faf-b32d-423a-96ff-50436401b842",
+        "title": "加熱だけで臭いを消せない、最初に素材を守ってから熱を調整すべし",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "5efc50a2-56b6-4c1a-8a80-df9d80a0f581",
+        "title": "容器サイズと湿式粉砕を組み合わせると単相生成率が向上する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "63a000a4-eb3a-434b-a0c6-18b755086eea",
+        "title": "サイズ差置換による熱伝導低下は温度依存の格子ひずみ散乱が支配する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "760865a3-c484-4da9-b7f0-2916ed2a8c82",
+        "title": "ボールミリング時間を適正に設定すれば、キャリア搬送性と相安定性を同時に最大化できます",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "7b06a44e-e467-4146-8f01-b40c4d4d36db",
+        "title": "プロセス分岐をグラフで可視化すれば、容器サイズ・ボール数・湿式条件が相生成に与える影響を体系的に管理できます",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "7dc6b433-3e59-4c49-9c5e-b88d0b57020a",
+        "title": "低エネルギー粉砕と酸素除去の併用が Zn4Sb3 単相生成を最適化します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "84f138c4-b6f2-460d-a256-92a2cc939e71",
+        "title": "測れない量を取り出す作業は、合成手順を可視化するのと同じ『分けて見る』動きである",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "8599095e-9a0a-4b34-ad8e-cc76a93d1002",
+        "title": "小さな生活リズムの変更は子どものエネルギーと集中力を同時に高める",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "8974b6c5-99c8-437d-bbd2-4236202bea82",
+        "title": "置換濃度が一定閾値を超えると格子定数の線形変化からひずみ散乱支配へ移行する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "9142c45e-05f0-4f3b-8a0c-06e8d984e2e3",
+        "title": "サイズ差で生じるひずみ場揺らぎと軽い伝導帯有効質量を同時に活かす合金設計が熱電性能を向上させます",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "9355e22b-0ec6-4384-be01-6e34c554c5ba",
+        "title": "格子定数変化を介したひずみ場揺らぎ最適化による熱伝導抑制戦略",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "9715d36c-3525-4f6d-a0d8-c6d5fe2848fb",
+        "title": "シンプルな絵本だけでは成長が読めないが、年齢別の話を加えると子どもの変化が予測できる",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "9d49cd0e-420c-42da-aae9-8b88f23cc1ea",
+        "title": "希薄置換により相を保ちつつ高搬移度と低格子熱伝導を同時に実現できる可能性があります",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "9e8e04c7-1bd4-4ca4-b602-e2c74b9390a1",
+        "title": "微量置換で結晶相を保ちつつ、格子定数と有効質量を同時に調整できるため、Al₃V の熱電性能を最適化できる",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "9f47235f-fd58-4c79-b826-d34b6593f36a",
+        "title": "短時間高温と低加工強度、少量過剰添加の組み合わせで揮発性成分の損失と相減衰を抑制できます",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "a3d0830d-e197-4009-ae3a-b1c5f32c3b17",
+        "title": "微量元素置換でキャリア濃度が変化すれば、ゼーベック符号転換温度が調整可能です",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "a9e06e6b-2169-4080-8bf1-b438fb808004",
+        "title": "温度依存熱容量寄与とローレンツ数を同時導入すると高温熱特性予測が改善する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "af78757f-94f1-4ff7-8d0e-78764f2ba980",
+        "title": "低濃度置換で相は保たれ、格子熱伝導が低減します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "b2a657d4-f519-4f2f-a476-bd0347ad4156",
+        "title": "温度依存性と点欠陥散乱を同時に考慮すれば、合金の格子熱伝導率予測が高温で正確になります",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "b461c099-3e48-44a3-a0ab-5fe5da5a1237",
+        "title": "点欠陥散乱が支配的な合金では、温度依存ローレンツ数を組み込んだ Klemens‑Callaway モデルが高温格子熱伝導率予測を大幅に改善します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "b80ae072-4720-4ed5-b013-1545165b9118",
+        "title": "成熟組織がマイクロサービス的に PROV‑DM で合成手順をモジュール化すれば、材料開発のスピードと再現性が向上します",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "b9232d52-68a3-4b0f-abb5-f1f8ecb28866",
+        "title": "原子サイズ不一致が生むひずみ散乱は、格子熱伝導率低減とパワーファクター維持を同時に実現し、ZT 向上につながる設計指針です",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "bb5ae8aa-9e2e-4546-b42c-fc0575798066",
+        "title": "火加減の窓を見つければ、余計な相は出ずに目指す味が完成する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "c53c5375-33d7-40f8-aad1-0e71b8850b62",
+        "title": "ひとつまみの調味料で熱が通りにくくなり、味が引き立つ",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "c656c2ae-00b8-40b1-b9b2-e01bfd7d6552",
+        "title": "容器容量・ボール数と加工強度を同時に抑えると目的相Zn4Sb3が最も保持できます",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "c7656c38-f495-49c8-a1a5-0b8b4add2881",
+        "title": "システムをモノリス化して複雑さを減らす効果は、材料加工で加工強度を下げて相純度を保つことと類似する",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "ce9f8529-e581-4644-a9d1-9d25a56db4b7",
+        "title": "Ti・Nb・Si 置換で Al3V のゼーベック符号転換温度を調整できる可能性があります",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "dcd30150-5d46-41b7-a6b5-c1243f8ebcdf",
+        "title": "比熱測定で原子サイズ不一致がもたらすひずみ場揺らぎの影響を評価できます",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "e0dd77c3-f3e5-4b43-a0af-7c7d525622ba",
+        "title": "酸化防止と揮発性成分の過剰添加を同時に行うと単相生成が最適化される",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "ef954326-d82d-4829-9237-7be5154c0e0c",
+        "title": "微量置換でキャリア濃度が変化するのは、バンドギャップ相の形成が原因である可能性があります",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      },
+      {
+        "id": "f1ca93a0-01d0-4dd0-937d-220467612b3f",
+        "title": "少量の新しいおもちゃと部屋のレイアウトで、子どもの騒音を二重に抑える",
+        "sourceConceptIds": [],
+        "sourceHitVerdicts": [],
+        "anyHit": false
+      }
+    ],
+    "synthSelf": [
+      {
+        "id": "0013498c-0791-4068-a812-bcf92774c42c",
+        "title": "低加工強度と揮発性成分の過剰添加を同時に行うと相純度が最大化する",
+        "match": null
+      },
+      {
+        "id": "00172ceb-0b9f-4f90-9023-ab071c21d3a9",
+        "title": "元素置換で変化したキャリア濃度を温度依存ローレンツ数に組み込むと高温熱伝導率予測が向上します",
+        "match": {
+          "entryId": "mat-017",
+          "verdict": "established",
+          "matchedKeywords": [
+            "添加元素",
+            "格子熱伝導"
+          ]
+        }
+      },
+      {
+        "id": "00b8d279-c84d-499e-a498-4eb92e5a9eb1",
+        "title": "細かく分けた課題は学習効果を上げるが、過度な練習は逆に阻害する",
+        "match": null
+      },
+      {
+        "id": "0615c080-dfe7-4b46-aef6-0e95ef9ecc43",
+        "title": "高搬移度によるパワーファクター補填で格子熱伝導低減を活かす ZT 向上戦略",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "ZT",
+            "熱伝導率"
+          ]
+        }
+      },
+      {
+        "id": "078b3197-7ef5-482c-a70c-5e16f8624637",
+        "title": "ひずみ場散乱と点欠陥散乱の相加的効果による格子熱伝導率低減",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "thermal conductivity"
+          ]
+        }
+      },
+      {
+        "id": "09364224-f8f6-4f4b-adfb-8a04286275fc",
+        "title": "混ぜすぎは味と形を崩す、最適なかき混ぜ時間が鍵だ",
+        "match": null
+      },
+      {
+        "id": "14638704-20df-4dc0-b34f-9d74afdc2dad",
+        "title": "元素置換による格子熱伝導率低下は、格子ひずみ場揺らぎと欠陥散乱の両方を組み込んだモデルで予測できると考えています",
+        "match": {
+          "entryId": "mat-016",
+          "verdict": "established",
+          "matchedKeywords": [
+            "格子熱伝導",
+            "フォノン",
+            "Callaway"
+          ]
+        }
+      },
+      {
+        "id": "29feff4b-6617-47d3-ab3d-c3861e510b40",
+        "title": "微量置換で相転移なしに格子定数を連続調整できる設計指針です",
+        "match": null
+      },
+      {
+        "id": "2f802f4f-8cad-45c9-8d83-6d6f92feba2f",
+        "title": "熱容量と熱伝導率の高温予測には、電子寄与と低有効質量を同時に考慮すべきです",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "電子寄与"
+          ]
+        }
+      },
+      {
+        "id": "3005d107-1666-46cc-8fe8-0d4a68d96569",
+        "title": "小規模統合構造が高速になる現象は、粒子微細化でも熱輸送抑制と加工速度向上を同時に示す",
+        "match": null
+      },
+      {
+        "id": "3b3ab3fc-3f6c-4c03-99be-ebe7999c7fe8",
+        "title": "低加工強度とナノ粉砕、酸化防止を組み合わせると単相保持と粒子成長抑制が実現します",
+        "match": null
+      },
+      {
+        "id": "42fbae59-dbc8-4130-ab4e-0ce19a1b3cb5",
+        "title": "粒子サイズ縮小とサイズ差元素添加を併用すると格子熱伝導率が相乗的に低下します",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン"
+          ]
+        }
+      },
+      {
+        "id": "469ddf8e-f197-4e79-8019-a5b0adf6313a",
+        "title": "粉砕時間は欠陥増加と揮発成分損失を抑える最適点を持つ",
+        "match": null
+      },
+      {
+        "id": "496659d8-df6b-4152-ad07-83cf96d6e342",
+        "title": "ナノ粒子粉砕と短時間高温圧縮の併用で単相保持が可能になる",
+        "match": {
+          "entryId": "mat-008",
+          "verdict": "contested",
+          "matchedKeywords": [
+            "ナノ粒子",
+            "拡散"
+          ]
+        }
+      },
+      {
+        "id": "496cdf35-4b49-46fc-a7e2-f2219f6f0ad3",
+        "title": "温度依存パラメータを組み込めば高温領域の熱伝導予測誤差が体系的に縮小する",
+        "match": null
+      },
+      {
+        "id": "53c96a99-ca08-41ba-b12a-1375c9cb6f48",
+        "title": "粒径縮小が熱拡散抑制をもたらすのは、チーム規模縮小が情報速度向上をもたらすことと構造的に類似する",
+        "match": null
+      },
+      {
+        "id": "5c7d2faf-b32d-423a-96ff-50436401b842",
+        "title": "加熱だけで臭いを消せない、最初に素材を守ってから熱を調整すべし",
+        "match": null
+      },
+      {
+        "id": "5efc50a2-56b6-4c1a-8a80-df9d80a0f581",
+        "title": "容器サイズと湿式粉砕を組み合わせると単相生成率が向上する",
+        "match": null
+      },
+      {
+        "id": "63a000a4-eb3a-434b-a0c6-18b755086eea",
+        "title": "サイズ差置換による熱伝導低下は温度依存の格子ひずみ散乱が支配する",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン"
+          ]
+        }
+      },
+      {
+        "id": "760865a3-c484-4da9-b7f0-2916ed2a8c82",
+        "title": "ボールミリング時間を適正に設定すれば、キャリア搬送性と相安定性を同時に最大化できます",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱電",
+            "ZT"
+          ]
+        }
+      },
+      {
+        "id": "7b06a44e-e467-4146-8f01-b40c4d4d36db",
+        "title": "プロセス分岐をグラフで可視化すれば、容器サイズ・ボール数・湿式条件が相生成に与える影響を体系的に管理できます",
+        "match": null
+      },
+      {
+        "id": "7dc6b433-3e59-4c49-9c5e-b88d0b57020a",
+        "title": "低エネルギー粉砕と酸素除去の併用が Zn4Sb3 単相生成を最適化します",
+        "match": {
+          "entryId": "mat-011",
+          "verdict": "contested",
+          "matchedKeywords": [
+            "XRD",
+            "ピーク"
+          ]
+        }
+      },
+      {
+        "id": "84f138c4-b6f2-460d-a256-92a2cc939e71",
+        "title": "測れない量を取り出す作業は、合成手順を可視化するのと同じ『分けて見る』動きである",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "電子寄与"
+          ]
+        }
+      },
+      {
+        "id": "8599095e-9a0a-4b34-ad8e-cc76a93d1002",
+        "title": "小さな生活リズムの変更は子どものエネルギーと集中力を同時に高める",
+        "match": null
+      },
+      {
+        "id": "8974b6c5-99c8-437d-bbd2-4236202bea82",
+        "title": "置換濃度が一定閾値を超えると格子定数の線形変化からひずみ散乱支配へ移行する",
+        "match": null
+      },
+      {
+        "id": "9142c45e-05f0-4f3b-8a0c-06e8d984e2e3",
+        "title": "サイズ差で生じるひずみ場揺らぎと軽い伝導帯有効質量を同時に活かす合金設計が熱電性能を向上させます",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱電",
+            "熱伝導率"
+          ]
+        }
+      },
+      {
+        "id": "9355e22b-0ec6-4384-be01-6e34c554c5ba",
+        "title": "格子定数変化を介したひずみ場揺らぎ最適化による熱伝導抑制戦略",
+        "match": null
+      },
+      {
+        "id": "9715d36c-3525-4f6d-a0d8-c6d5fe2848fb",
+        "title": "シンプルな絵本だけでは成長が読めないが、年齢別の話を加えると子どもの変化が予測できる",
+        "match": null
+      },
+      {
+        "id": "9d49cd0e-420c-42da-aae9-8b88f23cc1ea",
+        "title": "希薄置換により相を保ちつつ高搬移度と低格子熱伝導を同時に実現できる可能性があります",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "thermal conductivity"
+          ]
+        }
+      },
+      {
+        "id": "9e8e04c7-1bd4-4ca4-b602-e2c74b9390a1",
+        "title": "微量置換で結晶相を保ちつつ、格子定数と有効質量を同時に調整できるため、Al₃V の熱電性能を最適化できる",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱電",
+            "Seebeck",
+            "熱伝導率"
+          ]
+        }
+      },
+      {
+        "id": "9f47235f-fd58-4c79-b826-d34b6593f36a",
+        "title": "短時間高温と低加工強度、少量過剰添加の組み合わせで揮発性成分の損失と相減衰を抑制できます",
+        "match": null
+      },
+      {
+        "id": "a3d0830d-e197-4009-ae3a-b1c5f32c3b17",
+        "title": "微量元素置換でキャリア濃度が変化すれば、ゼーベック符号転換温度が調整可能です",
+        "match": null
+      },
+      {
+        "id": "a9e06e6b-2169-4080-8bf1-b438fb808004",
+        "title": "温度依存熱容量寄与とローレンツ数を同時導入すると高温熱特性予測が改善する",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "電子寄与"
+          ]
+        }
+      },
+      {
+        "id": "af78757f-94f1-4ff7-8d0e-78764f2ba980",
+        "title": "低濃度置換で相は保たれ、格子熱伝導が低減します",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン",
+            "thermal conductivity"
+          ]
+        }
+      },
+      {
+        "id": "b2a657d4-f519-4f2f-a476-bd0347ad4156",
+        "title": "温度依存性と点欠陥散乱を同時に考慮すれば、合金の格子熱伝導率予測が高温で正確になります",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン"
+          ]
+        }
+      },
+      {
+        "id": "b461c099-3e48-44a3-a0ab-5fe5da5a1237",
+        "title": "点欠陥散乱が支配的な合金では、温度依存ローレンツ数を組み込んだ Klemens‑Callaway モデルが高温格子熱伝導率予測を大幅に改善します",
+        "match": {
+          "entryId": "mat-017",
+          "verdict": "established",
+          "matchedKeywords": [
+            "点欠陥散乱",
+            "Klemens",
+            "格子熱伝導"
+          ]
+        }
+      },
+      {
+        "id": "b80ae072-4720-4ed5-b013-1545165b9118",
+        "title": "成熟組織がマイクロサービス的に PROV‑DM で合成手順をモジュール化すれば、材料開発のスピードと再現性が向上します",
+        "match": null
+      },
+      {
+        "id": "b9232d52-68a3-4b0f-abb5-f1f8ecb28866",
+        "title": "原子サイズ不一致が生むひずみ散乱は、格子熱伝導率低減とパワーファクター維持を同時に実現し、ZT 向上につながる設計指針です",
+        "match": {
+          "entryId": "mat-018",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱電",
+            "ZT",
+            "熱伝導率"
+          ]
+        }
+      },
+      {
+        "id": "bb5ae8aa-9e2e-4546-b42c-fc0575798066",
+        "title": "火加減の窓を見つければ、余計な相は出ずに目指す味が完成する",
+        "match": null
+      },
+      {
+        "id": "c53c5375-33d7-40f8-aad1-0e71b8850b62",
+        "title": "ひとつまみの調味料で熱が通りにくくなり、味が引き立つ",
+        "match": null
+      },
+      {
+        "id": "c656c2ae-00b8-40b1-b9b2-e01bfd7d6552",
+        "title": "容器容量・ボール数と加工強度を同時に抑えると目的相Zn4Sb3が最も保持できます",
+        "match": null
+      },
+      {
+        "id": "c7656c38-f495-49c8-a1a5-0b8b4add2881",
+        "title": "システムをモノリス化して複雑さを減らす効果は、材料加工で加工強度を下げて相純度を保つことと類似する",
+        "match": null
+      },
+      {
+        "id": "ce9f8529-e581-4644-a9d1-9d25a56db4b7",
+        "title": "Ti・Nb・Si 置換で Al3V のゼーベック符号転換温度を調整できる可能性があります",
+        "match": null
+      },
+      {
+        "id": "dcd30150-5d46-41b7-a6b5-c1243f8ebcdf",
+        "title": "比熱測定で原子サイズ不一致がもたらすひずみ場揺らぎの影響を評価できます",
+        "match": {
+          "entryId": "mat-005",
+          "verdict": "established",
+          "matchedKeywords": [
+            "熱伝導率",
+            "フォノン"
+          ]
+        }
+      },
+      {
+        "id": "e0dd77c3-f3e5-4b43-a0af-7c7d525622ba",
+        "title": "酸化防止と揮発性成分の過剰添加を同時に行うと単相生成が最適化される",
+        "match": null
+      },
+      {
+        "id": "ef954326-d82d-4829-9237-7be5154c0e0c",
+        "title": "微量置換でキャリア濃度が変化するのは、バンドギャップ相の形成が原因である可能性があります",
+        "match": null
+      },
+      {
+        "id": "f1ca93a0-01d0-4dd0-937d-220467612b3f",
+        "title": "少量の新しいおもちゃと部屋のレイアウトで、子どもの騒音を二重に抑える",
+        "match": null
+      }
+    ]
+  }
+}
