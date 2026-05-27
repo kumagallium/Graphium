@@ -5,9 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MoreHorizontal,
-  BookOpen,
-  BookPlus,
-  FlaskConical,
+  Bot,
   Images,
   Trash2,
   Share2,
@@ -140,7 +138,7 @@ export function MaterialActionsMenu({
                   className={itemClass}
                   onClick={() => { onNavigateNote?.(`wiki:${knowledgeWikiNoteId}`); setOpen(false); }}
                 >
-                  <BookOpen size={14} />
+                  <Bot size={14} className="text-primary" />
                   {t("knowledge.openInKnowledge")}
                 </button>
                 <button
@@ -156,7 +154,7 @@ export function MaterialActionsMenu({
                 className={itemClass}
                 onClick={() => { onIngest!(entry); setOpen(false); }}
               >
-                <BookPlus size={14} />
+                <Bot size={14} className="text-primary" />
                 {t("knowledge.addToKnowledge")}
               </button>
             )
@@ -167,9 +165,10 @@ export function MaterialActionsMenu({
               <button
                 className={itemClass}
                 onClick={() => { onCreateProvNote!(entry); setOpen(false); }}
+                title={t("asset.createProvNoteTitle")}
               >
-                <FlaskConical size={14} />
-                Create PROV Note
+                <Bot size={14} className="text-primary" />
+                {t("asset.createProvNote")}
               </button>
             </>
           )}

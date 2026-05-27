@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, BookPlus, FlaskConical } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -835,7 +835,7 @@ export function AssetGalleryView({
                 className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
                 title={t("asset.bulkIngestTitle")}
               >
-                <BookPlus size={12} />
+                <Bot size={12} />
                 {t("asset.bulkIngest", { count: String(selectedIds.size) })}
               </button>
             )}
@@ -845,7 +845,7 @@ export function AssetGalleryView({
                 className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
                 title={t("asset.bulkCreateProvNoteTitle")}
               >
-                <FlaskConical size={12} />
+                <Bot size={12} />
                 {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
               </button>
             )}

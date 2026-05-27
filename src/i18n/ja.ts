@@ -927,8 +927,10 @@ export const ja: Record<string, string> = {
   "asset.bulkDeleteConfirmMessageNoRef": "{count} 件を削除しますか？どのノートでも使用されていません。",
   "asset.bulkIngest": "{count} 件を Knowledge 化",
   "asset.bulkIngestTitle": "選択した URL/PDF を Knowledge 化（既存は再生成）",
-  "asset.bulkCreateProvNote": "{count} 件から PROV Note 作成",
-  "asset.bulkCreateProvNoteTitle": "選択した URL/PDF から PROV Note を作成",
+  "asset.bulkCreateProvNote": "{count} 件から手順を抽出してノート化",
+  "asset.bulkCreateProvNoteTitle": "選択した URL/PDF の内容から手順を抽出してノート化（AI）",
+  "asset.createProvNote": "手順を抽出してノート化",
+  "asset.createProvNoteTitle": "この素材の内容から手順を抽出してノートを作成（AI）",
 
   // ── ラベルギャラリー ──
   "label.section": "ラベル",

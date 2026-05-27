@@ -927,8 +927,10 @@ export const en: Record<string, string> = {
   "asset.bulkDeleteConfirmMessageNoRef": "Delete {count} items? They are not used in any note.",
   "asset.bulkIngest": "Add {count} to Knowledge",
   "asset.bulkIngestTitle": "Add selected URLs/PDFs to Knowledge (regenerates existing entries)",
-  "asset.bulkCreateProvNote": "Create PROV Note from {count}",
-  "asset.bulkCreateProvNoteTitle": "Create PROV Notes from selected URLs/PDFs",
+  "asset.bulkCreateProvNote": "Extract steps into notes from {count}",
+  "asset.bulkCreateProvNoteTitle": "Extract steps from the selected URLs/PDFs into notes (AI)",
+  "asset.createProvNote": "Extract steps into a note",
+  "asset.createProvNoteTitle": "Extract steps from this material and create a note (AI)",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",
