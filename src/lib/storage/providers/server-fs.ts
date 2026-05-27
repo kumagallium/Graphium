@@ -200,7 +200,13 @@ export class ServerFilesystemProvider implements StorageProvider {
 
   extractFileId(url: string): string | null {
     const match = url.match(/^media-server:\/\/(.+)$/);
-    return match ? match[1] : null;
+    if (match) return match[1];
+    // Legacy 互換: Google Drive プロバイダ時代に登録されたエントリは
+    // `https://lh3.googleusercontent.com/d/<uuid>=s0` 形式で url が残っている。
+    // server-fs は fileId をそのままファイル名（UUID）として disk に置くため、
+    // CDN URL から抽出した id を fileId として扱える。
+    const legacyMatch = url.match(/^https:\/\/lh3\.googleusercontent\.com\/d\/([^=/?]+)/);
+    return legacyMatch ? legacyMatch[1] : null;
   }
 
   async getUserEmail(): Promise<string | null> {
