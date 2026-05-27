@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { Bot } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -228,14 +229,23 @@ export function Composer(props: ComposerProps) {
         >
           <span
             style={{
-              fontFamily: "ui-monospace, 'SF Mono', monospace",
-              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               color: "var(--forest)",
               userSelect: "none",
             }}
             aria-hidden
           >
-            »
+            <Bot size={14} />
+            <span
+              style={{
+                fontFamily: "ui-monospace, 'SF Mono', monospace",
+                fontSize: 13,
+              }}
+            >
+              »
+            </span>
           </span>
           <input
             ref={inputRef}
