@@ -15,6 +15,7 @@ import {
   type CaptureIndex,
   type CaptureEntry,
   type MemoSourceAsset,
+  type MemoSourceNote,
 } from "../features/mobile-capture";
 
 export function useCapture(authenticated: boolean) {
@@ -61,10 +62,12 @@ export function useCapture(authenticated: boolean) {
   }, [authenticated]);
 
   // 付箋を作成
-  // sourceAsset: Quote→Memo 経路から呼ばれる場合の出典素材（optional）
+  // - sourceAsset: Quote→Memo 経路から呼ばれる場合の出典素材（optional）
+  // - sourceNote: ノート右パネルの Memos タブから呼ばれる場合の出典ノート（optional）
   const handleCreateCapture = useCallback(async (
     text: string,
     sourceAsset?: MemoSourceAsset,
+    sourceNote?: MemoSourceNote,
   ) => {
     setCapturing(true);
     try {
@@ -74,6 +77,7 @@ export function useCapture(authenticated: boolean) {
         text,
         createdAt: new Date().toISOString(),
         ...(sourceAsset ? { sourceAsset } : {}),
+        ...(sourceNote ? { sourceNote } : {}),
       };
       const updated = addCapture(current, entry);
       indexRef.current = updated;

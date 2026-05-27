@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2 } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, StickyNote } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
@@ -136,6 +136,7 @@ import {
   AssetGalleryView,
   LabelGalleryView,
   MediaPickerModal,
+  NoteMemosSection,
   getMediaSlashMenuItems,
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -413,6 +414,10 @@ type NoteEditorProps = {
   onMemoInserted?: () => void;
   /** メモピッカー用のキャプチャインデックス */
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
+  /** 右パネル「Memos」タブからメモを追加する（sourceNote は NoteApp 側で付与） */
+  onCreateNoteMemo?: (text: string) => void | Promise<void>;
+  /** 右パネル「Memos」タブからメモを削除する */
+  onDeleteNoteMemo?: (memoId: string) => void;
   /** エディタ参照を親に伝播するコールバック */
   onEditorRef?: (editor: any) => void;
   /** Knowledge に追加コールバック */
@@ -538,6 +543,8 @@ function NoteEditorInner({
   pendingMemoInsert,
   onMemoInserted,
   captureIndex: captureIndexProp,
+  onCreateNoteMemo,
+  onDeleteNoteMemo,
   onEditorRef,
   onIngestToWiki,
   onIngestFromUrl,
@@ -613,9 +620,9 @@ function NoteEditorInner({
   // @ トリガー時のカーソル位置を保存（ドロップダウン表示後は DOM から取れなくなるため）
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
-  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | null>(null);
+  const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | null>(null);
   // アイコンレールのトグル: 同じタブクリックで閉じる
-  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source") => {
+  const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos") => {
     setRightTab((prev) => prev === tab ? null : tab);
     if (tab !== "history") setHighlightBlockIds([]);
   }, []);
@@ -2520,7 +2527,12 @@ function NoteEditorInner({
                 </button>
               )}
               <span className="text-xs font-bold tracking-wide text-foreground">
-                {rightTab === "graph" ? "Graph" : rightTab === "prov" ? t("panel.prov") : rightTab === "chat" ? "Chat" : rightTab === "history" ? t("panel.history") : "Source"}
+                {rightTab === "graph" ? "Graph"
+                  : rightTab === "prov" ? t("panel.prov")
+                  : rightTab === "chat" ? "Chat"
+                  : rightTab === "history" ? t("panel.history")
+                  : rightTab === "memos" ? "Memos"
+                  : "Source"}
               </span>
               {rightTab === "prov" && (
                 <button
@@ -2562,6 +2574,15 @@ function NoteEditorInner({
               {rightTab === "source" && sourceDoc && (
                 <SourceDocPanel doc={sourceDoc} />
               )}
+              {rightTab === "memos" && fileId && (
+                <NoteMemosSection
+                  noteFileId={fileId}
+                  noteTitle={initialDoc?.title}
+                  captureIndex={captureIndexProp ?? null}
+                  onCreateMemo={onCreateNoteMemo}
+                  onDeleteMemo={onDeleteNoteMemo}
+                />
+              )}
             </div>
           </div>
         )}
@@ -2581,6 +2602,8 @@ function NoteEditorInner({
             { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
+            // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
+            { tab: "memos" as const, icon: <StickyNote size={18} />, label: "Memos", show: !!fileId },
             ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: "Source", show: true }] : []),
           ] as const).filter((item) => item.show).map((item) => (
             <button
@@ -5118,6 +5141,16 @@ export function NoteApp() {
               setPendingMemoInsert(null);
             }}
             captureIndex={capture.captureIndex}
+            onCreateNoteMemo={async (text) => {
+              // 右パネル「Memos」タブからの新規メモ。
+              // sourceNote にノートの fileId とタイトルスナップショットを付与する。
+              if (!fm.activeFileId) return;
+              await capture.handleCreateCapture(text, undefined, {
+                fileId: fm.activeFileId,
+                title: fm.activeDoc?.title,
+              });
+            }}
+            onDeleteNoteMemo={capture.handleDeleteCapture}
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
             isWikiDoc={fm.activeDoc?.source === "ai"}
             aiAvailable={aiAvailable ?? false}
