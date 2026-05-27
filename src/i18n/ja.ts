@@ -965,6 +965,15 @@ export const ja: Record<string, string> = {
   "updater.install": "再起動して更新",
   "updater.installing": "ダウンロード中...",
 
+  // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
+  "auth.missingKeyTitle": "{model} の保存済み API キーを読み込めません",
+  "auth.missingKeyBody":
+    "{provider} で発行したキーを Graphium が一時的に見失っています。Settings → AI Setup で同じキーを貼り直すと復旧します。",
+  "auth.missingKeyBodyMultiple":
+    "{count} 件のモデル ({models}) の API キーを読み込めません。Settings → AI Setup で同じキーを貼り直すと復旧します。",
+  "auth.openSettings": "AI Setup を開く",
+  "auth.dismiss": "閉じる",
+
   // ── メモ ──
   "memo.title": "メモ",
   "memo.count": "{count} 件",

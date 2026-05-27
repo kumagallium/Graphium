@@ -1,8 +1,9 @@
 // ヘルスチェック API
-// GET /api/health — バックエンド + Registry の接続状態
+// GET /api/health — バックエンド + Registry の接続状態 + 認証状態
 
 import { Hono } from "hono";
 import { getRegistryUrl } from "../services/env.js";
+import { findModelsWithMissingApiKey } from "../config/models.js";
 
 const app = new Hono();
 
@@ -33,12 +34,30 @@ app.get("/", async (c) => {
     }
   }
 
+  // 認証状態: 保存済みの API キーが読めないモデルが居ないか確認する。
+  // Keychain ダウングレード罠（旧バイナリ + Keychain 移行済み環境）の早期発見用。
+  const missingKeyModels = findModelsWithMissingApiKey();
+  const authStatus: "ok" | "keys-missing" =
+    missingKeyModels.length === 0 ? "ok" : "keys-missing";
+
+  // status は registry が unavailable でも auth が ok なら degraded で十分。
+  // auth が壊れていると AI 機能が完全に不能になるので、その時は warning を最優先にする。
+  // ここでは status を細分化せず、components.auth を見て UI 側で判断させる。
   return c.json({
-    status: registryStatus === "ok" ? "healthy" : "degraded",
+    status:
+      authStatus === "keys-missing" || registryStatus !== "ok"
+        ? "degraded"
+        : "healthy",
     components: {
       backend: "ok",
       registry: registryStatus,
+      auth: authStatus,
     },
+    /**
+     * キーが読めないモデルのメタ情報。UI で「どのモデル / どのプロバイダーの
+     * キーを貼り直せばいいか」を提示するために返す。apiKey 本体は含まない。
+     */
+    missingKeyModels,
     version: "1.0.0",
     pid: sidecarIdentity.pid,
     dataDir: sidecarIdentity.dataDir,

@@ -145,6 +145,29 @@ export function getDefaultModel(): ModelConfig | undefined {
   return models[0];
 }
 
+/**
+ * 登録はされているが API キーが空文字のモデル一覧を返す。
+ *
+ * これが空でない状況は production だと事故サインで、想定する典型は:
+ *   - Keychain ダウングレード罠: Keychain 有効版で起動 → 移行で
+ *     models.json から apiKey 消える → Keychain 非対応版にダウングレード →
+ *     ファイル側にもキーが無く Keychain も読めず、空キーで起動した状態
+ *   - Keychain エントリ自体が削除された（手動 / 別ユーザーで起動した等）
+ *
+ * UI 側はこれを見て「保存済みキーが読めない / 再入力してください」の
+ * 警告を出す。Vercel モードはヘッダ経由でキーが渡る前提なので対象外。
+ */
+export function findModelsWithMissingApiKey(): Array<{
+  id: string;
+  name: string;
+  provider: string;
+}> {
+  if (serverMode === "vercel") return [];
+  return readModels()
+    .filter((m) => !m.apiKey)
+    .map((m) => ({ id: m.id, name: m.name, provider: m.provider }));
+}
+
 export function addModel(
   input: Omit<ModelConfig, "id" | "createdAt">,
 ): ModelConfig {
