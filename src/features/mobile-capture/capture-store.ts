@@ -43,6 +43,22 @@ export type MemoSourceAsset = {
   pageNumber?: number;
 };
 
+/**
+ * メモの出典ノート
+ *
+ * ノート編集画面の右パネル「Memos」タブから作成されたメモが
+ * 「どのノートを開いていた時に書かれたか」を保持する。
+ * - fileId: ノートの fileId（GraphiumDocument.fileId 相当）
+ * - title: 作成時点のノートタイトル（表示用スナップショット）
+ *
+ * `sourceAsset` と排他ではなく、両方のフィルタ経路を許す。素材経由 / ノート経由
+ * のどちらでも CaptureIndex に流れ込み、メモ一覧では横断的に見える。
+ */
+export type MemoSourceNote = {
+  fileId: string;
+  title?: string;
+};
+
 /** 付箋キャプチャ1件 */
 export type CaptureEntry = {
   /** 一意 ID */
@@ -61,6 +77,8 @@ export type CaptureEntry = {
   editHistory?: MemoEditRecord[];
   /** 出典素材（Quote→Memo で保存された場合のみ） */
   sourceAsset?: MemoSourceAsset;
+  /** 出典ノート（ノート右パネルの Memos タブから作成された場合のみ） */
+  sourceNote?: MemoSourceNote;
 };
 
 /** キャプチャインデックス全体 */
