@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.11.0](https://github.com/kumagallium/Graphium/compare/v0.10.0...v0.11.0) - 2026-05-27
+- refactor: remove heuristic tenpai layer by @kumagallium in https://github.com/kumagallium/Graphium/pull/360
+- [ci] catch broken sidecar bundles + ensure Pages stays current after release by @kumagallium in https://github.com/kumagallium/Graphium/pull/363
+- [feat] warn when saved API keys can't be read (Keychain downgrade trap detection) by @kumagallium in https://github.com/kumagallium/Graphium/pull/364
+- refactor: remove Synthesis auto-generation pipeline by @kumagallium in https://github.com/kumagallium/Graphium/pull/362
+- fix: prevent IME confirmation Enter from submitting memo by @kumagallium in https://github.com/kumagallium/Graphium/pull/365
+- chore: remove stale Synthesizer bench results by @kumagallium in https://github.com/kumagallium/Graphium/pull/366
+- feat: add Memos tab to note right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/367
+
 ## [v0.10.0](https://github.com/kumagallium/Graphium/compare/v0.9.2...v0.10.0) - 2026-05-27
 - [fix] sidecar crash: switch URL Reader from jsdom to linkedom by @kumagallium in https://github.com/kumagallium/Graphium/pull/359
 
