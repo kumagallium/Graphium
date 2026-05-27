@@ -86,6 +86,40 @@ jobs:
       - name: Bundle server
         run: node scripts/bundle-server.mjs
 
+      # バンドル直後に sidecar を実起動して /api/health が 200 を返すか確認する。
+      # ESM bundle で __dirname が定義されない罠 や、新しい依存が package 内資産を
+      # 読みに行って起動即死する罠（0.9.2 で jsdom が踏んだやつ）を、production 配布前に
+      # 確実に検出する。
+      # Windows runner は bash の `&` が信頼性低いので Linux runner で代表テストする。
+      - name: Smoke test bundled sidecar
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=13001
+          DATA_DIR=$(mktemp -d)
+          PORT=$PORT DATA_DIR=$DATA_DIR node src-tauri/sidecar/server.mjs > /tmp/sidecar-smoke.log 2>&1 &
+          SIDECAR_PID=$!
+          trap "kill $SIDECAR_PID 2>/dev/null || true" EXIT
+          # 起動完了を最大 15 秒待つ
+          for i in $(seq 1 15); do
+            if curl -fsS "http://localhost:${PORT}/api/health" > /tmp/sidecar-health.json 2>/dev/null; then
+              echo "Sidecar healthy after ${i}s"
+              cat /tmp/sidecar-health.json
+              echo ""
+              exit 0
+            fi
+            if ! kill -0 $SIDECAR_PID 2>/dev/null; then
+              echo "ERROR: Sidecar process died during smoke test"
+              cat /tmp/sidecar-smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "ERROR: Sidecar did not respond on /api/health within 15s"
+          cat /tmp/sidecar-smoke.log
+          exit 1
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -255,10 +289,23 @@ jobs:
           for i in 1 2 3; do
             if git pull --rebase origin main && git push origin main; then
               echo "Published latest.json for ${TAG}"
-              exit 0
+              break
             fi
             echo "Push attempt $i failed, retrying..."
             sleep 5
+            if [ "$i" = "3" ]; then
+              echo "ERROR: Failed to push after 3 attempts"
+              exit 1
+            fi
           done
-          echo "ERROR: Failed to push after 3 attempts"
-          exit 1
+
+      # GITHUB_TOKEN 由来の commit は他の workflow を `on: push` で triggers
+      # しない（再帰防止仕様）ため、Pages 配信用の deploy.yml が走らず Pages の
+      # latest.json が古いままになる罠を踏んだ（0.9.2 release で実害）。
+      # workflow_dispatch は GITHUB_TOKEN でも triggers されるので、ここで明示的に
+      # deploy.yml を叩いて Pages を確実に最新化する。
+      - name: Trigger Pages deploy (workflow_dispatch escapes the GITHUB_TOKEN no-recursion rule)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "Deploy to GitHub Pages" --ref main --repo "${{ github.repository }}"
