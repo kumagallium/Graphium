@@ -82,12 +82,12 @@ The layer has four document kinds, each with a distinct role:
 |------|------|
 | **Summaries** | Internal-facing summary of one note. |
 | **Claims** | Cross-note findings with key elements extracted. Claims qualify by `level` (principle / finding / bridge) and `status` (candidate / verified). |
-| **Insights** | Experimental layer. One context-free claim with citations back to the source notes — the unit that travels across projects. |
-| **Ideas** | Experimental layer. New idea built by weaving Insights together. |
+| **Insights** | One context-free claim with citations back to the source notes — the unit that travels across projects. |
+| **Ideas** | New idea built by weaving Insights together. Authored through the Cmd-K Composer flow: select the Insights you want to weave, build a citation note, and invoke the LLM with that as the search-space constraint. |
 
 | Capability | What it does |
 |-----------|--------------|
-| **Five-stage pipeline** | Ingest → Atomize → Synthesize → Cross-update → Lint, all running on the companion server. Triggered when you save a note. |
+| **Pipeline** | Ingest → Atomize → Cross-update → Lint, running on the companion server when you save a note. Ideas are authored separately through Cmd-K Composer rather than as a pipeline stage. |
 | **Ingest from notes** | The AI extracts knowledge-worthy sections and writes them into Knowledge pages, citing back to source blocks. |
 | **Ingest from URL & chat** | Drop a URL or save an AI chat response — it becomes a Knowledge page with the same provenance chain. |
 | **Cross-update** | When one Knowledge page changes, dependent pages are flagged or rewritten so the layer stays consistent. |
@@ -227,7 +227,7 @@ Notes are saved to your browser's IndexedDB by default. AI features require the 
 - **Inter-note network graph** (Cytoscape.js + fcose layout)
 - **AI assistant** — derive notes from AI responses with full provenance metadata
 - **AI auto-labeling** — AI answers are inserted with PROV-DM context labels and `informed_by` chains already attached
-- **Knowledge layer** — editable AI-curated layer with four document kinds (*Summaries* / *Claims* / *Insights* / *Ideas*), a five-stage pipeline (ingest → atomize → synthesize → cross-update → lint), and edit protection on re-ingest
+- **Knowledge layer** — editable AI-curated layer with four document kinds (*Summaries* / *Claims* / *Insights* / *Ideas*), a pipeline (ingest → atomize → cross-update → lint) with edit protection on re-ingest. Ideas are authored through the Cmd-K Composer flow
 - **Composer (⌘K)** — unified palette for note search (`#label` / `@author` filters), discovery cards, and AI ask
 - **Skills** — reusable prompt templates stored as Graphium documents (`source: "skill"`); apply during ingest or chat
 - **Sharing & Library** — share a note to a content-addressed shared store; others can browse the Library and Fork. Embedded media is materialized as `shared-blob:` references on share

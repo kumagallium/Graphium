@@ -345,17 +345,10 @@ type ProcedureContext = {
 | `atom` | Experimental layer. One context-free claim with citations. | **no** (the hourglass waist) |
 | `synthesis` | Experimental layer. New insight built from atoms. | yes (re-applied) |
 
-> **Note (2026-05-23)**: Phase ε introduced a `meta-atom` kind (KJ-style
-> mid-cluster of 3+ Atoms). It was withdrawn at INDEX v19 because the
-> "invent an axis name across Atoms" step is structurally hard for
-> current LLMs (the output collapsed back to the source domain even with
-> stronger models). Synthesis auto-generation pipeline withdrawn
-> (2026-05-27 design revision); Cmd-K Composer replaces it (tracked
-> separately).
-
-`atom` and `synthesis` are gated by `experimental.atomLayer` and
-`experimental.synthesis` settings. Existing files of these kinds are
-preserved even when generation is disabled.
+`synthesis` documents are authored through the Cmd-K Composer flow
+rather than an automatic pipeline: the user selects Insights, builds a
+citation note, and invokes the LLM with that as the search-space
+constraint.
 
 ### 3.2 `level` and `status` for Claims
 
@@ -405,7 +398,7 @@ versions stay valid with these fields absent.
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
-| `theme` | Synthesis | Legacy: theme was the lens chosen at synthesize time. Auto-synthesize is withdrawn (2026-05-27); existing synthesis docs preserve this field for back-compat. |
+| `theme` | Synthesis | Legacy field preserved on existing synthesis docs for back-compat; new Cmd-K Composer authoring does not populate it. |
 
 These dimensions are **orthogonal to the existing context labels**
 (`procedure / plan / result / material / tool / attribute / output`),
@@ -526,13 +519,6 @@ without ≥2 source rebuttals get their `rebuttalConditions` reset to
 `undefined`. This is a structural propagation rule, not a judgment
 call — the same shape as Phase η's lowest-status inheritance.
 
-#### Downstream effects (withdrawn 2026-05-27)
-
-Atom-level `rebuttalConditions` previously fed the auto-Synthesizer's
-router and dialectic prompt. The auto-synthesize pipeline has been
-withdrawn (see §3.6 history note); the field remains on the data model
-for surface display and any future tooling.
-
 #### Honesty defaults
 
 The Ingester treats these fields conservatively:
@@ -567,24 +553,22 @@ entry is `{ atomId, relationType, citation }` where:
   relation, quality-over-quantity (max ~3 relations per Atom).
 
 The Atomizer parser sanitises every entry and caps the array at 3.
-(Previously, the Synthesis router consumed `applies-to-different-domain`
-and `contradicts` pairs as analogical / dialectic signals; that auto
-pipeline was withdrawn on 2026-05-27.)
 
 Surface: WikiBanner renders `relatedAtoms` inside the "Derived from"
 collapsible (the same section as `derivedFromNotes` /
 `derivedFromClaims`). Keeping the collapsible count low is deliberate:
 every extra collapsible section costs readability.
 
-### 3.6.2 Synthesizer (withdrawn 2026-05-27)
+### 3.6.2 Synthesis authoring (Cmd-K Composer)
 
-The auto-synthesize pipeline — including the short-lived Meta-Atom
-layer (Phase ε, withdrawn at v19) and its theme-driven Synthesizer
-replacement (v20, 2026-05-23) — has been removed. A Cmd-K Composer
-flow is planned as the user-driven replacement and is tracked
-separately. Existing `synthesis` JSON files on disk are preserved
-read-only; the `wikiMeta.theme` field stays for back-compat (see §3.5
-field table).
+`synthesis` documents are produced through the Cmd-K Composer flow:
+the user selects the Insights they want to weave, builds a citation
+note, and invokes the LLM with that as the search-space constraint.
+The resulting Idea inherits citations to the selected Insights via the
+standard `derivedFromAtoms` / `derivedFromClaims` machinery.
+
+Legacy `synthesis` JSON files on disk remain readable; the
+`wikiMeta.theme` field stays for back-compat (see §3.5 field table).
 
 
 ### 3.7 World-model grounding (Phase 2)
@@ -790,10 +774,9 @@ type NoteIndexEntry = {
   //   analogical / dialectic pairings.
   relatedAtoms?: AtomRelation[];
 
-  // v20 (2026-05-23): Synthesis theme mirror. The auto-Synthesizer that
-  //   wrote this field has been withdrawn (2026-05-27); the field is
-  //   preserved on legacy synthesis docs for back-compat and UI
-  //   grouping. New synthesis writes do not populate it.
+  // Legacy synthesis theme mirror. Preserved on existing synthesis
+  //   docs for back-compat and UI grouping. New Cmd-K Composer
+  //   authoring does not populate it.
   theme?: string;
 };
 ```

@@ -95,11 +95,19 @@ less and less of the original project's context — until the Insight, which
 is the narrow waist where context drops to zero and the claim becomes
 portable.
 
-The hourglass describes how Graphium **generates** portable knowledge from
-raw notes. It is the central generator, not the whole system. Other parts of
-Graphium — provenance export, world-knowledge checks, cross-page updates,
-lint warnings — sit around this core with their own jobs. They read from the
-hourglass output but do not change its shape.
+The hourglass describes how portable knowledge is **built** from raw notes.
+It is the central structure, not the whole system. Other parts of Graphium —
+provenance export, world-knowledge checks, cross-page updates, lint warnings —
+sit around this core with their own jobs. They read from the hourglass output
+but do not change its shape.
+
+The division of labour across the hourglass is asymmetric on purpose. The
+Notes → Claims → Insights side is automatic (Ingester + Atomizer). The
+Ideas side — the move from Insights to Ideas — is human-driven through the
+**Cmd-K Composer** flow: you select the Insights you want to weave, build a
+citation note, and invoke the LLM with that as the search-space constraint.
+The neck of the hourglass is where the user's intent crystallises, and that
+is exactly the work the user should keep.
 
 ```mermaid
 flowchart LR

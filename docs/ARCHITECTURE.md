@@ -320,10 +320,12 @@ sedimented entries that the model produced (seed entries are read-only
 from the UI; editing them requires changing `seed.v1.json` through a
 PR).
 
-**Idea generation (withdrawn 2026-05-27).** The automatic pipeline that
-wove Insights into Idea pages (Synthesizer + idea router + mode-specific
-prompts) has been removed. A Cmd-K Composer flow is planned as the
-replacement and is tracked separately.
+**Idea authoring (Cmd-K Composer).** Ideas are produced through the
+Cmd-K Composer flow rather than a server-side pipeline. The user
+selects the Insights they want to weave, builds a citation note, and
+invokes the LLM with that as the search-space constraint. The neck of
+the hourglass is human-driven; the server-side pipeline handles only
+Notes → Claims → Insights.
 
 The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
