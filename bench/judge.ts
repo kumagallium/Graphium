@@ -97,17 +97,12 @@ export type Judgment = { passed: boolean; reason: string };
 export type LiftJudgment = Judgment;
 
 export type LiftJudge = (atom: BenchAtom) => Promise<Judgment>;
-export type NoveltyJudge = (
-  synthesisBody: string,
-  sourceTexts: string[],
-) => Promise<Judgment>;
 
 export type JudgeKind = "heuristic" | "live";
 
 export type JudgePack = {
   kind: JudgeKind;
   lift: LiftJudge;
-  novelty: NoveltyJudge;
   meta: { provider: string; modelId: string; modelName: string };
 };
 
@@ -125,30 +120,17 @@ function heuristicLift(atom: BenchAtom): Judgment {
   return { passed: true, reason: "no domain-specific jargon detected (pattern-based)" };
 }
 
-function heuristicNovelty(synthesisBody: string, sourceTexts: string[]): Judgment {
-  const synthLower = synthesisBody.toLowerCase();
-  const concatLower = sourceTexts.join(" ").toLowerCase();
-  if (concatLower.includes(synthLower.slice(0, 60))) {
-    return { passed: false, reason: "synthesis body is largely a paraphrase of sources" };
-  }
-  return { passed: true, reason: "synthesis introduces structure beyond source" };
-}
-
 export function createHeuristicJudges(): JudgePack {
   return {
     kind: "heuristic",
     lift: async (atom) => heuristicLift(atom),
-    novelty: async (body, sources) => heuristicNovelty(body, sources),
-    meta: { provider: "heuristic", modelId: "n/a", modelName: "heuristic (pattern-based jargon + substring)" },
+    meta: { provider: "heuristic", modelId: "n/a", modelName: "heuristic (pattern-based jargon)" },
   };
 }
 
 // 同期版（metrics.test.ts のため）
 export function judgeAtomLift(atom: BenchAtom): Judgment {
   return heuristicLift(atom);
-}
-export function judgeSynthesisNovelty(synthesisBody: string, sourceTexts: string[]): Judgment {
-  return heuristicNovelty(synthesisBody, sourceTexts);
 }
 
 // ─── Live (LLM-as-judge) ──────────────────────────────────────────────────────
@@ -179,23 +161,6 @@ Respond with ONLY a single JSON object (no markdown):
 {"passed": true | false, "reason": "<one short sentence>"}
 
 passed=true ⟺ the Atom title contains no domain-specific proper noun, instrument name, chemical formula (with or without digits), formula / theory name, specification name, abbreviation, or jargon that would force a non-specialist to look up the term to decode the sentence.`;
-
-const NOVELTY_RUBRIC = `You are evaluating whether a Synthesis adds structure beyond paraphrasing its source Atoms.
-
-A novel Synthesis introduces at least one of:
-  - A bridge between source Atoms (analogy / contrast / hierarchy)
-  - A new abstraction inferred from the combination
-  - A condition or boundary not stated in any single source
-
-A non-novel Synthesis (FAIL):
-  - Lists the source Atoms with a connector word ("A and B")
-  - Restates a single source in different words
-  - Concatenates source bodies with light glue
-
-Respond with ONLY a single JSON object (no markdown):
-{"passed": true | false, "reason": "<one short sentence>"}
-
-passed=true ⟺ the Synthesis adds at least one of the novel structures above.`;
 
 function parseJudgeJson(text: string, fallback: Judgment): Judgment {
   try {
@@ -248,28 +213,9 @@ export function createLiveJudges(): JudgePack {
     }
   };
 
-  const novelty: NoveltyJudge = async (synthesisBody, sourceTexts) => {
-    const sourcesBlock = sourceTexts
-      .slice(0, 6)
-      .map((t, i) => `Source #${i + 1}: ${t.slice(0, 600)}`)
-      .join("\n");
-    const userMessage = `${sourcesBlock}\n\nSynthesis body:\n${synthesisBody.slice(0, 1200)}`;
-    try {
-      const result = await generateText({
-        model,
-        system: NOVELTY_RUBRIC,
-        messages: [{ role: "user", content: userMessage }],
-      });
-      return parseJudgeJson(result.text, { passed: true, reason: "judge-parse-failed (fallback pass)" });
-    } catch (err) {
-      return { passed: true, reason: `judge-error (fallback pass): ${(err as Error).message}` };
-    }
-  };
-
   return {
     kind: "live",
     lift,
-    novelty,
     meta: {
       provider: modelConfig.provider,
       modelId: modelConfig.modelId,

@@ -60,7 +60,7 @@ flowchart TB
     end
 
     subgraph SRV["Optional Node server (src/server/)"]
-        WI["wiki-ingester / atomizer /<br/>synthesizer / cross-updater / linter"]
+        WI["wiki-ingester / atomizer /<br/>cross-updater / linter"]
         EMB["embedding service"]
         LLM["llm proxy (Anthropic / OpenAI / local)"]
     end
@@ -232,8 +232,6 @@ The pipeline (running on the Node server) has five stages:
 |---|---|---|
 | **Ingester** | `src/server/services/wiki-ingester.ts` | Reads new / changed notes, decides which Wiki pages to touch |
 | **Atomizer** | `src/server/services/wiki-atomizer.ts` | Strips context, produces *Insight* pages with citations back to source notes |
-| **Idea router** | `src/features/ai-assistant/synthesis-router.ts` | From input Insights' `atomType`, picks the candidate `synthesisMode`s (deductive / abductive / analogical / dialectic) the Synthesizer should consider. Exports `pickTopSynthesisModes` for the theme-driven path. |
-| **Synthesizer** | `src/server/services/wiki-synthesizer.ts` + `src/server/services/synthesis-prompts/` | Weaves Insights across notes into *Idea* pages. The system prompt is composed from a shared `common.ts` plus one file per mode; the router restricts which modes the LLM sees. **Theme-driven (2026-05-23):** when the caller passes a `theme` (e.g. "home cooking"), a theme-lens section is injected at the top of the prompt and the output is re-cast in that theme's vocabulary and reader stance. Mode stays orthogonal — theme is *for whom*, mode is *how*. The discovery flow then calls the Synthesizer once per (cluster × top 1–2 modes) so a single click produces a small spread of variants. |
 | **Cross-updater** | `src/server/services/wiki-cross-updater.ts` | When one Wiki page changes, propagates to dependent pages |
 | **Linter** | `src/server/services/wiki-linter.ts` | Detects orphan Insights, broken citations, redundant Claims |
 
@@ -245,7 +243,7 @@ sequenceDiagram
     participant W as wiki-service.ts (client)
     participant S as Server (Hono)
     participant I as Ingester
-    participant A as Atomizer / Synthesizer
+    participant A as Atomizer
     participant X as Cross-updater
     participant L as Linter
     participant FS as Wiki files (JSON)
@@ -322,31 +320,10 @@ sedimented entries that the model produced (seed entries are read-only
 from the UI; editing them requires changing `seed.v1.json` through a
 PR).
 
-**Idea modes (Phase 1.3).** The Synthesizer can produce four kinds of
-Idea, distinguished by the type of reasoning that grounds the new
-insight:
-
-- `deductive` — independent claims combine into a strategy ("given A, B, C → D"). Most permissive; the default fallback.
-- `abductive` — an observation plus a mechanism / rule → the best explanatory hypothesis. Where most genuine "aha" Ideas live.
-- `analogical` — structural mapping between claims from different domains.
-- `dialectic` — two claims that argue opposite directions of the same effect, resolved by a higher frame.
-
-Induction is **not** an Idea mode in this system; "many similar claims → a
-general rule" is what the Insights layer is for (PR-B4 relocated induction
-to the Atomizer). The Synthesizer specializes in combining heterogeneous
-elements into something new.
-
-The idea router (`src/features/ai-assistant/synthesis-router.ts`)
-inspects the `atomType` of each input Insight and proposes a candidate
-mode set; the LLM picks one. The router only rules in / rules out modes
-that can be decided from `atomType` alone — content judgments (e.g.,
-whether two causal Insights actually argue *opposite* directions for
-`dialectic`, or whether two mechanistic Insights span genuinely different
-*domains* for `analogical`) are deferred to the LLM. Mode-specific
-prompts live in `src/server/services/synthesis-prompts/` (one file per
-mode plus a shared `common.ts`), and the router's candidate set decides
-which of those files are concatenated into the system prompt for a given
-run.
+**Idea generation (withdrawn 2026-05-27).** The automatic pipeline that
+wove Insights into Idea pages (Synthesizer + idea router + mode-specific
+prompts) has been removed. A Cmd-K Composer flow is planned as the
+replacement and is tracked separately.
 
 The relationship between Notes, Claims, Insights, and Ideas is described
 philosophically in [CONCEPT.md §5](./CONCEPT.md#5-the-hourglass-where-portable-knowledge-is-born).
@@ -359,12 +336,9 @@ without mechanism → `observation`, textbook framing → `established`). The
 Atomizer then propagates the **lowest** status from a candidate Insight's
 source Claims to the Insight itself — a structural rule, not a judgment call,
 so a single `speculation` Claim cannot launder itself into an `established`
-Insight by sharing a pattern with two `observation` Claims. The Synthesizer
-honors the same contract at the Idea layer: whenever any input Insight carries
-`epistemicStatus: "speculation"`, the resulting Idea's `hypothesisStatus` is
-forced to `"speculative"` regardless of what the LLM produced. Together these
-three rules let the knowledge layer absorb casual musings (the "maybe this
-is true" half of a notebook) without contaminating the layers above.
+Insight by sharing a pattern with two `observation` Claims. Together these
+rules let the knowledge layer absorb casual musings (the "maybe this is
+true" half of a notebook) without contaminating the layers above.
 
 **Toulmin extension (Phase γ).** The Knowledge Layer adds the three Toulmin
 (1958) elements that were previously absent: **Rebuttal**, **Backing**, and
@@ -388,14 +362,6 @@ is true" half of a notebook) without contaminating the layers above.
   factors out a recurring pattern, the original speaker's hedging no longer
   attaches.
 
-Atom-side `rebuttalConditions` feed the Synthesis router: when ≥2 input
-Insights carry rebuttals, `dialectic` is added to the candidate mode set
-even if the `causal` ≥ 2 trigger is not met. The dialectic prompt then
-instructs the LLM to read both Insights' rebuttals before writing the
-synthesis and use the shared rebuttal axis as the regime separator. Toulmin
-rebuttals are first-class candidates for the higher frame that dialectic
-synthesis requires.
-
 The schema mirror is on `NoteIndexEntry.{rebuttalConditions, backing,
 modalQualifier}` and the on-disk version is now
 `INDEX_SCHEMA_VERSION = 16`.
@@ -404,7 +370,7 @@ modalQualifier}` and the on-disk version is now
 regression-tested by `bench/` (corpus + ground-truth + adversarial probes +
 metrics). Each roadmap phase declares which metrics it must improve;
 `pnpm bench:compare main` is required on every PR that touches the
-ingester / atomizer / synthesizer / router. See the README's "Knowledge
+ingester / atomizer / cross-updater / linter. See the README's "Knowledge
 Layer benchmark" section and `docs/internal/benchmark.md` for the metric
 definitions, corpus rationale, and merge rules.
 

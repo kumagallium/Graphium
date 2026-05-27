@@ -43,9 +43,12 @@ export type FileSidebarProps = {
   memosActive?: boolean;
   /** Wiki カテゴリ別カウント */
   wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
-  /** 実験的レイヤ（Atom/Synthesis）を表示するか */
+  /**
+   * Atom（洞察）レイヤをサイドバーに表示するか。
+   * 2026-05-27 の design revision で Atom は default 表示に昇格したため、
+   * このフラグは互換のために残しているが既定 true で扱われる。
+   */
   showAtomLayer?: boolean;
-  showSynthesisLayer?: boolean;
   /** Wiki リスト表示 */
   onShowWikiList?: (kind: WikiKind) => void;
   /** 現在アクティブな Wiki カテゴリ（ハイライト用） */
@@ -125,8 +128,9 @@ export function FileSidebar({
   onShowMemos,
   memosActive = false,
   wikiCounts,
-  showAtomLayer = false,
-  showSynthesisLayer = false,
+  // Atom レイヤは default で表示する（design revision 2026-05-27）。
+  // 旧 showAtomLayer prop は互換のため受け取るが、内部では未使用。
+  showAtomLayer: _showAtomLayer = true,
   onShowWikiList,
   activeWikiKind,
   aiAvailable = true,
@@ -169,10 +173,11 @@ export function FileSidebar({
   }, [noteIndex]);
 
   // Skill はフッターに移したのでカウントには含めない。
+  // synthesis（発想）はサイドバーに表示しないため total にも含めない（design revision 2026-05-27）。
   const aiTotalCount = useMemo(() => {
     const w = wikiCounts;
     return (
-      (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0) + (w?.synthesis ?? 0)
+      (w?.summary ?? 0) + (w?.claim ?? 0) + (w?.atom ?? 0)
     );
   }, [wikiCounts]);
 
@@ -328,20 +333,19 @@ export function FileSidebar({
             count={aiTotalCount}
           >
             {(() => {
-                // 既定では 要約 / 知見 のみ表示。
-                // 実験フラグでオプトインしたとき、または既存ユーザーが残しているデータが
-                // ある場合（count > 0）は表示してアクセスを保つ。
-                const kinds: WikiKind[] = ["summary", "claim"];
-                if (showAtomLayer || (wikiCounts?.atom ?? 0) > 0) kinds.push("atom");
-                if (showSynthesisLayer || (wikiCounts?.synthesis ?? 0) > 0) kinds.push("synthesis");
+                // 要約 / 知見 / 洞察（Atom）の 3 種類を default 表示する。
+                // 2026-05-27 の design revision で synthesis（発想）レイヤはサイドバーから
+                // 非表示化（Cmd-K Composer 経由で再構築する想定）。既存 synthesis ファイルの
+                // 物理データは保持されるが、ここからの動線は提供しない。
+                const kinds: WikiKind[] = ["summary", "claim", "atom"];
                 return kinds.map((kind) => {
                   const count = wikiCounts?.[kind] ?? 0;
                   const label =
                     kind === "summary" ? t("wikiList.kindSummary")
                     : kind === "claim" ? t("wikiList.kindClaim")
-                    : kind === "atom" ? t("wikiList.kindAtom")
-                    : t("wikiList.kindSynthesis");
-                  const isExperimental = kind === "atom" || kind === "synthesis";
+                    : t("wikiList.kindAtom");
+                  // Atom は default 昇格したので "exp" バッジは不要。
+                  const isExperimental = false;
                   return (
                     <button
                       key={kind}

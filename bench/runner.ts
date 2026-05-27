@@ -19,7 +19,7 @@
 // 集約の方針:
 //   - 代表値は median（外れ値に強い、奇数 n で再現性が高い）
 //   - 各 metric 個別に median を取り、合成統計 (distribution) も残す
-//   - pipelineByNote / allClaims / allAtoms / allSyntheses は「median lift_score の run」の
+//   - pipelineByNote / allClaims / allAtoms は「median lift_score の run」の
 //     素データを保存する。複数 run の素データを全部残すと baseline.json が肥大化するため
 //     代表 run 1 つに絞る。各 run の生 metric は runs[] に残る。
 
@@ -76,13 +76,10 @@ function aggregateMetrics(samples: BenchRunSample[]): {
 } {
   const keys: (keyof BenchMetrics)[] = [
     "lift_score",
-    "mode_distribution_entropy",
     "epistemic_preservation",
     "adversarial_pass_rate",
-    "novelty_score",
     "claim_count_total",
     "atom_count_total",
-    "synthesis_count_total",
     "observation_atom_ratio",
     "cross_language_consistency",
     "domain_balance_score",
@@ -166,7 +163,6 @@ export async function runBench(
     perMetricFull: BenchMetrics;
     probeResults: ProbeResult[];
     liftDetails: { passed: boolean; reason: string; atomTitle: string }[];
-    noveltyDetails: { passed: boolean; reason: string; synthesisTitle: string }[];
   };
   const runs: PerRun[] = [];
   for (let i = 0; i < n; i++) {
@@ -176,7 +172,6 @@ export async function runBench(
     const judged = await computeMetricsWithJudges({
       claims: pipeline.allClaims,
       atoms: pipeline.allAtoms,
-      syntheses: pipeline.allSyntheses,
       gtMap,
       probeResults,
       judges,
@@ -195,7 +190,6 @@ export async function runBench(
       perMetricFull: judged.metrics,
       probeResults,
       liftDetails: judged.liftDetails,
-      noveltyDetails: judged.noveltyDetails,
     });
   }
 
@@ -231,11 +225,10 @@ export async function runBench(
     pipelineByNote: representativeRun.pipeline.pipelineByNote,
     allClaims: representativeRun.pipeline.allClaims,
     allAtoms: representativeRun.pipeline.allAtoms,
-    allSyntheses: representativeRun.pipeline.allSyntheses,
+    allMetaAtoms: representativeRun.pipeline.allMetaAtoms,
     metrics: representativeMetrics,
     probeResults,
     liftJudgments: representativeRun.liftDetails,
-    noveltyJudgments: representativeRun.noveltyDetails,
     runs: n >= 2 ? samples : undefined,
     aggregate,
     notes,
@@ -277,20 +270,18 @@ async function main(): Promise<void> {
   console.log(`judge                 : ${out.judge?.kind ?? "n/a"} (${out.judge?.modelId ?? "n/a"})`);
   console.log(`duration              : ${out.durationMs} ms`);
   console.log(`corpus / probes       : ${out.corpusSize} / ${out.probeCount}`);
-  console.log(`claims/atoms/synth    : ${out.metrics.claim_count_total} / ${out.metrics.atom_count_total} / ${out.metrics.synthesis_count_total}`);
+  console.log(`claims/atoms          : ${out.metrics.claim_count_total} / ${out.metrics.atom_count_total}`);
   console.log(summaryLine("lift_score", "lift_score", out));
-  console.log(summaryLine("mode_entropy", "mode_distribution_entropy", out));
   console.log(summaryLine("epistemic_preservation", "epistemic_preservation", out));
   console.log(summaryLine("adversarial_pass_rate", "adversarial_pass_rate", out));
-  console.log(summaryLine("novelty_score", "novelty_score", out));
   console.log(summaryLine("observation_atom_ratio", "observation_atom_ratio", out));
   console.log(summaryLine("cross_language_consistency", "cross_language_consistency", out));
   console.log(summaryLine("domain_balance_score", "domain_balance_score", out));
   if (out.runs) {
-    console.log("\nper-run lift / entropy / obs_ratio:");
+    console.log("\nper-run lift / obs_ratio:");
     for (const r of out.runs) {
       console.log(
-        `  #${r.index + 1}: ${fmt(r.metrics.lift_score)} / ${fmt(r.metrics.mode_distribution_entropy)} / ${fmt(r.metrics.observation_atom_ratio)}`,
+        `  #${r.index + 1}: ${fmt(r.metrics.lift_score)} / ${fmt(r.metrics.observation_atom_ratio)}`,
       );
     }
   }

@@ -51,22 +51,14 @@ export function renderReport(run: BenchRunOutput): string {
     lines.push(`| ${p.name} | ${p.passed ? "✓" : "✗"} | ${reason} |`);
   }
   lines.push("");
-  lines.push("## Synthesis mode distribution");
-  lines.push("");
-  const modeCounts: Record<string, number> = { deductive: 0, abductive: 0, analogical: 0, dialectic: 0 };
-  for (const s of run.allSyntheses) modeCounts[s.mode] = (modeCounts[s.mode] ?? 0) + 1;
-  lines.push("| mode | count |");
-  lines.push("|---|---|");
-  for (const [m, c] of Object.entries(modeCounts)) lines.push(`| ${m} | ${c} |`);
-  lines.push("");
   if (run.runs && run.runs.length > 1) {
     lines.push("## Per-run samples");
     lines.push("");
-    lines.push("| # | lift | entropy | epi | obs | atoms | syn | duration_ms |");
-    lines.push("|---|---|---|---|---|---|---|---|");
+    lines.push("| # | lift | epi | obs | atoms | duration_ms |");
+    lines.push("|---|---|---|---|---|---|");
     for (const s of run.runs) {
       lines.push(
-        `| ${s.index + 1} | ${s.metrics.lift_score} | ${s.metrics.mode_distribution_entropy} | ${s.metrics.epistemic_preservation} | ${s.metrics.observation_atom_ratio} | ${s.metrics.atom_count_total} | ${s.metrics.synthesis_count_total} | ${s.durationMs} |`,
+        `| ${s.index + 1} | ${s.metrics.lift_score} | ${s.metrics.epistemic_preservation} | ${s.metrics.observation_atom_ratio} | ${s.metrics.atom_count_total} | ${s.durationMs} |`,
       );
     }
     lines.push("");

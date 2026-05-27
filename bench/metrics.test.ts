@@ -6,10 +6,8 @@
 import { describe, it, expect } from "vitest";
 import {
   liftScore,
-  modeDistributionEntropy,
   epistemicPreservation,
   adversarialPassRate,
-  noveltyScore,
   observationAtomRatio,
   crossLanguageConsistency,
   domainBalanceScore,
@@ -22,7 +20,6 @@ import type { JudgePack, Judgment } from "./judge.ts";
 import type {
   BenchAtom,
   BenchClaim,
-  BenchSynthesis,
   CorpusNote,
   GroundTruth,
   ProbeResult,
@@ -38,17 +35,6 @@ function makeAtom(overrides: Partial<BenchAtom> = {}): BenchAtom {
     epistemicStatus: "interpretation",
     liftLevel: "rung-2",
     ...overrides,
-  };
-}
-
-function makeSynthesis(mode: BenchSynthesis["mode"], i = 0): BenchSynthesis {
-  return {
-    title: `S${i}`,
-    body: `body of synthesis ${i}`,
-    mode,
-    sourceAtomIndices: [0, 1],
-    hypothesisStatus: "tested",
-    externalSources: [],
   };
 }
 
@@ -99,38 +85,6 @@ describe("liftScore", () => {
   });
 });
 
-describe("modeDistributionEntropy", () => {
-  it("all-deductive returns 0 (maximally biased)", () => {
-    const s = Array.from({ length: 8 }, (_, i) => makeSynthesis("deductive", i));
-    expect(modeDistributionEntropy(s)).toBe(0);
-  });
-
-  it("4 modes equal returns 1 (max entropy)", () => {
-    const s = [
-      makeSynthesis("deductive", 0),
-      makeSynthesis("abductive", 1),
-      makeSynthesis("analogical", 2),
-      makeSynthesis("dialectic", 3),
-    ];
-    expect(modeDistributionEntropy(s)).toBe(1);
-  });
-
-  it("empty syntheses returns 0", () => {
-    expect(modeDistributionEntropy([])).toBe(0);
-  });
-
-  it("partial mix returns intermediate", () => {
-    // 2 deductive + 2 abductive → entropy log2(2)/log2(4) = 0.5
-    const s = [
-      makeSynthesis("deductive", 0),
-      makeSynthesis("deductive", 1),
-      makeSynthesis("abductive", 2),
-      makeSynthesis("abductive", 3),
-    ];
-    expect(modeDistributionEntropy(s)).toBe(0.5);
-  });
-});
-
 describe("epistemicPreservation", () => {
   it("all claims match GT expected returns 1", () => {
     const claims = [
@@ -174,19 +128,6 @@ describe("adversarialPassRate", () => {
   });
   it("empty returns 0", () => {
     expect(adversarialPassRate([])).toBe(0);
-  });
-});
-
-describe("noveltyScore", () => {
-  it("synthesis whose body is not contained in source returns 1", () => {
-    const atoms = [makeAtom({ title: "A", body: "alpha" }), makeAtom({ title: "B", body: "beta" })];
-    const s = [makeSynthesis("deductive")];
-    s[0].body = "novel insight not present in atoms";
-    expect(noveltyScore(atoms, s)).toBe(1);
-  });
-
-  it("empty syntheses returns 0", () => {
-    expect(noveltyScore([], [])).toBe(0);
   });
 });
 
@@ -330,7 +271,6 @@ function makeScriptedJudges(atoms: BenchAtom[], passed: boolean[]): JudgePack {
       if (i < 0) return { passed: true, reason: "unknown atom" };
       return { passed: passed[i], reason: passed[i] ? "scripted pass" : "scripted fail" };
     },
-    novelty: async (_body, _sources) => ({ passed: true, reason: "scripted novelty pass" }),
     meta: { provider: "test", modelId: "scripted", modelName: "scripted (test)" },
   };
 }
@@ -435,7 +375,6 @@ describe("computeMetricsWithJudges — lift_score / domain_balance_score consist
     const result = await computeMetricsWithJudges({
       claims: [],
       atoms,
-      syntheses: [],
       gtMap: new Map(),
       probeResults: [],
       judges: wrapped,

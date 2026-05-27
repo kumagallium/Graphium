@@ -23,8 +23,8 @@ export {
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   type WikiIndexEntry,
-  // Synthesis
-  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
+  // Claim snapshot 構築（Atomizer / Cmd-K Composer など downstream consumer 共通）
+  buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   // Atom（実験的）
   atomizeConcepts, buildAtomDocument,
   // Discovery 共通: embedding ベース重複検出
@@ -32,7 +32,7 @@ export {
   // インライン引用リンク
   buildNoteIndex,
 } from "./wiki-service";
-export type { ClaimSnapshot } from "../../server/services/wiki-synthesizer";
+export type { ClaimSnapshot } from "../../server/services/wiki-types";
 export { retrieveWikiContext, setWikiTitleMap } from "./retriever";
 export {
   type AtomCandidate,

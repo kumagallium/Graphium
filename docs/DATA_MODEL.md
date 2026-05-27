@@ -349,9 +349,9 @@ type ProcedureContext = {
 > mid-cluster of 3+ Atoms). It was withdrawn at INDEX v19 because the
 > "invent an axis name across Atoms" step is structurally hard for
 > current LLMs (the output collapsed back to the source domain even with
-> stronger models). The next iteration moves that axis-naming
-> responsibility to a human-provided **theme** that drives the
-> Synthesizer — tracked in a follow-up PR.
+> stronger models). Synthesis auto-generation pipeline withdrawn
+> (2026-05-27 design revision); Cmd-K Composer replaces it (tracked
+> separately).
 
 `atom` and `synthesis` are gated by `experimental.atomLayer` and
 `experimental.synthesis` settings. Existing files of these kinds are
@@ -405,7 +405,7 @@ versions stay valid with these fields absent.
 | `backing[]` | Claim | `{ source: "textbook" \| "external-paper" \| "internal-claim", citation, url?, internalClaimId? }` (Phase γ) |
 | `modalQualifier` | Claim | necessarily, probably, possibly, rarely (Phase γ) |
 | `relatedAtoms[]` | Atom (also stored on Claim, currently produced for Atom) | `{ atomId, relationType, citation }` with fixed `relationType` vocabulary (Phase δ). 0–3 entries, quality-over-quantity. |
-| `theme` | Synthesis | Free-form lens the human chose when triggering the Synthesizer (e.g. "home cooking", "team management"). Drives the prompt to re-cast the connection in the theme's vocabulary and reader. Stays orthogonal to `synthesisMode` (theme = *for whom*, mode = *how*). Undefined for legacy / no-theme runs. (2026-05-23, index v20) |
+| `theme` | Synthesis | Legacy: theme was the lens chosen at synthesize time. Auto-synthesize is withdrawn (2026-05-27); existing synthesis docs preserve this field for back-compat. |
 
 These dimensions are **orthogonal to the existing context labels**
 (`procedure / plan / result / material / tool / attribute / output`),
@@ -526,20 +526,12 @@ without ≥2 source rebuttals get their `rebuttalConditions` reset to
 `undefined`. This is a structural propagation rule, not a judgment
 call — the same shape as Phase η's lowest-status inheritance.
 
-#### Downstream effects on the Synthesizer
+#### Downstream effects (withdrawn 2026-05-27)
 
-Atom-level `rebuttalConditions` feed two downstream signals:
-
-1. **Synthesis router (`routeSynthesisMode`)**: when ≥2 input Atoms
-   carry `rebuttalConditions`, `dialectic` is added to the candidate
-   mode set even if the `causal` ≥ 2 trigger is not met. Toulmin
-   rebuttals are first-class candidates for the "regime separator"
-   that dialectic synthesis requires.
-2. **Dialectic prompt (`dialectic.ts`)**: the system prompt instructs
-   the LLM to read both Atoms' `rebuttalConditions` before writing the
-   dialectic. If the two rebuttals lie on the same axis (temperature,
-   scale, time horizon) at opposite ends, that axis becomes the regime
-   separator that the dialectic synthesis names.
+Atom-level `rebuttalConditions` previously fed the auto-Synthesizer's
+router and dialectic prompt. The auto-synthesize pipeline has been
+withdrawn (see §3.6 history note); the field remains on the data model
+for surface display and any future tooling.
 
 #### Honesty defaults
 
@@ -575,67 +567,24 @@ entry is `{ atomId, relationType, citation }` where:
   relation, quality-over-quantity (max ~3 relations per Atom).
 
 The Atomizer parser sanitises every entry and caps the array at 3.
-Downstream the Synthesis router uses `applies-to-different-domain`
-pairs as a strong analogical signal, and `contradicts` pairs as a
-strong dialectic signal — these complement the rebuttal-condition
-heuristic above.
+(Previously, the Synthesis router consumed `applies-to-different-domain`
+and `contradicts` pairs as analogical / dialectic signals; that auto
+pipeline was withdrawn on 2026-05-27.)
 
 Surface: WikiBanner renders `relatedAtoms` inside the "Derived from"
 collapsible (the same section as `derivedFromNotes` /
 `derivedFromClaims`). Keeping the collapsible count low is deliberate:
 every extra collapsible section costs readability.
 
-### 3.6.2 Meta-Atom layer (Phase ε — withdrawn at v19)
+### 3.6.2 Synthesizer (withdrawn 2026-05-27)
 
-Phase ε briefly introduced a `meta-atom` kind that grouped 3+ Atoms
-under an LLM-generated KJ-style headline. The layer was withdrawn at
-INDEX v19 (2026-05-23). The "invent an axis name across Atoms" step
-turned out to be structurally hostile to current LLMs: even with the
-strongest Anthropic Opus, outputs collapsed back into the source
-domain rather than producing a domain-lifted axis.
-
-The replacement is the **theme-driven Synthesizer** (§3.6.3).
-
-### 3.6.3 Theme-driven Synthesizer (v20, 2026-05-23)
-
-Instead of asking the LLM to invent a cross-Atom axis (which it cannot
-do reliably), the user supplies the axis directly as a **theme** —
-a short free-form lens such as "home cooking", "team management", or
-"learning". The Synthesizer then:
-
-1. Picks an Atom cluster via the existing farthest-seeds sampler.
-2. For each cluster, uses `pickTopSynthesisModes` to choose the top
-   1–2 inference modes (deductive / abductive / analogical /
-   dialectic) from the same router that already serves the auto path.
-3. Calls `/api/wiki/synthesize` once per (cluster, mode) with both
-   `theme` and `candidateModes: [mode]`. The prompt header carries a
-   theme-lens section that forces vocabulary, examples, and reader
-   stance into the theme's world.
-4. Saves each result as a regular `synthesis` doc with
-   `wikiMeta.theme` populated.
-
-Theme and mode stay orthogonal: theme answers "for whom / in what
-world", mode answers "what kind of reasoning produced this". The
-existing `synthesisMode` field keeps its meaning; nothing about
-existing syntheses is migrated, they just carry `theme: undefined`.
-
-Theme is intentionally lightweight:
-
-- Free-form string, no enum.
-- No dedicated entity — the same `synthesis` kind hosts it.
-- Recent themes are remembered as a `localStorage` history
-  (`graphium-synthesis-theme-history`, max 10) and surfaced as a
-  `<datalist>` suggestion in the Maintenance UI. There is no theme
-  registry on disk for now.
-- Granularity is the user's call. "Home cooking" works, so does
-  "home cooking — fermentation in the family kitchen".
-
-Why a separate layer didn't happen: in the rejected meta-atom design,
-the axis was a *new wiki document* between Atom and Synthesis. With
-the theme, the axis is just a *query parameter* — the human types it
-into the discovery UI when they want a fresh batch. This keeps the
-kind graph shallow (`summary → claim → atom → synthesis`) and avoids
-the layer-management cost that meta-atom would have added.
+The auto-synthesize pipeline — including the short-lived Meta-Atom
+layer (Phase ε, withdrawn at v19) and its theme-driven Synthesizer
+replacement (v20, 2026-05-23) — has been removed. A Cmd-K Composer
+flow is planned as the user-driven replacement and is tracked
+separately. Existing `synthesis` JSON files on disk are preserved
+read-only; the `wikiMeta.theme` field stays for back-compat (see §3.5
+field table).
 
 
 ### 3.7 World-model grounding (Phase 2)
@@ -818,9 +767,9 @@ type NoteIndexEntry = {
 
   // Phase η: epistemic provenance — mirrored from wikiMeta.epistemicStatus
   // (low → high: speculation < interpretation < observation < established).
-  // Atomizer / Synthesizer propagate the LOWEST status from sources to derived
-  // pages, so a single speculation Claim cannot pass as established knowledge
-  // through the Atom / Synthesis layers.
+  // Atomizer propagates the LOWEST status from source Claims to the Atom,
+  // so a single speculation Claim cannot pass as established knowledge
+  // through the Atom layer.
   epistemicStatus?: EpistemicStatus;
 
   // Phase γ: Toulmin extension — mirrored from wikiMeta.
@@ -837,9 +786,15 @@ type NoteIndexEntry = {
 
   // Phase δ (v17): Atom-to-Atom dimensional relations — mirrored from
   //   wikiMeta.relatedAtoms. 0–3 entries, used by list views to badge
-  //   "Atoms with relations" and by the Synthesizer to prioritise
+  //   "Atoms with relations" and by downstream tooling to prioritise
   //   analogical / dialectic pairings.
   relatedAtoms?: AtomRelation[];
+
+  // v20 (2026-05-23): Synthesis theme mirror. The auto-Synthesizer that
+  //   wrote this field has been withdrawn (2026-05-27); the field is
+  //   preserved on legacy synthesis docs for back-compat and UI
+  //   grouping. New synthesis writes do not populate it.
+  theme?: string;
 };
 ```
 

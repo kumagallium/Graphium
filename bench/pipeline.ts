@@ -1,19 +1,22 @@
 // Phase μ-1: bench パイプライン
 //
 // 2 つのモードをサポート:
-//   1. live: 実 LLM (gpt-oss-120b on Sakura AI Engine 等) で wiki-ingester / atomizer /
-//      synthesizer を呼び出す。BENCH_API_KEY または SAKURA_AI_API_KEY が必要。
+//   1. live: 実 LLM (gpt-oss-120b on Sakura AI Engine 等) で wiki-ingester /
+//      atomizer を呼び出す。BENCH_API_KEY または SAKURA_AI_API_KEY が必要。
 //   2. dry-run: heuristic ベースの deterministic 出力。API key 不要で CI / scaffolding 用。
 //
 // dry-run はあくまで baseline 確立と CI 動作の保証用。実 phase 採否の判断には
 // live mode が必須（spec §5 の merge 判断ルール参照）。
+//
+// 2026-05-27: 自動 Synthesis 生成パイプラインを撤退（design revision）。
+// ingester / atomizer の 2-stage 構成に縮小。
+// 旧 3-stage の合成ステージは production コード側の services 撤退に追随して削除済み。
 
 import type {
   BenchAtom,
   BenchClaim,
   BenchMetaAtom,
   BenchPipelineOutput,
-  BenchSynthesis,
   CorpusNote,
 } from "./types.ts";
 import { getBenchModelConfig } from "./config.ts";
@@ -324,79 +327,11 @@ function buildAtoms(claims: BenchClaim[]): BenchAtom[] {
   return atoms;
 }
 
-function dryRunPairMode(atomA: BenchAtom, atomB: BenchAtom): BenchSynthesis["mode"] {
-  // 単純化した router（spec の synthesis-router を模した最小実装）
-  // baseline 設計: deductive を fallback に含めるため、~比率で deductive 偏重になる。
-  // Phase β でこの routing が rebalance される。
-  const aNotes = atomA.derivedFromNoteIds;
-  const bNotes = atomB.derivedFromNoteIds;
-  const aDom = aNotes.join(",");
-  const bDom = bNotes.join(",");
-
-  // Phase γ-follow-up 2: pairId による cross-domain 検出。
-  // CorpusNote.pairId は cross-domain-pair / cross-language-pair の対応を明示するので、
-  // 同 pairId が両 atom に現れて、かつ derivedFromNoteIds が異なるなら、コーパス作者が
-  // 意図した「cross-domain ペア」を捉えていることになる。analogical を最優先。
-  const aPairs = new Set(atomA.pairIds ?? []);
-  const bPairs = new Set(atomB.pairIds ?? []);
-  const sharedPair = [...aPairs].some((p) => bPairs.has(p));
-  if (sharedPair && aDom !== bDom) return "analogical";
-
-  // Phase γ: 両 Atom が rebuttalConditions を持っていれば dialectic 候補に乗せる。
-  // Atomizer の伝播ガードで「2+ Claim 共通の rebuttal のみ Atom に上がる」が保証されているので、
-  // ここでは値の有無だけ見れば十分。
-  //
-  // Phase γ-follow-up 3: この判定は obsOnly → abductive の **前** に置く。理由は
-  // contradiction-pair corpus が [Step]/[Output] を含むため、roles に "finding" が混じり
-  // dry-run の atomType 推定が "observational" に倒れる傾向があるため。observational only
-  // でも、両側に rebuttalConditions があるなら router 上は dialectic 候補が立つ。dry-run
-  // でもその意思決定 (LLM の代替) を再現するために dialectic を先に分岐する。
-  // probe-evaluator は live LLM ではなく dry-run 出力しか見ないので、この順序が
-  // contradiction-resolution probe の合否を直接決める (memory:
-  // feedback_probe_dry_run_blind_spot.md)。
-  const bothHaveRebuttal =
-    (atomA.rebuttalConditions?.length ?? 0) > 0 &&
-    (atomB.rebuttalConditions?.length ?? 0) > 0;
-  if (bothHaveRebuttal) return "dialectic";
-
-  const obsOnly = atomA.atomType === "observational" && atomB.atomType === "observational";
-  if (obsOnly) return "abductive";
-  if (aDom !== bDom && (atomA.atomType !== atomB.atomType)) return "analogical";
-  return "deductive"; // baseline で偏重するパス
-}
-
-function buildSyntheses(atoms: BenchAtom[]): BenchSynthesis[] {
-  if (atoms.length < 2) return [];
-  const out: BenchSynthesis[] = [];
-  // Atom を 2 つずつペアにしていく（重複なし）
-  for (let i = 0; i < atoms.length; i++) {
-    for (let j = i + 1; j < atoms.length; j++) {
-      // 全 Atom ペア組み合わせは爆発するので、隣接 + 同 category っぽいものに絞る
-      if (j - i > 3 && j !== atoms.length - 1) continue;
-      const a = atoms[i];
-      const b = atoms[j];
-      const mode = dryRunPairMode(a, b);
-      const status = lowestEpistemicStatus([a.epistemicStatus, b.epistemicStatus]);
-      const hypothesisStatus = status === "speculation" ? "speculative" : "tested";
-      out.push({
-        title: `${a.title} × ${b.title}`,
-        body: `${mode} reasoning over ${a.title} and ${b.title}. (dry-run heuristic)`,
-        mode,
-        sourceAtomIndices: [i, j],
-        hypothesisStatus,
-        externalSources: [],
-      });
-    }
-  }
-  return out;
-}
-
 export type DryRunResult = {
   pipelineByNote: BenchPipelineOutput[];
   allClaims: BenchClaim[];
   allAtoms: BenchAtom[];
   allMetaAtoms: BenchMetaAtom[];
-  allSyntheses: BenchSynthesis[];
 };
 
 export function runDryRunPipeline(corpus: CorpusNote[]): DryRunResult {
@@ -447,8 +382,6 @@ export function runDryRunPipeline(corpus: CorpusNote[]): DryRunResult {
     }
   }
 
-  const allSyntheses = buildSyntheses(allAtoms);
-
   // Phase ε: meta-Atom（KJ 中グループ）を Atom 群から擬似抽出する。
   // dry-run heuristic は「同 atomType + 異 noteId × 3+」のシンプル基準。
   // - 同じ atomType の Atom が異なるノート由来で 3+ 集まれば、それを「再現する型」として
@@ -457,7 +390,7 @@ export function runDryRunPipeline(corpus: CorpusNote[]): DryRunResult {
   // - cap 5（spec の quality bar）
   const allMetaAtoms = buildMetaAtoms(allAtoms);
 
-  return { pipelineByNote, allClaims, allAtoms, allMetaAtoms, allSyntheses };
+  return { pipelineByNote, allClaims, allAtoms, allMetaAtoms };
 }
 
 function buildMetaAtoms(atoms: BenchAtom[]): BenchMetaAtom[] {
@@ -512,13 +445,14 @@ function lowestStatus(statuses: string[]): string {
 }
 
 // live mode の実装。実 LLM (gpt-oss-120b on Sakura AI Engine など) を使い、
-// production と同じ wiki-ingester / atomizer / synthesizer を直接呼ぶ。
+// production と同じ wiki-ingester / atomizer を直接呼ぶ。
 //
 // 25 ノート corpus に対する LLM call は概ね:
 //   - ingester: 25 call (ノート 1 件ずつ)
 //   - atomizer: 1 call (全 Claim 横断)
-//   - synthesizer: 1 call (全 Atom 横断)
-// 合計 ~27 call/run。
+// 合計 ~26 call/run。
+//
+// 2026-05-27: synthesizer ステージを撤退。pipeline は 2-stage（ingester / atomizer）。
 //
 // epistemicStatus / liftLevel など Phase η / α が後付けする属性は、現状では
 // LLM 出力に対する heuristic 推定で埋める（baseline 確立用）。Phase η 実装時に
@@ -537,14 +471,7 @@ import {
   parseAtomizerOutput,
   type AtomCandidate,
 } from "../src/server/services/wiki-atomizer.js";
-import {
-  buildSynthesizerSystemPrompt,
-  buildSynthesizerUserMessage,
-  parseSynthesizerOutputWithStats,
-  type ClaimSnapshot,
-  type SynthesisCandidate,
-} from "../src/server/services/wiki-synthesizer.js";
-import { routeSynthesisMode } from "../src/features/ai-assistant/synthesis-router.js";
+import type { ClaimSnapshot } from "../src/server/services/wiki-types.js";
 import type { ModelConfig } from "../src/server/config/models.js";
 
 function toModelConfig(): ModelConfig {
@@ -703,49 +630,6 @@ function atomCandidatesToBenchAtoms(
   });
 }
 
-function atomsToConceptSnapshots(atoms: BenchAtom[]): ClaimSnapshot[] {
-  return atoms.map((a, idx) => ({
-    id: `atom-${idx}`,
-    title: a.title,
-    bodyPreview: a.body.slice(0, 280),
-    relatedClaims: [],
-    atomType: a.atomType as ClaimSnapshot["atomType"],
-    epistemicStatus: a.epistemicStatus as ClaimSnapshot["epistemicStatus"],
-    // Phase γ: dialectic 候補 trigger に効かせるため Synthesizer 入力にも持ち込む
-    rebuttalConditions:
-      a.rebuttalConditions && a.rebuttalConditions.length > 0 ? a.rebuttalConditions : undefined,
-  }));
-}
-
-function synthesisCandidatesToBenchSyntheses(
-  syntheses: SynthesisCandidate[],
-  atoms: BenchAtom[],
-): BenchSynthesis[] {
-  const out: BenchSynthesis[] = [];
-  for (const s of syntheses) {
-    const idxs = s.sourceConceptIds
-      .map((id) => parseInt(id.replace(/^atom-/, ""), 10))
-      .filter((n) => Number.isFinite(n) && n >= 0 && n < atoms.length);
-    if (idxs.length < 2) continue;
-    const mode = (s.synthesisMode ?? "deductive") as BenchSynthesis["mode"];
-    const body = s.sections.map((sec) => `${sec.heading}\n${sec.content}`).join("\n\n");
-    const statuses = idxs.map((i) => atoms[i].epistemicStatus);
-    const status = lowestEpistemicStatus(statuses);
-    out.push({
-      title: s.title,
-      body,
-      mode,
-      sourceAtomIndices: idxs,
-      hypothesisStatus:
-        s.hypothesisStatus === "speculative" || status === "speculation"
-          ? "speculative"
-          : "tested",
-      externalSources: [],
-    });
-  }
-  return out;
-}
-
 export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResult> {
   const cfg = getBenchModelConfig();
   if (!cfg.apiKey.trim()) {
@@ -839,66 +723,14 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
     console.log("[bench] atomize skipped (claims < 2)");
   }
 
-  // 3) synthesizer: 全 Atom を 1 ショットで投げる
-  let allSyntheses: BenchSynthesis[] = [];
-  if (allAtoms.length >= 2) {
-    console.log(`[bench] synthesize: ${allAtoms.length} atoms -> ...`);
-    const conceptSnapshots = atomsToConceptSnapshots(allAtoms);
-    const router = routeSynthesisMode(
-      conceptSnapshots.map((c) => c.atomType),
-      conceptSnapshots.map((c) => c.epistemicStatus),
-      conceptSnapshots.map((c) => c.rebuttalConditions),
-    );
-    const systemPrompt = buildSynthesizerSystemPrompt(
-      "ja",
-      undefined,
-      router.candidateModes,
-    );
-    const userMessage = buildSynthesizerUserMessage(conceptSnapshots, []);
-    try {
-      const model = createModel(modelConfig);
-      let result = await runAgentLoop({
-        model,
-        modelId: modelConfig.modelId,
-        systemPrompt,
-        messages: [{ role: "user" as const, content: userMessage }],
-        maxSteps: 1,
-      });
-      let stats = parseSynthesizerOutputWithStats(result.message);
-      if (stats.rawCount === 0 && stats.candidates.length === 0 && looksLikeFailedJson(result.message)) {
-        console.log("[bench] synthesize: retrying (parse failed)");
-        result = await runAgentLoop({
-          model,
-          modelId: modelConfig.modelId,
-          systemPrompt,
-          messages: [
-            { role: "user" as const, content: userMessage },
-            { role: "assistant" as const, content: result.message },
-            { role: "user" as const, content: PARSE_RETRY_REMINDER },
-          ],
-          maxSteps: 1,
-        });
-        stats = parseSynthesizerOutputWithStats(result.message);
-      }
-      allSyntheses = synthesisCandidatesToBenchSyntheses(stats.candidates, allAtoms);
-      console.log(
-        `[bench] synthesize result: ${allSyntheses.length} synthesis (rawCount=${stats.rawCount}, dropped=${stats.droppedByConfidence})`,
-      );
-    } catch (err) {
-      console.error("  synthesizer error:", (err as Error).message);
-    }
-  } else {
-    console.log("[bench] synthesize skipped (atoms < 2)");
-  }
-
   // Phase ε: live でも meta-Atom 抽出をヒューリスティック付与する。
   // 本来は wiki-meta-atomizer.ts を呼びたいが、現状の live bench scaffold は
-  // 1 つの synth pass しか持っていないので、まずは dry-run と同じ atomType 集約で
+  // 1 つの pass しか持っていないので、まずは dry-run と同じ atomType 集約で
   // 推定値を出す（probe metric の整合性のため）。将来は LLM 呼び出しに差し替える。
   const allMetaAtoms = buildMetaAtoms(allAtoms);
   if (allMetaAtoms.length > 0) {
     console.log(`[bench] meta-atomize (heuristic): ${allMetaAtoms.length} meta-atom(s)`);
   }
 
-  return { pipelineByNote, allClaims, allAtoms, allMetaAtoms, allSyntheses };
+  return { pipelineByNote, allClaims, allAtoms, allMetaAtoms };
 }

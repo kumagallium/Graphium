@@ -76,7 +76,6 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
-import { pickTopSynthesisModes } from "./features/ai-assistant/synthesis-router";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -111,7 +110,7 @@ import {
   // 構造化インデックス
   buildWikiIndex, formatWikiIndexForLLM,
   // Synthesis
-  fetchSynthesisCandidates, buildSynthesisDocument, buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
+  buildClaimSnapshots, MAX_SNAPSHOTS_PER_RUN,
   type ClaimSnapshot,
   type AtomCandidate, getDocEmbedding, pickFarthestSeeds, buildClusterSlice, pickClusterCount,
   rankCandidatesByRelevance,
@@ -3200,13 +3199,13 @@ export function NoteApp() {
       ingestQueueRef.current.shift();
     }
 
-    // パイプライン後半（Atomize / Synthesize / Lint）の進捗を 1 つの
+    // パイプライン後半（Atomize / Lint）の進捗を 1 つの
     // トーストアイテムで可視化する。スキップ理由・件数を ユーザーに見せ、
     // 「summary 出た後に何が動いているのか分からない」状態を解消する。
+    // 2026-05-27 の design revision で Synthesize 自動生成は撤退済み（stage 自体を削除）。
     const pipelineId = `pipeline:${Date.now()}`;
     const pipelineStages: IngestStage[] = [
       { key: "atomize", label: "Atomize", status: "pending" },
-      { key: "synthesize", label: "Synthesize", status: "pending" },
       { key: "lint", label: "Lint", status: "pending" },
     ];
     setIngestToast((prev) => ({
@@ -3247,17 +3246,10 @@ export function NoteApp() {
       }));
     };
 
-    // 自動 Atomize: experimental.atomLayer 有効時、全 Concept を見渡して
-    // 共通抽象を discover する。Phase 1: クラスタ集中サンプリングを適用。
+    // 自動 Atomize: atom レイヤは default 有効化済み（design revision 2026-05-27）。
+    // 全 Concept を見渡して共通抽象を discover する。Phase 1: クラスタ集中サンプリングを適用。
     // バルク投入直後の自動実行なので、メンテよりも K の上限を控えめ（=3）にする。
-    //
-    // 直後の Synthesize 段でも参照できるように、新規 Atom の ClaimSnapshot を
-    // ローカルに蓄積する。`fm.wikiMetas` はクロージャ閉じ込みで再 render するまで
-    // 更新されないため、ここで作った Atom を直に渡さないと Synthesize は
-    // 「Atom 0 件」状態で走ってしまう（過去のバルク投入で発想が全く出なかった主因）。
-    const newAtomSnapshots: ClaimSnapshot[] = [];
     const atomLabel = tStatic("settings.maintenance.kind.atom");
-    const synthLabel = tStatic("settings.maintenance.kind.synthesis");
     if (isAtomLayerEnabled()) {
       try {
         const allClaimSnapshots = buildClaimSnapshots(
@@ -3319,18 +3311,6 @@ export function NoteApp() {
               ).catch(() => {});
               createdAtoms += 1;
               existingAtomTitles.push(candidate.title);
-              // Synthesize 段に渡すため新規 Atom を ClaimSnapshot 形に詰めておく。
-              // body は atom 本文ではなく abstraction の summary（candidate.body）が
-              // 最も意味的に近いので preview として使う。
-              newAtomSnapshots.push({
-                id: newId,
-                title: candidate.title,
-                bodyPreview: candidate.body ?? "",
-                level: undefined,
-                relatedClaims: [],
-                sourceSummaryPreviews: [],
-                atomType: candidate.atomType,
-              });
             }
           }
           updateStage(
@@ -3347,90 +3327,9 @@ export function NoteApp() {
       updateStage("atomize", "skipped", "Atom Layer が無効");
     }
 
-    // 自動 Synthesis: synthesis レイヤが有効なときのみ。
-    // Phase 1: クラスタ集中サンプリング + バルク経路では K 上限 2 で控えめに実行。
-    // 入力 Atom には wikiMetas 由来（過去の Atom）+ 直前の Atomize で作った新規 Atom を
-    // マージして渡す。`fm.wikiMetas` だけだと新規 Atom がスタールで含まれない。
-    if (isSynthesisEnabled()) {
-      try {
-        const existingAtomSnapshots = buildClaimSnapshots(
-          fm.wikiFiles,
-          fm.wikiMetas,
-          fm.getCachedDoc,
-          "atom",
-          Number.POSITIVE_INFINITY,
-        );
-        const allAtomSnapshots = [...existingAtomSnapshots, ...newAtomSnapshots];
-        if (allAtomSnapshots.length < 3) {
-          updateStage("synthesize", "skipped", `Atom ${allAtomSnapshots.length} 件（3 件以上で実行）`);
-        } else {
-          const atomModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
-          const nowIso = new Date().toISOString();
-          const atomEmbeddings = await Promise.all(
-            allAtomSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
-          );
-          const atomCandidates: AtomCandidate[] = allAtomSnapshots.map((s, i) => ({
-            snapshot: s,
-            similarityText: `${s.title}\n${s.bodyPreview}`,
-            embedding: atomEmbeddings[i],
-            // 新規 Atom は wikiFiles にまだ載っていないので最新時刻扱いにする
-            modifiedTime: atomModifiedByFileId.get(s.id) ?? nowIso,
-          }));
-          const clusterCount = pickClusterCount(atomCandidates.length, {
-            effectiveCoverage: 30,
-            maxK: 2,
-          });
-          const seeds = pickFarthestSeeds(atomCandidates, clusterCount);
-          const existingSynthesisTitles = [...fm.wikiMetas.entries()]
-            .filter(([, m]) => m.kind === "synthesis")
-            .map(([, m]) => m.title);
-          let createdSyntheses = 0;
-          updateStage(
-            "synthesize",
-            "running",
-            `${allAtomSnapshots.length} atoms / ${seeds.length} clusters を結晶化中...`,
-          );
-          for (let i = 0; i < seeds.length; i++) {
-            const seed = seeds[i];
-            const cluster = buildClusterSlice(atomCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
-            const slice = cluster.map((c) => c.snapshot);
-            updateStage(
-              "synthesize",
-              "running",
-              `cluster ${i + 1}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})`,
-            );
-            const synthResult = await fetchSynthesisCandidates(
-              slice,
-              existingSynthesisTitles,
-              "ja",
-              getChatSynthesisModelName() || undefined,
-            );
-            for (const candidate of synthResult.candidates) {
-              const synthDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
-              const newId = await fm.handleCreateWikiFile(synthDoc);
-              embedWikiSections(newId, synthDoc).catch(() => {});
-              wikiLog.append(
-                "ingest",
-                [newId],
-                `${synthLabel}: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
-              ).catch(() => {});
-              createdSyntheses += 1;
-              existingSynthesisTitles.push(candidate.title);
-            }
-          }
-          updateStage(
-            "synthesize",
-            "done",
-            createdSyntheses > 0 ? `${createdSyntheses} ${synthLabel}` : `新規 ${synthLabel} なし`,
-          );
-        }
-      } catch (err) {
-        console.error("Synthesis failed:", err);
-        updateStage("synthesize", "error", err instanceof Error ? err.message : String(err));
-      }
-    } else {
-      updateStage("synthesize", "skipped", "Synthesis Layer が無効");
-    }
+    // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
+    // 砂時計のくびれ（synthesize）は人間に戻し、Cmd-K Composer 経由で再構築する想定。
+    // 既存 synthesis ファイルの物理データは保持される。
 
     // 自動 Lint: ローカル検出 + LLM 分析（5ページ以上で LLM 実行）
     try {
@@ -3945,139 +3844,16 @@ export function NoteApp() {
         }));
         return { ok: true };
       } else if (isSynthesis) {
-        const sourceConceptIds = doc.wikiMeta.derivedFromNotes;
-        const concepts: { id: string; title: string; bodyPreview: string; level?: "principle" | "finding" | "bridge"; relatedClaims: string[] }[] = [];
-        for (const cId of sourceConceptIds) {
-          const cDoc = await fm.loadDoc(`wiki:${cId}`);
-          if (!cDoc) continue;
-          // Synthesis のソースは Concept (claim) / Atom / Summary を許容する。
-          // 過去の synthesizer 出力では Summary も sourceConceptIds に混じることがあり、
-          // ここで弾くと既存 synthesis が「source pages missing」で再生成不能になる
-          // （実データで Summary を含む derivedFromNotes が観測されている）。
-          const sourceKind = cDoc.wikiMeta?.kind;
-          if (sourceKind !== "claim" && sourceKind !== "atom" && sourceKind !== "summary") continue;
-          concepts.push({
-            id: cId,
-            title: cDoc.title,
-            bodyPreview: extractBodyPreview(cDoc, 240),
-            level: cDoc.wikiMeta?.level,
-            relatedClaims: [],
-          });
-        }
-
-        if (concepts.length < 2) {
-          // Synthesis は最低 2 件のソース（Concept/Atom）が必要。
-          // 1 件残っている場合と 0 件の場合で文言を分け、ユーザーが状況を理解できるようにする。
-          const totalSources = doc.wikiMeta.derivedFromNotes.length;
-          const errMsg =
-            totalSources === 0
-              ? "Synthesis has no source pages recorded"
-              : concepts.length === 0
-                ? `All ${totalSources} source page(s) are missing or deleted`
-                : `Synthesis needs ≥2 source pages; only ${concepts.length} of ${totalSources} remain`;
-          setIngestToast((prev) => ({
-            items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
-            ),
-          }));
-          return { ok: false, error: errMsg };
-        }
-
-        const synthHeaders: Record<string, string> = { "Content-Type": "application/json" };
-        if (!isTauri()) {
-          // Synthesis は Chat & Synthesis モデル経由（未設定なら default にフォールバック）
-          const llmModel = getChatSynthesisLLMModel();
-          if (llmModel) {
-            synthHeaders["X-LLM-API-Key"] = JSON.stringify({
-              provider: llmModel.provider, modelId: llmModel.modelId,
-              apiKey: llmModel.apiKey, apiBase: llmModel.apiBase, name: llmModel.name,
-            });
-          }
-        }
-        const synthSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
-        const synthRes = await fetch(`${apiBase()}/wiki/synthesize`, {
-          method: "POST",
-          headers: synthHeaders,
-          body: JSON.stringify({
-            concepts,
-            existingSynthesisTitles: [],
-            language: "ja",
-            ...(selectedModel ? { model: selectedModel } : {}),
-            ...(synthSkills.length > 0 ? { skills: synthSkills } : {}),
-          }),
-        });
-        const synthResult = synthRes.ok
-          ? await synthRes.json() as {
-              candidates: any[];
-              model?: string;
-              stats?: {
-                rawCount: number;
-                droppedByConfidence: number;
-                maxDroppedConfidence?: number;
-                threshold: number;
-              };
-            }
-          : { candidates: [] as any[], stats: undefined };
-        if (synthResult.candidates && synthResult.candidates.length > 0) {
-          const candidate = synthResult.candidates[0];
-          const newDoc = buildSynthesisDocument(candidate, synthResult.model ?? null, "ja", buildNoteIndex(fm.noteIndex));
-          if (newDoc.wikiMeta) {
-            newDoc.wikiMeta.generatedBy = {
-              model: synthResult.model ?? selectedModel ?? "unknown",
-              version: "1.0.0",
-            };
-          }
-
-          // 縮小ガード: 既存 Synthesis (Idea) が育っていた場合、新しい候補が
-          // 極端に短ければ採用しない。merge ingest や手動編集で蓄積された本文を
-          // 一発の synthesize 出力で痩せさせる事故を防ぐ。
-          // 閾値: 既存が 200 文字超 かつ 新出力が既存の 50% 未満。
-          const existingTextLength = extractPlainTextFromDoc(doc).length;
-          const newTextLength = extractPlainTextFromDoc(newDoc).length;
-          if (existingTextLength > 200 && newTextLength < existingTextLength * 0.5) {
-            const errMsg = `New synthesis is shorter than half of the existing body (${newTextLength} < ${existingTextLength}/2). Kept existing.`;
-            setIngestToast((prev) => ({
-              items: (prev?.items ?? []).map((i) =>
-                i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
-              ),
-            }));
-            return { ok: false, error: errMsg };
-          }
-
-          await fm.handleSaveWikiFile(wikiId, newDoc, {
-            activityType: "ai_generation",
-            agentLabel: synthResult.model ?? selectedModel ?? undefined,
-          });
-          embedWikiSections(wikiId, newDoc).catch(() => {});
-          if (openAfter) fm.handleOpenWikiFile(wikiId);
-          const modelLabel = synthResult.model ?? selectedModel ?? "default";
-          wikiLog.append("regenerate", [wikiId], `Regenerated synthesis "${wikiTitle}" with ${modelLabel}`).catch(() => {});
-
-          setIngestToast((prev) => ({
-            items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "success" as const, detail: undefined, result: modelLabel } : i
-            ),
-          }));
-          return { ok: true };
-        } else {
-          // 「No synthesis generated」が confidence ガード由来か LLM 出力空かを区別する
-          const stats = (synthResult as { stats?: { rawCount: number; droppedByConfidence: number; maxDroppedConfidence?: number; threshold: number } }).stats;
-          let errMsg = "No synthesis generated";
-          if (stats) {
-            if (stats.droppedByConfidence > 0 && stats.droppedByConfidence === stats.rawCount) {
-              const maxConf = stats.maxDroppedConfidence?.toFixed(2) ?? "?";
-              errMsg = `Quality below threshold (max conf ${maxConf} < ${stats.threshold}). Source pages may be too few or unrelated to synthesize confidently.`;
-            } else if (stats.rawCount === 0) {
-              errMsg = "LLM returned no synthesis candidates. Source pages may be too few or unrelated.";
-            }
-          }
-          setIngestToast((prev) => ({
-            items: (prev?.items ?? []).map((i) =>
-              i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
-            ),
-          }));
-          return { ok: false, error: errMsg };
-        }
+        // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
+        // 既存 synthesis ファイルは閲覧・編集できるが regenerate は不可。
+        // 将来 Cmd-K Composer 経由で synthesize 体験を再構築する想定。
+        const errMsg = "Synthesis regeneration is no longer supported (auto-generation pipeline removed)";
+        setIngestToast((prev) => ({
+          items: (prev?.items ?? []).map((i) =>
+            i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
+          ),
+        }));
+        return { ok: false, error: errMsg };
       } else {
         // マルチソース regenerate:
         // derivedFromNotes に含まれる note / pdf: / url: prefix のソースをすべて
@@ -4404,188 +4180,6 @@ export function NoteApp() {
     }
   }, [fm]);
 
-  // 全 Atom を見渡して新しい洞察（Synthesis）を発見する discovery 呼び出し（auto-loop 付き）。
-  // 構造は runAtomizeDiscovery と同じ。Synthesis は Atom 層の上に乗るため、
-  // experimental.synthesis（atomLayer 前提）が ON のときのみ動く。
-  // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
-  const runSynthesisDiscovery = useCallback(async (
-    onProgress?: (info: {
-      iteration: number;
-      createdSoFar: number;
-      clusterLabel?: string;
-      clusterTotal?: number;
-      clusterSize?: number;
-      clusterMemberTitles?: string[];
-    }) => void,
-    options?: { theme?: string },
-  ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
-    if (!isSynthesisEnabled()) {
-      return { ok: false, created: 0, iterations: 0, error: "Synthesis layer is disabled" };
-    }
-
-    // 2026-05-23: テーマ駆動 Synthesizer。
-    //   テーマが与えられた場合は、各クラスタで auto-mode 選定で 1-2 モード × 各モードで
-    //   1 回 /synthesize を叩く（オプション c）。テーマなしなら従来通り 1 クラスタ = 1 call。
-    //   UI 側でも slice(0, 200) しているが、別経路（CLI / 将来の API）から呼ばれた時の
-    //   防御として、ここでも length cap を入れる（prompt に直接埋め込まれる文字列なので）。
-    const trimmedTheme = options?.theme?.trim().slice(0, 200) || "";
-    const theme = trimmedTheme || undefined;
-    const themeMode = !!theme;
-
-    // Phase 1: クラスタ集中サンプリング。
-    // 母集団は modifiedTime 上限なしで全 Atom を取得し、シードを farthest-point で
-    // 散らして iteration ごとに別領域のクラスタを synthesizer に投げる。
-    // これにより「直近触れた領域だけ繰り返し見る」問題を解消する。
-    const allAtomSnapshots = buildClaimSnapshots(
-      fm.wikiFiles,
-      fm.wikiMetas,
-      fm.getCachedDoc,
-      "atom",
-      Number.POSITIVE_INFINITY,
-    );
-    if (allAtomSnapshots.length < 3) {
-      return { ok: false, created: 0, iterations: 0, error: "Need at least 3 Atoms" };
-    }
-
-    // 各 Atom の代表 embedding（section 平均）を並列取得。未生成は null。
-    const modifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
-    const embeddings = await Promise.all(
-      allAtomSnapshots.map((s) => getDocEmbedding(s.id).catch(() => null)),
-    );
-    const atomCandidates: AtomCandidate[] = allAtomSnapshots.map((s, i) => ({
-      snapshot: s,
-      similarityText: `${s.title}\n${s.bodyPreview}`,
-      embedding: embeddings[i],
-      modifiedTime: modifiedByFileId.get(s.id) ?? "",
-    }));
-
-    // Synthesis は Atom の組み合わせから立ち上がる洞察。組み合わせ数は C(n,2..4) で
-    // 爆発するため、原理的には収束しない。母集団規模からクラスタ数を動的決定し、
-    // 1 クリックの LLM コストを上限 8 で抑える。続きが欲しければユーザーが再押下する。
-    const MAX_ITERATIONS = pickClusterCount(atomCandidates.length, {
-      effectiveCoverage: 30,
-      maxK: 8,
-    });
-    const seeds = pickFarthestSeeds(atomCandidates, MAX_ITERATIONS);
-    const existingSynthesisTitles = [...fm.wikiMetas.entries()]
-      .filter(([, m]) => m.kind === "synthesis")
-      .map(([, m]) => m.title);
-
-    const atomLabel = tStatic("settings.maintenance.kind.atom");
-    const synthLabel = tStatic("settings.maintenance.kind.synthesis");
-    const toastId = `synthesis-discovery:${Date.now()}`;
-    setIngestToast((prev) => ({
-      items: [
-        ...(prev?.items ?? []),
-        { id: toastId, status: "generating" as const, noteTitle: `Discovering ${synthLabel} across ${allAtomSnapshots.length} ${atomLabel} (${seeds.length} clusters)` },
-      ],
-    }));
-
-    let totalCreated = 0;
-    let lastIteration = 0;
-    try {
-      for (let iter = 1; iter <= seeds.length; iter++) {
-        lastIteration = iter;
-        const seed = seeds[iter - 1];
-        const cluster = buildClusterSlice(atomCandidates, seed, MAX_SNAPSHOTS_PER_RUN);
-        const slice = cluster.map((c) => c.snapshot);
-        onProgress?.({
-          iteration: iter,
-          createdSoFar: totalCreated,
-          clusterLabel: seed.snapshot.title,
-          clusterTotal: seeds.length,
-          clusterSize: slice.length,
-          clusterMemberTitles: slice.map((s) => s.title),
-        });
-        setIngestToast((prev) => ({
-          items: (prev?.items ?? []).map((i) =>
-            i.id === toastId
-              ? { ...i, noteTitle: `Discovering · cluster ${iter}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})` }
-              : i
-          ),
-        }));
-        // テーマ駆動なら 1 クラスタにつき top 1-2 mode を個別に叩く（オプション c）。
-        // テーマなしなら従来通り server router 任せの 1 call。
-        // ClaimSnapshot は relatedAtoms を持たない（snapshot 軽量化のため）ので
-        // relationTypesByInput は undefined 渡し。atomType / rebuttalConditions /
-        // epistemicStatus のシグナルだけで router がモード推定する。
-        const modesForCluster: (import("./lib/document-types").SynthesisMode | undefined)[] =
-          themeMode
-            ? pickTopSynthesisModes(
-                slice.map((s) => s.atomType),
-                slice.map((s) => s.epistemicStatus),
-                slice.map((s) => s.rebuttalConditions),
-                undefined,
-                2,
-              )
-            : [undefined]; // server-side router に任せる
-
-        const existingSynthDocIds = new Set(
-          [...fm.wikiMetas.entries()].filter(([, m]) => m.kind === "synthesis").map(([id]) => id),
-        );
-
-        for (const mode of modesForCluster) {
-          const result = await fetchSynthesisCandidates(
-            slice,
-            existingSynthesisTitles,
-            "ja",
-            getChatSynthesisModelName() || undefined,
-            {
-              ...(theme ? { theme } : {}),
-              ...(mode ? { candidateModes: [mode] } : {}),
-            },
-          );
-          if (result.candidates.length === 0) continue;
-          // dedup ヘルパは { title, body } を期待するので sections を結合した body を作る
-          const candidatesForDedup = result.candidates.map((c) => ({
-            title: c.title,
-            body: c.sections.map((s) => `${s.heading}\n${s.content}`).join("\n\n"),
-            original: c,
-          }));
-          const filtered = await dedupCandidatesByEmbedding(candidatesForDedup, existingSynthDocIds);
-          if (filtered.length === 0) continue;
-          for (const f of filtered) {
-            const candidate = f.original;
-            const synthDoc = buildSynthesisDocument(
-              candidate,
-              result.model ?? null,
-              "ja",
-              buildNoteIndex(fm.noteIndex),
-              theme,
-            );
-            const newId = await fm.handleCreateWikiFile(synthDoc);
-            embedWikiSections(newId, synthDoc).catch(() => {});
-            wikiLog.append(
-              "ingest",
-              [newId],
-              theme
-                ? `${synthLabel} [${theme} / ${candidate.synthesisMode ?? "?"}]: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`
-                : `${synthLabel}: "${candidate.title}" (from ${candidate.sourceConceptTitles.join(" + ")})`,
-            ).catch(() => {});
-            totalCreated += 1;
-            existingSynthesisTitles.push(candidate.title);
-          }
-        }
-      }
-      setIngestToast((prev) => ({
-        items: (prev?.items ?? []).map((i) =>
-          i.id === toastId
-            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} ${synthLabel}` }
-            : i
-        ),
-      }));
-      return { ok: true, created: totalCreated, iterations: lastIteration };
-    } catch (err) {
-      console.error("Synthesis discovery failed:", err);
-      setIngestToast((prev) => ({
-        items: (prev?.items ?? []).map((i) =>
-          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: err instanceof Error ? err.message : "Failed" } : i
-        ),
-      }));
-      return { ok: false, created: totalCreated, iterations: lastIteration, error: err instanceof Error ? err.message : "Failed" };
-    }
-  }, [fm]);
-
   // Settings → Maintenance タブから呼ばれる Wiki サマリー
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
   const wikiSummariesForSettings = useMemo(() => {
@@ -4659,8 +4253,10 @@ export function NoteApp() {
       }
       return { summary, claim, atom, synthesis };
     })(),
-    showAtomLayer: experimentalFlags.atomLayer,
-    showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,
+    // Atom（洞察）レイヤは default 昇格済み（design revision 2026-05-27）。
+    // experimental.atomLayer に関わらず常にサイドバーに表示する。
+    // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
+    showAtomLayer: true,
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
@@ -5696,7 +5292,6 @@ export function NoteApp() {
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}
         onRunAtomizeDiscovery={runAtomizeDiscovery}
-        onRunSynthesisDiscovery={runSynthesisDiscovery}
         onReembedAllWikis={async (onProgress) => {
           // 全 Wiki を順次 embed し直す。キャッシュにない wiki は storage から読み出す。
           const { getActiveProvider } = await import("./lib/storage/registry");

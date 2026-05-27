@@ -249,15 +249,23 @@ export function isAgentConfigured(): boolean {
   return true;
 }
 
-/** Atom レイヤ（実験的）が有効かどうか */
+/**
+ * Atom レイヤ（洞察）が有効かどうか。
+ * 2026-05-27 の design revision で experimental から default に昇格したため常に true を返す。
+ * 関数自体は呼び出し側互換のため残す（将来 disable する余地も残しておく）。
+ */
 export function isAtomLayerEnabled(): boolean {
-  return loadSettings().experimental.atomLayer === true;
+  return true;
 }
 
-/** Synthesis レイヤ（実験的）が有効かどうか。atomLayer が前提のため両方 ON でないと true にならない */
+/**
+ * Synthesis レイヤ（発想）が有効かどうか。
+ * 2026-05-27 の design revision で自動生成パイプラインを撤退済み。
+ * UI 動線からも非表示化されたため常に false を返す。
+ * 既存 synthesis ファイルの物理データは保持され、Cmd-K Composer 経由で再構築する想定。
+ */
 export function isSynthesisEnabled(): boolean {
-  const e = loadSettings().experimental;
-  return e.atomLayer === true && e.synthesis === true;
+  return false;
 }
 
 /** 選択中のラテン用フォントを取得する（空文字 = デフォルト） */

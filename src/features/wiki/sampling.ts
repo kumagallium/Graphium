@@ -15,7 +15,7 @@
 // トークン Jaccard でフォールバック。embedding 未生成の Atom も対象から漏らさない。
 
 import { embeddingStore } from "../../lib/embedding-store";
-import type { ClaimSnapshot } from "../../server/services/wiki-synthesizer";
+import type { ClaimSnapshot } from "../../server/services/wiki-types";
 
 /** 1 Atom 分の入力（snapshot + 類似度計算用メタ） */
 export type AtomCandidate = {

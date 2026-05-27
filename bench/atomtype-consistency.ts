@@ -44,7 +44,7 @@ import {
   parseAtomizerOutput,
   type AtomCandidate,
 } from "../src/server/services/wiki-atomizer.js";
-import type { ClaimSnapshot } from "../src/server/services/wiki-synthesizer.js";
+import type { ClaimSnapshot } from "../src/server/services/wiki-types.js";
 import type { ModelConfig } from "../src/server/config/models.js";
 
 type SimpleClaim = {

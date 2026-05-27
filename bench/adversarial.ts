@@ -19,7 +19,7 @@ import { writeFileSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDryRunPipeline } from "./pipeline.ts";
-import type { BenchAtom, BenchClaim, BenchSynthesis, CorpusNote } from "./types.ts";
+import type { BenchAtom, BenchClaim, CorpusNote } from "./types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BENCH_DIR = __dirname;
@@ -62,7 +62,7 @@ export type AdversarialResult = {
   durationMs: number;
   /** pipeline が throw した場合のみ埋まる */
   error?: string;
-  counts: { claims: number; atoms: number; syntheses: number };
+  counts: { claims: number; atoms: number };
 };
 
 export type AdversarialCheck = {
@@ -109,7 +109,6 @@ function evaluateChecks(
   pipelineResult: {
     claims: BenchClaim[];
     atoms: BenchAtom[];
-    syntheses: BenchSynthesis[];
   } | null,
   pipelineError: string | undefined,
   durationMs: number,
@@ -174,14 +173,7 @@ function evaluateChecks(
     });
   }
 
-  if (typeof exp.maxSyntheses === "number") {
-    const ok = pipelineResult.syntheses.length <= exp.maxSyntheses;
-    checks.push({
-      name: "maxSyntheses",
-      passed: ok,
-      reason: `${pipelineResult.syntheses.length} synthesis(es) vs limit ${exp.maxSyntheses}`,
-    });
-  }
+  // 2026-05-27: maxSyntheses は synthesizer パイプライン撤退に合わせて廃止。
 
   if (Array.isArray(exp.atomTitleMustNotContain) && exp.atomTitleMustNotContain.length > 0) {
     const hits = exp.atomTitleMustNotContain.filter((s) =>
@@ -237,27 +229,8 @@ function evaluateChecks(
     });
   }
 
-  if (typeof exp.synthesisHypothesisStatusMustNotBe === "string") {
-    const want = exp.synthesisHypothesisStatusMustNotBe;
-    const violators = pipelineResult.syntheses.filter((s) => s.hypothesisStatus === want).length;
-    checks.push({
-      name: "synthesisHypothesisStatusMustNotBe",
-      passed: violators === 0,
-      reason: violators === 0
-        ? `no synthesis at "${want}"`
-        : `${violators} synthesis(es) at "${want}"`,
-    });
-  }
-
-  if (typeof exp.synthesisEpistemicStatusMustNotBe === "string") {
-    // 現状の Synthesis 型に epistemic status は無い（hypothesisStatus 経由のみ）。
-    // 将来 Phase η で field を追加する想定で予約。今は常に pass。
-    checks.push({
-      name: "synthesisEpistemicStatusMustNotBe",
-      passed: true,
-      reason: "synthesis epistemic status not yet tracked (Phase η reserved)",
-    });
-  }
+  // 2026-05-27: synthesizer パイプライン撤退に合わせて
+  // synthesisHypothesisStatusMustNotBe / synthesisEpistemicStatusMustNotBe を廃止。
 
   return checks;
 }
@@ -273,7 +246,7 @@ function runOneProbe(probe: AdversarialProbe): AdversarialResult {
   }
 
   let pipelineResult:
-    | { claims: BenchClaim[]; atoms: BenchAtom[]; syntheses: BenchSynthesis[] }
+    | { claims: BenchClaim[]; atoms: BenchAtom[] }
     | null = null;
 
   if (!pipelineError) {
@@ -282,7 +255,6 @@ function runOneProbe(probe: AdversarialProbe): AdversarialResult {
       pipelineResult = {
         claims: out.allClaims,
         atoms: out.allAtoms,
-        syntheses: out.allSyntheses,
       };
     } catch (err) {
       pipelineError = (err as Error).message ?? String(err);
@@ -303,7 +275,6 @@ function runOneProbe(probe: AdversarialProbe): AdversarialResult {
     counts: {
       claims: pipelineResult?.claims.length ?? 0,
       atoms: pipelineResult?.atoms.length ?? 0,
-      syntheses: pipelineResult?.syntheses.length ?? 0,
     },
   };
 }
@@ -358,7 +329,7 @@ function main(): void {
   for (const r of report.results) {
     const tag = r.passed ? "PASS" : "FAIL";
     const errPart = r.error ? ` (crashed: ${r.error})` : "";
-    console.log(`[${tag}] ${r.kind.padEnd(10)} ${r.name} (${r.durationMs}ms, ${r.counts.claims}c/${r.counts.atoms}a/${r.counts.syntheses}s)${errPart}`);
+    console.log(`[${tag}] ${r.kind.padEnd(10)} ${r.name} (${r.durationMs}ms, ${r.counts.claims}c/${r.counts.atoms}a)${errPart}`);
     for (const c of r.checks) {
       console.log(`    ${c.passed ? "✓" : "✗"} ${c.name}: ${c.reason}`);
     }
