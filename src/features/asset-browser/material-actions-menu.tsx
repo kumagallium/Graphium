@@ -137,9 +137,10 @@ export function MaterialActionsMenu({
                 <button
                   className={itemClass}
                   onClick={() => { onNavigateNote?.(`wiki:${knowledgeWikiNoteId}`); setOpen(false); }}
+                  title={t("knowledge.openInKnowledge")}
                 >
                   <Bot size={14} className="text-primary" />
-                  {t("knowledge.openInKnowledge")}
+                  {t("knowledge.openEntry")}
                 </button>
                 <button
                   className={itemClass}
