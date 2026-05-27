@@ -965,6 +965,15 @@ export const en: Record<string, string> = {
   "updater.install": "Restart to update",
   "updater.installing": "Downloading...",
 
+  // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
+  "auth.missingKeyTitle": "Can't read the saved API key for {model}",
+  "auth.missingKeyBody":
+    "Graphium temporarily lost track of the {provider} key you registered earlier. Open Settings → AI Setup and paste the same key again to recover.",
+  "auth.missingKeyBodyMultiple":
+    "Graphium can't read {count} saved API keys ({models}). Open Settings → AI Setup and paste the same keys again to recover.",
+  "auth.openSettings": "Open AI Setup",
+  "auth.dismiss": "Dismiss",
+
   // ── メモ ──
   "memo.title": "Memos",
   "memo.count": "{count} items",

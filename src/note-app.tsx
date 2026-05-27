@@ -167,6 +167,7 @@ import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn } from "./comp
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { MissingApiKeyBanner } from "./components/MissingApiKeyBanner";
 import { MobileHeader } from "./components/MobileHeader";
 import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
@@ -2681,6 +2682,17 @@ export function NoteApp() {
     return () => { cancelled = true; };
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // MissingApiKeyBanner などから `graphium-open-settings` イベントで Settings を
+  // 開けるようにする。直接 setShowSettings を渡し回らずに済む間接化（UpdateBanner
+  // の "graphium-update-available" と同じパターン）。
+  useEffect(() => {
+    const handler = () => {
+      setShowSettings(true);
+      setSidebarOpen(false);
+    };
+    window.addEventListener("graphium-open-settings", handler);
+    return () => window.removeEventListener("graphium-open-settings", handler);
+  }, []);
   // デスクトップ用: 集中モード（左サイドバーを折り畳む）。設定は localStorage に永続化。
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("graphium-sidebar-collapsed") === "1"; } catch { return false; }
@@ -4693,6 +4705,7 @@ export function NoteApp() {
   return (
     <div className="flex flex-col h-dvh font-sans antialiased bg-background text-foreground">
       <UpdateBanner />
+      <MissingApiKeyBanner />
       {/* モバイルヘッダー（メモ画面では非表示 — 記録特化体験） */}
       {(isDesktop || fm.activeFileId) && (
         <MobileHeader onMenuToggle={() => setSidebarOpen(true)} />
