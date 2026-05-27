@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Tag,
   FolderOpen,
+  Info,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -25,6 +26,7 @@ import {
   type ModelInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
+import { getAppVersion, checkForUpdates, type CheckResult } from "../../lib/updater";
 import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
 import {
   getGraphiumRoot,
@@ -102,7 +104,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance";
+type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance" | "about";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -847,14 +849,15 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
       {/* タブ */}
       <div className="flex border-b border-border px-6">
-        {(["display", "storage", "ai", "labels", "grounding", "maintenance"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
             : tabId === "ai" ? "settings.section.ai"
             : tabId === "labels" ? "settings.tab.labels"
             : tabId === "grounding" ? "settings.tab.grounding"
-            : "settings.tab.maintenance";
+            : tabId === "maintenance" ? "settings.tab.maintenance"
+            : "settings.tab.about";
           return (
             <button
               key={tabId}
@@ -2023,6 +2026,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             />
           </div>
         )}
+
+        {/* ── About タブ ── */}
+        {tab === "about" && <AboutTab />}
       </ModalBody>
 
       <ModalFooter>
@@ -2861,6 +2867,131 @@ function KbEntryRow({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// About タブ — 現在バージョン表示と更新確認
+// ・Tauri 環境: Tauri の getVersion() / updater プラグインを使う
+// ・Web 環境: package.json の version を表示、更新確認はサポート外
+// ─────────────────────────────────────────────────────────────
+
+function AboutTab() {
+  const { t } = useLocale();
+  const [version, setVersion] = useState<string>("");
+  const [checkState, setCheckState] = useState<
+    | { status: "idle" }
+    | { status: "checking" }
+    | CheckResult
+  >({ status: "idle" });
+
+  useEffect(() => {
+    let cancelled = false;
+    getAppVersion()
+      .then((v) => {
+        if (!cancelled) setVersion(v);
+      })
+      .catch(() => {
+        // 取得失敗時は空のまま
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCheck = useCallback(async () => {
+    setCheckState({ status: "checking" });
+    const result = await checkForUpdates();
+    setCheckState(result);
+  }, []);
+
+  const tauri = isTauri();
+
+  return (
+    <div className="space-y-5">
+      {/* アプリ情報パネル */}
+      <div className="rounded-lg border border-border p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Info size={14} className="text-muted-foreground" />
+          <h3 className="text-xs font-semibold text-foreground">
+            {t("settings.about.title")}
+          </h3>
+        </div>
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">{t("settings.about.appName")}</span>
+            <span className="font-medium text-foreground">Graphium</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">{t("settings.about.version")}</span>
+            <span className="font-mono text-xs text-foreground">
+              {version || "—"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 更新確認パネル */}
+      <div className="rounded-lg border border-border p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-foreground">
+          {t("settings.about.updates")}
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          {tauri
+            ? t("settings.about.autoCheckNote")
+            : t("settings.about.webNote")}
+        </p>
+        {tauri && (
+          <>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={handleCheck}
+                disabled={checkState.status === "checking"}
+              >
+                {checkState.status === "checking" ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin mr-1.5" />
+                    {t("settings.about.checking")}
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={12} className="mr-1.5" />
+                    {t("settings.about.checkNow")}
+                  </>
+                )}
+              </Button>
+            </div>
+            {checkState.status === "up-to-date" && (
+              <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
+                <CheckCircle size={14} />
+                {t("settings.about.upToDate")}
+              </div>
+            )}
+            {checkState.status === "available" && (
+              <div className="flex items-center gap-1.5 text-xs text-foreground">
+                <AlertCircle size={14} className="text-amber-500" />
+                {t("settings.about.available", { version: checkState.version })}
+              </div>
+            )}
+            {checkState.status === "error" && (
+              <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+                <XCircle size={14} className="mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1 break-words">
+                  {t("settings.about.checkFailed")}
+                  <div className="text-foreground/70 mt-0.5">{checkState.message}</div>
+                </div>
+              </div>
+            )}
+            {checkState.status === "unsupported" && (
+              <div className="text-xs text-muted-foreground">
+                {t("settings.about.unsupported")}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
