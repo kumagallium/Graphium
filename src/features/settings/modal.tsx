@@ -102,7 +102,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "labels" | "experimental" | "grounding" | "maintenance";
+type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -239,7 +239,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [toolsData, setToolsData] = useState<ToolsResponse | null>(null);
 
   // Maintenance タブ — Wiki 一括 Regenerate
-  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["claim", "summary", "atom", "synthesis"]));
+  const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["claim", "summary", "atom"]));
   const [bulkModelOverride, setBulkModelOverride] = useState("");
   const [bulkSynthesisModelOverride, setBulkSynthesisModelOverride] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -847,13 +847,12 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
       {/* タブ */}
       <div className="flex border-b border-border px-6">
-        {(["display", "storage", "ai", "labels", "experimental", "grounding", "maintenance"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "labels", "grounding", "maintenance"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
             : tabId === "ai" ? "settings.section.ai"
             : tabId === "labels" ? "settings.tab.labels"
-            : tabId === "experimental" ? "settings.tab.experimental"
             : tabId === "grounding" ? "settings.tab.grounding"
             : "settings.tab.maintenance";
           return (
@@ -1925,68 +1924,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
           </div>
         )}
 
-        {/* ── Experimental タブ ── */}
-        {tab === "experimental" && (
-          <div className="space-y-5">
-            <div className="rounded-lg border border-border p-3">
-              <h3 className="text-xs font-semibold text-foreground mb-1">
-                {t("settings.experimental.title")}
-              </h3>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                {t("settings.experimental.intro")}
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={experimental.atomLayer}
-                  onChange={(e) => {
-                    const next = e.target.checked;
-                    setExperimental((prev) => ({
-                      atomLayer: next,
-                      // Atom OFF にするとき Synthesis も強制 OFF（依存関係）
-                      synthesis: next ? prev.synthesis : false,
-                    }));
-                    setSaved(false);
-                  }}
-                />
-                <span className="flex-1">
-                  <span className="block text-xs font-semibold text-foreground">
-                    {t("settings.experimental.atom.title")}
-                  </span>
-                  <span className="block text-[11px] text-muted-foreground leading-relaxed mt-0.5">
-                    {t("settings.experimental.atom.help")}
-                  </span>
-                </span>
-              </label>
-
-              <label className={`flex items-start gap-3 ${experimental.atomLayer ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}>
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={experimental.synthesis}
-                  disabled={!experimental.atomLayer}
-                  onChange={(e) => {
-                    setExperimental((prev) => ({ ...prev, synthesis: e.target.checked }));
-                    setSaved(false);
-                  }}
-                />
-                <span className="flex-1">
-                  <span className="block text-xs font-semibold text-foreground">
-                    {t("settings.experimental.synthesis.title")}
-                  </span>
-                  <span className="block text-[11px] text-muted-foreground leading-relaxed mt-0.5">
-                    {t("settings.experimental.synthesis.help")}
-                  </span>
-                </span>
-              </label>
-            </div>
-          </div>
-        )}
-
         {/* ── Grounding KB タブ（world-model-grounding Phase 2 / PR 2A） ── */}
         {tab === "grounding" && <GroundingKbTab />}
 
@@ -2063,7 +2000,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               wikiSummaries={wikiSummaries ?? []}
               onRegenerateWiki={onRegenerateWiki}
               onRunAtomizeDiscovery={onRunAtomizeDiscovery}
-              atomLayerEnabled={experimental.atomLayer}
+              atomLayerEnabled={true}
               availableModels={models}
               defaultModel={model || defaultModel}
               chatSynthesisModel={chatSynthesisModel}
@@ -2170,7 +2107,9 @@ function MaintenanceTab({
   setAtomizeProgress,
   onReembedAllWikis,
 }: MaintenanceTabProps) {
-  const KINDS: WikiKind[] = ["claim", "summary", "atom", "synthesis"];
+  // synthesis（発想）は UI 動線から非表示（design revision 2026-05-27）。
+  // 既存 synthesis ファイルの物理データは保持するが、一括 Regenerate の対象には出さない。
+  const KINDS: WikiKind[] = ["claim", "summary", "atom"];
   const [cancelling, setCancelling] = useState(false);
   const [reembedRunning, setReembedRunning] = useState(false);
   const [reembedProgress, setReembedProgress] = useState<{ done: number; total: number } | null>(null);

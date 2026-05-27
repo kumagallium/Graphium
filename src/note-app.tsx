@@ -3187,13 +3187,13 @@ export function NoteApp() {
       ingestQueueRef.current.shift();
     }
 
-    // パイプライン後半（Atomize / Synthesize / Lint）の進捗を 1 つの
+    // パイプライン後半（Atomize / Lint）の進捗を 1 つの
     // トーストアイテムで可視化する。スキップ理由・件数を ユーザーに見せ、
     // 「summary 出た後に何が動いているのか分からない」状態を解消する。
+    // 2026-05-27 の design revision で Synthesize 自動生成は撤退済み（stage 自体を削除）。
     const pipelineId = `pipeline:${Date.now()}`;
     const pipelineStages: IngestStage[] = [
       { key: "atomize", label: "Atomize", status: "pending" },
-      { key: "synthesize", label: "Synthesize", status: "pending" },
       { key: "lint", label: "Lint", status: "pending" },
     ];
     setIngestToast((prev) => ({
@@ -3234,17 +3234,10 @@ export function NoteApp() {
       }));
     };
 
-    // 自動 Atomize: experimental.atomLayer 有効時、全 Concept を見渡して
-    // 共通抽象を discover する。Phase 1: クラスタ集中サンプリングを適用。
+    // 自動 Atomize: atom レイヤは default 有効化済み（design revision 2026-05-27）。
+    // 全 Concept を見渡して共通抽象を discover する。Phase 1: クラスタ集中サンプリングを適用。
     // バルク投入直後の自動実行なので、メンテよりも K の上限を控えめ（=3）にする。
-    //
-    // 直後の Synthesize 段でも参照できるように、新規 Atom の ClaimSnapshot を
-    // ローカルに蓄積する。`fm.wikiMetas` はクロージャ閉じ込みで再 render するまで
-    // 更新されないため、ここで作った Atom を直に渡さないと Synthesize は
-    // 「Atom 0 件」状態で走ってしまう（過去のバルク投入で発想が全く出なかった主因）。
-    const newAtomSnapshots: ClaimSnapshot[] = [];
     const atomLabel = tStatic("settings.maintenance.kind.atom");
-    const synthLabel = tStatic("settings.maintenance.kind.synthesis");
     if (isAtomLayerEnabled()) {
       try {
         const allClaimSnapshots = buildClaimSnapshots(
@@ -3306,18 +3299,6 @@ export function NoteApp() {
               ).catch(() => {});
               createdAtoms += 1;
               existingAtomTitles.push(candidate.title);
-              // Synthesize 段に渡すため新規 Atom を ClaimSnapshot 形に詰めておく。
-              // body は atom 本文ではなく abstraction の summary（candidate.body）が
-              // 最も意味的に近いので preview として使う。
-              newAtomSnapshots.push({
-                id: newId,
-                title: candidate.title,
-                bodyPreview: candidate.body ?? "",
-                level: undefined,
-                relatedClaims: [],
-                sourceSummaryPreviews: [],
-                atomType: candidate.atomType,
-              });
             }
           }
           updateStage(
@@ -3334,12 +3315,9 @@ export function NoteApp() {
       updateStage("atomize", "skipped", "Atom Layer が無効");
     }
 
-    // 自動 Synthesis: synthesis レイヤが有効なときのみ。
-    // Phase 1: クラスタ集中サンプリング + バルク経路では K 上限 2 で控えめに実行。
-    // 入力 Atom には wikiMetas 由来（過去の Atom）+ 直前の Atomize で作った新規 Atom を
     // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
     // 砂時計のくびれ（synthesize）は人間に戻し、Cmd-K Composer 経由で再構築する想定。
-    updateStage("synthesize", "skipped", "自動生成パイプラインは撤退（design revision 2026-05-27）");
+    // 既存 synthesis ファイルの物理データは保持される。
 
     // 自動 Lint: ローカル検出 + LLM 分析（5ページ以上で LLM 実行）
     try {
@@ -4263,8 +4241,10 @@ export function NoteApp() {
       }
       return { summary, claim, atom, synthesis };
     })(),
-    showAtomLayer: experimentalFlags.atomLayer,
-    showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,
+    // Atom（洞察）レイヤは default 昇格済み（design revision 2026-05-27）。
+    // experimental.atomLayer に関わらず常にサイドバーに表示する。
+    // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
+    showAtomLayer: true,
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
