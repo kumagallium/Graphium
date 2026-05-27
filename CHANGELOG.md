@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.10.0](https://github.com/kumagallium/Graphium/compare/v0.9.2...v0.10.0) - 2026-05-27
+- [fix] sidecar crash: switch URL Reader from jsdom to linkedom by @kumagallium in https://github.com/kumagallium/Graphium/pull/359
+
 ## [v0.9.2](https://github.com/kumagallium/Graphium/compare/v0.9.1...v0.9.2) - 2026-05-26
 - chore(wiki): withdraw Phase ε meta-atom layer + fix Anthropic /v1 baseURL by @kumagallium in https://github.com/kumagallium/Graphium/pull/342
 - feat(security): move LLM API keys to macOS Keychain + persist sidecar log by @kumagallium in https://github.com/kumagallium/Graphium/pull/346
