@@ -119,7 +119,6 @@ const COMMON_PROPS = {
   onShowTrash: () => {},
   trashActive: false,
   trashCount: 0,
-  tenpaiCount: 0,
 } as const;
 
 // ── 提案版 FileSidebar（IA 見直し版） ─────────────────────────
@@ -479,27 +478,6 @@ export const Proposed: Story = {
         </p>
         <p className="mt-2 text-xs">
           砂時計：素材 → ノート → ラベル(bottleneck) → ナレッジ。UI は頻度順、概念は別軸として保持。
-        </p>
-      </div>
-    </div>
-  ),
-};
-
-export const CurrentWithTenpai: Story = {
-  name: "現状 + 聴牌（カウント統合）",
-  render: () => (
-    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <FileSidebar {...COMMON_PROPS} tenpaiCount={3} />
-      <div className="flex-1 p-8 text-sm text-muted-foreground">
-        <h2 className="text-base font-semibold mb-2">聴牌をサイドバーで強調しない設計</h2>
-        <p className="text-xs">
-          発想（synthesis）行の数字は <strong>{`実在 4 + 聴牌 3 = 7`}</strong> の合算で表示。
-          ナレッジ全体の数字 ({`9 + 14 + 3 + 7 = 33`}) にも聴牌が含まれる。
-        </p>
-        <p className="mt-2 text-xs">
-          [[project-tenpai-layer-design]]: α 案（アクション無し純粋な種）に従い、
-          サイドバーでは別バッジで強調しない。聴牌の存在に気づくのは WikiListView を開いた時、
-          薄紫背景と Sparkles アイコンの行によって。
         </p>
       </div>
     </div>

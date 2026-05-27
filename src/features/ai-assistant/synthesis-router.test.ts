@@ -3,7 +3,7 @@
 // 実装と mapping を分離可能にするためのテスト。
 
 import { describe, it, expect } from "vitest";
-import { routeSynthesisMode, pickTenpaiModes } from "./synthesis-router";
+import { routeSynthesisMode } from "./synthesis-router";
 
 describe("routeSynthesisMode (heuristic v1)", () => {
   it("returns deductive when no atomType signal is available", () => {
@@ -168,83 +168,3 @@ describe("routeSynthesisMode (heuristic v1)", () => {
   });
 });
 
-// ── 聴牌（tenpai）: pickTenpaiModes ───────────────────────────────────────
-// router の判定境界を「= 1 件」「= 0 件」側にずらして「もうすぐ揃う」を返す。
-describe("pickTenpaiModes (tenpai)", () => {
-  it("returns empty when no atomType signal is available", () => {
-    expect(pickTenpaiModes([])).toEqual([]);
-    expect(pickTenpaiModes([undefined, undefined])).toEqual([]);
-  });
-
-  it("returns dialectic tenpai when exactly one causal atom is present", () => {
-    const c = pickTenpaiModes(["causal", "definitional"]);
-    const dialectic = c.find((x) => x.mode === "dialectic");
-    expect(dialectic).toBeDefined();
-    expect(dialectic?.missing.kind).toBe("one-more-causal");
-    expect(dialectic?.basisIndices).toEqual([0]);
-  });
-
-  it("does NOT return dialectic tenpai when causal already has ≥2 (already satisfied)", () => {
-    const c = pickTenpaiModes(["causal", "causal"]);
-    expect(c.find((x) => x.mode === "dialectic")).toBeUndefined();
-  });
-
-  it("returns analogical tenpai when exactly one mechanistic atom is present", () => {
-    const c = pickTenpaiModes(["mechanistic", "definitional"]);
-    const analogical = c.find((x) => x.mode === "analogical");
-    expect(analogical).toBeDefined();
-    expect(analogical?.missing.kind).toBe("one-more-mechanism");
-  });
-
-  it("returns abductive tenpai when observational exists but no causal / mechanistic", () => {
-    const c = pickTenpaiModes(["observational", "definitional"]);
-    const abductive = c.find((x) => x.mode === "abductive");
-    expect(abductive).toBeDefined();
-    expect(abductive?.missing.kind).toBe("need-mechanism");
-  });
-
-  it("does NOT return abductive tenpai when causal exists (abductive already satisfied)", () => {
-    const c = pickTenpaiModes(["observational", "causal"]);
-    expect(c.find((x) => x.mode === "abductive")).toBeUndefined();
-  });
-
-  it("never returns deductive (deductive is fallback, not a tenpai signal)", () => {
-    const cases: Parameters<typeof pickTenpaiModes>[0][] = [
-      ["causal"],
-      ["mechanistic"],
-      ["observational"],
-      ["methodological"],
-      ["definitional"],
-    ];
-    for (const c of cases) {
-      const result = pickTenpaiModes(c);
-      expect(result.some((x) => x.mode === "deductive")).toBe(false);
-    }
-  });
-
-  it("respects maxHints cap", () => {
-    // causal=1 + mechanistic=1 + observational=0 → dialectic + analogical の 2 件
-    // ただし observational=0 のため abductive は出ない
-    const c = pickTenpaiModes(["causal", "mechanistic"], undefined, 1);
-    expect(c.length).toBe(1);
-  });
-
-  it("(Phase δ) returns dialectic tenpai from a single 'contradicts' relationType", () => {
-    const c = pickTenpaiModes(
-      ["definitional", "definitional"],
-      [["contradicts"], undefined],
-    );
-    const dialectic = c.find((x) => x.mode === "dialectic");
-    expect(dialectic).toBeDefined();
-    expect(dialectic?.basisIndices).toEqual([0]);
-  });
-
-  it("(Phase δ) does not duplicate dialectic when causal trigger and contradicts trigger both fire", () => {
-    const c = pickTenpaiModes(
-      ["causal", "definitional"],
-      [undefined, ["contradicts"]],
-    );
-    const dialecticCount = c.filter((x) => x.mode === "dialectic").length;
-    expect(dialecticCount).toBe(1);
-  });
-});

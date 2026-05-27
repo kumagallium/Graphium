@@ -77,9 +77,6 @@ import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { pickTopSynthesisModes } from "./features/ai-assistant/synthesis-router";
-import { computeTenpaiHints } from "./features/ai-assistant/tenpai-hints";
-import { type TenpaiHint } from "./features/ai-assistant/tenpai-types";
-import { useTenpaiDismissals } from "./features/ai-assistant/tenpai-state";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -4592,29 +4589,6 @@ export function NoteApp() {
     });
   }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
 
-  // 聴牌（tenpai）hint: 現在の atom 群から「もう少しで揃いそうな発想」を計算し、
-  // 発想（synthesis）レイヤの WikiListView と FileSidebar の発想バッジに反映する。
-  // 計算ロジックは bench / unit test から呼べるよう features/ai-assistant/tenpai-hints.ts
-  // に純粋関数として切り出してある。設計判断は [[project-tenpai-layer-design]] と
-  // [[project-atom-provenance-chain]] を参照。
-  const { isDismissed: isTenpaiDismissed, dismiss: dismissTenpai } = useTenpaiDismissals();
-  const tenpaiHintsAll = useMemo<TenpaiHint[]>(
-    () =>
-      computeTenpaiHints({
-        wikiFiles: fm.wikiFiles,
-        wikiMetas: fm.wikiMetas,
-        getCachedDoc: fm.getCachedDoc,
-      }),
-    [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc],
-  );
-
-  // dismiss されたものは表示しない（cooldown 期限内）。
-  // Sidebar バッジ / WikiListView 双方で同じ filter 結果を使う。
-  const tenpaiHints = useMemo(
-    () => tenpaiHintsAll.filter((h) => !isTenpaiDismissed(h.id)),
-    [tenpaiHintsAll, isTenpaiDismissed],
-  );
-
   // 認証読み込み中
   if (authLoading) {
     return (
@@ -4673,8 +4647,6 @@ export function NoteApp() {
       }
       return { summary, claim, atom, synthesis };
     })(),
-    /** 聴牌（tenpai）件数。発想カテゴリのバッジに併記する。 */
-    tenpaiCount: tenpaiHints.length,
     showAtomLayer: experimentalFlags.atomLayer,
     showSynthesisLayer: experimentalFlags.atomLayer && experimentalFlags.synthesis,
     onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
@@ -5270,8 +5242,6 @@ export function NoteApp() {
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={(wikiId) => handleWorldCheckWiki(wikiId, "bulk")}
-            tenpaiHints={fm.activeWikiKind === "synthesis" ? tenpaiHints : undefined}
-            onDismissTenpai={dismissTenpai}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView

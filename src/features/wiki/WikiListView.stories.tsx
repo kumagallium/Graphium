@@ -1,8 +1,4 @@
-// WikiListView のストーリー（PR #349 聴牌レイヤの見た目確認用）
-//
-// 実際の dev データでは causal=5 / mechanistic=7 / observational=7 と判定境界（=1 / =0）に
-// 乗らないため heuristic 聴牌は永遠に発火しない（[[project-tenpai-layer-design]]）。
-// このストーリーでモック TenpaiHint を渡し、行レイアウト・バッジ・dismiss ボタンを確認する。
+// WikiListView のストーリー（発想（synthesis）一覧の見た目確認用）
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { WikiListView } from "./WikiListView";
@@ -11,7 +7,6 @@ import type {
   GraphiumFile,
   WikiMetaSummary,
 } from "../../lib/document-types";
-import type { TenpaiHint } from "../ai-assistant/tenpai-types";
 import "../../app.css";
 
 const now = new Date();
@@ -89,38 +84,6 @@ const SYNTHESIS_METAS = new Map<string, WikiMetaSummary>([
   ],
 ]);
 
-// 聴牌候補 3 件（dialectic / analogical / abductive）
-const TENPAI_HINTS: TenpaiHint[] = [
-  {
-    id: "dialectic:atom-c1",
-    mode: "dialectic",
-    missingKey: "tenpai.missing.dialectic.one-more-causal",
-    involvedAtoms: [
-      { id: "atom-c1", title: "降温速度が遅いほど相純度が高まる" },
-    ],
-    generatedAt: hoursAgo(1),
-  },
-  {
-    id: "analogical:atom-m1",
-    mode: "analogical",
-    missingKey: "tenpai.missing.analogical.one-more-mechanism",
-    involvedAtoms: [
-      { id: "atom-m1", title: "界面拡散が結晶配向の決定要因になる機構" },
-    ],
-    generatedAt: hoursAgo(6),
-  },
-  {
-    id: "abductive:atom-o1,atom-o2",
-    mode: "abductive",
-    missingKey: "tenpai.missing.abductive.need-mechanism",
-    involvedAtoms: [
-      { id: "atom-o1", title: "格子定数 10.47 Å を観測した試料 A" },
-      { id: "atom-o2", title: "ゼーベック係数 180 µV/K を観測した試料 B" },
-    ],
-    generatedAt: daysAgo(1),
-  },
-];
-
 const NOOP = () => {};
 const ASYNC_NOOP = async () => {};
 
@@ -132,7 +95,7 @@ const meta: Meta<typeof WikiListView> = {
     docs: {
       description: {
         component:
-          "発想（synthesis）一覧の表示。tenpaiHints を渡すと『もうすぐ揃いそう』な聴牌行が時系列に混じって表示される（[[project-tenpai-layer-design]]）。",
+          "発想（synthesis）一覧の表示。",
       },
     },
   },
@@ -163,30 +126,7 @@ const baseArgs = {
   onWorldCheckWiki: ASYNC_NOOP,
 };
 
-export const SynthesisWithTenpai: Story = {
-  name: "発想一覧（聴牌行あり）",
-  args: {
-    ...baseArgs,
-    tenpaiHints: TENPAI_HINTS,
-    onDismissTenpai: NOOP,
-  },
-};
-
-export const SynthesisOnly: Story = {
-  name: "発想一覧（聴牌なし）",
-  args: {
-    ...baseArgs,
-    tenpaiHints: [],
-  },
-};
-
-export const TenpaiOnly: Story = {
-  name: "聴牌行のみ（atom 不足で発想がまだない状態の想定）",
-  args: {
-    ...baseArgs,
-    wikiFiles: [],
-    wikiMetas: new Map(),
-    tenpaiHints: TENPAI_HINTS,
-    onDismissTenpai: NOOP,
-  },
+export const SynthesisList: Story = {
+  name: "発想一覧",
+  args: baseArgs,
 };
