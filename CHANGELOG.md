@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.10.1](https://github.com/kumagallium/Graphium/compare/v0.10.0...v0.10.1) - 2026-05-27
+## [v0.11.0](https://github.com/kumagallium/Graphium/compare/v0.10.0...v0.11.0) - 2026-05-27
 - refactor: remove heuristic tenpai layer by @kumagallium in https://github.com/kumagallium/Graphium/pull/360
 - [ci] catch broken sidecar bundles + ensure Pages stays current after release by @kumagallium in https://github.com/kumagallium/Graphium/pull/363
 - [feat] warn when saved API keys can't be read (Keychain downgrade trap detection) by @kumagallium in https://github.com/kumagallium/Graphium/pull/364
