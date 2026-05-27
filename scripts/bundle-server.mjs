@@ -25,6 +25,12 @@ await build({
     js: [
       // createRequire を最初に作って、同期 require が使えるようにする。
       "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+      // ESM bundle では `__dirname` / `__filename` が module スコープに存在しない。
+      // CJS 由来の依存はトップレベルで `path.resolve(__dirname, '...')` を読むこと
+      // があり、未定義だと bundle ロード時に ReferenceError → exit 99 で sidecar が
+      // 起動できない（0.9.2 で jsdom 経由で踏んだ罠の再発防止のための一般化）。
+      // bundle 自身の場所を __dirname として露出させる。
+      "import { fileURLToPath as __fileURLToPath_polyfill } from 'node:url'; import { dirname as __dirname_polyfill } from 'node:path'; const __filename = __fileURLToPath_polyfill(import.meta.url); const __dirname = __dirname_polyfill(__filename);",
       // boot ログをファイルにも書き出す（stderr pipe を経由しない経路）。
       // Windows で stderr が Tauri Shell まで届かない症状を切り分けるため。
       // - ファイルにも stderr にも書かれない → bundle 自体が実行されていない
