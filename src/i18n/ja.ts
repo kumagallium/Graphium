@@ -948,6 +948,21 @@ export const ja: Record<string, string> = {
   "updater.install": "再起動して更新",
   "updater.installing": "ダウンロード中...",
 
+  // ── 設定: About タブ ──
+  "settings.tab.about": "アプリ情報",
+  "settings.about.title": "アプリ情報",
+  "settings.about.appName": "アプリ名",
+  "settings.about.version": "バージョン",
+  "settings.about.updates": "更新",
+  "settings.about.autoCheckNote": "Graphium は起動時と 24 時間ごとに更新を自動で確認します。手動で確認することもできます。",
+  "settings.about.webNote": "更新の確認はデスクトップ版でのみ利用できます。",
+  "settings.about.checkNow": "更新を確認",
+  "settings.about.checking": "確認中...",
+  "settings.about.upToDate": "最新版を使用しています",
+  "settings.about.available": "Graphium {version} が利用可能です（上部のバナーから更新できます）",
+  "settings.about.checkFailed": "更新の確認に失敗しました",
+  "settings.about.unsupported": "この環境では更新の確認は利用できません",
+
   // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
   "auth.missingKeyTitle": "{model} の保存済み API キーを読み込めません",
   "auth.missingKeyBody":

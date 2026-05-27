@@ -948,6 +948,21 @@ export const en: Record<string, string> = {
   "updater.install": "Restart to update",
   "updater.installing": "Downloading...",
 
+  // ── 設定: About タブ ──
+  "settings.tab.about": "About",
+  "settings.about.title": "About this app",
+  "settings.about.appName": "App",
+  "settings.about.version": "Version",
+  "settings.about.updates": "Updates",
+  "settings.about.autoCheckNote": "Graphium checks for updates automatically on launch and every 24 hours. You can also check manually below.",
+  "settings.about.webNote": "Update checks are only available in the desktop app.",
+  "settings.about.checkNow": "Check for updates",
+  "settings.about.checking": "Checking...",
+  "settings.about.upToDate": "You're on the latest version",
+  "settings.about.available": "Graphium {version} is available (install from the banner at the top)",
+  "settings.about.checkFailed": "Failed to check for updates",
+  "settings.about.unsupported": "Update checks are not available in this environment",
+
   // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
   "auth.missingKeyTitle": "Can't read the saved API key for {model}",
   "auth.missingKeyBody":
