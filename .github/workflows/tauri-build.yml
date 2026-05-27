@@ -11,6 +11,11 @@ on:
 
 permissions:
   contents: write
+  # actions: write は最終ステップで `gh workflow run "Deploy to GitHub Pages"` を
+  # workflow_dispatch で叩くために必要。デフォルトの GITHUB_TOKEN には
+  # actions スコープが付かないので明示的に付与しないと 403 で落ちる
+  # （v0.11.0 release で実害）。
+  actions: write
 
 jobs:
   resolve-release:
