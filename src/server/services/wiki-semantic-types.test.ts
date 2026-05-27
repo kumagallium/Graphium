@@ -7,7 +7,6 @@
 import { describe, it, expect } from "vitest";
 import { parseIngesterOutput, parseProcedureContext } from "./wiki-ingester";
 import { parseAtomizerOutput } from "./wiki-atomizer";
-import { parseSynthesizerOutput } from "./wiki-synthesizer";
 
 describe("parseProcedureContext", () => {
   it("typical full structure を保持する", () => {
@@ -186,50 +185,6 @@ describe("parseAtomizerOutput: atomType", () => {
   });
 });
 
-describe("parseSynthesizerOutput: synthesisMode + hypothesisStatus", () => {
-  const baseCandidate = (overrides: Record<string, unknown> = {}) => ({
-    sourceConceptIds: ["c1", "c2"],
-    sourceConceptTitles: ["Concept 1", "Concept 2"],
-    title: "Synthesis",
-    sections: [{ heading: "h", content: "c" }],
-    rationale: "Why",
-    confidence: 0.9,
-    ...overrides,
-  });
-
-  it("認識可能な mode と status を採用する", () => {
-    const out = parseSynthesizerOutput(JSON.stringify({
-      candidates: [baseCandidate({ synthesisMode: "abductive", hypothesisStatus: "tested" })],
-    }));
-    expect(out[0]?.synthesisMode).toBe("abductive");
-    expect(out[0]?.hypothesisStatus).toBe("tested");
-  });
-
-  it("mode 認識可能 / status 欠落 → speculative にフォールバック", () => {
-    const out = parseSynthesizerOutput(JSON.stringify({
-      candidates: [baseCandidate({ synthesisMode: "dialectic" })],
-    }));
-    expect(out[0]?.synthesisMode).toBe("dialectic");
-    expect(out[0]?.hypothesisStatus).toBe("speculative");
-  });
-
-  it("mode 不正・status 不正 → 両方 undefined（フォールバック条件を満たさない）", () => {
-    const out = parseSynthesizerOutput(JSON.stringify({
-      candidates: [baseCandidate({ synthesisMode: "magic", hypothesisStatus: "obvious" })],
-    }));
-    expect(out[0]?.synthesisMode).toBeUndefined();
-    expect(out[0]?.hypothesisStatus).toBeUndefined();
-  });
-
-  it("両フィールド欠落でもパース成功", () => {
-    const out = parseSynthesizerOutput(JSON.stringify({
-      candidates: [baseCandidate()],
-    }));
-    expect(out[0]?.synthesisMode).toBeUndefined();
-    expect(out[0]?.hypothesisStatus).toBeUndefined();
-  });
-});
-
 // ── Phase η: epistemicStatus + lowest-status inheritance ──
 
 describe("parseIngesterOutput: epistemicStatus (Phase η)", () => {
@@ -375,68 +330,6 @@ describe("parseAtomizerOutput: lowest-status inheritance (Phase η)", () => {
       statusMap,
     );
     expect(out[0]?.epistemicStatus).toBe("interpretation");
-  });
-});
-
-describe("parseSynthesizerOutput: speculative input forces speculative output (Phase η)", () => {
-  const conceptIds = ["c1", "c2"];
-  const baseCandidate = (overrides: Record<string, unknown> = {}) => ({
-    sourceConceptIds: conceptIds,
-    sourceConceptTitles: ["A", "B"],
-    title: "Synthesis title",
-    sections: [{ heading: "H", content: "C" }],
-    rationale: "R",
-    confidence: 0.9,
-    ...overrides,
-  });
-
-  it("入力に speculation あり → hypothesisStatus を speculative に強制 (LLM が confirmed と出しても)", () => {
-    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
-      ["c1", "speculation"],
-      ["c2", "observation"],
-    ]);
-    const out = parseSynthesizerOutput(
-      JSON.stringify({
-        candidates: [
-          baseCandidate({
-            synthesisMode: "abductive",
-            hypothesisStatus: "confirmed",
-          }),
-        ],
-      }),
-      statusMap,
-    );
-    expect(out[0]?.hypothesisStatus).toBe("speculative");
-  });
-
-  it("入力に speculation なし → LLM 出力の hypothesisStatus をそのまま採用", () => {
-    const statusMap = new Map<string, "speculation" | "interpretation" | "observation" | "established" | undefined>([
-      ["c1", "observation"],
-      ["c2", "observation"],
-    ]);
-    const out = parseSynthesizerOutput(
-      JSON.stringify({
-        candidates: [
-          baseCandidate({
-            synthesisMode: "abductive",
-            hypothesisStatus: "tested",
-          }),
-        ],
-      }),
-      statusMap,
-    );
-    expect(out[0]?.hypothesisStatus).toBe("tested");
-  });
-
-  it("status map なし (legacy 呼び出し) では従来挙動を維持", () => {
-    const out = parseSynthesizerOutput(
-      JSON.stringify({
-        candidates: [
-          baseCandidate({ synthesisMode: "abductive", hypothesisStatus: "tested" }),
-        ],
-      }),
-    );
-    expect(out[0]?.hypothesisStatus).toBe("tested");
   });
 });
 

@@ -16,7 +16,7 @@ import {
   lowestEpistemicStatus,
   EPISTEMIC_STATUS_ORDER,
 } from "../../lib/document-types.js";
-import type { ClaimSnapshot } from "./wiki-synthesizer.js";
+import type { ClaimSnapshot } from "./wiki-types.js";
 
 /** Atom の推論的役割（提案 v4 Phase 1.2）として認める値の一覧 */
 const ATOM_TYPE_VALUES: AtomType[] = [

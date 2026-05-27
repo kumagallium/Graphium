@@ -10,7 +10,6 @@ import type {
   BenchAtom,
   BenchClaim,
   BenchMetaAtom,
-  BenchSynthesis,
   Probe,
   ProbeResult,
   CorpusNote,
@@ -93,14 +92,12 @@ export function evaluateProbes(
       probe: probe.name,
       claims: result.allClaims,
       atoms: result.allAtoms,
-      syntheses: result.allSyntheses,
       metaAtoms: result.allMetaAtoms,
     });
 
     const verdict = evaluateProbeExpected(
       probe,
       result.allAtoms,
-      result.allSyntheses,
       result.allClaims,
       result.allMetaAtoms,
       inputs,
@@ -115,14 +112,12 @@ export type PerProbeRun = {
   probe: string;
   claims: BenchClaim[];
   atoms: BenchAtom[];
-  syntheses: BenchSynthesis[];
   metaAtoms: BenchMetaAtom[];
 };
 
 function evaluateProbeExpected(
   probe: Probe,
   atoms: BenchAtom[],
-  syntheses: BenchSynthesis[],
   claims: BenchClaim[],
   metaAtoms: BenchMetaAtom[],
   inputs: CorpusNote[],
@@ -151,19 +146,9 @@ function evaluateProbeExpected(
     allPassed &&= ok;
   }
 
-  if (typeof exp.synthesisHypothesisStatus === "string") {
-    const want = exp.synthesisHypothesisStatus as string;
-    const ok = syntheses.length === 0 || syntheses.every((s) => s.hypothesisStatus === want);
-    reasons.push(`synthesisHypothesisStatus=${want}: ${ok ? "ok" : `got ${syntheses.map((s) => s.hypothesisStatus).join("/")}`}`);
-    allPassed &&= ok;
-  }
-
-  if (Array.isArray(exp.synthesisModes)) {
-    const want = exp.synthesisModes as string[];
-    const ok = syntheses.some((s) => want.includes(s.mode));
-    reasons.push(`synthesisModes∋${want.join(",")}: ${ok ? "ok" : `got ${[...new Set(syntheses.map((s) => s.mode))].join(",") || "none"}`}`);
-    allPassed &&= ok;
-  }
+  // 2026-05-27: synthesizer 自動生成パイプラインを撤退したため、
+  // synthesisHypothesisStatus / synthesisModes の probe expected キーは廃止。
+  // 既存の probe ファイルに残っていても暗黙に無視される。
 
   if (Array.isArray(exp.atomTypes)) {
     const want = exp.atomTypes as string[];
@@ -205,14 +190,8 @@ function evaluateProbeExpected(
     allPassed &&= ok;
   }
 
-  if (typeof exp.fakeDoiCount === "number") {
-    // Phase ζ 未実装。externalSources は常に空配列なので fake DOI も 0 で auto-pass。
-    const want = exp.fakeDoiCount as number;
-    const got = syntheses.reduce((sum, s) => sum + s.externalSources.length, 0);
-    const ok = got === want;
-    reasons.push(`fakeDoiCount=${want}: ${ok ? "ok" : `got ${got}`}`);
-    allPassed &&= ok;
-  }
+  // 2026-05-27: fakeDoiCount は Synthesis.externalSources を数えていたが、
+  // synthesizer パイプライン撤退に合わせて廃止。
 
   if (Array.isArray(exp.modalQualifierDiversity)) {
     const want = exp.modalQualifierDiversity as string[];

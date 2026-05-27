@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ClaimSnapshot } from "../../server/services/wiki-synthesizer";
+import type { ClaimSnapshot } from "../../server/services/wiki-types";
 import {
   tokenize,
   jaccard,

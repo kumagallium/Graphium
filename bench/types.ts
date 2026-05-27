@@ -126,15 +126,6 @@ export type BenchAtom = {
   }[];
 };
 
-export type BenchSynthesis = {
-  title: string;
-  body: string;
-  mode: "deductive" | "abductive" | "analogical" | "dialectic";
-  sourceAtomIndices: number[];
-  hypothesisStatus: "speculative" | "tested" | "confirmed" | "refuted";
-  externalSources: { title: string; url?: string }[];
-};
-
 /**
  * Phase ε: meta-Atom（KJ 中グループの表札）。
  * 3+ Atom を 1 つの抽象軸に集約した、Atom より一段上の層。
@@ -175,12 +166,10 @@ export type BenchRunOutput = {
   /** Phase ε: 全 Atom から集約された meta-Atom（KJ 中グループ）。
    *  入力 Atom 数が少ない（< 3）と空配列。 */
   allMetaAtoms: BenchMetaAtom[];
-  allSyntheses: BenchSynthesis[];
   /** 集約後の代表値（n=1 なら唯一の run、n≥2 なら下記 aggregate に従う） */
   metrics: BenchMetrics;
   probeResults: ProbeResult[];
   liftJudgments?: { passed: boolean; reason: string; atomTitle: string }[];
-  noveltyJudgments?: { passed: boolean; reason: string; synthesisTitle: string }[];
   /** n≥2 の場合のみ。各 run の素の metric を残し、ばらつき判断に使える。 */
   runs?: BenchRunSample[];
   /** n≥2 の場合のみ。代表 metric の決め方と分布の要約を残す。 */
@@ -218,14 +207,11 @@ export type BenchMetricSummary = {
 
 export type BenchMetrics = {
   lift_score: number;
-  mode_distribution_entropy: number;
   epistemic_preservation: number;
   adversarial_pass_rate: number;
-  novelty_score: number;
   // 補助統計
   claim_count_total: number;
   atom_count_total: number;
-  synthesis_count_total: number;
   observation_atom_ratio: number;
   // Phase μ-2 で追加
   /** 同一概念の JP / EN ペア (pairId) が同じ Atom クラスタに集約された割合 */

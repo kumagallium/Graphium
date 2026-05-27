@@ -1,9 +1,12 @@
 // Phase μ-3: performance regression test
 //
+// 2026-05-27: synthesizer 自動生成パイプライン撤退に合わせて、Atomizer までの
+// 2-stage pipeline を計測対象とする。
+//
 // 3 軸を baseline と比較する:
-//   1. Synthesizer 完走時間  — Atom 100 件相当の合成パイプラインを通す時間
-//   2. メモリ使用量 peak     — heapUsed の最大値（< 100 MB を維持）
-//   3. INDEX サイズの肥大化  — Atom 100 件の dry-run pipeline 出力 JSON サイズ
+//   1. Pipeline 完走時間  — Atom 100 件相当の 2-stage パイプラインを通す時間
+//   2. メモリ使用量 peak  — heapUsed の最大値（< 100 MB を維持）
+//   3. INDEX サイズの肥大化 — Atom 100 件の dry-run pipeline 出力 JSON サイズ
 //
 // 結果は `bench/performance/baseline.json` と比較し、20% 以上の悪化で warning。
 // 「LLM call なし」で完全に決定的に走るため、CI で毎 PR 走らせても無償。
@@ -78,9 +81,8 @@ export type PerformanceResult = {
   heapDeltaPeakBytes: number;
   /** 全 atoms の JSON byte size。INDEX 肥大化の代理 */
   atomsJsonBytes: number;
-  syntheses_json_bytes: number;
-  /** 合成 pipeline が出した件数 */
-  counts: { claims: number; atoms: number; syntheses: number };
+  /** pipeline が出した件数 */
+  counts: { claims: number; atoms: number };
 };
 
 export type PerformanceBaseline = {
@@ -125,7 +127,6 @@ function measureOnce(corpus: CorpusNote[]): PerformanceResult {
   const heapDelta = Math.max(0, heapEnd - heapStart);
 
   const atomsJsonBytes = Buffer.byteLength(JSON.stringify(result.allAtoms), "utf-8");
-  const synthesesJsonBytes = Buffer.byteLength(JSON.stringify(result.allSyntheses), "utf-8");
 
   return {
     corpusSize: corpus.length,
@@ -133,11 +134,9 @@ function measureOnce(corpus: CorpusNote[]): PerformanceResult {
     durationSamplesMs: [t1 - t0],
     heapDeltaPeakBytes: heapDelta,
     atomsJsonBytes,
-    syntheses_json_bytes: synthesesJsonBytes,
     counts: {
       claims: result.allClaims.length,
       atoms: result.allAtoms.length,
-      syntheses: result.allSyntheses.length,
     },
   };
 }
@@ -162,7 +161,6 @@ export function runPerformanceTest(): PerformanceReport {
   const durations = samples.map((s) => s.durationMedianMs);
   const heapPeaks = samples.map((s) => s.heapDeltaPeakBytes);
   const atomsSizes = samples.map((s) => s.atomsJsonBytes);
-  const synthSizes = samples.map((s) => s.syntheses_json_bytes);
 
   // 代表サンプル（counts は決定的なので samples[0] でよい）
   const representative: PerformanceResult = {
@@ -172,7 +170,6 @@ export function runPerformanceTest(): PerformanceReport {
     // peak は最大値（複数 run の中で最も悪い値を「peak」とする）
     heapDeltaPeakBytes: Math.max(...heapPeaks),
     atomsJsonBytes: median(atomsSizes),
-    syntheses_json_bytes: median(synthSizes),
     counts: samples[0].counts,
   };
 
@@ -185,7 +182,6 @@ export function runPerformanceTest(): PerformanceReport {
       regressionOf("duration_ms", baseline.durationMedianMs, representative.durationMedianMs),
       regressionOf("heap_peak_bytes", baseline.heapDeltaPeakBytes, representative.heapDeltaPeakBytes),
       regressionOf("atoms_json_bytes", baseline.atomsJsonBytes, representative.atomsJsonBytes),
-      regressionOf("syntheses_json_bytes", baseline.syntheses_json_bytes, representative.syntheses_json_bytes),
     );
   }
 
@@ -247,8 +243,7 @@ function main(): void {
   console.log(`duration (median) : ${report.result.durationMedianMs.toFixed(2)} ms`);
   console.log(`heap delta peak   : ${fmtBytes(report.result.heapDeltaPeakBytes)}`);
   console.log(`atoms json size   : ${fmtBytes(report.result.atomsJsonBytes)}`);
-  console.log(`syntheses json    : ${fmtBytes(report.result.syntheses_json_bytes)}`);
-  console.log(`counts            : ${report.result.counts.claims}c / ${report.result.counts.atoms}a / ${report.result.counts.syntheses}s`);
+  console.log(`counts            : ${report.result.counts.claims}c / ${report.result.counts.atoms}a`);
   console.log("");
 
   if (report.regressions.length === 0) {
