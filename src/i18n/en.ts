@@ -374,6 +374,7 @@ export const en: Record<string, string> = {
   "settings.tab.labels": "Labels",
   "settings.tab.aiSetup": "AI Setup",
   "settings.tab.maintenance": "Maintenance",
+  "settings.tab.usage": "Usage",
   "settings.maintenance.regenAll.title": "Bulk regenerate Knowledge",
   "settings.maintenance.regenAll.help": "Rebuild existing Knowledge pages with the latest prompts or model after you update them.",
   "settings.maintenance.kindFilter": "Target kinds",
@@ -493,6 +494,10 @@ export const en: Record<string, string> = {
   "settings.models.editApiKeyPlaceholder": "Enter new key to update",
   "settings.models.delete": "Delete",
   "settings.models.confirmDelete": "Delete?",
+  "settings.models.rate.label": "Pricing",
+  "settings.models.rate.hint": "(USD per 1M tokens, optional)",
+  "settings.models.rate.inputPlaceholder": "input e.g. 3.00",
+  "settings.models.rate.outputPlaceholder": "output e.g. 15.00",
   // ── モデル追加フォーム ──
   "settings.addModel.title": "Add Model",
   "settings.addModel.provider": "Provider",
@@ -950,6 +955,21 @@ export const en: Record<string, string> = {
   "updater.available": "Graphium {version} is available",
   "updater.install": "Restart to update",
   "updater.installing": "Downloading...",
+
+  // ── 設定: Usage タブ ──
+  "settings.usage.title": "AI Usage",
+  "settings.usage.description": "Token consumption per AI feature. Set per-model pricing on the AI tab to see costs.",
+  "settings.usage.vercelUnsupported": "Usage tracking is only available on the desktop / self-hosted server, not on the Vercel-hosted version.",
+  "settings.usage.granularity.day": "Day",
+  "settings.usage.granularity.month": "Month",
+  "settings.usage.granularity.year": "Year",
+  "settings.usage.totalTokens": "Total tokens",
+  "settings.usage.totalCost": "Estimated cost",
+  "settings.usage.loading": "Loading usage data...",
+  "settings.usage.error": "Failed to load usage data: {message}",
+  "settings.usage.empty": "No AI calls recorded in this range yet.",
+  "settings.usage.chartTitle": "Tokens over time",
+  "settings.usage.breakdown": "By feature",
 
   // ── 設定: About タブ ──
   "settings.tab.about": "About",

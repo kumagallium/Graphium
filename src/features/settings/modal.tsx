@@ -52,6 +52,7 @@ import {
   saveAuthorIdentity,
   validateAuthorIdentity,
 } from "../identity";
+import { UsageTab } from "./UsageTab";
 import {
   getSharedRoot,
   setSharedRoot,
@@ -104,7 +105,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance" | "about";
+type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance" | "usage" | "about";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -302,6 +303,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [editName, setEditName] = useState("");
   const [editApiKey, setEditApiKey] = useState("");
   const [editApiBase, setEditApiBase] = useState("");
+  // 単価入力。空文字なら「未設定」扱い（コスト計算スキップ）。
+  const [editRateInput, setEditRateInput] = useState("");
+  const [editRateOutput, setEditRateOutput] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   // 保存
@@ -777,12 +781,23 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setEditName(m.name);
     setEditApiKey("");
     setEditApiBase(m.api_base);
+    setEditRateInput(m.rate ? String(m.rate.input) : "");
+    setEditRateOutput(m.rate ? String(m.rate.output) : "");
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingId) return;
     setEditSaving(true);
     try {
+      // 単価入力をパース。両方未入力なら rate 未設定として保存（コスト計算スキップ）。
+      const rateInputNum = editRateInput.trim() ? Number(editRateInput) : NaN;
+      const rateOutputNum = editRateOutput.trim() ? Number(editRateOutput) : NaN;
+      const hasValidRate =
+        Number.isFinite(rateInputNum) &&
+        Number.isFinite(rateOutputNum) &&
+        rateInputNum >= 0 &&
+        rateOutputNum >= 0;
+
       if (isWebMode) {
         // Web モード: localStorage を直接更新
         const allModels = getLLMModels();
@@ -791,13 +806,21 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
           if (editName.trim()) allModels[idx].name = editName.trim();
           if (editApiKey.trim()) allModels[idx].apiKey = editApiKey.trim();
           allModels[idx].apiBase = editApiBase.trim() || null;
+          if (hasValidRate) {
+            allModels[idx].rate = { input: rateInputNum, output: rateOutputNum };
+          } else {
+            delete allModels[idx].rate;
+          }
           localStorage.setItem("graphium-llm-models", JSON.stringify(allModels));
         }
       } else {
-        const body: Record<string, string> = {};
+        const body: Record<string, unknown> = {};
         if (editName.trim()) body.model_name = editName.trim();
         if (editApiKey.trim()) body.api_key = editApiKey.trim();
         body.api_base = editApiBase.trim();
+        if (hasValidRate) {
+          body.rate = { input: rateInputNum, output: rateOutputNum };
+        }
         await fetch(`${apiBase()}/models/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -811,7 +834,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     } finally {
       setEditSaving(false);
     }
-  }, [isWebMode, editingId, editName, editApiKey, editApiBase, refreshModels]);
+  }, [isWebMode, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, refreshModels]);
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
@@ -849,7 +872,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
       {/* タブ */}
       <div className="flex border-b border-border px-6">
-        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "about"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
@@ -857,6 +880,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             : tabId === "labels" ? "settings.tab.labels"
             : tabId === "grounding" ? "settings.tab.grounding"
             : tabId === "maintenance" ? "settings.tab.maintenance"
+            : tabId === "usage" ? "settings.tab.usage"
             : "settings.tab.about";
           return (
             <button
@@ -1565,6 +1589,30 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                         <label className="text-xs font-medium text-foreground mb-2 block">API Base URL</label>
                         <Input type="url" value={editApiBase} onChange={(e) => setEditApiBase(e.target.value)} placeholder={API_BASE_HINTS[m.provider] ?? ""} />
                       </div>
+                      <div>
+                        <label className="text-xs font-medium text-foreground mb-2 block">
+                          {t("settings.models.rate.label")}
+                          <span className="text-muted-foreground font-normal ml-1">{t("settings.models.rate.hint")}</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            type="number"
+                            step="0.001"
+                            min="0"
+                            value={editRateInput}
+                            onChange={(e) => setEditRateInput(e.target.value)}
+                            placeholder={t("settings.models.rate.inputPlaceholder")}
+                          />
+                          <Input
+                            type="number"
+                            step="0.001"
+                            min="0"
+                            value={editRateOutput}
+                            onChange={(e) => setEditRateOutput(e.target.value)}
+                            placeholder={t("settings.models.rate.outputPlaceholder")}
+                          />
+                        </div>
+                      </div>
                       <div className="flex gap-2 justify-end">
                         <button onClick={() => setEditingId(null)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">{t("common.cancel")}</button>
                         <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>
@@ -2028,6 +2076,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         )}
 
         {/* ── About タブ ── */}
+        {tab === "usage" && <UsageTab />}
+
         {tab === "about" && <AboutTab />}
       </ModalBody>
 

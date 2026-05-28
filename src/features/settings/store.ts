@@ -298,6 +298,14 @@ export function applyFontMode(latinFont: LatinFont, jpFont: JpFont): void {
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
+/** モデルの 1M トークンあたり単価（USD）。AI 使用量ダッシュボードのコスト計算用。 */
+export type LLMTokenRate = {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+};
+
 export type LLMModelConfig = {
   id: string;
   name: string;
@@ -305,6 +313,8 @@ export type LLMModelConfig = {
   modelId: string;
   apiKey: string;
   apiBase: string | null;
+  /** トークン単価。未設定ならコスト計算をスキップする。 */
+  rate?: LLMTokenRate;
 };
 
 /** クライアント保存のモデル一覧を取得 */

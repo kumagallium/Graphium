@@ -86,6 +86,13 @@ export type ModelInfo = {
   api_base: string;
   supports_function_calling: boolean;
   id: string;
+  /** トークン単価（USD / 1M tokens）。AI 使用量ダッシュボードのコスト計算用 */
+  rate?: {
+    input: number;
+    output: number;
+    cache_read?: number;
+    cache_write?: number;
+  };
 };
 
 export type ModelsResponse = {
