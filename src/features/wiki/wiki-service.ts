@@ -64,6 +64,7 @@ function wikiHeaders(mode: "default" | "chatSynthesis" | "embedding" = "default"
         apiKey: model.apiKey,
         apiBase: model.apiBase,
         name: model.name,
+        rate: model.rate,
       });
     }
   }

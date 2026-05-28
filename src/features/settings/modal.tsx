@@ -597,6 +597,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             apiKey: cfg.apiKey,
             apiBase: cfg.apiBase,
             name: cfg.name,
+            rate: cfg.rate,
           });
         }
       }

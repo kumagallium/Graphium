@@ -25,7 +25,24 @@ export function resolveModelConfig(
         apiKey: string;
         apiBase?: string | null;
         name?: string;
+        rate?: {
+          input?: number;
+          output?: number;
+          cacheRead?: number;
+          cacheWrite?: number;
+        };
       };
+      const rate =
+        parsed.rate &&
+        typeof parsed.rate.input === "number" &&
+        typeof parsed.rate.output === "number"
+          ? {
+              input: parsed.rate.input,
+              output: parsed.rate.output,
+              cacheRead: parsed.rate.cacheRead,
+              cacheWrite: parsed.rate.cacheWrite,
+            }
+          : undefined;
       return {
         id: "header-injected",
         name: parsed.name || parsed.modelId,
@@ -33,6 +50,7 @@ export function resolveModelConfig(
         modelId: parsed.modelId,
         apiKey: parsed.apiKey,
         apiBase: parsed.apiBase ?? null,
+        rate,
         createdAt: new Date().toISOString(),
       };
     } catch {
