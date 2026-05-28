@@ -129,10 +129,10 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
 
   const wrapperCls = compact
     ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
-    : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+    : "w-full h-40 flex items-center justify-center bg-muted";
   const imgCls = compact
     ? "w-10 h-10 object-cover rounded bg-muted shrink-0"
-    : "w-full h-32 object-cover rounded-t-md bg-muted";
+    : "w-full h-40 object-contain bg-muted";
   const iconSize = compact ? 16 : 32;
 
   if (!src) {
@@ -178,7 +178,7 @@ function VideoThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
 
   const wrapperCls = compact
     ? "relative w-10 h-10 rounded bg-muted overflow-hidden shrink-0"
-    : "relative w-full h-32 rounded-t-md bg-muted overflow-hidden";
+    : "relative w-full h-40 bg-muted overflow-hidden";
   const iconSize = compact ? 16 : 32;
   const playSize = compact ? 14 : 24;
 
@@ -190,7 +190,7 @@ function VideoThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
         muted
         playsInline
         onLoadedData={() => setLoaded(true)}
-        className={`w-full h-full object-cover ${loaded ? "" : "opacity-0"}`}
+        className={`w-full h-full ${compact ? "object-cover" : "object-contain"} ${loaded ? "" : "opacity-0"}`}
       />
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -238,7 +238,7 @@ function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; comp
   }
   if (showHero) {
     return (
-      <div className="w-full h-32 rounded-t-md bg-muted overflow-hidden">
+      <div className="w-full h-40 bg-muted overflow-hidden">
         <img
           src={hero}
           alt={entry.name}
@@ -250,7 +250,7 @@ function UrlThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; comp
     );
   }
   return (
-    <div className="w-full h-32 flex flex-col items-center justify-center gap-2 rounded-t-md bg-muted px-3">
+    <div className="w-full h-40 flex flex-col items-center justify-center gap-2 bg-muted px-3">
       <img
         src={getFaviconUrl(domain)}
         alt=""
@@ -274,13 +274,13 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
     case "audio": {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
-        : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+        : "w-full h-40 flex items-center justify-center bg-muted";
       return <div className={cls}><Volume2 size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     }
     case "pdf": {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
-        : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+        : "w-full h-40 flex items-center justify-center bg-muted";
       return <div className={cls}><FileText size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     }
     case "url":
@@ -288,7 +288,7 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
     default: {
       const cls = compact
         ? "w-10 h-10 flex items-center justify-center rounded bg-muted shrink-0"
-        : "w-full h-32 flex items-center justify-center rounded-t-md bg-muted";
+        : "w-full h-40 flex items-center justify-center bg-muted";
       return <div className={cls}><Paperclip size={compact ? 16 : 32} className="text-muted-foreground" /></div>;
     }
   }
@@ -297,83 +297,70 @@ function MediaThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
 // メディアカードコンポーネント
 function MediaCard({
   entry,
-  onNavigateNote,
   onDelete,
   onOpenDetail,
 }: {
   entry: MediaIndexEntry;
-  onNavigateNote: (noteId: string) => void;
   onDelete: (entry: MediaIndexEntry) => void;
   onOpenDetail: (entry: MediaIndexEntry) => void;
 }) {
   const t = useT();
+  // サムネ自体が中身を物語る素材はホバー時のみ名前を出す。
+  // それ以外（PDF / 音声 / hero なし URL / その他）はアイコンだけだと
+  // 情報量がゼロなので、ファイル名を常時表示する。
+  const hasVisualThumbnail =
+    entry.type === "image" ||
+    entry.type === "video" ||
+    (entry.type === "url" && !!(entry.urlMeta?.leadImage || entry.urlMeta?.ogImage));
 
   return (
-    <div className="border border-border rounded-md bg-background hover:border-primary/40 transition-colors group relative">
-      {/* 削除ボタン */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
-        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-all z-10"
-        title={t("common.delete")}
-      >
-        ✕
-      </button>
+    <div className="border border-border rounded-md bg-background hover:border-primary/40 transition-colors group relative overflow-hidden">
+      {/* 右上アクション群（ホバーで表示） */}
+      <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {entry.type === "url" && (
+          <a
+            href={entry.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-background/80 hover:bg-background text-muted-foreground hover:text-primary rounded-full w-5 h-5 flex items-center justify-center transition-colors"
+            title={t("asset.urlOpen")}
+          >
+            <ExternalLink size={12} />
+          </a>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(entry); }}
+          className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors"
+          title={t("common.delete")}
+        >
+          ✕
+        </button>
+      </div>
 
       {/* サムネイル（クリックでモーダル表示） */}
       <button
         onClick={() => onOpenDetail(entry)}
-        className="w-full cursor-pointer"
+        className="block w-full cursor-pointer"
       >
         <MediaThumbnail entry={entry} />
       </button>
 
-      {/* メタデータ */}
-      <div className="p-2">
-        <div className="flex items-center gap-1">
-          <p className="text-xs font-medium text-foreground truncate flex-1" title={entry.name}>
+      {hasVisualThumbnail ? (
+        // ホバー時のファイル名オーバーレイ
+        <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/75 via-black/55 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+          <p className="text-xs font-medium text-white truncate" title={entry.name}>
             {entry.name}
           </p>
-          {entry.type === "url" && (
-            <a
-              href={entry.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-muted-foreground hover:text-primary transition-colors shrink-0"
-              title={t("asset.urlOpen")}
-            >
-              <ExternalLink size={12} />
-            </a>
-          )}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          {formatDate(entry.uploadedAt)}
-        </p>
-        {entry.type === "url" && (entry.urlMeta?.excerpt || entry.urlMeta?.description) && (
-          <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-            {entry.urlMeta.excerpt || entry.urlMeta.description}
+      ) : (
+        // ファイル名常時表示帯
+        <div className="px-2 py-1.5 border-t border-border-subtle">
+          <p className="text-xs font-medium text-foreground truncate" title={entry.name}>
+            {entry.name}
           </p>
-        )}
-        {/* 使用されているノート */}
-        {entry.usedIn.length > 0 ? (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {entry.usedIn.map((usage) => (
-              <button
-                key={`${usage.noteId}-${usage.blockId}`}
-                onClick={() => onNavigateNote(usage.noteId)}
-                className="text-[10px] text-primary hover:underline truncate max-w-[120px]"
-                title={usage.noteTitle}
-              >
-                {usage.noteTitle}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-1 text-[10px] text-muted-foreground italic">
-            {t("asset.unused")}
-          </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -875,7 +862,6 @@ export function AssetGalleryView({
               <MediaCard
                 key={entry.fileId}
                 entry={entry}
-                onNavigateNote={onNavigateNote}
                 onDelete={setDeleteTarget}
                 onOpenDetail={setDetailEntry}
               />
