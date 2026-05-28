@@ -1027,26 +1027,31 @@ export function AssetGalleryView({
           </div>
         )}
         <div className="flex items-center gap-1 ml-auto">
-          <button
-            onClick={() => handleSort("uploadedAt")}
-            className={`text-[11px] px-2 py-1 rounded transition-colors ${
-              sortKey === "uploadedAt"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t("asset.sortDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
-          </button>
-          <button
-            onClick={() => handleSort("name")}
-            className={`text-[11px] px-2 py-1 rounded transition-colors ${
-              sortKey === "name"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
-          </button>
+          {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
+          {viewMode === "gallery" && (
+            <>
+              <button
+                onClick={() => handleSort("uploadedAt")}
+                className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                  sortKey === "uploadedAt"
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("asset.sortDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
+              </button>
+              <button
+                onClick={() => handleSort("name")}
+                className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                  sortKey === "name"
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
+              </button>
+            </>
+          )}
           {/* ビュー切替 */}
           <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
             <button
@@ -1170,20 +1175,20 @@ export function AssetGalleryView({
                 </th>
                 <th className="py-2 px-2 w-[56px]" />
                 <th
-                  className="py-2 px-3 cursor-pointer hover:text-foreground"
+                  className="py-2 px-3 whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("name")}
                 >
                   {t("asset.colName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
                 </th>
                 <th
-                  className="py-2 px-2 w-[80px] text-center cursor-pointer hover:text-foreground"
+                  className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("usedIn")}
                   title={t("asset.colUsedIn")}
                 >
                   {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[130px] cursor-pointer hover:text-foreground"
+                  className="py-2 pl-3 w-[140px] whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("uploadedAt")}
                 >
                   {t("asset.colDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
