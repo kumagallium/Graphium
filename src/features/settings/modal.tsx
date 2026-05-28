@@ -307,6 +307,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   // 単価入力。空文字なら「未設定」扱い（コスト計算スキップ）。
   const [editRateInput, setEditRateInput] = useState("");
   const [editRateOutput, setEditRateOutput] = useState("");
+  // 単価の通貨。デフォルト USD。さくら AI 等の円建てモデルでは JPY を選ぶ。
+  const [editRateCurrency, setEditRateCurrency] = useState<"usd" | "jpy">("usd");
   // 既知モデルの参考価格。プロバイダー API では取れないので、内蔵テーブルから引く。
   const [editSuggestedRate, setEditSuggestedRate] = useState<PricingEntry | null>(null);
   const [editSaving, setEditSaving] = useState(false);
@@ -333,6 +335,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
           output: m.rate.output,
           cache_read: m.rate.cacheRead,
           cache_write: m.rate.cacheWrite,
+          currency: m.rate.currency ?? "usd",
         }
       : undefined,
   });
@@ -797,6 +800,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setEditApiBase(m.api_base);
     setEditRateInput(m.rate ? String(m.rate.input) : "");
     setEditRateOutput(m.rate ? String(m.rate.output) : "");
+    setEditRateCurrency(m.rate?.currency === "jpy" ? "jpy" : "usd");
     setEditSuggestedRate(lookupModelPrice(m.provider, m.model_id));
   }, []);
 
@@ -822,7 +826,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
           if (editApiKey.trim()) allModels[idx].apiKey = editApiKey.trim();
           allModels[idx].apiBase = editApiBase.trim() || null;
           if (hasValidRate) {
-            allModels[idx].rate = { input: rateInputNum, output: rateOutputNum };
+            allModels[idx].rate = {
+              input: rateInputNum,
+              output: rateOutputNum,
+              currency: editRateCurrency,
+            };
           } else {
             delete allModels[idx].rate;
           }
@@ -834,7 +842,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         if (editApiKey.trim()) body.api_key = editApiKey.trim();
         body.api_base = editApiBase.trim();
         if (hasValidRate) {
-          body.rate = { input: rateInputNum, output: rateOutputNum };
+          body.rate = {
+            input: rateInputNum,
+            output: rateOutputNum,
+            currency: editRateCurrency,
+          };
         }
         await fetch(`${apiBase()}/models/${editingId}`, {
           method: "PUT",
@@ -849,11 +861,26 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     } finally {
       setEditSaving(false);
     }
-  }, [isWebMode, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, refreshModels]);
+  }, [isWebMode, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, editRateCurrency, refreshModels]);
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, chatSynthesisModel, groundingModel: groundingModelStored, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
+    // displayCurrency / usdJpyRate は UsageTab 側で先行保存されているので、
+    // ここで全フィールドを上書きしないよう、既存値とマージする。
+    const existing = loadSettings();
+    saveSettings({
+      ...existing,
+      model,
+      embeddingModel,
+      chatSynthesisModel,
+      groundingModel: groundingModelStored,
+      disabledTools,
+      registryUrl: registryUrl.trim().replace(/\/+$/, ""),
+      customLabels,
+      latinFont,
+      jpFont,
+      experimental,
+    });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
@@ -1610,31 +1637,50 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                           {t("settings.models.rate.label")}
                           <span className="text-muted-foreground font-normal ml-1">{t("settings.models.rate.hint")}</span>
                         </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            type="number"
-                            step="0.001"
-                            min="0"
-                            value={editRateInput}
-                            onChange={(e) => setEditRateInput(e.target.value)}
-                            placeholder={
-                              editSuggestedRate
-                                ? `${t("settings.models.rate.inputShort")}: ${editSuggestedRate.input}`
-                                : t("settings.models.rate.inputPlaceholder")
-                            }
-                          />
-                          <Input
-                            type="number"
-                            step="0.001"
-                            min="0"
-                            value={editRateOutput}
-                            onChange={(e) => setEditRateOutput(e.target.value)}
-                            placeholder={
-                              editSuggestedRate
-                                ? `${t("settings.models.rate.outputShort")}: ${editSuggestedRate.output}`
-                                : t("settings.models.rate.outputPlaceholder")
-                            }
-                          />
+                        <div className="flex gap-2">
+                          {/* 通貨セグメント */}
+                          <div className="flex gap-1 p-1 bg-muted/50 rounded-md shrink-0 h-fit">
+                            {(["usd", "jpy"] as const).map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => setEditRateCurrency(c)}
+                                className={`px-2.5 py-1 text-xs rounded transition-colors ${
+                                  editRateCurrency === c
+                                    ? "bg-background text-foreground shadow-sm font-medium"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {c === "usd" ? "USD" : "JPY"}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 flex-1">
+                            <Input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              value={editRateInput}
+                              onChange={(e) => setEditRateInput(e.target.value)}
+                              placeholder={
+                                editSuggestedRate
+                                  ? `${t("settings.models.rate.inputShort")}: ${editSuggestedRate.input}`
+                                  : t("settings.models.rate.inputPlaceholder")
+                              }
+                            />
+                            <Input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              value={editRateOutput}
+                              onChange={(e) => setEditRateOutput(e.target.value)}
+                              placeholder={
+                                editSuggestedRate
+                                  ? `${t("settings.models.rate.outputShort")}: ${editSuggestedRate.output}`
+                                  : t("settings.models.rate.outputPlaceholder")
+                              }
+                            />
+                          </div>
                         </div>
                         {editSuggestedRate && (
                           <div className="flex items-center justify-between gap-2 mt-1.5">
@@ -1646,12 +1692,14 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                               onClick={() => {
                                 setEditRateInput(String(editSuggestedRate.input));
                                 setEditRateOutput(String(editSuggestedRate.output));
+                                // 内蔵テーブルは USD ベース。
+                                setEditRateCurrency("usd");
                               }}
                               className="text-[11px] text-primary hover:text-primary/80 font-medium whitespace-nowrap"
                             >
                               {t("settings.models.rate.useKnown", {
-                                input: String(editSuggestedRate.input),
-                                output: String(editSuggestedRate.output),
+                                input: `$${editSuggestedRate.input}`,
+                                output: `$${editSuggestedRate.output}`,
                               })}
                             </button>
                           </div>

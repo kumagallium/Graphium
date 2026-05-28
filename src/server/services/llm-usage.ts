@@ -9,9 +9,9 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getServerMode, type TokenRate } from "../config/models.js";
+import { getServerMode, type TokenRate, type RateCurrency } from "../config/models.js";
 
-export type { TokenRate };
+export type { TokenRate, RateCurrency };
 
 /** 1 回の LLM 呼び出しの記録。 */
 export type AIUsageEvent = {
@@ -38,11 +38,16 @@ export type AIUsageEvent = {
   durationMs?: number;
   /** 記録時点のモデル単価（履歴を一貫させるため焼き込む） */
   rateSnapshot?: TokenRate;
-  /** 単価から計算したコスト（USD）。rateSnapshot 未設定なら undefined。 */
+  /** 単価から計算したコスト（rateSnapshot.currency 通貨）。rateSnapshot 未設定なら undefined。 */
+  cost?: number;
+  /** cost の通貨。"usd" | "jpy"。後方互換のため省略可（省略 = "usd"）。 */
+  costCurrency?: RateCurrency;
+  /** @deprecated 旧形式（v0.11 series）。新規ログには書かない。読み出し時に cost / costCurrency にマッピングする。 */
   costUsd?: number;
 };
 
-/** 月次サマリ（retention 後の集約形）。 */
+/** 月次サマリ（retention 後の集約形）。
+ *  通貨が混在しうるので costByCurrency で保持し、合計値は表示通貨に換算して出す。 */
 export type AIUsageMonthlySummary = {
   /** "2026-05" 形式 */
   month: string;
@@ -56,7 +61,10 @@ export type AIUsageMonthlySummary = {
   cacheWriteTokens: number;
   reasoningTokens: number;
   totalTokens: number;
-  costUsd: number;
+  /** 通貨別の合計コスト。例: { usd: 1.23, jpy: 184.5 } */
+  costByCurrency: Partial<Record<RateCurrency, number>>;
+  /** @deprecated 旧形式の合計コスト（USD）。後方互換のため読み出し時に costByCurrency.usd へマッピング。 */
+  costUsd?: number;
 };
 
 const RAW_RETENTION_DAYS = 90;
@@ -124,15 +132,16 @@ function writeSummary(rows: AIUsageMonthlySummary[]): void {
   inMemorySummary = rows;
 }
 
-/** 1 token あたりの単価（USD）に直してコストを計算する */
-function calcCost(event: Omit<AIUsageEvent, "costUsd">): number | undefined {
+/** 1M token あたり単価とトークン数から、rate の通貨でコストを計算する */
+function calcCost(event: Omit<AIUsageEvent, "cost" | "costCurrency" | "costUsd">): {
+  cost: number;
+  currency: RateCurrency;
+} | undefined {
   const rate = event.rateSnapshot;
   if (!rate) return undefined;
   const perMTok = (count: number, perM: number) => (count / 1_000_000) * perM;
   // cacheRead/Write はトークン数を inputTokens に含めるプロバイダーもあるため、
   // ここでは「個別レート指定があれば差分単価で再計算」のシンプルな扱いにする。
-  // 標準: input + output レートのみ。cacheRead/Write レートがあれば cacheReadTokens を
-  // input から差し引いて別レート適用。
   const cacheRead = event.cacheReadTokens ?? 0;
   const cacheWrite = event.cacheWriteTokens ?? 0;
   let inputBase = event.inputTokens - cacheRead - cacheWrite;
@@ -144,18 +153,24 @@ function calcCost(event: Omit<AIUsageEvent, "costUsd">): number | undefined {
   if (rate.cacheWrite !== undefined) cost += perMTok(cacheWrite, rate.cacheWrite);
   else cost += perMTok(cacheWrite, rate.input);
 
-  return cost;
+  return { cost, currency: rate.currency ?? "usd" };
 }
 
 /** 使用量イベントを 1 件記録する。失敗してもアプリは落とさない。 */
-export function recordUsage(event: Omit<AIUsageEvent, "costUsd">): void {
+export function recordUsage(
+  event: Omit<AIUsageEvent, "cost" | "costCurrency" | "costUsd">,
+): void {
   if (getServerMode() === "vercel") {
     // Vercel モードはファイル書き込み不可。将来 client への転送を実装する。
     return;
   }
   try {
-    const costUsd = calcCost(event);
-    const enriched: AIUsageEvent = { ...event, costUsd };
+    const calc = calcCost(event);
+    const enriched: AIUsageEvent = {
+      ...event,
+      cost: calc?.cost,
+      costCurrency: calc?.currency,
+    };
     const log = readLog();
     log.push(enriched);
     writeLog(log);
@@ -166,16 +181,28 @@ export function recordUsage(event: Omit<AIUsageEvent, "costUsd">): void {
   }
 }
 
-/** raw イベント一覧。古い順。 */
-export function loadUsageLog(): AIUsageEvent[] {
-  if (getServerMode() === "vercel") return [];
-  return [...readLog()];
+/** 旧形式 (costUsd のみ持つ) を新形式 (cost + costCurrency) に正規化する */
+function normalizeEvent(ev: AIUsageEvent): AIUsageEvent {
+  if (ev.cost !== undefined || ev.costUsd === undefined) return ev;
+  return { ...ev, cost: ev.costUsd, costCurrency: "usd" };
 }
 
-/** 月次サマリ一覧。 */
+function normalizeSummary(row: AIUsageMonthlySummary): AIUsageMonthlySummary {
+  if (row.costByCurrency) return row;
+  const cost = row.costUsd ?? 0;
+  return { ...row, costByCurrency: cost > 0 ? { usd: cost } : {} };
+}
+
+/** raw イベント一覧。古い順。旧形式は読み出し時に新形式へ正規化する。 */
+export function loadUsageLog(): AIUsageEvent[] {
+  if (getServerMode() === "vercel") return [];
+  return readLog().map(normalizeEvent);
+}
+
+/** 月次サマリ一覧。旧形式は読み出し時に新形式へ正規化する。 */
 export function loadUsageSummary(): AIUsageMonthlySummary[] {
   if (getServerMode() === "vercel") return [];
-  return [...readSummary()];
+  return readSummary().map(normalizeSummary);
 }
 
 function monthKey(iso: string): string {
@@ -186,10 +213,21 @@ function summaryRowKey(row: { month: string; feature: string; provider: string; 
   return `${row.month}|${row.feature}|${row.provider}|${row.modelId}`;
 }
 
+function addCost(
+  bucket: Partial<Record<RateCurrency, number>>,
+  amount: number | undefined,
+  currency: RateCurrency | undefined,
+): void {
+  if (!amount) return;
+  const c: RateCurrency = currency ?? "usd";
+  bucket[c] = (bucket[c] ?? 0) + amount;
+}
+
 /** raw events を月次サマリに集約する */
 function aggregate(events: AIUsageEvent[]): AIUsageMonthlySummary[] {
   const byKey = new Map<string, AIUsageMonthlySummary>();
-  for (const ev of events) {
+  for (const rawEv of events) {
+    const ev = normalizeEvent(rawEv);
     const key = summaryRowKey({
       month: monthKey(ev.ts),
       feature: ev.feature,
@@ -208,7 +246,7 @@ function aggregate(events: AIUsageEvent[]): AIUsageMonthlySummary[] {
       cacheWriteTokens: 0,
       reasoningTokens: 0,
       totalTokens: 0,
-      costUsd: 0,
+      costByCurrency: {},
     };
     row.callCount += 1;
     row.inputTokens += ev.inputTokens;
@@ -217,7 +255,7 @@ function aggregate(events: AIUsageEvent[]): AIUsageMonthlySummary[] {
     row.cacheWriteTokens += ev.cacheWriteTokens ?? 0;
     row.reasoningTokens += ev.reasoningTokens ?? 0;
     row.totalTokens += ev.totalTokens;
-    row.costUsd += ev.costUsd ?? 0;
+    addCost(row.costByCurrency, ev.cost, ev.costCurrency);
     byKey.set(key, row);
   }
   return Array.from(byKey.values());
@@ -228,23 +266,28 @@ function mergeSummaries(
   newRows: AIUsageMonthlySummary[],
 ): AIUsageMonthlySummary[] {
   const byKey = new Map<string, AIUsageMonthlySummary>();
-  for (const r of existing) byKey.set(summaryRowKey(r), r);
+  for (const r of existing) byKey.set(summaryRowKey(r), normalizeSummary(r));
   for (const r of newRows) {
     const key = summaryRowKey(r);
+    const cur = normalizeSummary(r);
     const prev = byKey.get(key);
     if (!prev) {
-      byKey.set(key, { ...r });
+      byKey.set(key, { ...cur });
     } else {
+      const mergedCost: Partial<Record<RateCurrency, number>> = { ...prev.costByCurrency };
+      for (const [c, v] of Object.entries(cur.costByCurrency) as [RateCurrency, number][]) {
+        mergedCost[c] = (mergedCost[c] ?? 0) + v;
+      }
       byKey.set(key, {
         ...prev,
-        callCount: prev.callCount + r.callCount,
-        inputTokens: prev.inputTokens + r.inputTokens,
-        outputTokens: prev.outputTokens + r.outputTokens,
-        cacheReadTokens: prev.cacheReadTokens + r.cacheReadTokens,
-        cacheWriteTokens: prev.cacheWriteTokens + r.cacheWriteTokens,
-        reasoningTokens: prev.reasoningTokens + r.reasoningTokens,
-        totalTokens: prev.totalTokens + r.totalTokens,
-        costUsd: prev.costUsd + r.costUsd,
+        callCount: prev.callCount + cur.callCount,
+        inputTokens: prev.inputTokens + cur.inputTokens,
+        outputTokens: prev.outputTokens + cur.outputTokens,
+        cacheReadTokens: prev.cacheReadTokens + cur.cacheReadTokens,
+        cacheWriteTokens: prev.cacheWriteTokens + cur.cacheWriteTokens,
+        reasoningTokens: prev.reasoningTokens + cur.reasoningTokens,
+        totalTokens: prev.totalTokens + cur.totalTokens,
+        costByCurrency: mergedCost,
       });
     }
   }

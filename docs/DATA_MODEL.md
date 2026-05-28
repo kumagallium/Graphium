@@ -912,15 +912,17 @@ keeps its own state under `data/` (dev) or
 
 | File | Purpose |
 |---|---|
-| `models.json` | Registered LLM models (`ModelConfig[]`). On Tauri builds API keys live in Keychain instead; `models.json` only stores metadata. |
+| `models.json` | Registered LLM models (`ModelConfig[]`). On Tauri builds API keys live in Keychain instead; `models.json` only stores metadata. The optional `rate` field carries pricing (`{ input, output, cacheRead?, cacheWrite?, currency: "usd" | "jpy" }`); USD is the default if `currency` is omitted. |
 | `profiles.json` | Agent profiles (system prompts). |
-| `ai-usage-log.json` | Raw AI usage events for the last 90 days. Each entry: `{ ts, feature, provider, modelId, modelConfigId?, inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens?, reasoningTokens?, totalTokens, durationMs?, rateSnapshot?, costUsd? }`. The `feature` field identifies the calling pipeline (`wiki.ingest`, `wiki.lint`, `agent.chat`, `prov.from-url`, `embedding`, …). |
-| `ai-usage-summary.json` | Monthly aggregates kept indefinitely. On server boot, events older than 90 days in `ai-usage-log.json` are folded into this file (`{ month: "YYYY-MM", feature, provider, modelId, callCount, inputTokens, outputTokens, …, costUsd }`) and removed from the raw log. |
+| `ai-usage-log.json` | Raw AI usage events for the last 90 days. Each entry: `{ ts, feature, provider, modelId, modelConfigId?, inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens?, reasoningTokens?, totalTokens, durationMs?, rateSnapshot?, cost?, costCurrency? }`. The `feature` field identifies the calling pipeline (`wiki.ingest`, `wiki.lint`, `agent.chat`, `prov.from-url`, `embedding`, …). The legacy `costUsd` field is still tolerated when reading older logs. |
+| `ai-usage-summary.json` | Monthly aggregates kept indefinitely. On server boot, events older than 90 days in `ai-usage-log.json` are folded into this file (`{ month: "YYYY-MM", feature, provider, modelId, callCount, inputTokens, outputTokens, …, costByCurrency }`) and removed from the raw log. `costByCurrency` is a partial map keyed by currency (`{ usd: 1.23, jpy: 184.5 }`) so USD-billed and JPY-billed models can coexist. |
 
-`rateSnapshot` and `costUsd` are populated when the calling model has a
-`rate` configured (Settings → AI → per-model Pricing). The snapshot is
-written at call time so price changes do not retroactively rewrite
-historical costs.
+`rateSnapshot`, `cost`, and `costCurrency` are populated when the
+calling model has a `rate` configured (Settings → AI → per-model
+Pricing). The snapshot is written at call time so price changes do
+not retroactively rewrite historical costs. The Usage tab converts to
+the user's chosen display currency at render time using the
+`displayCurrency` / `usdJpyRate` settings persisted in localStorage.
 
 ## 7. Shared storage and Library
 

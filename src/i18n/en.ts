@@ -975,6 +975,7 @@ export const en: Record<string, string> = {
   "settings.usage.chartTitle": "Tokens over time",
   "settings.usage.breakdown": "By feature",
   "settings.usage.modelsCount": "{count} models",
+  "settings.usage.usdJpyRateLabel": "1 USD = ¥",
 
   // ── 設定: About タブ ──
   "settings.tab.about": "About",

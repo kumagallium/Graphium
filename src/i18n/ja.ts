@@ -975,6 +975,7 @@ export const ja: Record<string, string> = {
   "settings.usage.chartTitle": "時系列のトークン",
   "settings.usage.breakdown": "機能別の内訳",
   "settings.usage.modelsCount": "{count} モデル",
+  "settings.usage.usdJpyRateLabel": "1 USD = ¥",
 
   "settings.tab.about": "アプリ情報",
   "settings.about.title": "アプリ情報",

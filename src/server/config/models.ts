@@ -17,9 +17,13 @@ import {
 
 export type ServerMode = "node" | "vercel";
 
-/** モデルの 1M トークンあたり単価（USD）。AI 使用量ダッシュボードのコスト計算に使う。 */
+export type RateCurrency = "usd" | "jpy";
+
+/** モデルの 1M トークンあたり単価。AI 使用量ダッシュボードのコスト計算に使う。
+ *  currency を明示することで、ドル建て（Anthropic / OpenAI）と円建て（さくら AI 等）の
+ *  モデルを混在させても、表示通貨に換算して合計を出せる。 */
 export type TokenRate = {
-  /** 入力トークンの単価（USD / 1M tokens） */
+  /** 入力トークンの単価（1M tokens あたり） */
   input: number;
   /** 出力トークンの単価 */
   output: number;
@@ -27,6 +31,8 @@ export type TokenRate = {
   cacheRead?: number;
   /** prompt caching の書き込み単価。未設定なら input と同じ扱い */
   cacheWrite?: number;
+  /** rate の通貨。未指定なら "usd" 扱い */
+  currency?: RateCurrency;
 };
 
 export type ModelConfig = {

@@ -9,6 +9,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, AlertCircle, ChevronRight } from "lucide-react";
 import { apiBase } from "../../lib/platform";
 import { useLocale } from "../../i18n";
+import { loadSettings, saveSettings, type LLMRateCurrency } from "./store";
+
+type RateCurrency = LLMRateCurrency;
 
 type AIUsageEvent = {
   ts: string;
@@ -23,6 +26,10 @@ type AIUsageEvent = {
   reasoningTokens?: number;
   totalTokens: number;
   durationMs?: number;
+  /** 計算済みコスト（記録時の通貨）。サーバーで cost/costCurrency or costUsd のどちらかが入る */
+  cost?: number;
+  costCurrency?: RateCurrency;
+  /** @deprecated 旧形式 (v0.11) */
   costUsd?: number;
 };
 
@@ -38,8 +45,57 @@ type AIUsageMonthlySummary = {
   cacheWriteTokens: number;
   reasoningTokens: number;
   totalTokens: number;
-  costUsd: number;
+  /** 通貨別の合計コスト */
+  costByCurrency?: Partial<Record<RateCurrency, number>>;
+  /** @deprecated 旧形式 */
+  costUsd?: number;
 };
+
+/** USD ⇔ JPY 換算。同じ通貨ならそのまま返す。 */
+function convertCost(amount: number, from: RateCurrency, to: RateCurrency, usdJpy: number): number {
+  if (from === to) return amount;
+  if (from === "usd" && to === "jpy") return amount * usdJpy;
+  if (from === "jpy" && to === "usd") return amount / usdJpy;
+  return amount;
+}
+
+/** イベントから表示通貨でのコストを取り出す。記録時の cost / costCurrency / 旧 costUsd を吸収する。 */
+function eventCostInDisplayCurrency(
+  ev: { cost?: number; costCurrency?: RateCurrency; costUsd?: number },
+  displayCurrency: RateCurrency,
+  usdJpy: number,
+): number {
+  let amount: number | undefined;
+  let from: RateCurrency = "usd";
+  if (ev.cost !== undefined) {
+    amount = ev.cost;
+    from = ev.costCurrency ?? "usd";
+  } else if (ev.costUsd !== undefined) {
+    amount = ev.costUsd;
+    from = "usd";
+  }
+  if (amount === undefined) return 0;
+  return convertCost(amount, from, displayCurrency, usdJpy);
+}
+
+/** 月次サマリから表示通貨でのコストを取り出す。通貨混在を吸収する。 */
+function summaryCostInDisplayCurrency(
+  s: { costByCurrency?: Partial<Record<RateCurrency, number>>; costUsd?: number },
+  displayCurrency: RateCurrency,
+  usdJpy: number,
+): number {
+  if (s.costByCurrency) {
+    let sum = 0;
+    for (const [c, v] of Object.entries(s.costByCurrency) as [RateCurrency, number][]) {
+      sum += convertCost(v, c, displayCurrency, usdJpy);
+    }
+    return sum;
+  }
+  if (s.costUsd !== undefined) {
+    return convertCost(s.costUsd, "usd", displayCurrency, usdJpy);
+  }
+  return 0;
+}
 
 type Granularity = "day" | "month" | "year";
 
@@ -132,6 +188,8 @@ function buildBuckets(
   raw: AIUsageEvent[],
   summary: AIUsageMonthlySummary[],
   gran: Granularity,
+  displayCurrency: RateCurrency,
+  usdJpy: number,
   now: Date = new Date(),
 ): Bucket[] {
   const size = RANGE_SIZE[gran];
@@ -156,12 +214,13 @@ function buildBuckets(
     const k = bucketKey(ev.ts, gran);
     const b = buckets.get(k);
     if (!b) continue;
+    const c = eventCostInDisplayCurrency(ev, displayCurrency, usdJpy);
     const prev = b.byFeature.get(ev.feature) ?? { tokens: 0, cost: 0 };
     prev.tokens += ev.totalTokens;
-    prev.cost += ev.costUsd ?? 0;
+    prev.cost += c;
     b.byFeature.set(ev.feature, prev);
     b.totalTokens += ev.totalTokens;
-    b.totalCost += ev.costUsd ?? 0;
+    b.totalCost += c;
   }
 
   // 月次サマリ（90 日より古い分）も集計
@@ -171,12 +230,13 @@ function buildBuckets(
       const k = gran === "month" ? s.month : s.month.slice(0, 4);
       const b = buckets.get(k);
       if (!b) continue;
+      const c = summaryCostInDisplayCurrency(s, displayCurrency, usdJpy);
       const prev = b.byFeature.get(s.feature) ?? { tokens: 0, cost: 0 };
       prev.tokens += s.totalTokens;
-      prev.cost += s.costUsd;
+      prev.cost += c;
       b.byFeature.set(s.feature, prev);
       b.totalTokens += s.totalTokens;
-      b.totalCost += s.costUsd;
+      b.totalCost += c;
     }
   }
 
@@ -198,6 +258,8 @@ function buildFeatureModelBreakdown(
   summary: AIUsageMonthlySummary[],
   buckets: Bucket[],
   gran: Granularity,
+  displayCurrency: RateCurrency,
+  usdJpy: number,
 ): Map<string, ModelLine[]> {
   const inRange = new Set(buckets.map((b) => b.key));
   // feature -> modelId -> { tokens, cost }
@@ -217,13 +279,23 @@ function buildFeatureModelBreakdown(
 
   for (const ev of raw) {
     if (!inRange.has(bucketKey(ev.ts, gran))) continue;
-    add(ev.feature, ev.modelId || "(unknown)", ev.totalTokens, ev.costUsd ?? 0);
+    add(
+      ev.feature,
+      ev.modelId || "(unknown)",
+      ev.totalTokens,
+      eventCostInDisplayCurrency(ev, displayCurrency, usdJpy),
+    );
   }
   if (gran !== "day") {
     for (const s of summary) {
       const k = gran === "month" ? s.month : s.month.slice(0, 4);
       if (!inRange.has(k)) continue;
-      add(s.feature, s.modelId || "(unknown)", s.totalTokens, s.costUsd);
+      add(
+        s.feature,
+        s.modelId || "(unknown)",
+        s.totalTokens,
+        summaryCostInDisplayCurrency(s, displayCurrency, usdJpy),
+      );
     }
   }
 
@@ -241,8 +313,12 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function formatCost(n: number): string {
+function formatCost(n: number, currency: RateCurrency = "usd"): string {
   if (n === 0) return "—";
+  if (currency === "jpy") {
+    if (n < 1) return "<¥1";
+    return `¥${Math.round(n).toLocaleString()}`;
+  }
   if (n < 0.01) return "<$0.01";
   return `$${n.toFixed(2)}`;
 }
@@ -255,6 +331,34 @@ export function UsageTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"node" | "vercel">("node");
+
+  // 表示通貨と換算レート（settings 永続化、初回ロードで読み込み）
+  const [displayCurrency, setDisplayCurrencyState] = useState<RateCurrency>("usd");
+  const [usdJpyRate, setUsdJpyRateState] = useState<number>(150);
+  const [usdJpyInput, setUsdJpyInput] = useState<string>("150");
+
+  useEffect(() => {
+    const s = loadSettings();
+    setDisplayCurrencyState(s.displayCurrency);
+    setUsdJpyRateState(s.usdJpyRate);
+    setUsdJpyInput(String(s.usdJpyRate));
+  }, []);
+
+  const persistDisplayCurrency = useCallback((c: RateCurrency) => {
+    setDisplayCurrencyState(c);
+    saveSettings({ ...loadSettings(), displayCurrency: c });
+  }, []);
+
+  const commitUsdJpyRate = useCallback(() => {
+    const n = Number(usdJpyInput);
+    if (Number.isFinite(n) && n > 0) {
+      setUsdJpyRateState(n);
+      saveSettings({ ...loadSettings(), usdJpyRate: n });
+    } else {
+      // 不正値は元に戻す
+      setUsdJpyInput(String(usdJpyRate));
+    }
+  }, [usdJpyInput, usdJpyRate]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -281,7 +385,10 @@ export function UsageTab() {
     void loadData();
   }, [loadData]);
 
-  const buckets = useMemo(() => buildBuckets(raw, summary, granularity), [raw, summary, granularity]);
+  const buckets = useMemo(
+    () => buildBuckets(raw, summary, granularity, displayCurrency, usdJpyRate),
+    [raw, summary, granularity, displayCurrency, usdJpyRate],
+  );
 
   const features = useMemo(() => {
     const set = new Set<string>();
@@ -295,8 +402,8 @@ export function UsageTab() {
 
   // feature -> modelId 別 breakdown。アコーディオン展開時のサブ行で使う。
   const featureModelBreakdown = useMemo(
-    () => buildFeatureModelBreakdown(raw, summary, buckets, granularity),
-    [raw, summary, buckets, granularity],
+    () => buildFeatureModelBreakdown(raw, summary, buckets, granularity, displayCurrency, usdJpyRate),
+    [raw, summary, buckets, granularity, displayCurrency, usdJpyRate],
   );
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
   const toggleFeature = useCallback((f: string) => {
@@ -332,21 +439,59 @@ export function UsageTab() {
         </div>
       )}
 
-      {/* 粒度切り替え */}
-      <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
-        {(["day", "month", "year"] as Granularity[]).map((g) => (
-          <button
-            key={g}
-            onClick={() => setGranularity(g)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              granularity === g
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t(`settings.usage.granularity.${g}`)}
-          </button>
-        ))}
+      {/* 粒度切り替え + 表示通貨 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
+          {(["day", "month", "year"] as Granularity[]).map((g) => (
+            <button
+              key={g}
+              onClick={() => setGranularity(g)}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                granularity === g
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t(`settings.usage.granularity.${g}`)}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
+          {(["usd", "jpy"] as RateCurrency[]).map((c) => (
+            <button
+              key={c}
+              onClick={() => persistDisplayCurrency(c)}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                displayCurrency === c
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {c === "usd" ? "USD" : "JPY"}
+            </button>
+          ))}
+        </div>
+
+        {/* 換算レート inline 編集。USD↔JPY 換算が発生する時だけ意味がある。 */}
+        <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          {t("settings.usage.usdJpyRateLabel")}
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={usdJpyInput}
+            onChange={(e) => setUsdJpyInput(e.target.value)}
+            onBlur={commitUsdJpyRate}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitUsdJpyRate();
+              }
+            }}
+            className="w-16 px-1.5 py-0.5 text-xs rounded border border-border bg-background tabular-nums text-right"
+          />
+        </label>
       </div>
 
       {/* 合計 */}
@@ -360,7 +505,7 @@ export function UsageTab() {
         <div className="rounded-md border border-border p-3">
           <div className="text-[11px] text-muted-foreground">{t("settings.usage.totalCost")}</div>
           <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
-            {formatCost(grandTotalCost)}
+            {formatCost(grandTotalCost, displayCurrency)}
           </div>
         </div>
       </div>
@@ -393,7 +538,7 @@ export function UsageTab() {
                   <div
                     key={b.key}
                     className="flex-1 flex flex-col justify-end min-w-0"
-                    title={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost)}`}
+                    title={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost, displayCurrency)}`}
                   >
                     {/* 内側ラッパで「このバケットの相対高さ」を確定させる。
                      *  外側 flex-1 は h-full（h-32 と同じ）に伸び、内側がその中で
@@ -505,7 +650,7 @@ export function UsageTab() {
                         {formatTokens(tokens)}
                       </span>
                       <span className="tabular-nums text-muted-foreground w-14 text-right">
-                        {formatCost(cost)}
+                        {formatCost(cost, displayCurrency)}
                       </span>
                     </button>
                     {isExpanded && hasMultipleModels && (
@@ -527,7 +672,7 @@ export function UsageTab() {
                                 {formatTokens(m.tokens)}
                               </span>
                               <span className="tabular-nums w-14 text-right">
-                                {formatCost(m.cost)}
+                                {formatCost(m.cost, displayCurrency)}
                               </span>
                             </div>
                           );

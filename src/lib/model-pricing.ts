@@ -24,6 +24,10 @@ export type PricingEntry = {
   cacheRead?: number;
   /** prompt caching の書き込み単価。未設定なら input と同じ扱い */
   cacheWrite?: number;
+  /** 内蔵テーブルは USD 固定（プロバイダー公表価格はドル建てが多いため）。
+   *  円建てモデル（さくら AI 等）はテーブルに含めず、ユーザーが直接 JPY 値を入力する。
+   *  読み出し側は currency が省略されていれば "usd" として扱う。 */
+  currency?: "usd";
 };
 
 type Rule = {

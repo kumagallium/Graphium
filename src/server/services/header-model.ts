@@ -30,6 +30,7 @@ export function resolveModelConfig(
           output?: number;
           cacheRead?: number;
           cacheWrite?: number;
+          currency?: "usd" | "jpy";
         };
       };
       const rate =
@@ -41,6 +42,8 @@ export function resolveModelConfig(
               output: parsed.rate.output,
               cacheRead: parsed.rate.cacheRead,
               cacheWrite: parsed.rate.cacheWrite,
+              currency:
+                parsed.rate.currency === "jpy" ? ("jpy" as const) : ("usd" as const),
             }
           : undefined;
       return {

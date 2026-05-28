@@ -87,12 +87,14 @@ export type ModelInfo = {
   api_base: string;
   supports_function_calling: boolean;
   id: string;
-  /** トークン単価（USD / 1M tokens）。AI 使用量ダッシュボードのコスト計算用 */
+  /** トークン単価（1M tokens あたり）。AI 使用量ダッシュボードのコスト計算用 */
   rate?: {
     input: number;
     output: number;
     cache_read?: number;
     cache_write?: number;
+    /** 単価の通貨。未指定なら "usd" 扱い */
+    currency?: "usd" | "jpy";
   };
 };
 

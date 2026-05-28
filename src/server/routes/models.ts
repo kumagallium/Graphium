@@ -29,6 +29,7 @@ app.get("/", (c) => {
             output: m.rate.output,
             cache_read: m.rate.cacheRead,
             cache_write: m.rate.cacheWrite,
+            currency: m.rate.currency ?? "usd",
           }
         : undefined,
     })),
@@ -89,6 +90,7 @@ app.put("/:id", async (c) => {
       output?: number;
       cache_read?: number;
       cache_write?: number;
+      currency?: "usd" | "jpy";
     } | null;
   }>();
 
@@ -102,6 +104,7 @@ app.put("/:id", async (c) => {
       output: body.rate.output,
       cacheRead: body.rate.cache_read,
       cacheWrite: body.rate.cache_write,
+      currency: body.rate.currency === "jpy" ? "jpy" : "usd",
     };
   }
 
