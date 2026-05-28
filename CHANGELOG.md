@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.12.0](https://github.com/kumagallium/Graphium/compare/v0.11.1...v0.12.0) - 2026-05-28
+- [docs] Cmd-K Composer 型への移行に伴う docs 更新 by @kumagallium in https://github.com/kumagallium/Graphium/pull/372
+- refactor(asset-browser): image-first gallery cards with hover-only metadata by @kumagallium in https://github.com/kumagallium/Graphium/pull/377
+- [feat] AI usage dashboard with per-model pricing by @kumagallium in https://github.com/kumagallium/Graphium/pull/375
+
 ## [v0.11.1](https://github.com/kumagallium/Graphium/compare/v0.11.0...v0.11.1) - 2026-05-28
 - fix(ci): grant actions:write to tauri-build for Pages deploy trigger by @kumagallium in https://github.com/kumagallium/Graphium/pull/368
 - feat: add About tab with version display and manual update check by @kumagallium in https://github.com/kumagallium/Graphium/pull/370
