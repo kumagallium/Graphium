@@ -4,6 +4,7 @@
 import { generateText, stepCountIs, type ModelMessage, type LanguageModel } from "ai";
 import type { ModelConfig } from "../config/models.js";
 import { recordUsage, extractTokenFields } from "./llm-usage.js";
+import { runTextToolsLoop } from "./agent-loop-text-tools.js";
 
 export type AgentRunParams = {
   model: LanguageModel;
@@ -41,9 +42,22 @@ export type ToolCallRecord = {
 
 /**
  * エージェントループを実行して最終テキストを返す
+ *
+ * provider が "openai-compatible" でかつツールが渡されている場合は、ネイティブの function calling
+ * が endpoint 側で実装されていないモデル（sakura ai engine / gpt-oss-120b など）に対応するため、
+ * tools 定義を system prompt に埋め込んで `<tool_call>...</tool_call>` ベースのテキスト応答を
+ * パースする fallback ループに切り替える。
  */
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
   const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig } = params;
+
+  const useTextToolsLoop =
+    modelConfig?.provider === "openai-compatible" &&
+    !!tools &&
+    Object.keys(tools).length > 0;
+  if (useTextToolsLoop) {
+    return runTextToolsLoop(params);
+  }
 
   const startedAt = Date.now();
   const result = await generateText({

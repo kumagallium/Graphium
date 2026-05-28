@@ -74,7 +74,13 @@ app.post("/run", async (c) => {
   }
 
   // 構造化出力（コンテキストラベル）指示
-  systemPrompt += buildLabeledOutputInstruction(body.language || "en");
+  // OpenAI 互換系（gpt-oss-120b 等）はネイティブ tool calling 非対応で system prompt に
+  // tool 定義を埋め込む fallback ループを使うため、長大な PROV ラベル指示と競合してツール
+  // 呼び出しが弱まる。Ask モードでは PROV ラベルを生成する必然性も薄いので抑制する。
+  const skipLabeledOutput = modelConfig.provider === "openai-compatible";
+  if (!skipLabeledOutput) {
+    systemPrompt += buildLabeledOutputInstruction(body.language || "en");
+  }
 
   // Skill をシステムプロンプトに注入
   const skills = filterSkills(allServers);
