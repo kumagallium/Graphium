@@ -23,6 +23,14 @@ app.get("/", (c) => {
       api_base: m.apiBase ?? "",
       supports_function_calling: true,
       id: m.id,
+      rate: m.rate
+        ? {
+            input: m.rate.input,
+            output: m.rate.output,
+            cache_read: m.rate.cacheRead,
+            cache_write: m.rate.cacheWrite,
+          }
+        : undefined,
     })),
     default: defaultModel?.name ?? "",
   });
@@ -76,7 +84,26 @@ app.put("/:id", async (c) => {
     model_id?: string;
     api_key?: string;
     api_base?: string;
+    rate?: {
+      input?: number;
+      output?: number;
+      cache_read?: number;
+      cache_write?: number;
+    } | null;
   }>();
+
+  // rate: null で明示的にクリア、未指定なら更新しない
+  let rateUpdate: Parameters<typeof updateModel>[1]["rate"] | undefined = undefined;
+  if (body.rate === null) {
+    rateUpdate = undefined; // updateModel 側で「触らない」になる扱い
+  } else if (body.rate && typeof body.rate.input === "number" && typeof body.rate.output === "number") {
+    rateUpdate = {
+      input: body.rate.input,
+      output: body.rate.output,
+      cacheRead: body.rate.cache_read,
+      cacheWrite: body.rate.cache_write,
+    };
+  }
 
   const updated = updateModel(id, {
     ...(body.model_name ? { name: body.model_name } : {}),
@@ -84,6 +111,7 @@ app.put("/:id", async (c) => {
     ...(body.model_id ? { modelId: body.model_id } : {}),
     ...(body.api_key ? { apiKey: body.api_key } : {}),
     ...(body.api_base !== undefined ? { apiBase: body.api_base || null } : {}),
+    ...(rateUpdate ? { rate: rateUpdate } : {}),
   });
 
   if (!updated) {

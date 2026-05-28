@@ -97,6 +97,8 @@ app.post("/ingest", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "wiki.ingest",
+      modelConfig,
     });
 
     const wikis = parseIngesterOutput(result.message);
@@ -206,6 +208,8 @@ app.post("/lint", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "wiki.lint",
+      modelConfig,
     });
 
     const llmIssues = parseLinterOutput(result.message);
@@ -304,6 +308,8 @@ app.post("/rewrite", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "wiki.rewrite",
+      modelConfig,
     });
 
     const rewritten = parseRewriterOutput(result.message);
@@ -358,6 +364,8 @@ app.post("/cross-update", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "wiki.cross-update",
+      modelConfig,
     });
 
     const proposals = parseCrossUpdateOutput(result.message);
@@ -404,6 +412,8 @@ app.post("/atomize", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "wiki.atomize",
+      modelConfig,
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
     // Phase η: source Claim の epistemicStatus も parser に渡し、lowest-status inheritance を強制する。

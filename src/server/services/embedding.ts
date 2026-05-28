@@ -2,10 +2,12 @@
 // Vercel AI SDK でテキストの embedding ベクトルを生成する
 
 import type { ModelConfig } from "../config/models.js";
+import { recordUsage } from "./llm-usage.js";
 
 export type EmbeddingResult = {
   vectors: number[][];
   modelVersion: string;
+  tokens?: number;
 };
 
 /**
@@ -49,13 +51,30 @@ export async function generateEmbeddings(
     );
   }
 
+  const startedAt = Date.now();
   const result = await embedMany({
     model: embeddingModel,
     values: texts,
+  });
+  const durationMs = Date.now() - startedAt;
+
+  const tokens = result.usage?.tokens ?? 0;
+  recordUsage({
+    ts: new Date().toISOString(),
+    feature: "embedding",
+    provider: config.provider,
+    modelId: embeddingModelId,
+    modelConfigId: config.id,
+    inputTokens: tokens,
+    outputTokens: 0,
+    totalTokens: tokens,
+    durationMs,
+    rateSnapshot: config.rate,
   });
 
   return {
     vectors: result.embeddings,
     modelVersion: embeddingModelId,
+    tokens,
   };
 }

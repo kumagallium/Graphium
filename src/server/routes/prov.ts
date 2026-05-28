@@ -83,6 +83,8 @@ app.post("/ingest-url", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "prov.from-url",
+      modelConfig,
     });
 
     const parsed: ProvIngesterOutput = parseProvIngesterOutput(result.message);
@@ -160,6 +162,8 @@ app.post("/ingest-pdf", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "prov.from-pdf",
+      modelConfig,
     });
 
     const parsed: ProvIngesterOutput = parseProvIngesterOutput(result.message);

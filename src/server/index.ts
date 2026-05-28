@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { setDataDir as setModelsDataDir } from "./config/models.js";
 import { setDataDir as setProfilesDataDir } from "./config/profiles.js";
+import { setUsageDataDir, retentionSweep } from "./services/llm-usage.js";
 import { setSidecarIdentity } from "./routes/health.js";
 import { createApp } from "./app.js";
 
@@ -56,8 +57,16 @@ bootLog(`dataDir=${dataDir}`);
 console.log(`[server] Data directory: ${dataDir}`);
 setModelsDataDir(dataDir);
 setProfilesDataDir(dataDir);
+setUsageDataDir(dataDir);
 setSidecarIdentity({ pid: process.pid, dataDir });
 bootLog("data dir config wired, creating app");
+
+// 起動時に 90 日より古い raw event を月次サマリに集約する
+try {
+  retentionSweep();
+} catch (e) {
+  bootLog(`retentionSweep failed: ${e instanceof Error ? e.message : String(e)}`);
+}
 
 const app = createApp({ mode: "node" });
 bootLog("app created");
