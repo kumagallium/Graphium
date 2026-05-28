@@ -53,6 +53,7 @@ import {
   validateAuthorIdentity,
 } from "../identity";
 import { UsageTab } from "./UsageTab";
+import { lookupModelPrice, type PricingEntry } from "../../lib/model-pricing";
 import {
   getSharedRoot,
   setSharedRoot,
@@ -306,6 +307,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   // 単価入力。空文字なら「未設定」扱い（コスト計算スキップ）。
   const [editRateInput, setEditRateInput] = useState("");
   const [editRateOutput, setEditRateOutput] = useState("");
+  // 既知モデルの参考価格。プロバイダー API では取れないので、内蔵テーブルから引く。
+  const [editSuggestedRate, setEditSuggestedRate] = useState<PricingEntry | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
   // 保存
@@ -783,6 +786,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setEditApiBase(m.api_base);
     setEditRateInput(m.rate ? String(m.rate.input) : "");
     setEditRateOutput(m.rate ? String(m.rate.output) : "");
+    setEditSuggestedRate(lookupModelPrice(m.provider, m.model_id));
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
@@ -871,7 +875,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
       </ModalHeader>
 
       {/* タブ */}
-      <div className="flex border-b border-border px-6">
+      <div
+        className={`flex border-b border-border px-6 ${
+          tab === "grounding" || tab === "usage" ? "max-w-3xl" : "max-w-2xl"
+        }`}
+      >
         {(["display", "storage", "ai", "labels", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
@@ -898,9 +906,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         })}
       </div>
 
-      {/* Grounding KB タブは KB entry の table 表示で行が長いので、他のタブより少し広く取る */}
+      {/* タブ列の自然幅とボディの max-w が乖離すると右に余白が見える。タブ列に合わせて
+       *  全タブで max-w-2xl を基準に、グラフを含む Grounding KB / Usage は max-w-3xl。 */}
       <ModalBody
-        className={`w-full min-w-[460px] ${tab === "grounding" ? "max-w-3xl" : "max-w-lg"}`}
+        className={`w-full min-w-[460px] ${tab === "grounding" || tab === "usage" ? "max-w-3xl" : "max-w-2xl"}`}
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
@@ -1601,7 +1610,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                             min="0"
                             value={editRateInput}
                             onChange={(e) => setEditRateInput(e.target.value)}
-                            placeholder={t("settings.models.rate.inputPlaceholder")}
+                            placeholder={
+                              editSuggestedRate
+                                ? `${t("settings.models.rate.inputShort")}: ${editSuggestedRate.input}`
+                                : t("settings.models.rate.inputPlaceholder")
+                            }
                           />
                           <Input
                             type="number"
@@ -1609,9 +1622,33 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                             min="0"
                             value={editRateOutput}
                             onChange={(e) => setEditRateOutput(e.target.value)}
-                            placeholder={t("settings.models.rate.outputPlaceholder")}
+                            placeholder={
+                              editSuggestedRate
+                                ? `${t("settings.models.rate.outputShort")}: ${editSuggestedRate.output}`
+                                : t("settings.models.rate.outputPlaceholder")
+                            }
                           />
                         </div>
+                        {editSuggestedRate && (
+                          <div className="flex items-center justify-between gap-2 mt-1.5">
+                            <span className="text-[11px] text-muted-foreground">
+                              {t("settings.models.rate.knownNote")}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditRateInput(String(editSuggestedRate.input));
+                                setEditRateOutput(String(editSuggestedRate.output));
+                              }}
+                              className="text-[11px] text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                            >
+                              {t("settings.models.rate.useKnown", {
+                                input: String(editSuggestedRate.input),
+                                output: String(editSuggestedRate.output),
+                              })}
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2 justify-end">
                         <button onClick={() => setEditingId(null)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">{t("common.cancel")}</button>
@@ -2081,7 +2118,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         {tab === "about" && <AboutTab />}
       </ModalBody>
 
-      <ModalFooter>
+      <ModalFooter
+        className={tab === "grounding" || tab === "usage" ? "max-w-3xl" : "max-w-2xl"}
+      >
         <Button variant="ghost" size="sm" onClick={onClose}>
           {t("common.cancel")}
         </Button>

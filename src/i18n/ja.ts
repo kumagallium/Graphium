@@ -496,6 +496,10 @@ export const ja: Record<string, string> = {
   "settings.models.rate.hint": "(USD / 1M tokens, 任意)",
   "settings.models.rate.inputPlaceholder": "入力 例: 3.00",
   "settings.models.rate.outputPlaceholder": "出力 例: 15.00",
+  "settings.models.rate.inputShort": "入力",
+  "settings.models.rate.outputShort": "出力",
+  "settings.models.rate.knownNote": "このモデルの参考価格（執筆時点）。",
+  "settings.models.rate.useKnown": "{input} / {output} を使う",
   "settings.models.delete": "削除",
   "settings.models.confirmDelete": "削除しますか？",
   // ── モデル追加フォーム ──

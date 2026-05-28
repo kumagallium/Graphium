@@ -121,6 +121,13 @@ const RANGE_SIZE: Record<Granularity, number> = {
   year: 5,
 };
 
+/** 横軸ラベルの間引き間隔。day は 14 件並ぶと "05-28" が潰れるので 2 件おきに表示する。 */
+const LABEL_STRIDE: Record<Granularity, number> = {
+  day: 2,
+  month: 1,
+  year: 1,
+};
+
 function buildBuckets(
   raw: AIUsageEvent[],
   summary: AIUsageMonthlySummary[],
@@ -340,14 +347,19 @@ export function UsageTab() {
               })}
             </div>
             <div className="flex gap-1 mt-1">
-              {buckets.map((b) => (
-                <div
-                  key={b.key}
-                  className="flex-1 text-center text-[10px] text-muted-foreground tabular-nums truncate"
-                >
-                  {b.label}
-                </div>
-              ))}
+              {buckets.map((b, i) => {
+                // 間引き: 末尾を必ず表示しつつ、stride で揃える
+                const stride = LABEL_STRIDE[granularity];
+                const show = (buckets.length - 1 - i) % stride === 0;
+                return (
+                  <div
+                    key={b.key}
+                    className="flex-1 text-center text-[10px] text-muted-foreground tabular-nums whitespace-nowrap"
+                  >
+                    {show ? b.label : ""}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

@@ -498,6 +498,10 @@ export const en: Record<string, string> = {
   "settings.models.rate.hint": "(USD per 1M tokens, optional)",
   "settings.models.rate.inputPlaceholder": "input e.g. 3.00",
   "settings.models.rate.outputPlaceholder": "output e.g. 15.00",
+  "settings.models.rate.inputShort": "input",
+  "settings.models.rate.outputShort": "output",
+  "settings.models.rate.knownNote": "Reference price for this model (as of writing).",
+  "settings.models.rate.useKnown": "Use {input} / {output}",
   // ── モデル追加フォーム ──
   "settings.addModel.title": "Add Model",
   "settings.addModel.provider": "Provider",
