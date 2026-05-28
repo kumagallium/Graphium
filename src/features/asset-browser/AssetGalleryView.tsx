@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -568,6 +568,39 @@ export function AssetGalleryView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+
+  // ⋯ ハンバーガーメニュー（Documents タブ用）
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  // 単一素材のダウンロード（共通ヘルパー）
+  const downloadEntry = useCallback(async (entry: MediaIndexEntry) => {
+    if (entry.type === "url") return;
+    const provider = getActiveProvider();
+    const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+    const blobUrl = await provider.getMediaBlobUrl(fileId);
+    const res = await fetch(blobUrl);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = entry.name || "download";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }, []);
 
   const acceptByType: Record<MediaType, string> = {
     image: "image/*",
@@ -733,6 +766,31 @@ export function AssetGalleryView({
     setSelectedIds(new Set());
   }, [filtered, selectedIds, onCreateProvNote]);
 
+  // 一括ダウンロード: 選択中の素材を順次保存（URL ブックマークは除外）
+  const downloadableSelectedCount = useMemo(
+    () =>
+      filtered.filter((e) => selectedIds.has(e.fileId) && e.type !== "url").length,
+    [filtered, selectedIds],
+  );
+  const handleBulkDownload = useCallback(async () => {
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId) && e.type !== "url");
+    if (targets.length === 0) return;
+    setBulkDownloading(true);
+    try {
+      for (const entry of targets) {
+        try {
+          await downloadEntry(entry);
+        } catch (err) {
+          console.error("[asset-gallery] ダウンロード失敗:", entry.name, err);
+        }
+        // 連続するダウンロードプロンプトが抑制されないよう少し待つ
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } finally {
+      setBulkDownloading(false);
+    }
+  }, [downloadEntry, filtered, selectedIds]);
+
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
@@ -803,27 +861,58 @@ export function AssetGalleryView({
           </button>
         )}
         {mediaType === "document" && (
-          <div className="ml-auto flex items-center gap-2">
-            {onImportDocx && (
-              <button
-                onClick={() => docxInputRef.current?.click()}
-                disabled={importing || uploading}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
-              >
-                <Plus size={12} />
-                {importing ? t("asset.importing") : t("asset.importDocx")}
-              </button>
-            )}
-            {onUploadMedia && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importing || uploading}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-60"
-                title={t("asset.uploadPdfHint")}
-              >
-                <Plus size={12} />
-                {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
-              </button>
+          <div className="ml-auto relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              disabled={importing || uploading}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              title={t("common.menu")}
+              aria-label={t("common.menu")}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+                {onImportDocx && (
+                  <button
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                    onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
+                    disabled={importing || uploading}
+                  >
+                    <Plus size={14} />
+                    {importing ? t("asset.importing") : t("asset.importDocx")}
+                  </button>
+                )}
+                {onUploadMedia && (
+                  <button
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                    onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
+                    disabled={importing || uploading}
+                    title={t("asset.uploadPdfHint")}
+                  >
+                    <Plus size={14} />
+                    {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
+                  </button>
+                )}
+                <div className="my-1 border-t border-border" />
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed"
+                  onClick={() => { setMenuOpen(false); void handleBulkDownload(); }}
+                  disabled={downloadableSelectedCount === 0 || bulkDownloading}
+                  title={
+                    downloadableSelectedCount === 0
+                      ? t("asset.downloadSelectedHint")
+                      : undefined
+                  }
+                >
+                  <Download size={14} />
+                  {bulkDownloading
+                    ? t("asset.downloading")
+                    : downloadableSelectedCount > 0
+                      ? t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })
+                      : t("asset.downloadSelected")}
+                </button>
+              </div>
             )}
             <input
               ref={docxInputRef}
@@ -1019,6 +1108,19 @@ export function AssetGalleryView({
               >
                 <Bot size={12} />
                 {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {downloadableSelectedCount > 0 && (
+              <button
+                onClick={() => void handleBulkDownload()}
+                disabled={bulkDownloading}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                title={t("asset.downloadHint")}
+              >
+                <Download size={12} />
+                {bulkDownloading
+                  ? t("asset.downloading")
+                  : t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })}
               </button>
             )}
             <button
