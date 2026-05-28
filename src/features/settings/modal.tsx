@@ -318,6 +318,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const isWebMode = !isTauri();
 
   // LLMModelConfig → ModelInfo 変換（Web モード用）
+  // rate を落とすと handleStartEdit で既存値が読み出せず「保存しても反映されない」ように見えるため、
+  // localStorage 側の camelCase → ModelInfo 側の snake_case に変換して必ず引き継ぐ。
   const toModelInfo = (m: LLMModelConfig): ModelInfo => ({
     name: m.name,
     provider: m.provider,
@@ -325,6 +327,14 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     api_base: m.apiBase ?? "",
     supports_function_calling: true,
     id: m.id,
+    rate: m.rate
+      ? {
+          input: m.rate.input,
+          output: m.rate.output,
+          cache_read: m.rate.cacheRead,
+          cache_write: m.rate.cacheWrite,
+        }
+      : undefined,
   });
 
   // ── データ取得 ──
