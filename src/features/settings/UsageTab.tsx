@@ -318,30 +318,40 @@ export function UsageTab() {
             <div className="text-[11px] text-muted-foreground mb-2">
               {t("settings.usage.chartTitle")}
             </div>
-            <div className="flex items-end gap-1 h-32 border-b border-border">
+            <div className="flex items-stretch gap-1 h-32 border-b border-border">
               {buckets.map((b) => {
+                // 親の h-32 に対する全体の高さ比率。これを 0..100% の中で各 feature に分配する。
                 const heightPct = b.totalTokens === 0 ? 0 : (b.totalTokens / maxBucketTokens) * 100;
                 return (
                   <div
                     key={b.key}
-                    className="flex-1 flex flex-col-reverse min-w-0"
+                    className="flex-1 flex flex-col justify-end min-w-0"
                     title={`${b.key}: ${formatTokens(b.totalTokens)} tokens / ${formatCost(b.totalCost)}`}
                   >
-                    {features.map((f) => {
-                      const part = b.byFeature.get(f);
-                      if (!part || part.tokens === 0) return null;
-                      const partPct = (part.tokens / Math.max(1, b.totalTokens)) * heightPct;
-                      return (
-                        <div
-                          key={f}
-                          style={{
-                            height: `${partPct}%`,
-                            backgroundColor: featureColor(f),
-                          }}
-                          className="w-full first:rounded-t-sm"
-                        />
-                      );
-                    })}
+                    {/* 内側ラッパで「このバケットの相対高さ」を確定させる。
+                     *  外側 flex-1 は h-full（h-32 と同じ）に伸び、内側がその中で
+                     *  height: heightPct% を持つ。さらに内側の feature 要素は
+                     *  byFeature の比率で積み上がる。 */}
+                    <div
+                      className="w-full flex flex-col"
+                      style={{ height: `${heightPct}%` }}
+                    >
+                      {features.map((f) => {
+                        const part = b.byFeature.get(f);
+                        if (!part || part.tokens === 0) return null;
+                        const partPct = (part.tokens / Math.max(1, b.totalTokens)) * 100;
+                        return (
+                          <div
+                            key={f}
+                            style={{
+                              height: `${partPct}%`,
+                              backgroundColor: featureColor(f),
+                            }}
+                            className="w-full first:rounded-t-sm"
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}

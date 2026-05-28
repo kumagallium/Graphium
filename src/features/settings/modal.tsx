@@ -874,12 +874,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         </span>
       </ModalHeader>
 
-      {/* タブ */}
-      <div
-        className={`flex border-b border-border px-6 ${
-          tab === "grounding" || tab === "usage" ? "max-w-3xl" : "max-w-2xl"
-        }`}
-      >
+      {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
+       *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
+      <div className="flex border-b border-border px-6 max-w-3xl overflow-x-auto">
         {(["display", "storage", "ai", "labels", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
@@ -894,7 +891,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             <button
               key={tabId}
               onClick={() => setTab(tabId)}
-              className={`px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+              className={`px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap shrink-0 ${
                 tab === tabId
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -906,10 +903,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         })}
       </div>
 
-      {/* タブ列の自然幅とボディの max-w が乖離すると右に余白が見える。タブ列に合わせて
-       *  全タブで max-w-2xl を基準に、グラフを含む Grounding KB / Usage は max-w-3xl。 */}
+      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。 */}
       <ModalBody
-        className={`w-full min-w-[460px] ${tab === "grounding" || tab === "usage" ? "max-w-3xl" : "max-w-2xl"}`}
+        className="w-full min-w-[460px] max-w-3xl"
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
@@ -2118,9 +2114,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         {tab === "about" && <AboutTab />}
       </ModalBody>
 
-      <ModalFooter
-        className={tab === "grounding" || tab === "usage" ? "max-w-3xl" : "max-w-2xl"}
-      >
+      <ModalFooter className="max-w-3xl">
         <Button variant="ghost" size="sm" onClick={onClose}>
           {t("common.cancel")}
         </Button>
