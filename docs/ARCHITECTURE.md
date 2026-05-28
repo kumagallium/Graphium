@@ -468,13 +468,27 @@ interface.
 ## 6. The Node server (when present)
 
 The server is built on [Hono](https://hono.dev/) and is intentionally
-thin. It does three jobs:
+thin. It does four jobs:
 
 1. **Run the Wiki pipeline** (`src/server/services/wiki-*`).
 2. **Proxy LLM and embedding calls** so API keys never reach the browser.
    See `src/server/services/llm.ts`, `embedding.ts`.
 3. **Expose REST endpoints** under `src/server/routes/` (`agent`, `wiki`,
-   `prov`, `tools`, `models`, `profiles`, `storage`, `health`).
+   `prov`, `tools`, `models`, `profiles`, `storage`, `usage`, `health`).
+4. **Record AI usage** for every LLM / embedding call so users can see
+   per-feature token consumption and estimated cost. The recording layer
+   is `src/server/services/llm-usage.ts`. Every call goes through either
+   `runAgentLoop()` (which tags the event with a `feature` identifier
+   like `"wiki.ingest"` or `"agent.chat"`) or `generateEmbeddings()`
+   (feature `"embedding"`). The raw event log lives at
+   `data/ai-usage-log.json`; events older than 90 days are folded into a
+   monthly summary at `data/ai-usage-summary.json` on server start. The
+   dashboard at Settings → Usage reads from `GET /api/usage`.
+
+   Per-model pricing (`USD / 1M tokens`) is stored as `rate` on each
+   registered model (`ModelConfig.rate` in `src/server/config/models.ts`).
+   The rate at call time is snapshotted into the event so historical
+   costs stay consistent when prices change.
 
 When running as PWA only, all of this is absent and the editor still
 works.

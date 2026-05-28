@@ -904,6 +904,24 @@ Concrete paths and naming may vary between provider implementations;
 treat the layout above as a guide, and `local.ts` /
 `filesystem.ts` / `server-fs.ts` as authoritative.
 
+### 6.4 Server-side data directory (Node / Tauri sidecar)
+
+When a Node server runs (desktop sidecar or self-hosted Docker), it
+keeps its own state under `data/` (dev) or
+`~/Documents/Graphium/server-data/` (desktop). The schemas:
+
+| File | Purpose |
+|---|---|
+| `models.json` | Registered LLM models (`ModelConfig[]`). On Tauri builds API keys live in Keychain instead; `models.json` only stores metadata. |
+| `profiles.json` | Agent profiles (system prompts). |
+| `ai-usage-log.json` | Raw AI usage events for the last 90 days. Each entry: `{ ts, feature, provider, modelId, modelConfigId?, inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens?, reasoningTokens?, totalTokens, durationMs?, rateSnapshot?, costUsd? }`. The `feature` field identifies the calling pipeline (`wiki.ingest`, `wiki.lint`, `agent.chat`, `prov.from-url`, `embedding`, …). |
+| `ai-usage-summary.json` | Monthly aggregates kept indefinitely. On server boot, events older than 90 days in `ai-usage-log.json` are folded into this file (`{ month: "YYYY-MM", feature, provider, modelId, callCount, inputTokens, outputTokens, …, costUsd }`) and removed from the raw log. |
+
+`rateSnapshot` and `costUsd` are populated when the calling model has a
+`rate` configured (Settings → AI → per-model Pricing). The snapshot is
+written at call time so price changes do not retroactively rewrite
+historical costs.
+
 ## 7. Shared storage and Library
 
 The Library / Fork features run on a separate, content-addressed
