@@ -571,7 +571,8 @@ export function AssetGalleryView({
     audio: "audio/*",
     pdf: "application/pdf",
     url: "",
-    document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt",
+    // Documents タブは PDF + Word/Excel/PowerPoint を受ける
+    document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf",
     other: "",
   };
 
@@ -607,9 +608,14 @@ export function AssetGalleryView({
   }, []);
 
   // タイプ別にフィルタ + 検索 + ソート
+  // Documents タブには PDF も含める（UI 上の統合。内部 type は維持）。
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
-    let result = mediaIndex.media.filter((m) => m.type === mediaType);
+    let result = mediaIndex.media.filter((m) =>
+      mediaType === "document"
+        ? m.type === "document" || m.type === "pdf"
+        : m.type === mediaType
+    );
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -778,16 +784,29 @@ export function AssetGalleryView({
             {t("asset.urlAdd")}
           </button>
         )}
-        {mediaType === "document" && onImportDocx && (
-          <>
-            <button
-              onClick={() => docxInputRef.current?.click()}
-              disabled={importing}
-              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
-            >
-              <Plus size={12} />
-              {importing ? t("asset.importing") : t("asset.importDocx")}
-            </button>
+        {mediaType === "document" && (
+          <div className="ml-auto flex items-center gap-2">
+            {onImportDocx && (
+              <button
+                onClick={() => docxInputRef.current?.click()}
+                disabled={importing || uploading}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+              >
+                <Plus size={12} />
+                {importing ? t("asset.importing") : t("asset.importDocx")}
+              </button>
+            )}
+            {onUploadMedia && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing || uploading}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-60"
+                title={t("asset.uploadPdfHint")}
+              >
+                <Plus size={12} />
+                {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
+              </button>
+            )}
             <input
               ref={docxInputRef}
               type="file"
@@ -796,7 +815,15 @@ export function AssetGalleryView({
               onChange={handleDocxPicked}
               className="hidden"
             />
-          </>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              multiple
+              onChange={handleFilePicked}
+              className="hidden"
+            />
+          </div>
         )}
         {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
           <>
