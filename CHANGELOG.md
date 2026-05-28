@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.11.1](https://github.com/kumagallium/Graphium/compare/v0.11.0...v0.11.1) - 2026-05-28
+- fix(ci): grant actions:write to tauri-build for Pages deploy trigger by @kumagallium in https://github.com/kumagallium/Graphium/pull/368
+- feat: add About tab with version display and manual update check by @kumagallium in https://github.com/kumagallium/Graphium/pull/370
+- refactor(asset-browser): collapse peek toolbar into 3-dot menu and unify AI iconography by @kumagallium in https://github.com/kumagallium/Graphium/pull/371
+- fix(storage/server-fs): recognize legacy Google Drive CDN URLs in extractFileId by @kumagallium in https://github.com/kumagallium/Graphium/pull/373
+
 ## [v0.11.0](https://github.com/kumagallium/Graphium/compare/v0.10.0...v0.11.0) - 2026-05-27
 - refactor: remove heuristic tenpai layer by @kumagallium in https://github.com/kumagallium/Graphium/pull/360
 - [ci] catch broken sidecar bundles + ensure Pages stays current after release by @kumagallium in https://github.com/kumagallium/Graphium/pull/363
