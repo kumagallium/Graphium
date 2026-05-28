@@ -4,6 +4,8 @@ Graphium's Knowledge layer tags every extracted note with a small set of metadat
 
 The design root is the hourglass model: **Notes → Claims → Insights → Ideas**. On-disk identifiers stay as `claim` / `atom` / `synthesis` so existing data keeps working, but everywhere a user sees a label, this doc and the UI agree on the new names. Each layer carries a different concentration of context, and the inference types are attached at the layer they actually belong to.
 
+Ideas are authored through the Cmd-K Composer flow — the user selects the Insights they want to weave, builds a citation note, and invokes the LLM with that as the search-space constraint. `synthesisMode` (deductive / abductive / analogical / dialectic) labels the kind of move the Idea makes; the four modes are explained below.
+
 ---
 
 ## Overview
