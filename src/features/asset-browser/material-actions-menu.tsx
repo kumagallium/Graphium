@@ -134,17 +134,28 @@ export function MaterialActionsMenu({
       const provider = getActiveProvider();
       const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
       const blobUrl = await provider.getMediaBlobUrl(fileId);
-      const res = await fetch(blobUrl);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
+
+      // getMediaBlobUrl が既に blob: URL を返している場合、再度 fetch すると
+      // 同データを 2 重にメモリへ載せてしまう（大きい PDF/.docx でフリーズ）。
+      // 同一オリジンの blob: なら直接 a.download に渡す。外部 URL のみ fetch fallback。
+      let href = blobUrl;
+      let createdObjectUrl: string | null = null;
+      if (!blobUrl.startsWith("blob:")) {
+        const res = await fetch(blobUrl);
+        const blob = await res.blob();
+        href = URL.createObjectURL(blob);
+        createdObjectUrl = href;
+      }
+
       const a = document.createElement("a");
-      a.href = objectUrl;
+      a.href = href;
       a.download = entry.name || "download";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // ブラウザ側で読み取り終わるまで少し待ってから revoke
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      if (createdObjectUrl) {
+        setTimeout(() => URL.revokeObjectURL(createdObjectUrl!), 1000);
+      }
     } catch (err) {
       console.error("[material-actions-menu] ダウンロード失敗:", err);
       setDownloadError(err instanceof Error ? err.message : String(err));

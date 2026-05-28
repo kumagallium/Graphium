@@ -585,21 +585,36 @@ export function AssetGalleryView({
   }, [menuOpen]);
 
   // 単一素材のダウンロード（共通ヘルパー）
+  // 注意: getMediaBlobUrl は既にキャッシュ済みの blob: URL を返す（local/server-fs プロバイダ）。
+  // それを更に fetch → blob → createObjectURL すると同じデータを 2 重にメモリへ載せて
+  // 大きいファイルでブラウザがフリーズする。同一オリジン (blob:) なら直接 a.download に渡す。
+  // 外部 URL (Drive CDN 等) の場合のみ fetch 経由の fallback を使う。
   const downloadEntry = useCallback(async (entry: MediaIndexEntry) => {
     if (entry.type === "url") return;
     const provider = getActiveProvider();
     const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
     const blobUrl = await provider.getMediaBlobUrl(fileId);
-    const res = await fetch(blobUrl);
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
+
+    let href = blobUrl;
+    let createdObjectUrl: string | null = null;
+    if (!blobUrl.startsWith("blob:")) {
+      // 外部 URL: download 属性が効かないので一度 fetch して objectURL を作る
+      const res = await fetch(blobUrl);
+      const blob = await res.blob();
+      href = URL.createObjectURL(blob);
+      createdObjectUrl = href;
+    }
+
     const a = document.createElement("a");
-    a.href = objectUrl;
+    a.href = href;
     a.download = entry.name || "download";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+    if (createdObjectUrl) {
+      setTimeout(() => URL.revokeObjectURL(createdObjectUrl!), 1000);
+    }
   }, []);
 
   const acceptByType: Record<MediaType, string> = {
