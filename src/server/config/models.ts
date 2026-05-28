@@ -17,6 +17,24 @@ import {
 
 export type ServerMode = "node" | "vercel";
 
+export type RateCurrency = "usd" | "jpy";
+
+/** モデルの 1M トークンあたり単価。AI 使用量ダッシュボードのコスト計算に使う。
+ *  currency を明示することで、ドル建て（Anthropic / OpenAI）と円建て（さくら AI 等）の
+ *  モデルを混在させても、表示通貨に換算して合計を出せる。 */
+export type TokenRate = {
+  /** 入力トークンの単価（1M tokens あたり） */
+  input: number;
+  /** 出力トークンの単価 */
+  output: number;
+  /** prompt caching の読み出し単価。未設定なら input と同じ扱い */
+  cacheRead?: number;
+  /** prompt caching の書き込み単価。未設定なら input と同じ扱い */
+  cacheWrite?: number;
+  /** rate の通貨。未指定なら "usd" 扱い */
+  currency?: RateCurrency;
+};
+
 export type ModelConfig = {
   id: string;
   /** 表示名 */
@@ -29,6 +47,8 @@ export type ModelConfig = {
   apiKey: string;
   /** カスタム API ベース URL（OpenAI 互換用） */
   apiBase: string | null;
+  /** トークン単価（USD / 1M tokens）。未設定ならコスト計算をスキップする。 */
+  rate?: TokenRate;
   createdAt: string;
 };
 
@@ -186,6 +206,7 @@ export function addModel(
       provider: input.provider,
       modelId: input.modelId,
       apiBase: input.apiBase,
+      rate: input.rate,
       createdAt,
     };
     stored.push(record);
@@ -198,6 +219,7 @@ export function addModel(
       modelId: input.modelId,
       apiKey: input.apiKey,
       apiBase: input.apiBase,
+      rate: input.rate,
       createdAt,
     };
     stored.push(record);
@@ -223,6 +245,7 @@ export function updateModel(
   if (input.provider !== undefined) next.provider = input.provider;
   if (input.modelId !== undefined) next.modelId = input.modelId;
   if (input.apiBase !== undefined) next.apiBase = input.apiBase;
+  if (input.rate !== undefined) next.rate = input.rate;
 
   // apiKey 更新（空文字なら既存維持）
   let newKey: string | undefined;

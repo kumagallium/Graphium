@@ -2,6 +2,8 @@
 // Vercel AI SDK の generateText + stepCountIs でマルチステップ実行する
 
 import { generateText, stepCountIs, type ModelMessage, type LanguageModel } from "ai";
+import type { ModelConfig } from "../config/models.js";
+import { recordUsage, extractTokenFields } from "./llm-usage.js";
 
 export type AgentRunParams = {
   model: LanguageModel;
@@ -10,12 +12,23 @@ export type AgentRunParams = {
   messages: ModelMessage[];
   tools?: Record<string, unknown>;
   maxSteps?: number;
+  /** AI 使用量ログ用の機能識別子。"wiki.ingest" 等。未指定なら計測スキップ。 */
+  feature?: string;
+  /** モデル単価特定用の ModelConfig。指定があれば provider / rate を記録に焼き込む。 */
+  modelConfig?: ModelConfig;
 };
 
 export type AgentRunResult = {
   message: string;
   toolCalls: ToolCallRecord[];
-  tokenUsage: { input_tokens: number; output_tokens: number; total_tokens: number };
+  tokenUsage: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cache_read_tokens?: number;
+    cache_write_tokens?: number;
+    reasoning_tokens?: number;
+  };
   model: string | null;
 };
 
@@ -30,8 +43,9 @@ export type ToolCallRecord = {
  * エージェントループを実行して最終テキストを返す
  */
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
-  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10 } = params;
+  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig } = params;
 
+  const startedAt = Date.now();
   const result = await generateText({
     model,
     system: systemPrompt,
@@ -40,6 +54,7 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
     ...(tools && Object.keys(tools).length > 0 ? { tools: tools as any } : {}),
     stopWhen: stepCountIs(maxSteps),
   });
+  const durationMs = Date.now() - startedAt;
 
   // ツール呼び出しの記録を収集
   const toolCalls: ToolCallRecord[] = [];
@@ -54,16 +69,37 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
     }
   }
 
-  // トークン使用量を集計
-  const usage = result.usage;
+  const tokens = extractTokenFields(result.usage);
+
+  // 使用量記録（feature 指定時のみ）
+  if (feature) {
+    recordUsage({
+      ts: new Date().toISOString(),
+      feature,
+      provider: modelConfig?.provider ?? "unknown",
+      modelId,
+      modelConfigId: modelConfig?.id,
+      inputTokens: tokens.inputTokens,
+      outputTokens: tokens.outputTokens,
+      cacheReadTokens: tokens.cacheReadTokens,
+      cacheWriteTokens: tokens.cacheWriteTokens,
+      reasoningTokens: tokens.reasoningTokens,
+      totalTokens: tokens.totalTokens,
+      durationMs,
+      rateSnapshot: modelConfig?.rate,
+    });
+  }
 
   return {
     message: result.text,
     toolCalls,
     tokenUsage: {
-      input_tokens: usage?.inputTokens ?? 0,
-      output_tokens: usage?.outputTokens ?? 0,
-      total_tokens: (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0),
+      input_tokens: tokens.inputTokens,
+      output_tokens: tokens.outputTokens,
+      total_tokens: tokens.totalTokens,
+      cache_read_tokens: tokens.cacheReadTokens,
+      cache_write_tokens: tokens.cacheWriteTokens,
+      reasoning_tokens: tokens.reasoningTokens,
     },
     model: modelId,
   };

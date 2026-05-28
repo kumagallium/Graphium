@@ -66,6 +66,10 @@ export type Settings = {
   jpFont: JpFont;
   /** 実験的機能のオン/オフ */
   experimental: ExperimentalSettings;
+  /** 使用量ダッシュボードの表示通貨。"usd" | "jpy"。 */
+  displayCurrency: LLMRateCurrency;
+  /** USD ⇔ JPY 換算レート（1 USD = ¥X）。表示通貨と異なる単位の cost を換算するときに使う。 */
+  usdJpyRate: number;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -82,6 +86,8 @@ const DEFAULT_SETTINGS: Settings = {
     atomLayer: false,
     synthesis: false,
   },
+  displayCurrency: "usd",
+  usdJpyRate: 150,
 };
 
 /**
@@ -298,6 +304,18 @@ export function applyFontMode(latinFont: LatinFont, jpFont: JpFont): void {
 
 const LLM_MODELS_KEY = "graphium-llm-models";
 
+export type LLMRateCurrency = "usd" | "jpy";
+
+/** モデルの 1M トークンあたり単価。AI 使用量ダッシュボードのコスト計算用。 */
+export type LLMTokenRate = {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  /** 単価の通貨。未指定なら "usd" 扱い */
+  currency?: LLMRateCurrency;
+};
+
 export type LLMModelConfig = {
   id: string;
   name: string;
@@ -305,6 +323,8 @@ export type LLMModelConfig = {
   modelId: string;
   apiKey: string;
   apiBase: string | null;
+  /** トークン単価。未設定ならコスト計算をスキップする。 */
+  rate?: LLMTokenRate;
 };
 
 /** クライアント保存のモデル一覧を取得 */

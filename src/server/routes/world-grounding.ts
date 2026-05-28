@@ -51,6 +51,8 @@ app.post("/check", async (c) => {
       systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       maxSteps: 1,
+      feature: "world-grounding",
+      modelConfig,
     });
     const parsed = parseWorldGroundingOutput(llmResult.message);
     return c.json({

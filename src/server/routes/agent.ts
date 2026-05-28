@@ -111,6 +111,8 @@ app.post("/run", async (c) => {
       messages,
       tools,
       maxSteps: body.options?.max_turns ?? 10,
+      feature: "agent.chat",
+      modelConfig,
     });
 
     return c.json({

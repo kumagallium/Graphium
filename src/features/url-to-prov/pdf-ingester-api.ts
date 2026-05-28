@@ -28,6 +28,7 @@ function provHeaders(): Record<string, string> {
         apiKey: model.apiKey,
         apiBase: model.apiBase,
         name: model.name,
+        rate: model.rate,
       });
     }
   }

@@ -52,6 +52,8 @@ import {
   saveAuthorIdentity,
   validateAuthorIdentity,
 } from "../identity";
+import { UsageTab } from "./UsageTab";
+import { lookupModelPrice, type PricingEntry } from "../../lib/model-pricing";
 import {
   getSharedRoot,
   setSharedRoot,
@@ -104,7 +106,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance" | "about";
+type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance" | "usage" | "about";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -302,6 +304,13 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [editName, setEditName] = useState("");
   const [editApiKey, setEditApiKey] = useState("");
   const [editApiBase, setEditApiBase] = useState("");
+  // 単価入力。空文字なら「未設定」扱い（コスト計算スキップ）。
+  const [editRateInput, setEditRateInput] = useState("");
+  const [editRateOutput, setEditRateOutput] = useState("");
+  // 単価の通貨。デフォルト USD。さくら AI 等の円建てモデルでは JPY を選ぶ。
+  const [editRateCurrency, setEditRateCurrency] = useState<"usd" | "jpy">("usd");
+  // 既知モデルの参考価格。プロバイダー API では取れないので、内蔵テーブルから引く。
+  const [editSuggestedRate, setEditSuggestedRate] = useState<PricingEntry | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
   // 保存
@@ -311,6 +320,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const isWebMode = !isTauri();
 
   // LLMModelConfig → ModelInfo 変換（Web モード用）
+  // rate を落とすと handleStartEdit で既存値が読み出せず「保存しても反映されない」ように見えるため、
+  // localStorage 側の camelCase → ModelInfo 側の snake_case に変換して必ず引き継ぐ。
   const toModelInfo = (m: LLMModelConfig): ModelInfo => ({
     name: m.name,
     provider: m.provider,
@@ -318,6 +329,15 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     api_base: m.apiBase ?? "",
     supports_function_calling: true,
     id: m.id,
+    rate: m.rate
+      ? {
+          input: m.rate.input,
+          output: m.rate.output,
+          cache_read: m.rate.cacheRead,
+          cache_write: m.rate.cacheWrite,
+          currency: m.rate.currency ?? "usd",
+        }
+      : undefined,
   });
 
   // ── データ取得 ──
@@ -580,6 +600,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             apiKey: cfg.apiKey,
             apiBase: cfg.apiBase,
             name: cfg.name,
+            rate: cfg.rate,
           });
         }
       }
@@ -777,12 +798,25 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setEditName(m.name);
     setEditApiKey("");
     setEditApiBase(m.api_base);
+    setEditRateInput(m.rate ? String(m.rate.input) : "");
+    setEditRateOutput(m.rate ? String(m.rate.output) : "");
+    setEditRateCurrency(m.rate?.currency === "jpy" ? "jpy" : "usd");
+    setEditSuggestedRate(lookupModelPrice(m.provider, m.model_id));
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingId) return;
     setEditSaving(true);
     try {
+      // 単価入力をパース。両方未入力なら rate 未設定として保存（コスト計算スキップ）。
+      const rateInputNum = editRateInput.trim() ? Number(editRateInput) : NaN;
+      const rateOutputNum = editRateOutput.trim() ? Number(editRateOutput) : NaN;
+      const hasValidRate =
+        Number.isFinite(rateInputNum) &&
+        Number.isFinite(rateOutputNum) &&
+        rateInputNum >= 0 &&
+        rateOutputNum >= 0;
+
       if (isWebMode) {
         // Web モード: localStorage を直接更新
         const allModels = getLLMModels();
@@ -791,13 +825,29 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
           if (editName.trim()) allModels[idx].name = editName.trim();
           if (editApiKey.trim()) allModels[idx].apiKey = editApiKey.trim();
           allModels[idx].apiBase = editApiBase.trim() || null;
+          if (hasValidRate) {
+            allModels[idx].rate = {
+              input: rateInputNum,
+              output: rateOutputNum,
+              currency: editRateCurrency,
+            };
+          } else {
+            delete allModels[idx].rate;
+          }
           localStorage.setItem("graphium-llm-models", JSON.stringify(allModels));
         }
       } else {
-        const body: Record<string, string> = {};
+        const body: Record<string, unknown> = {};
         if (editName.trim()) body.model_name = editName.trim();
         if (editApiKey.trim()) body.api_key = editApiKey.trim();
         body.api_base = editApiBase.trim();
+        if (hasValidRate) {
+          body.rate = {
+            input: rateInputNum,
+            output: rateOutputNum,
+            currency: editRateCurrency,
+          };
+        }
         await fetch(`${apiBase()}/models/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -811,11 +861,26 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     } finally {
       setEditSaving(false);
     }
-  }, [isWebMode, editingId, editName, editApiKey, editApiBase, refreshModels]);
+  }, [isWebMode, editingId, editName, editApiKey, editApiBase, editRateInput, editRateOutput, editRateCurrency, refreshModels]);
 
   // ── 保存 ──
   const handleSave = useCallback(() => {
-    saveSettings({ model, embeddingModel, chatSynthesisModel, groundingModel: groundingModelStored, disabledTools, registryUrl: registryUrl.trim().replace(/\/+$/, ""), customLabels, latinFont, jpFont, experimental });
+    // displayCurrency / usdJpyRate は UsageTab 側で先行保存されているので、
+    // ここで全フィールドを上書きしないよう、既存値とマージする。
+    const existing = loadSettings();
+    saveSettings({
+      ...existing,
+      model,
+      embeddingModel,
+      chatSynthesisModel,
+      groundingModel: groundingModelStored,
+      disabledTools,
+      registryUrl: registryUrl.trim().replace(/\/+$/, ""),
+      customLabels,
+      latinFont,
+      jpFont,
+      experimental,
+    });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
@@ -847,9 +912,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         </span>
       </ModalHeader>
 
-      {/* タブ */}
-      <div className="flex border-b border-border px-6">
-        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "about"] as Tab[]).map((tabId) => {
+      {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
+       *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
+      <div className="flex border-b border-border px-6 max-w-3xl overflow-x-auto">
+        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
@@ -857,12 +923,13 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             : tabId === "labels" ? "settings.tab.labels"
             : tabId === "grounding" ? "settings.tab.grounding"
             : tabId === "maintenance" ? "settings.tab.maintenance"
+            : tabId === "usage" ? "settings.tab.usage"
             : "settings.tab.about";
           return (
             <button
               key={tabId}
               onClick={() => setTab(tabId)}
-              className={`px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+              className={`px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap shrink-0 ${
                 tab === tabId
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -874,9 +941,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         })}
       </div>
 
-      {/* Grounding KB タブは KB entry の table 表示で行が長いので、他のタブより少し広く取る */}
+      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。 */}
       <ModalBody
-        className={`w-full min-w-[460px] ${tab === "grounding" ? "max-w-3xl" : "max-w-lg"}`}
+        className="w-full min-w-[460px] max-w-3xl"
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
@@ -1565,6 +1632,79 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                         <label className="text-xs font-medium text-foreground mb-2 block">API Base URL</label>
                         <Input type="url" value={editApiBase} onChange={(e) => setEditApiBase(e.target.value)} placeholder={API_BASE_HINTS[m.provider] ?? ""} />
                       </div>
+                      <div>
+                        <label className="text-xs font-medium text-foreground mb-2 block">
+                          {t("settings.models.rate.label")}
+                          <span className="text-muted-foreground font-normal ml-1">{t("settings.models.rate.hint")}</span>
+                        </label>
+                        <div className="flex gap-2">
+                          {/* 通貨セグメント */}
+                          <div className="flex gap-1 p-1 bg-muted/50 rounded-md shrink-0 h-fit">
+                            {(["usd", "jpy"] as const).map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => setEditRateCurrency(c)}
+                                className={`px-2.5 py-1 text-xs rounded transition-colors ${
+                                  editRateCurrency === c
+                                    ? "bg-background text-foreground shadow-sm font-medium"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {c === "usd" ? "USD" : "JPY"}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 flex-1">
+                            <Input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              value={editRateInput}
+                              onChange={(e) => setEditRateInput(e.target.value)}
+                              placeholder={
+                                editSuggestedRate
+                                  ? `${t("settings.models.rate.inputShort")}: ${editSuggestedRate.input}`
+                                  : t("settings.models.rate.inputPlaceholder")
+                              }
+                            />
+                            <Input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              value={editRateOutput}
+                              onChange={(e) => setEditRateOutput(e.target.value)}
+                              placeholder={
+                                editSuggestedRate
+                                  ? `${t("settings.models.rate.outputShort")}: ${editSuggestedRate.output}`
+                                  : t("settings.models.rate.outputPlaceholder")
+                              }
+                            />
+                          </div>
+                        </div>
+                        {editSuggestedRate && (
+                          <div className="flex items-center justify-between gap-2 mt-1.5">
+                            <span className="text-[11px] text-muted-foreground">
+                              {t("settings.models.rate.knownNote")}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditRateInput(String(editSuggestedRate.input));
+                                setEditRateOutput(String(editSuggestedRate.output));
+                                // 内蔵テーブルは USD ベース。
+                                setEditRateCurrency("usd");
+                              }}
+                              className="text-[11px] text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                            >
+                              {t("settings.models.rate.useKnown", {
+                                input: `$${editSuggestedRate.input}`,
+                                output: `$${editSuggestedRate.output}`,
+                              })}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <div className="flex gap-2 justify-end">
                         <button onClick={() => setEditingId(null)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">{t("common.cancel")}</button>
                         <Button size="sm" onClick={handleSaveEdit} disabled={editSaving}>
@@ -2028,10 +2168,12 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         )}
 
         {/* ── About タブ ── */}
+        {tab === "usage" && <UsageTab />}
+
         {tab === "about" && <AboutTab />}
       </ModalBody>
 
-      <ModalFooter>
+      <ModalFooter className="max-w-3xl">
         <Button variant="ghost" size="sm" onClick={onClose}>
           {t("common.cancel")}
         </Button>

@@ -27,6 +27,7 @@ function apiHeaders(
         apiKey: model.apiKey,
         apiBase: model.apiBase,
         name: model.name,
+        rate: model.rate,
       });
     }
   }
@@ -86,6 +87,15 @@ export type ModelInfo = {
   api_base: string;
   supports_function_calling: boolean;
   id: string;
+  /** トークン単価（1M tokens あたり）。AI 使用量ダッシュボードのコスト計算用 */
+  rate?: {
+    input: number;
+    output: number;
+    cache_read?: number;
+    cache_write?: number;
+    /** 単価の通貨。未指定なら "usd" 扱い */
+    currency?: "usd" | "jpy";
+  };
 };
 
 export type ModelsResponse = {

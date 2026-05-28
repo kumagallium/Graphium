@@ -30,6 +30,7 @@ export async function retrieveWikiContext(
         embedHeaders["X-LLM-API-Key"] = JSON.stringify({
           provider: model.provider, modelId: model.modelId,
           apiKey: model.apiKey, apiBase: model.apiBase, name: model.name,
+          rate: model.rate,
         });
       }
     }

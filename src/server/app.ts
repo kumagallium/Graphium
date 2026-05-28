@@ -16,6 +16,7 @@ import storageRoutes from "./routes/storage.js";
 import worldGroundingRoutes from "./routes/world-grounding.js";
 import embeddingsRoutes from "./routes/embeddings.js";
 import urlRoutes from "./routes/url.js";
+import usageRoutes from "./routes/usage.js";
 
 export type AppMode = "node" | "vercel";
 
@@ -64,6 +65,7 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
   app.route("/api/world-grounding", worldGroundingRoutes);
   app.route("/api/embeddings", embeddingsRoutes);
   app.route("/api/url", urlRoutes);
+  app.route("/api/usage", usageRoutes);
 
   return app;
 }
