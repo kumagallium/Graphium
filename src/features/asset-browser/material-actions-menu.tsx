@@ -12,12 +12,14 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  Download,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
 import { shareMedia, shareReference } from "../sharing";
+import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 export type MaterialActionsMenuProps = {
@@ -119,6 +121,37 @@ export function MaterialActionsMenu({
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf");
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf");
   const canExtract = !!onExtractPdfPages && entry.type === "pdf";
+  // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
+  const canDownload = entry.type !== "url";
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const provider = getActiveProvider();
+      const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+      const blobUrl = await provider.getMediaBlobUrl(fileId);
+      const res = await fetch(blobUrl);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = entry.name || "download";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // ブラウザ側で読み取り終わるまで少し待ってから revoke
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (err) {
+      console.error("[material-actions-menu] ダウンロード失敗:", err);
+      setDownloadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading, entry]);
 
   return (
     <div ref={menuRef} className="relative shrink-0">
@@ -187,6 +220,20 @@ export function MaterialActionsMenu({
               </button>
             </>
           )}
+          {canDownload && (
+            <>
+              <div className="my-1 border-t border-border" />
+              <button
+                className={itemClass}
+                disabled={downloading}
+                onClick={() => { void handleDownload(); setOpen(false); }}
+                title={t("asset.downloadHint")}
+              >
+                {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {downloading ? t("asset.downloading") : t("asset.download")}
+              </button>
+            </>
+          )}
           <div className="my-1 border-t border-border" />
           <button
             className={itemClass}
@@ -211,11 +258,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || shareError) && (
+      {(extractError || shareError || downloadError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? shareError}</span>
+            <span className="break-all">{extractError ?? shareError ?? downloadError}</span>
           </div>
         </div>
       )}

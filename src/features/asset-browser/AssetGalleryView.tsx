@@ -481,6 +481,8 @@ export function AssetGalleryView({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("uploadedAt");
   const [sortAsc, setSortAsc] = useState(false);
+  // Documents タブのサブフィルタ（PDF / Word / All）
+  const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
@@ -492,6 +494,8 @@ export function AssetGalleryView({
   useEffect(() => {
     setDetailEntry(null);
     setDetailFullMode(false);
+    // タブ切替時に Documents サブフィルタもリセット
+    setDocFilter("all");
   }, [mediaType]);
 
   // 親から focusFileId が降ってきたら、その entry を SidePeek / Full view で開く。
@@ -609,13 +613,15 @@ export function AssetGalleryView({
 
   // タイプ別にフィルタ + 検索 + ソート
   // Documents タブには PDF も含める（UI 上の統合。内部 type は維持）。
+  // docFilter が "pdf" / "word" のときはサブフィルタを適用する。
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
-    let result = mediaIndex.media.filter((m) =>
-      mediaType === "document"
-        ? m.type === "document" || m.type === "pdf"
-        : m.type === mediaType
-    );
+    let result = mediaIndex.media.filter((m) => {
+      if (mediaType !== "document") return m.type === mediaType;
+      if (docFilter === "pdf") return m.type === "pdf";
+      if (docFilter === "word") return m.type === "document";
+      return m.type === "document" || m.type === "pdf";
+    });
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -638,7 +644,19 @@ export function AssetGalleryView({
       }
       return sortAsc ? cmp : -cmp;
     });
-  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc]);
+  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter]);
+
+  // Documents タブのサブフィルタ用件数
+  const docCounts = useMemo(() => {
+    if (!mediaIndex) return { pdf: 0, word: 0, all: 0 };
+    let pdf = 0;
+    let word = 0;
+    for (const m of mediaIndex.media) {
+      if (m.type === "pdf") pdf++;
+      else if (m.type === "document") word++;
+    }
+    return { pdf, word, all: pdf + word };
+  }, [mediaIndex]);
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!deleteTarget) return;
@@ -846,6 +864,30 @@ export function AssetGalleryView({
           </>
         )}
       </div>
+
+      {/* Documents タブのサブフィルタ（PDF / Word / All） */}
+      {mediaType === "document" && (
+        <div className="px-6 py-2 border-b border-border flex items-center gap-1.5">
+          {([
+            { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
+            { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
+            { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
+          ]).map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setDocFilter(key)}
+              className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
+                docFilter === key
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {label}
+              <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Word 取り込み進捗（document タブ） */}
       {importProgress && (
