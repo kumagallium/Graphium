@@ -865,30 +865,6 @@ export function AssetGalleryView({
         )}
       </div>
 
-      {/* Documents タブのサブフィルタ（PDF / Word / All） */}
-      {mediaType === "document" && (
-        <div className="px-6 py-2 border-b border-border flex items-center gap-1.5">
-          {([
-            { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
-            { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
-            { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
-          ]).map(({ key, label, count }) => (
-            <button
-              key={key}
-              onClick={() => setDocFilter(key)}
-              className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
-                docFilter === key
-                  ? "bg-primary/10 text-primary font-semibold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              {label}
-              <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Word 取り込み進捗（document タブ） */}
       {importProgress && (
         <div className="px-6 py-2 border-b border-border bg-muted/30 space-y-1.5">
@@ -929,8 +905,8 @@ export function AssetGalleryView({
         </div>
       )}
 
-      {/* 検索バー + ソート */}
-      <div className="px-6 py-2 border-b border-border flex items-center gap-3">
+      {/* 検索バー + サブフィルタ + ソート */}
+      <div className="px-6 py-2 border-b border-border flex items-center gap-3 flex-wrap">
         <input
           type="text"
           value={searchQuery}
@@ -938,6 +914,29 @@ export function AssetGalleryView({
           placeholder={t("asset.search")}
           className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
         />
+        {/* Documents タブのサブフィルタ（PDF / Word / All） */}
+        {mediaType === "document" && (
+          <div className="flex items-center gap-1">
+            {([
+              { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
+              { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
+              { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
+            ]).map(({ key, label, count }) => (
+              <button
+                key={key}
+                onClick={() => setDocFilter(key)}
+                className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
+                  docFilter === key
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                {label}
+                <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-1 ml-auto">
           <button
             onClick={() => handleSort("uploadedAt")}
