@@ -6,7 +6,7 @@
 //   - summary: 90 日より古い期間の月次集計（retention 後）
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, ChevronRight } from "lucide-react";
 import { apiBase } from "../../lib/platform";
 import { useLocale } from "../../i18n";
 
@@ -183,6 +183,58 @@ function buildBuckets(
   return keys.map((k) => buckets.get(k)!);
 }
 
+type ModelLine = {
+  modelId: string;
+  tokens: number;
+  cost: number;
+};
+
+/**
+ * 期間内 raw event + summary を feature × model の 2 階層に集計する。
+ * グラフ用の Bucket とは別系統だが、表示範囲（buckets の key set）は揃える。
+ */
+function buildFeatureModelBreakdown(
+  raw: AIUsageEvent[],
+  summary: AIUsageMonthlySummary[],
+  buckets: Bucket[],
+  gran: Granularity,
+): Map<string, ModelLine[]> {
+  const inRange = new Set(buckets.map((b) => b.key));
+  // feature -> modelId -> { tokens, cost }
+  const map = new Map<string, Map<string, ModelLine>>();
+
+  const add = (feature: string, modelId: string, tokens: number, cost: number) => {
+    let byModel = map.get(feature);
+    if (!byModel) {
+      byModel = new Map();
+      map.set(feature, byModel);
+    }
+    const prev = byModel.get(modelId) ?? { modelId, tokens: 0, cost: 0 };
+    prev.tokens += tokens;
+    prev.cost += cost;
+    byModel.set(modelId, prev);
+  };
+
+  for (const ev of raw) {
+    if (!inRange.has(bucketKey(ev.ts, gran))) continue;
+    add(ev.feature, ev.modelId || "(unknown)", ev.totalTokens, ev.costUsd ?? 0);
+  }
+  if (gran !== "day") {
+    for (const s of summary) {
+      const k = gran === "month" ? s.month : s.month.slice(0, 4);
+      if (!inRange.has(k)) continue;
+      add(s.feature, s.modelId || "(unknown)", s.totalTokens, s.costUsd);
+    }
+  }
+
+  const result = new Map<string, ModelLine[]>();
+  for (const [feature, byModel] of map) {
+    const list = Array.from(byModel.values()).sort((a, b) => b.tokens - a.tokens);
+    result.set(feature, list);
+  }
+  return result;
+}
+
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -240,6 +292,21 @@ export function UsageTab() {
       ...Array.from(set).filter((f) => !FEATURE_ORDER.includes(f)).sort(),
     ];
   }, [buckets]);
+
+  // feature -> modelId 別 breakdown。アコーディオン展開時のサブ行で使う。
+  const featureModelBreakdown = useMemo(
+    () => buildFeatureModelBreakdown(raw, summary, buckets, granularity),
+    [raw, summary, buckets, granularity],
+  );
+  const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
+  const toggleFeature = useCallback((f: string) => {
+    setExpandedFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  }, []);
 
   const grandTotalTokens = buckets.reduce((sum, b) => sum + b.totalTokens, 0);
   const grandTotalCost = buckets.reduce((sum, b) => sum + b.totalCost, 0);
@@ -373,7 +440,7 @@ export function UsageTab() {
             </div>
           </div>
 
-          {/* feature 別内訳 */}
+          {/* feature 別内訳（クリックでモデル別の内訳を展開） */}
           <div>
             <div className="text-[11px] text-muted-foreground mb-2">
               {t("settings.usage.breakdown")}
@@ -390,25 +457,69 @@ export function UsageTab() {
                 );
                 if (tokens === 0) return null;
                 const pct = grandTotalTokens > 0 ? (tokens / grandTotalTokens) * 100 : 0;
+                const models = featureModelBreakdown.get(f) ?? [];
+                // モデルが 1 種類しかない場合はアコーディオンを出さない（情報量ゼロのため）
+                const hasMultipleModels = models.length > 1;
+                const isExpanded = expandedFeatures.has(f);
                 return (
-                  <div
-                    key={f}
-                    className="flex items-center gap-2 text-xs"
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-sm shrink-0"
-                      style={{ backgroundColor: featureColor(f) }}
-                    />
-                    <span className="text-foreground flex-1 truncate font-mono">{f}</span>
-                    <span className="tabular-nums text-muted-foreground w-12 text-right">
-                      {pct.toFixed(0)}%
-                    </span>
-                    <span className="tabular-nums text-foreground w-14 text-right">
-                      {formatTokens(tokens)}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground w-14 text-right">
-                      {formatCost(cost)}
-                    </span>
+                  <div key={f}>
+                    <button
+                      type="button"
+                      onClick={() => hasMultipleModels && toggleFeature(f)}
+                      disabled={!hasMultipleModels}
+                      className={`w-full flex items-center gap-2 text-xs py-0.5 rounded ${
+                        hasMultipleModels
+                          ? "hover:bg-muted/50 cursor-pointer"
+                          : "cursor-default"
+                      }`}
+                    >
+                      <ChevronRight
+                        size={11}
+                        className={`shrink-0 text-muted-foreground transition-transform ${
+                          !hasMultipleModels ? "invisible" : isExpanded ? "rotate-90" : ""
+                        }`}
+                      />
+                      <span
+                        className="w-2.5 h-2.5 rounded-sm shrink-0"
+                        style={{ backgroundColor: featureColor(f) }}
+                      />
+                      <span className="text-foreground flex-1 truncate font-mono text-left">{f}</span>
+                      <span className="tabular-nums text-muted-foreground w-12 text-right">
+                        {pct.toFixed(0)}%
+                      </span>
+                      <span className="tabular-nums text-foreground w-14 text-right">
+                        {formatTokens(tokens)}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground w-14 text-right">
+                        {formatCost(cost)}
+                      </span>
+                    </button>
+                    {isExpanded && hasMultipleModels && (
+                      <div className="ml-[26px] mt-0.5 mb-1 space-y-0.5">
+                        {models.map((m) => {
+                          const modelPct = tokens > 0 ? (m.tokens / tokens) * 100 : 0;
+                          return (
+                            <div
+                              key={m.modelId}
+                              className="flex items-center gap-2 text-[11px] text-muted-foreground py-0.5"
+                            >
+                              <span className="flex-1 truncate font-mono text-left">
+                                {m.modelId}
+                              </span>
+                              <span className="tabular-nums w-12 text-right">
+                                {modelPct.toFixed(0)}%
+                              </span>
+                              <span className="tabular-nums w-14 text-right text-foreground/80">
+                                {formatTokens(m.tokens)}
+                              </span>
+                              <span className="tabular-nums w-14 text-right">
+                                {formatCost(m.cost)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
