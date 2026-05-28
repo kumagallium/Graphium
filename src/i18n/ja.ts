@@ -910,6 +910,7 @@ export const ja: Record<string, string> = {
   "asset.expandDocxToNote": "ノートに展開",
   "asset.expandDocxToNoteHint": "Word の内容を Graphium のノートに変換します（画像も子素材として登録）",
   "asset.expandingDocxToNote": "ノート展開中…",
+  "asset.expandSelectedWithCount": "選択をノートに展開 ({count})",
   "asset.download": "原本をダウンロード",
   "asset.downloading": "ダウンロード中…",
   "asset.downloadHint": "ローカルに原本ファイルを保存します",

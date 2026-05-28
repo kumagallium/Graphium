@@ -4,22 +4,43 @@
 //
 // 取り込み時と同じ mammoth 経路を踏むため、画像はデフォルトで base64 埋め込みされる。
 // プレビュー用途なのでメディア層には書き出さず、表示の都度 HTML を生成する。
+//
+// テキスト選択 → メモ化フロー: PdfViewer と同じパターンで SelectionPill を表示し、
+// onSaveSelectionAsMemo に CitationSource を渡す。.docx はページ概念が薄いので
+// pageNumber は付けない（selectionText のみ）。
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { isDocumentMime } from "./media-index";
 import type { MediaIndexEntry } from "./media-index";
+import { SelectionPill, type CitationSource } from "./SelectionPill";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export function DocumentViewer({ entry }: { entry: MediaIndexEntry }) {
+type PillState = {
+  text: string;
+  top: number;
+  left: number;
+  placement: "above" | "below";
+};
+
+export type DocumentViewerProps = {
+  entry: MediaIndexEntry;
+  /** テキスト選択を新規メモとして保存する（未指定なら SelectionPill を出さない） */
+  onSaveSelectionAsMemo?: (source: CitationSource) => void;
+};
+
+export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerProps) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pill, setPill] = useState<PillState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setHtml(null);
     setError(null);
+    setPill(null);
 
     (async () => {
       // 現状は .docx のみプレビュー対応。Excel/PowerPoint は将来対応。
@@ -57,6 +78,80 @@ export function DocumentViewer({ entry }: { entry: MediaIndexEntry }) {
     };
   }, [entry.fileId, entry.mimeType, entry.url]);
 
+  // テキスト選択検出: container 内のテキストが選択されたら SelectionPill を出す
+  useEffect(() => {
+    if (!onSaveSelectionAsMemo) return;
+
+    const evaluateSelection = () => {
+      const selection = window.getSelection();
+      const container = containerRef.current;
+      if (!selection || !container) {
+        setPill(null);
+        return;
+      }
+      if (selection.isCollapsed || selection.rangeCount === 0) {
+        setPill(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      // anchor / focus / commonAncestor のいずれかが viewer 内なら採用
+      const candidateNodes: Array<Node | null> = [
+        selection.anchorNode,
+        selection.focusNode,
+        range.startContainer,
+        range.endContainer,
+        range.commonAncestorContainer,
+      ];
+      let anchoredEl: Element | null = null;
+      for (const node of candidateNodes) {
+        if (!node) continue;
+        const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+        if (el && container.contains(el)) {
+          anchoredEl = el;
+          break;
+        }
+      }
+      if (!anchoredEl) return; // viewer 外の選択は無視（既存 pill を維持）
+
+      const text = selection.toString().replace(/\s+/g, " ").trim();
+      if (!text) {
+        setPill(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      const willClipTop = rect.top < 48;
+      setPill({
+        text,
+        top: willClipTop ? rect.bottom + 8 : rect.top,
+        left: rect.left + rect.width / 2,
+        placement: willClipTop ? "below" : "above",
+      });
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest("[data-selection-pill]")) return;
+      setTimeout(evaluateSelection, 0);
+    };
+    const onSelectionChange = () => evaluateSelection();
+
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, [onSaveSelectionAsMemo]);
+
+  const handleSaveAsMemo = useCallback(
+    (source: CitationSource) => {
+      onSaveSelectionAsMemo?.(source);
+      setPill(null);
+      window.getSelection()?.removeAllRanges();
+    },
+    [onSaveSelectionAsMemo],
+  );
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-6">
@@ -73,15 +168,36 @@ export function DocumentViewer({ entry }: { entry: MediaIndexEntry }) {
     );
   }
 
+  const citationSource: CitationSource | null = pill
+    ? {
+        entry: {
+          fileId: entry.fileId,
+          name: entry.name,
+          type: entry.type,
+          url: entry.url,
+          urlMeta: entry.urlMeta,
+        },
+        selectionText: pill.text,
+      }
+    : null;
+
   // mammoth の出力 HTML は自分のアセット由来で信頼できる前提。
   // それでも将来の安全のため、`prose` 風の基本スタイルだけ当てて表示する。
   return (
-    <div className="w-full h-full overflow-auto bg-background">
+    <div className="w-full h-full overflow-auto bg-background" ref={containerRef}>
       <div
         className="max-w-3xl mx-auto px-6 py-8 text-sm leading-relaxed text-foreground document-preview"
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />
+      {pill && citationSource && onSaveSelectionAsMemo && (
+        <SelectionPill
+          source={citationSource}
+          onSaveAsMemo={handleSaveAsMemo}
+          onDismiss={() => setPill(null)}
+          position={{ top: pill.top, left: pill.left, placement: pill.placement }}
+        />
+      )}
       <style>{`
         .document-preview h1 { font-size: 1.5rem; font-weight: 700; margin: 1.2em 0 0.6em; }
         .document-preview h2 { font-size: 1.25rem; font-weight: 700; margin: 1em 0 0.5em; }

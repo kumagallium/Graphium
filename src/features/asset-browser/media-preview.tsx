@@ -110,7 +110,7 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo }: MediaPreviewProps
     case "pdf":
       return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "document":
-      return <DocumentViewer entry={entry} />;
+      return <DocumentViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
       return <UrlReaderView entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     default:

@@ -910,6 +910,7 @@ export const en: Record<string, string> = {
   "asset.expandDocxToNote": "Expand to note",
   "asset.expandDocxToNoteHint": "Convert the Word content into a Graphium note (images are linked as child assets)",
   "asset.expandingDocxToNote": "Expanding…",
+  "asset.expandSelectedWithCount": "Expand selected to notes ({count})",
   "asset.download": "Download original",
   "asset.downloading": "Downloading…",
   "asset.downloadHint": "Save the original file to your computer",
