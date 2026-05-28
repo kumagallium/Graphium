@@ -387,18 +387,8 @@ export type AssetGalleryViewProps = {
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
-  /** ファイル直接アップロード（image/video/audio/pdf のみ使用、ノート非経由） */
+  /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
-  /**
-   * Word (.docx) を素材ライブラリに取り込む。
-   * 親側で .docx 本体を `handleUploadAsset` で親素材として登録し、
-   * `importDocxToGraphiumDoc` でノートを生成する。
-   * document タブで「Word を取り込む」ボタンを押したときに呼ばれる。
-   */
-  onImportDocx?: (
-    files: File[],
-    onProgress: (p: { done: number; total: number; current?: string; failed: string[] }) => void,
-  ) => Promise<void>;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
@@ -421,6 +411,8 @@ export type AssetGalleryViewProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** Word (.docx) 素材を Graphium ノートに展開する */
+  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
   /**
    * Knowledge ノートの kind 別色を出すためのルックアップ。
    * 渡されない場合はフォールバック色で描画。
@@ -462,12 +454,12 @@ export function AssetGalleryView({
   onRenameMedia,
   onAddUrlBookmark,
   onUploadMedia,
-  onImportDocx,
   onIngestMedia,
   onCreateProvNote,
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
   onExtractPdfPages,
+  onExpandDocxToNote,
   getKnowledgeKind,
   focusFileId,
   focusFullMode,
@@ -517,37 +509,6 @@ export function AssetGalleryView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState<{
-    done: number;
-    total: number;
-    current?: string;
-    failed: string[];
-  } | null>(null);
-
-  // Word 取り込み: 素材ライブラリ経由のフロー（親素材登録 + ノート化）
-  const handleDocxPicked = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []).filter((f) => /\.docx$/i.test(f.name));
-      e.target.value = "";
-      if (files.length === 0 || !onImportDocx) return;
-      setImporting(true);
-      setImportProgress({ done: 0, total: files.length, failed: [] });
-      try {
-        await onImportDocx(files, (p) => setImportProgress(p));
-      } finally {
-        setImporting(false);
-        setImportProgress((prev) => {
-          if (!prev) return null;
-          if (prev.failed.length === 0) {
-            setTimeout(() => setImportProgress(null), 2500);
-          }
-          return prev;
-        });
-      }
-    },
-    [onImportDocx],
-  );
   // ビュー切替（gallery / list）— localStorage に永続化
   const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {
     try {
@@ -836,6 +797,7 @@ export function AssetGalleryView({
           if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
         }}
         onExtractPdfPages={onExtractPdfPages}
+        onExpandDocxToNote={onExpandDocxToNote}
         mediaIndex={mediaIndex}
         getKnowledgeKind={getKnowledgeKind}
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
@@ -875,11 +837,11 @@ export function AssetGalleryView({
             {t("asset.urlAdd")}
           </button>
         )}
-        {mediaType === "document" && (
+        {mediaType === "document" && onUploadMedia && (
           <div className="ml-auto relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              disabled={importing || uploading}
+              disabled={uploading}
               className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
               title={t("common.menu")}
               aria-label={t("common.menu")}
@@ -888,27 +850,24 @@ export function AssetGalleryView({
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
-                {onImportDocx && (
-                  <button
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
-                    onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
-                    disabled={importing || uploading}
-                  >
-                    <Plus size={14} />
-                    {importing ? t("asset.importing") : t("asset.importDocx")}
-                  </button>
-                )}
-                {onUploadMedia && (
-                  <button
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
-                    onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
-                    disabled={importing || uploading}
-                    title={t("asset.uploadPdfHint")}
-                  >
-                    <Plus size={14} />
-                    {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
-                  </button>
-                )}
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                  onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
+                  disabled={uploading}
+                  title={t("asset.uploadDocxHint")}
+                >
+                  <Plus size={14} />
+                  {uploading ? t("asset.uploading") : t("asset.uploadDocx")}
+                </button>
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                  onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
+                  disabled={uploading}
+                  title={t("asset.uploadPdfHint")}
+                >
+                  <Plus size={14} />
+                  {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
+                </button>
                 <div className="my-1 border-t border-border" />
                 <button
                   className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -934,7 +893,7 @@ export function AssetGalleryView({
               type="file"
               accept=".docx"
               multiple
-              onChange={handleDocxPicked}
+              onChange={handleFilePicked}
               className="hidden"
             />
             <input
@@ -969,45 +928,6 @@ export function AssetGalleryView({
         )}
       </div>
 
-      {/* Word 取り込み進捗（document タブ） */}
-      {importProgress && (
-        <div className="px-6 py-2 border-b border-border bg-muted/30 space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-foreground">
-              {t("asset.importProgress")}: {importProgress.done} / {importProgress.total}
-              {importProgress.failed.length > 0 && (
-                <span className="text-destructive ml-2">
-                  {t("asset.importFailed", { count: String(importProgress.failed.length) })}
-                </span>
-              )}
-            </span>
-            {!importing && (
-              <button
-                onClick={() => setImportProgress(null)}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t("common.close")}
-              </button>
-            )}
-          </div>
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${(importProgress.done / Math.max(1, importProgress.total)) * 100}%` }}
-            />
-          </div>
-          {importProgress.current && importing && (
-            <div className="text-[11px] text-muted-foreground truncate">
-              {t("asset.importingFile")}: {importProgress.current}
-            </div>
-          )}
-          {importProgress.failed.length > 0 && !importing && (
-            <div className="text-[11px] text-destructive">
-              {t("asset.importFailedFiles")}: {importProgress.failed.join(", ")}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* 検索バー + サブフィルタ + ソート */}
       <div className="px-6 py-2 border-b border-border flex items-center gap-3 flex-wrap">
@@ -1346,6 +1266,7 @@ export function AssetGalleryView({
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
           onExtractPdfPages={onExtractPdfPages}
+        onExpandDocxToNote={onExpandDocxToNote}
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}

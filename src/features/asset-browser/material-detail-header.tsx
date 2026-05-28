@@ -73,6 +73,8 @@ export type MaterialDetailHeaderProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** Word (.docx) 素材をノートに展開する */
+  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   onNavigateNote?: (noteId: string) => void;
   knowledgeWikiNoteId?: string;
@@ -91,6 +93,7 @@ export function MaterialDetailHeader({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
+  onExpandDocxToNote,
   onSharedRefUpdated,
   onNavigateNote,
   knowledgeWikiNoteId,
@@ -194,6 +197,7 @@ export function MaterialDetailHeader({
       onIngest={onIngest}
       onCreateProvNote={onCreateProvNote}
       onExtractPdfPages={onExtractPdfPages}
+      onExpandDocxToNote={onExpandDocxToNote}
       onSharedRefUpdated={onSharedRefUpdated}
       onNavigateNote={onNavigateNote}
       knowledgeWikiNoteId={knowledgeWikiNoteId}

@@ -40,6 +40,8 @@ export type MaterialFullViewProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** Word (.docx) 素材を Graphium ノートに展開 */
+  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   knowledgeWikiNoteId?: string;
   mediaIndex?: MediaIndex | null;
@@ -68,6 +70,7 @@ export function MaterialFullView({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
+  onExpandDocxToNote,
   onSharedRefUpdated,
   knowledgeWikiNoteId,
   mediaIndex,
@@ -132,6 +135,7 @@ export function MaterialFullView({
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
         onExtractPdfPages={onExtractPdfPages}
+        onExpandDocxToNote={onExpandDocxToNote}
         onSharedRefUpdated={onSharedRefUpdated}
         onNavigateNote={onNavigateNote}
         knowledgeWikiNoteId={knowledgeWikiNoteId}

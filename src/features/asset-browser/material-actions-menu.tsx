@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertCircle,
   Download,
+  FilePlus2,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -30,6 +31,12 @@ export type MaterialActionsMenuProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /**
+   * Word (.docx) 素材を Graphium のノートに展開する。
+   * 親側で mammoth による HTML 化 + 画像抽出 + ノート生成を行う。
+   * 完了後は新規ノートを開く想定。
+   */
+  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   onNavigateNote?: (noteId: string) => void;
   knowledgeWikiNoteId?: string;
@@ -41,6 +48,7 @@ export function MaterialActionsMenu({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
+  onExpandDocxToNote,
   onSharedRefUpdated,
   onNavigateNote,
   knowledgeWikiNoteId,
@@ -121,6 +129,25 @@ export function MaterialActionsMenu({
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf");
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf");
   const canExtract = !!onExtractPdfPages && entry.type === "pdf";
+  // Word (.docx) 素材のみノート展開可能（mimeType ベース判定）
+  const canExpandDocx = !!onExpandDocxToNote
+    && entry.type === "document"
+    && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const [expanding, setExpanding] = useState(false);
+  const [expandError, setExpandError] = useState<string | null>(null);
+  const handleExpandDocx = useCallback(async () => {
+    if (!onExpandDocxToNote || expanding) return;
+    setExpanding(true);
+    setExpandError(null);
+    try {
+      await onExpandDocxToNote(entry);
+    } catch (err) {
+      console.error("[material-actions-menu] ノート展開失敗:", err);
+      setExpandError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExpanding(false);
+    }
+  }, [entry, expanding, onExpandDocxToNote]);
   // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
   const canDownload = entry.type !== "url";
   const [downloading, setDownloading] = useState(false);
@@ -231,6 +258,20 @@ export function MaterialActionsMenu({
               </button>
             </>
           )}
+          {canExpandDocx && (
+            <>
+              <div className="my-1 border-t border-border" />
+              <button
+                className={itemClass}
+                disabled={expanding}
+                onClick={() => { void handleExpandDocx(); setOpen(false); }}
+                title={t("asset.expandDocxToNoteHint")}
+              >
+                {expanding ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} className="text-primary" />}
+                {expanding ? t("asset.expandingDocxToNote") : t("asset.expandDocxToNote")}
+              </button>
+            </>
+          )}
           {canDownload && (
             <>
               <div className="my-1 border-t border-border" />
@@ -269,11 +310,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || shareError || downloadError) && (
+      {(extractError || shareError || downloadError || expandError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? shareError ?? downloadError}</span>
+            <span className="break-all">{extractError ?? shareError ?? downloadError ?? expandError}</span>
           </div>
         </div>
       )}

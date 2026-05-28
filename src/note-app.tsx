@@ -3751,71 +3751,46 @@ export function NoteApp() {
     }
   }, [fm.handleRenameMedia]);
 
-  // Word (.docx) を素材ライブラリ経由で取り込む
-  // .docx 本体を親素材として MediaIndex に登録 → 画像は子素材として親 fileId と紐付け
-  // → 生成ノートにも sourceDocumentFileId を埋め込んで PROV-DM 派生を残す。
-  const handleImportDocxAsAsset = useCallback(
-    async (
-      files: File[],
-      onProgress: (p: { done: number; total: number; current?: string; failed: string[] }) => void,
-    ): Promise<void> => {
+  // Word (.docx) 素材を Graphium ノートに展開する
+  // 素材ライブラリで「ノートに展開」アクションを押したときに呼ばれる:
+  //   1. 既に登録済みの .docx 素材から blob を取り出す
+  //   2. mammoth で HTML 化 → BlockNote ブロック化 → ノート生成
+  //   3. 画像は子素材として MediaIndex に登録（derivedFromAssets で親 .docx と紐付け）
+  //   4. ノートに sourceDocumentFileId を埋め込んで PROV-DM 派生関係を保持
+  const handleExpandDocxEntryToNote = useCallback(
+    async (entry: MediaIndexEntry): Promise<void> => {
+      const provider = getActiveProvider();
+      const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+      const blobUrl = await provider.getMediaBlobUrl(fileId);
+      const res = await fetch(blobUrl);
+      const blob = await res.blob();
+      const file = new File([blob], entry.name, { type: entry.mimeType });
+
       const { importDocxToGraphiumDoc } = await import("./features/docx-import/import");
-      let lastNewId: string | null = null;
-      const failed: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        onProgress({ done: i, total: files.length, current: file.name, failed: [...failed] });
-        try {
-          // 1. .docx 本体を親素材として登録
-          const { fileId: docxFileId } = await fm.handleUploadAsset(file);
-          // 2. 画像は子素材として親に紐付けつつノート生成
-          const doc = await importDocxToGraphiumDoc(file, {
-            parentAssetFileId: docxFileId,
-            uploadImage: (img) => fm.handleUploadMedia(img, { derivedFromAssets: [docxFileId] }),
-            addUrlBookmark: (url, anchorText) => {
-              fm.handleAddUrlBookmark({
-                fileId: `url:${url}`,
-                name: anchorText,
-                type: "url",
-                mimeType: "text/uri-list",
-                url,
-                thumbnailUrl: "",
-                uploadedAt: new Date().toISOString(),
-                usedIn: [],
-              });
-            },
+      const doc = await importDocxToGraphiumDoc(file, {
+        parentAssetFileId: entry.fileId,
+        uploadImage: (img) => fm.handleUploadMedia(img, { derivedFromAssets: [entry.fileId] }),
+        addUrlBookmark: (url, anchorText) => {
+          fm.handleAddUrlBookmark({
+            fileId: `url:${url}`,
+            name: anchorText,
+            type: "url",
+            mimeType: "text/uri-list",
+            url,
+            thumbnailUrl: "",
+            uploadedAt: new Date().toISOString(),
+            usedIn: [],
           });
-          const newId = await fm.handleCreateNoteFromImport(doc);
-          lastNewId = newId;
-        } catch (err) {
-          console.error("Word インポート失敗:", file.name, err);
-          failed.push(file.name);
-        }
-        onProgress({ done: i + 1, total: files.length, failed: [...failed] });
-      }
+        },
+      });
+      const newId = await fm.handleCreateNoteFromImport(doc);
       await fm.refreshFiles();
 
-      const successCount = files.length - failed.length;
-      if (successCount > 0) {
-        window.alert(
-          [
-            `${successCount} 件のノートを取り込みました。`,
-            "",
-            "※ 一部の画像が表示されない / トリミング前の状態で展開されることがあります。",
-            "  原因: EMF/WMF・SmartArt・数式などはブラウザ変換ではサポート外、",
-            "  Word のクロップ情報はメタデータとして別管理されているため反映されません。",
-            "  必要に応じて元の Word と見比べて、ノート上で差し替えてください。",
-          ].join("\n"),
-        );
-      }
-
-      // 単発取り込みなら自動で開く（素材ライブラリを離れて editor へ）
-      if (lastNewId && files.length === 1) {
-        fm.setShowNoteList(false);
-        fm.setActiveAssetType(null);
-        fm.handleOpenFile(lastNewId);
-        router.navigate({ view: "editor", fileId: lastNewId });
-      }
+      // 展開直後に editor を開く（素材ライブラリを離れる）
+      fm.setShowNoteList(false);
+      fm.setActiveAssetType(null);
+      fm.handleOpenFile(newId);
+      router.navigate({ view: "editor", fileId: newId });
     },
     [fm, router],
   );
@@ -4445,7 +4420,7 @@ export function NoteApp() {
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
-            onImportDocx={handleImportDocxAsAsset}
+            onExpandDocxToNote={handleExpandDocxEntryToNote}
             resolveKnowledgeWikiId={(entry) => {
               if (entry.type === "url" && entry.url) {
                 return appKnowledgeMap.get(`url:${entry.url}`)?.[0]?.noteId;
