@@ -10,7 +10,26 @@ const INDEX_FILE_NAME = ".graphium-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "other";
+export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "other";
+
+/**
+ * 「素材ライブラリ」として扱うドキュメント MIME 一覧。
+ * Word/Excel/PowerPoint 系をひとまとめに mediaType="document" として登録し、
+ * AssetGalleryView の document タブで一覧できるようにする。
+ * PDF は専用 type が既にあるためここには含めない。
+ */
+const DOCUMENT_MIMES = new Set<string>([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+  "application/msword", // .doc
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+  "application/vnd.ms-excel", // .xls
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+  "application/vnd.ms-powerpoint", // .ppt
+]);
+
+export function isDocumentMime(mimeType: string): boolean {
+  return DOCUMENT_MIMES.has(mimeType);
+}
 
 /** メディアが使用されているノートの情報 */
 export type MediaUsage = {
@@ -123,6 +142,7 @@ export function mimeToMediaType(mimeType: string): MediaType {
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
   if (mimeType === "application/pdf") return "pdf";
+  if (isDocumentMime(mimeType)) return "document";
   return "other";
 }
 
@@ -343,6 +363,27 @@ export function collectPdfFileIdsFromDoc(doc: {
   return ids;
 }
 
+/**
+ * doc から「素材ライブラリ」全般への document-level 参照（fileId）を集める。
+ * PDF と Document（.docx 等）を一緒に扱う。
+ *
+ * 対象:
+ * - PROV ノートのトップレベル `sourcePdfFileId`（PDF 派生）
+ * - 素材ライブラリ経由で取り込んだノートのトップレベル `sourceDocumentFileId`（Word 等）
+ * - Wiki ノートの `wikiMeta.derivedFromNotes` 内の `"pdf:{fileId}"`
+ *
+ * `collectPdfFileIdsFromDoc` の上位互換。新規呼び出しはこちらを使う。
+ */
+export function collectSourceAssetFileIdsFromDoc(doc: {
+  wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
+  sourcePdfFileId?: string | null | undefined;
+  sourceDocumentFileId?: string | null | undefined;
+}): Set<string> {
+  const ids = collectPdfFileIdsFromDoc(doc);
+  if (doc.sourceDocumentFileId) ids.add(doc.sourceDocumentFileId);
+  return ids;
+}
+
 /** 特定ノートの usedIn を更新（ノート保存時に呼ぶ） */
 export function syncUsedIn(
   index: MediaIndex,
@@ -388,7 +429,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, other: 0 };
   for (const entry of index.media) {
     counts[entry.type]++;
   }
@@ -476,6 +517,7 @@ type IndexableDoc = {
   pages: { blocks: any[] }[];
   wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
   sourcePdfFileId?: string | null | undefined;
+  sourceDocumentFileId?: string | null | undefined;
 };
 
 /**
@@ -620,11 +662,11 @@ export async function ensureMediaIndex(
         }
       }
     }
-    // Wiki / PROV ノートの document-level PDF 参照を usedIn に反映する。
-    // PDF をブロックとして埋め込まないため、ここで補完しないと
-    // PDF アセットモーダルの「利用ノート」グラフに表示されない。
-    const docPdfRefs = collectPdfFileIdsFromDoc(doc);
-    for (const fileId of docPdfRefs) {
+    // Wiki / PROV / Document 素材由来ノートの document-level 参照を usedIn に反映する。
+    // PDF や .docx をブロックとして埋め込まない経路でも、ここで補完しないと
+    // 素材モーダルの「利用ノート」グラフに表示されない。
+    const docAssetRefs = collectSourceAssetFileIdsFromDoc(doc);
+    for (const fileId of docAssetRefs) {
       const idx = fileIdToIdx.get(fileId);
       if (idx !== undefined && !addedIdxs.has(idx)) {
         media[idx].usedIn.push({

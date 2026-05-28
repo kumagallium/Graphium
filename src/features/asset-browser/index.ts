@@ -18,6 +18,8 @@ export {
   extractFileIdFromUrl,
   extractMediaFromBlocks,
   collectPdfFileIdsFromDoc,
+  collectSourceAssetFileIdsFromDoc,
+  isDocumentMime,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   findBlockIdsByMediaUrl,

@@ -102,6 +102,10 @@ type GraphiumDocument = {
   // Set when the note was generated from a PDF (PDF-to-PROV)
   sourcePdfFileId?: string;  // media-index fileId of the source PDF
   sourcePdfName?: string;    // display filename
+  // Set when the note was generated from a document asset (.docx etc.)
+  // imported through the materials library.
+  sourceDocumentFileId?: string;  // media-index fileId of the source document
+  sourceDocumentName?: string;    // display filename
 
   // ── plan note backref ──────────────────────────────
   // Set on execution notes when one source describes multiple synthesis

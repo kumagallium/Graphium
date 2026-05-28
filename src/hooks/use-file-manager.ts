@@ -53,7 +53,7 @@ import {
   renameMediaFile,
   renameMediaEntry,
   extractMediaFromBlocks,
-  collectPdfFileIdsFromDoc,
+  collectSourceAssetFileIdsFromDoc,
   updateBlockNameByUrl,
   mimeToMediaType,
   readMediaIndex,
@@ -763,7 +763,7 @@ export function useFileManager(authenticated: boolean) {
             const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
             // PROV ノートはトップレベル `sourcePdfFileId` で PDF を参照するので
             // document-level の PDF 参照も渡して usedIn に反映する。
-            const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+            const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
             const updated = syncUsedIn(mediaIndexRef.current, savedFileId, doc.title, mediaMap, docPdfRefs);
             mediaIndexRef.current = updated;
             setMediaIndex(updated);
@@ -1141,15 +1141,16 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
-  // メディアアップロード（インデックス自動登録付き）
+  // 素材アップロード（メディアインデックス登録 + fileId / entry も返す）
   //
-  // `options.derivedFromAssets` を渡すと、登録時に派生関係を MediaIndex に記録する。
-  // 例: PDF から抽出した画像をアップロードするとき、元 PDF の fileId を渡せば
-  // 画像モーダルから元 PDF を辿り、PDF モーダルから派生画像を辿れるようになる。
-  const handleUploadMedia = useCallback(
-    async (file: File, options?: { derivedFromAssets?: string[] }): Promise<string> => {
+  // 「素材ライブラリ」経由の取り込み（Word/Excel 等のドキュメント、PDF、画像）で
+  // 後段に親 fileId を渡したいときに使う。handleUploadMedia は本関数のラッパー。
+  const handleUploadAsset = useCallback(
+    async (
+      file: File,
+      options?: { derivedFromAssets?: string[] },
+    ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry }> => {
       const result = await uploadMediaFileWithMeta(file);
-      // メディアインデックスに登録
       const entry: MediaIndexEntry = {
         fileId: result.fileId,
         name: result.name,
@@ -1168,9 +1169,22 @@ export function useFileManager(authenticated: boolean) {
       mediaIndexRef.current = updated;
       setMediaIndex(updated);
       saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
-      return result.url;
+      return { url: result.url, fileId: result.fileId, entry };
     },
     [],
+  );
+
+  // メディアアップロード（インデックス自動登録付き）
+  //
+  // `options.derivedFromAssets` を渡すと、登録時に派生関係を MediaIndex に記録する。
+  // 例: PDF から抽出した画像をアップロードするとき、元 PDF の fileId を渡せば
+  // 画像モーダルから元 PDF を辿り、PDF モーダルから派生画像を辿れるようになる。
+  const handleUploadMedia = useCallback(
+    async (file: File, options?: { derivedFromAssets?: string[] }): Promise<string> => {
+      const { url } = await handleUploadAsset(file, options);
+      return url;
+    },
+    [handleUploadAsset],
   );
 
   // メディアリネーム（モーダルから呼ぶ）
@@ -1366,7 +1380,7 @@ export function useFileManager(authenticated: boolean) {
         // 保存のたびに反映して PDF アセットモーダルの利用ノートグラフを最新に保つ。
         if (mediaIndexRef.current) {
           const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
-          const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+          const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
           const updated = syncUsedIn(mediaIndexRef.current, `wiki:${wikiId}`, doc.title, mediaMap, docPdfRefs);
           mediaIndexRef.current = updated;
           setMediaIndex(updated);
@@ -1532,7 +1546,7 @@ export function useFileManager(authenticated: boolean) {
       // 同じ手順で逆引きを更新する。
       if (mediaIndexRef.current && doc.pages[0]) {
         const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
         const updated = syncUsedIn(mediaIndexRef.current, newFileId, doc.title, mediaMap, docPdfRefs);
         mediaIndexRef.current = updated;
         setMediaIndex(updated);
@@ -1562,7 +1576,7 @@ export function useFileManager(authenticated: boolean) {
       // pass 1 と pass 2 で blocks が変わっていても、最新状態に追従させる。
       if (mediaIndexRef.current && doc.pages[0]) {
         const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
-        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
         const updated = syncUsedIn(mediaIndexRef.current, noteId, doc.title, mediaMap, docPdfRefs);
         mediaIndexRef.current = updated;
         setMediaIndex(updated);
@@ -1627,7 +1641,7 @@ export function useFileManager(authenticated: boolean) {
       // 新しい Wiki が作られた直後に PDF アセットの利用ノートに反映する。
       if (mediaIndexRef.current) {
         const mediaMap = doc.pages[0] ? extractMediaFromBlocks(doc.pages[0].blocks || []) : new Map<string, string>();
-        const docPdfRefs = collectPdfFileIdsFromDoc(doc);
+        const docPdfRefs = collectSourceAssetFileIdsFromDoc(doc);
         const updated = syncUsedIn(mediaIndexRef.current, `wiki:${newId}`, doc.title, mediaMap, docPdfRefs);
         mediaIndexRef.current = updated;
         setMediaIndex(updated);
@@ -1821,6 +1835,7 @@ export function useFileManager(authenticated: boolean) {
     getCachedDoc,
     loadDoc,
     handleUploadMedia,
+    handleUploadAsset,
     handleDeleteMedia,
     handleRenameMedia,
     handleUpdateMediaSharedRef,

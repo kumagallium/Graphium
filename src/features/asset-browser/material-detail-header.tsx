@@ -24,6 +24,7 @@ import {
   Video,
   Volume2,
   FileText,
+  Files,
   Paperclip,
   Link as LinkIcon,
   Bot,
@@ -39,6 +40,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   audio: "#c08b3e",
   pdf: "#c26356",
   url: "#4B7A52",
+  document: "#6f5b8b",
   other: "#7a7a7a",
 };
 
@@ -54,6 +56,8 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
       return <FileText size={size} />;
     case "url":
       return <LinkIcon size={size} />;
+    case "document":
+      return <Files size={size} />;
     default:
       return <Paperclip size={size} />;
   }

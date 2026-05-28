@@ -634,6 +634,14 @@ export type GraphiumDocument = {
   /** PDF から生成した場合の表示用ファイル名 */
   sourcePdfName?: string;
   /**
+   * ドキュメント素材（.docx 等）から生成した場合の元素材（メディアインデックス上の fileId）。
+   * 「素材ライブラリ」経由の取り込みで親 .docx と派生ノートを PROV-DM 的に紐付ける。
+   * PDF と用途は同じだが、メディアタイプが異なるためフィールドを分けている。
+   */
+  sourceDocumentFileId?: string;
+  /** ドキュメント素材から生成した場合の表示用ファイル名 */
+  sourceDocumentName?: string;
+  /**
    * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、

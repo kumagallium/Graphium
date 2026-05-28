@@ -389,6 +389,16 @@ export type AssetGalleryViewProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** ファイル直接アップロード（image/video/audio/pdf のみ使用、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
+  /**
+   * Word (.docx) を素材ライブラリに取り込む。
+   * 親側で .docx 本体を `handleUploadAsset` で親素材として登録し、
+   * `importDocxToGraphiumDoc` でノートを生成する。
+   * document タブで「Word を取り込む」ボタンを押したときに呼ばれる。
+   */
+  onImportDocx?: (
+    files: File[],
+    onProgress: (p: { done: number; total: number; current?: string; failed: string[] }) => void,
+  ) => Promise<void>;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
@@ -452,6 +462,7 @@ export function AssetGalleryView({
   onRenameMedia,
   onAddUrlBookmark,
   onUploadMedia,
+  onImportDocx,
   onIngestMedia,
   onCreateProvNote,
   resolveKnowledgeWikiId,
@@ -500,7 +511,39 @@ export function AssetGalleryView({
   }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docxInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    done: number;
+    total: number;
+    current?: string;
+    failed: string[];
+  } | null>(null);
+
+  // Word 取り込み: 素材ライブラリ経由のフロー（親素材登録 + ノート化）
+  const handleDocxPicked = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []).filter((f) => /\.docx$/i.test(f.name));
+      e.target.value = "";
+      if (files.length === 0 || !onImportDocx) return;
+      setImporting(true);
+      setImportProgress({ done: 0, total: files.length, failed: [] });
+      try {
+        await onImportDocx(files, (p) => setImportProgress(p));
+      } finally {
+        setImporting(false);
+        setImportProgress((prev) => {
+          if (!prev) return null;
+          if (prev.failed.length === 0) {
+            setTimeout(() => setImportProgress(null), 2500);
+          }
+          return prev;
+        });
+      }
+    },
+    [onImportDocx],
+  );
   // ビュー切替（gallery / list）— localStorage に永続化
   const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {
     try {
@@ -528,6 +571,7 @@ export function AssetGalleryView({
     audio: "audio/*",
     pdf: "application/pdf",
     url: "",
+    document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt",
     other: "",
   };
 
@@ -734,7 +778,27 @@ export function AssetGalleryView({
             {t("asset.urlAdd")}
           </button>
         )}
-        {mediaType !== "url" && onUploadMedia && (
+        {mediaType === "document" && onImportDocx && (
+          <>
+            <button
+              onClick={() => docxInputRef.current?.click()}
+              disabled={importing}
+              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              <Plus size={12} />
+              {importing ? t("asset.importing") : t("asset.importDocx")}
+            </button>
+            <input
+              ref={docxInputRef}
+              type="file"
+              accept=".docx"
+              multiple
+              onChange={handleDocxPicked}
+              className="hidden"
+            />
+          </>
+        )}
+        {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
           <>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -755,6 +819,46 @@ export function AssetGalleryView({
           </>
         )}
       </div>
+
+      {/* Word 取り込み進捗（document タブ） */}
+      {importProgress && (
+        <div className="px-6 py-2 border-b border-border bg-muted/30 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium text-foreground">
+              {t("asset.importProgress")}: {importProgress.done} / {importProgress.total}
+              {importProgress.failed.length > 0 && (
+                <span className="text-destructive ml-2">
+                  {t("asset.importFailed", { count: String(importProgress.failed.length) })}
+                </span>
+              )}
+            </span>
+            {!importing && (
+              <button
+                onClick={() => setImportProgress(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {t("common.close")}
+              </button>
+            )}
+          </div>
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${(importProgress.done / Math.max(1, importProgress.total)) * 100}%` }}
+            />
+          </div>
+          {importProgress.current && importing && (
+            <div className="text-[11px] text-muted-foreground truncate">
+              {t("asset.importingFile")}: {importProgress.current}
+            </div>
+          )}
+          {importProgress.failed.length > 0 && !importing && (
+            <div className="text-[11px] text-destructive">
+              {t("asset.importFailedFiles")}: {importProgress.failed.join(", ")}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 検索バー + ソート */}
       <div className="px-6 py-2 border-b border-border flex items-center gap-3">

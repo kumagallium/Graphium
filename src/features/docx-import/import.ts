@@ -27,6 +27,12 @@ export type DocxImportOptions = {
   uploadImage?: (file: File) => Promise<string>;
   /** Word 内のハイパーリンクを URL ブックマークとして登録する処理（重複は受け側で吸収する想定） */
   addUrlBookmark?: (url: string, anchorText: string) => void;
+  /**
+   * 親素材 (.docx 本体) の MediaIndexEntry fileId。
+   * 素材ライブラリ経由の取り込みで指定すると、生成ノートに `sourceDocumentFileId`
+   * を埋め込み、PROV-DM 的に素材 → ノートの派生関係を保持する。
+   */
+  parentAssetFileId?: string;
 };
 
 /** docx ファイル 1 個を Graphium ノートに変換する */
@@ -225,6 +231,9 @@ export async function importDocxToGraphiumDoc(
     createdAt: now,
     modifiedAt: now,
     source: "human",
+    ...(options.parentAssetFileId
+      ? { sourceDocumentFileId: options.parentAssetFileId, sourceDocumentName: file.name }
+      : {}),
   };
 }
 
