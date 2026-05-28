@@ -974,6 +974,7 @@ export const en: Record<string, string> = {
   "settings.usage.empty": "No AI calls recorded in this range yet.",
   "settings.usage.chartTitle": "Tokens over time",
   "settings.usage.breakdown": "By feature",
+  "settings.usage.modelsCount": "{count} models",
 
   // ── 設定: About タブ ──
   "settings.tab.about": "About",

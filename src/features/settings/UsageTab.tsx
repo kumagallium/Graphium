@@ -458,8 +458,10 @@ export function UsageTab() {
                 if (tokens === 0) return null;
                 const pct = grandTotalTokens > 0 ? (tokens / grandTotalTokens) * 100 : 0;
                 const models = featureModelBreakdown.get(f) ?? [];
-                // モデルが 1 種類しかない場合はアコーディオンを出さない（情報量ゼロのため）
+                // モデルが 2 種類以上なら折りたたみ可能。1 種類でもモデル名は
+                // feature 行のサブテキストとして常に見せる（「これは何で動いてる？」が一目で分かるように）。
                 const hasMultipleModels = models.length > 1;
+                const singleModel = models.length === 1 ? models[0] : null;
                 const isExpanded = expandedFeatures.has(f);
                 return (
                   <div key={f}>
@@ -483,7 +485,19 @@ export function UsageTab() {
                         className="w-2.5 h-2.5 rounded-sm shrink-0"
                         style={{ backgroundColor: featureColor(f) }}
                       />
-                      <span className="text-foreground flex-1 truncate font-mono text-left">{f}</span>
+                      <span className="flex-1 min-w-0 text-left">
+                        <span className="text-foreground font-mono">{f}</span>
+                        {singleModel && (
+                          <span className="ml-2 text-[10px] text-muted-foreground font-mono truncate">
+                            {singleModel.modelId}
+                          </span>
+                        )}
+                        {hasMultipleModels && (
+                          <span className="ml-2 text-[10px] text-muted-foreground">
+                            {t("settings.usage.modelsCount", { count: String(models.length) })}
+                          </span>
+                        )}
+                      </span>
                       <span className="tabular-nums text-muted-foreground w-12 text-right">
                         {pct.toFixed(0)}%
                       </span>

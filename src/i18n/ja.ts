@@ -974,6 +974,7 @@ export const ja: Record<string, string> = {
   "settings.usage.empty": "この期間に AI 呼び出しの記録はまだありません。",
   "settings.usage.chartTitle": "時系列のトークン",
   "settings.usage.breakdown": "機能別の内訳",
+  "settings.usage.modelsCount": "{count} モデル",
 
   "settings.tab.about": "アプリ情報",
   "settings.about.title": "アプリ情報",
