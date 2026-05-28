@@ -71,13 +71,33 @@ function readProfiles(): Profile[] {
   try {
     const raw = readFileSync(profilesPath(), "utf-8");
     return JSON.parse(raw) as Profile[];
-  } catch {
-    // ファイルが存在しない場合、seed データを書き込んで返す
-    ensureDataDir();
-    writeFileSync(
-      profilesPath(),
-      JSON.stringify(SEED_PROFILES, null, 2),
-      "utf-8",
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "ENOENT") {
+      // ファイル未作成 → seed を書き込んで返す
+      try {
+        ensureDataDir();
+        writeFileSync(
+          profilesPath(),
+          JSON.stringify(SEED_PROFILES, null, 2),
+          "utf-8",
+        );
+      } catch (writeErr) {
+        // 書き込みも失敗（権限など）→ メモリ上の seed だけ返す
+        console.warn(
+          `[profiles] failed to seed ${profilesPath()}: ${
+            writeErr instanceof Error ? writeErr.message : String(writeErr)
+          }`,
+        );
+      }
+      return SEED_PROFILES;
+    }
+    // 権限エラー・JSON 破損などは「登録したはずのプロファイルが消えた」を
+    // 引き起こすサイレント故障になるため、必ず warn を残し seed を返す。
+    console.warn(
+      `[profiles] failed to read ${profilesPath()} (code=${code ?? "?"}): ${
+        e instanceof Error ? e.message : String(e)
+      }`,
     );
     return SEED_PROFILES;
   }

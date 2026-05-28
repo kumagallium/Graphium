@@ -89,7 +89,18 @@ function readRawStored(): StoredModelConfig[] {
   try {
     const raw = readFileSync(modelsPath(), "utf-8");
     return JSON.parse(raw) as StoredModelConfig[];
-  } catch {
+  } catch (e) {
+    // ENOENT は「まだ保存していない」状態として静かに [] を返す。
+    // それ以外（権限エラー / JSON 破損）は黙って [] を返すと「登録したはずの
+    // モデルが消えた」というサイレント故障になるので、必ず warn を残す。
+    const code = (e as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== "ENOENT") {
+      console.warn(
+        `[models] failed to read ${modelsPath()} (code=${code ?? "?"}): ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
     return [];
   }
 }

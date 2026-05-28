@@ -36,9 +36,26 @@ function bootLog(msg: string): void {
 bootLog("imports complete, resolving data dir");
 
 // データディレクトリ設定（環境変数 or デフォルト）
-// デスクトップアプリ（sidecar）では ~/Documents/Graphium/server-data を使用
+// デスクトップアプリ（sidecar）では Application Support 配下を使う。
+// 旧 ~/Documents/Graphium/server-data からは起動時に自動 migration する。
 import { homedir } from "node:os";
 import { accessSync, constants as fsConstants } from "node:fs";
+import { migrateLegacyDataDir } from "./config/migration.js";
+
+function defaultAppSupportDataDir(): string {
+  const home = homedir();
+  if (process.platform === "darwin") {
+    return join(home, "Library", "Application Support", "com.graphium.app", "server-data");
+  }
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA;
+    if (appData) return join(appData, "com.graphium.app", "server-data");
+    return join(home, "AppData", "Roaming", "com.graphium.app", "server-data");
+  }
+  const xdg = process.env.XDG_DATA_HOME;
+  if (xdg) return join(xdg, "com.graphium.app", "server-data");
+  return join(home, ".local", "share", "com.graphium.app", "server-data");
+}
 
 function resolveDataDir(): string {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
@@ -48,13 +65,35 @@ function resolveDataDir(): string {
     accessSync(process.cwd(), fsConstants.W_OK);
     return cwdData;
   } catch {
-    // 書き込み不可（ビルド版アプリ）→ ユーザーのドキュメントフォルダ
-    return join(homedir(), "Documents", "Graphium", "server-data");
+    // 書き込み不可（ビルド版アプリ）→ Application Support 配下。
+    // 旧 ~/Documents/Graphium/server-data から sidecar 起動時に自動移行する
+    // （macOS Sequoia の TCC で Documents が読めない事故への恒久対策）。
+    return defaultAppSupportDataDir();
   }
 }
 const dataDir = resolveDataDir();
 bootLog(`dataDir=${dataDir}`);
 console.log(`[server] Data directory: ${dataDir}`);
+
+// 旧 ~/Documents/Graphium/server-data から新 dataDir への一回限りの移行。
+// TCC で旧 path が読めなくても sidecar 自体は起動を続ける（warn のみ）。
+try {
+  const mig = migrateLegacyDataDir(dataDir);
+  if (mig.copied.length > 0) {
+    bootLog(`legacy migration: copied=${mig.copied.join(",")}`);
+    console.log(
+      `[server] Migrated from legacy dataDir (~/Documents/Graphium/server-data): ${mig.copied.join(", ")}`,
+    );
+  }
+  for (const e of mig.errors) {
+    bootLog(`legacy migration error: ${e.name} - ${e.reason}`);
+    console.warn(`[server] Legacy migration error for ${e.name}: ${e.reason}`);
+  }
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  bootLog(`legacy migration failed: ${msg}`);
+}
+
 setModelsDataDir(dataDir);
 setProfilesDataDir(dataDir);
 setUsageDataDir(dataDir);
