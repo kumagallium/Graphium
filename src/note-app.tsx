@@ -131,6 +131,12 @@ import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extract
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
+import {
+  CitePickerModal,
+  getCiteSlashMenuItems,
+  setCitePickerCallback,
+  type CitePickerKind,
+} from "./features/cite-picker";
 import type { CaptureEntry } from "./features/mobile-capture";
 import {
   AssetGalleryView,
@@ -640,6 +646,9 @@ function NoteEditorInner({
   // ── メモピッカーモーダル ──
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
 
+  // ── 引用ピッカー (/claims, /Insights) ──
+  const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
+
   // スラッシュメニューからピッカーを開くコールバック登録（main editor 用）。
   // SidePeek からは SidePeek 自身が同じ仕組みで登録する。
   useEffect(() => {
@@ -656,10 +665,15 @@ function NoteEditorInner({
       pickerEditorRef.current = mainEditor;
       setUrlSlashPickerOpen(true);
     });
+    setCitePickerCallback(mainEditor, (kind) => {
+      pickerEditorRef.current = mainEditor;
+      setCitePickerKind(kind);
+    });
     return () => {
       setMediaPickerCallback(mainEditor, null);
       setMemoPickerCallback(mainEditor, null);
       setBookmarkPickerCallback(mainEditor, null);
+      setCitePickerCallback(mainEditor, null);
     };
   }, [mainEditor]);
 
@@ -778,10 +792,45 @@ function NoteEditorInner({
     // onChange が自動的にトリガーされるので markDirty() は不要
   }, [removeBlockMetadata]);
 
+  // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
+  // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
+  // （PR3 の Citation block が乗ったら専用ブロックに差し替える前提）
+  const handleCitePickerConfirm = useCallback((entries: NoteIndexEntry[]) => {
+    const editor = pickerEditorRef.current ?? editorRef.current;
+    if (!editor || entries.length === 0) return;
+
+    const currentBlock = editor.getTextCursorPosition()?.block;
+    if (!currentBlock) return;
+
+    const newBlocks = entries.map((entry) => ({
+      type: "paragraph" as const,
+      content: [
+        {
+          type: "text" as const,
+          text: `@${entry.title || "(untitled)"}`,
+          styles: { textColor: "blue" },
+        },
+      ],
+    }));
+    editor.insertBlocks(newBlocks, currentBlock, "after");
+
+    // 現在のブロックが空（スラッシュだけ）なら削除
+    const content = currentBlock.content;
+    if (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    ) {
+      removeBlockMetadata([currentBlock.id]);
+      editor.removeBlocks([currentBlock]);
+    }
+  }, [removeBlockMetadata]);
+
   // スラッシュメニューアイテム（既存メディア・メモから挿入）
   const mediaSlashItems = useMemo(() => getMediaSlashMenuItems(), []);
   const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
   const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
+  const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
 
   // テンプレートピッカーモーダル
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -2245,6 +2294,15 @@ function NoteEditorInner({
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
+      {/* 引用ピッカーモーダル（スラッシュメニュー /claims, /Insights から） */}
+      {citePickerKind && (
+        <CitePickerModal
+          noteIndex={noteIndex ?? null}
+          kind={citePickerKind}
+          onConfirm={handleCitePickerConfirm}
+          onClose={() => setCitePickerKind(null)}
+        />
+      )}
       {/* ヘッダー */}
       <div className="px-3 md:px-4 py-2.5 md:py-2 border-b border-border flex items-center gap-2 md:gap-3 shrink-0">
         <div
@@ -2346,7 +2404,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, memoSlashItem]}
+              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
