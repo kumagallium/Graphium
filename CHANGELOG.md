@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.12.1](https://github.com/kumagallium/Graphium/compare/v0.12.0...v0.12.1) - 2026-05-29
+- [fix] Enable MCP tool use on OpenAI-compatible endpoints (sakura ai / gpt-oss) by @kumagallium in https://github.com/kumagallium/Graphium/pull/379
+- fix(sidecar): move data dir to Application Support to dodge macOS TCC by @kumagallium in https://github.com/kumagallium/Graphium/pull/381
+
 ## [v0.12.0](https://github.com/kumagallium/Graphium/compare/v0.11.1...v0.12.0) - 2026-05-28
 - [docs] Cmd-K Composer 型への移行に伴う docs 更新 by @kumagallium in https://github.com/kumagallium/Graphium/pull/372
 - refactor(asset-browser): image-first gallery cards with hover-only metadata by @kumagallium in https://github.com/kumagallium/Graphium/pull/377
