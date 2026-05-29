@@ -4434,7 +4434,7 @@ export function NoteApp() {
                 // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
                 // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
                 // が壊れない。
-                const toastId = `url-toast:${Date.now()}`;
+                const toastId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const sourceNoteId = `url:${entry.url}`;
                 const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.url };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
@@ -4458,7 +4458,7 @@ export function NoteApp() {
                   }
                 })();
               } else if (entry.type === "pdf" && entry.fileId) {
-                const toastId = `pdf-toast:${Date.now()}`;
+                const toastId = `pdf-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const sourceNoteId = `pdf:${entry.fileId}`;
                 const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
@@ -4487,7 +4487,7 @@ export function NoteApp() {
               } else if (entry.type === "document" && entry.fileId
                 && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
                 // Word (.docx) を Knowledge 化: mammoth でテキスト抽出後、PDF と同じ /ingest API に流す
-                const toastId = `doc-toast:${Date.now()}`;
+                const toastId = `doc-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const sourceNoteId = `document:${entry.fileId}`;
                 const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
@@ -4519,7 +4519,7 @@ export function NoteApp() {
             onCreateProvNote={aiAvailable ? (entry) => {
               // URL 経路
               if (entry.type === "url" && entry.url) {
-                const jobId = `prov-url:${Date.now()}`;
+                const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.url };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
                 (async () => {
@@ -4549,7 +4549,7 @@ export function NoteApp() {
               }
               // PDF 経路（PROV ノート生成）。画像抽出は onExtractPdfPages 側で扱う。
               if (entry.type === "pdf" && entry.fileId) {
-                const jobId = `prov-pdf:${Date.now()}`;
+                const jobId = `prov-pdf:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
                 (async () => {
@@ -4583,7 +4583,7 @@ export function NoteApp() {
               // Word 経路（PROV ノート生成）。mammoth で raw text → サーバーの ingest-pdf 経路へ流す。
               if (entry.type === "document" && entry.fileId
                 && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-                const jobId = `prov-doc:${Date.now()}`;
+                const jobId = `prov-doc:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
                 (async () => {
@@ -5226,7 +5226,7 @@ export function NoteApp() {
               if (!url) return;
               // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
               // を使い分ける。後者で逆引きが効くようにする。
-              const jobId = `url-toast:${Date.now()}`;
+              const jobId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
               const sourceNoteId = `url:${url}`;
               const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: url };
               ingestQueueRef.current.push({ noteId: jobId, noteTitle: url, doc: null as any });
