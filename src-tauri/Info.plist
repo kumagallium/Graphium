@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Tauri CLI merges this file into the default Info.plist generated for
+		the macOS bundle. Keep this list minimal so we do not collide with
+		fields Tauri populates (CFBundleShortVersionString, CFBundleVersion,
+		etc).
+
+		NSDocumentsFolderUsageDescription: macOS Sequoia displays this string
+		when the app first tries to read ~/Documents/. Without it, the OS
+		denies access silently and there is no way to prompt the user for
+		re-permission after a TCC reset (which can happen when the codesign
+		identity or bundle hash changes between releases). Graphium reads
+		notes, wiki, media and skills from ~/Documents/Graphium/ so the
+		dialog needs to appear on first launch.
+	-->
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Graphium needs access to the Documents folder to read and write your notes, wiki, media, and skills stored under ~/Documents/Graphium/.</string>
+</dict>
+</plist>
