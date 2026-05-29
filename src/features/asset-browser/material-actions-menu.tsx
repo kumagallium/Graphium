@@ -13,7 +13,6 @@ import {
   RefreshCw,
   AlertCircle,
   Download,
-  FilePlus2,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -32,11 +31,13 @@ export type MaterialActionsMenuProps = {
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
   /**
-   * Word (.docx) 素材を Graphium のノートに展開する。
-   * 親側で mammoth による HTML 化 + 画像抽出 + ノート生成を行う。
-   * 完了後は新規ノートを開く想定。
+   * Word (.docx) 素材の埋め込み画像を取り出して子素材として登録する。
+   * PDF の onExtractPdfPages と機能対称な扱い（UI 上は同じ「埋め込み画像を抽出」）。
    */
-  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
+  onExtractDocxImages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   onNavigateNote?: (noteId: string) => void;
   knowledgeWikiNoteId?: string;
@@ -48,7 +49,7 @@ export function MaterialActionsMenu({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
-  onExpandDocxToNote,
+  onExtractDocxImages,
   onSharedRefUpdated,
   onNavigateNote,
   knowledgeWikiNoteId,
@@ -70,21 +71,25 @@ export function MaterialActionsMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // PDF ページ抽出
+  // 埋め込み画像抽出（PDF / Word 共通の動線）
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
-  const handleExtractPages = useCallback(async () => {
-    if (!onExtractPdfPages || extracting) return;
+  const handleExtractEmbeddedImages = useCallback(async () => {
+    if (extracting) return;
     setExtracting(true);
     setExtractError(null);
     try {
-      await onExtractPdfPages(entry, () => {});
+      if (entry.type === "pdf" && onExtractPdfPages) {
+        await onExtractPdfPages(entry, () => {});
+      } else if (entry.type === "document" && onExtractDocxImages) {
+        await onExtractDocxImages(entry, () => {});
+      }
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : String(err));
     } finally {
       setExtracting(false);
     }
-  }, [entry, extracting, onExtractPdfPages]);
+  }, [entry, extracting, onExtractPdfPages, onExtractDocxImages]);
 
   // 共有関連
   const sharedRoot = getSharedRoot();
@@ -126,33 +131,15 @@ export function MaterialActionsMenu({
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
 
-  // Word (.docx) も Knowledge 化 / PROV ノート化対象に含める（PDF と機能を揃える）。
-  // Excel/PowerPoint は未対応。
+  // Word (.docx) も Knowledge 化 / PROV ノート化 / 埋め込み画像抽出対象に含める
+  // （PDF と機能を揃える）。Excel/PowerPoint は未対応。
   const isDocxEntry = entry.type === "document"
     && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
-  // 埋め込み画像抽出は PDF 専用（Word は mammoth で取り込み時に処理する別経路）
-  const canExtract = !!onExtractPdfPages && entry.type === "pdf";
-  // Word (.docx) 素材のみノート展開可能（mimeType ベース判定）
-  const canExpandDocx = !!onExpandDocxToNote
-    && entry.type === "document"
-    && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const [expanding, setExpanding] = useState(false);
-  const [expandError, setExpandError] = useState<string | null>(null);
-  const handleExpandDocx = useCallback(async () => {
-    if (!onExpandDocxToNote || expanding) return;
-    setExpanding(true);
-    setExpandError(null);
-    try {
-      await onExpandDocxToNote(entry);
-    } catch (err) {
-      console.error("[material-actions-menu] ノート展開失敗:", err);
-      setExpandError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setExpanding(false);
-    }
-  }, [entry, expanding, onExpandDocxToNote]);
+  const canExtract =
+    (!!onExtractPdfPages && entry.type === "pdf")
+    || (!!onExtractDocxImages && isDocxEntry);
   // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
   const canDownload = entry.type !== "url";
   const [downloading, setDownloading] = useState(false);
@@ -255,25 +242,11 @@ export function MaterialActionsMenu({
               <button
                 className={itemClass}
                 disabled={extracting}
-                onClick={() => { void handleExtractPages(); setOpen(false); }}
+                onClick={() => { void handleExtractEmbeddedImages(); setOpen(false); }}
                 title={t("asset.pdfExtractImages.help")}
               >
                 {extracting ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
                 {t("asset.pdfExtractImages.button")}
-              </button>
-            </>
-          )}
-          {canExpandDocx && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={itemClass}
-                disabled={expanding}
-                onClick={() => { void handleExpandDocx(); setOpen(false); }}
-                title={t("asset.expandDocxToNoteHint")}
-              >
-                {expanding ? <Loader2 size={14} className="animate-spin" /> : <FilePlus2 size={14} className="text-primary" />}
-                {expanding ? t("asset.expandingDocxToNote") : t("asset.expandDocxToNote")}
               </button>
             </>
           )}
@@ -315,11 +288,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || shareError || downloadError || expandError) && (
+      {(extractError || shareError || downloadError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? shareError ?? downloadError ?? expandError}</span>
+            <span className="break-all">{extractError ?? shareError ?? downloadError}</span>
           </div>
         </div>
       )}

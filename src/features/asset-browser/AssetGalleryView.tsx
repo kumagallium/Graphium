@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, FilePlus2 } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -411,8 +411,11 @@ export type AssetGalleryViewProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
-  /** Word (.docx) 素材を Graphium ノートに展開する */
-  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
+  /** Word (.docx) 素材の埋め込み画像を子素材として抽出する */
+  onExtractDocxImages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
   /**
    * Knowledge ノートの kind 別色を出すためのルックアップ。
    * 渡されない場合はフォールバック色で描画。
@@ -459,7 +462,7 @@ export function AssetGalleryView({
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
   onExtractPdfPages,
-  onExpandDocxToNote,
+  onExtractDocxImages,
   getKnowledgeKind,
   focusFileId,
   focusFullMode,
@@ -768,36 +771,6 @@ export function AssetGalleryView({
     }
   }, [downloadEntry, filtered, selectedIds]);
 
-  // 一括ノート展開（Word のみ対象）
-  const expandableSelectedCount = useMemo(() => {
-    const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    return filtered.filter(
-      (e) => selectedIds.has(e.fileId) && e.type === "document" && e.mimeType === DOCX_MIME,
-    ).length;
-  }, [filtered, selectedIds]);
-  const [bulkExpanding, setBulkExpanding] = useState(false);
-  const handleBulkExpand = useCallback(async () => {
-    if (!onExpandDocxToNote) return;
-    const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    const targets = filtered.filter(
-      (e) => selectedIds.has(e.fileId) && e.type === "document" && e.mimeType === DOCX_MIME,
-    );
-    if (targets.length === 0) return;
-    setBulkExpanding(true);
-    try {
-      for (const entry of targets) {
-        try {
-          await onExpandDocxToNote(entry);
-        } catch (err) {
-          console.error("[asset-gallery] ノート展開失敗:", entry.name, err);
-        }
-      }
-      setSelectedIds(new Set());
-    } finally {
-      setBulkExpanding(false);
-    }
-  }, [filtered, onExpandDocxToNote, selectedIds]);
-
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
 
@@ -828,7 +801,7 @@ export function AssetGalleryView({
           if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
         }}
         onExtractPdfPages={onExtractPdfPages}
-        onExpandDocxToNote={onExpandDocxToNote}
+        onExtractDocxImages={onExtractDocxImages}
         mediaIndex={mediaIndex}
         getKnowledgeKind={getKnowledgeKind}
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
@@ -1081,19 +1054,6 @@ export function AssetGalleryView({
                 {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
               </button>
             )}
-            {expandableSelectedCount > 0 && onExpandDocxToNote && (
-              <button
-                onClick={() => void handleBulkExpand()}
-                disabled={bulkExpanding}
-                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-                title={t("asset.expandDocxToNoteHint")}
-              >
-                <FilePlus2 size={12} />
-                {bulkExpanding
-                  ? t("asset.expandingDocxToNote")
-                  : t("asset.expandSelectedWithCount", { count: String(expandableSelectedCount) })}
-              </button>
-            )}
             {downloadableSelectedCount > 0 && (
               <button
                 onClick={() => void handleBulkDownload()}
@@ -1310,7 +1270,7 @@ export function AssetGalleryView({
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
           onExtractPdfPages={onExtractPdfPages}
-        onExpandDocxToNote={onExpandDocxToNote}
+        onExtractDocxImages={onExtractDocxImages}
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}

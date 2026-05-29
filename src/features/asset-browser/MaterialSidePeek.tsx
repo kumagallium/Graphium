@@ -106,8 +106,11 @@ export type MaterialSidePeekProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
-  /** Word (.docx) 素材を Graphium ノートに展開 */
-  onExpandDocxToNote?: (entry: MediaIndexEntry) => Promise<void>;
+  /** Word (.docx) 素材の埋め込み画像を子素材として抽出 */
+  onExtractDocxImages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
   /** team-shared storage 共有成功時 */
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   /** 既存 Knowledge wiki の ID（あれば「In Knowledge」表示） */
@@ -137,7 +140,7 @@ export function MaterialSidePeek({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
-  onExpandDocxToNote,
+  onExtractDocxImages,
   onSharedRefUpdated,
   knowledgeWikiNoteId,
   mediaIndex,
@@ -193,7 +196,7 @@ export function MaterialSidePeek({
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
         onExtractPdfPages={onExtractPdfPages}
-        onExpandDocxToNote={onExpandDocxToNote}
+        onExtractDocxImages={onExtractDocxImages}
         onSharedRefUpdated={onSharedRefUpdated}
         onNavigateNote={onNavigateNote}
         knowledgeWikiNoteId={knowledgeWikiNoteId}

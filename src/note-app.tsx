@@ -3751,48 +3751,44 @@ export function NoteApp() {
     }
   }, [fm.handleRenameMedia]);
 
-  // Word (.docx) 素材を Graphium ノートに展開する
-  // 素材ライブラリで「ノートに展開」アクションを押したときに呼ばれる:
-  //   1. 既に登録済みの .docx 素材から blob を取り出す
-  //   2. mammoth で HTML 化 → BlockNote ブロック化 → ノート生成
-  //   3. 画像は子素材として MediaIndex に登録（derivedFromAssets で親 .docx と紐付け）
-  //   4. ノートに sourceDocumentFileId を埋め込んで PROV-DM 派生関係を保持
-  const handleExpandDocxEntryToNote = useCallback(
-    async (entry: MediaIndexEntry): Promise<void> => {
+  // Word (.docx) 素材から埋め込み画像を取り出して子素材として登録する。
+  // PDF の onExtractPdfPages と機能対称。ノートは作らない（素材として置くだけ）。
+  const handleExtractDocxImages = useCallback(
+    async (
+      entry: MediaIndexEntry,
+      onProgress: (done: number, total: number) => void,
+    ): Promise<{ extracted: number }> => {
       const provider = getActiveProvider();
       const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
       const blobUrl = await provider.getMediaBlobUrl(fileId);
       const res = await fetch(blobUrl);
-      const blob = await res.blob();
-      const file = new File([blob], entry.name, { type: entry.mimeType });
+      const arrayBuffer = await res.arrayBuffer();
 
-      const { importDocxToGraphiumDoc } = await import("./features/docx-import/import");
-      const doc = await importDocxToGraphiumDoc(file, {
-        parentAssetFileId: entry.fileId,
-        uploadImage: (img) => fm.handleUploadMedia(img, { derivedFromAssets: [entry.fileId] }),
-        addUrlBookmark: (url, anchorText) => {
-          fm.handleAddUrlBookmark({
-            fileId: `url:${url}`,
-            name: anchorText,
-            type: "url",
-            mimeType: "text/uri-list",
-            url,
-            thumbnailUrl: "",
-            uploadedAt: new Date().toISOString(),
-            usedIn: [],
-          });
-        },
-      });
-      const newId = await fm.handleCreateNoteFromImport(doc);
-      await fm.refreshFiles();
+      const { extractDocxImages } = await import("./features/docx-import/extract-images");
+      const baseTitle = entry.name.replace(/\.(docx|doc)$/i, "") || "Word";
+      const { files, stats } = await extractDocxImages(arrayBuffer, baseTitle);
 
-      // 展開直後に editor を開く（素材ライブラリを離れる）
-      fm.setShowNoteList(false);
-      fm.setActiveAssetType(null);
-      fm.handleOpenFile(newId);
-      router.navigate({ view: "editor", fileId: newId });
+      if (files.length === 0) {
+        if (stats.attempted === 0) {
+          throw new Error("この Word からは画像オブジェクトを取り出せませんでした。");
+        }
+        throw new Error("対応形式の画像が含まれていませんでした（EMF/WMF など）。");
+      }
+
+      let extracted = 0;
+      for (let i = 0; i < files.length; i++) {
+        onProgress(i, files.length);
+        try {
+          await fm.handleUploadMedia(files[i], { derivedFromAssets: [entry.fileId] });
+          extracted++;
+        } catch (err) {
+          console.error("[note-app] Word 画像登録失敗:", err);
+        }
+      }
+      onProgress(files.length, files.length);
+      return { extracted };
     },
-    [fm, router],
+    [fm],
   );
 
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
@@ -4420,7 +4416,7 @@ export function NoteApp() {
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
-            onExpandDocxToNote={handleExpandDocxEntryToNote}
+            onExtractDocxImages={handleExtractDocxImages}
             resolveKnowledgeWikiId={(entry) => {
               if (entry.type === "url" && entry.url) {
                 return appKnowledgeMap.get(`url:${entry.url}`)?.[0]?.noteId;
