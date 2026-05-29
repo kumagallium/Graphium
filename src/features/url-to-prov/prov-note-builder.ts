@@ -55,6 +55,8 @@ export type BuildProvNoteParams = {
   sourceUrl?: string;
   /** 出典が PDF の場合に設定（PDFtoPROV 経路）。メディアインデックス上の fileId */
   sourcePdfFileId?: string;
+  /** 出典が Word 等のドキュメント素材の場合に設定。メディアインデックス上の fileId */
+  sourceDocumentFileId?: string;
   sourceTitle?: string;
   sourceFetchedAt: string;
   model?: string | null;
@@ -128,6 +130,8 @@ export function buildProvNoteDocument(params: BuildProvNoteParams): GraphiumDocu
     sourceFetchedAt: params.sourceFetchedAt,
     sourceTitle: params.sourceTitle,
     sourcePdfFileId: params.sourcePdfFileId,
+    sourceDocumentFileId: params.sourceDocumentFileId,
+    sourceDocumentName: params.sourceDocumentFileId ? params.sourceTitle : undefined,
     sourcePdfName: params.sourcePdfFileId ? params.sourceTitle : undefined,
     generatedBy: {
       agent: "prov-ingester",

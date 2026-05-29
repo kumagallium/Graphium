@@ -126,11 +126,13 @@ export function MaterialActionsMenu({
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
 
-  // Word (.docx) も Knowledge 化対象に含める。Excel/PowerPoint は未対応。
+  // Word (.docx) も Knowledge 化 / PROV ノート化対象に含める（PDF と機能を揃える）。
+  // Excel/PowerPoint は未対応。
   const isDocxEntry = entry.type === "document"
     && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
-  const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf");
+  const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  // 埋め込み画像抽出は PDF 専用（Word は mammoth で取り込み時に処理する別経路）
   const canExtract = !!onExtractPdfPages && entry.type === "pdf";
   // Word (.docx) 素材のみノート展開可能（mimeType ベース判定）
   const canExpandDocx = !!onExpandDocxToNote

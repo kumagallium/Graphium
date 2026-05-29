@@ -126,7 +126,7 @@ import {
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
-import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
@@ -4571,6 +4571,41 @@ export function NoteApp() {
                       title: result.title,
                       blocks: result.blocks,
                       sourcePdfFileId: entry.fileId,
+                      sourceTitle: result.sourceTitle || entry.name,
+                      sourceFetchedAt: result.sourceFetchedAt,
+                      model: result.model,
+                      tokenUsage: result.tokenUsage,
+                    });
+                    await fm.handleCreateNoteFromDocument(provDoc);
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
+                  } catch (err) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  }
+                })();
+                return;
+              }
+              // Word 経路（PROV ノート生成）。mammoth で raw text → サーバーの ingest-pdf 経路へ流す。
+              if (entry.type === "document" && entry.fileId
+                && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+                const jobId = `prov-doc:${Date.now()}`;
+                const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
+                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+                (async () => {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting Word text..." } : i) }));
+                  try {
+                    const provider = getActiveProvider();
+                    const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+                    const blobUrl = await provider.getMediaBlobUrl(fileId);
+                    const blob = await (await fetch(blobUrl)).blob();
+                    const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale());
+                    if (!result.blocks || result.blocks.length === 0) {
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      return;
+                    }
+                    const provDoc = buildProvNoteDocument({
+                      title: result.title,
+                      blocks: result.blocks,
+                      sourceDocumentFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
                       model: result.model,
