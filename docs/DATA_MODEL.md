@@ -907,8 +907,27 @@ treat the layout above as a guide, and `local.ts` /
 ### 6.4 Server-side data directory (Node / Tauri sidecar)
 
 When a Node server runs (desktop sidecar or self-hosted Docker), it
-keeps its own state under `data/` (dev) or
-`~/Documents/Graphium/server-data/` (desktop). The schemas:
+keeps its own state under `data/` (dev mode where the current working
+directory is writable) or under the OS-specific application data
+directory on packaged desktop builds:
+
+| Platform | Default path |
+|---|---|
+| macOS | `~/Library/Application Support/com.graphium.app/server-data/` |
+| Windows | `%APPDATA%\com.graphium.app\server-data\` |
+| Linux | `$XDG_DATA_HOME/com.graphium.app/server-data/` (fallback: `~/.local/share/com.graphium.app/server-data/`) |
+
+Earlier desktop builds (≤ v0.12.0) stored this state under
+`~/Documents/Graphium/server-data/`. On the first launch of a newer
+build, the sidecar copies `models.json`, `profiles.json`, and the
+`usage/` directory from that legacy path into the new location if the
+new path does not already contain them. The legacy files are left in
+place so they remain available for manual recovery. The move was
+forced by macOS Sequoia's TCC: a sandboxed sidecar spawned by Tauri
+cannot reliably read files under `~/Documents/`, but the Application
+Support directory is exempt from that prompt.
+
+The schemas:
 
 | File | Purpose |
 |---|---|

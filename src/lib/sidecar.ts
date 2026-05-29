@@ -92,10 +92,16 @@ export async function startSidecar(): Promise<boolean> {
   setState({ status: "starting", lastError: null, lastErrorAt: null });
   recentLogLines = [];
 
-  const { documentDir, join: pathJoin } = await import("@tauri-apps/api/path");
-  // データディレクトリを明示的に指定（process.cwd() の不安定さを回避）
-  const docsDir = await documentDir();
-  const dataDir = await pathJoin(docsDir, "Graphium", "server-data");
+  const { appDataDir, join: pathJoin } = await import("@tauri-apps/api/path");
+  // sidecar のデータディレクトリは Application Support 配下（macOS なら
+  // ~/Library/Application Support/com.graphium.app/server-data）。
+  // 以前は ~/Documents/Graphium/server-data を使っていたが、macOS Sequoia の
+  // TCC で Documents フォルダへのアクセスが拒否されたケースで sidecar が
+  // models.json / profiles.json を読めなくなる事象があったため、ユーザー操作
+  // 不要な Application Support に移した。旧 path からの自動移行は sidecar 側
+  // (src/server/config/migration.ts) で行う。
+  const appData = await appDataDir();
+  const dataDir = await pathJoin(appData, "server-data");
 
   // 既にサーバーが動いている場合はスキップ（dev モードで別途起動済みなど）。
   // ただし `/api/health` の dataDir が期待値と一致しなければ "他人 sidecar"
