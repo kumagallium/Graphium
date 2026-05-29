@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.12.2](https://github.com/kumagallium/Graphium/compare/v0.12.1...v0.12.2) - 2026-05-29
+- feat: Replace Word import with materials library flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/378
+- fix(macos): declare NSDocumentsFolderUsageDescription so TCC dialog can appear by @kumagallium in https://github.com/kumagallium/Graphium/pull/382
+
 ## [v0.12.1](https://github.com/kumagallium/Graphium/compare/v0.12.0...v0.12.1) - 2026-05-29
 - [fix] Enable MCP tool use on OpenAI-compatible endpoints (sakura ai / gpt-oss) by @kumagallium in https://github.com/kumagallium/Graphium/pull/379
 - fix(sidecar): move data dir to Application Support to dodge macOS TCC by @kumagallium in https://github.com/kumagallium/Graphium/pull/381
