@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.12.3](https://github.com/kumagallium/Graphium/compare/v0.12.2...v0.12.3) - 2026-05-29
+- [fix] Skip models.json link in worktrees where data/ is a symlink by @kumagallium in https://github.com/kumagallium/Graphium/pull/384
+- feat(cite-picker): add /claims and /Insights slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/376
+
 ## [v0.12.2](https://github.com/kumagallium/Graphium/compare/v0.12.1...v0.12.2) - 2026-05-29
 - feat: Replace Word import with materials library flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/378
 - fix(macos): declare NSDocumentsFolderUsageDescription so TCC dialog can appear by @kumagallium in https://github.com/kumagallium/Graphium/pull/382
