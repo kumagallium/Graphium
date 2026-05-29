@@ -795,6 +795,10 @@ function NoteEditorInner({
   // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
   // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
   // （PR3 の Citation block が乗ったら専用ブロックに差し替える前提）
+  //
+  // 挿入と同時に knowledge レイヤの reference リンクを張る（@mention の note 分岐と同じ）。
+  // これにより buildNoteGraph が page.knowledgeLinks を拾い、右パネルの Graph タブに
+  // 「現ノート → 引用先 claim/Insight」のエッジとして描画される。
   const handleCitePickerConfirm = useCallback((entries: NoteIndexEntry[]) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor || entries.length === 0) return;
@@ -812,7 +816,23 @@ function NoteEditorInner({
         },
       ],
     }));
-    editor.insertBlocks(newBlocks, currentBlock, "after");
+    const inserted = editor.insertBlocks(newBlocks, currentBlock, "after");
+
+    // 挿入された各ブロックに reference リンクを張る（inserted[i] ↔ entries[i] で対応）。
+    const insertedArr = Array.isArray(inserted) ? inserted : [];
+    entries.forEach((entry, i) => {
+      const blockId = insertedArr[i]?.id;
+      if (!blockId) return;
+      linkStore.addLink({
+        sourceBlockId: blockId,
+        targetBlockId: "",
+        targetNoteId: entry.noteId,
+        type: "reference",
+        createdBy: "human",
+      });
+    });
+    // linkStore.links の変更は自動保存トリガー（prevLinksRef 比較）で拾われるため
+    // 明示的な markDirty は不要。
 
     // 現在のブロックが空（スラッシュだけ）なら削除
     const content = currentBlock.content;
@@ -824,7 +844,7 @@ function NoteEditorInner({
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, linkStore]);
 
   // スラッシュメニューアイテム（既存メディア・メモから挿入）
   const mediaSlashItems = useMemo(() => getMediaSlashMenuItems(), []);

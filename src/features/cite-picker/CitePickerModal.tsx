@@ -8,9 +8,11 @@ import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { CitePickerKind } from "./slash-menu-items";
 
 // CitePickerKind と wikiKind の対応
+// 既存アプリの用語体系（i18n wikiList.kind*）に合わせる:
+//   claim = 知見 (Claims) / atom = 洞察 (Insights) / synthesis = 発想 (Ideas)
 const KIND_TO_WIKI_KIND = {
-  claims: "atom",
-  insights: "synthesis",
+  claims: "claim",
+  insights: "atom",
 } as const;
 
 export type CitePickerModalProps = {

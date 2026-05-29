@@ -1,9 +1,10 @@
 // スラッシュメニュー: 既存の claim / Insight ノートから引用挿入
 // /claims, /Insights で複数選択ピッカーモーダルを開く
 //
-// 用語マッピング:
-// - UI 上の "claims" = データモデル上の wikiKind === "atom"
-// - UI 上の "Insights" = データモデル上の wikiKind === "synthesis"
+// 用語マッピング（既存アプリの i18n wikiList.kind* に準拠）:
+// - "claims" = 知見 (Claims) = wikiKind === "claim"
+// - "Insights" = 洞察 (Insights) = wikiKind === "atom"
+//   （synthesis = 発想 (Ideas) はここでは扱わない）
 //
 // PR3 の Citation block が乗ったら挿入形式を差し替える前提。MVP では
 // 選択されたノートのタイトルを青色テキストの paragraph として並べる。
@@ -58,13 +59,14 @@ export function getCiteSlashMenuItems(): SlashMenuItem[] {
       "cite.slashClaim",
       "cite.slashClaimSub",
       "claims",
-      ["claim", "claims", "知見", "ちけん", "atom"],
+      // 英語コマンド / 日本語表記（漢字・かな）/ ローマ字（IME を介さず絞り込めるように）
+      ["claim", "claims", "知見", "ちけん", "chiken"],
     ),
     createCiteSlashItem(
       "cite.slashInsight",
       "cite.slashInsightSub",
       "insights",
-      ["insight", "insights", "洞察", "どうさつ", "synthesis"],
+      ["insight", "insights", "洞察", "どうさつ", "dousatsu", "atom"],
     ),
   ];
 }
