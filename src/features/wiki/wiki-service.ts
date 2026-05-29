@@ -1076,6 +1076,57 @@ export async function ingestFromPdf(
   return { ...data, pageCount: extracted.pageCount };
 }
 
+/**
+ * Word (.docx) 素材から Wiki を ingest する。
+ * mammoth で extractRawText を呼んでプレーンテキストを取り出し、
+ * PDF と同じ /ingest API に流す。Excel/PowerPoint は未対応（呼ばないこと）。
+ */
+export async function ingestFromDocx(
+  blob: Blob,
+  fileName: string,
+  sourceNoteId: string,
+  existingWikis: ExistingWikiInfo[],
+  language: string,
+): Promise<IngestResult> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const mammoth = await import("mammoth");
+  const extracted = await mammoth.extractRawText({ arrayBuffer });
+  const text = (extracted.value ?? "").trim();
+
+  if (!text || text.length < 50) {
+    throw new Error("Word から十分なテキストを抽出できませんでした");
+  }
+
+  const noteTitle = fileName.replace(/\.(docx|doc)$/i, "");
+
+  // PDF と同じく、本文冒頭に出力言語ヒントを再掲する
+  const languageHint =
+    language === "ja"
+      ? "[出力言語: 日本語で書いてください。Summary も Claim もすべて日本語にしてください]"
+      : `[Output language: ${language}]`;
+  const noteContent = `${languageHint}\n\n${text}`;
+
+  const res = await fetch(`${API_BASE}/ingest`, {
+    method: "POST",
+    headers: wikiHeaders(),
+    body: JSON.stringify({
+      noteId: sourceNoteId,
+      noteContent,
+      noteTitle,
+      existingWikiTitles: existingWikis,
+      language,
+      ...wikiBodyModel(),
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `Ingest failed (${res.status})`);
+  }
+
+  return (await res.json()) as IngestResult;
+}
+
 // ── マルチソース Ingest（regenerate 用） ──
 
 /** 1 つの再生成対象につき複数のソース（note / pdf / url）から抽出したテキスト塊。

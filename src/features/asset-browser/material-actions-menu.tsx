@@ -12,12 +12,14 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  Download,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
 import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
 import { shareMedia, shareReference } from "../sharing";
+import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 export type MaterialActionsMenuProps = {
@@ -25,6 +27,14 @@ export type MaterialActionsMenuProps = {
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   onExtractPdfPages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
+  /**
+   * Word (.docx) 素材の埋め込み画像を取り出して子素材として登録する。
+   * PDF の onExtractPdfPages と機能対称な扱い（UI 上は同じ「埋め込み画像を抽出」）。
+   */
+  onExtractDocxImages?: (
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
@@ -39,6 +49,7 @@ export function MaterialActionsMenu({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
+  onExtractDocxImages,
   onSharedRefUpdated,
   onNavigateNote,
   knowledgeWikiNoteId,
@@ -60,21 +71,25 @@ export function MaterialActionsMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // PDF ページ抽出
+  // 埋め込み画像抽出（PDF / Word 共通の動線）
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
-  const handleExtractPages = useCallback(async () => {
-    if (!onExtractPdfPages || extracting) return;
+  const handleExtractEmbeddedImages = useCallback(async () => {
+    if (extracting) return;
     setExtracting(true);
     setExtractError(null);
     try {
-      await onExtractPdfPages(entry, () => {});
+      if (entry.type === "pdf" && onExtractPdfPages) {
+        await onExtractPdfPages(entry, () => {});
+      } else if (entry.type === "document" && onExtractDocxImages) {
+        await onExtractDocxImages(entry, () => {});
+      }
     } catch (err) {
       setExtractError(err instanceof Error ? err.message : String(err));
     } finally {
       setExtracting(false);
     }
-  }, [entry, extracting, onExtractPdfPages]);
+  }, [entry, extracting, onExtractPdfPages, onExtractDocxImages]);
 
   // 共有関連
   const sharedRoot = getSharedRoot();
@@ -116,9 +131,57 @@ export function MaterialActionsMenu({
   const itemClass =
     "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed";
 
-  const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf");
-  const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf");
-  const canExtract = !!onExtractPdfPages && entry.type === "pdf";
+  // Word (.docx) も Knowledge 化 / PROV ノート化 / 埋め込み画像抽出対象に含める
+  // （PDF と機能を揃える）。Excel/PowerPoint は未対応。
+  const isDocxEntry = entry.type === "document"
+    && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  const canExtract =
+    (!!onExtractPdfPages && entry.type === "pdf")
+    || (!!onExtractDocxImages && isDocxEntry);
+  // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
+  const canDownload = entry.type !== "url";
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const provider = getActiveProvider();
+      const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+      const blobUrl = await provider.getMediaBlobUrl(fileId);
+
+      // getMediaBlobUrl が既に blob: URL を返している場合、再度 fetch すると
+      // 同データを 2 重にメモリへ載せてしまう（大きい PDF/.docx でフリーズ）。
+      // 同一オリジンの blob: なら直接 a.download に渡す。外部 URL のみ fetch fallback。
+      let href = blobUrl;
+      let createdObjectUrl: string | null = null;
+      if (!blobUrl.startsWith("blob:")) {
+        const res = await fetch(blobUrl);
+        const blob = await res.blob();
+        href = URL.createObjectURL(blob);
+        createdObjectUrl = href;
+      }
+
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = entry.name || "download";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      if (createdObjectUrl) {
+        setTimeout(() => URL.revokeObjectURL(createdObjectUrl!), 1000);
+      }
+    } catch (err) {
+      console.error("[material-actions-menu] ダウンロード失敗:", err);
+      setDownloadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading, entry]);
 
   return (
     <div ref={menuRef} className="relative shrink-0">
@@ -179,11 +242,25 @@ export function MaterialActionsMenu({
               <button
                 className={itemClass}
                 disabled={extracting}
-                onClick={() => { void handleExtractPages(); setOpen(false); }}
+                onClick={() => { void handleExtractEmbeddedImages(); setOpen(false); }}
                 title={t("asset.pdfExtractImages.help")}
               >
                 {extracting ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
                 {t("asset.pdfExtractImages.button")}
+              </button>
+            </>
+          )}
+          {canDownload && (
+            <>
+              <div className="my-1 border-t border-border" />
+              <button
+                className={itemClass}
+                disabled={downloading}
+                onClick={() => { void handleDownload(); setOpen(false); }}
+                title={t("asset.downloadHint")}
+              >
+                {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {downloading ? t("asset.downloading") : t("asset.download")}
               </button>
             </>
           )}
@@ -211,11 +288,11 @@ export function MaterialActionsMenu({
           )}
         </div>
       )}
-      {(extractError || shareError) && (
+      {(extractError || shareError || downloadError) && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-destructive/40 rounded-lg shadow-md p-2 z-50 text-[11px] text-destructive">
           <div className="flex items-start gap-1.5">
             <AlertCircle size={12} className="mt-0.5 shrink-0" />
-            <span className="break-all">{extractError ?? shareError}</span>
+            <span className="break-all">{extractError ?? shareError ?? downloadError}</span>
           </div>
         </div>
       )}

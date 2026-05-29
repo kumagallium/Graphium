@@ -89,7 +89,6 @@ export function NoteListView({
   onBack,
   onDeleteNotes,
   onOpenWikiPeek,
-  onImportDocx,
   onImportMarkdown,
   onIngestNotes,
 }: {
@@ -102,11 +101,6 @@ export function NoteListView({
   onDeleteNotes?: (noteIds: string[]) => Promise<void>;
   /** Knowledge アイコン押下で対応 wiki エントリをサイドピークで開くコールバック */
   onOpenWikiPeek?: (wikiNoteId: string) => void;
-  /** Word ファイルインポート（複数ファイル可、進捗コールバック付き） */
-  onImportDocx?: (
-    files: File[],
-    onProgress: (p: { done: number; total: number; current?: string; failed: string[] }) => void,
-  ) => Promise<void>;
   /**
    * Markdown ファイル / Obsidian Vault フォルダのインポート。
    * webkitdirectory のフォルダ選択時は files に複数の MD と画像が混在し、
@@ -138,13 +132,11 @@ export function NoteListView({
   // 削除確認ダイアログ
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // インポート
-  const importInputRef = useRef<HTMLInputElement>(null);
+  // インポート（Markdown / Obsidian Vault のみ。Word は素材ライブラリ経由に統一）
   const importMdInputRef = useRef<HTMLInputElement>(null);
   const importMdFolderInputRef = useRef<HTMLInputElement>(null);
   const importButtonRef = useRef<HTMLButtonElement>(null);
   const [importing, setImporting] = useState(false);
-  const [importKind, setImportKind] = useState<"docx" | "markdown" | null>(null);
   const [importMenuPos, setImportMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [importProgress, setImportProgress] = useState<{
     done: number;
@@ -323,7 +315,7 @@ export function NoteListView({
           {loading ? t("nav.loadingNotes") : t("nav.noteCount", { filtered: String(filtered.length), total: String(entries.length) })}
         </span>
         {/* インポートボタン（選択中でなければ表示） */}
-        {!someSelected && (onImportDocx || onImportMarkdown) && (
+        {!someSelected && onImportMarkdown && (
           <button
             ref={importButtonRef}
             onClick={() => {
@@ -351,16 +343,6 @@ export function NoteListView({
             minWidth={220}
           >
             <div className="py-1">
-              {onImportDocx && (
-                <MenuItem
-                  onClick={() => {
-                    setImportMenuPos(null);
-                    importInputRef.current?.click();
-                  }}
-                >
-                  Word (.docx) を取り込む
-                </MenuItem>
-              )}
               {onImportMarkdown && (
                 <>
                   <MenuItem
@@ -385,33 +367,6 @@ export function NoteListView({
           </Dropdown>
         )}
         <input
-          ref={importInputRef}
-          type="file"
-          accept=".docx"
-          multiple
-          className="hidden"
-          onChange={async (e) => {
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = "";
-            if (files.length === 0 || !onImportDocx) return;
-            setImportKind("docx");
-            setImporting(true);
-            setImportProgress({ done: 0, total: files.length, failed: [] });
-            try {
-              await onImportDocx(files, (p) => setImportProgress(p));
-            } finally {
-              setImporting(false);
-              setImportProgress((prev) => {
-                if (!prev) return null;
-                if (prev.failed.length === 0) {
-                  setTimeout(() => setImportProgress(null), 2500);
-                }
-                return prev;
-              });
-            }
-          }}
-        />
-        <input
           ref={importMdInputRef}
           type="file"
           accept=".md,.markdown"
@@ -421,7 +376,6 @@ export function NoteListView({
             const files = Array.from(e.target.files ?? []);
             e.target.value = "";
             if (files.length === 0 || !onImportMarkdown) return;
-            setImportKind("markdown");
             setImporting(true);
             setImportProgress({ done: 0, total: files.length, failed: [] });
             try {
@@ -449,7 +403,6 @@ export function NoteListView({
             const files = Array.from(e.target.files ?? []);
             e.target.value = "";
             if (files.length === 0 || !onImportMarkdown) return;
-            setImportKind("markdown");
             setImporting(true);
             // 進捗 total は MD ファイル数。画像は副次なので別カウントしない
             const mdCount = files.filter((f) => /\.(md|markdown)$/i.test(f.name)).length;
@@ -501,7 +454,7 @@ export function NoteListView({
         <div className="px-6 py-2 border-b border-border bg-muted/30 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium text-foreground">
-              {importKind === "markdown" ? "Markdown 取り込み" : "Word 取り込み"}: {importProgress.done} / {importProgress.total}
+              Markdown 取り込み: {importProgress.done} / {importProgress.total}
               {importProgress.failed.length > 0 && (
                 <span className="text-destructive ml-2">
                   （失敗: {importProgress.failed.length}）

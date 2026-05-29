@@ -8,6 +8,7 @@ import type { MediaIndexEntry } from "./media-index";
 import { PdfViewer } from "./PdfViewer";
 import { UrlReaderView } from "./UrlReaderView";
 import { UrlPreviewCard } from "./url-preview-card";
+import { DocumentViewer } from "./DocumentViewer";
 import type { CitationSource } from "./SelectionPill";
 
 /** 動画・音声用: Blob URL を非同期取得して再生するラッパー */
@@ -108,6 +109,8 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo }: MediaPreviewProps
       return <BlobMediaPlayer entry={entry} tag="audio" />;
     case "pdf":
       return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
+    case "document":
+      return <DocumentViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
       return <UrlReaderView entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     default:

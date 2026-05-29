@@ -40,6 +40,11 @@ export type MaterialFullViewProps = {
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
+  /** Word (.docx) 素材の埋め込み画像を子素材として抽出 */
+  onExtractDocxImages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
   onSharedRefUpdated?: (entry: MediaIndexEntry, sharedRef: MediaSharedRef) => Promise<void> | void;
   knowledgeWikiNoteId?: string;
   mediaIndex?: MediaIndex | null;
@@ -68,6 +73,7 @@ export function MaterialFullView({
   onIngest,
   onCreateProvNote,
   onExtractPdfPages,
+  onExtractDocxImages,
   onSharedRefUpdated,
   knowledgeWikiNoteId,
   mediaIndex,
@@ -132,6 +138,7 @@ export function MaterialFullView({
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
         onExtractPdfPages={onExtractPdfPages}
+        onExtractDocxImages={onExtractDocxImages}
         onSharedRefUpdated={onSharedRefUpdated}
         onNavigateNote={onNavigateNote}
         knowledgeWikiNoteId={knowledgeWikiNoteId}

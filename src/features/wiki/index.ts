@@ -11,7 +11,7 @@ export {
   type IngestStageStatus,
 } from "./IngestToast";
 export {
-  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromMultiSource,
+  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,

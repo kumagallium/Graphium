@@ -97,9 +97,11 @@ const LABEL_HEX: Record<string, string> = {
 };
 
 // メディアタイプ別のアイコンと表示順
+// PDF は Documents タブに統合（FileText アイコンで表示）。PDF/Word/Excel 等を
+// 「原本ファイル」として一括で扱うため、サイドバーに単独タブは置かない。
 const MEDIA_NAV_ITEMS: { type: MediaType; icon: ReactNode }[] = [
   { type: "image", icon: <Image size={14} /> },
-  { type: "pdf", icon: <FileText size={14} /> },
+  { type: "document", icon: <FileText size={14} /> },
   { type: "video", icon: <Video size={14} /> },
   { type: "audio", icon: <Volume2 size={14} /> },
   { type: "url", icon: <Link size={14} /> },
@@ -420,7 +422,10 @@ export function FileSidebar({
           count={dataCount}
         >
           {MEDIA_NAV_ITEMS.map(({ type, icon }) => {
-            const count = mediaCounts?.[type] ?? 0;
+            // Documents タブには PDF も含まれる（mediaType の内部区別は維持しつつ UI 上で統合）
+            const count = type === "document"
+              ? (mediaCounts?.document ?? 0) + (mediaCounts?.pdf ?? 0)
+              : mediaCounts?.[type] ?? 0;
             // カウント 0 でも表示（将来のアップロードに備える）
             return (
               <button

@@ -2,7 +2,7 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -374,7 +374,7 @@ export type AssetGalleryViewProps = {
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
-  /** ファイル直接アップロード（image/video/audio/pdf のみ使用、ノート非経由） */
+  /** ファイル直接アップロード（image/video/audio/pdf/document、ノート非経由） */
   onUploadMedia?: (file: File) => Promise<string>;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
@@ -395,6 +395,11 @@ export type AssetGalleryViewProps = {
    * 親側で pdf-image-extractor + handleUploadMedia を組み立てて渡す。
    */
   onExtractPdfPages?: (
+    entry: MediaIndexEntry,
+    onProgress: (done: number, total: number) => void,
+  ) => Promise<{ extracted: number }>;
+  /** Word (.docx) 素材の埋め込み画像を子素材として抽出する */
+  onExtractDocxImages?: (
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
   ) => Promise<{ extracted: number }>;
@@ -444,6 +449,7 @@ export function AssetGalleryView({
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
   onExtractPdfPages,
+  onExtractDocxImages,
   getKnowledgeKind,
   focusFileId,
   focusFullMode,
@@ -457,6 +463,8 @@ export function AssetGalleryView({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("uploadedAt");
   const [sortAsc, setSortAsc] = useState(false);
+  // Documents タブのサブフィルタ（PDF / Word / All）
+  const [docFilter, setDocFilter] = useState<"all" | "pdf" | "word">("all");
   const [deleteTarget, setDeleteTarget] = useState<MediaIndexEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<MediaIndexEntry | null>(null);
@@ -468,6 +476,8 @@ export function AssetGalleryView({
   useEffect(() => {
     setDetailEntry(null);
     setDetailFullMode(false);
+    // タブ切替時に Documents サブフィルタもリセット
+    setDocFilter("all");
   }, [mediaType]);
 
   // 親から focusFileId が降ってきたら、その entry を SidePeek / Full view で開く。
@@ -487,6 +497,7 @@ export function AssetGalleryView({
   }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docxInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   // ビュー切替（gallery / list）— localStorage に永続化
   const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {
@@ -508,6 +519,54 @@ export function AssetGalleryView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+
+  // ⋯ ハンバーガーメニュー（Documents タブ用）
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  // 単一素材のダウンロード（共通ヘルパー）
+  // 注意: getMediaBlobUrl は既にキャッシュ済みの blob: URL を返す（local/server-fs プロバイダ）。
+  // それを更に fetch → blob → createObjectURL すると同じデータを 2 重にメモリへ載せて
+  // 大きいファイルでブラウザがフリーズする。同一オリジン (blob:) なら直接 a.download に渡す。
+  // 外部 URL (Drive CDN 等) の場合のみ fetch 経由の fallback を使う。
+  const downloadEntry = useCallback(async (entry: MediaIndexEntry) => {
+    if (entry.type === "url") return;
+    const provider = getActiveProvider();
+    const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+    const blobUrl = await provider.getMediaBlobUrl(fileId);
+
+    let href = blobUrl;
+    let createdObjectUrl: string | null = null;
+    if (!blobUrl.startsWith("blob:")) {
+      // 外部 URL: download 属性が効かないので一度 fetch して objectURL を作る
+      const res = await fetch(blobUrl);
+      const blob = await res.blob();
+      href = URL.createObjectURL(blob);
+      createdObjectUrl = href;
+    }
+
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = entry.name || "download";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    if (createdObjectUrl) {
+      setTimeout(() => URL.revokeObjectURL(createdObjectUrl!), 1000);
+    }
+  }, []);
 
   const acceptByType: Record<MediaType, string> = {
     image: "image/*",
@@ -515,6 +574,8 @@ export function AssetGalleryView({
     audio: "audio/*",
     pdf: "application/pdf",
     url: "",
+    // Documents タブは PDF + Word/Excel/PowerPoint を受ける
+    document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf",
     other: "",
   };
 
@@ -550,9 +611,16 @@ export function AssetGalleryView({
   }, []);
 
   // タイプ別にフィルタ + 検索 + ソート
+  // Documents タブには PDF も含める（UI 上の統合。内部 type は維持）。
+  // docFilter が "pdf" / "word" のときはサブフィルタを適用する。
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
-    let result = mediaIndex.media.filter((m) => m.type === mediaType);
+    let result = mediaIndex.media.filter((m) => {
+      if (mediaType !== "document") return m.type === mediaType;
+      if (docFilter === "pdf") return m.type === "pdf";
+      if (docFilter === "word") return m.type === "document";
+      return m.type === "document" || m.type === "pdf";
+    });
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -575,7 +643,19 @@ export function AssetGalleryView({
       }
       return sortAsc ? cmp : -cmp;
     });
-  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc]);
+  }, [mediaIndex, mediaType, searchQuery, sortKey, sortAsc, docFilter]);
+
+  // Documents タブのサブフィルタ用件数
+  const docCounts = useMemo(() => {
+    if (!mediaIndex) return { pdf: 0, word: 0, all: 0 };
+    let pdf = 0;
+    let word = 0;
+    for (const m of mediaIndex.media) {
+      if (m.type === "pdf") pdf++;
+      else if (m.type === "document") word++;
+    }
+    return { pdf, word, all: pdf + word };
+  }, [mediaIndex]);
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!deleteTarget) return;
@@ -634,7 +714,8 @@ export function AssetGalleryView({
   // 一括 Knowledge 化（URL/PDF のみ）
   // onIngestMedia は内部でトーストキューに積む fire-and-forget なので、
   // 同期的に順次キックすれば各エントリーが個別ジョブとして並走する
-  const bulkActionable = mediaType === "url" || mediaType === "pdf";
+  // Documents タブも一括 Knowledge 化対象（中の PDF/Word は onIngestMedia 側で分岐）
+  const bulkActionable = mediaType === "url" || mediaType === "pdf" || mediaType === "document";
   const handleBulkIngest = useCallback(() => {
     if (!onIngestMedia || selectedIds.size === 0) return;
     const targets = filtered.filter((e) => selectedIds.has(e.fileId));
@@ -651,6 +732,31 @@ export function AssetGalleryView({
     }
     setSelectedIds(new Set());
   }, [filtered, selectedIds, onCreateProvNote]);
+
+  // 一括ダウンロード: 選択中の素材を順次保存（URL ブックマークは除外）
+  const downloadableSelectedCount = useMemo(
+    () =>
+      filtered.filter((e) => selectedIds.has(e.fileId) && e.type !== "url").length,
+    [filtered, selectedIds],
+  );
+  const handleBulkDownload = useCallback(async () => {
+    const targets = filtered.filter((e) => selectedIds.has(e.fileId) && e.type !== "url");
+    if (targets.length === 0) return;
+    setBulkDownloading(true);
+    try {
+      for (const entry of targets) {
+        try {
+          await downloadEntry(entry);
+        } catch (err) {
+          console.error("[asset-gallery] ダウンロード失敗:", entry.name, err);
+        }
+        // 連続するダウンロードプロンプトが抑制されないよう少し待つ
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } finally {
+      setBulkDownloading(false);
+    }
+  }, [downloadEntry, filtered, selectedIds]);
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
@@ -682,6 +788,7 @@ export function AssetGalleryView({
           if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
         }}
         onExtractPdfPages={onExtractPdfPages}
+        onExtractDocxImages={onExtractDocxImages}
         mediaIndex={mediaIndex}
         getKnowledgeKind={getKnowledgeKind}
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
@@ -721,7 +828,76 @@ export function AssetGalleryView({
             {t("asset.urlAdd")}
           </button>
         )}
-        {mediaType !== "url" && onUploadMedia && (
+        {mediaType === "document" && onUploadMedia && (
+          <div className="ml-auto relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              disabled={uploading}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              title={t("common.menu")}
+              aria-label={t("common.menu")}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                  onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
+                  disabled={uploading}
+                  title={t("asset.uploadDocxHint")}
+                >
+                  <Plus size={14} />
+                  {uploading ? t("asset.uploading") : t("asset.uploadDocx")}
+                </button>
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                  onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
+                  disabled={uploading}
+                  title={t("asset.uploadPdfHint")}
+                >
+                  <Plus size={14} />
+                  {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
+                </button>
+                <div className="my-1 border-t border-border" />
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed"
+                  onClick={() => { setMenuOpen(false); void handleBulkDownload(); }}
+                  disabled={downloadableSelectedCount === 0 || bulkDownloading}
+                  title={
+                    downloadableSelectedCount === 0
+                      ? t("asset.downloadSelectedHint")
+                      : undefined
+                  }
+                >
+                  <Download size={14} />
+                  {bulkDownloading
+                    ? t("asset.downloading")
+                    : downloadableSelectedCount > 0
+                      ? t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })
+                      : t("asset.downloadSelected")}
+                </button>
+              </div>
+            )}
+            <input
+              ref={docxInputRef}
+              type="file"
+              accept=".docx"
+              multiple
+              onChange={handleFilePicked}
+              className="hidden"
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              multiple
+              onChange={handleFilePicked}
+              className="hidden"
+            />
+          </div>
+        )}
+        {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
           <>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -743,8 +919,9 @@ export function AssetGalleryView({
         )}
       </div>
 
-      {/* 検索バー + ソート */}
-      <div className="px-6 py-2 border-b border-border flex items-center gap-3">
+
+      {/* 検索バー + サブフィルタ + ソート */}
+      <div className="px-6 py-2 border-b border-border flex items-center gap-3 flex-wrap">
         <input
           type="text"
           value={searchQuery}
@@ -752,27 +929,55 @@ export function AssetGalleryView({
           placeholder={t("asset.search")}
           className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
         />
+        {/* Documents タブのサブフィルタ（PDF / Word / All） */}
+        {mediaType === "document" && (
+          <div className="flex items-center gap-1">
+            {([
+              { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
+              { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
+              { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
+            ]).map(({ key, label, count }) => (
+              <button
+                key={key}
+                onClick={() => setDocFilter(key)}
+                className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
+                  docFilter === key
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                {label}
+                <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-1 ml-auto">
-          <button
-            onClick={() => handleSort("uploadedAt")}
-            className={`text-[11px] px-2 py-1 rounded transition-colors ${
-              sortKey === "uploadedAt"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t("asset.sortDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
-          </button>
-          <button
-            onClick={() => handleSort("name")}
-            className={`text-[11px] px-2 py-1 rounded transition-colors ${
-              sortKey === "name"
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
-          </button>
+          {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
+          {viewMode === "gallery" && (
+            <>
+              <button
+                onClick={() => handleSort("uploadedAt")}
+                className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                  sortKey === "uploadedAt"
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("asset.sortDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
+              </button>
+              <button
+                onClick={() => handleSort("name")}
+                className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                  sortKey === "name"
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
+              </button>
+            </>
+          )}
           {/* ビュー切替 */}
           <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
             <button
@@ -836,6 +1041,19 @@ export function AssetGalleryView({
                 {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
               </button>
             )}
+            {downloadableSelectedCount > 0 && (
+              <button
+                onClick={() => void handleBulkDownload()}
+                disabled={bulkDownloading}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                title={t("asset.downloadHint")}
+              >
+                <Download size={12} />
+                {bulkDownloading
+                  ? t("asset.downloading")
+                  : t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })}
+              </button>
+            )}
             <button
               onClick={() => setBulkDeleteOpen(true)}
               className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
@@ -882,20 +1100,20 @@ export function AssetGalleryView({
                 </th>
                 <th className="py-2 px-2 w-[56px]" />
                 <th
-                  className="py-2 px-3 cursor-pointer hover:text-foreground"
+                  className="py-2 px-3 whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("name")}
                 >
                   {t("asset.colName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
                 </th>
                 <th
-                  className="py-2 px-2 w-[80px] text-center cursor-pointer hover:text-foreground"
+                  className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("usedIn")}
                   title={t("asset.colUsedIn")}
                 >
                   {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
                 </th>
                 <th
-                  className="py-2 pl-3 w-[130px] cursor-pointer hover:text-foreground"
+                  className="py-2 pl-3 w-[140px] whitespace-nowrap cursor-pointer hover:text-foreground"
                   onClick={() => handleSort("uploadedAt")}
                 >
                   {t("asset.colDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
@@ -1038,6 +1256,7 @@ export function AssetGalleryView({
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
           onExtractPdfPages={onExtractPdfPages}
+        onExtractDocxImages={onExtractDocxImages}
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}

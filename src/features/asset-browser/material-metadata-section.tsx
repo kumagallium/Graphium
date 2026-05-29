@@ -14,6 +14,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   audio: "#c08b3e",
   pdf: "#c26356",
   url: "#4B7A52",
+  document: "#6f5b8b",
   other: "#7a7a7a",
 };
 

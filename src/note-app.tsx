@@ -99,7 +99,7 @@ import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-has
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner,
   IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
-  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromMultiSource,
+  ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge, embedWikiSections,
@@ -126,7 +126,7 @@ import {
 import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retriever";
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
-import { ingestUrlToProv, ingestPdfToProv, buildProvNoteDocument } from "./features/url-to-prov";
+import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
@@ -3751,6 +3751,46 @@ export function NoteApp() {
     }
   }, [fm.handleRenameMedia]);
 
+  // Word (.docx) 素材から埋め込み画像を取り出して子素材として登録する。
+  // PDF の onExtractPdfPages と機能対称。ノートは作らない（素材として置くだけ）。
+  const handleExtractDocxImages = useCallback(
+    async (
+      entry: MediaIndexEntry,
+      onProgress: (done: number, total: number) => void,
+    ): Promise<{ extracted: number }> => {
+      const provider = getActiveProvider();
+      const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+      const blobUrl = await provider.getMediaBlobUrl(fileId);
+      const res = await fetch(blobUrl);
+      const arrayBuffer = await res.arrayBuffer();
+
+      const { extractDocxImages } = await import("./features/docx-import/extract-images");
+      const baseTitle = entry.name.replace(/\.(docx|doc)$/i, "") || "Word";
+      const { files, stats } = await extractDocxImages(arrayBuffer, baseTitle);
+
+      if (files.length === 0) {
+        if (stats.attempted === 0) {
+          throw new Error("この Word からは画像オブジェクトを取り出せませんでした。");
+        }
+        throw new Error("対応形式の画像が含まれていませんでした（EMF/WMF など）。");
+      }
+
+      let extracted = 0;
+      for (let i = 0; i < files.length; i++) {
+        onProgress(i, files.length);
+        try {
+          await fm.handleUploadMedia(files[i], { derivedFromAssets: [entry.fileId] });
+          extracted++;
+        } catch (err) {
+          console.error("[note-app] Word 画像登録失敗:", err);
+        }
+      }
+      onProgress(files.length, files.length);
+      return { extracted };
+    },
+    [fm],
+  );
+
   // Wiki 単体の再生成（WikiBanner / Settings の Maintenance タブ両方から呼ばれる）
   // openAfter=true で再生成後にエディタで開く（バナー経由のとき）
   // ⚠️ 早期 return より前に置くこと（Rules of Hooks）
@@ -4376,12 +4416,16 @@ export function NoteApp() {
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
             onUploadMedia={fm.handleUploadMedia}
+            onExtractDocxImages={handleExtractDocxImages}
             resolveKnowledgeWikiId={(entry) => {
               if (entry.type === "url" && entry.url) {
                 return appKnowledgeMap.get(`url:${entry.url}`)?.[0]?.noteId;
               }
               if (entry.type === "pdf" && entry.fileId) {
                 return appKnowledgeMap.get(`pdf:${entry.fileId}`)?.[0]?.noteId;
+              }
+              if (entry.type === "document" && entry.fileId) {
+                return appKnowledgeMap.get(`document:${entry.fileId}`)?.[0]?.noteId;
               }
               return undefined;
             }}
@@ -4390,7 +4434,7 @@ export function NoteApp() {
                 // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
                 // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
                 // が壊れない。
-                const toastId = `url-toast:${Date.now()}`;
+                const toastId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const sourceNoteId = `url:${entry.url}`;
                 const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.url };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
@@ -4414,7 +4458,7 @@ export function NoteApp() {
                   }
                 })();
               } else if (entry.type === "pdf" && entry.fileId) {
-                const toastId = `pdf-toast:${Date.now()}`;
+                const toastId = `pdf-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const sourceNoteId = `pdf:${entry.fileId}`;
                 const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
@@ -4440,12 +4484,42 @@ export function NoteApp() {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
                   }
                 })();
+              } else if (entry.type === "document" && entry.fileId
+                && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+                // Word (.docx) を Knowledge 化: mammoth でテキスト抽出後、PDF と同じ /ingest API に流す
+                const toastId = `doc-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+                const sourceNoteId = `document:${entry.fileId}`;
+                const newItem: IngestToastItem = { id: toastId, status: "queued", noteTitle: entry.name || entry.fileId };
+                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+                (async () => {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Extracting Word text..." } : i) }));
+                  try {
+                    const provider = getActiveProvider();
+                    const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+                    const blobUrl = await provider.getMediaBlobUrl(fileId);
+                    const blob = await (await fetch(blobUrl)).blob();
+                    const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+                    const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, "ja");
+                    if (result.wikis.length === 0) {
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      return;
+                    }
+                    for (const wiki of result.wikis) {
+                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, "ja", buildNoteIndex(fm.noteIndex));
+                      const newId = await fm.handleCreateWikiFile(wikiDoc);
+                      embedWikiSections(newId, wikiDoc).catch(() => {});
+                    }
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
+                  } catch (err) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  }
+                })();
               }
             } : undefined}
             onCreateProvNote={aiAvailable ? (entry) => {
               // URL 経路
               if (entry.type === "url" && entry.url) {
-                const jobId = `prov-url:${Date.now()}`;
+                const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.url };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
                 (async () => {
@@ -4475,7 +4549,7 @@ export function NoteApp() {
               }
               // PDF 経路（PROV ノート生成）。画像抽出は onExtractPdfPages 側で扱う。
               if (entry.type === "pdf" && entry.fileId) {
-                const jobId = `prov-pdf:${Date.now()}`;
+                const jobId = `prov-pdf:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
                 const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
                 setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
                 (async () => {
@@ -4493,6 +4567,41 @@ export function NoteApp() {
                       title: result.title,
                       blocks: result.blocks,
                       sourcePdfFileId: entry.fileId,
+                      sourceTitle: result.sourceTitle || entry.name,
+                      sourceFetchedAt: result.sourceFetchedAt,
+                      model: result.model,
+                      tokenUsage: result.tokenUsage,
+                    });
+                    await fm.handleCreateNoteFromDocument(provDoc);
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
+                  } catch (err) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  }
+                })();
+                return;
+              }
+              // Word 経路（PROV ノート生成）。mammoth で raw text → サーバーの ingest-pdf 経路へ流す。
+              if (entry.type === "document" && entry.fileId
+                && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+                const jobId = `prov-doc:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+                const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
+                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+                (async () => {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting Word text..." } : i) }));
+                  try {
+                    const provider = getActiveProvider();
+                    const fileId = provider.extractFileId(entry.url) ?? entry.fileId;
+                    const blobUrl = await provider.getMediaBlobUrl(fileId);
+                    const blob = await (await fetch(blobUrl)).blob();
+                    const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale());
+                    if (!result.blocks || result.blocks.length === 0) {
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      return;
+                    }
+                    const provDoc = buildProvNoteDocument({
+                      title: result.title,
+                      blocks: result.blocks,
+                      sourceDocumentFileId: entry.fileId,
                       sourceTitle: result.sourceTitle || entry.name,
                       sourceFetchedAt: result.sourceFetchedAt,
                       model: result.model,
@@ -4624,61 +4733,6 @@ export function NoteApp() {
                 enqueueIngest(id, title, doc);
               }
             } : undefined}
-            onImportDocx={async (files, onProgress) => {
-              const { importDocxToGraphiumDoc } = await import("./features/docx-import/import");
-              let lastNewId: string | null = null;
-              const failed: string[] = [];
-              for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                onProgress({ done: i, total: files.length, current: file.name, failed: [...failed] });
-                try {
-                  const doc = await importDocxToGraphiumDoc(file, {
-                    uploadImage: fm.handleUploadMedia,
-                    addUrlBookmark: (url, anchorText) => {
-                      fm.handleAddUrlBookmark({
-                        fileId: `url:${url}`,
-                        name: anchorText,
-                        type: "url",
-                        mimeType: "text/uri-list",
-                        url,
-                        thumbnailUrl: "",
-                        uploadedAt: new Date().toISOString(),
-                        usedIn: [],
-                      });
-                    },
-                  });
-                  const newId = await fm.handleCreateNoteFromImport(doc);
-                  lastNewId = newId;
-                } catch (err) {
-                  console.error("Word インポート失敗:", file.name, err);
-                  failed.push(file.name);
-                }
-                onProgress({ done: i + 1, total: files.length, failed: [...failed] });
-              }
-              await fm.refreshFiles();
-
-              // 画像周りの既知制約を一度だけ通知（成功が 1 件以上ある時のみ）
-              const successCount = files.length - failed.length;
-              if (successCount > 0) {
-                window.alert(
-                  [
-                    `${successCount} 件のノートを取り込みました。`,
-                    "",
-                    "※ 一部の画像が表示されない / トリミング前の状態で展開されることがあります。",
-                    "  原因: EMF/WMF・SmartArt・数式などはブラウザ変換ではサポート外、",
-                    "  Word のクロップ情報はメタデータとして別管理されているため反映されません。",
-                    "  必要に応じて元の Word と見比べて、ノート上で差し替えてください。",
-                  ].join("\n"),
-                );
-              }
-
-              // 単発取り込みなら自動で開く。複数なら一覧に留まる
-              if (lastNewId && files.length === 1) {
-                fm.setShowNoteList(false);
-                fm.handleOpenFile(lastNewId);
-                router.navigate({ view: "editor", fileId: lastNewId });
-              }
-            }}
             onImportMarkdown={async (files, onProgress) => {
               const {
                 importMarkdownToGraphiumDoc,
@@ -5172,7 +5226,7 @@ export function NoteApp() {
               if (!url) return;
               // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
               // を使い分ける。後者で逆引きが効くようにする。
-              const jobId = `url-toast:${Date.now()}`;
+              const jobId = `url-toast:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
               const sourceNoteId = `url:${url}`;
               const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: url };
               ingestQueueRef.current.push({ noteId: jobId, noteTitle: url, doc: null as any });
