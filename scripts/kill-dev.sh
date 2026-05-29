@@ -88,37 +88,45 @@ if [ -f "$PROJECT_DIR/.git" ]; then
     fi
 
     if [ -n "$MAIN_WORKTREE" ] && [ -d "$MAIN_WORKTREE/data" ]; then
-      MAIN_MODELS="$MAIN_WORKTREE/data/models.json"
-      # 自己参照ループを防ぐ（PROJECT_DIR == MAIN_WORKTREE のケース）
-      MAIN_MODELS_REAL=$(cd "$MAIN_WORKTREE" && pwd -P)/data/models.json
-      MODELS_FILE_REAL=$(cd "$PROJECT_DIR" && pwd -P)/data/models.json
-      if [ "$MAIN_MODELS_REAL" = "$MODELS_FILE_REAL" ]; then
-        echo "[kill-dev] models.json link skipped (would self-reference)"
-      elif [ -f "$MAIN_MODELS" ] && [ ! -L "$MODELS_FILE" ]; then
-        mkdir -p "$DATA_DIR"
-        if [ -f "$MODELS_FILE" ]; then
-          mv "$MODELS_FILE" "$MODELS_FILE.bak"
-          echo "[kill-dev] Backed up existing models.json"
-        fi
-        ln -s "$MAIN_MODELS" "$MODELS_FILE"
-        echo "[kill-dev] Linked models.json → $MAIN_MODELS"
-      elif [ -L "$MODELS_FILE" ]; then
-        # 既存シンボリックリンクが自己参照になっていたら修復
-        LINK_TARGET=$(readlink "$MODELS_FILE")
-        case "$LINK_TARGET" in
-          /*) LINK_ABS="$LINK_TARGET" ;;
-          *)  LINK_ABS="$DATA_DIR/$LINK_TARGET" ;;
-        esac
-        LINK_REAL=$(cd "$(dirname "$LINK_ABS")" 2>/dev/null && pwd -P)/$(basename "$LINK_ABS")
-        if [ "$LINK_REAL" = "$MODELS_FILE_REAL" ]; then
-          echo "[kill-dev] Removed self-referential models.json symlink"
-          rm "$MODELS_FILE"
-          if [ -f "$MAIN_MODELS" ]; then
-            ln -s "$MAIN_MODELS" "$MODELS_FILE"
-            echo "[kill-dev] Re-linked models.json → $MAIN_MODELS"
+      # worktree の data/ 自体が親 worktree への symlink の場合、models.json は
+      # 既に親と共有済み。ここで symlink を張ろうとすると data symlink を二重に
+      # 辿り、親の data/models.json を自己参照 symlink に化けさせてしまう
+      # （ELOOP で vite が落ちる過去の不具合）。共有済みなので何もしない。
+      if [ -L "$DATA_DIR" ]; then
+        echo "[kill-dev] data/ is a symlink to the main worktree — models.json already shared"
+      else
+        MAIN_MODELS="$MAIN_WORKTREE/data/models.json"
+        # 自己参照ループを防ぐ（data symlink を辿った実体パスで比較する）
+        MAIN_MODELS_REAL=$(cd "$MAIN_WORKTREE/data" 2>/dev/null && pwd -P)/models.json
+        MODELS_FILE_REAL=$(cd "$DATA_DIR" 2>/dev/null && pwd -P)/models.json
+        if [ "$MAIN_MODELS_REAL" = "$MODELS_FILE_REAL" ]; then
+          echo "[kill-dev] models.json link skipped (would self-reference)"
+        elif [ -f "$MAIN_MODELS" ] && [ ! -L "$MODELS_FILE" ]; then
+          mkdir -p "$DATA_DIR"
+          if [ -f "$MODELS_FILE" ]; then
+            mv "$MODELS_FILE" "$MODELS_FILE.bak"
+            echo "[kill-dev] Backed up existing models.json"
           fi
-        else
-          echo "[kill-dev] models.json already linked"
+          ln -s "$MAIN_MODELS" "$MODELS_FILE"
+          echo "[kill-dev] Linked models.json → $MAIN_MODELS"
+        elif [ -L "$MODELS_FILE" ]; then
+          # 既存シンボリックリンクが自己参照になっていたら修復
+          LINK_TARGET=$(readlink "$MODELS_FILE")
+          case "$LINK_TARGET" in
+            /*) LINK_ABS="$LINK_TARGET" ;;
+            *)  LINK_ABS="$DATA_DIR/$LINK_TARGET" ;;
+          esac
+          LINK_REAL=$(cd "$(dirname "$LINK_ABS")" 2>/dev/null && pwd -P)/$(basename "$LINK_ABS")
+          if [ "$LINK_REAL" = "$MODELS_FILE_REAL" ]; then
+            echo "[kill-dev] Removed self-referential models.json symlink"
+            rm "$MODELS_FILE"
+            if [ -f "$MAIN_MODELS" ]; then
+              ln -s "$MAIN_MODELS" "$MODELS_FILE"
+              echo "[kill-dev] Re-linked models.json → $MAIN_MODELS"
+            fi
+          else
+            echo "[kill-dev] models.json already linked"
+          fi
         fi
       fi
     fi
