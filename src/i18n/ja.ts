@@ -897,8 +897,8 @@ export const ja: Record<string, string> = {
   "asset.slashVideoSub": "新規アップロードまたは既存の動画から挿入",
   "asset.slashAudio": "音声",
   "asset.slashAudioSub": "新規アップロードまたは既存の音声から挿入",
-  "asset.slashPdf": "PDF",
-  "asset.slashPdfSub": "新規アップロードまたは既存の PDF から挿入",
+  "asset.slashDocument": "ドキュメント",
+  "asset.slashDocumentSub": "新規アップロードまたは既存の PDF / Word から挿入",
   // ── 引用ピッカー (/claims, /Insights) ──
   "cite.slashGroup": "既存の知見",
   "cite.slashClaim": "知見",
