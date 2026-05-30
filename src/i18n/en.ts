@@ -897,8 +897,8 @@ export const en: Record<string, string> = {
   "asset.slashVideoSub": "Upload new or insert existing video",
   "asset.slashAudio": "Audio",
   "asset.slashAudioSub": "Upload new or insert existing audio",
-  "asset.slashPdf": "PDF",
-  "asset.slashPdfSub": "Upload new or insert existing PDF",
+  "asset.slashDocument": "Document",
+  "asset.slashDocumentSub": "Upload new or insert existing PDF / Word",
   // ── Cite picker (/claims, /Insights) ──
   "cite.slashGroup": "Existing knowledge",
   "cite.slashClaim": "Claims",

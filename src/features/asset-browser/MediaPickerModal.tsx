@@ -12,6 +12,7 @@ import {
   generateUrlBookmarkId,
   getFaviconUrl,
   extractDomain,
+  mimeToMediaType,
 } from "./media-index";
 
 // 画像サムネイル: local-media:// URL を Blob URL に変換して表示
@@ -111,6 +112,12 @@ function PickerItem({
             <span className="text-xl">📄</span>
           </div>
         );
+      case "document":
+        return (
+          <div className="w-full h-20 flex items-center justify-center rounded bg-muted">
+            <span className="text-xl">📝</span>
+          </div>
+        );
       case "url":
         return (
           <div className="w-full h-20 flex flex-col items-center justify-center gap-1 rounded bg-muted px-2">
@@ -204,7 +211,12 @@ export function MediaPickerModal({
 
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
-    let result = mediaIndex.media.filter((m) => m.type === mediaType);
+    // Documents タブには PDF も含める（AssetGalleryView と同じ統合方針）
+    let result = mediaIndex.media.filter((m) =>
+      mediaType === "document"
+        ? m.type === "document" || m.type === "pdf"
+        : m.type === mediaType
+    );
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter((m) =>
@@ -388,7 +400,14 @@ export function MediaPickerModal({
                 )}
                 <input
                   type="file"
-                  accept={mediaType === "image" ? "image/*" : mediaType === "video" ? "video/*" : mediaType === "audio" ? "audio/*" : mediaType === "pdf" ? "application/pdf" : "*/*"}
+                  accept={
+                    mediaType === "image" ? "image/*"
+                    : mediaType === "video" ? "video/*"
+                    : mediaType === "audio" ? "audio/*"
+                    : mediaType === "pdf" ? "application/pdf"
+                    : mediaType === "document" ? ".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                    : "*/*"
+                  }
                   className="hidden"
                   disabled={uploading}
                   onChange={async (e) => {
@@ -397,10 +416,13 @@ export function MediaPickerModal({
                     setUploading(true);
                     try {
                       const url = await onUpload(file);
+                      // Documents タブ経由のアップロードでは MIME に応じて pdf / document を分岐
+                      const resolvedType =
+                        mediaType === "document" ? mimeToMediaType(file.type) : mediaType;
                       onSelect({
                         fileId: "",
                         name: file.name,
-                        type: mediaType,
+                        type: resolvedType,
                         mimeType: file.type,
                         url,
                         thumbnailUrl: url.replace("=s0", "=s200"),

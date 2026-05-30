@@ -72,10 +72,11 @@ export function getMediaSlashMenuItems(): SlashMenuItem[] {
       ["audio", "音声", "おんせい", "sound", "music"],
     ),
     createMediaSlashItem(
-      "asset.slashPdf",
-      "asset.slashPdfSub",
-      "pdf",
-      ["pdf", "document", "論文", "ろんぶん", "paper"],
+      "asset.slashDocument",
+      "asset.slashDocumentSub",
+      "document",
+      // 旧 /pdf のエイリアスも残しつつ、word / docx / 文書 / 資料 も拾えるようにする
+      ["document", "pdf", "word", "docx", "ドキュメント", "文書", "ぶんしょ", "資料", "しりょう", "論文", "ろんぶん", "paper"],
     ),
   ];
 }

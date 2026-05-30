@@ -770,13 +770,18 @@ function NoteEditorInner({
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
 
-    // PDF はカスタムブロック、それ以外は BlockNote 標準ブロック
+    // 挿入ブロックの選択:
+    //   PDF → カスタム pdf ブロック（インラインビューア付き）
+    //   Document (.docx 等) → BlockNote 標準 file ブロック（汎用アタッチメント表示）
+    //   それ以外（image/video/audio） → 同名の標準ブロック
     const newBlock = entry.type === "pdf"
       ? { type: "pdf", props: { url: entry.url, name: entry.name } }
-      : {
-          type: entry.type === "video" ? "video" : entry.type === "audio" ? "audio" : "image",
-          props: { url: entry.url, name: entry.name },
-        };
+      : entry.type === "document"
+        ? { type: "file", props: { url: entry.url, name: entry.name } }
+        : {
+            type: entry.type === "video" ? "video" : entry.type === "audio" ? "audio" : "image",
+            props: { url: entry.url, name: entry.name },
+          };
     editor.insertBlocks([newBlock], currentBlock, "after");
 
     // 現在のブロックが空（スラッシュだけ）なら削除
