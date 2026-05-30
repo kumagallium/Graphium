@@ -39,7 +39,13 @@ import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from 
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
-import type { NoteIndexEntry } from "@features/navigation";
+import type { GraphiumIndex, NoteIndexEntry } from "@features/navigation";
+import {
+  CitePickerModal,
+  getCiteSlashMenuItems,
+  setCitePickerCallback,
+  type CitePickerKind,
+} from "@features/cite-picker";
 import { useT, t as tStatic } from "../../i18n";
 
 type SidePeekProps = {
@@ -70,6 +76,8 @@ type SidePeekProps = {
   uploadFile?: (file: File) => Promise<string>;
   /** /bookmark で新規 URL を追加したとき、アセットブラウザに登録する経路。 */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
+  /** /claims, /Insights の引用ピッカー用ノートインデックス。未指定だと引用挿入は出さない。 */
+  noteIndex?: GraphiumIndex | null;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -120,7 +128,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, inline = false,
-  mediaIndex, captureIndex, uploadFile, onAddUrlBookmark,
+  mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
 }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
@@ -129,6 +137,8 @@ function SidePeekInner({
   // ref 経由で最新を参照し、useCallback の依存を安定化する
   const labelStoreRef = useRef(labelStore);
   labelStoreRef.current = labelStore;
+  const linkStoreRef = useRef(linkStore);
+  linkStoreRef.current = linkStore;
   const editorRef = useRef<any>(null);
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
@@ -136,6 +146,7 @@ function SidePeekInner({
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
+  const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -238,10 +249,12 @@ function SidePeekInner({
     setMediaPickerCallback(sidePeekEditor, setPickerMediaType);
     setMemoPickerCallback(sidePeekEditor, () => setMemoPickerOpen(true));
     setBookmarkPickerCallback(sidePeekEditor, () => setUrlSlashPickerOpen(true));
+    setCitePickerCallback(sidePeekEditor, setCitePickerKind);
     return () => {
       setMediaPickerCallback(sidePeekEditor, null);
       setMemoPickerCallback(sidePeekEditor, null);
       setBookmarkPickerCallback(sidePeekEditor, null);
+      setCitePickerCallback(sidePeekEditor, null);
     };
   }, [sidePeekEditor]);
 
@@ -277,6 +290,54 @@ function SidePeekInner({
     }
     setPickerMediaType(null);
   }, []);
+
+  // /claims, /Insights で選んだ claim / atom ノートを引用挿入。
+  // main editor (note-app.tsx handleCitePickerConfirm) と同じ流儀:
+  // 青色 `@title` paragraph + knowledge レイヤの reference リンク。
+  const handleCiteConfirm = useCallback((entries: NoteIndexEntry[]) => {
+    const editor = editorRef.current;
+    if (!editor || entries.length === 0) {
+      setCitePickerKind(null);
+      return;
+    }
+    const currentBlock = editor.getTextCursorPosition()?.block;
+    if (!currentBlock) {
+      setCitePickerKind(null);
+      return;
+    }
+    const newBlocks = entries.map((entry) => ({
+      type: "paragraph" as const,
+      content: [
+        {
+          type: "text" as const,
+          text: `@${entry.title || "(untitled)"}`,
+          styles: { textColor: "blue" },
+        },
+      ],
+    }));
+    const inserted = editor.insertBlocks(newBlocks, currentBlock, "after");
+    const insertedArr = Array.isArray(inserted) ? inserted : [];
+    entries.forEach((entry, i) => {
+      const blockId = insertedArr[i]?.id;
+      if (!blockId) return;
+      linkStore.addLink({
+        sourceBlockId: blockId,
+        targetBlockId: "",
+        targetNoteId: entry.noteId,
+        type: "reference",
+        createdBy: "human",
+      });
+    });
+    const content = currentBlock.content;
+    if (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    ) {
+      editor.removeBlocks([currentBlock]);
+    }
+    setCitePickerKind(null);
+  }, [linkStore]);
 
   // 既存 URL ピッカーから bookmark 挿入
   const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
@@ -355,6 +416,14 @@ function SidePeekInner({
       labelsObj[k] = v;
     }
 
+    // リンクを linkStore から書き戻す（main editor の buildDocument と同じ方式）。
+    // 従来は元の page.provLinks/knowledgeLinks をそのまま温存していたが、
+    // /claims /Insights の引用で追加した reference リンクを永続化するため、
+    // 開いたときに restoreLinks 済みの linkStore を真実として layer 別に書き出す。
+    const allLinks = linkStoreRef.current.getAllLinks();
+    const provLinks = allLinks.filter((l) => l.layer === "prov");
+    const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
+
     const updatedDoc: GraphiumDocument = {
       ...docRef.current,
       pages: [
@@ -362,6 +431,8 @@ function SidePeekInner({
           ...docRef.current.pages[0],
           blocks: currentBlocks,
           labels: labelsObj,
+          provLinks,
+          knowledgeLinks,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -682,6 +753,7 @@ function SidePeekInner({
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
                   getMemoSlashMenuItem(),
+                  ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}
                 excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
                 onEditorReady={handleEditorReady}
@@ -714,7 +786,7 @@ function SidePeekInner({
           SidePeek overlay (z-index:100) より前面に出すため、
           z-index:200 の wrapper で stacking context を切る。
           (MediaPickerModal の内部 z-50 は wrapper 内で相対化される。) */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen ? "auto" : "none" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, pointerEvents: pickerMediaType || urlSlashPickerOpen || memoPickerOpen || citePickerKind ? "auto" : "none" }}>
         {pickerMediaType && (
           <MediaPickerModal
             mediaIndex={mediaIndex ?? null}
@@ -722,6 +794,14 @@ function SidePeekInner({
             onSelect={handlePickerSelect}
             onClose={() => setPickerMediaType(null)}
             onUpload={uploadFile}
+          />
+        )}
+        {citePickerKind && (
+          <CitePickerModal
+            noteIndex={noteIndex ?? null}
+            kind={citePickerKind}
+            onConfirm={handleCiteConfirm}
+            onClose={() => setCitePickerKind(null)}
           />
         )}
         {urlSlashPickerOpen && (
