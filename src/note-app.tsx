@@ -5399,6 +5399,7 @@ export function NoteApp() {
               captureIndex={capture.captureIndex ?? null}
               uploadFile={fm.handleUploadMedia}
               onAddUrlBookmark={fm.handleAddUrlBookmark}
+              noteIndex={fm.noteIndex ?? null}
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
