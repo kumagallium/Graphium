@@ -2567,6 +2567,7 @@ function NoteEditorInner({
             captureIndex={captureIndexProp ?? null}
             uploadFile={uploadFile}
             onAddUrlBookmark={onAddUrlBookmark}
+            noteIndex={noteIndex ?? null}
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -2583,6 +2584,7 @@ function NoteEditorInner({
               onNavigateNote(noteId, savedDoc);
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
+            noteIndex={noteIndex ?? null}
           />
         )}
 
@@ -5397,6 +5399,7 @@ export function NoteApp() {
               captureIndex={capture.captureIndex ?? null}
               uploadFile={fm.handleUploadMedia}
               onAddUrlBookmark={fm.handleAddUrlBookmark}
+              noteIndex={fm.noteIndex ?? null}
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
