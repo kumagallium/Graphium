@@ -2,6 +2,8 @@
 // 現状 UI で公開されているのは Ask のみ。残り 3 モードは実装を残しつつ
 // 意図的に UI から隠している（project_composer_mode_redesign.md 参照）。
 
+import type { ComposerVerb } from "./verbs";
+
 export const COMPOSER_MODES = ["ask", "compose", "insert-prov", "insert-media"] as const;
 export type ComposerMode = (typeof COMPOSER_MODES)[number];
 
@@ -22,4 +24,7 @@ export type DiscoveryCard = {
 export type ComposerSubmission = {
   mode: ComposerMode;
   prompt: string;
+  /** R2: verb メニュー由来の送信のとき、選ばれた動詞 id。
+   *  PROV-DM の Activity subtype 記録（後続 PR）に伝播するため optional で持つ。 */
+  verb?: ComposerVerb;
 };
