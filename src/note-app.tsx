@@ -1697,6 +1697,31 @@ function NoteEditorInner({
     return response.message;
   }, [skillPrompts]);
 
+  // verb メニュー（PR2）: 現ノートが引用している知見・洞察（reference リンク先）を
+  // AttachedNote[] に変換する。本文ロードは handleAiChatSubmit 側の attachedNotes 経路が行う
+  // （ここでは id / title / isWiki を解決するだけ）。
+  // 同じノートを複数ブロックから引用していても 1 件に重複排除する。
+  const collectCitedNotes = useCallback((): AttachedNote[] => {
+    const refLinks = linkStore
+      .getAllLinks()
+      .filter((l) => l.layer === "knowledge" && l.type === "reference" && l.targetNoteId);
+    const seen = new Set<string>();
+    const result: AttachedNote[] = [];
+    for (const link of refLinks) {
+      const noteId = link.targetNoteId!;
+      if (seen.has(noteId)) continue;
+      seen.add(noteId);
+      const entry = noteIndex?.notes.find((n) => n.noteId === noteId);
+      result.push({
+        id: noteId,
+        title: entry?.title ?? noteId,
+        // 知見・洞察ノートは AI 生成（source === "ai"）。loadWikiFile 経路に乗せる。
+        isWiki: entry?.source === "ai",
+      });
+    }
+    return result;
+  }, [linkStore, noteIndex]);
+
   // Composer（Cmd+K）からの送信を受けるハンドラを ref に登録する。
   // ── 実装メモ ──
   // handleAiChatSubmit は aiAssistant ストアの state 変化のたびに再生成されるため、
@@ -1710,6 +1735,7 @@ function NoteEditorInner({
     setRightTab,
     setPickerMediaType,
     parkChat: aiAssistant.parkChat,
+    collectCitedNotes,
   });
   composerHandlersRef.current = {
     handleAiChatSubmit,
@@ -1718,12 +1744,13 @@ function NoteEditorInner({
     setRightTab,
     setPickerMediaType,
     parkChat: aiAssistant.parkChat,
+    collectCitedNotes,
   };
 
   useEffect(() => {
     if (!composerSubmitRef) return;
     composerSubmitRef.current = async (submission) => {
-      const { mode, prompt } = submission;
+      const { mode, prompt, verb } = submission;
       const h = composerHandlersRef.current;
 
       if (mode === "ask") {
@@ -1732,7 +1759,12 @@ function NoteEditorInner({
         // チャット欄を開いている状態での追加質問は、チャット欄の input を使えばよい。
         h.parkChat();
         h.setRightTab("chat");
-        await h.handleAiChatSubmit(prompt);
+        // verb メニュー由来（PR2）: このノートが引用している知見・洞察（reference リンク先）
+        // の「本文」を AI 文脈に載せる。verb は「引用集合の精査」を指示するため、
+        // タイトルだけでなく中身が文脈に無いと機能しない。既存の @mention 添付ノートの
+        // ロード機構（handleAiChatSubmit の attachedNotes 経路）をそのまま再利用する。
+        const citedNotes = verb ? h.collectCitedNotes() : [];
+        await h.handleAiChatSubmit(prompt, citedNotes.length > 0 ? citedNotes : undefined);
         return;
       }
 
