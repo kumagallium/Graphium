@@ -462,6 +462,9 @@ type NoteEditorProps = {
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
   openSidePeekRef?: React.MutableRefObject<((noteId: string) => void) | null>;
+  /** 現在開いているノートの引用（knowledge link）数を取得する ref。
+   *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
+  composerCitationRef?: React.MutableRefObject<(() => number) | null>;
   /**
    * タイトルバー直下に挟みたい UI（WikiBanner / SkillBanner 等）。
    * 2026-05-22 デザイン議論 D1 案: バナーは title bar の下に置いて、ノートと一貫した
@@ -566,6 +569,7 @@ function NoteEditorInner({
   archived = false,
   provWikiEntities,
   openSidePeekRef,
+  composerCitationRef,
   subHeaderSlot,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
@@ -1780,6 +1784,17 @@ function NoteEditorInner({
     };
   }, [openSidePeekRef]);
 
+  // 現ノートの引用（knowledge layer = reference リンク）数を Composer に渡すため ref に登録。
+  // Composer は NoteApp 直下にあり linkStore に触れないので、この imperative ref で橋渡しする。
+  useEffect(() => {
+    if (!composerCitationRef) return;
+    composerCitationRef.current = () =>
+      linkStore.getAllLinks().filter((l) => l.layer === "knowledge").length;
+    return () => {
+      if (composerCitationRef.current) composerCitationRef.current = null;
+    };
+  }, [composerCitationRef, linkStore]);
+
   // AI 回答から別ノートとして派生
   const handleAiDeriveFromChat = useCallback(
     async (question: string, answer: string) => {
@@ -2823,6 +2838,8 @@ export function NoteApp() {
   const [composerPrompt, setComposerPrompt] = useState("");
   // 発見カード — Composer が開かれたときに直近 7 日の wikiLog を取得して計算
   const [recentWikiLogEntries, setRecentWikiLogEntries] = useState<WikiLogEntry[]>([]);
+  // Composer を開いたときの引用（knowledge link）数。J1.5 の verb メニュー出し分けに使う。
+  const [composerCitationCount, setComposerCitationCount] = useState(0);
   const composerSubmitRef = useRef<
     ((submission: ComposerSubmission) => void | Promise<void>) | null
   >(null);
@@ -2830,6 +2847,8 @@ export function NoteApp() {
   // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
   // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
   const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
+  // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
+  const composerCitationRef = useRef<(() => number) | null>(null);
   // 世界モデル照合（Phase 2 / PR 2A）— 照合中の Wiki ID を覚えてバナーボタンを disable する
   const [worldCheckingWikiId, setWorldCheckingWikiId] = useState<string | null>(null);
   const handleComposerSubmit = useCallback(
@@ -3072,6 +3091,8 @@ export function NoteApp() {
   // (常時 subscribe しない理由: ログは IndexedDB なので軽量、開いた時だけで十分)
   useEffect(() => {
     if (!composer.open) return;
+    // 開いた瞬間の引用数を読む（モーダル表示中はノート編集不可なので静的でよい）
+    setComposerCitationCount(composerCitationRef.current?.() ?? 0);
     let cancelled = false;
     wikiLog.getRecent(50).then((entries) => {
       if (!cancelled) setRecentWikiLogEntries(entries);
@@ -5296,6 +5317,7 @@ export function NoteApp() {
             onOpenComposer={composer.openComposer}
             composerSubmitRef={composerSubmitRef}
             openSidePeekRef={openSidePeekRef}
+            composerCitationRef={composerCitationRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
               const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
@@ -5507,6 +5529,7 @@ export function NoteApp() {
         onDiscoveryCardSelect={handleComposerCardSelect}
         noteIndex={fm.noteIndex ?? null}
         onNoteSelect={handleComposerNoteSelect}
+        citationCount={composerCitationCount}
       />
       {showNewSkillDialog && (
         <NewSkillDialog

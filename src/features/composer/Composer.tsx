@@ -22,6 +22,7 @@ import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { searchNotes, type SearchHit } from "./search";
+import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
 
 type ComposerProps = {
   open: boolean;
@@ -40,6 +41,9 @@ type ComposerProps = {
   noteIndex?: GraphiumIndex | null;
   /** ノート行を選んだときのジャンプハンドラ。未指定時は検索 UI を出さない */
   onNoteSelect?: (noteId: string, source: "human" | "ai" | "skill" | undefined) => void;
+  /** 現在開いているノートの引用（knowledge link）数。
+   *  J1.5: 入力空のとき 0 → 発見カード（既存）/ 1+ → verb メニューを前面に出す。 */
+  citationCount?: number;
 };
 
 type ResultRow =
@@ -61,6 +65,7 @@ export function Composer(props: ComposerProps) {
     onDiscoveryCardSelect,
     noteIndex,
     onNoteSelect,
+    citationCount,
   } = props;
 
   const t = useT();
@@ -79,6 +84,15 @@ export function Composer(props: ComposerProps) {
   const cards = useMemo(() => discoveryCards ?? [], [discoveryCards]);
   // 入力空のときだけ発見カードを出す（検索結果が出ているときは候補が二重になり邪魔）
   const showCards = isEmptyQuery && cards.length > 0;
+
+  // J1.5: 引用ブロック（knowledge link）の有無で空入力時の中段を切り替える。
+  //   引用 0 → 発見カード（既存維持・破壊性ゼロ）
+  //   引用 1+ → verb メニューを前面に出し、発見カードは小さく下に添える
+  const hasCitations = (citationCount ?? 0) > 0;
+  const showVerbMenu = isEmptyQuery && hasCitations;
+
+  // verb に添える任意コメント（即発火だが補足を一言足せる）
+  const [verbComment, setVerbComment] = useState("");
 
   // 結果行を組み立てる: ノート一覧 + 末尾 AI アクション + 発見カード
   // 発見カードもキーボードで選べるように同じ rows 配列にまとめる
@@ -100,6 +114,11 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     setActiveIndex(0);
   }, [prompt, open]);
+
+  // 閉じたら verb コメントを破棄（次に開いたときに前回の入力を残さない）
+  useEffect(() => {
+    if (!open) setVerbComment("");
+  }, [open]);
 
   // 開いた瞬間にフォーカス
   useEffect(() => {
@@ -123,6 +142,18 @@ export function Composer(props: ComposerProps) {
   const submitAi = () => {
     if (trimmed.length === 0) return;
     onSubmit({ mode, prompt: trimmed });
+  };
+
+  // verb 押下 → プロンプトテンプレート + 任意コメントを組み立て、既存 Ask 経路に流す。
+  // 出力（サイドピーク・提案ブロック・手動取り込み）は後続 PR で差し替える。
+  const submitVerb = (def: VerbDef) => {
+    const prompt = buildVerbPrompt(
+      t(def.promptKey),
+      verbComment,
+      t("composer.verb.commentLabel"),
+    );
+    setVerbComment("");
+    onSubmit({ mode, prompt, verb: def.id });
   };
 
   const activateRow = (row: ResultRow) => {
@@ -355,7 +386,18 @@ export function Composer(props: ComposerProps) {
           </div>
         )}
 
-        {/* 発見カード — 入力空のときだけ。rows に含まれているのでキーボードで選べる */}
+        {/* verb メニュー（J1.5: 引用 1+ のとき前面に出す）。クリックで即発火 */}
+        {showVerbMenu && (
+          <VerbMenu
+            citationCount={citationCount ?? 0}
+            comment={verbComment}
+            onCommentChange={setVerbComment}
+            onPick={submitVerb}
+          />
+        )}
+
+        {/* 発見カード — 入力空のときだけ。rows に含まれているのでキーボードで選べる。
+            verb メニューが出ているときは補助扱いとして下に小さく添える */}
         {showCards && (
           <div
             style={{
@@ -364,6 +406,7 @@ export function Composer(props: ComposerProps) {
               display: "flex",
               flexDirection: "column",
               gap: 1,
+              opacity: showVerbMenu ? 0.7 : 1,
             }}
           >
             <div
@@ -579,6 +622,114 @@ function AskAiRow({ label, active, onMouseEnter, onClick }: AskAiRowProps) {
       >
         ↵
       </span>
+    </button>
+  );
+}
+
+// ── verb メニュー（R2） ──
+// 引用 1+ のノートで「集合を精査する動詞」を提示する。core 3 + aux 3 の 2 段組 +
+// 任意コメント欄。各ボタンは即発火で onPick(def) を呼ぶ。
+
+type VerbMenuProps = {
+  citationCount: number;
+  comment: string;
+  onCommentChange: (value: string) => void;
+  onPick: (def: VerbDef) => void;
+};
+
+function VerbMenu({ citationCount, comment, onCommentChange, onPick }: VerbMenuProps) {
+  const t = useT();
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--rule-2)",
+        padding: "10px 16px 12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--forest)",
+          fontFamily: "var(--mono)",
+        }}
+      >
+        ⚡ {t("composer.verb.title", { count: String(citationCount) })}
+      </div>
+
+      {/* core verb（集合精査） */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {CORE_VERBS.map((def) => (
+          <VerbButton
+            key={def.id}
+            label={t(def.labelKey)}
+            primary
+            onClick={() => onPick(def)}
+          />
+        ))}
+      </div>
+
+      {/* 区切り */}
+      <div style={{ height: 1, background: "var(--rule-2)", margin: "1px 0" }} aria-hidden />
+
+      {/* aux verb（発想を広げる） */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {AUX_VERBS.map((def) => (
+          <VerbButton key={def.id} label={t(def.labelKey)} onClick={() => onPick(def)} />
+        ))}
+      </div>
+
+      {/* 任意コメント */}
+      <input
+        type="text"
+        value={comment}
+        onChange={(e) => onCommentChange(e.target.value)}
+        placeholder={t("composer.verb.commentPlaceholder")}
+        autoComplete="off"
+        style={{
+          marginTop: 2,
+          width: "100%",
+          border: "1px solid var(--rule-2)",
+          borderRadius: "var(--r-1)",
+          outline: "none",
+          background: "var(--paper-2)",
+          padding: "5px 8px",
+          fontSize: 12,
+          color: "var(--ink)",
+          fontFamily: "inherit",
+        }}
+      />
+    </div>
+  );
+}
+
+type VerbButtonProps = {
+  label: string;
+  primary?: boolean;
+  onClick: () => void;
+};
+
+function VerbButton({ label, primary, onClick }: VerbButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="composer-verb-btn"
+      style={{
+        padding: "5px 10px",
+        fontSize: 12.5,
+        lineHeight: 1.3,
+        cursor: "pointer",
+        borderRadius: "var(--r-1)",
+        border: `1px solid ${primary ? "var(--forest)" : "var(--rule)"}`,
+        background: primary ? "var(--forest)" : "transparent",
+        color: primary ? "var(--paper)" : "var(--ink-2)",
+        fontFamily: "inherit",
+      }}
+    >
+      {label}
     </button>
   );
 }
