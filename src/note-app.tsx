@@ -76,6 +76,7 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
+import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -590,6 +591,16 @@ function NoteEditorInner({
   // このノートを派生元として参照する wiki エントリ（Knowledge 化済み判定用）
   const knowledgeMap = useMemo(() => buildKnowledgeMap(noteIndex ?? null), [noteIndex]);
   const wikiEntriesForCurrentNote: NoteIndexEntry[] = fileId ? (knowledgeMap.get(fileId) ?? []) : [];
+  // AI 回答をノートへ挿入する際、`[Source: "title"]` を青い @title mention に変換するための
+  // title → wikiNoteId 逆引き。resolveMentionNoteId（@ クリックの解決元）と同じく noteIndex の
+  // AI ノート（Wiki）から引くことで、挿入後のクリック解決とグラフの reference エッジを整合させる。
+  const wikiTitleToNoteId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const n of noteIndex?.notes ?? []) {
+      if (n.source === "ai" && n.title) map.set(n.title, n.noteId);
+    }
+    return map;
+  }, [noteIndex]);
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // 前回保存時のページ状態（差分計算用）
@@ -1884,6 +1895,48 @@ function NoteEditorInner({
     [labelStore, linkStore],
   );
 
+  // 1 ブロックに `[Source]` 由来の reference リンク（knowledge レイヤ）を張る。
+  // 引用ピッカー handleCitePickerConfirm と同じデータモデルで、Graph タブにエッジが出る。
+  const addSourceRefLinks = useCallback(
+    (blockId: string, wikiIds: string[]) => {
+      for (const wikiId of wikiIds) {
+        linkStore.addLink({
+          sourceBlockId: blockId,
+          targetBlockId: "",
+          targetNoteId: wikiId,
+          type: "reference",
+          createdBy: "ai",
+        });
+      }
+    },
+    [linkStore],
+  );
+
+  // linkifySourceMentions が集めた refs（path + wikiIds）を、挿入後のブロック ID に解決して
+  // reference リンクを張る。applyExtractedLabels と同じ path 解決・setTimeout(0) 流儀。
+  const applySourceRefs = useCallback(
+    (inserted: any[], refs: { path: number[]; wikiIds: string[] }[]) => {
+      if (refs.length === 0) return;
+      const resolveByPath = (path: number[]): any | null => {
+        let nodes: any[] = inserted;
+        let node: any = null;
+        for (const idx of path) {
+          node = nodes?.[idx];
+          if (!node) return null;
+          nodes = node.children ?? [];
+        }
+        return node;
+      };
+      setTimeout(() => {
+        for (const { path, wikiIds } of refs) {
+          const block = resolveByPath(path);
+          if (block?.id) addSourceRefLinks(block.id, wikiIds);
+        }
+      }, 0);
+    },
+    [addSourceRefLinks],
+  );
+
   // AI 回答をスコープに反映
   const handleInsertToScope = useCallback(
     (markdown: string) => {
@@ -1896,11 +1949,13 @@ function NoteEditorInner({
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
         const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
+        const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
         const allBlocks = editor.document;
         const lastBlock = allBlocks[allBlocks.length - 1];
         if (lastBlock) {
-          const inserted = editor.insertBlocks(blocks, lastBlock, "after");
+          const inserted = editor.insertBlocks(linked, lastBlock, "after");
           applyExtractedLabels(inserted as any[], labels);
+          applySourceRefs(inserted as any[], refs);
         }
         lastAiInsertRef.current = true;
         markDirty();
@@ -1912,25 +1967,29 @@ function NoteEditorInner({
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
         const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
+        const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
         const scope = collectHeadingScope(editor.document, targetBlock);
         const insertAfterBlock = scope[scope.length - 1];
-        const inserted = editor.insertBlocks(blocks, insertAfterBlock, "after");
+        const inserted = editor.insertBlocks(linked, insertAfterBlock, "after");
         applyExtractedLabels(inserted as any[], labels);
+        applySourceRefs(inserted as any[], refs);
       } else {
         // 段落・リストへの追記: マーカーは平文のまま見えてしまうので、
         // 単純な文字列レベルで剥がしてから追記する（ラベル付与はスキップ）。
         const stripped = markdown.replace(/^\s*\[\[label:[a-z]+\]\][ 　]?/gm, "");
+        // `[Source: "title"]` は青い @title mention に変換して追記する（クリックで Wiki を開ける）。
+        const { nodes, wikiIds } = splitSourceMentions("\n" + stripped, {}, wikiTitleToNoteId);
         const existingContent = Array.isArray(targetBlock.content) ? targetBlock.content : [];
-        const newContent = [
-          ...existingContent,
-          { type: "text" as const, text: "\n" + stripped, styles: {} },
-        ];
+        const newContent = [...existingContent, ...nodes];
         editor.updateBlock(targetBlockId, { content: newContent });
+        if (wikiIds.length > 0) {
+          setTimeout(() => addSourceRefLinks(targetBlockId, wikiIds), 0);
+        }
       }
       lastAiInsertRef.current = true;
       markDirty();
     },
-    [markDirty, aiAssistant.sourceBlockIds, applyExtractedLabels],
+    [markDirty, aiAssistant.sourceBlockIds, applyExtractedLabels, applySourceRefs, wikiTitleToNoteId, addSourceRefLinks],
   );
 
   // AI 回答で対象ブロックを置換
@@ -1943,8 +2002,11 @@ function NoteEditorInner({
 
       const parsedBlocks = editor.tryParseMarkdownToBlocks(markdown);
       if (parsedBlocks.length === 0) return;
-      const { blocks: newBlocks, labels: extractedLabels } =
+      const { blocks: parsedNoLabels, labels: extractedLabels } =
         extractLabelMarkersFromBlocks(parsedBlocks);
+      // `[Source: "title"]` を青い @title mention に変換し、reference 先 wikiId を集める。
+      const { blocks: newBlocks, refs: sourceRefs } =
+        linkifySourceMentions(parsedNoLabels, wikiTitleToNoteId);
 
       const firstBlock = editor.getBlock(blockIds[0]);
       if (!firstBlock) return;
@@ -1967,7 +2029,10 @@ function NoteEditorInner({
         if (parsed && firstBlock.type === parsed.type) {
           // 同じブロックタイプなら content を直接更新（ラベル適用なし: id 解決できないため）
           editor.updateBlock(blockIds[0], { content: parsed.content });
-          // 単一ブロック更新時は extractedLabels の対象外として扱う
+          // 単一ブロック更新時は extractedLabels の対象外。reference リンクは
+          // path [0] の wikiId を更新先ブロックに直接張る。
+          const ref0 = sourceRefs.find((r) => r.path.length === 1 && r.path[0] === 0);
+          if (ref0) setTimeout(() => addSourceRefLinks(blockIds[0], ref0.wikiIds), 0);
         } else {
           // ブロックタイプが異なる場合は削除→挿入
           inserted = editor.insertBlocks(newBlocks, firstBlock, "after") as any[];
@@ -1983,12 +2048,13 @@ function NoteEditorInner({
 
       if (inserted.length > 0) {
         applyExtractedLabels(inserted, extractedLabels);
+        applySourceRefs(inserted, sourceRefs);
       }
 
       lastAiInsertRef.current = true;
       markDirty();
     },
-    [markDirty, aiAssistant, removeBlockMetadata, applyExtractedLabels],
+    [markDirty, aiAssistant, removeBlockMetadata, applyExtractedLabels, applySourceRefs, wikiTitleToNoteId, addSourceRefLinks],
   );
 
   // ── 初期データの復元 ──
