@@ -1,0 +1,183 @@
+// Cmd-K Composer R2 / PR3: verb 回答の手動取り込み（Loop M2）
+//
+// verb メニュー（矛盾を探す / 抜けを指摘 / 次の検証 等）の AI 回答を、ユーザーが
+// 「知見にする / 洞察にする」ボタンで明示的に knowledge ノート化するための純関数。
+//
+// 設計の要点（[[project-synthesis-layer-withdrawal]] / [[project-cmd-k-composer-findings]]）:
+//   - 砂時計の「首（synthesize）」は人間に戻す。AI 提案を自動 ingest しない（方針違反）。
+//   - kind（claim / atom）は **ユーザーが選ぶ**。サーバー ingester は kind を AI に
+//     決めさせるため、ここでは通さず、選ばれた kind の正規ノートを直接組み立てる。
+//   - 由来は wikiMeta.derivedFromNotes に「現ノート + 引用元ノート」を入れる（PROV の素地）。
+//     PROV-DM L3（snapshot hash dedup を wasDerivedFrom）は後続 PR4 で上乗せする。
+//
+// ブロック生成ロジックは buildAtomDocument（wiki-service.ts）の段落分割を踏襲している。
+// 候補型（AtomCandidate / IngesterOutput）には依存しない（生テキストから組み立てる）。
+
+import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-types";
+
+/** 取り込みボタンで作れる kind。verb 回答は claim（知見）か atom（洞察）に落とす。 */
+export type VerbSuggestionKind = Extract<WikiKind, "claim" | "atom">;
+
+export type BuildVerbSuggestionInput = {
+  /** AI 回答本文（markdown 相当のプレーンテキスト） */
+  text: string;
+  /** ユーザーが選んだ kind（claim = 知見 / atom = 洞察） */
+  kind: VerbSuggestionKind;
+  /** ノートのタイトル（先頭行 or 呼び出し側で要約したもの） */
+  title: string;
+  /** 取り込み元のノート ID（verb を発火したノート） */
+  sourceNoteId: string | null;
+  /** verb が精査した引用ノート（claim/atom）の ID リスト */
+  citedNoteIds: string[];
+  /** 生成に使われた LLM 名（記録用） */
+  model?: string | null;
+  /** 生成言語 */
+  language?: string;
+};
+
+type Block = {
+  id: string;
+  type: string;
+  props: Record<string, unknown>;
+  content: { type: "text"; text: string; styles: Record<string, unknown> }[];
+  children: unknown[];
+};
+
+type KnowledgeLink = {
+  id: string;
+  sourceBlockId: string;
+  targetBlockId: string;
+  targetNoteId: string;
+  type: "reference";
+  layer: "knowledge";
+  createdBy: "ai" | "human";
+};
+
+/** 段落（空行区切り）ごとに paragraph ブロックへ分解する */
+function paragraphsToBlocks(text: string): Block[] {
+  return text
+    .split(/\n{2,}/)
+    .map((para) => para.trim())
+    .filter((para) => para.length > 0)
+    .map((para) => ({
+      id: crypto.randomUUID(),
+      type: "paragraph",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+      content: [{ type: "text", text: para, styles: {} }],
+      children: [],
+    }));
+}
+
+/**
+ * verb の AI 回答を、ユーザーが選んだ kind の knowledge ノート（GraphiumDocument）に変換する。
+ *
+ * - 本文は段落ブロックに分解。
+ * - 引用ノートがあれば「引用元」見出し + bullet を足し、knowledge reference リンクを張る
+ *   （元の verb 精査が依拠した claim/atom への辿り直しを保つ）。
+ * - PROV のリビジョン記録（recordRevision）は handleCreateWikiFile 側が行うのでここでは触らない。
+ */
+export function buildVerbSuggestionDocument(
+  input: BuildVerbSuggestionInput,
+): GraphiumDocument {
+  const now = new Date().toISOString();
+  const blocks: Block[] = paragraphsToBlocks(input.text);
+  const knowledgeLinks: KnowledgeLink[] = [];
+
+  // 引用元セクション（verb が精査した claim/atom への参照を保持）
+  const uniqueCited = [...new Set(input.citedNoteIds.filter(Boolean))];
+  if (uniqueCited.length > 0) {
+    blocks.push({
+      id: crypto.randomUUID(),
+      type: "heading",
+      props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
+      content: [{ type: "text", text: "引用元", styles: {} }],
+      children: [],
+    });
+    for (const citedId of uniqueCited) {
+      const blockId = crypto.randomUUID();
+      blocks.push({
+        id: blockId,
+        type: "bulletListItem",
+        props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+        // タイトル解決は呼び出し側に依存しない。リンク先 noteId で右パネルから辿れる。
+        content: [{ type: "text", text: "🤖 引用ノート", styles: { textColor: "blue" } }],
+        children: [],
+      });
+      knowledgeLinks.push({
+        id: crypto.randomUUID(),
+        sourceBlockId: blockId,
+        targetBlockId: "",
+        targetNoteId: citedId,
+        type: "reference",
+        layer: "knowledge",
+        createdBy: "human",
+      });
+    }
+  }
+
+  const wikiMeta: WikiMeta = {
+    kind: input.kind,
+    // 由来 = verb を発火したノート（PROV の素地）。引用元 claim/atom は knowledgeLinks 側で保持。
+    derivedFromNotes: input.sourceNoteId ? [input.sourceNoteId] : [],
+    derivedFromChats: [],
+    generatedAt: now,
+    generatedBy: { model: input.model ?? "unknown", version: "1.0.0" },
+    lastIngestedAt: now,
+    language: input.language ?? undefined,
+    // claim は新規生成時 candidate 扱い（既存 buildWikiDocument に揃える）。
+    status: input.kind === "claim" ? "candidate" : undefined,
+  };
+
+  return {
+    version: 2,
+    title: input.title,
+    pages: [{
+      id: "main",
+      title: input.title,
+      blocks,
+      labels: {},
+      provLinks: [],
+      knowledgeLinks,
+    }],
+    source: "ai",
+    wikiMeta,
+    generatedBy: {
+      agent: "ai",
+      sessionId: `verb-suggestion-${now}`,
+      model: input.model ?? undefined,
+    },
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
+/**
+ * AI 回答を knowledge ノート本文に落とす前のクリーンアップ。
+ *   - PROV inline marker（[[label:xxx]] / [[m]]X[[/m]] 等）を除去
+ *   - 「Knowledge referenced:」以降の引用フッターを丸ごと落とす
+ *     （reference は wikiMeta / knowledgeLinks 側で持つので本文に重複させない。
+ *      かつ本文に残すとリンク化されないプレーンテキストになり汚いため）
+ */
+export function cleanSuggestionText(content: string): string {
+  let text = content
+    // 行頭の `[[label:xxx]]` マーカー
+    .replace(/\[\[label:[a-z]+\]\][ 　]?/g, "")
+    // PROV inline label: [[m]]X[[/m]] / [[t]] / [[a]] / [[o]] → 中身だけ残す
+    .replace(/\[\[(m|t|a|o)\]\]([\s\S]*?)\[\[\/\1\]\]/g, "$2");
+  // 「Knowledge referenced」フッター（--- 区切り + 見出し以降）を落とす。
+  // 半角/絵文字いずれの形式にも対応する（note-app の出力 2 形式に揃える）。
+  text = text.replace(/\n*---\n+(\*\*Knowledge referenced:\*\*|📎\s*\*?Knowledge referenced\*?)[\s\S]*$/i, "");
+  return text.trim();
+}
+
+/** AI 回答テキストからノートタイトルを導出する（先頭行 or 先頭 N 文字） */
+export function deriveSuggestionTitle(text: string, maxLen = 40): string {
+  const firstLine = text
+    .split("\n")
+    .map((l) => l.trim())
+    // markdown の見出し記号・箇条書き記号を落とす
+    .map((l) => l.replace(/^#+\s*/, "").replace(/^[-*]\s*/, ""))
+    .find((l) => l.length > 0);
+  const base = (firstLine ?? text).trim();
+  return base.length > maxLen ? base.slice(0, maxLen) + "…" : base || "無題";
+}

@@ -555,6 +555,12 @@ export const ja: Record<string, string> = {
   "aiChat.insertToNote": "ノートに反映",
   "aiChat.replaceInNote": "置換",
   "aiChat.deriveAsNote": "別ノートとして派生",
+  // R2 / Loop M2: 手動で AI 回答を knowledge ノート化する
+  "aiChat.makeClaim": "知見にする",
+  "aiChat.makeInsight": "洞察にする",
+  "aiChat.madeClaim": "知見として保存しました",
+  "aiChat.madeInsight": "洞察として保存しました",
+  "aiChat.makeKnowledgeFailed": "knowledge として保存できませんでした",
   "aiChat.editorNotReady": "エディタの準備ができていません。少し待ってから再度お試しください。",
 
   // ── PROV パネル追加 ──

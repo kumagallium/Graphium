@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info } from "lucide-react";
+import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -34,6 +34,9 @@ type AiAssistantPanelProps = {
   onDeriveNote?: (question: string, answer: string) => void;
   /** チャット内容を Knowledge に追加する */
   onIngestChat?: (messages: ChatMessage[]) => void;
+  /** AI 回答を 知見(claim) / 洞察(atom) として取り込む（Cmd-K Composer R2 / Loop M2）。
+   *  砂時計の首を人間に戻す手動取り込み。kind はユーザーが選ぶ。 */
+  onMakeKnowledge?: (answer: string, kind: "claim" | "atom") => void;
   /** ノート/Wiki インデックス（@ メンション候補用） */
   noteIndex?: GraphiumIndex | null;
   /** Wiki ノートを開く（[Source: "title"] 引用クリック時の遷移先） */
@@ -46,6 +49,7 @@ export function AiAssistantPanel({
   onReplaceBlocks,
   onDeriveNote,
   onIngestChat,
+  onMakeKnowledge,
   noteIndex,
   onOpenWiki,
 }: AiAssistantPanelProps) {
@@ -385,6 +389,11 @@ export function AiAssistantPanel({
                       }
                     : undefined
                 }
+                onMakeKnowledge={
+                  onMakeKnowledge && msg.role === "assistant"
+                    ? (kind) => onMakeKnowledge(msg.content, kind)
+                    : undefined
+                }
                 wikiTitleToId={wikiTitleToId}
                 onOpenWiki={onOpenWiki}
               />
@@ -539,6 +548,7 @@ function ChatBubble({
   onInsert,
   onReplace,
   onDerive,
+  onMakeKnowledge,
   wikiTitleToId,
   onOpenWiki,
 }: {
@@ -546,6 +556,7 @@ function ChatBubble({
   onInsert?: (markdown: string) => void;
   onReplace?: (markdown: string) => void;
   onDerive?: () => void;
+  onMakeKnowledge?: (kind: "claim" | "atom") => void;
   wikiTitleToId?: Map<string, string>;
   onOpenWiki?: (wikiId: string) => void;
 }) {
@@ -580,7 +591,7 @@ function ChatBubble({
           </ReactMarkdown>
         )}
       </div>
-      {!isUser && (onInsert || onReplace || onDerive) && (
+      {!isUser && (onInsert || onReplace || onDerive || onMakeKnowledge) && (
         <div className="flex gap-1 mt-1 flex-wrap">
           {onReplace && (
             <button
@@ -611,6 +622,26 @@ function ChatBubble({
               <FilePlus size={10} />
               {t("aiChat.deriveAsNote")}
             </button>
+          )}
+          {onMakeKnowledge && (
+            <>
+              <button
+                onClick={() => onMakeKnowledge("claim")}
+                title={t("aiChat.makeClaim")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium"
+              >
+                <Lightbulb size={10} />
+                {t("aiChat.makeClaim")}
+              </button>
+              <button
+                onClick={() => onMakeKnowledge("atom")}
+                title={t("aiChat.makeInsight")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium"
+              >
+                <Sparkles size={10} />
+                {t("aiChat.makeInsight")}
+              </button>
+            </>
           )}
         </div>
       )}
