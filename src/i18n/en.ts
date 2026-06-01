@@ -115,6 +115,12 @@ export const en: Record<string, string> = {
   "sidebar.aiConnected": "AI connected",
   "sidebar.aiNotConfigured": "AI not configured",
   "sidebar.knowledge": "Knowledge",
+  "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (summaries, claims, insights)",
+  // Log / Health buttons inside Knowledge
+  "sidebar.wikiLog": "Log",
+  "sidebar.wikiLogHint": "Change history and sources of your knowledge",
+  "sidebar.wikiLint": "Health",
+  "sidebar.wikiLintHint": "Detect consistency issues in your knowledge",
 
   // ── エディタ ──
   "editor.titlePlaceholder": "Note title",
@@ -614,6 +620,11 @@ export const en: Record<string, string> = {
   "wikiList.kindClaim": "Claims",
   "wikiList.kindAtom": "Insights",
   "wikiList.kindSynthesis": "Ideas",
+  // Per-kind descriptions (sidebar title tooltips). Hourglass: note -> claim -> insight -> idea
+  "wikiList.kindSummaryHint": "A short AI summary of a single note",
+  "wikiList.kindClaimHint": "A grounded assertion extracted from your notes",
+  "wikiList.kindAtomHint": "A pattern that recurs across two or more claims",
+  "wikiList.kindSynthesisHint": "A new idea formed by combining claims and insights",
   // Phase 1 semantic-type badge labels
   "wikiTypes.claimRole.finding": "Finding",
   "wikiTypes.claimRole.decision": "Decision",

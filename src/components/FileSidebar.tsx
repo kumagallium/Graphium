@@ -330,7 +330,8 @@ export function FileSidebar({
         {onShowWikiList && aiAvailable && (
           <CollapsibleSection
             storageKey="ai"
-            title={t("sidebar.knowledge")}
+            // 見出しに title ツールチップを付けて「ナレッジ」が何かを補足する。
+            title={<span title={t("sidebar.knowledgeHint")}>{t("sidebar.knowledge")}</span>}
             // 初見ユーザーには閉じた状態で出す（気軽さ優先 / サイドバーの圧迫を減らす）。
             // 既に開閉した既存ユーザーは localStorage("ai") の値が優先されるので影響を受けない。
             defaultOpen={false}
@@ -348,12 +349,18 @@ export function FileSidebar({
                     kind === "summary" ? t("wikiList.kindSummary")
                     : kind === "claim" ? t("wikiList.kindClaim")
                     : t("wikiList.kindAtom");
+                  // 各 kind の意味を title ツールチップで補足する（初見ユーザー向け）。
+                  const hint =
+                    kind === "summary" ? t("wikiList.kindSummaryHint")
+                    : kind === "claim" ? t("wikiList.kindClaimHint")
+                    : t("wikiList.kindAtomHint");
                   // Atom は default 昇格したので "exp" バッジは不要。
                   const isExperimental = false;
                   return (
                     <button
                       key={kind}
                       onClick={() => onShowWikiList(kind)}
+                      title={`${label} — ${hint}`}
                       className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
                         activeWikiKind === kind
                           ? "bg-primary/10 text-primary font-semibold"
@@ -381,8 +388,8 @@ export function FileSidebar({
                 {onShowWikiLog && (
                   <button
                     onClick={onShowWikiLog}
-                    title="Activity Log"
-                    aria-label="Activity Log"
+                    title={`${t("sidebar.wikiLog")} — ${t("sidebar.wikiLogHint")}`}
+                    aria-label={t("sidebar.wikiLog")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                       activeWikiView === "log"
                         ? "bg-primary/10 text-primary"
@@ -390,14 +397,14 @@ export function FileSidebar({
                     }`}
                   >
                     <History size={12} />
-                    <span>Log</span>
+                    <span>{t("sidebar.wikiLog")}</span>
                   </button>
                 )}
                 {onShowWikiLint && (
                   <button
                     onClick={onShowWikiLint}
-                    title="Health Check"
-                    aria-label="Health Check"
+                    title={`${t("sidebar.wikiLint")} — ${t("sidebar.wikiLintHint")}`}
+                    aria-label={t("sidebar.wikiLint")}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                       activeWikiView === "lint"
                         ? "bg-primary/10 text-primary"
@@ -405,7 +412,7 @@ export function FileSidebar({
                     }`}
                   >
                     <ShieldCheck size={12} />
-                    <span>Health</span>
+                    <span>{t("sidebar.wikiLint")}</span>
                   </button>
                 )}
               </div>
