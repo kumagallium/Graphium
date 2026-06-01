@@ -331,7 +331,9 @@ export function FileSidebar({
           <CollapsibleSection
             storageKey="ai"
             title={t("sidebar.knowledge")}
-            defaultOpen={true}
+            // 初見ユーザーには閉じた状態で出す（気軽さ優先 / サイドバーの圧迫を減らす）。
+            // 既に開閉した既存ユーザーは localStorage("ai") の値が優先されるので影響を受けない。
+            defaultOpen={false}
             count={aiTotalCount}
           >
             {(() => {
