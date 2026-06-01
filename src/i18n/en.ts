@@ -1086,6 +1086,8 @@ export const en: Record<string, string> = {
   "memo.selectAll": "Select all",
   "memo.deselectAll": "Clear selection",
   "memo.deleteSelected": "Delete {count}",
+  "memo.knowledgeSelected": "Turn {count} into Knowledge",
+  "memo.knowledgeHint": "Convert the selected memos into notes and extract Concepts / Summaries into Knowledge",
   "memo.colText": "Text",
   "memo.colUsedIn": "Used",
   "memo.colDate": "Created",
