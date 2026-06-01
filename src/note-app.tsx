@@ -3164,6 +3164,7 @@ export function NoteApp() {
         generatedAt: wm?.generatedAt ?? wf.modifiedTime,
         model: wm?.generatedBy?.model ?? meta.model ?? "unknown",
         derivedFromNotes: wm?.derivedFromNotes ?? [],
+        citedKnowledgeIds: wm?.citedKnowledgeIds,
         atomType: meta.atomType,
         synthesisMode: meta.synthesisMode,
         hypothesisStatus: meta.hypothesisStatus,
