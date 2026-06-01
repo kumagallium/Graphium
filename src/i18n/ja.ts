@@ -115,6 +115,12 @@ export const ja: Record<string, string> = {
   "sidebar.aiConnected": "AI 接続済み",
   "sidebar.aiNotConfigured": "AI 未設定",
   "sidebar.knowledge": "ナレッジ",
+  "sidebar.knowledgeHint": "AI がノートから抽出した知識層（要約・知見・洞察）",
+  // ナレッジ内の Log / 点検 ボタン
+  "sidebar.wikiLog": "ログ",
+  "sidebar.wikiLogHint": "ナレッジの変更履歴と生成元",
+  "sidebar.wikiLint": "点検",
+  "sidebar.wikiLintHint": "ナレッジの整合性・問題を検出",
 
   // ── エディタ ──
   "editor.titlePlaceholder": "ノートのタイトル",
@@ -614,6 +620,11 @@ export const ja: Record<string, string> = {
   "wikiList.kindClaim": "知見",
   "wikiList.kindAtom": "洞察",
   "wikiList.kindSynthesis": "発想",
+  // 各 kind の説明（サイドバーの title ツールチップ用）。砂時計: ノート→知見→洞察→発想
+  "wikiList.kindSummaryHint": "ノート1件を AI が短くまとめたもの",
+  "wikiList.kindClaimHint": "ノートから抽出した、根拠のある主張",
+  "wikiList.kindAtomHint": "2つ以上の知見にまたがって現れるパターン",
+  "wikiList.kindSynthesisHint": "知見・洞察を組み合わせて生まれる新しいアイデア",
   // 提案 v4 Phase 1: 意味的な型のラベル（バッジ表示用）
   "wikiTypes.claimRole.finding": "発見・観察",
   "wikiTypes.claimRole.decision": "決定・選択",
