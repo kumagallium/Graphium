@@ -188,6 +188,48 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
+/**
+ * メモ（capture）のプレーンテキストから最小の GraphiumDocument を組む。
+ * 「複数選択メモ → Knowledge 化」で、各メモを 1 ノートに materialize して
+ * 既存の ingest パイプラインに流すために使う（provenance を壊さないため、
+ * capture.id を noteId に流用せず実ノートを作る）。
+ * @param text メモ本文（trim 済みを想定）
+ * @param fallbackTitle 先頭が空のときのタイトル
+ */
+function buildMemoNoteDoc(text: string, fallbackTitle: string): GraphiumDocument {
+  const baseProps = { textColor: "default", backgroundColor: "default", textAlignment: "left" };
+  // 行ごとに段落ブロック化（空行は空 paragraph = BlockNote 上の改行）
+  const blocks = text.split("\n").map((rawLine) => {
+    const line = rawLine.replace(/\r$/, "");
+    return {
+      id: crypto.randomUUID(),
+      type: "paragraph",
+      props: baseProps,
+      content: line.trim() === "" ? [] : [{ type: "text", text: line, styles: {} }],
+      children: [],
+    };
+  });
+  // タイトルは先頭の非空行を 40 字で切る
+  const firstLine = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  const title = (firstLine || fallbackTitle).slice(0, 40);
+  const now = new Date().toISOString();
+  return {
+    version: 5,
+    title,
+    pages: [{
+      id: crypto.randomUUID(),
+      title,
+      blocks,
+      labels: {},
+      provLinks: [],
+      knowledgeLinks: [],
+    }],
+    createdAt: now,
+    modifiedAt: now,
+    source: "human",
+  };
+}
+
 /** CitationSource から人間可読の出典ラベルを組み立てる */
 function buildCitationSourceLabel(source: CitationSource): string {
   if (source.entry.type === "pdf") {
@@ -5116,6 +5158,21 @@ export function NoteApp() {
             insertDisabled={!fm.activeFileId}
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
+            onKnowledgeMemos={aiAvailable ? (captureIds) => {
+              // 選択メモを各 1 ノートに materialize → 既存 ingest キューに流す。
+              // （ノート複数選択 Knowledge 化と同じ挙動: 各ノート ingest 後に
+              //   vault 全 Claim で atomize がまとめて走る）
+              const caps = capture.captureIndex?.captures ?? [];
+              for (const id of captureIds) {
+                const entry = caps.find((c) => c.id === id);
+                const text = entry?.text?.trim();
+                if (!text) continue;
+                const doc = buildMemoNoteDoc(text, tStatic("memo.title"));
+                fm.handleCreateNoteFromImport(doc)
+                  .then((newId) => { enqueueIngest(newId, doc.title, doc); })
+                  .catch((err) => console.error("メモの Knowledge 化に失敗:", err));
+              }
+            } : undefined}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView

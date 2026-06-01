@@ -580,6 +580,7 @@ export function MemoGalleryView({
   insertDisabled,
   onCreateMemo,
   creating,
+  onKnowledgeMemos,
 }: {
   captureIndex: CaptureIndex | null;
   loading: boolean;
@@ -592,6 +593,12 @@ export function MemoGalleryView({
   /** 新規メモ作成（PC からの直接入力） */
   onCreateMemo?: (text: string) => Promise<void>;
   creating?: boolean;
+  /**
+   * 選択メモを Knowledge 化する（list モードの一括バーから呼ぶ）。
+   * 各メモを 1 ノートに変換して ingest パイプラインに流す（呼び出し側で配線）。
+   * AI 未接続時は undefined を渡してボタンを隠す。
+   */
+  onKnowledgeMemos?: (captureIds: string[]) => void;
 }) {
   const t = useT();
   const captures = captureIndex?.captures ?? [];
@@ -771,6 +778,18 @@ export function MemoGalleryView({
             {t("memo.deselectAll")}
           </button>
           <div className="ml-auto flex items-center gap-2">
+            {onKnowledgeMemos && (
+              <button
+                onClick={() => {
+                  onKnowledgeMemos([...selectedIds]);
+                  setSelectedIds(new Set());
+                }}
+                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
+                title={t("memo.knowledgeHint")}
+              >
+                {t("memo.knowledgeSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onDeleteMemo && (
               <button
                 onClick={() => setBulkDeleteOpen(true)}
