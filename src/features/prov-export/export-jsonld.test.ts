@@ -101,6 +101,46 @@ describe("buildW3CProvJsonLd — Wiki Knowledge Layer fields (Phase 4)", () => {
     expect(node!["graphium:procedureContext"]).toEqual(wiki.procedureContext);
   });
 
+  it("emits a Derivation edge for each citedKnowledgeIds entry (R2 verb intake / PR4 L2)", () => {
+    const wiki: WikiEntityInfo = {
+      title: "Contradiction between A and B",
+      kind: "claim",
+      status: "candidate",
+      generatedAt: "2026-06-01T00:00:00Z",
+      model: "claude-sonnet",
+      derivedFromNotes: ["src-note"],
+      citedKnowledgeIds: ["claim-x", "atom-y"],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const derivations = doc["@graph"].filter(
+      (n: any) => n["@type"] === "Derivation" &&
+        n.generatedEntity === `graphium:wiki/${encodeURIComponent(wiki.title)}`,
+    );
+    const used = derivations.map((d: any) => d.usedEntity).sort();
+    // 発火元ノート + 引用 2 件 = 3 本の Derivation
+    expect(used).toEqual([
+      "graphium:note/atom-y",
+      "graphium:note/claim-x",
+      "graphium:note/src-note",
+    ]);
+  });
+
+  it("emits no cited Derivation when citedKnowledgeIds is omitted", () => {
+    const wiki: WikiEntityInfo = {
+      title: "x",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-06-01T00:00:00Z",
+      model: "m",
+      derivedFromNotes: [],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const cited = doc["@graph"].filter((n: any) =>
+      typeof n["@id"] === "string" && n["@id"].includes("wiki_cited_"),
+    );
+    expect(cited).toHaveLength(0);
+  });
+
   it("does not emit graphium:claimRole when claimRole is an empty array", () => {
     const wiki: WikiEntityInfo = {
       title: "x",

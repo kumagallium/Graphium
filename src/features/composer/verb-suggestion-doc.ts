@@ -121,6 +121,9 @@ export function buildVerbSuggestionDocument(
     // 由来 = verb を発火したノート（PROV の素地）。引用元 claim/atom は knowledgeLinks 側で保持。
     derivedFromNotes: input.sourceNoteId ? [input.sourceNoteId] : [],
     derivedFromChats: [],
+    // 引用・精査した知見/洞察を PROV エクスポート用に記録（来歴の wasDerivedFrom 素地）。
+    // derivedFromClaims/Notes と意味論が違うので専用フィールド（[[project-...]] 参照）。
+    citedKnowledgeIds: uniqueCited.length > 0 ? uniqueCited.map((c) => c.noteId) : undefined,
     generatedAt: now,
     generatedBy: { model: input.model ?? "unknown", version: "1.0.0" },
     lastIngestedAt: now,

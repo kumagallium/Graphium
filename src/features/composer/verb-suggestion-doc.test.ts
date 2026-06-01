@@ -81,6 +81,19 @@ describe("buildVerbSuggestionDocument", () => {
     // bullet は @<title> 形式（cite-picker と同じ）
     const bullets = doc.pages[0].blocks.filter((b: any) => b.type === "bulletListItem");
     expect(bullets.map((b: any) => b.content[0].text).sort()).toEqual(["@知見A", "@知見B"]);
+    // PR4 / L2: 引用元 ID を PROV エクスポート用に wikiMeta へ記録
+    expect(doc.wikiMeta?.citedKnowledgeIds?.sort()).toEqual(["cited-a", "cited-b"]);
+  });
+
+  it("引用が無ければ citedKnowledgeIds は undefined（フィールドを増やさない）", () => {
+    const doc = buildVerbSuggestionDocument({
+      bodyBlocks: [block("本文")],
+      kind: "claim",
+      title: "t",
+      sourceNoteId: "note-1",
+      citedNotes: [],
+    });
+    expect(doc.wikiMeta?.citedKnowledgeIds).toBeUndefined();
   });
 
   it("引用ノートを noteId で重複排除する", () => {
@@ -96,6 +109,7 @@ describe("buildVerbSuggestionDocument", () => {
       ],
     });
     expect(doc.pages[0].knowledgeLinks).toHaveLength(2);
+    expect(doc.wikiMeta?.citedKnowledgeIds).toEqual(["dup", "other"]);
   });
 
   it("sourceNoteId が null なら derivedFromNotes は空", () => {

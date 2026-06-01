@@ -234,6 +234,9 @@ export type WikiEntityInfo = {
   generatedAt: string;
   model: string;
   derivedFromNotes: string[];
+  /** Cmd-K verb 取り込み（R2 / PR3）で引用・精査した知見/洞察ノートの ID（PR4 / L2）。
+   *  これらを wasDerivedFrom（Derivation）として PROV グラフに出す。 */
+  citedKnowledgeIds?: string[];
   // Phase 4 (PR-B7): 提案 v4 Phase 1 の意味的な型を PROV-JSON-LD に持ち出す。
   // 内部識別子はそのまま emit する（UI ラベル "Insights" / "Ideas" は表示層の話で、
   // データ上は atomType / synthesisMode を保持し続ける）。
@@ -290,6 +293,15 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
           "@id": `_:wiki_deriv_${encodeURIComponent(wiki.title)}_${sourceNoteId}`,
           generatedEntity: `graphium:wiki/${encodeURIComponent(wiki.title)}`,
           usedEntity: `graphium:note/${sourceNoteId}`,
+        } as any);
+      }
+      // Derivation: Wiki → 引用・精査した知見/洞察（R2 verb 取り込みの来歴 / PR4 L2）
+      for (const citedId of wiki.citedKnowledgeIds ?? []) {
+        graph.push({
+          "@type": "Derivation",
+          "@id": `_:wiki_cited_${encodeURIComponent(wiki.title)}_${citedId}`,
+          generatedEntity: `graphium:wiki/${encodeURIComponent(wiki.title)}`,
+          usedEntity: `graphium:note/${citedId}`,
         } as any);
       }
       // Attribution: Wiki → AI Agent

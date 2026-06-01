@@ -319,6 +319,16 @@ export type WikiMeta = {
   evidenceSpan?: string;
   /** Atom が抽象化した元 Claim の ID リスト（atom のみ） */
   derivedFromClaims?: string[];
+  /**
+   * Cmd-K Composer の verb 取り込み（R2 / PR3）で、このノートが引用・精査した
+   * 知見/洞察（claim/atom）ノートの ID リスト。
+   *
+   * `derivedFromClaims`（atom の再生成・グラフで atom 専用に解釈される）や
+   * `derivedFromNotes`（regenerate が「通常ノート」前提で読む）とは**意味論が別**なので
+   * 流用せず専用フィールドに持つ。読むのは PROV-JSON-LD エクスポートのみ（来歴の wasDerivedFrom
+   * エッジを出すため）。既存リーダーには一切影響しない optional 追加。
+   */
+  citedKnowledgeIds?: string[];
   /** 生成時の自己評価された確度（0.0〜1.0）。主に Synthesis で誤差伝搬の指標として表示する */
   confidence?: number;
 

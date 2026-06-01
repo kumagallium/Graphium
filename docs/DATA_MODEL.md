@@ -300,6 +300,12 @@ type WikiMeta = {
   // Atom-only
   derivedFromClaims?: string[];
 
+  // Knowledge cited/examined when this note was created from a Cmd-K verb
+  // answer ("Make a Claim/Insight"). Distinct from derivedFromClaims (Atom
+  // re-generation) and derivedFromNotes (regenerate assumes plain notes):
+  // read only by the PROV-JSON-LD export to emit wasDerivedFrom edges.
+  citedKnowledgeIds?: string[];
+
   // Self-evaluated confidence (Synthesis especially)
   confidence?: number;            // 0.0 – 1.0
 
