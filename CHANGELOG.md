@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.12.4](https://github.com/kumagallium/Graphium/compare/v0.12.3...v0.12.4) - 2026-06-01
+- feat(cite-picker): wire /claims /Insights into the SidePeek editor by @kumagallium in https://github.com/kumagallium/Graphium/pull/386
+- feat: Merge slash /pdf into /document for unified Documents picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/388
+- feat(composer): Cmd-K Composer に verb メニューを追加 (R2 / PR1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/389
+- fix(ai-chat): linkify [Source] citations when inserting AI answers into notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/390
+- feat(composer): verb プロンプトに引用ノート本文を AI 文脈として供給 (R2 / PR2) by @kumagallium in https://github.com/kumagallium/Graphium/pull/391
+- feat(composer): AI 回答を「知見にする / 洞察にする」で手動取り込み (R2 / PR3) by @kumagallium in https://github.com/kumagallium/Graphium/pull/392
+- feat(sidebar): Knowledge セクションを初期は閉じた状態にする by @kumagallium in https://github.com/kumagallium/Graphium/pull/393
+- feat(sidebar): ナレッジ概念に説明ツールチップを追加 by @kumagallium in https://github.com/kumagallium/Graphium/pull/394
+- feat(prov): verb 取り込みの引用元を PROV エクスポートに wasDerivedFrom として記録 (R2 / PR4 L2) by @kumagallium in https://github.com/kumagallium/Graphium/pull/395
+
 ## [v0.12.3](https://github.com/kumagallium/Graphium/compare/v0.12.2...v0.12.3) - 2026-05-29
 - [fix] Skip models.json link in worktrees where data/ is a symlink by @kumagallium in https://github.com/kumagallium/Graphium/pull/384
 - feat(cite-picker): add /claims and /Insights slash menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/376
