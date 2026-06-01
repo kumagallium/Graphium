@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.13.1](https://github.com/kumagallium/Graphium/compare/v0.13.0...v0.13.1) - 2026-06-01
+- feat(memo): multi-select Knowledge-ification from the memo list by @kumagallium in https://github.com/kumagallium/Graphium/pull/396
+
 ## [v0.13.0](https://github.com/kumagallium/Graphium/compare/v0.12.3...v0.13.0) - 2026-06-01
 - feat(cite-picker): wire /claims /Insights into the SidePeek editor by @kumagallium in https://github.com/kumagallium/Graphium/pull/386
 - feat: Merge slash /pdf into /document for unified Documents picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/388
