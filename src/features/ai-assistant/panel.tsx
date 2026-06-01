@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles } from "lucide-react";
+import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -35,8 +35,9 @@ type AiAssistantPanelProps = {
   /** チャット内容を Knowledge に追加する */
   onIngestChat?: (messages: ChatMessage[]) => void;
   /** AI 回答を 知見(claim) / 洞察(atom) として取り込む（Cmd-K Composer R2 / Loop M2）。
-   *  砂時計の首を人間に戻す手動取り込み。kind はユーザーが選ぶ。 */
-  onMakeKnowledge?: (answer: string, kind: "claim" | "atom") => void;
+   *  砂時計の首を人間に戻す手動取り込み。kind はユーザーが選ぶ。
+   *  LLM 整形を挟むため Promise を返し、ボタン側で完了まで待って状態表示する。 */
+  onMakeKnowledge?: (answer: string, kind: "claim" | "atom") => void | Promise<void>;
   /** ノート/Wiki インデックス（@ メンション候補用） */
   noteIndex?: GraphiumIndex | null;
   /** Wiki ノートを開く（[Source: "title"] 引用クリック時の遷移先） */
@@ -556,12 +557,29 @@ function ChatBubble({
   onInsert?: (markdown: string) => void;
   onReplace?: (markdown: string) => void;
   onDerive?: () => void;
-  onMakeKnowledge?: (kind: "claim" | "atom") => void;
+  onMakeKnowledge?: (kind: "claim" | "atom") => void | Promise<void>;
   wikiTitleToId?: Map<string, string>;
   onOpenWiki?: (wikiId: string) => void;
 }) {
   const t = useT();
   const isUser = message.role === "user";
+  // 「知見にする / 洞察にする」は LLM 整形を挟むため数秒かかる。
+  // 押下フィードバックと二重押下防止のためにバブル単位で状態を持つ。
+  //   null = 未操作 / "claim"|"atom" = 処理中 / "done-..." = 完了
+  const [makeKnowledgeState, setMakeKnowledgeState] = useState<
+    null | "claim" | "atom" | "done-claim" | "done-atom"
+  >(null);
+  const handleMakeKnowledgeClick = async (kind: "claim" | "atom") => {
+    if (!onMakeKnowledge || makeKnowledgeState !== null) return;
+    setMakeKnowledgeState(kind);
+    try {
+      await onMakeKnowledge(kind);
+      setMakeKnowledgeState(`done-${kind}` as "done-claim" | "done-atom");
+    } catch {
+      // 失敗時はボタンを元に戻して再試行できるようにする
+      setMakeKnowledgeState(null);
+    }
+  };
   // 表示用にノイズを除去する（生データは message.content に残し、ノート挿入時はそちらを使う）:
   //   - [[label:xxx]]      … ノート挿入時に消費する PROV ラベルマーカー
   //   - [[m]]X[[/m]] 等    … PROV inline label（material / tool / activity / output）。
@@ -625,27 +643,69 @@ function ChatBubble({
           )}
           {onMakeKnowledge && (
             <>
-              <button
-                onClick={() => onMakeKnowledge("claim")}
-                title={t("aiChat.makeClaim")}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium"
-              >
-                <Lightbulb size={10} />
-                {t("aiChat.makeClaim")}
-              </button>
-              <button
-                onClick={() => onMakeKnowledge("atom")}
-                title={t("aiChat.makeInsight")}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium"
-              >
-                <Sparkles size={10} />
-                {t("aiChat.makeInsight")}
-              </button>
+              <MakeKnowledgeButton
+                kind="claim"
+                icon={<Lightbulb size={10} />}
+                label={t("aiChat.makeClaim")}
+                doneLabel={t("aiChat.madeClaim")}
+                state={makeKnowledgeState}
+                onClick={() => handleMakeKnowledgeClick("claim")}
+              />
+              <MakeKnowledgeButton
+                kind="atom"
+                icon={<Sparkles size={10} />}
+                label={t("aiChat.makeInsight")}
+                doneLabel={t("aiChat.madeInsight")}
+                state={makeKnowledgeState}
+                onClick={() => handleMakeKnowledgeClick("atom")}
+              />
             </>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+// 「知見にする / 洞察にする」ボタン。LLM 整形を挟むため、押下中はスピナー + disable、
+// 完了後はチェック + 保存済みラベルにして、無反応に見える待ち時間と二重押下を防ぐ。
+function MakeKnowledgeButton({
+  kind,
+  icon,
+  label,
+  doneLabel,
+  state,
+  onClick,
+}: {
+  kind: "claim" | "atom";
+  icon: ReactNode;
+  label: string;
+  doneLabel: string;
+  state: null | "claim" | "atom" | "done-claim" | "done-atom";
+  onClick: () => void;
+}) {
+  const busy = state === "claim" || state === "atom";
+  const thisDone = state === `done-${kind}`;
+  // 他方が処理中・完了のときは、こちらのボタンは押せないように disable する。
+  const disabled = busy || state !== null;
+  if (thisDone) {
+    return (
+      <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 font-medium">
+        <Check size={10} />
+        {doneLabel}
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+    >
+      {state === kind ? <Loader2 size={10} className="animate-spin" /> : icon}
+      {label}
+    </button>
   );
 }
 
