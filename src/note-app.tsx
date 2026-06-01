@@ -180,6 +180,7 @@ import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
+import { buildVerbSuggestionDocument, deriveSuggestionTitle, cleanSuggestionText, splitTitleAndBody } from "./features/composer/verb-suggestion-doc";
 import type { WikiLogEntry } from "./features/wiki/wiki-log";
 import { EmptyNoteGuide } from "./features/onboarding";
 
@@ -390,6 +391,8 @@ type NoteEditorProps = {
   onDeriveNote: (title: string, sourceBlockId: string) => void;
   /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
+  /** knowledge ノート（claim/atom）を作成し、新ファイル ID を返す（R2 / Loop M2 の手動取り込み） */
+  onCreateKnowledgeNote?: (doc: GraphiumDocument, kind: "claim" | "atom") => Promise<string>;
   onNavigateNote: (noteId: string, cachedDoc?: GraphiumDocument) => void;
   /**
    * ノート右パネルの Graph タブから素材ノードクリックされたときの遷移ハンドラ。
@@ -536,6 +539,7 @@ function NoteEditorInner({
   onSave,
   onDeriveNote,
   onAiDeriveNote,
+  onCreateKnowledgeNote,
   onNavigateNote,
   onOpenMedia,
   onRefreshFiles,
@@ -1887,6 +1891,46 @@ function NoteEditorInner({
     [fileId, title, aiAssistant, labelStore, initialDoc, onAiDeriveNote, onSourceDocChange],
   );
 
+  // R2 / Loop M2: AI 回答を knowledge ノート（知見=claim / 洞察=atom）として手動取り込みする。
+  // 砂時計の首は人間に戻す方針なので自動 ingest はしない。kind はユーザーが選ぶ。
+  //
+  // フロー:
+  //   1. 引用フッター等を除去（cleanSuggestionText）
+  //   2. 選んだ kind に合わせて LLM で「タイトル + 本文」に整形（他の知見/洞察と体裁を揃える）
+  //   3. 整形 markdown を editor.tryParseMarkdownToBlocks でブロック化（テーブル・@ が正しく展開）
+  //   4. verb が精査した引用ノートを「引用元」として @<title> + reference リンクで引き継ぐ
+  const handleMakeKnowledge = useCallback(
+    async (answer: string, kind: "claim" | "atom") => {
+      if (!onCreateKnowledgeNote || !editorRef.current) return;
+      const cleaned = cleanSuggestionText(answer);
+      // kind を強制した整形指示。ingester（kind を AI 任せ）は通さず、ここで体裁だけ揃える。
+      const kindLabel = kind === "claim" ? tStatic("wikiList.kindClaim") : tStatic("wikiList.kindAtom");
+      const formatHint = tStatic("composer.makeKnowledge.formatHint", { kind: kindLabel });
+      let formatted: string;
+      try {
+        formatted = await runComposerAgent(cleaned, formatHint);
+      } catch {
+        // 整形に失敗しても取り込みは続行（生テキストで作る）。
+        formatted = cleaned;
+      }
+      // 先頭の H1 見出しをタイトルとして取り出し、本文からは除く（重複防止）。
+      const { title: parsedTitle, body } = splitTitleAndBody(formatted);
+      const bodyBlocks = await editorRef.current.tryParseMarkdownToBlocks(body);
+      const citedNotes = collectCitedNotes().map((n) => ({ noteId: n.id, title: n.title }));
+      const doc = buildVerbSuggestionDocument({
+        bodyBlocks,
+        kind,
+        title: parsedTitle || deriveSuggestionTitle(body),
+        sourceNoteId: fileId,
+        citedNotes,
+        model: getSelectedModel() || null,
+        language: "ja",
+      });
+      await onCreateKnowledgeNote(doc, kind);
+    },
+    [onCreateKnowledgeNote, collectCitedNotes, fileId, runComposerAgent],
+  );
+
   // 挿入されたブロック配列に対して、抽出済みラベルを path 経由で実 ID に解決して
   // labelStore に適用し、連続する procedure 見出しを informed_by で自動連結する。
   // handleInsertToScope と handleReplaceBlocks の双方から使う。
@@ -2762,6 +2806,7 @@ function NoteEditorInner({
                   onReplaceBlocks={handleReplaceBlocks}
                   onDeriveNote={handleAiDeriveFromChat}
                   onIngestChat={onIngestChat}
+                  onMakeKnowledge={onCreateKnowledgeNote ? handleMakeKnowledge : undefined}
                   noteIndex={noteIndex}
                   onOpenWiki={(wikiId) => onNavigateNote(`wiki:${wikiId}`)}
                 />
@@ -5353,6 +5398,17 @@ export function NoteApp() {
               }
               return newFileId;
             }}
+            onCreateKnowledgeNote={aiAvailable ? async (doc, kind) => {
+              // R2 / Loop M2: AI 回答を 知見(claim) / 洞察(atom) として手動取り込み。
+              // handleCreateWikiFile が PROV リビジョン記録（ai_generation）まで行う。
+              const newId = await fm.handleCreateWikiFile(doc);
+              embedWikiSections(newId, doc).catch(() => {});
+              wikiLog.append("ingest", [newId], `${kind}: "${doc.title}"`).catch(() => {});
+              // 取り込んだノートは SidePeek で開いて即確認できるようにする。
+              const openSidePeek = openSidePeekRef.current;
+              if (openSidePeek) openSidePeek(`wiki:${newId}`);
+              return newId;
+            } : undefined}
             onNavigateNote={(noteId: string, cachedDoc?: import("./lib/document-types").GraphiumDocument) => {
               if (noteId.startsWith("wiki:")) {
                 fm.handleOpenWikiFile(noteId.replace("wiki:", ""));

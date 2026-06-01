@@ -555,6 +555,14 @@ export const ja: Record<string, string> = {
   "aiChat.insertToNote": "ノートに反映",
   "aiChat.replaceInNote": "置換",
   "aiChat.deriveAsNote": "別ノートとして派生",
+  // R2 / Loop M2: 手動で AI 回答を knowledge ノート化する
+  "aiChat.makeClaim": "知見にする",
+  "aiChat.makeInsight": "洞察にする",
+  "aiChat.madeClaim": "知見として保存しました",
+  "aiChat.madeInsight": "洞察として保存しました",
+  "aiChat.makeKnowledgeFailed": "knowledge として保存できませんでした",
+  // 取り込み時の整形指示。{kind} に「知見 / 洞察」が入る。
+  "composer.makeKnowledge.formatHint": "次の内容を、他の「{kind}」ページと体裁が揃うように 1 つの「{kind}」ページとして整形してください。出力は Markdown。1 行目は必ず H1 タイトル（# ...）にして、要点を簡潔に表す見出しにしてください。本文は焦点を絞り自己完結させてください: 主張・洞察を明確に述べ、テーブルや構造化された内容は保持し、会話的な前置き（あいさつ・「まとめました」「ご参考になれば」等）は落としてください。出典・引用セクションは自動で付くので追加しないでください。入力と同じ言語で書いてください。",
   "aiChat.editorNotReady": "エディタの準備ができていません。少し待ってから再度お試しください。",
 
   // ── PROV パネル追加 ──
