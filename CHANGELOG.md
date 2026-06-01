@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.12.4](https://github.com/kumagallium/Graphium/compare/v0.12.3...v0.12.4) - 2026-06-01
+## [v0.13.0](https://github.com/kumagallium/Graphium/compare/v0.12.3...v0.13.0) - 2026-06-01
 - feat(cite-picker): wire /claims /Insights into the SidePeek editor by @kumagallium in https://github.com/kumagallium/Graphium/pull/386
 - feat: Merge slash /pdf into /document for unified Documents picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/388
 - feat(composer): Cmd-K Composer に verb メニューを追加 (R2 / PR1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/389
