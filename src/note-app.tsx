@@ -180,7 +180,7 @@ import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
-import { buildVerbSuggestionDocument, deriveSuggestionTitle, cleanSuggestionText } from "./features/composer/verb-suggestion-doc";
+import { buildVerbSuggestionDocument, deriveSuggestionTitle, cleanSuggestionText, splitTitleAndBody } from "./features/composer/verb-suggestion-doc";
 import type { WikiLogEntry } from "./features/wiki/wiki-log";
 import { EmptyNoteGuide } from "./features/onboarding";
 
@@ -1893,24 +1893,42 @@ function NoteEditorInner({
 
   // R2 / Loop M2: AI 回答を knowledge ノート（知見=claim / 洞察=atom）として手動取り込みする。
   // 砂時計の首は人間に戻す方針なので自動 ingest はしない。kind はユーザーが選ぶ。
-  // verb で精査した引用ノート（reference リンク先）を新ノートの「引用元」として引き継ぐ。
+  //
+  // フロー:
+  //   1. 引用フッター等を除去（cleanSuggestionText）
+  //   2. 選んだ kind に合わせて LLM で「タイトル + 本文」に整形（他の知見/洞察と体裁を揃える）
+  //   3. 整形 markdown を editor.tryParseMarkdownToBlocks でブロック化（テーブル・@ が正しく展開）
+  //   4. verb が精査した引用ノートを「引用元」として @<title> + reference リンクで引き継ぐ
   const handleMakeKnowledge = useCallback(
     async (answer: string, kind: "claim" | "atom") => {
-      if (!onCreateKnowledgeNote) return;
-      const text = cleanSuggestionText(answer);
-      const citedNoteIds = collectCitedNotes().map((n) => n.id);
+      if (!onCreateKnowledgeNote || !editorRef.current) return;
+      const cleaned = cleanSuggestionText(answer);
+      // kind を強制した整形指示。ingester（kind を AI 任せ）は通さず、ここで体裁だけ揃える。
+      const kindLabel = kind === "claim" ? tStatic("wikiList.kindClaim") : tStatic("wikiList.kindAtom");
+      const formatHint = tStatic("composer.makeKnowledge.formatHint", { kind: kindLabel });
+      let formatted: string;
+      try {
+        formatted = await runComposerAgent(cleaned, formatHint);
+      } catch {
+        // 整形に失敗しても取り込みは続行（生テキストで作る）。
+        formatted = cleaned;
+      }
+      // 先頭の H1 見出しをタイトルとして取り出し、本文からは除く（重複防止）。
+      const { title: parsedTitle, body } = splitTitleAndBody(formatted);
+      const bodyBlocks = await editorRef.current.tryParseMarkdownToBlocks(body);
+      const citedNotes = collectCitedNotes().map((n) => ({ noteId: n.id, title: n.title }));
       const doc = buildVerbSuggestionDocument({
-        text,
+        bodyBlocks,
         kind,
-        title: deriveSuggestionTitle(text),
+        title: parsedTitle || deriveSuggestionTitle(body),
         sourceNoteId: fileId,
-        citedNoteIds,
+        citedNotes,
         model: getSelectedModel() || null,
         language: "ja",
       });
       await onCreateKnowledgeNote(doc, kind);
     },
-    [onCreateKnowledgeNote, collectCitedNotes, fileId],
+    [onCreateKnowledgeNote, collectCitedNotes, fileId, runComposerAgent],
   );
 
   // 挿入されたブロック配列に対して、抽出済みラベルを path 経由で実 ID に解決して

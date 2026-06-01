@@ -18,17 +18,24 @@ import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-ty
 /** 取り込みボタンで作れる kind。verb 回答は claim（知見）か atom（洞察）に落とす。 */
 export type VerbSuggestionKind = Extract<WikiKind, "claim" | "atom">;
 
+/** verb が精査した引用ノート（claim/atom）への参照。タイトルは表示・リンク両用。 */
+export type CitedNoteRef = {
+  noteId: string;
+  title: string;
+};
+
 export type BuildVerbSuggestionInput = {
-  /** AI 回答本文（markdown 相当のプレーンテキスト） */
-  text: string;
+  /** 本文ブロック配列（呼び出し側で editor.tryParseMarkdownToBlocks 済み）。
+   *  これによりテーブル・見出し・@mention が正しく展開される。 */
+  bodyBlocks: unknown[];
   /** ユーザーが選んだ kind（claim = 知見 / atom = 洞察） */
   kind: VerbSuggestionKind;
-  /** ノートのタイトル（先頭行 or 呼び出し側で要約したもの） */
+  /** ノートのタイトル */
   title: string;
   /** 取り込み元のノート ID（verb を発火したノート） */
   sourceNoteId: string | null;
-  /** verb が精査した引用ノート（claim/atom）の ID リスト */
-  citedNoteIds: string[];
+  /** verb が精査した引用ノート（claim/atom）。タイトル付きで渡す。 */
+  citedNotes: CitedNoteRef[];
   /** 生成に使われた LLM 名（記録用） */
   model?: string | null;
   /** 生成言語 */
@@ -53,61 +60,55 @@ type KnowledgeLink = {
   createdBy: "ai" | "human";
 };
 
-/** 段落（空行区切り）ごとに paragraph ブロックへ分解する */
-function paragraphsToBlocks(text: string): Block[] {
-  return text
-    .split(/\n{2,}/)
-    .map((para) => para.trim())
-    .filter((para) => para.length > 0)
-    .map((para) => ({
-      id: crypto.randomUUID(),
-      type: "paragraph",
-      props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
-      content: [{ type: "text", text: para, styles: {} }],
-      children: [],
-    }));
-}
-
 /**
  * verb の AI 回答を、ユーザーが選んだ kind の knowledge ノート（GraphiumDocument）に変換する。
  *
- * - 本文は段落ブロックに分解。
+ * - 本文は呼び出し側で editor.tryParseMarkdownToBlocks 済みのブロック配列を受け取る
+ *   （テーブル・見出し・@mention が正しく展開された状態）。
  * - 引用ノートがあれば「引用元」見出し + bullet を足し、knowledge reference リンクを張る
- *   （元の verb 精査が依拠した claim/atom への辿り直しを保つ）。
+ *   （元の verb 精査が依拠した claim/atom への辿り直しを保つ）。bullet は cite-picker と
+ *   同じ `@<title>`（青色）形式にして、右パネルグラフ / タイトル解決の既存経路に乗せる。
  * - PROV のリビジョン記録（recordRevision）は handleCreateWikiFile 側が行うのでここでは触らない。
  */
 export function buildVerbSuggestionDocument(
   input: BuildVerbSuggestionInput,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const blocks: Block[] = paragraphsToBlocks(input.text);
+  const blocks: unknown[] = [...input.bodyBlocks];
   const knowledgeLinks: KnowledgeLink[] = [];
 
-  // 引用元セクション（verb が精査した claim/atom への参照を保持）
-  const uniqueCited = [...new Set(input.citedNoteIds.filter(Boolean))];
+  // 引用元セクション（verb が精査した claim/atom への参照を保持）。noteId で重複排除。
+  const seen = new Set<string>();
+  const uniqueCited = input.citedNotes.filter((c) => {
+    if (!c.noteId || seen.has(c.noteId)) return false;
+    seen.add(c.noteId);
+    return true;
+  });
   if (uniqueCited.length > 0) {
-    blocks.push({
+    const heading: Block = {
       id: crypto.randomUUID(),
       type: "heading",
       props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
       content: [{ type: "text", text: "引用元", styles: {} }],
       children: [],
-    });
-    for (const citedId of uniqueCited) {
+    };
+    blocks.push(heading);
+    for (const cited of uniqueCited) {
       const blockId = crypto.randomUUID();
-      blocks.push({
+      const bullet: Block = {
         id: blockId,
         type: "bulletListItem",
         props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
-        // タイトル解決は呼び出し側に依存しない。リンク先 noteId で右パネルから辿れる。
-        content: [{ type: "text", text: "🤖 引用ノート", styles: { textColor: "blue" } }],
+        // cite-picker と同じ @<title>（青色）形式。reference リンクで右パネルから辿れる。
+        content: [{ type: "text", text: `@${cited.title || "(untitled)"}`, styles: { textColor: "blue" } }],
         children: [],
-      });
+      };
+      blocks.push(bullet);
       knowledgeLinks.push({
         id: crypto.randomUUID(),
         sourceBlockId: blockId,
         targetBlockId: "",
-        targetNoteId: citedId,
+        targetNoteId: cited.noteId,
         type: "reference",
         layer: "knowledge",
         createdBy: "human",
@@ -168,6 +169,24 @@ export function cleanSuggestionText(content: string): string {
   // 半角/絵文字いずれの形式にも対応する（note-app の出力 2 形式に揃える）。
   text = text.replace(/\n*---\n+(\*\*Knowledge referenced:\*\*|📎\s*\*?Knowledge referenced\*?)[\s\S]*$/i, "");
   return text.trim();
+}
+
+/**
+ * 整形済み markdown から先頭の H1（# タイトル）を取り出し、本文と分離する。
+ * H1 が無ければタイトルは空文字（呼び出し側が deriveSuggestionTitle にフォールバック）。
+ */
+export function splitTitleAndBody(markdown: string): { title: string; body: string } {
+  const lines = markdown.split("\n");
+  // 先頭の空行を読み飛ばす
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === "") i++;
+  const h1 = lines[i]?.match(/^#\s+(.+?)\s*$/);
+  if (h1) {
+    const title = h1[1].trim();
+    const body = lines.slice(i + 1).join("\n").trim();
+    return { title, body };
+  }
+  return { title: "", body: markdown.trim() };
 }
 
 /** AI 回答テキストからノートタイトルを導出する（先頭行 or 先頭 N 文字） */
