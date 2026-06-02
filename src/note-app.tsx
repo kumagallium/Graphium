@@ -2444,9 +2444,12 @@ function NoteEditorInner({
   // ── レンダリング ──
   return (
     <>
-      <ProvIndicatorLayer />
+      <ProvIndicatorLayer
+        hidden={!isDesktop && rightTab !== null}
+        bottomInset={isDesktop ? 0 : 56}
+      />
       <IndexTableIconLayer editorRef={editorRef} />
-      <ProvIndicatorHoverHint />
+      <ProvIndicatorHoverHint hidden={!isDesktop && rightTab !== null} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       <LabelDropdownPortal />
