@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.13.2](https://github.com/kumagallium/Graphium/compare/v0.13.1...v0.13.2) - 2026-06-02
+
+- feat(grounding): add bulk clear for sedimented KB cache entries by @kumagallium in https://github.com/kumagallium/Graphium/pull/400
+- fix(mobile): hide PROV label overlay while right panel is open by @kumagallium in https://github.com/kumagallium/Graphium/pull/398
+- fix(responsive): make side-peek width adapt to narrow viewports by @kumagallium in https://github.com/kumagallium/Graphium/pull/399
+- refactor(style): drop ALL-CAPS section headers and Slate hex in blocks by @kumagallium in https://github.com/kumagallium/Graphium/pull/402
+- fix(i18n): localize breadcrumb, panel labels and hashtag menu groups by @kumagallium in https://github.com/kumagallium/Graphium/pull/403
+- fix(grounding): verify source URLs exist before trusting them by @kumagallium in https://github.com/kumagallium/Graphium/pull/404
+- feat(grounding): record world-grounding edges (insight → world fact) by @kumagallium in https://github.com/kumagallium/Graphium/pull/405
+
 ## [v0.13.1](https://github.com/kumagallium/Graphium/compare/v0.13.0...v0.13.1) - 2026-06-01
 - feat(memo): multi-select Knowledge-ification from the memo list by @kumagallium in https://github.com/kumagallium/Graphium/pull/396
 
