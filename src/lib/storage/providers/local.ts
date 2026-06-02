@@ -4,6 +4,7 @@
 import type { StorageProvider, AuthState, MediaUploadResult } from "../types";
 import type { GraphiumDocument, GraphiumFile } from "../../document-types";
 import { migrateToLatest } from "../../document-migration";
+import { newId } from "../../id";
 
 const DB_NAME = "graphium-local";
 const DB_VERSION = 1;
@@ -56,11 +57,6 @@ async function getAll<T>(storeName: string): Promise<T[]> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-}
-
-/** UUID 生成 */
-function generateId(): string {
-  return crypto.randomUUID();
 }
 
 // 認証状態リスナー
@@ -125,7 +121,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async createFile(title: string, content: GraphiumDocument): Promise<string> {
-    const id = generateId();
+    const id = newId();
     const now = new Date().toISOString();
     const name = `${title}.graphium.json`;
     await withStore(STORE_FILES, "readwrite", (store) =>
@@ -158,7 +154,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async uploadMedia(file: File): Promise<MediaUploadResult> {
-    const id = generateId();
+    const id = newId();
     const blob = new Blob([await file.arrayBuffer()], { type: file.type });
 
     // IndexedDB にメタデータと Blob を保存
@@ -273,7 +269,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async createWikiFile(title: string, content: GraphiumDocument): Promise<string> {
-    const id = generateId();
+    const id = newId();
     const now = new Date().toISOString();
     const name = `${title}.graphium.json`;
     await withStore(STORE_FILES, "readwrite", (store) =>
@@ -330,7 +326,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async createSkillFile(title: string, content: GraphiumDocument): Promise<string> {
-    const id = generateId();
+    const id = newId();
     const now = new Date().toISOString();
     const name = `${title}.skill.graphium.json`;
     await withStore(STORE_FILES, "readwrite", (store) =>

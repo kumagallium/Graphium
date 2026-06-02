@@ -10,6 +10,7 @@
 // 選択されたノートのタイトルを青色テキストの paragraph として並べる。
 
 import { t } from "../../i18n";
+import type { SlashMenuItem } from "../../base/slash-menu-types";
 
 /** ピッカーの種別。コードと wikiKind の対応はモーダル側でマップする。 */
 export type CitePickerKind = "claims" | "insights";
@@ -26,14 +27,6 @@ export function setCitePickerCallback(
   if (fn) _citePickerCallbacks.set(editor, fn);
   else _citePickerCallbacks.delete(editor);
 }
-
-type SlashMenuItem = {
-  title: string;
-  subtext?: string;
-  group: string;
-  aliases?: string[];
-  onItemClick: (editor: any) => void;
-};
 
 function createCiteSlashItem(
   titleKey: string,

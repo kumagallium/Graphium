@@ -42,20 +42,13 @@ import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
+import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
 import { t as tStatic } from "../i18n";
-
-type SlashMenuItem = {
-  title: string;
-  subtext?: string;
-  group: string;
-  aliases?: string[];
-  onItemClick: (editor: any) => void;
-};
 
 type SandboxEditorProps = {
   blocks?: CustomBlockEntry[];

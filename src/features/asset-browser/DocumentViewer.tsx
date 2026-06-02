@@ -13,16 +13,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { isDocumentMime } from "./media-index";
 import type { MediaIndexEntry } from "./media-index";
-import { SelectionPill, type CitationSource } from "./SelectionPill";
+import { SelectionPill, type CitationSource, type PillState } from "./SelectionPill";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-type PillState = {
-  text: string;
-  top: number;
-  left: number;
-  placement: "above" | "below";
-};
 
 export type DocumentViewerProps = {
   entry: MediaIndexEntry;

@@ -2,6 +2,8 @@
 // Wiki セクションの embedding ベクトルをローカルに保存・検索する
 // ノートデータとは別の IndexedDB データベースを使用
 
+import { cosineSimilarity } from "./vector";
+
 const DB_NAME = "graphium-embeddings";
 // v2: 旧バージョンで store が作られていない壊れた DB を救済するためにバンプ。
 // onupgradeneeded で "embeddings" store を冪等に作成する。
@@ -70,22 +72,6 @@ async function getAll(): Promise<EmbeddingRecord[]> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-}
-
-/** コサイン類似度を計算 */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-  return dotProduct / denominator;
 }
 
 export const embeddingStore = {

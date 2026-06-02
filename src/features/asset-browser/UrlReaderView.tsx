@@ -15,7 +15,7 @@ import { useT } from "../../i18n";
 import { apiBase } from "../../lib/platform";
 import type { MediaIndexEntry } from "./media-index";
 import { persistUrlMetaPatch } from "./media-index";
-import { SelectionPill, type CitationSource } from "./SelectionPill";
+import { SelectionPill, type CitationSource, type PillState } from "./SelectionPill";
 import { UrlPreviewCard } from "./url-preview-card";
 import { buildTextFragment } from "./text-fragment";
 
@@ -37,13 +37,6 @@ type Status =
   | { kind: "ready"; article: ReaderArticle }
   | { kind: "empty"; reason?: string }
   | { kind: "error"; message: string };
-
-type PillState = {
-  text: string;
-  top: number;
-  left: number;
-  placement: "above" | "below";
-};
 
 export type UrlReaderViewProps = {
   entry: MediaIndexEntry;

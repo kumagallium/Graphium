@@ -32,6 +32,7 @@ import {
 } from "../../lib/storage/shared";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { loadAllSharedEntries } from "./shared-library-loader";
+import { formatDate } from "../../lib/format-datetime";
 
 type Props = {
   /** Settings の shared root path */
@@ -53,16 +54,6 @@ const TYPE_TABS: { type: SharedEntryType; label: string }[] = [
   { type: "reference", label: "References" },
   { type: "data-manifest", label: "Data" },
 ];
-
-function formatDate(iso?: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 function entryTitle(entry: SharedEntry): string {
   const t = (entry.extra as Record<string, unknown> | undefined)?.title;
