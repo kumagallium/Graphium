@@ -308,7 +308,7 @@ export function NoteListView({
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
         <Breadcrumb items={[
-          { label: "Home", onClick: onBack },
+          { label: t("nav.home"), onClick: onBack },
           { label: t("nav.noteList") },
         ]} />
         <span className="text-xs text-muted-foreground">

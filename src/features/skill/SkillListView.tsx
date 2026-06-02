@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Wrench, Search, Trash2, Plus, Zap, Lock, RotateCcw } from "lucide-react";
 import type { GraphiumFile, SkillMeta } from "../../lib/document-types";
 import { Breadcrumb } from "../../components/Breadcrumb";
+import { useT } from "../../i18n";
 
 /** 日付を YYYY-MM-DD 形式でフォーマット */
 function formatDate(isoDate: string): string {
@@ -47,6 +48,7 @@ export function SkillListView({
   onNewSkill,
   onResetSystemSkill,
 }: Props) {
+  const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -105,7 +107,7 @@ export function SkillListView({
       {/* ヘッダー */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
         <Breadcrumb items={[
-          { label: "Home", onClick: onBack },
+          { label: t("nav.home"), onClick: onBack },
           { label: "Skill" },
         ]} />
         <div className="flex items-center gap-2">

@@ -167,6 +167,10 @@ export const ja: Record<string, string> = {
   "panel.links": "リンク",
   "panel.graph.neighbors": "近傍",
   "panel.graph.lineage": "来歴",
+  "panel.graph": "グラフ",
+  "panel.chat": "チャット",
+  "panel.memos": "メモ",
+  "panel.source": "ソース",
 
   // ── 来歴ツリーパネル（レイヤー2 PROV）──
   "lineage.title": "来歴",
@@ -194,6 +198,7 @@ export const ja: Record<string, string> = {
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",
+  "labelUi.aliasLabels": "エイリアス",
   "labelUi.freeLabels": "フリーラベル（例）",
   "labelUi.custom": "カスタム",
   "labelUi.removeLabel": "ラベルを外す",

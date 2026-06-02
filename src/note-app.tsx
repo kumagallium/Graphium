@@ -2814,12 +2814,12 @@ function NoteEditorInner({
                 </button>
               )}
               <span className="text-xs font-bold tracking-wide text-foreground">
-                {rightTab === "graph" ? "Graph"
+                {rightTab === "graph" ? t("panel.graph")
                   : rightTab === "prov" ? t("panel.prov")
-                  : rightTab === "chat" ? "Chat"
+                  : rightTab === "chat" ? t("panel.chat")
                   : rightTab === "history" ? t("panel.history")
-                  : rightTab === "memos" ? "Memos"
-                  : "Source"}
+                  : rightTab === "memos" ? t("panel.memos")
+                  : t("panel.source")}
               </span>
               {rightTab === "prov" && (
                 <button
@@ -2886,13 +2886,13 @@ function NoteEditorInner({
             // Tauri 環境では aiAvailable===false でもタブを残す:
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
             // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
-            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: "Chat", show: aiAvailable || isTauri() },
-            { tab: "graph" as const, icon: <Network size={18} />, label: "Graph", show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
+            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
+            { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
-            { tab: "memos" as const, icon: <StickyNote size={18} />, label: "Memos", show: !!fileId },
-            ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: "Source", show: true }] : []),
+            { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
+            ...(sourceDoc ? [{ tab: "source" as const, icon: <FileText size={18} />, label: t("panel.source"), show: true }] : []),
           ] as const).filter((item) => item.show).map((item) => (
             <button
               key={item.tab}
