@@ -1,35 +1,5 @@
 [
   {
-    "type": "cycle",
-    "from": "src/features/inline-label/attribute-binding.ts",
-    "to": "src/features/inline-label/styles.ts",
-    "unresolvedTo": "./styles",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-circular"
-    },
-    "cycle": [
-      {
-        "name": "src/features/inline-label/styles.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      },
-      {
-        "name": "src/features/inline-label/attribute-binding.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      }
-    ]
-  },
-  {
     "type": "dependency",
     "from": "src/base/editor.tsx",
     "to": "src/features/block-selection/index.ts",
