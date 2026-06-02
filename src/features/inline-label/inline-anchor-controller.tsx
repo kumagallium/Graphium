@@ -19,7 +19,8 @@ import {
   mergeEntityIds,
   type InlineLabel,
 } from "./entity-merge";
-import { LABEL_TO_STYLE, STYLE_TO_LABEL } from "./styles";
+import { LABEL_TO_STYLE } from "./styles";
+import { STYLE_TO_LABEL } from "./style-label-map";
 import { parseAttributeBinding } from "./attribute-binding";
 import {
   setAttributeParent,

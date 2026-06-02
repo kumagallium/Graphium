@@ -7,13 +7,14 @@
 // 設計参照: docs/internal/provenance-layer-design.md §8.10
 // ──────────────────────────────────────────────
 
-import { STYLE_TO_LABEL } from "./styles";
+import { STYLE_TO_LABEL, type InlineLabel } from "./style-label-map";
 import {
   parseAttributeBinding,
   formatAttributeBinding,
 } from "./attribute-binding";
 
-export type InlineLabel = "material" | "tool" | "attribute" | "output";
+// InlineLabel の正準定義は style-label-map.ts。既存の import 互換のため re-export する。
+export type { InlineLabel };
 
 /** ドキュメント内に存在するインラインハイライトの 1 出現 */
 export type HighlightOccurrence = {

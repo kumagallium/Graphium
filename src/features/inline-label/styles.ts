@@ -79,14 +79,6 @@ export const inlineLabelStyleSpecs = {
   inlineOutput: inlineOutputStyle,
 } as const;
 
-/** BlockNote style 名 ↔ コアラベル */
-export const STYLE_TO_LABEL: Record<string, InlineLabel> = {
-  inlineMaterial: "material",
-  inlineTool: "tool",
-  inlineAttribute: "attribute",
-  inlineOutput: "output",
-};
-
 export const LABEL_TO_STYLE: Record<InlineLabel, keyof typeof inlineLabelStyleSpecs> = {
   material: "inlineMaterial",
   tool: "inlineTool",

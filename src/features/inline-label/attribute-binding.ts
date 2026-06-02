@@ -39,8 +39,7 @@ export function formatAttributeBinding(binding: AttributeBinding): string {
   return `${binding.entityId}@${binding.parentEntityId}`;
 }
 
-import { STYLE_TO_LABEL } from "./styles";
-import type { InlineLabel } from "./entity-merge";
+import { STYLE_TO_LABEL, type InlineLabel } from "./style-label-map";
 
 /**
  * 同一ブロック内の Entity 系（material/tool/output）ハイライトを列挙する。
