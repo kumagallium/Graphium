@@ -41,6 +41,7 @@ import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/prov
 import { AiUpgradeNotice } from "../../components/AiUpgradeNotice";
 import { Globe2 } from "lucide-react";
 import {
+  clearKbCache,
   loadKb,
   removeFromKbCache,
   type KbEntry,
@@ -2818,6 +2819,12 @@ function GroundingKbTab() {
     });
   }, [kb, verdictFilter, query]);
 
+  // 沈殿（cache）エントリの件数。seed は read-only なので一括クリアの対象外。
+  const cacheCount = useMemo(
+    () => (kb ? kb.entries.filter((e) => !isSeedEntry(e)).length : 0),
+    [kb],
+  );
+
   const handleDelete = async (entry: KbEntry) => {
     if (isSeedEntry(entry)) return; // UI で既に disabled、念のため
     const confirmed = window.confirm(
@@ -2834,6 +2841,22 @@ function GroundingKbTab() {
     setReloadTick((n) => n + 1);
   };
 
+  const handleClearCache = async () => {
+    if (cacheCount === 0) return;
+    const confirmed = window.confirm(
+      t("settings.grounding.clearCacheConfirm", { count: String(cacheCount) }),
+    );
+    if (!confirmed) return;
+    const ok = await clearKbCache();
+    if (!ok) {
+      setError(t("settings.grounding.deleteFailed"));
+      return;
+    }
+    setError(null);
+    // KB を再ロード（seed のみ残る）
+    setReloadTick((n) => n + 1);
+  };
+
   return (
     <div className="space-y-4">
       <div className="text-xs text-muted-foreground">
@@ -2842,7 +2865,27 @@ function GroundingKbTab() {
 
       {kb && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-          {t("settings.grounding.count", { count: String(kb.entries.length) })}
+          <span>
+            {t("settings.grounding.count", { count: String(kb.entries.length) })}
+          </span>
+          <button
+            type="button"
+            onClick={handleClearCache}
+            disabled={cacheCount === 0}
+            title={
+              cacheCount === 0
+                ? t("settings.grounding.clearCacheEmpty")
+                : t("settings.grounding.clearCacheTooltip")
+            }
+            className={`ml-auto inline-flex items-center gap-1 px-2 py-1 rounded border transition-colors ${
+              cacheCount === 0
+                ? "border-border text-muted-foreground/40 cursor-not-allowed"
+                : "border-border text-muted-foreground hover:text-red-500 hover:border-red-500/40 hover:bg-red-500/10"
+            }`}
+          >
+            <Trash2 size={12} />
+            {t("settings.grounding.clearCache", { count: String(cacheCount) })}
+          </button>
         </div>
       )}
 

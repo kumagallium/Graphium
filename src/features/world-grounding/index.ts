@@ -169,6 +169,7 @@ export type { GroundingMatch, KbEntry, KbFile } from "./distilled-kb-retriever";
 export { checkValidityFromKB, loadKb, loadSeedKb } from "./distilled-kb-retriever";
 export {
   appendToKbCache,
+  clearKbCache,
   isValidForCaching,
   loadKbCache,
   mergeKb,
