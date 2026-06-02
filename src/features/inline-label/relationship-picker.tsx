@@ -183,7 +183,7 @@ function SectionView({
   const titleClass =
     level === 0
       ? "text-[12px] font-semibold text-foreground px-1"
-      : "text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1";
+      : "text-[10px] font-medium text-muted-foreground px-1";
   const indentClass = level > 0 ? "pl-3 border-l-2 border-border ml-1" : "";
 
   const titleNode = sec.title ? (

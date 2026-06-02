@@ -285,7 +285,7 @@ export function SharedLibraryView({
                   <span>{formatDate(entry.updated_at)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-1">
-                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                  <span className="text-[10px] text-muted-foreground/70">
                     {entry.type}
                     {entry.version && entry.version > 1 ? ` · v${entry.version}` : ""}
                   </span>
@@ -460,7 +460,7 @@ function SharedEntryDetail({
         {/* ヘッダー */}
         <div className="px-5 py-3 border-b border-border flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+            <div className="text-[10px] text-muted-foreground/70">
               {entry.type}
               {entry.version && entry.version > 1 ? ` · v${entry.version}` : ""}
               {isMine && (

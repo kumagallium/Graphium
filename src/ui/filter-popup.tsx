@@ -80,7 +80,7 @@ export function FilterPopup({
     <Dropdown position={position} onClose={onClose} minWidth={minWidth}>
       <div className="py-1.5" role="dialog" aria-label={title ?? "Filter"}>
         {title && (
-          <div className="px-3 pt-1 pb-1.5 text-[10px] font-bold text-muted-foreground tracking-wider uppercase">
+          <div className="px-3 pt-1 pb-1.5 text-xs font-bold text-muted-foreground">
             {title}
           </div>
         )}

@@ -143,7 +143,7 @@ export function LineagePanel({
     return (
       <div className="flex flex-col h-full">
         <div className="px-3 py-2 border-b border-border bg-muted/20">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground">
             <GitBranch size={11} />
             {t("lineage.title")}
           </div>
@@ -163,7 +163,7 @@ export function LineagePanel({
   return (
     <div className="flex flex-col h-full overflow-auto">
       <div className="px-3 py-2 border-b border-border bg-muted/20 sticky top-0 z-10">
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground">
           <GitBranch size={11} />
           {t("lineage.title")}
           <span className="ml-1 text-muted-foreground/60 normal-case tracking-normal">

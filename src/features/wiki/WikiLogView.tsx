@@ -122,7 +122,7 @@ export function WikiLogView({ onBack, onOpenWiki }: Props) {
           Object.entries(grouped).map(([date, dayEntries]) => (
             <div key={date}>
               <div className="sticky top-0 bg-background/95 backdrop-blur px-4 py-1.5 border-b border-border">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase">{date}</span>
+                <span className="text-[10px] font-semibold text-muted-foreground">{date}</span>
               </div>
               <div className="divide-y divide-border/50">
                 {dayEntries.map((entry) => {
@@ -133,7 +133,7 @@ export function WikiLogView({ onBack, onOpenWiki }: Props) {
                       <Icon size={14} className={`mt-0.5 shrink-0 ${color}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                          <span className="text-[10px] font-medium text-muted-foreground">
                             {entry.type}
                           </span>
                           <span className="text-[10px] text-muted-foreground/60">

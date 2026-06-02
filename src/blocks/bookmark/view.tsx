@@ -137,10 +137,10 @@ export const BookmarkBlock = createReactBlockSpec(
 const styles: Record<string, React.CSSProperties> = {
   card: {
     display: "flex",
-    border: "1px solid #e2e8f0",
+    border: "1px solid var(--color-border-subtle)",
     borderRadius: 8,
     overflow: "hidden",
-    background: "#fff",
+    background: "var(--color-card)",
     textDecoration: "none",
     color: "inherit",
     cursor: "pointer",
@@ -166,14 +166,14 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 14,
     fontWeight: 600,
-    color: "#1a202c",
+    color: "var(--color-foreground)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
   },
   description: {
     fontSize: 12,
-    color: "#718096",
+    color: "var(--color-muted-foreground)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     display: "-webkit-box",
@@ -195,7 +195,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   domain: {
     fontSize: 12,
-    color: "#a0aec0",
+    color: "var(--color-text-tertiary)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
@@ -205,7 +205,7 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 200,
     flexShrink: 0,
     overflow: "hidden",
-    borderLeft: "1px solid #e2e8f0",
+    borderLeft: "1px solid var(--color-border-subtle)",
   },
   ogImage: {
     width: "100%",
@@ -217,16 +217,16 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "20px 16px",
-    border: "2px dashed #cbd5e1",
+    border: "2px dashed var(--color-border)",
     borderRadius: 8,
-    background: "#f8fafc",
+    background: "var(--color-surface)",
   },
   placeholderText: {
     fontSize: 13,
-    color: "#94a3b8",
+    color: "var(--color-text-tertiary)",
   },
   loadingText: {
     fontSize: 13,
-    color: "#94a3b8",
+    color: "var(--color-text-tertiary)",
   },
 };
