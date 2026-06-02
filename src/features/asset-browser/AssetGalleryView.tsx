@@ -130,15 +130,20 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
   const wrapperCls = compact
     ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
     : "w-full h-40 flex items-center justify-center bg-muted";
-  const imgCls = compact
-    ? "w-10 h-10 object-cover rounded bg-muted shrink-0"
-    : "w-full h-40 object-contain bg-muted";
+  // 画像は必ず wrapper div の中に入れる。裸の <img> だと preflight の
+  // img{max-width:100%} が効き、list 表示で列幅 0 のときサムネが 0px に潰れる。
+  const imgCls = compact ? "w-full h-full object-cover" : "w-full h-full object-contain";
   const iconSize = compact ? 16 : 32;
 
-  if (!src) {
-    return <div className={wrapperCls}><Image size={iconSize} className="text-muted-foreground" /></div>;
-  }
-  return <img src={src} alt={entry.name} className={imgCls} loading="lazy" />;
+  return (
+    <div className={wrapperCls}>
+      {src ? (
+        <img src={src} alt={entry.name} className={imgCls} loading="lazy" />
+      ) : (
+        <Image size={iconSize} className="text-muted-foreground" />
+      )}
+    </div>
+  );
 }
 
 // 動画サムネイル: Intersection Observer で画面内に入ったときだけ Blob URL を取得
