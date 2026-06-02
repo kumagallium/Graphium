@@ -708,7 +708,16 @@ function SidePeekInner({
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
             <ProvIndicatorHoverHint wrapperEl={wrapperEl} zIndex={101} />
             <LabelDropdownPortal />
-            <div style={{ padding: "16px 24px", paddingRight: 80 }}>
+            {/* 右ガター（80px）はラベル/リンクのインジケータを置く場所。
+                何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
+                ラベルもリンクも無いときは左右対称（24px）にする。 */}
+            <div
+              style={{
+                padding: "16px 24px",
+                paddingRight:
+                  labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
+              }}
+            >
               <textarea
                 value={effectiveDoc?.title ?? ""}
                 onChange={(e) => {
