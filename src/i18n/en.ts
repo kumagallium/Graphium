@@ -167,6 +167,10 @@ export const en: Record<string, string> = {
   "panel.links": "Links",
   "panel.graph.neighbors": "Neighbors",
   "panel.graph.lineage": "Lineage",
+  "panel.graph": "Graph",
+  "panel.chat": "Chat",
+  "panel.memos": "Memos",
+  "panel.source": "Source",
 
   // ── Lineage tree panel (Layer 2 PROV) ──
   "lineage.title": "Lineage",
@@ -194,6 +198,7 @@ export const en: Record<string, string> = {
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",
+  "labelUi.aliasLabels": "Aliases",
   "labelUi.freeLabels": "Free labels (examples)",
   "labelUi.custom": "Custom",
   "labelUi.removeLabel": "Remove label",
