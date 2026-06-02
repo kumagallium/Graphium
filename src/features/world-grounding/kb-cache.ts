@@ -189,6 +189,30 @@ export function mergeKb(seed: KbFile | null, cache: KbFile | null): KbFile | nul
   };
 }
 
+/**
+ * 沈殿 cache を全削除する（seed には touch しない）。
+ * 設定の「沈殿エントリを一括削除」ボタンから呼ぶ。
+ * seed.v1.json は同梱アセットなのでここでは消えない（残るのは仕様）。
+ *
+ * 返り値:
+ * - `true`:  cache（旧 domain 別キー含む）の削除に成功した
+ * - `false`: プロバイダ未対応 / 書き込み失敗
+ */
+export async function clearKbCache(): Promise<boolean> {
+  const provider = getActiveProvider();
+  if (!provider.writeAppData) return false;
+  try {
+    await provider.writeAppData(CACHE_KEY, null);
+    for (const legacyKey of LEGACY_DOMAIN_KEYS) {
+      await provider.writeAppData(legacyKey, null);
+    }
+    return true;
+  } catch (err) {
+    console.warn("[world-grounding] kb-cache clear failed:", err);
+    return false;
+  }
+}
+
 /** テスト用: cache をクリアする（本番コードからは呼ばない）。 */
 export async function clearKbCacheForTest(): Promise<void> {
   const provider = getActiveProvider();
