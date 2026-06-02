@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.13.4](https://github.com/kumagallium/Graphium/compare/v0.13.3...v0.13.4) - 2026-06-02
+
+- refactor: consolidate duplicate utilities and types (behavior-identical) by @kumagallium in https://github.com/kumagallium/Graphium/pull/409
+- refactor: remove dead code flagged by the src/ consistency audit by @kumagallium in https://github.com/kumagallium/Graphium/pull/410
+- refactor: sweep remaining dead code from the src/ consistency audit by @kumagallium in https://github.com/kumagallium/Graphium/pull/412
+- chore: add dependency-cruiser import-boundary lint to CI by @kumagallium in https://github.com/kumagallium/Graphium/pull/413
+- refactor(inline-label): break runtime circular dependency (styles ↔ attribute-binding) by @kumagallium in https://github.com/kumagallium/Graphium/pull/414
+
 ## [v0.13.3](https://github.com/kumagallium/Graphium/compare/v0.13.2...v0.13.3) - 2026-06-02
 
 - feat(asset): bulk embedded-image extraction + list-view fixes by @kumagallium in https://github.com/kumagallium/Graphium/pull/406
