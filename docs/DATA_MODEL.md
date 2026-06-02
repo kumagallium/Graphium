@@ -603,6 +603,7 @@ type GroundingProfile = {
     matchedKeywords?: string[];              // KB keywords that hit (PR 2A audit field)
     checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
     checkedAt?: string;                      // ISO 8601
+    entryId?: string;                        // KB entry this grounded to (world-grounding edge)
   };
   // Promotion of an existing status field is "suggest" only — never write.
   suggests?: { field: "hypothesisStatus" | "epistemicStatus"; to: string; reason: string };
@@ -623,12 +624,22 @@ The lane is **strictly separate** from the existing layers:
 - The verdict is allowed to be **absent**. When the distilled KB has no
   hit, `validity` still records `{ checkedBy, checkedAt }` so the UI
   can say "checked but unmatched" without lying.
+- `entryId` records the KB entry the claim grounded to (the matched seed
+  entry, or the `gen-…` id of a freshly sedimented LLM result). This is a
+  **world-grounding edge**: two insights with the same `entryId` are
+  grounded to the same world fact. The WikiBanner surfaces siblings
+  ("insights grounded to the same world fact"). What accumulates is the
+  *edge* between the user's insights and the world — not a copy of the
+  world's knowledge — so it stays distinct from being a lossy LLM mirror.
+  Absent when the verdict is null (no match / not sedimented).
 
-`INDEX_SCHEMA_VERSION` does NOT bump when `grounding` lands. The field
-is read only by the detail-view (WikiBanner badges) and is not mirrored
-into `NoteIndexEntry` or `WikiMetaSummary`. When a future PR surfaces
-the verdict in list filters / quadrant badges, that PR is responsible
-for adding the mirror columns and bumping the schema version (see §5.1).
+`INDEX_SCHEMA_VERSION` does NOT bump when `grounding` lands. A minimal
+slice (`verdict`, `checkedAt`, `entryId`) is mirrored into the **runtime**
+`WikiMetaSummary.groundingValidity` for the list verdict column and the
+WikiBanner edge lookup, but it is **not** persisted into `NoteIndexEntry`,
+so the on-disk index schema is unchanged. A future PR that needs the
+verdict in the persisted index (e.g. cross-session quadrant badges) is
+responsible for adding that column and bumping the schema version (§5.1).
 
 Grounding is **user-triggered only** (banner button or bulk action on
 the list view) — there is no open-time or periodic auto-check (PR 2A

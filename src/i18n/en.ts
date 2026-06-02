@@ -714,6 +714,8 @@ export const en: Record<string, string> = {
   "wikiBanner.worldNoMatchHint": "World check ran but the distilled KB had no matching entry. The piece is neither supported nor refuted by the curated knowledge base.",
   "wikiBanner.worldDetailTitle": "World check",
   "wikiBanner.worldDetailHint": "Why this verdict was assigned: matched KB rationale, source references, and when it was checked.",
+  "wikiBanner.worldEdgesTitle": "Insights grounded to the same world fact ({count})",
+  "wikiBanner.worldEdgesHint": "Other insights that ground to the same world knowledge (KB entry) as this one — where your inquiry touched the world at the same point. An LLM cannot hold this connection.",
   "wikiBanner.worldSources": "Sources",
   "wikiBanner.worldMatchedKeywords": "Matched keywords",
   "wikiBanner.worldMatchedKeywordsCount": "{count} keyword(s) matched",

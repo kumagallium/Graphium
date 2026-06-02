@@ -453,6 +453,14 @@ export type GroundingProfile = {
     checkedBy?: string;
     /** 照合した時刻（ISO8601）。L3 鮮度判定や stale 表示に使う。 */
     checkedAt?: string;
+    /**
+     * 照合がヒット / 沈殿した KB エントリの ID（world-grounding edge）。
+     * これが「洞察 → 世界事実」のエッジを成す: 同じ entryId を持つ洞察どうしは
+     * 同じ世界知識に接続している。ここが「世界事実そのものを貯める」のではなく
+     * 「自分の探究が世界と触れた境界」を記録する要——[[project_prov_graph_context]]。
+     * verdict が null（判定不能・マッチなし）のときは undefined。
+     */
+    entryId?: string;
   };
   /**
    * 既存 status への作用は「提案」のみ。
@@ -516,6 +524,8 @@ export type WikiMetaSummary = {
   groundingValidity?: {
     verdict?: GroundingValidityVerdict;
     checkedAt?: string;
+    /** 接続先 KB エントリ ID（world-grounding edge）。同一 entryId の洞察を引くのに使う。 */
+    entryId?: string;
   };
 };
 

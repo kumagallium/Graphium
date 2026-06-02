@@ -337,7 +337,11 @@ export function useFileManager(authenticated: boolean) {
                 hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
                 theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
                 groundingValidity: validity
-                  ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+                  ? {
+                      verdict: validity.verdict,
+                      checkedAt: validity.checkedAt,
+                      entryId: validity.entryId,
+                    }
                   : undefined,
               });
               docCacheRef.current.set(`wiki:${id}`, doc);
@@ -1617,7 +1621,11 @@ export function useFileManager(authenticated: boolean) {
           hypothesisStatus: doc.wikiMeta?.hypothesisStatus,
           theme: doc.wikiMeta?.kind === "synthesis" ? doc.wikiMeta?.theme : undefined,
           groundingValidity: validity
-            ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+            ? {
+                verdict: validity.verdict,
+                checkedAt: validity.checkedAt,
+                entryId: validity.entryId,
+              }
             : undefined,
         });
         return next;

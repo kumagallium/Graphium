@@ -272,6 +272,24 @@ describe("checkValidity facade", () => {
     }
   });
 
+  it("KB ヒット時は entryId を validity に詰める（world-grounding edge の起点）", async () => {
+    const meta = baseMeta();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(sampleKb), { status: 200 })) as typeof fetch;
+    clearKbCacheForTest();
+    try {
+      const validity = await checkValidity(meta, "焼結温度を上げると粒成長が促進される", {
+        baseUrl: "/test-baseurl/",
+      });
+      // 同じ KB エントリに当たった洞察どうしを引くためのエッジ ID
+      expect(validity?.entryId).toBe("mat-x");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
+  });
+
   it("KB miss + LLM 未登録（or 失敗）は verdict 未付与 + checkedBy='no-engine' で degrade（PR 2B 新挙動）", async () => {
     // PR 2B: KB miss 時は LLM fallback を試みる。テスト環境では groundingModel 未設定 +
     // localStorage 空のため、checkValidityViaModel が null を返し、checkedBy: "no-engine" に degrade する。

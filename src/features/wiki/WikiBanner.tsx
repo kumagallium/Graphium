@@ -28,6 +28,7 @@ import type {
   ProcedureContext,
   SynthesisMode,
   WikiMeta,
+  WikiMetaSummary,
 } from "../../lib/document-types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import { useT } from "../../i18n";
@@ -110,6 +111,16 @@ type Props = {
   onCheckWorldValidity?: () => void;
   /** 照合中。ボタンを disable してスピナー的に表示する。 */
   worldCheckLoading?: boolean;
+  /**
+   * 表示中の wiki 自身の ID（world-grounding edge で自分を除外するのに使う）。
+   */
+  wikiId?: string;
+  /**
+   * 全 wiki のサマリ Map（world-grounding edge 用）。
+   * 同じ `grounding.validity.entryId`（＝同じ世界事実）に接続した他の洞察を引くのに使う。
+   * 未指定なら「同じ世界事実に接続した洞察」セクションは出さない。
+   */
+  allWikiMetas?: Map<string, WikiMetaSummary>;
 };
 
 function formatDate(isoDate: string): string {
@@ -133,6 +144,8 @@ export function WikiBanner({
   onNavigateNote,
   onCheckWorldValidity,
   worldCheckLoading = false,
+  wikiId,
+  allWikiMetas,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -432,6 +445,19 @@ export function WikiBanner({
         <WorldGroundingDetailSection validity={wikiMeta.grounding.validity} />
       )}
 
+      {/* 同じ世界事実に接続した洞察（world-grounding edge）—
+          自分と同じ grounding.validity.entryId を持つ他の wiki を列挙する。
+          これが「世界事実そのもの」でなく「自分の探究が世界と触れた境界」を見せる本体。
+          LLM は他ユーザー洞察との接続を持てないので、この一覧はここにしか無い。 */}
+      {wikiMeta.grounding?.validity?.entryId && allWikiMetas && (
+        <GroundingEdgesSection
+          entryId={wikiMeta.grounding.validity.entryId}
+          currentWikiId={wikiId}
+          allWikiMetas={allWikiMetas}
+          onNavigateNote={onNavigateNote}
+        />
+      )}
+
       {/* Phase γ: Backing — claim でのみ表示（document-types.ts でも claim 専用フィールド）。
           Warrant の裏付けが入っていれば折り畳みセクションで読めるようにする。 */}
       {wikiMeta.kind === "claim" && wikiMeta.backing && wikiMeta.backing.length > 0 && (
@@ -673,6 +699,93 @@ function WorldGroundingDetailSection({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// 同じ世界事実（KB entryId）に接続した他の洞察を列挙するセクション（world-grounding edge）。
+// 「世界事実そのもの」でなく「自分の探究が世界と触れた境界（エッジ）」を見せるのが狙い。
+// siblings が 0 件なら何も描かない（エッジが 1 本もないなら見せる価値がない）。
+function GroundingEdgesSection({
+  entryId,
+  currentWikiId,
+  allWikiMetas,
+  onNavigateNote,
+}: {
+  entryId: string;
+  currentWikiId?: string;
+  allWikiMetas: Map<string, WikiMetaSummary>;
+  onNavigateNote?: (noteId: string) => void;
+}) {
+  const t = useT();
+  const siblings = useMemo(() => {
+    const out: { id: string; title: string }[] = [];
+    for (const [id, m] of allWikiMetas) {
+      if (id === currentWikiId) continue;
+      if (m.groundingValidity?.entryId === entryId) {
+        out.push({ id, title: m.title });
+      }
+    }
+    return out;
+  }, [allWikiMetas, currentWikiId, entryId]);
+
+  if (siblings.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: "6px 10px 8px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 14,
+        lineHeight: 1.55,
+        color: "var(--ink-2)",
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          fontWeight: 500,
+          marginBottom: 4,
+        }}
+        title={t("wikiBanner.worldEdgesHint")}
+      >
+        <Globe2 size={11} />
+        <span>
+          {t("wikiBanner.worldEdgesTitle", { count: String(siblings.length) })}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {siblings.map((s) => (
+          <div key={s.id}>
+            {onNavigateNote ? (
+              <button
+                onClick={() => onNavigateNote(`wiki:${s.id}`)}
+                style={{
+                  padding: 0,
+                  margin: 0,
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--forest-ink, var(--ink-2))",
+                  font: "inherit",
+                  textAlign: "left",
+                  textDecoration: "underline",
+                  textDecorationStyle: "dotted",
+                  cursor: "pointer",
+                }}
+              >
+                {s.title}
+              </button>
+            ) : (
+              <span>{s.title}</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
