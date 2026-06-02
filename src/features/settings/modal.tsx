@@ -1310,7 +1310,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                   <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <div className="text-[10px] text-muted-foreground">
                           {t("settings.saveDir.currentLabel")}
                         </div>
                         <div className="text-xs font-mono text-foreground break-all">
@@ -1334,7 +1334,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                     {graphiumRoot.isCustom && (
                       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
                         <div className="min-w-0 flex-1">
-                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <div className="text-[10px] text-muted-foreground">
                             {t("settings.saveDir.defaultLabel")}
                           </div>
                           <div className="text-xs font-mono text-muted-foreground break-all">
@@ -1388,7 +1388,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
                 {/* Shared root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <div className="text-[10px] text-muted-foreground">
                     {t("settings.shared.rootLabel")}
                   </div>
                   {sharedRoot ? (
@@ -1444,7 +1444,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
                 {/* Blob root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <div className="text-[10px] text-muted-foreground">
                     {t("settings.shared.blobRootLabel")}
                   </div>
                   {blobRoot ? (

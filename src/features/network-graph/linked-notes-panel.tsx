@@ -85,7 +85,7 @@ export function LinkedNotesPanel({
       {/* ホップ別グループ */}
       {groups.map((group) => (
         <div key={group.hop}>
-          <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/30 border-b border-border">
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground bg-muted/30 border-b border-border">
             {group.hop === 1 ? t("links.linked") : t("links.nearby")}
             <span className="ml-1.5 text-muted-foreground/60">
               {group.nodes.length}

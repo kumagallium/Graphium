@@ -134,7 +134,7 @@ function renderBody(body: string): React.ReactNode[] {
       blocks.push(
         <div
           key={`b-${blockIdx++}`}
-          className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mt-3 mb-1"
+          className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1"
         >
           {renderInline(heading[1], `h-${blockIdx}`)}
         </div>,
@@ -218,7 +218,7 @@ function FallbackCommitList({ commits }: { commits: ParsedCommit[] }) {
     <>
       {Array.from(grouped.entries()).map(([date, items]) => (
         <div key={date} className="mb-5">
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 pb-1 border-b border-border">
+          <div className="text-[10px] font-semibold text-muted-foreground mb-2 pb-1 border-b border-border">
             {date}
           </div>
           <div className="space-y-1">

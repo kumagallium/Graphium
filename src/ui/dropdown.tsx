@@ -90,7 +90,7 @@ const DropdownSectionHeader = forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     className={cn(
-      "px-2.5 py-0.5 text-[10px] font-bold text-muted-foreground tracking-wider uppercase",
+      "px-2.5 py-0.5 text-xs font-bold text-muted-foreground",
       className,
     )}
     ref={ref}

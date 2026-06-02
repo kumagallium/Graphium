@@ -162,23 +162,23 @@ export const PdfViewerBlock = createReactBlockSpec(
 // ── スタイル ──
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    border: "1px solid #e2e8f0",
+    border: "1px solid var(--color-border-subtle)",
     borderRadius: 8,
     overflow: "hidden",
-    background: "#fafafa",
+    background: "var(--color-background)",
   },
   header: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     padding: "8px 12px",
-    borderBottom: "1px solid #e2e8f0",
-    background: "#f8fafc",
+    borderBottom: "1px solid var(--color-border-subtle)",
+    background: "var(--color-surface)",
     fontSize: 13,
   },
   fileName: {
     fontWeight: 500,
-    color: "#334155",
+    color: "var(--color-foreground)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
@@ -190,19 +190,19 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   navButton: {
-    border: "1px solid #cbd5e1",
+    border: "1px solid var(--color-border)",
     borderRadius: 4,
-    background: "#fff",
+    background: "var(--color-card)",
     cursor: "pointer",
     padding: "2px 8px",
     fontSize: 16,
     lineHeight: "20px",
-    color: "#475569",
+    color: "var(--color-muted-foreground)",
     userSelect: "none" as const,
   },
   pageInfo: {
     fontSize: 12,
-    color: "#64748b",
+    color: "var(--color-text-tertiary)",
     minWidth: 60,
     textAlign: "center" as const,
   },
@@ -216,7 +216,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   loading: {
     padding: 40,
-    color: "#94a3b8",
+    color: "var(--color-text-tertiary)",
     fontSize: 13,
   },
   placeholder: {
@@ -225,9 +225,9 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "32px 16px",
-    border: "2px dashed #cbd5e1",
+    border: "2px dashed var(--color-border)",
     borderRadius: 8,
-    background: "#f8fafc",
+    background: "var(--color-surface)",
     cursor: "default",
   },
   placeholderIcon: {
@@ -236,17 +236,17 @@ const styles: Record<string, React.CSSProperties> = {
   },
   placeholderText: {
     fontSize: 13,
-    color: "#94a3b8",
+    color: "var(--color-text-tertiary)",
     textAlign: "center" as const,
   },
   errorContainer: {
     padding: "16px",
-    border: "1px solid #fca5a5",
+    border: "1px solid var(--color-error-border)",
     borderRadius: 8,
-    background: "#fef2f2",
+    background: "var(--color-error-bg)",
   },
   errorText: {
     fontSize: 13,
-    color: "#dc2626",
+    color: "var(--color-destructive)",
   },
 };

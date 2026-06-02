@@ -18,13 +18,13 @@ export const HelloBlock = createReactBlockSpec(
           style={{
             padding: "12px 16px",
             borderRadius: 8,
-            background: "#f0f9ff",
-            border: "1px solid #bae6fd",
+            background: "var(--color-info-bg)",
+            border: "1px solid var(--color-info-border)",
             fontSize: 14,
           }}
         >
           Hello, <strong>{name}</strong>!
-          <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>
+          <div style={{ marginTop: 4, fontSize: 12, color: "var(--color-text-tertiary)" }}>
             これはサンプルのカスタムブロックです
           </div>
         </div>
