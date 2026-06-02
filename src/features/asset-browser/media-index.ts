@@ -47,6 +47,19 @@ export function canExtractEmbeddedImages(entry: { type: MediaType; mimeType: str
   return entry.type === "pdf" || isWordDocxEntry(entry);
 }
 
+/**
+ * この素材から既に埋め込み画像を抽出済みか。
+ * 抽出された画像は derivedFromAssets に元素材の fileId を持つため、
+ * それが 1 つでも index に存在すれば「抽出済み」とみなす。
+ * （派生画像をすべて削除すれば再抽出できる状態に戻る）
+ */
+export function hasExtractedImages(
+  entry: { fileId: string },
+  index: { media: Array<{ derivedFromAssets?: string[] }> },
+): boolean {
+  return index.media.some((m) => m.derivedFromAssets?.includes(entry.fileId));
+}
+
 /** メディアが使用されているノートの情報 */
 export type MediaUsage = {
   noteId: string;

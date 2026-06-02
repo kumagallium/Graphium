@@ -8,7 +8,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl, canExtractEmbeddedImages } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
@@ -759,15 +759,20 @@ export function AssetGalleryView({
     }
   }, [downloadEntry, filtered, selectedIds]);
 
-  // 一括埋め込み画像抽出: 選択中の PDF / Word (.docx) のみ対象
+  // 一括埋め込み画像抽出: 選択中の PDF / Word (.docx) のうち、
+  // まだ画像を抽出していないものだけを対象にする（重複抽出でゴミが増えるのを防ぐ）。
+  const isBulkExtractTarget = useCallback(
+    (e: MediaIndexEntry) =>
+      canExtractEmbeddedImages(e) && !!mediaIndex && !hasExtractedImages(e, mediaIndex),
+    [mediaIndex],
+  );
   const extractableSelectedCount = useMemo(
-    () =>
-      filtered.filter((e) => selectedIds.has(e.fileId) && canExtractEmbeddedImages(e)).length,
-    [filtered, selectedIds],
+    () => filtered.filter((e) => selectedIds.has(e.fileId) && isBulkExtractTarget(e)).length,
+    [filtered, selectedIds, isBulkExtractTarget],
   );
   const handleBulkExtractImages = useCallback(async () => {
     const targets = filtered.filter(
-      (e) => selectedIds.has(e.fileId) && canExtractEmbeddedImages(e),
+      (e) => selectedIds.has(e.fileId) && isBulkExtractTarget(e),
     );
     if (targets.length === 0) return;
     setBulkExtracting(true);
@@ -789,7 +794,7 @@ export function AssetGalleryView({
     } finally {
       setBulkExtracting(false);
     }
-  }, [filtered, selectedIds, onExtractPdfPages, onExtractDocxImages]);
+  }, [filtered, selectedIds, isBulkExtractTarget, onExtractPdfPages, onExtractDocxImages]);
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
