@@ -62,6 +62,8 @@ export async function checkValidity(
       // が、UI 表示はシンプルに "distilled-kb@v1" で統一する。
       checkedBy: "distilled-kb@v1",
       checkedAt,
+      // world-grounding edge: 接続先 KB エントリ ID。同じ entryId の洞察を引くのに使う。
+      entryId: kbMatch.entryId,
     };
   }
   console.info("[world-grounding] KB miss, calling LLM fallback...");
@@ -90,9 +92,12 @@ export async function checkValidity(
 
   // 沈殿: verdict + normalizedClaim + keywords が揃った時だけ KB cache に追加。
   // 鉄則: not_found (verdict null) / 壊れた entry は kb-cache 側で reject される。
+  // 生成した entryId は validity にも詰めてエッジを成す（沈殿した世界事実への接続）。
+  let sedimentedEntryId: string | undefined;
   if (modelResult.verdict && modelResult.normalizedClaim && modelResult.keywords?.length) {
+    const id = `gen-${cryptoRandomId()}`;
     const cached = await appendToKbCache({
-      id: `gen-${cryptoRandomId()}`,
+      id,
       verdict: modelResult.verdict,
       claim: modelResult.normalizedClaim,
       rationale: modelResult.rationale,
@@ -105,6 +110,8 @@ export async function checkValidity(
       generatedByModel: modelResult.model,
       version: 1,
     });
+    // 実際に沈殿できた時だけエッジを張る（沈殿失敗 = KB に実体が無いので dangling を避ける）
+    if (cached) sedimentedEntryId = id;
     console.info("[world-grounding] sedimented into KB cache:", cached);
   }
 
@@ -128,6 +135,7 @@ export async function checkValidity(
     matchedKeywords: modelResult.keywords,
     checkedBy: modelResult.model,
     checkedAt,
+    entryId: sedimentedEntryId,
   };
 }
 

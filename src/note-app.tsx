@@ -5408,6 +5408,8 @@ export function NoteApp() {
                 worldCheckLoading={
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
                 }
+                wikiId={wikiIdForBanner ?? undefined}
+                allWikiMetas={fm.wikiMetas}
               />
             );
           })()}

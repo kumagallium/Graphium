@@ -709,6 +709,8 @@ export const ja: Record<string, string> = {
   "wikiBanner.worldNoMatchHint": "世界照合は走ったが、蒸留 KB に一致するエントリが無かった。KB は支持も反証もしていない（KB のカバー範囲外）。",
   "wikiBanner.worldDetailTitle": "世界照合 詳細",
   "wikiBanner.worldDetailHint": "verdict の判定理由・KB の根拠・参考文献・照合時刻を確認する。",
+  "wikiBanner.worldEdgesTitle": "同じ世界事実に接続した洞察 ({count})",
+  "wikiBanner.worldEdgesHint": "この洞察と同じ世界知識（KB エントリ）に接続している他の洞察。あなたの探究が同じ一点で世界に触れた箇所——LLM には持てない接続。",
   "wikiBanner.worldSources": "参考文献",
   "wikiBanner.worldMatchedKeywords": "マッチした語彙",
   "wikiBanner.worldMatchedKeywordsCount": "{count} 語彙ヒット",
