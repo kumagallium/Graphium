@@ -163,6 +163,7 @@ import { exportProvJsonLd, type WikiEntityInfo } from "./features/prov-export";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
+import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import { useProvGeneration } from "./hooks/use-prov-generation";
 import { useFileManager } from "./hooks/use-file-manager";
 import { useCapture } from "./hooks/use-capture";
@@ -3105,7 +3106,7 @@ export function NoteApp() {
   const handleWorldCheckWiki = useCallback(
     async (
       wikiId: string,
-      trigger: "manual" | "bulk" = "manual",
+      trigger: "manual" | "bulk" | "background" = "manual",
     ): Promise<void> => {
       const cached = fm.getCachedDoc(`wiki:${wikiId}`);
       const doc = cached ?? (await fm.loadDoc(`wiki:${wikiId}`));
@@ -3113,20 +3114,26 @@ export function NoteApp() {
       // Summary は対象外（PR 2A §1 の主張系: claim/atom/synthesis 用）
       if (doc.wikiMeta.kind === "summary") return;
       if (worldCheckingWikiId === wikiId) return;
+      // 自動（background）は未照合だけを対象にする — 既に checkedAt があれば再照合しない
+      const silent = trigger === "background";
+      if (silent && doc.wikiMeta.grounding?.validity?.checkedAt) return;
       const wikiTitle = doc.title ?? wikiId;
       const toastId = `wgrd:${wikiId}`;
       setWorldCheckingWikiId(wikiId);
-      setIngestToast((prev) => ({
-        items: [
-          ...(prev?.items ?? []),
-          {
-            id: toastId,
-            status: "generating" as const,
-            noteTitle: `Checking "${wikiTitle}" against world KB`,
-            detail: "KB → model (cached on hit)",
-          },
-        ],
-      }));
+      // 自動照合はトースト通知を出さない（背景で静かに走る）
+      if (!silent) {
+        setIngestToast((prev) => ({
+          items: [
+            ...(prev?.items ?? []),
+            {
+              id: toastId,
+              status: "generating" as const,
+              noteTitle: `Checking "${wikiTitle}" against world KB`,
+              detail: "KB → model (cached on hit)",
+            },
+          ],
+        }));
+      }
       try {
         const claimText = `${doc.title}\n\n${extractPlainTextFromDoc(doc)}`;
         const validity = await checkValidity(doc.wikiMeta, claimText, {
@@ -3166,31 +3173,48 @@ export function NoteApp() {
           // LLM が verdict: null を返した（out of domain と言った）
           resultMsg = `${checkedBy} returned: out of domain`;
         }
-        setIngestToast((prev) => ({
-          items: (prev?.items ?? []).map((i) =>
-            i.id === toastId
-              ? { ...i, status: "success" as const, detail: undefined, result: resultMsg }
-              : i
-          ),
-        }));
-        // PR 2A は trigger 未使用だが、PR 2B 以降で auto-trigger 経路が増えた時の互換のため引数は残す
-        void trigger;
+        if (!silent) {
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId
+                ? { ...i, status: "success" as const, detail: undefined, result: resultMsg }
+                : i
+            ),
+          }));
+        } else {
+          void resultMsg;
+        }
       } catch (err) {
         console.error("[world-grounding] check failed:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        setIngestToast((prev) => ({
-          items: (prev?.items ?? []).map((i) =>
-            i.id === toastId
-              ? { ...i, status: "error" as const, detail: undefined, result: msg }
-              : i
-          ),
-        }));
+        if (!silent) {
+          setIngestToast((prev) => ({
+            items: (prev?.items ?? []).map((i) =>
+              i.id === toastId
+                ? { ...i, status: "error" as const, detail: undefined, result: msg }
+                : i
+            ),
+          }));
+        } else {
+          // background 経路はハード失敗を呼び出し元（自動 grounding hook）に伝える。
+          // checkedAt が付かない例外なので、再 pick によるホットループを防ぐため failed に積ませる。
+          throw err;
+        }
       } finally {
         setWorldCheckingWikiId((cur) => (cur === wikiId ? null : cur));
       }
     },
     [fm, worldCheckingWikiId],
   );
+
+  // 自動 world-grounding（opt-in / 既定 OFF）。設定 ON のとき、洞察・知見が追加された
+  // タイミング（wikiMetas の変化）に反応して未照合を 1 件ずつ照合する（直列 + デバウンス）。
+  useAutoGrounding({
+    enabled: experimentalFlags.autoGrounding ?? false,
+    wikiMetas: fm.wikiMetas,
+    busy: worldCheckingWikiId !== null,
+    groundOne: (wikiId) => handleWorldCheckWiki(wikiId, "background"),
+  });
 
   // Phase 4 (PR-B7): PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer の
   // 意味的な型（atomType / synthesisMode / procedureContext / ...）を組み立てる。

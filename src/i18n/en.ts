@@ -432,6 +432,8 @@ export const en: Record<string, string> = {
   "settings.groundingModelSameAsDefault": "Same as Chat & Insight model",
   "settings.groundingModelHelp": "Optional. Used to judge claims against world knowledge when the distilled KB has no hit. Falls back to the Chat & Insight model (and then the default model) when left empty — you usually don't need to set this separately. Each result is cached locally so the next check on a similar claim is instant.",
   "settings.groundingModelInfo": "World-grounding uses the Chat & Insight model above. Each judgment is cached locally so the next check on a similar claim is instant.",
+  "settings.autoGrounding.title": "Auto-ground new knowledge",
+  "settings.autoGrounding.help": "Automatically world-checks newly created insights and claims, one at a time in the background (off by default). It checks the KB first and only calls the model for claims not yet known, so the KB grows and checks get faster and cheaper over time. Insights grounded to the same world fact get linked automatically.",
   "settings.embeddingModel.note": "Embedding-capable model IDs are often different from chat model IDs. Use Test to verify the selected model before saving.",
   "settings.embeddingModel.test": "Test embedding",
   "settings.embeddingModel.testing": "Testing embedding…",

@@ -432,6 +432,8 @@ export const ja: Record<string, string> = {
   "settings.groundingModelSameAsDefault": "チャット・洞察モデルと同じ",
   "settings.groundingModelHelp": "任意。蒸留 KB にヒットしなかった主張をモデル内部知識で判定します。未指定の場合はチャット・洞察モデル（さらにそれも空ならデフォルトモデル）にフォールバックするので、わざわざ別に設定する必要はありません。判定結果はローカル KB に沈殿し、次回以降は KB ヒットで即答されます（使うほど安くなる）。",
   "settings.groundingModelInfo": "世界モデル照合は上の「チャット・洞察モデル」をそのまま使います。判定結果はローカル KB に沈殿し、次回以降は KB ヒットで即答されます。",
+  "settings.autoGrounding.title": "自動で世界照合する",
+  "settings.autoGrounding.help": "新しく作られた洞察・知見を、バックグラウンドで1件ずつ自動的に世界照合します（既定 OFF）。まず KB を見て、未登録の主張だけモデル判定するので、使うほど KB が育ち照合は速く・安くなります。同じ世界事実に接続した洞察どうしが自動でつながります。",
   "settings.embeddingModel.note": "埋め込みに使えるモデル ID は chat 用とは別の場合があります。保存前にテストで対応モデルかを確認できます。",
   "settings.embeddingModel.test": "埋め込みテスト",
   "settings.embeddingModel.testing": "埋め込みテスト中…",

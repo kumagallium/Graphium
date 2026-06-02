@@ -196,7 +196,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
   const [latinFont, setLatinFont] = useState<LatinFont>("");
   const [jpFont, setJpFont] = useState<JpFont>("");
-  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false });
+  const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false });
 
   // サーバーデータ
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -408,7 +408,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setCustomLabels(settings.customLabels ?? {});
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
-    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false });
+    setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false });
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -1180,6 +1180,36 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
             <p className="text-xs text-muted-foreground italic">
               {t("settings.groundingModelInfo")}
             </p>
+
+            {/* 自動 world-grounding（opt-in / 既定 OFF）。
+                既存の "user-triggered only" を覆すので明示トグル。 */}
+            <div className="pt-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
+                    setSaved(false);
+                  }}
+                  role="switch"
+                  aria-checked={experimental.autoGrounding}
+                  aria-label={t("settings.autoGrounding.title")}
+                  className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
+                  style={{ backgroundColor: experimental.autoGrounding ? "#4B7A52" : "#d5e0d7" }}
+                >
+                  <span
+                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{ transform: experimental.autoGrounding ? "translateX(15px)" : "translateX(1px)" }}
+                  />
+                </button>
+                <label className="text-sm font-medium text-foreground">
+                  {t("settings.autoGrounding.title")}
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {t("settings.autoGrounding.help")}
+              </p>
+            </div>
 
           </div>
         )}

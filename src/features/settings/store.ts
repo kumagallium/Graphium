@@ -37,6 +37,13 @@ export const JP_FONTS: readonly JpFont[] = ["", "zen-kaku", "biz-udp"] as const;
 export type ExperimentalSettings = {
   atomLayer: boolean;
   synthesis: boolean;
+  /**
+   * 自動 world-grounding（opt-in / 既定 OFF）。
+   * ON のとき、未照合の洞察・知見を background で1件ずつ世界照合する
+   * （KB-first / ミス時のみ LLM）。既存の "user-triggered only" を覆すので
+   * 既定 OFF。コストはユーザーの新規性レートに収束する（使うほど KB ヒットが増える）。
+   */
+  autoGrounding: boolean;
 };
 
 export type Settings = {
@@ -85,6 +92,7 @@ const DEFAULT_SETTINGS: Settings = {
   experimental: {
     atomLayer: false,
     synthesis: false,
+    autoGrounding: false,
   },
   displayCurrency: "usd",
   usdJpyRate: 150,
@@ -158,6 +166,7 @@ export function loadSettings(): Settings {
         atomLayer: typeof exp?.atomLayer === "boolean" ? exp.atomLayer : false,
         // Synthesis は Atom 依存のため、atomLayer OFF なら強制的に OFF とする
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
+        autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
       },
     };
   } catch {
@@ -262,6 +271,15 @@ export function isAgentConfigured(): boolean {
  */
 export function isAtomLayerEnabled(): boolean {
   return true;
+}
+
+/**
+ * 自動 world-grounding が有効かどうか（opt-in / 既定 OFF）。
+ * 反応的に使いたい箇所では loadSettings().experimental.autoGrounding を state に
+ * 載せること（既存の experimentalFlags パターン）。これは即時判定用。
+ */
+export function isAutoGroundingEnabled(): boolean {
+  return loadSettings().experimental?.autoGrounding ?? false;
 }
 
 /**

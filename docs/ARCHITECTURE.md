@@ -286,8 +286,11 @@ Notes:
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.
-Strictly **user-triggered** (banner button or list-view bulk action) and
-never runs on file open. PR 2C dropped both domain partitioning and
+**User-triggered by default** (banner button or list-view bulk action),
+never on file open; an opt-in setting ("Auto-ground new knowledge",
+default OFF) adds a serialized, debounced background sweep that reacts to
+new insights (`wikiMetas` changes) and grounds un-checked ones one at a
+time (`useAutoGrounding`). PR 2C dropped both domain partitioning and
 subject tagging — Graphium is a general-purpose note editor, so a
 single KB covers claims from any field (cooking, economics, software,
 materials, etc.), and asking the LLM to pick a subject label per entry
