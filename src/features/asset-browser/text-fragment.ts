@@ -22,7 +22,7 @@ const CONTEXT_LEN = 12; // 曖昧性解消用の prefix / suffix 長さ
  *
  * `fullText` 内に同じ文字列が複数回出現する場合、prefix-/-suffix で曖昧性を解消する。
  * 出現しない場合（normalize ズレ等）はそのまま返す。
- * encode は呼び出し側で `encodeURIComponent` するか、`buildHashFragment` を使う。
+ * encode は呼び出し側で `encodeURIComponent` する。
  */
 export function buildTextFragment(selection: string, fullText: string): string | undefined {
   const clean = collapseWhitespace(selection);
@@ -51,15 +51,6 @@ export function buildTextFragment(selection: string, fullText: string): string |
   if (!head || !tail) return `text=${encodePart(clean.slice(0, SHORT_THRESHOLD))}`;
 
   return `text=${encodePart(head)},${encodePart(tail)}`;
-}
-
-/**
- * `#:~:text=...` 形式の完全な hash を組み立てる（URL に直接付けられる形）。
- */
-export function buildHashFragment(selection: string, fullText: string): string | undefined {
-  const fragment = buildTextFragment(selection, fullText);
-  if (!fragment) return undefined;
-  return `#:~:${fragment}`;
 }
 
 function collapseWhitespace(s: string): string {

@@ -17,7 +17,7 @@ import type { WikiKind } from "../../lib/document-types";
  *  - claim    : 紅葉色（主張＝注目）— メディアのゴールド/オレンジと衝突しない色相
  *  - synthesis: 紫紺（統合＝重み）
  */
-export const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
+const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
   summary: "#9b6dcc",
   atom: "#6ba89e",
   claim: "#c46d56",
@@ -25,7 +25,7 @@ export const KNOWLEDGE_KIND_COLORS: Record<WikiKind, string> = {
 } as const;
 
 /** Knowledge kind 別の border 色（塗りより 15〜20% 暗い） */
-export const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
+const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
   summary: "#7b4fb0",
   atom: "#4f8a80",
   claim: "#9b5644",
@@ -33,8 +33,8 @@ export const KNOWLEDGE_KIND_BORDERS: Record<WikiKind, string> = {
 } as const;
 
 /** kind 未指定 / 不明なときのフォールバック（既存紫色を維持） */
-export const KNOWLEDGE_FALLBACK_COLOR = "#9b6dcc";
-export const KNOWLEDGE_FALLBACK_BORDER = "#7b4fb0";
+const KNOWLEDGE_FALLBACK_COLOR = "#9b6dcc";
+const KNOWLEDGE_FALLBACK_BORDER = "#7b4fb0";
 
 /** WikiKind を受け取って塗り色を返す */
 export function knowledgeKindColor(kind: WikiKind | undefined): string {

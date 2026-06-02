@@ -206,11 +206,3 @@ export function buildLineageTree(
 
   return visit(currentNoteId, 0, new Set(), []);
 }
-
-/** ツリーに含まれる全ノード数（現在ノート含む） */
-export function countLineageNodes(node: LineageNode | null): number {
-  if (!node) return 0;
-  let n = 1;
-  for (const p of node.parents) n += countLineageNodes(p);
-  return n;
-}

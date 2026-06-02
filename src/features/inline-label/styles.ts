@@ -63,10 +63,10 @@ function buildSpec(label: InlineLabel) {
   );
 }
 
-export const inlineMaterialStyle = buildSpec("material");
-export const inlineToolStyle = buildSpec("tool");
-export const inlineAttributeStyle = buildSpec("attribute");
-export const inlineOutputStyle = buildSpec("output");
+const inlineMaterialStyle = buildSpec("material");
+const inlineToolStyle = buildSpec("tool");
+const inlineAttributeStyle = buildSpec("attribute");
+const inlineOutputStyle = buildSpec("output");
 
 /**
  * BlockNoteSchema.create に渡す styleSpecs マップ。

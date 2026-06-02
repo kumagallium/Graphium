@@ -6,10 +6,6 @@ export { ingestPdfToProv } from "./pdf-ingester-api";
 export type { IngestPdfResult } from "./pdf-ingester-api";
 export { ingestDocxToProv } from "./docx-ingester-api";
 export type { IngestDocxResult } from "./docx-ingester-api";
-export {
-  buildPlanAndExecutionNotes,
-  withPartOfPlanNoteId,
-} from "./plan-execution-builder";
 export type {
   PlanExecutionBuildResult,
   PlanExecutionSourceMeta,
