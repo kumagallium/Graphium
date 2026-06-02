@@ -94,7 +94,17 @@ type ClipBounds = { top: number; bottom: number };
 // ──────────────────────────────────
 // ProvIndicatorLayer
 // ──────────────────────────────────
-export function ProvIndicatorLayer({ wrapperEl }: { wrapperEl?: HTMLElement | null } = {}) {
+export function ProvIndicatorLayer({
+  wrapperEl,
+  hidden = false,
+  bottomInset = 0,
+}: {
+  wrapperEl?: HTMLElement | null;
+  /** モバイルで全画面オーバーレイ（右パネル）が開いている間はラベルを描画しない */
+  hidden?: boolean;
+  /** 画面下端からの予約領域（モバイルのボトムバー高さ等）。この内側にラベルを置かない */
+  bottomInset?: number;
+} = {}) {
   const { labels, getLabel, setLabel, openBlockId } = useLabelStore();
   const { links, getOutgoing, getIncoming, removeLink } = useLinkStore();
   const [indicators, setIndicators] = useState<IndicatorInfo[]>([]);
@@ -147,8 +157,13 @@ export function ProvIndicatorLayer({ wrapperEl }: { wrapperEl?: HTMLElement | nu
     }
     // サイドバー境界の左にラベルを配置（8px の余白）
     const indicatorLeft = effectiveRight - 8;
-    // ラベルの表示範囲をエディタラッパー内に制限
-    setClipBounds({ top: wrapperRect.top, bottom: wrapperRect.bottom });
+    // ラベルの表示範囲をエディタラッパー内に制限。
+    // モバイルではボトムバー（bottomInset）の上端でクリップし、固定ツールバーと重ならないようにする。
+    const clipBottom =
+      bottomInset > 0
+        ? Math.min(wrapperRect.bottom, window.innerHeight - bottomInset)
+        : wrapperRect.bottom;
+    setClipBounds({ top: wrapperRect.top, bottom: clipBottom });
 
     const next: IndicatorInfo[] = [];
     blockIds.forEach((blockId) => {
@@ -180,7 +195,7 @@ export function ProvIndicatorLayer({ wrapperEl }: { wrapperEl?: HTMLElement | nu
       });
     });
     setIndicators(next);
-  }, [labels, links, getLabel, getOutgoing, getIncoming, wrapperEl]);
+  }, [labels, links, getLabel, getOutgoing, getIncoming, wrapperEl, bottomInset]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(compute);
@@ -222,7 +237,9 @@ export function ProvIndicatorLayer({ wrapperEl }: { wrapperEl?: HTMLElement | nu
     if (openBlockId) setActiveBlockId(openBlockId);
   }, [openBlockId]);
 
-  if (indicators.length === 0) return null;
+  // モバイルで全画面オーバーレイ（右パネル）が開いている間は、エディタが隠れているため
+  // ラベルが空白に孤立して見える。描画自体を止める。
+  if (hidden || indicators.length === 0) return null;
 
   return createPortal(
     <>
@@ -645,7 +662,7 @@ function LinkRow({
 // ホバーで「#」を表示するレイヤー
 // ラベルもリンクもないブロックにホバーすると右端に表示
 // ──────────────────────────────────
-export function ProvIndicatorHoverHint({ wrapperEl, zIndex }: { wrapperEl?: HTMLElement | null; zIndex?: number } = {}) {
+export function ProvIndicatorHoverHint({ wrapperEl, zIndex, hidden = false }: { wrapperEl?: HTMLElement | null; zIndex?: number; hidden?: boolean } = {}) {
   const { labels, openDropdown } = useLabelStore();
   const { links } = useLinkStore();
   const [hoverBlock, setHoverBlock] = useState<{
@@ -730,7 +747,7 @@ export function ProvIndicatorHoverHint({ wrapperEl, zIndex }: { wrapperEl?: HTML
     };
   }, [labels, links, wrapperEl]);
 
-  if (!hoverBlock) return null;
+  if (hidden || !hoverBlock) return null;
 
   // 対象ブロックのハイライト用 rect を取得
   const targetOuter = document.querySelector(
