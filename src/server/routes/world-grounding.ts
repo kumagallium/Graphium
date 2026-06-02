@@ -17,6 +17,7 @@ import {
   buildWorldGroundingSystemPrompt,
   buildWorldGroundingUserMessage,
   parseWorldGroundingOutput,
+  verifyResultSourceUrls,
 } from "../services/world-grounding.js";
 
 const app = new Hono();
@@ -55,8 +56,11 @@ app.post("/check", async (c) => {
       modelConfig,
     });
     const parsed = parseWorldGroundingOutput(llmResult.message);
+    // 幻覚 URL 対策・第 2 段: ホスト名 whitelist を通った url も実在検証し、
+    // 404 / 確認不能なものは剥がす（ref は残す）。KB ミス時のみ走る重い経路。
+    const verified = parsed ? await verifyResultSourceUrls(parsed) : null;
     return c.json({
-      result: parsed,
+      result: verified,
       model: llmResult.model,
       tokenUsage: llmResult.tokenUsage,
     });

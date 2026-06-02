@@ -309,6 +309,16 @@ cache layer if the result passes the sedimentation rules
 `generatedByModel` + non-empty `claim` / `keywords`). The next check
 on a similar claim is served from the cache layer at no LLM cost.
 
+Source URLs returned by the LLM judge are hallucination-guarded in two
+stages (`server/services/world-grounding.ts`): (1) a hostname whitelist
+(`sanitizeSourceUrl` — only Wikipedia / DOI / arXiv survive), then (2) a
+network existence check (`verifySourceUrl` — Wikipedia REST summary 404 ⇒
+no article; arXiv / DOI HEAD). Stage 2 runs only on the LLM-judge path
+(never on KB hits), so it adds one fast request next to an already-slow
+model call. A URL that fails verification is dropped while its `ref`
+text is kept — a missing link is preferred over a fabricated one, so
+hallucinated citations never sediment into the cache KB.
+
 The lane is strictly separate from `epistemicStatus` /
 `hypothesisStatus` — `attachValidity` never writes those fields. See
 [DATA_MODEL.md §3.7](./DATA_MODEL.md) for the contract and

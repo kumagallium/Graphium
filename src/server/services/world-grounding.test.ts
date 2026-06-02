@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildWorldGroundingSystemPrompt,
   buildWorldGroundingUserMessage,
   parseWorldGroundingOutput,
+  verifyResultSourceUrls,
+  verifySourceUrl,
 } from "./world-grounding.js";
 
 describe("buildWorldGroundingSystemPrompt", () => {
@@ -161,6 +163,92 @@ describe("parseWorldGroundingOutput", () => {
     });
     const out = parseWorldGroundingOutput(raw);
     expect(out?.sources?.[0].url).toBeUndefined();
+  });
+});
+
+// 幻覚 URL 対策・第 2 段: 実在検証（ユーザー報告: gpt-oss が whitelist 内ドメインの
+// 実在しない Wikipedia 記事 URL を吐く → 404 リンクが KB に沈殿していた）
+describe("verifySourceUrl: URL の実在をネットワークで検証する", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch(impl: (url: string, init?: any) => Promise<{ ok: boolean }>) {
+    vi.stubGlobal("fetch", vi.fn((u: any, init?: any) => impl(String(u), init)));
+  }
+
+  it("Wikipedia: REST summary が 200 なら実在 = true", async () => {
+    stubFetch(async (url) => {
+      expect(url).toContain("/api/rest_v1/page/summary/");
+      return { ok: true };
+    });
+    expect(await verifySourceUrl("https://en.wikipedia.org/wiki/Entropy")).toBe(true);
+  });
+
+  it("Wikipedia: REST summary が 404 なら実在せず = false", async () => {
+    stubFetch(async () => ({ ok: false }));
+    expect(
+      await verifySourceUrl("https://ja.wikipedia.org/wiki/存在しない記事ABC"),
+    ).toBe(false);
+  });
+
+  it("Wikipedia: /wiki/ でないパス（幻覚の検索 URL 等）は false", async () => {
+    stubFetch(async () => ({ ok: true }));
+    expect(
+      await verifySourceUrl("https://en.wikipedia.org/w/index.php?search=foo"),
+    ).toBe(false);
+  });
+
+  it("arXiv / DOI: HEAD が ok なら true、404 なら false", async () => {
+    stubFetch(async (url) => ({ ok: url.includes("arxiv") }));
+    expect(await verifySourceUrl("https://arxiv.org/abs/2403.12345")).toBe(true);
+    expect(await verifySourceUrl("https://doi.org/10.0/nonexistent")).toBe(false);
+  });
+
+  it("ネットワーク例外 / タイムアウトは false に倒す（不確実なら捨てる）", async () => {
+    stubFetch(async () => {
+      throw new Error("network down");
+    });
+    expect(await verifySourceUrl("https://en.wikipedia.org/wiki/Entropy")).toBe(false);
+  });
+
+  it("不正な URL 文字列は false", async () => {
+    expect(await verifySourceUrl("not a url")).toBe(false);
+  });
+});
+
+describe("verifyResultSourceUrls: 実在しない url を剥がして ref は残す", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("実在する url は残し、しない url は剥がす（ref は両方残る）", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (u: any) => ({ ok: String(u).includes("Real") })),
+    );
+    const out = await verifyResultSourceUrls({
+      verdict: "established",
+      rationale: "x",
+      sources: [
+        { ref: "Real article", url: "https://en.wikipedia.org/wiki/Real" },
+        { ref: "Fake article", url: "https://en.wikipedia.org/wiki/Fake" },
+        { ref: "No url at all" },
+      ],
+    });
+    expect(out.sources).toEqual([
+      { ref: "Real article", url: "https://en.wikipedia.org/wiki/Real" },
+      { ref: "Fake article" },
+      { ref: "No url at all" },
+    ]);
+  });
+
+  it("sources が無ければそのまま返す（fetch を呼ばない）", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = { verdict: "weak" as const, rationale: "x" };
+    expect(await verifyResultSourceUrls(result)).toBe(result);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
