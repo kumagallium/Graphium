@@ -1,0 +1,237 @@
+[
+  {
+    "type": "cycle",
+    "from": "src/features/inline-label/attribute-binding.ts",
+    "to": "src/features/inline-label/styles.ts",
+    "unresolvedTo": "./styles",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/features/inline-label/styles.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/features/inline-label/attribute-binding.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "dependency",
+    "from": "src/base/editor.tsx",
+    "to": "src/features/block-selection/index.ts",
+    "unresolvedTo": "@features/block-selection",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "base-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/base/editor.tsx",
+    "to": "src/features/context-label/hashtag-menu.ts",
+    "unresolvedTo": "@features/context-label/hashtag-menu",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "base-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/base/editor.tsx",
+    "to": "src/features/inline-label/inline-anchor-controller.tsx",
+    "unresolvedTo": "../features/inline-label/inline-anchor-controller",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "base-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/base/editor.tsx",
+    "to": "src/features/inline-label/styles.ts",
+    "unresolvedTo": "@features/inline-label/styles",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "base-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-capture.ts",
+    "to": "src/features/mobile-capture/index.ts",
+    "unresolvedTo": "../features/mobile-capture",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/asset-browser/index.ts",
+    "unresolvedTo": "../features/asset-browser",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/derivation/clone-document.ts",
+    "unresolvedTo": "../features/derivation/clone-document",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/document-provenance/tracker.ts",
+    "unresolvedTo": "../features/document-provenance/tracker",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/navigation/index.ts",
+    "unresolvedTo": "../features/navigation",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/network-graph/index.ts",
+    "unresolvedTo": "../features/network-graph",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/skill/skill-service.ts",
+    "unresolvedTo": "../features/skill/skill-service",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-file-manager.ts",
+    "to": "src/features/skill/system-skills.ts",
+    "unresolvedTo": "../features/skill/system-skills",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/hooks/use-prov-generation.ts",
+    "to": "src/features/prov-generator/index.ts",
+    "unresolvedTo": "../features/prov-generator",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "hooks-not-to-features"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/lib/document-migration.ts",
+    "to": "src/features/context-label/labels.ts",
+    "unresolvedTo": "../features/context-label/labels",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "warn",
+      "name": "lib-not-to-features"
+    }
+  }
+]
