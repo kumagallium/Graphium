@@ -8,6 +8,5 @@ export type {
   BlockContentDiff,
 } from "./types";
 export { recordRevision, detectActivityType, createEmptyProvenance } from "./tracker";
-export { computeRevisionSummary, isEmptySummary } from "./diff";
 export { buildDocumentProvenanceBundle } from "./prov-output";
 export { DocumentProvenancePanel } from "./DocumentProvenancePanel";

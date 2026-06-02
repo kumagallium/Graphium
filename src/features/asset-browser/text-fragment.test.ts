@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTextFragment, buildHashFragment } from "./text-fragment";
+import { buildTextFragment } from "./text-fragment";
 
 describe("buildTextFragment", () => {
   it("短い選択をそのまま textStart として返す", () => {
@@ -62,16 +62,5 @@ describe("buildTextFragment", () => {
     expect(fragment).toContain("%2C");
     expect(fragment).toContain("%2D");
     expect(fragment).toContain("%26");
-  });
-});
-
-describe("buildHashFragment", () => {
-  it("`#:~:text=...` 形式の完全な hash を返す", () => {
-    const hash = buildHashFragment("hello", "hello world");
-    expect(hash).toBe("#:~:text=hello");
-  });
-
-  it("空文字なら undefined", () => {
-    expect(buildHashFragment("", "x")).toBeUndefined();
   });
 });

@@ -11,14 +11,9 @@
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry, MediaType } from "./media-index";
 
-/** 静止画 URL の解決可否（type だけで決まる）。 */
-export function isThumbnailableType(type: MediaType | undefined): boolean {
-  return type === "image" || type === "video";
-}
-
 /** 既存呼び出しのための薄いラッパー。MediaIndexEntry を直接受け取るバージョン。 */
 export function isThumbnailable(entry: MediaIndexEntry): boolean {
-  return isThumbnailableType(entry.type);
+  return entry.type === "image" || entry.type === "video";
 }
 
 /** resolveMediaThumbUrl が必要な最小限のフィールド（NoteNode からも呼べるよう抽象化）。 */

@@ -176,5 +176,4 @@ export {
   mergeKb,
   removeFromKbCache,
 } from "./kb-cache";
-export type { WorldGroundingModelResult } from "./llm-fallback";
 export { checkValidityViaModel } from "./llm-fallback";
