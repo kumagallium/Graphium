@@ -31,6 +31,22 @@ export function isDocumentMime(mimeType: string): boolean {
   return DOCUMENT_MIMES.has(mimeType);
 }
 
+/** Word (.docx) の MIME。埋め込み画像抽出は .docx のみ対応（.doc/.xls/.ppt は非対応）。 */
+const WORD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** Word (.docx) 素材かどうか */
+export function isWordDocxEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && entry.mimeType === WORD_DOCX_MIME;
+}
+
+/**
+ * 埋め込み画像抽出（PDF / Word .docx）の対象になる素材か。
+ * PDF は pdf-image-extractor、Word は docx-import/extract-images が処理する。
+ */
+export function canExtractEmbeddedImages(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "pdf" || isWordDocxEntry(entry);
+}
+
 /** メディアが使用されているノートの情報 */
 export type MediaUsage = {
   noteId: string;

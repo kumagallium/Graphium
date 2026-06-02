@@ -999,6 +999,8 @@ export const ja: Record<string, string> = {
   "asset.bulkIngestTitle": "選択した URL/PDF を Knowledge 化（既存は再生成）",
   "asset.bulkCreateProvNote": "{count} 件から手順を抽出してノート化",
   "asset.bulkCreateProvNoteTitle": "選択した URL/PDF の内容から手順を抽出してノート化（AI）",
+  "asset.bulkExtractImages": "{count} 件から画像を抽出",
+  "asset.bulkExtractImagesTitle": "選択した PDF / Word (.docx) の埋め込み画像を取り出し、画像アセットとして登録します（ベクター figure や表は対象外）。",
   "asset.createProvNote": "手順を抽出してノート化",
   "asset.createProvNoteTitle": "この素材の内容から手順を抽出してノートを作成（AI）",
 

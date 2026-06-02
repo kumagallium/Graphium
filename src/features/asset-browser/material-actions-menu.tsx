@@ -20,6 +20,7 @@ import { loadAuthorIdentity } from "../identity";
 import { getSharedRoot, getBlobRoot } from "../../lib/storage/shared";
 import { shareMedia, shareReference } from "../sharing";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { isWordDocxEntry } from "./media-index";
 import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 export type MaterialActionsMenuProps = {
@@ -133,8 +134,7 @@ export function MaterialActionsMenu({
 
   // Word (.docx) も Knowledge 化 / PROV ノート化 / 埋め込み画像抽出対象に含める
   // （PDF と機能を揃える）。Excel/PowerPoint は未対応。
-  const isDocxEntry = entry.type === "document"
-    && entry.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const isDocxEntry = isWordDocxEntry(entry);
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   const canExtract =

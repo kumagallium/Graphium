@@ -2,13 +2,13 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
@@ -520,6 +520,7 @@ export function AssetGalleryView({
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [bulkExtracting, setBulkExtracting] = useState(false);
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -757,6 +758,38 @@ export function AssetGalleryView({
       setBulkDownloading(false);
     }
   }, [downloadEntry, filtered, selectedIds]);
+
+  // 一括埋め込み画像抽出: 選択中の PDF / Word (.docx) のみ対象
+  const extractableSelectedCount = useMemo(
+    () =>
+      filtered.filter((e) => selectedIds.has(e.fileId) && canExtractEmbeddedImages(e)).length,
+    [filtered, selectedIds],
+  );
+  const handleBulkExtractImages = useCallback(async () => {
+    const targets = filtered.filter(
+      (e) => selectedIds.has(e.fileId) && canExtractEmbeddedImages(e),
+    );
+    if (targets.length === 0) return;
+    setBulkExtracting(true);
+    try {
+      // 順次実行（各 entry が内部で画像を順次アップロードするため、並列だと
+      // mediaIndex の race が起きうる）。個別の進捗トーストは各ハンドラ側に任せる。
+      for (const entry of targets) {
+        try {
+          if (entry.type === "pdf" && onExtractPdfPages) {
+            await onExtractPdfPages(entry, () => {});
+          } else if (entry.type === "document" && onExtractDocxImages) {
+            await onExtractDocxImages(entry, () => {});
+          }
+        } catch (err) {
+          console.error("[asset-gallery] 画像抽出失敗:", entry.name, err);
+        }
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkExtracting(false);
+    }
+  }, [filtered, selectedIds, onExtractPdfPages, onExtractDocxImages]);
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
@@ -1039,6 +1072,19 @@ export function AssetGalleryView({
               >
                 <Bot size={12} />
                 {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) && (
+              <button
+                onClick={() => void handleBulkExtractImages()}
+                disabled={bulkExtracting}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                title={t("asset.bulkExtractImagesTitle")}
+              >
+                {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
+                {bulkExtracting
+                  ? t("asset.pdfExtractImages.running")
+                  : t("asset.bulkExtractImages", { count: String(extractableSelectedCount) })}
               </button>
             )}
             {downloadableSelectedCount > 0 && (
