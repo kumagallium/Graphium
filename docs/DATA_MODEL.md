@@ -641,11 +641,19 @@ so the on-disk index schema is unchanged. A future PR that needs the
 verdict in the persisted index (e.g. cross-session quadrant badges) is
 responsible for adding that column and bumping the schema version (§5.1).
 
-Grounding is **user-triggered only** (banner button or bulk action on
-the list view) — there is no open-time or periodic auto-check (PR 2A
-plan §4 / kickoff §4 cost-floor rule). The verdict is presented as the
-KB's positioning of the claim, not as a judgment of the user's stance
-— the final call stays with the user (SPEC §8-1 / §8-4).
+Grounding is **user-triggered by default** (banner button or bulk action
+on the list view) — there is no open-time auto-check. An **opt-in**
+setting (Settings → AI → "Auto-ground new knowledge", default OFF) adds a
+background sweep that grounds un-checked insights/claims one at a time
+(`useAutoGrounding` / `pickNextUngrounded`). It reacts to `wikiMetas`
+changes — i.e. fires when an insight is created — serialized and
+debounced so a bulk creation (e.g. atomize) coalesces instead of
+bursting. It is
+KB-first, so cost converges to "one model call per genuinely novel world
+fact" as the KB grows. The default stays manual to honor the cost-floor
+rule and to avoid surprising existing users on upgrade. The verdict is
+presented as the KB's positioning of the claim, not as a judgment of the
+user's stance — the final call stays with the user (SPEC §8-1 / §8-4).
 
 PR 2B flips the validity engine into a **two-layer KB + LLM fallback**, and
 PR 2C drops both domain partitioning *and* subject tagging so the KB works
