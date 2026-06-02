@@ -999,6 +999,8 @@ export const en: Record<string, string> = {
   "asset.bulkIngestTitle": "Add selected URLs/PDFs to Knowledge (regenerates existing entries)",
   "asset.bulkCreateProvNote": "Extract steps into notes from {count}",
   "asset.bulkCreateProvNoteTitle": "Extract steps from the selected URLs/PDFs into notes (AI)",
+  "asset.bulkExtractImages": "Extract images from {count}",
+  "asset.bulkExtractImagesTitle": "Pull embedded images from the selected PDFs / Word (.docx) files and register them as image assets (vector figures and tables are not supported).",
   "asset.createProvNote": "Extract steps into a note",
   "asset.createProvNoteTitle": "Extract steps from this material and create a note (AI)",
 

@@ -2,13 +2,13 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDate, formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
@@ -130,15 +130,20 @@ function ImageThumbnail({ entry, compact = false }: { entry: MediaIndexEntry; co
   const wrapperCls = compact
     ? "w-10 h-10 flex items-center justify-center rounded bg-muted overflow-hidden shrink-0"
     : "w-full h-40 flex items-center justify-center bg-muted";
-  const imgCls = compact
-    ? "w-10 h-10 object-cover rounded bg-muted shrink-0"
-    : "w-full h-40 object-contain bg-muted";
+  // 画像は必ず wrapper div の中に入れる。裸の <img> だと preflight の
+  // img{max-width:100%} が効き、list 表示で列幅 0 のときサムネが 0px に潰れる。
+  const imgCls = compact ? "w-full h-full object-cover" : "w-full h-full object-contain";
   const iconSize = compact ? 16 : 32;
 
-  if (!src) {
-    return <div className={wrapperCls}><Image size={iconSize} className="text-muted-foreground" /></div>;
-  }
-  return <img src={src} alt={entry.name} className={imgCls} loading="lazy" />;
+  return (
+    <div className={wrapperCls}>
+      {src ? (
+        <img src={src} alt={entry.name} className={imgCls} loading="lazy" />
+      ) : (
+        <Image size={iconSize} className="text-muted-foreground" />
+      )}
+    </div>
+  );
 }
 
 // 動画サムネイル: Intersection Observer で画面内に入ったときだけ Blob URL を取得
@@ -520,6 +525,7 @@ export function AssetGalleryView({
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [bulkExtracting, setBulkExtracting] = useState(false);
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -757,6 +763,43 @@ export function AssetGalleryView({
       setBulkDownloading(false);
     }
   }, [downloadEntry, filtered, selectedIds]);
+
+  // 一括埋め込み画像抽出: 選択中の PDF / Word (.docx) のうち、
+  // まだ画像を抽出していないものだけを対象にする（重複抽出でゴミが増えるのを防ぐ）。
+  const isBulkExtractTarget = useCallback(
+    (e: MediaIndexEntry) =>
+      canExtractEmbeddedImages(e) && !!mediaIndex && !hasExtractedImages(e, mediaIndex),
+    [mediaIndex],
+  );
+  const extractableSelectedCount = useMemo(
+    () => filtered.filter((e) => selectedIds.has(e.fileId) && isBulkExtractTarget(e)).length,
+    [filtered, selectedIds, isBulkExtractTarget],
+  );
+  const handleBulkExtractImages = useCallback(async () => {
+    const targets = filtered.filter(
+      (e) => selectedIds.has(e.fileId) && isBulkExtractTarget(e),
+    );
+    if (targets.length === 0) return;
+    setBulkExtracting(true);
+    try {
+      // 順次実行（各 entry が内部で画像を順次アップロードするため、並列だと
+      // mediaIndex の race が起きうる）。個別の進捗トーストは各ハンドラ側に任せる。
+      for (const entry of targets) {
+        try {
+          if (entry.type === "pdf" && onExtractPdfPages) {
+            await onExtractPdfPages(entry, () => {});
+          } else if (entry.type === "document" && onExtractDocxImages) {
+            await onExtractDocxImages(entry, () => {});
+          }
+        } catch (err) {
+          console.error("[asset-gallery] 画像抽出失敗:", entry.name, err);
+        }
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkExtracting(false);
+    }
+  }, [filtered, selectedIds, isBulkExtractTarget, onExtractPdfPages, onExtractDocxImages]);
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
@@ -1039,6 +1082,19 @@ export function AssetGalleryView({
               >
                 <Bot size={12} />
                 {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) && (
+              <button
+                onClick={() => void handleBulkExtractImages()}
+                disabled={bulkExtracting}
+                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                title={t("asset.bulkExtractImagesTitle")}
+              >
+                {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
+                {bulkExtracting
+                  ? t("asset.pdfExtractImages.running")
+                  : t("asset.bulkExtractImages", { count: String(extractableSelectedCount) })}
               </button>
             )}
             {downloadableSelectedCount > 0 && (

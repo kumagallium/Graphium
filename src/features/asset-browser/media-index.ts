@@ -31,6 +31,35 @@ export function isDocumentMime(mimeType: string): boolean {
   return DOCUMENT_MIMES.has(mimeType);
 }
 
+/** Word (.docx) の MIME。埋め込み画像抽出は .docx のみ対応（.doc/.xls/.ppt は非対応）。 */
+const WORD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** Word (.docx) 素材かどうか */
+export function isWordDocxEntry(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "document" && entry.mimeType === WORD_DOCX_MIME;
+}
+
+/**
+ * 埋め込み画像抽出（PDF / Word .docx）の対象になる素材か。
+ * PDF は pdf-image-extractor、Word は docx-import/extract-images が処理する。
+ */
+export function canExtractEmbeddedImages(entry: { type: MediaType; mimeType: string }): boolean {
+  return entry.type === "pdf" || isWordDocxEntry(entry);
+}
+
+/**
+ * この素材から既に埋め込み画像を抽出済みか。
+ * 抽出された画像は derivedFromAssets に元素材の fileId を持つため、
+ * それが 1 つでも index に存在すれば「抽出済み」とみなす。
+ * （派生画像をすべて削除すれば再抽出できる状態に戻る）
+ */
+export function hasExtractedImages(
+  entry: { fileId: string },
+  index: { media: Array<{ derivedFromAssets?: string[] }> },
+): boolean {
+  return index.media.some((m) => m.derivedFromAssets?.includes(entry.fileId));
+}
+
 /** メディアが使用されているノートの情報 */
 export type MediaUsage = {
   noteId: string;
