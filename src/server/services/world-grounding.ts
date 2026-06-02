@@ -23,12 +23,15 @@ const VERDICT_VALUES: GroundingValidityVerdict[] = [
 ];
 
 /**
- * LLM が source URL に幻覚を入れがちなので、確証あるドメインだけ通す。
- * - Wikipedia 記事は記事ページ自体が存在しなくても妥当な検索結果になる
- * - DOI は resolver が必ず実体に解決する
- * - arXiv は abstract ページが安定して存在する
+ * 幻覚 URL 対策・第 1 段（ホスト名 whitelist）。
+ * LLM は source URL に幻覚を入れがちなので、まず確証あるドメインだけ通す。
+ * - Wikipedia / DOI / arXiv は実在検証 API があり、第 2 段で中身を確かめられる
  * これら以外の URL（出版社サイト / 論文 PDF 直リンク / lab page など）は
  * パスが幻覚で生成されがちなので捨てる。"ref" テキストだけは残す。
+ *
+ * 注意: ホスト名が合っていても記事 / DOI が実在するとは限らない。小型モデルは
+ * `ja.wikipedia.org/wiki/<実在しない記事>` を平気で吐く。実在の最終確認は
+ * verifySourceUrl（第 2 段・ネットワーク検証）が行う。
  */
 const SAFE_URL_HOSTS = new Set([
   "en.wikipedia.org",
@@ -201,4 +204,76 @@ export function parseWorldGroundingOutput(raw: string): WorldGroundingResult | n
     keywords: keywords && keywords.length > 0 ? keywords : undefined,
     sources: sources && sources.length > 0 ? sources : undefined,
   };
+}
+
+// ── 幻覚 URL 対策・第 2 段: 実在検証 ────────────────────────────────
+// sanitizeSourceUrl がホスト名 whitelist で「形」を弾くのに対し、こちらは
+// 「中身（記事 / DOI / abstract が本当に在るか）」をネットワークで確かめる。
+// 小型モデル（gpt-oss 等）は whitelist 内ドメインの実在しないパスを平気で吐くため、
+// ホスト名チェックだけでは 404 リンクが KB に沈殿する（ユーザー報告で発覚）。
+// fallback パス（KB ミス時）でのみ走るので、既に遅い LLM 呼び出しの隣では誤差。
+
+/** 実在検証のタイムアウト（ms）。遅い経路なので短くてよい。 */
+const URL_VERIFY_TIMEOUT_MS = 3500;
+/** Wikipedia は UA 無しリクエストを弾くことがあるので明示する。 */
+const GROUNDING_UA =
+  "Graphium-world-grounding/1.0 (+https://github.com/kumagallium/Graphium)";
+
+/**
+ * source URL が実在するかをネットワークで検証する。
+ * - Wikipedia: REST summary API で判定（404 = 記事なし）。`/wiki/` への HEAD は
+ *   存在しない記事でも 200（案内ページ）を返すため使えない。
+ * - arXiv / DOI: HEAD でリダイレクト追跡し `res.ok` を見る。
+ * 検証できない（タイムアウト / ネットワーク断 / 不正 URL）ときは false に倒す。
+ * 「本物だけ残す」方針なので、不確実なら url を捨てて ref だけ残す。
+ */
+export async function verifySourceUrl(url: string): Promise<boolean> {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  try {
+    if (u.hostname === "en.wikipedia.org" || u.hostname === "ja.wikipedia.org") {
+      const m = u.pathname.match(/^\/wiki\/(.+)$/);
+      if (!m) return false;
+      const api = `https://${u.hostname}/api/rest_v1/page/summary/${m[1]}?redirect=true`;
+      const res = await fetch(api, {
+        method: "GET",
+        redirect: "follow",
+        headers: { "user-agent": GROUNDING_UA },
+        signal: AbortSignal.timeout(URL_VERIFY_TIMEOUT_MS),
+      });
+      return res.ok; // 200 = 記事あり / 404 = なし
+    }
+    // arxiv.org / doi.org（doi は resolver なので未知 DOI は 404）
+    const res = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: { "user-agent": GROUNDING_UA },
+      signal: AbortSignal.timeout(URL_VERIFY_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * result.sources の url を実在検証し、存在しない / 確認できない url を剥がす（ref は残す）。
+ * 0-3 件想定なので並列でよい。sources が無ければそのまま返す。
+ */
+export async function verifyResultSourceUrls(
+  result: WorldGroundingResult,
+): Promise<WorldGroundingResult> {
+  if (!result.sources || result.sources.length === 0) return result;
+  const verified = await Promise.all(
+    result.sources.map(async (s) => {
+      if (!s.url) return s;
+      const ok = await verifySourceUrl(s.url);
+      return ok ? s : { ref: s.ref };
+    }),
+  );
+  return { ...result, sources: verified };
 }
