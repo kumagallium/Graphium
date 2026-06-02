@@ -26,6 +26,9 @@ jobs:
       - name: Type check
         run: pnpm exec tsc --noEmit
 
+      - name: Dependency boundaries
+        run: pnpm run lint:deps
+
       - name: Run tests
         run: pnpm test -- --run
 
