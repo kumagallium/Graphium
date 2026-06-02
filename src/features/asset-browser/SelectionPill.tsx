@@ -6,6 +6,13 @@ import { StickyNote, BookOpen } from "lucide-react";
 import { useT } from "../../i18n";
 import type { MediaIndexEntry } from "./media-index";
 
+export type PillState = {
+  text: string;
+  top: number;
+  left: number;
+  placement: "above" | "below";
+};
+
 export type CitationSource = {
   /** 引用元アセット */
   entry: Pick<MediaIndexEntry, "fileId" | "name" | "type" | "url" | "urlMeta">;

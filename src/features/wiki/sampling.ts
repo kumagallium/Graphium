@@ -15,6 +15,7 @@
 // トークン Jaccard でフォールバック。embedding 未生成の Atom も対象から漏らさない。
 
 import { embeddingStore } from "../../lib/embedding-store";
+import { cosineSimilarity } from "../../lib/vector";
 import type { ClaimSnapshot } from "../../server/services/wiki-types";
 
 /** 1 Atom 分の入力（snapshot + 類似度計算用メタ） */
@@ -48,17 +49,7 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
 
 /** コサイン類似度（0..1 に丸める。生 cosine は -1..1 だが embedding 用途では実質 0..1） */
 export function cosine(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  if (denom === 0) return 0;
-  const sim = dot / denom;
-  return sim < 0 ? 0 : sim > 1 ? 1 : sim;
+  return cosineSimilarity(a, b, true);
 }
 
 /**

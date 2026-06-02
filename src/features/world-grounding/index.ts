@@ -14,6 +14,7 @@
 // - 沈殿の鉄則は kb-cache.ts の isValidForCaching で強制
 
 import type { GroundingProfile, WikiMeta } from "../../lib/document-types";
+import { newId } from "../../lib/id";
 import { checkValidityFromKB } from "./distilled-kb-retriever";
 import { appendToKbCache } from "./kb-cache";
 import { checkValidityViaModel } from "./llm-fallback";
@@ -95,7 +96,7 @@ export async function checkValidity(
   // 生成した entryId は validity にも詰めてエッジを成す（沈殿した世界事実への接続）。
   let sedimentedEntryId: string | undefined;
   if (modelResult.verdict && modelResult.normalizedClaim && modelResult.keywords?.length) {
-    const id = `gen-${cryptoRandomId()}`;
+    const id = `gen-${newId()}`;
     const cached = await appendToKbCache({
       id,
       verdict: modelResult.verdict,
@@ -163,14 +164,6 @@ export function attachValidity(
     return { ...meta, grounding: Object.keys(rest).length > 0 ? rest : undefined };
   }
   return { ...meta, grounding: nextGrounding };
-}
-
-function cryptoRandomId(): string {
-  // node / browser 両対応の UUID 生成
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 export type { GroundingMatch, KbEntry, KbFile } from "./distilled-kb-retriever";

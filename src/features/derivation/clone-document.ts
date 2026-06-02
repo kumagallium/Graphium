@@ -14,14 +14,7 @@
 
 import type { BlockLink } from "../block-link/link-types";
 import type { GraphiumDocument, GraphiumPage, NoteLink } from "../../lib/document-types";
-
-function newId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  // Fallback for older runtimes (tests with stripped crypto)
-  return `id-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
-}
+import { newId } from "../../lib/id";
 
 /**
  * Deep-clone a BlockNote block tree, assigning a new ID to every block.

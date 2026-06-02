@@ -2,6 +2,7 @@
 // /image, /video, /audio で既存メディアのピッカーモーダルを開く
 
 import { t } from "../../i18n";
+import type { SlashMenuItem } from "../../base/slash-menu-types";
 import type { MediaType } from "./media-index";
 
 // メディアピッカーを開くコールバック。
@@ -21,14 +22,6 @@ export function setMediaPickerCallback(
   if (fn) _pickerCallbacks.set(editor, fn);
   else _pickerCallbacks.delete(editor);
 }
-
-type SlashMenuItem = {
-  title: string;
-  subtext?: string;
-  group: string;
-  aliases?: string[];
-  onItemClick: (editor: any) => void;
-};
 
 function createMediaSlashItem(
   titleKey: string,
