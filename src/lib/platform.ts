@@ -58,12 +58,6 @@ export function tauriDetectionDetail(): string {
   return hits.join(", ");
 }
 
-/** モバイルブラウザかどうか */
-export function isMobile(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
-
 /**
  * API のベース URL を取得する。
  * Web 版: "/api" (Vite proxy 経由)

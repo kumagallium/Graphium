@@ -6,7 +6,7 @@ import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, P
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
-import { formatDate, formatDateTime } from "../../lib/format-datetime";
+import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
