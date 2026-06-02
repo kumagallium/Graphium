@@ -527,11 +527,13 @@ function SidePeekInner({
 
   const containerStyle: React.CSSProperties = inline
     ? {
-        // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される
+        // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される。
+        // 狭いデスクトップ（768〜1100px）で固定 480px だとエディタが極端に細るため、
+        // ビューポート幅に応じて 320〜480px の範囲で伸縮させる。
         position: "relative",
         height: "100%",
         flexShrink: 0,
-        width: 480,
+        width: "clamp(320px, 38vw, 480px)",
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
         display: "flex",
@@ -545,7 +547,8 @@ function SidePeekInner({
         right: 0,
         bottom: 0,
         width: "55%",
-        minWidth: 400,
+        // 小型スマホ（〜420px）で固定 400px だと画面外にはみ出すため、ビューポート幅で頭打ちにする
+        minWidth: "min(400px, 90vw)",
         maxWidth: 800,
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
@@ -705,7 +708,16 @@ function SidePeekInner({
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
             <ProvIndicatorHoverHint wrapperEl={wrapperEl} zIndex={101} />
             <LabelDropdownPortal />
-            <div style={{ padding: "16px 24px", paddingRight: 80 }}>
+            {/* 右ガター（80px）はラベル/リンクのインジケータを置く場所。
+                何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
+                ラベルもリンクも無いときは左右対称（24px）にする。 */}
+            <div
+              style={{
+                padding: "16px 24px",
+                paddingRight:
+                  labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
+              }}
+            >
               <textarea
                 value={effectiveDoc?.title ?? ""}
                 onChange={(e) => {

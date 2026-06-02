@@ -2932,7 +2932,7 @@ class ListSidePeekBoundary extends Component<
       return (
         <div style={{
           position: "fixed", top: 0, right: 0, bottom: 0, width: "55%",
-          minWidth: 400, maxWidth: 800, background: "var(--color-card)",
+          minWidth: "min(400px, 90vw)", maxWidth: 800, background: "var(--color-card)",
           borderLeft: "1px solid var(--color-border-subtle)",
           boxShadow: "-4px 0 24px rgba(0,0,0,0.08)", zIndex: 100,
           display: "flex", flexDirection: "column", alignItems: "center",
