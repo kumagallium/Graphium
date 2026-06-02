@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.13.3](https://github.com/kumagallium/Graphium/compare/v0.13.2...v0.13.3) - 2026-06-02
+
+- feat(asset): bulk embedded-image extraction + list-view fixes by @kumagallium in https://github.com/kumagallium/Graphium/pull/406
+- feat(grounding): opt-in auto world-grounding (event-driven) by @kumagallium in https://github.com/kumagallium/Graphium/pull/408
+
 ## [v0.13.2](https://github.com/kumagallium/Graphium/compare/v0.13.1...v0.13.2) - 2026-06-02
 
 - feat(grounding): add bulk clear for sedimented KB cache entries by @kumagallium in https://github.com/kumagallium/Graphium/pull/400
