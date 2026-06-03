@@ -112,6 +112,12 @@ type Props = {
   /** 照合中。ボタンを disable してスピナー的に表示する。 */
   worldCheckLoading?: boolean;
   /**
+   * このノートに付いた照合結果（verdict / 出典）をクリアするトリガ。
+   * 間違った判定や幻覚 URL が焼き付いたとき、再 Check を待たずに消せるようにする。
+   * 未指定時はクリアボタンを出さない。
+   */
+  onClearWorldValidity?: () => void;
+  /**
    * 表示中の wiki 自身の ID（world-grounding edge で自分を除外するのに使う）。
    */
   wikiId?: string;
@@ -144,6 +150,7 @@ export function WikiBanner({
   onNavigateNote,
   onCheckWorldValidity,
   worldCheckLoading = false,
+  onClearWorldValidity,
   wikiId,
   allWikiMetas,
 }: Props) {
@@ -442,7 +449,10 @@ export function WikiBanner({
           checkedBy / checkedAt を tooltip を hover せずに読めるよう、派生元と同じ
           折り畳みパターンで並べる。バッジは hover、詳細は展開、と役割を分ける。 */}
       {wikiMeta.grounding?.validity?.checkedAt && (
-        <WorldGroundingDetailSection validity={wikiMeta.grounding.validity} />
+        <WorldGroundingDetailSection
+          validity={wikiMeta.grounding.validity}
+          onClear={onClearWorldValidity}
+        />
       )}
 
       {/* 同じ世界事実に接続した洞察（world-grounding edge）—
@@ -556,8 +566,10 @@ function WorldVerdictBadge({
 // 派生元セクションと同じ折り畳みトーン（dashed border / デフォルト閉）。
 function WorldGroundingDetailSection({
   validity,
+  onClear,
 }: {
   validity: NonNullable<NonNullable<WikiMeta["grounding"]>["validity"]>;
+  onClear?: () => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -697,6 +709,32 @@ function WorldGroundingDetailSection({
             {checkedBy && checkedAt && " · "}
             {checkedAt}
           </div>
+          {/* このノートの照合結果をクリア。間違った verdict / 幻覚 URL が焼き付いたとき、
+              再 Check を待たずに消せるようにする（KB キャッシュとは別に、ノート側に保存された
+              validity を attachValidity(meta, undefined) で剥がす）。 */}
+          {onClear && (
+            <button
+              onClick={onClear}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                marginTop: 6,
+                padding: "2px 8px",
+                background: "transparent",
+                border: "1px solid var(--rule)",
+                borderRadius: "var(--r-1)",
+                color: "var(--ink-3)",
+                font: "inherit",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+              title={t("wikiBanner.worldClearHint")}
+            >
+              <Trash2 size={11} />
+              {t("wikiBanner.worldClear")}
+            </button>
+          )}
         </div>
       )}
     </div>

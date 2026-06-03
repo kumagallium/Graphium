@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { FileText, Diamond, GitBranch, RotateCcw, FileType, Link2 } from "lucide-react";
 import type { LineageNode } from "./lineage-builder";
 import { useT } from "../../i18n";
+import { openExternalUrl } from "../../lib/external-link";
 
 const NODE_COLORS = {
   current: "#4B7A52",
@@ -42,7 +43,7 @@ function NodeRow({
     } else if (node.kind === "pdf" && onOpenMedia) {
       onOpenMedia(node.id.slice(4));
     } else if (node.externalUrl) {
-      window.open(node.externalUrl, "_blank", "noopener,noreferrer");
+      void openExternalUrl(node.externalUrl);
     }
   };
   const clickable = !!(node.navId || node.externalUrl || (node.kind === "pdf" && onOpenMedia));

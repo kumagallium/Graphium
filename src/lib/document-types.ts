@@ -461,6 +461,14 @@ export type GroundingProfile = {
      * verdict が null（判定不能・マッチなし）のときは undefined。
      */
     entryId?: string;
+    /**
+     * ユーザーが手動で照合結果を消した印（Phase 2）。`true` のとき:
+     * - 一覧 verdict 列・バナーには何も出さない（未照合と同じ見た目）
+     * - 自動照合の対象から外す（「消した＝自動で付け直してほしくない」を尊重）
+     * 手動「世界照合」で再照合すると新しい validity に置き換わり dismissed は消える。
+     * 「未照合（grounding 自体が無い）」と「あえて消した」を区別するためのフラグ。
+     */
+    dismissed?: boolean;
   };
   /**
    * 既存 status への作用は「提案」のみ。
@@ -526,6 +534,8 @@ export type WikiMetaSummary = {
     checkedAt?: string;
     /** 接続先 KB エントリ ID（world-grounding edge）。同一 entryId の洞察を引くのに使う。 */
     entryId?: string;
+    /** ユーザーが手動でクリアした印。自動照合の対象外にするため mirror する。 */
+    dismissed?: boolean;
   };
 };
 

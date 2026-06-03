@@ -1414,12 +1414,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               </p>
             </div>
 
-            {/* World-grounding は Chat & Ideas モデルを直接使う（PR 2B v2 で専用 dropdown を撤去）。
-                ユーザーが個別に設定しなくても済むよう、上の「Chat & Ideas モデル」が grounding にも自動適用される。 */}
-            <p className="text-xs text-muted-foreground italic">
-              {t("settings.groundingModelInfo")}
-            </p>
-
             {/* 自動 world-grounding（opt-in / 既定 OFF）。
                 既存の "user-triggered only" を覆すので明示トグル。 */}
             <div className="pt-1">
@@ -1447,6 +1441,35 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               </div>
               <p className="text-xs text-muted-foreground mt-2">
                 {t("settings.autoGrounding.help")}
+              </p>
+            </div>
+
+            {/* 世界照合専用モデル（任意）。空ならチャット・洞察モデル → default にフォールバック。
+                手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-2 block">
+                {t("settings.groundingModel")}
+              </label>
+              <div className="relative">
+                <select
+                  value={groundingModelStored}
+                  onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
+                  disabled={modelsLoading || models.length === 0}
+                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                >
+                  <option value="">
+                    {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
+                  </option>
+                  {models.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {t("settings.groundingModelHelp")}
               </p>
             </div>
 
