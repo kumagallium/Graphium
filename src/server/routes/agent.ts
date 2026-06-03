@@ -7,9 +7,9 @@ import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
-import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
-import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
-import { getRegistryUrl, getRegistryKey } from "../services/env.js";
+import { fetchRegistryServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
+import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
+import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 
 const app = new Hono();
@@ -63,10 +63,15 @@ app.post("/run", async (c) => {
     { role: "user" as const, content: body.message },
   ];
 
-  // Registry からツール・スキル取得
-  const registryUrl = getRegistryUrl(c);
-  const registryKey = getRegistryKey();
-  const allServers = await fetchRegistryServers(registryUrl, registryKey);
+  // MCP 供給源を集める: 手動登録（stdio / remote）+ 環境変数の Registry 既定（Docker のゼロ設定）。
+  // ユーザーがレジストリから選んだサーバーは具体 URL の remote として manualServers に含まれる。
+  // env の CRUCIBLE_API_URL（X-Registry-URL ヘッダー or 環境変数）だけは従来どおり自動展開する。
+  const manualServers = getManualMcpServers(c);
+  const envRegistryUrl = getRegistryUrl(c).replace(/\/$/, "");
+  const envRegistryServers = envRegistryUrl
+    ? await fetchRegistryServers(envRegistryUrl, getRegistryKey())
+    : [];
+  const allRegistryServers = envRegistryServers.map((s) => ({ s, registryUrl: envRegistryUrl }));
 
   // Wiki コンテキストを注入（Retriever 結果）
   if (body.wiki_context) {
@@ -82,31 +87,50 @@ app.post("/run", async (c) => {
     systemPrompt += buildLabeledOutputInstruction(body.language || "en");
   }
 
-  // Skill をシステムプロンプトに注入
-  const skills = filterSkills(allServers);
+  // Skill をシステムプロンプトに注入（全レジストリ横断）
+  const skills = filterSkills(allRegistryServers.map((x) => x.s));
   const skillSection = buildSkillPromptSection(skills);
   if (skillSection) {
     systemPrompt += skillSection;
   }
 
   // MCP ツール取得
-  let mcpServers = filterMCPServers(allServers);
-  // server_names が指定されていたら、そのサーバーのみ接続
-  if (body.server_names && body.server_names.length > 0) {
-    const allowed = new Set(body.server_names);
-    mcpServers = mcpServers.filter((s) => allowed.has(s.name));
-  }
-  // disabled_tools が指定されていたら、そのサーバーを除外
-  if (body.disabled_tools && body.disabled_tools.length > 0) {
-    const disabled = new Set(body.disabled_tools);
-    mcpServers = mcpServers.filter((s) => !disabled.has(s.name));
-  }
-  const mcpEndpoints = mcpServers.map((s) => ({
-    ...s,
-    url: buildMCPUrl(s, registryUrl),
-    transport: detectTransport(s),
-  }));
-  const { tools, clients } = await connectMCPServers(mcpEndpoints);
+  // server_names（許可リスト）/ disabled_tools（除外リスト）は Registry 由来・手動登録の
+  // 両方に同じ規約で適用する。
+  const allowedNames = body.server_names && body.server_names.length > 0
+    ? new Set(body.server_names)
+    : null;
+  const disabledNames = new Set(body.disabled_tools ?? []);
+  const passesFilter = (name: string): boolean =>
+    (!allowedNames || allowedNames.has(name)) && !disabledNames.has(name);
+
+  // (1) Crucible Registry 由来のサーバー（各レジストリを展開）。すべて remote 接続。
+  const registryEndpoints: MCPServerInfo[] = allRegistryServers
+    .filter(({ s }) => s.tool_type === "mcp_server" && s.status === "running")
+    .filter(({ s }) => passesFilter(s.name))
+    .map(({ s, registryUrl }) => ({
+      id: `registry:${registryUrl}:${s.name}`,
+      type: "remote",
+      name: s.name,
+      url: buildMCPUrl(s, registryUrl),
+      transport: detectTransport(s),
+    }));
+
+  // (2) ユーザーが直接登録した MCP サーバー（stdio / remote）。
+  const manualEndpoints: MCPServerInfo[] = manualServers
+    .filter((s) => passesFilter(s.name))
+    .map((s): MCPServerInfo =>
+      s.type === "stdio"
+        ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, env: s.env }
+        : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey },
+    );
+
+  // (1) ∪ (2) を接続する。同名は手動登録を優先（ユーザーの明示指定を尊重）。
+  const byName = new Map<string, MCPServerInfo>();
+  for (const e of registryEndpoints) byName.set(e.name, e);
+  for (const e of manualEndpoints) byName.set(e.name, e);
+  // 接続は永続プールで使い回す（close はプールが管理するのでここでは閉じない）。
+  const { tools } = await getMCPTools([...byName.values()]);
 
   try {
     const model = createModel(modelConfig);
@@ -133,8 +157,6 @@ app.post("/run", async (c) => {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Agent run error:", err);
     return c.json({ error: message }, 500);
-  } finally {
-    await closeMCPClients(clients);
   }
 });
 

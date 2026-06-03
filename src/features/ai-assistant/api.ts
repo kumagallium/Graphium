@@ -2,7 +2,7 @@
 // /api/* エンドポイントを呼び出して AI 機能を提供する
 
 import { apiBase, isTauri } from "../../lib/platform";
-import { getRegistryUrl, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
+import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
 
 /**
  * Registry URL・LLM API キーが設定されている場合はヘッダーに含める。
@@ -14,8 +14,20 @@ function apiHeaders(
   extra?: Record<string, string>,
 ): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
-  const registryUrl = getRegistryUrl();
-  if (registryUrl) h["X-Registry-URL"] = registryUrl;
+
+  // 直接登録した MCP サーバー（stdio / remote）を 1 本のヘッダーで送る。
+  // レジストリから選んだサーバーも具体 URL を持つ remote としてここに含まれる。
+  // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
+  const mcpServers = getEnabledMcpServers();
+  if (mcpServers.length > 0) {
+    h["X-MCP-Servers"] = JSON.stringify(
+      mcpServers.map((s) =>
+        s.type === "stdio"
+          ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
+          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}) },
+      ),
+    );
+  }
 
   // Web モード（非 Tauri）: クライアント保持の API キーをヘッダーで送信
   if (!isTauri()) {

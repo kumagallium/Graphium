@@ -151,9 +151,9 @@ docker compose -f docker-compose.standalone.yml up -d
 
 Open **http://localhost:5174/Graphium/** and start writing.
 
-### Option 3: Run with Docker — full stack (AI + MCP tools)
+### Option 3: Run with Docker — with the AI backend
 
-Run Graphium with the built-in AI backend and [Crucible Registry](https://github.com/kumagallium/Crucible) for MCP tool management.
+Run Graphium with the built-in AI backend. The AI assistant, the Knowledge Layer, and direct MCP server connections all work on their own — no external services required.
 
 ```bash
 git clone https://github.com/kumagallium/Graphium.git
@@ -165,7 +165,7 @@ docker compose up -d
 |-----|------------|
 | http://localhost:5174/Graphium/ | Graphium editor (includes AI setup) |
 
-> **Advanced:** [Crucible Registry UI](http://localhost:8081) is available for MCP server management.
+> **Advanced:** this compose file also bundles an optional [Crucible Registry](https://github.com/kumagallium/Crucible) ([UI](http://localhost:8081)) for managing many MCP servers in one place. It is not required — see *Add MCP tools* below.
 
 #### Set up your AI model
 
@@ -175,9 +175,13 @@ docker compose up -d
 
 #### Add MCP tools (optional)
 
-1. Open **http://localhost:8081** (Crucible Registry UI)
-2. Register an MCP server from a GitHub repository
-3. Tools appear in **⚙ Settings → AI Setup** and can be toggled on/off
+Graphium connects to MCP servers directly — no registry required. Open **⚙ Settings → AI Setup → MCP Servers** and add a source. Everything lives in one list, where each entry can be toggled on/off, edited, or removed:
+
+- **Local** — Graphium launches and manages the server for you, the same way Claude Desktop does. Enter a command and arguments (e.g. `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`) and Graphium spawns it over stdio; you never start or stop a process yourself. Requires the desktop app or a self-hosted backend (a browser can't launch local processes).
+- **Remote** — connect to an already-running server by its endpoint URL (e.g. `http://localhost:8100/sse`), optionally with an API key.
+- **From registry** — enter a [Crucible Registry](https://github.com/kumagallium/Crucible) URL, fetch its list of MCP servers, and pick the ones you want — each becomes its own Remote entry. The registry URL is remembered so you can re-browse later. Optional; Crucible is just a discovery source, not a dependency.
+
+The fastest way to add a server is **Paste JSON**: copy the `mcpServers` block straight from a server's README (the Claude Desktop / Cursor format) and Graphium imports it — local (`command`/`args`/`env`) and remote (`url`/`type`/`headers`) entries, one or many at a time.
 
 No `.env` editing required — everything is configured from the browser.
 
@@ -199,7 +203,7 @@ Or manually:
 
 ```bash
 git pull                      # Get latest Graphium code
-docker compose pull           # Pull latest Crucible images
+docker compose pull           # Pull latest backend images
 docker compose up -d --build  # Rebuild Graphium and restart all services
 ```
 
@@ -334,9 +338,9 @@ Graphium is a TypeScript / React app on top of [BlockNote.js](https://www.blockn
 
 For the layered breakdown, the Wiki pipeline trigger flow, distribution targets, the auth model, and known seams, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For on-disk JSON shapes and compatibility rules, read [docs/DATA_MODEL.md](docs/DATA_MODEL.md).
 
-### Crucible Registry (optional)
+### MCP tools
 
-[Crucible Registry](https://github.com/kumagallium/Crucible) provides MCP server management with auto-discovery. When connected, registered MCP tools appear in **⚙ Settings → AI Setup** and can be used by the AI assistant.
+The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Manage them all in one list under **⚙ Settings → AI Setup → MCP Servers**. Add a **Local** server (launched by Graphium over stdio, the Claude Desktop model; needs the desktop app or a self-hosted backend) or a **Remote** one (reached by URL) — by pasting its README JSON, filling the form, or browsing a [Crucible Registry](https://github.com/kumagallium/Crucible) and picking servers from it. Crucible is just a discovery source, not a dependency.
 
 ## Beyond the editor
 
