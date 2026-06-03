@@ -197,7 +197,14 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   // 手動登録の MCP サーバー（Crucible 非依存の接続経路）
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>([]);
   const [showMcpForm, setShowMcpForm] = useState(false);
+  // 追加フォーム: 接続方式（stdio = ローカル spawn が主役 / remote = HTTP）
+  const [mcpType, setMcpType] = useState<"stdio" | "remote">("stdio");
   const [mcpName, setMcpName] = useState("");
+  // stdio 用フィールド
+  const [mcpCommand, setMcpCommand] = useState("");
+  const [mcpArgs, setMcpArgs] = useState("");   // 1 行 1 引数
+  const [mcpEnv, setMcpEnv] = useState("");     // 1 行 KEY=value
+  // remote 用フィールド
   const [mcpUrl, setMcpUrl] = useState("");
   const [mcpTransport, setMcpTransport] = useState<McpTransport>("sse");
   const [mcpTransportTouched, setMcpTransportTouched] = useState(false);
@@ -416,7 +423,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setRegistryUrl(settings.registryUrl ?? "");
     setMcpServers(settings.mcpServers ?? []);
     setShowMcpForm(false);
+    setMcpType("stdio");
     setMcpName("");
+    setMcpCommand("");
+    setMcpArgs("");
+    setMcpEnv("");
     setMcpUrl("");
     setMcpTransport("sse");
     setMcpTransportTouched(false);
@@ -905,32 +916,65 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, customLabels, latinFont, jpFont, experimental, onClose]);
 
   // ── 手動 MCP サーバー操作 ──
-  const handleAddMcpServer = useCallback(() => {
-    const url = mcpUrl.trim();
-    if (!url) return;
-    let fallbackName = url;
-    try {
-      fallbackName = new URL(url).host;
-    } catch {
-      /* URL でなければそのまま名前に使う */
-    }
-    const entry: McpServerEntry = {
-      id: crypto.randomUUID(),
-      name: mcpName.trim() || fallbackName,
-      url,
-      transport: mcpTransport,
-      apiKey: mcpApiKey.trim() || undefined,
-      enabled: true,
-    };
-    setMcpServers((prev) => [...prev, entry]);
+  const resetMcpForm = useCallback(() => {
     setMcpName("");
+    setMcpCommand("");
+    setMcpArgs("");
+    setMcpEnv("");
     setMcpUrl("");
     setMcpTransport("sse");
     setMcpTransportTouched(false);
     setMcpApiKey("");
     setShowMcpForm(false);
+  }, []);
+
+  const handleAddMcpServer = useCallback(() => {
+    let entry: McpServerEntry;
+    if (mcpType === "stdio") {
+      const command = mcpCommand.trim();
+      if (!command) return;
+      const args = mcpArgs.split("\n").map((a) => a.trim()).filter(Boolean);
+      // 1 行 KEY=value を Record に変換
+      const env: Record<string, string> = {};
+      for (const line of mcpEnv.split("\n")) {
+        const idx = line.indexOf("=");
+        if (idx <= 0) continue;
+        const k = line.slice(0, idx).trim();
+        const v = line.slice(idx + 1).trim();
+        if (k) env[k] = v;
+      }
+      entry = {
+        type: "stdio",
+        id: crypto.randomUUID(),
+        name: mcpName.trim() || command,
+        command,
+        args,
+        env: Object.keys(env).length > 0 ? env : undefined,
+        enabled: true,
+      };
+    } else {
+      const url = mcpUrl.trim();
+      if (!url) return;
+      let fallbackName = url;
+      try {
+        fallbackName = new URL(url).host;
+      } catch {
+        /* URL でなければそのまま名前に使う */
+      }
+      entry = {
+        type: "remote",
+        id: crypto.randomUUID(),
+        name: mcpName.trim() || fallbackName,
+        url,
+        transport: mcpTransport,
+        apiKey: mcpApiKey.trim() || undefined,
+        enabled: true,
+      };
+    }
+    setMcpServers((prev) => [...prev, entry]);
+    resetMcpForm();
     setSaved(false);
-  }, [mcpUrl, mcpName, mcpTransport, mcpApiKey]);
+  }, [mcpType, mcpCommand, mcpArgs, mcpEnv, mcpUrl, mcpName, mcpTransport, mcpApiKey, resetMcpForm]);
 
   const handleRemoveMcpServer = useCallback((id: string) => {
     setMcpServers((prev) => prev.filter((s) => s.id !== id));
@@ -947,6 +991,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setMcpUrl(value);
     if (!mcpTransportTouched) setMcpTransport(detectMcpTransport(value));
   }, [mcpTransportTouched]);
+
+  // 追加ボタンの有効条件
+  const mcpAddDisabled = mcpType === "stdio" ? !mcpCommand.trim() : !mcpUrl.trim();
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -2093,35 +2140,40 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
               {mcpServers.length > 0 ? (
                 <div className="space-y-1.5 mb-2">
-                  {mcpServers.map((s) => (
-                    <div key={s.id} className="flex items-center gap-2 text-xs text-foreground">
-                      <button
-                        onClick={() => handleToggleMcpServer(s.id)}
-                        role="switch"
-                        aria-checked={s.enabled}
-                        aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                        className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                        style={{ backgroundColor: s.enabled ? "#4B7A52" : "#d5e0d7" }}
-                      >
-                        <span
-                          className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                          style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
-                        />
-                      </button>
-                      <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
-                        <span className="font-medium">{s.name}</span>
-                        <span className="text-muted-foreground"> — {s.url}</span>
-                      </span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{s.transport}</span>
-                      <button
-                        onClick={() => handleRemoveMcpServer(s.id)}
-                        aria-label={t("settings.mcp.remove")}
-                        className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                  {mcpServers.map((s) => {
+                    const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
+                    return (
+                      <div key={s.id} className="flex items-center gap-2 text-xs text-foreground">
+                        <button
+                          onClick={() => handleToggleMcpServer(s.id)}
+                          role="switch"
+                          aria-checked={s.enabled}
+                          aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
+                          className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
+                          style={{ backgroundColor: s.enabled ? "#4B7A52" : "#d5e0d7" }}
+                        >
+                          <span
+                            className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                            style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
+                          />
+                        </button>
+                        <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-muted-foreground"> — {detail}</span>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                          {s.type === "stdio" ? "stdio" : s.transport}
+                        </span>
+                        <button
+                          onClick={() => handleRemoveMcpServer(s.id)}
+                          aria-label={t("settings.mcp.remove")}
+                          className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground mb-2">{t("settings.mcp.empty")}</p>
@@ -2129,59 +2181,122 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
               {showMcpForm ? (
                 <div className="space-y-2 rounded-md border border-border p-3">
-                  <div>
-                    <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
-                    <Input
-                      type="url"
-                      value={mcpUrl}
-                      onChange={(e) => handleMcpUrlChange(e.target.value)}
-                      placeholder={t("settings.mcp.urlPlaceholder")}
-                    />
+                  {/* 接続方式: stdio（ローカル spawn）が主役 / remote（HTTP） */}
+                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                    {(["stdio", "remote"] as const).map((ty) => (
+                      <button
+                        key={ty}
+                        onClick={() => setMcpType(ty)}
+                        className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                          mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {t(ty === "stdio" ? "settings.mcp.type.stdio" : "settings.mcp.type.remote")}
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
-                      <Input
-                        type="text"
-                        value={mcpName}
-                        onChange={(e) => setMcpName(e.target.value)}
-                        placeholder={t("settings.mcp.namePlaceholder")}
-                      />
-                    </div>
-                    <div className="w-40">
-                      <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
-                      <div className="relative">
-                        <select
-                          value={mcpTransport}
-                          onChange={(e) => { setMcpTransport(e.target.value as McpTransport); setMcpTransportTouched(true); }}
-                          className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
-                        >
-                          <option value="sse">SSE</option>
-                          <option value="streamable-http">Streamable HTTP</option>
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+
+                  {mcpType === "stdio" ? (
+                    <>
+                      <div className="flex gap-2">
+                        <div className="w-32">
+                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
+                          <Input
+                            type="text"
+                            value={mcpCommand}
+                            onChange={(e) => setMcpCommand(e.target.value)}
+                            placeholder="npx"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                          <Input
+                            type="text"
+                            value={mcpName}
+                            onChange={(e) => setMcpName(e.target.value)}
+                            placeholder={t("settings.mcp.namePlaceholder")}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
-                    <Input
-                      type="password"
-                      value={mcpApiKey}
-                      onChange={(e) => setMcpApiKey(e.target.value)}
-                      placeholder={t("settings.mcp.apiKeyPlaceholder")}
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
+                        <textarea
+                          value={mcpArgs}
+                          onChange={(e) => setMcpArgs(e.target.value)}
+                          rows={3}
+                          placeholder={"-y\n@modelcontextprotocol/server-filesystem\n~/notes"}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
+                        <textarea
+                          value={mcpEnv}
+                          onChange={(e) => setMcpEnv(e.target.value)}
+                          rows={2}
+                          placeholder={"API_KEY=xxxx"}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
+                        <Input
+                          type="url"
+                          value={mcpUrl}
+                          onChange={(e) => handleMcpUrlChange(e.target.value)}
+                          placeholder={t("settings.mcp.urlPlaceholder")}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                          <Input
+                            type="text"
+                            value={mcpName}
+                            onChange={(e) => setMcpName(e.target.value)}
+                            placeholder={t("settings.mcp.namePlaceholder")}
+                          />
+                        </div>
+                        <div className="w-40">
+                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
+                          <div className="relative">
+                            <select
+                              value={mcpTransport}
+                              onChange={(e) => { setMcpTransport(e.target.value as McpTransport); setMcpTransportTouched(true); }}
+                              className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none"
+                            >
+                              <option value="sse">SSE</option>
+                              <option value="streamable-http">Streamable HTTP</option>
+                            </select>
+                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
+                        <Input
+                          type="password"
+                          value={mcpApiKey}
+                          onChange={(e) => setMcpApiKey(e.target.value)}
+                          placeholder={t("settings.mcp.apiKeyPlaceholder")}
+                        />
+                      </div>
+                    </>
+                  )}
+
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={handleAddMcpServer}
-                      disabled={!mcpUrl.trim()}
+                      disabled={mcpAddDisabled}
                       className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                     >
                       {t("settings.mcp.save")}
                     </button>
                     <button
-                      onClick={() => setShowMcpForm(false)}
+                      onClick={resetMcpForm}
                       className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
                     >
                       {t("common.cancel")}

@@ -175,13 +175,14 @@ docker compose up -d
 
 #### Add MCP tools (optional)
 
-Graphium connects to MCP servers directly — no registry required:
+Graphium connects to MCP servers directly — no registry required. Open **⚙ Settings → AI Setup → MCP Servers** and add servers in one of two ways:
 
-1. Open **⚙ Settings → AI Setup → MCP Servers**
-2. Add a server by its endpoint URL (e.g. `http://localhost:8100/sse`), optionally with an API key
-3. The server's tools become available to the AI assistant, and each server can be toggled on/off
+- **Local (command)** — Graphium launches and manages the server for you, the same way Claude Desktop does. Enter a command and arguments (e.g. `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`) and Graphium spawns it over stdio; you never start or stop a process yourself. Requires the desktop app or a self-hosted backend (a browser can't launch local processes).
+- **Remote (URL)** — connect to an already-running server by its endpoint URL (e.g. `http://localhost:8100/sse`), optionally with an API key.
 
-> **Advanced — bulk import:** If you run many MCP servers, you can point Graphium at a [Crucible Registry](https://github.com/kumagallium/Crucible) URL under the same screen to import them all at once. This is entirely optional; direct registration above covers most needs.
+Each server can be toggled on/off, and its tools become available to the AI assistant.
+
+> **Advanced — bulk import:** If you run many MCP servers, you can point Graphium at a [Crucible Registry](https://github.com/kumagallium/Crucible) URL under the same screen to import them all at once. This is entirely optional; the direct registration above covers most needs.
 
 No `.env` editing required — everything is configured from the browser.
 
@@ -340,7 +341,7 @@ For the layered breakdown, the Wiki pipeline trigger flow, distribution targets,
 
 ### MCP tools
 
-The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Add servers directly by their endpoint URL in **⚙ Settings → AI Setup → MCP Servers** — Graphium connects to them on its own, with no registry in between.
+The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Add them in **⚙ Settings → AI Setup → MCP Servers** — Graphium connects on its own, with no registry in between. **Local** servers are launched and managed by Graphium over stdio (the Claude Desktop model; needs the desktop app or a self-hosted backend); **Remote** servers are reached by URL.
 
 If you operate a fleet of MCP servers, you can optionally point Graphium at a [Crucible Registry](https://github.com/kumagallium/Crucible) URL on the same screen to bulk-import them. This is a convenience, not a dependency.
 

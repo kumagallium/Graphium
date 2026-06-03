@@ -8,7 +8,7 @@ import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
 import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
-import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
+import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 
@@ -99,30 +99,32 @@ app.post("/run", async (c) => {
   const passesFilter = (name: string): boolean =>
     (!allowedNames || allowedNames.has(name)) && !disabledNames.has(name);
 
-  // (1) Crucible Registry 由来のサーバー（registryUrl が空なら空配列）
-  const registryEndpoints = filterMCPServers(allServers)
+  // (1) Crucible Registry 由来のサーバー（registryUrl が空なら空配列）。すべて remote。
+  const registryEndpoints: MCPServerInfo[] = filterMCPServers(allServers)
     .filter((s) => passesFilter(s.name))
     .map((s) => ({
+      id: `registry:${s.name}`,
+      type: "remote",
       name: s.name,
       url: buildMCPUrl(s, registryUrl),
       transport: detectTransport(s),
     }));
 
-  // (2) ユーザーが直接登録した MCP サーバー（Crucible 非依存）
-  const manualEndpoints = getManualMcpServers(c)
+  // (2) ユーザーが直接登録した MCP サーバー（Crucible 非依存）。stdio / remote 混在。
+  const manualEndpoints: MCPServerInfo[] = getManualMcpServers(c)
     .filter((s) => passesFilter(s.name))
-    .map((s) => ({
-      name: s.name,
-      url: s.url,
-      transport: s.transport,
-      apiKey: s.apiKey,
-    }));
+    .map((s) =>
+      s.type === "stdio"
+        ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, env: s.env }
+        : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey },
+    );
 
   // (1) ∪ (2) を接続する。同名は手動登録を優先（ユーザーの明示指定を尊重）。
-  const byName = new Map<string, { name: string; url: string; transport: "sse" | "streamable-http"; apiKey?: string }>();
+  const byName = new Map<string, MCPServerInfo>();
   for (const e of registryEndpoints) byName.set(e.name, e);
   for (const e of manualEndpoints) byName.set(e.name, e);
-  const { tools, clients } = await connectMCPServers([...byName.values()]);
+  // 接続は永続プールで使い回す（close はプールが管理するのでここでは閉じない）。
+  const { tools } = await getMCPTools([...byName.values()]);
 
   try {
     const model = createModel(modelConfig);
@@ -149,8 +151,6 @@ app.post("/run", async (c) => {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Agent run error:", err);
     return c.json({ error: message }, 500);
-  } finally {
-    await closeMCPClients(clients);
   }
 });
 

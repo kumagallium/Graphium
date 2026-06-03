@@ -519,9 +519,25 @@ deployment is one of:
 Tokens you may see in headers (`X-Graphium-Token`, `X-LLM-API-Key`,
 `X-Registry-URL`, `X-MCP-Servers`) are passthrough to upstream LLM /
 MCP / Registry APIs, not authentication for the Graphium server itself.
-`X-MCP-Servers` carries the user's directly-registered MCP endpoints
-(and optional per-server bearer tokens); the `agent` route connects to
-them in addition to any servers discovered via a Crucible Registry. There is no built-in user
+`X-MCP-Servers` carries the user's directly-registered MCP servers; the
+`agent` route connects to them in addition to any servers discovered via
+a Crucible Registry. Two transports are supported (`src/server/services/mcp.ts`):
+
+- **stdio (local)** — the server spawns the configured `command`/`args`
+  as a child process and speaks MCP over its stdio, the same model as
+  Claude Desktop. Only works where the backend can spawn processes
+  (Tauri sidecar, Docker, dev) — not in a pure browser.
+- **remote (HTTP/SSE)** — connects to an already-running server by URL,
+  with an optional per-server bearer token. Crucible-discovered servers
+  are always remote.
+
+Clients are kept in a per-`id` connection pool and reused across
+requests; editing a server's config re-signs the entry and transparently
+reconnects. **Security note:** stdio servers run arbitrary local commands
+the user configured — the same trust model as Claude Desktop. On a
+self-hosted/Docker backend, anyone who can reach the API and set
+`X-MCP-Servers` can run commands inside that backend; keep it behind the
+user's own boundary. There is no built-in user
 auth, multi-tenant isolation, or audit log on the server today.
 
 Operators exposing the server to the public internet should put it

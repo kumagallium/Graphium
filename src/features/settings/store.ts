@@ -33,26 +33,54 @@ export const JP_FONTS: readonly JpFont[] = ["", "zen-kaku", "biz-udp"] as const;
 export type McpTransport = "sse" | "streamable-http";
 export const MCP_TRANSPORTS: readonly McpTransport[] = ["sse", "streamable-http"] as const;
 
-/**
- * ユーザーが手動登録した MCP サーバー 1 件。
- * Crucible Registry を経由せず、エンドポイント URL を直接指定して接続する。
- * これにより Graphium は Crucible 非依存で任意の MCP サーバーに繋がる
- * （Crucible は「一括取り込みできるソースの 1 つ」に格下げされる）。
- */
-export type McpServerEntry = {
+/** MCP サーバー登録の共通フィールド */
+type McpServerBase = {
   /** 内部 ID（crypto.randomUUID） */
   id: string;
   /** 表示名 / ツール名前空間 */
   name: string;
+  /** AI チャットで使うか（false なら接続しない） */
+  enabled: boolean;
+};
+
+/**
+ * ローカルで起動する MCP サーバー（stdio トランスポート）。
+ * Claude Desktop と同じ方式: アプリがコマンドを子プロセスとして spawn し、
+ * 標準入出力でツールと通信する。ユーザーはサーバーの起動・終了を意識しない。
+ * バックエンド（Tauri sidecar / Docker / dev）がある環境でのみ動作する
+ * （ブラウザ単体ではプロセスを起動できないため）。
+ */
+export type McpStdioServer = McpServerBase & {
+  type: "stdio";
+  /** 実行コマンド（例: "npx", "uvx", "node"） */
+  command: string;
+  /** コマンド引数（例: ["-y", "@modelcontextprotocol/server-filesystem", "~/notes"]） */
+  args: string[];
+  /** 子プロセスに渡す追加の環境変数（任意） */
+  env?: Record<string, string>;
+};
+
+/**
+ * リモート/起動済みの MCP サーバー（HTTP/SSE トランスポート）。
+ * ユーザーが起動済みサーバーの URL を指定する。Crucible Registry が返す
+ * エンドポイントもこの形（Crucible はエンドポイント参照の一ソースに過ぎない）。
+ */
+export type McpRemoteServer = McpServerBase & {
+  type: "remote";
   /** 完全なエンドポイント URL（例: http://localhost:8100/sse） */
   url: string;
   /** トランスポート種別 */
   transport: McpTransport;
   /** 任意の認証トークン（Authorization: Bearer で送信） */
   apiKey?: string;
-  /** AI チャットで使うか（false なら接続しない） */
-  enabled: boolean;
 };
+
+/**
+ * ユーザーが登録した MCP サーバー 1 件。stdio（ローカル spawn）か
+ * remote（HTTP/SSE）のいずれか。これにより Graphium は Crucible 非依存で
+ * 任意の MCP サーバーに繋がる。
+ */
+export type McpServerEntry = McpStdioServer | McpRemoteServer;
 
 /**
  * URL のパスからトランスポート種別を推定する。
@@ -163,32 +191,62 @@ const LEGACY_LABEL_KEY_MAP: Record<string, string> = {
 
 /**
  * localStorage から読んだ mcpServers を正規化する。
- * 不正なエントリ（url が無い等）は捨て、欠けたフィールドを補完する。
+ * - stdio / remote の discriminated union に整える
+ * - type 欠落の旧フラット形式（{url, transport}）は remote にマイグレーション
+ * - 不正なエントリ（command も url も無い等）は捨てる
  */
 function normalizeMcpServers(raw: unknown): McpServerEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: McpServerEntry[] = [];
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
-    const s = item as Partial<McpServerEntry>;
+    const s = item as Record<string, unknown>;
+    const id = typeof s.id === "string" && s.id ? s.id : crypto.randomUUID();
+    const enabled = s.enabled !== false;
+
+    // stdio: command が必須
+    if (s.type === "stdio") {
+      if (typeof s.command !== "string" || !s.command.trim()) continue;
+      const args = Array.isArray(s.args) ? s.args.filter((a): a is string => typeof a === "string") : [];
+      const env =
+        s.env && typeof s.env === "object" && !Array.isArray(s.env)
+          ? Object.fromEntries(
+              Object.entries(s.env as Record<string, unknown>).filter(
+                (e): e is [string, string] => typeof e[1] === "string",
+              ),
+            )
+          : undefined;
+      out.push({
+        type: "stdio",
+        id,
+        name: typeof s.name === "string" && s.name.trim() ? s.name : s.command,
+        command: s.command,
+        args,
+        env: env && Object.keys(env).length > 0 ? env : undefined,
+        enabled,
+      });
+      continue;
+    }
+
+    // remote（明示 type="remote" or 旧フラット形式）: url が必須
     if (typeof s.url !== "string" || !s.url.trim()) continue;
+    const url = s.url;
     const transport: McpTransport =
-      s.transport === "streamable-http" || s.transport === "sse"
-        ? s.transport
-        : detectMcpTransport(s.url);
-    let fallbackName = s.url;
+      s.transport === "streamable-http" || s.transport === "sse" ? s.transport : detectMcpTransport(url);
+    let fallbackName = url;
     try {
-      fallbackName = new URL(s.url).host;
+      fallbackName = new URL(url).host;
     } catch {
       /* URL でなければ url 文字列をそのまま名前に使う */
     }
     out.push({
-      id: typeof s.id === "string" && s.id ? s.id : crypto.randomUUID(),
-      name: typeof s.name === "string" && s.name.trim() ? s.name : fallbackName,
-      url: s.url,
+      type: "remote",
+      id,
+      name: typeof s.name === "string" && (s.name as string).trim() ? (s.name as string) : fallbackName,
+      url,
       transport,
       apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
-      enabled: s.enabled !== false,
+      enabled,
     });
   }
   return out;
@@ -279,9 +337,11 @@ export function getMcpServers(): McpServerEntry[] {
   return loadSettings().mcpServers ?? [];
 }
 
-/** AI チャットで接続すべき有効な MCP サーバー一覧を取得する（enabled かつ url あり） */
+/** AI チャットで接続すべき有効な MCP サーバー一覧を取得する（enabled かつ接続先が有効） */
 export function getEnabledMcpServers(): McpServerEntry[] {
-  return getMcpServers().filter((s) => s.enabled && s.url.trim());
+  return getMcpServers().filter(
+    (s) => s.enabled && (s.type === "stdio" ? s.command.trim() : s.url.trim()),
+  );
 }
 
 /** コアラベルのカスタム表示名を取得する */

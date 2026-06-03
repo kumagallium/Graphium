@@ -19,15 +19,15 @@ function apiHeaders(
 
   // ユーザーが直接登録した MCP サーバー（Crucible 非依存の接続経路）をヘッダーで送る。
   // バックエンドは Registry 由来のサーバーと union して接続する。
+  // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
   const mcpServers = getEnabledMcpServers();
   if (mcpServers.length > 0) {
     h["X-MCP-Servers"] = JSON.stringify(
-      mcpServers.map((s) => ({
-        name: s.name,
-        url: s.url,
-        transport: s.transport,
-        ...(s.apiKey ? { apiKey: s.apiKey } : {}),
-      })),
+      mcpServers.map((s) =>
+        s.type === "stdio"
+          ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
+          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}) },
+      ),
     );
   }
 

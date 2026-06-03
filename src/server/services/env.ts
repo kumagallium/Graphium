@@ -21,17 +21,29 @@ export function getRegistryKey(): string {
 /**
  * ユーザーが直接登録した MCP サーバー（Crucible 非依存の接続経路）。
  * フロントエンドが X-MCP-Servers ヘッダーに JSON 配列で送る。
+ * stdio（ローカル spawn）か remote（HTTP/SSE）のいずれか。
  */
-export type ManualMcpServer = {
-  name: string;
-  url: string;
-  transport: "sse" | "streamable-http";
-  apiKey?: string;
-};
+export type ManualMcpServer =
+  | {
+      id: string;
+      type: "stdio";
+      name: string;
+      command: string;
+      args: string[];
+      env?: Record<string, string>;
+    }
+  | {
+      id: string;
+      type: "remote";
+      name: string;
+      url: string;
+      transport: "sse" | "streamable-http";
+      apiKey?: string;
+    };
 
 /**
  * X-MCP-Servers ヘッダーをパースして手動登録 MCP サーバー一覧を取得する。
- * 不正な JSON / url 欠落エントリは無視する（graceful degradation）。
+ * 不正な JSON / 必須フィールド欠落エントリは無視する（graceful degradation）。
  */
 export function getManualMcpServers(c: Context): ManualMcpServer[] {
   const raw = c.req.header("X-MCP-Servers");
@@ -42,11 +54,32 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
     const out: ManualMcpServer[] = [];
     for (const item of parsed) {
       if (!item || typeof item !== "object") continue;
-      const s = item as Partial<ManualMcpServer>;
+      const s = item as Record<string, unknown>;
+      const name = typeof s.name === "string" ? s.name : "";
+      const id = typeof s.id === "string" && s.id ? s.id : name;
+      if (!name) continue;
+
+      if (s.type === "stdio") {
+        if (typeof s.command !== "string" || !s.command.trim()) continue;
+        const args = Array.isArray(s.args) ? s.args.filter((a): a is string => typeof a === "string") : [];
+        const env =
+          s.env && typeof s.env === "object" && !Array.isArray(s.env)
+            ? (Object.fromEntries(
+                Object.entries(s.env as Record<string, unknown>).filter(
+                  (e): e is [string, string] => typeof e[1] === "string",
+                ),
+              ) as Record<string, string>)
+            : undefined;
+        out.push({ id, type: "stdio", name, command: s.command, args, env });
+        continue;
+      }
+
+      // remote（type 未指定の旧形式もここで吸収）
       if (typeof s.url !== "string" || !s.url.trim()) continue;
-      if (typeof s.name !== "string" || !s.name.trim()) continue;
       out.push({
-        name: s.name,
+        id,
+        type: "remote",
+        name,
         url: s.url,
         transport: s.transport === "streamable-http" ? "streamable-http" : "sse",
         apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
