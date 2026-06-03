@@ -15,9 +15,8 @@ function apiHeaders(
 ): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
 
-  // MCP サーバー供給源（stdio / remote / registry）を 1 本のヘッダーで送る。
-  // registry エントリはバックエンドが fetchRegistryServers で展開する
-  // （旧来の専用 X-Registry-URL ヘッダーは廃止し、ここに統合した）。
+  // 直接登録した MCP サーバー（stdio / remote）を 1 本のヘッダーで送る。
+  // レジストリから選んだサーバーも具体 URL を持つ remote としてここに含まれる。
   // id を含めるのはバックエンドの接続プールのキーに使うため（編集時に差し替え）。
   const mcpServers = getEnabledMcpServers();
   if (mcpServers.length > 0) {
@@ -25,9 +24,7 @@ function apiHeaders(
       mcpServers.map((s) =>
         s.type === "stdio"
           ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, ...(s.env ? { env: s.env } : {}) }
-          : s.type === "registry"
-            ? { id: s.id, type: "registry", name: s.name, url: s.url, ...(s.apiKey ? { apiKey: s.apiKey } : {}) }
-            : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}) },
+          : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, ...(s.apiKey ? { apiKey: s.apiKey } : {}) },
       ),
     );
   }

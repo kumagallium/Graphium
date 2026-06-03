@@ -63,27 +63,15 @@ app.post("/run", async (c) => {
     { role: "user" as const, content: body.message },
   ];
 
-  // MCP 供給源を集める: 手動登録（stdio / remote / registry）+ 環境変数の Registry 既定。
-  // registry エントリは複数あり得るので、それぞれ fetchRegistryServers で展開する。
+  // MCP 供給源を集める: 手動登録（stdio / remote）+ 環境変数の Registry 既定（Docker のゼロ設定）。
+  // ユーザーがレジストリから選んだサーバーは具体 URL の remote として manualServers に含まれる。
+  // env の CRUCIBLE_API_URL（X-Registry-URL ヘッダー or 環境変数）だけは従来どおり自動展開する。
   const manualServers = getManualMcpServers(c);
-  const registrySources = new Map<string, string | undefined>(); // 正規化 URL -> apiKey
-  for (const m of manualServers) {
-    if (m.type === "registry") registrySources.set(m.url.replace(/\/$/, ""), m.apiKey);
-  }
   const envRegistryUrl = getRegistryUrl(c).replace(/\/$/, "");
-  if (envRegistryUrl && !registrySources.has(envRegistryUrl)) {
-    registrySources.set(envRegistryUrl, getRegistryKey());
-  }
-  // 各レジストリを並列取得し、どのレジストリ由来かを保持して結合する
-  const registryFetches = await Promise.all(
-    [...registrySources.entries()].map(async ([url, key]) => ({
-      url,
-      servers: await fetchRegistryServers(url, key),
-    })),
-  );
-  const allRegistryServers = registryFetches.flatMap((r) =>
-    r.servers.map((s) => ({ s, registryUrl: r.url })),
-  );
+  const envRegistryServers = envRegistryUrl
+    ? await fetchRegistryServers(envRegistryUrl, getRegistryKey())
+    : [];
+  const allRegistryServers = envRegistryServers.map((s) => ({ s, registryUrl: envRegistryUrl }));
 
   // Wiki コンテキストを注入（Retriever 結果）
   if (body.wiki_context) {
@@ -128,17 +116,14 @@ app.post("/run", async (c) => {
       transport: detectTransport(s),
     }));
 
-  // (2) ユーザーが直接登録した MCP サーバー（stdio / remote）。registry は供給源なので除外。
+  // (2) ユーザーが直接登録した MCP サーバー（stdio / remote）。
   const manualEndpoints: MCPServerInfo[] = manualServers
     .filter((s) => passesFilter(s.name))
-    .map((s): MCPServerInfo | null =>
+    .map((s): MCPServerInfo =>
       s.type === "stdio"
         ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, env: s.env }
-        : s.type === "remote"
-          ? { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey }
-          : null,
-    )
-    .filter((e): e is MCPServerInfo => e !== null);
+        : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey },
+    );
 
   // (1) ∪ (2) を接続する。同名は手動登録を優先（ユーザーの明示指定を尊重）。
   const byName = new Map<string, MCPServerInfo>();

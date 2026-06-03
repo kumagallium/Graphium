@@ -76,26 +76,24 @@ export type McpRemoteServer = McpServerBase & {
 };
 
 /**
- * Crucible Registry（MCP サーバーの一括取り込み元）。
- * URL を 1 つ登録すると、そのレジストリが返す複数の MCP サーバーをまとめて
- * 取り込む。stdio / remote と同じく「サーバーの供給源」の 1 つとして
- * 同じリストで扱う（旧来の専用 registryUrl 設定はこれにマイグレーションされる）。
+ * ユーザーが登録した MCP サーバー 1 件。stdio（ローカル spawn）か remote（HTTP/SSE）。
+ * Crucible Registry から取り込んだサーバーも、候補から選んだ時点で具体的な URL を持つ
+ * remote エントリとしてこのリストに individually 並ぶ（レジストリ自体は接続先ではない）。
  */
-export type McpRegistryServer = McpServerBase & {
-  type: "registry";
+export type McpServerEntry = McpStdioServer | McpRemoteServer;
+
+/**
+ * 記憶しておく Crucible Registry。接続先ではなく「候補をブラウズする元」。
+ * 「レジストリから追加」で URL を入れて候補取得すると、ここに保存され、
+ * 次回プリフィル・再ブラウズできる。選んだサーバーは remote エントリになる。
+ */
+export type SavedRegistry = {
+  id: string;
   /** Crucible Registry のベース URL（例: http://localhost:8080） */
   url: string;
   /** Registry API キー（X-API-Key、任意） */
   apiKey?: string;
 };
-
-/**
- * ユーザーが登録した MCP サーバー供給源 1 件。
- * stdio（ローカル spawn）/ remote（HTTP/SSE）/ registry（Crucible 一括取り込み）。
- * これにより Graphium は Crucible 非依存で任意の MCP サーバーに繋がり、
- * Crucible も「数ある供給源の 1 つ」として同じリストに収まる。
- */
-export type McpServerEntry = McpStdioServer | McpRemoteServer | McpRegistryServer;
 
 /**
  * URL のパスからトランスポート種別を推定する。
@@ -282,6 +280,8 @@ export type Settings = {
   registryUrl: string;
   /** ユーザーが直接登録した MCP サーバー一覧（Crucible 非依存の接続経路） */
   mcpServers: McpServerEntry[];
+  /** 記憶した Crucible Registry（候補をブラウズする元。接続先ではない） */
+  savedRegistries: SavedRegistry[];
   /** コアラベルのカスタム表示名（空オブジェクト = デフォルト） */
   customLabels: CustomLabels;
   /** ラテン文字用フォント。空文字 = デフォルト（Atkinson Next + Inter 数字） */
@@ -304,6 +304,7 @@ const DEFAULT_SETTINGS: Settings = {
   disabledTools: [],
   registryUrl: "",
   mcpServers: [],
+  savedRegistries: [],
   customLabels: {},
   latinFont: "",
   jpFont: "",
@@ -347,26 +348,6 @@ function normalizeMcpServers(raw: unknown): McpServerEntry[] {
     const s = item as Record<string, unknown>;
     const id = typeof s.id === "string" && s.id ? s.id : crypto.randomUUID();
     const enabled = s.enabled !== false;
-
-    // registry: url が必須
-    if (s.type === "registry") {
-      if (typeof s.url !== "string" || !s.url.trim()) continue;
-      let fallbackName = s.url;
-      try {
-        fallbackName = new URL(s.url).host;
-      } catch {
-        /* URL でなければ url 文字列 */
-      }
-      out.push({
-        type: "registry",
-        id,
-        name: typeof s.name === "string" && (s.name as string).trim() ? (s.name as string) : fallbackName,
-        url: s.url,
-        apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
-        enabled,
-      });
-      continue;
-    }
 
     // stdio: command が必須
     if (s.type === "stdio") {
@@ -416,6 +397,27 @@ function normalizeMcpServers(raw: unknown): McpServerEntry[] {
   return out;
 }
 
+/** localStorage から読んだ savedRegistries を正規化する（url 必須・dedup） */
+function normalizeSavedRegistries(raw: unknown): SavedRegistry[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: SavedRegistry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const s = item as Record<string, unknown>;
+    if (typeof s.url !== "string" || !s.url.trim()) continue;
+    const url = s.url.replace(/\/+$/, "");
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({
+      id: typeof s.id === "string" && s.id ? s.id : crypto.randomUUID(),
+      url,
+      apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
+    });
+  }
+  return out;
+}
+
 function migrateCustomLabels(customLabels: CustomLabels | undefined): CustomLabels {
   if (!customLabels) return {};
   const next: CustomLabels = {};
@@ -456,39 +458,20 @@ export function loadSettings(): Settings {
       ? (JP_FONTS.includes(parsed.jpFont) ? parsed.jpFont : "")
       : (legacyFont === "biz-udp" ? "biz-udp" : "");
     const exp = (parsed as { experimental?: Partial<ExperimentalSettings> }).experimental;
-    // 旧来の専用 registryUrl 設定を、統合リスト内の registry エントリへマイグレーションする。
-    // mcpServers に同一 URL の registry が無ければ先頭に追加し、registryUrl は空に倒す
-    // （次回保存で永続化される。env ベースの CRUCIBLE_API_URL はサーバー側で別途効く）。
-    const normalizedServers = normalizeMcpServers(parsed.mcpServers);
-    const legacyRegistryUrl = typeof parsed.registryUrl === "string" ? parsed.registryUrl.trim() : "";
-    const hasRegistryEntry = normalizedServers.some(
-      (s) => s.type === "registry" && s.url === legacyRegistryUrl,
-    );
-    const migratedServers =
-      legacyRegistryUrl && !hasRegistryEntry
-        ? [
-            {
-              type: "registry" as const,
-              id: crypto.randomUUID(),
-              name: (() => {
-                try {
-                  return new URL(legacyRegistryUrl).host;
-                } catch {
-                  return legacyRegistryUrl;
-                }
-              })(),
-              url: legacyRegistryUrl,
-              enabled: true,
-            },
-            ...normalizedServers,
-          ]
-        : normalizedServers;
+    // 旧来の専用 registryUrl 設定を、記憶レジストリ（savedRegistries）へマイグレーションする。
+    // これは接続先ではなく「候補をブラウズする元」。同 URL が無ければ追加し registryUrl は空に倒す。
+    const savedRegistries = normalizeSavedRegistries(parsed.savedRegistries);
+    const legacyRegistryUrl = typeof parsed.registryUrl === "string" ? parsed.registryUrl.trim().replace(/\/+$/, "") : "";
+    if (legacyRegistryUrl && !savedRegistries.some((r) => r.url === legacyRegistryUrl)) {
+      savedRegistries.unshift({ id: crypto.randomUUID(), url: legacyRegistryUrl });
+    }
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
-      registryUrl: "", // 統合リストへ移行済み。専用フィールドは使わない
+      registryUrl: "", // savedRegistries へ移行済み。専用フィールドは使わない
       customLabels: migrateCustomLabels(parsed.customLabels),
-      mcpServers: migratedServers,
+      mcpServers: normalizeMcpServers(parsed.mcpServers),
+      savedRegistries,
       latinFont: migratedLatin,
       jpFont: migratedJp,
       chatSynthesisModel: migratedChatSynth,
@@ -534,6 +517,11 @@ export function getEnabledMcpServers(): McpServerEntry[] {
   return getMcpServers().filter(
     (s) => s.enabled && (s.type === "stdio" ? s.command.trim() : s.url.trim()),
   );
+}
+
+/** 記憶した Crucible Registry 一覧を取得する */
+export function getSavedRegistries(): SavedRegistry[] {
+  return loadSettings().savedRegistries ?? [];
 }
 
 /** コアラベルのカスタム表示名を取得する */

@@ -519,9 +519,8 @@ deployment is one of:
 Tokens you may see in headers (`X-Graphium-Token`, `X-LLM-API-Key`,
 `X-MCP-Servers`, `X-Registry-URL`/`X-Registry-Key`) are passthrough to
 upstream LLM / MCP / Registry APIs, not authentication for the Graphium
-server itself. `X-MCP-Servers` carries the user's MCP sources as a single
-unified list of three entry kinds; the `agent` route resolves all of them
-into MCP connections:
+server itself. `X-MCP-Servers` carries the user's directly-registered MCP servers; the
+`agent` route resolves each into a connection. Two transports:
 
 - **stdio (local)** — the server spawns the configured `command`/`args`
   as a child process and speaks MCP over its stdio, the same model as
@@ -529,17 +528,22 @@ into MCP connections:
   (Tauri sidecar, Docker, dev) — not in a pure browser.
 - **remote (HTTP/SSE)** — connects to an already-running server by URL,
   with an optional per-server bearer token.
-- **registry** — a Crucible Registry URL the `agent` route expands via
-  `fetchRegistryServers()` into a set of remote endpoints (plus skills).
-  Crucible is just one source among the three, not a separate path; the
-  legacy `registryUrl` setting migrates into a registry entry on load.
-  An env default (`CRUCIBLE_API_URL`) still applies server-side. The
-  `/api/tools` route (with `X-Registry-URL`/`X-Registry-Key`) lets the
-  settings UI preview a single registry's servers on demand.
 
-stdio/remote clients are kept in a per-`id` connection pool and reused
-across requests; editing a server's config re-signs the entry and
-transparently reconnects. **Security note:** stdio servers run arbitrary local commands
+Crucible is a **discovery source, not a connection**. The settings UI
+calls `/api/tools` (with `X-Registry-URL`/`X-Registry-Key`) to list a
+registry's MCP servers — each carrying a resolved `mcp_url`/`transport`
+— and the user picks individual servers, which are stored as ordinary
+remote entries with concrete URLs. The registry URL is remembered in
+`savedRegistries` for re-browsing only; it is never auto-connected. The
+legacy client `registryUrl` migrates into `savedRegistries` on load. One
+exception stays server-side: an env default (`CRUCIBLE_API_URL`) is still
+auto-expanded by the `agent` route via `fetchRegistryServers()` so a
+self-hosted/Docker deployment gets its registry tools (and skills) with
+zero per-user setup.
+
+Clients are kept in a per-`id` connection pool and reused across
+requests; editing a server's config re-signs the entry and transparently
+reconnects. **Security note:** stdio servers run arbitrary local commands
 the user configured — the same trust model as Claude Desktop. On a
 self-hosted/Docker backend, anyone who can reach the API and set
 `X-MCP-Servers` can run commands inside that backend; keep it behind the

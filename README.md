@@ -179,7 +179,7 @@ Graphium connects to MCP servers directly — no registry required. Open **⚙ S
 
 - **Local** — Graphium launches and manages the server for you, the same way Claude Desktop does. Enter a command and arguments (e.g. `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`) and Graphium spawns it over stdio; you never start or stop a process yourself. Requires the desktop app or a self-hosted backend (a browser can't launch local processes).
 - **Remote** — connect to an already-running server by its endpoint URL (e.g. `http://localhost:8100/sse`), optionally with an API key.
-- **Registry** — point at a [Crucible Registry](https://github.com/kumagallium/Crucible) URL to bulk-import every MCP server it lists. Optional; it's just another source in the same list. Expand the row to see what it provides.
+- **From registry** — enter a [Crucible Registry](https://github.com/kumagallium/Crucible) URL, fetch its list of MCP servers, and pick the ones you want — each becomes its own Remote entry. The registry URL is remembered so you can re-browse later. Optional; Crucible is just a discovery source, not a dependency.
 
 The fastest way to add a server is **Paste JSON**: copy the `mcpServers` block straight from a server's README (the Claude Desktop / Cursor format) and Graphium imports it — local (`command`/`args`/`env`) and remote (`url`/`type`/`headers`) entries, one or many at a time.
 
@@ -340,7 +340,7 @@ For the layered breakdown, the Wiki pipeline trigger flow, distribution targets,
 
 ### MCP tools
 
-The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Manage them all in one list under **⚙ Settings → AI Setup → MCP Servers** — **Local** (launched by Graphium over stdio, the Claude Desktop model; needs the desktop app or a self-hosted backend), **Remote** (reached by URL), or **Registry** (bulk-import from a [Crucible Registry](https://github.com/kumagallium/Crucible)). Crucible is just one source among the three, not a dependency — add a server by pasting its README JSON, or fill the form by hand.
+The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Manage them all in one list under **⚙ Settings → AI Setup → MCP Servers**. Add a **Local** server (launched by Graphium over stdio, the Claude Desktop model; needs the desktop app or a self-hosted backend) or a **Remote** one (reached by URL) — by pasting its README JSON, filling the form, or browsing a [Crucible Registry](https://github.com/kumagallium/Crucible) and picking servers from it. Crucible is just a discovery source, not a dependency.
 
 ## Beyond the editor
 
