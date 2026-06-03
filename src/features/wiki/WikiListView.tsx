@@ -486,11 +486,13 @@ export function WikiListView({
             )}
             {onClearWorldValidity && wikiKind !== "summary" && (
               <button
-                onClick={() => {
+                onClick={async () => {
                   // 選択した Wiki の照合結果（verdict / 出典）を一括クリア。
                   // ノート側 grounding.validity のみ剥がす（KB は触らない）。
+                  // 保存は savingRef で直列化されるため、await で順に流して
+                  // 並行 fire による取りこぼし（savingRef ガードで silent drop）を防ぐ。
                   for (const id of selectedIds) {
-                    void onClearWorldValidity(id);
+                    await onClearWorldValidity(id);
                   }
                   setSelectedIds(new Set());
                 }}

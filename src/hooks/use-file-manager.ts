@@ -1366,8 +1366,14 @@ export function useFileManager(authenticated: boolean) {
             // 世界モデル照合 validity の最小 mirror（Phase 2 / PR 2A）。
             // 一覧 verdict 列 / フィルタ / bulk 用。INDEX bump はしないので
             // NoteIndexEntry には伝播させない。
-            groundingValidity: validity
-              ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+            // doc.wikiMeta があるならその validity が source of truth。undefined は
+            // 「照合結果をクリアした」を意味するので existing にフォールバックしない
+            // （フォールバックすると「照合を消す」がリストに反映されない）。
+            // wikiMeta 自体が無い save（理論上のみ）だけ existing を温存する。
+            groundingValidity: doc.wikiMeta
+              ? validity
+                ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+                : undefined
               : existing?.groundingValidity,
           });
           return next;
