@@ -752,7 +752,7 @@ export const en: Record<string, string> = {
   "wikiList.clearWorldSelected": "Clear result ({count})",
   "wikiList.clearWorldSelectedTitle": "Remove the verdict and sources baked onto the selected entries (does not touch the KB). Use to strip wrong judgments or broken links in bulk.",
   "settings.tab.grounding": "World-grounding",
-  "settings.grounding.intro": "The knowledge base that world-grounding checks against. The seed entries are curated; model judgments on KB misses are added here automatically and reused on later checks.",
+  "settings.grounding.intro": "The knowledge base that world-grounding checks against. It starts empty and grows as you run checks: model judgments on KB misses are cached here automatically and reused on later checks, so it adapts to your own field over time.",
   "settings.grounding.count": "{count} entries",
   "settings.grounding.filterAll": "all",
   "settings.grounding.searchPlaceholder": "Search KB...",

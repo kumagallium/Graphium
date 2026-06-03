@@ -752,7 +752,7 @@ export const ja: Record<string, string> = {
   "wikiList.clearWorldSelected": "照合を消す ({count})",
   "wikiList.clearWorldSelectedTitle": "選択した Wiki に焼き付いた verdict と出典を消す（KB は触らない）。間違った判定や壊れたリンクをまとめて剥がす用途。",
   "settings.tab.grounding": "世界照合",
-  "settings.grounding.intro": "世界モデル照合が突き合わせる知識ベースの中身。最初に同梱されているのはキュレーション済みの種データで、ヒットしなかった主張をモデルが判定した結果はここに自動で追加され、次回以降の照合で再利用されます。",
+  "settings.grounding.intro": "世界モデル照合が突き合わせる知識ベースの中身。最初は空で、照合を実行するほど育ちます。KB にヒットしなかった主張をモデルが判定した結果がここに自動で追加され、次回以降の照合で再利用されます（あなたの分野に最適化されていく）。",
   "settings.grounding.count": "{count} 件",
   "settings.grounding.filterAll": "全部",
   "settings.grounding.searchPlaceholder": "KB を検索...",
