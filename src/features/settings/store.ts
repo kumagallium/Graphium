@@ -95,6 +95,135 @@ export function detectMcpTransport(url: string): McpTransport {
   }
 }
 
+/** JSON の type/transport 値を内部の McpTransport に正規化する */
+function coerceTransport(raw: unknown, url: string): McpTransport {
+  if (typeof raw === "string") {
+    const v = raw.toLowerCase();
+    if (v === "sse") return "sse";
+    if (v.includes("http") || v.includes("stream")) return "streamable-http";
+  }
+  return detectMcpTransport(url);
+}
+
+/** Authorization ヘッダー（"Bearer xxx"）からトークンを抜き出す */
+function bearerFromHeaders(headers: unknown): string | undefined {
+  if (!headers || typeof headers !== "object") return undefined;
+  const h = headers as Record<string, unknown>;
+  const auth = h.Authorization ?? h.authorization;
+  if (typeof auth === "string") {
+    const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+/** unknown を Record<string,string> に変換（文字列値のみ採用） */
+function toStringRecord(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+export type McpJsonParseResult = { servers: McpServerEntry[]; error?: "invalid-json" | "no-servers" };
+
+/**
+ * MCP サーバーの標準設定 JSON（Claude Desktop / Cursor 等の `mcpServers` 形式）を
+ * パースして McpServerEntry[] に変換する。README からコピペした JSON をそのまま受け取る。
+ *
+ * 受け付ける形:
+ *   - { "mcpServers": { "name": { command|url, ... }, ... } }  … 完全形
+ *   - { "name": { command|url, ... }, ... }                    … 中身だけ
+ *   - { "command": ... } / { "url": ... }                      … 名前なし単体
+ *
+ * 各サーバーは command があれば stdio、url があれば remote として登録する。
+ * キー名がサーバー名になる（単体形は command の basename / url の host から補完）。
+ */
+export function parseMcpServersJson(text: string): McpJsonParseResult {
+  const trimmed = text.trim();
+  if (!trimmed) return { servers: [], error: "no-servers" };
+
+  let data: unknown;
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    return { servers: [], error: "invalid-json" };
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return { servers: [], error: "no-servers" };
+  }
+
+  const obj = data as Record<string, unknown>;
+  let map: Record<string, unknown>;
+  if (obj.mcpServers && typeof obj.mcpServers === "object" && !Array.isArray(obj.mcpServers)) {
+    map = obj.mcpServers as Record<string, unknown>;
+  } else if (typeof obj.command === "string" || typeof obj.url === "string") {
+    map = { "": obj }; // 名前なし単体
+  } else {
+    map = obj; // name → config のマップとみなす
+  }
+
+  const servers: McpServerEntry[] = [];
+  for (const [key, raw] of Object.entries(map)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const cfg = raw as Record<string, unknown>;
+    const id = crypto.randomUUID();
+
+    // stdio: command が必須
+    if (typeof cfg.command === "string" && cfg.command.trim()) {
+      const command = cfg.command;
+      const args = Array.isArray(cfg.args)
+        ? cfg.args.filter((a): a is string => typeof a === "string")
+        : [];
+      const env = toStringRecord(cfg.env);
+      // 名前: キー名 → command の basename
+      const fallback = command.split("/").pop() || command;
+      servers.push({
+        type: "stdio",
+        id,
+        name: key.trim() || fallback,
+        command,
+        args,
+        env,
+        enabled: true,
+      });
+      continue;
+    }
+
+    // remote: url（または endpoint）が必須
+    const url =
+      typeof cfg.url === "string" && cfg.url.trim()
+        ? cfg.url
+        : typeof cfg.endpoint === "string" && cfg.endpoint.trim()
+          ? cfg.endpoint
+          : "";
+    if (url) {
+      let fallback = url;
+      try {
+        fallback = new URL(url).host;
+      } catch {
+        /* URL でなければ url 文字列 */
+      }
+      servers.push({
+        type: "remote",
+        id,
+        name: key.trim() || fallback,
+        url,
+        transport: coerceTransport(cfg.type ?? cfg.transport, url),
+        apiKey:
+          (typeof cfg.apiKey === "string" && cfg.apiKey ? cfg.apiKey : undefined) ??
+          bearerFromHeaders(cfg.headers),
+        enabled: true,
+      });
+    }
+  }
+
+  if (servers.length === 0) return { servers: [], error: "no-servers" };
+  return { servers };
+}
+
 /**
  * 実験的機能のオン/オフ。
  * - atomLayer: Concept をさらに抽象化した Atom 層を有効にする。

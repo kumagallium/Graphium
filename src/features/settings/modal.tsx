@@ -21,7 +21,7 @@ import {
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
 import { Input } from "@ui/form-field";
-import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, LATIN_FONTS, JP_FONTS, applyFontMode, type McpServerEntry, type McpTransport, detectMcpTransport } from "./store";
+import { loadSettings, saveSettings, type Settings, type CustomLabels, type ExperimentalSettings, getLLMModels, addLLMModel, removeLLMModel, type LLMModelConfig, type LatinFont, type JpFont, LATIN_FONTS, JP_FONTS, applyFontMode, type McpServerEntry, type McpTransport, detectMcpTransport, parseMcpServersJson } from "./store";
 import {
   fetchModels,
   type ModelInfo,
@@ -197,6 +197,10 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   // 手動登録の MCP サーバー（Crucible 非依存の接続経路）
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>([]);
   const [showMcpForm, setShowMcpForm] = useState(false);
+  // 追加フォームの入力モード（paste = README の JSON をコピペ / manual = フォーム入力）
+  const [mcpAddMode, setMcpAddMode] = useState<"paste" | "manual">("paste");
+  const [mcpJson, setMcpJson] = useState("");
+  const [mcpJsonError, setMcpJsonError] = useState<"" | "invalid-json" | "no-servers">("");
   // 追加フォーム: 接続方式（stdio = ローカル spawn が主役 / remote = HTTP）
   const [mcpType, setMcpType] = useState<"stdio" | "remote">("stdio");
   const [mcpName, setMcpName] = useState("");
@@ -423,6 +427,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setRegistryUrl(settings.registryUrl ?? "");
     setMcpServers(settings.mcpServers ?? []);
     setShowMcpForm(false);
+    setMcpAddMode("paste");
+    setMcpJson("");
+    setMcpJsonError("");
     setMcpType("stdio");
     setMcpName("");
     setMcpCommand("");
@@ -917,6 +924,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
   // ── 手動 MCP サーバー操作 ──
   const resetMcpForm = useCallback(() => {
+    setMcpAddMode("paste");
+    setMcpJson("");
+    setMcpJsonError("");
     setMcpName("");
     setMcpCommand("");
     setMcpArgs("");
@@ -927,6 +937,31 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setMcpApiKey("");
     setShowMcpForm(false);
   }, []);
+
+  // 名前で upsert（同名は置き換え、無ければ末尾に追加）して mcpServers に反映する
+  const upsertMcpServers = useCallback((entries: McpServerEntry[]) => {
+    setMcpServers((prev) => {
+      const next = [...prev];
+      for (const s of entries) {
+        const i = next.findIndex((e) => e.name === s.name);
+        if (i >= 0) next[i] = s;
+        else next.push(s);
+      }
+      return next;
+    });
+    setSaved(false);
+  }, []);
+
+  // README からコピペした mcpServers JSON を取り込む
+  const handleImportMcpJson = useCallback(() => {
+    const { servers, error } = parseMcpServersJson(mcpJson);
+    if (error) {
+      setMcpJsonError(error);
+      return;
+    }
+    upsertMcpServers(servers);
+    resetMcpForm();
+  }, [mcpJson, upsertMcpServers, resetMcpForm]);
 
   const handleAddMcpServer = useCallback(() => {
     let entry: McpServerEntry;
@@ -2181,6 +2216,54 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
               {showMcpForm ? (
                 <div className="space-y-2 rounded-md border border-border p-3">
+                  {/* 入力モード: README の JSON をコピペ（主役） / 手動フォーム */}
+                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                    {(["paste", "manual"] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
+                        className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                          mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {t(m === "paste" ? "settings.mcp.mode.paste" : "settings.mcp.mode.manual")}
+                      </button>
+                    ))}
+                  </div>
+
+                  {mcpAddMode === "paste" ? (
+                    <>
+                      <textarea
+                        value={mcpJson}
+                        onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
+                        rows={8}
+                        placeholder={'{\n  "mcpServers": {\n    "zotlink": {\n      "command": "/opt/homebrew/bin/zotlink",\n      "args": [],\n      "env": { "ZOTLINK_ZOTERO_ROOT": "/Users/you/Zotero" }\n    }\n  }\n}'}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
+                      />
+                      {mcpJsonError && (
+                        <p className="text-[11px] text-red-500">
+                          {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">{t("settings.mcp.jsonHelp")}</p>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={handleImportMcpJson}
+                          disabled={!mcpJson.trim()}
+                          className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
+                        >
+                          {t("settings.mcp.import")}
+                        </button>
+                        <button
+                          onClick={resetMcpForm}
+                          className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          {t("common.cancel")}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                  <>
                   {/* 接続方式: stdio（ローカル spawn）が主役 / remote（HTTP） */}
                   <div className="flex gap-1 rounded-md bg-muted p-0.5">
                     {(["stdio", "remote"] as const).map((ty) => (
@@ -2302,6 +2385,8 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                       {t("common.cancel")}
                     </button>
                   </div>
+                  </>
+                  )}
                 </div>
               ) : (
                 <button
