@@ -749,7 +749,7 @@ export const ja: Record<string, string> = {
   "wikiList.colWorldVerdictNoMatch": "マッチなし",
   "wikiList.worldCheckSelected": "世界照合 ({count})",
   "wikiList.worldCheckSelectedTitle": "選択した Wiki を一括で世界照合する（蒸留 KB のみ・LLM なし）",
-  "settings.tab.grounding": "Grounding KB",
+  "settings.tab.grounding": "世界照合",
   "settings.grounding.intro": "世界モデル照合が突き合わせる知識ベースの中身。最初に同梱されているのはキュレーション済みの種データで、ヒットしなかった主張をモデルが判定した結果はここに自動で追加され、次回以降の照合で再利用されます。",
   "settings.grounding.count": "{count} 件",
   "settings.grounding.filterAll": "全部",

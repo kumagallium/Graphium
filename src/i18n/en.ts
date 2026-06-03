@@ -749,7 +749,7 @@ export const en: Record<string, string> = {
   "wikiList.colWorldVerdictNoMatch": "no match",
   "wikiList.worldCheckSelected": "Check world ({count})",
   "wikiList.worldCheckSelectedTitle": "Run world-grounding for selected (KB-only, no LLM)",
-  "settings.tab.grounding": "Grounding KB",
+  "settings.tab.grounding": "World-grounding",
   "settings.grounding.intro": "The knowledge base that world-grounding checks against. The seed entries are curated; model judgments on KB misses are added here automatically and reused on later checks.",
   "settings.grounding.count": "{count} entries",
   "settings.grounding.filterAll": "all",
