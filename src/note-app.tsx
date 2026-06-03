@@ -5285,6 +5285,7 @@ export function NoteApp() {
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={(wikiId) => handleWorldCheckWiki(wikiId, "bulk")}
+            onClearWorldValidity={(wikiId) => handleClearWorldValidity(wikiId)}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView

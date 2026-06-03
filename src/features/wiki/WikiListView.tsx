@@ -3,7 +3,7 @@
 // NoteListView と一貫したテーブル + ソート + チェックボックス削除構造
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Bot, Filter, Search, Trash2, RefreshCw, Globe2 } from "lucide-react";
+import { Bot, Filter, Search, Trash2, RefreshCw, Globe2, Eraser } from "lucide-react";
 import { FilterPopup, type FilterOption } from "../../ui/filter-popup";
 import { cn } from "../../lib/utils";
 import type {
@@ -69,6 +69,12 @@ type Props = {
    * Summary は対象外。蒸留 KB のみで照合するため fire-and-forget で並列実行を許容する。
    */
   onWorldCheckWiki?: (wikiId: string) => Promise<unknown> | void;
+  /**
+   * 一括世界照合クリア（任意）— 提供時のみアクションバーに表示。
+   * 選択した Wiki に焼き付いた verdict / 出典を消す。間違った判定や幻覚 URL を
+   * まとめて剥がす用途。KB 側は触らない（ノートの grounding.validity のみ）。
+   */
+  onClearWorldValidity?: (wikiId: string) => Promise<unknown> | void;
 };
 
 // 削除確認ダイアログ
@@ -205,6 +211,7 @@ export function WikiListView({
   onDeleteWiki,
   onRegenerateWiki,
   onWorldCheckWiki,
+  onClearWorldValidity,
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
@@ -475,6 +482,23 @@ export function WikiListView({
               >
                 <Globe2 size={12} />
                 {t("wikiList.worldCheckSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
+            {onClearWorldValidity && wikiKind !== "summary" && (
+              <button
+                onClick={() => {
+                  // 選択した Wiki の照合結果（verdict / 出典）を一括クリア。
+                  // ノート側 grounding.validity のみ剥がす（KB は触らない）。
+                  for (const id of selectedIds) {
+                    void onClearWorldValidity(id);
+                  }
+                  setSelectedIds(new Set());
+                }}
+                className="px-3 py-1 text-xs font-medium rounded bg-muted text-muted-foreground hover:bg-muted/70 transition-colors inline-flex items-center gap-1.5"
+                title={t("wikiList.clearWorldSelectedTitle")}
+              >
+                <Eraser size={12} />
+                {t("wikiList.clearWorldSelected", { count: String(selectedIds.size) })}
               </button>
             )}
             {onRegenerateWiki && (
