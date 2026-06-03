@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.13.5](https://github.com/kumagallium/Graphium/compare/v0.13.4...v0.13.5) - 2026-06-03
+
+- World-grounding UX: open links in desktop, clear/re-ground verdicts, dedicated model, general-purpose seed by @kumagallium in https://github.com/kumagallium/Graphium/pull/415
+
 ## [v0.13.4](https://github.com/kumagallium/Graphium/compare/v0.13.3...v0.13.4) - 2026-06-02
 
 - refactor: consolidate duplicate utilities and types (behavior-identical) by @kumagallium in https://github.com/kumagallium/Graphium/pull/409
