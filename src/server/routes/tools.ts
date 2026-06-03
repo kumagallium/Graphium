@@ -9,7 +9,8 @@ const app = new Hono();
 
 app.get("/", async (c) => {
   const registryUrl = getRegistryUrl(c);
-  const registryKey = getRegistryKey();
+  // 統合リストの registry エントリごとに取得できるよう、ヘッダーのキーを優先する
+  const registryKey = c.req.header("X-Registry-Key") || getRegistryKey();
 
   const servers = await fetchRegistryServers(registryUrl, registryKey);
 

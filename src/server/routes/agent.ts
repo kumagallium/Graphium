@@ -7,7 +7,7 @@ import { getProfile, listProfiles } from "../config/profiles.js";
 import { createModel } from "../services/llm.js";
 import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
-import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
+import { fetchRegistryServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
@@ -63,10 +63,27 @@ app.post("/run", async (c) => {
     { role: "user" as const, content: body.message },
   ];
 
-  // Registry からツール・スキル取得
-  const registryUrl = getRegistryUrl(c);
-  const registryKey = getRegistryKey();
-  const allServers = await fetchRegistryServers(registryUrl, registryKey);
+  // MCP 供給源を集める: 手動登録（stdio / remote / registry）+ 環境変数の Registry 既定。
+  // registry エントリは複数あり得るので、それぞれ fetchRegistryServers で展開する。
+  const manualServers = getManualMcpServers(c);
+  const registrySources = new Map<string, string | undefined>(); // 正規化 URL -> apiKey
+  for (const m of manualServers) {
+    if (m.type === "registry") registrySources.set(m.url.replace(/\/$/, ""), m.apiKey);
+  }
+  const envRegistryUrl = getRegistryUrl(c).replace(/\/$/, "");
+  if (envRegistryUrl && !registrySources.has(envRegistryUrl)) {
+    registrySources.set(envRegistryUrl, getRegistryKey());
+  }
+  // 各レジストリを並列取得し、どのレジストリ由来かを保持して結合する
+  const registryFetches = await Promise.all(
+    [...registrySources.entries()].map(async ([url, key]) => ({
+      url,
+      servers: await fetchRegistryServers(url, key),
+    })),
+  );
+  const allRegistryServers = registryFetches.flatMap((r) =>
+    r.servers.map((s) => ({ s, registryUrl: r.url })),
+  );
 
   // Wiki コンテキストを注入（Retriever 結果）
   if (body.wiki_context) {
@@ -82,8 +99,8 @@ app.post("/run", async (c) => {
     systemPrompt += buildLabeledOutputInstruction(body.language || "en");
   }
 
-  // Skill をシステムプロンプトに注入
-  const skills = filterSkills(allServers);
+  // Skill をシステムプロンプトに注入（全レジストリ横断）
+  const skills = filterSkills(allRegistryServers.map((x) => x.s));
   const skillSection = buildSkillPromptSection(skills);
   if (skillSection) {
     systemPrompt += skillSection;
@@ -99,25 +116,29 @@ app.post("/run", async (c) => {
   const passesFilter = (name: string): boolean =>
     (!allowedNames || allowedNames.has(name)) && !disabledNames.has(name);
 
-  // (1) Crucible Registry 由来のサーバー（registryUrl が空なら空配列）。すべて remote。
-  const registryEndpoints: MCPServerInfo[] = filterMCPServers(allServers)
-    .filter((s) => passesFilter(s.name))
-    .map((s) => ({
-      id: `registry:${s.name}`,
+  // (1) Crucible Registry 由来のサーバー（各レジストリを展開）。すべて remote 接続。
+  const registryEndpoints: MCPServerInfo[] = allRegistryServers
+    .filter(({ s }) => s.tool_type === "mcp_server" && s.status === "running")
+    .filter(({ s }) => passesFilter(s.name))
+    .map(({ s, registryUrl }) => ({
+      id: `registry:${registryUrl}:${s.name}`,
       type: "remote",
       name: s.name,
       url: buildMCPUrl(s, registryUrl),
       transport: detectTransport(s),
     }));
 
-  // (2) ユーザーが直接登録した MCP サーバー（Crucible 非依存）。stdio / remote 混在。
-  const manualEndpoints: MCPServerInfo[] = getManualMcpServers(c)
+  // (2) ユーザーが直接登録した MCP サーバー（stdio / remote）。registry は供給源なので除外。
+  const manualEndpoints: MCPServerInfo[] = manualServers
     .filter((s) => passesFilter(s.name))
-    .map((s) =>
+    .map((s): MCPServerInfo | null =>
       s.type === "stdio"
         ? { id: s.id, type: "stdio", name: s.name, command: s.command, args: s.args, env: s.env }
-        : { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey },
-    );
+        : s.type === "remote"
+          ? { id: s.id, type: "remote", name: s.name, url: s.url, transport: s.transport, apiKey: s.apiKey }
+          : null,
+    )
+    .filter((e): e is MCPServerInfo => e !== null);
 
   // (1) ∪ (2) を接続する。同名は手動登録を優先（ユーザーの明示指定を尊重）。
   const byName = new Map<string, MCPServerInfo>();

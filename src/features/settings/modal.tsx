@@ -11,7 +11,6 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
-  Wrench,
   Plug,
   RotateCcw,
   Tag,
@@ -201,18 +200,21 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [mcpAddMode, setMcpAddMode] = useState<"paste" | "manual">("paste");
   const [mcpJson, setMcpJson] = useState("");
   const [mcpJsonError, setMcpJsonError] = useState<"" | "invalid-json" | "no-servers">("");
-  // 追加フォーム: 接続方式（stdio = ローカル spawn が主役 / remote = HTTP）
-  const [mcpType, setMcpType] = useState<"stdio" | "remote">("stdio");
+  // 追加/編集フォーム: 供給源の種別（stdio = ローカル spawn / remote = HTTP / registry = Crucible 一括取り込み）
+  const [mcpType, setMcpType] = useState<"stdio" | "remote" | "registry">("stdio");
+  const [mcpEditingId, setMcpEditingId] = useState<string | null>(null); // null = 新規追加
   const [mcpName, setMcpName] = useState("");
   // stdio 用フィールド
   const [mcpCommand, setMcpCommand] = useState("");
   const [mcpArgs, setMcpArgs] = useState("");   // 1 行 1 引数
   const [mcpEnv, setMcpEnv] = useState("");     // 1 行 KEY=value
-  // remote 用フィールド
+  // remote / registry 用フィールド
   const [mcpUrl, setMcpUrl] = useState("");
   const [mcpTransport, setMcpTransport] = useState<McpTransport>("sse");
   const [mcpTransportTouched, setMcpTransportTouched] = useState(false);
   const [mcpApiKey, setMcpApiKey] = useState("");
+  // registry エントリの展開状態（id -> 取得した tools 一覧）
+  const [mcpRegistryExpanded, setMcpRegistryExpanded] = useState<Record<string, ToolInfo[] | "loading" | "error" | undefined>>({});
   const [customLabels, setCustomLabels] = useState<CustomLabels>({});
   const [latinFont, setLatinFont] = useState<LatinFont>("");
   const [jpFont, setJpFont] = useState<JpFont>("");
@@ -261,7 +263,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
   const [serverTokenSaved, setServerTokenSaved] = useState(false);
 
   // ツール
-  const [toolsData, setToolsData] = useState<ToolsResponse | null>(null);
 
   // Maintenance タブ — Wiki 一括 Regenerate
   const [bulkKinds, setBulkKinds] = useState<Set<WikiKind>>(new Set(["claim", "summary", "atom"]));
@@ -431,6 +432,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setMcpJson("");
     setMcpJsonError("");
     setMcpType("stdio");
+    setMcpEditingId(null);
     setMcpName("");
     setMcpCommand("");
     setMcpArgs("");
@@ -439,6 +441,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setMcpTransport("sse");
     setMcpTransportTouched(false);
     setMcpApiKey("");
+    setMcpRegistryExpanded({});
     setCustomLabels(settings.customLabels ?? {});
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
@@ -450,16 +453,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
     refreshModels();
 
-    // Registry URL ヘッダーを付与
-    const regUrl = settings.registryUrl ?? "";
-    const regHeaders: HeadersInit = regUrl ? { "X-Registry-URL": regUrl } : {};
-
-    refreshHealth(regHeaders);
-
-    fetch(`${apiBase()}/tools`, { headers: regHeaders })
-      .then((r) => r.json())
-      .then((data) => setToolsData(data))
-      .catch(() => setToolsData(null));
+    refreshHealth();
 
     // Tauri 環境: ローカル保存先を取得
     if (isTauri()) {
@@ -922,11 +916,13 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setTimeout(() => onClose(), 600);
   }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, customLabels, latinFont, jpFont, experimental, onClose]);
 
-  // ── 手動 MCP サーバー操作 ──
+  // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
     setMcpAddMode("paste");
     setMcpJson("");
     setMcpJsonError("");
+    setMcpType("stdio");
+    setMcpEditingId(null);
     setMcpName("");
     setMcpCommand("");
     setMcpArgs("");
@@ -963,13 +959,12 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     resetMcpForm();
   }, [mcpJson, upsertMcpServers, resetMcpForm]);
 
-  const handleAddMcpServer = useCallback(() => {
-    let entry: McpServerEntry;
+  // フォーム入力からエントリを組み立てる（追加・編集共通）。不正なら null。
+  const buildMcpEntryFromForm = useCallback((id: string, enabled: boolean): McpServerEntry | null => {
     if (mcpType === "stdio") {
       const command = mcpCommand.trim();
-      if (!command) return;
+      if (!command) return null;
       const args = mcpArgs.split("\n").map((a) => a.trim()).filter(Boolean);
-      // 1 行 KEY=value を Record に変換
       const env: Record<string, string> = {};
       for (const line of mcpEnv.split("\n")) {
         const idx = line.indexOf("=");
@@ -978,38 +973,87 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
         const v = line.slice(idx + 1).trim();
         if (k) env[k] = v;
       }
-      entry = {
+      return {
         type: "stdio",
-        id: crypto.randomUUID(),
+        id,
         name: mcpName.trim() || command,
         command,
         args,
         env: Object.keys(env).length > 0 ? env : undefined,
-        enabled: true,
-      };
-    } else {
-      const url = mcpUrl.trim();
-      if (!url) return;
-      let fallbackName = url;
-      try {
-        fallbackName = new URL(url).host;
-      } catch {
-        /* URL でなければそのまま名前に使う */
-      }
-      entry = {
-        type: "remote",
-        id: crypto.randomUUID(),
-        name: mcpName.trim() || fallbackName,
-        url,
-        transport: mcpTransport,
-        apiKey: mcpApiKey.trim() || undefined,
-        enabled: true,
+        enabled,
       };
     }
-    setMcpServers((prev) => [...prev, entry]);
+    const url = mcpUrl.trim();
+    if (!url) return null;
+    let fallbackName = url;
+    try {
+      fallbackName = new URL(url).host;
+    } catch {
+      /* URL でなければそのまま名前に使う */
+    }
+    if (mcpType === "registry") {
+      return {
+        type: "registry",
+        id,
+        name: mcpName.trim() || fallbackName,
+        url,
+        apiKey: mcpApiKey.trim() || undefined,
+        enabled,
+      };
+    }
+    return {
+      type: "remote",
+      id,
+      name: mcpName.trim() || fallbackName,
+      url,
+      transport: mcpTransport,
+      apiKey: mcpApiKey.trim() || undefined,
+      enabled,
+    };
+  }, [mcpType, mcpCommand, mcpArgs, mcpEnv, mcpUrl, mcpName, mcpTransport, mcpApiKey]);
+
+  // フォーム送信（追加 or 編集）
+  const handleSubmitMcpForm = useCallback(() => {
+    if (mcpEditingId) {
+      // 編集: 既存の enabled を引き継いで同 id を置き換える
+      setMcpServers((prev) => {
+        const old = prev.find((s) => s.id === mcpEditingId);
+        const entry = buildMcpEntryFromForm(mcpEditingId, old ? old.enabled : true);
+        if (!entry) return prev;
+        return prev.map((s) => (s.id === mcpEditingId ? entry : s));
+      });
+    } else {
+      const entry = buildMcpEntryFromForm(crypto.randomUUID(), true);
+      if (!entry) return;
+      setMcpServers((prev) => [...prev, entry]);
+    }
     resetMcpForm();
     setSaved(false);
-  }, [mcpType, mcpCommand, mcpArgs, mcpEnv, mcpUrl, mcpName, mcpTransport, mcpApiKey, resetMcpForm]);
+  }, [mcpEditingId, buildMcpEntryFromForm, resetMcpForm]);
+
+  // 既存エントリを編集フォームに読み込む
+  const handleEditMcpServer = useCallback((entry: McpServerEntry) => {
+    setShowMcpForm(true);
+    setMcpAddMode("manual");
+    setMcpEditingId(entry.id);
+    setMcpType(entry.type);
+    setMcpName(entry.name);
+    if (entry.type === "stdio") {
+      setMcpCommand(entry.command);
+      setMcpArgs(entry.args.join("\n"));
+      setMcpEnv(entry.env ? Object.entries(entry.env).map(([k, v]) => `${k}=${v}`).join("\n") : "");
+      setMcpUrl("");
+      setMcpApiKey("");
+    } else {
+      setMcpUrl(entry.url);
+      setMcpApiKey(entry.apiKey ?? "");
+      setMcpTransport(entry.type === "remote" ? entry.transport : "sse");
+      setMcpTransportTouched(true);
+      setMcpCommand("");
+      setMcpArgs("");
+      setMcpEnv("");
+    }
+  }, []);
 
   const handleRemoveMcpServer = useCallback((id: string) => {
     setMcpServers((prev) => prev.filter((s) => s.id !== id));
@@ -1021,13 +1065,42 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
     setSaved(false);
   }, []);
 
-  // URL 入力に追従して transport を自動推定（ユーザーが手動で触ったら追従しない）
+  // registry エントリを展開して、そのレジストリが返すサーバー/ツールを取得する
+  const handleToggleRegistryExpand = useCallback((entry: McpServerEntry) => {
+    if (entry.type !== "registry") return;
+    setMcpRegistryExpanded((prev) => {
+      // 既に展開済みなら畳む
+      if (prev[entry.id] !== undefined) {
+        const next = { ...prev };
+        delete next[entry.id];
+        return next;
+      }
+      return { ...prev, [entry.id]: "loading" };
+    });
+    // 取得（畳む場合は上で undefined になっているので、ここは展開時のみ意味を持つ）
+    const headers: Record<string, string> = { "X-Registry-URL": entry.url };
+    if (entry.apiKey) headers["X-Registry-Key"] = entry.apiKey;
+    fetch(`${apiBase()}/tools`, { headers })
+      .then((r) => r.json())
+      .then((data: ToolsResponse) => {
+        setMcpRegistryExpanded((prev) =>
+          prev[entry.id] === undefined ? prev : { ...prev, [entry.id]: data.tools ?? [] },
+        );
+      })
+      .catch(() => {
+        setMcpRegistryExpanded((prev) =>
+          prev[entry.id] === undefined ? prev : { ...prev, [entry.id]: "error" },
+        );
+      });
+  }, []);
+
+  // URL 入力に追従して transport を自動推定（remote のみ。ユーザーが手動で触ったら追従しない）
   const handleMcpUrlChange = useCallback((value: string) => {
     setMcpUrl(value);
-    if (!mcpTransportTouched) setMcpTransport(detectMcpTransport(value));
-  }, [mcpTransportTouched]);
+    if (mcpType === "remote" && !mcpTransportTouched) setMcpTransport(detectMcpTransport(value));
+  }, [mcpType, mcpTransportTouched]);
 
-  // 追加ボタンの有効条件
+  // 送信ボタンの有効条件
   const mcpAddDisabled = mcpType === "stdio" ? !mcpCommand.trim() : !mcpUrl.trim();
 
   const handleKeyDown = useCallback(
@@ -2177,35 +2250,77 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                 <div className="space-y-1.5 mb-2">
                   {mcpServers.map((s) => {
                     const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
+                    const badge = s.type === "stdio" ? "local" : s.type === "registry" ? "registry" : s.transport;
+                    const expanded = s.type === "registry" ? mcpRegistryExpanded[s.id] : undefined;
                     return (
-                      <div key={s.id} className="flex items-center gap-2 text-xs text-foreground">
-                        <button
-                          onClick={() => handleToggleMcpServer(s.id)}
-                          role="switch"
-                          aria-checked={s.enabled}
-                          aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                          className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                          style={{ backgroundColor: s.enabled ? "#4B7A52" : "#d5e0d7" }}
-                        >
-                          <span
-                            className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                            style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
-                          />
-                        </button>
-                        <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
-                          <span className="font-medium">{s.name}</span>
-                          <span className="text-muted-foreground"> — {detail}</span>
-                        </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-                          {s.type === "stdio" ? "stdio" : s.transport}
-                        </span>
-                        <button
-                          onClick={() => handleRemoveMcpServer(s.id)}
-                          aria-label={t("settings.mcp.remove")}
-                          className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                      <div key={s.id}>
+                        <div className="flex items-center gap-2 text-xs text-foreground">
+                          <button
+                            onClick={() => handleToggleMcpServer(s.id)}
+                            role="switch"
+                            aria-checked={s.enabled}
+                            aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
+                            className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
+                            style={{ backgroundColor: s.enabled ? "#4B7A52" : "#d5e0d7" }}
+                          >
+                            <span
+                              className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                              style={{ transform: s.enabled ? "translateX(15px)" : "translateX(1px)" }}
+                            />
+                          </button>
+                          {s.type === "registry" ? (
+                            <button
+                              onClick={() => handleToggleRegistryExpand(s)}
+                              className={`min-w-0 flex-1 flex items-center gap-1 text-left ${s.enabled ? "" : "opacity-50"}`}
+                              aria-expanded={expanded !== undefined}
+                            >
+                              <ChevronDown size={12} className={`shrink-0 text-muted-foreground transition-transform ${expanded !== undefined ? "" : "-rotate-90"}`} />
+                              <span className="min-w-0 truncate">
+                                <span className="font-medium">{s.name}</span>
+                                <span className="text-muted-foreground"> — {detail}</span>
+                              </span>
+                            </button>
+                          ) : (
+                            <span className={`min-w-0 flex-1 truncate ${s.enabled ? "" : "opacity-50"}`}>
+                              <span className="font-medium">{s.name}</span>
+                              <span className="text-muted-foreground"> — {detail}</span>
+                            </span>
+                          )}
+                          <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                          <button
+                            onClick={() => handleEditMcpServer(s)}
+                            aria-label={t("settings.mcp.edit")}
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleRemoveMcpServer(s.id)}
+                            aria-label={t("settings.mcp.remove")}
+                            className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        {/* registry の展開: そのレジストリが返すサーバー/ツール（読み取り専用） */}
+                        {s.type === "registry" && expanded !== undefined && (
+                          <div className="ml-9 mt-1 mb-1 space-y-0.5">
+                            {expanded === "loading" ? (
+                              <p className="text-[11px] text-muted-foreground">{t("settings.tools.loading")}</p>
+                            ) : expanded === "error" ? (
+                              <p className="text-[11px] text-red-500">{t("settings.mcp.registryError")}</p>
+                            ) : expanded.length === 0 ? (
+                              <p className="text-[11px] text-muted-foreground">{t("settings.tools.empty")}</p>
+                            ) : (
+                              expanded.map((tool) => (
+                                <div key={tool.name} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                  <span className="truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
+                                  <span className="text-[9px] px-1 py-0.5 rounded bg-muted">{tool.tool_type}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2216,28 +2331,30 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
               {showMcpForm ? (
                 <div className="space-y-2 rounded-md border border-border p-3">
-                  {/* 入力モード: README の JSON をコピペ（主役） / 手動フォーム */}
-                  <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                    {(["paste", "manual"] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
-                        className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
-                          mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {t(m === "paste" ? "settings.mcp.mode.paste" : "settings.mcp.mode.manual")}
-                      </button>
-                    ))}
-                  </div>
+                  {/* 入力モード: README の JSON をコピペ（主役） / 手動フォーム。編集中は手動固定 */}
+                  {!mcpEditingId && (
+                    <div className="flex gap-1 rounded-md bg-muted p-0.5">
+                      {(["paste", "manual"] as const).map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
+                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                            mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {t(m === "paste" ? "settings.mcp.mode.paste" : "settings.mcp.mode.manual")}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                  {mcpAddMode === "paste" ? (
+                  {mcpAddMode === "paste" && !mcpEditingId ? (
                     <>
                       <textarea
                         value={mcpJson}
                         onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
                         rows={8}
-                        placeholder={'{\n  "mcpServers": {\n    "zotlink": {\n      "command": "/opt/homebrew/bin/zotlink",\n      "args": [],\n      "env": { "ZOTLINK_ZOTERO_ROOT": "/Users/you/Zotero" }\n    }\n  }\n}'}
+                        placeholder={'{\n  "mcpServers": {\n    "zotlink": {\n      "command": "/opt/homebrew/bin/zotlink",\n      "args": [],\n      "env": { "ZOTLINK_ZOTERO_ROOT": "/Users/you/Zotero" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                       />
                       {mcpJsonError && (
@@ -2264,9 +2381,9 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                     </>
                   ) : (
                   <>
-                  {/* 接続方式: stdio（ローカル spawn）が主役 / remote（HTTP） */}
+                  {/* 供給源の種別: stdio（ローカル spawn）/ remote（HTTP）/ registry（Crucible 一括取り込み） */}
                   <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                    {(["stdio", "remote"] as const).map((ty) => (
+                    {(["stdio", "remote", "registry"] as const).map((ty) => (
                       <button
                         key={ty}
                         onClick={() => setMcpType(ty)}
@@ -2274,7 +2391,7 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                           mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
-                        {t(ty === "stdio" ? "settings.mcp.type.stdio" : "settings.mcp.type.remote")}
+                        {t(ty === "stdio" ? "settings.mcp.type.stdio" : ty === "remote" ? "settings.mcp.type.remote" : "settings.mcp.type.registry")}
                       </button>
                     ))}
                   </div>
@@ -2321,6 +2438,37 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                         />
                       </div>
+                    </>
+                  ) : mcpType === "registry" ? (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
+                        <Input
+                          type="url"
+                          value={mcpUrl}
+                          onChange={(e) => setMcpUrl(e.target.value)}
+                          placeholder={t("settings.mcp.registryUrlPlaceholder")}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                        <Input
+                          type="text"
+                          value={mcpName}
+                          onChange={(e) => setMcpName(e.target.value)}
+                          placeholder={t("settings.mcp.namePlaceholder")}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                        <Input
+                          type="password"
+                          value={mcpApiKey}
+                          onChange={(e) => setMcpApiKey(e.target.value)}
+                          placeholder={t("settings.mcp.apiKeyPlaceholder")}
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">{t("settings.mcp.registryHelp")}</p>
                     </>
                   ) : (
                     <>
@@ -2372,11 +2520,11 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
 
                   <div className="flex gap-2 pt-1">
                     <button
-                      onClick={handleAddMcpServer}
+                      onClick={handleSubmitMcpForm}
                       disabled={mcpAddDisabled}
                       className="flex-1 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                     >
-                      {t("settings.mcp.save")}
+                      {t(mcpEditingId ? "settings.mcp.update" : "settings.mcp.save")}
                     </button>
                     <button
                       onClick={resetMcpForm}
@@ -2398,76 +2546,6 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
               )}
 
               <p className="text-xs text-muted-foreground mt-2">{t("settings.mcp.help")}</p>
-            </div>
-
-            {/* Crucible Registry URL（任意の一括取り込みソース） */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.registry.title")}
-              </label>
-              <Input
-                type="url"
-                value={registryUrl}
-                onChange={(e) => { setRegistryUrl(e.target.value); setSaved(false); }}
-                placeholder={t("settings.registry.placeholder")}
-              />
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.registry.help")}</p>
-            </div>
-
-            {/* ツール一覧 */}
-            <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <Wrench size={14} className="text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground">{t("settings.tools.title")}</h3>
-              </div>
-              {toolsData ? (
-                toolsData.tools.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {toolsData.tools.map((tool) => {
-                      const isDisabled = disabledTools.includes(tool.name);
-                      return (
-                        <div key={tool.name} className="flex items-center gap-2 text-xs text-foreground">
-                          <button
-                            onClick={() => {
-                              setDisabledTools((prev) =>
-                                isDisabled
-                                  ? prev.filter((n) => n !== tool.name)
-                                  : [...prev, tool.name],
-                              );
-                              setSaved(false);
-                            }}
-                            role="switch"
-                            aria-checked={!isDisabled}
-                            aria-label={isDisabled ? t("settings.tools.enable") : t("settings.tools.disable")}
-                            className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                            style={{
-                              backgroundColor: !isDisabled && (tool.status === "running" || tool.tool_type === "skill") ? "#4B7A52" : "#d5e0d7",
-                            }}
-                          >
-                            <span
-                              className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                              style={{
-                                transform: !isDisabled ? "translateX(15px)" : "translateX(1px)",
-                              }}
-                            />
-                          </button>
-                          <span className={isDisabled ? "opacity-50" : ""}>
-                            {tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{tool.tool_type}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
-                )
-              ) : (
-                <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("settings.tools.help")}
-              </p>
             </div>
 
             </>}

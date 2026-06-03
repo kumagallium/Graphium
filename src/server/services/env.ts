@@ -39,6 +39,13 @@ export type ManualMcpServer =
       url: string;
       transport: "sse" | "streamable-http";
       apiKey?: string;
+    }
+  | {
+      id: string;
+      type: "registry";
+      name: string;
+      url: string;
+      apiKey?: string;
     };
 
 /**
@@ -58,6 +65,18 @@ export function getManualMcpServers(c: Context): ManualMcpServer[] {
       const name = typeof s.name === "string" ? s.name : "";
       const id = typeof s.id === "string" && s.id ? s.id : name;
       if (!name) continue;
+
+      if (s.type === "registry") {
+        if (typeof s.url !== "string" || !s.url.trim()) continue;
+        out.push({
+          id,
+          type: "registry",
+          name,
+          url: s.url,
+          apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
+        });
+        continue;
+      }
 
       if (s.type === "stdio") {
         if (typeof s.command !== "string" || !s.command.trim()) continue;

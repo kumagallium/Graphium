@@ -517,23 +517,29 @@ deployment is one of:
   reverse proxy).
 
 Tokens you may see in headers (`X-Graphium-Token`, `X-LLM-API-Key`,
-`X-Registry-URL`, `X-MCP-Servers`) are passthrough to upstream LLM /
-MCP / Registry APIs, not authentication for the Graphium server itself.
-`X-MCP-Servers` carries the user's directly-registered MCP servers; the
-`agent` route connects to them in addition to any servers discovered via
-a Crucible Registry. Two transports are supported (`src/server/services/mcp.ts`):
+`X-MCP-Servers`, `X-Registry-URL`/`X-Registry-Key`) are passthrough to
+upstream LLM / MCP / Registry APIs, not authentication for the Graphium
+server itself. `X-MCP-Servers` carries the user's MCP sources as a single
+unified list of three entry kinds; the `agent` route resolves all of them
+into MCP connections:
 
 - **stdio (local)** — the server spawns the configured `command`/`args`
   as a child process and speaks MCP over its stdio, the same model as
   Claude Desktop. Only works where the backend can spawn processes
   (Tauri sidecar, Docker, dev) — not in a pure browser.
 - **remote (HTTP/SSE)** — connects to an already-running server by URL,
-  with an optional per-server bearer token. Crucible-discovered servers
-  are always remote.
+  with an optional per-server bearer token.
+- **registry** — a Crucible Registry URL the `agent` route expands via
+  `fetchRegistryServers()` into a set of remote endpoints (plus skills).
+  Crucible is just one source among the three, not a separate path; the
+  legacy `registryUrl` setting migrates into a registry entry on load.
+  An env default (`CRUCIBLE_API_URL`) still applies server-side. The
+  `/api/tools` route (with `X-Registry-URL`/`X-Registry-Key`) lets the
+  settings UI preview a single registry's servers on demand.
 
-Clients are kept in a per-`id` connection pool and reused across
-requests; editing a server's config re-signs the entry and transparently
-reconnects. **Security note:** stdio servers run arbitrary local commands
+stdio/remote clients are kept in a per-`id` connection pool and reused
+across requests; editing a server's config re-signs the entry and
+transparently reconnects. **Security note:** stdio servers run arbitrary local commands
 the user configured — the same trust model as Claude Desktop. On a
 self-hosted/Docker backend, anyone who can reach the API and set
 `X-MCP-Servers` can run commands inside that backend; keep it behind the
