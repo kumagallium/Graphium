@@ -30,6 +30,21 @@ describe("pickNextUngrounded", () => {
     expect(pickNextUngrounded(m)).toBeNull();
   });
 
+  it("手動クリア（dismissed）はスキップする（自動で付け直さない）", () => {
+    const m = new Map<string, WikiMetaSummary>([
+      ["a", meta({ kind: "atom", groundingValidity: { dismissed: true } })],
+      ["b", meta({ kind: "claim" })],
+    ]);
+    expect(pickNextUngrounded(m)).toBe("b");
+  });
+
+  it("dismissed のみ（他に対象なし）なら null", () => {
+    const m = new Map<string, WikiMetaSummary>([
+      ["a", meta({ kind: "atom", groundingValidity: { dismissed: true } })],
+    ]);
+    expect(pickNextUngrounded(m)).toBeNull();
+  });
+
   it("summary / synthesis は対象外", () => {
     const m = new Map<string, WikiMetaSummary>([
       ["s", meta({ kind: "summary" })],

@@ -341,6 +341,7 @@ export function useFileManager(authenticated: boolean) {
                       verdict: validity.verdict,
                       checkedAt: validity.checkedAt,
                       entryId: validity.entryId,
+                      dismissed: validity.dismissed,
                     }
                   : undefined,
               });
@@ -1372,7 +1373,12 @@ export function useFileManager(authenticated: boolean) {
             // wikiMeta 自体が無い save（理論上のみ）だけ existing を温存する。
             groundingValidity: doc.wikiMeta
               ? validity
-                ? { verdict: validity.verdict, checkedAt: validity.checkedAt }
+                ? {
+                    verdict: validity.verdict,
+                    checkedAt: validity.checkedAt,
+                    entryId: validity.entryId,
+                    dismissed: validity.dismissed,
+                  }
                 : undefined
               : existing?.groundingValidity,
           });

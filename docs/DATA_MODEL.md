@@ -604,6 +604,7 @@ type GroundingProfile = {
     checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
     checkedAt?: string;                      // ISO 8601
     entryId?: string;                        // KB entry this grounded to (world-grounding edge)
+    dismissed?: boolean;                     // user manually cleared the verdict (see below)
   };
   // Promotion of an existing status field is "suggest" only — never write.
   suggests?: { field: "hypothesisStatus" | "epistemicStatus"; to: string; reason: string };
@@ -632,10 +633,18 @@ The lane is **strictly separate** from the existing layers:
   *edge* between the user's insights and the world — not a copy of the
   world's knowledge — so it stays distinct from being a lossy LLM mirror.
   Absent when the verdict is null (no match / not sedimented).
+- `dismissed` marks a verdict the user **manually cleared** from the note.
+  It distinguishes "never checked" (no `grounding` at all) from "checked,
+  then deliberately removed". A dismissed entry renders like an un-grounded
+  one (no badge, no list tag) and is **excluded from auto-grounding**, so an
+  explicit clear is not silently re-attached while auto-grounding is on. A
+  manual "Check world" re-run replaces the whole `validity`, dropping the
+  flag. (Regeneration drops `grounding` entirely, so regenerated content is
+  re-grounded as usual.)
 
 `INDEX_SCHEMA_VERSION` does NOT bump when `grounding` lands. A minimal
-slice (`verdict`, `checkedAt`, `entryId`) is mirrored into the **runtime**
-`WikiMetaSummary.groundingValidity` for the list verdict column and the
+slice (`verdict`, `checkedAt`, `entryId`, `dismissed`) is mirrored into the
+**runtime** `WikiMetaSummary.groundingValidity` for the list verdict column and the
 WikiBanner edge lookup, but it is **not** persisted into `NoteIndexEntry`,
 so the on-disk index schema is unchanged. A future PR that needs the
 verdict in the persisted index (e.g. cross-session quadrant badges) is

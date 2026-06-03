@@ -3209,16 +3209,23 @@ export function NoteApp() {
 
   // ノートに焼き付いた照合結果（verdict / 出典 URL）をクリアする。
   // 間違った判定や幻覚 URL が残ったとき、再 Check を待たずに消せる導線。
-  // KB キャッシュ（設定 → Grounding KB）とは別レイヤで、ここはノート側 WikiMeta に
-  // 保存された validity を attachValidity(meta, undefined) で剥がすだけ。
+  // KB キャッシュ（設定 → 世界照合）とは別レイヤで、ここはノート側 WikiMeta に
+  // 保存された validity を消す。
+  // ただし validity を完全に undefined にすると「未照合」に戻り、自動照合が ON だと
+  // すぐ付け直されてしまう。「手動で消した＝自動で付け直してほしくない」という意思を
+  // 尊重するため、`{ dismissed: true }` を残して自動照合の対象から外す。
+  // （手動「世界照合」で再照合すれば新しい validity に置き換わる）
   const handleClearWorldValidity = useCallback(
     async (wikiId: string): Promise<void> => {
       const cached = fm.getCachedDoc(`wiki:${wikiId}`);
       const doc = cached ?? (await fm.loadDoc(`wiki:${wikiId}`));
       if (!doc?.wikiMeta?.grounding?.validity) return;
+      // 既に dismissed だけの状態なら何もしない（無駄な保存を避ける）
+      const v = doc.wikiMeta.grounding.validity;
+      if (v.dismissed && !v.verdict && !v.checkedAt) return;
       const next: GraphiumDocument = {
         ...doc,
-        wikiMeta: attachValidity(doc.wikiMeta, undefined),
+        wikiMeta: attachValidity(doc.wikiMeta, { dismissed: true }),
         modifiedAt: new Date().toISOString(),
       };
       // 照合と同じく activityType 無しで保存（phantom revision を作らない）
