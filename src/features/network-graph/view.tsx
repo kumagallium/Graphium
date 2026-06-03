@@ -16,6 +16,7 @@ import {
 } from "./knowledge-colors";
 import { useT } from "../../i18n";
 import { resolveMediaThumbUrl } from "../asset-browser/media-thumbnails";
+import { openExternalUrl } from "../../lib/external-link";
 
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
@@ -422,7 +423,7 @@ export function NetworkGraphPanel({
       }
       if (nodeId.startsWith("url:")) {
         if (externalUrl) {
-          window.open(externalUrl, "_blank", "noopener,noreferrer");
+          void openExternalUrl(externalUrl);
         }
         return;
       }

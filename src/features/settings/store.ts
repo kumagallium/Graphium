@@ -227,24 +227,28 @@ export function getChatSynthesisModelName(): string {
   return getChatSynthesisModel() || getSelectedModel() || "";
 }
 
-/** 世界モデル照合用モデル名を取得する（PR 2B v2: Chat & Ideas モデルにエイリアス）。
+/** 世界モデル照合用モデル名を取得する（空文字 = チャット・洞察モデルにフォールバック）。
  *
- * 当初は専用スロット（Settings.groundingModel）を持っていたが、ユーザー指摘
- * 「モデル設定が 4 つも多すぎ」と、独自 chain が想定外モデル（Anthropic）を引いた
- * 不具合（PR 2B 触行中に発覚）を受けて、Chat & Ideas モデルを直接使う方式に変更した。
- * Synthesize / Atomize と同じ経路になるので、設定齟齬が起きない。
- *
- * `Settings.groundingModel` フィールドは将来「専用スロットを再導入したい」場合に
- * 復活できるよう型だけ残してあるが、現状は読まれていない。
- */
-export function getGroundingLLMModel(): LLMModelConfig | undefined {
-  return getChatSynthesisLLMModel();
+ * 一度 Chat & Ideas モデルへのエイリアスに畳んだが、ユーザー要望で専用スロットを
+ * 再導入した。空のときは従来どおりチャット・洞察モデル（さらに空なら default）に
+ * フォールバックするので、わざわざ設定しなくても動く。 */
+export function getGroundingModel(): string {
+  return loadSettings().groundingModel ?? "";
 }
 
-/** 世界モデル照合モデル名（string）を取得する。`getGroundingLLMModel` と同流儀で
- *  Chat & Ideas モデル名にエイリアスする。 */
+/** 世界モデル照合用の LLMModelConfig を取得する。
+ *  専用設定が空ならチャット・洞察モデル（さらに空なら default）にフォールバックする。 */
+export function getGroundingLLMModel(): LLMModelConfig | undefined {
+  const name = getGroundingModel();
+  if (!name) return getChatSynthesisLLMModel();
+  const found = getLLMModels().find((m) => m.name === name);
+  return found ?? getChatSynthesisLLMModel();
+}
+
+/** 世界モデル照合モデル名（string）を取得する。専用設定が空なら
+ *  チャット・洞察モデル名にフォールバックする。 */
 export function getGroundingModelName(): string {
-  return getChatSynthesisModelName();
+  return getGroundingModel() || getChatSynthesisModelName();
 }
 
 /** Embedding 用の LLMModelConfig を取得する。

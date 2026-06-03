@@ -3207,6 +3207,36 @@ export function NoteApp() {
     [fm, worldCheckingWikiId],
   );
 
+  // ノートに焼き付いた照合結果（verdict / 出典 URL）をクリアする。
+  // 間違った判定や幻覚 URL が残ったとき、再 Check を待たずに消せる導線。
+  // KB キャッシュ（設定 → 世界照合）とは別レイヤで、ここはノート側 WikiMeta に
+  // 保存された validity を消す。
+  // ただし validity を完全に undefined にすると「未照合」に戻り、自動照合が ON だと
+  // すぐ付け直されてしまう。「手動で消した＝自動で付け直してほしくない」という意思を
+  // 尊重するため、`{ dismissed: true }` を残して自動照合の対象から外す。
+  // （手動「世界照合」で再照合すれば新しい validity に置き換わる）
+  const handleClearWorldValidity = useCallback(
+    async (wikiId: string): Promise<void> => {
+      const cached = fm.getCachedDoc(`wiki:${wikiId}`);
+      const doc = cached ?? (await fm.loadDoc(`wiki:${wikiId}`));
+      if (!doc?.wikiMeta?.grounding?.validity) return;
+      // 既に dismissed だけの状態なら何もしない（無駄な保存を避ける）
+      const v = doc.wikiMeta.grounding.validity;
+      if (v.dismissed && !v.verdict && !v.checkedAt) return;
+      const next: GraphiumDocument = {
+        ...doc,
+        wikiMeta: attachValidity(doc.wikiMeta, { dismissed: true }),
+        modifiedAt: new Date().toISOString(),
+      };
+      // 照合と同じく activityType 無しで保存（phantom revision を作らない）
+      await fm.handleSaveWikiFile(wikiId, next);
+      if (fm.activeFileId === `wiki:${wikiId}`) {
+        fm.handleOpenWikiFile(wikiId);
+      }
+    },
+    [fm],
+  );
+
   // 自動 world-grounding（opt-in / 既定 OFF）。設定 ON のとき、洞察・知見が追加された
   // タイミング（wikiMetas の変化）に反応して未照合を 1 件ずつ照合する（直列 + デバウンス）。
   useAutoGrounding({
@@ -5262,6 +5292,7 @@ export function NoteApp() {
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
             onWorldCheckWiki={(wikiId) => handleWorldCheckWiki(wikiId, "bulk")}
+            onClearWorldValidity={(wikiId) => handleClearWorldValidity(wikiId)}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
           <SharedLibraryView
@@ -5431,6 +5462,11 @@ export function NoteApp() {
                 }
                 worldCheckLoading={
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
+                }
+                onClearWorldValidity={
+                  wikiIdForBanner
+                    ? () => void handleClearWorldValidity(wikiIdForBanner)
+                    : undefined
                 }
                 wikiId={wikiIdForBanner ?? undefined}
                 allWikiMetas={fm.wikiMetas}

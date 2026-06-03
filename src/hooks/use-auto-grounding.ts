@@ -25,6 +25,8 @@ const AUTO_GROUND_KINDS: ReadonlySet<WikiKind> = new Set<WikiKind>([
  * - summary / synthesis は対象外
  * - groundingValidity.checkedAt があるものは「照合済み」とみなしスキップ
  *   （マッチなし照合も checkedAt を持つので、無限に再照合しない）
+ * - groundingValidity.dismissed があるものはユーザーが手動でクリアした印なのでスキップ
+ *   （「手動で消した＝自動で付け直してほしくない」を尊重。手動照合では付け直せる）
  * - skip 集合に含まれる id はスキップ（このセッションで「ハード失敗」した id =
  *   保存例外などで checkedAt が付かなかったもの。ホットループ防止）
  */
@@ -35,6 +37,7 @@ export function pickNextUngrounded(
   for (const [wikiId, meta] of wikiMetas) {
     if (!AUTO_GROUND_KINDS.has(meta.kind)) continue;
     if (meta.groundingValidity?.checkedAt) continue;
+    if (meta.groundingValidity?.dismissed) continue;
     if (skip?.has(wikiId)) continue;
     return wikiId;
   }
