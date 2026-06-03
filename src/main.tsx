@@ -8,10 +8,14 @@ import { restartSidecar, startSidecar, stopSidecar } from "./lib/sidecar";
 import { initMenuListener, onMenuAction } from "./lib/menu-events";
 import { initUpdater } from "./lib/updater";
 import { isTauri } from "./lib/platform";
+import { installExternalLinkHandler } from "./lib/external-link";
 import "./app.css";
 
 // ── Tauri 環境: sidecar サーバー起動 + メニュー + 自動更新 ──
 if (isTauri()) {
+  // 外部リンク（<a target="_blank"> / 出典 URL）を OS ブラウザで開けるようにする。
+  // Tauri WebView は target="_blank" を素通しすると何も起きないため横取りする。
+  installExternalLinkHandler();
   // sidecar 起動を await し、失敗時もアプリは続行（AI 機能のみ無効化）
   startSidecar().then((ok) => {
     if (!ok) console.warn("[main] sidecar 起動失敗 — AI 機能は利用不可");

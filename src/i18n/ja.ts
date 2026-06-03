@@ -705,6 +705,8 @@ export const ja: Record<string, string> = {
   // 世界モデル照合（Phase 2 / PR 2A）— 蒸留KB のみ。LLM fallback / 自動照合は PR 2B
   "wikiBanner.worldCheck": "世界照合",
   "wikiBanner.worldCheckHint": "この知識片を蒸留 KB と突き合わせて位置づける。KB マッチのみで判定し、LLM や外部検索は呼ばない（PR 2A）。verdict は KB の見方であって、あなたの主張への評価ではない — 最終判断はあなた。",
+  "wikiBanner.worldClear": "照合結果を消す",
+  "wikiBanner.worldClearHint": "このノートに保存された verdict と出典を消す。間違った判定や、壊れた／存在しないリンクが焼き付いたときに使う。もう一度「世界照合」を押せば再判定できる。",
   "wikiBanner.worldVerdictLabel": "KB から見た位置づけ",
   "wikiBanner.worldVerdict.established": "確立した知識と整合",
   "wikiBanner.worldVerdict.supported": "支持された知識と整合",

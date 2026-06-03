@@ -705,6 +705,8 @@ export const en: Record<string, string> = {
   // world-grounding (Phase 2 / PR 2A) — 蒸留KB のみ。LLM fallback / auto-trigger は PR 2B
   "wikiBanner.worldCheck": "Check world",
   "wikiBanner.worldCheckHint": "Locate this piece against the distilled KB. KB-only matching (no LLM yet). The verdict is the KB's view, not a judgment of your claim — final call stays with you.",
+  "wikiBanner.worldClear": "Clear result",
+  "wikiBanner.worldClearHint": "Remove the verdict and sources stored on this note. Use this when a wrong judgment or a broken/hallucinated link got baked in. Press \"Check world\" again to re-run.",
   "wikiBanner.worldVerdictLabel": "KB position",
   "wikiBanner.worldVerdict.established": "Aligned with established",
   "wikiBanner.worldVerdict.supported": "Aligned with supported",

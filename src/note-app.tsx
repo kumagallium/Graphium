@@ -3207,6 +3207,29 @@ export function NoteApp() {
     [fm, worldCheckingWikiId],
   );
 
+  // ノートに焼き付いた照合結果（verdict / 出典 URL）をクリアする。
+  // 間違った判定や幻覚 URL が残ったとき、再 Check を待たずに消せる導線。
+  // KB キャッシュ（設定 → Grounding KB）とは別レイヤで、ここはノート側 WikiMeta に
+  // 保存された validity を attachValidity(meta, undefined) で剥がすだけ。
+  const handleClearWorldValidity = useCallback(
+    async (wikiId: string): Promise<void> => {
+      const cached = fm.getCachedDoc(`wiki:${wikiId}`);
+      const doc = cached ?? (await fm.loadDoc(`wiki:${wikiId}`));
+      if (!doc?.wikiMeta?.grounding?.validity) return;
+      const next: GraphiumDocument = {
+        ...doc,
+        wikiMeta: attachValidity(doc.wikiMeta, undefined),
+        modifiedAt: new Date().toISOString(),
+      };
+      // 照合と同じく activityType 無しで保存（phantom revision を作らない）
+      await fm.handleSaveWikiFile(wikiId, next);
+      if (fm.activeFileId === `wiki:${wikiId}`) {
+        fm.handleOpenWikiFile(wikiId);
+      }
+    },
+    [fm],
+  );
+
   // 自動 world-grounding（opt-in / 既定 OFF）。設定 ON のとき、洞察・知見が追加された
   // タイミング（wikiMetas の変化）に反応して未照合を 1 件ずつ照合する（直列 + デバウンス）。
   useAutoGrounding({
@@ -5431,6 +5454,11 @@ export function NoteApp() {
                 }
                 worldCheckLoading={
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
+                }
+                onClearWorldValidity={
+                  wikiIdForBanner
+                    ? () => void handleClearWorldValidity(wikiIdForBanner)
+                    : undefined
                 }
                 wikiId={wikiIdForBanner ?? undefined}
                 allWikiMetas={fm.wikiMetas}
