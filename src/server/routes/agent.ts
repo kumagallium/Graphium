@@ -9,7 +9,7 @@ import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
 import { fetchRegistryServers, filterMCPServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { connectMCPServers, closeMCPClients } from "../services/mcp.js";
-import { getRegistryUrl, getRegistryKey } from "../services/env.js";
+import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 
 const app = new Hono();
@@ -90,23 +90,39 @@ app.post("/run", async (c) => {
   }
 
   // MCP ツール取得
-  let mcpServers = filterMCPServers(allServers);
-  // server_names が指定されていたら、そのサーバーのみ接続
-  if (body.server_names && body.server_names.length > 0) {
-    const allowed = new Set(body.server_names);
-    mcpServers = mcpServers.filter((s) => allowed.has(s.name));
-  }
-  // disabled_tools が指定されていたら、そのサーバーを除外
-  if (body.disabled_tools && body.disabled_tools.length > 0) {
-    const disabled = new Set(body.disabled_tools);
-    mcpServers = mcpServers.filter((s) => !disabled.has(s.name));
-  }
-  const mcpEndpoints = mcpServers.map((s) => ({
-    ...s,
-    url: buildMCPUrl(s, registryUrl),
-    transport: detectTransport(s),
-  }));
-  const { tools, clients } = await connectMCPServers(mcpEndpoints);
+  // server_names（許可リスト）/ disabled_tools（除外リスト）は Registry 由来・手動登録の
+  // 両方に同じ規約で適用する。
+  const allowedNames = body.server_names && body.server_names.length > 0
+    ? new Set(body.server_names)
+    : null;
+  const disabledNames = new Set(body.disabled_tools ?? []);
+  const passesFilter = (name: string): boolean =>
+    (!allowedNames || allowedNames.has(name)) && !disabledNames.has(name);
+
+  // (1) Crucible Registry 由来のサーバー（registryUrl が空なら空配列）
+  const registryEndpoints = filterMCPServers(allServers)
+    .filter((s) => passesFilter(s.name))
+    .map((s) => ({
+      name: s.name,
+      url: buildMCPUrl(s, registryUrl),
+      transport: detectTransport(s),
+    }));
+
+  // (2) ユーザーが直接登録した MCP サーバー（Crucible 非依存）
+  const manualEndpoints = getManualMcpServers(c)
+    .filter((s) => passesFilter(s.name))
+    .map((s) => ({
+      name: s.name,
+      url: s.url,
+      transport: s.transport,
+      apiKey: s.apiKey,
+    }));
+
+  // (1) ∪ (2) を接続する。同名は手動登録を優先（ユーザーの明示指定を尊重）。
+  const byName = new Map<string, { name: string; url: string; transport: "sse" | "streamable-http"; apiKey?: string }>();
+  for (const e of registryEndpoints) byName.set(e.name, e);
+  for (const e of manualEndpoints) byName.set(e.name, e);
+  const { tools, clients } = await connectMCPServers([...byName.values()]);
 
   try {
     const model = createModel(modelConfig);

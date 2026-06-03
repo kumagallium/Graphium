@@ -2,7 +2,7 @@
 // /api/* エンドポイントを呼び出して AI 機能を提供する
 
 import { apiBase, isTauri } from "../../lib/platform";
-import { getRegistryUrl, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
+import { getRegistryUrl, getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
 
 /**
  * Registry URL・LLM API キーが設定されている場合はヘッダーに含める。
@@ -16,6 +16,20 @@ function apiHeaders(
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
   const registryUrl = getRegistryUrl();
   if (registryUrl) h["X-Registry-URL"] = registryUrl;
+
+  // ユーザーが直接登録した MCP サーバー（Crucible 非依存の接続経路）をヘッダーで送る。
+  // バックエンドは Registry 由来のサーバーと union して接続する。
+  const mcpServers = getEnabledMcpServers();
+  if (mcpServers.length > 0) {
+    h["X-MCP-Servers"] = JSON.stringify(
+      mcpServers.map((s) => ({
+        name: s.name,
+        url: s.url,
+        transport: s.transport,
+        ...(s.apiKey ? { apiKey: s.apiKey } : {}),
+      })),
+    );
+  }
 
   // Web モード（非 Tauri）: クライアント保持の API キーをヘッダーで送信
   if (!isTauri()) {

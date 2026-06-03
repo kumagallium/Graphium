@@ -26,6 +26,48 @@ export type JpFont = "" | "zen-kaku" | "biz-udp";
 export const JP_FONTS: readonly JpFont[] = ["", "zen-kaku", "biz-udp"] as const;
 
 /**
+ * MCP サーバーのトランスポート種別。
+ * - "sse"             : Server-Sent Events（旧来のエンドポイント、パスは /sse 等）
+ * - "streamable-http" : Streamable HTTP（新方式、パスは /mcp 等）
+ */
+export type McpTransport = "sse" | "streamable-http";
+export const MCP_TRANSPORTS: readonly McpTransport[] = ["sse", "streamable-http"] as const;
+
+/**
+ * ユーザーが手動登録した MCP サーバー 1 件。
+ * Crucible Registry を経由せず、エンドポイント URL を直接指定して接続する。
+ * これにより Graphium は Crucible 非依存で任意の MCP サーバーに繋がる
+ * （Crucible は「一括取り込みできるソースの 1 つ」に格下げされる）。
+ */
+export type McpServerEntry = {
+  /** 内部 ID（crypto.randomUUID） */
+  id: string;
+  /** 表示名 / ツール名前空間 */
+  name: string;
+  /** 完全なエンドポイント URL（例: http://localhost:8100/sse） */
+  url: string;
+  /** トランスポート種別 */
+  transport: McpTransport;
+  /** 任意の認証トークン（Authorization: Bearer で送信） */
+  apiKey?: string;
+  /** AI チャットで使うか（false なら接続しない） */
+  enabled: boolean;
+};
+
+/**
+ * URL のパスからトランスポート種別を推定する。
+ * /mcp を含めば Streamable HTTP、それ以外は SSE とみなす（registry.detectTransport と同じ規約）。
+ */
+export function detectMcpTransport(url: string): McpTransport {
+  try {
+    const path = new URL(url).pathname;
+    return path.includes("/mcp") ? "streamable-http" : "sse";
+  } catch {
+    return url.includes("/mcp") ? "streamable-http" : "sse";
+  }
+}
+
+/**
  * 実験的機能のオン/オフ。
  * - atomLayer: Concept をさらに抽象化した Atom 層を有効にする。
  *              Concept が新規に作成・更新された後、追加で Atom を自動生成する。
@@ -63,8 +105,11 @@ export type Settings = {
   groundingModel: string;
   /** 無効にしたツール名のリスト（ここに含まれるツールは AI チャットで使わない） */
   disabledTools: string[];
-  /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる） */
+  /** Crucible Registry URL（空文字 = バックエンドの環境変数に委ねる）。
+   *  Crucible は MCP サーバーを「一括取り込み」できる任意のソース。空でも mcpServers だけで動く。 */
   registryUrl: string;
+  /** ユーザーが直接登録した MCP サーバー一覧（Crucible 非依存の接続経路） */
+  mcpServers: McpServerEntry[];
   /** コアラベルのカスタム表示名（空オブジェクト = デフォルト） */
   customLabels: CustomLabels;
   /** ラテン文字用フォント。空文字 = デフォルト（Atkinson Next + Inter 数字） */
@@ -86,6 +131,7 @@ const DEFAULT_SETTINGS: Settings = {
   groundingModel: "",
   disabledTools: [],
   registryUrl: "",
+  mcpServers: [],
   customLabels: {},
   latinFont: "",
   jpFont: "",
@@ -114,6 +160,39 @@ const LEGACY_LABEL_KEY_MAP: Record<string, string> = {
   // Phase A: 旧内部キー "result" → "output"（Output Entity 意味）
   result: "output",
 };
+
+/**
+ * localStorage から読んだ mcpServers を正規化する。
+ * 不正なエントリ（url が無い等）は捨て、欠けたフィールドを補完する。
+ */
+function normalizeMcpServers(raw: unknown): McpServerEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: McpServerEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const s = item as Partial<McpServerEntry>;
+    if (typeof s.url !== "string" || !s.url.trim()) continue;
+    const transport: McpTransport =
+      s.transport === "streamable-http" || s.transport === "sse"
+        ? s.transport
+        : detectMcpTransport(s.url);
+    let fallbackName = s.url;
+    try {
+      fallbackName = new URL(s.url).host;
+    } catch {
+      /* URL でなければ url 文字列をそのまま名前に使う */
+    }
+    out.push({
+      id: typeof s.id === "string" && s.id ? s.id : crypto.randomUUID(),
+      name: typeof s.name === "string" && s.name.trim() ? s.name : fallbackName,
+      url: s.url,
+      transport,
+      apiKey: typeof s.apiKey === "string" && s.apiKey ? s.apiKey : undefined,
+      enabled: s.enabled !== false,
+    });
+  }
+  return out;
+}
 
 function migrateCustomLabels(customLabels: CustomLabels | undefined): CustomLabels {
   if (!customLabels) return {};
@@ -159,6 +238,7 @@ export function loadSettings(): Settings {
       ...DEFAULT_SETTINGS,
       ...parsed,
       customLabels: migrateCustomLabels(parsed.customLabels),
+      mcpServers: normalizeMcpServers(parsed.mcpServers),
       latinFont: migratedLatin,
       jpFont: migratedJp,
       chatSynthesisModel: migratedChatSynth,
@@ -192,6 +272,16 @@ export function getDisabledTools(): string[] {
 /** Crucible Registry URL を取得する（空文字 = バックエンドのデフォルト） */
 export function getRegistryUrl(): string {
   return loadSettings().registryUrl;
+}
+
+/** ユーザーが直接登録した MCP サーバー一覧を取得する */
+export function getMcpServers(): McpServerEntry[] {
+  return loadSettings().mcpServers ?? [];
+}
+
+/** AI チャットで接続すべき有効な MCP サーバー一覧を取得する（enabled かつ url あり） */
+export function getEnabledMcpServers(): McpServerEntry[] {
+  return getMcpServers().filter((s) => s.enabled && s.url.trim());
 }
 
 /** コアラベルのカスタム表示名を取得する */

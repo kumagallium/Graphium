@@ -7,6 +7,8 @@ type MCPServerInfo = {
   name: string;
   url: string;
   transport: "sse" | "streamable-http";
+  /** 任意の認証トークン（Authorization: Bearer で送信）。手動登録サーバー用 */
+  apiKey?: string;
   [key: string]: unknown;
 };
 
@@ -28,9 +30,13 @@ export async function connectMCPServers(
   const results = await Promise.allSettled(
     servers.map(async (server) => {
       try {
+        // 手動登録サーバーが apiKey を持つ場合は Authorization ヘッダーで送る
+        const headers = server.apiKey
+          ? { Authorization: `Bearer ${server.apiKey}` }
+          : undefined;
         const transport = server.transport === "streamable-http"
-          ? { type: "http" as const, url: server.url }
-          : { type: "sse" as const, url: server.url };
+          ? { type: "http" as const, url: server.url, headers }
+          : { type: "sse" as const, url: server.url, headers };
         const client = await Promise.race([
           createMCPClient({ transport }),
           new Promise<never>((_, reject) =>

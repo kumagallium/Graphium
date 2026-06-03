@@ -517,8 +517,11 @@ deployment is one of:
   reverse proxy).
 
 Tokens you may see in headers (`X-Graphium-Token`, `X-LLM-API-Key`,
-`X-Registry-URL`) are passthrough to upstream LLM / Registry APIs, not
-authentication for the Graphium server itself. There is no built-in user
+`X-Registry-URL`, `X-MCP-Servers`) are passthrough to upstream LLM /
+MCP / Registry APIs, not authentication for the Graphium server itself.
+`X-MCP-Servers` carries the user's directly-registered MCP endpoints
+(and optional per-server bearer tokens); the `agent` route connects to
+them in addition to any servers discovered via a Crucible Registry. There is no built-in user
 auth, multi-tenant isolation, or audit log on the server today.
 
 Operators exposing the server to the public internet should put it

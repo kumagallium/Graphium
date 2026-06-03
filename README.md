@@ -151,9 +151,9 @@ docker compose -f docker-compose.standalone.yml up -d
 
 Open **http://localhost:5174/Graphium/** and start writing.
 
-### Option 3: Run with Docker — full stack (AI + MCP tools)
+### Option 3: Run with Docker — with the AI backend
 
-Run Graphium with the built-in AI backend and [Crucible Registry](https://github.com/kumagallium/Crucible) for MCP tool management.
+Run Graphium with the built-in AI backend. The AI assistant, the Knowledge Layer, and direct MCP server connections all work on their own — no external services required.
 
 ```bash
 git clone https://github.com/kumagallium/Graphium.git
@@ -165,7 +165,7 @@ docker compose up -d
 |-----|------------|
 | http://localhost:5174/Graphium/ | Graphium editor (includes AI setup) |
 
-> **Advanced:** [Crucible Registry UI](http://localhost:8081) is available for MCP server management.
+> **Advanced:** this compose file also bundles an optional [Crucible Registry](https://github.com/kumagallium/Crucible) ([UI](http://localhost:8081)) for managing many MCP servers in one place. It is not required — see *Add MCP tools* below.
 
 #### Set up your AI model
 
@@ -175,9 +175,13 @@ docker compose up -d
 
 #### Add MCP tools (optional)
 
-1. Open **http://localhost:8081** (Crucible Registry UI)
-2. Register an MCP server from a GitHub repository
-3. Tools appear in **⚙ Settings → AI Setup** and can be toggled on/off
+Graphium connects to MCP servers directly — no registry required:
+
+1. Open **⚙ Settings → AI Setup → MCP Servers**
+2. Add a server by its endpoint URL (e.g. `http://localhost:8100/sse`), optionally with an API key
+3. The server's tools become available to the AI assistant, and each server can be toggled on/off
+
+> **Advanced — bulk import:** If you run many MCP servers, you can point Graphium at a [Crucible Registry](https://github.com/kumagallium/Crucible) URL under the same screen to import them all at once. This is entirely optional; direct registration above covers most needs.
 
 No `.env` editing required — everything is configured from the browser.
 
@@ -199,7 +203,7 @@ Or manually:
 
 ```bash
 git pull                      # Get latest Graphium code
-docker compose pull           # Pull latest Crucible images
+docker compose pull           # Pull latest backend images
 docker compose up -d --build  # Rebuild Graphium and restart all services
 ```
 
@@ -334,9 +338,11 @@ Graphium is a TypeScript / React app on top of [BlockNote.js](https://www.blockn
 
 For the layered breakdown, the Wiki pipeline trigger flow, distribution targets, the auth model, and known seams, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For on-disk JSON shapes and compatibility rules, read [docs/DATA_MODEL.md](docs/DATA_MODEL.md).
 
-### Crucible Registry (optional)
+### MCP tools
 
-[Crucible Registry](https://github.com/kumagallium/Crucible) provides MCP server management with auto-discovery. When connected, registered MCP tools appear in **⚙ Settings → AI Setup** and can be used by the AI assistant.
+The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Add servers directly by their endpoint URL in **⚙ Settings → AI Setup → MCP Servers** — Graphium connects to them on its own, with no registry in between.
+
+If you operate a fleet of MCP servers, you can optionally point Graphium at a [Crucible Registry](https://github.com/kumagallium/Crucible) URL on the same screen to bulk-import them. This is a convenience, not a dependency.
 
 ## Beyond the editor
 
