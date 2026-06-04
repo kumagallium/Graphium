@@ -57,6 +57,7 @@ import {
 import {
   getHeadingSuggestions,
   getNoteSuggestions,
+  getAssetSuggestions,
 } from "./features/block-link/mention-menu";
 import {
   ProvGraphPanel,
@@ -77,6 +78,7 @@ import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
+import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext } from "./features/ai-assistant/cited-document-context";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -158,6 +160,7 @@ import {
   type MediaIndexEntry,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
+import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
 import { exportProvJsonLd, type WikiEntityInfo } from "./features/prov-export";
@@ -650,7 +653,11 @@ function NoteEditorInner({
     return map;
   }, [noteIndex]);
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
+  // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
+  const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
+  // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
+  const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
@@ -1244,6 +1251,8 @@ function NoteEditorInner({
         },
       ],
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
+      citedAssetFileIds:
+        citedAssetFileIdsRef.current.length > 0 ? citedAssetFileIdsRef.current : undefined,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -1538,6 +1547,20 @@ function NoteEditorInner({
                 ? await provider.loadWikiFile(attached.id)
                 : await provider.loadFile(attached.id);
               if (doc) {
+                // 引用先が文書ノート（PDF/docx/URL 由来）なら、薄い本文ではなく
+                // 1ホップ派生知識（派生メモ＋派生 Claim/洞察）を優先し、
+                // 派生知識が無い/余剰予算ぶんは原文（PDF 全文等）で埋める。
+                if (isDocumentNote(doc)) {
+                  const assembled = await assembleCitedDocumentContext(attached.id, doc, {
+                    noteIndex: noteIndex ?? null,
+                    captureIndex: captureIndexProp ?? null,
+                    provider,
+                  });
+                  if (assembled) {
+                    noteContents.push(assembled);
+                    continue;
+                  }
+                }
                 const page = doc.pages[0];
                 const blocks = page?.blocks ?? [];
                 // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）
@@ -1568,6 +1591,36 @@ function NoteEditorInner({
               "以下はユーザーが明示的に添付したノートの内容です。質問はこの内容に基づいて回答してください:",
               "",
               ...noteContents,
+              "---",
+            ].join("\n");
+          }
+        }
+        // このノートが @ で引用したドキュメント素材（PDF/docx 本体）の中身を AI 文脈に載せる。
+        // ノート参照と違い「素材そのもの」を指すため、citedAssetFileIds から直接解決する。
+        const citedAssetIds = citedAssetFileIdsRef.current;
+        if (citedAssetIds.length > 0) {
+          const assetContents: string[] = [];
+          for (const assetFileId of citedAssetIds) {
+            const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
+            if (!entry) continue;
+            try {
+              const md = await assembleCitedAssetContext(
+                { fileId: entry.fileId, name: entry.name, type: entry.type },
+                { captureIndex: captureIndexProp ?? null, provider: getActiveProvider() },
+              );
+              if (md) assetContents.push(md);
+            } catch {
+              // 抽出失敗は無視
+            }
+          }
+          if (assetContents.length > 0) {
+            userMessage = [
+              userMessage,
+              "",
+              "---",
+              "以下はユーザーが @ で引用したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
+              "",
+              ...assetContents,
               "---",
             ].join("\n");
           }
@@ -1707,7 +1760,7 @@ function NoteEditorInner({
         );
       }
     },
-    [fileId, aiAssistant, markDirty],
+    [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp, mediaIndex],
   );
 
   // Composer 結果をドキュメント末尾にブロックとして挿入するヘルパー。
@@ -1807,11 +1860,11 @@ function NoteEditorInner({
         // チャット欄を開いている状態での追加質問は、チャット欄の input を使えばよい。
         h.parkChat();
         h.setRightTab("chat");
-        // verb メニュー由来（PR2）: このノートが引用している知見・洞察（reference リンク先）
-        // の「本文」を AI 文脈に載せる。verb は「引用集合の精査」を指示するため、
-        // タイトルだけでなく中身が文脈に無いと機能しない。既存の @mention 添付ノートの
-        // ロード機構（handleAiChatSubmit の attachedNotes 経路）をそのまま再利用する。
-        const citedNotes = verb ? h.collectCitedNotes() : [];
+        // このノートが @ で引用している参照先（reference リンク先 = 知見・洞察・文書ノート）
+        // の中身を AI 文脈に載せる。verb（引用集合の精査）だけでなく素の質問でも、
+        // 引用した論文 PDF 等の中身を踏まえて答えられるよう常に収集する。文書ノートは
+        // handleAiChatSubmit 側の attachedNotes 経路で 1ホップ派生知識＋全文に展開される。
+        const citedNotes = h.collectCitedNotes();
         await h.handleAiChatSubmit(prompt, citedNotes.length > 0 ? citedNotes : undefined);
         return;
       }
@@ -2314,13 +2367,28 @@ function NoteEditorInner({
         // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
         const peekId = resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId;
         setSidePeekNoteId(peekId);
+        return;
+      }
+      // ノートで解決できなければ、@ 引用したドキュメント素材として解決を試みる。
+      // citedAssetFileIds の中から表示名が一致する素材を逆引きし、素材サイドピーク（PDF 等）を開く。
+      const assetFileId = citedAssetFileIdsRef.current.find((fid) => {
+        const entry = mediaIndex?.media.find((m) => m.fileId === fid);
+        return entry?.name === noteName;
+      });
+      if (assetFileId) {
+        const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
+        if (entry) {
+          e.preventDefault();
+          e.stopPropagation();
+          setMaterialSidePeekEntry(entry);
+        }
       }
     };
     document.addEventListener("click", handleClick, true);
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files]);
+  }, [noteIndex, files, mediaIndex]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -2668,6 +2736,7 @@ function NoteEditorInner({
                 return [
                   ...getHeadingSuggestions(),
                   ...getNoteSuggestions(files, fileId ?? undefined, noteIndex),
+                  ...getAssetSuggestions(mediaIndex),
                 ];
               }}
               onMentionSelect={(sourceBlockId, suggestion) => {
@@ -2746,6 +2815,21 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                } else if (suggestion.type === "asset") {
+                  // ドキュメント素材（PDF/docx 本体）の引用。ノートではなく素材を指す。
+                  // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
+                  // その素材の全文＋ハイライトメモを読めるようになる。
+                  if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
+                    citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
+                  }
+                  const assetLabel = suggestion.label.replace(/^📄\s*/, "");
+                  setTimeout(() => {
+                    editorRef.current?.insertInlineContent([
+                      { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },
+                      { type: "text", text: " ", styles: {} },
+                    ]);
+                  }, 100);
+                  markDirty();
                 }
               }}
             />
@@ -2794,6 +2878,31 @@ function NoteEditorInner({
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
+          />
+        )}
+        {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
+            レイアウト方針（desktop は inline flex item / mobile は overlay）で表示する。 */}
+        {materialSidePeekEntry && isDesktop && (
+          <MaterialSidePeek
+            inline
+            entry={materialSidePeekEntry}
+            onClose={() => setMaterialSidePeekEntry(null)}
+            mediaIndex={mediaIndex ?? null}
+            onNavigateNote={(noteId) => {
+              setMaterialSidePeekEntry(null);
+              onNavigateNote(noteId);
+            }}
+          />
+        )}
+        {materialSidePeekEntry && !isDesktop && (
+          <MaterialSidePeek
+            entry={materialSidePeekEntry}
+            onClose={() => setMaterialSidePeekEntry(null)}
+            mediaIndex={mediaIndex ?? null}
+            onNavigateNote={(noteId) => {
+              setMaterialSidePeekEntry(null);
+              onNavigateNote(noteId);
+            }}
           />
         )}
 

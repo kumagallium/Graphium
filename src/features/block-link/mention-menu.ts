@@ -3,12 +3,13 @@
 
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
+import type { MediaIndex } from "../asset-browser/media-index";
 
 // 参照候補の型
 export type ReferenceSuggestion = {
-  /** 候補の種類 */
-  type: "heading" | "note";
-  /** ブロック ID（同ノート内見出し）or ノートファイル ID */
+  /** 候補の種類。"asset" は取り込んだドキュメント素材（PDF/docx）本体を指す */
+  type: "heading" | "note" | "asset";
+  /** ブロック ID（同ノート内見出し）/ ノートファイル ID / 素材 fileId */
   id: string;
   /** 表示名 */
   label: string;
@@ -111,5 +112,24 @@ export function getNoteSuggestions(
       id: f.id,
       label: f.name.replace(/\.(graphium|provnote)\.json$/, ""),
       group: "他のノート",
+    }));
+}
+
+/**
+ * 取り込んだドキュメント素材（PDF / docx 等）を @ 候補として収集する。
+ * ノート由来ではなく「素材そのもの」を引用したい場合（論文 PDF の引用等）に使う。
+ * 選択すると本文に @素材名 を挿入し、doc.citedAssetFileIds に fileId を記録する。
+ */
+export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSuggestion[] {
+  if (!mediaIndex) return [];
+  return mediaIndex.media
+    .filter((m) => m.type === "pdf" || m.type === "document")
+    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
+    .slice(0, 15)
+    .map((m) => ({
+      type: "asset" as const,
+      id: m.fileId,
+      label: `📄 ${m.name}`,
+      group: "ドキュメント素材",
     }));
 }

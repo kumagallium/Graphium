@@ -67,6 +67,12 @@ type GraphiumDocument = {
   noteLinks?: NoteLink[];           // outgoing @-links to other notes
   derivedFromNoteId?: string;       // upstream note (for derived notes)
   derivedFromBlockId?: string;      // upstream block within that note
+  // @-cited document assets (PDF/docx) referenced from this note's body.
+  // Each entry is a media-index fileId of the cited material itself (not a
+  // note). Cmd-K / chat AI reads each cited asset's full text + highlight
+  // memos so you can write from the source. Distinct from noteLinks (notes)
+  // and sourcePdfFileId (a note *generated from* a PDF).
+  citedAssetFileIds?: string[];
 
   // ── authorship / agent ──────────────────────────────
   generatedBy?: {
