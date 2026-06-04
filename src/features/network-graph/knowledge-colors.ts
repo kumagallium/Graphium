@@ -48,10 +48,14 @@ export function knowledgeKindBorder(kind: WikiKind | undefined): string {
   return KNOWLEDGE_KIND_BORDERS[kind] ?? KNOWLEDGE_FALLBACK_BORDER;
 }
 
-/** 凡例に並べる順序（要約 → 主張 → 原子 → 統合） */
+/**
+ * 凡例に並べる順序（要約 → 主張 → 原子）。
+ * synthesis（発想）レイヤは撤退済みのため凡例には出さない。
+ * ただし旧ノートに残る synthesis ノードのグラフ描画用に
+ * KNOWLEDGE_KIND_COLORS / KNOWLEDGE_KIND_BORDERS の色定義は保持する。
+ */
 export const KNOWLEDGE_KIND_LEGEND_ORDER: WikiKind[] = [
   "summary",
   "claim",
   "atom",
-  "synthesis",
 ];
