@@ -17,6 +17,8 @@ export type AgentRunParams = {
   feature?: string;
   /** モデル単価特定用の ModelConfig。指定があれば provider / rate を記録に焼き込む。 */
   modelConfig?: ModelConfig;
+  /** サンプリング温度。0 で実行間のブレを抑える（翻訳など決定性が欲しい用途向け）。未指定はモデル既定。 */
+  temperature?: number;
 };
 
 export type AgentRunResult = {
@@ -49,7 +51,7 @@ export type ToolCallRecord = {
  * パースする fallback ループに切り替える。
  */
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
-  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig } = params;
+  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature } = params;
 
   const useTextToolsLoop =
     modelConfig?.provider === "openai-compatible" &&
@@ -64,6 +66,7 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
     model,
     system: systemPrompt,
     messages,
+    ...(temperature !== undefined ? { temperature } : {}),
     // tools が空の場合は undefined にする
     ...(tools && Object.keys(tools).length > 0 ? { tools: tools as any } : {}),
     stopWhen: stepCountIs(maxSteps),

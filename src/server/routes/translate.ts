@@ -12,6 +12,10 @@ import { runAgentLoop } from "../services/agent-loop.js";
 import {
   buildTranslateSystemPrompt,
   buildTranslateUserMessage,
+  buildGlossarySystemPrompt,
+  buildGlossaryUserMessage,
+  parseGlossaryOutput,
+  type GlossaryEntry,
 } from "../services/translate.js";
 
 const app = new Hono();
@@ -29,6 +33,7 @@ app.post("/", async (c) => {
     language?: string;
     partLabel?: string;
     model?: string;
+    glossary?: GlossaryEntry[];
   }>();
 
   if (!body.text || body.text.trim().length < 1) {
@@ -49,6 +54,7 @@ app.post("/", async (c) => {
     text: body.text,
     language,
     partLabel: body.partLabel,
+    glossary: Array.isArray(body.glossary) ? body.glossary : undefined,
   });
 
   try {
@@ -61,6 +67,8 @@ app.post("/", async (c) => {
       maxSteps: 1,
       feature: "translate.pdf",
       modelConfig,
+      temperature: 0, // 翻訳は実行間のブレを抑えるため決定的に
+
     });
 
     const markdown = stripOuterFence(result.message ?? "");
@@ -77,6 +85,46 @@ app.post("/", async (c) => {
     const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("translate error:", err);
     return c.json({ error: message }, 500);
+  }
+});
+
+// 文書全体から訳語統一用の用語集を1回だけ抽出する。
+// クライアントは並列ページ翻訳の前にこれを呼び、結果を各ページ翻訳へ渡す。
+app.post("/glossary", async (c) => {
+  const body = await c.req.json<{ text: string; language?: string; model?: string }>();
+
+  if (!body.text || body.text.trim().length < 1) {
+    return c.json({ glossary: [] });
+  }
+
+  const modelConfig = resolveModelConfig(c, { modelName: body.model });
+  if (!modelConfig) {
+    return c.json(
+      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
+      400,
+    );
+  }
+
+  const language = body.language || "en";
+  try {
+    const model = createModel(modelConfig);
+    const result = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildGlossarySystemPrompt(language),
+      messages: [{ role: "user" as const, content: buildGlossaryUserMessage(body.text) }],
+      maxSteps: 1,
+      feature: "translate.glossary",
+      modelConfig,
+      temperature: 0, // 用語集も毎回同じ結果になるよう決定的に
+
+    });
+    const glossary = parseGlossaryOutput(result.message ?? "");
+    return c.json({ glossary, tokenUsage: result.tokenUsage, model: result.model });
+  } catch (err) {
+    // 用語集はベストエフォート。失敗しても翻訳本体は続行できるよう空で返す。
+    console.error("glossary error:", err);
+    return c.json({ glossary: [] });
   }
 });
 
