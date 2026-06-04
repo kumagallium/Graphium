@@ -37,6 +37,37 @@ function makeEntityId(label: InlineLabelKey): string {
 
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
 
+// BlockNote のテーブル構造を構成する ProseMirror ノード名。
+// セル内の選択ではこれらが祖先チェーンに必ず現れる。
+const TABLE_NODE_NAMES = new Set([
+  "table",
+  "tableRow",
+  "tableCell",
+  "tableHeader",
+  "tableParagraph",
+]);
+
+/**
+ * 現在の選択がテーブルセル内にあるかを判定する。
+ *
+ * テーブルは「列見出し=属性キー / 行=Entity」の構造として PROV に変換される
+ * （parseStructuredTable + ブロックラベル経路）。1 セル = 1 つの atomic な値で
+ * あり、セル内にインラインラベルを付けても下流（PROV 生成・attribute 紐付け）は
+ * テーブル構造を走査しないため黙って捨てられる（サイレント故障）。
+ * そこでセル内ではインラインラベル UI を出さず、構造解釈に一本化する。
+ */
+function isSelectionInTableCell(editor: any): boolean {
+  const tiptap = editor?._tiptapEditor;
+  if (!tiptap) return false;
+  const $from = tiptap.state?.selection?.$from;
+  if (!$from) return false;
+  for (let depth = $from.depth; depth >= 0; depth--) {
+    const name = $from.node(depth)?.type?.name;
+    if (name && TABLE_NODE_NAMES.has(name)) return true;
+  }
+  return false;
+}
+
 /**
  * tiptap の現在の選択がメディアブロックの NodeSelection なら
  * 当該ブロック ID とメディア種別を返す。それ以外は null。
@@ -106,6 +137,12 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
       console.warn("[Graphium] inline label cannot span multiple blocks");
       return;
     }
+    // テーブルセル内ではインラインラベルを付けない（構造解釈に一本化）。
+    // UI ボタンは非表示にしているが、念のため二重で防ぐ。
+    if (isSelectionInTableCell(editor)) {
+      console.warn("[Graphium] inline label is not supported inside table cells");
+      return;
+    }
     const activeStyles = editor.getActiveStyles?.() ?? {};
     const isActive = Boolean(activeStyles[styleKey]);
     if (isActive) {
@@ -132,11 +169,14 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   // ラベルボタンのアクティブ状態判定
   const activeStyles = mediaSel ? {} : editor.getActiveStyles?.() ?? {};
   const mediaCurrent = mediaSel ? mediaStore?.getLabel(mediaSel.blockId) : undefined;
+  // テーブルセル内ではインラインラベルボタンを出さない（構造解釈に一本化）。
+  // メディアブロック選択時は別経路（サイドストア）なので対象外。
+  const hideInlineLabels = !mediaSel && isSelectionInTableCell(editor);
 
   return (
     <FormattingToolbar {...props}>
       {getFormattingToolbarItems(props.blockTypeSelectItems)}
-      {INLINE_LABEL_ORDER.map((label) => {
+      {!hideInlineLabels && INLINE_LABEL_ORDER.map((label) => {
         const isActive = mediaSel
           ? mediaCurrent?.label === label
           : Boolean(activeStyles[LABEL_TO_STYLE[label]]);
