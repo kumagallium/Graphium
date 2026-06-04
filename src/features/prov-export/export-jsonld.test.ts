@@ -172,3 +172,166 @@ describe("buildW3CProvJsonLd — Wiki Knowledge Layer fields (Phase 4)", () => {
     expect(types).toContain("Attribution");
   });
 });
+
+// PROV-DM 準拠監査（2026-06）で確定した修正を invariant として固定する。
+describe("buildW3CProvJsonLd — PROV-DM compliance fixes", () => {
+  it("resolves external-source prefixes (document:/pdf:/url:/chat:) instead of graphium:note/<prefixed> (H2)", () => {
+    const wiki: WikiEntityInfo = {
+      title: "From a Word doc",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-06-05T00:00:00Z",
+      model: "m",
+      derivedFromNotes: ["document:file-123", "plain-note"],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const used = doc["@graph"]
+      .filter((n: any) => n["@type"] === "Derivation")
+      .map((d: any) => d.usedEntity)
+      .sort();
+    expect(used).toEqual(["graphium:document/file-123", "graphium:note/plain-note"]);
+    // 不正参照 graphium:note/document:... を生まない
+    expect(used).not.toContain("graphium:note/document:file-123");
+    // 外部ソースは型付き Entity ノードとして宣言される
+    const ext = doc["@graph"].find((n: any) => n["@id"] === "graphium:document/file-123");
+    expect(ext).toMatchObject({ "@type": "Entity", "graphium:sourceKind": "document" });
+  });
+
+  it("declares a prov:Agent node for every wiki Attribution agent — no dangling agent (M2)", () => {
+    const wiki: WikiEntityInfo = {
+      title: "x",
+      kind: "atom",
+      status: "active",
+      generatedAt: "2026-06-05T00:00:00Z",
+      model: "claude-sonnet",
+      derivedFromNotes: [],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const attr = doc["@graph"].find((n: any) => n["@type"] === "Attribution");
+    expect(attr).toBeDefined();
+    const agentNode = doc["@graph"].find(
+      (n: any) => n["@type"] === "Agent" && n["@id"] === attr!.agent,
+    );
+    expect(agentNode).toBeDefined();
+    expect(agentNode!["graphium:agentType"]).toBe("ai");
+  });
+
+  it("declares an Entity node for every Derivation usedEntity — no dangling note refs (M3)", () => {
+    const wiki: WikiEntityInfo = {
+      title: "x",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-06-05T00:00:00Z",
+      model: "m",
+      derivedFromNotes: ["note-a"],
+      citedKnowledgeIds: ["claim-b"],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const derivs = doc["@graph"].filter((n: any) => n["@type"] === "Derivation");
+    expect(derivs.length).toBeGreaterThan(0);
+    for (const d of derivs) {
+      const decl = doc["@graph"].find(
+        (n: any) => n["@id"] === d.usedEntity && n["@type"] === "Entity",
+      );
+      expect(decl, `usedEntity ${d.usedEntity} should be declared as an Entity`).toBeDefined();
+    }
+  });
+
+  it("emits a Derivation for each derivedFromClaims entry — atomize lane (M4)", () => {
+    const wiki: WikiEntityInfo = {
+      title: "atom-1",
+      kind: "atom",
+      status: "active",
+      generatedAt: "2026-06-05T00:00:00Z",
+      model: "m",
+      derivedFromNotes: [],
+      derivedFromClaims: ["claim-1", "claim-2"],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const used = doc["@graph"]
+      .filter((n: any) => n["@type"] === "Derivation")
+      .map((d: any) => d.usedEntity)
+      .sort();
+    expect(used).toEqual(["graphium:note/claim-1", "graphium:note/claim-2"]);
+  });
+
+  it("types the document-provenance container as prov:Bundle, with correct Association/Generation slots (M1, T2)", () => {
+    const provWithBundle: ProvJsonLd = {
+      ...emptyProv,
+      "graphium:documentProvenance": {
+        "@type": "prov:Bundle",
+        "@graph": [
+          { "@id": "agent_h", "@type": "prov:Agent", "rdfs:label": "Author", "graphium:agentType": "human" },
+          {
+            "@id": "edit_1",
+            "@type": "prov:Activity",
+            "graphium:editType": "edit",
+            "prov:startedAtTime": "2026-06-05T00:00:00Z",
+            "prov:endedAtTime": "2026-06-05T00:01:00Z",
+            "prov:wasAssociatedWith": { "@id": "agent_h" },
+          },
+          {
+            "@id": "rev_1",
+            "@type": "prov:Entity",
+            "prov:generatedAtTime": "2026-06-05T00:01:00Z",
+            "prov:wasGeneratedBy": { "@id": "edit_1" },
+            "graphium:contentHash": "abc",
+          },
+        ],
+      } as any,
+    };
+    const doc = buildW3CProvJsonLd(provWithBundle, "my note");
+    const bundle = doc["@graph"].find((n: any) => n["@type"] === "prov:Bundle");
+    expect(bundle).toBeDefined();
+    const inner = bundle!["@graph"];
+    expect(inner.find((n: any) => n["@type"] === "Association")).toMatchObject({
+      activity: "edit_1",
+      agent: "agent_h",
+    });
+    expect(inner.find((n: any) => n["@type"] === "Generation")).toMatchObject({
+      entity: "rev_1",
+      activity: "edit_1",
+    });
+  });
+
+  it("reifies content-provenance Usage/Generation with correct activity/entity slots (T1)", () => {
+    const provDoc: ProvJsonLd = {
+      ...emptyProv,
+      "@graph": [
+        { "@id": "activity_a", "@type": "prov:Activity", "rdfs:label": "Step", "graphium:blockId": "a", "prov:used": [{ "@id": "entity_m" }] },
+        { "@id": "entity_m", "@type": "prov:Entity", "rdfs:label": "Cu", "graphium:blockId": "m" },
+        { "@id": "result_o", "@type": "prov:Entity", "rdfs:label": "Out", "graphium:blockId": "o", "prov:wasGeneratedBy": [{ "@id": "activity_a" }] },
+      ] as any,
+    };
+    const doc = buildW3CProvJsonLd(provDoc, "n");
+    expect(doc["@graph"].find((n: any) => n["@type"] === "Usage")).toMatchObject({
+      activity: "activity_a",
+      entity: "entity_m",
+    });
+    expect(doc["@graph"].find((n: any) => n["@type"] === "Generation")).toMatchObject({
+      entity: "result_o",
+      activity: "activity_a",
+    });
+  });
+
+  it("emits one Generation per generating activity when an entity has multiple (H1)", () => {
+    const provDoc: ProvJsonLd = {
+      ...emptyProv,
+      "@graph": [
+        {
+          "@id": "shared_out",
+          "@type": "prov:Entity",
+          "rdfs:label": "Shared",
+          "graphium:blockId": "o",
+          "prov:wasGeneratedBy": [{ "@id": "activity_a" }, { "@id": "activity_b" }],
+        },
+      ] as any,
+    };
+    const doc = buildW3CProvJsonLd(provDoc, "n");
+    const acts = doc["@graph"]
+      .filter((n: any) => n["@type"] === "Generation" && n.entity === "shared_out")
+      .map((g: any) => g.activity)
+      .sort();
+    expect(acts).toEqual(["activity_a", "activity_b"]);
+  });
+});

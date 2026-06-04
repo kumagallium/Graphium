@@ -27,7 +27,9 @@ export type ProvJsonLdNode = {
   "@type": string;
   "rdfs:label": string;
   "prov:used"?: { "@id": string }[];
-  "prov:wasGeneratedBy"?: { "@id": string };
+  /** 同一 Entity が複数 Activity に生成され得るため配列（PROV-DM 上 Generation に
+   *  cardinality 上限はない）。単一値だと最後の生成元で上書きされ生成エッジが欠落する。 */
+  "prov:wasGeneratedBy"?: { "@id": string }[];
   /** Phase D-2: execution Entity から plan Entity への derivation 関係 */
   "prov:wasDerivedFrom"?: { "@id": string }[];
   "graphium:attributes"?: ProvAttribute[];
@@ -300,8 +302,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         // テーブル: 行ごとに個別 Entity を生成
         const parsed = parseStructuredTable(lb.block);
         if (parsed && parsed.rows.length > 0) {
+          // 同名行による @id 衝突を防ぐ。初出は従来形式、重複時のみ連番を付与
+          // （同名 2 行が同一 @id になると nodeMap で後勝ち上書きされ params/エッジが消える）。
+          const seenName = new Map<string, number>();
           for (const row of parsed.rows) {
-            const entityId = `entity_${lb.block.id}_${row.name}`;
+            const seq = (seenName.get(row.name) ?? 0) + 1;
+            seenName.set(row.name, seq);
+            const entityId = seq === 1
+              ? `entity_${lb.block.id}_${row.name}`
+              : `entity_${lb.block.id}_${row.name}_${seq}`;
             nodes.push({
               "@id": entityId,
               "@type": "prov:Entity",
@@ -356,8 +365,14 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       if (lb.block.type === "table") {
         const parsed = parseStructuredTable(lb.block);
         if (parsed && parsed.rows.length > 0) {
+          // 同名行による @id 衝突を防ぐ（初出は従来形式、重複時のみ連番）。
+          const seenName = new Map<string, number>();
           for (const row of parsed.rows) {
-            const entityId = `result_${lb.block.id}_${row.name}`;
+            const seq = (seenName.get(row.name) ?? 0) + 1;
+            seenName.set(row.name, seq);
+            const entityId = seq === 1
+              ? `result_${lb.block.id}_${row.name}`
+              : `result_${lb.block.id}_${row.name}_${seq}`;
             nodes.push({
               "@id": entityId,
               "@type": "prov:Entity",
@@ -738,7 +753,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   const aggregatedList = Array.from(aggregatedByKey.values());
 
   // ── Phase D-2 (2026-04-30): Plan / Result phase スコーピング ──
-  //   - `#plan` 見出し配下のインライン Entity → Plan Entity (`@type: "prov:Plan"`)
+  //   - `#plan` 見出し配下のインライン Entity → 型は `prov:Entity` のまま
+  //     （個別の予定物質に `prov:Plan` を付けるのは誤用。phase は `graphium:phase`
+  //     メタ属性で表現。下記 §1 のコメント参照）。
   //     ノード ID は `inline_<label>_<entityId>_plan` で execution Entity と分離
   //   - `#result` 見出し or 未指定 → 既存の Activity 実行 Entity (`prov:Entity`)
   //   - 同 entityId が plan / execution 両方に出現 → execution → plan に
@@ -1094,7 +1111,14 @@ function buildProvJsonLd(
       }
       case "prov:wasGeneratedBy": {
         // wasGeneratedBy: Entity → Activity（from=Entity, to=Activity）
-        sourceNode["prov:wasGeneratedBy"] = { "@id": rel.to };
+        // 配列に push（同一 Entity が複数 Activity に生成され得る。単一値で上書きすると
+        // 生成エッジが欠落し、wasInformedBy の構造導出にも波及する）。重複は抑制。
+        if (!sourceNode["prov:wasGeneratedBy"]) {
+          sourceNode["prov:wasGeneratedBy"] = [];
+        }
+        if (!sourceNode["prov:wasGeneratedBy"]!.some((g) => g["@id"] === rel.to)) {
+          sourceNode["prov:wasGeneratedBy"]!.push({ "@id": rel.to });
+        }
         break;
       }
       case "prov:wasDerivedFrom": {
@@ -1285,11 +1309,13 @@ export function extractRelations(doc: ProvJsonLd): FlatRelation[] {
       }
     }
     if (node["prov:wasGeneratedBy"]) {
-      relations.push({
-        "@type": "prov:wasGeneratedBy",
-        from: node["@id"],
-        to: node["prov:wasGeneratedBy"]["@id"],
-      });
+      for (const ref of node["prov:wasGeneratedBy"]) {
+        relations.push({
+          "@type": "prov:wasGeneratedBy",
+          from: node["@id"],
+          to: ref["@id"],
+        });
+      }
     }
     // graphium:attributes はプロパティ埋め込み — extractRelations には含めない
     // ビュー層が graphium:attributes を直接読んでダイヤモンドノードを生成する

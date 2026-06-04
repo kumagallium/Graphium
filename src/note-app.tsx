@@ -3378,6 +3378,8 @@ export function NoteApp() {
         model: wm?.generatedBy?.model ?? meta.model ?? "unknown",
         derivedFromNotes: wm?.derivedFromNotes ?? [],
         citedKnowledgeIds: wm?.citedKnowledgeIds,
+        // Atom の上流（atomize lane）。export で Derivation を出さないと孤児になる。
+        derivedFromClaims: wm?.derivedFromClaims,
         atomType: meta.atomType,
         synthesisMode: meta.synthesisMode,
         hypothesisStatus: meta.hypothesisStatus,

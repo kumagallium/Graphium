@@ -13,18 +13,23 @@ import type {
   WikiKind,
 } from "../../lib/document-types";
 import { downloadBlob } from "../../lib/download-file";
+import { parseExternalSource } from "../network-graph/external-source";
 
 // ── W3C PROV-JSON-LD 出力型 ──
 
 type W3CProvNode = {
   "@type": string;
   "@id": string;
-  label?: { "@value": string; "@language": string }[];
+  // @language は付けない: ノート言語を確実に判定できないため、誤った言語タグ
+  // (例: 日本語テキストに @language:"en") を付けるより無タグの方が正しい。
+  label?: { "@value": string }[];
   [key: string]: any;
 };
 
 type W3CProvDocument = {
-  "@context": [Record<string, string>, string];
+  // 1 要素目: ローカル @context（prefix + 使用する PROV 用語の定義を inline 化）
+  // 2 要素目: openprovenance のリモート context（権威的な解決元として保持）
+  "@context": [Record<string, any>, string];
   "@graph": W3CProvNode[];
 };
 
@@ -38,9 +43,50 @@ const TYPE_MAP: Record<string, string> = {
 
 // ── Graphium 内部形式 → W3C PROV-JSON-LD 変換 ──
 
-/** ラベル文字列を W3C 形式の言語タグ付き配列に変換 */
-function toW3CLabel(text: string): { "@value": string; "@language": string }[] {
-  return [{ "@value": text, "@language": "en" }];
+/** ラベル文字列を W3C 形式のラベル配列に変換。
+ *  言語タグは付けない（ノート言語を確実に判定できず、誤タグは無タグより有害なため）。 */
+function toW3CLabel(text: string): { "@value": string }[] {
+  return [{ "@value": text }];
+}
+
+/**
+ * ソース ID（derivedFromNotes / citedKnowledgeIds / derivedFromClaims に入る ID）を
+ * PROV Entity の @id に解決する。
+ *
+ * - `pdf:` / `url:` / `document:` / `chat:` プレフィックス付き → 型付き外部ソースノード
+ *   （来歴ビューの parseExternalSource と同じ解決規則。`graphium:note/document:<id>` の
+ *   ような不正参照を防ぐ）
+ * - それ以外 → 通常ノート参照
+ *
+ * `declare` は参照先 Entity を宣言するための最小ノード。これを @graph に積むことで
+ * Derivation.usedEntity が宙に浮く（dangling reference）のを防ぐ。
+ */
+function resolveSourceEntity(id: string): { usedEntity: string; declare: W3CProvNode } {
+  const ext = parseExternalSource(id);
+  if (ext) {
+    const usedEntity = `graphium:${ext.kind}/${encodeURIComponent(ext.key)}`;
+    return {
+      usedEntity,
+      declare: {
+        "@type": "Entity",
+        "@id": usedEntity,
+        label: toW3CLabel(ext.key),
+        "graphium:sourceKind": ext.kind,
+      },
+    };
+  }
+  const usedEntity = `graphium:note/${encodeURIComponent(id)}`;
+  return {
+    usedEntity,
+    declare: {
+      "@type": "Entity",
+      "@id": usedEntity,
+      label: toW3CLabel(id),
+      // このエクスポートはノート単位なので、派生元ノートの実体は別ファイルにある。
+      // 参照を解決可能にするための外部スタブであることを示す。
+      "graphium:external": true,
+    },
+  };
 }
 
 /** graphium: プレフィックス付きの拡張プロパティを抽出 */
@@ -107,13 +153,17 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
       }
     }
 
+    // wasGeneratedBy は配列（同一 Entity が複数 Activity に生成され得る）。
+    // 各生成元 Activity ごとに Generation を 1 本ずつ分離する。
     if (node["prov:wasGeneratedBy"]) {
-      w3cNodes.push({
-        "@type": "Generation",
-        "@id": `_:generation_${node["@id"]}`,
-        entity: node["@id"],
-        activity: node["prov:wasGeneratedBy"]["@id"],
-      });
+      for (const ref of node["prov:wasGeneratedBy"]) {
+        w3cNodes.push({
+          "@type": "Generation",
+          "@id": `_:generation_${node["@id"]}_${ref["@id"]}`,
+          entity: node["@id"],
+          activity: ref["@id"],
+        });
+      }
     }
 
     // wasDerivedFrom: execution Entity → plan Entity（Plan/Execution の派生関係）
@@ -183,7 +233,11 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
         "@id": node["@id"],
       };
       if (node["prov:generatedAtTime"]) {
-        w3cNode["prov:generatedAtTime"] = node["prov:generatedAtTime"];
+        // xsd:dateTime として型付け（startTime/endTime と整合。無タグだと文字列扱い）
+        w3cNode["prov:generatedAtTime"] = {
+          "@value": node["prov:generatedAtTime"],
+          "@type": "xsd:dateTime",
+        };
       }
       if (node["graphium:summary"]) {
         w3cNode["graphium:summary"] = node["graphium:summary"];
@@ -237,6 +291,10 @@ export type WikiEntityInfo = {
   /** Cmd-K verb 取り込み（R2 / PR3）で引用・精査した知見/洞察ノートの ID（PR4 / L2）。
    *  これらを wasDerivedFrom（Derivation）として PROV グラフに出す。 */
   citedKnowledgeIds?: string[];
+  /** Atom (Insights) が抽象化した元 Claim/Concept ノートの ID（atom のみ）。
+   *  Atom の上流はこの lane に入るため、export に出さないと Atom が来歴エッジを
+   *  持たない孤児になる。app 内グラフ（atomize エッジ）と揃えるため Derivation を出す。 */
+  derivedFromClaims?: string[];
   // Phase 4 (PR-B7): 提案 v4 Phase 1 の意味的な型を PROV-JSON-LD に持ち出す。
   // 内部識別子はそのまま emit する（UI ラベル "Insights" / "Ideas" は表示層の話で、
   // データ上は atomType / synthesisMode を保持し続ける）。
@@ -264,10 +322,16 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
 
   // Wiki Knowledge Layer（AI 生成ドキュメント）を Entity として追加
   if (wikiEntities) {
+    // Attribution の agent / Derivation の usedEntity が参照する Entity・Agent を
+    // 「宣言済みノード」として 1 度だけ @graph に積むための dedup マップ。
+    // これがないと参照先が型付きノードとして宣言されず dangling reference になる。
+    const declaredRefs = new Map<string, W3CProvNode>();
+
     for (const wiki of wikiEntities) {
+      const wikiId = `graphium:wiki/${encodeURIComponent(wiki.title)}`;
       const wikiNode: W3CProvNode = {
         "@type": "Entity",
-        "@id": `graphium:wiki/${encodeURIComponent(wiki.title)}`,
+        "@id": wikiId,
         label: toW3CLabel(wiki.title),
         "graphium:wikiKind": wiki.kind,
         "graphium:wikiStatus": wiki.status,
@@ -286,39 +350,59 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
       if (wiki.procedureContext) wikiNode["graphium:procedureContext"] = wiki.procedureContext;
       graph.push(wikiNode);
 
-      // Derivation: Wiki → 派生元ノート
-      for (const sourceNoteId of wiki.derivedFromNotes) {
-        graph.push({
-          "@type": "Derivation",
-          "@id": `_:wiki_deriv_${encodeURIComponent(wiki.title)}_${sourceNoteId}`,
-          generatedEntity: `graphium:wiki/${encodeURIComponent(wiki.title)}`,
-          usedEntity: `graphium:note/${sourceNoteId}`,
-        } as any);
+      // Derivation: Wiki → 上流ソース。3 つの来歴 lane を同じ規則で出す。
+      //   - derivedFromNotes : 派生元ノート（外部ソース prefix を含み得る）
+      //   - citedKnowledgeIds: Cmd-K verb 取り込みで引用・精査した知見/洞察（PR4 L2）
+      //   - derivedFromClaims: Atom が抽象化した元 Claim/Concept（atomize lane / app グラフと整合）
+      const deriveLanes: { ids: string[] | undefined; tag: string }[] = [
+        { ids: wiki.derivedFromNotes, tag: "deriv" },
+        { ids: wiki.citedKnowledgeIds, tag: "cited" },
+        { ids: wiki.derivedFromClaims, tag: "claim" },
+      ];
+      for (const { ids, tag } of deriveLanes) {
+        for (const sourceId of ids ?? []) {
+          const { usedEntity, declare } = resolveSourceEntity(sourceId);
+          graph.push({
+            "@type": "Derivation",
+            "@id": `_:wiki_${tag}_${encodeURIComponent(wiki.title)}_${encodeURIComponent(sourceId)}`,
+            generatedEntity: wikiId,
+            usedEntity,
+          } as any);
+          if (!declaredRefs.has(usedEntity)) declaredRefs.set(usedEntity, declare);
+        }
       }
-      // Derivation: Wiki → 引用・精査した知見/洞察（R2 verb 取り込みの来歴 / PR4 L2）
-      for (const citedId of wiki.citedKnowledgeIds ?? []) {
-        graph.push({
-          "@type": "Derivation",
-          "@id": `_:wiki_cited_${encodeURIComponent(wiki.title)}_${citedId}`,
-          generatedEntity: `graphium:wiki/${encodeURIComponent(wiki.title)}`,
-          usedEntity: `graphium:note/${citedId}`,
-        } as any);
-      }
+
       // Attribution: Wiki → AI Agent
+      const agentId = `graphium:agent/${encodeURIComponent(wiki.model)}`;
       graph.push({
         "@type": "Attribution",
         "@id": `_:wiki_attr_${encodeURIComponent(wiki.title)}`,
-        entity: `graphium:wiki/${encodeURIComponent(wiki.title)}`,
-        agent: `graphium:agent/${encodeURIComponent(wiki.model)}`,
+        entity: wikiId,
+        agent: agentId,
       } as any);
+      // 参照される AI Agent を prov:Agent ノードとして宣言（model 単位で dedup）
+      if (!declaredRefs.has(agentId)) {
+        declaredRefs.set(agentId, {
+          "@type": "Agent",
+          "@id": agentId,
+          label: toW3CLabel(wiki.model),
+          "graphium:agentType": "ai",
+        });
+      }
     }
+
+    // Attribution / Derivation が参照する Agent・Entity を型付きノードとして宣言。
+    // 既存ノード（graphium:wiki/* など）と @id が衝突しない参照のみが入る。
+    for (const node of declaredRefs.values()) graph.push(node);
   }
 
   // Document Provenance（編集来歴）を Bundle として追加
   if (provDoc["graphium:documentProvenance"]) {
     const docProvNodes = convertDocumentProvenance(provDoc["graphium:documentProvenance"]);
     graph.push({
-      "@type": "Bundle",
+      // prov:Bundle（prov 接頭辞はローカル context で定義済み）。bare "Bundle" は
+      // openprovenance context にもローカルにも未定義で prov:Bundle に展開されないため使わない。
+      "@type": "prov:Bundle",
       "@id": `graphium:documentProvenance/${encodeURIComponent(title)}`,
       "@graph": docProvNodes,
     } as any);
@@ -327,11 +411,36 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
   return {
     "@context": [
       {
+        // 名前空間 prefix
         prov: "http://www.w3.org/ns/prov#",
         xsd: "http://www.w3.org/2001/XMLSchema#",
+        rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        rdfs: "http://www.w3.org/2000/01/rdf-schema#",
         graphium: "https://graphium.app/ns#",
         foaf: "http://xmlns.com/foaf/0.1/",
         dcterms: "http://purl.org/dc/terms/",
+        // PROV 用語を inline 定義（openprovenance context と同じ意味）。
+        // 末尾の remote context が権威的解決元（オンライン時はそちらが優先されるため
+        // 出力の意味は不変）。inline 定義はファイルを自己記述的にし、リモート不在時の
+        // 解決手がかりを残す目的。
+        Entity: "prov:Entity",
+        Activity: "prov:Activity",
+        Agent: "prov:Agent",
+        Bundle: "prov:Bundle",
+        Usage: "prov:Usage",
+        Generation: "prov:Generation",
+        Derivation: "prov:Derivation",
+        Association: "prov:Association",
+        Attribution: "prov:Attribution",
+        label: { "@id": "rdfs:label" },
+        type: { "@id": "rdf:type", "@type": "@id" },
+        activity: { "@id": "prov:activity", "@type": "@id" },
+        entity: { "@id": "prov:entity", "@type": "@id" },
+        agent: { "@id": "prov:agent", "@type": "@id" },
+        usedEntity: { "@id": "prov:entity", "@type": "@id" },
+        generatedEntity: { "@reverse": "prov:qualifiedDerivation", "@type": "@id" },
+        startTime: { "@id": "prov:startedAtTime", "@type": "xsd:dateTime" },
+        endTime: { "@id": "prov:endedAtTime", "@type": "xsd:dateTime" },
       },
       "https://openprovenance.org/prov-jsonld/context.jsonld",
     ],

@@ -134,10 +134,12 @@ export function summarizeNoteProv(
       }
       const gen = node["prov:wasGeneratedBy"];
       if (gen) {
-        // wasGeneratedBy は Entity 側に乗り、to が Activity
-        const list = generatedByActivity.get(gen["@id"]) ?? [];
-        list.push(node);
-        generatedByActivity.set(gen["@id"], list);
+        // wasGeneratedBy は Entity 側に乗り、to が Activity（複数生成元があり得るため配列）
+        for (const g of gen) {
+          const list = generatedByActivity.get(g["@id"]) ?? [];
+          list.push(node);
+          generatedByActivity.set(g["@id"], list);
+        }
       }
     }
 
