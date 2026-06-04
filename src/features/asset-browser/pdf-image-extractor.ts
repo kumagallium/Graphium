@@ -59,6 +59,53 @@ type PdfImageObject = {
   kind?: number;
 };
 
+/** 6 要素のアフィン行列 [a, b, c, d, e, f]（x' = a x + c y + e, y' = b x + d y + f） */
+type Matrix = [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+/**
+ * canvas の `ctx.transform` 相当の行列合成: CTM_new = CTM · M。
+ * operator list の `OPS.transform`（PDF の `cm`）を畳み込んで CTM を追うのに使う。
+ */
+function composeMatrix(c: Matrix, m: Matrix): Matrix {
+  const [ca, cb, cc, cd, ce, cf] = c;
+  const [ma, mb, mc, md, me, mf] = m;
+  return [
+    ca * ma + cc * mb,
+    cb * ma + cd * mb,
+    ca * mc + cc * md,
+    cb * mc + cd * md,
+    ca * me + cc * mf + ce,
+    cb * me + cd * mf + cf,
+  ];
+}
+
+/** 画像を正立させるために必要な反転 */
+export type ImageOrientation = { flipX: boolean; flipY: boolean };
+
+/**
+ * paintImage 時点の CTM から、生ビットマップを正立させるための反転を求める。
+ *
+ * PDF の座標系は原点が左下・Y 上向きで、画像 XObject は単位正方形に対して
+ * CTM で配置される。多くの PDF 生成器は画像行を上下逆に格納し、負の d を持つ
+ * CTM で正立表示する。生 XObject をそのまま canvas に貼る現行方式はこの CTM を
+ * 無視するため、`d < 0` の画像だけが上下反転して出てくる（実 PDF で確認済み）。
+ *
+ * 規約:
+ * - 標準形 `a>0, d>0, b=c=0` は **no-op**（今まで正しく出ていた画像は不変）。
+ * - `d < 0` → 縦反転、`a < 0` → 横反転で補正する。
+ * - 回転・スキュー（`b≠0` or `c≠0`）は符号だけでは向きを決められないため、
+ *   ここでは判定せず no-op を返す（生データのまま＝従来挙動）。埋め込みラスター
+ *   画像で回転が掛かるケースは稀なため、過補正の事故を避けてスコープ外とする。
+ */
+export function imageOrientationFromMatrix(ctm: Matrix): ImageOrientation {
+  const [a, b, c, d] = ctm;
+  const axisAligned = b === 0 && c === 0;
+  if (!axisAligned) return { flipX: false, flipY: false };
+  return { flipX: a < 0, flipY: d < 0 };
+}
+
 /**
  * PDF Blob を読み込み、各ページの operator list を走査して埋め込み画像を抽出する。
  *
@@ -96,9 +143,26 @@ export async function extractEmbeddedPdfImages(
       try {
         const opList = await page.getOperatorList();
         const OPS = pdfjs.OPS as Record<string, number>;
+        // CTM スタックを追って paintImage 時点の変換行列を捕まえる。
+        // これが無いと画像の向き（上下反転）を復元できない。
+        let ctm: Matrix = IDENTITY;
+        const ctmStack: Matrix[] = [];
         for (let i = 0; i < opList.fnArray.length; i++) {
           const fn = opList.fnArray[i];
           const args = opList.argsArray[i] as unknown[];
+
+          if (fn === OPS.save) {
+            ctmStack.push(ctm);
+            continue;
+          }
+          if (fn === OPS.restore) {
+            ctm = ctmStack.pop() ?? IDENTITY;
+            continue;
+          }
+          if (fn === OPS.transform) {
+            ctm = composeMatrix(ctm, args as unknown as Matrix);
+            continue;
+          }
 
           let imageObj: PdfImageObject | null = null;
           let dedupKey: string | null = null;
@@ -120,7 +184,8 @@ export async function extractEmbeddedPdfImages(
           const h = imageObj.height ?? 0;
           if (w < minSize.width || h < minSize.height) continue;
 
-          const blob = await encodeImageObjectToPng(imageObj, w, h);
+          const orientation = imageOrientationFromMatrix(ctm);
+          const blob = await encodeImageObjectToPng(imageObj, w, h, orientation);
           if (!blob) continue;
 
           imageCounter += 1;
@@ -165,30 +230,52 @@ function getImageObject(page: any, name: string): Promise<PdfImageObject | null>
  * - `data` (RGBA/RGB/Grayscale) があれば ImageData を組み立てて putImageData
  *
  * pdfjs v5 では多くのケースで `bitmap` が入っているため第一選択。
+ *
+ * `orientation` は CTM 由来の反転指定。`flipX`/`flipY` が立っている場合のみ
+ * 出力 canvas で反転を適用して正立させる。no-op（標準形）のときは従来どおり
+ * そのまま貼るので、今まで正しく出ていた画像のピクセルは一切変わらない。
  */
 async function encodeImageObjectToPng(
   imageObj: PdfImageObject,
   width: number,
   height: number,
+  orientation: ImageOrientation = { flipX: false, flipY: false },
 ): Promise<Blob | null> {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
+  // まず生データを「ソース canvas」に向き補正なしで描く。
+  // bitmap 経路と data 経路を1本化し、反転は出力段でまとめて掛ける
+  // （putImageData は canvas transform を無視するため、data も一旦ここを通す）。
+  const source = document.createElement("canvas");
+  source.width = width;
+  source.height = height;
+  const sctx = source.getContext("2d");
+  if (!sctx) return null;
 
   if (imageObj.bitmap) {
-    ctx.drawImage(imageObj.bitmap, 0, 0);
+    sctx.drawImage(imageObj.bitmap, 0, 0);
   } else if (imageObj.data) {
-    const imageData = paintImageDataFromRaw(ctx, imageObj.data, width, height);
+    const imageData = paintImageDataFromRaw(sctx, imageObj.data, width, height);
     if (!imageData) return null;
-    ctx.putImageData(imageData, 0, 0);
+    sctx.putImageData(imageData, 0, 0);
   } else {
     return null;
   }
 
+  // 反転不要なら従来どおりソースをそのまま出力（余計な再描画をしない）。
+  let outCanvas = source;
+  if (orientation.flipX || orientation.flipY) {
+    const out = document.createElement("canvas");
+    out.width = width;
+    out.height = height;
+    const octx = out.getContext("2d");
+    if (!octx) return null;
+    octx.translate(orientation.flipX ? width : 0, orientation.flipY ? height : 0);
+    octx.scale(orientation.flipX ? -1 : 1, orientation.flipY ? -1 : 1);
+    octx.drawImage(source, 0, 0);
+    outCanvas = out;
+  }
+
   return new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((b) => resolve(b ?? null), "image/png");
+    outCanvas.toBlob((b) => resolve(b ?? null), "image/png");
   });
 }
 
