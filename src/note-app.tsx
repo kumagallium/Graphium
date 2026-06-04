@@ -4989,20 +4989,38 @@ export function NoteApp() {
                   const provider = getActiveProvider();
                   const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
                   const blob = await (await fetch(blobUrl)).blob();
+                  // 既にこの PDF から抽出済みの画像があれば再利用（再実行で重複させない）。
+                  // ファイル名 "... - p{N} image {M}.png" からページ番号を復元する。
+                  const existingImages = (fm.mediaIndex?.media ?? [])
+                    .filter((m) => m.type === "image" && m.derivedFromAssets?.includes(entry.fileId!))
+                    .map((m) => {
+                      const pm = m.name.match(/ - p(\d+) image \d+/);
+                      return { pageNumber: pm ? parseInt(pm[1], 10) : 1, url: m.url, name: m.name };
+                    });
                   const result = await translatePdfToNote(
                     blob,
                     entry.name || "document.pdf",
                     getLocale(),
                     entry.fileId,
-                    (done, total) => {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: `Translating ${done}/${total}...` } : i) }));
+                    {
+                      existingImages,
+                      // 初回のみ抽出。抽出図は PDF からの派生として登録（アセットグラフで辿れる）
+                      uploadImage: (file) => fm.handleUploadMedia(file, { derivedFromAssets: [entry.fileId!] }),
+                      onPhase: (label) => {
+                        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: label } : i) }));
+                      },
+                      onProgress: (done, total) => {
+                        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: `Translating ${done}/${total}...` } : i) }));
+                      },
                     },
                   );
                   const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
                   // PDF を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）。
                   setFocusedMaterial({ fileId: entry.fileId!, fullMode: true });
                   setAssetSidePeekNoteId(newNoteId);
-                  const note = result.truncated ? `${result.chunkCount} parts (truncated)` : `${result.chunkCount} parts`;
+                  const note = `${result.pageCount} pages`
+                    + (result.imageCount > 0 ? `, ${result.imageCount} figures` : "")
+                    + (result.truncated ? " (truncated)" : "");
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: note } : i) }));
                 } catch (err) {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));

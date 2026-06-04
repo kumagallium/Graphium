@@ -84,13 +84,69 @@ export function buildTranslateUserMessage(input: {
   text: string;
   language: string;
   partLabel?: string;
+  /** 文書全体で訳語を統一するための用語集（term -> translation） */
+  glossary?: GlossaryEntry[];
 }): string {
   const target = languageName(input.language);
   const label = input.partLabel ? ` (${input.partLabel})` : "";
-  return [
+  const lines = [
     `[Translate the following text into ${target}. Output translated Markdown only.]${label}`,
-    "",
-    "--- raw extracted text ---",
-    input.text,
-  ].join("\n");
+  ];
+  if (input.glossary && input.glossary.length > 0) {
+    lines.push(
+      "",
+      `[Glossary — use these ${target} translations consistently for the listed terms; keep the original term in parentheses on first use when helpful:]`,
+      ...input.glossary.slice(0, 100).map((g) => `- ${g.term} → ${g.translation}`),
+    );
+  }
+  lines.push("", "--- raw extracted text ---", input.text);
+  return lines.join("\n");
+}
+
+// ─────────────────────────────────────────────
+// 用語集（Glossary）抽出
+// 並列ページ翻訳では各ページが独立に訳されるため訳語がブレる。先に文書全体から
+// 重要用語と目的言語訳を1回だけ抽出し、各ページ翻訳に注入して統一する。
+// ─────────────────────────────────────────────
+
+export type GlossaryEntry = { term: string; translation: string };
+
+/** 用語集抽出用システムプロンプト */
+export function buildGlossarySystemPrompt(language: string): string {
+  const target = languageName(language);
+  return `You build a translation glossary for a document that will be translated into ${target}.
+
+From the given text (often a research paper), extract the **key domain terms** that should be translated consistently throughout the document — technical terms, named methods, recurring concepts, units used as words, and important nouns. Provide a stable ${target} translation for each.
+
+Rules:
+- Output 10–40 entries. Prefer terms that recur or are central to the document.
+- \`term\`: the term as it appears in the source language.
+- \`translation\`: the ${target} translation to use consistently. If a term is conventionally left untranslated (proper nouns, software names, symbols, established acronyms), set \`translation\` to the same original term.
+- Do NOT include trivial common words. Focus on domain-specific vocabulary.
+- Respond with valid JSON only, no prose, no markdown fence:
+
+{ "glossary": [ { "term": "string", "translation": "string" }, ... ] }`;
+}
+
+/** 用語集抽出のユーザーメッセージ */
+export function buildGlossaryUserMessage(text: string): string {
+  return ["--- document text (sample) ---", text].join("\n");
+}
+
+/** LLM の用語集出力をパースする */
+export function parseGlossaryOutput(raw: string): GlossaryEntry[] {
+  let jsonText = raw.trim();
+  const fenced = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenced) jsonText = fenced[1].trim();
+  try {
+    const parsed = JSON.parse(jsonText);
+    const arr = Array.isArray(parsed) ? parsed : parsed?.glossary;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((e) => e && typeof e.term === "string" && typeof e.translation === "string")
+      .map((e) => ({ term: e.term.trim(), translation: e.translation.trim() }))
+      .filter((e) => e.term.length > 0 && e.translation.length > 0);
+  } catch {
+    return [];
+  }
 }

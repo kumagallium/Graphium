@@ -225,16 +225,19 @@ straight document translation.
 
 | Step | File | What it does |
 |---|---|---|
-| Extract | `src/features/wiki/pdf-text-extractor.ts` (`extractPdfPages`) | Client-side pdfjs extraction, returned per page so it can be chunked on page boundaries |
-| Chunk | `src/features/pdf-translate/translate-service.ts` | Groups pages into ~6k-char chunks (full translation output ≈ input size, so it must fit one LLM response) |
-| Translate | `src/server/services/translate.ts` + `POST /api/translate` | Per-chunk prompt: reconstruct structure from the flattened text, translate prose into the target language, keep math / code / citations / references verbatim, output Markdown |
-| Build | `src/features/pdf-translate/translate-service.ts` | Concatenates the Markdown, converts to BlockNote blocks (`tryParseMarkdownToBlocks`), and assembles a `GraphiumDocument` linked to the source PDF |
+| Extract text | `src/features/wiki/pdf-text-extractor.ts` (`extractPdfPages`) | Client-side pdfjs extraction, returned **per page** (the unit of translation and figure placement) |
+| Extract figures | `src/features/asset-browser/pdf-image-extractor.ts` (`extractEmbeddedPdfImages`) | Pulls embedded raster images grouped by page number, uploaded as media derived from the source PDF |
+| Glossary | `POST /api/translate/glossary` | One pass over a text sample extracts key domain terms + target-language translations, so parallel page translations stay consistent |
+| Translate | `src/server/services/translate.ts` + `POST /api/translate` | Per-page prompt (glossary injected): reconstruct structure from the flattened text, translate prose into the target language, keep math / code / citations / references verbatim, output Markdown |
+| Build | `src/features/pdf-translate/translate-service.ts` | Per page: Markdown → BlockNote blocks (`tryParseMarkdownToBlocks`) followed by that page's figure blocks; assembles a `GraphiumDocument` linked to the source PDF |
 
-The chunks are translated sequentially and the resulting note is saved via
-the normal `handleCreateNoteFromDocument` path (recorded as an AI
-derivation). Known limits: math-heavy / multi-column papers degrade
-because pdfjs flattens their layout, and very long PDFs are truncated at a
-character cap.
+Pages are translated **in parallel** (bounded concurrency) and reassembled
+in page order; each page's extracted figures are inserted right after its
+translated text. The note is saved via the normal
+`handleCreateNoteFromDocument` path (recorded as an AI derivation). Known
+limits: math-heavy / multi-column papers degrade because pdfjs flattens
+their layout; figure placement is page-granular (end of each page, not at
+the exact caption); and very long PDFs are truncated at a character cap.
 
 ### 3.3 Knowledge layer
 
