@@ -34,7 +34,7 @@ const NODE_COLORS = {
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 const BG_COLOR = "#fafdf7";   // テーマ背景
 
-type ExternalKind = "pdf" | "url" | "media";
+type ExternalKind = "pdf" | "url" | "document" | "chat" | "media";
 
 function getNodeColor(
   hop: number,
@@ -279,8 +279,12 @@ export function NetworkGraphPanel({
           : "";
       const baseTitle = node.external === "pdf"
         ? `📄 ${node.title}`
+        : node.external === "document"
+        ? `📝 ${node.title}`
         : node.external === "url"
         ? `🔗 ${node.title}`
+        : node.external === "chat"
+        ? `💬 ${node.title}`
         : node.external === "media"
         ? `${mediaIcon} ${node.title}`
         : node.isWiki
@@ -419,6 +423,15 @@ export function NetworkGraphPanel({
       const externalUrl: string | undefined = evt.target.data("externalUrl");
       if (nodeId.startsWith("pdf:")) {
         if (onOpenMedia) onOpenMedia(nodeId.slice(4));
+        return;
+      }
+      if (nodeId.startsWith("document:")) {
+        // Word(.docx) など document 素材を PDF と同じくアセットモーダルで開く
+        if (onOpenMedia) onOpenMedia(nodeId.slice("document:".length));
+        return;
+      }
+      if (nodeId.startsWith("chat:")) {
+        // AI チャット由来ソースは開けるアセットが無いので何もしない
         return;
       }
       if (nodeId.startsWith("url:")) {

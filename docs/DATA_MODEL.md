@@ -281,6 +281,15 @@ type WikiKind = "summary" | "claim" | "atom" | "synthesis";
 
 type WikiMeta = {
   kind: WikiKind;
+  // Upstream source IDs. Usually a plain note/Knowledge ID, but when the
+  // Knowledge was ingested directly from an asset (not a note) the ID carries
+  // a prefix identifying the external source:
+  //   "pdf:<mediaFileId>"      ingested from a PDF asset
+  //   "url:<url>"              ingested from a URL
+  //   "document:<mediaFileId>" ingested from a Word (.docx) / document asset
+  //   "chat:<timestamp>"       ingested from an AI chat session
+  // Lineage / graph views resolve these prefixes to external source nodes
+  // (see features/network-graph/external-source.ts).
   derivedFromNotes: string[];
   derivedFromChats: string[];
   generatedAt: string;            // ISO 8601

@@ -3,6 +3,7 @@
 
 import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/document-types";
 import type { MediaIndex, MediaType } from "../asset-browser/media-index";
+import { parseExternalSource } from "./external-source";
 
 export type NoteNode = {
   id: string;
@@ -14,8 +15,8 @@ export type NoteNode = {
   isWiki?: boolean;
   /** Knowledge の kind（kind 別に色分けする） */
   wikiKind?: WikiKind;
-  /** 外部ソース種別（pdf:/url: prefix が付いた derivedFromNotes 由来 / media: prefix の使用メディア）。 */
-  external?: "pdf" | "url" | "media";
+  /** 外部ソース種別（pdf:/url:/document:/chat: prefix が付いた derivedFromNotes 由来 / media: prefix の使用メディア）。 */
+  external?: "pdf" | "url" | "document" | "chat" | "media";
   /** 外部リンク先 URL（PDF は CDN URL、URL は元 URL）。クリックで新規タブで開く。 */
   externalUrl?: string;
   /** external === "media" のときの MediaIndex の fileId（サムネイル解決やクリック時の参照に使う） */
@@ -142,12 +143,13 @@ export function buildNoteGraph(
       }
     }
     // Wiki の derivedFromNotes: Wiki → 派生元ノートのエッジ
-    // pdf:/url: 外部ソースは仮想ノードとして追加
+    // pdf:/url:/document:/chat: 外部ソースは仮想ノードとして追加
     if (doc.source === "ai" && doc.wikiMeta?.derivedFromNotes) {
       for (const sourceId of doc.wikiMeta.derivedFromNotes) {
-        if (sourceId.startsWith("pdf:") || sourceId.startsWith("url:")) {
+        const ext = parseExternalSource(sourceId);
+        if (ext) {
           // 外部ソースはエッジ追加（fileIds チェック不要）
-          addEdge(sourceId, fileId, sourceId.startsWith("pdf:") ? "pdf" : "url");
+          addEdge(sourceId, fileId, ext.kind);
         } else if (fileIds.has(sourceId)) {
           addEdge(sourceId, fileId, "ingest");
         }
@@ -243,6 +245,34 @@ export function buildNoteGraph(
       });
       continue;
     }
+    if (id.startsWith("document:")) {
+      // Word(.docx) など document 素材を Knowledge 化したソース。素材として開けるよう
+      // fileId / 名前 / URL を解決する。
+      const fileId = id.slice("document:".length);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({
+        id,
+        title: m?.name ?? `Document ${fileId.slice(0, 8)}`,
+        isCurrent: false,
+        hop,
+        external: "document",
+        externalUrl: m?.url,
+        mediaFileId: fileId,
+        mediaType: m?.type,
+      });
+      continue;
+    }
+    if (id.startsWith("chat:")) {
+      // AI チャット由来のソース。開けるアセットは無いので表示のみ。
+      nodes.push({
+        id,
+        title: "AI Chat",
+        isCurrent: false,
+        hop,
+        external: "chat",
+      });
+      continue;
+    }
     if (id.startsWith("url:")) {
       const url = id.slice(4);
       nodes.push({
@@ -289,12 +319,18 @@ export function buildNoteGraph(
     (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
   );
 
-  // 重複エッジ除去
+  // 重複エッジ除去 + 相互参照（A→B と B→A）の片方向化。
+  // 同じノード対が、PROV 由来エッジ（例: claim→atom の derivedFromClaims）と
+  // Knowledge 参照（例: atom 本文の "Source Claims" の atom→claim）で二重に張られ、
+  // エッジが過剰になる。無向で 1 本に畳んでグラフのごちゃつきを抑える。
   const edgeSet = new Set<string>();
   const uniqueEdges = edges.filter((e) => {
-    const key = `${e.source}->${e.target}`;
-    if (edgeSet.has(key)) return false;
-    edgeSet.add(key);
+    const undirectedKey =
+      e.source < e.target
+        ? `${e.source}|${e.target}`
+        : `${e.target}|${e.source}`;
+    if (edgeSet.has(undirectedKey)) return false;
+    edgeSet.add(undirectedKey);
     return true;
   });
 
