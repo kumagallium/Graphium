@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.13.6](https://github.com/kumagallium/Graphium/compare/v0.13.5...v0.13.6) - 2026-06-04
+
+- feat(mcp): direct MCP connections — decouple Graphium from Crucible by @kumagallium in https://github.com/kumagallium/Graphium/pull/417
+- fix(pdf-import): correct orientation of flipped embedded images by @kumagallium in https://github.com/kumagallium/Graphium/pull/419
+
 ## [v0.13.5](https://github.com/kumagallium/Graphium/compare/v0.13.4...v0.13.5) - 2026-06-03
 
 - World-grounding UX: open links in desktop, clear/re-ground verdicts, dedicated model, general-purpose seed by @kumagallium in https://github.com/kumagallium/Graphium/pull/415
