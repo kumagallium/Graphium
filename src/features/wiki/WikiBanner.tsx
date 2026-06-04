@@ -31,6 +31,8 @@ import type {
   WikiMetaSummary,
 } from "../../lib/document-types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
+import type { MediaIndex } from "../asset-browser/media-index";
+import { parseExternalSource } from "../network-graph/external-source";
 import { useT } from "../../i18n";
 import { SynthesisModeModal } from "./SynthesisModeModal";
 
@@ -96,6 +98,11 @@ type Props = {
    */
   noteIndex?: GraphiumIndex | null;
   /**
+   * 外部ソース（pdf: / url: / document: / chat:）の名前解決に使うメディアインデックス。
+   * これが無いと Word(.docx) 等の素材由来ソースは ID しか出せず「(不明)」になる。
+   */
+  mediaIndex?: MediaIndex | null;
+  /**
    * 派生元のリストエントリをクリックしたときの遷移ハンドラ。
    * Wiki エントリの場合は `wiki:` プレフィックス付きで渡す。未指定時はリンクではなく
    * 静的テキストとして表示する。
@@ -147,6 +154,7 @@ export function WikiBanner({
   archived = false,
   onRestoreFromArchive,
   noteIndex,
+  mediaIndex,
   onNavigateNote,
   onCheckWorldValidity,
   worldCheckLoading = false,
@@ -440,6 +448,7 @@ export function WikiBanner({
         <DerivedFromSection
           wikiMeta={wikiMeta}
           noteIndex={noteIndex ?? null}
+          mediaIndex={mediaIndex ?? null}
           onNavigateNote={onNavigateNote}
         />
       )}
@@ -888,11 +897,37 @@ type DerivedFromEntry = {
   label: string;
   /** タイトルを index から解決できたか。false なら「不明」扱いの薄い表示にする */
   resolved: boolean;
+  /** 外部ソース（pdf: / url: / document: / chat:）。ノート遷移ではなく素材表示扱いにする */
+  external?: boolean;
 };
+
+// 外部ソース ID（pdf:/url:/document:/chat:）のラベルを mediaIndex から解決する。
+// pdf / document は mediaFileId、url はブックマーク URL でメディアを引く。
+function resolveExternalLabel(
+  kind: string,
+  key: string,
+  mediaIndex: MediaIndex | null,
+): string {
+  if (kind === "chat") return "AI Chat";
+  if (mediaIndex) {
+    if (kind === "url") {
+      const m = mediaIndex.media.find((e) => e.type === "url" && e.url === key);
+      if (m) return m.name || key;
+      return key;
+    }
+    // pdf / document は fileId 一致で引く
+    const m = mediaIndex.media.find((e) => e.fileId === key);
+    if (m) return m.name;
+  }
+  if (kind === "url") return key;
+  const labelPrefix = kind === "pdf" ? "PDF" : "Document";
+  return `${labelPrefix} ${key.slice(0, 8)}`;
+}
 
 function resolveDerivedEntries(
   ids: readonly string[] | undefined,
   noteIndex: GraphiumIndex | null,
+  mediaIndex: MediaIndex | null = null,
 ): DerivedFromEntry[] {
   if (!ids || ids.length === 0) return [];
   // 同一 ID の重複登録は表示上 1 件にまとめる（順序は最初の出現を保つ）。
@@ -905,6 +940,18 @@ function resolveDerivedEntries(
   for (const id of ids) {
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    // 外部ソース（pdf:/url:/document:/chat:）は素材として名前解決する。
+    // これを noteIndex 解決より先に分岐しないと「(不明)」になる。
+    const ext = parseExternalSource(id);
+    if (ext) {
+      entries.push({
+        navigateId: id,
+        label: resolveExternalLabel(ext.kind, ext.key, mediaIndex),
+        resolved: true,
+        external: true,
+      });
+      continue;
+    }
     const entry = indexById.get(id);
     if (entry) {
       const isWiki = entry.source === "ai";
@@ -970,19 +1017,23 @@ function resolveRelatedAtomEntries(
 function DerivedFromSection({
   wikiMeta,
   noteIndex,
+  mediaIndex,
   onNavigateNote,
 }: {
   wikiMeta: WikiMeta;
   noteIndex: GraphiumIndex | null;
+  mediaIndex: MediaIndex | null;
   onNavigateNote?: (noteId: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
+  // derivedFromNotes には pdf:/url:/document:/chat: の外部ソースが混ざるため mediaIndex を渡す。
   const noteEntries = useMemo(
-    () => resolveDerivedEntries(wikiMeta.derivedFromNotes, noteIndex),
-    [wikiMeta.derivedFromNotes, noteIndex],
+    () => resolveDerivedEntries(wikiMeta.derivedFromNotes, noteIndex, mediaIndex),
+    [wikiMeta.derivedFromNotes, noteIndex, mediaIndex],
   );
+  // derivedFromClaims は wiki(claim) の素 ID のみ。外部ソースは入らない。
   const claimEntries = useMemo(
     () => resolveDerivedEntries(wikiMeta.derivedFromClaims, noteIndex),
     [wikiMeta.derivedFromClaims, noteIndex],
@@ -1183,7 +1234,11 @@ function DerivedFromGroup({
       {entries.map((entry, i) => (
         <span key={entry.navigateId + i}>
           {i > 0 && <span style={{ color: "var(--ink-4)" }}>, </span>}
-          {entry.resolved && onNavigateNote ? (
+          {entry.external ? (
+            // 外部ソース（Word/PDF/URL/チャット）は素材名をテキストで示す。
+            // 深い系譜・素材を開く操作は右パネルの来歴タブが担う。
+            <span title={entry.label}>{entry.label}</span>
+          ) : entry.resolved && onNavigateNote ? (
             <button
               type="button"
               onClick={() => onNavigateNote(entry.navigateId)}
