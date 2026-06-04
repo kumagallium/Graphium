@@ -77,6 +77,7 @@ import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
+import { isDocumentNote, assembleCitedDocumentContext } from "./features/ai-assistant/cited-document-context";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -1537,6 +1538,20 @@ function NoteEditorInner({
                 ? await provider.loadWikiFile(attached.id)
                 : await provider.loadFile(attached.id);
               if (doc) {
+                // 引用先が文書ノート（PDF/docx/URL 由来）なら、薄い本文ではなく
+                // 1ホップ派生知識（派生メモ＋派生 Claim/洞察）を優先し、
+                // 派生知識が無い/余剰予算ぶんは原文（PDF 全文等）で埋める。
+                if (isDocumentNote(doc)) {
+                  const assembled = await assembleCitedDocumentContext(attached.id, doc, {
+                    noteIndex: noteIndex ?? null,
+                    captureIndex: captureIndexProp ?? null,
+                    provider,
+                  });
+                  if (assembled) {
+                    noteContents.push(assembled);
+                    continue;
+                  }
+                }
                 const page = doc.pages[0];
                 const blocks = page?.blocks ?? [];
                 // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）
@@ -1706,7 +1721,7 @@ function NoteEditorInner({
         );
       }
     },
-    [fileId, aiAssistant, markDirty],
+    [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp],
   );
 
   // Composer 結果をドキュメント末尾にブロックとして挿入するヘルパー。
@@ -1806,11 +1821,11 @@ function NoteEditorInner({
         // チャット欄を開いている状態での追加質問は、チャット欄の input を使えばよい。
         h.parkChat();
         h.setRightTab("chat");
-        // verb メニュー由来（PR2）: このノートが引用している知見・洞察（reference リンク先）
-        // の「本文」を AI 文脈に載せる。verb は「引用集合の精査」を指示するため、
-        // タイトルだけでなく中身が文脈に無いと機能しない。既存の @mention 添付ノートの
-        // ロード機構（handleAiChatSubmit の attachedNotes 経路）をそのまま再利用する。
-        const citedNotes = verb ? h.collectCitedNotes() : [];
+        // このノートが @ で引用している参照先（reference リンク先 = 知見・洞察・文書ノート）
+        // の中身を AI 文脈に載せる。verb（引用集合の精査）だけでなく素の質問でも、
+        // 引用した論文 PDF 等の中身を踏まえて答えられるよう常に収集する。文書ノートは
+        // handleAiChatSubmit 側の attachedNotes 経路で 1ホップ派生知識＋全文に展開される。
+        const citedNotes = h.collectCitedNotes();
         await h.handleAiChatSubmit(prompt, citedNotes.length > 0 ? citedNotes : undefined);
         return;
       }
