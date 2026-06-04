@@ -128,6 +128,7 @@ import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retri
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
+import { translatePdfToNote } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
@@ -3019,6 +3020,10 @@ export function NoteApp() {
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
   const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean } | null>(null);
 
+  // アセット閲覧画面の右に並べて開くノート（翻訳ノート等）。PDF を読みながら横で照合する用途。
+  // PDF を Full view にしたうえで、その右に既存のノート SidePeek を inline で差し込む。
+  const [assetSidePeekNoteId, setAssetSidePeekNoteId] = useState<string | null>(null);
+
   // Cmd+K Composer（統一された AI 呼び出し口 / UX Audit #04）
   // Ask のみ UI 公開。他モードの実装は NoteEditorInner 内のハンドラに保持（将来用）。
   // useComposer の組み込みショートカットは無効化して、ここで fm.activeFileId を見て
@@ -4752,8 +4757,14 @@ export function NoteApp() {
             focusFileId={focusedMaterial?.fileId}
             focusFullMode={focusedMaterial?.fullMode}
             onFocusConsumed={() => setFocusedMaterial(null)}
-            onBack={() => fm.setActiveAssetType(null)}
+            onBack={() => { setAssetSidePeekNoteId(null); fm.setActiveAssetType(null); }}
+            onOpenNoteInSidePeek={(noteId) => {
+              // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
+              const rawId = noteId.startsWith("wiki:") ? noteId.slice(5) : noteId;
+              setAssetSidePeekNoteId(rawId);
+            }}
             onNavigateNote={(noteId) => {
+              setAssetSidePeekNoteId(null);
               fm.setActiveAssetType(null);
               // PDF アセットの利用ノートグラフから Wiki ノートをクリックしたケース：
               // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
@@ -4965,6 +4976,39 @@ export function NoteApp() {
                 return;
               }
             } : undefined}
+            onTranslatePdf={aiAvailable ? (entry) => {
+              // PDF を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートを生成する。
+              // 要約・構造化（Knowledge / PROV）とは別経路。チャンク分割して順次翻訳する。
+              if (entry.type !== "pdf" || !entry.fileId) return;
+              const jobId = `translate-pdf:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+              const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || entry.fileId };
+              setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+              (async () => {
+                setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Extracting PDF text..." } : i) }));
+                try {
+                  const provider = getActiveProvider();
+                  const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
+                  const blob = await (await fetch(blobUrl)).blob();
+                  const result = await translatePdfToNote(
+                    blob,
+                    entry.name || "document.pdf",
+                    getLocale(),
+                    entry.fileId,
+                    (done, total) => {
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: `Translating ${done}/${total}...` } : i) }));
+                    },
+                  );
+                  const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
+                  // PDF を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）。
+                  setFocusedMaterial({ fileId: entry.fileId!, fullMode: true });
+                  setAssetSidePeekNoteId(newNoteId);
+                  const note = result.truncated ? `${result.chunkCount} parts (truncated)` : `${result.chunkCount} parts`;
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: note } : i) }));
+                } catch (err) {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                }
+              })();
+            } : undefined}
             onExtractPdfPages={async (entry, onProgress) => {
               // PDF 内部に埋め込まれた画像オブジェクトを抽出して画像アセットに登録する。
               // ベクター figure / 表は PDF 内部に「画像」として存在しないため対象外。
@@ -5023,6 +5067,36 @@ export function NoteApp() {
                 type: assetEntry.type,
               });
             }}
+            notePeekId={assetSidePeekNoteId}
+            renderNotePeek={(noteId) => (
+              // 他のノートのサイドピークと同じ inline 表示で、PDF 全画面ビューの
+              // 右パネル（グラフ）の左に差し込まれる。
+              // SidePeek 内部は AiAssistant コンテキストを要求するため Provider で包み、
+              // エラーバウンダリでアプリ全体の白画面化を防ぐ。
+              <AiAssistantProvider aiAvailable={aiAvailable ?? false}>
+                <ListSidePeekBoundary onClose={() => setAssetSidePeekNoteId(null)}>
+                  <SidePeek
+                    inline
+                    noteId={noteId}
+                    cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
+                    onClose={() => setAssetSidePeekNoteId(null)}
+                    onNavigate={(navId, savedDoc) => {
+                      // SidePeek 内のリンクから本格的に開く場合はアセット画面を離れる
+                      setAssetSidePeekNoteId(null);
+                      fm.setActiveAssetType(null);
+                      if (navId.startsWith("wiki:")) fm.handleOpenWikiFile(navId.slice(5));
+                      else fm.handleOpenFile(navId, savedDoc);
+                    }}
+                    wikiEntries={appKnowledgeMap.get(noteId) ?? []}
+                    mediaIndex={fm.mediaIndex ?? null}
+                    captureIndex={capture.captureIndex ?? null}
+                    uploadFile={fm.handleUploadMedia}
+                    onAddUrlBookmark={fm.handleAddUrlBookmark}
+                    noteIndex={fm.noteIndex ?? null}
+                  />
+                </ListSidePeekBoundary>
+              </AiAssistantProvider>
+            )}
           />
         ) : fm.activeLabel ? (
           <LabelGalleryView

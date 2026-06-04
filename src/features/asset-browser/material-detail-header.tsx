@@ -69,6 +69,7 @@ export type MaterialDetailHeaderProps = {
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  onTranslatePdf?: (entry: MediaIndexEntry) => void;
   onExtractPdfPages?: (
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
@@ -95,6 +96,7 @@ export function MaterialDetailHeader({
   onRename,
   onIngest,
   onCreateProvNote,
+  onTranslatePdf,
   onExtractPdfPages,
   onExtractDocxImages,
   onSharedRefUpdated,
@@ -199,6 +201,7 @@ export function MaterialDetailHeader({
       entry={entry}
       onIngest={onIngest}
       onCreateProvNote={onCreateProvNote}
+      onTranslatePdf={onTranslatePdf}
       onExtractPdfPages={onExtractPdfPages}
       onExtractDocxImages={onExtractDocxImages}
       onSharedRefUpdated={onSharedRefUpdated}

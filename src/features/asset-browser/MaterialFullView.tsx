@@ -12,7 +12,7 @@
 //   - Asset graph は full mode の **デフォルトで開く**（利用可能なら）
 //   - Metadata は右パネルのタブとして提供（Graph と相互排他）
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Network, Info, StickyNote } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
@@ -33,9 +33,14 @@ export type MaterialFullViewProps = {
   onToggleFull?: () => void;
   onDelete?: (entry: MediaIndexEntry) => void;
   onNavigateNote?: (noteId: string) => void;
+  /** 指定時：アセットグラフの利用ノードクリックで離脱せず右に SidePeek で開く */
+  onOpenNoteInSidePeek?: (noteId: string) => void;
+  /** PDF ビューアと右パネルの間に差し込むノートサイドピーク（翻訳ノート等） */
+  noteSidePeek?: ReactNode;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  onTranslatePdf?: (entry: MediaIndexEntry) => void;
   onExtractPdfPages?: (
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
@@ -69,9 +74,12 @@ export function MaterialFullView({
   onToggleFull,
   onDelete,
   onNavigateNote,
+  onOpenNoteInSidePeek,
+  noteSidePeek,
   onRename,
   onIngest,
   onCreateProvNote,
+  onTranslatePdf,
   onExtractPdfPages,
   onExtractDocxImages,
   onSharedRefUpdated,
@@ -137,6 +145,7 @@ export function MaterialFullView({
         onRename={onRename}
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
+        onTranslatePdf={onTranslatePdf}
         onExtractPdfPages={onExtractPdfPages}
         onExtractDocxImages={onExtractDocxImages}
         onSharedRefUpdated={onSharedRefUpdated}
@@ -171,6 +180,9 @@ export function MaterialFullView({
           </div>
         </div>
 
+        {/* ノートサイドピーク（翻訳ノート等）— PDF と右パネルの間に inline で並べる */}
+        {noteSidePeek}
+
         {rightTab && (
           <div className="w-[480px] shrink-0 border-l border-border bg-muted flex flex-col overflow-hidden relative z-10">
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
@@ -189,6 +201,7 @@ export function MaterialFullView({
                   mediaIndex={mediaIndex}
                   getKnowledgeKind={getKnowledgeKind}
                   onNavigateNote={onNavigateNote}
+                  onOpenNoteSidePeek={onOpenNoteInSidePeek}
                   onSwitchAsset={onSwitchAsset}
                   showLegend
                 />

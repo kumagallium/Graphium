@@ -1,7 +1,7 @@
 // アセットギャラリービュー（メインエリアに表示）
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -385,6 +385,14 @@ export type AssetGalleryViewProps = {
   onIngestMedia?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する（PDF 限定） */
+  onTranslatePdf?: (entry: MediaIndexEntry) => void;
+  /** アセットグラフの利用ノードクリックで、離脱せず右に SidePeek でノートを開く */
+  onOpenNoteInSidePeek?: (noteId: string) => void;
+  /** 開くノートサイドピークの noteId。指定時は PDF を Full view にして右パネルの左に並べる */
+  notePeekId?: string | null;
+  /** notePeekId のノートサイドピーク要素を生成する（呼び出し側で SidePeek を組み立てる） */
+  renderNotePeek?: (noteId: string) => ReactNode;
   /**
    * 与えられた URL/PDF が既に Knowledge 化されている場合の wiki ノート ID を返す。
    * 戻り値があれば MediaDetailModal は「In Knowledge」表示に切り替わる。
@@ -451,6 +459,10 @@ export function AssetGalleryView({
   onUploadMedia,
   onIngestMedia,
   onCreateProvNote,
+  onTranslatePdf,
+  onOpenNoteInSidePeek,
+  notePeekId,
+  renderNotePeek,
   resolveKnowledgeWikiId,
   onSharedRefUpdated,
   onExtractPdfPages,
@@ -500,6 +512,14 @@ export function AssetGalleryView({
     setDetailFullMode(focusFullMode ?? false);
     onFocusConsumed?.();
   }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
+
+  // ノートサイドピークを開くときは PDF を Full view にする（右パネルの左に並べるため）。
+  // 非 Full（MaterialSidePeek = fixed オーバーレイ）のままだと横並びにならない。
+  useEffect(() => {
+    if (notePeekId && detailEntry && !detailFullMode) {
+      setDetailFullMode(true);
+    }
+  }, [notePeekId, detailEntry, detailFullMode]);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
@@ -825,6 +845,9 @@ export function AssetGalleryView({
         }}
         onIngest={onIngestMedia}
         onCreateProvNote={onCreateProvNote}
+        onTranslatePdf={onTranslatePdf}
+        onOpenNoteInSidePeek={onOpenNoteInSidePeek}
+        noteSidePeek={notePeekId && renderNotePeek ? renderNotePeek(notePeekId) : null}
         knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
         onSharedRefUpdated={async (entry, sharedRef) => {
           setDetailEntry({ ...entry, sharedRef });
@@ -1306,6 +1329,8 @@ export function AssetGalleryView({
           }}
           onIngest={onIngestMedia}
           onCreateProvNote={onCreateProvNote}
+          onTranslatePdf={onTranslatePdf}
+          onOpenNoteInSidePeek={onOpenNoteInSidePeek}
           knowledgeWikiNoteId={resolveKnowledgeWikiId?.(detailEntry)}
           onSharedRefUpdated={async (entry, sharedRef) => {
             setDetailEntry({ ...entry, sharedRef });

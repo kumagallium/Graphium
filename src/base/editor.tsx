@@ -261,7 +261,10 @@ export function SandboxEditor({
       theme="light"
       editable={editable}
       sideMenu={sideMenu === false ? false : usesCustomSideMenu ? false : undefined}
-      formattingToolbar={formattingToolbar ? false : undefined}
+      // 内蔵ツールバーは常に無効化し、下で strategy:"fixed" 付きの Controller を描画する。
+      // これをしないと、選択時のフォーマットツールバーが overflow:auto/hidden の
+      // スクロール領域でクリップされ、サイドピーク横の右パネル等に隠れる。
+      formattingToolbar={false}
       slashMenu={hasExtraSlash ? false : undefined}
       onChange={onChange}
     >
@@ -272,9 +275,13 @@ export function SandboxEditor({
       {usesCustomSideMenu && (
         <SideMenuController sideMenu={sideMenu as FC<SideMenuProps>} />
       )}
-      {formattingToolbar && (
-        <FormattingToolbarController formattingToolbar={formattingToolbar} />
-      )}
+      {/* strategy:"fixed" でツールバーをビューポート基準に配置し、エディタの
+          overflow スクロール領域でクリップされて隠れるのを防ぐ。
+          formattingToolbar 未指定時は BlockNote 既定のツールバーが描画される。 */}
+      <FormattingToolbarController
+        formattingToolbar={formattingToolbar}
+        floatingUIOptions={{ useFloatingOptions: { strategy: "fixed" } }}
+      />
       {hasExtraSlash && (
         <SuggestionMenuController
           triggerCharacter="/"

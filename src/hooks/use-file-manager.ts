@@ -1531,6 +1531,19 @@ export function useFileManager(authenticated: boolean) {
         queueSaveIndex(updated);
       }
 
+      // メディアインデックスの usedIn を同期 — PROV / 翻訳など、PDF/URL を出典に持つ
+      // AI 派生ノート（トップレベル sourcePdfFileId / wikiMeta.derivedFromNotes）が
+      // 作成直後からアセットグラフの「利用ノート」に出るようにする。
+      // （handleCreateNoteFromImport と同じ手順。これが無いと最初の再保存まで反映されない）
+      if (mediaIndexRef.current && doc.pages[0]) {
+        const mediaMap = extractMediaFromBlocks(doc.pages[0].blocks || []);
+        const docAssetRefs = collectSourceAssetFileIdsFromDoc(doc);
+        const updated = syncUsedIn(mediaIndexRef.current, newFileId, doc.title, mediaMap, docAssetRefs);
+        mediaIndexRef.current = updated;
+        setMediaIndex(updated);
+        saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      }
+
       return newFileId;
     },
     [],

@@ -1045,6 +1045,8 @@ export const ja: Record<string, string> = {
   "asset.bulkExtractImagesTitle": "選択した PDF / Word (.docx) の埋め込み画像を取り出し、画像アセットとして登録します（ベクター figure や表は対象外）。",
   "asset.createProvNote": "手順を抽出してノート化",
   "asset.createProvNoteTitle": "この素材の内容から手順を抽出してノートを作成（AI）",
+  "asset.translatePdf": "翻訳してノート化",
+  "asset.translatePdfTitle": "PDF を原文の構成のまま表示言語へ全文翻訳してノートを作成（AI）",
 
   // ── ラベルギャラリー ──
   "label.section": "ラベル",
