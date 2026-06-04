@@ -115,13 +115,18 @@ Labels come in two passes that operate on the same blocks:
 
 1. **Block-level (`#` context labels).** Tags a heading block as `[Step]`
    (PROV-DM *Activity*; internal key `procedure`) or as a phase
-   `[Plan]` / `[Result]` (internal keys `plan` / `result`). Implemented
-   in `src/features/context-label/`.
+   `[Plan]` / `[Result]` (internal keys `plan` / `result`). A **table
+   block** may instead be tagged `[Input]` / `[Tool]` / `[Output]` to mark
+   it as a *structured table*: the header row supplies attribute keys and
+   each data row becomes one Entity (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)).
+   Implemented in `src/features/context-label/`.
 2. **Inline labels.** Highlights spans inside block text as `[Input]` /
    `[Tool]` / `[Parameter]` / `[Output]` (internal keys `material` /
    `tool` / `attribute` / `output`). The first three feed PROV-DM
    *Entity* nodes (with `material` / `tool` subtypes); `[Parameter]`
-   becomes a *Property* on the parent Activity or Entity. Implemented in
+   becomes a *Property* on the parent Activity or Entity. Inline labels do
+   not apply inside table cells (cells are atomic values — use a
+   structured-table block label instead). Implemented in
    `src/features/inline-label/`.
 
 The two passes are independent: a note can have only block-level labels,

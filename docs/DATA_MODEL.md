@@ -131,7 +131,7 @@ load time.
 | **2** | `links` split into `provLinks` and `knowledgeLinks`. |
 | **3** | Label values normalized from Japanese brackets (`[材料]`) to internal keys (`material`). |
 | **4** | Internal key `result` (Output Entity) renamed to `output`. Phase labels `plan` / `result` introduced. |
-| **5** | Inline-type labels (`material`, `tool`, `attribute`, `output`) moved from block-level labels to inline highlights. `LabelStore` is now heading-only (`procedure` / `plan` / `result` / `free.*`). |
+| **5** | Inline-type labels (`material`, `tool`, `attribute`, `output`) moved from block-level labels to inline highlights. `LabelStore` is heading-only (`procedure` / `plan` / `result` / `free.*`), with **table blocks** as the one entity-label exception — see §2.3 (structured tables). |
 
 Loaders accept any prior version and migrate forward. Saving always
 writes the latest version.
@@ -149,7 +149,8 @@ type GraphiumPage = {
 
   // ── block-level labels (#) ───────────────────────────
   labels: Record<string, string>;    // blockId → label key
-                                     // v5+: heading-only (procedure / plan / result / free.*)
+                                     // v5+: heading-only (procedure / plan / result / free.*),
+                                     // plus material / tool / output on table blocks (§2.3)
 
   // ── provenance graph edges ──────────────────────────
   provLinks: ProvLink[];             // DAG-constrained
@@ -177,9 +178,19 @@ PROV-DM information attaches to blocks in three places:
 
 | Carrier | What it labels | Field |
 |---|---|---|
-| **Block label (`#`)** | The role of the block in a process. PROV *Activity* (step) or *Phase* grouping. | `page.labels[blockId]` |
+| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker (see below). | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
+
+**Structured tables.** A table is a block whose cells are atomic values,
+so inline highlights do not apply inside cells (the formatting toolbar
+hides the entity-label buttons there). Instead the **whole table** may
+carry a `material` / `tool` / `output` block label via the `#` affordance.
+The PROV generator then expands it: the **header row supplies attribute
+keys**, and **each data row becomes one Entity** — the first column is the
+Entity name, the remaining columns become its attributes (`key=value`). A
+table needs at least a header row plus one data row; otherwise it falls
+back to a single Entity for the whole table.
 
 ```ts
 type InlineHighlight = {
