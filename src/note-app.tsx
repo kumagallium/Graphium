@@ -159,6 +159,7 @@ import {
   type MediaIndexEntry,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
+import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
 import { exportProvJsonLd, type WikiEntityInfo } from "./features/prov-export";
@@ -651,6 +652,8 @@ function NoteEditorInner({
     return map;
   }, [noteIndex]);
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
+  // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
+  const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
@@ -2363,13 +2366,28 @@ function NoteEditorInner({
         // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
         const peekId = resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId;
         setSidePeekNoteId(peekId);
+        return;
+      }
+      // ノートで解決できなければ、@ 引用したドキュメント素材として解決を試みる。
+      // citedAssetFileIds の中から表示名が一致する素材を逆引きし、素材サイドピーク（PDF 等）を開く。
+      const assetFileId = citedAssetFileIdsRef.current.find((fid) => {
+        const entry = mediaIndex?.media.find((m) => m.fileId === fid);
+        return entry?.name === noteName;
+      });
+      if (assetFileId) {
+        const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
+        if (entry) {
+          e.preventDefault();
+          e.stopPropagation();
+          setMaterialSidePeekEntry(entry);
+        }
       }
     };
     document.addEventListener("click", handleClick, true);
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files]);
+  }, [noteIndex, files, mediaIndex]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -2859,6 +2877,31 @@ function NoteEditorInner({
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
+          />
+        )}
+        {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
+            レイアウト方針（desktop は inline flex item / mobile は overlay）で表示する。 */}
+        {materialSidePeekEntry && isDesktop && (
+          <MaterialSidePeek
+            inline
+            entry={materialSidePeekEntry}
+            onClose={() => setMaterialSidePeekEntry(null)}
+            mediaIndex={mediaIndex ?? null}
+            onNavigateNote={(noteId) => {
+              setMaterialSidePeekEntry(null);
+              onNavigateNote(noteId);
+            }}
+          />
+        )}
+        {materialSidePeekEntry && !isDesktop && (
+          <MaterialSidePeek
+            entry={materialSidePeekEntry}
+            onClose={() => setMaterialSidePeekEntry(null)}
+            mediaIndex={mediaIndex ?? null}
+            onNavigateNote={(noteId) => {
+              setMaterialSidePeekEntry(null);
+              onNavigateNote(noteId);
+            }}
           />
         )}
 
