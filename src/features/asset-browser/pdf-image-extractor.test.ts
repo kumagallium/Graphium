@@ -2,7 +2,11 @@
 // extractEmbeddedPdfImages 本体は pdfjs / canvas に依存するためここでは扱わない。
 
 import { describe, it, expect } from "vitest";
-import { embeddedImageToFile, type ExtractedEmbeddedImage } from "./pdf-image-extractor";
+import {
+  embeddedImageToFile,
+  imageOrientationFromMatrix,
+  type ExtractedEmbeddedImage,
+} from "./pdf-image-extractor";
 
 function makeImage(pageNumber: number, imageIndex: number): ExtractedEmbeddedImage {
   return {
@@ -29,5 +33,54 @@ describe("embeddedImageToFile", () => {
   it(".pdf 以外の拡張子はそのまま残す（誤削除を防ぐ）", () => {
     const file = embeddedImageToFile(makeImage(7, 4), "notes.pdf.bak");
     expect(file.name).toBe("notes.pdf.bak - p7 image 4.png");
+  });
+});
+
+// 向き補正の符号をここで固定する。値は実 PDF 2 種から実測した CTM。
+// この回帰テストが「今まで正しく出ていた画像を壊していないこと」を恒久的に守る。
+// 符号を取り違えると、正常画像と反転画像のちょうど逆を補正してしまうため、
+// 両ケースを必ず併記する。
+describe("imageOrientationFromMatrix", () => {
+  it("標準形（d>0, 軸並行）は no-op — 正立画像は不変", () => {
+    // PSSb（正しい向き）で実測した CTM の代表値
+    expect(imageOrientationFromMatrix([192.2, 0, 0, 148.4, 0, 0])).toEqual({
+      flipX: false,
+      flipY: false,
+    });
+    expect(imageOrientationFromMatrix([444.9, 0, 0, 487.7, 0, 0])).toEqual({
+      flipX: false,
+      flipY: false,
+    });
+  });
+
+  it("d<0（軸並行）は縦反転で補正 — 反転画像だけ戻す", () => {
+    // 79_JA201502（反転）で実測した CTM の代表値
+    expect(imageOrientationFromMatrix([199.0, 0, 0, -253.0, 0, 0])).toEqual({
+      flipX: false,
+      flipY: true,
+    });
+    expect(imageOrientationFromMatrix([312.0, 0, 0, -120.0, 0, 0])).toEqual({
+      flipX: false,
+      flipY: true,
+    });
+  });
+
+  it("a<0 は横反転で補正する", () => {
+    expect(imageOrientationFromMatrix([-100, 0, 0, 100, 0, 0])).toEqual({
+      flipX: true,
+      flipY: false,
+    });
+  });
+
+  it("回転・スキュー（b≠0 or c≠0）は判定せず no-op（過補正を避ける）", () => {
+    expect(imageOrientationFromMatrix([0, 100, -100, 0, 0, 0])).toEqual({
+      flipX: false,
+      flipY: false,
+    });
+    // d<0 でも回転成分があれば触らない
+    expect(imageOrientationFromMatrix([100, 5, 5, -100, 0, 0])).toEqual({
+      flipX: false,
+      flipY: false,
+    });
   });
 });
