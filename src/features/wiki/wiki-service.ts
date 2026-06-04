@@ -141,7 +141,7 @@ export function buildWikiDocument(
   noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex);
+  const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex, ingesterOutput.title);
 
   // 関連セクションを追加（派生元ノート + 関連 Concept）
   const relations = buildRelationBlocks(
@@ -219,7 +219,11 @@ export function mergeIntoWikiDocument(
   noteIndex?: NoteIndex,
 ): GraphiumDocument {
   const now = new Date().toISOString();
-  const converted = convertSectionsToBlocks(ingesterOutput.sections, noteIndex);
+  const converted = convertSectionsToBlocks(
+    ingesterOutput.sections,
+    noteIndex,
+    existingDoc.title,
+  );
   const page = existingDoc.pages[0];
   const existingBlocks = page?.blocks ?? [];
 
@@ -331,7 +335,7 @@ export async function rewriteAndMerge(
     }
 
     // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
-    const converted = convertSectionsToBlocks(data.sections, noteIndex);
+    const converted = convertSectionsToBlocks(data.sections, noteIndex, existingDoc.title);
 
     // References セクションは既存のものを保持
     const refIndex = page.blocks.findIndex(
@@ -470,7 +474,18 @@ function pushCitation(
   blockId: string,
   citedTitle: string,
   noteIndex: NoteIndex,
+  /** 生成中／再生成中の Wiki 自身のタイトル。これと一致する引用は自己参照なのでリンク化しない。 */
+  selfTitle?: string,
 ): void {
+  // 自己引用ガード: LLM がまれに「この知見こそが観測の根拠だ」と自分のタイトルを
+  // [[...]] で引用してくることがある。再生成時は自分自身も noteIndex に乗るため、
+  // そのまま resolve すると「自分が自分の根拠」という循環リンクになる。
+  // リンク化せずプレーンテキストに落とす（knowledgeLink も作らない）。
+  if (selfTitle && citedTitle.trim() === selfTitle.trim()) {
+    inlineContent.push({ type: "text", text: citedTitle, styles: {} });
+    return;
+  }
+
   // 外部 URL → BlockNote link
   if (/^https?:\/\//.test(citedTitle)) {
     inlineContent.push({
@@ -526,6 +541,8 @@ function pushCitation(
 export function parseInlineCitations(
   text: string,
   noteIndex: NoteIndex,
+  /** 生成中／再生成中の Wiki 自身のタイトル（自己引用ガード用） */
+  selfTitle?: string,
 ): { inlineContent: any[]; knowledgeLinks: any[]; blockId: string } {
   const blockId = crypto.randomUUID();
   const inlineContent: any[] = [];
@@ -551,7 +568,7 @@ export function parseInlineCitations(
     }
 
     if (match[1] !== undefined) {
-      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex);
+      pushCitation(inlineContent, knowledgeLinks, blockId, match[1], noteIndex, selfTitle);
     } else if (match[2] !== undefined && match[3] !== undefined) {
       inlineContent.push({
         type: "link",
@@ -617,6 +634,8 @@ function parseMarkdownHeading(line: string): { level: number; text: string } | n
 function convertSectionsToBlocks(
   sections: { heading: string; content: string }[],
   noteIndex: NoteIndex = [],
+  /** 生成中／再生成中の Wiki 自身のタイトル（自己引用ガード用） */
+  selfTitle?: string,
 ): ConvertResult {
   const blocks: any[] = [];
   const knowledgeLinks: any[] = [];
@@ -667,7 +686,7 @@ function convertSectionsToBlocks(
         });
         continue;
       }
-      const parsed = parseInlineCitations(para, noteIndex);
+      const parsed = parseInlineCitations(para, noteIndex, selfTitle);
       blocks.push({
         id: parsed.blockId,
         type: "paragraph",
@@ -1298,7 +1317,7 @@ export async function applyCrossUpdate(
     const refIndex = updatedBlocks.findIndex(
       (b) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
     );
-    const converted = convertSectionsToBlocks([proposal.section], noteIndex);
+    const converted = convertSectionsToBlocks([proposal.section], noteIndex, existingDoc.title);
     updatedKnowledgeLinks.push(...converted.knowledgeLinks);
     if (refIndex >= 0) {
       updatedBlocks = [
@@ -1344,7 +1363,7 @@ export async function applyCrossUpdate(
         if (res.ok) {
           const data = await res.json() as { sections: { heading: string; content: string }[] };
           if (data.sections?.length > 0) {
-            rewrittenConverted = convertSectionsToBlocks(data.sections, noteIndex);
+            rewrittenConverted = convertSectionsToBlocks(data.sections, noteIndex, existingDoc.title);
           }
         }
       } catch {
@@ -1361,7 +1380,7 @@ export async function applyCrossUpdate(
         updatedKnowledgeLinks.push(...rewrittenConverted.knowledgeLinks);
       } else {
         // フォールバック: 末尾に追記（引用パース付き）
-        const parsed = parseInlineCitations(proposal.section.content, noteIndex ?? []);
+        const parsed = parseInlineCitations(proposal.section.content, noteIndex ?? [], existingDoc.title);
         const updateParagraph = {
           id: parsed.blockId,
           type: "paragraph",
@@ -1378,7 +1397,7 @@ export async function applyCrossUpdate(
       }
     } else {
       // セクション見出しが見つからない場合は add_section として処理
-      const converted = convertSectionsToBlocks([proposal.section], noteIndex);
+      const converted = convertSectionsToBlocks([proposal.section], noteIndex, existingDoc.title);
       updatedBlocks.push(...converted.blocks);
       updatedKnowledgeLinks.push(...converted.knowledgeLinks);
     }

@@ -86,6 +86,36 @@ describe("parseInlineCitations - citations", () => {
     expect(knowledgeLinks).toHaveLength(0);
   });
 
+  it("自分自身のタイトルを引用した [[selfTitle]] はリンク化せずプレーンテキストになる", () => {
+    // 再生成時は自 Wiki も noteIndex に乗るため、ガードがないと自己参照リンクになる。
+    const selfTitle = "Al5Co2 は Γ-M·Γ-K·Γ-A 方向で金属的バンドがフェルム準位を横切る";
+    const noteIndex = [{ id: "self", title: selfTitle, isWiki: true } as any];
+    const { inlineContent, knowledgeLinks } = parseInlineCitations(
+      `[[${selfTitle}]] がこの観測の根拠である。`,
+      noteIndex,
+      selfTitle,
+    );
+    expect(inlineContent[0]).toEqual({ type: "text", text: selfTitle, styles: {} });
+    // 青リンク（@ プレフィックス）になっていないこと
+    expect(inlineContent.some((c: any) => c.styles?.textColor === "blue")).toBe(false);
+    // 自己参照の knowledgeLink を作らないこと
+    expect(knowledgeLinks).toHaveLength(0);
+  });
+
+  it("selfTitle が指定されても別ノートの [[title]] は通常どおりリンク化される", () => {
+    const noteIndex = [
+      { id: "self", title: "自分の知見", isWiki: true } as any,
+      { id: "n2", title: "別のノート", isWiki: false } as any,
+    ];
+    const { knowledgeLinks } = parseInlineCitations(
+      "根拠は [[別のノート]] にある",
+      noteIndex,
+      "自分の知見",
+    );
+    expect(knowledgeLinks).toHaveLength(1);
+    expect(knowledgeLinks[0].targetNoteId).toBe("n2");
+  });
+
   it("[[https://...]] は BlockNote link に変換される", () => {
     const { inlineContent } = parseInlineCitations("[[https://example.com]]", emptyIndex);
     expect(inlineContent[0]).toEqual({
