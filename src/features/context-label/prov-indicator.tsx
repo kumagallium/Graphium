@@ -11,9 +11,9 @@ import { createPortal } from "react-dom";
 import { useLabelStore } from "./store";
 import { useLinkStore } from "../block-link/store";
 import {
-  CORE_LABELS,
   FREE_LABEL_EXAMPLES,
 } from "./labels";
+import { getVisibleCoreLabels } from "./label-visibility";
 import {
   LINK_TYPE_CONFIG,
   CREATED_BY_LABELS,
@@ -395,7 +395,7 @@ function ProvPanel({
         {showLabelPicker && (
           <div className="border-t border-border pt-1">
             <DropdownSectionHeader>{t("labelUi.coreLabels")}</DropdownSectionHeader>
-            {CORE_LABELS.map((l) => {
+            {getVisibleCoreLabels(blockId, label).map((l) => {
               const active = label === l;
               const c = getLabelColor(l);
               return (

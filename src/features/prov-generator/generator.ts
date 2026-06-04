@@ -136,6 +136,33 @@ export function parseStructuredTable(block: any): StructuredTable | null {
   return { rows: dataRows };
 }
 
+/**
+ * [パラメータ] ラベルのテーブルを key=value のパラメータ集合として構造化する。
+ * 案B（列名=key）: ヘッダー行をパラメータ名（key）、先頭データ行を値（value）として扱う。
+ * 手順（Activity）や親 Entity の params に展開して使う。
+ * データ行が複数ある場合は先頭行を採用する（1 ステップのパラメータは 1 行を想定）。
+ */
+export function parseParameterTable(block: any): Record<string, string> | null {
+  if (block.type !== "table") return null;
+
+  const rows = block.content?.rows;
+  if (!rows || rows.length < 2) return null;
+
+  const headers = rows[0].cells.map((cell: any) => extractCellText(cell));
+  const valueCells = rows[1].cells;
+
+  const params: Record<string, string> = {};
+  for (let j = 0; j < headers.length && j < valueCells.length; j++) {
+    const key = headers[j];
+    const value = extractCellText(valueCells[j]);
+    if (key && value) {
+      params[key] = value;
+    }
+  }
+
+  return Object.keys(params).length > 0 ? params : null;
+}
+
 // ── メイン生成関数 ──
 
 export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
@@ -408,6 +435,27 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   // ※ output ノード生成後に実行する（result_ ノードを参照するため）
   for (const lb of labeledBlocks) {
     if (lb.coreLabel === "attribute") {
+      // テーブルの [パラメータ] は key=value の構造化パラメータとして展開し、
+      // 親 Entity または手順（Activity）の params にマージする（案B: 列名=key）。
+      if (lb.block.type === "table") {
+        const params = parseParameterTable(lb.block);
+        if (params) {
+          const mergeParams = (node: InternalNode | undefined) => {
+            if (!node) return;
+            node.params = { ...(node.params ?? {}), ...params };
+          };
+          const parentNodeId = findParentLabeledNodeId(lb.block.id, blocks, labels, labeledBlocks);
+          if (parentNodeId) {
+            mergeParams(nodes.find((n) => n["@id"] === parentNodeId));
+          } else {
+            for (const actId of getActivityIdsForScope(lb.block.id)) {
+              mergeParams(nodes.find((n) => n["@id"] === actId));
+            }
+          }
+        }
+        continue;
+      }
+
       // メディアブロックの場合はファイル名・URL・タイプを取得
       const { label: attrLabel, mediaUrl, mediaType } = getEntityLabelAndMedia(lb.block);
       const attrEntry = { label: attrLabel, blockId: lb.block.id, mediaUrl, mediaType };
@@ -505,10 +553,13 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const rawLabel = labels.get(block.id);
     if (rawLabel) {
       const normalized = normalizeLabel(rawLabel);
-      if (ENTITY_LABEL_SET.includes(normalized as CoreLabel)) {
+      // テーブルの entity 系ラベル（構造テーブル）は自己完結（各行が Entity）であり、
+      // 後続のメディアブロックへ文脈を流さない。流すと、テーブルの直後に置いた
+      // 無関係な画像まで material/output として取り込まれてしまう（誤検出）。
+      if (ENTITY_LABEL_SET.includes(normalized as CoreLabel) && block.type !== "table") {
         currentEntityLabel = { coreLabel: normalized as CoreLabel };
       } else {
-        // procedure / attribute など他のコアラベルはメディアのコンテキストをリセット
+        // procedure / attribute / 構造テーブル などはメディアのコンテキストをリセット
         currentEntityLabel = null;
       }
     }

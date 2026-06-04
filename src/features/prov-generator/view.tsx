@@ -203,7 +203,7 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
         elements.push({
           data: {
             id: attrId,
-            label: isImageUrl ? shortKey : `${shortKey}=${value}`,
+            label: isImageUrl ? shortKey : `${shortKey}: ${value}`,
             type: "graphium:Attribute",
             subtype: "parameter",
             ...(attrThumbnailUrl ? { thumbnailUrl: attrThumbnailUrl } : {}),

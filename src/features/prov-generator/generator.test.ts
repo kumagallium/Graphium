@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateProvDocument, extractRelations, parseStructuredTable } from "./generator";
+import { generateProvDocument, extractRelations, parseStructuredTable, parseParameterTable } from "./generator";
 
 // ── ヘルパー: ProvJsonLd から関係をフラットに取得 ──
 function getRelations(doc: ReturnType<typeof generateProvDocument>) {
@@ -638,6 +638,120 @@ describe("Phase 3: テーブル構造化属性", () => {
     const entity = doc["@graph"].find((n) => n["@id"] === "entity_used-para");
     expect(entity).toBeDefined();
     expect(entity!["rdfs:label"]).toBe("Cu粉末 1g");
+  });
+
+  it("[材料] テーブルの直後に置いた無関係な画像は Entity 化しない（メディア文脈リーク防止）", () => {
+    // 構造テーブルの material ラベルは自己完結（行が Entity）であり、
+    // 後続のメディアブロックへ entity 文脈を流してはいけない。
+    const blocks = [
+      {
+        id: "h2-mix",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "混合する" }],
+        children: [],
+      },
+      {
+        id: "mat-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "名前" }], [{ type: "text", text: "量" }]] },
+            { cells: [[{ type: "text", text: "Cu粉末" }], [{ type: "text", text: "1g" }]] },
+          ],
+        },
+        children: [],
+      },
+      {
+        id: "img-micro",
+        type: "image",
+        props: { url: "https://example.com/microstructure.png", name: "microstructure.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-mix", "procedure"],
+      ["mat-table", "material"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // テーブル行は Entity 化される
+    expect(doc["@graph"].find((n) => n["@id"] === "entity_mat-table_Cu粉末")).toBeDefined();
+    // 直後の画像は Entity 化されない（material 文脈がリークしない）
+    expect(doc["@graph"].find((n) => n["@id"] === "entity_media_img-micro")).toBeUndefined();
+    expect(doc["@graph"].find((n) => n["@id"] === "result_media_img-micro")).toBeUndefined();
+  });
+
+  it("[パラメータ] テーブルが手順（Activity）の params に展開される", () => {
+    const blocks = [
+      {
+        id: "h2-sinter",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "焼成する" }],
+        children: [],
+      },
+      {
+        id: "param-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "温度" }], [{ type: "text", text: "時間" }], [{ type: "text", text: "圧力" }]] },
+            { cells: [[{ type: "text", text: "800℃" }], [{ type: "text", text: "2h" }], [{ type: "text", text: "1atm" }]] },
+          ],
+        },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-sinter", "procedure"],
+      ["param-table", "attribute"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // 手順の Activity ノードに params が key=value で埋め込まれる
+    const act = doc["@graph"].find((n) => n["@id"] === "activity_h2-sinter");
+    expect(act).toBeDefined();
+    expect(act!["graphium:温度"]).toBe("800℃");
+    expect(act!["graphium:時間"]).toBe("2h");
+    expect(act!["graphium:圧力"]).toBe("1atm");
+
+    // パラメータテーブル自体は独立ノードにならない（id だけのノードを作らない）
+    expect(doc["@graph"].find((n) => n["@id"] === "entity_param-table")).toBeUndefined();
+    expect(doc["@graph"].some((n) => n["@id"]?.includes("param-table") && n["@type"] === "prov:Entity")).toBe(false);
+  });
+});
+
+describe("parseParameterTable", () => {
+  it("ヘッダー=key、先頭データ行=value で Record 化する", () => {
+    const block = {
+      type: "table",
+      content: {
+        type: "tableContent",
+        rows: [
+          { cells: [[{ type: "text", text: "温度" }], [{ type: "text", text: "時間" }]] },
+          { cells: [[{ type: "text", text: "800℃" }], [{ type: "text", text: "2h" }]] },
+        ],
+      },
+    };
+    expect(parseParameterTable(block)).toEqual({ 温度: "800℃", 時間: "2h" });
+  });
+
+  it("テーブル以外・行不足・空セルは null / 除外する", () => {
+    expect(parseParameterTable({ type: "paragraph" })).toBeNull();
+    expect(parseParameterTable({ type: "table", content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "温度" }]] }] } })).toBeNull();
+    // key はあるが value が空 → 除外され、結果が空なら null
+    expect(parseParameterTable({
+      type: "table",
+      content: { type: "tableContent", rows: [
+        { cells: [[{ type: "text", text: "温度" }]] },
+        { cells: [[{ type: "text", text: "" }]] },
+      ] },
+    })).toBeNull();
   });
 });
 
