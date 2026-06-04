@@ -1045,6 +1045,8 @@ export const en: Record<string, string> = {
   "asset.bulkExtractImagesTitle": "Pull embedded images from the selected PDFs / Word (.docx) files and register them as image assets (vector figures and tables are not supported).",
   "asset.createProvNote": "Extract steps into a note",
   "asset.createProvNoteTitle": "Extract steps from this material and create a note (AI)",
+  "asset.translatePdf": "Translate into a note",
+  "asset.translatePdfTitle": "Translate the full PDF into your display language, keeping the original structure (AI)",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",

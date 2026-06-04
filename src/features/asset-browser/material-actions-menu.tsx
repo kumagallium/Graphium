@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertCircle,
   Download,
+  Languages,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { isTauri } from "../../lib/platform";
@@ -27,6 +28,8 @@ export type MaterialActionsMenuProps = {
   entry: MediaIndexEntry;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する */
+  onTranslatePdf?: (entry: MediaIndexEntry) => void;
   onExtractPdfPages?: (
     entry: MediaIndexEntry,
     onProgress: (done: number, total: number) => void,
@@ -49,6 +52,7 @@ export function MaterialActionsMenu({
   entry,
   onIngest,
   onCreateProvNote,
+  onTranslatePdf,
   onExtractPdfPages,
   onExtractDocxImages,
   onSharedRefUpdated,
@@ -137,6 +141,8 @@ export function MaterialActionsMenu({
   const isDocxEntry = isWordDocxEntry(entry);
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
+  // 全文翻訳は PDF のみ対象（MVP）
+  const canTranslate = !!onTranslatePdf && entry.type === "pdf";
   const canExtract =
     (!!onExtractPdfPages && entry.type === "pdf")
     || (!!onExtractDocxImages && isDocxEntry);
@@ -233,6 +239,19 @@ export function MaterialActionsMenu({
               >
                 <Bot size={14} className="text-primary" />
                 {t("asset.createProvNote")}
+              </button>
+            </>
+          )}
+          {canTranslate && (
+            <>
+              {(canIngest || canCreateProv) && <div className="my-1 border-t border-border" />}
+              <button
+                className={itemClass}
+                onClick={() => { onTranslatePdf!(entry); setOpen(false); }}
+                title={t("asset.translatePdfTitle")}
+              >
+                <Languages size={14} className="text-primary" />
+                {t("asset.translatePdf")}
               </button>
             </>
           )}

@@ -216,6 +216,26 @@ output stays comparable to MatPROV-style canonical keys. The first
 runner is the さくら AI engine OpenAI-compatible API. Run with
 `pnpm test:benchmark`.
 
+#### PDF → translated note (the *pdf-translator*)
+
+A separate, simpler PDF path produces a **faithful full translation** of a
+PDF into the UI display language, keeping the original structure — this is
+*not* a summary and *not* the PROV/Knowledge re-structuring above. It is a
+straight document translation.
+
+| Step | File | What it does |
+|---|---|---|
+| Extract | `src/features/wiki/pdf-text-extractor.ts` (`extractPdfPages`) | Client-side pdfjs extraction, returned per page so it can be chunked on page boundaries |
+| Chunk | `src/features/pdf-translate/translate-service.ts` | Groups pages into ~6k-char chunks (full translation output ≈ input size, so it must fit one LLM response) |
+| Translate | `src/server/services/translate.ts` + `POST /api/translate` | Per-chunk prompt: reconstruct structure from the flattened text, translate prose into the target language, keep math / code / citations / references verbatim, output Markdown |
+| Build | `src/features/pdf-translate/translate-service.ts` | Concatenates the Markdown, converts to BlockNote blocks (`tryParseMarkdownToBlocks`), and assembles a `GraphiumDocument` linked to the source PDF |
+
+The chunks are translated sequentially and the resulting note is saved via
+the normal `handleCreateNoteFromDocument` path (recorded as an AI
+derivation). Known limits: math-heavy / multi-column papers degrade
+because pdfjs flattens their layout, and very long PDFs are truncated at a
+character cap.
+
 ### 3.3 Knowledge layer
 
 The Knowledge layer is a set of editable JSON documents that an LLM keeps

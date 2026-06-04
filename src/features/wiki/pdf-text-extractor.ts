@@ -61,3 +61,58 @@ export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
 
   return { title, text, pageCount };
 }
+
+// 翻訳取り込み用の上限。要約と違い「全文」を訳すため Summary より広く取る。
+// それでも巨大な PDF はコスト・レイテンシが膨らむので上限で打ち切る。
+const MAX_TRANSLATE_CHARS = 200_000;
+
+export type ExtractedPdfPages = {
+  title: string;
+  /** ページごとの抽出テキスト（チャンク分割の境界に使う） */
+  pages: string[];
+  pageCount: number;
+  /** 上限で途中打ち切りした場合 true */
+  truncated: boolean;
+};
+
+/**
+ * PDF Blob を「ページ単位のテキスト配列」として抽出する。
+ * 翻訳取り込みでチャンク分割するために使う（ページ境界を自然な区切りにする）。
+ * extractPdfText とは別関数にして既存経路を壊さない。
+ */
+export async function extractPdfPages(blob: Blob): Promise<ExtractedPdfPages> {
+  const buffer = await blob.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+
+  const pageCount = doc.numPages;
+  const pages: string[] = [];
+  let total = 0;
+  let pagesRead = 0;
+
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item) => ("str" in item ? (item as { str: string }).str : ""))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    pages.push(pageText);
+    total += pageText.length;
+    pagesRead = i;
+    if (total > MAX_TRANSLATE_CHARS) break;
+  }
+
+  const truncated = pagesRead < pageCount;
+
+  let title = "";
+  try {
+    const meta = await doc.getMetadata();
+    const info = meta?.info as { Title?: string } | undefined;
+    title = info?.Title?.trim() ?? "";
+  } catch {
+    // メタなし PDF はタイトル空のまま
+  }
+
+  return { title, pages, pageCount, truncated };
+}

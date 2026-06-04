@@ -26,12 +26,14 @@ function GraphSection({
   mediaIndex,
   getKnowledgeKind,
   onNavigateNote,
+  onOpenNoteSidePeek,
   onSwitchAsset,
 }: {
   entry: MediaIndexEntry;
   mediaIndex?: MediaIndex | null;
   getKnowledgeKind?: KnowledgeKindLookup;
   onNavigateNote: (noteId: string) => void;
+  onOpenNoteSidePeek?: (noteId: string) => void;
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -77,6 +79,7 @@ function GraphSection({
             mediaIndex={mediaIndex}
             getKnowledgeKind={getKnowledgeKind}
             onNavigateNote={onNavigateNote}
+            onOpenNoteSidePeek={onOpenNoteSidePeek}
             onSwitchAsset={onSwitchAsset}
             showLegend={false}
           />
@@ -95,12 +98,16 @@ export type MaterialSidePeekProps = {
   onDelete?: (entry: MediaIndexEntry) => void;
   /** 使用ノートへ遷移 */
   onNavigateNote?: (noteId: string) => void;
+  /** 指定時：アセットグラフの利用ノードクリックで離脱せず右に SidePeek で開く */
+  onOpenNoteInSidePeek?: (noteId: string) => void;
   /** タイトル / Metadata Name 編集 */
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** Knowledge 化（URL / PDF 限定） */
   onIngest?: (entry: MediaIndexEntry) => void;
   /** PROV ラベル付きノート生成（URL / PDF 限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化（PDF 限定） */
+  onTranslatePdf?: (entry: MediaIndexEntry) => void;
   /** PDF 各ページを画像として抽出 */
   onExtractPdfPages?: (
     entry: MediaIndexEntry,
@@ -139,6 +146,8 @@ export function MaterialSidePeek({
   onRename,
   onIngest,
   onCreateProvNote,
+  onTranslatePdf,
+  onOpenNoteInSidePeek,
   onExtractPdfPages,
   onExtractDocxImages,
   onSharedRefUpdated,
@@ -195,6 +204,7 @@ export function MaterialSidePeek({
         onRename={onRename}
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
+        onTranslatePdf={onTranslatePdf}
         onExtractPdfPages={onExtractPdfPages}
         onExtractDocxImages={onExtractDocxImages}
         onSharedRefUpdated={onSharedRefUpdated}
@@ -230,6 +240,7 @@ export function MaterialSidePeek({
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onNavigateNote={onNavigateNote}
+          onOpenNoteSidePeek={onOpenNoteInSidePeek}
           onSwitchAsset={onSwitchAsset}
         />
       )}

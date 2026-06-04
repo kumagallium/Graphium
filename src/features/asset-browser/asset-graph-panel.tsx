@@ -241,9 +241,12 @@ export function shouldShowAssetGraph(
   entry: MediaIndexEntry,
   mediaIndex: MediaIndex | null | undefined,
 ): boolean {
-  const hasUsages = entry.usedIn.length > 0;
+  // SidePeek が保持する entry は state スナップショットで、翻訳/PROV 化で usedIn が
+  // 増えても古いままになる。最新の mediaIndex から引き直して判定する。
+  const resolved = mediaIndex?.media.find((m) => m.fileId === entry.fileId) ?? entry;
+  const hasUsages = resolved.usedIn.length > 0;
   const hasRelatedAssets =
-    (entry.derivedFromAssets && entry.derivedFromAssets.length > 0) ||
+    (resolved.derivedFromAssets && resolved.derivedFromAssets.length > 0) ||
     (mediaIndex?.media ?? []).some(
       (m) => m.fileId !== entry.fileId && m.derivedFromAssets?.includes(entry.fileId),
     );
@@ -254,8 +257,10 @@ export type AssetGraphPanelProps = {
   entry: MediaIndexEntry;
   mediaIndex?: MediaIndex | null;
   getKnowledgeKind?: KnowledgeKindLookup;
-  /** ノートノードクリック時 */
+  /** ノートノードクリック時（アセット画面を離れて全画面で開く） */
   onNavigateNote: (noteId: string) => void;
+  /** 指定時はノートノードクリックで「離脱せず右に SidePeek で開く」挙動に切り替える */
+  onOpenNoteSidePeek?: (noteId: string) => void;
   /** 関連アセットノードクリック時（中心を切り替え） */
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
   /** 凡例を表示するか（コンパクト表示時は省略可） */
@@ -266,15 +271,19 @@ export type AssetGraphPanelProps = {
 };
 
 export function AssetGraphPanel({
-  entry,
+  entry: entryProp,
   mediaIndex,
   getKnowledgeKind,
   onNavigateNote,
+  onOpenNoteSidePeek,
   onSwitchAsset,
   showLegend = true,
   enableExpand = true,
 }: AssetGraphPanelProps) {
   const t = useT();
+  // 開いたまま翻訳/PROV 化で usedIn が増えた場合に追従できるよう、最新の mediaIndex から
+  // entry を引き直す（prop の entry は SidePeek の state スナップショットで古くなりうる）。
+  const entry = mediaIndex?.media.find((m) => m.fileId === entryProp.fileId) ?? entryProp;
   const graphContainerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -376,7 +385,7 @@ export function AssetGraphPanel({
     });
 
     cy.on("tap", "node.note-node", (evt) => {
-      onNavigateNote(evt.target.id());
+      (onOpenNoteSidePeek ?? onNavigateNote)(evt.target.id());
     });
     cy.on("tap", "node.asset-node", (evt) => {
       const nodeId = evt.target.id();
@@ -391,7 +400,7 @@ export function AssetGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [entry, mediaIndex, getKnowledgeKind, onNavigateNote, onSwitchAsset, assetThumbUrls, expanded]);
+  }, [entry, mediaIndex, getKnowledgeKind, onNavigateNote, onOpenNoteSidePeek, onSwitchAsset, assetThumbUrls, expanded]);
 
   // 凡例 + 拡大トグル（拡大時 / 通常時で共通）
   const legendBar = (showLegend || enableExpand) ? (
