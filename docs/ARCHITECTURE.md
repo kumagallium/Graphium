@@ -117,8 +117,10 @@ Labels come in two passes that operate on the same blocks:
    (PROV-DM *Activity*; internal key `procedure`) or as a phase
    `[Plan]` / `[Result]` (internal keys `plan` / `result`). A **table
    block** may instead be tagged `[Input]` / `[Tool]` / `[Output]` to mark
-   it as a *structured table*: the header row supplies attribute keys and
-   each data row becomes one Entity (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)).
+   it as a *structured table* (header row = attribute keys, each data row =
+   one Entity), or `[Parameter]` to mark it as a *parameter table* (header
+   row = keys, first data row = values) whose `key=value` pairs are merged
+   into the enclosing Step's `params` (see [DATA_MODEL.md §2.3](./DATA_MODEL.md)).
    Implemented in `src/features/context-label/`.
 2. **Inline labels.** Highlights spans inside block text as `[Input]` /
    `[Tool]` / `[Parameter]` / `[Output]` (internal keys `material` /

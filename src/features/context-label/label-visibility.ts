@@ -9,6 +9,7 @@
 // ルール（schema v5 以降）:
 //   - 見出し: section / phase（procedure / plan / result）
 //   - テーブル: material / tool / output（構造テーブルとして列=属性キー・行=Entity に展開）
+//             + attribute（パラメータテーブルとして列=key・値を手順/親 Entity の params に展開）
 //   - その他の本文ブロック: コアラベルなし（entity 系はインラインハイライト経路で付与）
 //   - いずれの場合も、既に付いている現在のラベルは外せるよう残す
 // ──────────────────────────────────────────────
@@ -43,13 +44,13 @@ export function isTableBlock(blockId: string): boolean {
 }
 
 /**
- * 構造テーブルとしてブロックラベルを付与できる entity 系ラベル。
- * テーブルに material / tool / output ブロックラベルを付けると、generator が
- * parseStructuredTable で「列見出し=属性キー / 行=Entity」に展開する。
- * attribute は親 Entity に従属する概念で、テーブル全体への付与は意味を持たない
- * （単一の id ノードになるだけ）ため除外する。
+ * テーブルにブロックラベルとして付与できるラベル。
+ * - material / tool / output: generator が parseStructuredTable で
+ *   「列見出し=属性キー / 行=Entity」に展開する（構造テーブル）。
+ * - attribute: generator が parseParameterTable で「列見出し=key / データ行=値」を
+ *   手順（Activity）または親 Entity の params に展開する（パラメータテーブル）。
  */
-export const TABLE_BLOCK_LABELS: CoreLabel[] = ["material", "tool", "output"];
+export const TABLE_BLOCK_LABELS: CoreLabel[] = ["material", "tool", "output", "attribute"];
 
 /**
  * 指定ブロックでブロックラベルとして選択できるコアラベルを返す。

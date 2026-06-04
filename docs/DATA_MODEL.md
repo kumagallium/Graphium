@@ -178,7 +178,7 @@ PROV-DM information attaches to blocks in three places:
 
 | Carrier | What it labels | Field |
 |---|---|---|
-| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker (see below). | `page.labels[blockId]` |
+| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
 
@@ -191,6 +191,14 @@ keys**, and **each data row becomes one Entity** — the first column is the
 Entity name, the remaining columns become its attributes (`key=value`). A
 table needs at least a header row plus one data row; otherwise it falls
 back to a single Entity for the whole table.
+
+A table labelled `attribute` is read as a **parameter table** instead: the
+**header row supplies parameter keys** and the **first data row supplies
+the values**, and the resulting `key=value` map is merged into the
+`params` of the enclosing Step (Activity) — or of the parent Entity, when
+the table is nested under one. This is the structured counterpart of an
+inline `attribute` highlight, which attaches a single property to its
+parent.
 
 ```ts
 type InlineHighlight = {
