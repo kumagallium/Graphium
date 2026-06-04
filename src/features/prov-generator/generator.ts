@@ -505,10 +505,13 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const rawLabel = labels.get(block.id);
     if (rawLabel) {
       const normalized = normalizeLabel(rawLabel);
-      if (ENTITY_LABEL_SET.includes(normalized as CoreLabel)) {
+      // テーブルの entity 系ラベル（構造テーブル）は自己完結（各行が Entity）であり、
+      // 後続のメディアブロックへ文脈を流さない。流すと、テーブルの直後に置いた
+      // 無関係な画像まで material/output として取り込まれてしまう（誤検出）。
+      if (ENTITY_LABEL_SET.includes(normalized as CoreLabel) && block.type !== "table") {
         currentEntityLabel = { coreLabel: normalized as CoreLabel };
       } else {
-        // procedure / attribute など他のコアラベルはメディアのコンテキストをリセット
+        // procedure / attribute / 構造テーブル などはメディアのコンテキストをリセット
         currentEntityLabel = null;
       }
     }

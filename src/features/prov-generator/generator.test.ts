@@ -639,6 +639,50 @@ describe("Phase 3: テーブル構造化属性", () => {
     expect(entity).toBeDefined();
     expect(entity!["rdfs:label"]).toBe("Cu粉末 1g");
   });
+
+  it("[材料] テーブルの直後に置いた無関係な画像は Entity 化しない（メディア文脈リーク防止）", () => {
+    // 構造テーブルの material ラベルは自己完結（行が Entity）であり、
+    // 後続のメディアブロックへ entity 文脈を流してはいけない。
+    const blocks = [
+      {
+        id: "h2-mix",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "混合する" }],
+        children: [],
+      },
+      {
+        id: "mat-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "名前" }], [{ type: "text", text: "量" }]] },
+            { cells: [[{ type: "text", text: "Cu粉末" }], [{ type: "text", text: "1g" }]] },
+          ],
+        },
+        children: [],
+      },
+      {
+        id: "img-micro",
+        type: "image",
+        props: { url: "https://example.com/microstructure.png", name: "microstructure.png" },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-mix", "procedure"],
+      ["mat-table", "material"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // テーブル行は Entity 化される
+    expect(doc["@graph"].find((n) => n["@id"] === "entity_mat-table_Cu粉末")).toBeDefined();
+    // 直後の画像は Entity 化されない（material 文脈がリークしない）
+    expect(doc["@graph"].find((n) => n["@id"] === "entity_media_img-micro")).toBeUndefined();
+    expect(doc["@graph"].find((n) => n["@id"] === "result_media_img-micro")).toBeUndefined();
+  });
 });
 
 // ──────────────────────────────────
