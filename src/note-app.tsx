@@ -5441,6 +5441,7 @@ export function NoteApp() {
                   wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
                 }}
                 noteIndex={fm.noteIndex}
+                mediaIndex={fm.mediaIndex}
                 onNavigateNote={(noteId: string) => {
                   // @mention / Graph ノード経路と同じく SidePeek で開く。
                   // ノート未開時など ref が登録されていない場合は全画面遷移にフォールバック。

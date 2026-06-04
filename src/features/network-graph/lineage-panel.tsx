@@ -2,8 +2,9 @@
 // メイン用途: ノート間 PROV のデバッグ + アイデアの経路の可視化
 
 import { useMemo } from "react";
-import { FileText, Diamond, GitBranch, RotateCcw, FileType, Link2 } from "lucide-react";
+import { FileText, Diamond, GitBranch, RotateCcw, FileType, Link2, File, MessageSquare } from "lucide-react";
 import type { LineageNode } from "./lineage-builder";
+import { parseExternalSource } from "./external-source";
 import { useT } from "../../i18n";
 import { openExternalUrl } from "../../lib/external-link";
 
@@ -17,14 +18,17 @@ const NODE_COLORS = {
 function nodeColor(node: LineageNode): string {
   if (node.isCurrent) return NODE_COLORS.current;
   if (node.kind === "wiki") return NODE_COLORS.wiki;
-  if (node.kind === "pdf" || node.kind === "url") return NODE_COLORS.external;
-  return NODE_COLORS.ancestor;
+  if (node.kind === "note") return NODE_COLORS.ancestor;
+  // pdf / url / document / chat は外部ソース
+  return NODE_COLORS.external;
 }
 
 function NodeIcon({ node }: { node: LineageNode }) {
   if (node.kind === "wiki") return <Diamond size={14} />;
   if (node.kind === "pdf") return <FileType size={14} />;
+  if (node.kind === "document") return <File size={14} />;
   if (node.kind === "url") return <Link2 size={14} />;
+  if (node.kind === "chat") return <MessageSquare size={14} />;
   return <FileText size={14} />;
 }
 
@@ -37,16 +41,20 @@ function NodeRow({
   onNavigate: (id: string) => void;
   onOpenMedia?: (fileId: string) => void;
 }) {
+  // pdf / document はストレージ上の素材として開ける（onOpenMedia 経由でアセットモーダル）。
+  const openableAsset =
+    (node.kind === "pdf" || node.kind === "document") && !!onOpenMedia;
   const handleClick = () => {
     if (node.navId) {
       onNavigate(node.navId);
-    } else if (node.kind === "pdf" && onOpenMedia) {
-      onOpenMedia(node.id.slice(4));
+    } else if (openableAsset) {
+      const key = parseExternalSource(node.id)?.key;
+      if (key) onOpenMedia!(key);
     } else if (node.externalUrl) {
       void openExternalUrl(node.externalUrl);
     }
   };
-  const clickable = !!(node.navId || node.externalUrl || (node.kind === "pdf" && onOpenMedia));
+  const clickable = !!(node.navId || node.externalUrl || openableAsset);
   return (
     <button
       onClick={handleClick}

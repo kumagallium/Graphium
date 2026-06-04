@@ -6,8 +6,9 @@
 
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import type { MediaIndex } from "../asset-browser/media-index";
+import { parseExternalSource, isExternalSourceId } from "./external-source";
 
-export type LineageNodeKind = "note" | "wiki" | "pdf" | "url";
+export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "chat";
 
 export type LineageNode = {
   id: string;
@@ -54,8 +55,8 @@ function buildReverseParentIndex(
   const add = (childId: string, parentId: string, relation: LineageRelation) => {
     if (!fileIds.has(childId)) return;
     if (childId === parentId) return;
-    // 内部ノード参照（pdf:/url: 以外）は fileIds に存在することを確認
-    const isExternal = parentId.startsWith("pdf:") || parentId.startsWith("url:");
+    // 内部ノード参照（外部ソースプレフィックス以外）は fileIds に存在することを確認
+    const isExternal = isExternalSourceId(parentId);
     if (!isExternal && !fileIds.has(parentId)) return;
     const list = index.get(childId) ?? [];
     list.push({ parentId, relation });
@@ -75,8 +76,8 @@ function buildReverseParentIndex(
     }
     if (doc.source === "ai" && doc.wikiMeta?.derivedFromNotes) {
       for (const sourceId of doc.wikiMeta.derivedFromNotes) {
-        // pdf:/url: は外部ソースとして扱う（fileIds チェックをスキップ）
-        if (sourceId.startsWith("pdf:") || sourceId.startsWith("url:")) {
+        // pdf:/url:/document:/chat: は外部ソースとして扱う（fileIds チェックをスキップ）
+        if (isExternalSourceId(sourceId)) {
           add(docId, sourceId, "external");
         } else {
           add(docId, sourceId, "wiki");
@@ -135,12 +136,12 @@ export function buildLineageTree(
   const isWikiOf = (id: string) => docs.get(id)?.source === "ai";
 
   const buildNode = (id: string, depth: number, relations: LineageRelation[]): LineageNode => {
-    if (id.startsWith("pdf:")) {
-      const fileId = id.slice(4);
-      const m = mediaByFileId.get(fileId);
+    const ext = parseExternalSource(id);
+    if (ext?.kind === "pdf") {
+      const m = mediaByFileId.get(ext.key);
       return {
         id,
-        title: m?.name ?? `PDF ${fileId.slice(0, 8)}`,
+        title: m?.name ?? `PDF ${ext.key.slice(0, 8)}`,
         navId: null,
         isCurrent: false,
         kind: "pdf",
@@ -150,8 +151,24 @@ export function buildLineageTree(
         externalUrl: m?.url,
       };
     }
-    if (id.startsWith("url:")) {
-      const url = id.slice(4);
+    if (ext?.kind === "document") {
+      // Word(.docx) など document 素材を Knowledge 化したソース。素材として開けるよう
+      // mediaIndex から名前と URL を解決する（無ければ短縮 ID で表示）。
+      const m = mediaByFileId.get(ext.key);
+      return {
+        id,
+        title: m?.name ?? `Document ${ext.key.slice(0, 8)}`,
+        navId: null,
+        isCurrent: false,
+        kind: "document",
+        depth,
+        relations,
+        parents: [],
+        externalUrl: m?.url,
+      };
+    }
+    if (ext?.kind === "url") {
+      const url = ext.key;
       const m = mediaByUrl.get(url);
       return {
         id,
@@ -163,6 +180,19 @@ export function buildLineageTree(
         relations,
         parents: [],
         externalUrl: url,
+      };
+    }
+    if (ext?.kind === "chat") {
+      // AI チャットを Knowledge 化したソース。開けるアセットは無いので表示のみ。
+      return {
+        id,
+        title: "AI Chat",
+        navId: null,
+        isCurrent: false,
+        kind: "chat",
+        depth,
+        relations,
+        parents: [],
       };
     }
     const wiki = isWikiOf(id);
@@ -180,7 +210,8 @@ export function buildLineageTree(
 
   const visit = (id: string, depth: number, ancestors: Set<string>, relations: LineageRelation[]): LineageNode => {
     const baseNode = buildNode(id, depth, relations);
-    if (baseNode.kind === "pdf" || baseNode.kind === "url") return baseNode;
+    // 外部ソース（pdf / url / document / chat）は末端ノード。これ以上は遡れない。
+    if (baseNode.kind !== "note" && baseNode.kind !== "wiki") return baseNode;
     if (depth >= MAX_DEPTH) return baseNode;
     if (ancestors.has(id)) return { ...baseNode, cycle: true };
 
