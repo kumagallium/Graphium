@@ -7,6 +7,7 @@ import {
   gatherDerivedKnowledge,
   formatCitedDocument,
   assembleCitedDocumentContext,
+  assembleCitedAssetContext,
   __clearPdfTextCacheForTest,
 } from "./cited-document-context";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -188,5 +189,41 @@ describe("assembleCitedDocumentContext", () => {
     });
     expect(md).toContain("## 引用文書: 記事（URL）");
     expect(md).toContain("記事本文");
+  });
+});
+
+describe("assembleCitedAssetContext", () => {
+  beforeEach(() => __clearPdfTextCacheForTest());
+
+  it("PDF 素材の派生メモと全文を組み立てる", async () => {
+    const captureIndex: CaptureIndex = {
+      version: 1,
+      updatedAt: "now",
+      captures: [
+        { id: "m1", text: "重要箇所", createdAt: "t", sourceAsset: { fileId: "pdf-9", type: "pdf" } },
+        { id: "m2", text: "別素材", createdAt: "t", sourceAsset: { fileId: "pdf-x", type: "pdf" } },
+      ],
+    };
+    const md = await assembleCitedAssetContext(
+      { fileId: "pdf-9", name: "Paper.pdf", type: "pdf" },
+      {
+        captureIndex,
+        provider: { getMediaBlobUrl: async () => "blob:x" },
+        loadBlob: async () => new Blob(),
+        extractPdfText: async () => ({ text: "素材の全文テキスト" }),
+      },
+    );
+    expect(md).toContain("## 引用文書: Paper.pdf（PDF）");
+    expect(md).toContain("- 重要箇所");
+    expect(md).not.toContain("別素材");
+    expect(md).toContain("素材の全文テキスト");
+  });
+
+  it("メモも全文も無ければ null", async () => {
+    const md = await assembleCitedAssetContext(
+      { fileId: "doc-1", name: "x.docx", type: "document" },
+      { captureIndex: null, provider: { getMediaBlobUrl: async () => "" } },
+    );
+    expect(md).toBeNull();
   });
 });

@@ -672,6 +672,14 @@ export type GraphiumDocument = {
   /** ドキュメント素材から生成した場合の表示用ファイル名 */
   sourceDocumentName?: string;
   /**
+   * このノートが本文中で @ 引用したドキュメント素材（PDF / docx 等）の fileId 配列。
+   * メディアインデックス（MediaIndexEntry.fileId）を指す。Cmd-K / チャットの AI が
+   * 引用素材の中身（全文＋ハイライトメモ）を読むための参照。
+   * 引用先がノートでなく「素材そのもの」である点が noteLinks / sourcePdfFileId と異なる。
+   * additive optional のため旧データは従来通り動く。
+   */
+  citedAssetFileIds?: string[];
+  /**
    * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、

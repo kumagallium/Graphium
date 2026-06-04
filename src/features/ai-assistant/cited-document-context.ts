@@ -183,10 +183,17 @@ export type CitedDocDeps = {
   budgetChars?: number;
 };
 
+/** PDF 全文抽出に必要な最小依存（ノート経路・素材経路の双方から使う） */
+type PdfLoadDeps = {
+  provider: { getMediaBlobUrl(id: string): Promise<string> };
+  extractPdfText?: (blob: Blob) => Promise<{ text: string }>;
+  loadBlob?: (fileId: string) => Promise<Blob>;
+};
+
 /** メディア fileId から PDF 全文を抽出（キャッシュ付き）。失敗時は undefined */
 async function loadPdfFullText(
   mediaFileId: string,
-  deps: CitedDocDeps,
+  deps: PdfLoadDeps,
 ): Promise<string | undefined> {
   const cached = pdfTextCache.get(mediaFileId);
   if (cached != null) return cached;
@@ -253,6 +260,55 @@ export async function assembleCitedDocumentContext(
 
   return formatCitedDocument(
     { title, mediumLabel, memos, knowledge, fullText },
+    deps.budgetChars ?? DEFAULT_BUDGET_CHARS,
+  );
+}
+
+/** 引用したドキュメント素材（メディアインデックスのエントリ）の最小情報 */
+export type CitedAsset = {
+  fileId: string;
+  name: string;
+  /** MediaType（"pdf" | "document" 等） */
+  type: string;
+};
+
+/** assembleCitedAssetContext の依存 */
+export type CitedAssetDeps = {
+  captureIndex: CaptureIndex | null;
+  provider: { getMediaBlobUrl(id: string): Promise<string> };
+  extractPdfText?: (blob: Blob) => Promise<{ text: string }>;
+  loadBlob?: (fileId: string) => Promise<Blob>;
+  budgetChars?: number;
+};
+
+/**
+ * @ で引用したドキュメント素材（ノートではなく素材本体）を AI コンテキスト用
+ * Markdown に組み立てる。素材は知識ノードを持たないため派生 Claim/洞察は無く、
+ * 「その素材へのハイライトメモ（派生メモ）＋全文（PDF）」で構成する。
+ * 何も得られなければ null。
+ */
+export async function assembleCitedAssetContext(
+  asset: CitedAsset,
+  deps: CitedAssetDeps,
+): Promise<string | null> {
+  // 素材へのハイライト/抜書きメモ（sourceAsset.fileId 一致）。noteId 経路は使わない。
+  const memos = gatherDerivedMemos(deps.captureIndex, asset.fileId, "").map((m) => m.text);
+
+  // 全文: PDF のみ抽出（docx 等はここでは抽出せずメモのみ）
+  let fullText: string | undefined;
+  if (asset.type === "pdf") {
+    fullText = await loadPdfFullText(asset.fileId, {
+      provider: deps.provider,
+      extractPdfText: deps.extractPdfText,
+      loadBlob: deps.loadBlob,
+    });
+  }
+
+  if (memos.length === 0 && !fullText) return null;
+
+  const mediumLabel = asset.type === "pdf" ? "PDF" : "ドキュメント";
+  return formatCitedDocument(
+    { title: asset.name, mediumLabel, memos, knowledge: [], fullText },
     deps.budgetChars ?? DEFAULT_BUDGET_CHARS,
   );
 }

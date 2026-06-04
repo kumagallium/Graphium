@@ -57,6 +57,7 @@ import {
 import {
   getHeadingSuggestions,
   getNoteSuggestions,
+  getAssetSuggestions,
 } from "./features/block-link/mention-menu";
 import {
   ProvGraphPanel,
@@ -77,7 +78,7 @@ import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
-import { isDocumentNote, assembleCitedDocumentContext } from "./features/ai-assistant/cited-document-context";
+import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext } from "./features/ai-assistant/cited-document-context";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -651,6 +652,8 @@ function NoteEditorInner({
   }, [noteIndex]);
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
+  // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
+  const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
@@ -1244,6 +1247,8 @@ function NoteEditorInner({
         },
       ],
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
+      citedAssetFileIds:
+        citedAssetFileIdsRef.current.length > 0 ? citedAssetFileIdsRef.current : undefined,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -1586,6 +1591,36 @@ function NoteEditorInner({
             ].join("\n");
           }
         }
+        // このノートが @ で引用したドキュメント素材（PDF/docx 本体）の中身を AI 文脈に載せる。
+        // ノート参照と違い「素材そのもの」を指すため、citedAssetFileIds から直接解決する。
+        const citedAssetIds = citedAssetFileIdsRef.current;
+        if (citedAssetIds.length > 0) {
+          const assetContents: string[] = [];
+          for (const assetFileId of citedAssetIds) {
+            const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
+            if (!entry) continue;
+            try {
+              const md = await assembleCitedAssetContext(
+                { fileId: entry.fileId, name: entry.name, type: entry.type },
+                { captureIndex: captureIndexProp ?? null, provider: getActiveProvider() },
+              );
+              if (md) assetContents.push(md);
+            } catch {
+              // 抽出失敗は無視
+            }
+          }
+          if (assetContents.length > 0) {
+            userMessage = [
+              userMessage,
+              "",
+              "---",
+              "以下はユーザーが @ で引用したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
+              "",
+              ...assetContents,
+              "---",
+            ].join("\n");
+          }
+        }
 
         const selectedModel = getSelectedModel();
         const disabledTools = getDisabledTools();
@@ -1721,7 +1756,7 @@ function NoteEditorInner({
         );
       }
     },
-    [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp],
+    [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp, mediaIndex],
   );
 
   // Composer 結果をドキュメント末尾にブロックとして挿入するヘルパー。
@@ -2682,6 +2717,7 @@ function NoteEditorInner({
                 return [
                   ...getHeadingSuggestions(),
                   ...getNoteSuggestions(files, fileId ?? undefined, noteIndex),
+                  ...getAssetSuggestions(mediaIndex),
                 ];
               }}
               onMentionSelect={(sourceBlockId, suggestion) => {
@@ -2760,6 +2796,21 @@ function NoteEditorInner({
                     markDirty();
                   }
                   mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
+                } else if (suggestion.type === "asset") {
+                  // ドキュメント素材（PDF/docx 本体）の引用。ノートではなく素材を指す。
+                  // citedAssetFileIds に fileId を記録 → Cmd-K / チャットの AI が
+                  // その素材の全文＋ハイライトメモを読めるようになる。
+                  if (!citedAssetFileIdsRef.current.includes(suggestion.id)) {
+                    citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, suggestion.id];
+                  }
+                  const assetLabel = suggestion.label.replace(/^📄\s*/, "");
+                  setTimeout(() => {
+                    editorRef.current?.insertInlineContent([
+                      { type: "text", text: `@${assetLabel}`, styles: { textColor: "blue" } },
+                      { type: "text", text: " ", styles: {} },
+                    ]);
+                  }, 100);
+                  markDirty();
                 }
               }}
             />
