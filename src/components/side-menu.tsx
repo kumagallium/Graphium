@@ -14,7 +14,13 @@ import {
 } from "@blocknote/react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { useAiAssistant } from "../features/ai-assistant";
-import { useT } from "../i18n";
+import { useT, getDisplayLabelName } from "../i18n";
+import { useLabelStore, type CoreLabel } from "../features/context-label";
+import {
+  useMediaInlineLabelStoreOptional,
+  makeMediaEntityId,
+  type MediaInlineLabelType,
+} from "../features/inline-label/media-store";
 
 // 派生ノート作成用のグローバルコールバック
 let openLinkDropdownFn: ((params: {
@@ -158,6 +164,133 @@ function AiAssistantMenuItem() {
   );
 }
 
+// ──────────────────────────────────────────────
+// DragHandle メニュー内: ブロック全体の Entity 化ラベル（案 Y-1）
+//
+// 「ブロック全体 = 1 概念」のラベル付与をここに集約する。テキストの一部（span）の
+// Entity 化は浮上ツールバー据え置き。入口は共通だが、保存先はブロック種別で分岐する:
+//   - 見出し / テーブル → labelStore（page.labels[blockId]）
+//   - メディア          → mediaInlineLabelStore（page.mediaInlineLabels[blockId]）
+// メディアは entity-subtype 系（インラインハイライトと同じファミリ）なので、
+// labels[] のブロックラベルには変換せず mediaInlineLabels の carrier を維持する。
+// ──────────────────────────────────────────────
+
+// 色は context-label/ui.tsx の LABEL_COLORS と同値（正準のラベルピッカーに揃える）
+const BLOCK_LABEL_COLORS: Record<string, string> = {
+  procedure: "#5b8fb9",
+  plan: "#7aa6c4",
+  result: "#9b7fb8",
+  material: "#4B7A52",
+  tool: "#c08b3e",
+  attribute: "#c08b3e",
+  output: "#c26356",
+};
+
+// entity-subtype 系（テーブル / メディアのブロック全体に付与）
+const ENTITY_BLOCK_LABELS: CoreLabel[] = ["material", "tool", "attribute", "output"];
+// 見出しブロックの section / phase 系
+const HEADING_BLOCK_LABELS: CoreLabel[] = ["procedure", "plan", "result"];
+
+const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
+
+/** ブロック種別 → 付与可能なラベルとヒント。null なら「ラベル」セクションを出さない。 */
+function resolveBlockLabelSpec(
+  blockType: string,
+): { labels: CoreLabel[]; hintKey: string } | null {
+  if (blockType === "heading")
+    return { labels: HEADING_BLOCK_LABELS, hintKey: "editor.blockLabel.headingHint" };
+  if (blockType === "table")
+    return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.tableHint" };
+  if (MEDIA_BLOCK_TYPES.has(blockType))
+    return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.mediaHint" };
+  return null;
+}
+
+function BlockLabelMenuItems() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const labelStore = useLabelStore();
+  const mediaStore = useMediaInlineLabelStoreOptional();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block) return null;
+  const blockType = block.type as string;
+  const spec = resolveBlockLabelSpec(blockType);
+  if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる
+
+  const isMedia = MEDIA_BLOCK_TYPES.has(blockType);
+  // メディアは mediaInlineLabels、それ以外（見出し / テーブル）は labels[] を参照
+  const currentLabel = isMedia
+    ? mediaStore?.getLabel(block.id)?.label
+    : labelStore.getLabel(block.id);
+
+  const applyLabel = (label: CoreLabel) => {
+    const active = currentLabel === label;
+    if (isMedia) {
+      if (!mediaStore) return;
+      if (active) {
+        mediaStore.setLabel(block.id, null);
+      } else {
+        const existing = mediaStore.getLabel(block.id);
+        mediaStore.setLabel(block.id, {
+          label: label as MediaInlineLabelType,
+          entityId:
+            existing?.entityId ?? makeMediaEntityId(label as MediaInlineLabelType),
+        });
+      }
+    } else {
+      labelStore.setLabel(block.id, active ? null : label);
+    }
+  };
+
+  // 「色」と同じく Generic.Menu の sub プロップでサブメニュー（flyout）にする。
+  // ブロック全体の Entity 化を「ラベル ▸」の階層に畳み、トップのメニューを浅く保つ。
+  return (
+    <Components.Generic.Menu.Root position="right" sub={true}>
+      <Components.Generic.Menu.Trigger sub={true}>
+        <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
+          {t("editor.blockLabel")}
+        </Components.Generic.Menu.Item>
+      </Components.Generic.Menu.Trigger>
+      <Components.Generic.Menu.Dropdown sub={true} className="bn-menu-dropdown">
+        {spec.labels.map((label) => {
+          const active = currentLabel === label;
+          return (
+            <Components.Generic.Menu.Item
+              key={label}
+              className="bn-menu-item"
+              onClick={() => applyLabel(label)}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 9999,
+                    background: BLOCK_LABEL_COLORS[label] ?? "#6b7280",
+                    flex: "0 0 auto",
+                  }}
+                />
+                <span style={{ fontWeight: active ? 700 : 400 }}>
+                  {getDisplayLabelName(label)}
+                </span>
+                {active && <span style={{ marginLeft: 4, opacity: 0.7 }}>✓</span>}
+              </span>
+            </Components.Generic.Menu.Item>
+          );
+        })}
+        <Components.Generic.Menu.Label>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>{t(spec.hintKey)}</span>
+        </Components.Generic.Menu.Label>
+      </Components.Generic.Menu.Dropdown>
+    </Components.Generic.Menu.Root>
+  );
+}
+
 export function NoteSideMenu() {
   const t = useT();
   useFixDropdownPosition();
@@ -167,6 +300,7 @@ export function NoteSideMenu() {
       <DragHandleButton>
         <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
+        <BlockLabelMenuItems />
         <DeriveNoteMenuItem />
         <AiAssistantMenuItem />
       </DragHandleButton>
