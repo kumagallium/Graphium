@@ -1087,6 +1087,11 @@ export const en: Record<string, string> = {
   "settings.usage.breakdown": "By feature",
   "settings.usage.modelsCount": "{count} models",
   "settings.usage.usdJpyRateLabel": "1 USD = ¥",
+  "settings.usage.recalculate.button": "Recalculate cost",
+  "settings.usage.recalculate.run": "Recalculate now",
+  "settings.usage.recalculate.running": "Recalculating…",
+  "settings.usage.recalculate.hint": "Recompute the last 90 days of cost with the current per-model pricing. Older monthly summaries are unaffected; events from deleted models or without pricing are skipped.",
+  "settings.usage.recalculate.done": "Recalculated {recalculated} event(s), skipped {skipped}.",
 
   // ── 設定: About タブ ──
   "settings.tab.about": "About",

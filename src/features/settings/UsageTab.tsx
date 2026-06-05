@@ -6,7 +6,7 @@
 //   - summary: 90 日より古い期間の月次集計（retention 後）
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, AlertCircle, ChevronRight } from "lucide-react";
+import { Loader2, AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
 import { apiBase } from "../../lib/platform";
 import { useLocale } from "../../i18n";
 import { loadSettings, saveSettings, type LLMRateCurrency } from "./store";
@@ -332,6 +332,10 @@ export function UsageTab() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"node" | "vercel">("node");
 
+  // 単価を直した後のコスト再計算（確認 → 実行 → 結果表示）
+  const [recalcState, setRecalcState] = useState<"idle" | "confirm" | "running">("idle");
+  const [recalcResult, setRecalcResult] = useState<{ recalculated: number; skipped: number } | null>(null);
+
   // 表示通貨と換算レート（settings 永続化、初回ロードで読み込み）
   const [displayCurrency, setDisplayCurrencyState] = useState<RateCurrency>("usd");
   const [usdJpyRate, setUsdJpyRateState] = useState<number>(150);
@@ -385,6 +389,22 @@ export function UsageTab() {
     void loadData();
   }, [loadData]);
 
+  const handleRecalculate = useCallback(async () => {
+    setRecalcState("running");
+    setRecalcResult(null);
+    try {
+      const res = await fetch(`${apiBase()}/usage/recalculate`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { total: number; recalculated: number; skipped: number };
+      setRecalcResult({ recalculated: data.recalculated, skipped: data.skipped });
+      await loadData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "recalculation failed");
+    } finally {
+      setRecalcState("idle");
+    }
+  }, [loadData]);
+
   const buckets = useMemo(
     () => buildBuckets(raw, summary, granularity, displayCurrency, usdJpyRate),
     [raw, summary, granularity, displayCurrency, usdJpyRate],
@@ -422,12 +442,68 @@ export function UsageTab() {
   return (
     <div className="space-y-4">
       {/* ヘッダー */}
-      <div>
-        <h3 className="text-xs font-semibold text-foreground">{t("settings.usage.title")}</h3>
-        <p className="text-[11px] text-muted-foreground mt-1">
-          {t("settings.usage.description")}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-semibold text-foreground">{t("settings.usage.title")}</h3>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {t("settings.usage.description")}
+          </p>
+        </div>
+        {/* 単価を直した後のコスト再計算。記録があるサーバーモードでのみ表示。 */}
+        {mode === "node" && raw.length > 0 && (
+          <div className="shrink-0">
+            {recalcState === "confirm" ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleRecalculate}
+                  className="text-xs text-primary hover:text-primary/80 font-medium px-2 py-1"
+                >
+                  {t("settings.usage.recalculate.run")}
+                </button>
+                <button
+                  onClick={() => setRecalcState("idle")}
+                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1"
+                >
+                  {t("common.cancel")}
+                </button>
+              </div>
+            ) : recalcState === "running" ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-2 py-1">
+                <Loader2 size={12} className="animate-spin" />
+                {t("settings.usage.recalculate.running")}
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setRecalcResult(null);
+                  setRecalcState("confirm");
+                }}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2.5 py-1"
+              >
+                <RefreshCw size={12} />
+                {t("settings.usage.recalculate.button")}
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* 再計算の確認説明 */}
+      {recalcState === "confirm" && (
+        <p className="text-[11px] text-muted-foreground -mt-1">
+          {t("settings.usage.recalculate.hint")}
+        </p>
+      )}
+
+      {/* 再計算の結果 */}
+      {recalcResult && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-2 text-[11px] text-emerald-800 dark:text-emerald-200">
+          {t("settings.usage.recalculate.done", {
+            recalculated: String(recalcResult.recalculated),
+            skipped: String(recalcResult.skipped),
+          })}
+        </div>
+      )}
 
       {/* Vercel モード（永続化不可）の警告 */}
       {mode === "vercel" && (

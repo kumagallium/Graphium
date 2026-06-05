@@ -181,6 +181,52 @@ export function recordUsage(
   }
 }
 
+/**
+ * 全 raw event のコストを、resolveRate で引いた最新単価で計算し直して上書きする。
+ * モデル単価を後から修正したとき、過去の使用量コストを揃え直すために使う。
+ *
+ * - tokens は保持し、rateSnapshot / cost / costCurrency のみ更新する。
+ * - resolveRate が undefined を返した event（modelConfigId なし・モデル削除済み・単価未設定）は
+ *   据え置いてスキップする。
+ * - 90 日より前の月次サマリは集約済みで個別単価を持たないため対象外（raw log のみ再計算する）。
+ */
+export function recalculateUsageCosts(
+  resolveRate: (ev: AIUsageEvent) => TokenRate | undefined,
+): { total: number; recalculated: number; skipped: number } {
+  if (getServerMode() === "vercel") {
+    return { total: 0, recalculated: 0, skipped: 0 };
+  }
+  let recalculated = 0;
+  let skipped = 0;
+  try {
+    const log = readLog();
+    const next = log.map((rawEv) => {
+      const ev = normalizeEvent(rawEv);
+      const rate = resolveRate(ev);
+      if (!rate) {
+        skipped++;
+        return ev;
+      }
+      const calc = calcCost({ ...ev, rateSnapshot: rate });
+      if (!calc) {
+        skipped++;
+        return ev;
+      }
+      recalculated++;
+      // 旧形式の costUsd は正規化済みなので落とす
+      const { costUsd: _legacy, ...rest } = ev;
+      return { ...rest, rateSnapshot: rate, cost: calc.cost, costCurrency: calc.currency };
+    });
+    if (recalculated > 0) writeLog(next);
+    return { total: log.length, recalculated, skipped };
+  } catch (e) {
+    console.warn(
+      `[llm-usage] failed to recalculate costs: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return { total: 0, recalculated, skipped };
+  }
+}
+
 /** 旧形式 (costUsd のみ持つ) を新形式 (cost + costCurrency) に正規化する */
 function normalizeEvent(ev: AIUsageEvent): AIUsageEvent {
   if (ev.cost !== undefined || ev.costUsd === undefined) return ev;

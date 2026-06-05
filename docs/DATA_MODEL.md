@@ -1011,9 +1011,18 @@ The schemas:
 `rateSnapshot`, `cost`, and `costCurrency` are populated when the
 calling model has a `rate` configured (Settings → AI → per-model
 Pricing). The snapshot is written at call time so price changes do
-not retroactively rewrite historical costs. The Usage tab converts to
-the user's chosen display currency at render time using the
-`displayCurrency` / `usdJpyRate` settings persisted in localStorage.
+not *automatically* rewrite historical costs. To fix a mistyped price,
+the user can trigger `POST /api/usage/recalculate` (the "Recalculate
+cost" button on the Usage tab): it rewrites `rateSnapshot` / `cost` /
+`costCurrency` for every raw event that resolves to a registered model —
+first by `modelConfigId`, then by `provider`+`modelId` (header-injected
+calls store a placeholder `modelConfigId`, so model name is the reliable
+key) — using that model's current `rate`. Token counts are preserved;
+events with no matching priced model are skipped, and the monthly
+summary (older than 90 days) is left as-is.
+The Usage tab converts to the user's chosen display currency at render
+time using the `displayCurrency` / `usdJpyRate` settings persisted in
+localStorage.
 
 ## 7. Shared storage and Library
 
