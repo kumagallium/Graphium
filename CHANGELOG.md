@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.15.0](https://github.com/kumagallium/Graphium/compare/v0.14.0...v0.15.0) - 2026-06-05
+
+- Keep media thumbnail when a media block is labeled as a parameter by @kumagallium in https://github.com/kumagallium/Graphium/pull/430
+- Add block-label section to the drag-handle (⠿) menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/429
+- Recalculate AI usage cost with current pricing by @kumagallium in https://github.com/kumagallium/Graphium/pull/432
+
 ## [v0.14.0](https://github.com/kumagallium/Graphium/compare/v0.13.6...v0.14.0) - 2026-06-05
 
 - fix: 来歴/グラフで Word(document:)・chat: ソースを解決し、相互参照エッジを集約 by @kumagallium in https://github.com/kumagallium/Graphium/pull/421
