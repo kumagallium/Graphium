@@ -146,9 +146,18 @@ the PROV-DM derivation’s full form.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 
-When a note is exported as PROV-JSON-LD (`src/features/prov-export/`),
-the export bundle also includes the Wiki Knowledge Layer (Claims /
-Insights / Ideas) as additional `Entity` nodes. Each Wiki entity gets a
+Export is a **per-note** action (it lives in the note's overflow menu),
+so the bundle is scoped to that note: the note's own content-provenance
+graph and edit-log, plus the Wiki Knowledge Layer entities **directly
+derived from that note** (the Claims/Summaries whose `derivedFromNotes`
+includes the note id, resolved via the always-loaded note index in
+`features/prov-export/note-scope.ts`). Cross-note abstractions (Insights
+/ Ideas, which derive from Claims across many notes) are intentionally
+not pulled into a single note's export — otherwise the same Insight
+would appear in every source note's bundle. A whole-workspace
+provenance export, if needed, is a separate workspace-level action.
+
+Each in-scope Wiki entity is added as an `Entity` node with a
 `prov:wasAttributedTo` edge to the generating AI agent, plus a
 `prov:wasDerivedFrom` edge for every recorded upstream source. Three
 lineage lanes are emitted as derivations: `derivedFromNotes` (source
