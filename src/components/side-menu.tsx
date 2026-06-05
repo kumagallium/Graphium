@@ -247,39 +247,47 @@ function BlockLabelMenuItems() {
     }
   };
 
+  // 「色」と同じく Generic.Menu の sub プロップでサブメニュー（flyout）にする。
+  // ブロック全体の Entity 化を「ラベル ▸」の階層に畳み、トップのメニューを浅く保つ。
   return (
-    <>
-      <Components.Generic.Menu.Label>{t("editor.blockLabel")}</Components.Generic.Menu.Label>
-      {spec.labels.map((label) => {
-        const active = currentLabel === label;
-        return (
-          <Components.Generic.Menu.Item
-            key={label}
-            className="bn-menu-item"
-            onClick={() => applyLabel(label)}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 9999,
-                  background: BLOCK_LABEL_COLORS[label] ?? "#6b7280",
-                  flex: "0 0 auto",
-                }}
-              />
-              <span style={{ fontWeight: active ? 700 : 400 }}>
-                {getDisplayLabelName(label)}
+    <Components.Generic.Menu.Root position="right" sub={true}>
+      <Components.Generic.Menu.Trigger sub={true}>
+        <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
+          {t("editor.blockLabel")}
+        </Components.Generic.Menu.Item>
+      </Components.Generic.Menu.Trigger>
+      <Components.Generic.Menu.Dropdown sub={true} className="bn-menu-dropdown">
+        {spec.labels.map((label) => {
+          const active = currentLabel === label;
+          return (
+            <Components.Generic.Menu.Item
+              key={label}
+              className="bn-menu-item"
+              onClick={() => applyLabel(label)}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 9999,
+                    background: BLOCK_LABEL_COLORS[label] ?? "#6b7280",
+                    flex: "0 0 auto",
+                  }}
+                />
+                <span style={{ fontWeight: active ? 700 : 400 }}>
+                  {getDisplayLabelName(label)}
+                </span>
+                {active && <span style={{ marginLeft: 4, opacity: 0.7 }}>✓</span>}
               </span>
-              {active && <span style={{ marginLeft: 4, opacity: 0.7 }}>✓</span>}
-            </span>
-          </Components.Generic.Menu.Item>
-        );
-      })}
-      <Components.Generic.Menu.Label>
-        <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>{t(spec.hintKey)}</span>
-      </Components.Generic.Menu.Label>
-    </>
+            </Components.Generic.Menu.Item>
+          );
+        })}
+        <Components.Generic.Menu.Label>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>{t(spec.hintKey)}</span>
+        </Components.Generic.Menu.Label>
+      </Components.Generic.Menu.Dropdown>
+    </Components.Generic.Menu.Root>
   );
 }
 
