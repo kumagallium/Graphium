@@ -959,7 +959,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       }
     }
 
-    const attrEntry = { label: agg.text || agg.entityId, blockId: agg.blockId };
+    // メディアブロックを [パラメータ] 化した場合も、Entity 経路（mediaUrl/mediaType を
+    // ノードへ付与）と同様にメディア情報を attribute へ引き継ぐ。これがないと graph view が
+    // サムネイルを描けず、ファイル名テキストにフォールバックしてしまう。
+    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string } = {
+      label: agg.text || agg.entityId,
+      blockId: agg.blockId,
+    };
+    if (agg.mediaUrl) attrEntry.mediaUrl = agg.mediaUrl;
+    if (agg.mediaType) attrEntry.mediaType = agg.mediaType;
 
     if (chosenNodeId) {
       const target = nodes.find((n) => n["@id"] === chosenNodeId);
