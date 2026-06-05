@@ -131,6 +131,11 @@ export const en: Record<string, string> = {
   "editor.aiAssistant": "🤖 AI Assistant",
   "editor.askAi": "Ask AI about selection",
   "editor.derivedNote": "Derived note",
+  // ── Block label (⠿ menu: turn a whole block into an Entity) ──
+  "editor.blockLabel": "Label",
+  "editor.blockLabel.tableHint": "Each row → one Entity",
+  "editor.blockLabel.mediaHint": "Whole block = one Entity",
+  "editor.blockLabel.headingHint": "Step / phase boundary",
   // ── 関係指定ピッカー（共通） ──
   "linking.title": "Link & merge",
   "linking.target": "Target",

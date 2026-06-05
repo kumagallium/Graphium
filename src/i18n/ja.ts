@@ -131,6 +131,11 @@ export const ja: Record<string, string> = {
   "editor.aiAssistant": "🤖 AI アシスタント",
   "editor.askAi": "選択範囲を AI に聞く",
   "editor.derivedNote": "派生ノート",
+  // ── ブロックラベル（⠿ メニュー: ブロック全体の Entity 化） ──
+  "editor.blockLabel": "ラベル",
+  "editor.blockLabel.tableHint": "各行が 1 Entity に展開",
+  "editor.blockLabel.mediaHint": "ブロック全体 = 1 Entity",
+  "editor.blockLabel.headingHint": "手順 / フェーズの境界",
   // ── 関係指定ピッカー（共通） ──
   "linking.title": "紐付けと同一化",
   "linking.target": "対象",
