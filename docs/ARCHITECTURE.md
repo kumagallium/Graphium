@@ -564,7 +564,15 @@ thin. It does four jobs:
    Per-model pricing (`USD / 1M tokens`) is stored as `rate` on each
    registered model (`ModelConfig.rate` in `src/server/config/models.ts`).
    The rate at call time is snapshotted into the event so historical
-   costs stay consistent when prices change.
+   costs stay consistent when prices change. If a price was entered
+   incorrectly, `POST /api/usage/recalculate` rewrites the last 90 days
+   of raw events with the current per-model `rate`. Each event is matched
+   to a registered model first by `modelConfigId`, then by
+   `provider`+`modelId` (header-injected calls record a placeholder
+   `modelConfigId`, so model name is the reliable key). Events with no
+   matching priced model are left untouched, and the monthly summary is
+   not affected. The Usage tab exposes this as a "Recalculate cost"
+   button.
 
 When running as PWA only, all of this is absent and the editor still
 works.

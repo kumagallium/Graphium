@@ -1087,6 +1087,11 @@ export const ja: Record<string, string> = {
   "settings.usage.breakdown": "機能別の内訳",
   "settings.usage.modelsCount": "{count} モデル",
   "settings.usage.usdJpyRateLabel": "1 USD = ¥",
+  "settings.usage.recalculate.button": "コストを再計算",
+  "settings.usage.recalculate.run": "再計算する",
+  "settings.usage.recalculate.running": "再計算中…",
+  "settings.usage.recalculate.hint": "直近 90 日分のコストを現在のモデル単価で計算し直します。90 日より前の月次集計は対象外です。削除済みモデルや単価未設定の記録はスキップされます。",
+  "settings.usage.recalculate.done": "{recalculated} 件を再計算しました（{skipped} 件スキップ）。",
 
   "settings.tab.about": "アプリ情報",
   "settings.about.title": "アプリ情報",
