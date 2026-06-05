@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.14.0](https://github.com/kumagallium/Graphium/compare/v0.13.6...v0.14.0) - 2026-06-05
+
+- fix: 来歴/グラフで Word(document:)・chat: ソースを解決し、相互参照エッジを集約 by @kumagallium in https://github.com/kumagallium/Graphium/pull/421
+- fix(wiki): drop self-citation when a 知見/洞察 references its own title by @kumagallium in https://github.com/kumagallium/Graphium/pull/423
+- feat(pdf): full-text PDF translation into a note + side-by-side reading by @kumagallium in https://github.com/kumagallium/Graphium/pull/424
+- feat(pdf): translation full version — parallel, glossary, figure insertion by @kumagallium in https://github.com/kumagallium/Graphium/pull/425
+- fix(graph): drop withdrawn synthesis kind from knowledge graph legend by @kumagallium in https://github.com/kumagallium/Graphium/pull/420
+- Cite documents with @ and let AI read them (Cmd-K & chat) by @kumagallium in https://github.com/kumagallium/Graphium/pull/426
+- テーブルの来歴対応: セル内インライン抑制 + 構造/パラメータテーブル by @kumagallium in https://github.com/kumagallium/Graphium/pull/427
+- fix(prov): make PROV-JSON-LD export fully PROV-DM compliant by @kumagallium in https://github.com/kumagallium/Graphium/pull/428
+
 ## [v0.13.6](https://github.com/kumagallium/Graphium/compare/v0.13.5...v0.13.6) - 2026-06-04
 
 - feat(mcp): direct MCP connections — decouple Graphium from Crucible by @kumagallium in https://github.com/kumagallium/Graphium/pull/417
