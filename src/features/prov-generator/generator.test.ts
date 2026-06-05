@@ -1819,7 +1819,44 @@ describe("メディアブロック × インラインラベル (Phase D-3-β)", 
 
     const stepAct = doc["@graph"].find((n) => n["@id"] === "activity_h-step");
     const attrs = (stepAct as any)["graphium:attributes"] ?? [];
-    expect(attrs.some((a: any) => a["rdfs:label"] === "manual.pdf")).toBe(true);
+    const pdfAttr = attrs.find((a: any) => a["rdfs:label"] === "manual.pdf");
+    expect(pdfAttr).toBeDefined();
+    // メディア attribute はサムネ描画のため mediaUrl / mediaType を保持する
+    expect(pdfAttr["graphium:mediaUrl"]).toBe("https://example.com/manual.pdf");
+    expect(pdfAttr["graphium:mediaType"]).toBe("pdf");
+  });
+
+  it("image に attribute（パラメータ）ラベル → attribute が mediaUrl/mediaType を保持しサムネ表示できる", () => {
+    const blocks = [
+      {
+        id: "h-step",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "Step1" }],
+        children: [],
+      },
+      {
+        id: "img-attr",
+        type: "image",
+        props: { url: "https://example.com/spec.png", name: "spec.png" },
+        content: undefined,
+        children: [],
+      },
+    ];
+    const labels = new Map([["h-step", "procedure"]]);
+    const mediaInlineLabels = new Map([
+      ["img-attr", { label: "attribute" as const, entityId: "ent_spec" }],
+    ]);
+    const doc = generateProvDocument({ blocks, labels, links: [], mediaInlineLabels });
+
+    const stepAct = doc["@graph"].find((n) => n["@id"] === "activity_h-step");
+    const attrs = (stepAct as any)["graphium:attributes"] ?? [];
+    const imgAttr = attrs.find((a: any) => a["graphium:blockId"] === "img-attr");
+    expect(imgAttr).toBeDefined();
+    expect(imgAttr["rdfs:label"]).toBe("spec.png");
+    // ここが回帰ポイント: mediaUrl/mediaType が無いと view がファイル名表示にフォールバックする
+    expect(imgAttr["graphium:mediaUrl"]).toBe("https://example.com/spec.png");
+    expect(imgAttr["graphium:mediaType"]).toBe("image");
   });
 
   it("mediaInlineLabels が無い場合は従来の [材料] パラグラフ配下の画像 → entity_media_<id> が機能する（後方互換）", () => {
