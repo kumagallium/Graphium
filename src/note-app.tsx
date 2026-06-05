@@ -163,7 +163,7 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
-import { exportProvJsonLd, type WikiEntityInfo } from "./features/prov-export";
+import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -3362,22 +3362,46 @@ export function NoteApp() {
 
   // Phase 4 (PR-B7): PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer の
   // 意味的な型（atomType / synthesisMode / procedureContext / ...）を組み立てる。
-  // wiki state が変わったときだけ再計算する。
+  //
+  // スコープ: エクスポートは「開いているノート単位」の操作なので、Knowledge も
+  // 「そのノートから直接抽出された知識」だけに絞る（ワークスペース全体ではない）。
+  // derivedFromNotes はキャッシュ非依存で全件揃う noteIndex を確実な源にする。
   const provWikiEntities = useMemo<WikiEntityInfo[]>(() => {
+    const rootNoteId = fm.activeFileId
+      ? fm.activeFileId.replace(/^(wiki|skill):/, "")
+      : null;
+    const indexById = new Map(
+      (fm.noteIndex?.notes ?? []).map((n) => [n.noteId, n] as const),
+    );
+
+    // 各 wiki の derivedFromNotes をまず確定（キャッシュ優先・無ければ index）。
+    const entries = fm.wikiFiles.map((wf) => {
+      const wm = fm.getCachedDoc(`wiki:${wf.id}`)?.wikiMeta;
+      const derivedFromNotes =
+        wm?.derivedFromNotes ?? indexById.get(wf.id)?.derivedFromNotes ?? [];
+      return { wf, wm, derivedFromNotes };
+    });
+
+    const scope = selectNoteScopedWikiIds(
+      rootNoteId,
+      entries.map((e) => ({ id: e.wf.id, derivedFromNotes: e.derivedFromNotes })),
+    );
+
     const out: WikiEntityInfo[] = [];
-    for (const wf of fm.wikiFiles) {
+    for (const { wf, wm, derivedFromNotes } of entries) {
+      if (!scope.has(wf.id)) continue;
       const meta = fm.wikiMetas.get(wf.id);
       if (!meta) continue;
-      const doc = fm.getCachedDoc(`wiki:${wf.id}`);
-      const wm = doc?.wikiMeta;
       out.push({
         title: meta.title,
         kind: meta.kind,
         status: meta.status ?? "active",
         generatedAt: wm?.generatedAt ?? wf.modifiedTime,
         model: wm?.generatedBy?.model ?? meta.model ?? "unknown",
-        derivedFromNotes: wm?.derivedFromNotes ?? [],
+        derivedFromNotes,
         citedKnowledgeIds: wm?.citedKnowledgeIds,
+        // Atom の上流（atomize lane）。export で Derivation を出さないと孤児になる。
+        derivedFromClaims: wm?.derivedFromClaims,
         atomType: meta.atomType,
         synthesisMode: meta.synthesisMode,
         hypothesisStatus: meta.hypothesisStatus,
@@ -3388,7 +3412,7 @@ export function NoteApp() {
       });
     }
     return out;
-  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc]);
+  }, [fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc, fm.noteIndex, fm.activeFileId]);
 
   // 検索結果からノート行をクリック / Enter したときのジャンプハンドラ。
   // wiki エントリは handleOpenWikiFile + wikiKind ナビ、それ以外は handleOpenFile。

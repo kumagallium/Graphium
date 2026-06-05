@@ -153,14 +153,47 @@ the PROV-DM derivation’s full form.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 
-When a note is exported as PROV-JSON-LD (`src/features/prov-export/`),
-the export bundle also includes the Wiki Knowledge Layer (Claims /
-Insights / Ideas) as additional `Entity` nodes, each with a
-`prov:wasDerivedFrom` edge back to its source note(s) and a
-`prov:wasAttributedTo` edge to the generating AI agent.
+Export is a **per-note** action (it lives in the note's overflow menu),
+so the bundle is scoped to that note: the note's own content-provenance
+graph and edit-log, plus the Wiki Knowledge Layer entities **directly
+derived from that note** (the Claims/Summaries whose `derivedFromNotes`
+includes the note id, resolved via the always-loaded note index in
+`features/prov-export/note-scope.ts`). Cross-note abstractions (Insights
+/ Ideas, which derive from Claims across many notes) are intentionally
+not pulled into a single note's export — otherwise the same Insight
+would appear in every source note's bundle. A whole-workspace
+provenance export, if needed, is a separate workspace-level action.
+
+Each in-scope Wiki entity is added as an `Entity` node with a
+`prov:wasAttributedTo` edge to the generating AI agent, plus a
+`prov:wasDerivedFrom` edge for every recorded upstream source. Three
+lineage lanes are emitted as derivations: `derivedFromNotes` (source
+notes), `citedKnowledgeIds` (knowledge cited/examined via the Cmd-K
+verb intake), and `derivedFromClaims` (the Claims an Insight abstracts —
+the *atomize* lane). A Wiki entity with no recorded sources is emitted
+with only the attribution edge.
+
+Every node referenced by these relations is also **declared** so the
+export contains no dangling references: the AI agent is emitted as a
+typed `prov:Agent` node (deduplicated per model), and each source id is
+emitted as a typed `Entity` node. Source ids carrying an external-source
+prefix (`pdf:` / `url:` / `document:` / `chat:`, see
+[`network-graph/external-source.ts`](../src/features/network-graph/external-source.ts))
+are resolved to a typed external-source Entity (`@id`
+`graphium:<kind>/<key>`, with `graphium:sourceKind`) rather than being
+concatenated into a malformed `graphium:note/<prefixed>` reference — so
+the export stays consistent with the in-app lineage/graph views.
+
+The document edit-log is attached as a named `prov:Bundle`. The
+`@context` inlines the PROV term definitions locally (with the
+openprovenance `prov-jsonld` context kept as the authoritative
+resolver), so relation typing does not depend solely on a remote fetch.
 
 Each Wiki entity carries the *semantic types* from §3.3 so that external
-PROV tools can see the hourglass structure of the knowledge layer:
+PROV tools can see the hourglass structure of the knowledge layer.
+(Besides the semantic types below, every Wiki entity always carries the
+housekeeping attributes `graphium:wikiStatus`, `graphium:generatedAt`,
+and `graphium:generatedBy`.)
 
 | Attribute (`graphium:*`) | Meaning | Present when |
 |---|---|---|

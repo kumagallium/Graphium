@@ -571,6 +571,52 @@ describe("Phase 3: テーブル構造化属性", () => {
     expect(usedCu[0].from).toBe("activity_h2-mix");
   });
 
+  it("同名行が衝突せず別 Entity になる（@id 衝突回避 / M6）", () => {
+    const blocks = [
+      {
+        id: "h2-mix",
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "混合する" }],
+        children: [],
+      },
+      {
+        id: "dup-table",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "名前" }], [{ type: "text", text: "量" }]] },
+            { cells: [[{ type: "text", text: "Cu" }], [{ type: "text", text: "1g" }]] },
+            { cells: [[{ type: "text", text: "Cu" }], [{ type: "text", text: "2g" }]] },
+          ],
+        },
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h2-mix", "procedure"],
+      ["dup-table", "material"],
+    ]);
+
+    const doc = generateProvDocument({ blocks, labels, links: [] });
+
+    // 同名 2 行 → 衝突せず 2 つの別 Entity（初出は従来形式、2 件目は連番）
+    const first = doc["@graph"].find((n) => n["@id"] === "entity_dup-table_Cu");
+    const second = doc["@graph"].find((n) => n["@id"] === "entity_dup-table_Cu_2");
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    // それぞれの params が独立して保持される（上書きで消えない）
+    expect(first!["graphium:量"]).toBe("1g");
+    expect(second!["graphium:量"]).toBe("2g");
+    // used 関係も 2 本（行ごとに別 Entity）
+    const relations = getRelations(doc);
+    const usedCu = relations.filter(
+      (r) => (r.to === "entity_dup-table_Cu" || r.to === "entity_dup-table_Cu_2") && r["@type"] === "prov:used",
+    );
+    expect(usedCu).toHaveLength(2);
+  });
+
   it("[結果] テーブルの行が個別 Entity に展開される", () => {
     const blocks = [
       {
@@ -1444,7 +1490,7 @@ describe("インラインハイライト → PROV Entity / Attribute (Phase D-1)
 
     const ent = doc["@graph"].find((n) => n["@id"] === "inline_output_ent_sol");
     expect(ent).toBeDefined();
-    expect(ent!["prov:wasGeneratedBy"]?.["@id"]).toBe("activity_h-step");
+    expect(ent!["prov:wasGeneratedBy"]?.[0]?.["@id"]).toBe("activity_h-step");
   });
 
   it("inlineAttribute は隣接 Entity の attribute として埋め込まれる", () => {
@@ -1709,7 +1755,7 @@ describe("メディアブロック × インラインラベル (Phase D-3-β)", 
     expect((ent as any)["graphium:mediaUrl"]).toBe("https://example.com/run.png");
     expect((ent as any)["graphium:mediaType"]).toBe("image");
     // output Entity は LABEL_TO_ENTITY_SUBTYPE 対象外（material / tool のみ subtype を持つ）
-    expect(ent!["prov:wasGeneratedBy"]?.["@id"]).toBe("activity_h-step");
+    expect(ent!["prov:wasGeneratedBy"]?.[0]?.["@id"]).toBe("activity_h-step");
   });
 
   it("video ブロックに material ラベル → prov:used、attribute ラベルなしメディアは祖先 attribute から除外", () => {
@@ -2196,7 +2242,7 @@ describe("informed_by + inline_output（synthetic placeholder の抑制）", () 
         (act["prov:used"] ?? []).some((u: any) => u["@id"] === merged[0]["@id"]),
       );
     expect(usedBy.map((a) => a["@id"])).toContain("activity_h-curr");
-    expect(mergedEnt["prov:wasGeneratedBy"]?.["@id"]).toBe("activity_h-prev");
+    expect(mergedEnt["prov:wasGeneratedBy"]?.[0]?.["@id"]).toBe("activity_h-prev");
   });
 
   it("inline_output / inline_material どちらも無ければ従来通り synthetic placeholder を作る", () => {

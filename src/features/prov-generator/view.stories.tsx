@@ -73,7 +73,7 @@ const simpleProv: ProvJsonLd = {
       "@type": "prov:Entity",
       "rdfs:label": "封入されたCu粉末",
       "graphium:blockId": "b4",
-      "prov:wasGeneratedBy": { "@id": "activity_b1" },
+      "prov:wasGeneratedBy": [{ "@id": "activity_b1" }],
     },
   ],
 };
