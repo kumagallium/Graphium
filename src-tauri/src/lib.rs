@@ -169,6 +169,17 @@ fn start_native_sidecar(
         // macOS の Keychain 経由で API キーを扱うよう sidecar に明示する。
         // 旧形式（models.json に平文）が残っていれば sidecar 側で Keychain へ移行する。
         .env("GRAPHIUM_USE_KEYCHAIN", if cfg!(target_os = "macos") { "1" } else { "0" })
+        // sidecar の親 = この Tauri アプリ本体の PID。sidecar 側の watchdog が
+        // この PID を監視し、本体が消えたら（Cmd+Q / 強制終了 / クラッシュ /
+        // 自動更新のどの経路でも）自決する。port 3001 を握ったまま孤児化すると、
+        // 次回起動で新バージョンのアプリが古い sidecar を再利用してしまい、後から
+        // 追加した API ルートが 404 になる（v0.15.0 で /api/translate が踏んだ
+        // 事故）。その根本対策。
+        .env("GRAPHIUM_PARENT_PID", std::process::id().to_string())
+        // アプリのバージョン。sidecar は /api/health でこれを返し、起動時に
+        // フロントが自分（getVersion）と照合する。バージョンが食い違えば
+        // 「自動更新前の古い自分」とみなして kill→再起動する。
+        .env("GRAPHIUM_APP_VERSION", app.package_info().version.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

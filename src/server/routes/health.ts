@@ -8,15 +8,21 @@ import { findModelsWithMissingApiKey } from "../config/models.js";
 const app = new Hono();
 
 // sidecar 自身を識別するための情報。index.ts から起動時に注入される。
-// バンドル版アプリが port 3001 で他人 sidecar（消えた worktree の幽霊など）を
-// 検知できるよう、/api/health に pid と dataDir を返す。
-let sidecarIdentity: { pid: number; dataDir: string } = {
+// バンドル版アプリが port 3001 で他人 sidecar（消えた worktree の幽霊など）や
+// 自動更新前の古い自分を検知できるよう、/api/health に pid / dataDir / version を
+// 返す。version はアプリ本体が GRAPHIUM_APP_VERSION で渡したビルドバージョン。
+let sidecarIdentity: { pid: number; dataDir: string; version: string } = {
   pid: typeof process !== "undefined" ? process.pid : 0,
   dataDir: "",
+  version: "dev",
 };
 
-export function setSidecarIdentity(info: { pid: number; dataDir: string }): void {
-  sidecarIdentity = info;
+export function setSidecarIdentity(info: {
+  pid: number;
+  dataDir: string;
+  version?: string;
+}): void {
+  sidecarIdentity = { ...info, version: info.version ?? "dev" };
 }
 
 app.get("/", async (c) => {
@@ -58,7 +64,9 @@ app.get("/", async (c) => {
      * キーを貼り直せばいいか」を提示するために返す。apiKey 本体は含まない。
      */
     missingKeyModels,
-    version: "1.0.0",
+    // アプリ本体のビルドバージョン。フロントが起動時に getVersion() と照合し、
+    // 食い違えば「古い sidecar」として置き換える。dev / Docker では "dev"。
+    version: sidecarIdentity.version,
     pid: sidecarIdentity.pid,
     dataDir: sidecarIdentity.dataDir,
   });

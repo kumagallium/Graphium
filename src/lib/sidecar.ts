@@ -103,25 +103,48 @@ export async function startSidecar(): Promise<boolean> {
   const appData = await appDataDir();
   const dataDir = await pathJoin(appData, "server-data");
 
-  // 既にサーバーが動いている場合はスキップ（dev モードで別途起動済みなど）。
-  // ただし `/api/health` の dataDir が期待値と一致しなければ "他人 sidecar"
-  // （消えた worktree の幽霊など）として SIGTERM し、自前を spawn し直す。
+  // アプリ本体のバージョン。sidecar の /api/health が返す version と照合して
+  // 「自動更新前の古い自分」を検知する。取得に失敗した場合は version 照合を
+  // 諦め、従来どおり dataDir だけで判定する（誤って現行 sidecar を kill しない）。
+  let expectedVersion = "";
+  try {
+    const { getVersion } = await import("@tauri-apps/api/app");
+    expectedVersion = await getVersion();
+  } catch {
+    expectedVersion = "";
+  }
+
+  // 既にサーバーが動いている場合の扱い:
+  //   - dataDir も version も一致 → 自分の現行 sidecar。再利用する。
+  //   - dataDir 不一致 → 他人 sidecar（消えた worktree の幽霊 / 別 dev サーバー）。
+  //   - version 不一致 → 自動更新前の「古い自分」。port 3001 を握ったままなので、
+  //     後から追加した API ルートが 404 になる（v0.15.0 の /api/translate）。
+  // 不一致はいずれも SIGTERM して自前を spawn し直す。
   try {
     const res = await fetch(HEALTH_URL);
     if (res.ok) {
       const body = await res.json().catch(() => ({}) as Record<string, unknown>);
       const remoteDataDir = typeof body?.dataDir === "string" ? body.dataDir : "";
       const remotePid = typeof body?.pid === "number" ? body.pid : 0;
-      if (remoteDataDir === dataDir) {
-        console.log("[sidecar] Backend already running (matching dataDir)");
+      const remoteVersion = typeof body?.version === "string" ? body.version : "";
+      const sameDataDir = remoteDataDir === dataDir;
+      const sameVersion = expectedVersion === "" || remoteVersion === expectedVersion;
+      if (sameDataDir && sameVersion) {
+        console.log("[sidecar] Backend already running (matching dataDir + version)");
+        // 再利用する sidecar の PID を控える。これがないと終了時に kill 対象が
+        // 分からず孤児として残り、次回起動で再利用される（今回の 404 の一因）。
+        currentPid = remotePid > 0 ? remotePid : null;
         setState({ status: "ready" });
         return true;
       }
+      const reason = !sameDataDir
+        ? `foreign dataDir=${remoteDataDir || "?"} (expected ${dataDir})`
+        : `stale version=${remoteVersion || "?"} (expected ${expectedVersion})`;
       console.warn(
-        `[sidecar] Foreign sidecar on 3001 (pid=${remotePid}, dataDir=${remoteDataDir || "?"}). Killing.`,
+        `[sidecar] Replacing sidecar on 3001 (pid=${remotePid}, ${reason}). Killing.`,
       );
       recordLog(
-        `Foreign sidecar detected (pid=${remotePid}, dataDir=${remoteDataDir || "?"}). Expected ${dataDir}. Sending SIGTERM.`,
+        `Replacing sidecar on 3001 (pid=${remotePid}, ${reason}). Sending SIGTERM.`,
       );
       if (remotePid > 0) {
         try {
@@ -253,9 +276,19 @@ export async function restartSidecar(): Promise<boolean> {
 /** sidecar サーバーを停止する */
 export async function stopSidecar(): Promise<void> {
   if (currentPid != null) {
+    const pid = currentPid;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
+      // 自分が spawn した sidecar は Rust 側の NativeSidecarState 経由で kill する。
       await invoke("stop_native_sidecar");
+      // 再利用した sidecar（前セッションが spawn したもの）は Rust 側が PID を
+      // 控えていないため stop_native_sidecar では落ちない。フロントが控えている
+      // PID へ直接 SIGTERM を送ってフォールバックする（既に死んでいれば無視）。
+      try {
+        await invoke("kill_pid", { pid });
+      } catch {
+        /* 既に終了している場合は何もしない */
+      }
       console.log("[sidecar] Backend server stop requested");
     } catch (e) {
       console.error("[sidecar] Failed to stop:", e);

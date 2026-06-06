@@ -35,6 +35,36 @@ function bootLog(msg: string): void {
 
 bootLog("imports complete, resolving data dir");
 
+// 親プロセス（Tauri アプリ本体）の生存を監視し、親が消えたら自決する watchdog。
+//
+// sidecar は std::process::Command で spawn された独立プロセスなので、本体が
+// Cmd+Q / 強制終了 / クラッシュ / 自動更新のいずれで終了しても、自動では
+// 道連れにならない。port 3001 を握ったまま孤児化すると、次回起動で新バージョンの
+// アプリが古い sidecar を「自分のもの」と誤認して再利用し、後から追加した API
+// ルートが 404 になる（v0.15.0 で /api/translate が踏んだ事故）。
+//
+// 親 PID は Rust 側が GRAPHIUM_PARENT_PID で渡す。未設定（dev / Docker）の場合は
+// 監視しない。signal 0 はプロセスの存在確認のみで、シグナルは送らない（macOS /
+// Linux / Windows いずれでも Node が対応）。
+function startParentWatchdog(): void {
+  const raw = process.env.GRAPHIUM_PARENT_PID;
+  const parentPid = raw ? Number(raw) : Number.NaN;
+  if (!Number.isInteger(parentPid) || parentPid <= 0) return;
+  bootLog(`parent watchdog armed: parentPid=${parentPid}`);
+  const timer = setInterval(() => {
+    try {
+      process.kill(parentPid, 0);
+    } catch {
+      // 親が存在しない（ESRCH）→ sidecar も終了する。
+      bootLog(`parent pid=${parentPid} gone — exiting sidecar`);
+      process.exit(0);
+    }
+  }, 2000);
+  // watchdog 単独ではイベントループを延命させない（サーバーが生きている間だけ
+  // 回ればよい）。サーバーの listener が別途ループを保持している。
+  timer.unref();
+}
+
 // データディレクトリ設定（環境変数 or デフォルト）
 // デスクトップアプリ（sidecar）では Application Support 配下を使う。
 // 旧 ~/Documents/Graphium/server-data からは起動時に自動 migration する。
@@ -97,8 +127,12 @@ try {
 setModelsDataDir(dataDir);
 setProfilesDataDir(dataDir);
 setUsageDataDir(dataDir);
-setSidecarIdentity({ pid: process.pid, dataDir });
-bootLog("data dir config wired, creating app");
+// アプリ本体（Tauri）が起動時に注入するバージョン。dev / Docker では未設定なので
+// "dev" にフォールバックする。/api/health で返し、起動時にフロントが自分の
+// バージョンと照合して「古い自分の sidecar」を検知するために使う。
+const appVersion = process.env.GRAPHIUM_APP_VERSION ?? "dev";
+setSidecarIdentity({ pid: process.pid, dataDir, version: appVersion });
+bootLog(`data dir config wired (version=${appVersion}), creating app`);
 
 // 起動時に 90 日より古い raw event を月次サマリに集約する
 try {
@@ -140,5 +174,8 @@ try {
   bootLog(`serve() threw: ${msg}`);
   process.exit(98);
 }
+
+// 親（アプリ本体）の死を監視して自決する watchdog を起動する。
+startParentWatchdog();
 
 export default app;
