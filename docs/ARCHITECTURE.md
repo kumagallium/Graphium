@@ -504,6 +504,17 @@ The same `src/` tree is built three different ways.
   on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
   platforms). The file is rotated to `sidecar.log.1` once it exceeds
   5 MB, so old entries do not grow without bound.
+- The sidecar carries an identity so a stale process is never reused. The
+  app injects `GRAPHIUM_APP_VERSION` (its own build version) and
+  `GRAPHIUM_PARENT_PID` (the app process id) when it spawns the sidecar, and
+  `/api/health` echoes `version`, `pid` and `dataDir`. On startup
+  `src/lib/sidecar.ts` reuses an already-running sidecar only when both
+  `dataDir` and `version` match; a foreign `dataDir` (a stale worktree) or a
+  mismatched `version` (a sidecar left over from before an auto-update) is
+  sent `SIGTERM` and replaced. The sidecar additionally runs a watchdog that
+  exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
+  app and orphan port 3001 — an orphan would otherwise let a newer app reuse
+  old code and return 404 for routes added after that build.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
