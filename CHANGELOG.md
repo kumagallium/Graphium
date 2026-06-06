@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.15.1](https://github.com/kumagallium/Graphium/compare/v0.15.0...v0.15.1) - 2026-06-06
+
+- [fix] Prevent stale sidecar reuse after auto-update (404 on new routes) by @kumagallium in https://github.com/kumagallium/Graphium/pull/433
+
 ## [v0.15.0](https://github.com/kumagallium/Graphium/compare/v0.14.0...v0.15.0) - 2026-06-05
 
 - Keep media thumbnail when a media block is labeled as a parameter by @kumagallium in https://github.com/kumagallium/Graphium/pull/430
