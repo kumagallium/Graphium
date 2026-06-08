@@ -131,6 +131,14 @@ export const en: Record<string, string> = {
   "editor.aiAssistant": "🤖 AI Assistant",
   "editor.askAi": "Ask AI about selection",
   "editor.derivedNote": "Derived note",
+  // ── ドキュメント内検索（Cmd+F） ──
+  "docSearch.placeholder": "Find in note",
+  "docSearch.count": "{current}/{total}",
+  "docSearch.noResults": "No results",
+  "docSearch.caseSensitive": "Match case",
+  "docSearch.prev": "Previous match (Shift+Enter)",
+  "docSearch.next": "Next match (Enter)",
+  "docSearch.close": "Close (Esc)",
   // ── Block label (⠿ menu: turn a whole block into an Entity) ──
   "editor.blockLabel": "Label",
   "editor.blockLabel.tableHint": "Each row → one Entity",

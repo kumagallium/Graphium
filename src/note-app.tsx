@@ -38,6 +38,7 @@ import {
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek } from "./features/index-table/side-peek";
+import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
   LinkStoreProvider,
@@ -2833,6 +2834,8 @@ function NoteEditorInner({
                 }
               }}
             />
+            {/* Cmd+F: ドキュメント内検索バー（fixed 配置。mainEditor 未準備時は自前で null 描画） */}
+            <DocumentSearchBar editor={mainEditor} />
             {/* 空ノート予示: ⌘K / # / @ / / の入口をさりげなく案内 */}
             <div className="px-[54px]">
               <EmptyNoteGuide

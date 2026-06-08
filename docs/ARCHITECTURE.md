@@ -665,6 +665,7 @@ people most often need to find.
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |
 | ⌘K palette (note search + ask) | `src/features/composer/` |
+| ⌘F in-document find (highlight matches) | `src/features/document-search/` |
 | Knowledge UI and service | `src/features/wiki/` |
 | Knowledge pipeline (ingest / atomize / synthesize) | `src/server/services/wiki-*.ts` |
 | Inter-note network graph (Cytoscape) | `src/features/network-graph/` |
