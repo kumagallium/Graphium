@@ -4896,8 +4896,11 @@ export function NoteApp() {
             onBack={() => { setAssetSidePeekNoteId(null); fm.setActiveAssetType(null); }}
             onOpenNoteInSidePeek={(noteId) => {
               // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
-              const rawId = noteId.startsWith("wiki:") ? noteId.slice(5) : noteId;
-              setAssetSidePeekNoteId(rawId);
+              // wiki: プレフィックスは剥がさず保持する。SidePeek は noteId の
+              // wiki: 有無で loadWikiFile / loadFile を切り替えるため、剥がすと
+              // 要約等の Knowledge ノートが loadFile 経由になり「読み込みに失敗」する。
+              // getCachedDoc / appKnowledgeMap も wiki: 付きキーで引く。
+              setAssetSidePeekNoteId(noteId);
             }}
             onNavigateNote={(noteId) => {
               setAssetSidePeekNoteId(null);
