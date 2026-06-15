@@ -1,35 +1,36 @@
 // ──────────────────────────────────────────────
-// Activity グラフ（ノートエディタ的なリンク試作）
+// Activity グラフ（ノードエディタ的なリンク試作）
 //
 // 目的: activity（手順見出し）間の operation リンクを、
 //   余白ラベル → パネル → モーダル選択ではなく、
-//   グラフ上でノードからノードへドラッグして引けるようにする UX 検証。
+//   ノードエディタのようにポート（ノード下の丸）からドラッグして引く UX 検証。
 //
-// 既存の network-graph/view.tsx（ノート間グラフ）と同じ cytoscape を土台にし、
-// ドラッグ接続は cytoscape-edgehandles 拡張で実現する。
+// 各ノードは下にソースポート・上にターゲットポートを持ち、
+// 下の丸を掴んで別ノードへドラッグ → ドロップで関係種を選んで接続する。
 // activity↔activity の関係は informed_by（前手順）が主・reproduction_of（再現）が従。
+// （描画は @xyflow/react。既存の読み取り専用グラフは cytoscape のままで別物）
 // ──────────────────────────────────────────────
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import cytoscape from "cytoscape";
-import type { Core } from "cytoscape";
-import edgehandles from "cytoscape-edgehandles";
-import type { EdgeHandlesInstance } from "cytoscape-edgehandles";
-import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ReactFlow,
+  Background,
+  Handle,
+  Position,
+  MarkerType,
+  useNodesState,
+  type Node,
+  type Edge,
+  type Connection,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { LINK_TYPE_META, type ProvLinkType } from "../block-link/link-types";
-
-// edgehandles の登録（重複防止）
-let ehRegistered = false;
-function ensureEdgehandles() {
-  if (ehRegistered) return;
-  cytoscape.use(edgehandles);
-  ehRegistered = true;
-}
 
 // ── テーマカラー（design.md / view.tsx 準拠）──
 const NODE_COLOR = "#4B7A52"; // ブランドグリーン
 const NODE_BORDER = "#3d6844";
-const BG_COLOR = "#fafdf7";
+const PORT_COLOR = "#5b8fb9"; // ポート（丸）の青
 
 /** activity↔activity で選べる関係種（ドロップ時のピッカー候補） */
 const ACTIVITY_RELATIONS: { type: ProvLinkType; label: string; hint: string }[] = [
@@ -55,19 +56,51 @@ export type ActivityEdge = {
 export type ActivityGraphProps = {
   activities: ActivityNode[];
   edges: ActivityEdge[];
-  /** ドラッグ接続 → 関係種選択が確定したとき */
+  /** ポートからのドラッグ接続 → 関係種選択が確定したとき */
   onCreateEdge?: (source: string, target: string, type: ProvLinkType) => void;
   /** エッジクリックで削除 */
   onRemoveEdge?: (edgeId: string) => void;
 };
 
+// ── カスタムノード（上下にポートを持つ手順ボックス）──
+type ActivityNodeData = { name: string; phase?: "plan" | "result" };
+type ActivityFlowNode = Node<ActivityNodeData, "activity">;
+
+const PORT_STYLE = {
+  width: 12,
+  height: 12,
+  background: PORT_COLOR,
+  border: "2px solid #ffffff",
+};
+
+function ActivityNodeView({ data }: NodeProps<ActivityFlowNode>) {
+  return (
+    <div
+      style={{
+        background: NODE_COLOR,
+        border: `2px solid ${NODE_BORDER}`,
+        borderRadius: 10,
+        color: "#ffffff",
+        fontSize: 13,
+        fontWeight: 600,
+        padding: "10px 16px",
+        minWidth: 92,
+        textAlign: "center",
+      }}
+    >
+      {/* 上: 受け口（前の手順から来る線を受ける） */}
+      <Handle type="target" position={Position.Top} style={PORT_STYLE} />
+      {data.name}
+      {/* 下: 出し口（ここを掴んでドラッグ） */}
+      <Handle type="source" position={Position.Bottom} style={PORT_STYLE} />
+    </div>
+  );
+}
+
+const nodeTypes = { activity: ActivityNodeView };
+
 /** ドロップ時に表示する関係種ピッカーの状態 */
-type PendingLink = {
-  source: string;
-  target: string;
-  x: number;
-  y: number;
-} | null;
+type PendingLink = { source: string; target: string; x: number; y: number } | null;
 
 export function ActivityGraph({
   activities,
@@ -75,172 +108,57 @@ export function ActivityGraph({
   onCreateEdge,
   onRemoveEdge,
 }: ActivityGraphProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<Core | null>(null);
-  const ehRef = useRef<EdgeHandlesInstance | null>(null);
+  // ノードはドラッグで動かせるようローカル state。位置は縦一列（手順の流れ）に初期配置。
+  const [nodes, setNodes, onNodesChange] = useNodesState<ActivityFlowNode>(
+    activities.map((a, i) => ({
+      id: a.id,
+      type: "activity",
+      position: { x: 120, y: i * 110 },
+      data: { name: a.name, phase: a.phase },
+    })),
+  );
+
+  // activities が差し替わったら配置し直す
+  useEffect(() => {
+    setNodes(
+      activities.map((a, i) => ({
+        id: a.id,
+        type: "activity",
+        position: { x: 120, y: i * 110 },
+        data: { name: a.name, phase: a.phase },
+      })),
+    );
+  }, [activities, setNodes]);
+
+  // エッジは親が所有（props）。色・矢印・ラベルを LINK_TYPE_META から付与。
+  const flowEdges: Edge[] = edges.map((e) => {
+    const meta = LINK_TYPE_META[e.type];
+    const color = meta?.color ?? PORT_COLOR;
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: meta?.provDM ?? e.type,
+      style: { stroke: color, strokeWidth: 2 },
+      labelStyle: { fill: color, fontSize: 9 },
+      labelBgStyle: { fill: "#fafdf7" },
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+    };
+  });
+
+  // 関係ピッカーの配置にカーソル位置を使う
+  const pointer = useRef({ x: 0, y: 0 });
   const [pending, setPending] = useState<PendingLink>(null);
 
-  // 最新のコールバックを ref 経由で参照（cy 再初期化を避ける）
-  const cbRef = useRef({ onRemoveEdge });
-  cbRef.current = { onRemoveEdge };
-
-  // ── 初期化（マウント時のみ）──
-  useEffect(() => {
-    if (!containerRef.current) return;
-    ensureCytoscapePlugins();
-    ensureEdgehandles();
-
-    const cy = cytoscape({
-      container: containerRef.current,
-      style: [
-        {
-          selector: "node",
-          style: {
-            "background-color": NODE_COLOR,
-            "border-width": 2,
-            "border-color": NODE_BORDER,
-            shape: "round-rectangle",
-            label: "data(name)",
-            color: "#ffffff",
-            "font-size": 12,
-            "text-valign": "center",
-            "text-halign": "center",
-            "text-wrap": "wrap",
-            "text-max-width": "92px",
-            width: 108,
-            height: 44,
-          },
-        },
-        {
-          selector: "edge",
-          style: {
-            width: 2.5,
-            "line-color": "data(color)",
-            "target-arrow-color": "data(color)",
-            "target-arrow-shape": "triangle",
-            "curve-style": "bezier",
-            label: "data(label)",
-            "font-size": 9,
-            color: "data(color)",
-            "text-background-color": BG_COLOR,
-            "text-background-opacity": 1,
-            "text-background-padding": "2px",
-          },
-        },
-        // edgehandles のハンドル・プレビュー
-        {
-          selector: ".eh-handle",
-          style: {
-            "background-color": "#5b8fb9",
-            width: 12,
-            height: 12,
-            shape: "ellipse",
-            "border-width": 2,
-            "border-color": "#ffffff",
-          },
-        },
-        {
-          selector: ".eh-ghost-edge, .eh-preview",
-          style: {
-            "line-color": "#5b8fb9",
-            "target-arrow-color": "#5b8fb9",
-            "target-arrow-shape": "triangle",
-            "line-style": "dashed",
-          },
-        },
-      ],
-      layout: { name: "preset" }, // 初期は親から渡された位置 / 後で fcose
-      minZoom: 0.4,
-      maxZoom: 2.5,
+  const onConnect = useCallback((c: Connection) => {
+    if (!c.source || !c.target || c.source === c.target) return;
+    setPending({
+      source: c.source,
+      target: c.target,
+      x: pointer.current.x,
+      y: pointer.current.y,
     });
-    cyRef.current = cy;
-
-    const eh = cy.edgehandles({
-      hoverDelay: 120,
-      snap: true,
-      canConnect: (source, target) =>
-        !source.same(target) &&
-        target.edgesWith(source).length === 0, // 既存リンクの重複を防ぐ（簡易）
-      edgeParams: () => ({ data: {} }),
-    });
-    ehRef.current = eh;
-
-    // ドラッグ接続が完了したら、自動追加されたプレビューエッジは消し、
-    // 関係種ピッカーを開く（確定は親に委ねる）
-    cy.on("ehcomplete", (_event, source, target, addedEdge) => {
-      addedEdge.remove();
-      const rect = containerRef.current?.getBoundingClientRect();
-      const rp = target.renderedPosition();
-      setPending({
-        source: source.id(),
-        target: target.id(),
-        x: (rect?.left ?? 0) + rp.x,
-        y: (rect?.top ?? 0) + rp.y,
-      });
-    });
-
-    // エッジクリックで削除
-    cy.on("tap", "edge", (event) => {
-      const id = event.target.id();
-      cbRef.current.onRemoveEdge?.(id);
-    });
-
-    return () => {
-      eh.destroy();
-      cy.destroy();
-      cyRef.current = null;
-      ehRef.current = null;
-    };
   }, []);
-
-  // ── ノード同期（activities 変化時にレイアウト）──
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    cy.batch(() => {
-      cy.nodes().remove();
-      cy.add(
-        activities.map((a) => ({
-          group: "nodes" as const,
-          data: { id: a.id, name: a.name, phase: a.phase },
-        })),
-      );
-    });
-    cy.layout({
-      name: "fcose",
-      // @ts-expect-error fcose 拡張オプション
-      animate: true,
-      randomize: true,
-      idealEdgeLength: 110,
-      nodeSeparation: 90,
-    }).run();
-  }, [activities]);
-
-  // ── エッジ同期（edges 変化時、レイアウトはし直さない）──
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    cy.batch(() => {
-      cy.edges().remove();
-      cy.add(
-        edges
-          .filter((e) => cy.getElementById(e.source).length && cy.getElementById(e.target).length)
-          .map((e) => {
-            const meta = LINK_TYPE_META[e.type];
-            return {
-              group: "edges" as const,
-              data: {
-                id: e.id,
-                source: e.source,
-                target: e.target,
-                color: meta?.color ?? "#5b8fb9",
-                label: meta?.provDM ?? e.type,
-              },
-            };
-          }),
-      );
-    });
-  }, [edges]);
 
   const confirmRelation = useCallback(
     (type: ProvLinkType) => {
@@ -251,16 +169,27 @@ export function ActivityGraph({
   );
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div
-        ref={containerRef}
-        style={{
-          width: "100%",
-          height: "100%",
-          backgroundColor: BG_COLOR,
-          borderRadius: 8,
-        }}
-      />
+    <div
+      style={{ position: "relative", width: "100%", height: "100%" }}
+      onMouseMove={(e) => {
+        pointer.current = { x: e.clientX, y: e.clientY };
+      }}
+    >
+      <ReactFlow
+        nodes={nodes}
+        edges={flowEdges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onConnect={onConnect}
+        onEdgeClick={(_, edge) => onRemoveEdge?.(edge.id)}
+        fitView
+        fitViewOptions={{ padding: 0.3 }}
+        proOptions={{ hideAttribution: true }}
+        style={{ background: "#fafdf7", borderRadius: 8 }}
+      >
+        <Background color="#dde7df" gap={20} />
+      </ReactFlow>
+
       {/* 操作ヒント */}
       <div
         style={{
@@ -272,13 +201,12 @@ export function ActivityGraph({
           pointerEvents: "none",
         }}
       >
-        ノードの上にカーソルを置き、青いハンドルから別の手順へドラッグしてつなぎます
+        ノード下の青い丸を掴んで、別の手順の上の丸へドラッグしてつなぎます
       </div>
 
       {/* ドロップ時の関係種ピッカー */}
       {pending && (
         <>
-          {/* 外側クリックでキャンセル */}
           <div
             style={{ position: "fixed", inset: 0, zIndex: 40 }}
             onClick={() => setPending(null)}
