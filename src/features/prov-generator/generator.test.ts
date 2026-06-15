@@ -75,10 +75,11 @@ describe("カレー実験シナリオ（基本形）", () => {
     const doc = generateProvDocument({ blocks: curryBlocks, labels: curryLabels, links: curryLinks });
     const activities = doc["@graph"].filter((n) => n["@type"] === "prov:Activity");
     expect(activities).toHaveLength(3);
+    // 見出しの連番プレフィックスは activity 名から除かれる（deriveActivityName）
     expect(activities.map((a) => a["rdfs:label"])).toEqual([
-      "1. 具材を切る",
-      "2. 炒める",
-      "3. 煮込む",
+      "具材を切る",
+      "炒める",
+      "煮込む",
     ]);
   });
 

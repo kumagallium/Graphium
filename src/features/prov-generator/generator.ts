@@ -6,6 +6,7 @@
 // ──────────────────────────────────────────────
 
 import { CORE_LABELS, normalizeLabel, classifyLabel, getHeadingLabelRole, LABEL_TO_ENTITY_SUBTYPE, type CoreLabel } from "../context-label/labels";
+import { deriveActivityName } from "../context-label/activity-name";
 import { parseAttributeBinding, PARENT_ACTIVITY_MARKER } from "../inline-label/attribute-binding";
 import type { BlockLink } from "../block-link/link-types";
 import { isProvLink } from "../block-link/link-types";
@@ -241,7 +242,8 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   for (const act of activities) {
     const blockId = act.block.id;
-    const actLabel = getBlockText(act.block);
+    // 見出しの連番プレフィックス（"1. " "1.1 " "a. " 等）は activity 名から除く（非破壊）
+    const actLabel = deriveActivityName(getBlockText(act.block));
     nodes.push({
       "@id": `activity_${blockId}`,
       "@type": "prov:Activity",

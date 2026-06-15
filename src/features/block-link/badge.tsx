@@ -12,6 +12,7 @@ import { useLinkStore } from "./store";
 import { CREATED_BY_LABELS, LINK_TYPE_CONFIG, type BlockLink } from "./link-types";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { useT, t as tStatic } from "../../i18n";
+import { deriveActivityName } from "../context-label/activity-name";
 
 type LinkBadgeInfo = {
   blockId: string;
@@ -30,7 +31,8 @@ function getBlockText(blockId: string): string {
   );
   if (!el) return blockId.slice(0, 8);
   const heading = el.querySelector("h1, h2, h3");
-  if (heading) return heading.textContent || tStatic("common.empty");
+  // 見出しは activity 名として扱うため連番プレフィックスを除く（リンク表示と PROV 出力を揃える）
+  if (heading) return deriveActivityName(heading.textContent ?? "") || tStatic("common.empty");
   const para = el.querySelector("[data-content-type]");
   if (para) {
     const text = para.textContent || "";
