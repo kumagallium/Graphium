@@ -72,6 +72,10 @@ export function useRangeSelect(
     if (target?.closest("button, a, input, select, textarea, label, [data-no-drag]")) {
       return;
     }
+    // ネイティブのテキスト選択（mousedown→ドラッグ）を始まる前に抑止する。
+    // userSelect="none" は選択開始後では進行中の選択を止められないため、
+    // ここで preventDefault して選択そのものを発生させない。click は引き続き発火する。
+    e.preventDefault();
     pendingRef.current = { idx: index, x: e.clientX, y: e.clientY };
   }, []);
 
