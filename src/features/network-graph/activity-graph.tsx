@@ -77,7 +77,9 @@ export type ActivityGraphProps = {
 type ActivityNodeData = { name: string };
 type OutputNodeData = { label: string };
 type ActivityFlowNode = Node<ActivityNodeData, "activity">;
-type OutputFlowNode = Node<OutputNodeData, "output">;
+// 注意: React Flow のノード型名に予約語（input/default/output/group）を使うと
+// 組み込みの .react-flow__node-<type> デフォルト枠が被るため "outputEntity" にする
+type OutputFlowNode = Node<OutputNodeData, "outputEntity">;
 type FlowNode = ActivityFlowNode | OutputFlowNode;
 
 const PORT_STYLE = {
@@ -121,6 +123,7 @@ function OutputNodeView({ data }: NodeProps<OutputFlowNode>) {
         fontWeight: 600,
         padding: "5px 12px",
         textAlign: "center",
+        whiteSpace: "nowrap",
       }}
       title="output entity（下のポートから別の手順へ used を増やせる / 自動補完）"
     >
@@ -133,7 +136,7 @@ function OutputNodeView({ data }: NodeProps<OutputFlowNode>) {
   );
 }
 
-const nodeTypes = { activity: ActivityNodeView, output: OutputNodeView };
+const nodeTypes = { activity: ActivityNodeView, outputEntity: OutputNodeView };
 
 export function ActivityGraph({
   activities,
@@ -180,7 +183,7 @@ export function ActivityGraph({
       perOwner.set(o.owner, n + 1);
       return {
         id: o.id,
-        type: "output" as const,
+        type: "outputEntity" as const,
         position: { x: 360, y: (posY.get(o.owner) ?? 0) + 55 + n * 70 },
         data: { label: o.label },
       };
