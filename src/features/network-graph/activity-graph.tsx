@@ -1,17 +1,20 @@
 // ──────────────────────────────────────────────
 // Activity グラフ（ノードエディタ的なリンク試作）
 //
-// 目的: activity（手順見出し）間の operation リンクを、
-//   余白ラベル → パネル → モーダル選択ではなく、
-//   ノードエディタのようにポート（ノード下の丸）からドラッグして引く UX 検証。
+// 方針（2026-06 改訂）:
+//   実データでは activity 同士は直接つながらず、必ず output entity を挟む
+//   （A →generated→ Entity →used→ B）。informed_by を張っても生成側で
+//   entity 経由に展開され、無ければ仮 entity が挿入される。
 //
-// 各ノードは下にソースポート・上にターゲットポートを持ち、
-// 下の丸を掴んで別ノードへドラッグ → ドロップで関係種を選んで接続する。
-// activity↔activity の関係は informed_by（前手順）が主・reproduction_of（再現）が従。
-// （描画は @xyflow/react。既存の読み取り専用グラフは cytoscape のままで別物）
+//   そこでグラフ上の操作も「activity の出力ポート → 別 activity の入力ポート」
+//   へドラッグしたら、間に output entity を【自動補完】して
+//   generated / used の 2 本を張る、という 1 ジェスチャに固定する。
+//   関係種ピッカーは不要。entity は見える・名前を付けられるノードになる。
+//
+//   （描画は @xyflow/react。既存の読み取り専用グラフは cytoscape のまま別物）
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -25,18 +28,15 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LINK_TYPE_META, type ProvLinkType } from "../block-link/link-types";
 
-// ── テーマカラー（design.md / view.tsx 準拠）──
-const NODE_COLOR = "#4B7A52"; // ブランドグリーン
-const NODE_BORDER = "#3d6844";
-const PORT_COLOR = "#5b8fb9"; // ポート（丸）の青
-
-/** activity↔activity で選べる関係種（ドロップ時のピッカー候補） */
-const ACTIVITY_RELATIONS: { type: ProvLinkType; label: string; hint: string }[] = [
-  { type: "informed_by", label: "前の手順", hint: "wasInformedBy（順序）" },
-  { type: "reproduction_of", label: "再現・追試", hint: "wasDerivedFrom（実験↔実験）" },
-];
+// ── テーマカラー（context-label のラベル配色準拠）──
+const ACTIVITY_COLOR = "#5b8fb9"; // procedure（青）
+const ACTIVITY_BORDER = "#4a7da6";
+const ENTITY_COLOR = "#c26356"; // output / result（赤系）
+const ENTITY_BORDER = "#a44d42";
+const PORT_COLOR = "#5b8fb9";
+const GENERATED_COLOR = "#c26356"; // wasGeneratedBy
+const USED_COLOR = "#4B7A52"; // used
 
 export type ActivityNode = {
   /** blockId */
@@ -46,25 +46,32 @@ export type ActivityNode = {
   phase?: "plan" | "result";
 };
 
-export type ActivityEdge = {
+/**
+ * activity 間の 1 操作。実体は A →generated→ [output entity] →used→ B。
+ * outputLabel は補完された output entity のラベル（名前を付けられる）。
+ */
+export type Operation = {
   id: string;
-  source: string; // sourceBlockId
-  target: string; // targetBlockId
-  type: ProvLinkType;
+  from: string; // 生成側 activity（blockId）
+  to: string; // 使用側 activity（blockId）
+  outputLabel: string;
 };
 
 export type ActivityGraphProps = {
   activities: ActivityNode[];
-  edges: ActivityEdge[];
-  /** ポートからのドラッグ接続 → 関係種選択が確定したとき */
-  onCreateEdge?: (source: string, target: string, type: ProvLinkType) => void;
-  /** エッジクリックで削除 */
-  onRemoveEdge?: (edgeId: string) => void;
+  operations: Operation[];
+  /** activity → activity のドラッグ接続（間に output entity を補完する） */
+  onCreateOperation?: (from: string, to: string) => void;
+  /** エッジ or entity クリックで操作ごと削除 */
+  onRemoveOperation?: (id: string) => void;
 };
 
-// ── カスタムノード（上下にポートを持つ手順ボックス）──
-type ActivityNodeData = { name: string; phase?: "plan" | "result" };
+// ── カスタムノード ──
+type ActivityNodeData = { name: string };
+type EntityNodeData = { label: string };
 type ActivityFlowNode = Node<ActivityNodeData, "activity">;
+type EntityFlowNode = Node<EntityNodeData, "entity">;
+type FlowNode = ActivityFlowNode | EntityFlowNode;
 
 const PORT_STYLE = {
   width: 12,
@@ -77,8 +84,8 @@ function ActivityNodeView({ data }: NodeProps<ActivityFlowNode>) {
   return (
     <div
       style={{
-        background: NODE_COLOR,
-        border: `2px solid ${NODE_BORDER}`,
+        background: ACTIVITY_COLOR,
+        border: `2px solid ${ACTIVITY_BORDER}`,
         borderRadius: 10,
         color: "#ffffff",
         fontSize: 13,
@@ -88,100 +95,140 @@ function ActivityNodeView({ data }: NodeProps<ActivityFlowNode>) {
         textAlign: "center",
       }}
     >
-      {/* 上: 受け口（前の手順から来る線を受ける） */}
+      {/* 上: 入力ポート（前工程の output を受ける） */}
       <Handle type="target" position={Position.Top} style={PORT_STYLE} />
       {data.name}
-      {/* 下: 出し口（ここを掴んでドラッグ） */}
+      {/* 下: 出力ポート（ここを掴んでドラッグ） */}
       <Handle type="source" position={Position.Bottom} style={PORT_STYLE} />
     </div>
   );
 }
 
-const nodeTypes = { activity: ActivityNodeView };
+function EntityNodeView({ data }: NodeProps<EntityFlowNode>) {
+  return (
+    <div
+      style={{
+        background: ENTITY_COLOR,
+        border: `2px solid ${ENTITY_BORDER}`,
+        borderRadius: 999,
+        color: "#ffffff",
+        fontSize: 11,
+        fontWeight: 600,
+        padding: "5px 12px",
+        textAlign: "center",
+        opacity: 0.95,
+      }}
+      title="自動補完された output entity（クリックで削除）"
+    >
+      {/* entity は自動補完されるので手動接続は不可（isConnectable=false） */}
+      <Handle type="target" position={Position.Top} style={PORT_STYLE} isConnectable={false} />
+      ⬡ {data.label}
+      <Handle type="source" position={Position.Bottom} style={PORT_STYLE} isConnectable={false} />
+    </div>
+  );
+}
 
-/** ドロップ時に表示する関係種ピッカーの状態 */
-type PendingLink = { source: string; target: string; x: number; y: number } | null;
+const nodeTypes = { activity: ActivityNodeView, entity: EntityNodeView };
 
 export function ActivityGraph({
   activities,
-  edges,
-  onCreateEdge,
-  onRemoveEdge,
+  operations,
+  onCreateOperation,
+  onRemoveOperation,
 }: ActivityGraphProps) {
-  // ノードはドラッグで動かせるようローカル state。位置は縦一列（手順の流れ）に初期配置。
-  const [nodes, setNodes, onNodesChange] = useNodesState<ActivityFlowNode>(
-    activities.map((a, i) => ({
+  const activityIds = useMemo(() => new Set(activities.map((a) => a.id)), [activities]);
+  const posY = useMemo(() => {
+    const m = new Map<string, number>();
+    activities.forEach((a, i) => m.set(a.id, i * 170));
+    return m;
+  }, [activities]);
+
+  // activity ノード（縦一列＝工程の流れ）はドラッグで動かせるよう state 管理
+  const [actNodes, setActNodes, onActNodesChange] = useNodesState<FlowNode>(
+    activities.map((a) => ({
       id: a.id,
       type: "activity",
-      position: { x: 120, y: i * 110 },
-      data: { name: a.name, phase: a.phase },
+      position: { x: 140, y: posY.get(a.id) ?? 0 },
+      data: { name: a.name },
     })),
   );
 
-  // activities が差し替わったら配置し直す
   useEffect(() => {
-    setNodes(
-      activities.map((a, i) => ({
+    setActNodes(
+      activities.map((a) => ({
         id: a.id,
         type: "activity",
-        position: { x: 120, y: i * 110 },
-        data: { name: a.name, phase: a.phase },
+        position: { x: 140, y: posY.get(a.id) ?? 0 },
+        data: { name: a.name },
       })),
     );
-  }, [activities, setNodes]);
+  }, [activities, posY, setActNodes]);
 
-  // エッジは親が所有（props）。色・矢印・ラベルを LINK_TYPE_META から付与。
-  const flowEdges: Edge[] = edges.map((e) => {
-    const meta = LINK_TYPE_META[e.type];
-    const color = meta?.color ?? PORT_COLOR;
+  // 各 operation を「entity ノード + generated/used エッジ 2 本」に展開
+  const entityNodes: EntityFlowNode[] = operations.map((op) => {
+    const yFrom = posY.get(op.from) ?? 0;
+    const yTo = posY.get(op.to) ?? 0;
     return {
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      label: meta?.provDM ?? e.type,
-      style: { stroke: color, strokeWidth: 2 },
-      labelStyle: { fill: color, fontSize: 9 },
-      labelBgStyle: { fill: "#fafdf7" },
-      markerEnd: { type: MarkerType.ArrowClosed, color },
+      id: `ent-${op.id}`,
+      type: "entity",
+      position: { x: 340, y: (yFrom + yTo) / 2 + 20 },
+      data: { label: op.outputLabel },
     };
   });
 
-  // 関係ピッカーの配置にカーソル位置を使う
-  const pointer = useRef({ x: 0, y: 0 });
-  const [pending, setPending] = useState<PendingLink>(null);
+  const nodes = [...actNodes, ...entityNodes];
 
-  const onConnect = useCallback((c: Connection) => {
-    if (!c.source || !c.target || c.source === c.target) return;
-    setPending({
-      source: c.source,
-      target: c.target,
-      x: pointer.current.x,
-      y: pointer.current.y,
-    });
-  }, []);
+  const edges: Edge[] = operations.flatMap((op) => {
+    const entId = `ent-${op.id}`;
+    return [
+      {
+        id: `${op.id}-gen`,
+        source: op.from,
+        target: entId,
+        label: "wasGeneratedBy",
+        style: { stroke: GENERATED_COLOR, strokeWidth: 2 },
+        labelStyle: { fill: GENERATED_COLOR, fontSize: 9 },
+        labelBgStyle: { fill: "#fafdf7" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR },
+      },
+      {
+        id: `${op.id}-use`,
+        source: entId,
+        target: op.to,
+        label: "used",
+        style: { stroke: USED_COLOR, strokeWidth: 2 },
+        labelStyle: { fill: USED_COLOR, fontSize: 9 },
+        labelBgStyle: { fill: "#fafdf7" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR },
+      },
+    ];
+  });
 
-  const confirmRelation = useCallback(
-    (type: ProvLinkType) => {
-      if (pending) onCreateEdge?.(pending.source, pending.target, type);
-      setPending(null);
+  // ドラッグ接続: activity → activity のみ受け付け、operation を作る
+  const onConnect = useCallback(
+    (c: Connection) => {
+      if (!c.source || !c.target || c.source === c.target) return;
+      if (!activityIds.has(c.source) || !activityIds.has(c.target)) return;
+      onCreateOperation?.(c.source, c.target);
     },
-    [pending, onCreateEdge],
+    [activityIds, onCreateOperation],
   );
 
+  // entity / エッジクリックで対応する operation を削除
+  const opIdFromEdge = (edgeId: string) => edgeId.replace(/-(gen|use)$/, "");
+
   return (
-    <div
-      style={{ position: "relative", width: "100%", height: "100%" }}
-      onMouseMove={(e) => {
-        pointer.current = { x: e.clientX, y: e.clientY };
-      }}
-    >
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <ReactFlow
         nodes={nodes}
-        edges={flowEdges}
+        edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
+        onNodesChange={onActNodesChange}
         onConnect={onConnect}
-        onEdgeClick={(_, edge) => onRemoveEdge?.(edge.id)}
+        onEdgeClick={(_, edge) => onRemoveOperation?.(opIdFromEdge(edge.id))}
+        onNodeClick={(_, node) => {
+          if (node.type === "entity") onRemoveOperation?.(node.id.replace(/^ent-/, ""));
+        }}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
@@ -190,7 +237,6 @@ export function ActivityGraph({
         <Background color="#dde7df" gap={20} />
       </ReactFlow>
 
-      {/* 操作ヒント */}
       <div
         style={{
           position: "absolute",
@@ -199,70 +245,13 @@ export function ActivityGraph({
           fontSize: 12,
           color: "#6b7f6e",
           pointerEvents: "none",
+          maxWidth: 360,
+          lineHeight: 1.5,
         }}
       >
-        ノード下の青い丸を掴んで、別の手順の上の丸へドラッグしてつなぎます
+        手順ノード下の青い丸 → 別の手順の上の丸へドラッグすると、
+        間に output entity（⬡ 赤）が自動で挟まり generated / used が張られます
       </div>
-
-      {/* ドロップ時の関係種ピッカー */}
-      {pending && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 40 }}
-            onClick={() => setPending(null)}
-          />
-          <div
-            style={{
-              position: "fixed",
-              left: pending.x,
-              top: pending.y,
-              transform: "translate(-50%, 10px)",
-              zIndex: 41,
-              background: "#ffffff",
-              border: "1px solid #d9e2dc",
-              borderRadius: 8,
-              boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-              padding: 6,
-              minWidth: 180,
-            }}
-          >
-            <div style={{ fontSize: 11, color: "#8a978d", padding: "2px 8px 6px" }}>
-              関係を選ぶ
-            </div>
-            {ACTIVITY_RELATIONS.map((r) => (
-              <button
-                key={r.type}
-                onClick={() => confirmRelation(r.type)}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "6px 8px",
-                  border: "none",
-                  borderRadius: 6,
-                  background: "transparent",
-                  cursor: "pointer",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f6f1")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: LINK_TYPE_META[r.type].color,
-                    fontWeight: 600,
-                  }}
-                >
-                  {r.label}
-                </span>
-                <span style={{ fontSize: 10, color: "#9aa7a0" }}>{r.hint}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }

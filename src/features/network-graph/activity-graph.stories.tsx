@@ -1,14 +1,14 @@
 // Activity グラフ（ノードエディタ的リンク）の試作ストーリー
 //
 // 検証ポイント:
-//   - ノードからドラッグして手順どうしをつなげるか（余白ラベル → モーダルの代替）
-//   - ドロップ時に関係種（前の手順 / 再現）を選べるか
-//   - エッジをクリックして削除できるか
+//   - 手順ノードの出力ポート → 別手順の入力ポートへドラッグするだけで、
+//     間に output entity が自動補完され generated / used が張られるか
+//   - activity 同士は直接つながらず、必ず entity を挟むか
+//   - entity / エッジをクリックして操作ごと削除できるか
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRef, useState } from "react";
-import { ActivityGraph, type ActivityEdge, type ActivityNode } from "./activity-graph";
-import type { ProvLinkType } from "../block-link/link-types";
+import { ActivityGraph, type Operation, type ActivityNode } from "./activity-graph";
 import { LocaleProvider } from "../../i18n";
 
 const meta: Meta = {
@@ -26,7 +26,7 @@ const meta: Meta = {
 };
 export default meta;
 
-// ── モックデータ（カレー実験の手順。Q2 の連番除去後の純粋な名前）──
+// ── モックデータ（カレー実験の手順。連番除去後の純粋な名前）──
 const ACTIVITIES: ActivityNode[] = [
   { id: "h-cut", name: "具材を切る" },
   { id: "h-fry", name: "炒める" },
@@ -34,23 +34,31 @@ const ACTIVITIES: ActivityNode[] = [
   { id: "h-plate", name: "盛り付け" },
 ];
 
-function Demo({ initial }: { initial: ActivityEdge[] }) {
-  const [edges, setEdges] = useState<ActivityEdge[]>(initial);
+const NAME = new Map(ACTIVITIES.map((a) => [a.id, a.name]));
+
+function Demo({ initial }: { initial: Operation[] }) {
+  const [ops, setOps] = useState<Operation[]>(initial);
   const counter = useRef(initial.length);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 8 }}>
       <ActivityGraph
         activities={ACTIVITIES}
-        edges={edges}
-        onCreateEdge={(source, target, type: ProvLinkType) => {
+        operations={ops}
+        onCreateOperation={(from, to) => {
           counter.current += 1;
-          setEdges((prev) => [
+          setOps((prev) => [
             ...prev,
-            { id: `e-${counter.current}`, source, target, type },
+            {
+              id: `op-${counter.current}`,
+              from,
+              to,
+              // ドキュメントに output が無いケースの仮ラベル（既存生成側の規約に合わせる）
+              outputLabel: `${NAME.get(from) ?? from} の結果`,
+            },
           ]);
         }}
-        onRemoveEdge={(id) => setEdges((prev) => prev.filter((e) => e.id !== id))}
+        onRemoveOperation={(id) => setOps((prev) => prev.filter((o) => o.id !== id))}
       />
       <pre
         style={{
@@ -64,7 +72,7 @@ function Demo({ initial }: { initial: ActivityEdge[] }) {
           overflow: "auto",
         }}
       >
-        {JSON.stringify(edges, null, 2)}
+        {JSON.stringify(ops, null, 2)}
       </pre>
     </div>
   );
@@ -77,11 +85,13 @@ export const Empty: Story = {
   render: () => <Demo initial={[]} />,
 };
 
-// 既存リンクが 1 本ある状態（炒める は 具材を切る を前手順とする）
-export const WithExistingLink: Story = {
+// 既存の操作が 1 本ある状態（具材を切る → [具材を切る の結果] → 炒める）
+export const WithExistingOperation: Story = {
   render: () => (
     <Demo
-      initial={[{ id: "e-0", source: "h-fry", target: "h-cut", type: "informed_by" }]}
+      initial={[
+        { id: "op-0", from: "h-cut", to: "h-fry", outputLabel: "具材を切る の結果" },
+      ]}
     />
   ),
 };
