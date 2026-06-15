@@ -1,19 +1,19 @@
 // ──────────────────────────────────────────────
 // Activity グラフ（ノードエディタ的なリンク試作）
 //
-// 方針（2026-06 改訂 2）:
+// 方針（2026-06 改訂 3）:
 //   実データでは activity 同士は直接つながらず、必ず output entity を挟む
-//   （A →generated→ Entity →used→ B）。さらに 1 つの output は
-//   複数の手順から used されうる（fan-out）。
+//   （A →generated→ Entity →used→ B）。1 つの output は複数手順から used されうる。
 //
-//   そこでモデルを「output は activity が所有」「used は何本でも張れる」に分け、
-//   グラフ操作を次の 1 ジェスチャに固定する:
+//   モデル:「output は activity が所有」「used は何本でも張れる（fan-out）」。
+//   操作:
 //     - 手順 A の出力ポート → 手順 B の入力ポートへドラッグ
-//         · A に output があれば【再利用】して B へ used を足す
-//         · 無ければ output を【自動補完】して generated + used を張る
-//     - output ノード → 手順 B へドラッグ = その output から used を足す（fan-out）
+//         · A に output があれば【再利用】、無ければ【自動補完】して used を張る
+//     - output ノード → 手順 B へドラッグ = used を足す（fan-out）
 //   関係種ピッカーは不要。output は見える・名前を付けられるノードになる。
 //
+//   配置は dagre による自動レイアウト（縦スパイン）。activity の文書順は
+//   隠しシーケンス辺で保ち、output はその間のランクに収まる。
 //   （描画は @xyflow/react。既存の読み取り専用グラフは cytoscape のまま別物）
 // ──────────────────────────────────────────────
 
@@ -31,6 +31,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import dagre from "@dagrejs/dagre";
 
 // ── テーマカラー（context-label のラベル配色準拠）──
 const ACTIVITY_COLOR = "#5b8fb9"; // procedure（青）
@@ -40,6 +41,12 @@ const OUTPUT_BORDER = "#a44d42";
 const PORT_COLOR = "#5b8fb9";
 const GENERATED_COLOR = "#c26356"; // wasGeneratedBy
 const USED_COLOR = "#4B7A52"; // used
+
+// dagre 用のノードサイズ概算
+const SIZE = {
+  activity: { w: 120, h: 46 },
+  outputEntity: { w: 150, h: 30 },
+} as const;
 
 export type ActivityNode = {
   id: string; // blockId
@@ -138,6 +145,49 @@ function OutputNodeView({ data }: NodeProps<OutputFlowNode>) {
 
 const nodeTypes = { activity: ActivityNodeView, outputEntity: OutputNodeView };
 
+/**
+ * dagre で縦スパインに自動配置する。
+ * - generated（owner→output）/ used（output→consumer）を辺として与える
+ * - activity 同士は文書順を保つため隠しシーケンス辺を高 weight で与える（描画はしない）
+ */
+function layout(
+  activities: ActivityNode[],
+  outputs: OutputEntity[],
+  uses: UseEdge[],
+): FlowNode[] {
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: "TB", nodesep: 50, ranksep: 78 });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  for (const a of activities) g.setNode(a.id, { ...SIZE.activity });
+  for (const o of outputs) g.setNode(o.id, { ...SIZE.outputEntity });
+
+  for (const o of outputs) g.setEdge(o.owner, o.id);
+  for (const u of uses) g.setEdge(u.outputId, u.consumer);
+  // 文書順維持（隠し辺・描画しない）
+  for (let i = 0; i < activities.length - 1; i++) {
+    g.setEdge(activities[i].id, activities[i + 1].id, { weight: 20, minlen: 1 });
+  }
+
+  dagre.layout(g);
+
+  const toNode = (
+    id: string,
+    type: "activity" | "outputEntity",
+    data: ActivityNodeData | OutputNodeData,
+  ): FlowNode => {
+    const n = g.node(id);
+    const s = SIZE[type];
+    const pos = n ? { x: n.x - s.w / 2, y: n.y - s.h / 2 } : { x: 0, y: 0 };
+    return { id, type, position: pos, data } as FlowNode;
+  };
+
+  return [
+    ...activities.map((a) => toNode(a.id, "activity", { name: a.name })),
+    ...outputs.map((o) => toNode(o.id, "outputEntity", { label: o.label })),
+  ];
+}
+
 export function ActivityGraph({
   activities,
   outputs,
@@ -148,49 +198,14 @@ export function ActivityGraph({
 }: ActivityGraphProps) {
   const activityIds = useMemo(() => new Set(activities.map((a) => a.id)), [activities]);
   const outputIds = useMemo(() => new Set(outputs.map((o) => o.id)), [outputs]);
-  const posY = useMemo(() => {
-    const m = new Map<string, number>();
-    activities.forEach((a, i) => m.set(a.id, i * 160));
-    return m;
-  }, [activities]);
 
-  // activity ノード（縦一列＝工程の流れ）はドラッグで動かせるよう state 管理
-  const [actNodes, setActNodes, onActNodesChange] = useNodesState<FlowNode>(
-    activities.map((a) => ({
-      id: a.id,
-      type: "activity",
-      position: { x: 140, y: posY.get(a.id) ?? 0 },
-      data: { name: a.name },
-    })),
+  // dagre 自動配置。グラフが変わるたびに再レイアウト。
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(
+    layout(activities, outputs, uses),
   );
-
   useEffect(() => {
-    setActNodes(
-      activities.map((a) => ({
-        id: a.id,
-        type: "activity",
-        position: { x: 140, y: posY.get(a.id) ?? 0 },
-        data: { name: a.name },
-      })),
-    );
-  }, [activities, posY, setActNodes]);
-
-  // output ノードは owner の脇に配置（fan-out しやすいよう右に逃がす）
-  const outputNodes: OutputFlowNode[] = useMemo(() => {
-    const perOwner = new Map<string, number>();
-    return outputs.map((o) => {
-      const n = perOwner.get(o.owner) ?? 0;
-      perOwner.set(o.owner, n + 1);
-      return {
-        id: o.id,
-        type: "outputEntity" as const,
-        position: { x: 360, y: (posY.get(o.owner) ?? 0) + 55 + n * 70 },
-        data: { label: o.label },
-      };
-    });
-  }, [outputs, posY]);
-
-  const nodes = [...actNodes, ...outputNodes];
+    setNodes(layout(activities, outputs, uses));
+  }, [activities, outputs, uses, setNodes]);
 
   // generated: owner → output / used: output → consumer
   const edges: Edge[] = [
@@ -220,10 +235,10 @@ export function ActivityGraph({
   const isValidConnection = useCallback(
     (c: Connection | Edge) => {
       if (!c.source || !c.target || c.source === c.target) return false;
-      if (!activityIds.has(c.target)) return false; // 受け口は activity のみ
+      if (!activityIds.has(c.target)) return false;
       if (outputIds.has(c.source)) {
         const owner = outputs.find((o) => o.id === c.source)?.owner;
-        return owner !== c.target; // output → その owner へは張らない
+        return owner !== c.target;
       }
       return activityIds.has(c.source);
     },
@@ -246,7 +261,7 @@ export function ActivityGraph({
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={onActNodesChange}
+        onNodesChange={onNodesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         onEdgeClick={(_, edge) => {
