@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.15.2](https://github.com/kumagallium/Graphium/compare/v0.15.1...v0.15.2) - 2026-06-08
+
+- [feat] Add in-document find (Cmd+F) with highlighted matches by @kumagallium in https://github.com/kumagallium/Graphium/pull/435
+
 ## [v0.15.1](https://github.com/kumagallium/Graphium/compare/v0.15.0...v0.15.1) - 2026-06-06
 
 - [fix] Prevent stale sidecar reuse after auto-update (404 on new routes) by @kumagallium in https://github.com/kumagallium/Graphium/pull/433
