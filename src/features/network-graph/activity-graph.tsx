@@ -1,20 +1,23 @@
 // ──────────────────────────────────────────────
 // Activity グラフ（ノードエディタ的なリンク試作）
 //
-// 方針（2026-06 改訂）:
+// 方針（2026-06 改訂 2）:
 //   実データでは activity 同士は直接つながらず、必ず output entity を挟む
-//   （A →generated→ Entity →used→ B）。informed_by を張っても生成側で
-//   entity 経由に展開され、無ければ仮 entity が挿入される。
+//   （A →generated→ Entity →used→ B）。さらに 1 つの output は
+//   複数の手順から used されうる（fan-out）。
 //
-//   そこでグラフ上の操作も「activity の出力ポート → 別 activity の入力ポート」
-//   へドラッグしたら、間に output entity を【自動補完】して
-//   generated / used の 2 本を張る、という 1 ジェスチャに固定する。
-//   関係種ピッカーは不要。entity は見える・名前を付けられるノードになる。
+//   そこでモデルを「output は activity が所有」「used は何本でも張れる」に分け、
+//   グラフ操作を次の 1 ジェスチャに固定する:
+//     - 手順 A の出力ポート → 手順 B の入力ポートへドラッグ
+//         · A に output があれば【再利用】して B へ used を足す
+//         · 無ければ output を【自動補完】して generated + used を張る
+//     - output ノード → 手順 B へドラッグ = その output から used を足す（fan-out）
+//   関係種ピッカーは不要。output は見える・名前を付けられるノードになる。
 //
 //   （描画は @xyflow/react。既存の読み取り専用グラフは cytoscape のまま別物）
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -32,46 +35,50 @@ import "@xyflow/react/dist/style.css";
 // ── テーマカラー（context-label のラベル配色準拠）──
 const ACTIVITY_COLOR = "#5b8fb9"; // procedure（青）
 const ACTIVITY_BORDER = "#4a7da6";
-const ENTITY_COLOR = "#c26356"; // output / result（赤系）
-const ENTITY_BORDER = "#a44d42";
+const OUTPUT_COLOR = "#c26356"; // output / result（赤系）
+const OUTPUT_BORDER = "#a44d42";
 const PORT_COLOR = "#5b8fb9";
 const GENERATED_COLOR = "#c26356"; // wasGeneratedBy
 const USED_COLOR = "#4B7A52"; // used
 
 export type ActivityNode = {
-  /** blockId */
-  id: string;
-  /** 連番プレフィックス除去済みの activity 名 */
-  name: string;
+  id: string; // blockId
+  name: string; // 連番プレフィックス除去済みの activity 名
   phase?: "plan" | "result";
 };
 
-/**
- * activity 間の 1 操作。実体は A →generated→ [output entity] →used→ B。
- * outputLabel は補完された output entity のラベル（名前を付けられる）。
- */
-export type Operation = {
+/** activity が所有する output entity */
+export type OutputEntity = {
   id: string;
-  from: string; // 生成側 activity（blockId）
-  to: string; // 使用側 activity（blockId）
-  outputLabel: string;
+  owner: string; // 生成元 activity（blockId）
+  label: string;
+};
+
+/** output → activity の used 関係（fan-out で複数張れる） */
+export type UseEdge = {
+  id: string;
+  outputId: string;
+  consumer: string; // 使用側 activity（blockId）
 };
 
 export type ActivityGraphProps = {
   activities: ActivityNode[];
-  operations: Operation[];
-  /** activity → activity のドラッグ接続（間に output entity を補完する） */
-  onCreateOperation?: (from: string, to: string) => void;
-  /** エッジ or entity クリックで操作ごと削除 */
-  onRemoveOperation?: (id: string) => void;
+  outputs: OutputEntity[];
+  uses: UseEdge[];
+  /** 手順 A → 手順 B のドラッグ（A の output を再利用 or 補完して used を張る） */
+  onLinkActivities?: (from: string, to: string) => void;
+  /** output → 手順 B のドラッグ（fan-out: used を足す） */
+  onLinkOutput?: (outputId: string, to: string) => void;
+  /** used エッジ削除 */
+  onRemoveUse?: (useId: string) => void;
 };
 
 // ── カスタムノード ──
 type ActivityNodeData = { name: string };
-type EntityNodeData = { label: string };
+type OutputNodeData = { label: string };
 type ActivityFlowNode = Node<ActivityNodeData, "activity">;
-type EntityFlowNode = Node<EntityNodeData, "entity">;
-type FlowNode = ActivityFlowNode | EntityFlowNode;
+type OutputFlowNode = Node<OutputNodeData, "output">;
+type FlowNode = ActivityFlowNode | OutputFlowNode;
 
 const PORT_STYLE = {
   width: 12,
@@ -95,51 +102,52 @@ function ActivityNodeView({ data }: NodeProps<ActivityFlowNode>) {
         textAlign: "center",
       }}
     >
-      {/* 上: 入力ポート（前工程の output を受ける） */}
       <Handle type="target" position={Position.Top} style={PORT_STYLE} />
       {data.name}
-      {/* 下: 出力ポート（ここを掴んでドラッグ） */}
       <Handle type="source" position={Position.Bottom} style={PORT_STYLE} />
     </div>
   );
 }
 
-function EntityNodeView({ data }: NodeProps<EntityFlowNode>) {
+function OutputNodeView({ data }: NodeProps<OutputFlowNode>) {
   return (
     <div
       style={{
-        background: ENTITY_COLOR,
-        border: `2px solid ${ENTITY_BORDER}`,
+        background: OUTPUT_COLOR,
+        border: `2px solid ${OUTPUT_BORDER}`,
         borderRadius: 999,
         color: "#ffffff",
         fontSize: 11,
         fontWeight: 600,
         padding: "5px 12px",
         textAlign: "center",
-        opacity: 0.95,
       }}
-      title="自動補完された output entity（クリックで削除）"
+      title="output entity（下のポートから別の手順へ used を増やせる / 自動補完）"
     >
-      {/* entity は自動補完されるので手動接続は不可（isConnectable=false） */}
+      {/* 上: owner からの generated を受ける（自動なので手動接続不可） */}
       <Handle type="target" position={Position.Top} style={PORT_STYLE} isConnectable={false} />
       ⬡ {data.label}
-      <Handle type="source" position={Position.Bottom} style={PORT_STYLE} isConnectable={false} />
+      {/* 下: ここから別の手順へ used を伸ばせる（fan-out） */}
+      <Handle type="source" position={Position.Bottom} style={PORT_STYLE} />
     </div>
   );
 }
 
-const nodeTypes = { activity: ActivityNodeView, entity: EntityNodeView };
+const nodeTypes = { activity: ActivityNodeView, output: OutputNodeView };
 
 export function ActivityGraph({
   activities,
-  operations,
-  onCreateOperation,
-  onRemoveOperation,
+  outputs,
+  uses,
+  onLinkActivities,
+  onLinkOutput,
+  onRemoveUse,
 }: ActivityGraphProps) {
   const activityIds = useMemo(() => new Set(activities.map((a) => a.id)), [activities]);
+  const outputIds = useMemo(() => new Set(outputs.map((o) => o.id)), [outputs]);
   const posY = useMemo(() => {
     const m = new Map<string, number>();
-    activities.forEach((a, i) => m.set(a.id, i * 170));
+    activities.forEach((a, i) => m.set(a.id, i * 160));
     return m;
   }, [activities]);
 
@@ -164,58 +172,70 @@ export function ActivityGraph({
     );
   }, [activities, posY, setActNodes]);
 
-  // 各 operation を「entity ノード + generated/used エッジ 2 本」に展開
-  const entityNodes: EntityFlowNode[] = operations.map((op) => {
-    const yFrom = posY.get(op.from) ?? 0;
-    const yTo = posY.get(op.to) ?? 0;
-    return {
-      id: `ent-${op.id}`,
-      type: "entity",
-      position: { x: 340, y: (yFrom + yTo) / 2 + 20 },
-      data: { label: op.outputLabel },
-    };
-  });
+  // output ノードは owner の脇に配置（fan-out しやすいよう右に逃がす）
+  const outputNodes: OutputFlowNode[] = useMemo(() => {
+    const perOwner = new Map<string, number>();
+    return outputs.map((o) => {
+      const n = perOwner.get(o.owner) ?? 0;
+      perOwner.set(o.owner, n + 1);
+      return {
+        id: o.id,
+        type: "output" as const,
+        position: { x: 360, y: (posY.get(o.owner) ?? 0) + 55 + n * 70 },
+        data: { label: o.label },
+      };
+    });
+  }, [outputs, posY]);
 
-  const nodes = [...actNodes, ...entityNodes];
+  const nodes = [...actNodes, ...outputNodes];
 
-  const edges: Edge[] = operations.flatMap((op) => {
-    const entId = `ent-${op.id}`;
-    return [
-      {
-        id: `${op.id}-gen`,
-        source: op.from,
-        target: entId,
-        label: "wasGeneratedBy",
-        style: { stroke: GENERATED_COLOR, strokeWidth: 2 },
-        labelStyle: { fill: GENERATED_COLOR, fontSize: 9 },
-        labelBgStyle: { fill: "#fafdf7" },
-        markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR },
-      },
-      {
-        id: `${op.id}-use`,
-        source: entId,
-        target: op.to,
-        label: "used",
-        style: { stroke: USED_COLOR, strokeWidth: 2 },
-        labelStyle: { fill: USED_COLOR, fontSize: 9 },
-        labelBgStyle: { fill: "#fafdf7" },
-        markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR },
-      },
-    ];
-  });
+  // generated: owner → output / used: output → consumer
+  const edges: Edge[] = [
+    ...outputs.map((o) => ({
+      id: `gen-${o.id}`,
+      source: o.owner,
+      target: o.id,
+      label: "wasGeneratedBy",
+      style: { stroke: GENERATED_COLOR, strokeWidth: 2 },
+      labelStyle: { fill: GENERATED_COLOR, fontSize: 9 },
+      labelBgStyle: { fill: "#fafdf7" },
+      markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR },
+    })),
+    ...uses.map((u) => ({
+      id: u.id,
+      source: u.outputId,
+      target: u.consumer,
+      label: "used",
+      style: { stroke: USED_COLOR, strokeWidth: 2 },
+      labelStyle: { fill: USED_COLOR, fontSize: 9 },
+      labelBgStyle: { fill: "#fafdf7" },
+      markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR },
+    })),
+  ];
 
-  // ドラッグ接続: activity → activity のみ受け付け、operation を作る
-  const onConnect = useCallback(
-    (c: Connection) => {
-      if (!c.source || !c.target || c.source === c.target) return;
-      if (!activityIds.has(c.source) || !activityIds.has(c.target)) return;
-      onCreateOperation?.(c.source, c.target);
+  // 接続の妥当性: 接続先は必ず activity。output の owner 自身へは戻さない。
+  const isValidConnection = useCallback(
+    (c: Connection | Edge) => {
+      if (!c.source || !c.target || c.source === c.target) return false;
+      if (!activityIds.has(c.target)) return false; // 受け口は activity のみ
+      if (outputIds.has(c.source)) {
+        const owner = outputs.find((o) => o.id === c.source)?.owner;
+        return owner !== c.target; // output → その owner へは張らない
+      }
+      return activityIds.has(c.source);
     },
-    [activityIds, onCreateOperation],
+    [activityIds, outputIds, outputs],
   );
 
-  // entity / エッジクリックで対応する operation を削除
-  const opIdFromEdge = (edgeId: string) => edgeId.replace(/-(gen|use)$/, "");
+  // ドラッグ確定: 起点が activity なら手順リンク、output なら fan-out
+  const onConnect = useCallback(
+    (c: Connection) => {
+      if (!c.source || !c.target || !activityIds.has(c.target)) return;
+      if (activityIds.has(c.source)) onLinkActivities?.(c.source, c.target);
+      else if (outputIds.has(c.source)) onLinkOutput?.(c.source, c.target);
+    },
+    [activityIds, outputIds, onLinkActivities, onLinkOutput],
+  );
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -225,9 +245,10 @@ export function ActivityGraph({
         nodeTypes={nodeTypes}
         onNodesChange={onActNodesChange}
         onConnect={onConnect}
-        onEdgeClick={(_, edge) => onRemoveOperation?.(opIdFromEdge(edge.id))}
-        onNodeClick={(_, node) => {
-          if (node.type === "entity") onRemoveOperation?.(node.id.replace(/^ent-/, ""));
+        isValidConnection={isValidConnection}
+        onEdgeClick={(_, edge) => {
+          if (edge.id.startsWith("gen-")) return; // generated は output 由来なので消さない
+          onRemoveUse?.(edge.id);
         }}
         fitView
         fitViewOptions={{ padding: 0.3 }}
@@ -245,12 +266,12 @@ export function ActivityGraph({
           fontSize: 12,
           color: "#6b7f6e",
           pointerEvents: "none",
-          maxWidth: 360,
+          maxWidth: 380,
           lineHeight: 1.5,
         }}
       >
-        手順ノード下の青い丸 → 別の手順の上の丸へドラッグすると、
-        間に output entity（⬡ 赤）が自動で挟まり generated / used が張られます
+        手順下の青い丸 → 別の手順の上の丸へドラッグ。output が無ければ自動補完、
+        既にあれば再利用。output 下の丸から別の手順へ伸ばすと used を足せます（fan-out）
       </div>
     </div>
   );
