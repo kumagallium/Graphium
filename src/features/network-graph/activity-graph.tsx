@@ -12,7 +12,7 @@
 //     - output ノード → 手順 B へドラッグ = used を足す（fan-out）
 //   関係種ピッカーは不要。output は見える・名前を付けられるノードになる。
 //
-//   配置は dagre による自動レイアウト（縦スパイン）。activity の文書順は
+//   配置は静的 PROV グラフ（view.tsx）と同じ ELK layered。activity の文書順は
 //   隠しシーケンス辺で保ち、output はその間のランクに収まる。
 //   （描画は @xyflow/react。既存の読み取り専用グラフは cytoscape のまま別物）
 // ──────────────────────────────────────────────
@@ -20,6 +20,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   Handle,
   Position,
   MarkerType,
@@ -30,8 +32,11 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import dagre from "@dagrejs/dagre";
+import ELK from "elkjs/lib/elk.bundled.js";
 import { t } from "../../i18n";
+
+// 静的 PROV グラフ（view.tsx）と同じレイアウトエンジン・同じパラメータで揃える
+const elk = new ELK();
 
 // ── テーマカラー（context-label のラベル配色準拠）──
 const ACTIVITY_COLOR = "#5b8fb9"; // procedure（青）
@@ -42,7 +47,7 @@ const PORT_COLOR = "#5b8fb9";
 const GENERATED_COLOR = "#c26356"; // wasGeneratedBy
 const USED_COLOR = "#4B7A52"; // used
 
-// dagre 用のノードサイズ概算（静的 PROV グラフの密度に寄せて小型）
+// ELK 用のノードサイズ概算（静的 PROV グラフの密度に寄せて小型）
 const SIZE = {
   activity: { w: 84, h: 28 },
   outputEntity: { w: 116, h: 24 },
@@ -148,49 +153,54 @@ function OutputNodeView({ data }: NodeProps<OutputFlowNode>) {
 const nodeTypes = { activity: ActivityNodeView, outputEntity: OutputNodeView };
 
 /**
- * dagre で縦スパインに自動配置する。
+ * ELK layered で配置する（静的 PROV グラフ view.tsx と同じエンジン・同じパラメータ）。
  * - generated（owner→output）/ used（output→consumer）を辺として与える
- * - activity 同士は文書順を保つため隠しシーケンス辺を高 weight で与える（描画はしない）
+ * - activity 同士は文書順を保つため隠しシーケンス辺を与える（描画はしない）
  */
-function layout(
+async function layout(
   activities: ActivityNode[],
   outputs: OutputEntity[],
   uses: UseEdge[],
-): FlowNode[] {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "TB", nodesep: 28, ranksep: 44 });
-  g.setDefaultEdgeLabel(() => ({}));
-
-  for (const a of activities) g.setNode(a.id, { ...SIZE.activity });
-  for (const o of outputs) g.setNode(o.id, { ...SIZE.outputEntity });
-
-  for (const o of outputs) g.setEdge(o.owner, o.id);
-  for (const u of uses) g.setEdge(u.outputId, u.consumer);
-  // 文書順維持（隠し辺・描画しない）
+): Promise<FlowNode[]> {
+  const children = [
+    ...activities.map((a) => ({ id: a.id, width: SIZE.activity.w, height: SIZE.activity.h })),
+    ...outputs.map((o) => ({ id: o.id, width: SIZE.outputEntity.w, height: SIZE.outputEntity.h })),
+  ];
+  const edges: { id: string; sources: string[]; targets: string[] }[] = [
+    ...outputs.map((o) => ({ id: `el-gen-${o.id}`, sources: [o.owner], targets: [o.id] })),
+    ...uses.map((u) => ({ id: `el-use-${u.id}`, sources: [u.outputId], targets: [u.consumer] })),
+  ];
   for (let i = 0; i < activities.length - 1; i++) {
-    g.setEdge(activities[i].id, activities[i + 1].id, { weight: 20, minlen: 1 });
+    edges.push({ id: `el-seq-${i}`, sources: [activities[i].id], targets: [activities[i + 1].id] });
   }
 
-  dagre.layout(g);
+  const res = await elk.layout({
+    id: "root",
+    layoutOptions: {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.spacing.nodeNode": "40",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "60",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "30",
+    },
+    children,
+    edges,
+  });
 
-  const toNode = (
+  const pos = new Map((res.children ?? []).map((c: any) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
+  const mk = (
     id: string,
     type: "activity" | "outputEntity",
     data: ActivityNodeData | OutputNodeData,
-  ): FlowNode => {
-    const n = g.node(id);
-    const s = SIZE[type];
-    const pos = n ? { x: n.x - s.w / 2, y: n.y - s.h / 2 } : { x: 0, y: 0 };
-    return { id, type, position: pos, data } as FlowNode;
-  };
+  ): FlowNode => ({ id, type, position: pos.get(id) ?? { x: 0, y: 0 }, data }) as FlowNode;
 
   return [
-    ...activities.map((a) => toNode(a.id, "activity", { name: a.name })),
-    ...outputs.map((o) => toNode(o.id, "outputEntity", { label: o.label })),
+    ...activities.map((a) => mk(a.id, "activity", { name: a.name })),
+    ...outputs.map((o) => mk(o.id, "outputEntity", { label: o.label })),
   ];
 }
 
-export function ActivityGraph({
+function ActivityGraphInner({
   activities,
   outputs,
   uses,
@@ -201,30 +211,43 @@ export function ActivityGraph({
   const activityIds = useMemo(() => new Set(activities.map((a) => a.id)), [activities]);
   const outputIds = useMemo(() => new Set(outputs.map((o) => o.id)), [outputs]);
 
-  // dagre 自動配置。グラフが変わるたびに再レイアウト。
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(
-    layout(activities, outputs, uses),
-  );
+  // ELK 自動配置（非同期）。グラフが変わるたびに再レイアウトし、完了後に fit する。
+  const { fitView } = useReactFlow();
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   useEffect(() => {
-    setNodes(layout(activities, outputs, uses));
-  }, [activities, outputs, uses, setNodes]);
+    let cancelled = false;
+    void layout(activities, outputs, uses).then((laid) => {
+      if (cancelled) return;
+      setNodes(laid);
+      requestAnimationFrame(() => {
+        try {
+          fitView({ padding: 0.2, duration: 200 });
+        } catch {
+          /* fitView 前にアンマウントされた場合は無視 */
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activities, outputs, uses, setNodes, fitView]);
 
   // generated: owner → output / used: output → consumer
-  // 静的 PROV グラフに合わせ、種別は色で表現する（テキストラベルは載せない）
+  // 静的 PROV グラフに合わせ、種別は色で表現（テキストラベルなし）・width 2・小さめ三角矢印
   const edges: Edge[] = [
     ...outputs.map((o) => ({
       id: `gen-${o.id}`,
       source: o.owner,
       target: o.id,
-      style: { stroke: GENERATED_COLOR, strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR, width: 14, height: 14 },
+      style: { stroke: GENERATED_COLOR, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR, width: 16, height: 16 },
     })),
     ...uses.map((u) => ({
       id: u.id,
       source: u.outputId,
       target: u.consumer,
-      style: { stroke: USED_COLOR, strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR, width: 14, height: 14 },
+      style: { stroke: USED_COLOR, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR, width: 16, height: 16 },
     })),
   ];
 
@@ -289,5 +312,14 @@ export function ActivityGraph({
         </div>
       )}
     </div>
+  );
+}
+
+// useReactFlow（fitView）を使うため Provider でラップする
+export function ActivityGraph(props: ActivityGraphProps) {
+  return (
+    <ReactFlowProvider>
+      <ActivityGraphInner {...props} />
+    </ReactFlowProvider>
   );
 }
