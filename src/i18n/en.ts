@@ -636,6 +636,8 @@ export const en: Record<string, string> = {
   "provPanel.attrLegend": "Parameter",
   "provPanel.graphStats": "{nodes} nodes · {relations} relations",
   "provPanel.expandView": "Expand view",
+  "provPanel.viewProv": "PROV",
+  "provPanel.viewEdit": "Edit",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

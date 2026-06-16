@@ -636,6 +636,8 @@ export const ja: Record<string, string> = {
   "provPanel.attrLegend": "パラメータ",
   "provPanel.graphStats": "{nodes} ノード · {relations} リレーション",
   "provPanel.expandView": "拡大表示",
+  "provPanel.viewProv": "PROV",
+  "provPanel.viewEdit": "編集",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",
