@@ -96,11 +96,12 @@ describe("summarizeNoteProv: ラベル完備", () => {
     expect(summary.title).toBe("test-note");
     expect(summary.activities).toHaveLength(2);
 
-    const cut = summary.activities.find((a) => a.label === "1. 具材を切る");
+    // activity 名は連番プレフィックスを除いた形になる（deriveActivityName）
+    const cut = summary.activities.find((a) => a.label === "具材を切る");
     expect(cut?.inputs).toEqual(["にんじん、じゃがいも"]);
     expect(cut?.tools).toEqual([]);
 
-    const fry = summary.activities.find((a) => a.label === "2. 炒める");
+    const fry = summary.activities.find((a) => a.label === "炒める");
     expect(fry?.tools).toEqual(["フライパン"]);
     expect(fry?.outputs).toEqual(["カレー完成"]);
   });
@@ -108,7 +109,7 @@ describe("summarizeNoteProv: ラベル完備", () => {
   it("[属性] を parameters として Activity に紐づけ、key/value に分離する", () => {
     const doc = makeDoc([{ blocks: fullBlocks, labels: fullLabels }]);
     const summary = summarizeNoteProv(doc);
-    const fry = summary.activities.find((a) => a.label === "2. 炒める");
+    const fry = summary.activities.find((a) => a.label === "炒める");
     expect(fry?.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "火力", value: "中火" }),
