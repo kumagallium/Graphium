@@ -637,7 +637,8 @@ export const en: Record<string, string> = {
   "provPanel.graphStats": "{nodes} nodes · {relations} relations",
   "provPanel.expandView": "Expand view",
   "provPanel.viewProv": "PROV",
-  "provPanel.viewEdit": "Edit",
+  "provPanel.viewFlow": "Flow",
+  "activityGraph.dragHint": "Drag from a step's bottom port onto another step to connect them",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

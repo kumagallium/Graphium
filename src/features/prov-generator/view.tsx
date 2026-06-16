@@ -725,9 +725,9 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
       <button
         onClick={() => setView("edit")}
         style={viewToggleBtnStyle(view === "edit")}
-        title={t("provPanel.viewEdit")}
+        title={t("provPanel.viewFlow")}
       >
-        <Workflow size={13} /> {t("provPanel.viewEdit")}
+        <Workflow size={13} /> {t("provPanel.viewFlow")}
       </button>
     </div>
   );

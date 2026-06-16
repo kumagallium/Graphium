@@ -20,7 +20,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
-  Background,
   Handle,
   Position,
   MarkerType,
@@ -32,20 +31,21 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
+import { t } from "../../i18n";
 
 // ── テーマカラー（context-label のラベル配色準拠）──
 const ACTIVITY_COLOR = "#5b8fb9"; // procedure（青）
 const ACTIVITY_BORDER = "#4a7da6";
 const OUTPUT_COLOR = "#c26356"; // output / result（赤系）
-const OUTPUT_BORDER = "#a44d42";
+const OUTPUT_BORDER = "#a8513f"; // design.md グラフ可視化 [結果] ボーダー
 const PORT_COLOR = "#5b8fb9";
 const GENERATED_COLOR = "#c26356"; // wasGeneratedBy
 const USED_COLOR = "#4B7A52"; // used
 
-// dagre 用のノードサイズ概算
+// dagre 用のノードサイズ概算（静的 PROV グラフの密度に寄せて小型）
 const SIZE = {
-  activity: { w: 120, h: 46 },
-  outputEntity: { w: 150, h: 30 },
+  activity: { w: 84, h: 28 },
+  outputEntity: { w: 116, h: 24 },
 } as const;
 
 export type ActivityNode = {
@@ -90,25 +90,27 @@ type OutputFlowNode = Node<OutputNodeData, "outputEntity">;
 type FlowNode = ActivityFlowNode | OutputFlowNode;
 
 const PORT_STYLE = {
-  width: 12,
-  height: 12,
+  width: 9,
+  height: 9,
   background: PORT_COLOR,
-  border: "2px solid #ffffff",
+  border: "1.5px solid #ffffff",
 };
 
+// design.md グラフ可視化トークン準拠:
+//   Activity [手順] = 楕円（ピル）/ 青、Entity [結果] = 丸四角 / 赤。白文字。
 function ActivityNodeView({ data }: NodeProps<ActivityFlowNode>) {
   return (
     <div
       style={{
         background: ACTIVITY_COLOR,
-        border: `2px solid ${ACTIVITY_BORDER}`,
-        borderRadius: 10,
+        border: `1.5px solid ${ACTIVITY_BORDER}`,
+        borderRadius: 999,
         color: "#ffffff",
-        fontSize: 13,
+        fontSize: 11,
         fontWeight: 600,
-        padding: "10px 16px",
-        minWidth: 92,
+        padding: "4px 12px",
         textAlign: "center",
+        whiteSpace: "nowrap",
       }}
     >
       <Handle type="target" position={Position.Top} style={PORT_STYLE} />
@@ -123,20 +125,20 @@ function OutputNodeView({ data }: NodeProps<OutputFlowNode>) {
     <div
       style={{
         background: OUTPUT_COLOR,
-        border: `2px solid ${OUTPUT_BORDER}`,
-        borderRadius: 999,
+        border: `1.5px solid ${OUTPUT_BORDER}`,
+        borderRadius: 6,
         color: "#ffffff",
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: 600,
-        padding: "5px 12px",
+        padding: "3px 9px",
         textAlign: "center",
         whiteSpace: "nowrap",
       }}
-      title="output entity（下のポートから別の手順へ used を増やせる / 自動補完）"
+      title={data.label}
     >
       {/* 上: owner からの generated を受ける（自動なので手動接続不可） */}
       <Handle type="target" position={Position.Top} style={PORT_STYLE} isConnectable={false} />
-      ⬡ {data.label}
+      {data.label}
       {/* 下: ここから別の手順へ used を伸ばせる（fan-out） */}
       <Handle type="source" position={Position.Bottom} style={PORT_STYLE} />
     </div>
@@ -156,7 +158,7 @@ function layout(
   uses: UseEdge[],
 ): FlowNode[] {
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "TB", nodesep: 50, ranksep: 78 });
+  g.setGraph({ rankdir: "TB", nodesep: 28, ranksep: 44 });
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const a of activities) g.setNode(a.id, { ...SIZE.activity });
@@ -208,26 +210,21 @@ export function ActivityGraph({
   }, [activities, outputs, uses, setNodes]);
 
   // generated: owner → output / used: output → consumer
+  // 静的 PROV グラフに合わせ、種別は色で表現する（テキストラベルは載せない）
   const edges: Edge[] = [
     ...outputs.map((o) => ({
       id: `gen-${o.id}`,
       source: o.owner,
       target: o.id,
-      label: "wasGeneratedBy",
-      style: { stroke: GENERATED_COLOR, strokeWidth: 2 },
-      labelStyle: { fill: GENERATED_COLOR, fontSize: 9 },
-      labelBgStyle: { fill: "#fafdf7" },
-      markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR },
+      style: { stroke: GENERATED_COLOR, strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: GENERATED_COLOR, width: 14, height: 14 },
     })),
     ...uses.map((u) => ({
       id: u.id,
       source: u.outputId,
       target: u.consumer,
-      label: "used",
-      style: { stroke: USED_COLOR, strokeWidth: 2 },
-      labelStyle: { fill: USED_COLOR, fontSize: 9 },
-      labelBgStyle: { fill: "#fafdf7" },
-      markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR },
+      style: { stroke: USED_COLOR, strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: USED_COLOR, width: 14, height: 14 },
     })),
   ];
 
@@ -269,28 +266,28 @@ export function ActivityGraph({
           onRemoveUse?.(edge.id);
         }}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.25 }}
         proOptions={{ hideAttribution: true }}
         style={{ background: "#fafdf7", borderRadius: 8 }}
-      >
-        <Background color="#dde7df" gap={20} />
-      </ReactFlow>
+      />
 
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          left: 12,
-          fontSize: 12,
-          color: "#6b7f6e",
-          pointerEvents: "none",
-          maxWidth: 380,
-          lineHeight: 1.5,
-        }}
-      >
-        手順下の青い丸 → 別の手順の上の丸へドラッグ。output が無ければ自動補完、
-        既にあれば再利用。output 下の丸から別の手順へ伸ばすと used を足せます（fan-out）
-      </div>
+      {/* 空状態のときだけ控えめに使い方を示す（つなぎが 1 本でもあれば隠す） */}
+      {uses.length === 0 && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 10,
+            left: 0,
+            right: 0,
+            textAlign: "center",
+            fontSize: 12,
+            color: "#8fa394", // text-tertiary（design.md）
+            pointerEvents: "none",
+          }}
+        >
+          {t("activityGraph.dragHint")}
+        </div>
+      )}
     </div>
   );
 }
