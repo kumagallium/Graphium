@@ -1,23 +1,21 @@
 // ──────────────────────────────────────────────
-// provDoc（生成済み PROV-JSON-LD）→ ActivityGraph 用データへの変換。
+// provDoc（生成済み PROV-JSON-LD）→ 手順フローグラフ用データへの変換。
 //
-// 実データの PROV は activity 同士を直接つながず、必ず output entity を挟む
-// （A →wasGeneratedBy← Entity →used→ B）。生成側が既存 output を proxy にしたり
-// 仮 entity を挿入したりした結果がそのまま provDoc に出るので、それを読むだけで
-// activity / output / used の関係が得られる。
+// 実 PROV では手順間に output entity が挟まる（A →wasGeneratedBy← Entity →used→ B）が、
+// 手順フロービューでは output を描かず「手順依存 A → B」に畳む。
+// すなわち wasGeneratedBy(O, A) かつ used(B, O) のとき、手順エッジ A → B を 1 本立てる。
 // ──────────────────────────────────────────────
 
 import { extractRelations, type ProvJsonLd } from "../prov-generator/generator";
-import type { ActivityNode, OutputEntity, UseEdge } from "./activity-graph";
+import type { ActivityNode, StepEdge } from "./activity-graph";
 
-export type ActivityGraphData = {
+export type StepGraphData = {
   activities: ActivityNode[];
-  outputs: OutputEntity[];
-  uses: UseEdge[];
+  steps: StepEdge[];
 };
 
-export function provDocToActivityGraph(doc: ProvJsonLd | null): ActivityGraphData {
-  if (!doc) return { activities: [], outputs: [], uses: [] };
+export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
+  if (!doc) return { activities: [], steps: [] };
   const graph = doc["@graph"];
 
   // Activity ノード（id は blockId に正規化＝リンク書き込みでそのまま使える）
@@ -30,36 +28,30 @@ export function provDocToActivityGraph(doc: ProvJsonLd | null): ActivityGraphDat
     activities.push({ id: blockId, name: n["rdfs:label"] || "(無題)" });
   }
 
-  const nodeById = new Map(graph.map((n) => [n["@id"], n]));
   const relations = extractRelations(doc);
 
-  // output entity = wasGeneratedBy(from=entity, to=activity) の entity。owner = activity。
-  const outputs: OutputEntity[] = [];
-  const ownerOf = new Map<string, string>(); // entity @id → owner blockId
+  // entity @id → 生成元 activity（blockId）
+  const ownerOf = new Map<string, string>();
   for (const r of relations) {
     if (r["@type"] !== "prov:wasGeneratedBy") continue;
-    if (ownerOf.has(r.from)) continue; // 同一 entity の複数生成元は最初を採用
+    if (ownerOf.has(r.from)) continue;
     const ownerBlockId = activityBlockId.get(r.to);
-    if (!ownerBlockId) continue;
-    ownerOf.set(r.from, ownerBlockId);
-    outputs.push({
-      id: r.from,
-      owner: ownerBlockId,
-      label: nodeById.get(r.from)?.["rdfs:label"] || "出力",
-    });
+    if (ownerBlockId) ownerOf.set(r.from, ownerBlockId);
   }
 
-  // used = used(from=activity B, to=entity)。entity が output のものだけ採用
-  //（材料/ツールなど「生成されていない入力 entity」はこのビューでは描かない）。
-  const uses: UseEdge[] = [];
-  let i = 0;
+  // used(B, entity) で entity が output なら、手順エッジ owner(entity) → B に畳む（重複排除）
+  const steps: StepEdge[] = [];
+  const seen = new Set<string>();
   for (const r of relations) {
     if (r["@type"] !== "prov:used") continue;
-    if (!ownerOf.has(r.to)) continue; // output 以外は除外
-    const consumerBlockId = activityBlockId.get(r.from);
-    if (!consumerBlockId) continue;
-    uses.push({ id: `use-${i++}-${r.to}->${consumerBlockId}`, outputId: r.to, consumer: consumerBlockId });
+    const producer = ownerOf.get(r.to);
+    const consumer = activityBlockId.get(r.from);
+    if (!producer || !consumer || producer === consumer) continue;
+    const key = `${producer}->${consumer}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    steps.push({ id: `step-${key}`, from: producer, to: consumer });
   }
 
-  return { activities, outputs, uses };
+  return { activities, steps };
 }
