@@ -636,7 +636,7 @@ export const en: Record<string, string> = {
   "provPanel.attrLegend": "Parameter",
   "provPanel.graphStats": "{nodes} nodes · {relations} relations",
   "provPanel.expandView": "Expand view",
-  "provPanel.viewProv": "PROV",
+  "provPanel.viewProv": "Relations",
   "provPanel.viewFlow": "Flow",
   "activityGraph.dragHint": "Drag from a step's bottom port onto another step to connect them",
 

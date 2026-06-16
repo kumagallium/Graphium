@@ -636,7 +636,7 @@ export const ja: Record<string, string> = {
   "provPanel.attrLegend": "パラメータ",
   "provPanel.graphStats": "{nodes} ノード · {relations} リレーション",
   "provPanel.expandView": "拡大表示",
-  "provPanel.viewProv": "PROV",
+  "provPanel.viewProv": "関係図",
   "provPanel.viewFlow": "手順フロー",
   "activityGraph.dragHint": "手順の下のポートから別の手順へドラッグしてつなげます",
 
