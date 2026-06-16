@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.15.3](https://github.com/kumagallium/Graphium/compare/v0.15.2...v0.15.3) - 2026-06-15
+
+- [fix] Prevent native text selection when drag-selecting list rows by @kumagallium in https://github.com/kumagallium/Graphium/pull/438
+
 ## [v0.15.2](https://github.com/kumagallium/Graphium/compare/v0.15.1...v0.15.2) - 2026-06-08
 
 - [feat] Add in-document find (Cmd+F) with highlighted matches by @kumagallium in https://github.com/kumagallium/Graphium/pull/435
