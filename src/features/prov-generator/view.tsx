@@ -323,6 +323,9 @@ export async function applyElkLayout(cy: cytoscape.Core) {
     edges: elkEdges,
   });
 
+  // 非同期レイアウト中に cy が破棄された場合（アンマウント / StrictMode 二重マウント）は中断
+  if (cy.destroyed()) return;
+
   cy.batch(() => {
     for (const elkNode of elkGraph.children ?? []) {
       const node = cy.getElementById(elkNode.id);

@@ -16,10 +16,23 @@ export function ActivityGraphEditor({ doc }: { doc: ProvJsonLd | null }) {
   const linkStore = useLinkStore();
   const { activities, steps } = useMemo(() => provDocToStepGraph(doc), [doc]);
 
+  // 裏に informed_by リンク（source=consumer / target=producer）があるものだけ削除可能。
+  // 本文のラベル由来の手順依存は対応リンクが無いので削除対象外にする。
+  const editableSteps = useMemo(
+    () =>
+      steps.map((s) => ({
+        ...s,
+        deletable: linkStore.links.some(
+          (l) => l.type === "informed_by" && l.sourceBlockId === s.to && l.targetBlockId === s.from,
+        ),
+      })),
+    [steps, linkStore.links],
+  );
+
   return (
     <ActivityGraph
       activities={activities}
-      steps={steps}
+      steps={editableSteps}
       onConnectSteps={(producer, consumer) => {
         // 「A が産み B が使う」= B wasInformedBy A → addLink(source=B, target=A)
         linkStore.addLink({

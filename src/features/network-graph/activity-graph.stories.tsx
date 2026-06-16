@@ -47,7 +47,10 @@ function Demo({ initial }: { initial: StepEdge[] }) {
           setSteps((prev) =>
             prev.some((s) => s.from === producer && s.to === consumer)
               ? prev
-              : [...prev, { id: `step-${counter.current}`, from: producer, to: consumer }],
+              : [
+                  ...prev,
+                  { id: `step-${counter.current}`, from: producer, to: consumer, deletable: true },
+                ],
           );
         }}
         onRemoveStep={(id) => setSteps((prev) => prev.filter((s) => s.id !== id))}
@@ -79,5 +82,5 @@ export const Empty: Story = {
 
 // 既存の手順依存が 1 本ある状態（具材を切る → 炒める）
 export const WithExistingStep: Story = {
-  render: () => <Demo initial={[{ id: "step-0", from: "h-cut", to: "h-fry" }]} />,
+  render: () => <Demo initial={[{ id: "step-0", from: "h-cut", to: "h-fry", deletable: true }]} />,
 };

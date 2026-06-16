@@ -1,46 +1,29 @@
 // ──────────────────────────────────────────────
 // 手順フローグラフ（ノードエディタ的なリンク）
 //
-// 方針（2026-06-16 改訂 4）:
-//   このビューは「手順の流れ」だけを操作する場にする。
-//   実 PROV では手順間に必ず output entity が挟まるが、その紐づけは PROV ビューに任せ、
-//   ここでは手順ノード同士を直接つなぐ手順依存（A → B）だけを描く・編集する。
-//   ドラッグは informed_by を書き、生成側が PROV 側で output 経由に展開する。
+// 方針（2026-06-16 改訂 5）:
+//   関係図ビュー（view.tsx）と**完全に同じ Cytoscape** で描く（見た目を一致させる）。
+//   ノード/エッジスタイル・ELK レイアウトは view.tsx の cyStyles / applyElkLayout を流用。
+//   このビューは手順ノードと手順依存（wasInformedBy）だけを描く。output entity は関係図側。
 //
-//   配置・エッジスタイルは静的 PROV グラフ（view.tsx）と同じ ELK layered に揃える。
-//   （描画は @xyflow/react。既存の読み取り専用 PROV グラフは Cytoscape のまま別物）
+//   編集:
+//   - 追加: cytoscape-edgehandles のドラッグ接続 → informed_by を書き込む
+//   - 削除: 手順依存エッジをクリック（informed_by リンクが裏にあるものだけ削除可能）
 // ──────────────────────────────────────────────
 
-import { useCallback, useEffect, useMemo } from "react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  Handle,
-  Position,
-  MarkerType,
-  useNodesState,
-  type Node,
-  type Edge,
-  type Connection,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import ELK from "elkjs/lib/elk.bundled.js";
+import { useEffect, useRef } from "react";
+import cytoscape from "cytoscape";
+import edgehandles from "cytoscape-edgehandles";
+import { cyStyles, applyElkLayout } from "../prov-generator/view";
 import { t } from "../../i18n";
 
-// 静的 PROV グラフ（view.tsx）と同じレイアウトエンジン・同じパラメータで揃える
-const elk = new ELK();
-
-// ── テーマカラー（design.md グラフ可視化トークン準拠）──
-const ACTIVITY_COLOR = "#5b8fb9"; // [手順]（青）
-const ACTIVITY_BORDER = "#4a7da6";
-const PORT_COLOR = "#5b8fb9";
-const STEP_EDGE_COLOR = "#5b8fb9"; // wasInformedBy（手順依存）
-
-// ELK 用のノードサイズ概算（静的 PROV グラフの密度に寄せて小型）
-const NODE_W = 84;
-const NODE_H = 28;
+// edgehandles の登録（重複防止）
+let ehRegistered = false;
+function ensureEdgehandles() {
+  if (ehRegistered) return;
+  cytoscape.use(edgehandles);
+  ehRegistered = true;
+}
 
 export type ActivityNode = {
   id: string; // blockId
@@ -53,6 +36,8 @@ export type StepEdge = {
   id: string;
   from: string; // 生成側 activity（blockId）
   to: string; // 使用側 activity（blockId）
+  /** 裏に informed_by リンクがあり、このビューから削除できるか */
+  deletable?: boolean;
 };
 
 export type ActivityGraphProps = {
@@ -60,154 +45,148 @@ export type ActivityGraphProps = {
   steps: StepEdge[];
   /** 手順 A（産）→ 手順 B（使）のドラッグ接続 */
   onConnectSteps?: (producer: string, consumer: string) => void;
-  /** 手順エッジ削除 */
+  /** 手順エッジ削除（deletable なものだけ呼ばれる） */
   onRemoveStep?: (stepId: string) => void;
 };
 
-// ── カスタムノード（手順 = 楕円ピル / 青）──
-type ActivityNodeData = { name: string };
-type ActivityFlowNode = Node<ActivityNodeData, "activity">;
-
-const PORT_STYLE = {
-  width: 9,
-  height: 9,
-  background: PORT_COLOR,
-  border: "1.5px solid #ffffff",
-};
-
-function ActivityNodeView({ data }: NodeProps<ActivityFlowNode>) {
-  return (
-    <div
-      style={{
-        background: ACTIVITY_COLOR,
-        border: `1.5px solid ${ACTIVITY_BORDER}`,
-        borderRadius: 999,
-        color: "#ffffff",
-        fontSize: 11,
-        fontWeight: 600,
-        padding: "4px 12px",
-        textAlign: "center",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <Handle type="target" position={Position.Top} style={PORT_STYLE} />
-      {data.name}
-      <Handle type="source" position={Position.Bottom} style={PORT_STYLE} />
-    </div>
-  );
-}
-
-const nodeTypes = { activity: ActivityNodeView };
-
-/**
- * ELK layered で配置する（静的 PROV グラフ view.tsx と同じエンジン・同じパラメータ）。
- * - 手順エッジ（from→to）を辺として与える
- * - 孤立した手順も文書順に並ぶよう、隠しシーケンス辺を与える（描画はしない）
- */
-async function layout(activities: ActivityNode[], steps: StepEdge[]): Promise<ActivityFlowNode[]> {
-  const children = activities.map((a) => ({ id: a.id, width: NODE_W, height: NODE_H }));
-  const edges: { id: string; sources: string[]; targets: string[] }[] = steps.map((s) => ({
-    id: `el-${s.id}`,
-    sources: [s.from],
-    targets: [s.to],
-  }));
-  for (let i = 0; i < activities.length - 1; i++) {
-    edges.push({ id: `el-seq-${i}`, sources: [activities[i].id], targets: [activities[i + 1].id] });
-  }
-
-  const res = await elk.layout({
-    id: "root",
-    layoutOptions: {
-      "elk.algorithm": "layered",
-      "elk.direction": "DOWN",
-      "elk.spacing.nodeNode": "40",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "60",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "30",
+// edgehandles / 削除ホバーのスタイル（cyStyles に追記）
+const EH_STYLES: cytoscape.StylesheetStyle[] = [
+  {
+    selector: ".eh-handle",
+    style: {
+      "background-color": "#5b8fb9",
+      width: 10,
+      height: 10,
+      shape: "ellipse",
+      "border-width": 2,
+      "border-color": "#ffffff",
+      "border-opacity": 1,
     },
-    children,
-    edges,
-  });
+  },
+  {
+    selector: ".eh-preview, .eh-ghost-edge",
+    style: {
+      "line-color": "#5b8fb9",
+      "target-arrow-color": "#5b8fb9",
+      "target-arrow-shape": "triangle",
+      "line-style": "dashed",
+      width: 2,
+    },
+  },
+  // 削除可能なエッジにホバーしたら赤くして「クリックで削除」を示す
+  {
+    selector: "edge.del-hover",
+    style: {
+      "line-color": "#c26356",
+      "target-arrow-color": "#c26356",
+      width: 3.5,
+      "z-index": 20,
+    },
+  },
+];
 
-  const pos = new Map((res.children ?? []).map((c: any) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
-  return activities.map((a) => ({
-    id: a.id,
-    type: "activity" as const,
-    position: pos.get(a.id) ?? { x: 0, y: 0 },
-    data: { name: a.name },
-  }));
-}
-
-function ActivityGraphInner({
+export function ActivityGraph({
   activities,
   steps,
   onConnectSteps,
   onRemoveStep,
 }: ActivityGraphProps) {
-  const activityIds = useMemo(() => new Set(activities.map((a) => a.id)), [activities]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<cytoscape.Core | null>(null);
+  // 最新のコールバックを ref 経由で参照（cy 再初期化を避ける）
+  const cbRef = useRef({ onConnectSteps, onRemoveStep });
+  cbRef.current = { onConnectSteps, onRemoveStep };
 
-  // ELK 自動配置（非同期）。グラフが変わるたびに再レイアウトし、完了後に fit する。
-  const { fitView } = useReactFlow();
-  const [nodes, setNodes, onNodesChange] = useNodesState<ActivityFlowNode>([]);
+  // ── 初期化（マウント時のみ）──
   useEffect(() => {
-    let cancelled = false;
-    void layout(activities, steps).then((laid) => {
-      if (cancelled) return;
-      setNodes(laid);
-      requestAnimationFrame(() => {
-        try {
-          fitView({ padding: 0.2, duration: 200 });
-        } catch {
-          /* fitView 前にアンマウントされた場合は無視 */
-        }
-      });
+    if (!containerRef.current) return;
+    ensureEdgehandles();
+
+    const cy = cytoscape({
+      container: containerRef.current,
+      style: [...cyStyles, ...EH_STYLES],
+      minZoom: 0.2,
+      maxZoom: 4,
+      wheelSensitivity: 0.3,
     });
+    cyRef.current = cy;
+
+    const eh = (cy as any).edgehandles({
+      hoverDelay: 120,
+      snap: true,
+      canConnect: (source: any, target: any) =>
+        source.isNode() &&
+        target.isNode() &&
+        !source.same(target) &&
+        source.edgesTo(target).length === 0,
+      edgeParams: () => ({ data: { label: "wasInformedBy" } }),
+    });
+
+    // ドラッグ接続完了 → プレビューを消し、informed_by 書き込みは親に委ねる
+    cy.on("ehcomplete", (_evt: any, source: any, target: any, added: any) => {
+      added.remove();
+      cbRef.current.onConnectSteps?.(source.id(), target.id());
+    });
+
+    // 削除可能なエッジ: クリックで削除、ホバーで赤表示
+    cy.on("tap", "edge", (evt) => {
+      const edge = evt.target;
+      if (edge.data("deletable")) cbRef.current.onRemoveStep?.(edge.id());
+    });
+    cy.on("mouseover", "edge", (evt) => {
+      const edge = evt.target;
+      if (edge.data("deletable")) {
+        edge.addClass("del-hover");
+        if (containerRef.current) containerRef.current.style.cursor = "pointer";
+      }
+    });
+    cy.on("mouseout", "edge", (evt) => {
+      evt.target.removeClass("del-hover");
+      if (containerRef.current) containerRef.current.style.cursor = "";
+    });
+
     return () => {
-      cancelled = true;
+      eh.destroy();
+      cy.destroy();
+      cyRef.current = null;
     };
-  }, [activities, steps, setNodes, fitView]);
+  }, []);
 
-  // 手順依存エッジ（informed_by 色）。種別は 1 種類なので色も 1 色。
-  const edges: Edge[] = steps.map((s) => ({
-    id: s.id,
-    source: s.from,
-    target: s.to,
-    style: { stroke: STEP_EDGE_COLOR, strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: STEP_EDGE_COLOR, width: 13, height: 13 },
-  }));
-
-  // 接続の妥当性: 手順同士のみ・自己ループ不可・既存の重複不可
-  const isValidConnection = useCallback(
-    (c: Connection | Edge) => {
-      if (!c.source || !c.target || c.source === c.target) return false;
-      if (!activityIds.has(c.source) || !activityIds.has(c.target)) return false;
-      return !steps.some((s) => s.from === c.source && s.to === c.target);
-    },
-    [activityIds, steps],
-  );
-
-  const onConnect = useCallback(
-    (c: Connection) => {
-      if (!c.source || !c.target || c.source === c.target) return;
-      if (!activityIds.has(c.source) || !activityIds.has(c.target)) return;
-      onConnectSteps?.(c.source, c.target);
-    },
-    [activityIds, onConnectSteps],
-  );
+  // ── 要素同期（activities / steps 変化時に再構築 → ELK 再レイアウト）──
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.elements().remove();
+      cy.add(
+        activities.map((a) => ({
+          group: "nodes" as const,
+          data: { id: a.id, label: a.name, subtype: "prov:Activity", type: "prov:Activity" },
+        })),
+      );
+      cy.add(
+        steps
+          .filter((s) => cy.getElementById(s.from).length && cy.getElementById(s.to).length)
+          .map((s) => ({
+            group: "edges" as const,
+            data: {
+              id: s.id,
+              source: s.from,
+              target: s.to,
+              label: "wasInformedBy",
+              deletable: s.deletable ?? false,
+            },
+          })),
+      );
+    });
+    void applyElkLayout(cy);
+  }, [activities, steps]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onConnect={onConnect}
-        isValidConnection={isValidConnection}
-        onEdgeClick={(_, edge) => onRemoveStep?.(edge.id)}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        proOptions={{ hideAttribution: true }}
-        style={{ background: "#fafdf7", borderRadius: 8 }}
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100%", background: "#fafdf7", borderRadius: 8 }}
       />
 
       {/* 空状態のときだけ控えめに使い方を示す（つなぎが 1 本でもあれば隠す） */}
@@ -228,14 +207,5 @@ function ActivityGraphInner({
         </div>
       )}
     </div>
-  );
-}
-
-// useReactFlow（fitView）を使うため Provider でラップする
-export function ActivityGraph(props: ActivityGraphProps) {
-  return (
-    <ReactFlowProvider>
-      <ActivityGraphInner {...props} />
-    </ReactFlowProvider>
   );
 }

@@ -636,8 +636,8 @@ export const en: Record<string, string> = {
   "provPanel.attrLegend": "Parameter",
   "provPanel.graphStats": "{nodes} nodes · {relations} relations",
   "provPanel.expandView": "Expand view",
-  "provPanel.viewProv": "Relations",
-  "provPanel.viewFlow": "Flow",
+  "provPanel.viewProv": "Steps (all)",
+  "provPanel.viewFlow": "Steps (only)",
   "activityGraph.dragHint": "Drag from a step's bottom port onto another step to connect them",
 
   // ── ナビゲーション追加 ──
