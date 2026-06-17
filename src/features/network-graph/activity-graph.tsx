@@ -52,20 +52,29 @@ export type ActivityGraphProps = {
 
 // edgehandles / 削除ホバーのスタイル（cyStyles に追記）
 const EH_STYLES: cytoscape.StylesheetStyle[] = [
+  // 各手順の下に常時表示する接続ハンドル（丸）。掴んでドラッグするとつながる。
   {
-    selector: ".eh-handle",
+    selector: ".porthandle",
     style: {
       "background-color": "#5b8fb9",
-      width: 10,
-      height: 10,
+      width: 13,
+      height: 13,
       shape: "ellipse",
       "border-width": 2,
       "border-color": "#ffffff",
       "border-opacity": 1,
+      opacity: 1,
+      "z-index": 100,
+      events: "yes",
     },
   },
   {
-    selector: ".eh-preview, .eh-ghost-edge",
+    selector: ".porthandle.handle-hover",
+    style: { width: 17, height: 17, "background-color": "#4a7da6" },
+  },
+  // ドラッグ中のプレビュー線
+  {
+    selector: ".eh-preview, .eh-ghost-edge, .eh-presumptive-target",
     style: {
       "line-color": "#5b8fb9",
       "target-arrow-color": "#5b8fb9",
@@ -112,18 +121,35 @@ export function ActivityGraph({
       minZoom: 0.2,
       maxZoom: 4,
       wheelSensitivity: 0.3,
+      autoungrabify: true, // ノードは動かさない（自動レイアウト）。ドラッグは接続専用
     });
     cyRef.current = cy;
 
     const eh = (cy as any).edgehandles({
-      hoverDelay: 120,
       snap: true,
       canConnect: (source: any, target: any) =>
         source.isNode() &&
         target.isNode() &&
         !source.same(target) &&
+        !source.hasClass("porthandle") &&
+        !target.hasClass("porthandle") &&
         source.edgesTo(target).length === 0,
       edgeParams: () => ({ data: { label: "wasInformedBy" } }),
+    });
+
+    // 手順ノード下の丸（porthandle）を掴んだら、その手順から接続を開始する
+    cy.on("tapstart", ".porthandle", (evt) => {
+      const actId = evt.target.data("handleFor");
+      const act = cy.getElementById(actId);
+      if (act.nonempty()) eh.start(act);
+    });
+    cy.on("mouseover", ".porthandle", (evt) => {
+      evt.target.addClass("handle-hover");
+      if (containerRef.current) containerRef.current.style.cursor = "crosshair";
+    });
+    cy.on("mouseout", ".porthandle", (evt) => {
+      evt.target.removeClass("handle-hover");
+      if (containerRef.current) containerRef.current.style.cursor = "";
     });
 
     // ドラッグ接続完了 → プレビューを消し、informed_by 書き込みは親に委ねる
@@ -191,7 +217,20 @@ export function ActivityGraph({
           })),
       );
     });
-    void applyElkLayout(cy);
+    void applyElkLayout(cy).then(() => {
+      if (cy.destroyed()) return;
+      // レイアウト確定後、各手順の下に接続ハンドル（丸）を置く
+      cy.remove(".porthandle");
+      const handles = cy.nodes('[type = "prov:Activity"]').map((n) => ({
+        group: "nodes" as const,
+        data: { id: `__h_${n.id()}`, handleFor: n.id() },
+        classes: "porthandle",
+        position: { x: n.position("x"), y: n.position("y") + (n.outerHeight() || 60) / 2 + 2 },
+        grabbable: false,
+        selectable: false,
+      }));
+      cy.add(handles);
+    });
   }, [activities, steps]);
 
   return (

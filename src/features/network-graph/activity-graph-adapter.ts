@@ -8,6 +8,7 @@
 
 import { extractRelations, type ProvJsonLd } from "../prov-generator/generator";
 import type { ActivityNode, StepEdge } from "./activity-graph";
+import { t } from "../../i18n";
 
 export type StepGraphData = {
   activities: ActivityNode[];
@@ -25,7 +26,7 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
     if (n["@type"] !== "prov:Activity") continue;
     const blockId = n["graphium:blockId"] ?? n["@id"];
     activityBlockId.set(n["@id"], blockId);
-    activities.push({ id: blockId, name: n["rdfs:label"] || "(無題)" });
+    activities.push({ id: blockId, name: n["rdfs:label"] || t("nav.untitled") });
   }
 
   const relations = extractRelations(doc);

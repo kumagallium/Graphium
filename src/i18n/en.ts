@@ -638,7 +638,7 @@ export const en: Record<string, string> = {
   "provPanel.expandView": "Expand view",
   "provPanel.viewProv": "Steps (all)",
   "provPanel.viewFlow": "Steps (only)",
-  "activityGraph.dragHint": "Drag from a step's bottom port onto another step to connect them",
+  "activityGraph.dragHint": "Drag the blue dot under a step onto another step to connect them",
   "activityGraph.deleteStep": "Delete link",
 
   // ── ナビゲーション追加 ──
