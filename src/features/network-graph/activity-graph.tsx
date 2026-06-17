@@ -50,31 +50,32 @@ export type ActivityGraphProps = {
   onRemoveStep?: (stepId: string) => void;
 };
 
-// edgehandles / 削除ホバーのスタイル（cyStyles に追記）
+// edgehandles / 接続ハンドル / 削除ホバーのスタイル（cyStyles に追記）
 const EH_STYLES: cytoscape.StylesheetStyle[] = [
-  // 各手順の下に常時表示する接続ハンドル（丸）。掴んでドラッグするとつながる。
+  // 各手順に常時表示する接続ポート（丸）。上=入力（白抜き）、下=出力（塗り・掴んで接続）。
   {
     selector: ".porthandle",
     style: {
-      "background-color": "#5b8fb9",
-      width: 13,
-      height: 13,
+      width: 12,
+      height: 12,
       shape: "ellipse",
       "border-width": 2,
-      "border-color": "#ffffff",
+      "border-color": "#5b8fb9",
       "border-opacity": 1,
       opacity: 1,
       "z-index": 100,
       events: "yes",
     },
   },
+  { selector: ".porthandle.out", style: { "background-color": "#5b8fb9" } }, // 出力（塗り）
+  { selector: ".porthandle.in", style: { "background-color": "#ffffff" } }, // 入力（白抜き）
   {
-    selector: ".porthandle.handle-hover",
-    style: { width: 17, height: 17, "background-color": "#4a7da6" },
+    selector: ".porthandle.out.handle-hover",
+    style: { width: 16, height: 16, "background-color": "#4a7da6", "border-color": "#4a7da6" },
   },
-  // ドラッグ中のプレビュー線
+  // ドラッグ中のプレビュー線（エッジにだけ当てる。ノードに当てると幅が潰れるため）
   {
-    selector: ".eh-preview, .eh-ghost-edge, .eh-presumptive-target",
+    selector: "edge.eh-ghost-edge, edge.eh-preview",
     style: {
       "line-color": "#5b8fb9",
       "target-arrow-color": "#5b8fb9",
@@ -82,6 +83,11 @@ const EH_STYLES: cytoscape.StylesheetStyle[] = [
       "line-style": "dashed",
       width: 2,
     },
+  },
+  // ドロップ候補ノードのハイライト（横幅は変えず、枠だけ強調）
+  {
+    selector: "node.eh-presumptive-target, node.eh-target",
+    style: { "border-width": 4, "border-color": "#5b8fb9" },
   },
   // 削除可能なエッジにホバーしたら赤くして「クリックで削除」を示す
   {
@@ -125,29 +131,37 @@ export function ActivityGraph({
     });
     cyRef.current = cy;
 
+    // ポート（porthandle）に当たったら、その手順ノードに解決する
+    const resolveActivity = (ele: any) =>
+      ele.hasClass("porthandle") ? cy.getElementById(ele.data("handleFor")) : ele;
+
     const eh = (cy as any).edgehandles({
       snap: true,
-      canConnect: (source: any, target: any) =>
-        source.isNode() &&
-        target.isNode() &&
-        !source.same(target) &&
-        !source.hasClass("porthandle") &&
-        !target.hasClass("porthandle") &&
-        source.edgesTo(target).length === 0,
+      canConnect: (source: any, target: any) => {
+        const s = resolveActivity(source);
+        const t = resolveActivity(target);
+        return (
+          s.nonempty() &&
+          t.nonempty() &&
+          s.isNode() &&
+          t.isNode() &&
+          !s.same(t) &&
+          s.edgesTo(t).length === 0
+        );
+      },
       edgeParams: () => ({ data: { label: "wasInformedBy" } }),
     });
 
-    // 手順ノード下の丸（porthandle）を掴んだら、その手順から接続を開始する
-    cy.on("tapstart", ".porthandle", (evt) => {
-      const actId = evt.target.data("handleFor");
-      const act = cy.getElementById(actId);
+    // 出力ポート（下の塗り丸）を掴んだら、その手順から接続を開始する
+    cy.on("tapstart", ".porthandle.out", (evt) => {
+      const act = cy.getElementById(evt.target.data("handleFor"));
       if (act.nonempty()) eh.start(act);
     });
-    cy.on("mouseover", ".porthandle", (evt) => {
+    cy.on("mouseover", ".porthandle.out", (evt) => {
       evt.target.addClass("handle-hover");
       if (containerRef.current) containerRef.current.style.cursor = "crosshair";
     });
-    cy.on("mouseout", ".porthandle", (evt) => {
+    cy.on("mouseout", ".porthandle.out", (evt) => {
       evt.target.removeClass("handle-hover");
       if (containerRef.current) containerRef.current.style.cursor = "";
     });
@@ -155,7 +169,9 @@ export function ActivityGraph({
     // ドラッグ接続完了 → プレビューを消し、informed_by 書き込みは親に委ねる
     cy.on("ehcomplete", (_evt: any, source: any, target: any, added: any) => {
       added.remove();
-      cbRef.current.onConnectSteps?.(source.id(), target.id());
+      const src = resolveActivity(source).id();
+      const tgt = resolveActivity(target).id();
+      if (src && tgt && src !== tgt) cbRef.current.onConnectSteps?.(src, tgt);
     });
 
     // 削除可能なエッジ: クリックで削除メニューを開く（即削除はしない）、ホバーで赤表示
@@ -219,16 +235,34 @@ export function ActivityGraph({
     });
     void applyElkLayout(cy).then(() => {
       if (cy.destroyed()) return;
-      // レイアウト確定後、各手順の下に接続ハンドル（丸）を置く
+      // レイアウト確定後、各手順に入力ポート（上）と出力ポート（下）を置く
       cy.remove(".porthandle");
-      const handles = cy.nodes('[type = "prov:Activity"]').map((n) => ({
-        group: "nodes" as const,
-        data: { id: `__h_${n.id()}`, handleFor: n.id() },
-        classes: "porthandle",
-        position: { x: n.position("x"), y: n.position("y") + (n.outerHeight() || 60) / 2 + 2 },
-        grabbable: false,
-        selectable: false,
-      }));
+      const handles = cy
+        .nodes('[type = "prov:Activity"]')
+        .map((n) => {
+          const x = n.position("x");
+          const y = n.position("y");
+          const half = (n.outerHeight() || 60) / 2 + 2;
+          return [
+            {
+              group: "nodes" as const,
+              data: { id: `__hi_${n.id()}`, handleFor: n.id() },
+              classes: "porthandle in",
+              position: { x, y: y - half },
+              grabbable: false,
+              selectable: false,
+            },
+            {
+              group: "nodes" as const,
+              data: { id: `__ho_${n.id()}`, handleFor: n.id() },
+              classes: "porthandle out",
+              position: { x, y: y + half },
+              grabbable: false,
+              selectable: false,
+            },
+          ];
+        })
+        .flat();
       cy.add(handles);
     });
   }, [activities, steps]);
