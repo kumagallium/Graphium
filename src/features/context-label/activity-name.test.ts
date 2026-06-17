@@ -38,11 +38,31 @@ describe("deriveActivityName", () => {
     expect(deriveActivityName("1. 2. 炒める")).toBe("2. 炒める");
   });
 
+  it("全角数字の連番を除去する（区切りも全角ピリオド可）", () => {
+    expect(deriveActivityName("１．具材を切る")).toBe("具材を切る");
+    expect(deriveActivityName("２）炒める")).toBe("炒める");
+    expect(deriveActivityName("３、煮込む")).toBe("煮込む");
+    expect(deriveActivityName("１．１ 前処理")).toBe("前処理");
+  });
+
+  it("先頭カッコ書式の連番を除去する", () => {
+    expect(deriveActivityName("(1) 具材を切る")).toBe("具材を切る");
+    expect(deriveActivityName("（１）炒める")).toBe("炒める");
+    expect(deriveActivityName("(a) 煮込む")).toBe("煮込む");
+    expect(deriveActivityName("(12) 盛り付け")).toBe("盛り付け");
+  });
+
   // ── 誤除去しないケース（保守的であること）──
 
   it("区切りなしの数字（年・数量など）は名前として残す", () => {
     expect(deriveActivityName("2026 結果")).toBe("2026 結果");
+    expect(deriveActivityName("２０２６ 結果")).toBe("２０２６ 結果");
     expect(deriveActivityName("100℃で加熱")).toBe("100℃で加熱");
+  });
+
+  it("カッコ内が数字/英字でないものは残す", () => {
+    expect(deriveActivityName("(参考) 文献")).toBe("(参考) 文献");
+    expect(deriveActivityName("（図1）の説明")).toBe("（図1）の説明");
   });
 
   it("区切りなしのアルファベットは残す", () => {
