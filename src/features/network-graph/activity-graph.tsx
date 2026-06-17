@@ -67,8 +67,7 @@ const EH_STYLES: cytoscape.StylesheetStyle[] = [
       events: "yes",
     },
   },
-  { selector: ".porthandle.out", style: { "background-color": "#5b8fb9" } }, // 出力（塗り）
-  { selector: ".porthandle.in", style: { "background-color": "#ffffff" } }, // 入力（白抜き）
+  { selector: ".porthandle.out", style: { "background-color": "#5b8fb9" } }, // 出力（塗り・掴んで接続）
   {
     selector: ".porthandle.out.handle-hover",
     style: { width: 16, height: 16, "background-color": "#4a7da6", "border-color": "#4a7da6" },
@@ -235,34 +234,16 @@ export function ActivityGraph({
     });
     void applyElkLayout(cy).then(() => {
       if (cy.destroyed()) return;
-      // レイアウト確定後、各手順に入力ポート（上）と出力ポート（下）を置く
+      // レイアウト確定後、各手順の下に出力ポート（丸）を置く（掴んで接続）
       cy.remove(".porthandle");
-      const handles = cy
-        .nodes('[type = "prov:Activity"]')
-        .map((n) => {
-          const x = n.position("x");
-          const y = n.position("y");
-          const half = (n.outerHeight() || 60) / 2 + 2;
-          return [
-            {
-              group: "nodes" as const,
-              data: { id: `__hi_${n.id()}`, handleFor: n.id() },
-              classes: "porthandle in",
-              position: { x, y: y - half },
-              grabbable: false,
-              selectable: false,
-            },
-            {
-              group: "nodes" as const,
-              data: { id: `__ho_${n.id()}`, handleFor: n.id() },
-              classes: "porthandle out",
-              position: { x, y: y + half },
-              grabbable: false,
-              selectable: false,
-            },
-          ];
-        })
-        .flat();
+      const handles = cy.nodes('[type = "prov:Activity"]').map((n) => ({
+        group: "nodes" as const,
+        data: { id: `__ho_${n.id()}`, handleFor: n.id() },
+        classes: "porthandle out",
+        position: { x: n.position("x"), y: n.position("y") + (n.outerHeight() || 60) / 2 + 2 },
+        grabbable: false,
+        selectable: false,
+      }));
       cy.add(handles);
     });
   }, [activities, steps]);
