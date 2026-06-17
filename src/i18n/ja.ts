@@ -639,6 +639,7 @@ export const ja: Record<string, string> = {
   "provPanel.viewProv": "手順（全体）",
   "provPanel.viewFlow": "手順（ステップのみ）",
   "activityGraph.dragHint": "手順の下のポートから別の手順へドラッグしてつなげます",
+  "activityGraph.deleteStep": "つながりを削除",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",
