@@ -636,6 +636,10 @@ export const ja: Record<string, string> = {
   "provPanel.attrLegend": "パラメータ",
   "provPanel.graphStats": "{nodes} ノード · {relations} リレーション",
   "provPanel.expandView": "拡大表示",
+  "provPanel.viewProv": "手順（全体）",
+  "provPanel.viewFlow": "手順（ステップのみ）",
+  "activityGraph.dragHint": "手順の下の青い丸を別の手順へドラッグしてつなげます",
+  "activityGraph.deleteStep": "つながりを削除",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",

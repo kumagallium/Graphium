@@ -16,6 +16,8 @@ import cytoscape from "cytoscape";
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
 import { extractRelations, type FlatRelation } from "./generator";
+import { Network, Workflow } from "lucide-react";
+import { ActivityGraphEditor } from "../network-graph/activity-graph-editor";
 import { t, getDisplayLabelName } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 
@@ -320,6 +322,9 @@ export async function applyElkLayout(cy: cytoscape.Core) {
     children: elkNodes,
     edges: elkEdges,
   });
+
+  // 非同期レイアウト中に cy が破棄された場合（アンマウント / StrictMode 二重マウント）は中断
+  if (cy.destroyed()) return;
 
   cy.batch(() => {
     for (const elkNode of elkGraph.children ?? []) {
@@ -654,6 +659,8 @@ function CytoscapeGraph({
  */
 export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
   const [expanded, setExpanded] = useState(false);
+  // PROV グラフ（静的・全体）と Activity 編集グラフ（手順のつなぎ替え）の切替
+  const [view, setView] = useState<"prov" | "edit">("prov");
 
   useEffect(() => {
     if (!expanded) return;
@@ -709,11 +716,39 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
     </div>
   );
 
+  const viewToggle = (
+    <div style={{ display: "flex", gap: 4, padding: "6px 12px 0" }}>
+      <button
+        onClick={() => setView("prov")}
+        style={viewToggleBtnStyle(view === "prov")}
+        title={t("provPanel.viewProv")}
+      >
+        <Network size={13} /> {t("provPanel.viewProv")}
+      </button>
+      <button
+        onClick={() => setView("edit")}
+        style={viewToggleBtnStyle(view === "edit")}
+        title={t("provPanel.viewFlow")}
+      >
+        <Workflow size={13} /> {t("provPanel.viewFlow")}
+      </button>
+    </div>
+  );
+
   return (
     <>
       <div style={panelStyle}>
-        {legendBar}
-        <CytoscapeGraph doc={doc} />
+        {viewToggle}
+        {view === "prov" ? (
+          <>
+            {legendBar}
+            <CytoscapeGraph doc={doc} />
+          </>
+        ) : (
+          <div style={{ height: 440 }}>
+            <ActivityGraphEditor doc={doc} />
+          </div>
+        )}
       </div>
 
       {/* 拡大モーダル */}
@@ -782,6 +817,22 @@ const expandBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   color: THEME.mutedFg,
 };
+
+function viewToggleBtnStyle(active: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "3px 10px",
+    fontSize: 12,
+    fontWeight: 600,
+    background: active ? THEME.activity.bg : THEME.muted,
+    color: active ? "#ffffff" : THEME.mutedFg,
+    border: `1px solid ${active ? THEME.activity.bg : THEME.border}`,
+    borderRadius: 6,
+    cursor: "pointer",
+  };
+}
 
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",
