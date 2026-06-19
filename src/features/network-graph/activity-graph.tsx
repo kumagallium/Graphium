@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 import edgehandles from "cytoscape-edgehandles";
 import { Trash2 } from "lucide-react";
-import { cyStyles, applyElkLayout } from "../prov-generator/view";
+import { cyStyles, applyElkLayout } from "../prov-generator/cy-graph";
 import { t } from "../../i18n";
 
 // edgehandles の登録（重複防止）
