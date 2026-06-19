@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.16.0](https://github.com/kumagallium/Graphium/compare/v0.15.3...v0.16.0) - 2026-06-19
+
+- Strip enumerator prefixes from derived activity names by @kumagallium in https://github.com/kumagallium/Graphium/pull/439
+- Editable activity-link graph in the PROV panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/441
+- deriveActivityName: full-width & parenthesized enumerators by @kumagallium in https://github.com/kumagallium/Graphium/pull/442
+- [feat] Add Claude subscription provider (Claude Code, no API key) by @kumagallium in https://github.com/kumagallium/Graphium/pull/443
+- [refactor] Break network-graph ↔ prov-generator circular dependency by @kumagallium in https://github.com/kumagallium/Graphium/pull/444
+
 ## [v0.15.3](https://github.com/kumagallium/Graphium/compare/v0.15.2...v0.15.3) - 2026-06-15
 
 - [fix] Prevent native text selection when drag-selecting list rows by @kumagallium in https://github.com/kumagallium/Graphium/pull/438
