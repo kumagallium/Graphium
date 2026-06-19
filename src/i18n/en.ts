@@ -533,6 +533,8 @@ export const en: Record<string, string> = {
   "settings.addModel.provider": "Provider",
   "settings.addModel.apiKey": "API Key",
   "settings.addModel.apiKeyRequired": "Enter an API key first",
+  "settings.addModel.claudeSubHint": "No API key needed — uses your logged-in Claude Code subscription on this machine. Run `claude setup-token` (or log in with `claude`) first. Requires a Claude Pro/Max plan and the Claude Code CLI installed. opus/sonnet/haiku always resolve to the latest version automatically — no manual updates needed.",
+  "settings.addModel.claudeCliPath": "Claude CLI path (auto-detected — set only if not found)",
   "settings.addModel.fetchModels": "Fetch available models",
   "settings.addModel.fetching": "Fetching...",
   "settings.addModel.selectModel": "Select a model",
@@ -1086,6 +1088,8 @@ export const en: Record<string, string> = {
   // ── 設定: Usage タブ ──
   "settings.usage.title": "AI Usage",
   "settings.usage.description": "Token consumption per AI feature. Set per-model pricing on the AI tab to see costs.",
+  "settings.usage.subscriptionShort": "Sub",
+  "settings.usage.subscriptionNoCost": "Subscription (no per-token cost)",
   "settings.usage.vercelUnsupported": "Usage tracking is only available on the desktop / self-hosted server, not on the Vercel-hosted version.",
   "settings.usage.granularity.day": "Day",
   "settings.usage.granularity.month": "Month",

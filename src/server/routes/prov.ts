@@ -76,7 +76,7 @@ app.post("/ingest-url", async (c) => {
   });
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -155,7 +155,7 @@ app.post("/ingest-pdf", async (c) => {
   const systemPrompt = buildProvIngesterSystemPrompt(language);
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,

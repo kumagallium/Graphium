@@ -82,7 +82,9 @@ app.post("/run", async (c) => {
   // OpenAI 互換系（gpt-oss-120b 等）はネイティブ tool calling 非対応で system prompt に
   // tool 定義を埋め込む fallback ループを使うため、長大な PROV ラベル指示と競合してツール
   // 呼び出しが弱まる。Ask モードでは PROV ラベルを生成する必然性も薄いので抑制する。
-  const skipLabeledOutput = modelConfig.provider === "openai-compatible";
+  const skipLabeledOutput =
+    modelConfig.provider === "openai-compatible" ||
+    modelConfig.provider === "claude-subscription";
   if (!skipLabeledOutput) {
     systemPrompt += buildLabeledOutputInstruction(body.language || "en");
   }
@@ -133,7 +135,7 @@ app.post("/run", async (c) => {
   const { tools } = await getMCPTools([...byName.values()]);
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -176,7 +178,7 @@ app.post("/sessions/title", async (c) => {
   }
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const { generateText } = await import("ai");
     const result = await generateText({
       model,

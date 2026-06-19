@@ -61,7 +61,14 @@ app.post("/", async (c) => {
     if (apiBase === undefined) apiBase = source.apiBase ?? undefined;
   }
 
-  if (!body.model_name || !body.provider || !body.model_id || !apiKey) {
+  // claude-subscription は API キー不要（Claude Code のサブスク認証を使う）。
+  const requiresApiKey = body.provider !== "claude-subscription";
+  if (
+    !body.model_name ||
+    !body.provider ||
+    !body.model_id ||
+    (requiresApiKey && !apiKey)
+  ) {
     return c.json({ error: "必須フィールドが不足しています" }, 400);
   }
 

@@ -533,6 +533,8 @@ export const ja: Record<string, string> = {
   "settings.addModel.provider": "プロバイダー",
   "settings.addModel.apiKey": "API キー",
   "settings.addModel.apiKeyRequired": "API キーを入力してください",
+  "settings.addModel.claudeSubHint": "API キー不要 — このマシンにログイン済みの Claude Code サブスクリプションを使います。先に `claude setup-token`（または `claude` でログイン）を実行してください。Claude Pro/Max プランと Claude Code CLI のインストールが必要です。opus/sonnet/haiku は常に最新版に自動解決されます（手動更新は不要）。",
+  "settings.addModel.claudeCliPath": "Claude CLI のパス（自動検出 — 見つからない場合のみ指定）",
   "settings.addModel.fetchModels": "利用可能なモデルを取得",
   "settings.addModel.fetching": "取得中...",
   "settings.addModel.selectModel": "モデルを選択",
@@ -1086,6 +1088,8 @@ export const ja: Record<string, string> = {
   // ── 設定: About タブ ──
   "settings.usage.title": "AI 使用量",
   "settings.usage.description": "AI 機能ごとのトークン消費量。AI タブでモデルの単価を設定するとコスト換算が出ます。",
+  "settings.usage.subscriptionShort": "サブスク",
+  "settings.usage.subscriptionNoCost": "Subscription（従量課金なし）",
   "settings.usage.vercelUnsupported": "使用量の記録はデスクトップ版・セルフホスト版のみ対応しています（Vercel 配信版は未対応）。",
   "settings.usage.granularity.day": "日",
   "settings.usage.granularity.month": "月",

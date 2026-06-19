@@ -245,6 +245,8 @@ function buildBuckets(
 
 type ModelLine = {
   modelId: string;
+  /** プロバイダ識別子。claude-subscription はコスト欄を「従量課金なし」と表示するために使う。 */
+  provider: string;
   tokens: number;
   cost: number;
 };
@@ -265,13 +267,20 @@ function buildFeatureModelBreakdown(
   // feature -> modelId -> { tokens, cost }
   const map = new Map<string, Map<string, ModelLine>>();
 
-  const add = (feature: string, modelId: string, tokens: number, cost: number) => {
+  const add = (
+    feature: string,
+    modelId: string,
+    provider: string,
+    tokens: number,
+    cost: number,
+  ) => {
     let byModel = map.get(feature);
     if (!byModel) {
       byModel = new Map();
       map.set(feature, byModel);
     }
-    const prev = byModel.get(modelId) ?? { modelId, tokens: 0, cost: 0 };
+    const prev = byModel.get(modelId) ?? { modelId, provider, tokens: 0, cost: 0 };
+    prev.provider = provider;
     prev.tokens += tokens;
     prev.cost += cost;
     byModel.set(modelId, prev);
@@ -282,6 +291,7 @@ function buildFeatureModelBreakdown(
     add(
       ev.feature,
       ev.modelId || "(unknown)",
+      ev.provider,
       ev.totalTokens,
       eventCostInDisplayCurrency(ev, displayCurrency, usdJpy),
     );
@@ -293,6 +303,7 @@ function buildFeatureModelBreakdown(
       add(
         s.feature,
         s.modelId || "(unknown)",
+        s.provider,
         s.totalTokens,
         summaryCostInDisplayCurrency(s, displayCurrency, usdJpy),
       );
@@ -748,7 +759,16 @@ export function UsageTab() {
                                 {formatTokens(m.tokens)}
                               </span>
                               <span className="tabular-nums w-14 text-right">
-                                {formatCost(m.cost, displayCurrency)}
+                                {m.provider === "claude-subscription" ? (
+                                  <span
+                                    title={t("settings.usage.subscriptionNoCost")}
+                                    className="text-foreground/45"
+                                  >
+                                    {t("settings.usage.subscriptionShort")}
+                                  </span>
+                                ) : (
+                                  formatCost(m.cost, displayCurrency)
+                                )}
                               </span>
                             </div>
                           );

@@ -90,7 +90,7 @@ app.post("/ingest", async (c) => {
   const userMessage = `${provPrefix}Source note title: "${body.noteTitle}"\nUse this exact title for inline citations (e.g., "Based on [${body.noteTitle}], ...").\n\n# ${body.noteTitle}\n\n${body.noteContent}`;
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -201,7 +201,7 @@ app.post("/lint", async (c) => {
   const userMessage = buildLinterUserMessage(body.wikis);
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -301,7 +301,7 @@ app.post("/rewrite", async (c) => {
   });
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -357,7 +357,7 @@ app.post("/cross-update", async (c) => {
   );
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -405,7 +405,7 @@ app.post("/atomize", async (c) => {
   const userMessage = buildAtomizerUserMessage(body.concepts, body.existingAtomTitles ?? []);
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
