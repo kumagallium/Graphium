@@ -45,7 +45,7 @@ app.post("/check", async (c) => {
   });
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const llmResult = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,

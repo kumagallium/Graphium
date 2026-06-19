@@ -5,13 +5,21 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { LanguageModel } from "ai";
 import type { ModelConfig } from "../config/models.js";
 
 /**
  * ModelConfig からプロバイダーインスタンスを生成する
+ *
+ * claude-subscription だけは `ai-sdk-provider-claude-code`（＝ Claude Code バイナリの
+ * subprocess 起動）を動的 import するため async。重い `@anthropic-ai/claude-agent-sdk` を
+ * Web(Vercel) ビルドに静的同梱しないための意図的な遅延ロード。
  */
-export function createModel(config: ModelConfig): LanguageModel {
+export async function createModel(config: ModelConfig): Promise<LanguageModel> {
   switch (config.provider) {
     case "anthropic": {
       // `createAnthropic` に baseURL を渡さないと SDK は環境変数 `ANTHROPIC_BASE_URL` を
@@ -62,9 +70,112 @@ export function createModel(config: ModelConfig): LanguageModel {
       });
       return provider(config.modelId);
     }
+    case "claude-subscription": {
+      // ローカルの Claude Code CLI を subprocess 起動し、ユーザーの Claude Pro/Max
+      // サブスク認証（~/.claude セッション or CLAUDE_CODE_OAUTH_TOKEN）で推論する。
+      // API キーは不要。従量課金も発生しない（個人利用向けオプション）。
+      //
+      // - 動的 import: 重い @anthropic-ai/claude-agent-sdk を Web ビルドに巻き込まない。
+      // - pathToClaudeCodeExecutable: 既存 claude を参照し、ネイティブバイナリ同梱を回避。
+      //   config.apiBase をこのプロバイダでは「claude CLI の絶対パス（任意）」として流用する。
+      // - settingSources 省略 = isolation（~/.claude/CLAUDE.md 等を読み込まない）。
+      // - allowedTools: [] で Claude Code 内蔵ツール（Read/Write/Bash 等）の自律実行を止め、
+      //   純粋なテキスト生成器として使う。Graphium 側のツール実行は text-tool-call
+      //   フォールバック（agent-loop-text-tools.ts）が担う。
+      const { createClaudeCode } = await import("ai-sdk-provider-claude-code");
+      const binaryPath = resolveClaudeBinaryPath(config.apiBase);
+      const provider = createClaudeCode({
+        defaultSettings: {
+          ...(binaryPath ? { pathToClaudeCodeExecutable: binaryPath } : {}),
+          allowedTools: [],
+          logger: false,
+        },
+      });
+      return provider(config.modelId || "sonnet");
+    }
     default:
       throw new Error(`未知のプロバイダー: ${config.provider}`);
   }
+}
+
+/**
+ * claude-subscription プロバイダ用に Claude Code CLI の実行パスを解決する。
+ * 優先順:
+ *   1. モデル設定の明示パス（config.apiBase）
+ *   2. 環境変数 GRAPHIUM_CLAUDE_CLI_PATH
+ *   3. 自動検出（detectClaudeBinary）— 結果はプロセス内でキャッシュ
+ * いずれも取れなければ undefined を返し、プロバイダ既定（PATH 上の `claude`）に委ねる。
+ */
+function resolveClaudeBinaryPath(explicit?: string | null): string | undefined {
+  if (explicit && explicit.trim().length > 0) return explicit.trim();
+  const fromEnv = process.env.GRAPHIUM_CLAUDE_CLI_PATH;
+  if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+  if (cachedAutoClaudePath === null) {
+    cachedAutoClaudePath = detectClaudeBinary();
+  }
+  return cachedAutoClaudePath ?? undefined;
+}
+
+// 自動検出結果のキャッシュ。null = 未計算 / undefined = 検出失敗 / string = 検出済み。
+let cachedAutoClaudePath: string | undefined | null = null;
+
+/**
+ * `claude` バイナリを自動検出する。Tauri パッケージ版のサイドカーは最小化された PATH で
+ * 起動されるため、PATH 依存の `which` だけでは nvm/homebrew 配下を取りこぼす。
+ * ログインシェルの PATH と主要インストール先・nvm 走査まで含めて「ほぼ無設定で見つかる」
+ * ことを狙う。ユーザーが明示パス／env を指定した場合はそちらが優先される（本関数は呼ばれない）。
+ */
+function detectClaudeBinary(): string | undefined {
+  // 1. 現在の PATH 上の which（dev 起動などで PATH が揃っている場合）
+  try {
+    const out = execFileSync("which", ["claude"], { encoding: "utf-8", timeout: 3000 })
+      .trim()
+      .split("\n")[0];
+    if (out && existsSync(out)) return out;
+  } catch {
+    /* PATH に無い場合は次へ */
+  }
+
+  // 2. ログインシェルの PATH（GUI 起動だと PATH が最小化されるため、rc を読ませて解決する）
+  try {
+    const shell = process.env.SHELL || "/bin/zsh";
+    const out = execFileSync(shell, ["-lc", "command -v claude"], {
+      encoding: "utf-8",
+      timeout: 3000,
+    })
+      .trim()
+      .split("\n")[0];
+    if (out && existsSync(out)) return out;
+  } catch {
+    /* rc が無い等は次へ */
+  }
+
+  const home = homedir();
+
+  // 3. よくあるインストール先を直接確認
+  const candidates = [
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+    join(home, ".local/bin/claude"),
+    join(home, ".claude/local/claude"), // Claude Code ネイティブインストーラ既定
+    join(home, ".npm-global/bin/claude"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+
+  // 4. nvm 配下の全 node バージョンを走査（claude は特定バージョンの bin にだけ入る）
+  const nvmDir = join(home, ".nvm/versions/node");
+  try {
+    for (const version of readdirSync(nvmDir)) {
+      const c = join(nvmDir, version, "bin/claude");
+      if (existsSync(c)) return c;
+    }
+  } catch {
+    /* nvm 未使用なら無視 */
+  }
+
+  return undefined;
 }
 
 /**

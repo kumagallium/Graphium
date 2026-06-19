@@ -53,20 +53,28 @@ export type ToolCallRecord = {
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
   const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature } = params;
 
+  // openai-compatible（sakura / gpt-oss-120b 等）に加え、claude-subscription
+  // （ai-sdk-provider-claude-code 経由）も AI SDK の tools パラメータをネイティブに
+  // 扱えない。両者ともツール利用時は text-tool-call フォールバックループに切り替える。
+  const providerLacksNativeTools =
+    modelConfig?.provider === "openai-compatible" ||
+    modelConfig?.provider === "claude-subscription";
   const useTextToolsLoop =
-    modelConfig?.provider === "openai-compatible" &&
-    !!tools &&
-    Object.keys(tools).length > 0;
+    providerLacksNativeTools && !!tools && Object.keys(tools).length > 0;
   if (useTextToolsLoop) {
     return runTextToolsLoop(params);
   }
+
+  // claude-subscription は temperature 等のサンプリングパラメータ非対応（CLI が制御）。
+  // 渡すと unsupported 警告が出るだけなので、このプロバイダでは送らない。
+  const supportsTemperature = modelConfig?.provider !== "claude-subscription";
 
   const startedAt = Date.now();
   const result = await generateText({
     model,
     system: systemPrompt,
     messages,
-    ...(temperature !== undefined ? { temperature } : {}),
+    ...(temperature !== undefined && supportsTemperature ? { temperature } : {}),
     // tools が空の場合は undefined にする
     ...(tools && Object.keys(tools).length > 0 ? { tools: tools as any } : {}),
     stopWhen: stepCountIs(maxSteps),

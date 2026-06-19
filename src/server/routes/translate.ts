@@ -58,7 +58,7 @@ app.post("/", async (c) => {
   });
 
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -107,7 +107,7 @@ app.post("/glossary", async (c) => {
 
   const language = body.language || "en";
   try {
-    const model = createModel(modelConfig);
+    const model = await createModel(modelConfig);
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,

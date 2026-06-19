@@ -74,7 +74,15 @@ const PROVIDERS = [
   { id: "openai", name: "OpenAI" },
   { id: "google", name: "Google Gemini" },
   { id: "openai-compatible", name: "OpenAI Compatible (Groq, Ollama, etc.)" },
+  { id: "claude-subscription", name: "Claude (Subscription · Claude Code)" },
 ] as const;
+
+// claude-subscription はモデル一覧 API を持たない（Claude Code に models コマンドが無く、
+// この経路は API キーも持たないため /v1/models も叩けない）。
+// エイリアス（sonnet/opus/haiku）だけを提示する。これらは Claude Code 側で「その時点の
+// 最新版」に解決されるため、固定版 ID をハードコードすると自動更新できず劣化するのを避ける。
+// どうしても版を固定したい上級者は「手動でモデル ID を入力」欄でフルネームを指定できる。
+const CLAUDE_SUBSCRIPTION_MODELS = ["sonnet", "opus", "haiku"] as const;
 
 const API_BASE_HINTS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
@@ -83,6 +91,8 @@ const API_BASE_HINTS: Record<string, string> = {
   groq: "https://api.groq.com/openai/v1",
   ollama: "http://localhost:11434",
   "openai-compatible": "https://api.example.com/v1",
+  // claude-subscription では apiBase を「claude CLI の絶対パス」として流用する（通常は自動検出）。
+  "claude-subscription": "auto-detected — leave blank unless not found",
 };
 
 // ── ヘルスチェック型 ──
@@ -2147,11 +2157,20 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                         <select
                           value={addProvider}
                           onChange={(e) => {
-                            setAddProvider(e.target.value);
-                            setAvailableModels([]);
-                            setSelectedModelId("");
+                            const p = e.target.value;
+                            setAddProvider(p);
                             setCustomModelId("");
                             setAddError("");
+                            if (p === "claude-subscription") {
+                              // API キー不要・モデル一覧 API なし。
+                              // 候補を静的に提示してそのままモデル選択ステップへ進める。
+                              setAvailableModels([...CLAUDE_SUBSCRIPTION_MODELS]);
+                              setSelectedModelId(CLAUDE_SUBSCRIPTION_MODELS[0]);
+                              setModelDisplayName("Claude Sonnet (subscription)");
+                            } else {
+                              setAvailableModels([]);
+                              setSelectedModelId("");
+                            }
                           }}
                           className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm"
                         >
@@ -2163,43 +2182,55 @@ export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki
                       </div>
                     </div>
 
-                    <div>
-                      <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.apiKey")}</label>
-                      <Input
-                        type="password"
-                        value={addApiKey}
-                        onChange={(e) => setAddApiKey(e.target.value)}
-                        placeholder="sk-..."
-                        className="font-mono text-sm"
-                      />
-                    </div>
+                    {addProvider === "claude-subscription" ? (
+                      // サブスク経由は API キー不要。セットアップ案内を出す。
+                      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
+                        {t("settings.addModel.claudeSubHint")}
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.apiKey")}</label>
+                        <Input
+                          type="password"
+                          value={addApiKey}
+                          onChange={(e) => setAddApiKey(e.target.value)}
+                          placeholder="sk-..."
+                          className="font-mono text-sm"
+                        />
+                      </div>
+                    )}
 
-                    {/* API Base URL（openai-compatible の場合は必須、他はオプション） */}
+                    {/* API Base URL（openai-compatible は必須、他は任意）。
+                        claude-subscription では claude CLI の絶対パス（任意）として流用する。 */}
                     <div>
                       <label className="text-xs font-medium text-foreground mb-2 block">
-                        API Base URL
+                        {addProvider === "claude-subscription"
+                          ? t("settings.addModel.claudeCliPath")
+                          : "API Base URL"}
                         {addProvider === "openai-compatible" && <span className="text-red-500 ml-1">*</span>}
                       </label>
                       <Input
-                        type="url"
+                        type="text"
                         value={addApiBase}
                         onChange={(e) => setAddApiBase(e.target.value)}
                         placeholder={API_BASE_HINTS[addProvider] ?? ""}
                       />
                     </div>
 
-                    <Button
-                      size="sm"
-                      onClick={handleFetchAvailable}
-                      disabled={fetchingAvailable || !addApiKey.trim()}
-                      className="w-full"
-                    >
-                      {fetchingAvailable ? (
-                        <><Loader2 size={14} className="animate-spin mr-1" /> {t("settings.addModel.fetching")}</>
-                      ) : (
-                        t("settings.addModel.fetchModels")
-                      )}
-                    </Button>
+                    {addProvider !== "claude-subscription" && (
+                      <Button
+                        size="sm"
+                        onClick={handleFetchAvailable}
+                        disabled={fetchingAvailable || !addApiKey.trim()}
+                        className="w-full"
+                      >
+                        {fetchingAvailable ? (
+                          <><Loader2 size={14} className="animate-spin mr-1" /> {t("settings.addModel.fetching")}</>
+                        ) : (
+                          t("settings.addModel.fetchModels")
+                        )}
+                      </Button>
+                    )}
                   </>
                 )}
 
