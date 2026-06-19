@@ -120,6 +120,38 @@ describe("findModelsWithMissingApiKey", () => {
     ]);
   });
 
+  it("does not flag claude-subscription models (keyless by design)", () => {
+    // claude-subscription は Claude Code のサブスク認証を使い API キーを持たない。
+    // 空キーでも事故ではないので警告対象に含めてはいけない。
+    writeFileSync(
+      join(dir, "models.json"),
+      JSON.stringify([
+        {
+          id: "m1",
+          name: "Opus-latest",
+          provider: "claude-subscription",
+          modelId: "opus",
+          apiKey: "",
+          apiBase: null,
+          createdAt: "2026-06-19T00:00:00Z",
+        },
+        {
+          id: "m2",
+          name: "broken-anthropic",
+          provider: "anthropic",
+          modelId: "claude-opus-4-8",
+          apiKey: "",
+          apiBase: null,
+          createdAt: "2026-06-19T00:00:00Z",
+        },
+      ]),
+    );
+    // subscription は除外、空キーの anthropic だけ flag される
+    expect(findModelsWithMissingApiKey()).toEqual([
+      { id: "m2", name: "broken-anthropic", provider: "anthropic" },
+    ]);
+  });
+
   it("returns empty in vercel mode regardless of file contents", () => {
     setServerMode("vercel");
     writeFileSync(

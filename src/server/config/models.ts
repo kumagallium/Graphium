@@ -187,6 +187,9 @@ export function getDefaultModel(): ModelConfig | undefined {
  *
  * UI 側はこれを見て「保存済みキーが読めない / 再入力してください」の
  * 警告を出す。Vercel モードはヘッダ経由でキーが渡る前提なので対象外。
+ *
+ * claude-subscription は Claude Code のサブスク認証を使い API キーを持たない
+ * （空キーが正常）。これを対象に含めると「キーを貼り直して」と誤案内するので除外する。
  */
 export function findModelsWithMissingApiKey(): Array<{
   id: string;
@@ -195,7 +198,7 @@ export function findModelsWithMissingApiKey(): Array<{
 }> {
   if (serverMode === "vercel") return [];
   return readModels()
-    .filter((m) => !m.apiKey)
+    .filter((m) => !m.apiKey && m.provider !== "claude-subscription")
     .map((m) => ({ id: m.id, name: m.name, provider: m.provider }));
 }
 
