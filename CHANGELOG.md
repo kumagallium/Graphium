@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.16.1](https://github.com/kumagallium/Graphium/compare/v0.16.0...v0.16.1) - 2026-06-19
+
+- [fix] Don't flag claude-subscription models as missing an API key by @kumagallium in https://github.com/kumagallium/Graphium/pull/445
+
 ## [v0.16.0](https://github.com/kumagallium/Graphium/compare/v0.15.3...v0.16.0) - 2026-06-19
 
 - Strip enumerator prefixes from derived activity names by @kumagallium in https://github.com/kumagallium/Graphium/pull/439
