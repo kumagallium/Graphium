@@ -95,6 +95,12 @@ export function buildNoteGraph(
   const adjacency = new Map<string, Set<string>>();
 
   const addEdge = (from: string, to: string, sourceBlockLabel?: string) => {
+    // 自己ループ（from === to）は描画しない。
+    // 再生成でリネームされた知見が自分自身を source 引用すると、
+    // knowledgeLinks の targetNoteId が自分を指す自己参照リンクになり得る
+    // （実データで全 knowledgeLink の過半数が該当）。lineage-builder /
+    // activity-graph-adapter と同様、ここで一律に弾く。
+    if (from === to) return;
     allEdges.push({ source: from, target: to, sourceBlockLabel });
     if (!adjacency.has(from)) adjacency.set(from, new Set());
     if (!adjacency.has(to)) adjacency.set(to, new Set());

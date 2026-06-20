@@ -93,24 +93,6 @@ type Props = {
   /** アーカイブから復元するハンドラ（archived === true のときのみ有効） */
   onRestoreFromArchive?: () => void;
   /**
-   * 派生元（derivedFromNotes / derivedFromClaims）のタイトル解決に使うインデックス。
-   * 未指定や該当 ID が見つからない場合は ID を fallback として表示する。
-   */
-  noteIndex?: GraphiumIndex | null;
-  /**
-   * 外部ソース（pdf: / url: / document: / chat:）の名前解決に使うメディアインデックス。
-   * これが無いと Word(.docx) 等の素材由来ソースは ID しか出せず「(不明)」になる。
-   */
-  mediaIndex?: MediaIndex | null;
-  /**
-   * 派生元のリストエントリをクリックしたときの遷移ハンドラ。
-   * Wiki エントリの場合は `wiki:` プレフィックス付きで渡す。未指定時はリンクではなく
-   * 静的テキストとして表示する。
-   * 規約: @mention / Graph ノードクリックと同じく既存の SidePeek で開く。
-   * 深い系譜は右パネルの Graph→Lineage タブが受け持つので、ここは一次親に絞る。
-   */
-  onNavigateNote?: (noteId: string) => void;
-  /**
    * 世界モデル照合トリガ（world-model-grounding Phase 2 / PR 2A）。
    * 押されると蒸留 KB と照合し、verdict バッジを更新する想定。
    * 未指定時はボタンを出さない（grounding 未対応のコンテキスト用）。
@@ -118,22 +100,9 @@ type Props = {
   onCheckWorldValidity?: () => void;
   /** 照合中。ボタンを disable してスピナー的に表示する。 */
   worldCheckLoading?: boolean;
-  /**
-   * このノートに付いた照合結果（verdict / 出典）をクリアするトリガ。
-   * 間違った判定や幻覚 URL が焼き付いたとき、再 Check を待たずに消せるようにする。
-   * 未指定時はクリアボタンを出さない。
-   */
-  onClearWorldValidity?: () => void;
-  /**
-   * 表示中の wiki 自身の ID（world-grounding edge で自分を除外するのに使う）。
-   */
-  wikiId?: string;
-  /**
-   * 全 wiki のサマリ Map（world-grounding edge 用）。
-   * 同じ `grounding.validity.entryId`（＝同じ世界事実）に接続した他の洞察を引くのに使う。
-   * 未指定なら「同じ世界事実に接続した洞察」セクションは出さない。
-   */
-  allWikiMetas?: Map<string, WikiMetaSummary>;
+  // 関連・文脈系の props（noteIndex / mediaIndex / onNavigateNote /
+  // onClearWorldValidity / wikiId / allWikiMetas）は D2 配置で WikiContextDrawer
+  // に移した。WikiBanner は identity（バッジ＋アクション）だけを担う。
 };
 
 function formatDate(isoDate: string): string {
@@ -153,14 +122,8 @@ export function WikiBanner({
   loading = false,
   archived = false,
   onRestoreFromArchive,
-  noteIndex,
-  mediaIndex,
-  onNavigateNote,
   onCheckWorldValidity,
   worldCheckLoading = false,
-  onClearWorldValidity,
-  wikiId,
-  allWikiMetas,
 }: Props) {
   const t = useT();
   const kindLabel =
@@ -434,61 +397,9 @@ export function WikiBanner({
         </div>
       </div>
 
-      {/* 手順条件（Phase 2.3）— Claim でのみ表示 (PR-B4.5: Atom/Synthesis は持たない設計に統一) */}
-      {wikiMeta.kind === "claim" &&
-        wikiMeta.procedureContext &&
-        hasProcedureContextContent(wikiMeta.procedureContext) && (
-        <ProcedureContextSection ctx={wikiMeta.procedureContext} />
-      )}
-
-      {/* 派生元セクション（world-model-grounding Phase 1）—
-          derivedFromNotes / derivedFromClaims が空でないときだけ表示。
-          スコアは付けず、どのノート/Claim から来たかを控えめに辿れるだけ。 */}
-      {(hasDerivedFrom(wikiMeta)) && (
-        <DerivedFromSection
-          wikiMeta={wikiMeta}
-          noteIndex={noteIndex ?? null}
-          mediaIndex={mediaIndex ?? null}
-          onNavigateNote={onNavigateNote}
-        />
-      )}
-
-      {/* 世界照合 詳細セクション（world-model-grounding Phase 2 / PR 2A）—
-          照合履歴がある場合だけ表示。verdict だけでは見えない rationale / sources /
-          checkedBy / checkedAt を tooltip を hover せずに読めるよう、派生元と同じ
-          折り畳みパターンで並べる。バッジは hover、詳細は展開、と役割を分ける。 */}
-      {wikiMeta.grounding?.validity?.checkedAt && (
-        <WorldGroundingDetailSection
-          validity={wikiMeta.grounding.validity}
-          onClear={onClearWorldValidity}
-        />
-      )}
-
-      {/* 同じ世界事実に接続した洞察（world-grounding edge）—
-          自分と同じ grounding.validity.entryId を持つ他の wiki を列挙する。
-          これが「世界事実そのもの」でなく「自分の探究が世界と触れた境界」を見せる本体。
-          LLM は他ユーザー洞察との接続を持てないので、この一覧はここにしか無い。 */}
-      {wikiMeta.grounding?.validity?.entryId && allWikiMetas && (
-        <GroundingEdgesSection
-          entryId={wikiMeta.grounding.validity.entryId}
-          currentWikiId={wikiId}
-          allWikiMetas={allWikiMetas}
-          onNavigateNote={onNavigateNote}
-        />
-      )}
-
-      {/* Phase γ: Backing — claim でのみ表示（document-types.ts でも claim 専用フィールド）。
-          Warrant の裏付けが入っていれば折り畳みセクションで読めるようにする。 */}
-      {wikiMeta.kind === "claim" && wikiMeta.backing && wikiMeta.backing.length > 0 && (
-        <BackingSection backing={wikiMeta.backing} />
-      )}
-
-      {/* Phase γ: Rebuttal Conditions — claim と atom で持ち得る（document-types.ts §Toulmin）。
-          synthesizer が dialectic を検出するシグナルとしても使われるので、ユーザーにも
-          見える場所に置く。空配列 / 未定義のときはセクションごと出さない。 */}
-      {wikiMeta.rebuttalConditions && wikiMeta.rebuttalConditions.length > 0 && (
-        <RebuttalConditionsSection conditions={wikiMeta.rebuttalConditions} />
-      )}
+      {/* 関連・文脈セクション（手順条件 / 派生元 / 世界照合詳細 / 同じ世界事実に接続した洞察 /
+          Backing / Rebuttal）は D2 配置で本文下の WikiContextDrawer に移動した。
+          identity（種別・確信度・世界照合バッジ＋アクション）だけを本文上に残す。 */}
 
       {/* Synthesis モード説明モーダル（Phase 5.4） */}
       <SynthesisModeModal
@@ -496,6 +407,112 @@ export function WikiBanner({
         mode={modeModal}
         onClose={() => setModeModal(null)}
       />
+    </div>
+  );
+}
+
+/**
+ * WikiContextDrawer — D2 配置で本文「下」に展開する関連・文脈セクション群。
+ * identity（WikiBanner）と対になり、「読んだ後に辿る」情報をまとめる:
+ * 手順条件 / 派生元 / 世界照合 詳細 / 同じ世界事実に接続した洞察 / Backing / Rebuttal。
+ *
+ * これらは本文の上にあると縦の圧迫が強く、特に「同じ世界事実に接続した洞察」は
+ * 常時展開なので本文を大きく押し下げていた。Wikipedia の「関連項目 / 出典」と同じく
+ * 本文の後ろに置くのが情報アーキテクチャ的に自然、という判断（2026-06 D2 配置）。
+ *
+ * 表示すべきセクションが 1 つも無ければ null を返し、本文下に空の divider だけが
+ * 出る事故を防ぐ（GroundingEdgesSection は siblings 0 件で null を返すため、
+ * ここでも siblings 有無を先に数える）。
+ */
+export function WikiContextDrawer({
+  wikiMeta,
+  noteIndex,
+  mediaIndex,
+  onNavigateNote,
+  onClearWorldValidity,
+  wikiId,
+  allWikiMetas,
+  archived = false,
+}: {
+  wikiMeta: WikiMeta;
+  noteIndex?: GraphiumIndex | null;
+  mediaIndex?: MediaIndex | null;
+  onNavigateNote?: (noteId: string) => void;
+  onClearWorldValidity?: () => void;
+  wikiId?: string;
+  allWikiMetas?: Map<string, WikiMetaSummary>;
+  archived?: boolean;
+}) {
+  const entryId = wikiMeta.grounding?.validity?.entryId;
+  const hasGroundingSiblings = (() => {
+    if (!entryId || !allWikiMetas) return false;
+    for (const [id, m] of allWikiMetas) {
+      if (id === wikiId) continue;
+      if (m.groundingValidity?.entryId === entryId) return true;
+    }
+    return false;
+  })();
+
+  const showProcedure =
+    wikiMeta.kind === "claim" &&
+    !!wikiMeta.procedureContext &&
+    hasProcedureContextContent(wikiMeta.procedureContext);
+  const showDerivedFrom = hasDerivedFrom(wikiMeta);
+  const showWorldDetail = !!wikiMeta.grounding?.validity?.checkedAt;
+  const showBacking =
+    wikiMeta.kind === "claim" && !!wikiMeta.backing && wikiMeta.backing.length > 0;
+  const showRebuttal =
+    !!wikiMeta.rebuttalConditions && wikiMeta.rebuttalConditions.length > 0;
+
+  const hasAny =
+    showProcedure ||
+    showDerivedFrom ||
+    showWorldDetail ||
+    hasGroundingSiblings ||
+    showBacking ||
+    showRebuttal;
+  if (!hasAny) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 28,
+        paddingTop: 16,
+        borderTop: "1px solid var(--rule)",
+        opacity: archived ? 0.85 : 1,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {showProcedure && (
+        <ProcedureContextSection ctx={wikiMeta.procedureContext!} />
+      )}
+      {showDerivedFrom && (
+        <DerivedFromSection
+          wikiMeta={wikiMeta}
+          noteIndex={noteIndex ?? null}
+          mediaIndex={mediaIndex ?? null}
+          onNavigateNote={onNavigateNote}
+        />
+      )}
+      {showWorldDetail && (
+        <WorldGroundingDetailSection
+          validity={wikiMeta.grounding!.validity!}
+          onClear={onClearWorldValidity}
+        />
+      )}
+      {entryId && allWikiMetas && (
+        <GroundingEdgesSection
+          entryId={entryId}
+          currentWikiId={wikiId}
+          allWikiMetas={allWikiMetas}
+          onNavigateNote={onNavigateNote}
+        />
+      )}
+      {showBacking && <BackingSection backing={wikiMeta.backing!} />}
+      {showRebuttal && (
+        <RebuttalConditionsSection conditions={wikiMeta.rebuttalConditions!} />
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 export { WikiListView } from "./WikiListView";
 export { WikiLogView } from "./WikiLogView";
 export { WikiLintView } from "./WikiLintView";
-export { WikiBanner } from "./WikiBanner";
+export { WikiBanner, WikiContextDrawer } from "./WikiBanner";
 export { KnowledgeStatusChip } from "./KnowledgeStatusChip";
 export {
   IngestToast,
