@@ -1676,78 +1676,22 @@ function NoteEditorInner({
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         });
-        // Wiki コンテキストが使われ���場合、引用情報を処理
+        // Wiki コンテキストが使われた場合、引用情報を処理する。
+        // 番号引用 [#N] / タイトル引用 / 全角【】を正規の [Source: "title"] に揃え、
+        // hallucination を除去して、末尾に「Knowledge referenced」一覧を付ける。
+        // ロジックは citation-normalize.ts に切り出してユニットテスト可能にしている。
         let assistantMessage = response.message;
         if (wikiContext) {
-          // wikiContext に含まれていた候補タイトル（Retriever が embedding 検索で抽出して
-          // LLM に渡した、引用が特に期待される正式タイトル）
-          const candidateTitles: string[] = [];
-          const titlePattern = /\[id:\s*[^,]+,\s*title:\s*"([^"]+)"\]/g;
-          let tm;
-          while ((tm = titlePattern.exec(wikiContext)) !== null) {
-            candidateTitles.push(tm[1]);
-          }
-
-          // <wiki-index> 内で LLM に提示した全 Wiki ページタイトル。LLM はこの中からも
-          // 引用してよい（Retriever のヒットに無くても、index にあれば妥当な引用元）。
-          const indexTitles: string[] = [];
-          const indexBlockMatch = wikiContext.match(/<wiki-index>([\s\S]*?)<\/wiki-index>/);
-          if (indexBlockMatch) {
-            const titleInIndex = /^- \*\*(.+?)\*\*/gm;
-            let im;
-            while ((im = titleInIndex.exec(indexBlockMatch[1])) !== null) {
-              indexTitles.push(im[1]);
-            }
-          }
-          const allValidTitles = [...new Set([...candidateTitles, ...indexTitles])];
-
-          // 候補タイトルへの正規化: LLM が `[Source: "..."]` でなく `【Source: @prefix...】`
-          // のような派生形式で出すことがあるので、候補に対して prefix match で正式タイトルに復元する。
-          const resolveTitle = (raw: string): string | null => {
-            const cleaned = raw.replace(/^@/, "").trim();
-            const exact = allValidTitles.find((t) => t === cleaned);
-            if (exact) return exact;
-            const prefix = allValidTitles.find((t) => t.startsWith(cleaned) || cleaned.startsWith(t));
-            return prefix ?? null;
-          };
-
-          const sources = new Set<string>();
-          // 半角形式 [Source: "..."] と 全角形式【Source: ...】の両方を拾う
-          const halfWidth = /\[Source:\s*"?([^"\]]+?)"?\]/g;
-          const fullWidth = /【Source:\s*([^】]+?)】/g;
-          let m: RegExpExecArray | null;
-          // 元メッセージから半角を抽出
-          while ((m = halfWidth.exec(assistantMessage)) !== null) {
-            const resolved = resolveTitle(m[1]);
-            if (resolved) sources.add(resolved);
-          }
-          // 全角を抽出 + 元テキストでも半角形式に置換（panel 側のレンダラがクリック可能にできるよう）
-          // 解決できない引用は LLM の hallucination（実在しないタイトル）なので、本文から除去する。
-          assistantMessage = assistantMessage.replace(fullWidth, (_full, raw: string) => {
-            const resolved = resolveTitle(raw);
-            if (resolved) {
-              sources.add(resolved);
-              return `[Source: "${resolved}"]`;
-            }
-            return "";
-          });
-          // 半角形式の hallucination も除去（実在タイトルでない引用は表示価値が低い）
-          assistantMessage = assistantMessage.replace(halfWidth, (_full, raw: string) => {
-            const resolved = resolveTitle(raw);
-            return resolved ? `[Source: "${resolved}"]` : "";
-          });
-
-          // LLM が一度も引用しなかった場合は wikiContext の全候補を trailing list に並べる
-          if (sources.size === 0) {
-            for (const t of candidateTitles) sources.add(t);
-          }
-
-          if (sources.size > 0) {
-            const sourceList = [...sources].map((s) => `  - [Source: "${s}"]`).join("\n");
-            assistantMessage += `\n\n---\n**Knowledge referenced:**\n${sourceList}`;
-          } else {
-            assistantMessage += "\n\n---\n📎 *Knowledge referenced*";
-          }
+          const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
+            "./features/ai-assistant/citation-normalize"
+          );
+          const { message, sources, candidateTitles } = normalizeWikiCitations(
+            assistantMessage,
+            wikiContext,
+          );
+          // LLM が一度も引用しなかった場合は候補タイトルを trailing list に並べる。
+          const finalSources = sources.length > 0 ? sources : candidateTitles;
+          assistantMessage = appendKnowledgeReferenced(message, finalSources);
         }
         // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
         // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
@@ -2389,6 +2333,23 @@ function NoteEditorInner({
           e.preventDefault();
           e.stopPropagation();
           setMaterialSidePeekEntry(entry);
+          return;
+        }
+      }
+      // それでも解決できない場合: source 引用が「派生元の文書からの引用テキスト」で、
+      // ノートにも @素材にも一致しないケース（知見/claim が document:/pdf: から派生したとき）。
+      // この知見の derivedFromNotes にある文書/PDF 素材をピークで開く。再生成でリネームされた
+      // 旧タイトル引用や、文書由来の引用文はノートとして解決できないので、ここで源泉文書に橋渡しする。
+      const derived = initialDoc?.wikiMeta?.derivedFromNotes ?? [];
+      for (const sourceId of derived) {
+        const ext = /^(document|pdf):(.+)$/.exec(sourceId);
+        if (!ext) continue;
+        const entry = mediaIndex?.media.find((m) => m.fileId === ext[2]);
+        if (entry) {
+          e.preventDefault();
+          e.stopPropagation();
+          setMaterialSidePeekEntry(entry);
+          return;
         }
       }
     };
@@ -2396,7 +2357,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files, mediaIndex]);
+  }, [noteIndex, files, mediaIndex, initialDoc]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -2979,7 +2940,7 @@ function NoteEditorInner({
                   onIngestChat={onIngestChat}
                   onMakeKnowledge={onCreateKnowledgeNote ? handleMakeKnowledge : undefined}
                   noteIndex={noteIndex}
-                  onOpenWiki={(wikiId) => onNavigateNote(`wiki:${wikiId}`)}
+                  onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
                 />
               )}
               {rightTab === "history" && (

@@ -154,14 +154,23 @@ export function getWikiTitleToIdMap(): Map<string, string> {
 /** 検索結果をシステムプロンプト注入用フォーマットに変換 */
 function formatWikiContext(results: SearchResult[], wikiIndexText?: string): string {
   let context = "";
+  // 各 knowledge セクションに通し番号 [#N] を振る。LLM にはタイトル復唱ではなく
+  // この番号で引用させる（番号は言い換えが効かないので、引用 → 元ノートの突き合わせが
+  // 堅牢になる）。タイトル引用も後方互換で許可し、post-processing 側で [#N] を
+  // [Source: "title"] に正規化する。
+  let n = 0;
   for (const r of results) {
     // titleMap に無い documentId は orphan embedding（削除済み wiki の残骸）。
     // UUID をそのまま title として LLM に渡すと、応答に `[Source: "uuid..."]` が
     // 残って "Knowledge referenced" に意味不明な行が出るため、ここで skip する。
     const title = _wikiTitleMap.get(r.documentId);
     if (!title) continue;
-    const entry = `[id: ${r.documentId}, title: "${title}"]\n${r.text}\n\n`;
-    if (context.length + entry.length > MAX_CONTEXT_CHARS) break;
+    n += 1;
+    const entry = `[#${n} | "${title}"]\n${r.text}\n\n`;
+    if (context.length + entry.length > MAX_CONTEXT_CHARS) {
+      n -= 1; // この entry は採用しなかったので番号を戻す
+      break;
+    }
     context += entry;
   }
 
@@ -178,13 +187,11 @@ The Wiki contains four kinds of pages, all equally valid as citation sources:
 When the user asks an open-ended question (e.g. "what can we say from this?", "any ideas?"), actively draw on **Synthesis** and **Atom** pages in addition to Concepts — they often hold the most actionable evidence and the most generative connections.
 
 CITATION FORMAT (STRICT):
-- When you use information from a knowledge section, immediately follow that statement with: [Source: "exact page title"]
-- Use ASCII brackets only: [ and ]
-- Wrap the title in straight ASCII double quotes: "
-- Use the EXACT title shown in the [title: "..."] metadata above each section, OR a title listed in the <wiki-index> below. Do not truncate, paraphrase, or add prefixes like @.
-- Do NOT cite sources that are not present in the metadata or wiki-index. Do not invent or fabricate titles.
-- Do NOT use full-width brackets 【】, do NOT prefix with @, do NOT translate the title.
-- Example: [Source: "Cu焼結 温度依存性"]`;
+- Each knowledge section below is prefixed with a number marker like [#1 | "title"]. When you use information from a section, immediately follow that statement with its number marker, e.g. [#1].
+- Numbers are stable handles — prefer them. Do NOT paraphrase, translate, or invent titles.
+- If you cite a page that only appears in the <wiki-index> (no number), use [Source: "exact title"] with ASCII brackets and straight double quotes — copy the title exactly, no @ prefix, no full-width 【】.
+- Do NOT cite a number or title that is not shown below. Do not fabricate citations.
+- Example: ...lowers thermal conductivity [#2].`;
 
   if (wikiIndexText) {
     output += `\n\n<wiki-index>\n${wikiIndexText}\n</wiki-index>`;

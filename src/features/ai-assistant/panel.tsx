@@ -803,7 +803,7 @@ function buildMarkdownComponents(
     em: ({ children }) => <em className="italic">{proc(children)}</em>,
     hr: () => <hr className="my-2 border-t border-border" />,
     blockquote: ({ children }) => (
-      <blockquote className="border-l-2 border-border pl-2 my-1.5 text-muted-foreground">{children}</blockquote>
+      <blockquote className="border-l-2 border-border pl-2 my-1.5 text-muted-foreground">{proc(children)}</blockquote>
     ),
     code: ({ children, className }) => {
       // インラインコードのみここで装飾。pre 内の code は pre 側で扱う。

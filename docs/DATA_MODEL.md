@@ -586,8 +586,8 @@ launder it into established certainty.
 entry is `{ atomId, relationType, citation }` where:
 
 - `atomId` is the noteId of another Atom (or, in principle, a Claim).
-  Unresolved or archived IDs surface in WikiBanner as `(unknown)` with
-  the link disabled.
+  Unresolved or archived IDs surface in the wiki context drawer as
+  `(unknown)` with the link disabled.
 - `relationType` is drawn from a fixed vocabulary defined in
   `src/lib/document-types.ts`:
   `extends`, `is-special-case-of`, `shares-mechanism`,
@@ -598,10 +598,12 @@ entry is `{ atomId, relationType, citation }` where:
 
 The Atomizer parser sanitises every entry and caps the array at 3.
 
-Surface: WikiBanner renders `relatedAtoms` inside the "Derived from"
-collapsible (the same section as `derivedFromNotes` /
-`derivedFromClaims`). Keeping the collapsible count low is deliberate:
-every extra collapsible section costs readability.
+Surface: the wiki context drawer (`WikiContextDrawer`, rendered below the
+note body) renders `relatedAtoms` inside the "Derived from" collapsible
+(the same section as `derivedFromNotes` / `derivedFromClaims`). The slim
+identity strip (`WikiBanner`) stays above the body; the relational
+sections moved below it (D2 layout). Keeping the collapsible count low is
+deliberate: every extra collapsible section costs readability.
 
 ### 3.6.2 Synthesis authoring (Cmd-K Composer)
 
@@ -662,8 +664,8 @@ The lane is **strictly separate** from the existing layers:
 - `entryId` records the KB entry the claim grounded to (the matched seed
   entry, or the `gen-…` id of a freshly sedimented LLM result). This is a
   **world-grounding edge**: two insights with the same `entryId` are
-  grounded to the same world fact. The WikiBanner surfaces siblings
-  ("insights grounded to the same world fact"). What accumulates is the
+  grounded to the same world fact. The wiki context drawer surfaces
+  siblings ("insights grounded to the same world fact"). What accumulates is the
   *edge* between the user's insights and the world — not a copy of the
   world's knowledge — so it stays distinct from being a lossy LLM mirror.
   Absent when the verdict is null (no match / not sedimented).
@@ -679,7 +681,7 @@ The lane is **strictly separate** from the existing layers:
 `INDEX_SCHEMA_VERSION` does NOT bump when `grounding` lands. A minimal
 slice (`verdict`, `checkedAt`, `entryId`, `dismissed`) is mirrored into the
 **runtime** `WikiMetaSummary.groundingValidity` for the list verdict column and the
-WikiBanner edge lookup, but it is **not** persisted into `NoteIndexEntry`,
+context-drawer edge lookup, but it is **not** persisted into `NoteIndexEntry`,
 so the on-disk index schema is unchanged. A future PR that needs the
 verdict in the persisted index (e.g. cross-session quadrant badges) is
 responsible for adding that column and bumping the schema version (§5.1).
