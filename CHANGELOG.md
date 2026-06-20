@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.16.2](https://github.com/kumagallium/Graphium/compare/v0.16.1...v0.16.2) - 2026-06-20
+
+- Fix graph self-loops, split WikiBanner (D2), and make source citations peek-able by @kumagallium in https://github.com/kumagallium/Graphium/pull/447
+
 ## [v0.16.1](https://github.com/kumagallium/Graphium/compare/v0.16.0...v0.16.1) - 2026-06-19
 
 - [fix] Don't flag claude-subscription models as missing an API key by @kumagallium in https://github.com/kumagallium/Graphium/pull/445
