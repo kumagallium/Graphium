@@ -101,7 +101,7 @@ import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
-  WikiListView, WikiLogView, WikiLintView, WikiBanner,
+  WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
   IngestToast, type IngestToastState, type IngestToastItem, type IngestStage, type IngestStageStatus,
   ingestNote, ingestFromUrl, ingestFromChat, ingestFromPdf, ingestFromDocx, ingestFromMultiSource,
   extractPlainTextFromDoc,
@@ -523,6 +523,12 @@ type NoteEditorProps = {
    * 「title bar が最上段」レイアウトを保つ。
    */
   subHeaderSlot?: React.ReactNode;
+  /**
+   * 本文「下」に展開する関連・文脈 UI（WikiContextDrawer 用、D2 配置）。
+   * identity は subHeaderSlot / 本文上に残し、relational なセクションは本文の後ろに
+   * 置くことで縦の圧迫を抑える。空のときは呼び出し側が null を渡す。
+   */
+  contextDrawerSlot?: React.ReactNode;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -624,6 +630,7 @@ function NoteEditorInner({
   openSidePeekRef,
   composerCitationRef,
   subHeaderSlot,
+  contextDrawerSlot,
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -2843,6 +2850,11 @@ function NoteEditorInner({
                 onOpenComposer={onOpenComposer}
               />
             </div>
+            {/* D2 配置: WikiContextDrawer（関連・文脈）を本文の下に展開する。
+                identity（WikiBanner）は本文上、relational はここ（本文下）。 */}
+            {contextDrawerSlot && (
+              <div className="px-[54px]">{contextDrawerSlot}</div>
+            )}
           </div>
         </div>
 
@@ -5671,22 +5683,6 @@ export function NoteApp() {
                   fm.handleDeleteWikiFile(wikiId);
                   wikiLog.append("delete", [wikiId], `Deleted "${title}"`).catch(() => {});
                 }}
-                noteIndex={fm.noteIndex}
-                mediaIndex={fm.mediaIndex}
-                onNavigateNote={(noteId: string) => {
-                  // @mention / Graph ノード経路と同じく SidePeek で開く。
-                  // ノート未開時など ref が登録されていない場合は全画面遷移にフォールバック。
-                  const openSidePeek = openSidePeekRef.current;
-                  if (openSidePeek) {
-                    openSidePeek(noteId);
-                    return;
-                  }
-                  if (noteId.startsWith("wiki:")) {
-                    fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
-                  } else {
-                    fm.handleOpenFile(noteId);
-                  }
-                }}
                 onCheckWorldValidity={
                   fm.activeDoc.wikiMeta.kind === "summary" || !wikiIdForBanner
                     ? undefined
@@ -5695,13 +5691,6 @@ export function NoteApp() {
                 worldCheckLoading={
                   wikiIdForBanner !== null && worldCheckingWikiId === wikiIdForBanner
                 }
-                onClearWorldValidity={
-                  wikiIdForBanner
-                    ? () => void handleClearWorldValidity(wikiIdForBanner)
-                    : undefined
-                }
-                wikiId={wikiIdForBanner ?? undefined}
-                allWikiMetas={fm.wikiMetas}
               />
             );
           })()}
@@ -5709,6 +5698,44 @@ export function NoteApp() {
             key={fm.editorKey}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            contextDrawerSlot={
+              fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
+                ? (() => {
+                    const wikiIdForDrawer = fm.activeFileId?.replace(/^wiki:/, "") ?? null;
+                    const isArchivedDrawer = wikiIdForDrawer
+                      ? fm.archivedIdSet.has(wikiIdForDrawer)
+                      : false;
+                    return (
+                      <WikiContextDrawer
+                        wikiMeta={fm.activeDoc.wikiMeta}
+                        noteIndex={fm.noteIndex}
+                        mediaIndex={fm.mediaIndex}
+                        archived={isArchivedDrawer}
+                        onNavigateNote={(noteId: string) => {
+                          // WikiBanner と同じく SidePeek で開く（ref 未登録時は全画面遷移）。
+                          const openSidePeek = openSidePeekRef.current;
+                          if (openSidePeek) {
+                            openSidePeek(noteId);
+                            return;
+                          }
+                          if (noteId.startsWith("wiki:")) {
+                            fm.handleOpenWikiFile(noteId.replace("wiki:", ""));
+                          } else {
+                            fm.handleOpenFile(noteId);
+                          }
+                        }}
+                        onClearWorldValidity={
+                          wikiIdForDrawer
+                            ? () => void handleClearWorldValidity(wikiIdForDrawer)
+                            : undefined
+                        }
+                        wikiId={wikiIdForDrawer ?? undefined}
+                        allWikiMetas={fm.wikiMetas}
+                      />
+                    );
+                  })()
+                : undefined
+            }
             archived={(() => {
               const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
               return rawId ? fm.archivedIdSet.has(rawId) : false;

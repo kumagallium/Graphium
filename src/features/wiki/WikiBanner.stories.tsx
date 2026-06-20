@@ -2,8 +2,8 @@
 // 08b 原案寄せ: sky-soft 背景 / Regenerate dropdown / current 行 forest-soft
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { WikiBanner } from "./WikiBanner";
-import type { WikiMeta } from "../../lib/document-types";
+import { WikiBanner, WikiContextDrawer } from "./WikiBanner";
+import type { WikiMeta, WikiMetaSummary } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 
 const meta: Meta<typeof WikiBanner> = {
@@ -14,7 +14,8 @@ const meta: Meta<typeof WikiBanner> = {
     docs: {
       description: {
         component:
-          "Wiki ドキュメント最上部に常駐するバナー。AI 生成バッジ・生成日・モデル名・Regenerate ボタン・削除ボタンを表示。Regenerate は設定で選んだモデル（Default / Chat & Synthesis）に従う。",
+          "Wiki ドキュメント上部に常駐する identity バナー（AI 生成バッジ・型・確信度・世界照合 verdict・Regenerate / 削除）。\n\n" +
+          "D2 配置（2026-06）: 手順条件 / 派生元 / 世界照合 詳細 / 同じ世界事実に接続した洞察 / Backing / Rebuttal といった「関連・文脈」セクションは本文の**下**に `WikiContextDrawer` として展開する。各ストーリーは title bar → identity → 本文 → context drawer の実レイアウトを擬似再現している。",
       },
     },
   },
@@ -92,6 +93,8 @@ function Wrapper({
   noteIndex,
   withWorldCheck = false,
   mockTitle = "Wiki ドキュメントのタイトル",
+  allWikiMetas,
+  wikiId,
 }: {
   wikiMeta: WikiMeta;
   loading?: boolean;
@@ -100,17 +103,20 @@ function Wrapper({
   withWorldCheck?: boolean;
   /** 擬似タイトルバー / 擬似 H1 に流すタイトル文字列。 */
   mockTitle?: string;
+  /** 「同じ世界事実に接続した洞察」用の全 wiki サマリ Map。 */
+  allWikiMetas?: Map<string, WikiMetaSummary>;
+  /** 表示中 wiki 自身の ID（grounding edge で自分を除外）。 */
+  wikiId?: string;
 }) {
   return (
     <div style={{ background: "var(--paper-2)", minWidth: 640 }}>
       <MockTitleBar title={mockTitle} />
+      {/* identity（本文の上）。relational なセクションは持たない。 */}
       <WikiBanner
         wikiMeta={wikiMeta}
         onRegenerate={() => console.info("[story] onRegenerate")}
         onDelete={() => console.info("[story] onDelete")}
         loading={loading}
-        noteIndex={noteIndex ?? null}
-        onNavigateNote={(noteId) => console.info("[story] onNavigateNote", noteId)}
         onCheckWorldValidity={
           withWorldCheck
             ? () => console.info("[story] onCheckWorldValidity")
@@ -118,6 +124,17 @@ function Wrapper({
         }
       />
       <MockBody title={mockTitle} />
+      {/* context drawer（本文の下、D2 配置）。MockBody と同じ左右マージンに揃える。 */}
+      <div style={{ margin: "0 32px" }}>
+        <WikiContextDrawer
+          wikiMeta={wikiMeta}
+          noteIndex={noteIndex ?? null}
+          onNavigateNote={(noteId) => console.info("[story] onNavigateNote", noteId)}
+          onClearWorldValidity={() => console.info("[story] onClearWorldValidity")}
+          allWikiMetas={allWikiMetas}
+          wikiId={wikiId}
+        />
+      </div>
     </div>
   );
 }
@@ -590,6 +607,79 @@ export const WithRebuttalConditions: StoryObj = {
           "極端な低温（< -10°C）では拡散律速が再支配する",
           "薄膜厚 < 50 nm では表面効果が無視できなくなる",
         ],
+      }}
+    />
+  ),
+};
+
+// ── D2 配置: 「同じ世界事実に接続した洞察」（grounding edge） ──
+// 本文下の context drawer に展開される。常時開なので、上に置くと縦を強く圧迫していた。
+const GROUNDING_SIBLINGS: Map<string, WikiMetaSummary> = new Map([
+  [
+    "claim-sib-1",
+    {
+      title: "Ti 置換は Al3V のパワーファクターと zT を向上させる",
+      kind: "claim",
+      groundingValidity: { entryId: "gen-world-fact-001" },
+    },
+  ],
+  [
+    "claim-sib-2",
+    {
+      title: "Ti・Nb・Si 合金化は格子散乱を増やし熱伝導率を下げる",
+      kind: "claim",
+      groundingValidity: { entryId: "gen-world-fact-001" },
+    },
+  ],
+  [
+    "atom-sib-3",
+    {
+      title: "少量の添加元素は格子散乱を増やし熱伝導率を低下させる",
+      kind: "atom",
+      groundingValidity: { entryId: "gen-world-fact-001" },
+    },
+  ],
+  // 別 entryId（出てこないはず）
+  [
+    "claim-other",
+    {
+      title: "無関係な世界事実に繋がる Claim",
+      kind: "claim",
+      groundingValidity: { entryId: "gen-world-fact-999" },
+    },
+  ],
+]);
+
+export const GroundingEdges: StoryObj = {
+  name: "D2: 同じ世界事実に接続した洞察（本文下ドロワー）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "同じ `grounding.validity.entryId`（＝同じ世界事実）に接続した他の洞察を、本文の下に列挙する。D2 配置の主目的: 常時展開のこのリストが本文を押し下げていたのを解消する。identity は本文上、関連洞察は本文下、という非対称配置を確認するためのストーリー。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      mockTitle="Al3V の 5% 合金化はフォノン散乱を増やして熱伝導率を下げる"
+      wikiId="claim-current"
+      allWikiMetas={GROUNDING_SIBLINGS}
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        claimRole: ["finding"],
+        epistemicStatus: "observation",
+        grounding: {
+          validity: {
+            verdict: "supported",
+            score: 0.6,
+            checkedBy: "distilled-kb@v1",
+            checkedAt: "2026-06-20T10:00:00Z",
+            entryId: "gen-world-fact-001",
+            rationale: "固溶体散乱の標準的な筋書きと整合する",
+          },
+        },
       }}
     />
   ),
