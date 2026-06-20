@@ -102,4 +102,41 @@ describe("buildNoteGraph — 外部ソースとエッジ畳み込み", () => {
     );
     expect(between.length).toBe(1);
   });
+
+  it("自分自身を指す knowledgeLink で自己ループエッジを生成しない", () => {
+    // 再生成でリネームされた知見が自分のタイトルを source 引用すると、
+    // knowledgeLinks の targetNoteId が自分自身を指す自己参照リンクになる。
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "claim-1",
+        {
+          title: "Al3V の 5% 合金化はフォノン散乱を増やして熱伝導率を下げる",
+          source: "ai",
+          pages: [
+            {
+              id: "p",
+              title: "知見",
+              blocks: [],
+              knowledgeLinks: [
+                {
+                  id: "kl-self",
+                  sourceBlockId: "b",
+                  targetBlockId: "",
+                  targetNoteId: "claim-1", // ← 自分自身を指す
+                  type: "reference",
+                  layer: "knowledge",
+                  createdBy: "ai",
+                },
+              ],
+            },
+          ],
+          wikiMeta: { kind: "claim", derivedFromNotes: [], derivedFromChats: [] },
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+
+    const graph = buildNoteGraph("claim-1", [file("claim-1")], docs, null);
+    // 自己ループ（source === target）が 1 本も無いこと
+    expect(graph.edges.some((e) => e.source === e.target)).toBe(false);
+  });
 });
