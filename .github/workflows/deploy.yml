@@ -18,7 +18,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # build ジョブと同じく main の最新 tip をテストする（下の build 参照）。
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: pnpm/action-setup@v4
         with:
@@ -38,7 +41,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: github-pages
     steps:
+      # ref: main を明示し、ジョブ実行時の main 最新 tip を fetch し直す。
+      # tauri-build.yml は latest.json を main に push した「直後」に
+      # workflow_dispatch でこの deploy を叩くが、dispatch 解決時点では push が
+      # まだ反映されず、親コミット（更新前の public/updater/latest.json）の SHA で
+      # 走ってしまう競合がある。その結果 Pages の updater が前バージョンを指し続け、
+      # アプリが新バージョンに更新できなくなる（v0.16.2 で実害）。
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: pnpm/action-setup@v4
         with:
