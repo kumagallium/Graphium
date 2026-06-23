@@ -28,7 +28,7 @@ export type MaterialActionsMenuProps = {
   entry: MediaIndexEntry;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
-  /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する */
+  /** PDF / URL を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する */
   onTranslatePdf?: (entry: MediaIndexEntry) => void;
   onExtractPdfPages?: (
     entry: MediaIndexEntry,
@@ -141,8 +141,8 @@ export function MaterialActionsMenu({
   const isDocxEntry = isWordDocxEntry(entry);
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
-  // 全文翻訳は PDF のみ対象（MVP）
-  const canTranslate = !!onTranslatePdf && entry.type === "pdf";
+  // 全文翻訳は PDF と URL（Reader 本文）が対象。Knowledge / PROV と動線を揃える。
+  const canTranslate = !!onTranslatePdf && (entry.type === "pdf" || entry.type === "url");
   const canExtract =
     (!!onExtractPdfPages && entry.type === "pdf")
     || (!!onExtractDocxImages && isDocxEntry);
@@ -248,7 +248,7 @@ export function MaterialActionsMenu({
               <button
                 className={itemClass}
                 onClick={() => { onTranslatePdf!(entry); setOpen(false); }}
-                title={t("asset.translatePdfTitle")}
+                title={entry.type === "url" ? t("asset.translateUrlTitle") : t("asset.translatePdfTitle")}
               >
                 <Languages size={14} className="text-primary" />
                 {t("asset.translatePdf")}

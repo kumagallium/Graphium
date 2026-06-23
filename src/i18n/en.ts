@@ -1066,6 +1066,8 @@ export const en: Record<string, string> = {
   "asset.createProvNoteTitle": "Extract steps from this material and create a note (AI)",
   "asset.translatePdf": "Translate into a note",
   "asset.translatePdfTitle": "Translate the full PDF into your display language, keeping the original structure (AI)",
+  "asset.translateUrlTitle": "Translate the full web page into your display language, keeping the original structure (AI)",
+  "asset.translateSameLangConfirm": "This page already appears to be in your display language. Translate it anyway?",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",
