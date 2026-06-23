@@ -375,15 +375,36 @@ cache layer if the result passes the sedimentation rules
 `generatedByModel` + non-empty `claim` / `keywords`). The next check
 on a similar claim is served from the cache layer at no LLM cost.
 
-Source URLs returned by the LLM judge are hallucination-guarded in two
-stages (`server/services/world-grounding.ts`): (1) a hostname whitelist
-(`sanitizeSourceUrl` — only Wikipedia / DOI / arXiv survive), then (2) a
-network existence check (`verifySourceUrl` — Wikipedia REST summary 404 ⇒
-no article; arXiv / DOI HEAD). Stage 2 runs only on the LLM-judge path
-(never on KB hits), so it adds one fast request next to an already-slow
-model call. A URL that fails verification is dropped while its `ref`
-text is kept — a missing link is preferred over a fabricated one, so
-hallucinated citations never sediment into the cache KB.
+The LLM judge runs in one of two modes, picked per request in
+`server/routes/world-grounding.ts`:
+
+- **web-grounded** (when a search-capable MCP tool is connected): before
+  judging, the route runs that tool once with the claim
+  (`services/grounding-search.ts → findSearchTool` + `runGroundingSearch`,
+  pre-retrieval — the model never drives the tool itself), then judges the
+  claim *against the retrieved evidence* (`buildWebGroundedSystemPrompt`).
+  The verdict is grounded in real results rather than the model's memory;
+  `null` means "searched and found no direct prior art — not a proof of
+  novelty" (search cannot prove a negative). Output URLs are constrained to
+  the URLs that actually appeared in the evidence
+  (`parseWorldGroundingOutput` in `evidence` mode), so a model-invented URL
+  is discarded by provenance, not by a domain list. The network existence
+  check is skipped here — the URLs were retrieved seconds ago and may live
+  on any domain.
+- **parametric** (no search tool, the original path): the judge answers
+  from its own knowledge, and source URLs are hallucination-guarded in two
+  stages (`server/services/world-grounding.ts`): (1) a hostname whitelist
+  (`sanitizeSourceUrl` — only Wikipedia / DOI / arXiv survive), then (2) a
+  network existence check (`verifySourceUrl` — Wikipedia REST summary 404 ⇒
+  no article; arXiv / DOI HEAD). Stage 2 runs only on the LLM-judge path
+  (never on KB hits), so it adds one fast request next to an already-slow
+  model call.
+
+In both modes a URL that fails its guard is dropped while its `ref` text
+is kept — a missing link is preferred over a fabricated one, so
+hallucinated citations never sediment into the cache KB. Web-grounded
+judgments are surfaced with `checkedBy: "web-search"` (the real model id
+is still stored as `generatedByModel` for the cache entry).
 
 The lane is strictly separate from `epistemicStatus` /
 `hypothesisStatus` — `attachValidity` never writes those fields. See

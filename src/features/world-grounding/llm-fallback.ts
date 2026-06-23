@@ -22,6 +22,8 @@ export type WorldGroundingModelResult = {
   sources?: { ref: string; url?: string }[];
   /** どのモデルが判定したか（"claude-opus-4-7" など）。`null` の verdict でも記録 */
   model: string;
+  /** web 検索の証拠に基づいて判定されたか（MCP 検索ツール経由）。sources の URL は実在保証あり */
+  grounded?: boolean;
 };
 
 /**
@@ -107,6 +109,7 @@ export async function checkValidityViaModel(
         sources?: { ref: string; url?: string }[];
       } | null;
       model?: string;
+      grounded?: boolean;
       error?: string;
     };
     if (!json.result) {
@@ -125,6 +128,7 @@ export async function checkValidityViaModel(
         keywords: json.result.keywords,
         sources: json.result.sources,
         model: json.model ?? modelName,
+        grounded: json.grounded,
       },
     };
   } catch (err) {

@@ -14,6 +14,7 @@
 // null verdict の意味も「out-of-domain」から「自身の知識ベースで信頼できる根拠なし」に純化。
 
 import type { GroundingValidityVerdict } from "../../lib/document-types.js";
+import { normalizeUrlForMatch } from "./grounding-search.js";
 
 const VERDICT_VALUES: GroundingValidityVerdict[] = [
   "established",
@@ -51,6 +52,29 @@ function sanitizeSourceUrl(url: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * 出力 URL の絞り込みモード。
+ * - `whitelist`: parametric 判定（モデルの記憶由来）。安全ドメインのみ通す従来方式。
+ * - `evidence`: web-grounding 判定。判定前に実行した検索が実際に返した URL のみ通す。
+ *   「取得集合に属するか」で絞るので、任意ドメインでも実在保証が成り立つ。
+ */
+export type ParseUrlMode =
+  | { mode: "whitelist" }
+  | { mode: "evidence"; allowedUrls: Set<string> };
+
+/** source.url を urlMode に応じて検証する。通らなければ undefined（ref は別途残す）。 */
+function resolveSourceUrl(
+  url: string | undefined,
+  urlMode: ParseUrlMode,
+): string | undefined {
+  if (!url) return undefined;
+  if (urlMode.mode === "whitelist") return sanitizeSourceUrl(url);
+  // evidence モード: http(s) かつ、検索が返した URL 集合に正規化一致するものだけ通す。
+  const norm = normalizeUrlForMatch(url);
+  if (norm && urlMode.allowedUrls.has(norm)) return url;
+  return undefined;
 }
 
 export type WorldGroundingResult = {
@@ -141,6 +165,81 @@ Output strict JSON now.`;
 }
 
 /**
+ * web-grounding 用 system prompt（検索証拠に基づく判定）。
+ *
+ * parametric 版との違い:
+ * 1. モデルの記憶ではなく、下に注入される SEARCH EVIDENCE に基づいて位置づける
+ * 2. sources[].url は証拠に出てきた URL のみ（記憶からの URL 生成を厳禁）
+ * 3. 証拠が主張に触れていなければ verdict=null。「検索で先行が見つからなかった」止まりで、
+ *    新規性の証明はしない（構造的限界を honest に表現する）
+ *
+ * 出力スキーマは parametric 版と同一なので parseWorldGroundingOutput をそのまま使える。
+ */
+export function buildWebGroundedSystemPrompt(language: string): string {
+  const langInstruction =
+    language === "ja"
+      ? "rationale / normalizedClaim は日本語で書く。keywords は日本語と英語の同義語を混ぜる。"
+      : "Write rationale / normalizedClaim in English. Mix Japanese and English synonyms in keywords.";
+  return `You are a knowledge-base curator with access to fresh web SEARCH EVIDENCE
+(real results retrieved just now). Given a user's claim and the evidence, judge how
+the claim stands relative to what the evidence shows.
+
+Ground every judgment in the EVIDENCE — do NOT rely on your own memory for specific
+facts, sources, or URLs. The verdict reflects how the claim sits against the retrieved
+evidence, NOT a judgment of the user's stance. The final call always stays with the user.
+
+You MUST output strict JSON only (a single JSON object, no prose, no markdown text
+outside the optional \`\`\`json fence). Schema:
+
+{
+  "verdict": "established" | "supported" | "weak" | "contested" | null,
+  "rationale": "<one-sentence reason grounded in the evidence>",
+  "normalizedClaim": "<rewrite the claim as a single domain-general sentence>",
+  "keywords": ["<6-10 retrieval keywords, multilingual ja/en mix>"],
+  "sources": [
+    { "ref": "<title of the evidence item>", "url": "<a URL copied verbatim from the evidence>" }
+  ]
+}
+
+Verdict semantics (relative to the EVIDENCE):
+- "established": the evidence strongly and consistently supports the claim as well-known.
+- "supported":   the evidence supports it but shows known limits / debate.
+- "weak":        the evidence is thin, indirect, or mixed.
+- "contested":   the evidence shows counter-evidence or a known overgeneralization pattern.
+- null:          the evidence does not address this claim. Return null and set rationale to
+                 "Searched the web but found no direct prior art — this is not proof of novelty."
+                 Do NOT guess from memory.
+
+URL rule (STRICT):
+- In "sources[].url", include ONLY URLs that appear verbatim in the EVIDENCE below.
+- NEVER invent, autocomplete, or recall a URL from memory. Any URL not present in the
+  evidence will be discarded by the parser. If unsure, omit "url" and keep "ref" only.
+
+Rules:
+- "normalizedClaim" MUST be domain-general: strip experiment-specific parameters, sample IDs,
+  lab names, personal anecdote details. This is what the KB caches as a reusable entry.
+- "keywords" should be retrievable terms that another similar claim would contain.
+
+${langInstruction}`;
+}
+
+/**
+ * web-grounding 用 user message（claim + 検索証拠を注入）。
+ */
+export function buildWebGroundedUserMessage(input: {
+  claimText: string;
+  evidenceText: string;
+}): string {
+  return `Claim to judge:
+${input.claimText.trim()}
+
+SEARCH EVIDENCE (retrieved just now — cite ONLY URLs that appear here):
+${input.evidenceText.trim()}
+
+Output strict JSON now.`;
+}
+
+/**
  * LLM 出力をパースして WorldGroundingResult に正規化する。
  *
  * 失敗時の挙動:
@@ -148,7 +247,10 @@ Output strict JSON now.`;
  * - verdict が 4 値以外 → null に丸める
  * - normalizedClaim / keywords が無く verdict 有 → そのまま返す（呼び出し元 cache で reject）
  */
-export function parseWorldGroundingOutput(raw: string): WorldGroundingResult | null {
+export function parseWorldGroundingOutput(
+  raw: string,
+  urlMode: ParseUrlMode = { mode: "whitelist" },
+): WorldGroundingResult | null {
   // ``` ブロック剥がし（既存 parser と同じ流儀）
   let jsonText = raw.trim();
   const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -190,9 +292,12 @@ export function parseWorldGroundingOutput(raw: string): WorldGroundingResult | n
         )
         .map((s: any) => ({
           ref: String(s.ref).trim(),
-          // URL whitelist: 安全な domain のみ残す。それ以外は LLM 幻覚として捨てる（ref は残す）。
-          url: sanitizeSourceUrl(
+          // urlMode に応じて URL を絞る:
+          // - whitelist: 安全 domain のみ（parametric 判定の幻覚 URL 対策）
+          // - evidence: 検索が返した URL のみ（web-grounding の provenance 保証）
+          url: resolveSourceUrl(
             typeof s.url === "string" && s.url.trim() ? s.url.trim() : undefined,
+            urlMode,
           ),
         }))
     : undefined;

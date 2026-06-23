@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildWorldGroundingSystemPrompt,
   buildWorldGroundingUserMessage,
+  buildWebGroundedSystemPrompt,
+  buildWebGroundedUserMessage,
   parseWorldGroundingOutput,
   verifyResultSourceUrls,
   verifySourceUrl,
@@ -249,6 +251,109 @@ describe("verifyResultSourceUrls: 実在しない url を剥がして ref は残
     const result = { verdict: "weak" as const, rationale: "x" };
     expect(await verifyResultSourceUrls(result)).toBe(result);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── web-grounding（Phase 5）: 検索証拠に基づく判定 ────────────────────────────
+describe("buildWebGroundedSystemPrompt", () => {
+  it("検索証拠に基づき記憶に頼らないよう指示する", () => {
+    const sys = buildWebGroundedSystemPrompt("en");
+    expect(sys).toMatch(/SEARCH EVIDENCE/);
+    expect(sys).toMatch(/do NOT rely on your own memory/i);
+  });
+
+  it("URL は証拠に出てきたものだけ（記憶から生成禁止）と明記する", () => {
+    const sys = buildWebGroundedSystemPrompt("en");
+    expect(sys).toMatch(/ONLY URLs that appear verbatim in the EVIDENCE/);
+    expect(sys).toMatch(/NEVER invent/i);
+  });
+
+  it("null は「新規性の証明ではない」と表現する（構造的限界）", () => {
+    const sys = buildWebGroundedSystemPrompt("en");
+    expect(sys).toMatch(/not proof of novelty/i);
+  });
+
+  it("verdict は 4 値 + null を維持する（パーサー共通）", () => {
+    const sys = buildWebGroundedSystemPrompt("en");
+    for (const v of ["established", "supported", "weak", "contested", "null"]) {
+      expect(sys).toMatch(new RegExp(v));
+    }
+  });
+
+  it("ja ロケールでは日本語で書くよう指示する", () => {
+    expect(buildWebGroundedSystemPrompt("ja")).toMatch(/日本語/);
+  });
+});
+
+describe("buildWebGroundedUserMessage", () => {
+  it("claim と検索証拠の両方を含む", () => {
+    const msg = buildWebGroundedUserMessage({
+      claimText: "test claim",
+      evidenceText: "Result https://a.com/x",
+    });
+    expect(msg).toMatch(/test claim/);
+    expect(msg).toMatch(/SEARCH EVIDENCE/);
+    expect(msg).toMatch(/https:\/\/a\.com\/x/);
+  });
+});
+
+describe("parseWorldGroundingOutput: evidence モードの URL ガードレール", () => {
+  it("証拠に出てきた URL は通す（任意ドメインでも）", () => {
+    const allowedUrls = new Set([
+      "https://www.nature.com/articles/nmat2090",
+      "https://blog.example.dev/post",
+    ]);
+    const raw = JSON.stringify({
+      verdict: "supported",
+      rationale: "x",
+      sources: [
+        { ref: "Nature", url: "https://www.nature.com/articles/nmat2090" },
+        { ref: "Blog", url: "https://blog.example.dev/post" },
+      ],
+    });
+    const out = parseWorldGroundingOutput(raw, { mode: "evidence", allowedUrls });
+    expect(out?.sources?.map((s) => s.url)).toEqual([
+      "https://www.nature.com/articles/nmat2090",
+      "https://blog.example.dev/post",
+    ]);
+  });
+
+  it("証拠に無い URL は捨てる（ref は残す）= 記憶由来 URL の混入を防ぐ", () => {
+    const allowedUrls = new Set(["https://www.nature.com/articles/nmat2090"]);
+    const raw = JSON.stringify({
+      verdict: "supported",
+      rationale: "x",
+      sources: [
+        { ref: "real", url: "https://www.nature.com/articles/nmat2090" },
+        { ref: "hallucinated", url: "https://www.science.org/doi/10.1126/made-up" },
+      ],
+    });
+    const out = parseWorldGroundingOutput(raw, { mode: "evidence", allowedUrls });
+    expect(out?.sources?.length).toBe(2);
+    expect(out?.sources?.[0].url).toBe("https://www.nature.com/articles/nmat2090");
+    expect(out?.sources?.[1].url).toBeUndefined();
+  });
+
+  it("末尾スラッシュ / hash 違いも正規化一致で通す", () => {
+    const allowedUrls = new Set(["https://example.com/doc"]);
+    const raw = JSON.stringify({
+      verdict: "weak",
+      rationale: "x",
+      sources: [{ ref: "doc", url: "https://example.com/doc/#section" }],
+    });
+    const out = parseWorldGroundingOutput(raw, { mode: "evidence", allowedUrls });
+    expect(out?.sources?.[0].url).toBe("https://example.com/doc/#section");
+  });
+
+  it("引数なし呼び出しは従来どおり whitelist モード（後方互換）", () => {
+    const raw = JSON.stringify({
+      verdict: "supported",
+      rationale: "x",
+      sources: [{ ref: "Nature", url: "https://www.nature.com/articles/nmat2090" }],
+    });
+    // whitelist モードでは nature.com は捨てられる
+    const out = parseWorldGroundingOutput(raw);
+    expect(out?.sources?.[0].url).toBeUndefined();
   });
 });
 

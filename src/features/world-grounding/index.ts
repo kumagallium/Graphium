@@ -116,10 +116,14 @@ export async function checkValidity(
     console.info("[world-grounding] sedimented into KB cache:", cached);
   }
 
+  // 判定の出所表示: web 検索の証拠に基づいたなら "web-search"、そうでなければモデル ID。
+  // （KB に沈殿させる generatedByModel は実モデル ID のまま保持する＝上の appendToKbCache）
+  const checkedBy = modelResult.grounded ? "web-search" : modelResult.model;
+
   // verdict が null（LLM が「判定不能」と返した）でも checkedAt は記録する
   if (!modelResult.verdict) {
     return {
-      checkedBy: modelResult.model,
+      checkedBy,
       checkedAt,
       rationale: modelResult.rationale || undefined,
     };
@@ -134,7 +138,7 @@ export async function checkValidity(
       url: s.url,
     })),
     matchedKeywords: modelResult.keywords,
-    checkedBy: modelResult.model,
+    checkedBy,
     checkedAt,
     entryId: sedimentedEntryId,
   };
