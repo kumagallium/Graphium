@@ -221,13 +221,25 @@ export function useFileManager(authenticated: boolean) {
       const noteResult = noteSettled.status === "fulfilled" ? noteSettled.value : [];
       const wikiResult = wikiSettled.status === "fulfilled" ? wikiSettled.value : [];
       const skillResult = skillSettled.status === "fulfilled" ? skillSettled.value : [];
-      if (noteSettled.status === "rejected") console.warn("listFiles failed:", noteSettled.reason);
-      if (wikiSettled.status === "rejected") console.warn("listWikiFiles failed:", wikiSettled.reason);
-      if (skillSettled.status === "rejected") console.warn("listSkillFiles failed:", skillSettled.reason);
       console.log(`[wiki-debug] refreshFiles: notes=${noteResult.length}, wikis=${wikiResult.length}`, wikiResult.map(f => f.id));
-      setFiles(noteResult);
-      setWikiFiles(wikiResult);
-      setSkillFiles(skillResult);
+      // 一覧取得が transient に失敗したとき（sidecar の一時エラー等）に既存の
+      // files を空で上書きすると、直後の auto-save が handleSave の新規作成分岐に
+      // 落ちて開いているノートが新 id で複製される。失敗時は前回の一覧を保持する。
+      if (noteSettled.status === "fulfilled") {
+        setFiles(noteResult);
+      } else {
+        console.warn("listFiles failed; keeping previous note list to avoid duplicate-on-save:", noteSettled.reason);
+      }
+      if (wikiSettled.status === "fulfilled") {
+        setWikiFiles(wikiResult);
+      } else {
+        console.warn("listWikiFiles failed; keeping previous wiki list:", wikiSettled.reason);
+      }
+      if (skillSettled.status === "fulfilled") {
+        setSkillFiles(skillResult);
+      } else {
+        console.warn("listSkillFiles failed; keeping previous skill list:", skillSettled.reason);
+      }
       // Skill メタデータをバックグラウンドで読み込み
       // 同時にシステムスキル（default-voice-ja/en）が欠けていれば作成する
       Promise.allSettled(
@@ -694,42 +706,46 @@ export function useFileManager(authenticated: boolean) {
       savingRef.current = true;
       setSaving(true);
       try {
-        // 孤児リンクをクリーンアップ（存在しないノートへの参照を除去）
-        const fileIds = new Set(files.map((f) => f.id));
-        if (doc.noteLinks) {
-          doc = { ...doc, noteLinks: doc.noteLinks.filter((l) => fileIds.has(l.targetNoteId)) };
-          if (doc.noteLinks!.length === 0) doc = { ...doc, noteLinks: undefined };
-        }
-        if (doc.derivedFromNoteId && !fileIds.has(doc.derivedFromNoteId)) {
-          doc = { ...doc, derivedFromNoteId: undefined, derivedFromBlockId: undefined };
+        // 孤児リンクをクリーンアップ（存在しないノートへの参照を除去）。
+        // ただし一覧（files）が未ロード／transient 失敗で空のときに実行すると、
+        // 生きているリンクまで「孤児」とみなして全消去してしまう。一覧が信頼できる
+        // とき（ロード完了かつ非空）だけ掃除する。
+        if (!filesLoading && files.length > 0) {
+          const fileIds = new Set(files.map((f) => f.id));
+          if (doc.noteLinks) {
+            doc = { ...doc, noteLinks: doc.noteLinks.filter((l) => fileIds.has(l.targetNoteId)) };
+            if (doc.noteLinks!.length === 0) doc = { ...doc, noteLinks: undefined };
+          }
+          if (doc.derivedFromNoteId && !fileIds.has(doc.derivedFromNoteId)) {
+            doc = { ...doc, derivedFromNoteId: undefined, derivedFromBlockId: undefined };
+          }
         }
 
         const currentFileId = activeFileIdRef.current;
-        // ファイル一覧に存在するか確認（ゴミ箱内のファイルへの保存を防止）
-        const fileExists = currentFileId && files.some((f) => f.id === currentFileId);
-        // ファイル一覧未ロード中は currentFileId が一覧に無いように見える。
-        // ここで「新規作成」分岐に落ちると同じノートの重複が作られるので、
-        // 一覧読み込み完了まで保存をスキップする。
-        if (currentFileId && !fileExists && filesLoading) {
-          console.warn(
-            "[handleSave] files list not loaded yet; skipping save to avoid duplicate creation",
-            { activeFileId: currentFileId },
-          );
-          return;
-        }
-        if (currentFileId && fileExists) {
-          // 既存ファイルを上書き
+        if (currentFileId) {
+          // 既存ノートは常に同じ id へ上書き保存する。
+          // ここで「新規作成」分岐に落ちると、同一ノートが新 id で複製され、
+          // 既存の被参照リンク（他ノート→旧 id）が取り残されてしまう。
+          // soft-delete / 完全削除はアクティブノートの activeFileId を null にするため、
+          // currentFileId が立っている = そのノートは開いていてゴミ箱にない、が保証される。
+          // よって一覧（files）が transient なロード失敗で stale/空でも、複製ではなく上書きが正しい。
           await saveFile(currentFileId, doc);
           // キャッシュも更新
           docCacheRef.current.set(currentFileId, doc);
-          // ローカルのファイル一覧を即座に更新
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === currentFileId
-                ? { ...f, name: `${doc.title}.graphium.json`, modifiedTime: new Date().toISOString() }
-                : f
-            )
-          );
+          // ローカルのファイル一覧を upsert（stale で欠けていても復元する）
+          setFiles((prev) => {
+            const name = `${doc.title}.graphium.json`;
+            const modifiedTime = new Date().toISOString();
+            if (prev.some((f) => f.id === currentFileId)) {
+              return prev.map((f) =>
+                f.id === currentFileId ? { ...f, name, modifiedTime } : f
+              );
+            }
+            return [
+              { id: currentFileId, name, modifiedTime, createdTime: doc.createdAt ?? modifiedTime },
+              ...prev,
+            ];
+          });
           // 最近のノートを更新
           setRecentNotes(addToRecent(currentFileId, doc.title));
         } else {
