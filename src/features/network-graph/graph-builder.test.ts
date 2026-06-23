@@ -140,3 +140,84 @@ describe("buildNoteGraph — 外部ソースとエッジ畳み込み", () => {
     expect(graph.edges.some((e) => e.source === e.target)).toBe(false);
   });
 });
+
+describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () => {
+  const rawUrl = "https://news.example.com/article";
+  function mediaIndexWith(type: "image" | "url", usedNoteId: string): MediaIndex {
+    const fileId = type === "url" ? `url:${rawUrl}` : "img-1";
+    return {
+      version: 3,
+      updatedAt: "",
+      media: [
+        {
+          fileId,
+          name: type === "url" ? "Example article" : "fig.png",
+          type,
+          mimeType: type === "url" ? "text/html" : "image/png",
+          url: type === "url" ? rawUrl : "cdn://img-1",
+          thumbnailUrl: "",
+          uploadedAt: "",
+          usedIn: [{ noteId: usedNoteId, noteTitle: "Note", blockId: "b1" }],
+        },
+      ],
+    } as unknown as MediaIndex;
+  }
+
+  it("本文にインラインリンクで使った URL ブックマークを url: ノードとして出す", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, mediaIndexWith("url", "note-1"));
+    const urlNode = graph.nodes.find((n) => n.external === "url");
+    expect(urlNode).toBeDefined();
+    expect(urlNode!.id).toBe(`url:${rawUrl}`);
+    expect(urlNode!.title).toBe("Example article"); // ブックマーク名で解決される
+    expect(
+      graph.edges.some(
+        (e) =>
+          (e.source === `url:${rawUrl}` && e.target === "note-1") ||
+          (e.source === "note-1" && e.target === `url:${rawUrl}`),
+      ),
+    ).toBe(true);
+  });
+
+  it("現在ノートで使われていない URL は出さない", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    // 別ノートで使われている URL は note-1 のグラフには出ない
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, mediaIndexWith("url", "other-note"));
+    expect(graph.nodes.some((n) => n.external === "url")).toBe(false);
+  });
+
+  it("画像は従来どおり media: ノードとして出る（回帰防止）", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, mediaIndexWith("image", "note-1"));
+    const mediaNode = graph.nodes.find((n) => n.external === "media");
+    expect(mediaNode).toBeDefined();
+    expect(mediaNode!.mediaType).toBe("image");
+  });
+});

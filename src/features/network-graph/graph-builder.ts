@@ -183,17 +183,25 @@ export function buildNoteGraph(
     }
   }
 
-  // 現在ノートで使用されているメディアを media: 仮想ノードとしてエッジ追加。
-  // PDF / URL は既存の pdf: / url: 経路で表示されるので、それ以外の画像・動画・音声・file のみここで加える。
+  // 現在ノートで使用されているメディアを仮想ノードとしてエッジ追加。
   // 使用関係は MediaIndex.usedIn に集約されており、通常ノートの noteId は prefix なし、
   // Knowledge ノートは `wiki:{id}` の形で記録されている。
   if (currentNoteId && mediaIndex) {
     const usageKeys = [currentNoteId, `wiki:${currentNoteId}`];
     for (const m of mediaIndex.media) {
-      if (m.type === "pdf" || m.type === "url") continue; // 既存経路で表示済み
-      if (m.type !== "image" && m.type !== "video" && m.type !== "audio") continue;
       if (!m.usedIn.some((u) => usageKeys.includes(u.noteId))) continue;
-      addEdge(`media:${m.fileId}`, currentNoteId, "media");
+      if (m.type === "image" || m.type === "video" || m.type === "audio") {
+        // 画像・動画・音声はサムネイル付きの media: ノードで表示する。
+        addEdge(`media:${m.fileId}`, currentNoteId, "media");
+      } else if (m.type === "url") {
+        // URL ブックマークを本文のインラインリンクで使った場合も、PROV 由来
+        // （top-level sourceUrl）と同じ url: ノードで近接グラフに出す。URL 素材の
+        // fileId は "url:<生URL>" なので m.url から同じ id を組み立てる。
+        // これを入れないと、アセットグラフには URL が出るのに近接グラフには出ない
+        // という素材タイプ間の不一致になる（usedIn ベースで両グラフの定義を揃える）。
+        addEdge(`url:${m.url}`, currentNoteId, "url");
+      }
+      // PDF は pdf ブロック / sourcePdfFileId の既存経路で表示するため、ここでは扱わない。
     }
   }
 
