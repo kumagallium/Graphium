@@ -180,6 +180,7 @@ export function MediaPickerModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
 
   // URL 登録フォーム用の状態
   const [newUrl, setNewUrl] = useState(initialUrl ?? "");
@@ -187,10 +188,15 @@ export function MediaPickerModal({
   const [urlRegistering, setUrlRegistering] = useState(false);
   const lastFetchedUrl = useRef("");
 
-  // 自動フォーカス
+  // 自動フォーカス: URL タイプでは「新しい URL を追加する」入力欄を最初の焦点にする
+  // （既存検索より新規追加が主目的のため）。それ以外のタイプは検索ボックス。
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (mediaType === "url" && onAddUrlBookmark) {
+      urlInputRef.current?.focus();
+    } else {
+      inputRef.current?.focus();
+    }
+  }, [mediaType, onAddUrlBookmark]);
 
   // ESC で閉じる
   useEffect(() => {
@@ -360,6 +366,7 @@ export function MediaPickerModal({
             <div className="mb-3">
               <div className="flex gap-2">
                 <input
+                  ref={urlInputRef}
                   type="url"
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
