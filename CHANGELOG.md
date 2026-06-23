@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.16.3](https://github.com/kumagallium/Graphium/compare/v0.16.2...v0.16.3) - 2026-06-23
+
+- Deploy Pages from current main tip to fix updater race by @kumagallium in https://github.com/kumagallium/Graphium/pull/449
+- [feat] Asset library: per-type default view + URL modal focus by @kumagallium in https://github.com/kumagallium/Graphium/pull/451
+- [fix] Make the asset graph consistent across all material types (URLs) by @kumagallium in https://github.com/kumagallium/Graphium/pull/452
+- [fix] Sanitize lone surrogates before sending agent requests by @kumagallium in https://github.com/kumagallium/Graphium/pull/453
+
 ## [v0.16.2](https://github.com/kumagallium/Graphium/compare/v0.16.1...v0.16.2) - 2026-06-20
 
 - Fix graph self-loops, split WikiBanner (D2), and make source citations peek-able by @kumagallium in https://github.com/kumagallium/Graphium/pull/447
