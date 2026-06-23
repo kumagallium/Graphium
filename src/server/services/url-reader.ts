@@ -17,8 +17,13 @@
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 
-const USER_AGENT = "Graphium/1.0 (Reader)";
-const ACCEPT = "text/html,application/xhtml+xml";
+// 多くのサイトは "Graphium/1.0" のような非ブラウザ UA を素で 403 にする。
+// 現実的なブラウザ UA + 充実した Accept ヘッダにして互換性を上げる
+// （Reader 系サービスの慣例。ただし Cloudflare 等の JS チャレンジは UA では突破できない）。
+const USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+const ACCEPT_LANGUAGE = "en-US,en;q=0.9";
 const FETCH_TIMEOUT_MS = 15_000;
 
 export type ReaderArticle = {
@@ -60,7 +65,11 @@ export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> 
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: ACCEPT },
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: ACCEPT,
+        "Accept-Language": ACCEPT_LANGUAGE,
+      },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       redirect: "follow",
     });
@@ -70,9 +79,19 @@ export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> 
   }
 
   if (!res.ok) {
+    // Cloudflare 等のボット保護は、ブラウザでは開けてもサーバー側 fetch では
+    // 403/503 になる（TLS フィンガープリント + JS チャレンジ）。UA では突破できない
+    // ので、ユーザーが「サイト側の保護」だと分かる文言にして無駄な再試行を防ぐ。
+    const server = (res.headers.get("server") ?? "").toLowerCase();
+    const botProtected =
+      res.headers.get("cf-mitigated") !== null ||
+      ((res.status === 403 || res.status === 503) &&
+        (server.includes("cloudflare") || server.includes("akamai")));
     throw {
       status: 400,
-      message: `Fetch failed: ${res.status} ${res.statusText}`,
+      message: botProtected
+        ? `This page is behind bot protection (e.g. Cloudflare) and cannot be fetched from the server, even though it may open in your browser. Try a different URL. (${res.status})`
+        : `Fetch failed: ${res.status} ${res.statusText}`,
     } satisfies ReaderError;
   }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   extractReaderFromHtml,
   sanitizeReaderHtml,
@@ -6,6 +6,7 @@ import {
   getCachedReaderArticle,
   setCachedReaderArticle,
   clearReaderCache,
+  fetchAsReaderArticle,
 } from "./url-reader";
 
 const ARTICLE_HTML = `<!doctype html>
@@ -76,6 +77,41 @@ describe("extractReaderFromHtml", () => {
     expect(caught).not.toBeNull();
     const err = caught as { status: number; message: string };
     expect(err.status).toBe(422);
+  });
+});
+
+describe("fetchAsReaderArticle (bot protection)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function stubFetch(status: number, headers: Record<string, string>) {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status, headers }) as Response,
+    );
+  }
+
+  it("Cloudflare の cf-mitigated: challenge を「ボット保護」と説明する", async () => {
+    stubFetch(403, { "cf-mitigated": "challenge", server: "cloudflare" });
+    await expect(fetchAsReaderArticle("https://blocked.example.com/a")).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("bot protection"),
+    });
+  });
+
+  it("server: cloudflare + 403 でもボット保護として扱う（cf-mitigated 無し）", async () => {
+    stubFetch(403, { server: "cloudflare" });
+    await expect(fetchAsReaderArticle("https://blocked.example.com/b")).rejects.toMatchObject({
+      message: expect.stringContaining("bot protection"),
+    });
+  });
+
+  it("ボット保護でない通常の 403 は従来どおり Fetch failed メッセージ", async () => {
+    stubFetch(403, { server: "nginx" });
+    await expect(fetchAsReaderArticle("https://plain.example.com/c")).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("Fetch failed: 403"),
+    });
   });
 });
 
