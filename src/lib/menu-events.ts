@@ -3,7 +3,7 @@
 
 import { isTauri } from "./platform";
 
-type MenuAction = "new-note" | "export-pdf" | "export-prov" | "toggle-graph" | "toggle-chat" | "about" | "release-notes" | "restart-backend";
+type MenuAction = "new-note" | "new-memo" | "export-pdf" | "export-prov" | "toggle-graph" | "toggle-chat" | "about" | "release-notes" | "restart-backend";
 
 // コールバック登録用レジストリ
 const handlers = new Map<MenuAction, () => void>();

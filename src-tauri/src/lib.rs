@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
-use tauri::menu::{MenuBuilder, SubmenuBuilder};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 // --- sidecar ログファイル ---
@@ -1308,8 +1308,17 @@ pub fn run() {
         .manage(NativeSidecarState::default())
         .setup(|app| {
             // メニューバー構築
+            // ⌘⇧M (Quick Memo) はネイティブメニューのアクセラレータとして登録する。
+            // 理由: WKWebView では Cmd 系ショートカットがメニューの key-equivalent 処理に
+            // 先取りされ、JS の document keydown まで届かないことがある。ネイティブ項目に
+            // すればキー配送に依存せず確実に発火し、メニューバーからも発見できる。
+            let new_memo = MenuItemBuilder::with_id("new-memo", "New Memo")
+                .accelerator("CmdOrCtrl+Shift+M")
+                .build(app)?;
+
             let file_menu = SubmenuBuilder::new(app, "File")
                 .text("new-note", "New Note")
+                .item(&new_memo)
                 .separator()
                 .text("export-pdf", "Export as PDF")
                 .text("export-prov", "Export PROV-JSON-LD")
@@ -1360,7 +1369,7 @@ pub fn run() {
                 let window = app.get_webview_window("main").unwrap();
                 let id = event.id().0.as_str();
                 match id {
-                    "new-note" | "export-pdf" | "export-prov" | "toggle-graph"
+                    "new-note" | "new-memo" | "export-pdf" | "export-prov" | "toggle-graph"
                     | "toggle-chat" | "about" | "release-notes" | "restart-backend" => {
                         // フロントエンドにイベントを送信
                         let _ = window.emit("menu-action", id);
