@@ -448,6 +448,46 @@ export type AssetGalleryViewProps = {
   onCreateMemoForAsset?: (entry: MediaIndexEntry, text: string) => void | Promise<void>;
 };
 
+// 素材タイプごとの表示モード（gallery / list）。
+// 画像・動画はサムネイルが情報になるのでギャラリー、それ以外（URL・PDF・
+// ドキュメント・音声など）はサムネイルが判別の役に立たないのでリストを
+// デフォルトにする。ユーザーがタイプ別にトグルした選択は localStorage に記憶する。
+type AssetViewMode = "gallery" | "list";
+const ASSET_VIEW_MODE_KEY = "graphium:assetViewModeByType";
+
+function defaultViewModeFor(type: MediaType): AssetViewMode {
+  return type === "image" || type === "video" ? "gallery" : "list";
+}
+
+function loadViewModeMap(): Partial<Record<MediaType, AssetViewMode>> {
+  try {
+    if (typeof localStorage === "undefined") return {};
+    const raw = localStorage.getItem(ASSET_VIEW_MODE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// そのタイプの保存値（あれば）を優先し、無ければタイプ別デフォルトを返す
+function resolveViewMode(type: MediaType): AssetViewMode {
+  const stored = loadViewModeMap()[type];
+  return stored === "gallery" || stored === "list" ? stored : defaultViewModeFor(type);
+}
+
+function persistViewMode(type: MediaType, mode: AssetViewMode): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const map = loadViewModeMap();
+    map[type] = mode;
+    localStorage.setItem(ASSET_VIEW_MODE_KEY, JSON.stringify(map));
+  } catch {
+    // no-op
+  }
+}
+
 export function AssetGalleryView({
   mediaIndex,
   mediaType,
@@ -524,22 +564,20 @@ export function AssetGalleryView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  // ビュー切替（gallery / list）— localStorage に永続化
-  const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {
-    try {
-      const v = typeof localStorage !== "undefined" ? localStorage.getItem("graphium:assetViewMode") : null;
-      return v === "list" ? "list" : "gallery";
-    } catch {
-      return "gallery";
-    }
-  });
+  // ビュー切替（gallery / list）— 素材タイプごとに既定値と選択を持つ
+  const [viewMode, setViewMode] = useState<AssetViewMode>(() => resolveViewMode(mediaType));
+  // タブ（mediaType）切替時は、そのタイプの保存値（無ければタイプ別デフォルト）に追従する
   useEffect(() => {
-    try {
-      localStorage.setItem("graphium:assetViewMode", viewMode);
-    } catch {
-      // no-op
-    }
-  }, [viewMode]);
+    setViewMode(resolveViewMode(mediaType));
+  }, [mediaType]);
+  // ユーザーが明示的にトグルしたときだけ、そのタイプの選択を保存する
+  const changeViewMode = useCallback(
+    (mode: AssetViewMode) => {
+      setViewMode(mode);
+      persistViewMode(mediaType, mode);
+    },
+    [mediaType],
+  );
   // 複数選択（list モードのみで利用）
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -1047,7 +1085,7 @@ export function AssetGalleryView({
           {/* ビュー切替 */}
           <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
             <button
-              onClick={() => setViewMode("gallery")}
+              onClick={() => changeViewMode("gallery")}
               title={t("asset.viewGallery")}
               aria-pressed={viewMode === "gallery"}
               className={`px-2 py-1 transition-colors ${
@@ -1059,7 +1097,7 @@ export function AssetGalleryView({
               <LayoutGrid size={12} />
             </button>
             <button
-              onClick={() => setViewMode("list")}
+              onClick={() => changeViewMode("list")}
               title={t("asset.viewList")}
               aria-pressed={viewMode === "list"}
               className={`px-2 py-1 transition-colors border-l border-border ${
