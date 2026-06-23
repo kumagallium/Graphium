@@ -332,6 +332,15 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
+- **Note mode vs document mode.** For a short personal note the ingester emits
+  a Summary plus 0-3 Claims (the "1 note ≈ 1 idea" assumption). When the source
+  is an **imported external document** — its `noteId` carries a `pdf:` /
+  `document:` / `url:` / `chat:` prefix (the external-source convention) — the
+  ingester switches to *document mode*: it harvests every distinct transferable
+  insight the document argues as its own Claim, with no fixed cap, so a dense
+  article is not collapsed into a single headline Claim. The switch is decided
+  in `src/server/routes/wiki.ts` and changes only the Claim guidance inside
+  `buildIngesterSystemPrompt`.
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response.
 - **Embeddings** (per Wiki section) are stored via

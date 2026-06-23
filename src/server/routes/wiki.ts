@@ -76,10 +76,16 @@ app.post("/ingest", async (c) => {
     );
   }
 
+  // 取り込んだ外部文書（PDF / Word / URL / チャット）は noteId に prefix が付く
+  // （pdf: / document: / url: / chat:、external-source.ts の規約）。これらは複数の
+  // 転用可能な知見を持つので ingester を「文書モード」に切り替え、過少抽出を防ぐ。
+  const isDocument = /^(pdf|document|url|chat):/.test(body.noteId ?? "");
+
   const systemPrompt = buildIngesterSystemPrompt(
     body.language || "en",
     body.existingWikiTitles || [],
     body.skills,
+    { isDocument },
   );
 
   // PROV 構造があれば user message の先頭にコンパクトに添える。
