@@ -153,13 +153,16 @@ export type MediaIndexEntry = {
 /** メディアインデックスのスキーマバージョン。
  *  - 1: 初期版（block 由来の usedIn のみ集計）
  *  - 2: document-level の PDF 参照（wikiMeta.derivedFromNotes / sourcePdfFileId）も usedIn に含める
+ *  - 3: URL 素材の利用も usedIn に含める（本文中のインラインリンク + document-level の
+ *       URL 出典 sourceUrl / derivedFromNotes の "url:"）。これにより URL も画像・PDF と
+ *       同じくアセットグラフに出るようになり、素材タイプ間で UI が一貫する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 2 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 3 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -407,9 +410,21 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   wikiMeta?: { derivedFromNotes?: string[] } | null | undefined;
   sourcePdfFileId?: string | null | undefined;
   sourceDocumentFileId?: string | null | undefined;
+  sourceUrl?: string | null | undefined;
 }): Set<string> {
   const ids = collectPdfFileIdsFromDoc(doc);
   if (doc.sourceDocumentFileId) ids.add(doc.sourceDocumentFileId);
+  // URL 素材を出典に持つノート（PROV / 翻訳 / Knowledge）。URL 素材の fileId は
+  // "url:<生URL>" 形式（external-source.ts の規約）なので、それに合わせて prefix
+  // 付きで集める。これを入れないと URL 素材だけ「利用ノート」が空になり、
+  // 画像・PDF と違ってアセットグラフが出ない不一致になる。
+  if (doc.sourceUrl) ids.add(`url:${doc.sourceUrl}`);
+  for (const ref of doc.wikiMeta?.derivedFromNotes ?? []) {
+    // derivedFromNotes の "url:<生URL>" は URL 素材の fileId とそのまま一致する。
+    if (typeof ref === "string" && ref.startsWith("url:") && ref.length > "url:".length) {
+      ids.add(ref);
+    }
+  }
   return ids;
 }
 
@@ -815,6 +830,19 @@ export function extractMediaFromBlocks(blocks: any[]): Map<string, string> {
       block.props?.url
     ) {
       map.set(block.props.url, block.id);
+    }
+    // 本文中のインラインリンク（<a href>）も URL 素材の「利用」として数える。
+    // 画像は image ブロックとして埋め込まれるので拾えるが、URL ブックマークは
+    // 本文にハイパーリンクとして貼られることが多く、これを拾わないと URL だけ
+    // usedIn が空のままになり、画像・PDF と違ってアセットグラフに出ない
+    // （= 素材タイプ間で UI が不一致になる）。
+    // 実メディアブロックの blockId を優先したいので、未登録の href のみ設定する。
+    if (Array.isArray(block.content)) {
+      for (const inline of block.content) {
+        if (inline?.type === "link" && typeof inline.href === "string" && inline.href && !map.has(inline.href)) {
+          map.set(inline.href, block.id);
+        }
+      }
     }
     // 子ブロックも再帰的に走査
     if (block.children?.length) {

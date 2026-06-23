@@ -5,6 +5,8 @@ import {
   findBlockIdsByMediaUrl,
   updateBlockNameByUrl,
   collectPdfFileIdsFromDoc,
+  collectSourceAssetFileIdsFromDoc,
+  extractMediaFromBlocks,
   syncUsedIn,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
@@ -230,5 +232,103 @@ describe("syncUsedIn (document-level PDF 参照)", () => {
     expect(index.media.find((m) => m.fileId === "pdf-1")!.usedIn).toHaveLength(1);
     index = syncUsedIn(index, "wiki:w1", "Note", new Map(), new Set());
     expect(index.media.find((m) => m.fileId === "pdf-1")!.usedIn).toHaveLength(0);
+  });
+});
+
+describe("extractMediaFromBlocks", () => {
+  it("メディアブロック（image/video/bookmark 等）の props.url を blockId に対応づける", () => {
+    const blocks = [
+      { id: "b1", type: "image", props: { url: "media://img-1" } },
+      { id: "b2", type: "bookmark", props: { url: "https://example.com" } },
+      { id: "b3", type: "paragraph", props: {}, content: [{ type: "text", text: "plain" }] },
+    ];
+    const map = extractMediaFromBlocks(blocks);
+    expect(map.get("media://img-1")).toBe("b1");
+    expect(map.get("https://example.com")).toBe("b2");
+    expect(map.size).toBe(2);
+  });
+
+  it("本文中のインラインリンク（content の link）も href → blockId で拾う", () => {
+    const blocks = [
+      {
+        id: "p1",
+        type: "paragraph",
+        props: {},
+        content: [
+          { type: "text", text: "参考: " },
+          {
+            type: "link",
+            href: "https://news.example.com/article",
+            content: [{ type: "text", text: "記事" }],
+          },
+        ],
+      },
+    ];
+    const map = extractMediaFromBlocks(blocks);
+    expect(map.get("https://news.example.com/article")).toBe("p1");
+  });
+
+  it("同じ href が実メディアブロックとインラインリンク両方にある場合はブロックの blockId を優先する", () => {
+    const url = "https://example.com/page";
+    const blocks = [
+      {
+        id: "p1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "link", href: url, content: [{ type: "text", text: "link" }] }],
+      },
+      { id: "b1", type: "bookmark", props: { url } },
+    ];
+    const map = extractMediaFromBlocks(blocks);
+    expect(map.get(url)).toBe("b1");
+  });
+
+  it("子ブロック内のインラインリンクも再帰的に拾う", () => {
+    const blocks = [
+      {
+        id: "parent",
+        type: "paragraph",
+        props: {},
+        content: [],
+        children: [
+          {
+            id: "child",
+            type: "paragraph",
+            props: {},
+            content: [{ type: "link", href: "https://child.example.com", content: [] }],
+          },
+        ],
+      },
+    ];
+    const map = extractMediaFromBlocks(blocks);
+    expect(map.get("https://child.example.com")).toBe("child");
+  });
+});
+
+describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
+  it("PROV / 翻訳ノートの sourceUrl を url: prefix 付きの fileId として集める", () => {
+    const doc = { sourceUrl: "https://cookpad.com/jp/recipes/123" };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(
+      new Set(["url:https://cookpad.com/jp/recipes/123"]),
+    );
+  });
+
+  it("derivedFromNotes の url: 参照はそのまま fileId として集める", () => {
+    const doc = {
+      wikiMeta: { derivedFromNotes: ["url:https://a.example.com", "note:other", "pdf:p1"] },
+    };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(
+      new Set(["url:https://a.example.com", "p1"]),
+    );
+  });
+
+  it("url: の後ろが空なら無視する", () => {
+    const doc = { wikiMeta: { derivedFromNotes: ["url:"] } };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set());
+  });
+
+  it("URL 出典を持たないノートでは PDF / document 参照だけを返す", () => {
+    const doc = { sourcePdfFileId: "p1", sourceDocumentFileId: "d1" };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["p1", "d1"]));
   });
 });
