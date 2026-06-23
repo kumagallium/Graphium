@@ -131,7 +131,7 @@ import { setWikiIndexForRetriever, setWikiTitleMap } from "./features/wiki/retri
 import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
-import { translatePdfToNote } from "./features/pdf-translate/translate-service";
+import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
@@ -5089,6 +5089,46 @@ export function NoteApp() {
               }
             } : undefined}
             onTranslatePdf={aiAvailable ? (entry) => {
+              // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
+              // PDF と違いページ概念が無いので、本文を段落境界でチャンク分割して並列翻訳する。
+              if (entry.type === "url" && entry.url) {
+                const url = entry.url;
+                const jobId = `translate-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
+                const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: entry.name || url };
+                setIngestToast((prev) => ({ items: [...(prev?.items ?? []), newItem] }));
+                (async () => {
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: "Fetching & parsing URL..." } : i) }));
+                  try {
+                    // 1) Reader 本文を取得（言語判定にも使う。サーバー側でキャッシュ済み）
+                    const article = await fetchReaderArticle(url);
+                    // 2) 丁寧版: 既に表示言語のページなら無駄な翻訳になるので確認する
+                    if (isSameLanguage(article.lang, getLocale())) {
+                      const ok = window.confirm(tStatic("asset.translateSameLangConfirm"));
+                      if (!ok) {
+                        setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== jobId) } : prev);
+                        return;
+                      }
+                    }
+                    // 3) チャンク分割して並列翻訳 → 1 ノート化
+                    const result = await translateUrlToNote(article, getLocale(), url, {
+                      onPhase: (label) => {
+                        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: label } : i) }));
+                      },
+                      onProgress: (done, total) => {
+                        setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: `Translating ${done}/${total}...` } : i) }));
+                      },
+                    });
+                    const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
+                    // Reader を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）
+                    setFocusedMaterial({ fileId: entry.fileId, fullMode: true });
+                    setAssetSidePeekNoteId(newNoteId);
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.pageCount} parts` } : i) }));
+                  } catch (err) {
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  }
+                })();
+                return;
+              }
               // PDF を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートを生成する。
               // 要約・構造化（Knowledge / PROV）とは別経路。チャンク分割して順次翻訳する。
               if (entry.type !== "pdf" || !entry.fileId) return;

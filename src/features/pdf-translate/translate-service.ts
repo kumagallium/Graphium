@@ -1,7 +1,12 @@
-// PDF 全文翻訳取り込み（クライアント側）— フル版
+// 全文翻訳取り込み（クライアント側）— フル版（PDF / URL）
 //
-// PDF を「原文の構成のまま目的言語へ全文翻訳した 1 ノート」に変換する。
+// 素材を「原文の構成のまま目的言語へ全文翻訳した 1 ノート」に変換する。
 // 要約・構造化（wiki / prov ingester）とは別経路。
+//
+// PDF と URL でテキスト抽出の前段だけが異なり、翻訳本体（用語集 + ページ並列翻訳）は
+// 共通ヘルパー（fetchGlossary / translatePage / mapWithConcurrency）を使い回す。
+//   - PDF : extractPdfPages でページ単位抽出 → 各ページを翻訳（translatePdfToNote）
+//   - URL : Reader Mode 本文を段落境界で分割 → 各チャンクを翻訳（translateUrlToNote）
 //
 // フル版の追加要素:
 //   - ページ単位の並列翻訳（高速化）。ページ境界を保つので図の差し込み位置も決まる。
@@ -24,6 +29,10 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "../asset-browser/
 import { imageBlock, imageOrder, insertImagesAtCaptions } from "./figure-placement";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
+import { chunkTextByParagraph, isSameLanguage } from "./url-chunk";
+
+// 言語判定は呼び出し側（note-app）でも使うので公開窓口をここに揃える
+export { isSameLanguage } from "./url-chunk";
 
 // 並列翻訳の同時実行数。レート制限とスループットのバランスで控えめに。
 const TRANSLATE_CONCURRENCY = 4;
@@ -364,6 +373,170 @@ export async function translatePdfToNote(
     truncated: extracted.truncated,
     pageCount: translatable.length,
     imageCount,
+    glossarySize: glossary.length,
+  };
+}
+
+// ───────────────────────────── URL 全文翻訳 ─────────────────────────────
+// PDF と違い URL はページ概念が無いため、Reader Mode 本文（段落区切りを保った
+// プレーンテキスト）を段落境界でチャンク化してから並列翻訳する。図の埋め込み抽出は
+// 行わず、Reader が拾った代表画像（leadImage）だけ先頭に置く。
+
+// 1 チャンクあたりの目安文字数。PDF の 1 ページ相当（数千字）に揃え、リクエストサイズ
+// と並列度のバランスを取る。長すぎる単一段落はそのまま 1 チャンクにする。
+const URL_CHUNK_CHARS = 4_500;
+
+/** Reader Mode 抽出結果のうち翻訳に必要な部分だけを持つクライアント型 */
+export type ReaderArticleClient = {
+  title: string;
+  /** 本文プレーンテキスト（段落区切り \n\n を保持） */
+  textContent: string;
+  /** 本文言語コード（"en" / "ja-JP" など、取れなければ null） */
+  lang: string | null;
+  /** 記事内の代表画像 URL（先頭に差し込む。無ければ null） */
+  leadImage: string | null;
+  /** 取得日時（ISO 8601） */
+  fetchedAt: string;
+};
+
+/**
+ * サーバーの `/api/url/reader` を叩いて Readability 抽出結果を取得する。
+ * 翻訳の前段（言語判定・本文取得）に使う軽量フェッチ。サーバー側でキャッシュ済み。
+ */
+export async function fetchReaderArticle(url: string): Promise<ReaderArticleClient> {
+  const res = await fetch(`${apiBase()}/url/reader`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Reader failed (${res.status})`);
+  }
+  const a = await res.json();
+  return {
+    title: typeof a.title === "string" ? a.title : "",
+    textContent: typeof a.textContent === "string" ? a.textContent : "",
+    lang: typeof a.lang === "string" ? a.lang : null,
+    leadImage: typeof a.leadImage === "string" ? a.leadImage : null,
+    fetchedAt: typeof a.fetchedAt === "string" ? a.fetchedAt : new Date().toISOString(),
+  };
+}
+
+export type TranslateUrlResult = {
+  doc: GraphiumDocument;
+  /** 翻訳したチャンク数 */
+  pageCount: number;
+  /** 用語集の件数 */
+  glossarySize: number;
+};
+
+/**
+ * Reader Mode 本文を「原文構成のまま目的言語へ全文翻訳した GraphiumDocument」に変換する。
+ *
+ * @param article  fetchReaderArticle で取得済みの Reader 本文
+ * @param language 目的言語コード（UI ロケール: "ja" / "en" など）
+ * @param url      出典 URL（sourceUrl / プロヴェナンスの sessionId に使う）
+ * @param opts     進捗・フェーズ表示コールバック
+ */
+export async function translateUrlToNote(
+  article: ReaderArticleClient,
+  language: string,
+  url: string,
+  opts: { onProgress?: TranslateProgress; onPhase?: (label: string) => void } = {},
+): Promise<TranslateUrlResult> {
+  const { onProgress, onPhase } = opts;
+
+  const text = article.textContent.trim();
+  if (text.length < 1) {
+    throw new Error(
+      "本文を抽出できませんでした（ペイウォール・ログイン必須・動的サイトの可能性）。",
+    );
+  }
+
+  const chunks = chunkTextByParagraph(text, URL_CHUNK_CHARS);
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let model: string | null = null;
+  const addUsage = (u?: TokenUsage) => {
+    if (!u) return;
+    inputTokens += u.input_tokens ?? 0;
+    outputTokens += u.output_tokens ?? 0;
+  };
+
+  // 用語集を1回抽出して各チャンク翻訳へ注入（訳語統一）
+  onPhase?.("Building glossary...");
+  const sample = text.slice(0, GLOSSARY_SAMPLE_CHARS);
+  const { glossary, tokenUsage: glossaryUsage } = await fetchGlossary(sample, language);
+  addUsage(glossaryUsage);
+
+  // チャンク単位で並列翻訳（順序は index で保持）
+  let done = 0;
+  onProgress?.(0, chunks.length);
+  const translations = await mapWithConcurrency(chunks, TRANSLATE_CONCURRENCY, async (chunk, i) => {
+    const result = await translatePage(chunk, language, `part ${i + 1}/${chunks.length}`, glossary);
+    if (result.model) model = result.model;
+    addUsage(result.tokenUsage);
+    done += 1;
+    onProgress?.(done, chunks.length);
+    return (result.markdown ?? "").trim();
+  });
+
+  const combinedMarkdown = translations.filter((m) => m.length > 0).join("\n\n");
+  if (combinedMarkdown.trim().length === 0) {
+    throw new Error("翻訳結果が空でした。");
+  }
+
+  const bodyBlocks: any[] = [];
+  for (const md of translations) {
+    if (md) for (const b of markdownToBlocks(md)) bodyBlocks.push(b);
+  }
+
+  const fallbackTitle = article.title || url;
+  const noteBlocks: any[] = [buildSourceHeaderBlock(fallbackTitle)];
+  // Reader が拾った代表画像があれば本文の先頭に置く（PDF の図差し込みに相当する最小版）
+  if (article.leadImage) {
+    noteBlocks.push(imageBlock(article.leadImage, article.title || "image"));
+  }
+  noteBlocks.push(...bodyBlocks);
+
+  const title = firstHeading(combinedMarkdown) || fallbackTitle;
+  const now = new Date().toISOString();
+  const doc: GraphiumDocument = {
+    version: LATEST_DOCUMENT_VERSION,
+    title,
+    pages: [
+      {
+        id: "main",
+        title,
+        blocks: noteBlocks,
+        labels: {},
+        provLinks: [],
+        knowledgeLinks: [],
+      },
+    ],
+    sourceUrl: url,
+    sourceTitle: article.title || url,
+    sourceFetchedAt: article.fetchedAt || now,
+    generatedBy: {
+      agent: "url-translator",
+      // 外部ソース ID 規約に合わせて url:<url> を入れる（lineage / グラフで辿れる）
+      sessionId: `url:${url}`,
+      model: model ?? undefined,
+      tokenUsage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: inputTokens + outputTokens,
+      },
+    },
+    createdAt: now,
+    modifiedAt: now,
+  };
+
+  return {
+    doc,
+    pageCount: chunks.length,
     glossarySize: glossary.length,
   };
 }
