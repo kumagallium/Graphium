@@ -29,6 +29,10 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "../asset-browser/
 import { imageBlock, imageOrder, insertImagesAtCaptions } from "./figure-placement";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
+import { chunkTextByParagraph, isSameLanguage } from "./url-chunk";
+
+// 言語判定は呼び出し側（note-app）でも使うので公開窓口をここに揃える
+export { isSameLanguage } from "./url-chunk";
 
 // 並列翻訳の同時実行数。レート制限とスループットのバランスで控えめに。
 const TRANSLATE_CONCURRENCY = 4;
@@ -396,15 +400,6 @@ export type ReaderArticleClient = {
 };
 
 /**
- * 言語コードの基底サブタグ（"en-US" → "en"）が一致するか。
- * URL 本文が既に表示言語のとき、無駄な翻訳を確認するために使う。
- */
-export function isSameLanguage(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a || !b) return false;
-  return a.split("-")[0].toLowerCase() === b.split("-")[0].toLowerCase();
-}
-
-/**
  * サーバーの `/api/url/reader` を叩いて Readability 抽出結果を取得する。
  * 翻訳の前段（言語判定・本文取得）に使う軽量フェッチ。サーバー側でキャッシュ済み。
  */
@@ -426,29 +421,6 @@ export async function fetchReaderArticle(url: string): Promise<ReaderArticleClie
     leadImage: typeof a.leadImage === "string" ? a.leadImage : null,
     fetchedAt: typeof a.fetchedAt === "string" ? a.fetchedAt : new Date().toISOString(),
   };
-}
-
-/**
- * プレーンテキストを段落境界（空行）で max 文字程度のチャンクに分割する。
- * 単一段落が max を超える場合はその段落だけで 1 チャンクにする（途中で切らない）。
- */
-function chunkTextByParagraph(text: string, maxChars: number): string[] {
-  const paragraphs = text
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  const chunks: string[] = [];
-  let current = "";
-  for (const p of paragraphs) {
-    if (current && current.length + 2 + p.length > maxChars) {
-      chunks.push(current);
-      current = p;
-    } else {
-      current = current ? `${current}\n\n${p}` : p;
-    }
-  }
-  if (current) chunks.push(current);
-  return chunks;
 }
 
 export type TranslateUrlResult = {
