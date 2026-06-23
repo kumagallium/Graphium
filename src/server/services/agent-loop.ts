@@ -5,6 +5,7 @@ import { generateText, stepCountIs, type ModelMessage, type LanguageModel } from
 import type { ModelConfig } from "../config/models.js";
 import { recordUsage, extractTokenFields } from "./llm-usage.js";
 import { runTextToolsLoop } from "./agent-loop-text-tools.js";
+import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
 
 export type AgentRunParams = {
   model: LanguageModel;
@@ -51,7 +52,16 @@ export type ToolCallRecord = {
  * パースする fallback ループに切り替える。
  */
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
-  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature } = params;
+  // ノート本文や Wiki context を文字数で切り詰めた際に生じる lone surrogate（壊れたサロゲートペア）を
+  // ここで無害化する。これを残したまま JSON.stringify すると Anthropic API（Python 側）が
+  // 「no low surrogate in string」で 400 を返すため、API 境界の手前で一括サニタイズする。
+  // ネイティブループ・text-tools フォールバックの両経路がこの params を起点にするので、ここ 1 箇所で両方カバーできる。
+  const safeParams: AgentRunParams = {
+    ...params,
+    systemPrompt: toWellFormed(params.systemPrompt),
+    messages: sanitizeMessages(params.messages),
+  };
+  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature } = safeParams;
 
   // openai-compatible（sakura / gpt-oss-120b 等）に加え、claude-subscription
   // （ai-sdk-provider-claude-code 経由）も AI SDK の tools パラメータをネイティブに
@@ -62,7 +72,7 @@ export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResu
   const useTextToolsLoop =
     providerLacksNativeTools && !!tools && Object.keys(tools).length > 0;
   if (useTextToolsLoop) {
-    return runTextToolsLoop(params);
+    return runTextToolsLoop(safeParams);
   }
 
   // claude-subscription は temperature 等のサンプリングパラメータ非対応（CLI が制御）。
