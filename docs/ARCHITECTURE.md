@@ -378,11 +378,19 @@ on a similar claim is served from the cache layer at no LLM cost.
 The LLM judge runs in one of two modes, picked per request in
 `server/routes/world-grounding.ts`:
 
-- **web-grounded** (when a search-capable MCP tool is connected): before
-  judging, the route runs that tool once with the claim
-  (`services/grounding-search.ts → findSearchTool` + `runGroundingSearch`,
-  pre-retrieval — the model never drives the tool itself), then judges the
-  claim *against the retrieved evidence* (`buildWebGroundedSystemPrompt`).
+- **web-grounded** (whenever evidence can be retrieved): before judging,
+  the route gathers evidence and then judges the claim *against that
+  evidence* (`buildWebGroundedSystemPrompt`), pre-retrieval — the model
+  never drives the search itself. Evidence comes from two layers:
+  - **keyless built-in providers, always on** (`services/grounding-providers.ts`):
+    Wikipedia full-text search (general) + OpenAlex (scholarly: DOI,
+    citation count, abstract). No API key, no hard monthly cap (polite-pool
+    style), URLs are verifiable — the default that works out of the box and
+    fits the "is this claim known in the literature" question directly.
+  - **a connected MCP search tool, on top** (`services/grounding-search.ts →
+    findSearchTool` + `runGroundingSearch`): adds broad general-web coverage
+    when the user has wired one up (e.g. Tavily / Brave). Optional.
+
   The verdict is grounded in real results rather than the model's memory;
   `null` means "searched and found no direct prior art — not a proof of
   novelty" (search cannot prove a negative). Output URLs are constrained to
@@ -391,7 +399,7 @@ The LLM judge runs in one of two modes, picked per request in
   is discarded by provenance, not by a domain list. The network existence
   check is skipped here — the URLs were retrieved seconds ago and may live
   on any domain.
-- **parametric** (no search tool, the original path): the judge answers
+- **parametric** (no evidence gathered — both layers empty/failed): the judge answers
   from its own knowledge, and source URLs are hallucination-guarded in two
   stages (`server/services/world-grounding.ts`): (1) a hostname whitelist
   (`sanitizeSourceUrl` — only Wikipedia / DOI / arXiv survive), then (2) a

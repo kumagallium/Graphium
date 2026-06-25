@@ -33,6 +33,7 @@ import {
   runGroundingSearch,
   normalizeUrlForMatch,
 } from "../services/grounding-search.js";
+import { runBuiltinGroundingSearch } from "../services/grounding-providers.js";
 
 const app = new Hono();
 
@@ -53,36 +54,59 @@ app.post("/check", async (c) => {
     return c.json({ result: null, error: "no model registered" });
   }
 
-  // ── web-grounding: 判定前に MCP 検索ツールで証拠を取得する ──
-  // 検索ツール未接続 / 失敗 / 空結果は全て parametric 判定にフォールバックする
-  // （= 既存ユーザーの体験は変わらない）。
-  let evidenceText = "";
-  let allowedUrls: Set<string> | null = null;
+  // ── web-grounding: 判定前に証拠を集める ──
+  // 証拠が全く集まらなければ parametric 判定にフォールバックする（= 既存ユーザーの体験は変わらない）。
+  const evidenceBlocks: string[] = [];
+  const collectedUrls: string[] = [];
+
+  // (1) キーレス既定ソース（Wikipedia + OpenAlex）。キー不要・常時。箱から出してすぐ動く。
+  try {
+    const builtin = await runBuiltinGroundingSearch(
+      body.claimText,
+      body.language || "en",
+    );
+    if (builtin.evidenceText && builtin.urls.length > 0) {
+      evidenceBlocks.push(builtin.evidenceText);
+      collectedUrls.push(...builtin.urls);
+      console.info(
+        `[world-grounding] builtin evidence (wikipedia + openalex): ${builtin.urls.length} urls`,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[world-grounding] builtin providers failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // (2) 接続済み MCP 検索ツール（あれば）。広い一般 web を上乗せする。
   try {
     const { tools } = await discoverAllMcpTools(c);
     const searchTool = findSearchTool(tools);
     if (searchTool) {
       const search = await runGroundingSearch(searchTool, body.claimText);
       if (search.evidenceText && search.urls.length > 0) {
-        evidenceText = search.evidenceText;
-        allowedUrls = new Set(
-          search.urls
-            .map((u) => normalizeUrlForMatch(u))
-            .filter((x): x is string => !!x),
-        );
+        evidenceBlocks.push(`[Web search: ${searchTool.name}]\n${search.evidenceText}`);
+        collectedUrls.push(...search.urls);
         console.info(
-          `[world-grounding] web evidence via "${searchTool.name}": ${allowedUrls.size} urls`,
+          `[world-grounding] web evidence via "${searchTool.name}": ${search.urls.length} urls`,
         );
       }
     }
   } catch (err) {
     console.warn(
-      "[world-grounding] search discovery failed (degrading to parametric):",
+      "[world-grounding] search discovery failed (degrading):",
       err instanceof Error ? err.message : err,
     );
   }
 
-  const grounded = !!(evidenceText && allowedUrls && allowedUrls.size > 0);
+  const allowedUrls = new Set(
+    collectedUrls
+      .map((u) => normalizeUrlForMatch(u))
+      .filter((x): x is string => !!x),
+  );
+  const evidenceText = evidenceBlocks.join("\n\n");
+  const grounded = !!(evidenceText && allowedUrls.size > 0);
   const systemPrompt = grounded
     ? buildWebGroundedSystemPrompt(body.language || "en")
     : buildWorldGroundingSystemPrompt(body.language || "en");
@@ -104,7 +128,7 @@ app.post("/check", async (c) => {
     const parsed = parseWorldGroundingOutput(
       llmResult.message,
       grounded
-        ? { mode: "evidence", allowedUrls: allowedUrls! }
+        ? { mode: "evidence", allowedUrls }
         : { mode: "whitelist" },
     );
     // grounded: URL は数秒前に検索が返した実在 URL（任意ドメイン）なので実在検証はスキップ。
