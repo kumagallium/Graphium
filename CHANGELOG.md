@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.16.4](https://github.com/kumagallium/Graphium/compare/v0.16.3...v0.16.4) - 2026-06-25
+
+- Add full-text translation for URL assets by @kumagallium in https://github.com/kumagallium/Graphium/pull/456
+- [fix] Prevent note duplication when the file list transiently fails to load by @kumagallium in https://github.com/kumagallium/Graphium/pull/454
+- [feat] Add document mode to the wiki ingester by @kumagallium in https://github.com/kumagallium/Graphium/pull/458
+- [feat] surface memo shortcut in native menu and as keycaps by @kumagallium in https://github.com/kumagallium/Graphium/pull/455
+
 ## [v0.16.3](https://github.com/kumagallium/Graphium/compare/v0.16.2...v0.16.3) - 2026-06-23
 
 - Deploy Pages from current main tip to fix updater race by @kumagallium in https://github.com/kumagallium/Graphium/pull/449
