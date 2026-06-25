@@ -138,14 +138,16 @@ export type AtomCandidate = {
 
 export function buildAtomizerSystemPrompt(language: string): string {
   const ja = language === "ja";
-  return `You are an Atom discoverer for Graphium. Atoms are Zettelkasten-style "single ideas" that appear repeatedly across multiple Claim pages.
+  return `You are an Atom discoverer for Graphium. Atoms are Zettelkasten-style "single ideas" — the portable, context-stripped form of a principle. What makes something an Atom is **portability**: a rule a reader in another domain could pick up and reuse. Repetition is a supporting signal, not a requirement.
 
-Your job is to scan a set of Claim pages and **factor out** the abstract ideas that recur across them. Each Atom you propose must be supported by at least two Claims — if an idea only appears in one Claim, it does not warrant an Atom yet.
+Your job is to scan a set of Claim pages and **factor out the portable principles they carry** — lift each transferable idea out of its specific context and emit it as an Atom. An Atom may generalize a single Claim or several; when several Claims lift into the *same* rule, fold them into one convergent Atom (the count of source Claims it covers is a support signal). **Most transferable Claims do yield an Atom — do not withhold Atoms out of excess caution.**
+
+**Portability test — use it to *lift*, not as an excuse to stay silent.** After stripping the proper nouns, exact numbers, and one-off context, a reusable rule should remain. Only when stripping the specifics leaves *literally nothing but a domain-bound restatement of one Claim* do you leave that one at the Claim layer instead of emitting an Atom. A single Claim that passes this test is a perfectly valid Atom.
 
 ## What an Atom is
 - **One idea per Atom.** A noun-phrase title for a single, transferable principle / pattern / heuristic.
 - **Context-stripped AND domain-lifted, but in everyday words.** It is not enough to remove project names and exact numbers. **Domain-specific nouns must be lifted up at least one level of abstraction** — but the resulting words must still read like everyday speech, not a textbook chapter title and not a paper abstract. If an English-Japanese reader who is *not* in the source domain cannot picture what is happening in one read, the wording is too heavy. (See "Plain-language register" below.)
-- **Cross-cutting.** Each Atom must \`sourceConceptIds\` >= 2. The whole point is to surface ideas that recur — not to re-describe a single Claim.
+- **A lifted rule, not a restatement.** An Atom is the portable *rule*, never a re-description of one Claim in different words. Cite every Claim the lifted rule genuinely covers in \`sourceConceptIds\` (one or more); when several Claims share the rule, fold them into one Atom instead of emitting near-duplicates.
 - **Reusable.** A reader from another domain should still grasp the idea without knowing where it came from.
 - **Short.** Title (5-12 words) and 1-3 short paragraphs of body. No headings, no bullet lists. Prose only.
 
@@ -154,7 +156,7 @@ Your job is to scan a set of Claim pages and **factor out** the abstract ideas t
 Both routes produce Atoms. Pick whichever fits the Claims in front of you; many Atoms blend both:
 
 1. **Inductive route (induction-from-many).** Several Claims (often 3+) report the *same kind* of finding under *different particulars*. The Atom is the general rule the cases share. Necessary when no single Claim is enough to support the rule — it earns its weight from repetition.
-2. **Lift route (lift-from-few).** Two Claims that *already say something close to a principle* but are still framed in one domain. The Atom is the domain-lifted form. Repetition is not the load-bearing argument; abstraction is.
+2. **Lift route (lift-from-few).** One or more Claims that *already say something close to a principle* but are still framed in one domain. The Atom is the domain-lifted form. Repetition is not the load-bearing argument; abstraction is — a single Claim that passes the portability test is enough.
 
 Why this matters: the Synthesizer used to carry an \`inductive\` mode, and it overlapped with what the Atomizer already does. Induction is now firmly an Atomizer concern. If you find yourself proposing "lots of cases → general rule" — that **is** an Atom, not a Synthesis candidate.
 
@@ -423,10 +425,10 @@ If two or more Atoms you are emitting in this batch (or one of your Atoms + an A
 This section is the structural backbone for analogical-mode Synthesis. **Honest relations help; forced relations actively hurt downstream synthesis.**
 
 ## Rules (strict)
-- **Each Atom MUST cite >= 2 Claims** in \`sourceConceptIds\`. Use the EXACT id from the Claim list.
+- **Each Atom must cite every Claim its lifted rule covers** in \`sourceConceptIds\` (one or more — a single well-lifted Claim is valid). Use the EXACT id from the Claim list. More sources = stronger support, but the gate is the portability test, not the count.
 - **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
 - **Quality over quantity, but don't artificially cap.** Generate 0-8 candidates. If the Claim set surfaces multiple distinct recurring patterns, emit each as its own Atom rather than bundling them. If the Claims share only narrow domain-bound details and you cannot lift them honestly, **return an empty list**. An empty list is better than an under-abstracted Atom, and 3 honest Atoms beat 6 forced ones.
-- Only propose with \`confidence >= 0.7\`. Lower the confidence (and likely drop) if you find yourself wanting to keep specific nouns to make the claim feel meaningful — that is a signal the abstraction is not yet ready.
+- Set \`confidence\` honestly — it is **recorded and shown to the reader, not used to silently drop**. If you find yourself wanting to keep specific nouns to make the rule feel meaningful, that is the portability test failing: leave it as a Claim rather than forcing a weak Atom.
 - Do not invent citations, URLs, or author names.
 
 ## Style
@@ -470,7 +472,7 @@ export function buildAtomizerUserMessage(
 
   const statusLegend = `\n\n_The bracketed second tag on each Claim heading is its \`epistemicStatus\` (low → high: speculation < interpretation < observation < established). \`[interpretation*]\` marks a Claim whose status was missing in the source data — treat as interpretation for the lowest-status inheritance rule._\n_Each Claim may also list \`Rebuttals:\` — Toulmin Rebuttal conditions extracted by the Ingester. Use them to decide whether to propagate a common rebuttal to the Atom (see "Shared rebuttal propagation")._`;
 
-  return `Scan the following ${concepts.length} Claim pages and factor out the recurring abstract ideas (Atoms) that span 2+ Claims.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
+  return `Scan the following ${concepts.length} Claim pages and factor out their portable general form (Atoms). Apply the portability test to each idea — an Atom may cover one Claim or several.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
 }
 
 export function parseAtomizerOutput(
@@ -503,14 +505,17 @@ export function parseAtomizerOutput(
     for (const a of atoms) {
       if (!a || typeof a.title !== "string" || typeof a.body !== "string") continue;
       const ids = Array.isArray(a.sourceConceptIds) ? a.sourceConceptIds.map(String) : [];
-      if (ids.length < 2) continue;
-      // 知らない Claim ID を返してきたら捨てる（hallucination 防御）
+      // 2 件必須ゲートは撤廃。可搬性テスト（prompt 側）が唯一のゲート。1 件でも可搬な
+      // 規則なら Atom にする。source 件数は「N 件の知見が支持」signal として残る。
+      if (ids.length < 1) continue;
+      // 知らない Claim ID を返してきたら捨てる（hallucination 防御）。有効な source が
+      // 1 件も無ければ捨てる。
       const validIds = ids.filter((id: string) => conceptIdToTitle.has(id));
-      if (validIds.length < 2) continue;
+      if (validIds.length < 1) continue;
       const titles = validIds.map((id: string) => conceptIdToTitle.get(id)!);
 
+      // confidence は記録・表示するだけ。閾値での silent drop は撤廃。
       const confidence = typeof a.confidence === "number" ? a.confidence : 0.7;
-      if (confidence < 0.7) continue;
 
       const rawAtomType = typeof a.atomType === "string" ? a.atomType : undefined;
       const atomType: AtomType | undefined =
@@ -562,17 +567,9 @@ export function parseAtomizerOutput(
       const titleTrim = String(a.title).trim();
       const bodyTrim = String(a.body).trim();
 
-      // Post-emit rung-1 guard. prompt 強化だけでは LLM が rung-1 を押し込むケース
-      // (Al3V / Klemens-Callaway / PROV-DM など) が残るため、parse 後に programmatic
-      // 検知して drop する。corpus-agnostic な pattern (化学式・3+char 略語・hyphenated
-      // 人名物理式) に限定 — jargon-likeness の最終判定は LLM judge に委ねる。
-      const rung1 = detectRung1Tokens(titleTrim, bodyTrim);
-      if (rung1.length > 0) {
-        console.warn(
-          `[atomizer] dropped rung-1 atom candidate (tokens: ${rung1.slice(0, 5).join(", ")}): "${titleTrim}"`,
-        );
-        continue;
-      }
+      // rung-1（化学式・略語・固有名詞が残る未持ち上げ Atom）の silent drop は撤廃。
+      // 「可搬な規則として立つか」の判定は prompt の可搬性テスト（1 つの一般原則）に一本化し、
+      // 黙って消さない。detectRung1Tokens 関数は将来の可視化・signal 用途のため残置。
 
       // Phase δ: relatedAtoms をサニタイズ。
       // - 配列でなければ undefined。

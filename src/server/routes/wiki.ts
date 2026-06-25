@@ -390,7 +390,7 @@ app.post("/cross-update", async (c) => {
 
 // Atomize（複数 Concept にまたがる共通抽象を発見する discovery）
 //   experimental.atomLayer 有効時にクライアントから呼ばれる。
-//   Concept[] を入力し、2 件以上の Concept にまたがる Atom 候補 0〜N 件を返す。
+//   Concept[] を入力し、可搬性テストを通った Atom 候補 0〜N 件を返す（1 件の Concept からでも可）。
 //   既存 Atom のタイトル一覧を渡すと重複提案を抑える。
 app.post("/atomize", async (c) => {
   const body = await c.req.json<{
@@ -400,7 +400,8 @@ app.post("/atomize", async (c) => {
     model?: string;
   }>();
 
-  if (!body.concepts || body.concepts.length < 2) {
+  // 1 件の Concept からでも可搬な規則なら Atom 化する（2 件必須は撤廃）。
+  if (!body.concepts || body.concepts.length < 1) {
     return c.json({ atoms: [] });
   }
 
