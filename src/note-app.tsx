@@ -4,6 +4,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, StickyNote } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
@@ -3428,6 +3429,9 @@ export function NoteApp() {
   // ⌘+⇧+M: どこからでも Quick Memo ダイアログを開く。
   // メモは「気軽な思いつきを書き留める原料」なので、画面状態に依存せず
   // ノート編集中でも一覧画面でも同じ操作で開けるよう document レベルで購読する。
+  // デスクトップ (Tauri/WKWebView) では Cmd 系キーが JS keydown まで届かないことがあるため、
+  // Rust 側で ⌘⇧M アクセラレータを持つネイティブメニュー項目 "new-memo" を併設し、
+  // その menu-action もここで購読する。Web では menu-action は発火しないので無害。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
@@ -3436,7 +3440,11 @@ export function NoteApp() {
       }
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    const offMenu = onMenuAction("new-memo", () => setShowQuickMemoDialog(true));
+    return () => {
+      document.removeEventListener("keydown", handler);
+      offMenu();
+    };
   }, []);
 
   // ノートにはグローバルショートカットを設けない。
