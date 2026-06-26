@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
 import type { WikiKind } from "../lib/document-types";
@@ -28,6 +28,10 @@ export type FileSidebarProps = {
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
+  /** 全ノードグラフ（全画面オーバーレイ）を開く */
+  onShowGlobalGraph?: () => void;
+  /** 全ノードグラフがアクティブか（ハイライト用） */
+  globalGraphActive?: boolean;
   onShowLabelGallery: (label: string) => void;
   /** 現在アクティブなメディアタイプ（ハイライト用） */
   activeAssetType: MediaType | null;
@@ -122,6 +126,8 @@ export function FileSidebar({
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
+  onShowGlobalGraph,
+  globalGraphActive = false,
   onShowLabelGallery,
   activeAssetType,
   activeLabel,
@@ -512,8 +518,21 @@ export function FileSidebar({
         )}
       </div>
 
-      {/* フッター（メタ群: Skill / 設定 / ゴミ箱 / Release Notes） */}
+      {/* フッター（メタ群: 全体グラフ / Skill / 設定 / ゴミ箱 / Release Notes） */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        {onShowGlobalGraph && (
+          <button
+            onClick={onShowGlobalGraph}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              globalGraphActive
+                ? "text-primary font-semibold bg-sidebar-accent/40"
+                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+            }`}
+          >
+            <Waypoints size={12} className="shrink-0" />
+            <span className="flex-1 text-left">{t("sidebar.globalGraph")}</span>
+          </button>
+        )}
         {onShowSkillList && (
           <button
             onClick={onShowSkillList}

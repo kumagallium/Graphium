@@ -65,6 +65,8 @@ import {
 } from "./features/prov-generator";
 import {
   GraphLinksPanel,
+  GlobalGraphOverlay,
+  buildGlobalGraph,
 } from "./features/network-graph";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
@@ -3100,6 +3102,9 @@ export function NoteApp() {
   const [showMemos, setShowMemos] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
+  // データ構築は fm 宣言後に行う（globalGraphData）。
+  const [showGlobalGraph, setShowGlobalGraph] = useState(false);
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
@@ -3187,6 +3192,14 @@ export function NoteApp() {
   const capture = useCapture(authenticated);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
+  // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
+  const globalGraphData = useMemo(
+    () =>
+      showGlobalGraph && fm.noteIndex
+        ? buildGlobalGraph(fm.noteIndex, fm.mediaIndex ?? null)
+        : { nodes: [], edges: [] },
+    [showGlobalGraph, fm.noteIndex, fm.mediaIndex],
+  );
 
   // 世界モデル照合 共通ハンドラ（Phase 2 / PR 2A）。
   // 照合発火はすべて **ユーザー起動**（バナー単発 / 一覧 bulk）に統一する。
@@ -4755,6 +4768,8 @@ export function NoteApp() {
     mediaIndex: fm.mediaIndex,
     onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
+    onShowGlobalGraph: () => { setShowGlobalGraph(true); setSidebarOpen(false); },
+    globalGraphActive: showGlobalGraph,
     onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
@@ -6012,6 +6027,26 @@ export function NoteApp() {
       )}
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
+      )}
+      {showGlobalGraph && (
+        <GlobalGraphOverlay
+          data={globalGraphData}
+          onNavigate={(noteId) => {
+            // GlobalGraphOverlay は wiki ノードを `wiki:` prefix 付きで返す（2 ホップグラフと同じ規約）。
+            if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
+            else fm.handleOpenFile(noteId);
+          }}
+          onOpenMedia={(fileId) => {
+            // 素材ノードクリック → オーバーレイを閉じて Material gallery で Full view 表示。
+            setShowGlobalGraph(false);
+            const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+            if (!target) return;
+            fm.setActiveAssetType(target.type);
+            setFocusedMaterial({ fileId, fullMode: true });
+            router.navigate({ view: "assets", mediaType: target.type });
+          }}
+          onClose={() => setShowGlobalGraph(false)}
+        />
       )}
       <WelcomeDialog />
       <SettingsModal
