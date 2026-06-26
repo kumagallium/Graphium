@@ -190,12 +190,18 @@ describe("parseReliftOutput / buildReliftUserMessage — plain-language stage (C
     expect(parseReliftOutput("not json at all")).toEqual([]);
   });
 
-  it("builds a user message listing each Atom with the jargon to remove", () => {
-    const msg = buildReliftUserMessage([
+  it("flags still-technical tokens when given, and omits the line when empty", () => {
+    const withTokens = buildReliftUserMessage([
       { title: "SPS は圧力不足で…", body: "本文", jargon: ["SPS", "XRD"] },
     ]);
-    expect(msg).toContain("[1]");
-    expect(msg).toContain("jargon to remove: SPS, XRD");
-    expect(msg).toContain('title: "SPS は圧力不足で…"');
+    expect(withTokens).toContain("[1]");
+    expect(withTokens).toContain("still too technical");
+    expect(withTokens).toContain("SPS, XRD");
+    expect(withTokens).toContain('title: "SPS は圧力不足で…"');
+
+    // pass 1（全 Atom・jargon 空）では技術語の指定行を付けない
+    const noTokens = buildReliftUserMessage([{ title: "命名は実践より後に来る", body: "本文", jargon: [] }]);
+    expect(noTokens).not.toContain("still too technical");
+    expect(noTokens).toContain('title: "命名は実践より後に来る"');
   });
 });

@@ -634,25 +634,30 @@ export type ReliftResult = { index: number; title: string; body: string };
 
 export function buildReliftSystemPrompt(language: string): string {
   const ja = language === "ja";
-  return `You are a plain-language editor for Graphium Atoms (Insights). Each Atom you receive is already a correct general rule, but its wording still contains **domain jargon a non-specialist would not recognize** — chemical formulas, instrument / material names, technical acronyms, or specialist terms.
+  return `You are a clarity editor for Graphium Atoms (Insights). Each Atom is already a correct general rule. Make it read naturally for a thoughtful non-specialist, without losing precision. This works for any field (materials, biology, economics, software, the humanities, …), not just one.
 
-Your only job is to rewrite the wording — not the meaning. For each Atom:
-- **Replace the jargon with everyday words a non-specialist can picture.** Examples of the *kind* of move (apply it to whatever domain appears): "Sr3Al2Ge2 / Zn4Sb3" → "別の相 / 別の結晶", "SPS" → "短時間の高温・高圧処理", "XRD / 回折測定" → "結晶構造を調べる測定", "Seebeck 係数" → "温度差から電気を生む力", "アモルファス" → "原子が不規則に並んだ状態".
-- **Keep the substance.** Do NOT dilute into a vacuous platitude ("差が小さいほど何かが起きる" is too empty). It must still state the same specific rule — keep the domain scope; only the *wording* changes.
-- **Do NOT re-introduce the flagged jargon, and do NOT add new claims.** The title stays a short noun phrase.
+Principles, in priority order:
+- **Naturalness first.** The result must read like a knowledgeable person explaining it plainly — not a machine paraphrase. **Do NOT stack several heavy paraphrases into one clumsy sentence** (that is exactly what makes a rewrite feel forced). If three specialist terms collide, restructure or gloss instead of paraphrasing all three.
+- **Remove the genuinely obscure jargon** a non-specialist could not parse — chemical formulas (Sr3Al2Ge2), instrument / technical acronyms (SPS, XRD, qPCR), niche coined terms — by replacing them with plain words.
+- **For an *established* term, a short gloss usually beats a full paraphrase.** "ゼーベック効果（温度差から電気が生じる現象）" reads better than dissolving it into a long clause; "バンドギャップ（電気の通しにくさの目安）" beats stacking "電気の通しにくさ" into the sentence. Keep one anchor term plus a brief gloss rather than paraphrasing everything away.
+- **Match the lift to the knowledge — this is the portability judgment.** If the rule's *structure* genuinely holds in other fields, state it in that broader, transferable form (that is the most valuable kind of Atom). If it is specific to one field — as most domain findings honestly are — keep it field-specific but readable; do NOT inflate it into a vacuous cross-domain platitude ("差が小さいほど何かが起きる" is too empty), and do NOT force a cross-domain rewrite where none honestly exists.
+- **Keep the substance; add no new claims.** If an Atom already reads naturally and carries no obscure jargon, **return it unchanged.** The title stays a short noun phrase.
 
 Return JSON only, no prose:
-{"atoms": [{"index": <the index given>, "title": "<plain title>", "body": "<plain body>"}]}
+{"atoms": [{"index": <the index given>, "title": "<title>", "body": "<body>"}]}
 
 Output language: ${ja ? "Japanese" : "English"}.`;
 }
 
 export function buildReliftUserMessage(items: ReliftInput[]): string {
-  const blocks = items.map(
-    (it, i) =>
-      `[${i + 1}]\ntitle: "${it.title}"\nbody: "${it.body}"\njargon to remove: ${it.jargon.join(", ")}`,
-  );
-  return `Rewrite these Atoms in plain words (keep the substance, drop the jargon):\n\n${blocks.join("\n\n")}`;
+  const blocks = items.map((it, i) => {
+    const flagged =
+      it.jargon && it.jargon.length > 0
+        ? `\nstill too technical — must be removed or glossed: ${it.jargon.join(", ")}`
+        : "";
+    return `[${i + 1}]\ntitle: "${it.title}"\nbody: "${it.body}"${flagged}`;
+  });
+  return `Edit these Atoms to read naturally for a non-specialist (keep the substance, keep them precise):\n\n${blocks.join("\n\n")}`;
 }
 
 export function parseReliftOutput(text: string): ReliftResult[] {
