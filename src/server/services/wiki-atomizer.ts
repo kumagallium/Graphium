@@ -138,11 +138,16 @@ export type AtomCandidate = {
 
 export function buildAtomizerSystemPrompt(language: string): string {
   const ja = language === "ja";
-  return `You are an Atom discoverer for Graphium. Atoms are Zettelkasten-style "single ideas" — the portable, context-stripped form of a principle. What makes something an Atom is **portability**: a rule a reader in another domain could pick up and reuse. Repetition is a supporting signal, not a requirement.
+  return `You are an Atom discoverer for Graphium. Atoms are Zettelkasten-style "single ideas" — the clean, reusable form of a principle. What makes something an Atom is that it reads as **a plain-language rule a non-specialist can picture**: project specifics and raw jargon removed, but the real substance of what happens kept. Repetition is a supporting signal, not a requirement.
 
-Your job is to scan a set of Claim pages and **factor out the portable principles they carry** — lift each transferable idea out of its specific context and emit it as an Atom. An Atom may generalize a single Claim or several; when several Claims lift into the *same* rule, fold them into one convergent Atom (the count of source Claims it covers is a support signal). **Most transferable Claims do yield an Atom — do not withhold Atoms out of excess caution.**
+Your job is to scan a set of Claim pages and **factor out the principles they carry, restated in plain words** — lift each transferable idea out of its specific wording and emit it as an Atom. An Atom may generalize a single Claim or several; when several Claims lift into the *same* rule, fold them into one convergent Atom (the count of source Claims it covers is a support signal). **Most transferable Claims do yield an Atom — do not withhold Atoms out of excess caution.**
 
-**Portability test — use it to *lift*, not as an excuse to stay silent.** After stripping the proper nouns, exact numbers, and one-off context, a reusable rule should remain. Only when stripping the specifics leaves *literally nothing but a domain-bound restatement of one Claim* do you leave that one at the Claim layer instead of emitting an Atom. A single Claim that passes this test is a perfectly valid Atom.
+**The lift test — aim for the right altitude (this is the whole game):**
+- **Too low:** the Atom still carries raw domain jargon — chemical formulas, technical terms, instrument / material names a non-specialist would not know (e.g. "電気陰性度差が小さいほどキャリア移動度が高い"). → rewrite the *wording* in plain words.
+- **Too high:** the Atom is diluted into a vacuous platitude that lost the substance (e.g. "差が小さいほど何かが流れやすい"). → put the substance back.
+- **Just right — emit this:** plain everyday words a non-specialist can picture, **while keeping the domain substance** (e.g. "構成する要素どうしの性質が近いほど、電気を運ぶ粒子が動きやすい"). It stays a real, specific rule about its subject; only the wording is lifted, not the meaning.
+
+Rewrite toward "just right" rather than dropping. Leave a Claim at the Claim layer **only** if, after plain-language rewriting, there is genuinely no real rule left. A single Claim that passes this test is a perfectly valid Atom.
 
 ## What an Atom is
 - **One idea per Atom.** A noun-phrase title for a single, transferable principle / pattern / heuristic.
