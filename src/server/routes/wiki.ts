@@ -31,6 +31,10 @@ import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   parseAtomizerOutput,
+  detectRung1Tokens,
+  buildReliftSystemPrompt,
+  buildReliftUserMessage,
+  parseReliftOutput,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -432,9 +436,55 @@ app.post("/atomize", async (c) => {
     const idToRebuttals = new Map(
       body.concepts.map((c) => [c.id, c.rebuttalConditions]),
     );
-    const atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
+    let atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
+
+    // パイプライン C+D（平易化 / re-lift）: B が出した Atom に domain ジャーゴン（化学式・
+    // 装置略語など）が残っていたら、C（detectRung1Tokens でコード検出・LLM 不要）で見つけ、
+    // D（軽い LLM パス）で語だけ日常語に書き直す。silent drop はしない。硬い Atom が
+    // 無ければ LLM を呼ばない。最大 2 パス。relift が失敗しても B の Atom はそのまま返す。
+    for (let pass = 0; pass < 2; pass++) {
+      const dirty = atoms
+        .map((a, i) => ({ i, jargon: detectRung1Tokens(a.title, a.body) }))
+        .filter((x) => x.jargon.length > 0);
+      if (dirty.length === 0) break;
+      try {
+        const reliftRes = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt: buildReliftSystemPrompt(body.language || "en"),
+          messages: [
+            {
+              role: "user" as const,
+              content: buildReliftUserMessage(
+                dirty.map((d) => ({
+                  title: atoms[d.i].title,
+                  body: atoms[d.i].body,
+                  jargon: d.jargon,
+                })),
+              ),
+            },
+          ],
+          maxSteps: 1,
+          feature: "wiki.relift",
+          modelConfig,
+        });
+        const rewrites = parseReliftOutput(reliftRes.message);
+        atoms = atoms.map((a) => ({ ...a }));
+        dirty.forEach((d, k) => {
+          const rw = rewrites.find((r) => r.index === k + 1) ?? rewrites[k];
+          if (rw && rw.title && rw.body) {
+            atoms[d.i] = { ...atoms[d.i], title: rw.title, body: rw.body };
+          }
+        });
+      } catch (err) {
+        // relift 失敗時も B の Atom を消さずそのまま返す。
+        console.error("Wiki relift error:", err);
+        break;
+      }
+    }
+
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";

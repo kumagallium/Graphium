@@ -619,3 +619,59 @@ export function parseAtomizerOutput(
     return [];
   }
 }
+
+// ============================================================
+// 平易化（re-lift）ステージ — Claim→Atom パイプラインの C（検査）＋ D（書き直し）
+// ------------------------------------------------------------
+// B（atomizer）が出す Atom は「規則は立つが語が硬い」ことがある（化学式・装置略語・
+// 専門語が残る）。C は detectRung1Tokens でコード検出（LLM 不要）。D はこの prompt の
+// 軽い LLM パスで、検出された Atom の "語だけ" を日常語に書き直す。silent drop は
+// しない＝必ず書き直して残す。呼び出し側（routes/wiki.ts）が C→D を最大 2 パス回す。
+// ============================================================
+
+export type ReliftInput = { title: string; body: string; jargon: string[] };
+export type ReliftResult = { index: number; title: string; body: string };
+
+export function buildReliftSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a plain-language editor for Graphium Atoms (Insights). Each Atom you receive is already a correct general rule, but its wording still contains **domain jargon a non-specialist would not recognize** — chemical formulas, instrument / material names, technical acronyms, or specialist terms.
+
+Your only job is to rewrite the wording — not the meaning. For each Atom:
+- **Replace the jargon with everyday words a non-specialist can picture.** Examples of the *kind* of move (apply it to whatever domain appears): "Sr3Al2Ge2 / Zn4Sb3" → "別の相 / 別の結晶", "SPS" → "短時間の高温・高圧処理", "XRD / 回折測定" → "結晶構造を調べる測定", "Seebeck 係数" → "温度差から電気を生む力", "アモルファス" → "原子が不規則に並んだ状態".
+- **Keep the substance.** Do NOT dilute into a vacuous platitude ("差が小さいほど何かが起きる" is too empty). It must still state the same specific rule — keep the domain scope; only the *wording* changes.
+- **Do NOT re-introduce the flagged jargon, and do NOT add new claims.** The title stays a short noun phrase.
+
+Return JSON only, no prose:
+{"atoms": [{"index": <the index given>, "title": "<plain title>", "body": "<plain body>"}]}
+
+Output language: ${ja ? "Japanese" : "English"}.`;
+}
+
+export function buildReliftUserMessage(items: ReliftInput[]): string {
+  const blocks = items.map(
+    (it, i) =>
+      `[${i + 1}]\ntitle: "${it.title}"\nbody: "${it.body}"\njargon to remove: ${it.jargon.join(", ")}`,
+  );
+  return `Rewrite these Atoms in plain words (keep the substance, drop the jargon):\n\n${blocks.join("\n\n")}`;
+}
+
+export function parseReliftOutput(text: string): ReliftResult[] {
+  try {
+    let jsonText = text.trim();
+    const m = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) jsonText = m[1].trim();
+    const parsed = JSON.parse(jsonText);
+    const arr = parsed.atoms ?? parsed;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((a: any) => typeof a?.title === "string" && typeof a?.body === "string")
+      .map((a: any) => ({
+        index: typeof a.index === "number" ? a.index : 0,
+        title: String(a.title).trim(),
+        body: String(a.body).trim(),
+      }));
+  } catch (err) {
+    console.error("Relift 出力のパース失敗:", err);
+    return [];
+  }
+}
