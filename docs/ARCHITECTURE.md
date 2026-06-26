@@ -355,6 +355,16 @@ Notes:
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
+- **Insights are gated by portability, not recurrence.** Whether a Claim
+  becomes an Insight is decided by a single rule — the *portability test*:
+  strip the proper nouns, exact numbers, and one-off context; if a rule a
+  reader in another domain could reuse still remains, that lifted rule is the
+  Insight, otherwise it stays a Claim. A **single** Claim that lifts cleanly is
+  enough (no 2+ requirement); when several Claims lift into the same rule they
+  converge into one Insight, and the count of source Claims (`derivedFromClaims`)
+  is a **support signal**, not a threshold. The Atomizer does not silently drop
+  low-confidence or still-domain-bound candidates — `confidence` is recorded and
+  shown, and the portability test is the only gate (`src/server/services/wiki-atomizer.ts`).
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.

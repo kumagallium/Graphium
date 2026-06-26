@@ -4315,12 +4315,14 @@ export function NoteApp() {
           });
         }
 
-        if (snapshots.length < 2) {
+        // 2 件必須ゲートは撤廃（サーバー側の可搬性テストと整合）。source Claim が
+        // 1 件でも可搬なら再生成できる。0 件のときだけ再生成不能としてエラーにする。
+        if (snapshots.length < 1) {
           const totalSources = claimIds.length;
           const errMsg =
             totalSources === 0
               ? "Atom has no source Concepts recorded"
-              : `Atom needs ≥2 source Concepts; only ${snapshots.length} of ${totalSources} remain as Claim`;
+              : `Atom's ${totalSources} source Concept(s) no longer exist as Claims`;
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
