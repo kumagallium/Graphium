@@ -31,6 +31,10 @@ import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   parseAtomizerOutput,
+  detectRung1Tokens,
+  buildReliftSystemPrompt,
+  buildReliftUserMessage,
+  parseReliftOutput,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -432,9 +436,56 @@ app.post("/atomize", async (c) => {
     const idToRebuttals = new Map(
       body.concepts.map((c) => [c.id, c.rebuttalConditions]),
     );
-    const atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
+    let atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
+
+    // パイプライン C+D（平易化 / readability）— 分野非依存。
+    //   pass 1: D を「全 Atom」に 1 回かける。LLM が任意分野のジャーゴンを判断して自然な
+    //           文に整える（regex の検出範囲＝化学式/略語 に依存しない。生物/経済/人文も可）。
+    //   pass 2: C（detectRung1Tokens, コード）で式/略語の取りこぼしを検出し、残っていれば
+    //           該当 Atom だけ D を再適用（安いダブルチェック）。
+    // silent drop はしない。relift が失敗しても B の Atom はそのまま返す。
+    const runRelift = async (targets: { i: number; jargon: string[] }[]) => {
+      if (targets.length === 0) return;
+      const reliftRes = await runAgentLoop({
+        model,
+        modelId: modelConfig.modelId,
+        systemPrompt: buildReliftSystemPrompt(body.language || "en"),
+        messages: [
+          {
+            role: "user" as const,
+            content: buildReliftUserMessage(
+              targets.map((t) => ({ title: atoms[t.i].title, body: atoms[t.i].body, jargon: t.jargon })),
+            ),
+          },
+        ],
+        maxSteps: 1,
+        feature: "wiki.relift",
+        modelConfig,
+      });
+      const rewrites = parseReliftOutput(reliftRes.message);
+      atoms = atoms.map((a) => ({ ...a }));
+      targets.forEach((t, k) => {
+        const rw = rewrites.find((r) => r.index === k + 1) ?? rewrites[k];
+        if (rw && rw.title && rw.body) {
+          atoms[t.i] = { ...atoms[t.i], title: rw.title, body: rw.body };
+        }
+      });
+    };
+    try {
+      // pass 1: 全 Atom（jargon 指定なし＝LLM が自分で判断・分野非依存）
+      await runRelift(atoms.map((_, i) => ({ i, jargon: [] as string[] })));
+      // pass 2: regex で式/略語の残りを検出 → 該当だけ再適用
+      const residual = atoms
+        .map((a, i) => ({ i, jargon: detectRung1Tokens(a.title, a.body) }))
+        .filter((x) => x.jargon.length > 0);
+      await runRelift(residual);
+    } catch (err) {
+      // relift 失敗時も B の Atom を消さずそのまま返す。
+      console.error("Wiki relift error:", err);
+    }
+
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";

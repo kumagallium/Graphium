@@ -365,6 +365,25 @@ Notes:
   is a **support signal**, not a threshold. The Atomizer does not silently drop
   low-confidence or still-domain-bound candidates — `confidence` is recorded and
   shown, and the portability test is the only gate (`src/server/services/wiki-atomizer.ts`).
+- **Readability re-lift (Claim → Insight pipeline, stages C+D).** The Atomizer
+  reliably *generalizes* (finds the rule) but, asked to also strip jargon in the
+  same pass, often leaves raw chemical formulas / acronyms in the wording. After
+  generation the `/atomize` route runs a clarity pass (`buildReliftSystemPrompt`,
+  domain-general — works for any field, not just materials):
+  - **D — pass 1 (always):** an LLM edits *every* Insight to read naturally for a
+    non-specialist — removing genuinely obscure terms, but **preferring a brief
+    gloss of an established term over stacking several paraphrases** (which is
+    what made early rewrites feel forced). It also makes the *portability
+    judgment*: lift to a cross-domain form only when the rule's structure
+    genuinely transfers, otherwise keep it field-specific but readable (never a
+    vacuous platitude). An already-natural Insight is returned unchanged.
+  - **C — pass 2 (conditional):** `detectRung1Tokens` (code, no LLM) catches any
+    chemical formula / acronym D left behind; only those Insights get a second D
+    pass. The regex is a cheap residual check, not the primary gate.
+
+  Nothing is silently dropped; a relift failure leaves the original Insight
+  intact. Full path: **cluster (A) → generalize (B) → readability rewrite
+  (D, all) → residual check (C) → fix residuals (D)** — each an explicit step.
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.

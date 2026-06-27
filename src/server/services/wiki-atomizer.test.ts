@@ -12,7 +12,12 @@
 // 判定を prompt の一般原則（可搬性テスト）に一本化した。
 
 import { describe, it, expect } from "vitest";
-import { detectRung1Tokens, parseAtomizerOutput } from "./wiki-atomizer.ts";
+import {
+  detectRung1Tokens,
+  parseAtomizerOutput,
+  parseReliftOutput,
+  buildReliftUserMessage,
+} from "./wiki-atomizer.ts";
 
 describe("detectRung1Tokens — corpus-actual failing tokens", () => {
   it("catches digit-bearing chemical formulas (Bi2Te3, TiO2)", () => {
@@ -155,5 +160,48 @@ describe("parseAtomizerOutput — portability gates removed (single rule = promp
     });
     const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
     expect(out).toHaveLength(2);
+  });
+});
+
+describe("parseReliftOutput / buildReliftUserMessage — plain-language stage (C+D)", () => {
+  it("parses the relift JSON and keeps index / title / body", () => {
+    const json = JSON.stringify({
+      atoms: [
+        { index: 1, title: "合金を高温で処理すると別の相ができる", body: "本文1" },
+        { index: 2, title: "性質の近い要素どうしは粒子が動きやすい", body: "本文2" },
+      ],
+    });
+    const out = parseReliftOutput(json);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ index: 1, title: "合金を高温で処理すると別の相ができる", body: "本文1" });
+  });
+
+  it("tolerates a fenced json block and drops entries missing title/body", () => {
+    const json =
+      "```json\n" +
+      JSON.stringify({ atoms: [{ index: 1, title: "ok", body: "ok" }, { index: 2, title: "no body" }] }) +
+      "\n```";
+    const out = parseReliftOutput(json);
+    expect(out).toHaveLength(1);
+    expect(out[0].title).toBe("ok");
+  });
+
+  it("returns [] on malformed JSON (relift failure stays non-fatal)", () => {
+    expect(parseReliftOutput("not json at all")).toEqual([]);
+  });
+
+  it("flags still-technical tokens when given, and omits the line when empty", () => {
+    const withTokens = buildReliftUserMessage([
+      { title: "SPS は圧力不足で…", body: "本文", jargon: ["SPS", "XRD"] },
+    ]);
+    expect(withTokens).toContain("[1]");
+    expect(withTokens).toContain("still too technical");
+    expect(withTokens).toContain("SPS, XRD");
+    expect(withTokens).toContain('title: "SPS は圧力不足で…"');
+
+    // pass 1（全 Atom・jargon 空）では技術語の指定行を付けない
+    const noTokens = buildReliftUserMessage([{ title: "命名は実践より後に来る", body: "本文", jargon: [] }]);
+    expect(noTokens).not.toContain("still too technical");
+    expect(noTokens).toContain('title: "命名は実践より後に来る"');
   });
 });
