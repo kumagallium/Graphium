@@ -1273,6 +1273,8 @@ export const en: Record<string, string> = {
   "globalGraph.layout.force": "Organic",
   "globalGraph.layout.columns": "Columns",
   "globalGraph.hideReferences": "Hide references",
+  "globalGraph.showIsolated": "Show isolated",
+  "globalGraph.showIsolatedHint": "Show notes that have no links yet",
   "globalGraph.kind.note": "Note",
   "globalGraph.kind.external": "Source",
   "globalGraph.relation.derived": "Derived",

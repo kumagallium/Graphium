@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildGlobalGraph } from "./graph-builder";
+import { filterGlobalGraph } from "./global-graph-view";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 
@@ -115,5 +116,41 @@ describe("buildGlobalGraph — インデックス起点の全ノードグラフ"
     );
     expect(g.edges).toHaveLength(1);
     expect(g.edges[0].relation).toBe("derived"); // 優先度の高い derived が残る
+  });
+});
+
+describe("filterGlobalGraph — 層・参照・孤立フィルタ", () => {
+  // n1—n2 は派生で連結、iso は孤立、c は参照のみで n1 と連結
+  const data = buildGlobalGraph(
+    index([
+      entry({ noteId: "n1", outgoingLinks: [{ targetNoteId: "n2", layer: "prov" }] }),
+      entry({ noteId: "n2" }),
+      entry({ noteId: "iso" }),
+      entry({ noteId: "c", source: "ai", wikiKind: "claim", outgoingLinks: [{ targetNoteId: "n1", layer: "knowledge" }] }),
+    ]),
+  );
+  const all = new Set(["source", "note", "crystal", "synth"] as const);
+
+  it("hideIsolated=true で孤立ノートを除外する", () => {
+    const r = filterGlobalGraph(data, { visibleLayers: all, hideIsolated: true });
+    expect(r.nodes.map((n) => n.id).sort()).toEqual(["c", "n1", "n2"]);
+    expect(r.nodes.find((n) => n.id === "iso")).toBeUndefined();
+  });
+
+  it("hideIsolated=false なら孤立ノートも残る", () => {
+    const r = filterGlobalGraph(data, { visibleLayers: all, hideIsolated: false });
+    expect(r.nodes.find((n) => n.id === "iso")).toBeDefined();
+  });
+
+  it("hideReferences=true で参照エッジを落とし、それで孤立化したノードも hideIsolated で消える", () => {
+    // c は n1 への参照（knowledge）のみで連結している。参照を隠すと c は孤立する。
+    const r = filterGlobalGraph(data, { visibleLayers: all, hideReferences: true, hideIsolated: true });
+    expect(r.edges.every((e) => e.relation !== "reference")).toBe(true);
+    expect(r.nodes.find((n) => n.id === "c")).toBeUndefined();
+  });
+
+  it("層フィルタで crystal を外すと claim ノードが消える", () => {
+    const r = filterGlobalGraph(data, { visibleLayers: new Set(["source", "note", "synth"] as const), hideIsolated: false });
+    expect(r.nodes.find((n) => n.id === "c")).toBeUndefined();
   });
 });

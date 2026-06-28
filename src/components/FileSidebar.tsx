@@ -518,21 +518,8 @@ export function FileSidebar({
         )}
       </div>
 
-      {/* フッター（メタ群: 全体グラフ / Skill / 設定 / ゴミ箱 / Release Notes） */}
+      {/* フッター（メタ群: Skill / 全体グラフ / 設定 / ゴミ箱 / Release Notes） */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
-        {onShowGlobalGraph && (
-          <button
-            onClick={onShowGlobalGraph}
-            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-              globalGraphActive
-                ? "text-primary font-semibold bg-sidebar-accent/40"
-                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
-            }`}
-          >
-            <Waypoints size={12} className="shrink-0" />
-            <span className="flex-1 text-left">{t("sidebar.globalGraph")}</span>
-          </button>
-        )}
         {onShowSkillList && (
           <button
             onClick={onShowSkillList}
@@ -547,6 +534,19 @@ export function FileSidebar({
             {skillCount > 0 && (
               <span className="text-xs">{skillCount}</span>
             )}
+          </button>
+        )}
+        {onShowGlobalGraph && (
+          <button
+            onClick={onShowGlobalGraph}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              globalGraphActive
+                ? "text-primary font-semibold bg-sidebar-accent/40"
+                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+            }`}
+          >
+            <Waypoints size={12} className="shrink-0" />
+            <span className="flex-1 text-left">{t("sidebar.globalGraph")}</span>
           </button>
         )}
         <button

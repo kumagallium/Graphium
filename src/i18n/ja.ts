@@ -1272,6 +1272,8 @@ export const ja: Record<string, string> = {
   "globalGraph.layout.force": "有機的",
   "globalGraph.layout.columns": "列",
   "globalGraph.hideReferences": "参照を隠す",
+  "globalGraph.showIsolated": "孤立を表示",
+  "globalGraph.showIsolatedHint": "まだリンクの無いノートも表示する",
   "globalGraph.kind.note": "ノート",
   "globalGraph.kind.external": "外部ソース",
   "globalGraph.relation.derived": "派生",

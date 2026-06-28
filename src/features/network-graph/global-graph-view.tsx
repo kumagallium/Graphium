@@ -60,6 +60,39 @@ function columnIndexOf(kind: GraphKind): number {
   return COLUMNS.findIndex((c) => c.kinds.includes(kind));
 }
 
+/**
+ * 層フィルタ・参照フィルタ・孤立ノード除外を適用したサブグラフを返す。
+ * オーバーレイ（件数表示）とキャンバス（描画）で同じ結果を使うため切り出している。
+ *
+ * hideIsolated: 実データではリンクの無いノートが大半を占める（Obsidian と同じ）。
+ *   既定で孤立ノードを隠すと、連結した「網」だけが残って俯瞰しやすくなる。
+ */
+export function filterGlobalGraph(
+  data: NoteGraphData,
+  opts: { visibleLayers: Set<LayerId>; hideReferences?: boolean; hideIsolated?: boolean },
+): NoteGraphData {
+  const { visibleLayers, hideReferences = false, hideIsolated = false } = opts;
+  const visibleIds = new Set(
+    data.nodes.filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)])).map((n) => n.id),
+  );
+  const edges = data.edges.filter(
+    (e) =>
+      visibleIds.has(e.source) &&
+      visibleIds.has(e.target) &&
+      !(hideReferences && e.relation === "reference"),
+  );
+  let nodes = data.nodes.filter((n) => visibleIds.has(n.id));
+  if (hideIsolated) {
+    const connected = new Set<string>();
+    for (const e of edges) {
+      connected.add(e.source);
+      connected.add(e.target);
+    }
+    nodes = nodes.filter((n) => connected.has(n.id));
+  }
+  return { nodes, edges };
+}
+
 // ── 配色（knowledge-colors.ts と view.tsx に一致） ──
 
 const NOTE_FILL = "#5b8fb9";
@@ -183,6 +216,7 @@ export function GlobalGraphCanvas({
   layout,
   visibleLayers,
   hideReferences = false,
+  hideIsolated = false,
   onNavigate,
   onOpenMedia,
   height = 560,
@@ -191,6 +225,7 @@ export function GlobalGraphCanvas({
   layout: GlobalGraphLayout;
   visibleLayers: Set<LayerId>;
   hideReferences?: boolean;
+  hideIsolated?: boolean;
   onNavigate?: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   height?: number | string;
@@ -198,21 +233,11 @@ export function GlobalGraphCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
 
-  // 表示中の層・参照フィルタを適用
-  const { shownNodes, shownEdges } = useMemo(() => {
-    const visibleIds = new Set(
-      data.nodes.filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)])).map((n) => n.id),
-    );
-    return {
-      shownNodes: data.nodes.filter((n) => visibleIds.has(n.id)),
-      shownEdges: data.edges.filter(
-        (e) =>
-          visibleIds.has(e.source) &&
-          visibleIds.has(e.target) &&
-          !(hideReferences && e.relation === "reference"),
-      ),
-    };
-  }, [data, visibleLayers, hideReferences]);
+  // 表示中の層・参照・孤立フィルタを適用
+  const { nodes: shownNodes, edges: shownEdges } = useMemo(
+    () => filterGlobalGraph(data, { visibleLayers, hideReferences, hideIsolated }),
+    [data, visibleLayers, hideReferences, hideIsolated],
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -511,7 +536,19 @@ export function GlobalGraphOverlay({
   const t = useT();
   const [mode, setMode] = useState<GlobalGraphLayout>("force");
   const [hideRefs, setHideRefs] = useState(false);
+  const [showIsolated, setShowIsolated] = useState(false);
   const [visible, setVisible] = useState<Set<LayerId>>(new Set(ALL_LAYERS));
+
+  // 層・参照フィルタ適用後の「全ノード版」と「連結のみ版」を両方求め、
+  // 表示用サブグラフ（shown）と隠れている孤立ノード数（isolatedCount）を導く。
+  const { shown, isolatedCount } = useMemo(() => {
+    const withIsolated = filterGlobalGraph(data, { visibleLayers: visible, hideReferences: hideRefs, hideIsolated: false });
+    const connectedOnly = filterGlobalGraph(data, { visibleLayers: visible, hideReferences: hideRefs, hideIsolated: true });
+    return {
+      shown: showIsolated ? withIsolated : connectedOnly,
+      isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
+    };
+  }, [data, visible, hideRefs, showIsolated]);
 
   const switchMode = (m: GlobalGraphLayout) => {
     setMode(m);
@@ -555,10 +592,15 @@ export function GlobalGraphOverlay({
           <input type="checkbox" checked={hideRefs} onChange={(e) => setHideRefs(e.target.checked)} />
           {t("globalGraph.hideReferences")}
         </label>
+        <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer" title={t("globalGraph.showIsolatedHint")}>
+          <input type="checkbox" checked={showIsolated} onChange={(e) => setShowIsolated(e.target.checked)} />
+          {t("globalGraph.showIsolated")}
+          {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
+        </label>
         <LayerChips visible={visible} onToggle={toggleLayer} />
         <span className="ml-auto flex items-center gap-3">
           <span className="text-[11px] text-muted-foreground">
-            {data.nodes.length} / {data.edges.length}
+            {shown.nodes.length} / {shown.edges.length}
           </span>
           <button
             onClick={onClose}
@@ -576,7 +618,7 @@ export function GlobalGraphOverlay({
       </div>
       {/* キャンバス */}
       <div className="flex-1 min-h-0">
-        {data.nodes.length === 0 ? (
+        {shown.nodes.length === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
             {t("globalGraph.empty")}
           </div>
@@ -586,6 +628,7 @@ export function GlobalGraphOverlay({
             layout={mode}
             visibleLayers={visible}
             hideReferences={hideRefs}
+            hideIsolated={!showIsolated}
             onNavigate={handleNavigate}
             onOpenMedia={onOpenMedia}
             height="100%"
