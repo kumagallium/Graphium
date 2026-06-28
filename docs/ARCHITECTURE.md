@@ -355,16 +355,27 @@ Notes:
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
-- **Insights are gated by portability, not recurrence.** Whether a Claim
-  becomes an Insight is decided by a single rule — the *portability test*:
-  strip the proper nouns, exact numbers, and one-off context; if a rule a
-  reader in another domain could reuse still remains, that lifted rule is the
-  Insight, otherwise it stays a Claim. A **single** Claim that lifts cleanly is
-  enough (no 2+ requirement); when several Claims lift into the same rule they
-  converge into one Insight, and the count of source Claims (`derivedFromClaims`)
-  is a **support signal**, not a threshold. The Atomizer does not silently drop
-  low-confidence or still-domain-bound candidates — `confidence` is recorded and
-  shown, and the portability test is the only gate (`src/server/services/wiki-atomizer.ts`).
+- **Insights are structural abstractions, not tidied Claims.** A Claim is a
+  domain finding; the Insight (Atom) is the *transferable structure* behind it,
+  produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:
+  **decompose** the relationship (control → outcome), **classify the shape** from
+  a fixed vocabulary (`monotonic-increase` / `monotonic-decrease` /
+  `optimal-middle` / `threshold` / `trade-off` / `enabling-condition` /
+  `composition-structure` / `other`), **abstract** the roles to their general
+  category while keeping the shape, and optionally name a **transfer** (a
+  different field where the same shape + role-structure holds). The fixed shape
+  vocabulary is the key: the LLM *classifies* into it rather than inventing an
+  axis, which is what keeps the abstraction from going vacuous (the failure mode
+  of the retired meta-atom layer). A single Claim that instances a real shape is
+  enough; the source-Claim count is a support signal, not a gate. The `shape`
+  and the verified `transfer` are stored on the Atom's `WikiMeta`.
+- **Transfer judge — adversarial verification of the analogy.** The transfer the
+  atomizer proposes is a *candidate*. The `/atomize` route runs a skeptical judge
+  (`buildTransferJudgeSystemPrompt`) asking whether the example genuinely
+  instances the same shape + role-structure or is only topically similar; forced
+  ("こじつけ") transfers are dropped while the principle itself is always kept. On
+  a 24-Claim check this kept ~88% of transfers and correctly dropped the rest;
+  the principle stays valid even when its transfer is discarded.
 - **Readability re-lift (Claim → Insight pipeline, stages C+D).** The Atomizer
   reliably *generalizes* (finds the rule) but, asked to also strip jargon in the
   same pass, often leaves raw chemical formulas / acronyms in the wording. After
@@ -373,17 +384,17 @@ Notes:
   - **D — pass 1 (always):** an LLM edits *every* Insight to read naturally for a
     non-specialist — removing genuinely obscure terms, but **preferring a brief
     gloss of an established term over stacking several paraphrases** (which is
-    what made early rewrites feel forced). It also makes the *portability
-    judgment*: lift to a cross-domain form only when the rule's structure
-    genuinely transfers, otherwise keep it field-specific but readable (never a
-    vacuous platitude). An already-natural Insight is returned unchanged.
+    what made early rewrites feel forced). It polishes *wording only* — the
+    structural abstraction is already done by B. An already-natural Insight is
+    returned unchanged.
   - **C — pass 2 (conditional):** `detectRung1Tokens` (code, no LLM) catches any
     chemical formula / acronym D left behind; only those Insights get a second D
     pass. The regex is a cheap residual check, not the primary gate.
 
   Nothing is silently dropped; a relift failure leaves the original Insight
-  intact. Full path: **cluster (A) → generalize (B) → readability rewrite
-  (D, all) → residual check (C) → fix residuals (D)** — each an explicit step.
+  intact. Full path: **cluster (A) → decompose→shape→abstract→transfer (B) →
+  transfer judge → readability rewrite (D, all) → residual check (C) → fix
+  residuals (D)** — each an explicit, nameable step.
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.

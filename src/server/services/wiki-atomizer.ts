@@ -10,7 +10,7 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
-import type { AtomRelation, AtomType, EpistemicStatus } from "../../lib/document-types.js";
+import type { AtomRelation, AtomType, AtomShape, AtomTransfer, EpistemicStatus } from "../../lib/document-types.js";
 import {
   ATOM_RELATION_TYPE_VALUES,
   lowestEpistemicStatus,
@@ -28,6 +28,18 @@ const ATOM_TYPE_VALUES: AtomType[] = [
   "methodological",
   "observational",
   "boundary",
+];
+
+/** Atom の関係の形（構造写像の軸）として認める固定語彙 */
+const ATOM_SHAPE_VALUES: AtomShape[] = [
+  "monotonic-increase",
+  "monotonic-decrease",
+  "optimal-middle",
+  "threshold",
+  "trade-off",
+  "enabling-condition",
+  "composition-structure",
+  "other",
 ];
 
 /** Phase η: EpistemicStatus として認める値（順序 = 低→高） */
@@ -111,6 +123,10 @@ export type AtomCandidate = {
    * AI が主張の論理的性格から自動推定。認識不能・パース失敗時は undefined。
    */
   atomType?: AtomType;
+  /** Atom の関係の形（構造写像の軸、decompose→shape→abstract）。固定語彙外は undefined。 */
+  shape?: AtomShape;
+  /** 越境転移の候補（atomizer が出す）。route の敵対的ジャッジが構造一致を検証し、妥当時のみ残す。 */
+  transfer?: AtomTransfer;
   /**
    * Atom の認識論的ステータス（Phase η）。
    * **入力 Claim の中で最も低い status を継承** する伝搬ルール（lowest-status inheritance）に従う。
@@ -138,172 +154,43 @@ export type AtomCandidate = {
 
 export function buildAtomizerSystemPrompt(language: string): string {
   const ja = language === "ja";
-  return `You are an Atom discoverer for Graphium. Atoms are Zettelkasten-style "single ideas" — the clean, reusable form of a principle. What makes something an Atom is that it reads as **a plain-language rule a non-specialist can picture**: project specifics and raw jargon removed, but the real substance of what happens kept. Repetition is a supporting signal, not a requirement.
+  return `You are an Atom discoverer for Graphium. An Atom is NOT a tidied restatement of a Claim — it is the **transferable structure** behind it. A Claim such as "電気陰性度差が小さいほどキャリア移動度が高い" is a domain finding; the Atom is the structural rule it instances ("構成要素の性質が均質なほど、内部の流れが妨げられにくい"). You discover Atoms by decomposing Claims to their relationship structure and abstracting to that rule.
 
-Your job is to scan a set of Claim pages and **factor out the principles they carry, restated in plain words** — lift each transferable idea out of its specific wording and emit it as an Atom. An Atom may generalize a single Claim or several; when several Claims lift into the *same* rule, fold them into one convergent Atom (the count of source Claims it covers is a support signal). **Most transferable Claims do yield an Atom — do not withhold Atoms out of excess caution.**
+Work through four steps for each cluster of Claims:
 
-**The lift test — aim for the right altitude (this is the whole game):**
-- **Too low:** the Atom still carries raw domain jargon — chemical formulas, technical terms, instrument / material names a non-specialist would not know (e.g. "電気陰性度差が小さいほどキャリア移動度が高い"). → rewrite the *wording* in plain words.
-- **Too high:** the Atom is diluted into a vacuous platitude that lost the substance (e.g. "差が小さいほど何かが流れやすい"). → put the substance back.
-- **Just right — emit this:** plain everyday words a non-specialist can picture, **while keeping the domain substance** (e.g. "構成する要素どうしの性質が近いほど、電気を運ぶ粒子が動きやすい"). It stays a real, specific rule about its subject; only the wording is lifted, not the meaning.
+**1. Decompose.** Identify the relationship inside the Claim(s): the control / condition (what varies), the outcome (what changes), and the mechanism if one is stated.
 
-Rewrite toward "just right" rather than dropping. Leave a Claim at the Claim layer **only** if, after plain-language rewriting, there is genuinely no real rule left. A single Claim that passes this test is a perfectly valid Atom.
+**2. Classify the shape.** Pick exactly ONE relationship-shape from this fixed vocabulary. You CLASSIFY into it — you do not invent a new axis. This is the heart of the abstraction.
+- "monotonic-increase" — more X, steadily more Y
+- "monotonic-decrease" — more X, steadily less Y
+- "optimal-middle" — Y peaks at a middling X; both extremes hurt (a sweet spot)
+- "threshold" — Y switches or changes qualitatively once X crosses a point
+- "trade-off" — gaining X costs Y; the two cannot both be maximized
+- "enabling-condition" — X must hold for Y to be possible at all
+- "composition-structure" — the makeup or structure of X determines Y
+- "other" — none of the above fits cleanly
 
-## What an Atom is
-- **One idea per Atom.** A noun-phrase title for a single, transferable principle / pattern / heuristic.
-- **Context-stripped AND domain-lifted, but in everyday words.** It is not enough to remove project names and exact numbers. **Domain-specific nouns must be lifted up at least one level of abstraction** — but the resulting words must still read like everyday speech, not a textbook chapter title and not a paper abstract. If an English-Japanese reader who is *not* in the source domain cannot picture what is happening in one read, the wording is too heavy. (See "Plain-language register" below.)
-- **A lifted rule, not a restatement.** An Atom is the portable *rule*, never a re-description of one Claim in different words. Cite every Claim the lifted rule genuinely covers in \`sourceConceptIds\` (one or more); when several Claims share the rule, fold them into one Atom instead of emitting near-duplicates.
-- **Reusable.** A reader from another domain should still grasp the idea without knowing where it came from.
-- **Short.** Title (5-12 words) and 1-3 short paragraphs of body. No headings, no bullet lists. Prose only.
+**3. Abstract.** Lift the roles to their general category while KEEPING the shape, and state the principle as a general rule. "バンドギャップ" → "調整できる量", "熱電性能" → "性能", "電気陰性度差" → "構成要素の性質の違い". The principle must still assert a real X→Y at the abstract level — **do not dilute into a platitude** ("何かが効く" / "バランスが大事" are empty). A single Claim is enough if it instances a real shape; when several Claims share the same shape, fold them into one Atom and cite all of them.
 
-## Two routes to an Atom (read this — induction lives here, not in Synthesis)
+**4. Transfer (optional but valuable).** Name ONE *different field* where the SAME shape AND the same role-structure genuinely holds, with a concrete one-sentence example. This is a candidate analogy; a downstream judge checks whether the structure truly matches, so propose it only when you believe it does — never a merely topical or surface resemblance. If you cannot find an honest one, omit it.
 
-Both routes produce Atoms. Pick whichever fits the Claims in front of you; many Atoms blend both:
-
-1. **Inductive route (induction-from-many).** Several Claims (often 3+) report the *same kind* of finding under *different particulars*. The Atom is the general rule the cases share. Necessary when no single Claim is enough to support the rule — it earns its weight from repetition.
-2. **Lift route (lift-from-few).** One or more Claims that *already say something close to a principle* but are still framed in one domain. The Atom is the domain-lifted form. Repetition is not the load-bearing argument; abstraction is — a single Claim that passes the portability test is enough.
-
-Why this matters: the Synthesizer used to carry an \`inductive\` mode, and it overlapped with what the Atomizer already does. Induction is now firmly an Atomizer concern. If you find yourself proposing "lots of cases → general rule" — that **is** an Atom, not a Synthesis candidate.
-
-## Domain-noun lifting (REQUIRED)
-
-When you write the Atom title and body, replace specific domain entities with the more abstract category they belong to. Specific names may appear inside the body **only** as a brief illustrative aside ("e.g., …"), never as the load-bearing subject.
-
-Lifting examples (apply this *kind* of move to whatever domain the Claims are in). Each example shows the lifted form in everyday words, not academic compound nouns:
-
-- "Ti" → "わずかに加える元素" / "a small amount of an added element"
-- "Al-V system alloy" → "複数の元素でできた合金" / "an alloy made of several elements"
-- "grain size and Debye temperature" → "合金全体の構造的な性質" / "the overall structural character of the alloy"
-- "React component re-render" → "細かい単位での画面更新" / "screen updates done in small units"
-- "Postgres VACUUM" → "裏で動く保守処理" / "maintenance work that runs in the background"
-- "lysine residue" → "アミノ酸の側鎖" / "the side chain of an amino acid"
-
-If lifting two levels still leaves the claim narrow, lift one more. Stop when the claim would still be intelligible to a reader outside the source domain — *and* could be read out loud without sounding like a journal abstract.
-
-## Plain-language register (REQUIRED, complements domain-lifting)
-
-Domain-lifting gives portability; plain-language register gives readability. Both are required — neither replaces the other.
-
-After you have lifted the nouns, take a second pass over the wording itself:
-
-- Prefer everyday verbs over nominalized abstractions. "影響を与える" → "変える" / "効いてくる", "段階的に回復させる" → "少しずつ整える".
-- Prefer concrete nouns over hard compound nouns. "永続ストレージの背景メンテナンス" → "裏で動く保守処理", "支配的な影響" → "大きな効果".
-- Avoid stacking 4+ kanji compounds in a row. If three abstract nouns are colliding ("構造的なバルク特性"), unpack one of them ("合金全体の構造的な性質").
-- The title and the opening sentence should each pass this test: a reader can re-tell them out loud without rehearsing. If you would not say it aloud to a colleague over coffee, simplify the words (but **do not** re-add specific names — keep the abstraction level).
-
-This is not a license to drop precision. The Atom must still name *what* the principle is. Plain words, lifted concept.
-
-## Subject – relation – effect clarity (REQUIRED)
-
-Every Atom title and every body sentence must make three things obvious:
-
-1. **What** the subject is (the lifted entity / process / setting).
-2. **What it acts on or relates to** (the lifted object / counterpart).
-3. **What the effect / relation is** (a concrete verb or an explicit "X does not change Y" statement).
-
-If any of the three is missing or vague ("関連する", "影響する", "重要である" with no object), rewrite. Vague predicates are the most common reason an Atom feels "abstract but empty" — readers cannot picture what is acting on what.
-
-## Self-check before emitting an Atom
-
-Ask yourself: *"Would this Atom still make sense to a reader who has never heard of the specific domain in the source Claims?"*
-
-- If **yes** → emit the Atom.
-- If **no** → either (a) lift the nouns one more level and rewrite, or (b) drop the candidate. Prefer dropping over emitting an under-abstracted Atom; the system has a Claim layer for domain-specific knowledge already.
-
-Run this **three-step domain-jargon checklist** on the title and body before emitting:
-
-1. **Scan for surviving domain tokens.** Look in both the title and the body for any of:
-   - **Proper nouns**: instrument / device names (SPS, GPT-4, Dr Sinter), library / framework / DB names (PostgreSQL, React, Redis, BlockNote), person names tied to a law / formula (Klemens-Callaway, Klein-Nishina, Bayes), project / standard / spec names (PROV-DM, OAuth, JIRA).
-   - **Material / chemical specifics**: chemical formulas with digits (ZnSb, Bi2Te3, TiO2), bare two-letter element compounds without a digit (ZnSb, AlV, BiTe), single element symbols used as load-bearing subject ("Pt 担持", "Zn 蒸発").
-   - **Abbreviations / acronyms**: 3+ letter all-caps (SPS, VACUUM, ORR, MHC, qPCR, siRNA, TDD, ZT, CI, TTL, MPS, Saga); compound acronyms (PROV-DM, gRPC).
-   - **Domain jargon a non-specialist would not recognize**: 物理 / 材料系 ("単相化", "律速", "ローレンツ数", "デバイ温度", "ホットプレス", "ホール濃度", "パワーファクター", "格子熱伝導率", "点欠陥散乱", "焼結", "ゼーベック", "クライペーロン"); 生命科学系 ("ノックダウン", "トランスフェクション", "in vitro", "PCR"); ソフトウェア系 ("マイクロサービス", "クロスバリデーション", "シャーディング", "リードレプリカ"); 経済学 / 社会学系 ("二面市場", "ネットワーク効果", "貧困の罠", "同類志向", "居住分離", "限界効用", "ナッシュ均衡", "外部性", "情報の非対称性", "共有地の悲劇"). 学術用語 / 学派固有の造語に該当するものは、たとえ漢字 4 字以下であっても rung-1 と判定する。
-
-   If even one such token is a load-bearing subject or object — that is, removing it would make the sentence empty — the Atom is rung-1 at best. Go to step 2.
-
-2. **Lift the surviving token one more level.** Replace the entity with the category it belongs to:
-   - "SPS" → "短時間の高温処理"
-   - "VACUUM" → "裏で動く保守処理"
-   - "ORR 活性" → "還元反応の起こりやすさ"
-   - "siRNA トランスフェクション" → "遺伝子の働きを止める導入操作"
-   - "Al3V 系合金" → "複数の元素でできた合金"
-   - "ZnSb / Bi2Te3" → "電気を流しつつ熱は通しにくい材料" / "二種類の元素でできた化合物"
-   - "Klemens-Callaway モデル" → "格子の振動から熱の伝わりを見積もる古典的なモデル"
-   - "ローレンツ数" → "電気の流れやすさと熱の伝わりやすさの比"
-   - "PROV-DM" → "由来を辿れるかたちで作業を記述する規格"
-   - "ホール濃度" → "電気を運ぶ粒子の密度"
-   - "ホットプレス" → "高温で押し固める処理"
-   - "パワーファクター" → "電気エネルギーへの変換しやすさ"
-   - "格子熱伝導率" → "熱が結晶の振動として伝わる効率"
-   - "二面市場" → "二種類の利用者が互いに集まるほど価値が増す場"
-   - "ネットワーク効果" → "参加する人が増えるほど一人ひとりの便益が増える性質"
-   - "貧困の罠" → "一度落ちると自力で抜け出しづらい収入や資産の状態"
-   - "同類志向" → "似た立場の相手と関わることを選びやすい傾向"
-   - "居住分離" → "属性ごとに住む場所が分かれていく現象"
-   - "外部性" → "ある活動が当事者以外にも影響を及ぼす性質"
-   - "情報の非対称性" → "売り手と買い手で持っている情報の量が違うこと"
-   - "ナッシュ均衡" → "各人が現状を変えるとかえって損をする状態"
-
-   If you can produce a sentence that still names what is happening but reads naturally without the original token, you have rung-2. Re-run step 1; iterate until clean.
-
-3. **If step 2 cannot be done honestly, drop the candidate.** "Honestly" means the lifted wording still says what the source Claims actually showed — not a generic platitude. If the only way to lift is to dilute the claim into meaninglessness, the right move is to leave the knowledge at the Claim layer and not emit an Atom. **An empty atoms array is better than an under-abstracted Atom.**
-
-## Bad / Good (read this carefully — three levels, not two)
-
-Each example shows three rungs: too specific, too academic, and the target (lifted + plain). The middle rung is the trap — it looks like it is doing the work, but the words still keep readers out.
-
-❌ **Bad — under-abstracted (looks like a Claim summary):**
-> "Ti 添加は Al‑V 系合金の粒径やデバイ温度に顕著な影響を与えない"
->
-> Why bad: keeps the specific element (Ti), the specific alloy system (Al-V), and specific structural properties (grain size, Debye temp). A reader outside metallurgy gets nothing. This is the Claim layer's job, not the Atom layer's.
-
-⚠️ **Still off — domain-lifted but academic-sounding:**
-> "三元系合金における少量の添加元素は、構造的なバルク特性に支配的な影響を与えないことがある"
->
-> Why off: the nouns are lifted, but the wording reads like a paper abstract. "三元系合金" / "構造的なバルク特性" / "支配的な影響" each stack two or more abstract kanji compounds. A reader who is *not* a metallurgist sees the shape of the claim but cannot picture what is acting on what.
-
-✅ **Good — domain-lifted *and* plain-language:**
-> "複数の元素でできた合金に少量の元素を足しても、合金全体の構造的な性質はあまり変わらないことがある"
->
-> Why good: same lifted concept ("Ti" → "少量の元素", "Al-V" → "複数の元素でできた合金", "粒径・デバイ温度" → "合金全体の構造的な性質"), but every chunk is something a non-metallurgist can imagine. Subject ("少量の元素を足すこと") / relation ("合金全体の構造的な性質に") / effect ("あまり変わらない") are all explicit.
-
-❌ **Bad:**
-> "PostgreSQL の VACUUM はインデックス断片化を回復させる"
-
-⚠️ **Still off — too academic:**
-> "永続ストレージの背景メンテナンスは、参照構造のフラグメンテーションを段階的に回復させる"
-
-✅ **Good:**
-> "裏で動く保守処理は、参照構造の崩れを少しずつ整えていく"
->
-> Subject ("裏で動く保守処理") / object ("参照構造の崩れ") / effect ("少しずつ整える") are obvious; no compound-noun stacking; still domain-lifted (no "Postgres", no "VACUUM").
-
-❌ **Bad — too specific (rung-0):**
-> "SPS で ZnSb を 800℃ 5 分焼結したらほぼ単相になった"
-
-⚠️ **Still off — rung-1 stop (plain wording, but domain-locked):**
-> "SPS焼結で揮発成分が飛ぶと単相化しやすい"
->
-> Why off: the **register is already plain**, so it *feels* like an Atom. But "SPS焼結" / "単相化" still anchor the sentence in metallurgy — a reader outside that domain cannot picture what acts on what. This is the most dangerous trap, because the wording quality hides that the abstraction level did not move. **Plain words alone do not earn an Atom; the domain entities must be lifted too.**
-
-✅ **Good — rung-2 (plain *and* domain-lifted):**
-> "短時間の高温処理で揮発しやすい成分がほどよく抜けると、均一な仕上がりに繋がる"
->
-> Why good: every domain-anchor is replaced with a category-level term ("SPS焼結" → "短時間の高温処理", "亜鉛" → "揮発しやすい成分", "単相化" → "均一な仕上がり"). Subject ("短時間の高温処理") / relation ("揮発しやすい成分が抜ける") / effect ("均一な仕上がり") are all explicit *and* portable to other domains (a paper firing kiln, a coffee roast).
+**Wording note.** A later readability pass polishes the *wording* — it removes leftover jargon and makes the prose natural. So at this step focus on getting the **structure** right (the shape, the lifted roles, the principle). Domain terms left in the principle are acceptable; they are handled downstream. Do not spend effort on plain-language phrasing here.
 
 ## What an Atom is NOT
-- A summary of a single Claim (Claim already is one)
-- A "merged Claim" — Atoms abstract, they do not concatenate
-- A literature review, a comparison table, a research-paper abstract
-- A new emergent insight (that's Synthesis territory) — Atoms surface ideas already implicit in the source Claims, just made explicit and re-usable
-
+- A summary or restatement of a single Claim (the Claim layer already holds that)
+- A "merged Claim" — Atoms abstract to a structure, they do not concatenate
+- A literature review, comparison table, or paper abstract
+- A brand-new emergent idea (that is Synthesis territory) — an Atom surfaces the structure already implicit in the source Claims
 ## Output Format
 Respond with valid JSON only:
 
 {
   "atoms": [
     {
-      "title": "Atom title (5-12 words, domain-lifted, plain everyday wording, subject-relation-effect explicit)",
-      "body": "1-3 short paragraphs of context-stripped, domain-lifted prose written in everyday register. Each sentence states what acts on what, with a concrete verb.",
+      "title": "Atom title — a short noun phrase naming the structural rule (the shape applied to the lifted roles)",
+      "body": "1-3 short paragraphs stating the general principle: the lifted roles and the shape of their relationship, with a concrete verb. Domain terms are acceptable here; the wording is polished downstream.",
+      "shape": "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold" | "trade-off" | "enabling-condition" | "composition-structure" | "other",   // REQUIRED. The relationship-shape from step 2.
+      "transfer": { "field": "the other domain", "example": "one sentence showing the SAME shape + role-structure there" },   // OPTIONAL. Omit entirely if there is no honest cross-domain instance (a downstream judge verifies it).
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
       "atomType": "causal" | "correlational" | "mechanistic" | "conditional" | "definitional" | "methodological" | "observational" | "boundary",
@@ -430,11 +317,12 @@ If two or more Atoms you are emitting in this batch (or one of your Atoms + an A
 This section is the structural backbone for analogical-mode Synthesis. **Honest relations help; forced relations actively hurt downstream synthesis.**
 
 ## Rules (strict)
-- **Each Atom must cite every Claim its lifted rule covers** in \`sourceConceptIds\` (one or more — a single well-lifted Claim is valid). Use the EXACT id from the Claim list. More sources = stronger support, but the gate is the portability test, not the count.
+- **Every Atom MUST carry a \`shape\`** from the fixed vocabulary (step 2). If the relationship genuinely fits none of them, use \`"other"\` — but most real Claims fit one of the named shapes.
+- **Each Atom must cite every Claim its rule covers** in \`sourceConceptIds\` (one or more — a single Claim that instances a real shape is valid). Use the EXACT id from the Claim list. More sources = stronger support, not a gate.
 - **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
-- **Quality over quantity, but don't artificially cap.** Generate 0-8 candidates. If the Claim set surfaces multiple distinct recurring patterns, emit each as its own Atom rather than bundling them. If the Claims share only narrow domain-bound details and you cannot lift them honestly, **return an empty list**. An empty list is better than an under-abstracted Atom, and 3 honest Atoms beat 6 forced ones.
-- Set \`confidence\` honestly — it is **recorded and shown to the reader, not used to silently drop**. If you find yourself wanting to keep specific nouns to make the rule feel meaningful, that is the portability test failing: leave it as a Claim rather than forcing a weak Atom.
-- Do not invent citations, URLs, or author names.
+- **Quality over quantity, but don't artificially cap.** Generate 0-8 candidates. Emit each distinct structural pattern as its own Atom. If the Claims carry no relationship you can abstract into a real shape (e.g. a one-off fact with no X→Y), **return an empty list** — an empty list beats a forced Atom.
+- Set \`confidence\` honestly — it is **recorded and shown, not used to silently drop**.
+- The \`transfer\` is optional: include it only when a genuine cross-domain instance of the SAME shape exists. A downstream judge will discard transfers that are merely topical; a forced transfer wastes that step. Never invent citations, URLs, or author names.
 
 ## Style
 ${ja ? `- 日本語で書くときは **常体（である調 / だ調）で統一** する。敬体（〜です／〜ます／〜でしょうか）は **タイトル・本文・例示・どの位置でも** 使わない。
@@ -477,7 +365,7 @@ export function buildAtomizerUserMessage(
 
   const statusLegend = `\n\n_The bracketed second tag on each Claim heading is its \`epistemicStatus\` (low → high: speculation < interpretation < observation < established). \`[interpretation*]\` marks a Claim whose status was missing in the source data — treat as interpretation for the lowest-status inheritance rule._\n_Each Claim may also list \`Rebuttals:\` — Toulmin Rebuttal conditions extracted by the Ingester. Use them to decide whether to propagate a common rebuttal to the Atom (see "Shared rebuttal propagation")._`;
 
-  return `Scan the following ${concepts.length} Claim pages and factor out their portable general form (Atoms). Apply the portability test to each idea — an Atom may cover one Claim or several.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
+  return `Scan the following ${concepts.length} Claim pages and factor out the structural rules behind them (Atoms). For each, run the four steps — decompose → classify the shape → abstract the roles → (optionally) name a transfer. An Atom may cover one Claim or several.${statusLegend}\n\n${blocks.join("\n\n")}${existingNote}`;
 }
 
 export function parseAtomizerOutput(
@@ -526,6 +414,23 @@ export function parseAtomizerOutput(
       const atomType: AtomType | undefined =
         rawAtomType && (ATOM_TYPE_VALUES as string[]).includes(rawAtomType)
           ? (rawAtomType as AtomType)
+          : undefined;
+
+      // 関係の形（構造写像の軸）。固定語彙外は undefined に倒す。
+      const rawShape = typeof a.shape === "string" ? a.shape : undefined;
+      const shape: AtomShape | undefined =
+        rawShape && (ATOM_SHAPE_VALUES as string[]).includes(rawShape)
+          ? (rawShape as AtomShape)
+          : undefined;
+
+      // 越境転移の候補。{field, example} が両方とも非空のときだけ採用する。
+      // 構造一致の検証は route の敵対的ジャッジが担う（ここでは形だけ整える）。
+      const rawTransfer = a.transfer;
+      const transfer: AtomTransfer | undefined =
+        rawTransfer && typeof rawTransfer === "object" &&
+        typeof rawTransfer.field === "string" && rawTransfer.field.trim().length > 0 &&
+        typeof rawTransfer.example === "string" && rawTransfer.example.trim().length > 0
+          ? { field: rawTransfer.field.trim(), example: rawTransfer.example.trim() }
           : undefined;
 
       // Phase η: epistemicStatus の決定。
@@ -608,6 +513,8 @@ export function parseAtomizerOutput(
         derivedFromConceptTitles: titles,
         confidence,
         atomType,
+        shape,
+        transfer,
         epistemicStatus,
         rebuttalConditions,
         relatedAtoms,
@@ -677,6 +584,61 @@ export function parseReliftOutput(text: string): ReliftResult[] {
       }));
   } catch (err) {
     console.error("Relift 出力のパース失敗:", err);
+    return [];
+  }
+}
+
+// ============================================================
+// 越境転移（transfer）の敵対的ジャッジ — こじつけ検出
+// ------------------------------------------------------------
+// atomizer が出した transfer 候補（別分野の類推）が「同じ shape かつ同じ role 構造」を
+// 本当に instantiate しているかを懐疑的に判定する。表層・話題が似ているだけ／緩い類推は
+// false で落とし、その transfer を外す（principle=洞察 自体は常に残す）。弱モデル生成でも
+// transfer の劣化はここで吸収できる（judge は強モデル推奨）。検証では opus で 88-96% を確認。
+// ============================================================
+
+export type TransferJudgeInput = { title: string; shape?: string; field: string; example: string };
+export type TransferJudgeResult = { index: number; valid: boolean; reason: string };
+
+export function buildTransferJudgeSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a skeptical reviewer of cross-domain analogies. Each item gives an Atom (a general principle), its relationship-shape, and a claimed transfer to another field (a field + a one-sentence example).
+
+For each item decide \`valid\`:
+- **valid = true** ONLY when the transfer example instantiates the SAME shape AND the same role-structure as the Atom — a genuine structural match you can point to (same kind of control → same kind of outcome, same shape of dependence).
+- **valid = false** when the match is merely topical, surface-level, or a loose "feels related" analogy; when the independent variable or the mechanism is actually different; or when the example does not clearly exhibit the stated shape. **If the structural correspondence is not tight and checkable, return false.**
+- Be strict. A wrong analogy that sounds plausible is worse than a missing one.
+- \`reason\`: one short line, especially why it is forced when false.
+
+Return JSON only: {"items":[{"index":<the index given>,"valid":<bool>,"reason":"..."}]}.
+Output language: ${ja ? "Japanese" : "English"}.`;
+}
+
+export function buildTransferJudgeUserMessage(items: TransferJudgeInput[]): string {
+  const blocks = items.map(
+    (it, i) =>
+      `[${i + 1}] principle: "${it.title}" | shape: ${it.shape ?? "(none)"} | transfer.field: ${it.field} | transfer.example: "${it.example}"`,
+  );
+  return `Judge whether each transfer is a genuine structural match (same shape + role-structure):\n\n${blocks.join("\n\n")}`;
+}
+
+export function parseTransferJudgeOutput(text: string): TransferJudgeResult[] {
+  try {
+    let jsonText = text.trim();
+    const m = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) jsonText = m[1].trim();
+    const parsed = JSON.parse(jsonText);
+    const arr = parsed.items ?? parsed;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((a: any) => typeof a?.valid === "boolean")
+      .map((a: any) => ({
+        index: typeof a.index === "number" ? a.index : 0,
+        valid: a.valid === true,
+        reason: typeof a.reason === "string" ? a.reason : "",
+      }));
+  } catch (err) {
+    console.error("Transfer judge 出力のパース失敗:", err);
     return [];
   }
 }
