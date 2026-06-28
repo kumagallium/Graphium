@@ -1269,8 +1269,6 @@ export const ja: Record<string, string> = {
   // 全ノードグラフ（Global Graph）
   "sidebar.globalGraph": "全体グラフ",
   "globalGraph.title": "全体グラフ",
-  "globalGraph.layout.force": "有機的",
-  "globalGraph.layout.columns": "列",
   "globalGraph.hideReferences": "参照を隠す",
   "globalGraph.showIsolated": "孤立を表示",
   "globalGraph.showIsolatedHint": "まだリンクの無いノートも表示する",
@@ -1283,10 +1281,5 @@ export const ja: Record<string, string> = {
   "globalGraph.layer.note": "ノート",
   "globalGraph.layer.crystal": "結晶",
   "globalGraph.layer.synth": "統合",
-  "globalGraph.column.external": "原料",
-  "globalGraph.column.note": "ノート",
-  "globalGraph.column.claim": "知見",
-  "globalGraph.column.atom": "洞察",
-  "globalGraph.column.summary": "統合",
   "globalGraph.empty": "まだノートがありません",
 };

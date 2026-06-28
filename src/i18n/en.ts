@@ -1270,8 +1270,6 @@ export const en: Record<string, string> = {
   // 全ノードグラフ（Global Graph）
   "sidebar.globalGraph": "Global Graph",
   "globalGraph.title": "Global Graph",
-  "globalGraph.layout.force": "Organic",
-  "globalGraph.layout.columns": "Columns",
   "globalGraph.hideReferences": "Hide references",
   "globalGraph.showIsolated": "Show isolated",
   "globalGraph.showIsolatedHint": "Show notes that have no links yet",
@@ -1284,10 +1282,5 @@ export const en: Record<string, string> = {
   "globalGraph.layer.note": "Notes",
   "globalGraph.layer.crystal": "Claim · Insight",
   "globalGraph.layer.synth": "Summary · Idea",
-  "globalGraph.column.external": "Sources",
-  "globalGraph.column.note": "Notes",
-  "globalGraph.column.claim": "Claim",
-  "globalGraph.column.atom": "Insight",
-  "globalGraph.column.summary": "Summary",
   "globalGraph.empty": "No notes to show yet",
 };

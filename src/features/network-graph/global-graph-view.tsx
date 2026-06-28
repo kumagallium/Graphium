@@ -22,8 +22,6 @@ import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
 // fcose レイアウト登録（重複防止）
 ensureCytoscapePlugins();
 
-export type GlobalGraphLayout = "force" | "columns";
-
 // ── kind / 層 ──
 
 type GraphKind = "external" | "note" | "summary" | "claim" | "atom" | "synthesis";
@@ -46,19 +44,6 @@ const KIND_LAYER: Record<GraphKind, LayerId> = {
 };
 
 const ALL_LAYERS: LayerId[] = ["source", "note", "crystal", "synth"];
-
-// 列レイアウト用: 左→右で抽象度が上がる列。
-const COLUMNS: { kinds: GraphKind[]; layerKey: LayerId }[] = [
-  { kinds: ["external"], layerKey: "source" },
-  { kinds: ["note"], layerKey: "note" },
-  { kinds: ["claim"], layerKey: "crystal" },
-  { kinds: ["atom"], layerKey: "crystal" },
-  { kinds: ["summary", "synthesis"], layerKey: "synth" },
-];
-
-function columnIndexOf(kind: GraphKind): number {
-  return COLUMNS.findIndex((c) => c.kinds.includes(kind));
-}
 
 /**
  * 層フィルタ・参照フィルタ・孤立ノード除外を適用したサブグラフを返す。
@@ -213,7 +198,6 @@ function truncate(s: string, max = 16): string {
 
 export function GlobalGraphCanvas({
   data,
-  layout,
   visibleLayers,
   hideReferences = false,
   hideIsolated = false,
@@ -222,7 +206,6 @@ export function GlobalGraphCanvas({
   height = 560,
 }: {
   data: NoteGraphData;
-  layout: GlobalGraphLayout;
   visibleLayers: Set<LayerId>;
   hideReferences?: boolean;
   hideIsolated?: boolean;
@@ -249,24 +232,6 @@ export function GlobalGraphCanvas({
       return;
     }
 
-    // 列レイアウトの座標（kind の列 × 列内の縦位置）
-    const X_GAP = 240;
-    const Y_GAP = 84;
-    const posById = new Map<string, { x: number; y: number }>();
-    if (layout === "columns") {
-      const byCol = new Map<number, NoteNode[]>();
-      for (const n of shownNodes) {
-        const ci = columnIndexOf(kindOf(n));
-        if (!byCol.has(ci)) byCol.set(ci, []);
-        byCol.get(ci)!.push(n);
-      }
-      for (const [ci, list] of byCol) {
-        list.forEach((n, i) => {
-          posById.set(n.id, { x: ci * X_GAP, y: (i - (list.length - 1) / 2) * Y_GAP });
-        });
-      }
-    }
-
     const elements: cytoscape.ElementDefinition[] = [];
     for (const node of shownNodes) {
       const kind = kindOf(node);
@@ -284,9 +249,6 @@ export function GlobalGraphCanvas({
           external: node.external,
           externalUrl: node.externalUrl,
         },
-        ...(layout === "columns" && posById.has(node.id)
-          ? { position: posById.get(node.id) }
-          : {}),
       });
     }
     for (const edge of shownEdges) {
@@ -315,25 +277,21 @@ export function GlobalGraphCanvas({
       boxSelectionEnabled: false,
     });
 
-    if (layout === "columns") {
-      cy.fit(undefined, 40);
-    } else {
-      const lay = cy.layout({
-        name: "fcose",
-        animate: true,
-        animationDuration: 700,
-        randomize: true,
-        quality: "default",
-        nodeRepulsion: 9000,
-        idealEdgeLength: 110,
-        edgeElasticity: 0.4,
-        gravity: 0.3,
-        nodeSeparation: 120,
-        padding: 50,
-      } as any);
-      lay.on("layoutstop", () => cy.fit(undefined, 30));
-      lay.run();
-    }
+    const lay = cy.layout({
+      name: "fcose",
+      animate: true,
+      animationDuration: 700,
+      randomize: true,
+      quality: "default",
+      nodeRepulsion: 9000,
+      idealEdgeLength: 110,
+      edgeElasticity: 0.4,
+      gravity: 0.3,
+      nodeSeparation: 120,
+      padding: 50,
+    } as any);
+    lay.on("layoutstop", () => cy.fit(undefined, 30));
+    lay.run();
 
     // ホバーで隣接を強調
     cy.on("mouseover", "node", (evt) => {
@@ -376,7 +334,7 @@ export function GlobalGraphCanvas({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [shownNodes, shownEdges, layout, onNavigate, onOpenMedia]);
+  }, [shownNodes, shownEdges, onNavigate, onOpenMedia]);
 
   return (
     <div
@@ -439,38 +397,6 @@ function Legend() {
   );
 }
 
-function LayoutToggle({
-  mode,
-  onChange,
-}: {
-  mode: GlobalGraphLayout;
-  onChange: (m: GlobalGraphLayout) => void;
-}) {
-  const t = useT();
-  const opts: { id: GlobalGraphLayout; label: string }[] = [
-    { id: "force", label: t("globalGraph.layout.force") },
-    { id: "columns", label: t("globalGraph.layout.columns") },
-  ];
-  return (
-    <div className="inline-flex rounded-md overflow-hidden border border-border">
-      {opts.map((o) => {
-        const on = mode === o.id;
-        return (
-          <button
-            key={o.id}
-            onClick={() => onChange(o.id)}
-            className={`px-3 py-1 text-xs font-semibold transition-colors ${
-              on ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function LayerChips({
   visible,
   onToggle,
@@ -501,25 +427,6 @@ function LayerChips({
   );
 }
 
-function ColumnHeader() {
-  const t = useT();
-  return (
-    <div className="flex">
-      {COLUMNS.map((col, i) => (
-        <div
-          key={col.kinds[0]}
-          className="flex-1 text-center text-xs font-bold text-foreground py-1.5 border-b-2 border-border relative"
-        >
-          {t(`globalGraph.column.${col.kinds[0]}` as any)}
-          {i < COLUMNS.length - 1 && (
-            <span className="absolute -right-1.5 top-1 text-muted-foreground text-xs">▸</span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── 全画面オーバーレイ ──
 
 export function GlobalGraphOverlay({
@@ -534,7 +441,6 @@ export function GlobalGraphOverlay({
   onClose: () => void;
 }) {
   const t = useT();
-  const [mode, setMode] = useState<GlobalGraphLayout>("force");
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
   const [visible, setVisible] = useState<Set<LayerId>>(new Set(ALL_LAYERS));
@@ -550,11 +456,6 @@ export function GlobalGraphOverlay({
     };
   }, [data, visible, hideRefs, showIsolated]);
 
-  const switchMode = (m: GlobalGraphLayout) => {
-    setMode(m);
-    // 列モードは参照（破線）を既定で隠して交差を抑える
-    setHideRefs(m === "columns");
-  };
   const toggleLayer = (id: LayerId) =>
     setVisible((prev) => {
       const next = new Set(prev);
@@ -587,7 +488,6 @@ export function GlobalGraphOverlay({
       {/* ヘッダー / ツールバー */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>
-        <LayoutToggle mode={mode} onChange={switchMode} />
         <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
           <input type="checkbox" checked={hideRefs} onChange={(e) => setHideRefs(e.target.checked)} />
           {t("globalGraph.hideReferences")}
@@ -611,10 +511,9 @@ export function GlobalGraphOverlay({
           </button>
         </span>
       </div>
-      {/* 凡例 + 列ヘッダ */}
-      <div className="px-4 py-2 border-b border-border flex flex-col gap-2">
+      {/* 凡例 */}
+      <div className="px-4 py-2 border-b border-border">
         <Legend />
-        {mode === "columns" && <ColumnHeader />}
       </div>
       {/* キャンバス */}
       <div className="flex-1 min-h-0">
@@ -625,7 +524,6 @@ export function GlobalGraphOverlay({
         ) : (
           <GlobalGraphCanvas
             data={data}
-            layout={mode}
             visibleLayers={visible}
             hideReferences={hideRefs}
             hideIsolated={!showIsolated}

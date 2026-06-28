@@ -120,17 +120,7 @@ export const CanvasForce: StoryObj = {
   name: "キャンバス: 有機的（force）",
   render: () => (
     <div style={{ padding: 16 }}>
-      <GlobalGraphCanvas data={SAMPLE} layout="force" visibleLayers={new Set(ALL_LAYERS)} height={560} />
-    </div>
-  ),
-};
-
-// キャンバス単体（列レイアウト・参照オフ）
-export const CanvasColumns: StoryObj = {
-  name: "キャンバス: 列（参照オフ）",
-  render: () => (
-    <div style={{ padding: 16 }}>
-      <GlobalGraphCanvas data={SAMPLE} layout="columns" visibleLayers={new Set(ALL_LAYERS)} hideReferences height={560} />
+      <GlobalGraphCanvas data={SAMPLE} visibleLayers={new Set(ALL_LAYERS)} height={560} />
     </div>
   ),
 };
