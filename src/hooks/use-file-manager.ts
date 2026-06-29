@@ -64,6 +64,8 @@ import {
   type MediaType,
 } from "../features/asset-browser";
 
+import { isIncomingDocNewer } from "./doc-recency";
+
 // ストレージプロバイダー経由のファイル操作ヘルパー
 const storage = () => getActiveProvider();
 const listFiles = () => storage().listFiles();
@@ -466,8 +468,10 @@ export function useFileManager(authenticated: boolean) {
       setActiveAssetType(null);
       setActiveLabel(null);
       setActiveWikiKind(null);
-      // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新
-      if (cachedDoc) {
+      // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新。
+      // ただし渡された doc が現在のキャッシュより古いと、本文エディタが再マウント時に
+      // その古いスナップショットへ巻き戻り、書いた文章が消える。より新しいときだけ採用する。
+      if (cachedDoc && isIncomingDocNewer(cachedDoc, docCacheRef.current.get(fileId))) {
         docCacheRef.current.set(fileId, cachedDoc);
       }
       // キャッシュにあれば即座に表示
