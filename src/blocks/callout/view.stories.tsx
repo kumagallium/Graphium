@@ -37,9 +37,9 @@ const meta: Meta = {
 };
 export default meta;
 
-// デフォルト（💡 + ヒント文）
+// デフォルト（note）
 export const Default: StoryObj = {
-  name: "デフォルト（💡）",
+  name: "デフォルト（ノート）",
   render: () => (
     <Safe>
       <div style={{ maxWidth: 800, border: "1px solid #e5e7eb", borderRadius: 12 }}>
@@ -48,8 +48,8 @@ export const Default: StoryObj = {
           initialContent={[
             {
               type: "callout",
-              props: { emoji: "💡" },
-              content: [{ type: "text", text: "ここに補足やヒントを書けます。絵文字をクリックすると変更できます。", styles: {} }],
+              props: { variant: "note" },
+              content: [{ type: "text", text: "ここに補足やヒントを書けます。アイコンをクリックすると種類を変更できます。", styles: {} }],
             },
           ]}
         />
@@ -58,9 +58,9 @@ export const Default: StoryObj = {
   ),
 };
 
-// 複数バリエーション（絵文字違い）
-export const Variations: StoryObj = {
-  name: "絵文字バリエーション",
+// 全 variant（デザイントークン準拠の配色）
+export const Variants: StoryObj = {
+  name: "種類バリエーション",
   render: () => (
     <Safe>
       <div style={{ maxWidth: 800, border: "1px solid #e5e7eb", borderRadius: 12 }}>
@@ -69,17 +69,27 @@ export const Variations: StoryObj = {
           initialContent={[
             {
               type: "callout",
-              props: { emoji: "⚠️" },
-              content: [{ type: "text", text: "注意: 破壊的な操作の前に確認してください。", styles: {} }],
+              props: { variant: "info" },
+              content: [{ type: "text", text: "情報: 補足的な背景情報を伝えます。", styles: {} }],
             },
             {
               type: "callout",
-              props: { emoji: "✅" },
+              props: { variant: "success" },
               content: [{ type: "text", text: "成功: テストが全て通りました。", styles: {} }],
             },
             {
               type: "callout",
-              props: { emoji: "📌", textAlignment: "center" },
+              props: { variant: "warning" },
+              content: [{ type: "text", text: "注意: 破壊的な操作の前に確認してください。", styles: {} }],
+            },
+            {
+              type: "callout",
+              props: { variant: "danger" },
+              content: [{ type: "text", text: "危険: この操作は元に戻せません。", styles: {} }],
+            },
+            {
+              type: "callout",
+              props: { variant: "note", textAlignment: "center" },
               content: [{ type: "text", text: "中央揃えのコールアウト", styles: {} }],
             },
           ]}

@@ -162,3 +162,8 @@ export function getDisplayLabelName(internalLabel: string): string {
   const m = display.match(/^\[(.+)\]$/);
   return m ? m[1] : display;
 }
+
+/** Callout の種類（variant）の表示名を返す。 */
+export function getCalloutVariantLabel(variant: string): string {
+  return t(`callout.variant.${variant}`);
+}

@@ -751,6 +751,16 @@ export type GraphiumPage = {
    * テキストハイライトと完全に一致する。
    */
   mediaInlineLabels?: Record<string, MediaInlineLabel>;
+  /**
+   * ブロックの配置揃え（左 / 中央 / 右）。2026-06 で導入。
+   *
+   * BlockNote の `textAlignment` プロパティを持たないブロック（table / audio /
+   * file）の配置をサイドストアとして保存する。段落・見出し・画像・動画・Callout
+   * は標準の `textAlignment` プロパティで保存されるため、ここには含めない。
+   * mediaInlineLabels と同じ「独立アノテーション層」方式（blockId → 値）。
+   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   */
+  blockAlignments?: Record<string, "left" | "center" | "right">;
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
 };

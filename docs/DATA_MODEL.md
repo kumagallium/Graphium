@@ -169,6 +169,13 @@ type GraphiumPage = {
   // ── reference table feature ─────────────────────────
   indexTables?: Record<string, Record<string, string>>;  // tableBlockId → (sampleName → noteId)
 
+  // ── block alignment ─────────────────────────────────
+  blockAlignments?: Record<string, "left" | "center" | "right">;
+                                     // blockId → alignment, for blocks WITHOUT a
+                                     // BlockNote `textAlignment` prop (table / audio / file).
+                                     // Paragraph / heading / image / video / callout store
+                                     // alignment in their own `textAlignment` block prop instead.
+
   // ── lineage ─────────────────────────────────────────
   derivedFromPageId?: string;
   derivedFromBlockId?: string;

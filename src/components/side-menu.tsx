@@ -12,6 +12,7 @@ import {
   useComponentsContext,
 } from "@blocknote/react";
 import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
@@ -326,15 +327,19 @@ export function DeleteBlockMenuItem() {
 // ──────────────────────────────────────────────
 // DragHandle メニュー内: 配置（左 / 中央 / 右）
 //
-// 配置揃えはテキスト選択時の浮上ツールバーにもあるが、見出し・画像・Callout
-// などを「選択せずに」揃えたい場面が多く、Notion 同様ブロックメニューからも
+// 配置揃えはテキスト選択時の浮上ツールバーにもあるが、見出し・画像・Callout・
+// テーブルなどを「選択せずに」揃えたい場面が多く、Notion 同様ブロックメニューからも
 // 操作できるようにする（発見性の改善）。
-// textAlignment プロパティを持つブロック（段落 / 見出し / 画像 / 動画 /
-// Callout）でのみ表示する。テーブル等は BlockNote が textAlignment を
-// サポートしないため項目を出さない。
+//
+// 保存先はブロック種別で分岐する:
+//   - textAlignment プロパティを持つブロック（段落 / 見出し / 画像 / 動画 /
+//     Callout）→ block.props.textAlignment（BlockNote 標準）
+//   - 持たないブロック（table / audio / file）→ blockAlignmentStore（サイドストア）
+//     ※ BlockNote はテーブル等に textAlignment を持たせられないため。
+//        ストアが無い文脈（Storybook 等）では非対応ブロックの項目を出さない。
 // ──────────────────────────────────────────────
 const ALIGN_OPTIONS: {
-  value: "left" | "center" | "right";
+  value: BlockAlignment;
   labelKey: string;
   Icon: typeof AlignLeft;
 }[] = [
@@ -347,19 +352,32 @@ export function AlignmentMenuItems() {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
+  const alignStore = useBlockAlignmentStoreOptional();
   const block = useExtensionState(SideMenuExtension, {
     editor,
     selector: (state) => state?.block,
   });
 
   if (!block) return null;
-  // textAlignment プロパティを持つブロックだけ配置メニューを出す
-  const supportsAlign = Boolean(
+  // textAlignment プロパティを持つブロックは標準プロパティで、持たないブロックは
+  // サイドストアで配置を保存する。ストアが無い文脈では非対応ブロックは出さない。
+  const supportsNativeAlign = Boolean(
     (editor as any).schema?.blockSchema?.[block.type]?.propSchema?.textAlignment,
   );
-  if (!supportsAlign) return null;
+  const useStore = !supportsNativeAlign;
+  if (useStore && !alignStore) return null;
 
-  const current = (block.props as any)?.textAlignment ?? "left";
+  const current: BlockAlignment = useStore
+    ? alignStore!.getAlignment(block.id) ?? "left"
+    : ((block.props as any)?.textAlignment ?? "left");
+
+  const apply = (value: BlockAlignment) => {
+    if (useStore) {
+      alignStore!.setAlignment(block.id, value);
+    } else {
+      editor.updateBlock(block, { props: { textAlignment: value } } as any);
+    }
+  };
 
   return (
     <Components.Generic.Menu.Root position="right" sub={true}>
@@ -375,11 +393,7 @@ export function AlignmentMenuItems() {
             <Components.Generic.Menu.Item
               key={value}
               className="bn-menu-item"
-              onClick={() => {
-                editor.updateBlock(block, {
-                  props: { textAlignment: value },
-                } as any);
-              }}
+              onClick={() => apply(value)}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <Icon size={14} />

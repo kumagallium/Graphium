@@ -322,7 +322,12 @@ export const en: Record<string, string> = {
   "slash.template": "Template",
   "slash.templateSub": "Insert a plan or experiment template",
   "slash.callout": "Callout",
-  "slash.calloutSub": "Insert a note box with an emoji icon",
+  "slash.calloutSub": "Insert a note box with an icon",
+  "callout.variant.note": "Note",
+  "callout.variant.info": "Info",
+  "callout.variant.success": "Success",
+  "callout.variant.warning": "Warning",
+  "callout.variant.danger": "Danger",
 
   // ── テンプレート ──
   "template.slash.title": "Template",

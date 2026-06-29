@@ -16,7 +16,7 @@ export const calloutSlashItem = {
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
     const inserted = editor.insertBlocks(
-      [{ type: "callout", props: { emoji: "💡" } }],
+      [{ type: "callout", props: { variant: "note" } }],
       currentBlock,
       "after",
     );
