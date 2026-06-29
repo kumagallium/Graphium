@@ -1710,14 +1710,24 @@ function NoteEditorInner({
           const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
             "./features/ai-assistant/citation-normalize"
           );
-          const { message, sources, candidateTitles } = normalizeWikiCitations(
+          const { message, sources } = normalizeWikiCitations(
             assistantMessage,
             wikiContext,
           );
-          // LLM が一度も引用しなかった場合は候補タイトルを trailing list に並べる。
-          const finalSources = sources.length > 0 ? sources : candidateTitles;
-          assistantMessage = appendKnowledgeReferenced(message, finalSources);
+          // モデルが実際に引用できた内部ノートだけを「ノート内の知識」として付ける。
+          // 引用ゼロなら何も付けない（候補の機械的な流し込み＝誤った参照表示を廃止）。
+          assistantMessage = appendKnowledgeReferenced(
+            message,
+            sources,
+            t("chat.sources.fromNotes"),
+          );
         }
+        // WebSearch（claude-subscription）由来の "Sources:" 見出しはモデル出力なので、
+        // ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+        assistantMessage = assistantMessage.replace(
+          /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
+          `**${t("chat.sources.fromWeb")}**`,
+        );
         // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
         // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
         const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");

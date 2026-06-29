@@ -1258,6 +1258,9 @@ export const ja: Record<string, string> = {
   "composer.submit": "送信",
   "composer.kbd.submit": "で送信",
   "composer.kbd.close": "で閉じる",
+  // チャット回答のソース見出し（外部 web / 内部ノートを区別）
+  "chat.sources.fromNotes": "📓 ノート内の知識",
+  "chat.sources.fromWeb": "🌐 Web の出典",
   // verb メニュー（R2）
   "composer.verb.title": "AI に問う（このノート + 引用 {count} 件）",
   "composer.verb.commentPlaceholder": "AI への補足を一言（任意）",
