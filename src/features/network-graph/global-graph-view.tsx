@@ -10,7 +10,6 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
@@ -464,17 +463,23 @@ function LayerChips({
   );
 }
 
-// ── 全画面オーバーレイ ──
+// ── 全体グラフビュー（右コンテンツ領域に描画。サイドバーは残る） ──
+//
+// 以前は全画面 portal だったが、他の画面（ノート一覧・素材など）と揃えて
+// <main> 内に描画する content-area ビューにした。ノード単クリックは onSelectNote で
+// 親に通知し、親側が共有 SidePeek を開いて中身をプレビューする（本開きは SidePeek 内から）。
 
-export function GlobalGraphOverlay({
+export function GlobalGraphView({
   data,
-  onNavigate,
+  onSelectNote,
   onOpenMedia,
   onClose,
 }: {
   data: NoteGraphData;
-  onNavigate?: (noteId: string) => void;
+  /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
+  onSelectNote?: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  /** ヘッダーの × / Esc。全体グラフ表示を閉じてエディタに戻る。 */
   onClose: () => void;
 }) {
   const t = useT();
@@ -517,18 +522,8 @@ export function GlobalGraphOverlay({
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const handleNavigate = (noteId: string) => {
-    onNavigate?.(noteId);
-    onClose();
-  };
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex flex-col"
-      style={{ background: BG_COLOR }}
-      role="dialog"
-      aria-modal="true"
-    >
+  return (
+    <div className="flex flex-col h-full w-full" style={{ background: BG_COLOR }}>
       {/* ヘッダー / ツールバー */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap">
         <span className="text-sm font-bold text-foreground">{t("globalGraph.title")}</span>
@@ -571,13 +566,12 @@ export function GlobalGraphOverlay({
             visibleLayers={visible}
             hideReferences={hideRefs}
             hideIsolated={!showIsolated}
-            onNavigate={handleNavigate}
+            onNavigate={onSelectNote}
             onOpenMedia={onOpenMedia}
             height="100%"
           />
         )}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

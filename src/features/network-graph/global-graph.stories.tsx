@@ -8,7 +8,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { GlobalGraphOverlay, GlobalGraphCanvas } from "./global-graph-view";
+import { GlobalGraphView, GlobalGraphCanvas } from "./global-graph-view";
 import type { NoteNode, NoteEdge, NoteGraphData } from "./graph-builder";
 
 // ── サンプルデータ（熱電材料の研究を題材にした砂時計） ──
@@ -86,29 +86,33 @@ const meta: Meta = {
 };
 export default meta;
 
-// 本番の全画面オーバーレイ（ツールバー・凡例・トグル込み）
-export const Overlay: StoryObj = {
-  name: "全画面オーバーレイ（本番UI）",
+// 本番ビュー（ツールバー・凡例・トグル込み）。実アプリでは <main> 内に描画される想定。
+export const View: StoryObj = {
+  name: "全体グラフビュー（本番UI）",
   render: () => {
     function Demo() {
       const [open, setOpen] = useState(true);
+      const [picked, setPicked] = useState<string | null>(null);
       if (!open) {
         return (
           <button
-            onClick={() => setOpen(true)}
+            onClick={() => { setOpen(true); setPicked(null); }}
             style={{ margin: 24, padding: "8px 16px", borderRadius: 8, border: "1px solid #d5e0d7", cursor: "pointer" }}
           >
-            全体グラフを開く
+            全体グラフを開く{picked ? `（前回選択: ${picked}）` : ""}
           </button>
         );
       }
+      // 実アプリではサイドバーが左に残る。ここでは高さを与えて content-area を模す。
       return (
-        <GlobalGraphOverlay
-          data={SAMPLE}
-          onNavigate={(id) => console.log("navigate", id)}
-          onOpenMedia={(id) => console.log("openMedia", id)}
-          onClose={() => setOpen(false)}
-        />
+        <div style={{ height: "100vh" }}>
+          <GlobalGraphView
+            data={SAMPLE}
+            onSelectNote={(id) => setPicked(id)}
+            onOpenMedia={(id) => console.log("openMedia", id)}
+            onClose={() => setOpen(false)}
+          />
+        </div>
       );
     }
     return <Demo />;
