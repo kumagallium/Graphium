@@ -345,7 +345,9 @@ type WikiMeta = {
 
   // Semantic types (Phase 1, all optional — additive, back-compatible)
   claimRole?: ClaimRole[];    // Claim only. Multi-valued.
-  atomType?: AtomType;            // Atom only.
+  atomType?: AtomType;            // Atom only. Logical character of the statement.
+  shape?: AtomShape;              // Atom only. Relationship-shape (structure-mapping axis).
+  transfer?: AtomTransfer;        // Atom only. Cross-domain analogy, kept only if the judge confirms a structural match.
   synthesisMode?: SynthesisMode;  // Synthesis only.
   hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
   procedureContext?: ProcedureContext; // Claim only. Atom/Synthesis are context-stripped by contract.
@@ -363,6 +365,16 @@ type ClaimRole =
 type AtomType =
   | "causal" | "correlational" | "mechanistic" | "conditional"
   | "definitional" | "methodological" | "observational" | "boundary";
+
+// Relationship-shape: the structure-mapping axis the atomizer classifies into
+// (it classifies, it does not invent — this is what keeps abstraction from going vacuous).
+type AtomShape =
+  | "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold"
+  | "trade-off" | "enabling-condition" | "composition-structure" | "other";
+
+// Cross-domain analogy. The atomizer proposes a candidate; a skeptical judge keeps it
+// only when the example instances the SAME shape + role-structure. Absent if forced/none.
+type AtomTransfer = { field: string; example: string };
 
 type SynthesisMode =
   | "deductive" | "abductive" | "analogical" | "dialectic";
@@ -435,6 +447,8 @@ versions stay valid with these fields absent.
 |---|---|---|
 | `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
 | `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
+| `shape` | Atom | monotonic-increase, monotonic-decrease, optimal-middle, threshold, trade-off, enabling-condition, composition-structure, other (structure-mapping axis; the atomizer classifies into this) |
+| `transfer` | Atom | `{ field, example }` — a cross-domain analogy kept only when the transfer judge confirms a structural match (forced ones are dropped) |
 | `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
 | `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
 | `epistemicStatus` | Claim, Atom | speculation, interpretation, observation, established (Phase η — see §3.6) |

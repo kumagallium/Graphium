@@ -1772,6 +1772,10 @@ export type AtomCandidate = {
   confidence: number;
   /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
   atomType?: import("../../lib/document-types").AtomType;
+  /** 関係の形（構造写像の軸、decompose→shape→abstract） */
+  shape?: import("../../lib/document-types").AtomShape;
+  /** 越境転移（ジャッジ検証済みのみ。妥当な転移が無ければ undefined） */
+  transfer?: import("../../lib/document-types").AtomTransfer;
   /** Phase η: 入力 Claim の最低 status を継承した epistemicStatus */
   epistemicStatus?: import("../../lib/document-types").EpistemicStatus;
   /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal が Atom 層に伝播したもの */
@@ -1886,6 +1890,9 @@ export function buildAtomDocument(
     confidence: candidate.confidence,
     // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
     atomType: candidate.atomType,
+    // 構造的抽象: 関係の形（shape）と越境転移（ジャッジ検証済みのみ route から渡る）
+    shape: candidate.shape,
+    transfer: candidate.transfer,
     // Phase η: source Claim から継承した最低 status（lowest-status inheritance, parser 側で強制）
     epistemicStatus: candidate.epistemicStatus,
     // Phase γ: 2+ Claim 共通の Rebuttal を Atom 層に伝播したもの。Atom には backing / modalQualifier は持たない。

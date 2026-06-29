@@ -17,6 +17,8 @@ import {
   parseAtomizerOutput,
   parseReliftOutput,
   buildReliftUserMessage,
+  parseTransferJudgeOutput,
+  buildTransferJudgeUserMessage,
 } from "./wiki-atomizer.ts";
 
 describe("detectRung1Tokens — corpus-actual failing tokens", () => {
@@ -203,5 +205,57 @@ describe("parseReliftOutput / buildReliftUserMessage — plain-language stage (C
     const noTokens = buildReliftUserMessage([{ title: "命名は実践より後に来る", body: "本文", jargon: [] }]);
     expect(noTokens).not.toContain("still too technical");
     expect(noTokens).toContain('title: "命名は実践より後に来る"');
+  });
+});
+
+describe("parseAtomizerOutput — shape / transfer (structural abstraction)", () => {
+  const idMap = new Map([["c1", "Claim 1"], ["c2", "Claim 2"]]);
+
+  it("parses a valid shape and a complete transfer", () => {
+    const json = JSON.stringify({
+      atoms: [{
+        title: "調整できる量は中間の最適値で性能が最大になる",
+        body: "本文",
+        sourceConceptIds: ["c1"],
+        confidence: 0.85,
+        shape: "optimal-middle",
+        transfer: { field: "触媒設計", example: "吸着エネルギーが中間で反応速度が最大になる（サバティエ原理）" },
+      }],
+    });
+    const out = parseAtomizerOutput(json, idMap);
+    expect(out).toHaveLength(1);
+    expect(out[0].shape).toBe("optimal-middle");
+    expect(out[0].transfer).toEqual({ field: "触媒設計", example: "吸着エネルギーが中間で反応速度が最大になる（サバティエ原理）" });
+  });
+
+  it("drops an out-of-vocabulary shape to undefined", () => {
+    const json = JSON.stringify({ atoms: [{ title: "x", body: "y", sourceConceptIds: ["c1"], confidence: 0.8, shape: "wiggly" }] });
+    expect(parseAtomizerOutput(json, idMap)[0].shape).toBeUndefined();
+  });
+
+  it("drops a partial transfer (missing example) to undefined", () => {
+    const json = JSON.stringify({ atoms: [{ title: "x", body: "y", sourceConceptIds: ["c1"], confidence: 0.8, transfer: { field: "x" } }] });
+    expect(parseAtomizerOutput(json, idMap)[0].transfer).toBeUndefined();
+  });
+});
+
+describe("parseTransferJudgeOutput / buildTransferJudgeUserMessage", () => {
+  it("parses verdicts and coerces valid to boolean", () => {
+    const json = JSON.stringify({ items: [{ index: 1, valid: true, reason: "genuine match" }, { index: 2, valid: false, reason: "topical only" }] });
+    const out = parseTransferJudgeOutput(json);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ index: 1, valid: true, reason: "genuine match" });
+    expect(out[1].valid).toBe(false);
+  });
+
+  it("returns [] on malformed JSON (judge failure → caller drops transfers conservatively)", () => {
+    expect(parseTransferJudgeOutput("not json")).toEqual([]);
+  });
+
+  it("builds a judge message with principle / shape / transfer per item", () => {
+    const msg = buildTransferJudgeUserMessage([{ title: "中間最適の原理", shape: "optimal-middle", field: "料理", example: "塩は中間量で旨味が最大" }]);
+    expect(msg).toContain("[1]");
+    expect(msg).toContain("shape: optimal-middle");
+    expect(msg).toContain("transfer.field: 料理");
   });
 });

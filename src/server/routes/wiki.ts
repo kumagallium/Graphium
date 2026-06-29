@@ -35,6 +35,9 @@ import {
   buildReliftSystemPrompt,
   buildReliftUserMessage,
   parseReliftOutput,
+  buildTransferJudgeSystemPrompt,
+  buildTransferJudgeUserMessage,
+  parseTransferJudgeOutput,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -439,6 +442,50 @@ app.post("/atomize", async (c) => {
     let atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
+
+    // 越境転移の敵対的ジャッジ: atomizer が出した transfer 候補（別分野の類推）の構造一致を
+    // 厳格に判定し、こじつけ（valid=false）の transfer は外す。principle(洞察) 自体は常に残す。
+    // 検証では opus で 88-96%、弱モデル生成でも transfer の劣化をここで吸収できる。
+    const withTransfer: { i: number; field: string; example: string }[] = [];
+    atoms.forEach((a, i) => {
+      if (a.transfer) withTransfer.push({ i, field: a.transfer.field, example: a.transfer.example });
+    });
+    if (withTransfer.length > 0) {
+      try {
+        const judgeRes = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt: buildTransferJudgeSystemPrompt(body.language || "en"),
+          messages: [
+            {
+              role: "user" as const,
+              content: buildTransferJudgeUserMessage(
+                withTransfer.map((w) => ({
+                  title: atoms[w.i].title,
+                  shape: atoms[w.i].shape,
+                  field: w.field,
+                  example: w.example,
+                })),
+              ),
+            },
+          ],
+          maxSteps: 1,
+          feature: "wiki.transfer-judge",
+          modelConfig,
+        });
+        const verdicts = parseTransferJudgeOutput(judgeRes.message);
+        atoms = atoms.map((a) => ({ ...a }));
+        withTransfer.forEach((w, k) => {
+          const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
+          // 妥当と確認できないものは外す（判定が取れない場合も保守的に外す）。
+          if (!v || !v.valid) atoms[w.i] = { ...atoms[w.i], transfer: undefined };
+        });
+      } catch (err) {
+        // ジャッジ失敗時は保守的に全 transfer を外す（こじつけを残すより安全）。
+        console.error("Wiki transfer-judge error:", err);
+        atoms = atoms.map((a) => (a.transfer ? { ...a, transfer: undefined } : a));
+      }
+    }
 
     // パイプライン C+D（平易化 / readability）— 分野非依存。
     //   pass 1: D を「全 Atom」に 1 回かける。LLM が任意分野のジャーゴンを判断して自然な

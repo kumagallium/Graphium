@@ -64,6 +64,27 @@ export type AtomType =
   | "observational"    // 経験的観測: 実験で X が観測された（理論解釈なし）
   | "boundary";        // 限界・境界: X は Y の範囲では成立しない
 
+// Atom の関係の「形」（構造写像の軸）。固定語彙＝LLM に発明させず分類させる。
+// decompose→shape→abstract の中核。atomType（論理的性格）とは別軸。
+export type AtomShape =
+  | "monotonic-increase"      // X が増えるほど Y が増える
+  | "monotonic-decrease"      // X が増えるほど Y が減る
+  | "optimal-middle"          // Y は X の中間で最大（両極端は損）＝sweet spot
+  | "threshold"               // X がある点を越えると Y が質的に切り替わる
+  | "trade-off"               // X を得ると Y を失う（両立しない）
+  | "enabling-condition"      // X が成り立って初めて Y が可能になる
+  | "composition-structure"   // X の構成・構造が Y を決める
+  | "other";                  // 上記に当てはまらない
+
+// Atom の越境転移（同じ shape+role 構造が成り立つ別分野）。
+// atomizer が候補を出し、敵対的ジャッジが構造一致を検証して妥当なものだけ残す。
+export type AtomTransfer = {
+  /** 転移先の分野 */
+  field: string;
+  /** その分野で同じ形が成り立つ具体例（1 文） */
+  example: string;
+};
+
 // Synthesis の推論モード
 // 設計判断 (PR-B4): induction は Synthesis ではなく Claim → Atom 段の中核操作
 // として位置付けた。Atomizer は「N 個の Claim にまたがる共通抽象を factor out」
@@ -338,6 +359,10 @@ export type WikiMeta = {
   claimRole?: ClaimRole[];
   /** Atom の推論的役割 */
   atomType?: AtomType;
+  /** Atom の関係の形（構造写像の軸、decompose→shape→abstract）。atom のみ意味を持つ */
+  shape?: AtomShape;
+  /** Atom の越境転移（敵対的ジャッジ検証済み。atom のみ。妥当な転移が無ければ undefined） */
+  transfer?: AtomTransfer;
   /** Synthesis の推論モード */
   synthesisMode?: SynthesisMode;
   /** Synthesis の検証状態（特に abductive 型で意味を持つ） */
