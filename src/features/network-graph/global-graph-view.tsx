@@ -32,11 +32,12 @@ function kindOf(n: NoteNode): GraphKind {
   if (n.external) return "external";
   if (n.isWiki) {
     const k = n.wikiKind;
-    if (k === "summary" || k === "claim" || k === "atom" || k === "synthesis") return k;
-    // 撤退済み / 未知の wikiKind（旧 meta-atom 等）は summary 扱いにフォールバックする。
+    if (k === "claim" || k === "atom" || k === "synthesis") return k;
+    // 撤退済み / 未知の wikiKind（旧 meta-atom 等）は synthesis（統合）扱いにフォールバック。
     // ここで GraphKind 外の値を返すと KIND_LAYER 引きが undefined になり、層フィルタで
     // 常に弾かれて silent に消える（meta-atom が見えなかった原因）。
-    return "summary";
+    // 注: summary は buildGlobalGraph 側でグラフから除外済みなのでここには来ない。
+    return "synthesis";
   }
   return "note";
 }

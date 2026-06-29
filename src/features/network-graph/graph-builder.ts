@@ -388,7 +388,11 @@ export function buildGlobalGraph(
 ): NoteGraphData {
   // ゴミ箱・アーカイブを除いた「見える」エントリだけを対象にする
   // （2ホップグラフの files 集合＝trash 除外、と揃える）。
-  const entries = index.notes.filter((e) => !e.deletedAt && !e.archivedAt);
+  // 加えて summary（要約）はグラフ化しない: 要約はノートを要約しただけの派生物で、
+  // 関係グラフ上のノードとしての価値が薄く、統合(synthesis)層に同居すると意味的に紛らわしい。
+  const entries = index.notes.filter(
+    (e) => !e.deletedAt && !e.archivedAt && e.wikiKind !== "summary",
+  );
   const validIds = new Set(entries.map((e) => e.noteId));
 
   // 関係つきエッジを収集（同じ無向ペアは relation 優先度の高い 1 本に畳む）。
