@@ -144,6 +144,10 @@ export const ja: Record<string, string> = {
   "editor.blockLabel.tableHint": "各行が 1 Entity に展開",
   "editor.blockLabel.mediaHint": "ブロック全体 = 1 Entity",
   "editor.blockLabel.headingHint": "手順 / フェーズの境界",
+  "editor.align": "配置",
+  "editor.align.left": "左揃え",
+  "editor.align.center": "中央揃え",
+  "editor.align.right": "右揃え",
   // ── 関係指定ピッカー（共通） ──
   "linking.title": "紐付けと同一化",
   "linking.target": "対象",
@@ -317,6 +321,13 @@ export const ja: Record<string, string> = {
   "slash.helloSub": "サンプルのカスタムブロックを挿入",
   "slash.template": "テンプレート",
   "slash.templateSub": "計画または実験のテンプレートを挿入",
+  "slash.callout": "コールアウト",
+  "slash.calloutSub": "アイコン付きの注記ボックスを挿入",
+  "callout.variant.note": "ノート",
+  "callout.variant.info": "情報",
+  "callout.variant.success": "成功",
+  "callout.variant.warning": "注意",
+  "callout.variant.danger": "危険",
 
   // ── テンプレート ──
   "template.slash.title": "テンプレート",

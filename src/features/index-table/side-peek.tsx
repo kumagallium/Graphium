@@ -8,15 +8,21 @@ import { createPortal } from "react-dom";
 import {
   AddBlockButton,
   DragHandleButton,
-  RemoveBlockItem,
   BlockColorsItem,
   SideMenu,
 } from "@blocknote/react";
+import { DeleteBlockMenuItem, AlignmentMenuItems } from "../../components/side-menu";
+import {
+  BlockAlignmentProvider,
+  useBlockAlignmentStore,
+  AlignmentStyleLayer,
+} from "../block-alignment";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { SandboxEditor } from "../../base/editor";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
+import { calloutSlashItem } from "../../blocks/callout";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -84,7 +90,9 @@ export function SidePeek(props: SidePeekProps) {
   return (
     <LabelStoreProvider>
       <LinkStoreProvider>
-        <SidePeekInner {...props} />
+        <BlockAlignmentProvider>
+          <SidePeekInner {...props} />
+        </BlockAlignmentProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
   );
@@ -97,8 +105,9 @@ function SidePeekSideMenu() {
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
-        <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
+        <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
+        <AlignmentMenuItems />
       </DragHandleButton>
     </SideMenu>
   );
@@ -139,6 +148,9 @@ function SidePeekInner({
   labelStoreRef.current = labelStore;
   const linkStoreRef = useRef(linkStore);
   linkStoreRef.current = linkStore;
+  const blockAlignmentStore = useBlockAlignmentStore();
+  const blockAlignmentStoreRef = useRef(blockAlignmentStore);
+  blockAlignmentStoreRef.current = blockAlignmentStore;
   const editorRef = useRef<any>(null);
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
@@ -232,6 +244,8 @@ function SidePeekInner({
     if (allLinks.length > 0) {
       restoreLinks(allLinks);
     }
+    // ブロック配置揃え復元（table / audio / file 用サイドストア）
+    blockAlignmentStoreRef.current.restoreSnapshot(page.blockAlignments);
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
@@ -424,6 +438,11 @@ function SidePeekInner({
     const provLinks = allLinks.filter((l) => l.layer === "prov");
     const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
 
+    // ブロック配置揃え（table / audio / file）。空なら undefined（フィールド省略）。
+    const alignmentsSnapshot = blockAlignmentStoreRef.current.getSnapshot();
+    const blockAlignments =
+      Object.keys(alignmentsSnapshot).length > 0 ? alignmentsSnapshot : undefined;
+
     const updatedDoc: GraphiumDocument = {
       ...docRef.current,
       pages: [
@@ -433,6 +452,7 @@ function SidePeekInner({
           labels: labelsObj,
           provLinks,
           knowledgeLinks,
+          blockAlignments,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -467,6 +487,15 @@ function SidePeekInner({
       doSaveRef.current();
     }, 3000);
   }, []);
+
+  // 配置揃え変更時にもオートセーブをトリガー（editor.onChange を通らないため）
+  const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
+  useEffect(() => {
+    if (prevAlignmentsRef.current !== blockAlignmentStore.alignments) {
+      prevAlignmentsRef.current = blockAlignmentStore.alignments;
+      handleChange();
+    }
+  }, [blockAlignmentStore.alignments, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {
@@ -750,6 +779,8 @@ function SidePeekInner({
                 aria-label={tStatic("editor.titlePlaceholder")}
                 className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-1 mb-4 px-[54px] resize-none overflow-hidden break-words"
               />
+              {/* table / audio / file の配置揃えを CSS で適用 */}
+              <AlignmentStyleLayer />
               <SandboxEditor
                 key={noteId}
                 editable={!archived}
@@ -764,6 +795,7 @@ function SidePeekInner({
                   ...buildLabelSlashMenuItems(),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
+                  calloutSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}

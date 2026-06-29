@@ -8,6 +8,7 @@ import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
@@ -18,6 +19,11 @@ import {
   MediaInlineLabelProvider,
   useMediaInlineLabelStore,
 } from "./features/inline-label/media-store";
+import {
+  BlockAlignmentProvider,
+  useBlockAlignmentStore,
+  AlignmentStyleLayer,
+} from "./features/block-alignment";
 import { regenInlineEntitiesInBlocks } from "./features/inline-label/regen-on-paste";
 import {
   ProvIndicatorLayer,
@@ -540,9 +546,11 @@ function NoteEditor(props: NoteEditorProps) {
       <LinkStoreProvider>
         <IndexTableStoreProvider>
         <MediaInlineLabelProvider>
+        <BlockAlignmentProvider>
         <AiAssistantProvider aiAvailable={props.aiAvailable}>
           <NoteEditorInner {...props} />
         </AiAssistantProvider>
+        </BlockAlignmentProvider>
         </MediaInlineLabelProvider>
         </IndexTableStoreProvider>
       </LinkStoreProvider>
@@ -640,6 +648,7 @@ function NoteEditorInner({
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
   const mediaInlineLabelStore = useMediaInlineLabelStore();
+  const blockAlignmentStore = useBlockAlignmentStore();
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   const editorRef = useRef<any>(null);
@@ -1244,6 +1253,9 @@ function NoteEditorInner({
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
       Object.keys(mediaInlineLabelsSnapshot).length > 0;
+    // ブロック配置揃え（table / audio / file 用サイドストア）
+    const blockAlignmentsSnapshot = blockAlignmentStore.getSnapshot();
+    const hasBlockAlignments = Object.keys(blockAlignmentsSnapshot).length > 0;
     let doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
@@ -1259,6 +1271,7 @@ function NoteEditorInner({
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
+          blockAlignments: hasBlockAlignments ? blockAlignmentsSnapshot : undefined,
         },
       ],
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
@@ -1307,7 +1320,7 @@ function NoteEditorInner({
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
-  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
 
   // sharedRef は initialDoc から初期化し、Share 成功時に即時更新する。
   // initialDoc は親が新しい doc に差し替えない限り変わらないため、ローカル state で持つ。
@@ -1474,25 +1487,28 @@ function NoteEditorInner({
     void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
   }, [title, provDoc, provWikiEntities]);
 
-  // ラベル・リンク・インデックステーブル変更時に自動保存トリガー
+  // ラベル・リンク・インデックステーブル・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
   const prevLinksRef = useRef(linkStore.links);
   const prevTablesRef = useRef(indexTableStore.tables);
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
+  const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   useEffect(() => {
     if (
       prevLabelsRef.current !== labelStore.labels ||
       prevLinksRef.current !== linkStore.links ||
       prevTablesRef.current !== indexTableStore.tables ||
-      prevMediaLabelsRef.current !== mediaInlineLabelStore.labels
+      prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
+      prevAlignmentsRef.current !== blockAlignmentStore.alignments
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
       prevTablesRef.current = indexTableStore.tables;
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
+      prevAlignmentsRef.current = blockAlignmentStore.alignments;
       markDirty();
     }
-  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, markDirty]);
+  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, markDirty]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -2214,6 +2230,7 @@ function NoteEditorInner({
       if (page.mediaInlineLabels) {
         mediaInlineLabelStore.restoreSnapshot(page.mediaInlineLabels);
       }
+      blockAlignmentStore.restoreSnapshot(page.blockAlignments);
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
         const existingLinks = noteLinksRef.current;
@@ -2673,13 +2690,15 @@ function NoteEditorInner({
               aria-label={t("editor.titlePlaceholder")}
               className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 px-[54px] resize-none overflow-hidden break-words"
             />
+            {/* table / audio / file の配置揃えを CSS で適用（サイドストア駆動） */}
+            <AlignmentStyleLayer />
             <SandboxEditor
               key={fileId || "new"}
               editable={!archived}
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

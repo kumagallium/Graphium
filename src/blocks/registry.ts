@@ -9,10 +9,12 @@
 import type { CustomBlockEntry } from "../base/schema";
 import { pdfViewerBlock } from "./pdf-viewer";
 import { bookmarkBlock } from "./bookmark";
+import { calloutBlock } from "./callout";
 
 export const customBlockEntries: CustomBlockEntry[] = [
   pdfViewerBlock,
   bookmarkBlock,
+  calloutBlock,
 ];
 
 export const CUSTOM_BLOCK_TYPES: ReadonlySet<string> = new Set(
