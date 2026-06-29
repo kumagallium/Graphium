@@ -124,14 +124,19 @@ export function normalizeWikiCitations(
   return { message, sources: [...sources], candidateTitles };
 }
 
-/** 「Knowledge referenced」トレーリングリストを本文末尾に付ける。 */
+/**
+ * 実際に引用できた内部ノート（Wiki）を「ノート内の知識」トレーリングリストとして
+ * 本文末尾に付ける。引用が 1 件も無ければ何も付けない（候補一覧の機械的な流し込みは
+ * しない＝「引用していないのに参照したと主張する」誤表示を防ぐ）。
+ *
+ * @param label ローカライズ済みの見出し（例: "📓 ノート内の知識"）
+ */
 export function appendKnowledgeReferenced(
   message: string,
   sources: string[],
+  label: string,
 ): string {
-  if (sources.length > 0) {
-    const sourceList = sources.map((s) => `  - [Source: "${s}"]`).join("\n");
-    return `${message}\n\n---\n**Knowledge referenced:**\n${sourceList}`;
-  }
-  return `${message}\n\n---\n📎 *Knowledge referenced*`;
+  if (sources.length === 0) return message;
+  const sourceList = sources.map((s) => `  - [Source: "${s}"]`).join("\n");
+  return `${message}\n\n---\n**${label}**\n${sourceList}`;
 }

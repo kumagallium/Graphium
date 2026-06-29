@@ -156,7 +156,9 @@ app.post("/run", async (c) => {
   const { tools } = await getMCPTools([...byName.values()]);
 
   try {
-    const model = await createModel(modelConfig);
+    // チャットだけは claude-subscription で内蔵 WebSearch / WebFetch を解禁する
+    // （翻訳・Wiki 等の非チャット経路には波及させない。詳細は createModel の allowWebSearch）。
+    const model = await createModel(modelConfig, { allowWebSearch: true });
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,

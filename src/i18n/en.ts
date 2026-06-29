@@ -1259,6 +1259,9 @@ export const en: Record<string, string> = {
   "composer.submit": "Send",
   "composer.kbd.submit": "to send",
   "composer.kbd.close": "to close",
+  // チャット回答のソース見出し（外部 web / 内部ノートを区別）
+  "chat.sources.fromNotes": "📓 From your notes",
+  "chat.sources.fromWeb": "🌐 Web sources",
   // verb メニュー（R2）
   "composer.verb.title": "Ask the AI (this note + {count} citations)",
   "composer.verb.commentPlaceholder": "Add a note to steer the AI (optional)",
