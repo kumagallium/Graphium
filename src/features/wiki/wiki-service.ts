@@ -1798,7 +1798,9 @@ export async function atomizeConcepts(
   language: string,
   options?: { existingAtomTitles?: string[]; model?: string },
 ): Promise<AtomizeResult> {
-  if (concepts.length < 2) return { atoms: [] };
+  // 1 件の Concept からでも可搬な規則なら Atom 化する（2 件必須はサーバー側で撤廃済み。
+  // [[project-atomizer-min-claims]]）。0 件のときだけ呼ばずに空で返す。
+  if (concepts.length < 1) return { atoms: [] };
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
     headers: wikiHeaders("chatSynthesis"),

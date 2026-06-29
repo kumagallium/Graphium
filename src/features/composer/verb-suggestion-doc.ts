@@ -18,6 +18,29 @@ import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-ty
 /** 取り込みボタンで作れる kind。verb 回答は claim（知見）か atom（洞察）に落とす。 */
 export type VerbSuggestionKind = Extract<WikiKind, "claim" | "atom">;
 
+/**
+ * 「知見にする / 洞察にする」を押したときに提示する候補。
+ *
+ * 旧 M2（buildVerbSuggestionDocument で 1 ノート即生成）は「押すまで何が出るか
+ * 見えない」問題があった。今は AI 回答を ingester / atomizer パイプラインに通して
+ * 複数候補を作り、ユーザーが選んだものだけを保存する（脱ブラックボックス化、
+ * [[project-knowledge-simplicity-philosophy]]）。砂時計の首＝人間の選択は維持される。
+ *
+ * 採用時にそのまま保存できるよう、候補生成の段階で完成ドキュメント（doc）まで作って持つ。
+ */
+export type KnowledgeCandidate = {
+  /** React key / 選択トグル管理用の一時 ID（保存ノートの ID とは無関係） */
+  key: string;
+  /** ユーザーが押したボタンの kind（claim = 知見 / atom = 洞察） */
+  kind: VerbSuggestionKind;
+  /** 候補のタイトル（一覧の主見出し） */
+  title: string;
+  /** 候補本文のプレビュー（一覧に折りたたんで出す短い抜粋） */
+  preview: string;
+  /** 採用時にそのまま handleCreateWikiFile へ渡す完成ドキュメント */
+  doc: GraphiumDocument;
+};
+
 /** verb が精査した引用ノート（claim/atom）への参照。タイトルは表示・リンク両用。 */
 export type CitedNoteRef = {
   noteId: string;
