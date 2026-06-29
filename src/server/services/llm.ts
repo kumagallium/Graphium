@@ -18,8 +18,15 @@ import type { ModelConfig } from "../config/models.js";
  * claude-subscription だけは `ai-sdk-provider-claude-code`（＝ Claude Code バイナリの
  * subprocess 起動）を動的 import するため async。重い `@anthropic-ai/claude-agent-sdk` を
  * Web(Vercel) ビルドに静的同梱しないための意図的な遅延ロード。
+ *
+ * @param opts.allowWebSearch claude-subscription 経路で Claude Code 内蔵の
+ *   WebSearch / WebFetch を解禁する。チャット（agent.chat）だけが渡す想定で、
+ *   翻訳・Wiki・atomizer 等の決定的に動くべき機能には波及させない。
  */
-export async function createModel(config: ModelConfig): Promise<LanguageModel> {
+export async function createModel(
+  config: ModelConfig,
+  opts?: { allowWebSearch?: boolean },
+): Promise<LanguageModel> {
   switch (config.provider) {
     case "anthropic": {
       // `createAnthropic` に baseURL を渡さないと SDK は環境変数 `ANTHROPIC_BASE_URL` を
@@ -79,15 +86,20 @@ export async function createModel(config: ModelConfig): Promise<LanguageModel> {
       // - pathToClaudeCodeExecutable: 既存 claude を参照し、ネイティブバイナリ同梱を回避。
       //   config.apiBase をこのプロバイダでは「claude CLI の絶対パス（任意）」として流用する。
       // - settingSources 省略 = isolation（~/.claude/CLAUDE.md 等を読み込まない）。
-      // - allowedTools: [] で Claude Code 内蔵ツール（Read/Write/Bash 等）の自律実行を止め、
-      //   純粋なテキスト生成器として使う。Graphium 側のツール実行は text-tool-call
-      //   フォールバック（agent-loop-text-tools.ts）が担う。
+      // - allowedTools は既定で [] とし、Claude Code 内蔵ツール（Read/Write/Bash 等）の
+      //   自律実行を止めて純粋なテキスト生成器として使う。Graphium 側のツール実行は
+      //   text-tool-call フォールバック（agent-loop-text-tools.ts）が担う。
+      // - 例外として allowWebSearch（チャット経路のみが渡す）が真のときだけ WebSearch /
+      //   WebFetch を解禁する。検索→読込→要約は CLI のネイティブループ内で完結し、
+      //   サブスク枠で web 検索できる。ただし Graphium の text-tool 経路や PROV 追跡の
+      //   外側で起きる点に注意（来歴は残らない）。
       const { createClaudeCode } = await import("ai-sdk-provider-claude-code");
       const binaryPath = resolveClaudeBinaryPath(config.apiBase);
+      const allowedTools = opts?.allowWebSearch ? ["WebSearch", "WebFetch"] : [];
       const provider = createClaudeCode({
         defaultSettings: {
           ...(binaryPath ? { pathToClaudeCodeExecutable: binaryPath } : {}),
-          allowedTools: [],
+          allowedTools,
           logger: false,
         },
       });
