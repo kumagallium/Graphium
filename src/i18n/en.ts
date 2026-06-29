@@ -1266,4 +1266,20 @@ export const en: Record<string, string> = {
   "composer.verb.prompt.analogy": "Point out analogous cases or patterns from adjacent fields that resemble the claims and insights cited in this note, and note what could transfer.",
   "composer.insertProv.systemHint": "Turn the following description into procedural steps. Make each step an H2 heading (## ...) prefixed with [[label:procedure]]. In the body of each step, mark inputs with [[m]]...[[/m]], tools with [[t]]...[[/t]], parameters with [[a]]...[[/a]], and outputs with [[o]]...[[/o]] around the relevant text spans. Do NOT prefix body blocks with legacy [Step]/[Input]/[Tool]/[Output] labels.",
   "aiChat.runFailed": "AI request failed",
+
+  // 全ノードグラフ（Global Graph）
+  "sidebar.globalGraph": "Global Graph",
+  "globalGraph.title": "Global Graph",
+  "globalGraph.hideReferences": "Hide references",
+  "globalGraph.showIsolated": "Show isolated",
+  "globalGraph.showIsolatedHint": "Show notes that have no links yet",
+  "globalGraph.kind.note": "Note",
+  "globalGraph.kind.external": "Source",
+  "globalGraph.relation.derived": "Derived",
+  "globalGraph.relation.used": "Used",
+  "globalGraph.relation.reference": "Reference",
+  "globalGraph.layer.source": "Sources",
+  "globalGraph.layer.note": "Notes",
+  "globalGraph.layer.crystal": "Claim · Insight",
+  "globalGraph.empty": "No notes to show yet",
 };

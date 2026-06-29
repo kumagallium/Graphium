@@ -66,6 +66,8 @@ import {
 } from "./features/prov-generator";
 import {
   GraphLinksPanel,
+  GlobalGraphView,
+  buildGlobalGraph,
 } from "./features/network-graph";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
@@ -3101,6 +3103,9 @@ export function NoteApp() {
   const [showMemos, setShowMemos] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
+  // データ構築は fm 宣言後に行う（globalGraphData）。
+  const [showGlobalGraph, setShowGlobalGraph] = useState(false);
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
@@ -3188,6 +3193,24 @@ export function NoteApp() {
   const capture = useCapture(authenticated);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
+  // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
+  const globalGraphData = useMemo(
+    () =>
+      showGlobalGraph && fm.noteIndex
+        ? buildGlobalGraph(fm.noteIndex, fm.mediaIndex ?? null)
+        : { nodes: [], edges: [] },
+    [showGlobalGraph, fm.noteIndex, fm.mediaIndex],
+  );
+  // ノートを開いたら（activeFileId が変わったら）全体グラフは畳む。
+  // SidePeek の「開く」/サイドバーの最近ノード/新規作成など、ノートを開くあらゆる経路を
+  // 1 箇所でカバーする（各ハンドラに個別の setShowGlobalGraph(false) を撒かずに済む）。
+  const prevActiveFileIdRef = useRef(fm.activeFileId);
+  useEffect(() => {
+    if (fm.activeFileId !== prevActiveFileIdRef.current) {
+      prevActiveFileIdRef.current = fm.activeFileId;
+      setShowGlobalGraph(false);
+    }
+  }, [fm.activeFileId]);
 
   // 世界モデル照合 共通ハンドラ（Phase 2 / PR 2A）。
   // 照合発火はすべて **ユーザー起動**（バナー単発 / 一覧 bulk）に統一する。
@@ -3493,7 +3516,7 @@ export function NoteApp() {
       fm.setActiveWikiKind(null);
       setActiveWikiView(null);
       setShowMemos(false);
-      setShowSharedLibrary(false);
+      setShowSharedLibrary(false); setShowGlobalGraph(false);
     },
   }), [fm]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
@@ -4752,25 +4775,41 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
-    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
-    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
+    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
+    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
+    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
     noteListActive: fm.showNoteList,
     mediaIndex: fm.mediaIndex,
-    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
+    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
-    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
+    onShowGlobalGraph: () => {
+      // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
+      setShowGlobalGraph(true);
+      fm.setActiveAssetType(null);
+      fm.setActiveLabel(null);
+      fm.setActiveWikiKind(null);
+      fm.setShowNoteList(false);
+      setShowMemos(false);
+      setShowSkillList(false);
+      setActiveWikiView(null);
+      setShowTrash(false);
+      setShowSharedLibrary(false);
+      setListSidePeekNoteId(null);
+      setSidebarOpen(false);
+    },
+    globalGraphActive: showGlobalGraph,
+    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
     filesLoading: fm.filesLoading,
     memoCount: capture.captureIndex?.captures.length ?? 0,
-    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
+    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     wikiCounts: (() => {
       // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
@@ -4793,14 +4832,14 @@ export function NoteApp() {
     // experimental.atomLayer に関わらず常にサイドバーに表示する。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
     showAtomLayer: true,
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
+    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
-    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
+    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
+    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
     skillCount: fm.skillMetas.size,
-    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); },
+    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); },
     skillActive: showSkillList,
     onShowTrash: () => {
       setShowTrash(true);
@@ -4811,7 +4850,7 @@ export function NoteApp() {
       setShowMemos(false);
       setShowSkillList(false);
       setActiveWikiView(null);
-      setShowSharedLibrary(false);
+      setShowSharedLibrary(false); setShowGlobalGraph(false);
       setSidebarOpen(false);
     },
     trashActive: showTrash,
@@ -4827,6 +4866,7 @@ export function NoteApp() {
           setShowSkillList(false);
           setActiveWikiView(null);
           setShowTrash(false);
+          setShowGlobalGraph(false);
           setSidebarOpen(false);
           router.navigate({ view: "shared-library" });
         }
@@ -4869,7 +4909,26 @@ export function NoteApp() {
         )
       )}
       <main className="flex-1 overflow-hidden flex flex-col relative">
-        {fm.activeAssetType ? (
+        {showGlobalGraph ? (
+          <GlobalGraphView
+            data={globalGraphData}
+            onSelectNote={(noteId) => {
+              // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
+              // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
+              setListSidePeekNoteId(noteId);
+            }}
+            onOpenMedia={(fileId) => {
+              // 素材ノードクリック → 全体グラフを閉じて Material gallery で Full view 表示。
+              setShowGlobalGraph(false);
+              const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+              if (!target) return;
+              fm.setActiveAssetType(target.type);
+              setFocusedMaterial({ fileId, fullMode: true });
+              router.navigate({ view: "assets", mediaType: target.type });
+            }}
+            onClose={() => setShowGlobalGraph(false)}
+          />
+        ) : fm.activeAssetType ? (
           <AssetGalleryView
             mediaIndex={fm.mediaIndex}
             mediaType={fm.activeAssetType}
@@ -5579,7 +5638,7 @@ export function NoteApp() {
                 }
               }
               const newFileId = await fm.handleCreateNoteFromImport(docToSave);
-              setShowSharedLibrary(false);
+              setShowSharedLibrary(false); setShowGlobalGraph(false);
               fm.handleOpenFile(newFileId);
               router.navigate({ view: "editor", fileId: newFileId });
             }}
@@ -5599,7 +5658,7 @@ export function NoteApp() {
                 alert(`Unshare failed: ${result.error}`);
               }
             }}
-            onBack={() => { setShowSharedLibrary(false); router.navigate({ view: "home" }); }}
+            onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
           />
         ) : showTrash ? (
           <TrashView
