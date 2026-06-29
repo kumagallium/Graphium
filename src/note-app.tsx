@@ -1519,9 +1519,10 @@ function NoteEditorInner({
       try {
         const isFirstMessage = aiAssistant.messages.length === 0;
         let userMessage = question;
-        if (isFirstMessage) {
-          if (aiAssistant.quotedMarkdown) {
-            // ブロック選択チャット: 選択ブロックのコンテキストを付加
+        if (aiAssistant.quotedMarkdown) {
+          // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
+          // 継続会話では下記 history 側で idx=0 に quotedMarkdown を再注入して維持する。
+          if (isFirstMessage) {
             userMessage = [
               "以下の内容について質問があります。",
               "",
@@ -1531,21 +1532,26 @@ function NoteEditorInner({
               "",
               question,
             ].join("\n");
-          } else if (aiAssistant.sourceBlockIds.length === 0 && editorRef.current) {
-            // ページ全体チャット: ドキュメント全体をコンテキストとして付加
-            const allBlocks = editorRef.current.document;
-            const pageMarkdown = await editorRef.current.blocksToMarkdownLossy(allBlocks);
-            if (pageMarkdown.trim()) {
-              userMessage = [
-                "以下のドキュメント全体について質問があります。",
-                "",
-                "---",
-                pageMarkdown,
-                "---",
-                "",
-                question,
-              ].join("\n");
-            }
+          }
+        } else if (aiAssistant.sourceBlockIds.length === 0 && editorRef.current) {
+          // ページ全体チャット: 毎ターン、現在のドキュメント本文（最新）を再同梱する。
+          // スナップショット方式だと「修正しました、見てください」と続けたときに
+          // AI が編集前の本文しか見えず「修正したノートを見せてください」と返してしまう。
+          // それを防ぐため、送信のたびにエディタから最新本文を取り直す。
+          const allBlocks = editorRef.current.document;
+          const pageMarkdown = await editorRef.current.blocksToMarkdownLossy(allBlocks);
+          if (pageMarkdown.trim()) {
+            userMessage = [
+              isFirstMessage
+                ? "以下のドキュメント全体について質問があります。"
+                : "以下は現在のドキュメント全体の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。",
+              "",
+              "---",
+              pageMarkdown,
+              "---",
+              "",
+              question,
+            ].join("\n");
           }
         }
         // @ メンションで添付されたノートの内容をコンテキストに追加

@@ -14,6 +14,25 @@ import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label
 
 const app = new Hono();
 
+/**
+ * ノート本文の取得先に関するガードレール。
+ *
+ * Graphium のノート本文は、ホスト（フロントエンド）が会話メッセージ内に直接
+ * 埋め込んで渡す（`---` 区切りで同梱）。一方でチャットには接続済みの MCP ツール
+ * （Notion / Drive 等）が丸ごと供給され、かつ「現在のノートを読む」専用ツールは
+ * 存在しない。そのため LLM が「ノートを取得しろ」と言われると、最も近い外部検索
+ * ツール（例: Notion 検索）に取り違えて飛びつき、本来不要な認可フローを始める。
+ * それを止めるための明示指示。常時 system prompt に付与する。
+ */
+export const NOTE_CONTEXT_GUARDRAIL = [
+  "The user's notes live inside Graphium itself.",
+  "When the user refers to \"this note\", \"my note\", \"the document\", or \"the note I just edited\",",
+  "its content is provided to you directly in this conversation (delimited by `---` markers in the user's message).",
+  "It is NOT stored in Notion, Google Drive, or any other external service.",
+  "Never call external MCP tools (such as Notion or Drive search/fetch) to look up the user's own note — you already have it inline.",
+  "If you cannot find the note content in the conversation, ask the user to resend or attach it; do not search external services for it.",
+].join("\n");
+
 // Crucible Agent 互換のリクエスト/レスポンス形式
 app.post("/run", async (c) => {
   const body = await c.req.json<{
@@ -52,6 +71,8 @@ app.post("/run", async (c) => {
   const profileName = body.profile || "general";
   const profile = getProfile(profileName) ?? listProfiles()[0];
   let systemPrompt = profile?.content ?? "You are a helpful assistant.";
+  // ノート本文は会話内に同梱される。外部 MCP ツールでの誤検索を防ぐガードレール。
+  systemPrompt += `\n\n${NOTE_CONTEXT_GUARDRAIL}`;
   if (body.custom_instructions) {
     systemPrompt += `\n\n${body.custom_instructions}`;
   }
