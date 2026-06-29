@@ -471,8 +471,17 @@ export function useFileManager(authenticated: boolean) {
       // サイドピーク等から保存済みドキュメントが渡された場合、キャッシュを即時更新。
       // ただし渡された doc が現在のキャッシュより古いと、本文エディタが再マウント時に
       // その古いスナップショットへ巻き戻り、書いた文章が消える。より新しいときだけ採用する。
+      let broughtNewerDoc = false;
       if (cachedDoc && isIncomingDocNewer(cachedDoc, docCacheRef.current.get(fileId))) {
         docCacheRef.current.set(fileId, cachedDoc);
+        broughtNewerDoc = true;
+      }
+      // 既に本文で開いているノートを開き直す場合、エディタには未保存のライブ編集
+      // （直近 3 秒の自動保存待ちを含む）が残っている。より新しい内容を持ち込んだので
+      // ない限り、再マウントせず現状を保持する。再マウントすると activeDoc 起点へ
+      // 巻き戻り、書いたばかりの文章が消える。表示中なら一覧等を閉じた時点で本文へ戻る。
+      if (fileId === activeFileIdRef.current && !broughtNewerDoc) {
+        return;
       }
       // キャッシュにあれば即座に表示
       const cached = docCacheRef.current.get(fileId);
@@ -736,6 +745,14 @@ export function useFileManager(authenticated: boolean) {
           await saveFile(currentFileId, doc);
           // キャッシュも更新
           docCacheRef.current.set(currentFileId, doc);
+          // activeDoc も最新化しておく。一覧やギャラリー等から本文へ戻ってエディタが
+          // 再マウントされる際の復元元（NoteEditor の initialDoc）が、開いた時点の古い
+          // 内容のままだと保存済みの編集まで巻き戻るため、保存のたびに追従させる。
+          // NoteEditor 側の初期化は initializedRef で一度きりにガードされており、
+          // initialDoc が変わってもマウント済みエディタの内容は再設定されない（チラつかない）。
+          if (currentFileId === activeFileIdRef.current) {
+            setActiveDoc(doc);
+          }
           // ローカルのファイル一覧を upsert（stale で欠けていても復元する）
           setFiles((prev) => {
             const name = `${doc.title}.graphium.json`;
