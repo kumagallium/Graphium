@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Document, Page } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
-import "../../lib/pdfjs-config";
+import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -406,6 +406,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
       >
         <Document
           file={blobUrl}
+          options={PDFJS_DOC_OPTIONS}
           onLoadSuccess={onDocumentLoad}
           onLoadError={onDocumentError}
           loading={<div className="text-muted-foreground text-sm text-center py-8">読み込み中...</div>}

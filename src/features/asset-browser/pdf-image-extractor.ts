@@ -16,8 +16,14 @@
 // pdfjs はブラウザ専用（DOMMatrix 依存）。テスト環境（node）で純粋関数だけ
 // 呼びたいケースのために、トップレベル import を避けて関数内で遅延 import する。
 async function loadPdfjs() {
-  const mod = await import("react-pdf");
-  return mod.pdfjs;
+  // CJK フォント描画に必須の cmap オプションも side-effect import で取り込む。
+  // pdfjs-config はブラウザ専用 API（import.meta.env / worker）を触るため、
+  // pdfjs 本体と同じく遅延 import にしてテスト環境（node）の読み込みを汚さない。
+  const [mod, config] = await Promise.all([
+    import("react-pdf"),
+    import("../../lib/pdfjs-config"),
+  ]);
+  return { pdfjs: mod.pdfjs, options: config.PDFJS_DOC_OPTIONS };
 }
 
 export type ExtractedEmbeddedImage = {
@@ -125,9 +131,9 @@ export async function extractEmbeddedPdfImages(
 ): Promise<ExtractedEmbeddedImage[]> {
   const { signal, onProgress, minSize = { width: 16, height: 16 } } = options;
 
-  const pdfjs = await loadPdfjs();
+  const { pdfjs, options: docOptions } = await loadPdfjs();
   const buffer = await source.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), ...docOptions }).promise;
 
   const results: ExtractedEmbeddedImage[] = [];
   // dedup: 同じ画像 name は最初の出現だけ採用

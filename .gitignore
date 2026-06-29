@@ -8,6 +8,8 @@ storybook-static/
 
 # 自動生成ファイル（vite dev/build 時に生成）
 public/release_notes.json
+# pdf.js の cmap / 標準フォント（node_modules からコピー、vite.config.ts 参照）
+public/pdfjs/
 
 # 各 bench スクリプトの一時出力（実行ごとに上書き）
 # baseline.json / 名前付き snapshot は別途 track する。
