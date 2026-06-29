@@ -35,10 +35,14 @@ type AiAssistantPanelProps = {
   onDeriveNote?: (question: string, answer: string) => void;
   /** チャット内容を Knowledge に追加する */
   onIngestChat?: (messages: ChatMessage[]) => void;
-  /** AI 回答を ingester / atomizer に通して 知見(claim) / 洞察(atom) の**候補**を生成する
+  /** AI 回答を ingester / atomizer に通して 知見(claim) + 洞察(atom) の**候補**を生成する
    *  （Loop M2 改）。押すまで何が出るか見えない問題を解消するため、候補を出してから
-   *  ユーザーが選んで保存する。砂時計の首＝人間の選択は維持。 */
-  onGenerateKnowledgeCandidates?: (answer: string, kind: "claim" | "atom") => Promise<KnowledgeCandidate[]>;
+   *  ユーザーが選んで保存する。砂時計の首＝人間の選択は維持。
+   *  onClaimsReady: 知見候補ができた時点で即呼ぶ（プログレッシブ表示。洞察は後から戻り値に追加）。 */
+  onGenerateKnowledgeCandidates?: (
+    answer: string,
+    onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
+  ) => Promise<KnowledgeCandidate[]>;
   /** 選択された候補を保存する（候補ごとに 1 ノート）。 */
   onAdoptKnowledgeCandidates?: (candidates: KnowledgeCandidate[]) => Promise<void>;
   /** ノート/Wiki インデックス（@ メンション候補用） */
@@ -396,7 +400,7 @@ export function AiAssistantPanel({
                 }
                 onGenerateKnowledgeCandidates={
                   onGenerateKnowledgeCandidates && msg.role === "assistant"
-                    ? (kind) => onGenerateKnowledgeCandidates(msg.content, kind)
+                    ? (onClaimsReady) => onGenerateKnowledgeCandidates(msg.content, onClaimsReady)
                     : undefined
                 }
                 onAdoptKnowledgeCandidates={onAdoptKnowledgeCandidates}
@@ -563,7 +567,9 @@ function ChatBubble({
   onInsert?: (markdown: string) => void;
   onReplace?: (markdown: string) => void;
   onDerive?: () => void;
-  onGenerateKnowledgeCandidates?: (kind: "claim" | "atom") => Promise<KnowledgeCandidate[]>;
+  onGenerateKnowledgeCandidates?: (
+    onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
+  ) => Promise<KnowledgeCandidate[]>;
   onAdoptKnowledgeCandidates?: (candidates: KnowledgeCandidate[]) => Promise<void>;
   wikiTitleToId?: Map<string, string>;
   onOpenWiki?: (wikiId: string) => void;
@@ -571,42 +577,54 @@ function ChatBubble({
   const t = useT();
   const isUser = message.role === "user";
   const hasMakeKnowledge = !!onGenerateKnowledgeCandidates;
-  // 候補生成・選択フローの状態（バブル単位）。押すと候補を出し、選んだものだけ保存する。
-  //   generating: 生成中のボタン kind（スピナー） / null
+  // 「ナレッジにする」候補生成・選択フローの状態（バブル単位）。
+  // 1 ボタンで 知見 + 洞察 を 1 リストに混ぜて出す。知見は即表示し、洞察は後から追加（progressive）。
+  //   phase:      null / "claims"（知見抽出中） / "atoms"（洞察生成中、知見は表示済み）
   //   candidates: 提示中の候補一覧（null = 未生成 or 折りたたみ済み）
   //   selected:   採用する候補の key 集合（既定で全選択）
   //   adopting:   保存処理中
-  //   done:       保存完了表示（件数 + kind）
-  //   emptyKind:  候補ゼロのときの一時メッセージ用 kind
-  const [generating, setGenerating] = useState<null | "claim" | "atom">(null);
+  //   done:       保存完了表示（件数）
+  //   empty:      候補ゼロのときの一時メッセージ
+  const [phase, setPhase] = useState<null | "claims" | "atoms">(null);
   const [candidates, setCandidates] = useState<KnowledgeCandidate[] | null>(null);
-  const [candidateKind, setCandidateKind] = useState<"claim" | "atom">("claim");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adopting, setAdopting] = useState(false);
-  const [done, setDone] = useState<null | { kind: "claim" | "atom"; count: number }>(null);
-  const [emptyKind, setEmptyKind] = useState<null | "claim" | "atom">(null);
+  const [done, setDone] = useState<null | { count: number }>(null);
+  const [empty, setEmpty] = useState(false);
 
-  const handleGenerate = async (kind: "claim" | "atom") => {
-    if (!onGenerateKnowledgeCandidates || generating) return;
-    setGenerating(kind);
-    setEmptyKind(null);
+  const handleGenerate = async () => {
+    if (!onGenerateKnowledgeCandidates || phase) return;
+    setPhase("claims");
+    setEmpty(false);
     setDone(null);
+    setCandidates(null);
+    let claimKeys = new Set<string>();
     try {
-      const result = await onGenerateKnowledgeCandidates(kind);
-      if (result.length === 0) {
-        setEmptyKind(kind);
+      const all = await onGenerateKnowledgeCandidates((claims) => {
+        // 知見候補ができた時点で即表示（洞察生成を待たせない）。
+        claimKeys = new Set(claims.map((c) => c.key));
+        setCandidates(claims);
+        setSelected(new Set(claims.map((c) => c.key))); // 既定で全選択
+        setPhase("atoms");
+      });
+      if (all.length === 0) {
+        setEmpty(true);
         setCandidates(null);
       } else {
-        setCandidateKind(kind);
-        setCandidates(result);
-        setSelected(new Set(result.map((c) => c.key))); // 既定で全選択
+        setCandidates(all);
+        // 知見の選択状態はユーザー操作を尊重し、後から来た洞察は既定で選択に足す。
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const c of all) if (!claimKeys.has(c.key)) next.add(c.key);
+          return next;
+        });
       }
     } catch {
       // 失敗時は何も出さず、ボタンを再度押せる状態に戻す
-      setEmptyKind(null);
+      setEmpty(false);
       setCandidates(null);
     } finally {
-      setGenerating(null);
+      setPhase(null);
     }
   };
 
@@ -626,7 +644,7 @@ function ChatBubble({
     setAdopting(true);
     try {
       await onAdoptKnowledgeCandidates(chosen);
-      setDone({ kind: candidateKind, count: chosen.length });
+      setDone({ count: chosen.length });
       setCandidates(null);
     } catch {
       // 失敗時は候補一覧を残して再試行可能にする
@@ -701,41 +719,28 @@ function ChatBubble({
                 {t("aiChat.deriveAsNote")}
               </button>
             )}
-            {hasMakeKnowledge && !done && (
-              <>
-                <KnowledgeButton
-                  kind="claim"
-                  icon={<Lightbulb size={10} />}
-                  label={t("aiChat.makeClaim")}
-                  generating={generating}
-                  onClick={() => handleGenerate("claim")}
-                />
-                <KnowledgeButton
-                  kind="atom"
-                  icon={<Sparkles size={10} />}
-                  label={t("aiChat.makeInsight")}
-                  generating={generating}
-                  onClick={() => handleGenerate("atom")}
-                />
-              </>
+            {hasMakeKnowledge && !done && !candidates && (
+              <KnowledgeButton
+                icon={<Sparkles size={10} />}
+                label={t("aiChat.makeKnowledge")}
+                busy={phase === "claims"}
+                onClick={handleGenerate}
+              />
             )}
-            {generating && (
+            {phase === "claims" && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground">
                 <Loader2 size={10} className="animate-spin" />
-                {t("aiChat.generatingCandidates")}
+                {t("aiChat.generatingClaims")}
               </span>
             )}
             {done && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 font-medium">
                 <Check size={10} />
-                {t(
-                  done.kind === "claim" ? "aiChat.candidatesSavedClaim" : "aiChat.candidatesSavedAtom",
-                  { n: String(done.count) },
-                )}
+                {t("aiChat.candidatesSaved", { n: String(done.count) })}
               </span>
             )}
           </div>
-          {emptyKind && (
+          {empty && (
             <div className="text-xs text-muted-foreground px-1.5 py-0.5">
               {t("aiChat.candidatesEmpty")}
             </div>
@@ -743,7 +748,7 @@ function ChatBubble({
           {candidates && (
             <CandidatePicker
               candidates={candidates}
-              kind={candidateKind}
+              loadingMore={phase === "atoms"}
               selected={selected}
               adopting={adopting}
               onToggle={toggleSelected}
@@ -759,40 +764,54 @@ function ChatBubble({
   );
 }
 
-// 「知見にする / 洞察にする」ボタン。押すと候補生成パイプラインが走るため、
-// 生成中はスピナー + disable（どちらか生成中は両方押せない）。
+// 「ナレッジにする」ボタン。押すと候補生成パイプラインが走るため、生成中はスピナー + disable。
 function KnowledgeButton({
-  kind,
   icon,
   label,
-  generating,
+  busy,
   onClick,
 }: {
-  kind: "claim" | "atom";
   icon: ReactNode;
   label: string;
-  generating: null | "claim" | "atom";
+  busy: boolean;
   onClick: () => void;
 }) {
-  const disabled = generating !== null;
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
+      disabled={busy}
       title={label}
       className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      {generating === kind ? <Loader2 size={10} className="animate-spin" /> : icon}
+      {busy ? <Loader2 size={10} className="animate-spin" /> : icon}
       {label}
     </button>
   );
 }
 
-// 候補の複数選択 UI。押した「知見/洞察にする」の直下にインライン展開し、
-// チェックボックスで選んだ候補だけを保存する（既定で全選択）。
+// 候補ごとの kind バッジ（知見 / 洞察）。押す前に二択を迫らず、候補に出てから種別を示す。
+function KindBadge({ kind }: { kind: "claim" | "atom" }) {
+  const t = useT();
+  const isClaim = kind === "claim";
+  return (
+    <span
+      className={`shrink-0 inline-flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium ${
+        isClaim
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+          : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+      }`}
+    >
+      {isClaim ? <Lightbulb size={9} /> : <Sparkles size={9} />}
+      {t(isClaim ? "wikiList.kindClaim" : "wikiList.kindAtom")}
+    </span>
+  );
+}
+
+// 候補の複数選択 UI。押した「ナレッジにする」の直下にインライン展開し、
+// 知見 + 洞察を 1 リストにバッジ付きで混ぜ、選んだ候補だけを保存する（既定で全選択）。
 function CandidatePicker({
   candidates,
-  kind,
+  loadingMore,
   selected,
   adopting,
   onToggle,
@@ -802,7 +821,7 @@ function CandidatePicker({
   onCancel,
 }: {
   candidates: KnowledgeCandidate[];
-  kind: "claim" | "atom";
+  loadingMore: boolean;
   selected: Set<string>;
   adopting: boolean;
   onToggle: (key: string) => void;
@@ -817,7 +836,7 @@ function CandidatePicker({
     <div className="w-full rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-2 flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-          {t(kind === "claim" ? "aiChat.candidatesTitleClaim" : "aiChat.candidatesTitleAtom")}
+          {t("aiChat.candidatesTitle")}
         </span>
         <div className="flex gap-2 text-[11px] shrink-0">
           <button onClick={onSelectAll} disabled={adopting} className="text-emerald-700 hover:underline disabled:opacity-50">
@@ -847,8 +866,11 @@ function CandidatePicker({
                   disabled={adopting}
                   className="mt-0.5 accent-emerald-600"
                 />
-                <span className="flex flex-col min-w-0">
-                  <span className="text-xs font-medium text-foreground break-words">{c.title}</span>
+                <span className="flex flex-col min-w-0 gap-0.5">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <KindBadge kind={c.kind} />
+                    <span className="text-xs font-medium text-foreground break-words min-w-0">{c.title}</span>
+                  </span>
                   {c.preview && (
                     <span className="text-[11px] text-muted-foreground line-clamp-2">{c.preview}</span>
                   )}
@@ -857,6 +879,12 @@ function CandidatePicker({
             </li>
           );
         })}
+        {loadingMore && (
+          <li className="flex items-center gap-1 px-1.5 py-1 text-[11px] text-muted-foreground">
+            <Loader2 size={10} className="animate-spin" />
+            {t("aiChat.generatingInsights")}
+          </li>
+        )}
       </ul>
       <div className="flex gap-2 items-center pt-0.5">
         <button

@@ -1973,19 +1973,24 @@ function NoteEditorInner({
   //   2. 選んだ kind に合わせて LLM で「タイトル + 本文」に整形（他の知見/洞察と体裁を揃える）
   //   3. 整形 markdown を editor.tryParseMarkdownToBlocks でブロック化（テーブル・@ が正しく展開）
   //   4. verb が精査した引用ノートを「引用元」として @<title> + reference リンクで引き継ぐ
-  // 「知見にする / 洞察にする」候補生成（Loop M2 改）。
+  // 「ナレッジにする」候補生成（Loop M2 改）。
   //   旧実装は AI 回答を 1 ノートに即整形して保存していたが、「押すまで何が出るか
   //   見えない」ため押しにくかった。今は AI 回答を ingester / atomizer パイプラインに
   //   通して**複数候補**を作り、ユーザーが選んだものだけを保存する（脱ブラックボックス化、
   //   [[project-knowledge-simplicity-philosophy]]）。砂時計の首＝人間の選択は維持される。
   //
-  //   - claim（知見）: AI 回答を ingester（chat: prefix = document-mode で命題を多めに抽出）に
-  //     通し、kind === "claim" の候補を全部出す。
-  //   - atom（洞察）: ingester で知見を取り出し、それを atomizer に渡して一般化候補を出す。
-  //     中間 claim は保存しない（揮発）ので、候補 atom の derivedFromClaims は空に倒し、
-  //     由来は現ノート（derivedFromNotes）に記録する。
+  //   knowledge は 知見(claim) と 洞察(atom) を 1 リストに混ぜて出す（kind は候補ごとの
+  //   バッジで示す。押す前に二択を迫らない = kind 版「押すまで見えない」の解消）。
+  //   - 知見(claim): AI 回答を ingester（chat: prefix = document-mode で命題を多めに抽出）に
+  //     通す。ingester は一度だけ走らせ、知見候補ができた時点で onClaimsReady で即返す
+  //     （プログレッシブ表示。洞察は時間がかかるので待たせない）。
+  //   - 洞察(atom): 抽出した知見を atomizer に渡して一般化候補を作る。中間 claim は保存しない
+  //     （揮発）ので derivedFromClaims は空に倒し、由来は現ノート（derivedFromNotes）に記録する。
   const handleGenerateKnowledgeCandidates = useCallback(
-    async (answer: string, kind: "claim" | "atom"): Promise<KnowledgeCandidate[]> => {
+    async (
+      answer: string,
+      onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
+    ): Promise<KnowledgeCandidate[]> => {
       const cleaned = cleanSuggestionText(answer);
       const model = getSelectedModel() || null;
       const noteTitle = initialDoc?.title || "Chat";
@@ -1997,7 +2002,7 @@ function NoteEditorInner({
       // verb が精査した引用知見（現ノートの reference リンク先）を PROV の素地として温存する。
       const citedIds = collectCitedNotes().map((n) => n.id);
 
-      // 1) ingester で AI 回答から知見(claim)を抽出（chat: prefix で document-mode）。
+      // 1) ingester で AI 回答から知見(claim)を抽出（chat: prefix で document-mode）。一度だけ。
       const ingestRes = await ingestFromChat(
         [{ role: "assistant", content: cleaned }],
         noteTitle,
@@ -2007,66 +2012,74 @@ function NoteEditorInner({
       const claimOutputs = ingestRes.wikis.filter((w) => w.kind === "claim");
       if (claimOutputs.length === 0) return [];
 
-      if (kind === "claim") {
-        return claimOutputs.map((w) => {
-          const baseDoc = buildWikiDocument(
-            w,
-            fileId ?? "",
-            ingestRes.model ?? model,
-            noteTitle,
-            existingWikiTitles,
-            "ja",
-          );
-          const doc: GraphiumDocument = citedIds.length
-            ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
-            : baseDoc;
-          return {
-            key: crypto.randomUUID(),
-            kind,
-            title: doc.title,
-            preview: extractBodyPreview(doc, 160),
-            doc,
-          };
-        });
-      }
-
-      // 2) atom（洞察）: 抽出した知見を atomizer に渡して一般化候補を作る。
-      const snapshots: ClaimSnapshot[] = claimOutputs.map((w, i) => ({
-        id: `eph-claim-${i}`,
-        title: w.title,
-        bodyPreview: w.sections.map((s) => s.content).join("\n\n").slice(0, 240),
-        level: w.level,
-        relatedClaims: [],
-        sourceSummaryPreviews: [],
-        atomType: undefined,
-      }));
-      const atomRes = await atomizeConcepts(snapshots, "ja", {
-        model: model ?? getChatSynthesisModelName() ?? undefined,
-      });
-      return atomRes.atoms.map((a) => {
-        // 中間 claim は揮発（保存しない）ため、ephemeral id を指す derivedFromClaims は捨てる
-        // （リンク切れ防止）。由来は現ノート（derivedFromNotes）に記録する。
-        const baseDoc = buildAtomDocument(
-          { ...a, derivedFromClaims: [], derivedFromConceptTitles: [] },
-          atomRes.model ?? model,
+      // 知見候補を組み立てて即コールバック（プログレッシブ表示）。
+      const claimCandidates: KnowledgeCandidate[] = claimOutputs.map((w) => {
+        const baseDoc = buildWikiDocument(
+          w,
+          fileId ?? "",
+          ingestRes.model ?? model,
+          noteTitle,
+          existingWikiTitles,
           "ja",
         );
-        const doc: GraphiumDocument = {
-          ...baseDoc,
-          wikiMeta: {
-            ...baseDoc.wikiMeta!,
-            derivedFromNotes: fileId ? [fileId] : [],
-            ...(citedIds.length ? { citedKnowledgeIds: citedIds } : {}),
-          },
-        };
+        const doc: GraphiumDocument = citedIds.length
+          ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
+          : baseDoc;
         return {
           key: crypto.randomUUID(),
-          kind,
+          kind: "claim",
           title: doc.title,
           preview: extractBodyPreview(doc, 160),
           doc,
         };
       });
+      onClaimsReady?.(claimCandidates);
+
+      // 2) 抽出した知見を atomizer に渡して洞察(atom)候補を作る。
+      //    洞察生成が失敗しても知見候補は返す（知見だけでも価値がある）。
+      let atomCandidates: KnowledgeCandidate[] = [];
+      try {
+        const snapshots: ClaimSnapshot[] = claimOutputs.map((w, i) => ({
+          id: `eph-claim-${i}`,
+          title: w.title,
+          bodyPreview: w.sections.map((s) => s.content).join("\n\n").slice(0, 240),
+          level: w.level,
+          relatedClaims: [],
+          sourceSummaryPreviews: [],
+          atomType: undefined,
+        }));
+        const atomRes = await atomizeConcepts(snapshots, "ja", {
+          model: model ?? getChatSynthesisModelName() ?? undefined,
+        });
+        atomCandidates = atomRes.atoms.map((a) => {
+          // 中間 claim は揮発（保存しない）ため、ephemeral id を指す derivedFromClaims は捨てる
+          // （リンク切れ防止）。由来は現ノート（derivedFromNotes）に記録する。
+          const baseDoc = buildAtomDocument(
+            { ...a, derivedFromClaims: [], derivedFromConceptTitles: [] },
+            atomRes.model ?? model,
+            "ja",
+          );
+          const doc: GraphiumDocument = {
+            ...baseDoc,
+            wikiMeta: {
+              ...baseDoc.wikiMeta!,
+              derivedFromNotes: fileId ? [fileId] : [],
+              ...(citedIds.length ? { citedKnowledgeIds: citedIds } : {}),
+            },
+          };
+          return {
+            key: crypto.randomUUID(),
+            kind: "atom",
+            title: doc.title,
+            preview: extractBodyPreview(doc, 160),
+            doc,
+          };
+        });
+      } catch (err) {
+        console.error("洞察候補の生成に失敗:", err);
+      }
+
+      return [...claimCandidates, ...atomCandidates];
     },
     [collectCitedNotes, fileId, initialDoc?.title, noteIndex],
   );
