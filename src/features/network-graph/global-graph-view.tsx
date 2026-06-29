@@ -30,7 +30,14 @@ type LayerId = "source" | "note" | "crystal" | "synth";
 /** NoteNode から kind を判定する。 */
 function kindOf(n: NoteNode): GraphKind {
   if (n.external) return "external";
-  if (n.isWiki) return (n.wikiKind as GraphKind) ?? "summary";
+  if (n.isWiki) {
+    const k = n.wikiKind;
+    if (k === "summary" || k === "claim" || k === "atom" || k === "synthesis") return k;
+    // 撤退済み / 未知の wikiKind（旧 meta-atom 等）は summary 扱いにフォールバックする。
+    // ここで GraphKind 外の値を返すと KIND_LAYER 引きが undefined になり、層フィルタで
+    // 常に弾かれて silent に消える（meta-atom が見えなかった原因）。
+    return "summary";
+  }
   return "note";
 }
 
@@ -346,21 +353,29 @@ export function GlobalGraphCanvas({
 
 // ── 凡例・トグル・層チップ・列ヘッダ ──
 
-function Legend() {
+// 凡例は「今画面に出ているサブグラフ」駆動: 実際に描画中の kind / relation だけ出す。
+// 孤立や層フィルタで synthesis(発想) 等が 1 つも見えなければ凡例にも出さない＝
+// 画面と凡例が常に一致する。撤退済み kind の常設表示で混乱させないための作り。
+function Legend({ data }: { data: NoteGraphData }) {
   const t = useT();
-  const kindItems: { kind: GraphKind; label: string }[] = [
+  const presentKinds = useMemo(() => new Set(data.nodes.map(kindOf)), [data]);
+  const presentRels = useMemo(
+    () => new Set(data.edges.map((e) => e.relation ?? "derived")),
+    [data],
+  );
+  const kindItems = ([
     { kind: "external", label: t("globalGraph.kind.external") },
     { kind: "note", label: t("globalGraph.kind.note") },
     { kind: "claim", label: t("knowledge.kind.claim") },
     { kind: "atom", label: t("knowledge.kind.atom") },
     { kind: "summary", label: t("knowledge.kind.summary") },
     { kind: "synthesis", label: t("knowledge.kind.synthesis") },
-  ];
-  const relItems: { rel: EdgeRelation; label: string; dashed: boolean }[] = [
+  ] as { kind: GraphKind; label: string }[]).filter((i) => presentKinds.has(i.kind));
+  const relItems = ([
     { rel: "derived", label: t("globalGraph.relation.derived"), dashed: false },
     { rel: "used", label: t("globalGraph.relation.used"), dashed: false },
     { rel: "reference", label: t("globalGraph.relation.reference"), dashed: true },
-  ];
+  ] as { rel: EdgeRelation; label: string; dashed: boolean }[]).filter((i) => presentRels.has(i.rel));
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
       {kindItems.map(({ kind, label }) => (
@@ -379,7 +394,7 @@ function Legend() {
           {label}
         </span>
       ))}
-      <span className="w-px h-3 bg-border" />
+      {kindItems.length > 0 && relItems.length > 0 && <span className="w-px h-3 bg-border" />}
       {relItems.map(({ rel, label, dashed }) => (
         <span key={rel} className="flex items-center gap-1">
           <span
@@ -397,11 +412,16 @@ function Legend() {
   );
 }
 
+// 各層のチップに「その層に属するノード総数」を出す。
+// 統合(60)のように数はあるのに孤立で非表示、という状態をユーザーが把握できる。
+// 総数 0 の層はグレーアウトして押せなくする（その層がデータに無いことが分かる）。
 function LayerChips({
   visible,
+  counts,
   onToggle,
 }: {
   visible: Set<LayerId>;
+  counts: Record<LayerId, number>;
   onToggle: (id: LayerId) => void;
 }) {
   const t = useT();
@@ -409,17 +429,23 @@ function LayerChips({
     <div className="flex flex-wrap gap-1.5">
       {ALL_LAYERS.map((id) => {
         const on = visible.has(id);
+        const count = counts[id] ?? 0;
+        const empty = count === 0;
         return (
           <button
             key={id}
-            onClick={() => onToggle(id)}
+            onClick={() => !empty && onToggle(id)}
+            disabled={empty}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors ${
-              on
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-muted text-muted-foreground border-border"
+              empty
+                ? "bg-muted/50 text-muted-foreground/40 border-border/50 cursor-default"
+                : on
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted text-muted-foreground border-border"
             }`}
           >
             {t(`globalGraph.layer.${id}` as any)}
+            <span className="ml-1 opacity-70">{count}</span>
           </button>
         );
       })}
@@ -455,6 +481,13 @@ export function GlobalGraphOverlay({
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
   }, [data, visible, hideRefs, showIsolated]);
+
+  // 各層のノード総数（孤立含む・フィルタ前）。チップの件数表示に使う。
+  const layerCounts = useMemo(() => {
+    const m: Record<LayerId, number> = { source: 0, note: 0, crystal: 0, synth: 0 };
+    for (const n of data.nodes) m[KIND_LAYER[kindOf(n)]]++;
+    return m;
+  }, [data]);
 
   const toggleLayer = (id: LayerId) =>
     setVisible((prev) => {
@@ -497,7 +530,7 @@ export function GlobalGraphOverlay({
           {t("globalGraph.showIsolated")}
           {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
         </label>
-        <LayerChips visible={visible} onToggle={toggleLayer} />
+        <LayerChips visible={visible} counts={layerCounts} onToggle={toggleLayer} />
         <span className="ml-auto flex items-center gap-3">
           <span className="text-[11px] text-muted-foreground">
             {shown.nodes.length} / {shown.edges.length}
@@ -513,7 +546,7 @@ export function GlobalGraphOverlay({
       </div>
       {/* 凡例 */}
       <div className="px-4 py-2 border-b border-border">
-        <Legend />
+        <Legend data={shown} />
       </div>
       {/* キャンバス */}
       <div className="flex-1 min-h-0">
