@@ -388,10 +388,14 @@ export function buildGlobalGraph(
 ): NoteGraphData {
   // ゴミ箱・アーカイブを除いた「見える」エントリだけを対象にする
   // （2ホップグラフの files 集合＝trash 除外、と揃える）。
-  // 加えて summary（要約）はグラフ化しない: 要約はノートを要約しただけの派生物で、
-  // 関係グラフ上のノードとしての価値が薄く、統合(synthesis)層に同居すると意味的に紛らわしい。
+  // 加えて、グラフ化する Knowledge は claim / atom のみに限定する。
+  // summary（要約）はノートの派生物で関係グラフ上の価値が薄く、synthesis（発想）と
+  // 旧 meta-atom は撤退済みレイヤ。これらは除外して「原料 → ノート → 結晶(claim/atom)」に絞る。
   const entries = index.notes.filter(
-    (e) => !e.deletedAt && !e.archivedAt && e.wikiKind !== "summary",
+    (e) =>
+      !e.deletedAt &&
+      !e.archivedAt &&
+      !(e.wikiKind && e.wikiKind !== "claim" && e.wikiKind !== "atom"),
   );
   const validIds = new Set(entries.map((e) => e.noteId));
 

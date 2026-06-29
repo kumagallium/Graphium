@@ -1280,6 +1280,5 @@ export const ja: Record<string, string> = {
   "globalGraph.layer.source": "原料",
   "globalGraph.layer.note": "ノート",
   "globalGraph.layer.crystal": "結晶",
-  "globalGraph.layer.synth": "統合",
   "globalGraph.empty": "まだノートがありません",
 };

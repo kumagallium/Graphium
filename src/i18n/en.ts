@@ -1281,6 +1281,5 @@ export const en: Record<string, string> = {
   "globalGraph.layer.source": "Sources",
   "globalGraph.layer.note": "Notes",
   "globalGraph.layer.crystal": "Claim · Insight",
-  "globalGraph.layer.synth": "Idea",
   "globalGraph.empty": "No notes to show yet",
 };

@@ -51,7 +51,10 @@ const KIND_LAYER: Record<GraphKind, LayerId> = {
   synthesis: "synth",
 };
 
-const ALL_LAYERS: LayerId[] = ["source", "note", "crystal", "synth"];
+// 表示する層は 原料 → ノート → 結晶(claim/atom) の 3 つ。
+// 統合(synth)層は撤退済み kind（summary/synthesis/meta-atom）専用だったが、
+// それらを buildGlobalGraph で除外したので層自体を廃止する。
+const ALL_LAYERS: LayerId[] = ["source", "note", "crystal"];
 
 /**
  * 層フィルタ・参照フィルタ・孤立ノード除外を適用したサブグラフを返す。
@@ -283,7 +286,14 @@ export function GlobalGraphCanvas({
       minZoom: 0.1,
       maxZoom: 3,
       boxSelectionEnabled: false,
+      // 俯瞰用の読み取り専用グラフ。ノードはドラッグで動かせないようにし
+      // （autoungrabify）、背景でもノード上でもドラッグでパンできるようにする。
+      // クリック（tap）はナビゲーションに使うので、ドラッグと自然に共存する。
+      userPanningEnabled: true,
+      autoungrabify: true,
     });
+    // パン可能であることを示すため掴むカーソルにする。
+    containerRef.current.style.cursor = "grab";
 
     const lay = cy.layout({
       name: "fcose",
@@ -313,7 +323,7 @@ export function GlobalGraphCanvas({
     });
     cy.on("mouseout", "node", () => {
       cy.elements().removeClass("faded hover hover-connected");
-      containerRef.current!.style.cursor = "default";
+      containerRef.current!.style.cursor = "grab";
     });
 
     // ノードクリック → ナビゲーション（2 ホップグラフ view.tsx と同じ振り分け）
