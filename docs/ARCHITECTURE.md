@@ -92,7 +92,7 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `example-hello`, `pdf-viewer`). Inline content (entity / agent
+  `callout`, `example-hello`, `pdf-viewer`). Inline content (entity / agent
   highlights) lives under `src/features/inline-label/`.
 - Editor configuration is composed in `src/note-app.tsx`.
 

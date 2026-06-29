@@ -144,6 +144,10 @@ export const en: Record<string, string> = {
   "editor.blockLabel.tableHint": "Each row → one Entity",
   "editor.blockLabel.mediaHint": "Whole block = one Entity",
   "editor.blockLabel.headingHint": "Step / phase boundary",
+  "editor.align": "Align",
+  "editor.align.left": "Align left",
+  "editor.align.center": "Align center",
+  "editor.align.right": "Align right",
   // ── 関係指定ピッカー（共通） ──
   "linking.title": "Link & merge",
   "linking.target": "Target",
@@ -317,6 +321,8 @@ export const en: Record<string, string> = {
   "slash.helloSub": "Insert a sample custom block",
   "slash.template": "Template",
   "slash.templateSub": "Insert a plan or experiment template",
+  "slash.callout": "Callout",
+  "slash.calloutSub": "Insert a note box with an emoji icon",
 
   // ── テンプレート ──
   "template.slash.title": "Template",

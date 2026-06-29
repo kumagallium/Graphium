@@ -8,15 +8,16 @@ import { createPortal } from "react-dom";
 import {
   AddBlockButton,
   DragHandleButton,
-  RemoveBlockItem,
   BlockColorsItem,
   SideMenu,
 } from "@blocknote/react";
+import { DeleteBlockMenuItem, AlignmentMenuItems } from "../../components/side-menu";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { SandboxEditor } from "../../base/editor";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
+import { calloutSlashItem } from "../../blocks/callout";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -97,8 +98,9 @@ function SidePeekSideMenu() {
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
-        <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
+        <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
+        <AlignmentMenuItems />
       </DragHandleButton>
     </SideMenu>
   );
@@ -764,6 +766,7 @@ function SidePeekInner({
                   ...buildLabelSlashMenuItems(),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
+                  calloutSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}

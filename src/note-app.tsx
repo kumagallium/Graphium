@@ -8,6 +8,7 @@ import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
@@ -2673,7 +2674,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

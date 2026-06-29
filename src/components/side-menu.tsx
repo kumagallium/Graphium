@@ -5,13 +5,13 @@ import { useEffect } from "react";
 import {
   AddBlockButton,
   DragHandleButton,
-  RemoveBlockItem,
   BlockColorsItem,
   SideMenu,
   useBlockNoteEditor,
   useExtensionState,
   useComponentsContext,
 } from "@blocknote/react";
+import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
@@ -291,6 +291,109 @@ function BlockLabelMenuItems() {
   );
 }
 
+// ──────────────────────────────────────────────
+// DragHandle メニュー内: ブロック削除
+//
+// BlockNote 標準の <RemoveBlockItem> は配布版デスクトップ（WKWebView）で
+// 「押しても消えない」報告があったため、他のカスタム項目（派生 / AI）と
+// 同じく明示的な onClick + editor.removeBlocks に置き換える。
+// removeBlocks は段落・テーブル・メディア・唯一のブロックすべてで動作する
+// （唯一のブロックは空ブロックに置換される）ことを実機で確認済み。
+// ──────────────────────────────────────────────
+export function DeleteBlockMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block) return null;
+
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => {
+        editor.removeBlocks([block.id]);
+      }}
+    >
+      {t("common.delete")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+// ──────────────────────────────────────────────
+// DragHandle メニュー内: 配置（左 / 中央 / 右）
+//
+// 配置揃えはテキスト選択時の浮上ツールバーにもあるが、見出し・画像・Callout
+// などを「選択せずに」揃えたい場面が多く、Notion 同様ブロックメニューからも
+// 操作できるようにする（発見性の改善）。
+// textAlignment プロパティを持つブロック（段落 / 見出し / 画像 / 動画 /
+// Callout）でのみ表示する。テーブル等は BlockNote が textAlignment を
+// サポートしないため項目を出さない。
+// ──────────────────────────────────────────────
+const ALIGN_OPTIONS: {
+  value: "left" | "center" | "right";
+  labelKey: string;
+  Icon: typeof AlignLeft;
+}[] = [
+  { value: "left", labelKey: "editor.align.left", Icon: AlignLeft },
+  { value: "center", labelKey: "editor.align.center", Icon: AlignCenter },
+  { value: "right", labelKey: "editor.align.right", Icon: AlignRight },
+];
+
+export function AlignmentMenuItems() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block) return null;
+  // textAlignment プロパティを持つブロックだけ配置メニューを出す
+  const supportsAlign = Boolean(
+    (editor as any).schema?.blockSchema?.[block.type]?.propSchema?.textAlignment,
+  );
+  if (!supportsAlign) return null;
+
+  const current = (block.props as any)?.textAlignment ?? "left";
+
+  return (
+    <Components.Generic.Menu.Root position="right" sub={true}>
+      <Components.Generic.Menu.Trigger sub={true}>
+        <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
+          {t("editor.align")}
+        </Components.Generic.Menu.Item>
+      </Components.Generic.Menu.Trigger>
+      <Components.Generic.Menu.Dropdown sub={true} className="bn-menu-dropdown">
+        {ALIGN_OPTIONS.map(({ value, labelKey, Icon }) => {
+          const active = current === value;
+          return (
+            <Components.Generic.Menu.Item
+              key={value}
+              className="bn-menu-item"
+              onClick={() => {
+                editor.updateBlock(block, {
+                  props: { textAlignment: value },
+                } as any);
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <Icon size={14} />
+                <span style={{ fontWeight: active ? 700 : 400 }}>{t(labelKey)}</span>
+                {active && <span style={{ marginLeft: 4, opacity: 0.7 }}>✓</span>}
+              </span>
+            </Components.Generic.Menu.Item>
+          );
+        })}
+      </Components.Generic.Menu.Dropdown>
+    </Components.Generic.Menu.Root>
+  );
+}
+
 export function NoteSideMenu() {
   const t = useT();
   useFixDropdownPosition();
@@ -298,8 +401,9 @@ export function NoteSideMenu() {
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
-        <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
+        <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
+        <AlignmentMenuItems />
         <BlockLabelMenuItems />
         <DeriveNoteMenuItem />
         <AiAssistantMenuItem />
