@@ -64,10 +64,19 @@ export function resolveModelConfig(
   // 従来パス: サーバー側のモデル設定（Node モード）
   if (getServerMode() === "vercel") return undefined;
 
-  let config = getDefaultModel();
+  // modelName 指定があるのに見つからない場合、getDefaultModel()（= 登録配列の先頭）へ
+  // 黙ってフォールバックすると、ユーザーが選んだのとは別の provider / 課金モデルで実行され、
+  // 意図しない課金や認証エラーにつながる。解決できないことを明示するため undefined を返す
+  // （呼び出し側の各ルートが `if (!modelConfig)` で「モデル未登録」エラーに落とす）。
   if (options?.modelName) {
-    const models = listModels();
-    config = models.find((m) => m.name === options.modelName) ?? config;
+    const found = listModels().find((m) => m.name === options.modelName);
+    if (!found) {
+      console.warn(
+        `[header-model] requested model "${options.modelName}" not found; refusing silent fallback to default model`,
+      );
+      return undefined;
+    }
+    return found;
   }
-  return config;
+  return getDefaultModel();
 }

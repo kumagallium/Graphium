@@ -51,7 +51,41 @@ export type ToolCallRecord = {
  * tools 定義を system prompt に埋め込んで `<tool_call>...</tool_call>` ベースのテキスト応答を
  * パースする fallback ループに切り替える。
  */
+/**
+ * LLM 呼び出しで生じた認証エラー（401 / authentication_error）を、ユーザーが次に
+ * 何をすべきか分かる日本語メッセージへ変換する。認証エラーでなければ null を返す。
+ * 全 AI 機能（翻訳・Wiki・Chat 等）は runAgentLoop を通るため、ここ 1 箇所で導線を集約できる。
+ */
+export function describeAuthError(err: unknown, provider?: string): string | null {
+  const e = err as { statusCode?: number; status?: number; message?: string } | undefined;
+  const status = e?.statusCode ?? e?.status;
+  const msg = String(e?.message ?? err ?? "").toLowerCase();
+  const isAuth =
+    status === 401 ||
+    msg.includes("authentication_error") ||
+    msg.includes("invalid authentication") ||
+    msg.includes("unauthorized") ||
+    /\b401\b/.test(msg);
+  if (!isAuth) return null;
+  if (provider === "claude-subscription") {
+    // サブスク（Claude Code CLI 経由）は OAuth セッション切れが原因。API キー再設定では直らない。
+    return "Claude のサブスク認証が切れています。ターミナルで `claude` を実行して再ログインし、Graphium を再起動してから、もう一度お試しください。";
+  }
+  return "モデルの API キーが無効か期限切れです。Settings → AI Setup でキーを確認してください。";
+}
+
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
+  try {
+    return await runAgentLoopInner(params);
+  } catch (err) {
+    // 認証エラー（401）だけ provider 別の導線メッセージへ変換。それ以外はそのまま投げ直す。
+    const friendly = describeAuthError(err, params.modelConfig?.provider);
+    if (friendly) throw new Error(friendly);
+    throw err;
+  }
+}
+
+async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult> {
   // ノート本文や Wiki context を文字数で切り詰めた際に生じる lone surrogate（壊れたサロゲートペア）を
   // ここで無害化する。これを残したまま JSON.stringify すると Anthropic API（Python 側）が
   // 「no low surrogate in string」で 400 を返すため、API 境界の手前で一括サニタイズする。
