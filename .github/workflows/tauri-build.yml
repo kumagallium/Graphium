@@ -150,6 +150,33 @@ jobs:
           includeUpdaterJson: false
           args: --target ${{ matrix.target }}
 
+      # tauri-action はインストーラ（.exe / .msi）はリリースに上げるが、Windows の
+      # NSIS updater バンドル（-setup.nsis.zip）は上げない（v0.16.7 で実害: latest.json
+      # の windows-x86_64 が署名空＋存在しない URL を指し、自動更新が壊れた）。
+      # macOS は tauri-action が .app.tar.gz を _aarch64 付きの正しい名前で上げるので
+      # 触らない（ここで再アップすると別名のゴミ資産になる）。Windows の .nsis.zip だけ
+      # 明示アップロードして generate-updater-json が拾えるようにする。
+      # ローカル名 Graphium_<ver>_x64-setup.nsis.zip = 期待アセット名で一致する。
+      - name: Upload Windows NSIS updater bundle to release
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.resolve-release.outputs.tag }}"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
+          shopt -s nullglob
+          ZIPS=("${BUNDLE_DIR}"/*-setup.nsis.zip)
+          if [ ${#ZIPS[@]} -eq 0 ]; then
+            echo "::error::No NSIS updater bundle (-setup.nsis.zip) found under ${BUNDLE_DIR}. createUpdaterArtifacts が無効か、NSIS ターゲットが未ビルドの可能性。"
+            exit 1
+          fi
+          for f in "${ZIPS[@]}"; do
+            echo "Uploading Windows updater bundle: $f"
+            gh release upload "$TAG" "$f" --clobber --repo "${{ github.repository }}"
+          done
+
   # 全ビルド完了後、リリースアセットをダウンロードして署名 → latest.json 生成
   generate-updater-json:
     needs: [resolve-release, build]
@@ -196,7 +223,7 @@ jobs:
 
       - name: Build latest.json
         run: |
-          set -e
+          set -euo pipefail
           TAG="${{ needs.resolve-release.outputs.tag }}"
           VERSION="${TAG#v}"
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
@@ -208,29 +235,45 @@ jobs:
             fi
           }
 
-          DARWIN_AARCH64_SIG=$(read_sig "Graphium_aarch64.app.tar.gz")
-          WINDOWS_X86_64_SIG=$(read_sig "Graphium_${VERSION}_x64-setup.nsis.zip")
+          # 期待するプラットフォーム → updater バンドルのアセット名。
+          declare -A ASSET_OF=(
+            ["darwin-aarch64"]="Graphium_aarch64.app.tar.gz"
+            ["windows-x86_64"]="Graphium_${VERSION}_x64-setup.nsis.zip"
+          )
 
-          cat > latest.json <<EOF
-          {
-            "version": "${VERSION}",
-            "notes": "See the changelog for details.",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "${DARWIN_AARCH64_SIG}",
-                "url": "${BASE_URL}/Graphium_aarch64.app.tar.gz"
-              },
-              "windows-x86_64": {
-                "signature": "${WINDOWS_X86_64_SIG}",
-                "url": "${BASE_URL}/Graphium_${VERSION}_x64-setup.nsis.zip"
-              }
-            }
-          }
-          EOF
+          PLATFORMS_JSON="{}"
+          MISSING=""
+          for KEY in "${!ASSET_OF[@]}"; do
+            ASSET="${ASSET_OF[$KEY]}"
+            SIG="$(read_sig "$ASSET")"
+            if [ -z "$SIG" ]; then
+              # 署名が取れない = updater バンドルが欠落 or 署名失敗。
+              # 壊れたエントリ（署名空＋存在しない URL）を絶対に latest.json へ
+              # 書かない。該当プラットフォームは除外し、後段の検証で fail させる。
+              echo "::warning::No signature for ${KEY} (${ASSET}); excluding it from latest.json"
+              MISSING="${MISSING} ${KEY}"
+              continue
+            fi
+            PLATFORMS_JSON="$(jq -n \
+              --argjson cur "$PLATFORMS_JSON" \
+              --arg k "$KEY" \
+              --arg sig "$SIG" \
+              --arg url "${BASE_URL}/${ASSET}" \
+              '$cur + {($k): {signature: $sig, url: $url}}')"
+          done
+
+          jq -n \
+            --arg v "$VERSION" \
+            --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson p "$PLATFORMS_JSON" \
+            '{version: $v, notes: "See the changelog for details.", pub_date: $d, platforms: $p}' \
+            > latest.json
 
           echo "Generated latest.json:"
           cat latest.json
+
+          # 欠落プラットフォームを後段の検証ステップへ引き継ぐ。
+          echo "MISSING_PLATFORMS=${MISSING# }" >> "$GITHUB_ENV"
 
       - name: Upload latest.json to release
         env:
@@ -318,6 +361,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run "Deploy to GitHub Pages" --ref main --repo "${{ github.repository }}"
+
+      # 再発防止ガードレール: 期待する updater プラットフォームが latest.json から
+      # 欠落していたら、ここで明示的に fail させて notify-on-failure を発火させる。
+      # 有効なプラットフォーム（例: macOS）の latest.json は前段で既に公開済みなので、
+      # それらの自動更新は止めずに、壊れている方（例: Windows）だけを可視化できる。
+      # これにより「latest.json は更新されたのに一部 OS の自動更新が静かに壊れている」
+      # 状態（v0.16.7 の Windows）を二度と見逃さない。
+      - name: Verify all updater platforms are present
+        run: |
+          set -euo pipefail
+          if [ -n "${MISSING_PLATFORMS:-}" ]; then
+            echo "::error::Updater bundle missing for:${MISSING_PLATFORMS}. latest.json was published WITHOUT these platforms, so their auto-update is broken. Check that the 'Upload updater bundles to release' step uploaded the -setup.nsis.zip / .app.tar.gz for each target."
+            exit 1
+          fi
+          echo "All expected updater platforms are present in latest.json."
 
   # build / generate-updater-json のいずれかが失敗したら Issue を起票して可視化する。
   # 目的: ビルド失敗が「静かに」起き、数日後に「アプリが更新されない」で初めて気づく
