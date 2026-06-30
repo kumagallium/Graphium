@@ -168,7 +168,7 @@ describe("parseAtomizerOutput — portability gates removed (single rule = promp
 
 describe("buildAtomizerUserMessage — minimum-2 gate removed (single source allowed)", () => {
   const oneClaim = [
-    { id: "c1", title: "電気陰性度差が小さいほどキャリア移動度が高い", bodyPreview: "均質な構成ほど流れが妨げられにくい。" },
+    { id: "c1", title: "電気陰性度差が小さいほどキャリア移動度が高い", bodyPreview: "均質な構成ほど流れが妨げられにくい。", relatedClaims: [] },
   ];
 
   it("builds a real atomization prompt from a single Claim (no 'minimum 2' short-circuit)", () => {
