@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Document, Page } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
-import "../../lib/pdfjs-config";
+import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
@@ -47,6 +47,9 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  // ピンチズーム中の即時プレビュー用。ジェスチャ中はこの要素を CSS transform で
+  // スケールし、確定時に zoom state へ反映して再ラスタライズする。
+  const pagesWrapperRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -274,6 +277,109 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
   }, []);
   const handleZoomReset = useCallback(() => setZoom(1), []);
 
+  // ── ピンチズーム（トラックパッド） ──
+  // macOS のピンチは届き方が 2 系統ある:
+  //   - ブラウザ版 (Chrome): `wheel` イベントの ctrlKey=true
+  //   - デスクトップ版 (Tauri = WKWebView): Safari の gesturestart/change/end
+  // 両方に対応する。26 ページ全部を毎フレーム再描画するとカクつくため、
+  // ジェスチャ中は wrapper を CSS transform でスケールして即時プレビューし、
+  // 指を離した時点で一度だけ zoom state に確定して綺麗に再ラスタライズする。
+  // ビューポート中央を固定点として、確定後にスクロール位置を補正する。
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    const wrapper = pagesWrapperRef.current;
+    if (!scrollArea || !wrapper || numPages === 0) return;
+
+    let live = 1; // ジェスチャ中の累積スケール
+    let anchor: { localX: number; localY: number; vw: number; vh: number } | null = null;
+    let commitTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const begin = () => {
+      const saRect = scrollArea.getBoundingClientRect();
+      const wRect = wrapper.getBoundingClientRect();
+      // ビューポート中央を wrapper ローカル座標（変形前）に変換し、変形の原点にする
+      const vcx = saRect.left + saRect.width / 2;
+      const vcy = saRect.top + saRect.height / 2;
+      anchor = {
+        localX: vcx - wRect.left,
+        localY: vcy - wRect.top,
+        vw: saRect.width,
+        vh: saRect.height,
+      };
+      wrapper.style.transformOrigin = `${anchor.localX}px ${anchor.localY}px`;
+    };
+
+    const applyLive = (scale: number) => {
+      // zoom * live が [MIN, MAX] に収まるよう live をクランプ
+      let s = scale;
+      if (zoom * s < ZOOM_MIN) s = ZOOM_MIN / zoom;
+      if (zoom * s > ZOOM_MAX) s = ZOOM_MAX / zoom;
+      live = s;
+      wrapper.style.transform = `scale(${s})`;
+    };
+
+    const commit = () => {
+      commitTimer = null;
+      const a = anchor;
+      const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * live * 100) / 100));
+      const ratio = newZoom / zoom;
+      wrapper.style.transform = "";
+      wrapper.style.transformOrigin = "";
+      live = 1;
+      anchor = null;
+      if (newZoom === zoom || !a) return;
+      setZoom(newZoom);
+      // 再ラスタライズ後にビューポート中央の固定点を復元する。
+      // ラスタライズは非同期なので rAF と短い遅延の二段で補正する。
+      const restore = () => {
+        scrollArea.scrollLeft = a.localX * ratio - a.vw / 2;
+        scrollArea.scrollTop = a.localY * ratio - a.vh / 2;
+      };
+      requestAnimationFrame(restore);
+      setTimeout(restore, 120);
+    };
+
+    const scheduleCommit = () => {
+      if (commitTimer) clearTimeout(commitTimer);
+      commitTimer = setTimeout(commit, 160);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return; // ピンチ以外（通常スクロール）は素通し
+      e.preventDefault();
+      if (!anchor) begin();
+      applyLive(live * Math.exp(-e.deltaY * 0.01));
+      scheduleCommit();
+    };
+
+    // Safari (WKWebView) の gesture イベント。TS の標準 lib に型が無いので any 経由。
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      begin();
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (!anchor) begin();
+      applyLive((e as unknown as { scale: number }).scale);
+    };
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      commit();
+    };
+
+    scrollArea.addEventListener("wheel", onWheel, { passive: false });
+    scrollArea.addEventListener("gesturestart", onGestureStart);
+    scrollArea.addEventListener("gesturechange", onGestureChange);
+    scrollArea.addEventListener("gestureend", onGestureEnd);
+    return () => {
+      scrollArea.removeEventListener("wheel", onWheel);
+      scrollArea.removeEventListener("gesturestart", onGestureStart);
+      scrollArea.removeEventListener("gesturechange", onGestureChange);
+      scrollArea.removeEventListener("gestureend", onGestureEnd);
+      if (commitTimer) clearTimeout(commitTimer);
+    };
+  }, [zoom, numPages]);
+
   if (error) {
     return (
       <div className="flex items-center justify-center text-muted-foreground text-sm">
@@ -404,32 +510,37 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
           background: "var(--color-surface)",
         }}
       >
-        <Document
-          file={blobUrl}
-          onLoadSuccess={onDocumentLoad}
-          onLoadError={onDocumentError}
-          loading={<div className="text-muted-foreground text-sm text-center py-8">読み込み中...</div>}
-        >
-          {numPages > 0 &&
-            Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
-              <div
-                key={pageNumber}
-                ref={(el) => registerPage(pageNumber, el)}
-                data-page-number={pageNumber}
-                style={{
-                  width: "fit-content",
-                  margin: "0 auto 12px",
-                }}
-              >
-                <Page
-                  pageNumber={pageNumber}
-                  width={pageWidth}
-                  renderTextLayer
-                  renderAnnotationLayer={false}
-                />
-              </div>
-            ))}
-        </Document>
+        {/* ピンチズーム中はこの wrapper を CSS transform でスケールする（即時プレビュー）。
+            確定時に transform を外し zoom（= Page の width）へ反映して再ラスタライズ。 */}
+        <div ref={pagesWrapperRef}>
+          <Document
+            file={blobUrl}
+            options={PDFJS_DOC_OPTIONS}
+            onLoadSuccess={onDocumentLoad}
+            onLoadError={onDocumentError}
+            loading={<div className="text-muted-foreground text-sm text-center py-8">読み込み中...</div>}
+          >
+            {numPages > 0 &&
+              Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
+                <div
+                  key={pageNumber}
+                  ref={(el) => registerPage(pageNumber, el)}
+                  data-page-number={pageNumber}
+                  style={{
+                    width: "fit-content",
+                    margin: "0 auto 12px",
+                  }}
+                >
+                  <Page
+                    pageNumber={pageNumber}
+                    width={pageWidth}
+                    renderTextLayer
+                    renderAnnotationLayer={false}
+                  />
+                </div>
+              ))}
+          </Document>
+        </div>
       </div>
 
       {/* SelectionPill — メモ保存ハンドラがない場合は出さない */}
