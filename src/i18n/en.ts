@@ -638,6 +638,18 @@ export const en: Record<string, string> = {
   "aiChat.madeClaim": "Saved as a Claim",
   "aiChat.madeInsight": "Saved as an Insight",
   "aiChat.makeKnowledgeFailed": "Could not save as knowledge",
+  // Candidate generation / selection flow (press → see candidates → save the ones you pick)
+  "aiChat.makeKnowledge": "Make Knowledge",
+  "aiChat.generatingClaims": "Extracting claims…",
+  "aiChat.generatingInsights": "Generating insights…",
+  "aiChat.candidatesTitle": "Knowledge candidates (select to save)",
+  "aiChat.candidatesEmpty": "No candidates found",
+  "aiChat.candidatesSave": "Save selected ({n})",
+  "aiChat.candidatesSaveNone": "Select candidates to save",
+  "aiChat.candidatesCancel": "Cancel",
+  "aiChat.candidatesSelectAll": "Select all",
+  "aiChat.candidatesClearAll": "Clear",
+  "aiChat.candidatesSaved": "Saved {n}",
   // 取り込み時の整形指示。{kind} に「知見 / 洞察」相当のラベルが入る。
   "composer.makeKnowledge.formatHint": "Reformat the following into a single \"{kind}\" knowledge page so it reads consistently with other knowledge pages. Output Markdown. The first line MUST be a single H1 title (# ...) that names the point concisely. Keep the body focused and self-contained: state the claim/insight clearly, preserve any tables or structured content, and drop conversational framing (greetings, \"I summarized...\", \"Hope this helps\"). Do NOT add a sources/citations section — that is appended automatically. Write in the same language as the input.",
   "aiChat.editorNotReady": "Editor is not ready yet. Please wait a moment and try again.",

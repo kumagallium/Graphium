@@ -638,6 +638,18 @@ export const ja: Record<string, string> = {
   "aiChat.madeClaim": "知見として保存しました",
   "aiChat.madeInsight": "洞察として保存しました",
   "aiChat.makeKnowledgeFailed": "knowledge として保存できませんでした",
+  // 候補生成・選択フロー（押すと候補が出て、選んだものだけ保存する動線）
+  "aiChat.makeKnowledge": "ナレッジにする",
+  "aiChat.generatingClaims": "知見を抽出中…",
+  "aiChat.generatingInsights": "洞察を生成中…",
+  "aiChat.candidatesTitle": "ナレッジ候補（選んで保存）",
+  "aiChat.candidatesEmpty": "候補が見つかりませんでした",
+  "aiChat.candidatesSave": "選択した {n} 件を保存",
+  "aiChat.candidatesSaveNone": "保存する候補を選択",
+  "aiChat.candidatesCancel": "キャンセル",
+  "aiChat.candidatesSelectAll": "すべて選択",
+  "aiChat.candidatesClearAll": "選択解除",
+  "aiChat.candidatesSaved": "{n} 件を保存しました",
   // 取り込み時の整形指示。{kind} に「知見 / 洞察」が入る。
   "composer.makeKnowledge.formatHint": "次の内容を、他の「{kind}」ページと体裁が揃うように 1 つの「{kind}」ページとして整形してください。出力は Markdown。1 行目は必ず H1 タイトル（# ...）にして、要点を簡潔に表す見出しにしてください。本文は焦点を絞り自己完結させてください: 主張・洞察を明確に述べ、テーブルや構造化された内容は保持し、会話的な前置き（あいさつ・「まとめました」「ご参考になれば」等）は落としてください。出典・引用セクションは自動で付くので追加しないでください。入力と同じ言語で書いてください。",
   "aiChat.editorNotReady": "エディタの準備ができていません。少し待ってから再度お試しください。",

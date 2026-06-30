@@ -15,6 +15,7 @@ import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { useT } from "../../i18n";
 import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
+import type { KnowledgeCandidate } from "../composer/verb-suggestion-doc";
 
 /** チャットに添付されたノート参照 */
 export type AttachedNote = {
@@ -34,10 +35,16 @@ type AiAssistantPanelProps = {
   onDeriveNote?: (question: string, answer: string) => void;
   /** チャット内容を Knowledge に追加する */
   onIngestChat?: (messages: ChatMessage[]) => void;
-  /** AI 回答を 知見(claim) / 洞察(atom) として取り込む（Cmd-K Composer R2 / Loop M2）。
-   *  砂時計の首を人間に戻す手動取り込み。kind はユーザーが選ぶ。
-   *  LLM 整形を挟むため Promise を返し、ボタン側で完了まで待って状態表示する。 */
-  onMakeKnowledge?: (answer: string, kind: "claim" | "atom") => void | Promise<void>;
+  /** AI 回答を ingester / atomizer に通して 知見(claim) + 洞察(atom) の**候補**を生成する
+   *  （Loop M2 改）。押すまで何が出るか見えない問題を解消するため、候補を出してから
+   *  ユーザーが選んで保存する。砂時計の首＝人間の選択は維持。
+   *  onClaimsReady: 知見候補ができた時点で即呼ぶ（プログレッシブ表示。洞察は後から戻り値に追加）。 */
+  onGenerateKnowledgeCandidates?: (
+    answer: string,
+    onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
+  ) => Promise<KnowledgeCandidate[]>;
+  /** 選択された候補を保存する（候補ごとに 1 ノート）。 */
+  onAdoptKnowledgeCandidates?: (candidates: KnowledgeCandidate[]) => Promise<void>;
   /** ノート/Wiki インデックス（@ メンション候補用） */
   noteIndex?: GraphiumIndex | null;
   /** Wiki ノートを開く（[Source: "title"] 引用クリック時の遷移先） */
@@ -50,7 +57,8 @@ export function AiAssistantPanel({
   onReplaceBlocks,
   onDeriveNote,
   onIngestChat,
-  onMakeKnowledge,
+  onGenerateKnowledgeCandidates,
+  onAdoptKnowledgeCandidates,
   noteIndex,
   onOpenWiki,
 }: AiAssistantPanelProps) {
@@ -390,11 +398,12 @@ export function AiAssistantPanel({
                       }
                     : undefined
                 }
-                onMakeKnowledge={
-                  onMakeKnowledge && msg.role === "assistant"
-                    ? (kind) => onMakeKnowledge(msg.content, kind)
+                onGenerateKnowledgeCandidates={
+                  onGenerateKnowledgeCandidates && msg.role === "assistant"
+                    ? (onClaimsReady) => onGenerateKnowledgeCandidates(msg.content, onClaimsReady)
                     : undefined
                 }
+                onAdoptKnowledgeCandidates={onAdoptKnowledgeCandidates}
                 wikiTitleToId={wikiTitleToId}
                 onOpenWiki={onOpenWiki}
               />
@@ -549,7 +558,8 @@ function ChatBubble({
   onInsert,
   onReplace,
   onDerive,
-  onMakeKnowledge,
+  onGenerateKnowledgeCandidates,
+  onAdoptKnowledgeCandidates,
   wikiTitleToId,
   onOpenWiki,
 }: {
@@ -557,28 +567,95 @@ function ChatBubble({
   onInsert?: (markdown: string) => void;
   onReplace?: (markdown: string) => void;
   onDerive?: () => void;
-  onMakeKnowledge?: (kind: "claim" | "atom") => void | Promise<void>;
+  onGenerateKnowledgeCandidates?: (
+    onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
+  ) => Promise<KnowledgeCandidate[]>;
+  onAdoptKnowledgeCandidates?: (candidates: KnowledgeCandidate[]) => Promise<void>;
   wikiTitleToId?: Map<string, string>;
   onOpenWiki?: (wikiId: string) => void;
 }) {
   const t = useT();
   const isUser = message.role === "user";
-  // 「知見にする / 洞察にする」は LLM 整形を挟むため数秒かかる。
-  // 押下フィードバックと二重押下防止のためにバブル単位で状態を持つ。
-  //   null = 未操作 / "claim"|"atom" = 処理中 / "done-..." = 完了
-  const [makeKnowledgeState, setMakeKnowledgeState] = useState<
-    null | "claim" | "atom" | "done-claim" | "done-atom"
-  >(null);
-  const handleMakeKnowledgeClick = async (kind: "claim" | "atom") => {
-    if (!onMakeKnowledge || makeKnowledgeState !== null) return;
-    setMakeKnowledgeState(kind);
+  const hasMakeKnowledge = !!onGenerateKnowledgeCandidates;
+  // 「ナレッジにする」候補生成・選択フローの状態（バブル単位）。
+  // 1 ボタンで 知見 + 洞察 を 1 リストに混ぜて出す。知見は即表示し、洞察は後から追加（progressive）。
+  //   phase:      null / "claims"（知見抽出中） / "atoms"（洞察生成中、知見は表示済み）
+  //   candidates: 提示中の候補一覧（null = 未生成 or 折りたたみ済み）
+  //   selected:   採用する候補の key 集合（既定で全選択）
+  //   adopting:   保存処理中
+  //   done:       保存完了表示（件数）
+  //   empty:      候補ゼロのときの一時メッセージ
+  const [phase, setPhase] = useState<null | "claims" | "atoms">(null);
+  const [candidates, setCandidates] = useState<KnowledgeCandidate[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [adopting, setAdopting] = useState(false);
+  const [done, setDone] = useState<null | { count: number }>(null);
+  const [empty, setEmpty] = useState(false);
+
+  const handleGenerate = async () => {
+    if (!onGenerateKnowledgeCandidates || phase) return;
+    setPhase("claims");
+    setEmpty(false);
+    setDone(null);
+    setCandidates(null);
+    let claimKeys = new Set<string>();
     try {
-      await onMakeKnowledge(kind);
-      setMakeKnowledgeState(`done-${kind}` as "done-claim" | "done-atom");
+      const all = await onGenerateKnowledgeCandidates((claims) => {
+        // 知見候補ができた時点で即表示（洞察生成を待たせない）。
+        claimKeys = new Set(claims.map((c) => c.key));
+        setCandidates(claims);
+        setSelected(new Set(claims.map((c) => c.key))); // 既定で全選択
+        setPhase("atoms");
+      });
+      if (all.length === 0) {
+        setEmpty(true);
+        setCandidates(null);
+      } else {
+        setCandidates(all);
+        // 知見の選択状態はユーザー操作を尊重し、後から来た洞察は既定で選択に足す。
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const c of all) if (!claimKeys.has(c.key)) next.add(c.key);
+          return next;
+        });
+      }
     } catch {
-      // 失敗時はボタンを元に戻して再試行できるようにする
-      setMakeKnowledgeState(null);
+      // 失敗時は何も出さず、ボタンを再度押せる状態に戻す
+      setEmpty(false);
+      setCandidates(null);
+    } finally {
+      setPhase(null);
     }
+  };
+
+  const toggleSelected = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleAdopt = async () => {
+    if (!onAdoptKnowledgeCandidates || !candidates || adopting) return;
+    const chosen = candidates.filter((c) => selected.has(c.key));
+    if (chosen.length === 0) return;
+    setAdopting(true);
+    try {
+      await onAdoptKnowledgeCandidates(chosen);
+      setDone({ count: chosen.length });
+      setCandidates(null);
+    } catch {
+      // 失敗時は候補一覧を残して再試行可能にする
+    } finally {
+      setAdopting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setCandidates(null);
+    setSelected(new Set());
   };
   // 表示用にノイズを除去する（生データは message.content に残し、ノート挿入時はそちらを使う）:
   //   - [[label:xxx]]      … ノート挿入時に消費する PROV ラベルマーカー
@@ -609,57 +686,77 @@ function ChatBubble({
           </ReactMarkdown>
         )}
       </div>
-      {!isUser && (onInsert || onReplace || onDerive || onMakeKnowledge) && (
-        <div className="flex gap-1 mt-1 flex-wrap">
-          {onReplace && (
-            <button
-              onClick={() => onReplace(message.content)}
-              title={t("aiChat.replaceInNote")}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-blue-600 hover:text-blue-700 rounded hover:bg-blue-50 transition-colors font-medium"
-            >
-              <Replace size={10} />
-              {t("aiChat.replaceInNote")}
-            </button>
-          )}
-          {onInsert && (
-            <button
-              onClick={() => onInsert(message.content)}
-              title={t("aiChat.insertToNote")}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
-            >
-              <FileDown size={10} />
-              {t("aiChat.insertToNote")}
-            </button>
-          )}
-          {onDerive && (
-            <button
-              onClick={onDerive}
-              title={t("aiChat.deriveAsNote")}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
-            >
-              <FilePlus size={10} />
-              {t("aiChat.deriveAsNote")}
-            </button>
-          )}
-          {onMakeKnowledge && (
-            <>
-              <MakeKnowledgeButton
-                kind="claim"
-                icon={<Lightbulb size={10} />}
-                label={t("aiChat.makeClaim")}
-                doneLabel={t("aiChat.madeClaim")}
-                state={makeKnowledgeState}
-                onClick={() => handleMakeKnowledgeClick("claim")}
-              />
-              <MakeKnowledgeButton
-                kind="atom"
+      {!isUser && (onInsert || onReplace || onDerive || hasMakeKnowledge) && (
+        <div className="mt-1 w-full max-w-[95%] flex flex-col gap-1">
+          <div className="flex gap-1 flex-wrap">
+            {onReplace && (
+              <button
+                onClick={() => onReplace(message.content)}
+                title={t("aiChat.replaceInNote")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-blue-600 hover:text-blue-700 rounded hover:bg-blue-50 transition-colors font-medium"
+              >
+                <Replace size={10} />
+                {t("aiChat.replaceInNote")}
+              </button>
+            )}
+            {onInsert && (
+              <button
+                onClick={() => onInsert(message.content)}
+                title={t("aiChat.insertToNote")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
+              >
+                <FileDown size={10} />
+                {t("aiChat.insertToNote")}
+              </button>
+            )}
+            {onDerive && (
+              <button
+                onClick={onDerive}
+                title={t("aiChat.deriveAsNote")}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
+              >
+                <FilePlus size={10} />
+                {t("aiChat.deriveAsNote")}
+              </button>
+            )}
+            {hasMakeKnowledge && !done && !candidates && (
+              <KnowledgeButton
                 icon={<Sparkles size={10} />}
-                label={t("aiChat.makeInsight")}
-                doneLabel={t("aiChat.madeInsight")}
-                state={makeKnowledgeState}
-                onClick={() => handleMakeKnowledgeClick("atom")}
+                label={t("aiChat.makeKnowledge")}
+                busy={phase === "claims"}
+                onClick={handleGenerate}
               />
-            </>
+            )}
+            {phase === "claims" && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-muted-foreground">
+                <Loader2 size={10} className="animate-spin" />
+                {t("aiChat.generatingClaims")}
+              </span>
+            )}
+            {done && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 font-medium">
+                <Check size={10} />
+                {t("aiChat.candidatesSaved", { n: String(done.count) })}
+              </span>
+            )}
+          </div>
+          {empty && (
+            <div className="text-xs text-muted-foreground px-1.5 py-0.5">
+              {t("aiChat.candidatesEmpty")}
+            </div>
+          )}
+          {candidates && (
+            <CandidatePicker
+              candidates={candidates}
+              loadingMore={phase === "atoms"}
+              selected={selected}
+              adopting={adopting}
+              onToggle={toggleSelected}
+              onSelectAll={() => setSelected(new Set(candidates.map((c) => c.key)))}
+              onClearAll={() => setSelected(new Set())}
+              onAdopt={handleAdopt}
+              onCancel={handleCancel}
+            />
           )}
         </div>
       )}
@@ -667,45 +764,146 @@ function ChatBubble({
   );
 }
 
-// 「知見にする / 洞察にする」ボタン。LLM 整形を挟むため、押下中はスピナー + disable、
-// 完了後はチェック + 保存済みラベルにして、無反応に見える待ち時間と二重押下を防ぐ。
-function MakeKnowledgeButton({
-  kind,
+// 「ナレッジにする」ボタン。押すと候補生成パイプラインが走るため、生成中はスピナー + disable。
+function KnowledgeButton({
   icon,
   label,
-  doneLabel,
-  state,
+  busy,
   onClick,
 }: {
-  kind: "claim" | "atom";
   icon: ReactNode;
   label: string;
-  doneLabel: string;
-  state: null | "claim" | "atom" | "done-claim" | "done-atom";
+  busy: boolean;
   onClick: () => void;
 }) {
-  const busy = state === "claim" || state === "atom";
-  const thisDone = state === `done-${kind}`;
-  // 他方が処理中・完了のときは、こちらのボタンは押せないように disable する。
-  const disabled = busy || state !== null;
-  if (thisDone) {
-    return (
-      <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 font-medium">
-        <Check size={10} />
-        {doneLabel}
-      </span>
-    );
-  }
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
+      disabled={busy}
       title={label}
       className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 rounded hover:bg-emerald-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      {state === kind ? <Loader2 size={10} className="animate-spin" /> : icon}
+      {busy ? <Loader2 size={10} className="animate-spin" /> : icon}
       {label}
     </button>
+  );
+}
+
+// 候補ごとの kind バッジ（知見 / 洞察）。押す前に二択を迫らず、候補に出てから種別を示す。
+function KindBadge({ kind }: { kind: "claim" | "atom" }) {
+  const t = useT();
+  const isClaim = kind === "claim";
+  return (
+    <span
+      className={`shrink-0 inline-flex items-center gap-0.5 px-1 py-px rounded text-[10px] font-medium ${
+        isClaim
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+          : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+      }`}
+    >
+      {isClaim ? <Lightbulb size={9} /> : <Sparkles size={9} />}
+      {t(isClaim ? "wikiList.kindClaim" : "wikiList.kindAtom")}
+    </span>
+  );
+}
+
+// 候補の複数選択 UI。押した「ナレッジにする」の直下にインライン展開し、
+// 知見 + 洞察を 1 リストにバッジ付きで混ぜ、選んだ候補だけを保存する（既定で全選択）。
+function CandidatePicker({
+  candidates,
+  loadingMore,
+  selected,
+  adopting,
+  onToggle,
+  onSelectAll,
+  onClearAll,
+  onAdopt,
+  onCancel,
+}: {
+  candidates: KnowledgeCandidate[];
+  loadingMore: boolean;
+  selected: Set<string>;
+  adopting: boolean;
+  onToggle: (key: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  onAdopt: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  const count = selected.size;
+  return (
+    <div className="w-full rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-2 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+          {t("aiChat.candidatesTitle")}
+        </span>
+        <div className="flex gap-2 text-[11px] shrink-0">
+          <button onClick={onSelectAll} disabled={adopting} className="text-emerald-700 hover:underline disabled:opacity-50">
+            {t("aiChat.candidatesSelectAll")}
+          </button>
+          <button onClick={onClearAll} disabled={adopting} className="text-muted-foreground hover:underline disabled:opacity-50">
+            {t("aiChat.candidatesClearAll")}
+          </button>
+        </div>
+      </div>
+      <ul className="flex flex-col gap-1">
+        {candidates.map((c) => {
+          const checked = selected.has(c.key);
+          return (
+            <li key={c.key}>
+              <label
+                className={`flex gap-2 items-start rounded-md p-1.5 cursor-pointer transition-colors ${
+                  checked
+                    ? "bg-white dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60"
+                    : "border border-transparent hover:bg-white/60 dark:hover:bg-emerald-950/20"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(c.key)}
+                  disabled={adopting}
+                  className="mt-0.5 accent-emerald-600"
+                />
+                <span className="flex flex-col min-w-0 gap-0.5">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <KindBadge kind={c.kind} />
+                    <span className="text-xs font-medium text-foreground break-words min-w-0">{c.title}</span>
+                  </span>
+                  {c.preview && (
+                    <span className="text-[11px] text-muted-foreground line-clamp-2">{c.preview}</span>
+                  )}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+        {loadingMore && (
+          <li className="flex items-center gap-1 px-1.5 py-1 text-[11px] text-muted-foreground">
+            <Loader2 size={10} className="animate-spin" />
+            {t("aiChat.generatingInsights")}
+          </li>
+        )}
+      </ul>
+      <div className="flex gap-2 items-center pt-0.5">
+        <button
+          onClick={onAdopt}
+          disabled={count === 0 || adopting}
+          className="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {adopting && <Loader2 size={10} className="animate-spin" />}
+          {count > 0 ? t("aiChat.candidatesSave", { n: String(count) }) : t("aiChat.candidatesSaveNone")}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={adopting}
+          className="px-2 py-0.5 text-xs rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+        >
+          {t("aiChat.candidatesCancel")}
+        </button>
+      </div>
+    </div>
   );
 }
 
