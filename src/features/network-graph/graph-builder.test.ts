@@ -143,18 +143,27 @@ describe("buildNoteGraph — 外部ソースとエッジ畳み込み", () => {
 
 describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () => {
   const rawUrl = "https://news.example.com/article";
-  function mediaIndexWith(type: "image" | "url", usedNoteId: string): MediaIndex {
-    const fileId = type === "url" ? `url:${rawUrl}` : "img-1";
+  function mediaIndexWith(
+    type: "image" | "url" | "pdf" | "document",
+    usedNoteId: string,
+  ): MediaIndex {
+    const fileId = type === "url" ? `url:${rawUrl}` : `${type}-1`;
+    const nameByType: Record<string, string> = {
+      url: "Example article",
+      image: "fig.png",
+      pdf: "paper.pdf",
+      document: "report.docx",
+    };
     return {
       version: 3,
       updatedAt: "",
       media: [
         {
           fileId,
-          name: type === "url" ? "Example article" : "fig.png",
+          name: nameByType[type],
           type,
-          mimeType: type === "url" ? "text/html" : "image/png",
-          url: type === "url" ? rawUrl : "cdn://img-1",
+          mimeType: type === "url" ? "text/html" : "application/octet-stream",
+          url: type === "url" ? rawUrl : `cdn://${fileId}`,
           thumbnailUrl: "",
           uploadedAt: "",
           usedIn: [{ noteId: usedNoteId, noteTitle: "Note", blockId: "b1" }],
@@ -219,5 +228,49 @@ describe("buildNoteGraph — 利用メディアの一貫表示（usedIn）", () 
     const mediaNode = graph.nodes.find((n) => n.external === "media");
     expect(mediaNode).toBeDefined();
     expect(mediaNode!.mediaType).toBe("image");
+  });
+
+  // usedIn 経由（埋め込み file/pdf ブロック or @リンク引用）の document/pdf 素材も
+  // 近接グラフに出す。以前は image/video/audio/url のみ描画し document/pdf を取りこぼしていた。
+  it("usedIn の document 素材を document: ノードとして出す", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, mediaIndexWith("document", "note-1"));
+    const docNode = graph.nodes.find((n) => n.external === "document");
+    expect(docNode).toBeDefined();
+    expect(docNode!.id).toBe("document:document-1");
+    expect(docNode!.title).toBe("report.docx");
+    expect(
+      graph.edges.some(
+        (e) =>
+          (e.source === "document:document-1" && e.target === "note-1") ||
+          (e.source === "note-1" && e.target === "document:document-1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("usedIn の PDF 素材を pdf: ノードとして出す", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      [
+        "note-1",
+        {
+          title: "Note",
+          source: "user",
+          pages: [{ id: "p", title: "Note", blocks: [] }],
+        } as unknown as GraphiumDocument,
+      ],
+    ]);
+    const graph = buildNoteGraph("note-1", [file("note-1")], docs, mediaIndexWith("pdf", "note-1"));
+    const pdfNode = graph.nodes.find((n) => n.external === "pdf");
+    expect(pdfNode).toBeDefined();
+    expect(pdfNode!.id).toBe("pdf:pdf-1");
   });
 });

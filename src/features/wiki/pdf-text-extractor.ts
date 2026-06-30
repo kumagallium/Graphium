@@ -2,6 +2,7 @@
 // react-pdf 同梱の pdfjs を流用する（追加依存なし）
 
 import { pdfjs } from "react-pdf";
+import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
 // 長文 PDF（100 ページ級の論文・資料）でも Summary が「冒頭しか読まなかった要約」に
 // ならないよう、LLM に渡す上限を広めに取る。日本語混じりで概ね 60-90 ページぶん。
@@ -20,7 +21,7 @@ export type ExtractedPdf = {
  */
 export async function extractPdfText(blob: Blob): Promise<ExtractedPdf> {
   const buffer = await blob.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), ...PDFJS_DOC_OPTIONS }).promise;
 
   const pageCount = doc.numPages;
   const parts: string[] = [];
@@ -82,7 +83,7 @@ export type ExtractedPdfPages = {
  */
 export async function extractPdfPages(blob: Blob): Promise<ExtractedPdfPages> {
   const buffer = await blob.arrayBuffer();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), ...PDFJS_DOC_OPTIONS }).promise;
 
   const pageCount = doc.numPages;
   const pages: string[] = [];

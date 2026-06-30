@@ -331,4 +331,20 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
     const doc = { sourcePdfFileId: "p1", sourceDocumentFileId: "d1" };
     expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(new Set(["p1", "d1"]));
   });
+
+  it("@リンク引用（citedAssetFileIds）の素材 fileId を集める", () => {
+    // メディアピッカーのリンク挿入 / @mention 引用で記録された素材も usedIn に入れて
+    // 埋め込みと挙動を揃える。URL 素材の "url:" 形式 fileId もそのまま通す。
+    const doc = { citedAssetFileIds: ["doc-1", "pdf-2", "url:https://a.example.com"] };
+    expect(collectSourceAssetFileIdsFromDoc(doc)).toEqual(
+      new Set(["doc-1", "pdf-2", "url:https://a.example.com"]),
+    );
+  });
+
+  it("空文字や未定義の citedAssetFileIds は無視する", () => {
+    expect(collectSourceAssetFileIdsFromDoc({ citedAssetFileIds: ["", "ok-1"] })).toEqual(
+      new Set(["ok-1"]),
+    );
+    expect(collectSourceAssetFileIdsFromDoc({})).toEqual(new Set());
+  });
 });

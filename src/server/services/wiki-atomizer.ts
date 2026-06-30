@@ -341,10 +341,8 @@ export function buildAtomizerUserMessage(
   concepts: ClaimSnapshot[],
   existingAtomTitles: string[],
 ): string {
-  if (concepts.length < 2) {
-    return "Not enough Claim pages for atomization (minimum 2 required).";
-  }
-
+  // 最小件数ゲートは置かない。単一 Claim でも「An Atom may cover one Claim or several」
+  // （下のプロンプト本文）の通り構造抽象できる。route が concepts >= 1 を保証する。
   const blocks = concepts.map((c) => {
     const levelTag = c.level ? ` [${c.level}]` : "";
     // Phase η: source Claim の epistemicStatus を可視化し、最低継承ルールを LLM に守らせる。

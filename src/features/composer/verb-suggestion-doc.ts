@@ -191,9 +191,12 @@ export function cleanSuggestionText(content: string): string {
     .replace(/\[\[label:[a-z]+\]\][ 　]?/g, "")
     // PROV inline label: [[m]]X[[/m]] / [[t]] / [[a]] / [[o]] → 中身だけ残す
     .replace(/\[\[(m|t|a|o)\]\]([\s\S]*?)\[\[\/\1\]\]/g, "$2");
-  // 「Knowledge referenced」フッター（--- 区切り + 見出し以降）を落とす。
-  // 半角/絵文字いずれの形式にも対応する（note-app の出力 2 形式に揃える）。
-  text = text.replace(/\n*---\n+(\*\*Knowledge referenced:\*\*|📎\s*\*?Knowledge referenced\*?)[\s\S]*$/i, "");
+  // 末尾の引用フッター（--- 区切り + 太字見出し + [Source: ...] 一覧）を丸ごと落とす。
+  // 見出し文言は i18n 化されている（「📓 ノート内の知識」等）ため、文言に依存せず
+  // 「--- + 太字見出し + Source 箇条書き」という構造でマッチさせる。
+  text = text.replace(/\n*---\n+\*\*[^\n]*\*\*\n+[ \t]*-[ \t]*\[Source:[\s\S]*$/, "");
+  // 旧形式（「Knowledge referenced」プレースホルダのみ等）も後方互換で除去する。
+  text = text.replace(/\n*---\n+(?:\*\*Knowledge referenced:\*\*|📎\s*\*?Knowledge referenced\*?)[\s\S]*$/i, "");
   return text.trim();
 }
 

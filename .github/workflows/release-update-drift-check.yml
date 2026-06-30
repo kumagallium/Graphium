@@ -1,0 +1,118 @@
+name: Release Update Drift Check
+
+# 「最新リリースのタグ」と「GitHub Pages が配信している latest.json の version」が
+# 乖離していないか定期監視する。
+#
+# 背景: macOS ビルドの公証 403 等でビルドが失敗すると、リリース自体は publish される
+# のに latest.json が再生成されず、デスクトップアプリの自動更新が古いバージョンに
+# 固定される（v0.16.4 / v0.16.5 で実害。latest.json が 0.16.3 のまま固定された）。
+# tauri-build の notify-on-failure はビルド失敗を拾うが、こちらは「結果として更新が
+# 出ていない」状態を別経路で直接検知する二重の安全網。
+
+on:
+  schedule:
+    # 毎日 00:00 UTC（リリース直後の一時的な乖離を拾わないよう日次で十分）
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compare latest release vs published latest.json
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+
+            // 1. 最新の安定版リリース（draft / prerelease を除く）を取得
+            const releases = await github.rest.repos.listReleases({
+              owner, repo, per_page: 30,
+            });
+            const stable = releases.data
+              .filter((r) => !r.draft && !r.prerelease)
+              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))[0];
+            if (!stable) {
+              core.info('No stable release found; nothing to check.');
+              return;
+            }
+            const releaseVersion = stable.tag_name.replace(/^v/, '');
+            const publishedAt = new Date(stable.published_at);
+
+            // リリース直後はビルド進行中で乖離が正常。6 時間以上経過したものだけ対象。
+            const ageHours = (Date.now() - publishedAt.getTime()) / 3_600_000;
+            if (ageHours < 6) {
+              core.info(
+                `Latest release ${stable.tag_name} is ${ageHours.toFixed(1)}h old ` +
+                `(< 6h); skipping to avoid false positive during in-progress build.`,
+              );
+              return;
+            }
+
+            // 2. GitHub Pages が配信中の latest.json の version を取得
+            const url = 'https://kumagallium.github.io/Graphium/updater/latest.json';
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) {
+              core.warning(`Failed to fetch ${url}: HTTP ${res.status}`);
+              return;
+            }
+            const updater = await res.json();
+            const updaterVersion = String(updater.version || '0.0.0');
+
+            // 3. semver 比較（updaterVersion < releaseVersion なら乖離）
+            const cmp = (a, b) => {
+              const pa = a.split('.').map(Number);
+              const pb = b.split('.').map(Number);
+              for (let i = 0; i < 3; i++) {
+                if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+              }
+              return 0;
+            };
+
+            if (cmp(updaterVersion, releaseVersion) >= 0) {
+              core.info(
+                `OK: updater latest.json = ${updaterVersion}, ` +
+                `latest release = ${releaseVersion}. No drift.`,
+              );
+              return;
+            }
+
+            // 4. 乖離検出 → Issue 起票（重複は避ける）
+            const title = `🚨 Updater drift: latest.json (${updaterVersion}) < release (${releaseVersion})`;
+            const body = [
+              `**自動更新の latest.json が最新リリースに追いついていません。**`,
+              '',
+              `- 最新の安定版リリース: \`${stable.tag_name}\`（${stable.html_url}）`,
+              `- GitHub Pages の latest.json: \`${updaterVersion}\``,
+              `  ${url}`,
+              '',
+              'デスクトップアプリ（macOS）はこの latest.json を見て更新有無を判定するため、',
+              'この状態が続くとユーザーに更新が出ません。',
+              '',
+              '## 典型的な原因',
+              `- \`${stable.tag_name}\` の macOS ビルドが失敗し \`Graphium_aarch64.app.tar.gz\` が無い`,
+              '  （多くは Apple 公証 403 = 規約失効。https://developer.apple.com/account で同意）',
+              `- 復旧後: \`gh workflow run "Tauri Desktop Build" -f release_tag=${stable.tag_name}\` で再ビルド`,
+              '',
+              '_この Issue は release-update-drift-check.yml が自動起票しました。_',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: 'release-failure', per_page: 100,
+            });
+            if (existing.data.some((i) => i.title === title)) {
+              core.info('Drift issue already open; not duplicating.');
+              return;
+            }
+            await github.rest.issues.createLabel({
+              owner, repo, name: 'release-failure', color: 'b60205',
+              description: 'Release/desktop build pipeline failure',
+            }).catch(() => {});
+            const created = await github.rest.issues.create({
+              owner, repo, title, body, labels: ['release-failure'],
+            });
+            core.notice(`Opened drift issue #${created.data.number}`);

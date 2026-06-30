@@ -1,5 +1,29 @@
 # Changelog
 
+## [v0.16.7](https://github.com/kumagallium/Graphium/compare/v0.16.6...v0.16.7) - 2026-06-30
+
+- [feat] Add archive action for notes; fix archived flag loss on rebuild by @kumagallium in https://github.com/kumagallium/Graphium/pull/470
+- PDF viewer: render CJK (CID font) text + trackpad pinch-to-zoom by @kumagallium in https://github.com/kumagallium/Graphium/pull/472
+- World-model grounding via web retrieval (Wikipedia + OpenAlex + MCP search) by @kumagallium in https://github.com/kumagallium/Graphium/pull/473
+- [feat] Surface web sources from search MCP (Tavily) results in chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/474
+- Asset picker: embed / @link display modes + consistent graph linkage by @kumagallium in https://github.com/kumagallium/Graphium/pull/475
+- [fix] Prevent note content revert on editor remount (stale snapshot / active-note reopen) by @kumagallium in https://github.com/kumagallium/Graphium/pull/476
+
+## [v0.16.6](https://github.com/kumagallium/Graphium/compare/v0.16.5...v0.16.6) - 2026-06-30
+
+- [feat] Web search in subscription chat + clearer web/note source labeling by @kumagallium in https://github.com/kumagallium/Graphium/pull/467
+- [infra] Surface release/updater pipeline failures so they stop being silent by @kumagallium in https://github.com/kumagallium/Graphium/pull/469
+
+## [v0.16.5](https://github.com/kumagallium/Graphium/compare/v0.16.4...v0.16.5) - 2026-06-29
+
+- [feat] Atom de-blackboxing: portability test replaces hidden gates by @kumagallium in https://github.com/kumagallium/Graphium/pull/459
+- [feat] Plain-language re-lift stage for the Claim→Atom pipeline by @kumagallium in https://github.com/kumagallium/Graphium/pull/461
+- Add global (all-note) graph overview by @kumagallium in https://github.com/kumagallium/Graphium/pull/463
+- [feat] Atomizer: structural abstraction (decompose → shape → abstract → transfer) by @kumagallium in https://github.com/kumagallium/Graphium/pull/462
+- [fix] Surface LLM auth errors with re-login guidance; stop silent model fallback by @kumagallium in https://github.com/kumagallium/Graphium/pull/464
+- [fix] Chat: re-embed current note each turn + guard against external MCP note lookup by @kumagallium in https://github.com/kumagallium/Graphium/pull/465
+- [feat] Editor writing UX: Callout block, block-menu alignment (incl. tables), reliable delete by @kumagallium in https://github.com/kumagallium/Graphium/pull/466
+
 ## [v0.16.4](https://github.com/kumagallium/Graphium/compare/v0.16.3...v0.16.4) - 2026-06-25
 
 - Add full-text translation for URL assets by @kumagallium in https://github.com/kumagallium/Graphium/pull/456

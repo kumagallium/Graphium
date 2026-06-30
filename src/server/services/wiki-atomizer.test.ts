@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import {
   detectRung1Tokens,
   parseAtomizerOutput,
+  buildAtomizerUserMessage,
   parseReliftOutput,
   buildReliftUserMessage,
   parseTransferJudgeOutput,
@@ -162,6 +163,23 @@ describe("parseAtomizerOutput — portability gates removed (single rule = promp
     });
     const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
     expect(out).toHaveLength(2);
+  });
+});
+
+describe("buildAtomizerUserMessage — minimum-2 gate removed (single source allowed)", () => {
+  const oneClaim = [
+    { id: "c1", title: "電気陰性度差が小さいほどキャリア移動度が高い", bodyPreview: "均質な構成ほど流れが妨げられにくい。", relatedClaims: [] },
+  ];
+
+  it("builds a real atomization prompt from a single Claim (no 'minimum 2' short-circuit)", () => {
+    const msg = buildAtomizerUserMessage(oneClaim, []);
+    // 旧実装は < 2 で "Not enough Claim pages ... minimum 2 required" を返し、
+    // 単一ソースの re-lift が無言で 0 atom になっていた。
+    expect(msg).not.toContain("minimum 2");
+    expect(msg).toContain("1 Claim");
+    expect(msg).toContain("電気陰性度差");
+    // four-step 手順を含む本物のプロンプトであることを確認
+    expect(msg).toContain("decompose");
   });
 });
 

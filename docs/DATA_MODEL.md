@@ -658,7 +658,7 @@ type GroundingProfile = {
     rationale?: string;
     sources?: GroundingSource[];
     matchedKeywords?: string[];              // KB keywords that hit (PR 2A audit field)
-    checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
+    checkedBy?: string;                      // "distilled-kb@v1" (KB hit) | "web-search" (web-grounded) | "<model-id>" (parametric) | "no-engine"/"engine-error"
     checkedAt?: string;                      // ISO 8601
     entryId?: string;                        // KB entry this grounded to (world-grounding edge)
     dismissed?: boolean;                     // user manually cleared the verdict (see below)
@@ -682,6 +682,13 @@ The lane is **strictly separate** from the existing layers:
 - The verdict is allowed to be **absent**. When the distilled KB has no
   hit, `validity` still records `{ checkedBy, checkedAt }` so the UI
   can say "checked but unmatched" without lying.
+- `GroundingSource.url` is populated **only** for web-grounded judgments,
+  where the URL is constrained to one that appeared in the retrieved
+  evidence (Wikipedia / OpenAlex / a search MCP). A purely parametric
+  judgment (model memory, when search is unavailable) emits **`ref` text
+  only, no `url`** — a recalled DOI/URL is high-entropy and can resolve to
+  an unrelated paper, so verifiable links come only from retrieval. See
+  [ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for the two judge modes.
 - `entryId` records the KB entry the claim grounded to (the matched seed
   entry, or the `gen-…` id of a freshly sedimented LLM result). This is a
   **world-grounding edge**: two insights with the same `entryId` are
@@ -836,7 +843,7 @@ type NoteIndexEntry = {
   }[];
 
   deletedAt?: string;               // trashed timestamp (user intent)
-  archivedAt?: string;              // archived timestamp (system retention)
+  archivedAt?: string;              // archived timestamp (user retire OR system retention)
 
   // Phase 1 semantic types — mirrored from wikiMeta for fast list-view filtering
   claimRole?: ClaimRole[];
@@ -915,14 +922,18 @@ either flag — the file path stays the same so any link or
 | State | Flag | Meaning | List/search/graph | Citation/regenerate |
 |---|---|---|---|---|
 | active | (neither) | normal | shown | resolve |
-| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Claim into another) | hidden | resolve |
+| archived | `archivedAt` | retired from the list but kept resolvable. Set either by the user (note header menu → Archive, when retiring a note whose derived versions should keep working) or by the system (auto-merge absorbing a Claim into another) | hidden | resolve |
 | trashed | `deletedAt` | user delete intent | hidden | not resolved |
 
 Transitions:
 
 - **active → trashed** via the trash action (manual).
-- **active → archived** via auto-merge (the absorbed Claim is archived,
-  not deleted, so notes that cited it keep working).
+- **active → archived** via the archive action (manual, note header
+  menu) when the user wants to retire a note from the list while keeping
+  its derivation links and citations alive — or via auto-merge (the
+  absorbed Claim is archived, not deleted, so notes that cited it keep
+  working). Unlike trash, archiving never warns about incoming
+  references, since preserving them is the whole point.
 - **archived → active** via the restore action. Note that a Claim
   archived by auto-merge will likely be re-archived on the next merge
   cycle unless the user edits its content to differentiate it.

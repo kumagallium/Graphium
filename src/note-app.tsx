@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, StickyNote } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -168,6 +168,7 @@ import {
   type MediaType,
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
+  type AssetDisplayMode,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
@@ -274,6 +275,10 @@ function NoteHeaderMenu({
   isWikiDoc,
   inKnowledge,
   onOpenKnowledge,
+  archived,
+  onArchive,
+  archiveDisabled,
+  onRestore,
   onDelete,
   deleteDisabled,
   onShare,
@@ -299,6 +304,13 @@ function NoteHeaderMenu({
   inKnowledge?: boolean;
   /** 「Already in Knowledge」押下で対応 wiki エントリを開く */
   onOpenKnowledge?: () => void;
+  /** このノートがアーカイブ済みか。true ならメニューの「アーカイブ」を「復元」に差し替える */
+  archived?: boolean;
+  /** ノートをアーカイブ（一覧から退避、ID は残し派生リンクは保持）するコールバック */
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
+  /** アーカイブから復元するコールバック（archived のときに表示） */
+  onRestore?: () => void;
   /** ノート削除（ゴミ箱送り）コールバック */
   onDelete?: () => void;
   deleteDisabled?: boolean;
@@ -421,18 +433,39 @@ function NoteHeaderMenu({
               )}
             </>
           )}
+          {((archived ? onRestore : onArchive) || onDelete) && (
+            <div className="my-1 border-t border-border" />
+          )}
+          {archived && onRestore && (
+            <button
+              className={itemClass}
+              onClick={() => { onRestore(); setOpen(false); }}
+              title={t("archive.restoreHint")}
+            >
+              <ArchiveRestore size={14} />
+              {t("archive.restore")}
+            </button>
+          )}
+          {!archived && onArchive && (
+            <button
+              className={itemClass}
+              disabled={archiveDisabled}
+              onClick={() => { onArchive(); setOpen(false); }}
+              title={t("editor.archiveNoteHint")}
+            >
+              <Archive size={14} />
+              {t("editor.archiveNote")}
+            </button>
+          )}
           {onDelete && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={`${itemClass} text-destructive hover:bg-destructive/10`}
-                disabled={deleteDisabled}
-                onClick={() => { onDelete(); setOpen(false); }}
-              >
-                <Trash2 size={14} />
-                {t("editor.deleteNote")}
-              </button>
-            </>
+            <button
+              className={`${itemClass} text-destructive hover:bg-destructive/10`}
+              disabled={deleteDisabled}
+              onClick={() => { onDelete(); setOpen(false); }}
+            >
+              <Trash2 size={14} />
+              {t("editor.deleteNote")}
+            </button>
           )}
         </div>
       )}
@@ -497,6 +530,8 @@ type NoteEditorProps = {
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
   onDeleteNote?: () => void;
+  /** ノートアーカイブ（一覧から退避）コールバック。ヘッダーメニューから呼ばれる */
+  onArchiveNote?: () => void;
   /** チャットから Knowledge コールバック（手動） */
   onIngestChat?: (messages: import("./lib/document-types").ChatMessage[]) => void;
   /** Wiki ドキュメントかどうか */
@@ -515,6 +550,14 @@ type NoteEditorProps = {
   >;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /** アーカイブから復元するコールバック（archived のときヘッダーメニュー / バナーから呼ぶ） */
+  onRestoreFromArchive?: () => void;
+  /** 任意のノート ID がアーカイブ済みか判定する述語。SidePeek（グラフ/リンク経由で開く
+   *  別ノート）が read-only / バナー表示を出し分けるのに使う。NoteEditor が受け取る
+   *  noteIndex はアーカイブを除外済みのため、判定にはこの述語が必要。 */
+  isArchived?: (noteId: string) => boolean;
+  /** SidePeek で開いたアーカイブ済みノートを ID 指定で復元するコールバック */
+  onRestoreArchivedById?: (noteId: string) => void;
   /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
@@ -630,6 +673,7 @@ function NoteEditorInner({
   onDeriveWholeNote,
   derivingDisabled,
   onDeleteNote,
+  onArchiveNote,
   onIngestChat,
   isWikiDoc,
   aiAvailable = true,
@@ -637,6 +681,9 @@ function NoteEditorInner({
   onOpenComposer,
   composerSubmitRef,
   archived = false,
+  onRestoreFromArchive,
+  isArchived,
+  onRestoreArchivedById,
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
@@ -851,14 +898,56 @@ function NoteEditorInner({
     // insertBlocks による onChange で自動的に markDirty される
   }, [labelStore, linkStore]);
 
+  // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
+  const isSlashOnlyBlock = useCallback((block: any) => {
+    const content = block?.content;
+    return (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    );
+  }, []);
+
+  // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する。
+  // スラッシュだけのブロックなら中身を空にしてカーソル位置に差し込み、
+  // 本文があるブロックでは現在のカーソル位置にそのまま挿入する。
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+    if (isSlashOnlyBlock(currentBlock)) {
+      editor.updateBlock(currentBlock, { type: "paragraph", content: [] });
+    }
+    const target = editor.getBlock(currentBlock.id) ?? currentBlock;
+    editor.setTextCursorPosition(target, "end");
+    setTimeout(() => {
+      editor.insertInlineContent(inline);
+    }, 0);
+  }, [isSlashOnlyBlock]);
+
   // ピッカーで選択されたメディアをエディタに挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-  const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
+  // displayMode:
+  //   "embed" → 中身を展開（pdf / file / image / video / audio ブロック）
+  //   "link"  → @素材名 の inline リンク（@mention の asset 分岐と同じく citedAssetFileIds に登録）
+  const handlePickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
 
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
+
+    if (displayMode === "link") {
+      // 素材本体を指す @リンク。fileId を citedAssetFileIds に積むことで
+      // Cmd-K / チャットの AI がその素材の全文＋ハイライトメモを読めるようになる。
+      if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
+        citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
+      }
+      // insertInlineContent が onChange を発火 → 自動 markDirty。
+      // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      return;
+    }
 
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
@@ -875,17 +964,12 @@ function NoteEditorInner({
     editor.insertBlocks([newBlock], currentBlock, "after");
 
     // 現在のブロックが空（スラッシュだけ）なら削除
-    const content = currentBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
-    ) {
+    if (isSlashOnlyBlock(currentBlock)) {
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
 
   // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
   // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
@@ -1005,11 +1089,22 @@ function NoteEditorInner({
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
+  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
+
+    if (displayMode === "link") {
+      // URL は埋め込みカード（bookmark）ではなくインラインのハイパーリンクとして挿入する。
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "link", href: entry.url, content: [{ type: "text", text: entry.name, styles: {} }] },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setUrlSlashPickerOpen(false);
+      return;
+    }
+
     editor.insertBlocks(
       [{
         type: "bookmark",
@@ -1025,17 +1120,12 @@ function NoteEditorInner({
       "after",
     );
     // 空のスラッシュブロックを削除
-    const content = currentBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
-    ) {
+    if (isSlashOnlyBlock(currentBlock)) {
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
     setUrlSlashPickerOpen(false);
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
 
   // ラベル自動設定のコールバック
   const labelAutoRef = useRef<(() => void) | null>(null);
@@ -1710,13 +1800,34 @@ function NoteEditorInner({
           const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
             "./features/ai-assistant/citation-normalize"
           );
-          const { message, sources, candidateTitles } = normalizeWikiCitations(
+          const { message, sources } = normalizeWikiCitations(
             assistantMessage,
             wikiContext,
           );
-          // LLM が一度も引用しなかった場合は候補タイトルを trailing list に並べる。
-          const finalSources = sources.length > 0 ? sources : candidateTitles;
-          assistantMessage = appendKnowledgeReferenced(message, finalSources);
+          // モデルが実際に引用できた内部ノートだけを「ノート内の知識」として付ける。
+          // 引用ゼロなら何も付けない（候補の機械的な流し込み＝誤った参照表示を廃止）。
+          assistantMessage = appendKnowledgeReferenced(
+            message,
+            sources,
+            t("chat.sources.fromNotes"),
+          );
+        }
+        // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
+        // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+        const webHeading = t("chat.sources.fromWeb");
+        assistantMessage = assistantMessage.replace(
+          /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
+          `**${webHeading}**`,
+        );
+        // 検索 MCP（Tavily 等 = B 経路）の出典はツール結果から決定論的に拾えている。
+        // モデルが散文で出典を出さない B 経路の取りこぼしを埋めるため、ここで明示的に付与する。
+        // A 経路で既に「🌐 Web の出典」見出しが付いている場合は重複させない。
+        const webSources = response.web_sources ?? [];
+        if (webSources.length > 0 && !assistantMessage.includes(webHeading)) {
+          const list = webSources
+            .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
+            .join("\n");
+          assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
         }
         // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
         // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
@@ -2627,6 +2738,7 @@ function NoteEditorInner({
           onSelect={handlePickerSelect}
           onClose={() => setPickerMediaType(null)}
           onUpload={uploadFile}
+          allowDisplayMode
         />
       )}
       {/* メモピッカーモーダル（スラッシュメニュー /memo から） */}
@@ -2668,6 +2780,7 @@ function NoteEditorInner({
           onSelect={handleUrlSlashPickerSelect}
           onClose={() => setUrlSlashPickerOpen(false)}
           onAddUrlBookmark={onAddUrlBookmark}
+          allowDisplayMode
         />
       )}
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
@@ -2733,6 +2846,10 @@ function NoteEditorInner({
               ? () => onNavigateNote(`wiki:${wikiEntriesForCurrentNote[0].noteId}`)
               : undefined
           }
+          archived={archived}
+          onArchive={onArchiveNote}
+          archiveDisabled={!fileId || saving}
+          onRestore={onRestoreFromArchive}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
           onShare={!isWikiDoc ? handleShare : undefined}
@@ -2746,6 +2863,55 @@ function NoteEditorInner({
 
       {/* タイトルバー直下のサブヘッダー（WikiBanner / SkillBanner 用、D1 配置） */}
       {subHeaderSlot}
+
+      {/* 通常ノートのアーカイブバナー。Wiki / Skill は専用バナー（subHeaderSlot）が
+          アーカイブ表示を担うため除外する。エディタは archived のとき read-only
+          （editable={!archived}）なので、ここでは状態の可視化と復元導線を提供する。 */}
+      {archived && !isWikiDoc && !isSkillDoc && (
+        <div style={{ padding: "0 16px", marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "6px 12px",
+              borderRadius: "var(--r-1)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-2)",
+              fontSize: 13,
+            }}
+          >
+            <Archive size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{t("archive.archivedHint")}</span>
+            {onRestoreFromArchive && (
+              <button
+                onClick={onRestoreFromArchive}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0,
+                  padding: "4px 10px",
+                  borderRadius: "var(--r-1)",
+                  border: "1px solid var(--rule)",
+                  background: "var(--paper-2)",
+                  color: "var(--ink-2)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                title={t("archive.restore")}
+              >
+                <ArchiveRestore size={13} />
+                {t("archive.restore")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
@@ -2956,6 +3122,12 @@ function NoteEditorInner({
             uploadFile={uploadFile}
             onAddUrlBookmark={onAddUrlBookmark}
             noteIndex={noteIndex ?? null}
+            archived={isArchived?.(sidePeekNoteId) ?? false}
+            onRestoreFromArchive={
+              isArchived?.(sidePeekNoteId) && onRestoreArchivedById
+                ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -2973,6 +3145,12 @@ function NoteEditorInner({
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
+            archived={isArchived?.(sidePeekNoteId) ?? false}
+            onRestoreFromArchive={
+              isArchived?.(sidePeekNoteId) && onRestoreArchivedById
+                ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
@@ -4434,7 +4612,8 @@ export function NoteApp() {
       if (isAtom) {
         // Atom (Insight) は ingest パイプラインの出力に含まれないため、専用の
         // atomize 経由で再生成する。derivedFromClaims に記録された上流 Concept を
-        // ClaimSnapshot に詰めて atomizer に投げ、同タイトルの候補を採用する。
+        // ClaimSnapshot に詰めて atomizer に投げ、新しい構造抽象を採用する
+        // （decompose→shape→abstract→transfer の re-lift）。旧タイトルには寄せない。
         const claimIds = doc.wikiMeta.derivedFromClaims ?? [];
         const snapshots: ClaimSnapshot[] = [];
         for (const cId of claimIds) {
@@ -4472,12 +4651,14 @@ export function NoteApp() {
         }
 
         const atomResult = await atomizeConcepts(snapshots, "ja", {
-          // 同タイトルの再提案を阻害しないため existingAtomTitles は空で渡す
+          // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
+          // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
         });
-        const matchedAtom =
-          atomResult.atoms.find((a) => a.title === wikiTitle) ?? atomResult.atoms[0] ?? null;
-        if (!matchedAtom) {
+        // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
+        // 同じ source Claim から作り直した新しい構造抽象の主候補をそのまま採用する。
+        const regenAtom = atomResult.atoms[0] ?? null;
+        if (!regenAtom) {
           const errMsg = "No atom candidate generated";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
@@ -4487,7 +4668,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const newDoc = buildAtomDocument(matchedAtom, atomResult.model ?? null, "ja");
+        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, "ja");
         // 既存 Atom が持っていた derivedFromClaims を温存する
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
@@ -5927,6 +6108,13 @@ export function NoteApp() {
               const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
               return rawId ? fm.archivedIdSet.has(rawId) : false;
             })()}
+            onRestoreFromArchive={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              // 復元後はそのまま開いたままにする（archivedIdSet 更新でバナーが消え編集可に戻る）
+              return rawId ? () => fm.handleRestoreFromArchive(rawId) : undefined;
+            })()}
+            isArchived={(noteId: string) => fm.archivedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
+            onRestoreArchivedById={(noteId: string) => fm.handleRestoreFromArchive(noteId.replace(/^(wiki|skill):/, ""))}
             onSave={fm.activeDoc?.source === "ai"
               ? (doc: GraphiumDocument) => {
                   const wikiId = fm.activeFileId?.replace("wiki:", "");
@@ -5953,6 +6141,12 @@ export function NoteApp() {
                 }
               }
               fm.handleDelete(id);
+              router.navigate({ view: "home" });
+            } : undefined}
+            onArchiveNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
+              // アーカイブは派生リンクを守るのが目的なので、削除と違い参照警告は出さない。
+              const id = fm.activeFileId!;
+              fm.handleArchiveNote(id);
               router.navigate({ view: "home" });
             } : undefined}
             onAiDeriveNote={async (doc) => {
@@ -6144,6 +6338,12 @@ export function NoteApp() {
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);
+              })()}
+              onRestoreFromArchive={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.archivedIdSet.has(rawId)
+                  ? () => fm.handleRestoreFromArchive(rawId)
+                  : undefined;
               })()}
               mediaIndex={fm.mediaIndex ?? null}
               captureIndex={capture.captureIndex ?? null}

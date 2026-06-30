@@ -140,6 +140,16 @@ describe("cleanSuggestionText", () => {
     expect(cleanSuggestionText(input)).toBe("本文です。");
   });
 
+  it("i18n 化した新フッター見出し（📓 ノート内の知識）を構造で落とす", () => {
+    const input = "本文です。\n\n---\n**📓 ノート内の知識**\n  - [Source: \"A\"]";
+    expect(cleanSuggestionText(input)).toBe("本文です。");
+  });
+
+  it("英語ロケールの新フッター見出し（📓 From your notes）も落とす", () => {
+    const input = "Body text.\n\n---\n**📓 From your notes**\n  - [Source: \"A\"]";
+    expect(cleanSuggestionText(input)).toBe("Body text.");
+  });
+
   it("フッターが無ければ本文をそのまま返す", () => {
     expect(cleanSuggestionText("ただの本文")).toBe("ただの本文");
   });

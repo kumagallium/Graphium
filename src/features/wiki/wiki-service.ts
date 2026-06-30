@@ -1798,8 +1798,8 @@ export async function atomizeConcepts(
   language: string,
   options?: { existingAtomTitles?: string[]; model?: string },
 ): Promise<AtomizeResult> {
-  // 1 件の Concept からでも可搬な規則なら Atom 化する（2 件必須はサーバー側で撤廃済み。
-  // [[project-atomizer-min-claims]]）。0 件のときだけ呼ばずに空で返す。
+  // 単一ソース Atom は #459 で許可済み（route は concepts >= 1 を受ける）。
+  // ここで < 2 を弾くと regenerate の単一ソース re-lift が無言で失敗するため、空のときだけ弾く。
   if (concepts.length < 1) return { atoms: [] };
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",

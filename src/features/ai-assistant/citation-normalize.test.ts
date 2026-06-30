@@ -101,15 +101,15 @@ describe("normalizeWikiCitations", () => {
 });
 
 describe("appendKnowledgeReferenced", () => {
-  it("sources があれば箇条書きの Knowledge referenced を付ける", () => {
-    const out = appendKnowledgeReferenced("本文", ["タイトルA", "タイトルB"]);
+  it("sources があれば渡したラベルで箇条書きを付ける", () => {
+    const out = appendKnowledgeReferenced("本文", ["タイトルA", "タイトルB"], "📓 ノート内の知識");
     expect(out).toBe(
-      '本文\n\n---\n**Knowledge referenced:**\n  - [Source: "タイトルA"]\n  - [Source: "タイトルB"]',
+      '本文\n\n---\n**📓 ノート内の知識**\n  - [Source: "タイトルA"]\n  - [Source: "タイトルB"]',
     );
   });
 
-  it("sources が空ならプレースホルダを付ける", () => {
-    const out = appendKnowledgeReferenced("本文", []);
-    expect(out).toBe("本文\n\n---\n📎 *Knowledge referenced*");
+  it("sources が空なら何も付けない（候補の機械的な流し込みをしない）", () => {
+    const out = appendKnowledgeReferenced("本文", [], "📓 ノート内の知識");
+    expect(out).toBe("本文");
   });
 });
