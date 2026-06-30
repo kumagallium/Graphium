@@ -1798,7 +1798,9 @@ export async function atomizeConcepts(
   language: string,
   options?: { existingAtomTitles?: string[]; model?: string },
 ): Promise<AtomizeResult> {
-  if (concepts.length < 2) return { atoms: [] };
+  // 単一ソース Atom は #459 で許可済み（route は concepts >= 1 を受ける）。
+  // ここで < 2 を弾くと regenerate の単一ソース re-lift が無言で失敗するため、空のときだけ弾く。
+  if (concepts.length < 1) return { atoms: [] };
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
     headers: wikiHeaders("chatSynthesis"),

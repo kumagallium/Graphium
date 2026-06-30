@@ -4520,7 +4520,8 @@ export function NoteApp() {
       if (isAtom) {
         // Atom (Insight) は ingest パイプラインの出力に含まれないため、専用の
         // atomize 経由で再生成する。derivedFromClaims に記録された上流 Concept を
-        // ClaimSnapshot に詰めて atomizer に投げ、同タイトルの候補を採用する。
+        // ClaimSnapshot に詰めて atomizer に投げ、新しい構造抽象を採用する
+        // （decompose→shape→abstract→transfer の re-lift）。旧タイトルには寄せない。
         const claimIds = doc.wikiMeta.derivedFromClaims ?? [];
         const snapshots: ClaimSnapshot[] = [];
         for (const cId of claimIds) {
@@ -4558,12 +4559,14 @@ export function NoteApp() {
         }
 
         const atomResult = await atomizeConcepts(snapshots, "ja", {
-          // 同タイトルの再提案を阻害しないため existingAtomTitles は空で渡す
+          // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
+          // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
         });
-        const matchedAtom =
-          atomResult.atoms.find((a) => a.title === wikiTitle) ?? atomResult.atoms[0] ?? null;
-        if (!matchedAtom) {
+        // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
+        // 同じ source Claim から作り直した新しい構造抽象の主候補をそのまま採用する。
+        const regenAtom = atomResult.atoms[0] ?? null;
+        if (!regenAtom) {
           const errMsg = "No atom candidate generated";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
@@ -4573,7 +4576,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const newDoc = buildAtomDocument(matchedAtom, atomResult.model ?? null, "ja");
+        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, "ja");
         // 既存 Atom が持っていた derivedFromClaims を温存する
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
