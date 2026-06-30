@@ -147,21 +147,13 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.resolve-release.outputs.release_id }}
-          # updater バンドル（macOS: .app.tar.gz / Windows: -setup.nsis.zip）を
-          # リリースにアップロード・保持させるために true にする。
-          # false だと tauri-action は Windows の -setup.nsis.zip をビルド後に削除し、
-          # リリースに上がらない（macOS の .app.tar.gz は主バンドル扱いで残るが Windows
-          # は updater 専用なので消える）。その結果 generate-updater-json が拾えず、
-          # latest.json の windows-x86_64 が署名空＋存在しない URL を指して自動更新が
-          # 壊れた（v0.16.7 で実害）。
-          # 各マトリクスジョブが単一プラットフォームの latest.json を上げて互いを
-          # 上書きするが、後段の generate-updater-json が両 OS を統合した正しい
-          # latest.json で最終上書きするので問題ない。
-          includeUpdaterJson: true
-          # Windows は NSIS updater バンドル（-setup.nsis.zip）を採用させる。
-          # generate-updater-json が期待するアセット名と一致させるため明示する
-          # （MSI 側 .msi.zip を選ばれると名前がずれて拾えない）。
-          updaterJsonPreferNsis: true
+          # tauri-action の updater アップロードには依存しない。
+          # includeUpdaterJson:true でも Windows は "Signature not found for the
+          # updater JSON. Skipping upload..." で -setup.nsis.zip を上げず、false では
+          # ビルド後に削除する（v0.16.7 で複数回実害）。
+          # ここではインストーラ（.exe / .msi）と macOS の .app.tar.gz だけ上げさせ、
+          # Windows の updater zip は後段 generate-updater-json で .exe から自作する。
+          includeUpdaterJson: false
           args: --target ${{ matrix.target }}
 
   # 全ビルド完了後、リリースアセットをダウンロードして署名 → latest.json 生成
@@ -172,41 +164,53 @@ jobs:
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
-      - name: Download updater assets and sign
+      - name: Prepare and sign updater bundles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          set -uo pipefail
           TAG="${{ needs.resolve-release.outputs.tag }}"
           REPO="${{ github.repository }}"
           VERSION="${TAG#v}"
 
           mkdir -p /tmp/assets
 
-          # tauri-action upload patterns:
-          #   macOS arm64: Graphium_aarch64.app.tar.gz
-          #   Windows x64 NSIS updater bundle: Graphium_${VERSION}_x64-setup.nsis.zip
-          ASSETS=(
-            "Graphium_aarch64.app.tar.gz"
-            "Graphium_${VERSION}_x64-setup.nsis.zip"
-          )
+          # macOS: tauri-action が .app.tar.gz を正しい名前でリリースに上げているので
+          # それを download してそのまま署名する。
+          MAC_BUNDLE="Graphium_aarch64.app.tar.gz"
+          echo "Downloading ${MAC_BUNDLE}..."
+          gh release download "$TAG" --pattern "$MAC_BUNDLE" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null \
+            || echo "WARNING: ${MAC_BUNDLE} not found"
 
-          for ASSET in "${ASSETS[@]}"; do
-            echo "Downloading $ASSET..."
-            gh release download "$TAG" --pattern "$ASSET" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null || {
-              echo "WARNING: $ASSET not found, skipping"
-              continue
-            }
+          # Windows: tauri-action は NSIS updater zip を上げない（上記参照）。
+          # Tauri の NSIS updater バンドルは「インストーラ .exe を zip しただけ」なので、
+          # リリース済みの -setup.exe から自分で -setup.nsis.zip を組み立て、リリースへ
+          # アップロードしてから署名する。これで tauri-action の updater 挙動に依存せず
+          # 確実に Windows の updater バンドル＋署名を用意できる。
+          WIN_EXE="Graphium_${VERSION}_x64-setup.exe"
+          WIN_ZIP="Graphium_${VERSION}_x64-setup.nsis.zip"
+          echo "Downloading ${WIN_EXE}..."
+          if gh release download "$TAG" --pattern "$WIN_EXE" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null; then
+            echo "Building ${WIN_ZIP} from ${WIN_EXE}..."
+            ( cd /tmp/assets && zip -j -q "$WIN_ZIP" "$WIN_EXE" )
+            echo "Uploading ${WIN_ZIP} to release..."
+            gh release upload "$TAG" "/tmp/assets/$WIN_ZIP" --clobber --repo "$REPO"
+          else
+            echo "WARNING: ${WIN_EXE} not found; cannot build Windows updater bundle"
+          fi
 
-            echo "Signing $ASSET..."
-            tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 || echo "WARNING: signing failed for $ASSET"
+          # 用意できた updater バンドルを署名する（鍵パスワードは空）。
+          for ASSET in "$MAC_BUNDLE" "$WIN_ZIP"; do
+            if [ -f "/tmp/assets/$ASSET" ]; then
+              echo "Signing $ASSET..."
+              tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 \
+                || echo "WARNING: signing failed for $ASSET"
+            fi
           done
 
           echo "Signatures generated:"
-          ls -la /tmp/assets/*.sig 2>/dev/null || echo "No signatures"
-
-          echo "Signatures generated:"
-          ls -la /tmp/assets/*.minisig 2>/dev/null || echo "No signatures"
+          ls -la /tmp/assets/*.sig 2>/dev/null || echo "No .sig files"
 
       - name: Build latest.json
         run: |
