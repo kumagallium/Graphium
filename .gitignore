@@ -30,6 +30,9 @@ docs/screenshots/.video-tmp/
 docs/screenshots/*.webm
 
 # AI backend data (models, profiles — user-specific)
+# 末尾スラッシュ無しの "/data" も併記: worktree 運用で data をディレクトリではなく
+# 親への symlink にするため、"data/" だけだと symlink を取りこぼして commit され得る。
+/data
 data/
 
 # dev サーバーのポート設定（predev で自動生成）
