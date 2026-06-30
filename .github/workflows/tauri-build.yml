@@ -307,10 +307,14 @@ jobs:
             CURRENT_VERSION="0.0.0"
           fi
 
-          # NEW_VERSION > CURRENT_VERSION を semver 的に判定
+          # NEW < CURRENT（厳密に古い）ときだけスキップする。
+          # 同バージョン（NEW == CURRENT）はスキップしない: リリースを再ビルドして
+          # 欠落プラットフォームを後から補完したケース（v0.16.7 の Windows updater が
+          # まさにこれ）で Pages を更新できるようにするため。内容が同一なら後段の
+          # `git diff --cached --quiet` が no-op として弾くので無駄コミットにはならない。
           HIGHEST=$(printf "%s\n%s\n" "$CURRENT_VERSION" "$NEW_VERSION" | sort -V | tail -n1)
-          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ] || [ "$HIGHEST" != "$NEW_VERSION" ]; then
-            echo "Skip: current=$CURRENT_VERSION new=$NEW_VERSION — not a newer release"
+          if [ "$CURRENT_VERSION" != "$NEW_VERSION" ] && [ "$HIGHEST" != "$NEW_VERSION" ]; then
+            echo "Skip: current=$CURRENT_VERSION new=$NEW_VERSION — older than current"
             exit 0
           fi
 
