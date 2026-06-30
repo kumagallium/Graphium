@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.16.6](https://github.com/kumagallium/Graphium/compare/v0.16.5...v0.16.6) - 2026-06-30
+
+- [feat] Web search in subscription chat + clearer web/note source labeling by @kumagallium in https://github.com/kumagallium/Graphium/pull/467
+- [infra] Surface release/updater pipeline failures so they stop being silent by @kumagallium in https://github.com/kumagallium/Graphium/pull/469
+
 ## [v0.16.5](https://github.com/kumagallium/Graphium/compare/v0.16.4...v0.16.5) - 2026-06-29
 
 - [feat] Atom de-blackboxing: portability test replaces hidden gates by @kumagallium in https://github.com/kumagallium/Graphium/pull/459
