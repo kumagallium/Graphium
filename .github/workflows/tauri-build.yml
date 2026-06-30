@@ -147,45 +147,22 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.resolve-release.outputs.release_id }}
-          includeUpdaterJson: false
+          # updater バンドル（macOS: .app.tar.gz / Windows: -setup.nsis.zip）を
+          # リリースにアップロード・保持させるために true にする。
+          # false だと tauri-action は Windows の -setup.nsis.zip をビルド後に削除し、
+          # リリースに上がらない（macOS の .app.tar.gz は主バンドル扱いで残るが Windows
+          # は updater 専用なので消える）。その結果 generate-updater-json が拾えず、
+          # latest.json の windows-x86_64 が署名空＋存在しない URL を指して自動更新が
+          # 壊れた（v0.16.7 で実害）。
+          # 各マトリクスジョブが単一プラットフォームの latest.json を上げて互いを
+          # 上書きするが、後段の generate-updater-json が両 OS を統合した正しい
+          # latest.json で最終上書きするので問題ない。
+          includeUpdaterJson: true
+          # Windows は NSIS updater バンドル（-setup.nsis.zip）を採用させる。
+          # generate-updater-json が期待するアセット名と一致させるため明示する
+          # （MSI 側 .msi.zip を選ばれると名前がずれて拾えない）。
+          updaterJsonPreferNsis: true
           args: --target ${{ matrix.target }}
-
-      # tauri-action はインストーラ（.exe / .msi）はリリースに上げるが、Windows の
-      # NSIS updater バンドル（-setup.nsis.zip）は上げない（v0.16.7 で実害: latest.json
-      # の windows-x86_64 が署名空＋存在しない URL を指し、自動更新が壊れた）。
-      # macOS は tauri-action が .app.tar.gz を _aarch64 付きの正しい名前で上げるので
-      # 触らない（ここで再アップすると別名のゴミ資産になる）。Windows の .nsis.zip だけ
-      # 明示アップロードして generate-updater-json が拾えるようにする。
-      # ローカル名 Graphium_<ver>_x64-setup.nsis.zip = 期待アセット名で一致する。
-      #
-      # 重要な設計上の注意:
-      # - パスは $GITHUB_WORKSPACE 起点の絶対パスを find で探す。相対パスだと
-      #   tauri-action 実行後の CWD ずれで glob が一致せず空振りする（実害）。
-      # - continue-on-error: true。ここで落としてもビルドジョブを失敗させない。
-      #   失敗させると generate-updater-json が skip され、macOS の latest.json
-      #   再生成まで巻き添えになる。Windows バンドルが取れなくても macOS の更新は
-      #   守り、欠落は generate-updater-json 末尾の Verify ステップで可視化する。
-      - name: Upload Windows NSIS updater bundle to release
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -uo pipefail
-          TAG="${{ needs.resolve-release.outputs.tag }}"
-          ROOT="${GITHUB_WORKSPACE:-.}"
-          echo "Searching for -setup.nsis.zip under ${ROOT}/src-tauri/target ..."
-          mapfile -t ZIPS < <(find "${ROOT}/src-tauri/target" -name '*-setup.nsis.zip' 2>/dev/null)
-          if [ ${#ZIPS[@]} -eq 0 ]; then
-            echo "::warning::No -setup.nsis.zip found. generate-updater-json の Verify が欠落を検知して fail させる。診断のため nsis ディレクトリを列挙:"
-            find "${ROOT}/src-tauri/target" -path '*bundle/nsis*' 2>/dev/null || true
-            exit 0
-          fi
-          for f in "${ZIPS[@]}"; do
-            echo "Uploading Windows updater bundle: $f"
-            gh release upload "$TAG" "$f" --clobber --repo "${{ github.repository }}"
-          done
 
   # 全ビルド完了後、リリースアセットをダウンロードして署名 → latest.json 生成
   generate-updater-json:
