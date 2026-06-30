@@ -83,10 +83,15 @@ export type TokenUsage = {
   total_tokens: number;
 };
 
+/** 検索 MCP（Tavily 等）のツール結果から抽出した web 出典。 */
+export type WebSource = { title?: string; url: string };
+
 export type AgentRunResponse = {
   session_id: string;
   message: string;
   tool_calls: ToolCallRecord[];
+  /** 検索 MCP 由来の web 出典（内蔵 WebSearch 経路では空）。 */
+  web_sources?: WebSource[];
   provenance_id: string | null;
   token_usage: TokenUsage;
   model: string | null;

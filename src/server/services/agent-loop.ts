@@ -125,14 +125,25 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
   });
   const durationMs = Date.now() - startedAt;
 
-  // ツール呼び出しの記録を収集
+  // ツール呼び出しの記録を収集。ツール結果（output）も toolCallId で突き合わせて焼き込む
+  // （web 検索 MCP の出典抽出 web-sources.ts が output を読む）。
   const toolCalls: ToolCallRecord[] = [];
   for (const step of result.steps) {
+    const outputById = new Map<string, unknown>();
+    for (const tr of step.toolResults ?? []) {
+      const r = tr as { toolCallId?: string; output?: unknown };
+      if (r.toolCallId !== undefined) outputById.set(r.toolCallId, r.output);
+    }
     for (const tc of step.toolCalls ?? []) {
+      const raw = outputById.get((tc as { toolCallId?: string }).toolCallId ?? "");
+      const output =
+        raw && typeof raw === "object" ? (raw as Record<string, unknown>)
+        : raw != null ? { result: raw }
+        : {};
       toolCalls.push({
         tool_name: tc.toolName,
         input: tc.input as Record<string, unknown>,
-        output: {},
+        output,
         duration_ms: 0,
       });
     }

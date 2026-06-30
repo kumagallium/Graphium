@@ -9,6 +9,7 @@ import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
 import { fetchRegistryServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
+import { extractWebSources } from "../services/web-sources.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 
@@ -170,10 +171,25 @@ app.post("/run", async (c) => {
       modelConfig,
     });
 
+    // 検索 MCP（Tavily 等）のツール結果から web 出典を決定論的に抽出する。
+    // A 経路（内蔵 WebSearch）はツール呼び出しが見えないため空になり、その場合は
+    // モデル出力の "Sources:" 見出しを note-app 側でラベル置換する（既存の別経路）。
+    const webSources = extractWebSources(result.toolCalls);
+    // 診断ログ: どのツールが使われたか / web 出典を何件拾えたか（どの検索経路かの切り分け用）。
+    console.log(
+      "[agent.chat] " +
+        JSON.stringify({
+          provider: modelConfig.provider,
+          toolsUsed: result.toolCalls.map((t) => t.tool_name),
+          webSourceCount: webSources.length,
+        }),
+    );
+
     return c.json({
       session_id: body.session_id ?? crypto.randomUUID(),
       message: result.message,
       tool_calls: result.toolCalls,
+      web_sources: webSources,
       provenance_id: null,
       token_usage: result.tokenUsage,
       model: result.model,

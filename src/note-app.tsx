@@ -1722,12 +1722,23 @@ function NoteEditorInner({
             t("chat.sources.fromNotes"),
           );
         }
-        // WebSearch（claude-subscription）由来の "Sources:" 見出しはモデル出力なので、
-        // ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+        // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
+        // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+        const webHeading = t("chat.sources.fromWeb");
         assistantMessage = assistantMessage.replace(
           /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
-          `**${t("chat.sources.fromWeb")}**`,
+          `**${webHeading}**`,
         );
+        // 検索 MCP（Tavily 等 = B 経路）の出典はツール結果から決定論的に拾えている。
+        // モデルが散文で出典を出さない B 経路の取りこぼしを埋めるため、ここで明示的に付与する。
+        // A 経路で既に「🌐 Web の出典」見出しが付いている場合は重複させない。
+        const webSources = response.web_sources ?? [];
+        if (webSources.length > 0 && !assistantMessage.includes(webHeading)) {
+          const list = webSources
+            .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
+            .join("\n");
+          assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
+        }
         // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
         // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
         const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
