@@ -128,6 +128,8 @@ export const ja: Record<string, string> = {
   "editor.derive": "🔗 新ページを派生",
   "editor.deriveWholeNote": "ノート全体を派生",
   "editor.deleteNote": "ゴミ箱へ移動",
+  "editor.archiveNote": "アーカイブ",
+  "editor.archiveNoteHint": "一覧から隠れますが、派生リンクや引用は解決し続けます。Trash & Archive からいつでも復元できます。",
   "editor.aiAssistant": "🤖 AI アシスタント",
   "editor.askAi": "選択範囲を AI に聞く",
   "editor.derivedNote": "派生ノート",

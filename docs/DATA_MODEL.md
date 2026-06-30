@@ -836,7 +836,7 @@ type NoteIndexEntry = {
   }[];
 
   deletedAt?: string;               // trashed timestamp (user intent)
-  archivedAt?: string;              // archived timestamp (system retention)
+  archivedAt?: string;              // archived timestamp (user retire OR system retention)
 
   // Phase 1 semantic types — mirrored from wikiMeta for fast list-view filtering
   claimRole?: ClaimRole[];
@@ -915,14 +915,18 @@ either flag — the file path stays the same so any link or
 | State | Flag | Meaning | List/search/graph | Citation/regenerate |
 |---|---|---|---|---|
 | active | (neither) | normal | shown | resolve |
-| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Claim into another) | hidden | resolve |
+| archived | `archivedAt` | retired from the list but kept resolvable. Set either by the user (note header menu → Archive, when retiring a note whose derived versions should keep working) or by the system (auto-merge absorbing a Claim into another) | hidden | resolve |
 | trashed | `deletedAt` | user delete intent | hidden | not resolved |
 
 Transitions:
 
 - **active → trashed** via the trash action (manual).
-- **active → archived** via auto-merge (the absorbed Claim is archived,
-  not deleted, so notes that cited it keep working).
+- **active → archived** via the archive action (manual, note header
+  menu) when the user wants to retire a note from the list while keeping
+  its derivation links and citations alive — or via auto-merge (the
+  absorbed Claim is archived, not deleted, so notes that cited it keep
+  working). Unlike trash, archiving never warns about incoming
+  references, since preserving them is the whole point.
 - **archived → active** via the restore action. Note that a Claim
   archived by auto-merge will likely be re-archived on the next merge
   cycle unless the user edits its content to differentiate it.

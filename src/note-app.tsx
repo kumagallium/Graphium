@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, StickyNote } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -274,6 +274,10 @@ function NoteHeaderMenu({
   isWikiDoc,
   inKnowledge,
   onOpenKnowledge,
+  archived,
+  onArchive,
+  archiveDisabled,
+  onRestore,
   onDelete,
   deleteDisabled,
   onShare,
@@ -299,6 +303,13 @@ function NoteHeaderMenu({
   inKnowledge?: boolean;
   /** 「Already in Knowledge」押下で対応 wiki エントリを開く */
   onOpenKnowledge?: () => void;
+  /** このノートがアーカイブ済みか。true ならメニューの「アーカイブ」を「復元」に差し替える */
+  archived?: boolean;
+  /** ノートをアーカイブ（一覧から退避、ID は残し派生リンクは保持）するコールバック */
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
+  /** アーカイブから復元するコールバック（archived のときに表示） */
+  onRestore?: () => void;
   /** ノート削除（ゴミ箱送り）コールバック */
   onDelete?: () => void;
   deleteDisabled?: boolean;
@@ -421,18 +432,39 @@ function NoteHeaderMenu({
               )}
             </>
           )}
+          {((archived ? onRestore : onArchive) || onDelete) && (
+            <div className="my-1 border-t border-border" />
+          )}
+          {archived && onRestore && (
+            <button
+              className={itemClass}
+              onClick={() => { onRestore(); setOpen(false); }}
+              title={t("archive.restoreHint")}
+            >
+              <ArchiveRestore size={14} />
+              {t("archive.restore")}
+            </button>
+          )}
+          {!archived && onArchive && (
+            <button
+              className={itemClass}
+              disabled={archiveDisabled}
+              onClick={() => { onArchive(); setOpen(false); }}
+              title={t("editor.archiveNoteHint")}
+            >
+              <Archive size={14} />
+              {t("editor.archiveNote")}
+            </button>
+          )}
           {onDelete && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={`${itemClass} text-destructive hover:bg-destructive/10`}
-                disabled={deleteDisabled}
-                onClick={() => { onDelete(); setOpen(false); }}
-              >
-                <Trash2 size={14} />
-                {t("editor.deleteNote")}
-              </button>
-            </>
+            <button
+              className={`${itemClass} text-destructive hover:bg-destructive/10`}
+              disabled={deleteDisabled}
+              onClick={() => { onDelete(); setOpen(false); }}
+            >
+              <Trash2 size={14} />
+              {t("editor.deleteNote")}
+            </button>
           )}
         </div>
       )}
@@ -497,6 +529,8 @@ type NoteEditorProps = {
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
   onDeleteNote?: () => void;
+  /** ノートアーカイブ（一覧から退避）コールバック。ヘッダーメニューから呼ばれる */
+  onArchiveNote?: () => void;
   /** チャットから Knowledge コールバック（手動） */
   onIngestChat?: (messages: import("./lib/document-types").ChatMessage[]) => void;
   /** Wiki ドキュメントかどうか */
@@ -515,6 +549,14 @@ type NoteEditorProps = {
   >;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /** アーカイブから復元するコールバック（archived のときヘッダーメニュー / バナーから呼ぶ） */
+  onRestoreFromArchive?: () => void;
+  /** 任意のノート ID がアーカイブ済みか判定する述語。SidePeek（グラフ/リンク経由で開く
+   *  別ノート）が read-only / バナー表示を出し分けるのに使う。NoteEditor が受け取る
+   *  noteIndex はアーカイブを除外済みのため、判定にはこの述語が必要。 */
+  isArchived?: (noteId: string) => boolean;
+  /** SidePeek で開いたアーカイブ済みノートを ID 指定で復元するコールバック */
+  onRestoreArchivedById?: (noteId: string) => void;
   /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
@@ -630,6 +672,7 @@ function NoteEditorInner({
   onDeriveWholeNote,
   derivingDisabled,
   onDeleteNote,
+  onArchiveNote,
   onIngestChat,
   isWikiDoc,
   aiAvailable = true,
@@ -637,6 +680,9 @@ function NoteEditorInner({
   onOpenComposer,
   composerSubmitRef,
   archived = false,
+  onRestoreFromArchive,
+  isArchived,
+  onRestoreArchivedById,
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
@@ -2642,6 +2688,10 @@ function NoteEditorInner({
               ? () => onNavigateNote(`wiki:${wikiEntriesForCurrentNote[0].noteId}`)
               : undefined
           }
+          archived={archived}
+          onArchive={onArchiveNote}
+          archiveDisabled={!fileId || saving}
+          onRestore={onRestoreFromArchive}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
           onShare={!isWikiDoc ? handleShare : undefined}
@@ -2655,6 +2705,55 @@ function NoteEditorInner({
 
       {/* タイトルバー直下のサブヘッダー（WikiBanner / SkillBanner 用、D1 配置） */}
       {subHeaderSlot}
+
+      {/* 通常ノートのアーカイブバナー。Wiki / Skill は専用バナー（subHeaderSlot）が
+          アーカイブ表示を担うため除外する。エディタは archived のとき read-only
+          （editable={!archived}）なので、ここでは状態の可視化と復元導線を提供する。 */}
+      {archived && !isWikiDoc && !isSkillDoc && (
+        <div style={{ padding: "0 16px", marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "6px 12px",
+              borderRadius: "var(--r-1)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-2)",
+              fontSize: 13,
+            }}
+          >
+            <Archive size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{t("archive.archivedHint")}</span>
+            {onRestoreFromArchive && (
+              <button
+                onClick={onRestoreFromArchive}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0,
+                  padding: "4px 10px",
+                  borderRadius: "var(--r-1)",
+                  border: "1px solid var(--rule)",
+                  background: "var(--paper-2)",
+                  color: "var(--ink-2)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                title={t("archive.restore")}
+              >
+                <ArchiveRestore size={13} />
+                {t("archive.restore")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
@@ -2865,6 +2964,12 @@ function NoteEditorInner({
             uploadFile={uploadFile}
             onAddUrlBookmark={onAddUrlBookmark}
             noteIndex={noteIndex ?? null}
+            archived={isArchived?.(sidePeekNoteId) ?? false}
+            onRestoreFromArchive={
+              isArchived?.(sidePeekNoteId) && onRestoreArchivedById
+                ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -2882,6 +2987,12 @@ function NoteEditorInner({
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
+            archived={isArchived?.(sidePeekNoteId) ?? false}
+            onRestoreFromArchive={
+              isArchived?.(sidePeekNoteId) && onRestoreArchivedById
+                ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
@@ -5835,6 +5946,13 @@ export function NoteApp() {
               const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
               return rawId ? fm.archivedIdSet.has(rawId) : false;
             })()}
+            onRestoreFromArchive={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              // 復元後はそのまま開いたままにする（archivedIdSet 更新でバナーが消え編集可に戻る）
+              return rawId ? () => fm.handleRestoreFromArchive(rawId) : undefined;
+            })()}
+            isArchived={(noteId: string) => fm.archivedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
+            onRestoreArchivedById={(noteId: string) => fm.handleRestoreFromArchive(noteId.replace(/^(wiki|skill):/, ""))}
             onSave={fm.activeDoc?.source === "ai"
               ? (doc: GraphiumDocument) => {
                   const wikiId = fm.activeFileId?.replace("wiki:", "");
@@ -5861,6 +5979,12 @@ export function NoteApp() {
                 }
               }
               fm.handleDelete(id);
+              router.navigate({ view: "home" });
+            } : undefined}
+            onArchiveNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
+              // アーカイブは派生リンクを守るのが目的なので、削除と違い参照警告は出さない。
+              const id = fm.activeFileId!;
+              fm.handleArchiveNote(id);
               router.navigate({ view: "home" });
             } : undefined}
             onAiDeriveNote={async (doc) => {
@@ -6052,6 +6176,12 @@ export function NoteApp() {
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);
+              })()}
+              onRestoreFromArchive={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.archivedIdSet.has(rawId)
+                  ? () => fm.handleRestoreFromArchive(rawId)
+                  : undefined;
               })()}
               mediaIndex={fm.mediaIndex ?? null}
               captureIndex={capture.captureIndex ?? null}
