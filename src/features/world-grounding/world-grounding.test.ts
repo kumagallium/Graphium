@@ -290,6 +290,79 @@ describe("checkValidity facade", () => {
     }
   });
 
+  // auto-upgrade ゲーティング（Phase 5）: 旧 parametric なモデル沈殿だけを再照合する
+  it("web-grounded 済み entry (grounded: true) はキャッシュ即答し LLM を呼ばない（再照合ループ防止）", async () => {
+    const kb: KbFile = {
+      version: 1,
+      checkedBy: "distilled-kb@v1",
+      entries: [
+        {
+          id: "web-1",
+          verdict: "supported",
+          claim: "test",
+          rationale: "grounded already",
+          keywords: ["焼結", "粒成長"],
+          generatedByModel: "opus",
+          grounded: true, // web 経路を通過済み
+        },
+      ],
+    };
+    const originalFetch = globalThis.fetch;
+    // grounding-kb のみ KB を返す。LLM endpoint が呼ばれたら例外（= 再照合してしまった証拠）
+    globalThis.fetch = (async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("grounding-kb/")) return new Response(JSON.stringify(kb), { status: 200 });
+      throw new Error("LLM endpoint must not be called for grounded entries");
+    }) as typeof fetch;
+    clearKbCacheForTest();
+    try {
+      const validity = await checkValidity(baseMeta(), "焼結温度を上げると粒成長が促進される", {
+        baseUrl: "/test-baseurl/",
+      });
+      expect(validity?.verdict).toBe("supported");
+      expect(validity?.checkedBy).toBe("distilled-kb@v1");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
+  });
+
+  it("旧 parametric なモデル沈殿 (grounded 未設定) は再照合を試み、モデル未登録なら古い verdict を温存する", async () => {
+    const kb: KbFile = {
+      version: 1,
+      checkedBy: "distilled-kb@v1",
+      entries: [
+        {
+          id: "legacy-1",
+          verdict: "established",
+          claim: "test",
+          rationale: "legacy parametric",
+          keywords: ["焼結", "粒成長"],
+          generatedByModel: "opus", // モデル沈殿 かつ grounded 未設定 → upgradable
+        },
+      ],
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("grounding-kb/")) return new Response(JSON.stringify(kb), { status: 200 });
+      return new Response("not reached", { status: 503 });
+    }) as typeof fetch;
+    clearKbCacheForTest();
+    try {
+      // テスト環境はモデル未登録 → 再照合は no-model で失敗 → 古い parametric verdict を温存（degrade しない）
+      const validity = await checkValidity(baseMeta(), "焼結温度を上げると粒成長が促進される", {
+        baseUrl: "/test-baseurl/",
+      });
+      expect(validity?.verdict).toBe("established");
+      expect(validity?.checkedBy).toBe("distilled-kb@v1");
+      expect(validity?.entryId).toBe("legacy-1");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearKbCacheForTest();
+    }
+  });
+
   it("KB miss + LLM 未登録（or 失敗）は verdict 未付与 + checkedBy='no-engine' で degrade（PR 2B 新挙動）", async () => {
     // PR 2B: KB miss 時は LLM fallback を試みる。テスト環境では groundingModel 未設定 +
     // localStorage 空のため、checkValidityViaModel が null を返し、checkedBy: "no-engine" に degrade する。

@@ -50,11 +50,16 @@ export async function checkValidity(
   const checkedAt = new Date().toISOString();
 
   // 1. KB ヒット即答
-  // auto-upgrade 対象は「モデル沈殿 かつ parametric（grounded 印なし）」の entry のみ。
-  // web-grounded 済み、または人手キュレーション seed（manual-curated）はそのまま即答する。
+  // auto-upgrade 対象は「モデルが parametric に沈殿させた旧 entry」だけ:
+  //   - grounded === undefined（web 経路を一度も通っていない）
+  //   - generatedByModel が実モデル ID（"manual-curated@v1" や未設定の seed は除外）
+  // web 経路を通った entry（grounded true=証拠あり / false=証拠ゼロでも試行済み）は「処理済み」
+  // として即答する。再 upgrade しないので、証拠が出ない claim を毎回再照合しない。
   const kbMatch = await checkValidityFromKB(claimText, { baseUrl });
-  const isManualSeed = kbMatch?.generatedByModel === "manual-curated@v1";
-  const upgradable = !!kbMatch && !kbMatch.grounded && !isManualSeed;
+  const gen = kbMatch?.generatedByModel;
+  const isModelSediment = !!gen && gen !== "manual-curated@v1";
+  const upgradable =
+    !!kbMatch && kbMatch.grounded === undefined && isModelSediment;
   if (kbMatch && !upgradable) {
     console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict, grounded: kbMatch.grounded });
     return {
@@ -135,8 +140,9 @@ export async function checkValidity(
         url: s.url,
       })),
       generatedByModel: modelResult.model,
-      // web 証拠に基づく判定なら印を付ける。次回以降は KB ヒットで即答（再 upgrade しない）。
-      grounded: modelResult.grounded,
+      // web 経路を通ったら必ず確定 boolean を刻む（true=証拠あり / false=証拠ゼロでも試行済み）。
+      // これで次回以降は KB ヒットで即答され、証拠の出ない claim を毎回再照合しない。
+      grounded: modelResult.grounded === true,
       version: 1,
     });
     // 実際に沈殿できた時だけエッジを張る（沈殿失敗 = KB に実体が無いので dangling を避ける）
