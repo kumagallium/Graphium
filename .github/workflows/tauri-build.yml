@@ -157,20 +157,30 @@ jobs:
       # 触らない（ここで再アップすると別名のゴミ資産になる）。Windows の .nsis.zip だけ
       # 明示アップロードして generate-updater-json が拾えるようにする。
       # ローカル名 Graphium_<ver>_x64-setup.nsis.zip = 期待アセット名で一致する。
+      #
+      # 重要な設計上の注意:
+      # - パスは $GITHUB_WORKSPACE 起点の絶対パスを find で探す。相対パスだと
+      #   tauri-action 実行後の CWD ずれで glob が一致せず空振りする（実害）。
+      # - continue-on-error: true。ここで落としてもビルドジョブを失敗させない。
+      #   失敗させると generate-updater-json が skip され、macOS の latest.json
+      #   再生成まで巻き添えになる。Windows バンドルが取れなくても macOS の更新は
+      #   守り、欠落は generate-updater-json 末尾の Verify ステップで可視化する。
       - name: Upload Windows NSIS updater bundle to release
         if: runner.os == 'Windows'
+        continue-on-error: true
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           TAG="${{ needs.resolve-release.outputs.tag }}"
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
-          shopt -s nullglob
-          ZIPS=("${BUNDLE_DIR}"/*-setup.nsis.zip)
+          ROOT="${GITHUB_WORKSPACE:-.}"
+          echo "Searching for -setup.nsis.zip under ${ROOT}/src-tauri/target ..."
+          mapfile -t ZIPS < <(find "${ROOT}/src-tauri/target" -name '*-setup.nsis.zip' 2>/dev/null)
           if [ ${#ZIPS[@]} -eq 0 ]; then
-            echo "::error::No NSIS updater bundle (-setup.nsis.zip) found under ${BUNDLE_DIR}. createUpdaterArtifacts が無効か、NSIS ターゲットが未ビルドの可能性。"
-            exit 1
+            echo "::warning::No -setup.nsis.zip found. generate-updater-json の Verify が欠落を検知して fail させる。診断のため nsis ディレクトリを列挙:"
+            find "${ROOT}/src-tauri/target" -path '*bundle/nsis*' 2>/dev/null || true
+            exit 0
           fi
           for f in "${ZIPS[@]}"; do
             echo "Uploading Windows updater bundle: $f"
