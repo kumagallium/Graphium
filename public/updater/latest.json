@@ -1,15 +1,15 @@
 {
-  "version": "0.16.6",
+  "version": "0.16.7",
   "notes": "See the changelog for details.",
-  "pub_date": "2026-06-30T01:48:57Z",
+  "pub_date": "2026-06-30T09:13:36Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6Qmc3RGhScUZoenJzZUE5TkVtdFo1WUdJci9mSmpDUnVtL2g4ZytwM3ZMd1hZNHBYVEVabHJnNGdKM1o1YS90YTM1T0ZxWFh6RCtRdXpKSmJxTSt3TVEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyNzg0MTM3CWZpbGU6R3JhcGhpdW1fYWFyY2g2NC5hcHAudGFyLmd6ClBkTytoNHE4SnhBQWd2MThsdHhvWGpuL2c4TUVoNW1EUnZQRFJVZGVFR3cweXFUTUtZcDNBUFlvUXgyZkJtUW5rM0NmSU5qM0NkQ04xeE5ycGtkNERRPT0K",
-      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.16.6/Graphium_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUdXFFWTZsaFh6QnVKb21mWHhHUU51Z1ZKSXBBRWwrcHRIdG00NEN4UHlIZWFLektxNWdRUGlQNjl5RkcvSC9ndEpUbUp4OFk1eGZsTkg0MkdjOHBtbXZCNzllNGl1ZUFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyODEwODE1CWZpbGU6R3JhcGhpdW1fYWFyY2g2NC5hcHAudGFyLmd6CjNQaFQwdzNaZ0VZK0ticktwTGU2R2VibUFXRVlESnplRUtCaTZHbks1VUthSTlmbkVKeDlUTXFyQkhtRkM4Q1VnUmxnRDZzYmdHSm1aQ0x0WFQ0aEF3PT0K",
+      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.16.7/Graphium_aarch64.app.tar.gz"
     },
     "windows-x86_64": {
       "signature": "",
-      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.16.6/Graphium_0.16.6_x64-setup.nsis.zip"
+      "url": "https://github.com/kumagallium/Graphium/releases/download/v0.16.7/Graphium_0.16.7_x64-setup.nsis.zip"
     }
   }
 }
