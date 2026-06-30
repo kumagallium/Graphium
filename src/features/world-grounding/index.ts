@@ -16,7 +16,7 @@
 import type { GroundingProfile, WikiMeta } from "../../lib/document-types";
 import { newId } from "../../lib/id";
 import { checkValidityFromKB } from "./distilled-kb-retriever";
-import { appendToKbCache } from "./kb-cache";
+import { appendToKbCache, removeFromKbCache } from "./kb-cache";
 import { checkValidityViaModel } from "./llm-fallback";
 
 export type CheckValidityOptions = {
@@ -50,9 +50,13 @@ export async function checkValidity(
   const checkedAt = new Date().toISOString();
 
   // 1. KB ヒット即答
+  // auto-upgrade 対象は「モデル沈殿 かつ parametric（grounded 印なし）」の entry のみ。
+  // web-grounded 済み、または人手キュレーション seed（manual-curated）はそのまま即答する。
   const kbMatch = await checkValidityFromKB(claimText, { baseUrl });
-  if (kbMatch) {
-    console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict });
+  const isManualSeed = kbMatch?.generatedByModel === "manual-curated@v1";
+  const upgradable = !!kbMatch && !kbMatch.grounded && !isManualSeed;
+  if (kbMatch && !upgradable) {
+    console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict, grounded: kbMatch.grounded });
     return {
       score: kbMatch.score,
       verdict: kbMatch.verdict,
@@ -67,12 +71,34 @@ export async function checkValidity(
       entryId: kbMatch.entryId,
     };
   }
-  console.info("[world-grounding] KB miss, calling LLM fallback...");
+
+  // auto-upgrade: 旧 parametric なモデル沈殿は、web 証拠が取れる今は「ミス扱い」で一度だけ
+  // 再照合し、web-grounded で上書きする。古い entry は沈殿成功後に削除する。
+  const staleEntryId = upgradable ? kbMatch.entryId : undefined;
+  if (staleEntryId) {
+    console.info("[world-grounding] KB hit was parametric — re-grounding via web", { entryId: staleEntryId });
+  } else {
+    console.info("[world-grounding] KB miss, calling LLM fallback...");
+  }
 
   // 2. KB ミス → LLM fallback
   const outcome = await checkValidityViaModel(claimText, { language });
   if (outcome.kind === "failure") {
     console.warn("[world-grounding] LLM fallback failure:", outcome.failure);
+    // auto-upgrade の再照合が失敗したときは、古い parametric 結果を温存して degrade を避ける
+    // （旧 entry も削除していないので、次回また upgrade を試みる）。
+    if (kbMatch) {
+      return {
+        score: kbMatch.score,
+        verdict: kbMatch.verdict,
+        rationale: kbMatch.rationale,
+        sources: kbMatch.sources,
+        matchedKeywords: kbMatch.matchedKeywords,
+        checkedBy: "distilled-kb@v1",
+        checkedAt,
+        entryId: kbMatch.entryId,
+      };
+    }
     // 失敗理由を checkedBy / rationale に詰める。UI 側で出し分け可能にする
     const reasonLabel =
       outcome.failure.reason === "no-model"
@@ -109,10 +135,16 @@ export async function checkValidity(
         url: s.url,
       })),
       generatedByModel: modelResult.model,
+      // web 証拠に基づく判定なら印を付ける。次回以降は KB ヒットで即答（再 upgrade しない）。
+      grounded: modelResult.grounded,
       version: 1,
     });
     // 実際に沈殿できた時だけエッジを張る（沈殿失敗 = KB に実体が無いので dangling を避ける）
-    if (cached) sedimentedEntryId = id;
+    if (cached) {
+      sedimentedEntryId = id;
+      // auto-upgrade 成立: 旧 parametric entry を削除して重複を防ぐ（新 entry が置き換える）。
+      if (staleEntryId) await removeFromKbCache(staleEntryId);
+    }
     console.info("[world-grounding] sedimented into KB cache:", cached);
   }
 

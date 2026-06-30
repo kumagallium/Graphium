@@ -25,7 +25,6 @@ import {
   buildWebGroundedSystemPrompt,
   buildWebGroundedUserMessage,
   parseWorldGroundingOutput,
-  verifyResultSourceUrls,
 } from "../services/world-grounding.js";
 import { discoverAllMcpTools } from "../services/mcp-discovery.js";
 import {
@@ -129,13 +128,11 @@ app.post("/check", async (c) => {
       llmResult.message,
       grounded
         ? { mode: "evidence", allowedUrls }
-        : { mode: "whitelist" },
+        : { mode: "none" },
     );
-    // grounded: URL は数秒前に検索が返した実在 URL（任意ドメイン）なので実在検証はスキップ。
-    //   provenance ガードレール（url ∈ evidence）が保証になっている。
-    // parametric: ホスト名 whitelist を通った url も実在検証し、404 / 確認不能なものは剥がす。
-    const result =
-      parsed && !grounded ? await verifyResultSourceUrls(parsed) : parsed;
+    // grounded: URL は数秒前に検索が返した実在 URL（provenance で保証）。
+    // parametric: URL は一切付けない（記憶由来 URL は捏造リスクが高い）。ref テキストのみ。
+    const result = parsed;
     return c.json({
       result,
       model: llmResult.model,

@@ -36,6 +36,13 @@ export type KbEntry = {
    * - "<model-id>"        : モデル判定の沈殿（PR 2B 以降）
    */
   generatedByModel?: string;
+  /**
+   * web 検索の証拠に基づいて判定されたか（Phase 5）。
+   * - true       : Wikipedia / OpenAlex / 検索 MCP の証拠に基づく判定（sources の URL は実在保証）
+   * - undefined  : 旧来の parametric 判定（モデルの記憶のみ）。web 証拠が取れる今は
+   *                ヒット時に一度だけ再照合して web-grounded で上書きする（auto-upgrade）。
+   */
+  grounded?: boolean;
 };
 
 export type KbFile = {
@@ -60,6 +67,10 @@ export type GroundingMatch = {
   matchedKeywords: string[];
   /** マッチした keyword 数 / entry の keywords 数。0..1 */
   score: number;
+  /** この entry が web 証拠に基づくか（undefined = 旧 parametric → auto-upgrade 対象） */
+  grounded?: boolean;
+  /** entry の出所（"manual-curated@v1" = 人手 seed は upgrade 対象外） */
+  generatedByModel?: string;
 };
 
 const MIN_MATCHED_KEYWORDS = 2;
@@ -167,6 +178,8 @@ export async function checkValidityFromKB(
         sources: entry.sources,
         matchedKeywords: matched,
         score,
+        grounded: entry.grounded,
+        generatedByModel: entry.generatedByModel,
       };
     }
   }

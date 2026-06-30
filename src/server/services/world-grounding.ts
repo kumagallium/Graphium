@@ -24,44 +24,16 @@ const VERDICT_VALUES: GroundingValidityVerdict[] = [
 ];
 
 /**
- * 幻覚 URL 対策・第 1 段（ホスト名 whitelist）。
- * LLM は source URL に幻覚を入れがちなので、まず確証あるドメインだけ通す。
- * - Wikipedia / DOI / arXiv は実在検証 API があり、第 2 段で中身を確かめられる
- * これら以外の URL（出版社サイト / 論文 PDF 直リンク / lab page など）は
- * パスが幻覚で生成されがちなので捨てる。"ref" テキストだけは残す。
- *
- * 注意: ホスト名が合っていても記事 / DOI が実在するとは限らない。小型モデルは
- * `ja.wikipedia.org/wiki/<実在しない記事>` を平気で吐く。実在の最終確認は
- * verifySourceUrl（第 2 段・ネットワーク検証）が行う。
- */
-const SAFE_URL_HOSTS = new Set([
-  "en.wikipedia.org",
-  "ja.wikipedia.org",
-  "doi.org",
-  "arxiv.org",
-]);
-
-function sanitizeSourceUrl(url: string | undefined): string | undefined {
-  if (!url || typeof url !== "string") return undefined;
-  try {
-    const u = new URL(url);
-    // http(s) のみ許容
-    if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
-    if (SAFE_URL_HOSTS.has(u.hostname)) return url;
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * 出力 URL の絞り込みモード。
- * - `whitelist`: parametric 判定（モデルの記憶由来）。安全ドメインのみ通す従来方式。
+ * - `none`: parametric 判定（モデルの記憶由来）。**URL は一切通さない**（ref テキストのみ）。
+ *   記憶由来の URL/DOI は高エントロピー文字列で、解決しても別論文を指すことがある
+ *   （実例: opus が Acta Cryst の DOI 末尾だけ捏造 → 無関係の論文に解決）。
+ *   検証可能な URL は web-grounding（evidence モード）からのみ出す、という原則に統一。
  * - `evidence`: web-grounding 判定。判定前に実行した検索が実際に返した URL のみ通す。
- *   「取得集合に属するか」で絞るので、任意ドメインでも実在保証が成り立つ。
+ *   「取得集合に属するか」で絞るので、任意ドメインでも実在＆出典一致が保証される。
  */
 export type ParseUrlMode =
-  | { mode: "whitelist" }
+  | { mode: "none" }
   | { mode: "evidence"; allowedUrls: Set<string> };
 
 /** source.url を urlMode に応じて検証する。通らなければ undefined（ref は別途残す）。 */
@@ -70,7 +42,7 @@ function resolveSourceUrl(
   urlMode: ParseUrlMode,
 ): string | undefined {
   if (!url) return undefined;
-  if (urlMode.mode === "whitelist") return sanitizeSourceUrl(url);
+  if (urlMode.mode === "none") return undefined; // 記憶由来 URL は出さない
   // evidence モード: http(s) かつ、検索が返した URL 集合に正規化一致するものだけ通す。
   const norm = normalizeUrlForMatch(url);
   if (norm && urlMode.allowedUrls.has(norm)) return url;
@@ -116,7 +88,7 @@ text outside the optional \`\`\`json fence). Schema:
   "normalizedClaim": "<rewrite the claim as a single domain-general sentence>",
   "keywords": ["<6-10 retrieval keywords, multilingual ja/en mix>"],
   "sources": [
-    { "ref": "<book / law / classical paper / Wikipedia title>", "url": "<https url or omit>" }
+    { "ref": "<book / law / classical paper / Wikipedia title — TEXT ONLY, no url>" }
   ]
 }
 
@@ -136,16 +108,12 @@ Rules:
   sample IDs, lab names, personal anecdote details. This is what the KB caches
   as a reusable entry.
 - "keywords" should be retrievable terms that another similar claim would contain.
-- "sources" MAY be empty. Only include sources you are confident exist.
-- **URL whitelist** — In "sources[].url", only include URLs from these safe
-  domains (other domains will be discarded by the parser):
-    - en.wikipedia.org / ja.wikipedia.org (Wikipedia)
-    - doi.org (DOI resolver, e.g. https://doi.org/10.1126/science.1156391)
-    - arxiv.org (arXiv abstract pages, e.g. https://arxiv.org/abs/2403.12345)
-  **Never invent URLs from publisher sites, journal homepages, lab pages, or
-  paper PDFs.** If you do not know an exact safe URL for a source, OMIT the
-  "url" field — only the "ref" text. A missing URL is far better than a broken
-  one.
+- "sources" MAY be empty. Each source is a citation **as TEXT ONLY** (author, year,
+  title, journal) so the user can search for it.
+- **Do NOT output any URL or DOI.** You have no retrieved evidence here, and a
+  recalled URL/DOI is almost always wrong (the high-entropy tail is fabricated
+  and can resolve to an unrelated paper). Any "url" field will be discarded.
+  Provide the citation text only.
 - If verdict is null, "rationale" should explain why (insufficient knowledge
   for or against), and normalizedClaim / keywords / sources MAY be omitted.
 
@@ -249,7 +217,7 @@ Output strict JSON now.`;
  */
 export function parseWorldGroundingOutput(
   raw: string,
-  urlMode: ParseUrlMode = { mode: "whitelist" },
+  urlMode: ParseUrlMode = { mode: "none" },
 ): WorldGroundingResult | null {
   // ``` ブロック剥がし（既存 parser と同じ流儀）
   let jsonText = raw.trim();
@@ -311,74 +279,7 @@ export function parseWorldGroundingOutput(
   };
 }
 
-// ── 幻覚 URL 対策・第 2 段: 実在検証 ────────────────────────────────
-// sanitizeSourceUrl がホスト名 whitelist で「形」を弾くのに対し、こちらは
-// 「中身（記事 / DOI / abstract が本当に在るか）」をネットワークで確かめる。
-// 小型モデル（gpt-oss 等）は whitelist 内ドメインの実在しないパスを平気で吐くため、
-// ホスト名チェックだけでは 404 リンクが KB に沈殿する（ユーザー報告で発覚）。
-// fallback パス（KB ミス時）でのみ走るので、既に遅い LLM 呼び出しの隣では誤差。
-
-/** 実在検証のタイムアウト（ms）。遅い経路なので短くてよい。 */
-const URL_VERIFY_TIMEOUT_MS = 3500;
-/** Wikipedia は UA 無しリクエストを弾くことがあるので明示する。 */
-const GROUNDING_UA =
-  "Graphium-world-grounding/1.0 (+https://github.com/kumagallium/Graphium)";
-
-/**
- * source URL が実在するかをネットワークで検証する。
- * - Wikipedia: REST summary API で判定（404 = 記事なし）。`/wiki/` への HEAD は
- *   存在しない記事でも 200（案内ページ）を返すため使えない。
- * - arXiv / DOI: HEAD でリダイレクト追跡し `res.ok` を見る。
- * 検証できない（タイムアウト / ネットワーク断 / 不正 URL）ときは false に倒す。
- * 「本物だけ残す」方針なので、不確実なら url を捨てて ref だけ残す。
- */
-export async function verifySourceUrl(url: string): Promise<boolean> {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return false;
-  }
-  try {
-    if (u.hostname === "en.wikipedia.org" || u.hostname === "ja.wikipedia.org") {
-      const m = u.pathname.match(/^\/wiki\/(.+)$/);
-      if (!m) return false;
-      const api = `https://${u.hostname}/api/rest_v1/page/summary/${m[1]}?redirect=true`;
-      const res = await fetch(api, {
-        method: "GET",
-        redirect: "follow",
-        headers: { "user-agent": GROUNDING_UA },
-        signal: AbortSignal.timeout(URL_VERIFY_TIMEOUT_MS),
-      });
-      return res.ok; // 200 = 記事あり / 404 = なし
-    }
-    // arxiv.org / doi.org（doi は resolver なので未知 DOI は 404）
-    const res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      headers: { "user-agent": GROUNDING_UA },
-      signal: AbortSignal.timeout(URL_VERIFY_TIMEOUT_MS),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * result.sources の url を実在検証し、存在しない / 確認できない url を剥がす（ref は残す）。
- * 0-3 件想定なので並列でよい。sources が無ければそのまま返す。
- */
-export async function verifyResultSourceUrls(
-  result: WorldGroundingResult,
-): Promise<WorldGroundingResult> {
-  if (!result.sources || result.sources.length === 0) return result;
-  const verified = await Promise.all(
-    result.sources.map(async (s) => {
-      if (!s.url) return s;
-      const ok = await verifySourceUrl(s.url);
-      return ok ? s : { ref: s.ref };
-    }),
-  );
-  return { ...result, sources: verified };
-}
+// 幻覚 URL 対策の whitelist / 実在検証（sanitizeSourceUrl / verifySourceUrl）は撤去した。
+// parametric 経路は URL を一切出さず（ParseUrlMode "none"）、web-grounding 経路は
+// 「検索が返した URL のみ」という provenance で絞る（evidence モード）。どちらも
+// 記憶由来 URL を出さないので、ドメイン whitelist もネットワーク存在検証も不要になった。

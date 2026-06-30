@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   buildWorldGroundingSystemPrompt,
@@ -6,8 +6,6 @@ import {
   buildWebGroundedSystemPrompt,
   buildWebGroundedUserMessage,
   parseWorldGroundingOutput,
-  verifyResultSourceUrls,
-  verifySourceUrl,
 } from "./world-grounding.js";
 
 describe("buildWorldGroundingSystemPrompt", () => {
@@ -30,6 +28,12 @@ describe("buildWorldGroundingSystemPrompt", () => {
     expect(sys).toMatch(/KB's view/);
     expect(sys).toMatch(/NOT a judgment/);
   });
+
+  it("parametric では URL/DOI を出さず ref テキストのみと指示する（捏造対策）", () => {
+    const sys = buildWorldGroundingSystemPrompt("en");
+    expect(sys).toMatch(/Do NOT output any URL or DOI/i);
+    expect(sys).toMatch(/TEXT ONLY/);
+  });
 });
 
 describe("parseWorldGroundingOutput", () => {
@@ -45,7 +49,9 @@ describe("parseWorldGroundingOutput", () => {
     expect(out?.verdict).toBe("established");
     expect(out?.normalizedClaim).toMatch(/Sintering/);
     expect(out?.keywords).toHaveLength(4);
-    expect(out?.sources?.[0].url).toMatch(/wikipedia/);
+    // 既定 none モードでは ref は残るが url は捨てられる
+    expect(out?.sources?.[0].ref).toMatch(/Sintering/);
+    expect(out?.sources?.[0].url).toBeUndefined();
   });
 
   it("```json ブロックでラップされていても剥がして解釈する", () => {
@@ -106,151 +112,22 @@ describe("parseWorldGroundingOutput", () => {
     expect(out?.sources?.[0].url).toBeUndefined();
   });
 
-  // URL whitelist sanitize（LLM 幻覚 URL 対策、ユーザー報告で発覚）
-  it("Wikipedia (en/ja) と DOI と arXiv の URL は通す", () => {
+  // 既定（none）モード: parametric 判定では URL を一切出さない（記憶由来 URL の捏造対策）。
+  it("既定(none)モードでは Wikipedia / DOI / arXiv も含め全 URL を捨てる（ref は残す）", () => {
     const raw = JSON.stringify({
       verdict: "established",
       rationale: "x",
       sources: [
         { ref: "Wikipedia: Sintering", url: "https://en.wikipedia.org/wiki/Sintering" },
-        { ref: "焼結 (ja)", url: "https://ja.wikipedia.org/wiki/焼結" },
         { ref: "DOI", url: "https://doi.org/10.1126/science.1156391" },
         { ref: "arXiv", url: "https://arxiv.org/abs/2403.12345" },
-      ],
-    });
-    const out = parseWorldGroundingOutput(raw);
-    expect(out?.sources?.map((s) => s.url)).toEqual([
-      "https://en.wikipedia.org/wiki/Sintering",
-      "https://ja.wikipedia.org/wiki/焼結",
-      "https://doi.org/10.1126/science.1156391",
-      "https://arxiv.org/abs/2403.12345",
-    ]);
-  });
-
-  it("出版社サイト / 論文 PDF / lab page など whitelist 外の URL は捨てる（ref は残す）", () => {
-    const raw = JSON.stringify({
-      verdict: "supported",
-      rationale: "x",
-      sources: [
         { ref: "Nature paper", url: "https://www.nature.com/articles/nmat2090" },
-        { ref: "Some PDF", url: "https://example.edu/papers/foo.pdf" },
-        { ref: "Lab page", url: "https://prof-smith.example.org/research" },
       ],
     });
     const out = parseWorldGroundingOutput(raw);
-    // ref は全部残す
-    expect(out?.sources?.length).toBe(3);
-    // url は全部 undefined（whitelist 外なので捨てた）
+    // ref は全部残るが url は全て undefined（記憶由来 URL は出さない）
+    expect(out?.sources?.length).toBe(4);
     expect(out?.sources?.every((s) => s.url === undefined)).toBe(true);
-  });
-
-  it("file:// や javascript: など非 http(s) URL は捨てる", () => {
-    const raw = JSON.stringify({
-      verdict: "weak",
-      rationale: "x",
-      sources: [
-        { ref: "local file", url: "file:///etc/passwd" },
-        { ref: "js injection", url: "javascript:alert(1)" },
-      ],
-    });
-    const out = parseWorldGroundingOutput(raw);
-    expect(out?.sources?.every((s) => s.url === undefined)).toBe(true);
-  });
-
-  it("URL parse 失敗（不正フォーマット）も捨てる", () => {
-    const raw = JSON.stringify({
-      verdict: "established",
-      rationale: "x",
-      sources: [{ ref: "broken", url: "not a url" }],
-    });
-    const out = parseWorldGroundingOutput(raw);
-    expect(out?.sources?.[0].url).toBeUndefined();
-  });
-});
-
-// 幻覚 URL 対策・第 2 段: 実在検証（ユーザー報告: gpt-oss が whitelist 内ドメインの
-// 実在しない Wikipedia 記事 URL を吐く → 404 リンクが KB に沈殿していた）
-describe("verifySourceUrl: URL の実在をネットワークで検証する", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  function stubFetch(impl: (url: string, init?: any) => Promise<{ ok: boolean }>) {
-    vi.stubGlobal("fetch", vi.fn((u: any, init?: any) => impl(String(u), init)));
-  }
-
-  it("Wikipedia: REST summary が 200 なら実在 = true", async () => {
-    stubFetch(async (url) => {
-      expect(url).toContain("/api/rest_v1/page/summary/");
-      return { ok: true };
-    });
-    expect(await verifySourceUrl("https://en.wikipedia.org/wiki/Entropy")).toBe(true);
-  });
-
-  it("Wikipedia: REST summary が 404 なら実在せず = false", async () => {
-    stubFetch(async () => ({ ok: false }));
-    expect(
-      await verifySourceUrl("https://ja.wikipedia.org/wiki/存在しない記事ABC"),
-    ).toBe(false);
-  });
-
-  it("Wikipedia: /wiki/ でないパス（幻覚の検索 URL 等）は false", async () => {
-    stubFetch(async () => ({ ok: true }));
-    expect(
-      await verifySourceUrl("https://en.wikipedia.org/w/index.php?search=foo"),
-    ).toBe(false);
-  });
-
-  it("arXiv / DOI: HEAD が ok なら true、404 なら false", async () => {
-    stubFetch(async (url) => ({ ok: url.includes("arxiv") }));
-    expect(await verifySourceUrl("https://arxiv.org/abs/2403.12345")).toBe(true);
-    expect(await verifySourceUrl("https://doi.org/10.0/nonexistent")).toBe(false);
-  });
-
-  it("ネットワーク例外 / タイムアウトは false に倒す（不確実なら捨てる）", async () => {
-    stubFetch(async () => {
-      throw new Error("network down");
-    });
-    expect(await verifySourceUrl("https://en.wikipedia.org/wiki/Entropy")).toBe(false);
-  });
-
-  it("不正な URL 文字列は false", async () => {
-    expect(await verifySourceUrl("not a url")).toBe(false);
-  });
-});
-
-describe("verifyResultSourceUrls: 実在しない url を剥がして ref は残す", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("実在する url は残し、しない url は剥がす（ref は両方残る）", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (u: any) => ({ ok: String(u).includes("Real") })),
-    );
-    const out = await verifyResultSourceUrls({
-      verdict: "established",
-      rationale: "x",
-      sources: [
-        { ref: "Real article", url: "https://en.wikipedia.org/wiki/Real" },
-        { ref: "Fake article", url: "https://en.wikipedia.org/wiki/Fake" },
-        { ref: "No url at all" },
-      ],
-    });
-    expect(out.sources).toEqual([
-      { ref: "Real article", url: "https://en.wikipedia.org/wiki/Real" },
-      { ref: "Fake article" },
-      { ref: "No url at all" },
-    ]);
-  });
-
-  it("sources が無ければそのまま返す（fetch を呼ばない）", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-    const result = { verdict: "weak" as const, rationale: "x" };
-    expect(await verifyResultSourceUrls(result)).toBe(result);
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -345,14 +222,15 @@ describe("parseWorldGroundingOutput: evidence モードの URL ガードレー�
     expect(out?.sources?.[0].url).toBe("https://example.com/doc/#section");
   });
 
-  it("引数なし呼び出しは従来どおり whitelist モード（後方互換）", () => {
+  it("引数なし呼び出しは none モード（URL を出さない）", () => {
     const raw = JSON.stringify({
       verdict: "supported",
       rationale: "x",
       sources: [{ ref: "Nature", url: "https://www.nature.com/articles/nmat2090" }],
     });
-    // whitelist モードでは nature.com は捨てられる
+    // 既定 none モードでは記憶由来 URL は捨てられる（ref は残る）
     const out = parseWorldGroundingOutput(raw);
+    expect(out?.sources?.[0].ref).toBe("Nature");
     expect(out?.sources?.[0].url).toBeUndefined();
   });
 });
