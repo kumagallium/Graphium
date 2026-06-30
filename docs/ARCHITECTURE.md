@@ -424,15 +424,54 @@ cache layer if the result passes the sedimentation rules
 `generatedByModel` + non-empty `claim` / `keywords`). The next check
 on a similar claim is served from the cache layer at no LLM cost.
 
-Source URLs returned by the LLM judge are hallucination-guarded in two
-stages (`server/services/world-grounding.ts`): (1) a hostname whitelist
-(`sanitizeSourceUrl` — only Wikipedia / DOI / arXiv survive), then (2) a
-network existence check (`verifySourceUrl` — Wikipedia REST summary 404 ⇒
-no article; arXiv / DOI HEAD). Stage 2 runs only on the LLM-judge path
-(never on KB hits), so it adds one fast request next to an already-slow
-model call. A URL that fails verification is dropped while its `ref`
-text is kept — a missing link is preferred over a fabricated one, so
-hallucinated citations never sediment into the cache KB.
+**Auto-upgrade of legacy entries.** A cache hit is served as-is only when
+it is web-grounded (`KbEntry.grounded === true`) or a manual seed entry
+(`generatedByModel === "manual-curated@v1"`). A *model-sedimented
+parametric* entry (judged from memory before web evidence existed) is
+treated as a miss and re-grounded once via the web path; on a successful
+web-grounded sediment the old entry is removed (`removeFromKbCache`) so it
+does not shadow the upgrade. If the re-ground fails (e.g. network down),
+the old parametric verdict is kept rather than degrading to an error.
+
+The LLM judge runs in one of two modes, picked per request in
+`server/routes/world-grounding.ts`:
+
+- **web-grounded** (whenever evidence can be retrieved): before judging,
+  the route gathers evidence and then judges the claim *against that
+  evidence* (`buildWebGroundedSystemPrompt`), pre-retrieval — the model
+  never drives the search itself. Evidence comes from two layers:
+  - **keyless built-in providers, always on** (`services/grounding-providers.ts`):
+    Wikipedia full-text search (general) + OpenAlex (scholarly: DOI,
+    citation count, abstract). No API key, no hard monthly cap (polite-pool
+    style), URLs are verifiable — the default that works out of the box and
+    fits the "is this claim known in the literature" question directly.
+  - **a connected MCP search tool, on top** (`services/grounding-search.ts →
+    findSearchTool` + `runGroundingSearch`): adds broad general-web coverage
+    when the user has wired one up (e.g. Tavily / Brave). Optional.
+
+  The verdict is grounded in real results rather than the model's memory;
+  `null` means "searched and found no direct prior art — not a proof of
+  novelty" (search cannot prove a negative). Output URLs are constrained to
+  the URLs that actually appeared in the evidence
+  (`parseWorldGroundingOutput` in `evidence` mode), so a model-invented URL
+  is discarded by provenance, not by a domain list. No network existence
+  check is needed — the URLs were retrieved seconds ago and may live on any
+  domain.
+- **parametric** (no evidence gathered — both layers empty/failed, e.g. the
+  search APIs are down): the judge answers from its own knowledge and emits
+  **no URLs at all** (`parseWorldGroundingOutput` in `none` mode strips every
+  `url`; the prompt also instructs text-only citations). A recalled URL/DOI
+  is almost always wrong — the high-entropy tail is fabricated and can
+  *resolve to an unrelated paper* (observed: opus emitted an Acta Cryst DOI
+  whose tail differed from the real one by three characters and resolved to a
+  different article). The `ref` citation text is kept so the user can search
+  for it; verifiable links come only from the web-grounded path. This is why
+  the old hostname-whitelist + network-existence-check (which only proved a
+  DOI *resolves*, not that it matches the citation) were removed entirely.
+
+Web-grounded judgments are surfaced with `checkedBy: "web-search"` and
+`KbEntry.grounded: true` (the real model id is still stored as
+`generatedByModel` for the cache entry).
 
 The lane is strictly separate from `epistemicStatus` /
 `hypothesisStatus` — `attachValidity` never writes those fields. See

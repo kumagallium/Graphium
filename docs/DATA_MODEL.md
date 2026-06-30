@@ -658,7 +658,7 @@ type GroundingProfile = {
     rationale?: string;
     sources?: GroundingSource[];
     matchedKeywords?: string[];              // KB keywords that hit (PR 2A audit field)
-    checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
+    checkedBy?: string;                      // "distilled-kb@v1" (KB hit) | "web-search" (web-grounded) | "<model-id>" (parametric) | "no-engine"/"engine-error"
     checkedAt?: string;                      // ISO 8601
     entryId?: string;                        // KB entry this grounded to (world-grounding edge)
     dismissed?: boolean;                     // user manually cleared the verdict (see below)
@@ -682,6 +682,13 @@ The lane is **strictly separate** from the existing layers:
 - The verdict is allowed to be **absent**. When the distilled KB has no
   hit, `validity` still records `{ checkedBy, checkedAt }` so the UI
   can say "checked but unmatched" without lying.
+- `GroundingSource.url` is populated **only** for web-grounded judgments,
+  where the URL is constrained to one that appeared in the retrieved
+  evidence (Wikipedia / OpenAlex / a search MCP). A purely parametric
+  judgment (model memory, when search is unavailable) emits **`ref` text
+  only, no `url`** — a recalled DOI/URL is high-entropy and can resolve to
+  an unrelated paper, so verifiable links come only from retrieval. See
+  [ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for the two judge modes.
 - `entryId` records the KB entry the claim grounded to (the matched seed
   entry, or the `gen-…` id of a freshly sedimented LLM result). This is a
   **world-grounding edge**: two insights with the same `entryId` are

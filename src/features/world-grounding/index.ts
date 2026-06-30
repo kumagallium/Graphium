@@ -16,7 +16,7 @@
 import type { GroundingProfile, WikiMeta } from "../../lib/document-types";
 import { newId } from "../../lib/id";
 import { checkValidityFromKB } from "./distilled-kb-retriever";
-import { appendToKbCache } from "./kb-cache";
+import { appendToKbCache, removeFromKbCache } from "./kb-cache";
 import { checkValidityViaModel } from "./llm-fallback";
 
 export type CheckValidityOptions = {
@@ -50,9 +50,18 @@ export async function checkValidity(
   const checkedAt = new Date().toISOString();
 
   // 1. KB ヒット即答
+  // auto-upgrade 対象は「モデルが parametric に沈殿させた旧 entry」だけ:
+  //   - grounded === undefined（web 経路を一度も通っていない）
+  //   - generatedByModel が実モデル ID（"manual-curated@v1" や未設定の seed は除外）
+  // web 経路を通った entry（grounded true=証拠あり / false=証拠ゼロでも試行済み）は「処理済み」
+  // として即答する。再 upgrade しないので、証拠が出ない claim を毎回再照合しない。
   const kbMatch = await checkValidityFromKB(claimText, { baseUrl });
-  if (kbMatch) {
-    console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict });
+  const gen = kbMatch?.generatedByModel;
+  const isModelSediment = !!gen && gen !== "manual-curated@v1";
+  const upgradable =
+    !!kbMatch && kbMatch.grounded === undefined && isModelSediment;
+  if (kbMatch && !upgradable) {
+    console.info("[world-grounding] KB hit", { entryId: kbMatch.entryId, verdict: kbMatch.verdict, grounded: kbMatch.grounded });
     return {
       score: kbMatch.score,
       verdict: kbMatch.verdict,
@@ -67,12 +76,34 @@ export async function checkValidity(
       entryId: kbMatch.entryId,
     };
   }
-  console.info("[world-grounding] KB miss, calling LLM fallback...");
+
+  // auto-upgrade: 旧 parametric なモデル沈殿は、web 証拠が取れる今は「ミス扱い」で一度だけ
+  // 再照合し、web-grounded で上書きする。古い entry は沈殿成功後に削除する。
+  const staleEntryId = upgradable ? kbMatch.entryId : undefined;
+  if (staleEntryId) {
+    console.info("[world-grounding] KB hit was parametric — re-grounding via web", { entryId: staleEntryId });
+  } else {
+    console.info("[world-grounding] KB miss, calling LLM fallback...");
+  }
 
   // 2. KB ミス → LLM fallback
   const outcome = await checkValidityViaModel(claimText, { language });
   if (outcome.kind === "failure") {
     console.warn("[world-grounding] LLM fallback failure:", outcome.failure);
+    // auto-upgrade の再照合が失敗したときは、古い parametric 結果を温存して degrade を避ける
+    // （旧 entry も削除していないので、次回また upgrade を試みる）。
+    if (kbMatch) {
+      return {
+        score: kbMatch.score,
+        verdict: kbMatch.verdict,
+        rationale: kbMatch.rationale,
+        sources: kbMatch.sources,
+        matchedKeywords: kbMatch.matchedKeywords,
+        checkedBy: "distilled-kb@v1",
+        checkedAt,
+        entryId: kbMatch.entryId,
+      };
+    }
     // 失敗理由を checkedBy / rationale に詰める。UI 側で出し分け可能にする
     const reasonLabel =
       outcome.failure.reason === "no-model"
@@ -109,17 +140,28 @@ export async function checkValidity(
         url: s.url,
       })),
       generatedByModel: modelResult.model,
+      // web 経路を通ったら必ず確定 boolean を刻む（true=証拠あり / false=証拠ゼロでも試行済み）。
+      // これで次回以降は KB ヒットで即答され、証拠の出ない claim を毎回再照合しない。
+      grounded: modelResult.grounded === true,
       version: 1,
     });
     // 実際に沈殿できた時だけエッジを張る（沈殿失敗 = KB に実体が無いので dangling を避ける）
-    if (cached) sedimentedEntryId = id;
+    if (cached) {
+      sedimentedEntryId = id;
+      // auto-upgrade 成立: 旧 parametric entry を削除して重複を防ぐ（新 entry が置き換える）。
+      if (staleEntryId) await removeFromKbCache(staleEntryId);
+    }
     console.info("[world-grounding] sedimented into KB cache:", cached);
   }
+
+  // 判定の出所表示: web 検索の証拠に基づいたなら "web-search"、そうでなければモデル ID。
+  // （KB に沈殿させる generatedByModel は実モデル ID のまま保持する＝上の appendToKbCache）
+  const checkedBy = modelResult.grounded ? "web-search" : modelResult.model;
 
   // verdict が null（LLM が「判定不能」と返した）でも checkedAt は記録する
   if (!modelResult.verdict) {
     return {
-      checkedBy: modelResult.model,
+      checkedBy,
       checkedAt,
       rationale: modelResult.rationale || undefined,
     };
@@ -134,7 +176,7 @@ export async function checkValidity(
       url: s.url,
     })),
     matchedKeywords: modelResult.keywords,
-    checkedBy: modelResult.model,
+    checkedBy,
     checkedAt,
     entryId: sedimentedEntryId,
   };
