@@ -193,8 +193,12 @@ export function MediaPickerModal({
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const [uploading, setUploading] = useState(false);
-  // 挿入時の表示形式（埋め込み / リンク）。既定は従来どおり埋め込み。
-  const [displayMode, setDisplayMode] = useState<AssetDisplayMode>("embed");
+  // 挿入時の表示形式（埋め込み / リンク）。
+  // document（PDF/docx）と URL は中身展開より参照が主目的なのでリンクを既定にする。
+  // 画像/動画/音声は見せること自体が目的なので埋め込みを既定にする。
+  const [displayMode, setDisplayMode] = useState<AssetDisplayMode>(
+    mediaType === "document" || mediaType === "url" ? "link" : "embed",
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
 
