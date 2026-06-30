@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Archive, ArchiveRestore } from "lucide-react";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -69,6 +70,8 @@ type SidePeekProps = {
   onAddToKnowledge?: () => void;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /** アーカイブから復元するコールバック（archived のときバナーに復元ボタンを出す） */
+  onRestoreFromArchive?: () => void;
   /**
    * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
    *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
@@ -136,7 +139,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
-  archived = false, inline = false,
+  archived = false, onRestoreFromArchive, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
 }: SidePeekProps) {
   const t = useT();
@@ -747,6 +750,50 @@ function SidePeekInner({
                   labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
               }}
             >
+              {/* アーカイブ済みノートの状態表示 + 復元導線。エディタは read-only
+                  （editable={!archived}）なので、ここで状態を可視化する。 */}
+              {archived && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                    padding: "6px 12px",
+                    borderRadius: "var(--r-1)",
+                    background: "var(--paper)",
+                    border: "1px solid var(--rule)",
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                  }}
+                >
+                  <Archive size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t("archive.archivedHint")}</span>
+                  {onRestoreFromArchive && (
+                    <button
+                      onClick={onRestoreFromArchive}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        flexShrink: 0,
+                        padding: "4px 10px",
+                        borderRadius: "var(--r-1)",
+                        border: "1px solid var(--rule)",
+                        background: "var(--paper-2)",
+                        color: "var(--ink-2)",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                      title={t("archive.restore")}
+                    >
+                      <ArchiveRestore size={13} />
+                      {t("archive.restore")}
+                    </button>
+                  )}
+                </div>
+              )}
               <textarea
                 value={effectiveDoc?.title ?? ""}
                 onChange={(e) => {

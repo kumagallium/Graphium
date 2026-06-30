@@ -609,6 +609,31 @@ export function useFileManager(authenticated: boolean) {
         }
       }
 
+      // 通常ノートの archivedAt / deletedAt を直前の in-memory index から復元する。
+      // prefetch（起動時スナップショット）はセッション中の archive/restore を反映しない
+      // ため、ensureIndex が保存後の stale 判定でフラグを落とすと、アーカイブ/ゴミ箱の
+      // ノートが一覧へ復活してしまう。noteIndexRef.current が最新のユーザー意思を保持して
+      // いるので、それを真実として再付与する（Wiki は上の wikiFlagSnapshot で復元済み）。
+      const liveIndex = noteIndexRef.current;
+      if (liveIndex) {
+        const flagMap = new Map<string, { archivedAt?: string; deletedAt?: string }>();
+        for (const n of liveIndex.notes) {
+          if (n.source !== "ai" && (n.archivedAt || n.deletedAt)) {
+            flagMap.set(n.noteId, { archivedAt: n.archivedAt, deletedAt: n.deletedAt });
+          }
+        }
+        let restored = false;
+        for (const n of index.notes) {
+          if (n.source === "ai") continue;
+          const f = flagMap.get(n.noteId);
+          if (!f) continue;
+          if (f.archivedAt && !n.archivedAt) { n.archivedAt = f.archivedAt; restored = true; }
+          if (f.deletedAt && !n.deletedAt) { n.deletedAt = f.deletedAt; restored = true; }
+        }
+        // フラグを取り戻したらディスクにも反映（ensureIndex がフラグ落ち版を保存済みのため）
+        if (restored) queueSaveIndex(index);
+      }
+
       if (!cancelled) {
         noteIndexRef.current = index;
         setNoteIndex(index);
@@ -1017,6 +1042,34 @@ export function useFileManager(authenticated: boolean) {
         }
       } catch (err) {
         console.error("ゴミ箱への移動に失敗:", err);
+      }
+    },
+    [activeFileId, setActiveFileId]
+  );
+
+  // 通常ノートをアーカイブする（ファイル本体は残し、archivedAt をセットするだけ）。
+  // 削除（ゴミ箱）と違い ID は生き続けるため、派生リンク (derivedFromNotes) / 引用 /
+  // regenerate / グラフ探索は引き続き解決できる。「新しい版を作って旧版を一覧から
+  // 退避したい」ユーザー導線。アーカイブ済みは Trash & Archive 画面で復元できる。
+  const handleArchiveNote = useCallback(
+    async (fileId: string) => {
+      try {
+        // 最近のノートからは除く
+        setRecentNotes(removeFromRecent(fileId));
+        if (noteIndexRef.current) {
+          const updated = archiveIndexEntry(noteIndexRef.current, fileId);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          queueSaveIndex(updated);
+        }
+        // 開いていれば閉じる
+        if (activeFileId === fileId) {
+          setActiveFileId(null);
+          setActiveDoc(null);
+          setEditorKey((k) => k + 1);
+        }
+      } catch (err) {
+        console.error("ノートのアーカイブに失敗:", err);
       }
     },
     [activeFileId, setActiveFileId]
@@ -1876,6 +1929,7 @@ export function useFileManager(authenticated: boolean) {
     handleDeriveWholeNote,
     handleAiDeriveNote,
     handleDelete,
+    handleArchiveNote,
     handleRestore,
     handlePermanentDelete,
     handleArchiveWikiFile,

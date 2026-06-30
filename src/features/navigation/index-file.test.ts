@@ -5,10 +5,14 @@ import {
   buildIndexEntry,
   updateIndexEntry,
   removeIndexEntry,
+  ensureIndex,
+  INDEX_SCHEMA_VERSION,
   type GraphiumIndex,
   type NoteIndexEntry,
 } from "./index-file";
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
+import { registerProvider, setActiveProvider } from "../../lib/storage/registry";
+import type { StorageProvider } from "../../lib/storage/types";
 
 // テスト用のモック GraphiumDocument を構築するヘルパー
 function mockDoc(overrides: Partial<GraphiumDocument> = {}): GraphiumDocument {
@@ -414,5 +418,79 @@ describe("removeIndexEntry", () => {
     removeIndexEntry(index, "file-1");
     // 元の index.notes は変更されていないこと
     expect(index.notes).toEqual(originalNotes);
+  });
+});
+
+describe("ensureIndex の archivedAt / deletedAt 保持", () => {
+  // ensureIndex は保存時に writeAppData を呼ぶだけなので、ノーオペのモックで足りる。
+  // loadFile は docCache を事前投入しておけば呼ばれない。
+  const mockProvider = {
+    id: "test-mem",
+    writeAppData: async () => {},
+    readAppData: async () => null,
+    loadFile: async () => {
+      throw new Error("loadFile should not be called when docCache is pre-populated");
+    },
+  } as unknown as StorageProvider;
+  registerProvider(mockProvider);
+  setActiveProvider("test-mem");
+
+  // ノートが「stale」になる（ファイルの modifiedTime > index の modifiedAt + 1s）と、
+  // ensureIndex は buildIndexEntry で作り直す。archivedAt / deletedAt は doc に乗らず
+  // index にしか無いため、引き継がないと作り直しで落ちてしまう（=一覧へ復活する）。
+  it("差分更新（stale）でアーカイブ済みノートの archivedAt を保持する", async () => {
+    const archivedEntry: NoteIndexEntry = {
+      ...buildIndexEntry("file-1", mockDoc()),
+      modifiedAt: "2026-03-31T00:00:00Z", // ファイルより古い → stale
+      archivedAt: "2026-04-01T00:00:00Z",
+    };
+    const existing: GraphiumIndex = {
+      version: INDEX_SCHEMA_VERSION,
+      updatedAt: "2026-03-31T00:00:00Z",
+      notes: [archivedEntry],
+    };
+    // mockFile の modifiedTime は 2026-03-31T12:00:00Z で entry より新しい → stale 判定
+    const docCache = new Map<string, GraphiumDocument>([["file-1", mockDoc()]]);
+
+    const result = await ensureIndex([mockFile("file-1")], docCache, existing);
+    const entry = result.notes.find((n) => n.noteId === "file-1");
+    expect(entry?.archivedAt).toBe("2026-04-01T00:00:00Z");
+  });
+
+  it("差分更新（stale）でゴミ箱のノートの deletedAt を保持する", async () => {
+    const trashedEntry: NoteIndexEntry = {
+      ...buildIndexEntry("file-1", mockDoc()),
+      modifiedAt: "2026-03-31T00:00:00Z",
+      deletedAt: "2026-04-01T00:00:00Z",
+    };
+    const existing: GraphiumIndex = {
+      version: INDEX_SCHEMA_VERSION,
+      updatedAt: "2026-03-31T00:00:00Z",
+      notes: [trashedEntry],
+    };
+    const docCache = new Map<string, GraphiumDocument>([["file-1", mockDoc()]]);
+
+    const result = await ensureIndex([mockFile("file-1")], docCache, existing);
+    const entry = result.notes.find((n) => n.noteId === "file-1");
+    expect(entry?.deletedAt).toBe("2026-04-01T00:00:00Z");
+  });
+
+  // schema bump 時の全件再構築でもフラグを失わないこと。
+  it("全件再構築（version 不一致）でも archivedAt を保持する", async () => {
+    const archivedEntry: NoteIndexEntry = {
+      ...buildIndexEntry("file-1", mockDoc()),
+      modifiedAt: "2026-03-31T00:00:00Z",
+      archivedAt: "2026-04-01T00:00:00Z",
+    };
+    const existing: GraphiumIndex = {
+      version: INDEX_SCHEMA_VERSION - 1, // 古い → full rebuild
+      updatedAt: "2026-03-31T00:00:00Z",
+      notes: [archivedEntry],
+    };
+    const docCache = new Map<string, GraphiumDocument>([["file-1", mockDoc()]]);
+
+    const result = await ensureIndex([mockFile("file-1")], docCache, existing);
+    const entry = result.notes.find((n) => n.noteId === "file-1");
+    expect(entry?.archivedAt).toBe("2026-04-01T00:00:00Z");
   });
 });

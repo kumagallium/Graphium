@@ -128,6 +128,8 @@ export const en: Record<string, string> = {
   "editor.derive": "🔗 Derive new page",
   "editor.deriveWholeNote": "Derive whole note",
   "editor.deleteNote": "Move to trash",
+  "editor.archiveNote": "Archive",
+  "editor.archiveNoteHint": "Hidden from the list, but links and citations keep resolving. Restore anytime from Trash & Archive.",
   "editor.aiAssistant": "🤖 AI Assistant",
   "editor.askAi": "Ask AI about selection",
   "editor.derivedNote": "Derived note",
