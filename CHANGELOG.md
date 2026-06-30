@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.16.7](https://github.com/kumagallium/Graphium/compare/v0.16.6...v0.16.7) - 2026-06-30
+
+- [feat] Add archive action for notes; fix archived flag loss on rebuild by @kumagallium in https://github.com/kumagallium/Graphium/pull/470
+- PDF viewer: render CJK (CID font) text + trackpad pinch-to-zoom by @kumagallium in https://github.com/kumagallium/Graphium/pull/472
+- World-model grounding via web retrieval (Wikipedia + OpenAlex + MCP search) by @kumagallium in https://github.com/kumagallium/Graphium/pull/473
+- [feat] Surface web sources from search MCP (Tavily) results in chat by @kumagallium in https://github.com/kumagallium/Graphium/pull/474
+- Asset picker: embed / @link display modes + consistent graph linkage by @kumagallium in https://github.com/kumagallium/Graphium/pull/475
+- [fix] Prevent note content revert on editor remount (stale snapshot / active-note reopen) by @kumagallium in https://github.com/kumagallium/Graphium/pull/476
+
 ## [v0.16.6](https://github.com/kumagallium/Graphium/compare/v0.16.5...v0.16.6) - 2026-06-30
 
 - [feat] Web search in subscription chat + clearer web/note source labeling by @kumagallium in https://github.com/kumagallium/Graphium/pull/467
