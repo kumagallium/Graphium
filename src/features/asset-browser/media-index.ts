@@ -411,9 +411,17 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   sourcePdfFileId?: string | null | undefined;
   sourceDocumentFileId?: string | null | undefined;
   sourceUrl?: string | null | undefined;
+  citedAssetFileIds?: string[] | null | undefined;
 }): Set<string> {
   const ids = collectPdfFileIdsFromDoc(doc);
   if (doc.sourceDocumentFileId) ids.add(doc.sourceDocumentFileId);
+  // @リンク（@mention / メディアピッカーのリンク挿入）で引用した素材。
+  // citedAssetFileIds は素材本体の fileId（URL 素材は "url:<生URL>"）なので、
+  // そのまま usedIn のキーに使える。これを入れないと「リンクで挿入した素材」だけ
+  // 埋め込みと違って usedIn に入らず、近接グラフ・アセットグラフに出ない不一致になる。
+  for (const fid of doc.citedAssetFileIds ?? []) {
+    if (typeof fid === "string" && fid) ids.add(fid);
+  }
   // URL 素材を出典に持つノート（PROV / 翻訳 / Knowledge）。URL 素材の fileId は
   // "url:<生URL>" 形式（external-source.ts の規約）なので、それに合わせて prefix
   // 付きで集める。これを入れないと URL 素材だけ「利用ノート」が空になり、

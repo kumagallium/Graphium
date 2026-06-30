@@ -168,6 +168,7 @@ import {
   type MediaType,
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
+  type AssetDisplayMode,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
@@ -897,14 +898,56 @@ function NoteEditorInner({
     // insertBlocks による onChange で自動的に markDirty される
   }, [labelStore, linkStore]);
 
+  // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
+  const isSlashOnlyBlock = useCallback((block: any) => {
+    const content = block?.content;
+    return (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    );
+  }, []);
+
+  // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する。
+  // スラッシュだけのブロックなら中身を空にしてカーソル位置に差し込み、
+  // 本文があるブロックでは現在のカーソル位置にそのまま挿入する。
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+    if (isSlashOnlyBlock(currentBlock)) {
+      editor.updateBlock(currentBlock, { type: "paragraph", content: [] });
+    }
+    const target = editor.getBlock(currentBlock.id) ?? currentBlock;
+    editor.setTextCursorPosition(target, "end");
+    setTimeout(() => {
+      editor.insertInlineContent(inline);
+    }, 0);
+  }, [isSlashOnlyBlock]);
+
   // ピッカーで選択されたメディアをエディタに挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-  const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
+  // displayMode:
+  //   "embed" → 中身を展開（pdf / file / image / video / audio ブロック）
+  //   "link"  → @素材名 の inline リンク（@mention の asset 分岐と同じく citedAssetFileIds に登録）
+  const handlePickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
 
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
+
+    if (displayMode === "link") {
+      // 素材本体を指す @リンク。fileId を citedAssetFileIds に積むことで
+      // Cmd-K / チャットの AI がその素材の全文＋ハイライトメモを読めるようになる。
+      if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
+        citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
+      }
+      // insertInlineContent が onChange を発火 → 自動 markDirty。
+      // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      return;
+    }
 
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
@@ -921,17 +964,12 @@ function NoteEditorInner({
     editor.insertBlocks([newBlock], currentBlock, "after");
 
     // 現在のブロックが空（スラッシュだけ）なら削除
-    const content = currentBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
-    ) {
+    if (isSlashOnlyBlock(currentBlock)) {
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
 
   // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
   // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
@@ -1051,11 +1089,22 @@ function NoteEditorInner({
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
+  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
+
+    if (displayMode === "link") {
+      // URL は埋め込みカード（bookmark）ではなくインラインのハイパーリンクとして挿入する。
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "link", href: entry.url, content: [{ type: "text", text: entry.name, styles: {} }] },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setUrlSlashPickerOpen(false);
+      return;
+    }
+
     editor.insertBlocks(
       [{
         type: "bookmark",
@@ -1071,17 +1120,12 @@ function NoteEditorInner({
       "after",
     );
     // 空のスラッシュブロックを削除
-    const content = currentBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
-    ) {
+    if (isSlashOnlyBlock(currentBlock)) {
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
     setUrlSlashPickerOpen(false);
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
 
   // ラベル自動設定のコールバック
   const labelAutoRef = useRef<(() => void) | null>(null);
@@ -2603,6 +2647,7 @@ function NoteEditorInner({
           onSelect={handlePickerSelect}
           onClose={() => setPickerMediaType(null)}
           onUpload={uploadFile}
+          allowDisplayMode
         />
       )}
       {/* メモピッカーモーダル（スラッシュメニュー /memo から） */}
@@ -2644,6 +2689,7 @@ function NoteEditorInner({
           onSelect={handleUrlSlashPickerSelect}
           onClose={() => setUrlSlashPickerOpen(false)}
           onAddUrlBookmark={onAddUrlBookmark}
+          allowDisplayMode
         />
       )}
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}

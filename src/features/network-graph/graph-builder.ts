@@ -210,8 +210,15 @@ export function buildNoteGraph(
         // これを入れないと、アセットグラフには URL が出るのに近接グラフには出ない
         // という素材タイプ間の不一致になる（usedIn ベースで両グラフの定義を揃える）。
         addEdge(`url:${m.url}`, currentNoteId, "url");
+      } else if (m.type === "pdf") {
+        // PDF は埋め込み（pdf ブロック）・@リンク引用どちらも usedIn 経由でここに来る。
+        // pdf: ノードとして近接グラフに出す（アセットグラフと定義を揃える）。
+        addEdge(`pdf:${m.fileId}`, currentNoteId, "media");
+      } else if (m.type === "document") {
+        // Word(.docx) 等の document 素材。埋め込み（file ブロック）・@リンク引用とも
+        // usedIn 経由で document: ノードとして近接グラフに出す。
+        addEdge(`document:${m.fileId}`, currentNoteId, "media");
       }
-      // PDF は pdf ブロック / sourcePdfFileId の既存経路で表示するため、ここでは扱わない。
     }
   }
 
