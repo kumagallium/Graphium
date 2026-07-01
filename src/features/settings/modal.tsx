@@ -313,6 +313,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // モデル追加フォーム
   const [showAddForm, setShowAddForm] = useState(false);
+  // claude-subscription 1-click（desktop で CLI 検出時のみ提示）
+  const [claudeCliAvailable, setClaudeCliAvailable] = useState(false);
+  const [registeringSubscription, setRegisteringSubscription] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState("");
   const [addMode, setAddMode] = useState<"new" | "existing">("new");
   const [sourceModelId, setSourceModelId] = useState<string | null>(null);
   const [addProvider, setAddProvider] = useState("anthropic");
@@ -833,6 +837,48 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       setAdding(false);
     }
   }, [isWebMode, addMode, sourceModelId, addProvider, addApiKey, addApiBase, selectedModelId, customModelId, modelDisplayName, refreshModels, t]);
+
+  // desktop（サーバー経路）で Claude Code CLI が使えるかを確認し、使えるなら
+  // 「Claude サブスクを使う」1-click を出す。web（localStorage 経路）では出さない。
+  useEffect(() => {
+    if (isWebMode || !isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${apiBase()}/models/claude-cli-status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setClaudeCliAvailable(!!data.available);
+      } catch { /* 検出できなければ提示しないだけ */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isWebMode, isOpen]);
+
+  // claude-subscription（sonnet）を 1 件登録する。API キー不要（サーバー側の CLI 認証を使う）。
+  const handleUseClaudeSubscription = useCallback(async () => {
+    setRegisteringSubscription(true);
+    setSubscriptionError("");
+    try {
+      const res = await fetch(`${apiBase()}/models`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model_name: t("settings.models.claudeSubscriptionName"),
+          provider: "claude-subscription",
+          model_id: "sonnet",
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Error ${res.status}`);
+      }
+      refreshModels();
+    } catch (err) {
+      setSubscriptionError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setRegisteringSubscription(false);
+    }
+  }, [t, refreshModels]);
 
   const handleDeleteModel = useCallback(async (id: string) => {
     try {
@@ -1918,6 +1964,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               ) : models.length === 0 && !showAddForm ? (
                 <div className="rounded-lg border border-dashed border-border p-4 text-center">
                   <p className="text-xs text-muted-foreground mb-2">{t("settings.models.empty")}</p>
+                  {!isWebMode && claudeCliAvailable && (
+                    <div className="mb-3">
+                      <button
+                        onClick={handleUseClaudeSubscription}
+                        disabled={registeringSubscription}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                      >
+                        {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
+                        {t("settings.models.useClaudeSubscription")}
+                      </button>
+                      <p className="text-[11px] text-muted-foreground mt-1.5">{t("settings.models.useClaudeSubscriptionHint")}</p>
+                      {subscriptionError && <p className="text-[11px] text-destructive mt-1">{subscriptionError}</p>}
+                    </div>
+                  )}
                   <button
                     onClick={() => { setShowAddForm(true); setAddMode(models.length > 0 ? "existing" : "new"); }}
                     className="text-xs text-primary hover:text-primary/80 font-medium"

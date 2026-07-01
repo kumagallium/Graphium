@@ -128,6 +128,15 @@ function resolveClaudeBinaryPath(explicit?: string | null): string | undefined {
   return cachedAutoClaudePath ?? undefined;
 }
 
+/**
+ * claude-subscription 用の Claude Code CLI が検出できるか。
+ * 1-click サブスク登録ボタンの出し分けに使う（検出できないマシンでは提示しない）。
+ * ログイン状態までは見ない — 未ログインは初回推論時の 401（describeAuthError）で導線を出す。
+ */
+export function isClaudeCliAvailable(): boolean {
+  return resolveClaudeBinaryPath() !== undefined;
+}
+
 // 自動検出結果のキャッシュ。null = 未計算 / undefined = 検出失敗 / string = 検出済み。
 let cachedAutoClaudePath: string | undefined | null = null;
 
