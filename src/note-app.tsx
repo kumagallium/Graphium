@@ -207,8 +207,8 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
-// URL 原文の Reader 取得（収束 grounding 用）。LLM 加工前の原語原文を Reader 経由で取り、
-// セッション内キャッシュする。B-persist の第一段（永続保存は将来上乗せ）。
+// URL 原文の Reader 取得（収束 grounding 用, B-runtime）。LLM 加工前の原語原文を Reader 経由で
+// 取り、セッション内キャッシュする。永続保存版（B-persist）は下の persistUrlSourceText / loadMediaText。
 const urlTextCache = new Map<string, string>();
 async function loadUrlText(url: string): Promise<string | undefined> {
   const cached = urlTextCache.get(url);
@@ -220,6 +220,35 @@ async function loadUrlText(url: string): Promise<string | undefined> {
     if (!text) return undefined;
     urlTextCache.set(url, text);
     return text;
+  } catch {
+    return undefined;
+  }
+}
+
+// URL の原語原文（LLM 加工前）を永続保存し、保存先メディア ID を返す（B-persist）。
+// 空文字・未対応プロバイダ・保存失敗時は undefined を返し、呼び出し側は B-runtime の
+// loadUrlText（都度 Reader 取得）にフォールバックする。取り込み/翻訳の成功時に呼ぶ。
+async function persistUrlSourceText(text: string): Promise<string | undefined> {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return undefined;
+  const provider = getActiveProvider();
+  if (!provider.saveMediaText) return undefined;
+  try {
+    const fileId = crypto.randomUUID();
+    await provider.saveMediaText(fileId, trimmed);
+    return fileId;
+  } catch {
+    return undefined;
+  }
+}
+
+// 永続保存済みの URL 原文を取得する（B-persist）。cited-document-context の deps に渡し、
+// doc.sourceTextFileId があれば loadUrlText より優先して収束 grounding に載せる。
+async function loadMediaText(fileId: string): Promise<string | undefined> {
+  const provider = getActiveProvider();
+  if (!provider.loadMediaText) return undefined;
+  try {
+    return await provider.loadMediaText(fileId);
   } catch {
     return undefined;
   }
@@ -1754,6 +1783,7 @@ function NoteEditorInner({
                     provider,
                     scope,
                     loadUrlText,
+                    loadMediaText,
                   });
                   if (assembled) {
                     noteContents.push(assembled);
@@ -5726,6 +5756,10 @@ export function NoteApp() {
                         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: `Translating ${done}/${total}...` } : i) }));
                       },
                     });
+                    // B-persist: Reader が取得した原語原文を永続保存し、翻訳ノートに紐付ける。
+                    // これで収束 grounding 時にオフラインでも・URL 内容が変わっても同じ原文を引ける。
+                    const textFileId = await persistUrlSourceText(article.textContent);
+                    if (textFileId) result.doc.sourceTextFileId = textFileId;
                     const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);
                     // Reader を全画面表示にして、その右に翻訳ノートを SidePeek で開く（読みながら照合）
                     setFocusedMaterial({ fileId: entry.fileId, fullMode: true });

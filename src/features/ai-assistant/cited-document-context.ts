@@ -197,6 +197,8 @@ export type CitedDocDeps = {
   /** URL ノートの原語原文を取得（Reader 経由）。未指定 or 失敗時はノート本文にフォールバック。
    *  収束スコープで URL の原文（LLM 加工前）を grounding に載せるため。 */
   loadUrlText?: (url: string) => Promise<string | undefined>;
+  /** 永続保存された原文テキストを取得（B-persist）。doc.sourceTextFileId があれば loadUrlText より優先する。 */
+  loadMediaText?: (fileId: string) => Promise<string | undefined>;
 };
 
 /** PDF 全文抽出に必要な最小依存（ノート経路・素材経路の双方から使う） */
@@ -270,9 +272,18 @@ export async function assembleCitedDocumentContext(
   let fullText: string | undefined;
   if (doc.sourcePdfFileId) {
     fullText = await loadPdfFullText(doc.sourcePdfFileId, deps);
-  } else if (doc.sourceUrl && deps.loadUrlText) {
-    // URL は原語原文を優先（収束での正確な引用のため）。取得できなければノート本文にフォールバック
-    fullText = (await deps.loadUrlText(doc.sourceUrl)) || blocksToPlainText(doc) || undefined;
+  } else if (doc.sourceUrl) {
+    // URL は原語原文（LLM 加工前）を優先。取得の順序:
+    //   1. 永続保存された原文（B-persist: sourceTextFileId → loadMediaText）。オフライン可・鮮度固定。
+    //   2. Reader の都度取得（B-runtime: loadUrlText）。旧ノートやオンライン fallback。
+    //   3. ノート本文（翻訳・要約済み）。上記いずれも取れないとき。
+    if (doc.sourceTextFileId && deps.loadMediaText) {
+      fullText = await deps.loadMediaText(doc.sourceTextFileId);
+    }
+    if (!fullText && deps.loadUrlText) {
+      fullText = await deps.loadUrlText(doc.sourceUrl);
+    }
+    fullText = fullText || blocksToPlainText(doc) || undefined;
   } else {
     fullText = blocksToPlainText(doc) || undefined;
   }

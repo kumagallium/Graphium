@@ -688,6 +688,14 @@ export type GraphiumDocument = {
   sourceFetchedAt?: string;
   /** 外部 URL のページタイトル（fetch 時点） */
   sourceTitle?: string;
+  /**
+   * 外部 URL の原語原文（Reader 抽出のプレーンテキスト、LLM 加工前）を永続保存した
+   * メディア ID（B-persist）。取り込み/翻訳時に StorageProvider.saveMediaText で保存し、
+   * cited-document-context が収束 grounding 時に loadMediaText で読む。
+   * 未設定の旧 URL ノートは B-runtime（loadUrlText の都度 Reader 取得）にフォールバックする。
+   * additive optional のため旧データは従来通り動く。
+   */
+  sourceTextFileId?: string;
   /** PDF から生成した場合の元 PDF（メディアインデックス上の fileId） */
   sourcePdfFileId?: string;
   /** PDF から生成した場合の表示用ファイル名 */

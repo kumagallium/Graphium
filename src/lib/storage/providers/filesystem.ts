@@ -205,6 +205,21 @@ export class LocalFilesystemProvider implements StorageProvider {
     }));
   }
 
+  // --- メディア原文テキスト（B-persist: URL Reader 原文などの永続保存） ---
+
+  async saveMediaText(fileId: string, text: string): Promise<void> {
+    await invoke("save_media_text", { fileId, text });
+  }
+
+  async loadMediaText(fileId: string): Promise<string | undefined> {
+    try {
+      const text = await invoke<string | null>("read_media_text", { fileId });
+      return text ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   clearCache(): void {
     // Blob URL キャッシュをクリア
     for (const url of mediaBlobCache.values()) {

@@ -270,6 +270,29 @@ export class ServerFilesystemProvider implements StorageProvider {
     return (await res.json()) as ServerMediaInfo[];
   }
 
+  // --- メディア原文テキスト（B-persist: URL Reader 原文などの永続保存） ---
+
+  async saveMediaText(fileId: string, text: string): Promise<void> {
+    await authedFetchInternal(`/api/storage/media-text/${encodeURIComponent(fileId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: text,
+    });
+  }
+
+  async loadMediaText(fileId: string): Promise<string | undefined> {
+    try {
+      const res = await fetch(`/api/storage/media-text/${encodeURIComponent(fileId)}`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) return undefined;
+      const text = await res.text();
+      return text || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   clearCache(): void {
     for (const url of mediaBlobCache.values()) {
       URL.revokeObjectURL(url);
