@@ -268,6 +268,35 @@ export const WithDerivedFrom: StoryObj = {
   ),
 };
 
+export const WithShape: StoryObj = {
+  name: "構造の形（Atom: shape）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "構造的抽象（PR #477）で付与される `shape`（関係の形）。バッジで identity 層に出すと情報過多になるため、世界照合・派生元と同じ context drawer 下部に「構造の形 …」の控えめなテキストで表示する（一覧には出さない）。\n\n`transfer`（越境転移）はデータとしては生成・保持するが UI には出さない — 別分野への越境を発想するのはユーザーの創造的な仕事で、AI が先回りするとアンカリングになるため。将来の発想（Idea）レイヤ（人間トリガー）で使う。ここでは transfer をあえて渡しても表示されないことを確認できる。",
+      },
+    },
+  },
+  render: () => (
+    <Wrapper
+      noteIndex={sampleNoteIndex}
+      wikiMeta={{
+        ...baseMeta,
+        kind: "atom",
+        derivedFromClaims: ["claim-xyz789"],
+        atomType: "mechanistic",
+        shape: "composition-structure",
+        // transfer はデータとして持っていても UI には出さない（意図的に非表示）
+        transfer: {
+          field: "都市交通",
+          example: "車線幅や信号間隔が揃った道路網ほど渋滞（流れの妨げ）が起きにくい。",
+        },
+      }}
+    />
+  ),
+};
+
 export const WithDerivedFromUnresolved: StoryObj = {
   name: "派生元あり（一部 index 未解決）",
   parameters: {
