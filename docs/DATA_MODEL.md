@@ -74,6 +74,15 @@ type GraphiumDocument = {
   // and sourcePdfFileId (a note *generated from* a PDF).
   citedAssetFileIds?: string[];
 
+  // ── user-assigned context labels ────────────────────
+  // Free-form categories the user attaches by hand (e.g. "eureco",
+  // "philosophy", "MCP research"). Note-level, multiple allowed. Orthogonal
+  // to PROV block labels (procedure/material/…, auto-extracted) and to
+  // wikiMeta.theme (a Synthesis-only lens). Used for note-list display /
+  // filtering; mirrored to NoteIndexEntry.noteContexts (index v21) and
+  // intended to later scope AI context to a chosen context.
+  noteContexts?: string[];
+
   // ── authorship / agent ──────────────────────────────
   generatedBy?: {
     agent: string;
@@ -890,6 +899,14 @@ type NoteIndexEntry = {
   //   docs for back-compat and UI grouping. New Cmd-K Composer
   //   authoring does not populate it.
   theme?: string;
+
+  // v21: user-assigned context labels — mirrored from
+  //   GraphiumDocument.noteContexts (normalised: trimmed, de-duped
+  //   case-insensitively). Note-level free-form categories the user attaches
+  //   by hand; used by the note list for the "Context" column display and the
+  //   column-header filter. Orthogonal to PROV labels and to `theme`.
+  //   Absent → undefined (treated as "uncategorised").
+  noteContexts?: string[];
 };
 ```
 
@@ -916,6 +933,7 @@ Bumping rules:
 | **18** | Added `meta-atom` to `WikiKind` and `derivedFromAtoms` mirror (Phase ε — KJ-style mid-cluster + headline). Withdrawn at v19. |
 | **19** | Withdrew Phase ε. Removed `"meta-atom"` from `WikiKind` and the `derivedFromAtoms` mirror. LLM-driven axis invention proved unreliable (outputs collapsed to the source domain even at Anthropic Opus). Existing meta-atom JSON files on disk are tolerated by `ensureIndex` — their wiki kind falls outside the new enum and the index entry is rebuilt as a regular note-less placeholder until the user trashes it. The replacement is a human-provided theme threaded through the Synthesizer, landing in a follow-up PR. |
 | **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
+| **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

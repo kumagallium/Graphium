@@ -709,6 +709,15 @@ export type GraphiumDocument = {
    */
   citedAssetFileIds?: string[];
   /**
+   * ユーザーが手で付ける「文脈ラベル」（例: "eureco" / "MCP研究" / "哲学"）。
+   * ノート単位の自由な分類軸で、PROV ブロックラベル（procedure/material/…）や
+   * wikiMeta.theme（Synthesis 専用 lens）とは別物・非流用。1 ノートに複数の文脈を
+   * 持てる（跨ぎノートを表現するため配列）。付与 UX は「1 個ずつ足せる」を基本にする。
+   * 一覧の絞り込み・整理に使い、将来は「この文脈だけに絞った AI コンテキスト利用」の
+   * seed になる。additive optional のため旧データは従来通り動く。
+   */
+  noteContexts?: string[];
+  /**
    * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、
