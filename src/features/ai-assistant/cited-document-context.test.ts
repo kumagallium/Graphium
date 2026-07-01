@@ -230,6 +230,38 @@ describe("assembleCitedDocumentContext", () => {
     expect(md).toContain("記事本文");
   });
 
+  it("URL ノートは loadUrlText の原語原文を優先する", async () => {
+    const doc = makeDoc({
+      title: "記事",
+      sourceUrl: "https://example.com",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "加工済み本文" }] }], "t")],
+    });
+    const md = await assembleCitedDocumentContext("note-2", doc, {
+      noteIndex: { notes: [] } as unknown as GraphiumIndex,
+      captureIndex: null,
+      provider: { loadFile: async () => doc, getMediaBlobUrl: async () => "" },
+      loadUrlText: async () => "Reader が取得した原語の全文",
+    });
+    expect(md).toContain("Reader が取得した原語の全文");
+    // 原語原文が優先されるので、LLM 加工済みのノート本文は使わない
+    expect(md).not.toContain("加工済み本文");
+  });
+
+  it("URL ノートは loadUrlText が空ならノート本文へフォールバック", async () => {
+    const doc = makeDoc({
+      title: "記事",
+      sourceUrl: "https://example.com",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "記事本文" }] }], "t")],
+    });
+    const md = await assembleCitedDocumentContext("note-2", doc, {
+      noteIndex: { notes: [] } as unknown as GraphiumIndex,
+      captureIndex: null,
+      provider: { loadFile: async () => doc, getMediaBlobUrl: async () => "" },
+      loadUrlText: async () => undefined,
+    });
+    expect(md).toContain("記事本文");
+  });
+
   it("原典スコープでは派生知識を収集せず原文に絞る", async () => {
     const doc = makeDoc({ title: "論文X", sourcePdfFileId: "pdf-1", source: "human" });
     const noteIndex = {

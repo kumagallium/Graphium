@@ -207,6 +207,24 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
+// URL 原文の Reader 取得（収束 grounding 用）。LLM 加工前の原語原文を Reader 経由で取り、
+// セッション内キャッシュする。B-persist の第一段（永続保存は将来上乗せ）。
+const urlTextCache = new Map<string, string>();
+async function loadUrlText(url: string): Promise<string | undefined> {
+  const cached = urlTextCache.get(url);
+  if (cached != null) return cached;
+  try {
+    const { fetchReaderArticle } = await import("./features/pdf-translate/translate-service");
+    const article = await fetchReaderArticle(url);
+    const text = (article.textContent || "").trim();
+    if (!text) return undefined;
+    urlTextCache.set(url, text);
+    return text;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * メモ（capture）のプレーンテキストから最小の GraphiumDocument を組む。
  * 「複数選択メモ → Knowledge 化」で、各メモを 1 ノートに materialize して
@@ -1735,6 +1753,7 @@ function NoteEditorInner({
                     captureIndex: captureIndexProp ?? null,
                     provider,
                     scope,
+                    loadUrlText,
                   });
                   if (assembled) {
                     noteContents.push(assembled);

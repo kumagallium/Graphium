@@ -194,6 +194,9 @@ export type CitedDocDeps = {
   budgetChars?: number;
   /** grounding スコープ（未指定なら "overview"） */
   scope?: GroundingScope;
+  /** URL ノートの原語原文を取得（Reader 経由）。未指定 or 失敗時はノート本文にフォールバック。
+   *  収束スコープで URL の原文（LLM 加工前）を grounding に載せるため。 */
+  loadUrlText?: (url: string) => Promise<string | undefined>;
 };
 
 /** PDF 全文抽出に必要な最小依存（ノート経路・素材経路の双方から使う） */
@@ -263,10 +266,13 @@ export async function assembleCitedDocumentContext(
     }
   }
 
-  // 原文/本文: PDF は全文抽出、URL/docx はノート本文
+  // 原文/本文: PDF は全文抽出、URL は Reader 経由の原語原文（LLM 加工前）を優先、docx はノート本文
   let fullText: string | undefined;
   if (doc.sourcePdfFileId) {
     fullText = await loadPdfFullText(doc.sourcePdfFileId, deps);
+  } else if (doc.sourceUrl && deps.loadUrlText) {
+    // URL は原語原文を優先（収束での正確な引用のため）。取得できなければノート本文にフォールバック
+    fullText = (await deps.loadUrlText(doc.sourceUrl)) || blocksToPlainText(doc) || undefined;
   } else {
     fullText = blocksToPlainText(doc) || undefined;
   }
