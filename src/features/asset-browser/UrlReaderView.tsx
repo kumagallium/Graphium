@@ -18,6 +18,7 @@ import { persistUrlMetaPatch } from "./media-index";
 import { SelectionPill, type CitationSource, type PillState } from "./SelectionPill";
 import { UrlPreviewCard } from "./url-preview-card";
 import { buildTextFragment } from "./text-fragment";
+import { PdfViewer } from "./PdfViewer";
 
 type ReaderArticle = {
   url: string;
@@ -32,9 +33,14 @@ type ReaderArticle = {
   fetchedAt: string;
 };
 
+/** /api/url/reader が PDF URL に対して返すシグナル（本文は無い） */
+type ReaderPdfSignal = { kind: "pdf"; url: string };
+
 type Status =
   | { kind: "loading" }
   | { kind: "ready"; article: ReaderArticle }
+  // PDF URL: Reader では読めないので PdfViewer（プロキシ経由）に表示を委ねる
+  | { kind: "pdf" }
   | { kind: "empty"; reason?: string }
   | { kind: "error"; message: string };
 
@@ -80,7 +86,13 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
           setStatus({ kind: "error", message: body.error ?? `HTTP ${res.status}` });
           return;
         }
-        const article = (await res.json()) as ReaderArticle;
+        const payload = (await res.json()) as ReaderArticle | ReaderPdfSignal;
+        // PDF URL → PdfViewer に委譲（プロキシ経由で表示 + 選択→メモが効く）
+        if ("kind" in payload && payload.kind === "pdf") {
+          setStatus({ kind: "pdf" });
+          return;
+        }
+        const article = payload as ReaderArticle;
         if (!article.content || !article.textContent) {
           setStatus({ kind: "empty" });
           return;
@@ -223,6 +235,13 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
         {t("asset.url.readerLoading")}
       </div>
     );
+  }
+
+  // PDF URL は Reader では読めないので PdfViewer に丸ごと委譲する。
+  // PdfViewer 側が entry.url（リモート http(s)）を pdf-proxy 経由で描画し、
+  // アップロード PDF と同じ選択→メモ体験を提供する。
+  if (status.kind === "pdf") {
+    return <PdfViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
   }
 
   if (status.kind === "empty") {

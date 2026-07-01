@@ -113,6 +113,14 @@ describe("fetchAsReaderArticle (bot protection)", () => {
       message: expect.stringContaining("Fetch failed: 403"),
     });
   });
+
+  it("content-type が application/pdf なら code:'pdf' を付けて投げる（ルートが PdfViewer 表示へ回すシグナル）", async () => {
+    stubFetch(200, { "content-type": "application/pdf" });
+    await expect(fetchAsReaderArticle("https://example.com/paper.pdf")).rejects.toMatchObject({
+      status: 400,
+      code: "pdf",
+    });
+  });
 });
 
 describe("sanitizeReaderHtml", () => {
