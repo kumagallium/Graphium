@@ -414,8 +414,12 @@ function SidePeekInner({
     setMemoPickerOpen(false);
   }, []);
 
-  // 初期コンテンツ（cachedDoc を優先し、レンダリング時に即利用可能にする）
-  const effectiveDoc = cachedDoc ?? doc;
+  // 表示・編集の基準ドキュメント。タイトル編集は doc（state）にのみ反映されるため
+  // doc を優先する。初回レンダリング（load effect 実行前）は doc が null なので
+  // cachedDoc へフォールバックして即時表示を維持する。
+  // （cachedDoc を優先すると title 編集が stale な cachedDoc.title に固定され、
+  //  サイドピークで「タイトルが変えられない」不具合になる。）
+  const effectiveDoc = doc ?? cachedDoc;
   const initialContent = effectiveDoc?.pages?.[0]?.blocks?.length
     ? sanitizeBlocks(effectiveDoc.pages[0].blocks)
     : undefined;
