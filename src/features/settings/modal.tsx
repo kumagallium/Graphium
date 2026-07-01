@@ -176,6 +176,8 @@ const LABEL_I18N_KEYS: Record<CoreLabel, string> = {
 type SettingsModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** 開いたときに最初に表示するタブ（未指定なら前回のタブ / display）。 */
+  initialTab?: string;
   /** Maintenance タブの一括 Regenerate 用 Wiki 一覧 */
   wikiSummaries?: WikiSummaryForSettings[];
   /** Maintenance タブから 1 件ずつ呼ばれる再生成ハンドラ */
@@ -187,9 +189,13 @@ type SettingsModalProps = {
   onReembedAllWikis?: (onProgress: (done: number, total: number) => void) => Promise<void>;
 };
 
-export function SettingsModal({ isOpen, onClose, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onReembedAllWikis }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRegenerateWiki, onRunAtomizeDiscovery, onReembedAllWikis }: SettingsModalProps) {
   const { locale, setLocale, t } = useLocale();
   const [tab, setTab] = useState<Tab>("display");
+  // initialTab 指定で開かれたら、そのタブに切り替える（AI 未設定バナーの「Set up AI」等）。
+  useEffect(() => {
+    if (isOpen && initialTab) setTab(initialTab as Tab);
+  }, [isOpen, initialTab]);
 
   // 設定値
   const [model, setModel] = useState("");

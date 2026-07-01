@@ -89,7 +89,7 @@ import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
-import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -3549,35 +3549,46 @@ export function NoteApp() {
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
   // AI バックエンド接続チェック（GitHub Pages 等の静的サイトでは false）
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  // バックエンド到達性（aiAvailable）と「モデルが 1 件以上登録されているか」
+  // （agentConfigured）を同時に判定する。後者はサイドバーの緑/橙バッジと、各 AI
+  // アクションのガード（isAgentConfigured）が読む。desktop はサーバーの models.json、
+  // web は localStorage が実体なので数え方を分ける。
+  const checkAiReadiness = useCallback(async () => {
+    const { fetchModels } = await import("./features/ai-assistant/api");
+    const applyReachable = (serverModelCount: number) => {
+      const hasModels = isTauri() ? serverModelCount > 0 : getLLMModels().length > 0;
+      setAiAvailable(true);
+      setAgentConfigured(hasModels);
+      setAiModelsAvailable(hasModels);
+    };
+    try {
+      const res = await fetchModels();
+      applyReachable(res.models.length);
+    } catch {
+      // sidecar 復旧を試みる（Tauri 環境のみ）
       try {
-        const { fetchModels } = await import("./features/ai-assistant/api");
-        await fetchModels();
-        if (!cancelled) setAiAvailable(true);
-      } catch {
-        // sidecar 復旧を試みる（Tauri 環境のみ）
-        try {
-          const recovered = await ensureSidecar();
-          if (recovered) {
-            const { fetchModels } = await import("./features/ai-assistant/api");
-            await fetchModels();
-            if (!cancelled) setAiAvailable(true);
-            return;
-          }
-        } catch { /* sidecar 復旧も失敗 */ }
-        if (!cancelled) setAiAvailable(false);
-      }
-    })();
-    return () => { cancelled = true; };
+        const recovered = await ensureSidecar();
+        if (recovered) {
+          const res = await fetchModels();
+          applyReachable(res.models.length);
+          return;
+        }
+      } catch { /* sidecar 復旧も失敗 */ }
+      // バックエンド無し（GitHub Pages 等）= AI UI 自体を隠す。
+      setAiAvailable(false);
+    }
   }, []);
+  useEffect(() => { void checkAiReadiness(); }, [checkAiReadiness]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // `graphium-open-settings` で開いたときに最初に表示するタブ。AI 未設定バナーの
+  // 「Set up AI」からは "ai" を渡して AI Setup タブへ直接誘導する。
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string | undefined>(undefined);
   // MissingApiKeyBanner などから `graphium-open-settings` イベントで Settings を
   // 開けるようにする。直接 setShowSettings を渡し回らずに済む間接化（UpdateBanner
-  // の "graphium-update-available" と同じパターン）。
+  // の "graphium-update-available" と同じパターン）。detail.tab があればそのタブを開く。
   useEffect(() => {
-    const handler = () => {
+    const handler = (e: Event) => {
+      setSettingsInitialTab((e as CustomEvent<{ tab?: string }>).detail?.tab);
       setShowSettings(true);
       setSidebarOpen(false);
     };
@@ -6639,9 +6650,11 @@ export function NoteApp() {
       <WelcomeDialog />
       <SettingsModal
         isOpen={showSettings}
+        initialTab={settingsInitialTab}
         onClose={() => {
           setShowSettings(false);
-          setAgentConfigured(isAgentConfigured());
+          setSettingsInitialTab(undefined);
+          void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
         }}
         wikiSummaries={wikiSummariesForSettings}

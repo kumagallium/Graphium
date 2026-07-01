@@ -257,6 +257,7 @@ export const en: Record<string, string> = {
   "settings.fontZenKaku": "Zen Kaku Gothic New (relaxed body gothic)",
   "settings.fontBizUDP": "BIZ UDPGothic (Japanese UD gothic)",
   "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI Setup to add a model.",
+  "settings.aiSetupCta": "Set up AI",
 
   // ── AI チャット ──
   "aiChat.title": "AI Chat",
