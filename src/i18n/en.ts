@@ -1248,6 +1248,12 @@ export const en: Record<string, string> = {
   "composer.submit": "Send",
   "composer.kbd.submit": "to send",
   "composer.kbd.close": "to close",
+  // grounding スコープ（俯瞰/原典）
+  "composer.scope.label": "Grounding",
+  "composer.scope.overview": "Diverge",
+  "composer.scope.primary": "Converge",
+  "composer.scope.overviewHint": "Include knowledge (claims, insights, related entries) broadly — for ideation and structuring",
+  "composer.scope.primaryHint": "Source text and memos only, excluding knowledge — for writing and citation accuracy",
   // verb メニュー（R2）
   "composer.verb.title": "Ask the AI (this note + {count} citations)",
   "composer.verb.commentPlaceholder": "Add a note to steer the AI (optional)",

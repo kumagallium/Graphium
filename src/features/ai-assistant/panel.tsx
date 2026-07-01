@@ -13,6 +13,8 @@ import { fetchModels } from "./api";
 import { ensureSidecar } from "../../lib/sidecar";
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { useT } from "../../i18n";
+import { GroundingScopeChip } from "../composer/GroundingScopeChip";
+import type { GroundingScope } from "../../lib/grounding-scope";
 import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 
@@ -25,7 +27,7 @@ export type AttachedNote = {
 
 type AiAssistantPanelProps = {
   /** AI にメッセージを送信する */
-  onSubmit: (question: string, attachedNotes?: AttachedNote[]) => void;
+  onSubmit: (question: string, attachedNotes?: AttachedNote[], scope?: GroundingScope) => void;
   /** AI 回答をスコープ内にブロックとして挿入する */
   onInsertToScope?: (markdown: string) => void;
   /** AI 回答で対象ブロックを置換する */
@@ -90,6 +92,8 @@ export function AiAssistantPanel({
 
   // @ メンション機能
   const [attachedNotes, setAttachedNotes] = useState<AttachedNote[]>([]);
+  // grounding スコープ（発散/収束）。Composer と共通のチップで切り替える。
+  const [scope, setScope] = useState<GroundingScope>("overview");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionCursorPos, setMentionCursorPos] = useState(0);
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
@@ -180,10 +184,10 @@ export function AiAssistantPanel({
     const trimmed = input.trim();
     if (!trimmed || loading) return;
     setInput("");
-    onSubmit(trimmed, attachedNotes.length > 0 ? attachedNotes : undefined);
+    onSubmit(trimmed, attachedNotes.length > 0 ? attachedNotes : undefined, scope);
     setAttachedNotes([]);
     setMentionQuery(null);
-  }, [input, loading, onSubmit, attachedNotes]);
+  }, [input, loading, onSubmit, attachedNotes, scope]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -483,8 +487,9 @@ export function AiAssistantPanel({
                 <Send size={12} />
               </Button>
             </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {t("aiChat.sendHint")}
+            <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
+              <span>{t("aiChat.sendHint")}</span>
+              <GroundingScopeChip value={scope} onChange={setScope} />
             </div>
           </div>
         </>

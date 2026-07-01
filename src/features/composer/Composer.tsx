@@ -20,6 +20,8 @@ import { createPortal } from "react-dom";
 import { Bot } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
+import type { GroundingScope } from "../../lib/grounding-scope";
+import { GroundingScopeChip } from "./GroundingScopeChip";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { searchNotes, type SearchHit } from "./search";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
@@ -71,6 +73,8 @@ export function Composer(props: ComposerProps) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  // grounding スコープ（発散/収束）。AI 送信時に引用資料のどの層を渡すかを切り替える。
+  const [scope, setScope] = useState<GroundingScope>("overview");
 
   // 検索結果（純関数なので useMemo で十分）
   const hits = useMemo(() => {
@@ -141,7 +145,7 @@ export function Composer(props: ComposerProps) {
 
   const submitAi = () => {
     if (trimmed.length === 0) return;
-    onSubmit({ mode, prompt: trimmed });
+    onSubmit({ mode, prompt: trimmed, scope });
   };
 
   // verb 押下 → プロンプトテンプレート + 任意コメントを組み立て、既存 Ask 経路に流す。
@@ -153,7 +157,7 @@ export function Composer(props: ComposerProps) {
       t("composer.verb.commentLabel"),
     );
     setVerbComment("");
-    onSubmit({ mode, prompt, verb: def.id });
+    onSubmit({ mode, prompt, verb: def.id, scope });
   };
 
   const activateRow = (row: ResultRow) => {
@@ -319,6 +323,7 @@ export function Composer(props: ComposerProps) {
           >
             ↑↓ {t("composer.search.hintFilters")} · ⌘+Enter {t("composer.kbd.submit")} · Esc {t("composer.kbd.close")}
           </span>
+          <GroundingScopeChip value={scope} onChange={setScope} />
         </div>
 
         {/* 結果リスト（onNoteSelect 未配線のときは出さない）

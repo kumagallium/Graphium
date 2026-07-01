@@ -1247,6 +1247,12 @@ export const ja: Record<string, string> = {
   "composer.submit": "送信",
   "composer.kbd.submit": "で送信",
   "composer.kbd.close": "で閉じる",
+  // grounding スコープ（俯瞰/原典）
+  "composer.scope.label": "渡す範囲",
+  "composer.scope.overview": "発散",
+  "composer.scope.primary": "収束",
+  "composer.scope.overviewHint": "ナレッジ（知見・洞察・関連項目）も含めて広く渡す。着想・構成向け",
+  "composer.scope.primaryHint": "原文とメモに絞る（ナレッジを除外）。執筆・引用の正確さ向け",
   // verb メニュー（R2）
   "composer.verb.title": "AI に問う（このノート + 引用 {count} 件）",
   "composer.verb.commentPlaceholder": "AI への補足を一言（任意）",

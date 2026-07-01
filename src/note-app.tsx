@@ -79,7 +79,7 @@ import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
-import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext } from "./features/ai-assistant/cited-document-context";
+import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { SettingsModal, isAgentConfigured, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -1493,7 +1493,7 @@ function NoteEditorInner({
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
-    async (question: string, attachedNotes?: AttachedNote[]) => {
+    async (question: string, attachedNotes?: AttachedNote[], scope: GroundingScope = "overview") => {
       // 新規ノート（fileId 未採番）でも AI チャットを許可する
       // markDirty() 経由でオートセーブが走り、ファイルが作成される
       if (!editorRef.current) {
@@ -1563,6 +1563,7 @@ function NoteEditorInner({
                     noteIndex: noteIndex ?? null,
                     captureIndex: captureIndexProp ?? null,
                     provider,
+                    scope,
                   });
                   if (assembled) {
                     noteContents.push(assembled);
@@ -1614,7 +1615,7 @@ function NoteEditorInner({
             try {
               const md = await assembleCitedAssetContext(
                 { fileId: entry.fileId, name: entry.name, type: entry.type },
-                { captureIndex: captureIndexProp ?? null, provider: getActiveProvider() },
+                { captureIndex: captureIndexProp ?? null, provider: getActiveProvider(), scope },
               );
               if (md) assetContents.push(md);
             } catch {
@@ -1636,13 +1637,25 @@ function NoteEditorInner({
 
         const selectedModel = getSelectedModel();
         const disabledTools = getDisabledTools();
-        // Wiki Retriever: 関連する Wiki コンテキストを検索
+        // Wiki Retriever: 関連する Wiki コンテキスト（横断検索）を取得。
+        // 収束スコープ（primary）では横断検索を抑制し、@引用したものだけに絞る。
+        // 発散スコープでは横断を足すが、@引用・派生知識と重複するものは除外して二重掲載を防ぐ。
         let wikiContext: string | undefined;
-        try {
-          const { retrieveWikiContext } = await import("./features/wiki/retriever");
-          wikiContext = (await retrieveWikiContext(userMessage)) ?? undefined;
-        } catch {
-          // Retriever 失敗は無視（embedding が無い場合など）
+        if (scope !== "primary") {
+          try {
+            const excludeIds = new Set<string>();
+            for (const n of attachedNotes ?? []) {
+              excludeIds.add(n.id);
+              for (const k of gatherDerivedKnowledge(noteIndex ?? null, n.id)) {
+                excludeIds.add(k.noteId);
+              }
+            }
+            for (const id of citedAssetIds) excludeIds.add(id);
+            const { retrieveWikiContext } = await import("./features/wiki/retriever");
+            wikiContext = (await retrieveWikiContext(userMessage, excludeIds)) ?? undefined;
+          } catch {
+            // Retriever 失敗は無視（embedding が無い場合など）
+          }
         }
         // 会話履歴を組み立ててサーバーに送る。
         // サーバーは stateless（session を保持しない）。履歴の正本はノート側の ScopeChat。
@@ -1803,7 +1816,7 @@ function NoteEditorInner({
   useEffect(() => {
     if (!composerSubmitRef) return;
     composerSubmitRef.current = async (submission) => {
-      const { mode, prompt, verb } = submission;
+      const { mode, prompt, verb, scope } = submission;
       const h = composerHandlersRef.current;
 
       if (mode === "ask") {
@@ -1817,7 +1830,7 @@ function NoteEditorInner({
         // 引用した論文 PDF 等の中身を踏まえて答えられるよう常に収集する。文書ノートは
         // handleAiChatSubmit 側の attachedNotes 経路で 1ホップ派生知識＋全文に展開される。
         const citedNotes = h.collectCitedNotes();
-        await h.handleAiChatSubmit(prompt, citedNotes.length > 0 ? citedNotes : undefined);
+        await h.handleAiChatSubmit(prompt, citedNotes.length > 0 ? citedNotes : undefined, scope);
         return;
       }
 
