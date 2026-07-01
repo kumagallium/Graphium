@@ -21,6 +21,14 @@ import {
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { SandboxEditor } from "../../base/editor";
+import { ContextBadge } from "../note-context/ContextBadge";
+import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import {
+  aggregateNoteContexts,
+  addNoteContext,
+  removeNoteContext,
+  normalizeNoteContexts,
+} from "../note-context/context-tags";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
@@ -91,6 +99,15 @@ type SidePeekProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** /claims, /Insights の引用ピッカー用ノートインデックス。未指定だと引用挿入は出さない。 */
   noteIndex?: GraphiumIndex | null;
+  /**
+   * 文脈ラベル（noteContexts）を変更しファイル保存（doSave）が完了した後に呼ばれる。
+   * 保存済みの doc を渡すので、呼び出し側はこの doc からインデックスや doc キャッシュを
+   * 再構築する（reindexNoteFromDoc）。ファイル保存は SidePeek 自身が済ませているため
+   * 二重保存はしない。未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
+   */
+  onNoteContextsChange?: (noteId: string, savedDoc: GraphiumDocument | null) => void;
+  /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
+  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -145,6 +162,7 @@ function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
+  onNoteContextsChange, onDeleteContextEverywhere,
 }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
@@ -171,6 +189,10 @@ function SidePeekInner({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
+  // 文脈ラベル（タイトル直下のタグ行）。表示・編集用のローカル state。
+  const [peekContexts, setPeekContexts] = useState<string[]>([]);
+  const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const contextsInitRef = useRef<string | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidePeekRef = useRef<HTMLDivElement>(null);
@@ -498,6 +520,34 @@ function SidePeekInner({
       doSaveRef.current();
     }, 3000);
   }, []);
+
+  // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
+  // 以降の本文編集による doc 変化ではリセットしない）。
+  useEffect(() => {
+    if (!effectiveDoc) return;
+    if (contextsInitRef.current === noteId) return;
+    contextsInitRef.current = noteId;
+    setPeekContexts(normalizeNoteContexts(effectiveDoc.noteContexts) ?? []);
+  }, [effectiveDoc, noteId]);
+
+  // 文脈ラベルの更新: ローカル state + docRef を更新し、SidePeek 自身の doSave で保存する
+  // （doSave は ...docRef.current を spread するので noteContexts も一緒に書き出される）。
+  // 保存の完了を待ってから onNoteContextsChange に「保存済み doc」を渡し、一覧インデックスと
+  // doc キャッシュを再構築させる。await してから通知することで、一覧復帰時に ensureIndex が
+  // 保存前の古いノートファイルを読んで index を上書きしてしまう競合を避ける。
+  const applyPeekContexts = useCallback(
+    async (next: string[]) => {
+      const normalized = normalizeNoteContexts(next);
+      setPeekContexts(normalized ?? []);
+      if (docRef.current) {
+        docRef.current = { ...docRef.current, noteContexts: normalized };
+      }
+      setDoc((d) => (d ? { ...d, noteContexts: normalized } : d));
+      await doSaveRef.current();
+      onNoteContextsChange?.(noteId, docRef.current);
+    },
+    [noteId, onNoteContextsChange],
+  );
 
   // 配置揃え変更時にもオートセーブをトリガー（editor.onChange を通らないため）
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
@@ -877,6 +927,63 @@ function SidePeekInner({
                 aria-label={tStatic("editor.titlePlaceholder")}
                 className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-1 mb-4 px-[54px] resize-none overflow-hidden break-words"
               />
+              {/* 文脈タグ行（タイトル直下・人間ノートのみ）。メインエディタと同じ見た目。
+                  保存は SidePeek 自身の doSave（noteContexts も spread で書き出す）。 */}
+              {effectiveDoc &&
+                effectiveDoc.source !== "ai" &&
+                effectiveDoc.source !== "skill" &&
+                !noteId.startsWith("wiki:") &&
+                !noteId.startsWith("skill:") &&
+                (peekContexts.length > 0 || !archived) && (
+                  <div className="px-[54px] -mt-2 mb-4 flex flex-wrap items-center gap-1.5">
+                    {peekContexts.map((c) => (
+                      <ContextBadge
+                        key={c}
+                        value={c}
+                        onRemove={
+                          archived
+                            ? undefined
+                            : () => applyPeekContexts(removeNoteContext(peekContexts, c) ?? [])
+                        }
+                        removeLabel={t("nav.removeContext")}
+                      />
+                    ))}
+                    {!archived && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          if (peekContextPickerPos) {
+                            setPeekContextPickerPos(null);
+                            return;
+                          }
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setPeekContextPickerPos({ top: r.bottom + 4, left: r.left });
+                        }}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                        title={peekContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
+                      >
+                        ＋ {t("nav.noteContexts")}
+                      </button>
+                    )}
+                    {peekContextPickerPos && (
+                      <ContextTagPicker
+                        position={peekContextPickerPos}
+                        onClose={() => setPeekContextPickerPos(null)}
+                        title={t("nav.noteContexts")}
+                        selected={peekContexts}
+                        suggestions={aggregateNoteContexts(noteIndex?.notes ?? [])}
+                        placeholder={t("nav.contextPlaceholder")}
+                        createLabel={(v) => t("nav.createContext", { value: v })}
+                        clearLabel={t("nav.clearContexts")}
+                        emptyText={t("nav.contextEmpty")}
+                        onDeleteCandidate={onDeleteContextEverywhere}
+                        onAdd={(v) => applyPeekContexts(addNoteContext(peekContexts, v) ?? [])}
+                        onRemove={(v) => applyPeekContexts(removeNoteContext(peekContexts, v) ?? [])}
+                        onClear={() => applyPeekContexts([])}
+                      />
+                    )}
+                  </div>
+                )}
               {/* table / audio / file の配置揃えを CSS で適用 */}
               <AlignmentStyleLayer />
               <SandboxEditor

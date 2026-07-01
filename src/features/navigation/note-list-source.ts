@@ -9,6 +9,8 @@ export type NoteListEntry = {
   modifiedAt: string;
   createdAt: string;
   labels: string[];
+  /** ユーザーが手で付ける文脈ラベル（v21）。未付与は空配列。 */
+  noteContexts: string[];
   incomingLinkCount: number;
   outgoingLinkCount: number;
   /** 作者 (username)。LLM 経由で書き込まれたノートで値が入る */
@@ -67,6 +69,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         modifiedAt: n.modifiedAt,
         createdAt: n.createdAt,
         labels: Array.from(labelSet),
+        noteContexts: n.noteContexts ?? [],
         incomingLinkCount: incomingMap.get(n.noteId)?.size ?? 0,
         outgoingLinkCount: outgoingMap.get(n.noteId) ?? 0,
         author: n.author,

@@ -65,6 +65,7 @@ import {
 } from "../features/asset-browser";
 
 import { isIncomingDocNewer } from "./doc-recency";
+import { normalizeNoteContexts } from "../features/note-context/context-tags";
 
 // ストレージプロバイダー経由のファイル操作ヘルパー
 const storage = () => getActiveProvider();
@@ -1236,6 +1237,114 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
+  // ノートの「文脈ラベル」（noteContexts）を更新して保存する。
+  // 一覧・ヘッダのどちらからでも呼べるよう、activeFileId 依存でなく noteId を明示的に取る。
+  // 対象が開いていないノートでも「同じ id へ上書き」保存する（save-path 不変条件を厳守。
+  // createFile 分岐には決して落とさない = 新 id 複製を防ぐ）。index も差分更新して一覧に即反映する。
+  const updateNoteContexts = useCallback(
+    async (noteId: string, contexts: string[]): Promise<void> => {
+      const doc = await loadDoc(noteId);
+      if (!doc) {
+        console.warn("文脈更新: ノートが読み込めませんでした:", noteId);
+        return;
+      }
+      const normalized = normalizeNoteContexts(contexts);
+      const nextDoc: GraphiumDocument = {
+        ...doc,
+        noteContexts: normalized,
+        modifiedAt: new Date().toISOString(),
+      };
+      try {
+        await saveFile(noteId, nextDoc);
+        docCacheRef.current.set(noteId, nextDoc);
+        // 開いているノートなら activeDoc も追従（エディタ復元元がずれないように）
+        if (noteId === activeFileIdRef.current) {
+          setActiveDoc(nextDoc);
+        }
+        // インデックスを差分更新して一覧に即反映
+        if (noteIndexRef.current) {
+          const updated = updateIndexEntry(noteIndexRef.current, noteId, nextDoc);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          queueSaveIndex(updated);
+        }
+      } catch (err) {
+        console.error("文脈の保存に失敗:", err);
+        alert("文脈の保存に失敗しました。再度お試しください。");
+      }
+    },
+    [loadDoc, setNoteIndex, queueSaveIndex]
+  );
+
+  // ノートファイルへの保存はコンポーネント側（SidePeek の doSave 等）で済ませた前提で、
+  // その「保存済み doc」からインデックスエントリを丸ごと再構築し、doc キャッシュも最新化する。
+  // saveFile は呼ばない（二重保存にならない）。
+  //
+  // 手動で noteContexts だけを差し替える方式ではなく updateIndexEntry（buildIndexEntry 経由）で
+  // エントリ全体を作り直すのは、(a) noteContexts を含む全フィールドが正となる doc から確実に
+  // 反映され、(b) 一覧復帰時に ensureIndex が走ってノートファイルから再構築しても内容が一致し、
+  // 手動パッチと再構築が競合して「ノートには付いているが index には無い」不整合になるのを防ぐため。
+  // 呼び出し側はノート保存の完了を await してからこれを呼ぶこと（保存前の古いファイルを
+  // ensureIndex が読む競合を避ける）。
+  const reindexNoteFromDoc = useCallback(
+    (noteId: string, doc: GraphiumDocument | null | undefined) => {
+      if (!doc) return;
+      // doc キャッシュ（SidePeek 再オープン時の cachedDoc の源）を最新化
+      docCacheRef.current.set(noteId, doc);
+      // インデックス（一覧の「文脈」列表示の源）をエントリ単位で作り直す
+      if (noteIndexRef.current) {
+        const updated = updateIndexEntry(noteIndexRef.current, noteId, doc);
+        noteIndexRef.current = updated;
+        setNoteIndex(updated);
+        queueSaveIndex(updated);
+      }
+    },
+    [setNoteIndex, queueSaveIndex]
+  );
+
+  // 文脈ラベル（候補）を全ノートから一括削除する。使用中の各ノートから該当文脈を外して保存し、
+  // インデックス・doc キャッシュを更新する。どのノートも使わなくなるので候補一覧からも消える。
+  // 削除した件数を返す（呼び出し側の確認ダイアログは別途 count を見て出す）。
+  const deleteNoteContextEverywhere = useCallback(
+    async (value: string): Promise<number> => {
+      const key = value.trim().toLowerCase();
+      if (!key || !noteIndexRef.current) return 0;
+      const targets = noteIndexRef.current.notes.filter((n) =>
+        (n.noteContexts ?? []).some((c) => c.trim().toLowerCase() === key),
+      );
+      let updatedIndex = noteIndexRef.current;
+      let removed = 0;
+      for (const entry of targets) {
+        const doc = await loadDoc(entry.noteId);
+        if (!doc) continue;
+        const next = normalizeNoteContexts(
+          (doc.noteContexts ?? []).filter((c) => c.trim().toLowerCase() !== key),
+        );
+        const nextDoc: GraphiumDocument = {
+          ...doc,
+          noteContexts: next,
+          modifiedAt: new Date().toISOString(),
+        };
+        try {
+          await saveFile(entry.noteId, nextDoc);
+          docCacheRef.current.set(entry.noteId, nextDoc);
+          if (entry.noteId === activeFileIdRef.current) setActiveDoc(nextDoc);
+          updatedIndex = updateIndexEntry(updatedIndex, entry.noteId, nextDoc);
+          removed += 1;
+        } catch (err) {
+          console.error("文脈の一括削除に失敗:", entry.noteId, err);
+        }
+      }
+      if (removed > 0) {
+        noteIndexRef.current = updatedIndex;
+        setNoteIndex(updatedIndex);
+        queueSaveIndex(updatedIndex);
+      }
+      return removed;
+    },
+    [loadDoc, setNoteIndex, queueSaveIndex]
+  );
+
   // 素材アップロード（メディアインデックス登録 + fileId / entry も返す）
   //
   // 「素材ライブラリ」経由の取り込み（Word/Excel 等のドキュメント、PDF、画像）で
@@ -1959,6 +2068,9 @@ export function useFileManager(authenticated: boolean) {
     handleSendArchiveToTrash,
     getCachedDoc,
     loadDoc,
+    updateNoteContexts,
+    reindexNoteFromDoc,
+    deleteNoteContextEverywhere,
     handleUploadMedia,
     handleUploadAsset,
     handleDeleteMedia,

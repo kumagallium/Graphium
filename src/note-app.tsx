@@ -108,6 +108,9 @@ import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import { ContextBadge } from "./features/note-context/ContextBadge";
+import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
+import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
 import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
@@ -531,6 +534,8 @@ type NoteEditorProps = {
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
   /** ノートインデックス（@ オートコンプリート用） */
   noteIndex?: GraphiumIndex | null;
+  /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
+  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
   /** メディアインデックス（メディアピッカー用） */
@@ -698,6 +703,7 @@ function NoteEditorInner({
   onSourceDocChange,
   getCachedDoc,
   noteIndex,
+  onDeleteContextEverywhere,
   uploadFile,
   mediaIndex,
   onAddUrlBookmark,
@@ -768,6 +774,11 @@ function NoteEditorInner({
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
+  // ノートの文脈ラベル（ユーザーが手で付ける分類）。ヘッダのピルから編集する。
+  // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
+  const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
+  const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
+  const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
@@ -1410,6 +1421,8 @@ function NoteEditorInner({
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
       citedAssetFileIds:
         citedAssetFileIdsRef.current.length > 0 ? citedAssetFileIdsRef.current : undefined,
+      noteContexts:
+        noteContextsRef.current.length > 0 ? noteContextsRef.current : undefined,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -3041,6 +3054,70 @@ function NoteEditorInner({
               aria-label={t("editor.titlePlaceholder")}
               className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 px-[54px] resize-none overflow-hidden break-words"
             />
+            {/* 文脈タグ行（タイトル直下・人間ノートのみ）。本文と同じ autosave 経路で保存する */}
+            {!isWikiDoc && !isSkillDoc && fileId && (
+              <div className="px-[54px] -mt-3 mb-5 flex flex-wrap items-center gap-1.5">
+                {noteContexts.map((c) => (
+                  <ContextBadge
+                    key={c}
+                    value={c}
+                    onRemove={() => {
+                      const next = removeNoteContext(noteContextsRef.current, c) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    removeLabel={t("nav.removeContext")}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (headerContextPickerPos) {
+                      setHeaderContextPickerPos(null);
+                      return;
+                    }
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left });
+                  }}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                  title={noteContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
+                >
+                  ＋ {t("nav.noteContexts")}
+                </button>
+                {headerContextPickerPos && (
+                  <ContextTagPicker
+                    position={headerContextPickerPos}
+                    onClose={() => setHeaderContextPickerPos(null)}
+                    title={t("nav.noteContexts")}
+                    selected={noteContexts}
+                    suggestions={aggregateNoteContexts(noteIndex?.notes ?? [])}
+                    placeholder={t("nav.contextPlaceholder")}
+                    createLabel={(v) => t("nav.createContext", { value: v })}
+                    clearLabel={t("nav.clearContexts")}
+                    emptyText={t("nav.contextEmpty")}
+                    onDeleteCandidate={onDeleteContextEverywhere}
+                    onAdd={(v) => {
+                      const next = addNoteContext(noteContextsRef.current, v) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    onRemove={(v) => {
+                      const next = removeNoteContext(noteContextsRef.current, v) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    onClear={() => {
+                      noteContextsRef.current = [];
+                      setNoteContexts([]);
+                      markDirty();
+                    }}
+                  />
+                )}
+              </div>
+            )}
             {/* table / audio / file の配置揃えを CSS で適用（サイドストア駆動） */}
             <AlignmentStyleLayer />
             <SandboxEditor
@@ -4631,6 +4708,21 @@ export function NoteApp() {
 
   const t = useT();
 
+  // 文脈候補（タグ）を全ノートから削除する。ピッカーのゴミ箱から呼ばれる。
+  // 使用中の件数を数え、1 件以上なら確認ダイアログを出す。実際に削除したら true を返す
+  // （ピッカー側がセッション表示から即座に消すのに使う）。
+  const handleDeleteContextEverywhere = async (value: string): Promise<boolean> => {
+    const key = value.trim().toLowerCase();
+    const count = (fm.noteIndex?.notes ?? []).filter((n) =>
+      (n.noteContexts ?? []).some((c) => c.trim().toLowerCase() === key),
+    ).length;
+    if (count >= 1 && !window.confirm(t("nav.deleteContextConfirm", { value, count: String(count) }))) {
+      return false;
+    }
+    await fm.deleteNoteContextEverywhere(value);
+    return true;
+  };
+
   // エディタ参照（メディアリネーム時のブロック同期用）
   const noteEditorRef = useRef<any>(null);
 
@@ -5774,6 +5866,8 @@ export function NoteApp() {
               for (const id of ids) await fm.handleDelete(id);
             }}
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
+            onSetNoteContexts={fm.updateNoteContexts}
+            onDeleteContextEverywhere={handleDeleteContextEverywhere}
             onIngestNotes={aiAvailable ? async (ids) => {
               // Knowledge 化候補から AI 派生（wiki）と既に処理待ちの ID を除外
               const candidates: { id: string; title: string }[] = [];
@@ -6172,6 +6266,7 @@ export function NoteApp() {
             key={fm.editorKey}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            onDeleteContextEverywhere={handleDeleteContextEverywhere}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
                 ? (() => {
@@ -6495,6 +6590,8 @@ export function NoteApp() {
                 }
                 router.navigate({ view: "editor", fileId: noteId });
               }}
+              onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
+              onDeleteContextEverywhere={handleDeleteContextEverywhere}
               wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
               onAddToKnowledge={
                 (aiAvailable ?? false) && !listSidePeekNoteId.startsWith("wiki:")
