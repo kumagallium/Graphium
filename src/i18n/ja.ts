@@ -114,6 +114,9 @@ export const ja: Record<string, string> = {
   "sidebar.releaseNotes": "Release Notes",
   "sidebar.aiConnected": "AI 接続済み",
   "sidebar.aiNotConfigured": "AI 未設定",
+  "sidebar.library": "ライブラリ",
+  "sidebar.shared": "共有",
+  "sidebar.skill": "スキル",
   "sidebar.knowledge": "ナレッジ",
   "sidebar.knowledgeHint": "AI がノートから抽出した知識層（要約・知見・洞察）",
   // ナレッジ内の Log / 点検 ボタン
