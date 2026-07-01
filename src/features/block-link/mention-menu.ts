@@ -22,14 +22,19 @@ export type ReferenceSuggestion = {
   subtext?: string;
 };
 
-/** modifiedAt(ISO) を YYYY-MM-DD（ローカル日付）に整形する。不正値は空文字。 */
+/**
+ * modifiedAt(ISO) を YYYY-MM-DD HH:mm（ローカル日時）に整形する。不正値は空文字。
+ * 同名ノートは同じ日に作られることが多いので、日付だけでは区別しづらい。時刻まで出す。
+ */
 export function formatMentionDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
 /**

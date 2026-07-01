@@ -93,10 +93,10 @@ describe("resolveMentionFromLinks", () => {
 });
 
 describe("formatMentionDate", () => {
-  it("ISO 文字列を YYYY-MM-DD に整形する", () => {
+  it("ISO 文字列を YYYY-MM-DD HH:mm に整形する", () => {
     // ローカルタイムゾーン差を避けるため、日付が跨がない正午の値を使う
     expect(formatMentionDate("2026-06-30T12:00:00.000Z")).toMatch(
-      /^\d{4}-\d{2}-\d{2}$/,
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
     );
   });
 

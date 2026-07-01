@@ -38,7 +38,7 @@ describe("getNoteSuggestions — 同名ノートの subtext", () => {
     const dups = suggestions.filter((s) => s.label === "新しいノート");
     expect(dups).toHaveLength(2);
     for (const s of dups) {
-      expect(s.subtext).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(s.subtext).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     }
 
     const unique = suggestions.find((s) => s.label === "会議メモ");
@@ -64,7 +64,7 @@ describe("getNoteSuggestions — 同名ノートの subtext", () => {
     const suggestions = getNoteSuggestions(files, undefined, null);
     const dups = suggestions.filter((s) => s.label === "下書き");
     expect(dups).toHaveLength(2);
-    expect(dups.every((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.subtext ?? ""))).toBe(true);
+    expect(dups.every((s) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.subtext ?? ""))).toBe(true);
     expect(suggestions.find((s) => s.label === "本番")?.subtext).toBeUndefined();
   });
 });
