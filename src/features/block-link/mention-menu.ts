@@ -15,7 +15,41 @@ export type ReferenceSuggestion = {
   label: string;
   /** グループ名 */
   group: string;
+  /**
+   * 補助表示（2 行目）。同名ノートが複数あるときだけ更新日を入れて区別できるようにする。
+   * shadcn の SuggestionMenu.Item が item.subtext をそのまま描画する。
+   */
+  subtext?: string;
 };
+
+/** modifiedAt(ISO) を YYYY-MM-DD（ローカル日付）に整形する。不正値は空文字。 */
+export function formatMentionDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 候補リスト中で「実タイトルが重複しているノート」だけに更新日の subtext を付与する。
+ * 一意なタイトルには付けない（メニューを無駄にうるさくしないため）。
+ */
+function attachDuplicateSubtext(
+  items: { suggestion: ReferenceSuggestion; title: string; modifiedAt: string }[],
+): void {
+  const titleCount = new Map<string, number>();
+  for (const it of items) {
+    titleCount.set(it.title, (titleCount.get(it.title) ?? 0) + 1);
+  }
+  for (const it of items) {
+    if ((titleCount.get(it.title) ?? 0) > 1) {
+      const date = formatMentionDate(it.modifiedAt);
+      if (date) it.suggestion.subtext = date;
+    }
+  }
+}
 
 /**
  * 同ノート内の見出しブロックを候補として収集する。
@@ -64,6 +98,9 @@ export function getNoteSuggestions(
   currentFileId?: string,
   noteIndex?: GraphiumIndex | null,
 ): ReferenceSuggestion[] {
+  // 同名ノートを区別するための subtext 付与に使う (suggestion, 実タイトル, modifiedAt) の組
+  const entries: { suggestion: ReferenceSuggestion; title: string; modifiedAt: string }[] = [];
+
   // インデックスがあればノート + Wiki の候補を返す
   if (noteIndex) {
     const suggestions: ReferenceSuggestion[] = [];
@@ -75,12 +112,14 @@ export function getNoteSuggestions(
       .slice(0, 25);
 
     for (const note of notes) {
-      suggestions.push({
+      const s: ReferenceSuggestion = {
         type: "note",
         id: note.noteId,
         label: note.title,
         group: "他のノート",
-      });
+      };
+      suggestions.push(s);
+      entries.push({ suggestion: s, title: note.title, modifiedAt: note.modifiedAt });
     }
 
     // Wiki ドキュメント（🤖 アイコンで区別）
@@ -91,28 +130,39 @@ export function getNoteSuggestions(
 
     for (const wiki of wikis) {
       const kindPrefix = wiki.wikiKind === "summary" ? "Summary" : "Concept";
-      suggestions.push({
+      const s: ReferenceSuggestion = {
         type: "note",
         id: wiki.noteId,
         label: `🤖 ${kindPrefix}: ${wiki.title}`,
         group: "AI Knowledge",
-      });
+      };
+      suggestions.push(s);
+      entries.push({ suggestion: s, title: wiki.title, modifiedAt: wiki.modifiedAt });
     }
 
+    // 実タイトルが重複するものだけ更新日を添えて区別できるようにする
+    attachDuplicateSubtext(entries);
     return suggestions;
   }
 
   // フォールバック: files から取得
-  return files
+  const suggestions: ReferenceSuggestion[] = files
     .filter((f) => f.id !== currentFileId)
     .sort((a, b) => new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime())
     .slice(0, 20)
-    .map((f) => ({
-      type: "note" as const,
-      id: f.id,
-      label: f.name.replace(/\.(graphium|provnote)\.json$/, ""),
-      group: "他のノート",
-    }));
+    .map((f) => {
+      const title = f.name.replace(/\.(graphium|provnote)\.json$/, "");
+      const s: ReferenceSuggestion = {
+        type: "note",
+        id: f.id,
+        label: title,
+        group: "他のノート",
+      };
+      entries.push({ suggestion: s, title, modifiedAt: f.modifiedTime });
+      return s;
+    });
+  attachDuplicateSubtext(entries);
+  return suggestions;
 }
 
 /**

@@ -246,6 +246,8 @@ export function SandboxEditor({
       const items = suggestions.map((s) => ({
         title: s.label,
         group: s.group,
+        // 同名ノート区別用の 2 行目（shadcn の SuggestionMenu.Item が描画する）
+        subtext: s.subtext,
         onItemClick: () => {
           const block = (editor as any).getTextCursorPosition?.()?.block;
           if (block && onMentionSelect) {

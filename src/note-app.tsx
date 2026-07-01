@@ -67,6 +67,7 @@ import {
   getNoteSuggestions,
   getAssetSuggestions,
 } from "./features/block-link/mention-menu";
+import { resolveMentionFromLinks } from "./features/block-link/resolve-mention";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -735,6 +736,10 @@ function NoteEditorInner({
 }: NoteEditorProps) {
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
+  // クリック解決（handleClick）は click リスナーを付け替えたくないので linkStore を
+  // 直接依存に入れず、常に最新を指す ref 経由で参照する。
+  const linkStoreRef = useRef(linkStore);
+  linkStoreRef.current = linkStore;
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
   const mediaInlineLabelStore = useMediaInlineLabelStore();
@@ -2581,6 +2586,38 @@ function NoteEditorInner({
       const target = e.target as HTMLElement;
       if (!isMentionSpan(target)) return;
       const noteName = target.textContent!.trim().slice(1);
+
+      // ── 新方式: このブロックに保存済みの reference リンクから解決する ──
+      // タイトル逆引きと違い targetNoteId で一意解決できるので、同名ノートでも
+      // 正しいノート/Wiki を開ける。リンクが無い（旧メンション・アセット等）場合は
+      // 下の従来経路にフォールバックする。
+      const blockId = target
+        .closest('[data-node-type="blockOuter"]')
+        ?.getAttribute("data-id");
+      if (blockId) {
+        const refLinks = linkStoreRef.current.getOutgoing(blockId);
+        const viaLink = resolveMentionFromLinks(refLinks, noteName, (id) => {
+          const n = noteIndex?.notes.find((nn) => nn.noteId === id);
+          if (n) return { title: n.title, isWiki: n.source === "ai" };
+          const f = files.find((ff) => ff.id === id);
+          if (f)
+            return {
+              title: f.name.replace(/\.(graphium|provnote)\.json$/, ""),
+              isWiki: false,
+            };
+          return null;
+        });
+        if (viaLink) {
+          e.preventDefault();
+          e.stopPropagation();
+          setSidePeekNoteId(
+            viaLink.isWiki ? `wiki:${viaLink.noteId}` : viaLink.noteId,
+          );
+          return;
+        }
+      }
+
+      // ── 従来経路: タイトル逆引き（reference リンクが無い旧ノート・アセット） ──
       const resolved = resolveMentionNoteId(noteName);
       if (resolved) {
         e.preventDefault();
