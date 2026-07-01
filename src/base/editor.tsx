@@ -45,6 +45,7 @@ import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
+import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
@@ -302,6 +303,9 @@ export function SandboxEditor({
         <SuggestionMenuController
           triggerCharacter="@"
           getItems={getMentionItems as any}
+          // 同名ノートが並んでも React の duplicate key 警告でメニューが壊れないよう、
+          // key を title ではなくインデックスにするカスタムメニューを使う。
+          suggestionMenuComponent={MentionSuggestionMenu as any}
           {...({} as any)}
         />
       )}
