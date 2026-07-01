@@ -593,9 +593,22 @@ export function getEmbeddingLLMModel(): LLMModelConfig | undefined {
   return found ?? getDefaultLLMModel();
 }
 
-/** AI バックエンドが利用可能かどうか（ビルトインバックエンドは常に available） */
+// AI モデルが 1 件以上登録されているかのキャッシュ。
+// desktop はサーバーの models.json、web は localStorage が実体で、いずれも非同期に
+// 数える必要があるため、起動時チェック（note-app の checkAiReadiness）が結果をここへ
+// 書き込み、同期関数の isAgentConfigured() や各 AI アクションのガードが読む。
+// 既定 true = 楽観的（起動直後のチェック未了の一瞬に、設定済みユーザーを誤って
+// ブロックしないため）。実測で 0 件と判明したときだけ false になる。
+let _aiModelsAvailable = true;
+
+/** 起動時 / 設定変更時に、登録モデルの有無を反映する（note-app の checkAiReadiness から呼ぶ）。 */
+export function setAiModelsAvailable(hasModels: boolean): void {
+  _aiModelsAvailable = hasModels;
+}
+
+/** AI が実際に使えるか（モデルが 1 件以上登録されているか）。 */
 export function isAgentConfigured(): boolean {
-  return true;
+  return _aiModelsAvailable;
 }
 
 /**

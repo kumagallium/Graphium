@@ -188,14 +188,21 @@ export function AiAssistantPanel({
     if (messages.length > 0) setShowChatList(false);
   }, [messages.length]);
 
+  const openAiSettings = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
+  }, []);
+
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
+    // モデル未登録なら送信せず設定へ誘導する（生の 400 / 接続エラーを UI に出さない）。
+    if (aiStatus === "no-models") { openAiSettings(); return; }
+    if (aiStatus === "no-backend") return; // 診断バナーが既に出ている
     setInput("");
     onSubmit(trimmed, attachedNotes.length > 0 ? attachedNotes : undefined, scope);
     setAttachedNotes([]);
     setMentionQuery(null);
-  }, [input, loading, onSubmit, attachedNotes, scope]);
+  }, [input, loading, onSubmit, attachedNotes, scope, aiStatus, openAiSettings]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -357,6 +364,12 @@ export function AiAssistantPanel({
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
             <span>{t("settings.aiNotConfigured")}</span>
           </div>
+          <button
+            onClick={openAiSettings}
+            className="mt-2 ml-6 text-xs font-medium text-amber-800 underline underline-offset-2 hover:no-underline dark:text-amber-300"
+          >
+            {t("settings.aiSetupCta")}
+          </button>
         </div>
       )}
 
