@@ -72,7 +72,7 @@ export const ja: Record<string, string> = {
 
   // ── Welcome / 旧 Drive レイアウト移行 ──
   "welcome.title": "Graphium へようこそ",
-  "welcome.subtitle": "PROV-DM プロヴェナンス追跡付きブロックエディタ",
+  "welcome.subtitle": "作った過程ごと残るノート",
   "welcome.saveLocation": "ノートの保存先",
   "welcome.saveLocationHint": "保存先は設定からいつでも変更できます。Google Drive 同期フォルダや iCloud フォルダを指定すれば、OS のクラウド同期にそのまま乗せられます。",
   "welcome.browserStorage": "このブラウザに保存されます（オフライン）",
@@ -803,7 +803,7 @@ export const ja: Record<string, string> = {
   "wikiBanner.derivedFromHint": "この知識片がどこから派生したか — ソースノート・ソース Claim・Atom 間の dimensional 関係を一覧する。既存の来歴情報のみ。",
   "wikiBanner.derivedFromNotesLabel": "ノート",
   "wikiBanner.derivedFromClaimsLabel": "ソース Claim",
-  "wikiBanner.relatedAtomsLabel": "関連 Atom",
+  "wikiBanner.relatedAtomsLabel": "関連する洞察",
   "wikiBanner.relatedAtomsHint": "他の Atom との dimensional 関係（axial coding）。",
   "wikiBanner.derivedFromMissing": "(不明)",
   // 世界モデル照合（Phase 2 / PR 2A）— 蒸留KB のみ。LLM fallback / 自動照合は PR 2B
@@ -1280,7 +1280,7 @@ export const ja: Record<string, string> = {
   "onboarding.guide.aria": "空のノートのヒント",
   "onboarding.guide.lead": "まずは普通に書いてみてください。以下でも始められます:",
   "onboarding.chip.cmdk.label": "AI に頼む",
-  "onboarding.chip.cmdk.desc": "Composer を開いて質問・執筆・挿入",
+  "onboarding.chip.cmdk.desc": "AI に質問して、答えをノートに挿入",
   "onboarding.chip.hash.label": "ラベル",
   "onboarding.chip.hash.desc": "行頭で # を打つとそのブロックにラベル",
   "onboarding.chip.at.label": "ノートを繋ぐ",
