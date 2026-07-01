@@ -925,6 +925,16 @@ either flag — the file path stays the same so any link or
 | archived | `archivedAt` | retired from the list but kept resolvable. Set either by the user (note header menu → Archive, when retiring a note whose derived versions should keep working) or by the system (auto-merge absorbing a Claim into another) | hidden | resolve |
 | trashed | `deletedAt` | user delete intent | hidden | not resolved |
 
+The "hidden" column covers list, search, graphs, and the citation picker.
+A note can still be *reached* while archived or trashed, though: a stale
+inline link, `@mention`, or index-table cell that predates the state change
+still points at the (soft-deleted) file. Opening a note in either state
+renders it **read-only** with a banner — an archive banner offering
+"Restore from archive", or a trash banner offering "Restore from trash" —
+so a lingering link never lets the user silently edit a note they thought
+was retired or deleted. This is a UI guard, not resolution: the trashed
+note is still "not resolved" for citations and regenerate.
+
 Transitions:
 
 - **active → trashed** via the trash action (manual).

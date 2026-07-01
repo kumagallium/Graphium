@@ -1934,6 +1934,7 @@ export function useFileManager(authenticated: boolean) {
     trashedNotes,
     archivedNotes,
     archivedIdSet,
+    trashedIdSet,
     mediaIndex,
     activeAssetType,
     activeLabel,

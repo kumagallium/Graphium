@@ -924,6 +924,8 @@ export const ja: Record<string, string> = {
   "wikiLint.action.keeperHint": "AI がこちらを canonical として残すことを推奨しています",
   "wikiLint.action.recommendedPrefix": "AI の判断: ",
   "wikiLint.action.archiveRecommended": "アーカイブ（推奨）",
+  "trash.trashedHint": "このノートはゴミ箱にあり、編集できません。",
+  "trash.restoreFromTrash": "ゴミ箱から復元",
   "trash.empty": "ゴミ箱は空です",
   "trash.itemsCount": "件",
   "trash.colTitle": "タイトル",
