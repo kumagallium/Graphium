@@ -924,6 +924,8 @@ export const en: Record<string, string> = {
   "wikiLint.action.keeperHint": "AI recommends keeping this one as canonical.",
   "wikiLint.action.recommendedPrefix": "AI suggests: ",
   "wikiLint.action.archiveRecommended": "Archive (suggested)",
+  "trash.trashedHint": "This note is in the trash and cannot be edited.",
+  "trash.restoreFromTrash": "Restore from trash",
   "trash.empty": "Trash is empty",
   "trash.itemsCount": "items",
   "trash.colTitle": "Title",

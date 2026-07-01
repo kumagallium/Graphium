@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -72,6 +72,10 @@ type SidePeekProps = {
   archived?: boolean;
   /** アーカイブから復元するコールバック（archived のときバナーに復元ボタンを出す） */
   onRestoreFromArchive?: () => void;
+  /** ゴミ箱にあるドキュメントの場合 true。エディタを read-only にする */
+  trashed?: boolean;
+  /** ゴミ箱から復元するコールバック（trashed のときバナーに復元ボタンを出す） */
+  onRestoreFromTrash?: () => void;
   /**
    * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
    *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
@@ -139,7 +143,7 @@ function sanitizeBlocks(blocks: any[]): any[] {
 
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
-  archived = false, onRestoreFromArchive, inline = false,
+  archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
 }: SidePeekProps) {
   const t = useT();
@@ -794,6 +798,49 @@ function SidePeekInner({
                   )}
                 </div>
               )}
+              {/* ゴミ箱ノートの状態表示 + 復元導線。archived と排他。 */}
+              {trashed && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                    padding: "6px 12px",
+                    borderRadius: "var(--r-1)",
+                    background: "var(--paper)",
+                    border: "1px solid var(--rule)",
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                  }}
+                >
+                  <Trash2 size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t("trash.trashedHint")}</span>
+                  {onRestoreFromTrash && (
+                    <button
+                      onClick={onRestoreFromTrash}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        flexShrink: 0,
+                        padding: "4px 10px",
+                        borderRadius: "var(--r-1)",
+                        border: "1px solid var(--rule)",
+                        background: "var(--paper-2)",
+                        color: "var(--ink-2)",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                      title={t("trash.restoreFromTrash")}
+                    >
+                      <ArchiveRestore size={13} />
+                      {t("trash.restoreFromTrash")}
+                    </button>
+                  )}
+                </div>
+              )}
               <textarea
                 value={effectiveDoc?.title ?? ""}
                 onChange={(e) => {
@@ -830,7 +877,7 @@ function SidePeekInner({
               <AlignmentStyleLayer />
               <SandboxEditor
                 key={noteId}
-                editable={!archived}
+                editable={!archived && !trashed}
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}

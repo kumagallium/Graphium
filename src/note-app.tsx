@@ -279,6 +279,8 @@ function NoteHeaderMenu({
   onArchive,
   archiveDisabled,
   onRestore,
+  trashed,
+  onRestoreFromTrash,
   onDelete,
   deleteDisabled,
   onShare,
@@ -311,6 +313,10 @@ function NoteHeaderMenu({
   archiveDisabled?: boolean;
   /** アーカイブから復元するコールバック（archived のときに表示） */
   onRestore?: () => void;
+  /** このノートがゴミ箱にあるか。true ならメニューを「ゴミ箱から復元」だけにする */
+  trashed?: boolean;
+  /** ゴミ箱から復元するコールバック（trashed のときに表示） */
+  onRestoreFromTrash?: () => void;
   /** ノート削除（ゴミ箱送り）コールバック */
   onDelete?: () => void;
   deleteDisabled?: boolean;
@@ -433,40 +439,63 @@ function NoteHeaderMenu({
               )}
             </>
           )}
-          {((archived ? onRestore : onArchive) || onDelete) && (
-            <div className="my-1 border-t border-border" />
-          )}
-          {archived && onRestore && (
-            <button
-              className={itemClass}
-              onClick={() => { onRestore(); setOpen(false); }}
-              title={t("archive.restoreHint")}
-            >
-              <ArchiveRestore size={14} />
-              {t("archive.restore")}
-            </button>
-          )}
-          {!archived && onArchive && (
-            <button
-              className={itemClass}
-              disabled={archiveDisabled}
-              onClick={() => { onArchive(); setOpen(false); }}
-              title={t("editor.archiveNoteHint")}
-            >
-              <Archive size={14} />
-              {t("editor.archiveNote")}
-            </button>
-          )}
-          {onDelete && (
-            <button
-              className={`${itemClass} text-destructive hover:bg-destructive/10`}
-              disabled={deleteDisabled}
-              onClick={() => { onDelete(); setOpen(false); }}
-            >
-              <Trash2 size={14} />
-              {t("editor.deleteNote")}
-            </button>
-          )}
+          {(() => {
+            // trashed / archived / active で退避・復元の導線を出し分ける。
+            //   trashed  → 「ゴミ箱から復元」のみ（アーカイブ/削除は出さない）
+            //   archived → 「アーカイブから復元」＋削除（ゴミ箱送り）
+            //   active   → 「アーカイブ」＋削除
+            const showTrashRestore = trashed && !!onRestoreFromTrash;
+            const showArchiveRestore = !trashed && archived && !!onRestore;
+            const showArchive = !trashed && !archived && !!onArchive;
+            const showDelete = !trashed && !!onDelete;
+            const anyItem = showTrashRestore || showArchiveRestore || showArchive || showDelete;
+            return (
+              <>
+                {anyItem && <div className="my-1 border-t border-border" />}
+                {showTrashRestore && (
+                  <button
+                    className={itemClass}
+                    onClick={() => { onRestoreFromTrash!(); setOpen(false); }}
+                    title={t("trash.trashedHint")}
+                  >
+                    <ArchiveRestore size={14} />
+                    {t("trash.restoreFromTrash")}
+                  </button>
+                )}
+                {showArchiveRestore && (
+                  <button
+                    className={itemClass}
+                    onClick={() => { onRestore!(); setOpen(false); }}
+                    title={t("archive.restoreHint")}
+                  >
+                    <ArchiveRestore size={14} />
+                    {t("archive.restore")}
+                  </button>
+                )}
+                {showArchive && (
+                  <button
+                    className={itemClass}
+                    disabled={archiveDisabled}
+                    onClick={() => { onArchive!(); setOpen(false); }}
+                    title={t("editor.archiveNoteHint")}
+                  >
+                    <Archive size={14} />
+                    {t("editor.archiveNote")}
+                  </button>
+                )}
+                {showDelete && (
+                  <button
+                    className={`${itemClass} text-destructive hover:bg-destructive/10`}
+                    disabled={deleteDisabled}
+                    onClick={() => { onDelete!(); setOpen(false); }}
+                  >
+                    <Trash2 size={14} />
+                    {t("editor.deleteNote")}
+                  </button>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -558,6 +587,16 @@ type NoteEditorProps = {
   isArchived?: (noteId: string) => boolean;
   /** SidePeek で開いたアーカイブ済みノートを ID 指定で復元するコールバック */
   onRestoreArchivedById?: (noteId: string) => void;
+  /** ゴミ箱にあるドキュメントの場合 true。エディタを read-only にする。
+   *  ゴミ箱ノートはノートリンク / @mention / インデックステーブル経由で開けてしまうため、
+   *  開いても壊れないよう read-only + バナーで「ゴミ箱にある」ことを明示する。 */
+  trashed?: boolean;
+  /** ゴミ箱から復元するコールバック（trashed のときヘッダーメニュー / バナーから呼ぶ） */
+  onRestoreFromTrash?: () => void;
+  /** 任意のノート ID がゴミ箱にあるか判定する述語（SidePeek 用。isArchived と同じ理由）。 */
+  isTrashed?: (noteId: string) => boolean;
+  /** SidePeek で開いたゴミ箱ノートを ID 指定で復元するコールバック */
+  onRestoreTrashedById?: (noteId: string) => void;
   /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
@@ -684,6 +723,10 @@ function NoteEditorInner({
   onRestoreFromArchive,
   isArchived,
   onRestoreArchivedById,
+  trashed = false,
+  onRestoreFromTrash,
+  isTrashed,
+  onRestoreTrashedById,
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
@@ -2850,6 +2893,8 @@ function NoteEditorInner({
           onArchive={onArchiveNote}
           archiveDisabled={!fileId || saving}
           onRestore={onRestoreFromArchive}
+          trashed={trashed}
+          onRestoreFromTrash={onRestoreFromTrash}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
           onShare={!isWikiDoc ? handleShare : undefined}
@@ -2913,6 +2958,55 @@ function NoteEditorInner({
         </div>
       )}
 
+      {/* 通常ノートのゴミ箱バナー。ゴミ箱ノートはノートリンク経由で開けてしまうため、
+          read-only（editable={!trashed}）にしたうえで「ゴミ箱にある」ことを明示し、
+          復元導線を出す。archived と trashed は排他（両立しない）。 */}
+      {trashed && !isWikiDoc && !isSkillDoc && (
+        <div style={{ padding: "0 16px", marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "6px 12px",
+              borderRadius: "var(--r-1)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-2)",
+              fontSize: 13,
+            }}
+          >
+            <Trash2 size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{t("trash.trashedHint")}</span>
+            {onRestoreFromTrash && (
+              <button
+                onClick={onRestoreFromTrash}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0,
+                  padding: "4px 10px",
+                  borderRadius: "var(--r-1)",
+                  border: "1px solid var(--rule)",
+                  background: "var(--paper-2)",
+                  color: "var(--ink-2)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                title={t("trash.restoreFromTrash")}
+              >
+                <ArchiveRestore size={13} />
+                {t("trash.restoreFromTrash")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
@@ -2951,7 +3045,7 @@ function NoteEditorInner({
             <AlignmentStyleLayer />
             <SandboxEditor
               key={fileId || "new"}
-              editable={!archived}
+              editable={!archived && !trashed}
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
@@ -3128,6 +3222,12 @@ function NoteEditorInner({
                 ? () => onRestoreArchivedById(sidePeekNoteId)
                 : undefined
             }
+            trashed={isTrashed?.(sidePeekNoteId) ?? false}
+            onRestoreFromTrash={
+              isTrashed?.(sidePeekNoteId) && onRestoreTrashedById
+                ? () => onRestoreTrashedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -3149,6 +3249,12 @@ function NoteEditorInner({
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
                 ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
+            trashed={isTrashed?.(sidePeekNoteId) ?? false}
+            onRestoreFromTrash={
+              isTrashed?.(sidePeekNoteId) && onRestoreTrashedById
+                ? () => onRestoreTrashedById(sidePeekNoteId)
                 : undefined
             }
           />
@@ -6115,6 +6221,17 @@ export function NoteApp() {
             })()}
             isArchived={(noteId: string) => fm.archivedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
             onRestoreArchivedById={(noteId: string) => fm.handleRestoreFromArchive(noteId.replace(/^(wiki|skill):/, ""))}
+            trashed={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              return rawId ? fm.trashedIdSet.has(rawId) : false;
+            })()}
+            onRestoreFromTrash={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              // 復元後はそのまま開いたままにする（trashedIdSet 更新でバナーが消え編集可に戻る）
+              return rawId ? () => fm.handleRestore(rawId) : undefined;
+            })()}
+            isTrashed={(noteId: string) => fm.trashedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
+            onRestoreTrashedById={(noteId: string) => fm.handleRestore(noteId.replace(/^(wiki|skill):/, ""))}
             onSave={fm.activeDoc?.source === "ai"
               ? (doc: GraphiumDocument) => {
                   const wikiId = fm.activeFileId?.replace("wiki:", "");
@@ -6343,6 +6460,16 @@ export function NoteApp() {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId)
                   ? () => fm.handleRestoreFromArchive(rawId)
+                  : undefined;
+              })()}
+              trashed={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.trashedIdSet.has(rawId);
+              })()}
+              onRestoreFromTrash={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.trashedIdSet.has(rawId)
+                  ? () => fm.handleRestore(rawId)
                   : undefined;
               })()}
               mediaIndex={fm.mediaIndex ?? null}
