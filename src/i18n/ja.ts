@@ -1306,6 +1306,12 @@ export const ja: Record<string, string> = {
   "composer.submit": "送信",
   "composer.kbd.submit": "で送信",
   "composer.kbd.close": "で閉じる",
+  // grounding スコープ（発散/収束）
+  "composer.scope.label": "渡す範囲",
+  "composer.scope.overview": "発散",
+  "composer.scope.primary": "収束",
+  "composer.scope.overviewHint": "引用したもの＋関連を横断検索して広げる（着想・構成向け）",
+  "composer.scope.primaryHint": "引用したものだけに絞る（横断検索しない・執筆や引用の正確さ向け）",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
   "chat.sources.fromNotes": "📓 ノート内の知識",
   "chat.sources.fromWeb": "🌐 Web の出典",

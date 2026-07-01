@@ -17,6 +17,7 @@ const MAX_CONTEXT_CHARS = 2000;
  */
 export async function retrieveWikiContext(
   userMessage: string,
+  excludeIds?: Set<string>,
 ): Promise<string | null> {
   // まず embedding ベースの検索を試みる
   try {
@@ -50,8 +51,11 @@ export async function retrieveWikiContext(
 
       if (data.embeddings?.[0]?.vector) {
         const queryVector = data.embeddings[0].vector;
-        const results = await embeddingStore.searchByVector(queryVector, TOP_K);
-        const relevant = results.filter((r) => r.score >= MIN_SCORE);
+        // 除外分を見込んで多めに取り、@引用・派生知識と重複するものを落とす
+        const results = await embeddingStore.searchByVector(queryVector, TOP_K + (excludeIds?.size ?? 0));
+        const relevant = results
+          .filter((r) => r.score >= MIN_SCORE && !excludeIds?.has(r.documentId))
+          .slice(0, TOP_K);
         if (relevant.length > 0) {
           return formatWikiContext(relevant, _wikiIndexText || undefined);
         }
@@ -62,7 +66,7 @@ export async function retrieveWikiContext(
   }
 
   // フォールバック: テキストマッチベースの検索
-  return retrieveWikiContextFallback(userMessage);
+  return retrieveWikiContextFallback(userMessage, excludeIds);
 }
 
 /**
@@ -70,6 +74,7 @@ export async function retrieveWikiContext(
  */
 export async function retrieveWikiContextFallback(
   userMessage: string,
+  excludeIds?: Set<string>,
 ): Promise<string | null> {
   try {
     // IndexedDB から全 embedding のテキストを取得して文字列マッチ
@@ -87,7 +92,7 @@ export async function retrieveWikiContextFallback(
         ...r,
         score: calculateTextRelevance(query, r.text.toLowerCase()),
       }))
-      .filter((r) => r.score > 0)
+      .filter((r) => r.score > 0 && !excludeIds?.has(r.documentId))
       .sort((a, b) => b.score - a.score)
       .slice(0, TOP_K);
 

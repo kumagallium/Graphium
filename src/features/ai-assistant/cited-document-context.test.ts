@@ -137,6 +137,45 @@ describe("formatCitedDocument", () => {
     );
     expect(md).not.toContain("### 原文");
   });
+
+  it("原典スコープ(primary)では派生知識を出さず、派生メモと原文を載せる", () => {
+    const md = formatCitedDocument(
+      {
+        title: "論文X",
+        mediumLabel: "PDF",
+        memos: ["ハイライト抜書き"],
+        knowledge: [{ title: "洞察A", text: "AはBである" }],
+        fullText: "これは原文の本文です。",
+      },
+      20_000,
+      "primary",
+    );
+    // 派生メモ（原文の抜書き）は両スコープで残る
+    expect(md).toContain("- ハイライト抜書き");
+    // 派生知識（二次的な索引）は出ない
+    expect(md).not.toContain("この文書から導いた知見・洞察");
+    expect(md).not.toContain("洞察A");
+    // 原文は載る
+    expect(md).toContain("これは原文の本文です。");
+  });
+
+  it("原典スコープでは派生知識があっても原文を予算いっぱい載せる（フィラー閾値を無視）", () => {
+    const full = "z".repeat(100);
+    const md = formatCitedDocument(
+      {
+        title: "T",
+        mediumLabel: "PDF",
+        memos: [],
+        knowledge: [{ title: "K", text: "y".repeat(200) }],
+        fullText: full,
+      },
+      80,
+      "primary",
+    );
+    // overview なら knowledge で予算を使い切り原文は出ないが、primary は knowledge を捨てて原文を載せる
+    expect(md).toContain("### 原文");
+    expect(md).not.toContain("**K**");
+  });
 });
 
 describe("assembleCitedDocumentContext", () => {
@@ -189,6 +228,36 @@ describe("assembleCitedDocumentContext", () => {
     });
     expect(md).toContain("## 引用文書: 記事（URL）");
     expect(md).toContain("記事本文");
+  });
+
+  it("原典スコープでは派生知識を収集せず原文に絞る", async () => {
+    const doc = makeDoc({ title: "論文X", sourcePdfFileId: "pdf-1", source: "human" });
+    const noteIndex = {
+      notes: [{ noteId: "k1", title: "洞察1", source: "ai", derivedFromNotes: ["note-1"] }],
+    } as unknown as GraphiumIndex;
+    let wikiLoaded = false;
+    const md = await assembleCitedDocumentContext("note-1", doc, {
+      noteIndex,
+      captureIndex: null,
+      provider: {
+        loadFile: async () => doc,
+        getMediaBlobUrl: async () => "blob:pdf",
+        loadWikiFile: async () => {
+          wikiLoaded = true;
+          return makeDoc({
+            pages: [makePage([{ type: "paragraph", content: [{ text: "知見本文" }] }], "t")],
+          });
+        },
+      },
+      loadBlob: async () => new Blob(),
+      extractPdfText: async () => ({ text: "PDF の全文テキスト" }),
+      scope: "primary",
+    });
+    expect(md).toContain("PDF の全文テキスト");
+    expect(md).not.toContain("知見本文");
+    expect(md).not.toContain("この文書から導いた知見・洞察");
+    // 原典スコープでは派生知識のロード自体が走らない
+    expect(wikiLoaded).toBe(false);
   });
 });
 

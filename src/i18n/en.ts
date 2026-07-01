@@ -1308,6 +1308,12 @@ export const en: Record<string, string> = {
   "composer.submit": "Send",
   "composer.kbd.submit": "to send",
   "composer.kbd.close": "to close",
+  // grounding スコープ（発散/収束）
+  "composer.scope.label": "Grounding",
+  "composer.scope.overview": "Diverge",
+  "composer.scope.primary": "Converge",
+  "composer.scope.overviewHint": "Everything you cited, plus a cross-search for related knowledge — for ideation",
+  "composer.scope.primaryHint": "Only what you cited, without a cross-search — for accurate writing and citations",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
   "chat.sources.fromNotes": "📓 From your notes",
   "chat.sources.fromWeb": "🌐 Web sources",
