@@ -7,7 +7,7 @@
 
 import { Hono } from "hono";
 import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
-import { fetchAvailableModels } from "../services/llm.js";
+import { fetchAvailableModels, isClaudeCliAvailable } from "../services/llm.js";
 
 const app = new Hono();
 
@@ -35,6 +35,11 @@ app.get("/", (c) => {
     })),
     default: defaultModel?.name ?? "",
   });
+});
+
+// Claude Code CLI が検出できるか（claude-subscription の 1-click 登録を出すか判定）
+app.get("/claude-cli-status", (c) => {
+  return c.json({ available: isClaudeCliAvailable() });
 });
 
 // モデル追加
