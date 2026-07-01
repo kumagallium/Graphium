@@ -77,6 +77,34 @@ describe("resolveMentionFromLinks", () => {
     expect(res).toBeNull();
   });
 
+  it("同名ノートを同一ブロックに複数貼った場合、occurrence で n 番目を選ぶ", () => {
+    // 1 ブロックに @SAME(→A) @SAME(→B) を貼ったケース。リンクは挿入順 [A, B]。
+    const links = [refLink("blk1", "note-A"), refLink("blk1", "note-B")];
+    const getNote = (id: string) =>
+      id === "note-A" || id === "note-B"
+        ? { title: "SAME", isWiki: false }
+        : null;
+
+    // 0 番目の span → A、1 番目の span → B
+    expect(resolveMentionFromLinks(links, "SAME", getNote, 0)).toEqual({
+      noteId: "note-A",
+      isWiki: false,
+    });
+    expect(resolveMentionFromLinks(links, "SAME", getNote, 1)).toEqual({
+      noteId: "note-B",
+      isWiki: false,
+    });
+  });
+
+  it("occurrence が一致数を超えたら末尾に丸める", () => {
+    const links = [refLink("blk1", "note-A")];
+    const getNote = () => ({ title: "SAME", isWiki: false });
+    expect(resolveMentionFromLinks(links, "SAME", getNote, 5)).toEqual({
+      noteId: "note-A",
+      isWiki: false,
+    });
+  });
+
   it("reference 以外のリンクは無視する", () => {
     const provLink: BlockLink = {
       id: "l1",

@@ -2591,22 +2591,41 @@ function NoteEditorInner({
       // タイトル逆引きと違い targetNoteId で一意解決できるので、同名ノートでも
       // 正しいノート/Wiki を開ける。リンクが無い（旧メンション・アセット等）場合は
       // 下の従来経路にフォールバックする。
-      const blockId = target
-        .closest('[data-node-type="blockOuter"]')
-        ?.getAttribute("data-id");
+      const blockOuter = target.closest('[data-node-type="blockOuter"]');
+      const blockId = blockOuter?.getAttribute("data-id");
       if (blockId) {
         const refLinks = linkStoreRef.current.getOutgoing(blockId);
-        const viaLink = resolveMentionFromLinks(refLinks, noteName, (id) => {
-          const n = noteIndex?.notes.find((nn) => nn.noteId === id);
-          if (n) return { title: n.title, isWiki: n.source === "ai" };
-          const f = files.find((ff) => ff.id === id);
-          if (f)
-            return {
-              title: f.name.replace(/\.(graphium|provnote)\.json$/, ""),
-              isWiki: false,
-            };
-          return null;
-        });
+        // 同じブロックに同じ表示テキストのメンションが複数あるとき、クリックされた
+        // span が何番目かを求める（同名ノートを 1 ブロックに複数貼ったケースの区別）。
+        const mentionSpan = target.closest<HTMLElement>(
+          '[data-style-type="textColor"][data-value="blue"]',
+        );
+        let occurrence = 0;
+        if (blockOuter && mentionSpan) {
+          const sameTextSpans = Array.from(
+            blockOuter.querySelectorAll<HTMLElement>(
+              '[data-style-type="textColor"][data-value="blue"]',
+            ),
+          ).filter((el) => el.textContent?.trim() === mentionSpan.textContent?.trim());
+          const idx = sameTextSpans.indexOf(mentionSpan);
+          if (idx > 0) occurrence = idx;
+        }
+        const viaLink = resolveMentionFromLinks(
+          refLinks,
+          noteName,
+          (id) => {
+            const n = noteIndex?.notes.find((nn) => nn.noteId === id);
+            if (n) return { title: n.title, isWiki: n.source === "ai" };
+            const f = files.find((ff) => ff.id === id);
+            if (f)
+              return {
+                title: f.name.replace(/\.(graphium|provnote)\.json$/, ""),
+                isWiki: false,
+              };
+            return null;
+          },
+          occurrence,
+        );
         if (viaLink) {
           e.preventDefault();
           e.stopPropagation();
@@ -3239,6 +3258,11 @@ function NoteEditorInner({
             デスクトップのみ inline（モバイルは overlay にフォールバック）。 */}
         {sidePeekNoteId && isDesktop && (
           <SidePeek
+            // ノートを切り替えたら SidePeek を丸ごと作り直す。key を付けないと
+            // 別ノートに切り替えても内部の editor / docRef / オートセーブ状態が前の
+            // ノートのまま残り、前ノートの本文を新ノートのファイルに保存してしまう
+            // （同名ノートを続けてクリックすると「B の中身が A になる」データ破壊）。
+            key={sidePeekNoteId}
             inline
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
@@ -3269,6 +3293,9 @@ function NoteEditorInner({
         )}
         {sidePeekNoteId && !isDesktop && (
           <SidePeek
+            // ノート切り替え時に丸ごと作り直す（前ノートの本文が新ノートに保存される
+            // データ破壊を防ぐ）。desktop 側と同じ理由。
+            key={sidePeekNoteId}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             onClose={() => setSidePeekNoteId(null)}

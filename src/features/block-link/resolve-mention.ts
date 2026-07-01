@@ -48,22 +48,31 @@ function normalizeTitle(s: string): string {
  * @param refLinks    対象ブロックの reference リンク（呼び出し側で sourceBlockId 済みフィルタ）
  * @param clickedText メンションの表示テキスト（先頭 "@" を除いたもの）
  * @param getNote     targetNoteId からタイトル・Wiki 種別を引く関数（noteIndex/files 参照）
+ * @param occurrence  同一ブロック内で「同じ表示テキストのメンション」が複数あるとき、
+ *                    クリックされたのが何番目か（0 始まり）。同名ノートを 1 ブロックに
+ *                    複数貼った場合の区別に使う。リンクは挿入順（＝通常はタイプ順＝
+ *                    span の並び順）なので、n 番目の span ↔ n 番目の一致リンク で対応づける。
  * @returns 解決できたら {noteId, isWiki}、できなければ null（＝タイトル逆引きへ委譲）
  */
 export function resolveMentionFromLinks(
   refLinks: BlockLink[],
   clickedText: string,
   getNote: NoteInfoResolver,
+  occurrence = 0,
 ): MentionResolution | null {
   const target = normalizeTitle(clickedText);
   if (!target) return null;
 
+  const matches: MentionResolution[] = [];
   for (const link of refLinks) {
     if (link.type !== "reference" || !link.targetNoteId) continue;
     const info = getNote(link.targetNoteId);
     if (info && normalizeTitle(info.title) === target) {
-      return { noteId: link.targetNoteId, isWiki: info.isWiki };
+      matches.push({ noteId: link.targetNoteId, isWiki: info.isWiki });
     }
   }
-  return null;
+  if (matches.length === 0) return null;
+  // occurrence 番目の一致を返す。範囲外なら末尾に丸める（span とリンクの数が
+  // ずれても最後の一致に倒し、null で誤フォールバックしない）。
+  return matches[Math.min(occurrence, matches.length - 1)];
 }
