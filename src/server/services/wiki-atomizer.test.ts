@@ -246,6 +246,13 @@ describe("parseAtomizerOutput — shape / transfer (structural abstraction)", ()
     expect(out[0].transfer).toEqual({ field: "触媒設計", example: "吸着エネルギーが中間で反応速度が最大になる（サバティエ原理）" });
   });
 
+  it("parses feedback-loop shapes (reinforcing / balancing) added for the Idea layer", () => {
+    const reinforcing = JSON.stringify({ atoms: [{ title: "使うほど価値が増す", body: "本文", sourceConceptIds: ["c1"], confidence: 0.8, shape: "reinforcing-loop" }] });
+    expect(parseAtomizerOutput(reinforcing, idMap)[0].shape).toBe("reinforcing-loop");
+    const balancing = JSON.stringify({ atoms: [{ title: "ずれると戻る力が働く", body: "本文", sourceConceptIds: ["c1"], confidence: 0.8, shape: "balancing-loop" }] });
+    expect(parseAtomizerOutput(balancing, idMap)[0].shape).toBe("balancing-loop");
+  });
+
   it("drops an out-of-vocabulary shape to undefined", () => {
     const json = JSON.stringify({ atoms: [{ title: "x", body: "y", sourceConceptIds: ["c1"], confidence: 0.8, shape: "wiggly" }] });
     expect(parseAtomizerOutput(json, idMap)[0].shape).toBeUndefined();

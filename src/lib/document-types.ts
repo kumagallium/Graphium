@@ -74,6 +74,10 @@ export type AtomShape =
   | "trade-off"               // X を得ると Y を失う（両立しない）
   | "enabling-condition"      // X が成り立って初めて Y が可能になる
   | "composition-structure"   // X の構成・構造が Y を決める
+  // 循環（フィードバック）— 結果が原因に戻る構造。ペアワイズな依存とは別の位相で、
+  // 越境類推の宝庫。増幅と打ち消しは正反対の動態なので分けて分類する（システム思考の R/B ループ）。
+  | "reinforcing-loop"        // 結果が原因を増幅する自己強化の循環（好循環／悪循環）
+  | "balancing-loop"          // 結果が変化を打ち消し均衡へ向かう自己調整の循環
   | "other";                  // 上記に当てはまらない
 
 // Atom の越境転移（同じ shape+role 構造が成り立つ別分野）。

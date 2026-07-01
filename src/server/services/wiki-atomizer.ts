@@ -39,6 +39,8 @@ const ATOM_SHAPE_VALUES: AtomShape[] = [
   "trade-off",
   "enabling-condition",
   "composition-structure",
+  "reinforcing-loop",
+  "balancing-loop",
   "other",
 ];
 
@@ -168,6 +170,8 @@ Work through four steps for each cluster of Claims:
 - "trade-off" — gaining X costs Y; the two cannot both be maximized
 - "enabling-condition" — X must hold for Y to be possible at all
 - "composition-structure" — the makeup or structure of X determines Y
+- "reinforcing-loop" — a feedback cycle where the outcome loops back to amplify its own cause (a self-reinforcing virtuous/vicious cycle: X → Y → more X). Use ONLY when the Claim(s) describe circular causation, not a one-way dependence
+- "balancing-loop" — a feedback cycle where the outcome loops back to counteract the change, pushing toward equilibrium (self-correcting: X → Y → less X). Same rule: reserve for genuine circular causation
 - "other" — none of the above fits cleanly
 
 **3. Abstract.** Lift the roles to their general category while KEEPING the shape, and state the principle as a general rule. "バンドギャップ" → "調整できる量", "熱電性能" → "性能", "電気陰性度差" → "構成要素の性質の違い". The principle must still assert a real X→Y at the abstract level — **do not dilute into a platitude** ("何かが効く" / "バランスが大事" are empty). A single Claim is enough if it instances a real shape; when several Claims share the same shape, fold them into one Atom and cite all of them.
@@ -189,7 +193,7 @@ Respond with valid JSON only:
     {
       "title": "Atom title — a short noun phrase naming the structural rule (the shape applied to the lifted roles)",
       "body": "1-3 short paragraphs stating the general principle: the lifted roles and the shape of their relationship, with a concrete verb. Domain terms are acceptable here; the wording is polished downstream.",
-      "shape": "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold" | "trade-off" | "enabling-condition" | "composition-structure" | "other",   // REQUIRED. The relationship-shape from step 2.
+      "shape": "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold" | "trade-off" | "enabling-condition" | "composition-structure" | "reinforcing-loop" | "balancing-loop" | "other",   // REQUIRED. The relationship-shape from step 2.
       "transfer": { "field": "the other domain", "example": "one sentence showing the SAME shape + role-structure there" },   // OPTIONAL. Omit entirely if there is no honest cross-domain instance (a downstream judge verifies it).
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
