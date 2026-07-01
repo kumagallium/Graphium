@@ -736,6 +736,8 @@ export const en: Record<string, string> = {
   "wikiTypes.atomShape.trade-off": "trade-off",
   "wikiTypes.atomShape.enabling-condition": "enabling condition",
   "wikiTypes.atomShape.composition-structure": "structure-driven",
+  "wikiTypes.atomShape.reinforcing-loop": "reinforcing loop",
+  "wikiTypes.atomShape.balancing-loop": "balancing loop",
   "wikiTypes.atomShape.other": "other",
   // atomRelation (Phase δ): Atom-to-Atom dimensional relations (axial coding).
   "wikiTypes.atomRelation.extends": "Extends",

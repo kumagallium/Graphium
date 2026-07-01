@@ -377,7 +377,9 @@ type AtomType =
 // (it classifies, it does not invent — this is what keeps abstraction from going vacuous).
 type AtomShape =
   | "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold"
-  | "trade-off" | "enabling-condition" | "composition-structure" | "other";
+  | "trade-off" | "enabling-condition" | "composition-structure"
+  | "reinforcing-loop" | "balancing-loop"   // feedback cycles (systems-thinking R/B loops)
+  | "other";
 
 // Cross-domain analogy. The atomizer proposes a candidate; a skeptical judge keeps it
 // only when the example instances the SAME shape + role-structure. Absent if forced/none.
@@ -462,7 +464,7 @@ versions stay valid with these fields absent.
 |---|---|---|
 | `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
 | `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
-| `shape` | Atom | monotonic-increase, monotonic-decrease, optimal-middle, threshold, trade-off, enabling-condition, composition-structure, other (structure-mapping axis; the atomizer classifies into this) |
+| `shape` | Atom | monotonic-increase, monotonic-decrease, optimal-middle, threshold, trade-off, enabling-condition, composition-structure, reinforcing-loop, balancing-loop, other (structure-mapping axis; the atomizer classifies into this) |
 | `transfer` | Atom | `{ field, example }` — a cross-domain analogy kept only when the transfer judge confirms a structural match (forced ones are dropped) |
 | `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
 | `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |

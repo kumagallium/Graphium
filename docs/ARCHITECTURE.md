@@ -361,7 +361,8 @@ Notes:
   **decompose** the relationship (control → outcome), **classify the shape** from
   a fixed vocabulary (`monotonic-increase` / `monotonic-decrease` /
   `optimal-middle` / `threshold` / `trade-off` / `enabling-condition` /
-  `composition-structure` / `other`), **abstract** the roles to their general
+  `composition-structure` / `reinforcing-loop` / `balancing-loop` (feedback
+  cycles) / `other`), **abstract** the roles to their general
   category while keeping the shape, and optionally name a **transfer** (a
   different field where the same shape + role-structure holds). The fixed shape
   vocabulary is the key: the LLM *classifies* into it rather than inventing an
