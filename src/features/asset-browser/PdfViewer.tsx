@@ -16,6 +16,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 import { PDFJS_DOC_OPTIONS } from "../../lib/pdfjs-config";
 
 import { useT } from "../../i18n";
+import { apiBase } from "../../lib/platform";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource } from "./SelectionPill";
@@ -80,8 +81,14 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
 
     const provider = getActiveProvider();
     if (!fileIdResolved) {
-      // ローカル blob URL などをそのまま使用
-      setBlobUrl(entry.url);
+      // リモートの http(s) PDF はブラウザから直接 fetch すると CORS で弾かれるため、
+      // 同一オリジン（sidecar）の PDF プロキシ経由で読む。
+      // blob:/data: 等のローカル URL はそのまま使う。
+      if (/^https?:\/\//i.test(entry.url)) {
+        setBlobUrl(`${apiBase()}/url/pdf-proxy?url=${encodeURIComponent(entry.url)}`);
+      } else {
+        setBlobUrl(entry.url);
+      }
       return;
     }
     provider

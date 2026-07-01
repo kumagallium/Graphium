@@ -50,6 +50,13 @@ export type ReaderArticle = {
 export type ReaderError = {
   status: 400 | 422 | 500;
   message: string;
+  /**
+   * 機械可読なエラー種別。ルート側が message 文字列に依存せず分岐するために使う。
+   * "pdf" = content-type が application/pdf。Reader（Readability）では読めないが
+   * クライアントの PdfViewer では表示できるので、ルートはこれを検知して
+   * エラーではなく PDF シグナルへ変換する。
+   */
+  code?: "pdf";
 };
 
 /**
@@ -97,8 +104,11 @@ export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> 
 
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/pdf")) {
+    // Reader では読めないが、ルートが code:"pdf" を検知して PdfViewer 表示へ回す。
+    // message は他経路（テスト・ログ）向けのフォールバック。
     throw {
       status: 400,
+      code: "pdf",
       message:
         "PDF URL は Reader Mode で扱えません。PDF ブロックとしてノートに貼り付けてください。",
     } satisfies ReaderError;
