@@ -512,7 +512,7 @@ export function FileSidebar({
         {onShowSharedLibrary && (
           <CollapsibleSection
             storageKey="library"
-            title="Library"
+            title={t("sidebar.library")}
             defaultOpen={false}
           >
             <button
@@ -524,7 +524,7 @@ export function FileSidebar({
               }`}
             >
               <span className="text-muted-foreground shrink-0"><Library size={14} /></span>
-              <span className="flex-1 text-left">Shared</span>
+              <span className="flex-1 text-left">{t("sidebar.shared")}</span>
             </button>
           </CollapsibleSection>
         )}
@@ -542,7 +542,7 @@ export function FileSidebar({
             }`}
           >
             <Wrench size={12} className="shrink-0" />
-            <span className="flex-1 text-left">Skill</span>
+            <span className="flex-1 text-left">{t("sidebar.skill")}</span>
             {skillCount > 0 && (
               <span className="text-xs">{skillCount}</span>
             )}

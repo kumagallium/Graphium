@@ -114,6 +114,9 @@ export const en: Record<string, string> = {
   "sidebar.releaseNotes": "Release Notes",
   "sidebar.aiConnected": "AI connected",
   "sidebar.aiNotConfigured": "AI not configured",
+  "sidebar.library": "Library",
+  "sidebar.shared": "Shared",
+  "sidebar.skill": "Skill",
   "sidebar.knowledge": "Knowledge",
   "sidebar.knowledgeHint": "AI-built knowledge layer extracted from your notes (summaries, claims, insights)",
   // Log / Health buttons inside Knowledge
