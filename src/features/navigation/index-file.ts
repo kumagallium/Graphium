@@ -16,6 +16,7 @@ import type {
 } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { normalizeLabel } from "../context-label/labels";
+import { normalizeNoteContexts } from "../note-context/context-tags";
 
 // ── 型定義 ──
 
@@ -80,7 +81,14 @@ import { normalizeLabel } from "../context-label/labels";
 //      「テーマなし」バケットとして扱う（後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v19 インデックスが v20 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-const INDEX_SCHEMA_VERSION = 20;
+// v21: ユーザーが手で付ける「文脈ラベル」（noteContexts）を mirror。
+//      doc.noteContexts（GraphiumDocument 直下・ノート単位の自由分類）をそのまま index に
+//      流して、ノート一覧の「文脈」列表示・列ヘッダフィルタ・文脈別集計に使う。
+//      wikiMeta.theme（Synthesis 専用 lens）とは別軸・非流用。旧ノートは noteContexts=undefined
+//      のまま「未分類」として読める（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v20 インデックスが v21 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 21;
 
 export type GraphiumIndex = {
   version: number;
@@ -177,6 +185,13 @@ export type NoteIndexEntry = {
    * 旧 synthesis（v20 以前生成）は undefined のまま。
    */
   theme?: string;
+  /**
+   * ユーザーが手で付ける「文脈ラベル」（v21）。doc.noteContexts を mirror。
+   * ノート単位の自由な分類軸で、一覧の「文脈」列表示・列ヘッダフィルタ・文脈別集計に使う。
+   * PROV ラベル（labels / inlineLabels）や theme（Synthesis lens）とは別軸・非流用。
+   * 未付与ノートは undefined（「未分類」として扱う）。
+   */
+  noteContexts?: string[];
   /**
    * Claim / Atom の認識論的ステータス（Phase η, v15）。
    * wikiMeta.epistemicStatus を mirror する。一覧 UI で status filter に使う。
@@ -457,6 +472,9 @@ export function buildIndexEntry(
       doc.wikiMeta?.kind === "synthesis" && typeof doc.wikiMeta?.theme === "string" && doc.wikiMeta.theme.trim()
         ? doc.wikiMeta.theme.trim()
         : undefined,
+    // ユーザーが手で付ける文脈ラベル（v21）。trim + 空除去 + 重複除去してから mirror。
+    // 1 つも無ければ undefined（「未分類」）にして一覧側の分岐を単純化する。
+    noteContexts: normalizeNoteContexts(doc.noteContexts),
     epistemicStatus: doc.wikiMeta?.epistemicStatus,
     rebuttalConditions:
       doc.wikiMeta?.rebuttalConditions && doc.wikiMeta.rebuttalConditions.length > 0
@@ -638,8 +656,17 @@ export async function ensureIndex(
   // スキーマバージョンが異なる → 全件再構築が必要
   if (!existing || existing.version !== INDEX_SCHEMA_VERSION) {
     const rebuilt = await fullRebuild(files, docCache);
-    // 既存の Wiki エントリを保持（Wiki は別管理のため再構築対象外）
     if (existing) {
+      // 通常ノートの archivedAt / deletedAt を引き継ぐ。fullRebuild は doc から
+      // 作り直すため、index にしか無いこれらのフラグが落ちる。schema bump を跨いで
+      // もアーカイブ/ゴミ箱の状態を失わないようにする。
+      const priorMap = new Map(existing.notes.map((n) => [n.noteId, n]));
+      for (const entry of rebuilt.notes) {
+        const prior = priorMap.get(entry.noteId);
+        if (prior?.archivedAt) entry.archivedAt = prior.archivedAt;
+        if (prior?.deletedAt) entry.deletedAt = prior.deletedAt;
+      }
+      // 既存の Wiki エントリを保持（Wiki は別管理のため再構築対象外）
       const wikiEntries = existing.notes.filter((n) => n.source === "ai");
       rebuilt.notes.push(...wikiEntries);
     }
@@ -690,8 +717,15 @@ export async function ensureIndex(
   for (const file of staleFiles) {
     const doc = docCache.get(file.id);
     if (doc) {
+      const prior = indexMap.get(file.id);
       notes = notes.filter((n) => n.noteId !== file.id);
-      notes.push(buildIndexEntry(file.id, doc, file));
+      const entry = buildIndexEntry(file.id, doc, file);
+      // archivedAt / deletedAt は doc に乗らず index にしか無い。stale 判定で
+      // buildIndexEntry から作り直すと落ちるため、既存エントリから引き継ぐ。
+      // （これが無いと保存後の再構築でアーカイブ/ゴミ箱のノートが一覧へ復活する）
+      if (prior?.archivedAt) entry.archivedAt = prior.archivedAt;
+      if (prior?.deletedAt) entry.deletedAt = prior.deletedAt;
+      notes.push(entry);
     }
   }
 

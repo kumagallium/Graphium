@@ -92,7 +92,7 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `example-hello`, `pdf-viewer`). Inline content (entity / agent
+  `callout`, `example-hello`, `pdf-viewer`). Inline content (entity / agent
   highlights) lives under `src/features/inline-label/`.
 - Editor configuration is composed in `src/note-app.tsx`.
 
@@ -332,6 +332,15 @@ Notes:
   which posts to the server. There is no server-side file watcher.
 - **Worthiness gate:** `src/features/wiki/wiki-worthy.ts` decides whether a
   note is ingest-worthy at all (e.g., empty drafts are skipped).
+- **Note mode vs document mode.** For a short personal note the ingester emits
+  a Summary plus 0-3 Claims (the "1 note ≈ 1 idea" assumption). When the source
+  is an **imported external document** — its `noteId` carries a `pdf:` /
+  `document:` / `url:` / `chat:` prefix (the external-source convention) — the
+  ingester switches to *document mode*: it harvests every distinct transferable
+  insight the document argues as its own Claim, with no fixed cap, so a dense
+  article is not collapsed into a single headline Claim. The switch is decided
+  in `src/server/routes/wiki.ts` and changes only the Claim guidance inside
+  `buildIngesterSystemPrompt`.
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response.
 - **Embeddings** (per Wiki section) are stored via
@@ -346,6 +355,47 @@ Notes:
   from lists / search and is editable only after restore. See
   [DATA_MODEL.md §5.2](./DATA_MODEL.md#52-trash-and-archive-semantics)
   for the tri-state semantics.
+- **Insights are structural abstractions, not tidied Claims.** A Claim is a
+  domain finding; the Insight (Atom) is the *transferable structure* behind it,
+  produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:
+  **decompose** the relationship (control → outcome), **classify the shape** from
+  a fixed vocabulary (`monotonic-increase` / `monotonic-decrease` /
+  `optimal-middle` / `threshold` / `trade-off` / `enabling-condition` /
+  `composition-structure` / `reinforcing-loop` / `balancing-loop` (feedback
+  cycles) / `other`), **abstract** the roles to their general
+  category while keeping the shape, and optionally name a **transfer** (a
+  different field where the same shape + role-structure holds). The fixed shape
+  vocabulary is the key: the LLM *classifies* into it rather than inventing an
+  axis, which is what keeps the abstraction from going vacuous (the failure mode
+  of the retired meta-atom layer). A single Claim that instances a real shape is
+  enough; the source-Claim count is a support signal, not a gate. The `shape`
+  and the verified `transfer` are stored on the Atom's `WikiMeta`.
+- **Transfer judge — adversarial verification of the analogy.** The transfer the
+  atomizer proposes is a *candidate*. The `/atomize` route runs a skeptical judge
+  (`buildTransferJudgeSystemPrompt`) asking whether the example genuinely
+  instances the same shape + role-structure or is only topically similar; forced
+  ("こじつけ") transfers are dropped while the principle itself is always kept. On
+  a 24-Claim check this kept ~88% of transfers and correctly dropped the rest;
+  the principle stays valid even when its transfer is discarded.
+- **Readability re-lift (Claim → Insight pipeline, stages C+D).** The Atomizer
+  reliably *generalizes* (finds the rule) but, asked to also strip jargon in the
+  same pass, often leaves raw chemical formulas / acronyms in the wording. After
+  generation the `/atomize` route runs a clarity pass (`buildReliftSystemPrompt`,
+  domain-general — works for any field, not just materials):
+  - **D — pass 1 (always):** an LLM edits *every* Insight to read naturally for a
+    non-specialist — removing genuinely obscure terms, but **preferring a brief
+    gloss of an established term over stacking several paraphrases** (which is
+    what made early rewrites feel forced). It polishes *wording only* — the
+    structural abstraction is already done by B. An already-natural Insight is
+    returned unchanged.
+  - **C — pass 2 (conditional):** `detectRung1Tokens` (code, no LLM) catches any
+    chemical formula / acronym D left behind; only those Insights get a second D
+    pass. The regex is a cheap residual check, not the primary gate.
+
+  Nothing is silently dropped; a relift failure leaves the original Insight
+  intact. Full path: **cluster (A) → decompose→shape→abstract→transfer (B) →
+  transfer judge → readability rewrite (D, all) → residual check (C) → fix
+  residuals (D)** — each an explicit, nameable step.
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.
@@ -375,15 +425,54 @@ cache layer if the result passes the sedimentation rules
 `generatedByModel` + non-empty `claim` / `keywords`). The next check
 on a similar claim is served from the cache layer at no LLM cost.
 
-Source URLs returned by the LLM judge are hallucination-guarded in two
-stages (`server/services/world-grounding.ts`): (1) a hostname whitelist
-(`sanitizeSourceUrl` — only Wikipedia / DOI / arXiv survive), then (2) a
-network existence check (`verifySourceUrl` — Wikipedia REST summary 404 ⇒
-no article; arXiv / DOI HEAD). Stage 2 runs only on the LLM-judge path
-(never on KB hits), so it adds one fast request next to an already-slow
-model call. A URL that fails verification is dropped while its `ref`
-text is kept — a missing link is preferred over a fabricated one, so
-hallucinated citations never sediment into the cache KB.
+**Auto-upgrade of legacy entries.** A cache hit is served as-is only when
+it is web-grounded (`KbEntry.grounded === true`) or a manual seed entry
+(`generatedByModel === "manual-curated@v1"`). A *model-sedimented
+parametric* entry (judged from memory before web evidence existed) is
+treated as a miss and re-grounded once via the web path; on a successful
+web-grounded sediment the old entry is removed (`removeFromKbCache`) so it
+does not shadow the upgrade. If the re-ground fails (e.g. network down),
+the old parametric verdict is kept rather than degrading to an error.
+
+The LLM judge runs in one of two modes, picked per request in
+`server/routes/world-grounding.ts`:
+
+- **web-grounded** (whenever evidence can be retrieved): before judging,
+  the route gathers evidence and then judges the claim *against that
+  evidence* (`buildWebGroundedSystemPrompt`), pre-retrieval — the model
+  never drives the search itself. Evidence comes from two layers:
+  - **keyless built-in providers, always on** (`services/grounding-providers.ts`):
+    Wikipedia full-text search (general) + OpenAlex (scholarly: DOI,
+    citation count, abstract). No API key, no hard monthly cap (polite-pool
+    style), URLs are verifiable — the default that works out of the box and
+    fits the "is this claim known in the literature" question directly.
+  - **a connected MCP search tool, on top** (`services/grounding-search.ts →
+    findSearchTool` + `runGroundingSearch`): adds broad general-web coverage
+    when the user has wired one up (e.g. Tavily / Brave). Optional.
+
+  The verdict is grounded in real results rather than the model's memory;
+  `null` means "searched and found no direct prior art — not a proof of
+  novelty" (search cannot prove a negative). Output URLs are constrained to
+  the URLs that actually appeared in the evidence
+  (`parseWorldGroundingOutput` in `evidence` mode), so a model-invented URL
+  is discarded by provenance, not by a domain list. No network existence
+  check is needed — the URLs were retrieved seconds ago and may live on any
+  domain.
+- **parametric** (no evidence gathered — both layers empty/failed, e.g. the
+  search APIs are down): the judge answers from its own knowledge and emits
+  **no URLs at all** (`parseWorldGroundingOutput` in `none` mode strips every
+  `url`; the prompt also instructs text-only citations). A recalled URL/DOI
+  is almost always wrong — the high-entropy tail is fabricated and can
+  *resolve to an unrelated paper* (observed: opus emitted an Acta Cryst DOI
+  whose tail differed from the real one by three characters and resolved to a
+  different article). The `ref` citation text is kept so the user can search
+  for it; verifiable links come only from the web-grounded path. This is why
+  the old hostname-whitelist + network-existence-check (which only proved a
+  DOI *resolves*, not that it matches the citation) were removed entirely.
+
+Web-grounded judgments are surfaced with `checkedBy: "web-search"` and
+`KbEntry.grounded: true` (the real model id is still stored as
+`generatedByModel` for the cache entry).
 
 The lane is strictly separate from `epistemicStatus` /
 `hypothesisStatus` — `attachValidity` never writes those fields. See

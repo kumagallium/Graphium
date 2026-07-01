@@ -16,6 +16,10 @@ permissions:
   # actions スコープが付かないので明示的に付与しないと 403 で落ちる
   # （v0.11.0 release で実害）。
   actions: write
+  # issues: write は notify-on-failure ジョブがビルド失敗時に Issue を起票するために必要。
+  # macOS の公証 403（Apple 規約失効）等でビルドが「静かに」失敗し、数日後に
+  # 「アプリが更新されない」で初めて気づく事故（v0.16.4 / v0.16.5）を防ぐ。
+  issues: write
 
 jobs:
   resolve-release:
@@ -143,6 +147,12 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.resolve-release.outputs.release_id }}
+          # tauri-action の updater アップロードには依存しない。
+          # includeUpdaterJson:true でも Windows は "Signature not found for the
+          # updater JSON. Skipping upload..." で -setup.nsis.zip を上げず、false では
+          # ビルド後に削除する（v0.16.7 で複数回実害）。
+          # ここではインストーラ（.exe / .msi）と macOS の .app.tar.gz だけ上げさせ、
+          # Windows の updater zip は後段 generate-updater-json で .exe から自作する。
           includeUpdaterJson: false
           args: --target ${{ matrix.target }}
 
@@ -154,45 +164,57 @@ jobs:
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
-      - name: Download updater assets and sign
+      - name: Prepare and sign updater bundles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          set -uo pipefail
           TAG="${{ needs.resolve-release.outputs.tag }}"
           REPO="${{ github.repository }}"
           VERSION="${TAG#v}"
 
           mkdir -p /tmp/assets
 
-          # tauri-action upload patterns:
-          #   macOS arm64: Graphium_aarch64.app.tar.gz
-          #   Windows x64 NSIS updater bundle: Graphium_${VERSION}_x64-setup.nsis.zip
-          ASSETS=(
-            "Graphium_aarch64.app.tar.gz"
-            "Graphium_${VERSION}_x64-setup.nsis.zip"
-          )
+          # macOS: tauri-action が .app.tar.gz を正しい名前でリリースに上げているので
+          # それを download してそのまま署名する。
+          MAC_BUNDLE="Graphium_aarch64.app.tar.gz"
+          echo "Downloading ${MAC_BUNDLE}..."
+          gh release download "$TAG" --pattern "$MAC_BUNDLE" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null \
+            || echo "WARNING: ${MAC_BUNDLE} not found"
 
-          for ASSET in "${ASSETS[@]}"; do
-            echo "Downloading $ASSET..."
-            gh release download "$TAG" --pattern "$ASSET" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null || {
-              echo "WARNING: $ASSET not found, skipping"
-              continue
-            }
+          # Windows: tauri-action は NSIS updater zip を上げない（上記参照）。
+          # Tauri の NSIS updater バンドルは「インストーラ .exe を zip しただけ」なので、
+          # リリース済みの -setup.exe から自分で -setup.nsis.zip を組み立て、リリースへ
+          # アップロードしてから署名する。これで tauri-action の updater 挙動に依存せず
+          # 確実に Windows の updater バンドル＋署名を用意できる。
+          WIN_EXE="Graphium_${VERSION}_x64-setup.exe"
+          WIN_ZIP="Graphium_${VERSION}_x64-setup.nsis.zip"
+          echo "Downloading ${WIN_EXE}..."
+          if gh release download "$TAG" --pattern "$WIN_EXE" --dir /tmp/assets --repo "$REPO" --clobber 2>/dev/null; then
+            echo "Building ${WIN_ZIP} from ${WIN_EXE}..."
+            ( cd /tmp/assets && zip -j -q "$WIN_ZIP" "$WIN_EXE" )
+            echo "Uploading ${WIN_ZIP} to release..."
+            gh release upload "$TAG" "/tmp/assets/$WIN_ZIP" --clobber --repo "$REPO"
+          else
+            echo "WARNING: ${WIN_EXE} not found; cannot build Windows updater bundle"
+          fi
 
-            echo "Signing $ASSET..."
-            tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 || echo "WARNING: signing failed for $ASSET"
+          # 用意できた updater バンドルを署名する（鍵パスワードは空）。
+          for ASSET in "$MAC_BUNDLE" "$WIN_ZIP"; do
+            if [ -f "/tmp/assets/$ASSET" ]; then
+              echo "Signing $ASSET..."
+              tauri signer sign "/tmp/assets/$ASSET" -k "$TAURI_SIGNING_PRIVATE_KEY" -p "" 2>&1 \
+                || echo "WARNING: signing failed for $ASSET"
+            fi
           done
 
           echo "Signatures generated:"
-          ls -la /tmp/assets/*.sig 2>/dev/null || echo "No signatures"
-
-          echo "Signatures generated:"
-          ls -la /tmp/assets/*.minisig 2>/dev/null || echo "No signatures"
+          ls -la /tmp/assets/*.sig 2>/dev/null || echo "No .sig files"
 
       - name: Build latest.json
         run: |
-          set -e
+          set -euo pipefail
           TAG="${{ needs.resolve-release.outputs.tag }}"
           VERSION="${TAG#v}"
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
@@ -204,29 +226,45 @@ jobs:
             fi
           }
 
-          DARWIN_AARCH64_SIG=$(read_sig "Graphium_aarch64.app.tar.gz")
-          WINDOWS_X86_64_SIG=$(read_sig "Graphium_${VERSION}_x64-setup.nsis.zip")
+          # 期待するプラットフォーム → updater バンドルのアセット名。
+          declare -A ASSET_OF=(
+            ["darwin-aarch64"]="Graphium_aarch64.app.tar.gz"
+            ["windows-x86_64"]="Graphium_${VERSION}_x64-setup.nsis.zip"
+          )
 
-          cat > latest.json <<EOF
-          {
-            "version": "${VERSION}",
-            "notes": "See the changelog for details.",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "${DARWIN_AARCH64_SIG}",
-                "url": "${BASE_URL}/Graphium_aarch64.app.tar.gz"
-              },
-              "windows-x86_64": {
-                "signature": "${WINDOWS_X86_64_SIG}",
-                "url": "${BASE_URL}/Graphium_${VERSION}_x64-setup.nsis.zip"
-              }
-            }
-          }
-          EOF
+          PLATFORMS_JSON="{}"
+          MISSING=""
+          for KEY in "${!ASSET_OF[@]}"; do
+            ASSET="${ASSET_OF[$KEY]}"
+            SIG="$(read_sig "$ASSET")"
+            if [ -z "$SIG" ]; then
+              # 署名が取れない = updater バンドルが欠落 or 署名失敗。
+              # 壊れたエントリ（署名空＋存在しない URL）を絶対に latest.json へ
+              # 書かない。該当プラットフォームは除外し、後段の検証で fail させる。
+              echo "::warning::No signature for ${KEY} (${ASSET}); excluding it from latest.json"
+              MISSING="${MISSING} ${KEY}"
+              continue
+            fi
+            PLATFORMS_JSON="$(jq -n \
+              --argjson cur "$PLATFORMS_JSON" \
+              --arg k "$KEY" \
+              --arg sig "$SIG" \
+              --arg url "${BASE_URL}/${ASSET}" \
+              '$cur + {($k): {signature: $sig, url: $url}}')"
+          done
+
+          jq -n \
+            --arg v "$VERSION" \
+            --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson p "$PLATFORMS_JSON" \
+            '{version: $v, notes: "See the changelog for details.", pub_date: $d, platforms: $p}' \
+            > latest.json
 
           echo "Generated latest.json:"
           cat latest.json
+
+          # 欠落プラットフォームを後段の検証ステップへ引き継ぐ。
+          echo "MISSING_PLATFORMS=${MISSING# }" >> "$GITHUB_ENV"
 
       - name: Upload latest.json to release
         env:
@@ -269,10 +307,14 @@ jobs:
             CURRENT_VERSION="0.0.0"
           fi
 
-          # NEW_VERSION > CURRENT_VERSION を semver 的に判定
+          # NEW < CURRENT（厳密に古い）ときだけスキップする。
+          # 同バージョン（NEW == CURRENT）はスキップしない: リリースを再ビルドして
+          # 欠落プラットフォームを後から補完したケース（v0.16.7 の Windows updater が
+          # まさにこれ）で Pages を更新できるようにするため。内容が同一なら後段の
+          # `git diff --cached --quiet` が no-op として弾くので無駄コミットにはならない。
           HIGHEST=$(printf "%s\n%s\n" "$CURRENT_VERSION" "$NEW_VERSION" | sort -V | tail -n1)
-          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ] || [ "$HIGHEST" != "$NEW_VERSION" ]; then
-            echo "Skip: current=$CURRENT_VERSION new=$NEW_VERSION — not a newer release"
+          if [ "$CURRENT_VERSION" != "$NEW_VERSION" ] && [ "$HIGHEST" != "$NEW_VERSION" ]; then
+            echo "Skip: current=$CURRENT_VERSION new=$NEW_VERSION — older than current"
             exit 0
           fi
 
@@ -314,3 +356,85 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run "Deploy to GitHub Pages" --ref main --repo "${{ github.repository }}"
+
+      # 再発防止ガードレール: 期待する updater プラットフォームが latest.json から
+      # 欠落していたら、ここで明示的に fail させて notify-on-failure を発火させる。
+      # 有効なプラットフォーム（例: macOS）の latest.json は前段で既に公開済みなので、
+      # それらの自動更新は止めずに、壊れている方（例: Windows）だけを可視化できる。
+      # これにより「latest.json は更新されたのに一部 OS の自動更新が静かに壊れている」
+      # 状態（v0.16.7 の Windows）を二度と見逃さない。
+      - name: Verify all updater platforms are present
+        run: |
+          set -euo pipefail
+          if [ -n "${MISSING_PLATFORMS:-}" ]; then
+            echo "::error::Updater bundle missing for:${MISSING_PLATFORMS}. latest.json was published WITHOUT these platforms, so their auto-update is broken. Check that the 'Upload updater bundles to release' step uploaded the -setup.nsis.zip / .app.tar.gz for each target."
+            exit 1
+          fi
+          echo "All expected updater platforms are present in latest.json."
+
+  # build / generate-updater-json のいずれかが失敗したら Issue を起票して可視化する。
+  # 目的: ビルド失敗が「静かに」起き、数日後に「アプリが更新されない」で初めて気づく
+  # 事故を防ぐ（v0.16.4 / v0.16.5 の macOS 公証 403 で実害。latest.json が 0.16.3 に固定された）。
+  # if: failure() なので、いずれかの ancestor ジョブが失敗したときだけ走る
+  # （generate-updater-json が skipped でも build 失敗を拾える）。
+  notify-on-failure:
+    needs: [resolve-release, build, generate-updater-json]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or update issue on release build failure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag =
+              '${{ needs.resolve-release.outputs.tag }}' ||
+              context.payload.release?.tag_name ||
+              '${{ inputs.release_tag }}' ||
+              'unknown';
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const title = `🚨 Release build failed for ${tag}`;
+            const body = [
+              `**Tauri Desktop Build が失敗しました（tag: \`${tag}\`）。**`,
+              '',
+              `- 失敗したワークフロー実行: ${runUrl}`,
+              '',
+              '## なぜ重要か',
+              'macOS ビルドが失敗すると `Graphium_aarch64.app.tar.gz` がリリースに上がらず、',
+              '`generate-updater-json` が skipped になって `latest.json` が再生成されません。',
+              'その結果 GitHub Pages の `latest.json` が古いバージョンに固定され、',
+              'デスクトップアプリに更新が出なくなります（= 静かな失敗）。',
+              '',
+              '## 確認すること',
+              '1. 上記実行ログの「Build Tauri app」ステップのエラーを確認',
+              '2. macOS の公証 403 (`A required agreement is missing or has expired`) なら、',
+              '   https://developer.apple.com/account で改定された規約に同意してから再実行',
+              `3. 復旧後: \`gh workflow run "Tauri Desktop Build" -f release_tag=${tag}\` で再ビルド`,
+              '',
+              '_この Issue は tauri-build.yml の notify-on-failure ジョブが自動起票しました。_',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            // 同じ tag の未クローズ Issue があれば重複起票せずコメントを足す
+            const existing = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: 'release-failure', per_page: 100,
+            });
+            const dup = existing.data.find((i) => i.title === title);
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: dup.number,
+                body: `再びビルドが失敗しました: ${runUrl}`,
+              });
+              core.notice(`Commented on existing issue #${dup.number}`);
+              return;
+            }
+            // label が無ければ作成（失敗しても無視）
+            await github.rest.issues.createLabel({
+              owner, repo, name: 'release-failure', color: 'b60205',
+              description: 'Release/desktop build pipeline failure',
+            }).catch(() => {});
+            const created = await github.rest.issues.create({
+              owner, repo, title, body, labels: ['release-failure'],
+            });
+            core.notice(`Opened issue #${created.data.number}`);

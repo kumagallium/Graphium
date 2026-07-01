@@ -1,7 +1,7 @@
 // ファイル一覧サイドバー
 
 import { useMemo, type ReactNode } from "react";
-import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight } from "lucide-react";
+import { Image, FileText, Video, Volume2, Link, StickyNote, Bot, History, ShieldCheck, Wrench, PanelLeftClose, Sparkles, Trash2, Settings as SettingsIcon, Library, FilePlus, ArrowRight, Waypoints } from "lucide-react";
 import { AiUpgradeNotice } from "./AiUpgradeNotice";
 import { CollapsibleSection } from "./CollapsibleSection";
 import type { WikiKind } from "../lib/document-types";
@@ -28,6 +28,10 @@ export type FileSidebarProps = {
   mediaIndex: MediaIndex | null;
   onShowAssetGallery: (type: MediaType) => void;
   noteIndex: GraphiumIndex | null;
+  /** 全ノードグラフ（全画面オーバーレイ）を開く */
+  onShowGlobalGraph?: () => void;
+  /** 全ノードグラフがアクティブか（ハイライト用） */
+  globalGraphActive?: boolean;
   onShowLabelGallery: (label: string) => void;
   /** 現在アクティブなメディアタイプ（ハイライト用） */
   activeAssetType: MediaType | null;
@@ -122,6 +126,8 @@ export function FileSidebar({
   mediaIndex,
   onShowAssetGallery,
   noteIndex,
+  onShowGlobalGraph,
+  globalGraphActive = false,
   onShowLabelGallery,
   activeAssetType,
   activeLabel,
@@ -253,7 +259,19 @@ export function FileSidebar({
             className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
           >
             <span>{t("sidebar.newMemo")}</span>
-            <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">⌘⇧M</span>
+            {/* ⌘ ⇧ M を1つの塊で出すと ⇧ が埋もれて見落とされる（実際に「⌘M で効かない」と
+                誤解された）。キーごとに keycap 化して分離し、Shift が要ることを一目で示す。
+                背景は foreground tint なので、ボタン hover の sidebar-accent 上でも沈まない。 */}
+            <span className="flex items-center gap-0.5 font-normal tabular-nums">
+              {["⌘", "⇧", "M"].map((k) => (
+                <kbd
+                  key={k}
+                  className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
+                >
+                  {k}
+                </kbd>
+              ))}
+            </span>
           </button>
         )}
         <button
@@ -512,7 +530,7 @@ export function FileSidebar({
         )}
       </div>
 
-      {/* フッター（メタ群: Skill / 設定 / ゴミ箱 / Release Notes） */}
+      {/* フッター（メタ群: Skill / 全体グラフ / 設定 / ゴミ箱 / Release Notes） */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
         {onShowSkillList && (
           <button
@@ -528,6 +546,19 @@ export function FileSidebar({
             {skillCount > 0 && (
               <span className="text-xs">{skillCount}</span>
             )}
+          </button>
+        )}
+        {onShowGlobalGraph && (
+          <button
+            onClick={onShowGlobalGraph}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              globalGraphActive
+                ? "text-primary font-semibold bg-sidebar-accent/40"
+                : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50"
+            }`}
+          >
+            <Waypoints size={12} className="shrink-0" />
+            <span className="flex-1 text-left">{t("sidebar.globalGraph")}</span>
           </button>
         )}
         <button

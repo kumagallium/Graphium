@@ -5,18 +5,33 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import {
   AddBlockButton,
   DragHandleButton,
-  RemoveBlockItem,
   BlockColorsItem,
   SideMenu,
 } from "@blocknote/react";
+import { DeleteBlockMenuItem, AlignmentMenuItems } from "../../components/side-menu";
+import {
+  BlockAlignmentProvider,
+  useBlockAlignmentStore,
+  AlignmentStyleLayer,
+} from "../block-alignment";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { SandboxEditor } from "../../base/editor";
+import { ContextBadge } from "../note-context/ContextBadge";
+import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import {
+  aggregateNoteContexts,
+  addNoteContext,
+  removeNoteContext,
+  normalizeNoteContexts,
+} from "../note-context/context-tags";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
+import { calloutSlashItem } from "../../blocks/callout";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -63,6 +78,12 @@ type SidePeekProps = {
   onAddToKnowledge?: () => void;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /** アーカイブから復元するコールバック（archived のときバナーに復元ボタンを出す） */
+  onRestoreFromArchive?: () => void;
+  /** ゴミ箱にあるドキュメントの場合 true。エディタを read-only にする */
+  trashed?: boolean;
+  /** ゴミ箱から復元するコールバック（trashed のときバナーに復元ボタンを出す） */
+  onRestoreFromTrash?: () => void;
   /**
    * inline=true: 親レイアウトに flex item として組み込まれる（fixed 配置せず、
    *   右パネルの左に「差し込まれる」形）。エディタ領域が自然に圧縮される。
@@ -78,13 +99,24 @@ type SidePeekProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** /claims, /Insights の引用ピッカー用ノートインデックス。未指定だと引用挿入は出さない。 */
   noteIndex?: GraphiumIndex | null;
+  /**
+   * 文脈ラベル（noteContexts）を変更しファイル保存（doSave）が完了した後に呼ばれる。
+   * 保存済みの doc を渡すので、呼び出し側はこの doc からインデックスや doc キャッシュを
+   * 再構築する（reindexNoteFromDoc）。ファイル保存は SidePeek 自身が済ませているため
+   * 二重保存はしない。未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
+   */
+  onNoteContextsChange?: (noteId: string, savedDoc: GraphiumDocument | null) => void;
+  /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
+  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
 };
 
 export function SidePeek(props: SidePeekProps) {
   return (
     <LabelStoreProvider>
       <LinkStoreProvider>
-        <SidePeekInner {...props} />
+        <BlockAlignmentProvider>
+          <SidePeekInner {...props} />
+        </BlockAlignmentProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
   );
@@ -97,8 +129,9 @@ function SidePeekSideMenu() {
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
-        <RemoveBlockItem>{t("common.delete")}</RemoveBlockItem>
+        <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
+        <AlignmentMenuItems />
       </DragHandleButton>
     </SideMenu>
   );
@@ -127,8 +160,9 @@ function sanitizeBlocks(blocks: any[]): any[] {
 
 function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
-  archived = false, inline = false,
+  archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
+  onNoteContextsChange, onDeleteContextEverywhere,
 }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
@@ -139,6 +173,9 @@ function SidePeekInner({
   labelStoreRef.current = labelStore;
   const linkStoreRef = useRef(linkStore);
   linkStoreRef.current = linkStore;
+  const blockAlignmentStore = useBlockAlignmentStore();
+  const blockAlignmentStoreRef = useRef(blockAlignmentStore);
+  blockAlignmentStoreRef.current = blockAlignmentStore;
   const editorRef = useRef<any>(null);
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
@@ -152,6 +189,10 @@ function SidePeekInner({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "dirty">("saved");
+  // 文脈ラベル（タイトル直下のタグ行）。表示・編集用のローカル state。
+  const [peekContexts, setPeekContexts] = useState<string[]>([]);
+  const [peekContextPickerPos, setPeekContextPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const contextsInitRef = useRef<string | null>(null);
   const docRef = useRef<GraphiumDocument | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidePeekRef = useRef<HTMLDivElement>(null);
@@ -232,6 +273,8 @@ function SidePeekInner({
     if (allLinks.length > 0) {
       restoreLinks(allLinks);
     }
+    // ブロック配置揃え復元（table / audio / file 用サイドストア）
+    blockAlignmentStoreRef.current.restoreSnapshot(page.blockAlignments);
   }, [doc, setLabel, restoreLinks]);
 
   // エディタ準備完了時（依存を安定化し、SandboxEditor の不要な再実行を防ぐ）
@@ -393,8 +436,12 @@ function SidePeekInner({
     setMemoPickerOpen(false);
   }, []);
 
-  // 初期コンテンツ（cachedDoc を優先し、レンダリング時に即利用可能にする）
-  const effectiveDoc = cachedDoc ?? doc;
+  // 表示・編集の基準ドキュメント。タイトル編集は doc（state）にのみ反映されるため
+  // doc を優先する。初回レンダリング（load effect 実行前）は doc が null なので
+  // cachedDoc へフォールバックして即時表示を維持する。
+  // （cachedDoc を優先すると title 編集が stale な cachedDoc.title に固定され、
+  //  サイドピークで「タイトルが変えられない」不具合になる。）
+  const effectiveDoc = doc ?? cachedDoc;
   const initialContent = effectiveDoc?.pages?.[0]?.blocks?.length
     ? sanitizeBlocks(effectiveDoc.pages[0].blocks)
     : undefined;
@@ -424,6 +471,11 @@ function SidePeekInner({
     const provLinks = allLinks.filter((l) => l.layer === "prov");
     const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
 
+    // ブロック配置揃え（table / audio / file）。空なら undefined（フィールド省略）。
+    const alignmentsSnapshot = blockAlignmentStoreRef.current.getSnapshot();
+    const blockAlignments =
+      Object.keys(alignmentsSnapshot).length > 0 ? alignmentsSnapshot : undefined;
+
     const updatedDoc: GraphiumDocument = {
       ...docRef.current,
       pages: [
@@ -433,6 +485,7 @@ function SidePeekInner({
           labels: labelsObj,
           provLinks,
           knowledgeLinks,
+          blockAlignments,
         },
       ],
       modifiedAt: new Date().toISOString(),
@@ -467,6 +520,43 @@ function SidePeekInner({
       doSaveRef.current();
     }, 3000);
   }, []);
+
+  // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
+  // 以降の本文編集による doc 変化ではリセットしない）。
+  useEffect(() => {
+    if (!effectiveDoc) return;
+    if (contextsInitRef.current === noteId) return;
+    contextsInitRef.current = noteId;
+    setPeekContexts(normalizeNoteContexts(effectiveDoc.noteContexts) ?? []);
+  }, [effectiveDoc, noteId]);
+
+  // 文脈ラベルの更新: ローカル state + docRef を更新し、SidePeek 自身の doSave で保存する
+  // （doSave は ...docRef.current を spread するので noteContexts も一緒に書き出される）。
+  // 保存の完了を待ってから onNoteContextsChange に「保存済み doc」を渡し、一覧インデックスと
+  // doc キャッシュを再構築させる。await してから通知することで、一覧復帰時に ensureIndex が
+  // 保存前の古いノートファイルを読んで index を上書きしてしまう競合を避ける。
+  const applyPeekContexts = useCallback(
+    async (next: string[]) => {
+      const normalized = normalizeNoteContexts(next);
+      setPeekContexts(normalized ?? []);
+      if (docRef.current) {
+        docRef.current = { ...docRef.current, noteContexts: normalized };
+      }
+      setDoc((d) => (d ? { ...d, noteContexts: normalized } : d));
+      await doSaveRef.current();
+      onNoteContextsChange?.(noteId, docRef.current);
+    },
+    [noteId, onNoteContextsChange],
+  );
+
+  // 配置揃え変更時にもオートセーブをトリガー（editor.onChange を通らないため）
+  const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
+  useEffect(() => {
+    if (prevAlignmentsRef.current !== blockAlignmentStore.alignments) {
+      prevAlignmentsRef.current = blockAlignmentStore.alignments;
+      handleChange();
+    }
+  }, [blockAlignmentStore.alignments, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {
@@ -718,6 +808,93 @@ function SidePeekInner({
                   labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
               }}
             >
+              {/* アーカイブ済みノートの状態表示 + 復元導線。エディタは read-only
+                  （editable={!archived}）なので、ここで状態を可視化する。 */}
+              {archived && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                    padding: "6px 12px",
+                    borderRadius: "var(--r-1)",
+                    background: "var(--paper)",
+                    border: "1px solid var(--rule)",
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                  }}
+                >
+                  <Archive size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t("archive.archivedHint")}</span>
+                  {onRestoreFromArchive && (
+                    <button
+                      onClick={onRestoreFromArchive}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        flexShrink: 0,
+                        padding: "4px 10px",
+                        borderRadius: "var(--r-1)",
+                        border: "1px solid var(--rule)",
+                        background: "var(--paper-2)",
+                        color: "var(--ink-2)",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                      title={t("archive.restore")}
+                    >
+                      <ArchiveRestore size={13} />
+                      {t("archive.restore")}
+                    </button>
+                  )}
+                </div>
+              )}
+              {/* ゴミ箱ノートの状態表示 + 復元導線。archived と排他。 */}
+              {trashed && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                    padding: "6px 12px",
+                    borderRadius: "var(--r-1)",
+                    background: "var(--paper)",
+                    border: "1px solid var(--rule)",
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                  }}
+                >
+                  <Trash2 size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t("trash.trashedHint")}</span>
+                  {onRestoreFromTrash && (
+                    <button
+                      onClick={onRestoreFromTrash}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        flexShrink: 0,
+                        padding: "4px 10px",
+                        borderRadius: "var(--r-1)",
+                        border: "1px solid var(--rule)",
+                        background: "var(--paper-2)",
+                        color: "var(--ink-2)",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                      title={t("trash.restoreFromTrash")}
+                    >
+                      <ArchiveRestore size={13} />
+                      {t("trash.restoreFromTrash")}
+                    </button>
+                  )}
+                </div>
+              )}
               <textarea
                 value={effectiveDoc?.title ?? ""}
                 onChange={(e) => {
@@ -750,9 +927,68 @@ function SidePeekInner({
                 aria-label={tStatic("editor.titlePlaceholder")}
                 className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-1 mb-4 px-[54px] resize-none overflow-hidden break-words"
               />
+              {/* 文脈タグ行（タイトル直下・人間ノートのみ）。メインエディタと同じ見た目。
+                  保存は SidePeek 自身の doSave（noteContexts も spread で書き出す）。 */}
+              {effectiveDoc &&
+                effectiveDoc.source !== "ai" &&
+                effectiveDoc.source !== "skill" &&
+                !noteId.startsWith("wiki:") &&
+                !noteId.startsWith("skill:") &&
+                (peekContexts.length > 0 || !archived) && (
+                  <div className="px-[54px] -mt-2 mb-4 flex flex-wrap items-center gap-1.5">
+                    {peekContexts.map((c) => (
+                      <ContextBadge
+                        key={c}
+                        value={c}
+                        onRemove={
+                          archived
+                            ? undefined
+                            : () => applyPeekContexts(removeNoteContext(peekContexts, c) ?? [])
+                        }
+                        removeLabel={t("nav.removeContext")}
+                      />
+                    ))}
+                    {!archived && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          if (peekContextPickerPos) {
+                            setPeekContextPickerPos(null);
+                            return;
+                          }
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setPeekContextPickerPos({ top: r.bottom + 4, left: r.left });
+                        }}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                        title={peekContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
+                      >
+                        ＋ {t("nav.noteContexts")}
+                      </button>
+                    )}
+                    {peekContextPickerPos && (
+                      <ContextTagPicker
+                        position={peekContextPickerPos}
+                        onClose={() => setPeekContextPickerPos(null)}
+                        title={t("nav.noteContexts")}
+                        selected={peekContexts}
+                        suggestions={aggregateNoteContexts(noteIndex?.notes ?? [])}
+                        placeholder={t("nav.contextPlaceholder")}
+                        createLabel={(v) => t("nav.createContext", { value: v })}
+                        clearLabel={t("nav.clearContexts")}
+                        emptyText={t("nav.contextEmpty")}
+                        onDeleteCandidate={onDeleteContextEverywhere}
+                        onAdd={(v) => applyPeekContexts(addNoteContext(peekContexts, v) ?? [])}
+                        onRemove={(v) => applyPeekContexts(removeNoteContext(peekContexts, v) ?? [])}
+                        onClear={() => applyPeekContexts([])}
+                      />
+                    )}
+                  </div>
+                )}
+              {/* table / audio / file の配置揃えを CSS で適用 */}
+              <AlignmentStyleLayer />
               <SandboxEditor
                 key={noteId}
-                editable={!archived}
+                editable={!archived && !trashed}
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}
@@ -764,6 +1000,7 @@ function SidePeekInner({
                   ...buildLabelSlashMenuItems(),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
+                  calloutSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}

@@ -2,11 +2,13 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, StickyNote } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
+import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
@@ -17,6 +19,11 @@ import {
   MediaInlineLabelProvider,
   useMediaInlineLabelStore,
 } from "./features/inline-label/media-store";
+import {
+  BlockAlignmentProvider,
+  useBlockAlignmentStore,
+  AlignmentStyleLayer,
+} from "./features/block-alignment";
 import { regenInlineEntitiesInBlocks } from "./features/inline-label/regen-on-paste";
 import {
   ProvIndicatorLayer,
@@ -65,6 +72,8 @@ import {
 } from "./features/prov-generator";
 import {
   GraphLinksPanel,
+  GlobalGraphView,
+  buildGlobalGraph,
 } from "./features/network-graph";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
@@ -99,6 +108,9 @@ import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
 import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import { ContextBadge } from "./features/note-context/ContextBadge";
+import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
+import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
 import { useHashRouter, type AppRoute, type RouteActions } from "./hooks/use-hash-router";
 import {
   WikiListView, WikiLogView, WikiLintView, WikiBanner, WikiContextDrawer,
@@ -159,6 +171,7 @@ import {
   type MediaType,
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
+  type AssetDisplayMode,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
@@ -186,7 +199,7 @@ import { Sheet } from "./ui/sheet";
 import { useIsDesktop } from "./hooks/use-media-query";
 import { Composer, useComposer, type ComposerSubmission, type DiscoveryCard } from "./features/composer";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./features/composer/discovery-cards";
-import { buildVerbSuggestionDocument, deriveSuggestionTitle, cleanSuggestionText, splitTitleAndBody } from "./features/composer/verb-suggestion-doc";
+import { cleanSuggestionText, type KnowledgeCandidate } from "./features/composer/verb-suggestion-doc";
 import type { WikiLogEntry } from "./features/wiki/wiki-log";
 import { EmptyNoteGuide } from "./features/onboarding";
 
@@ -265,6 +278,12 @@ function NoteHeaderMenu({
   isWikiDoc,
   inKnowledge,
   onOpenKnowledge,
+  archived,
+  onArchive,
+  archiveDisabled,
+  onRestore,
+  trashed,
+  onRestoreFromTrash,
   onDelete,
   deleteDisabled,
   onShare,
@@ -290,6 +309,17 @@ function NoteHeaderMenu({
   inKnowledge?: boolean;
   /** 「Already in Knowledge」押下で対応 wiki エントリを開く */
   onOpenKnowledge?: () => void;
+  /** このノートがアーカイブ済みか。true ならメニューの「アーカイブ」を「復元」に差し替える */
+  archived?: boolean;
+  /** ノートをアーカイブ（一覧から退避、ID は残し派生リンクは保持）するコールバック */
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
+  /** アーカイブから復元するコールバック（archived のときに表示） */
+  onRestore?: () => void;
+  /** このノートがゴミ箱にあるか。true ならメニューを「ゴミ箱から復元」だけにする */
+  trashed?: boolean;
+  /** ゴミ箱から復元するコールバック（trashed のときに表示） */
+  onRestoreFromTrash?: () => void;
   /** ノート削除（ゴミ箱送り）コールバック */
   onDelete?: () => void;
   deleteDisabled?: boolean;
@@ -412,19 +442,63 @@ function NoteHeaderMenu({
               )}
             </>
           )}
-          {onDelete && (
-            <>
-              <div className="my-1 border-t border-border" />
-              <button
-                className={`${itemClass} text-destructive hover:bg-destructive/10`}
-                disabled={deleteDisabled}
-                onClick={() => { onDelete(); setOpen(false); }}
-              >
-                <Trash2 size={14} />
-                {t("editor.deleteNote")}
-              </button>
-            </>
-          )}
+          {(() => {
+            // trashed / archived / active で退避・復元の導線を出し分ける。
+            //   trashed  → 「ゴミ箱から復元」のみ（アーカイブ/削除は出さない）
+            //   archived → 「アーカイブから復元」＋削除（ゴミ箱送り）
+            //   active   → 「アーカイブ」＋削除
+            const showTrashRestore = trashed && !!onRestoreFromTrash;
+            const showArchiveRestore = !trashed && archived && !!onRestore;
+            const showArchive = !trashed && !archived && !!onArchive;
+            const showDelete = !trashed && !!onDelete;
+            const anyItem = showTrashRestore || showArchiveRestore || showArchive || showDelete;
+            return (
+              <>
+                {anyItem && <div className="my-1 border-t border-border" />}
+                {showTrashRestore && (
+                  <button
+                    className={itemClass}
+                    onClick={() => { onRestoreFromTrash!(); setOpen(false); }}
+                    title={t("trash.trashedHint")}
+                  >
+                    <ArchiveRestore size={14} />
+                    {t("trash.restoreFromTrash")}
+                  </button>
+                )}
+                {showArchiveRestore && (
+                  <button
+                    className={itemClass}
+                    onClick={() => { onRestore!(); setOpen(false); }}
+                    title={t("archive.restoreHint")}
+                  >
+                    <ArchiveRestore size={14} />
+                    {t("archive.restore")}
+                  </button>
+                )}
+                {showArchive && (
+                  <button
+                    className={itemClass}
+                    disabled={archiveDisabled}
+                    onClick={() => { onArchive!(); setOpen(false); }}
+                    title={t("editor.archiveNoteHint")}
+                  >
+                    <Archive size={14} />
+                    {t("editor.archiveNote")}
+                  </button>
+                )}
+                {showDelete && (
+                  <button
+                    className={`${itemClass} text-destructive hover:bg-destructive/10`}
+                    disabled={deleteDisabled}
+                    onClick={() => { onDelete!(); setOpen(false); }}
+                  >
+                    <Trash2 size={14} />
+                    {t("editor.deleteNote")}
+                  </button>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -460,6 +534,8 @@ type NoteEditorProps = {
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
   /** ノートインデックス（@ オートコンプリート用） */
   noteIndex?: GraphiumIndex | null;
+  /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
+  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
   uploadFile?: (file: File) => Promise<string>;
   /** メディアインデックス（メディアピッカー用） */
@@ -488,6 +564,8 @@ type NoteEditorProps = {
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
   onDeleteNote?: () => void;
+  /** ノートアーカイブ（一覧から退避）コールバック。ヘッダーメニューから呼ばれる */
+  onArchiveNote?: () => void;
   /** チャットから Knowledge コールバック（手動） */
   onIngestChat?: (messages: import("./lib/document-types").ChatMessage[]) => void;
   /** Wiki ドキュメントかどうか */
@@ -506,6 +584,24 @@ type NoteEditorProps = {
   >;
   /** アーカイブ済みドキュメントの場合 true。エディタを read-only にする */
   archived?: boolean;
+  /** アーカイブから復元するコールバック（archived のときヘッダーメニュー / バナーから呼ぶ） */
+  onRestoreFromArchive?: () => void;
+  /** 任意のノート ID がアーカイブ済みか判定する述語。SidePeek（グラフ/リンク経由で開く
+   *  別ノート）が read-only / バナー表示を出し分けるのに使う。NoteEditor が受け取る
+   *  noteIndex はアーカイブを除外済みのため、判定にはこの述語が必要。 */
+  isArchived?: (noteId: string) => boolean;
+  /** SidePeek で開いたアーカイブ済みノートを ID 指定で復元するコールバック */
+  onRestoreArchivedById?: (noteId: string) => void;
+  /** ゴミ箱にあるドキュメントの場合 true。エディタを read-only にする。
+   *  ゴミ箱ノートはノートリンク / @mention / インデックステーブル経由で開けてしまうため、
+   *  開いても壊れないよう read-only + バナーで「ゴミ箱にある」ことを明示する。 */
+  trashed?: boolean;
+  /** ゴミ箱から復元するコールバック（trashed のときヘッダーメニュー / バナーから呼ぶ） */
+  onRestoreFromTrash?: () => void;
+  /** 任意のノート ID がゴミ箱にあるか判定する述語（SidePeek 用。isArchived と同じ理由）。 */
+  isTrashed?: (noteId: string) => boolean;
+  /** SidePeek で開いたゴミ箱ノートを ID 指定で復元するコールバック */
+  onRestoreTrashedById?: (noteId: string) => void;
   /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
@@ -537,9 +633,11 @@ function NoteEditor(props: NoteEditorProps) {
       <LinkStoreProvider>
         <IndexTableStoreProvider>
         <MediaInlineLabelProvider>
+        <BlockAlignmentProvider>
         <AiAssistantProvider aiAvailable={props.aiAvailable}>
           <NoteEditorInner {...props} />
         </AiAssistantProvider>
+        </BlockAlignmentProvider>
         </MediaInlineLabelProvider>
         </IndexTableStoreProvider>
       </LinkStoreProvider>
@@ -605,6 +703,7 @@ function NoteEditorInner({
   onSourceDocChange,
   getCachedDoc,
   noteIndex,
+  onDeleteContextEverywhere,
   uploadFile,
   mediaIndex,
   onAddUrlBookmark,
@@ -619,6 +718,7 @@ function NoteEditorInner({
   onDeriveWholeNote,
   derivingDisabled,
   onDeleteNote,
+  onArchiveNote,
   onIngestChat,
   isWikiDoc,
   aiAvailable = true,
@@ -626,6 +726,13 @@ function NoteEditorInner({
   onOpenComposer,
   composerSubmitRef,
   archived = false,
+  onRestoreFromArchive,
+  isArchived,
+  onRestoreArchivedById,
+  trashed = false,
+  onRestoreFromTrash,
+  isTrashed,
+  onRestoreTrashedById,
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
@@ -637,6 +744,7 @@ function NoteEditorInner({
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
   const mediaInlineLabelStore = useMediaInlineLabelStore();
+  const blockAlignmentStore = useBlockAlignmentStore();
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   const editorRef = useRef<any>(null);
@@ -666,6 +774,11 @@ function NoteEditorInner({
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
+  // ノートの文脈ラベル（ユーザーが手で付ける分類）。ヘッダのピルから編集する。
+  // 本文と同じ buildDocument → autosave 経路で保存するため ref も併置（stale closure 回避）。
+  const [noteContexts, setNoteContexts] = useState<string[]>(initialDoc?.noteContexts ?? []);
+  const noteContextsRef = useRef<string[]>(initialDoc?.noteContexts ?? []);
+  const [headerContextPickerPos, setHeaderContextPickerPos] = useState<{ top: number; left: number } | null>(null);
   // 前回保存時のページ状態（差分計算用）
   const prevPageRef = useRef<import("./lib/document-types").GraphiumPage | null>(
     initialDoc?.pages[0] ?? null,
@@ -839,14 +952,56 @@ function NoteEditorInner({
     // insertBlocks による onChange で自動的に markDirty される
   }, [labelStore, linkStore]);
 
+  // スラッシュだけの空ブロックかどうか（"/" もしくは空）。
+  const isSlashOnlyBlock = useCallback((block: any) => {
+    const content = block?.content;
+    return (
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
+    );
+  }, []);
+
+  // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する。
+  // スラッシュだけのブロックなら中身を空にしてカーソル位置に差し込み、
+  // 本文があるブロックでは現在のカーソル位置にそのまま挿入する。
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+    if (isSlashOnlyBlock(currentBlock)) {
+      editor.updateBlock(currentBlock, { type: "paragraph", content: [] });
+    }
+    const target = editor.getBlock(currentBlock.id) ?? currentBlock;
+    editor.setTextCursorPosition(target, "end");
+    setTimeout(() => {
+      editor.insertInlineContent(inline);
+    }, 0);
+  }, [isSlashOnlyBlock]);
+
   // ピッカーで選択されたメディアをエディタに挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-  const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
+  // displayMode:
+  //   "embed" → 中身を展開（pdf / file / image / video / audio ブロック）
+  //   "link"  → @素材名 の inline リンク（@mention の asset 分岐と同じく citedAssetFileIds に登録）
+  const handlePickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
 
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
+
+    if (displayMode === "link") {
+      // 素材本体を指す @リンク。fileId を citedAssetFileIds に積むことで
+      // Cmd-K / チャットの AI がその素材の全文＋ハイライトメモを読めるようになる。
+      if (entry.fileId && !citedAssetFileIdsRef.current.includes(entry.fileId)) {
+        citedAssetFileIdsRef.current = [...citedAssetFileIdsRef.current, entry.fileId];
+      }
+      // insertInlineContent が onChange を発火 → 自動 markDirty。
+      // citedAssetFileIdsRef は同期的に更新済みなので、その後の save で拾われる。
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      return;
+    }
 
     // 挿入ブロックの選択:
     //   PDF → カスタム pdf ブロック（インラインビューア付き）
@@ -863,17 +1018,12 @@ function NoteEditorInner({
     editor.insertBlocks([newBlock], currentBlock, "after");
 
     // 現在のブロックが空（スラッシュだけ）なら削除
-    const content = currentBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
-    ) {
+    if (isSlashOnlyBlock(currentBlock)) {
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
     // onChange が自動的にトリガーされるので markDirty() は不要
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
 
   // 引用ピッカーで選択された claim / Insight ノートをエディタに挿入
   // MVP: 各ノートのタイトルを青色テキストの paragraph として並べる
@@ -993,11 +1143,22 @@ function NoteEditorInner({
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
-  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
+  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = pickerEditorRef.current ?? editorRef.current;
     if (!editor) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) return;
+
+    if (displayMode === "link") {
+      // URL は埋め込みカード（bookmark）ではなくインラインのハイパーリンクとして挿入する。
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "link", href: entry.url, content: [{ type: "text", text: entry.name, styles: {} }] },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setUrlSlashPickerOpen(false);
+      return;
+    }
+
     editor.insertBlocks(
       [{
         type: "bookmark",
@@ -1013,17 +1174,12 @@ function NoteEditorInner({
       "after",
     );
     // 空のスラッシュブロックを削除
-    const content = currentBlock.content;
-    if (
-      Array.isArray(content) &&
-      content.length <= 1 &&
-      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""))
-    ) {
+    if (isSlashOnlyBlock(currentBlock)) {
       removeBlockMetadata([currentBlock.id]);
       editor.removeBlocks([currentBlock]);
     }
     setUrlSlashPickerOpen(false);
-  }, [removeBlockMetadata]);
+  }, [removeBlockMetadata, isSlashOnlyBlock, insertInlineAtSlash]);
 
   // ラベル自動設定のコールバック
   const labelAutoRef = useRef<(() => void) | null>(null);
@@ -1241,6 +1397,9 @@ function NoteEditorInner({
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
       Object.keys(mediaInlineLabelsSnapshot).length > 0;
+    // ブロック配置揃え（table / audio / file 用サイドストア）
+    const blockAlignmentsSnapshot = blockAlignmentStore.getSnapshot();
+    const hasBlockAlignments = Object.keys(blockAlignmentsSnapshot).length > 0;
     let doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
@@ -1256,11 +1415,14 @@ function NoteEditorInner({
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
+          blockAlignments: hasBlockAlignments ? blockAlignmentsSnapshot : undefined,
         },
       ],
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
       citedAssetFileIds:
         citedAssetFileIdsRef.current.length > 0 ? citedAssetFileIdsRef.current : undefined,
+      noteContexts:
+        noteContextsRef.current.length > 0 ? noteContextsRef.current : undefined,
       derivedFromNoteId: initialDoc?.derivedFromNoteId,
       derivedFromBlockId: initialDoc?.derivedFromBlockId,
       documentProvenance: currentProvenance,
@@ -1304,7 +1466,7 @@ function NoteEditorInner({
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
-  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
 
   // sharedRef は initialDoc から初期化し、Share 成功時に即時更新する。
   // initialDoc は親が新しい doc に差し替えない限り変わらないため、ローカル state で持つ。
@@ -1471,25 +1633,28 @@ function NoteEditorInner({
     void exportProvJsonLd({ title, provDoc, wikiEntities: provWikiEntities });
   }, [title, provDoc, provWikiEntities]);
 
-  // ラベル・リンク・インデックステーブル変更時に自動保存トリガー
+  // ラベル・リンク・インデックステーブル・配置変更時に自動保存トリガー
   const prevLabelsRef = useRef(labelStore.labels);
   const prevLinksRef = useRef(linkStore.links);
   const prevTablesRef = useRef(indexTableStore.tables);
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
+  const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
   useEffect(() => {
     if (
       prevLabelsRef.current !== labelStore.labels ||
       prevLinksRef.current !== linkStore.links ||
       prevTablesRef.current !== indexTableStore.tables ||
-      prevMediaLabelsRef.current !== mediaInlineLabelStore.labels
+      prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
+      prevAlignmentsRef.current !== blockAlignmentStore.alignments
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
       prevTablesRef.current = indexTableStore.tables;
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
+      prevAlignmentsRef.current = blockAlignmentStore.alignments;
       markDirty();
     }
-  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, markDirty]);
+  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, markDirty]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -1516,9 +1681,10 @@ function NoteEditorInner({
       try {
         const isFirstMessage = aiAssistant.messages.length === 0;
         let userMessage = question;
-        if (isFirstMessage) {
-          if (aiAssistant.quotedMarkdown) {
-            // ブロック選択チャット: 選択ブロックのコンテキストを付加
+        if (aiAssistant.quotedMarkdown) {
+          // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
+          // 継続会話では下記 history 側で idx=0 に quotedMarkdown を再注入して維持する。
+          if (isFirstMessage) {
             userMessage = [
               "以下の内容について質問があります。",
               "",
@@ -1528,21 +1694,26 @@ function NoteEditorInner({
               "",
               question,
             ].join("\n");
-          } else if (aiAssistant.sourceBlockIds.length === 0 && editorRef.current) {
-            // ページ全体チャット: ドキュメント全体をコンテキストとして付加
-            const allBlocks = editorRef.current.document;
-            const pageMarkdown = await editorRef.current.blocksToMarkdownLossy(allBlocks);
-            if (pageMarkdown.trim()) {
-              userMessage = [
-                "以下のドキュメント全体について質問があります。",
-                "",
-                "---",
-                pageMarkdown,
-                "---",
-                "",
-                question,
-              ].join("\n");
-            }
+          }
+        } else if (aiAssistant.sourceBlockIds.length === 0 && editorRef.current) {
+          // ページ全体チャット: 毎ターン、現在のドキュメント本文（最新）を再同梱する。
+          // スナップショット方式だと「修正しました、見てください」と続けたときに
+          // AI が編集前の本文しか見えず「修正したノートを見せてください」と返してしまう。
+          // それを防ぐため、送信のたびにエディタから最新本文を取り直す。
+          const allBlocks = editorRef.current.document;
+          const pageMarkdown = await editorRef.current.blocksToMarkdownLossy(allBlocks);
+          if (pageMarkdown.trim()) {
+            userMessage = [
+              isFirstMessage
+                ? "以下のドキュメント全体について質問があります。"
+                : "以下は現在のドキュメント全体の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。",
+              "",
+              "---",
+              pageMarkdown,
+              "---",
+              "",
+              question,
+            ].join("\n");
           }
         }
         // @ メンションで添付されたノートの内容をコンテキストに追加
@@ -1698,13 +1869,34 @@ function NoteEditorInner({
           const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
             "./features/ai-assistant/citation-normalize"
           );
-          const { message, sources, candidateTitles } = normalizeWikiCitations(
+          const { message, sources } = normalizeWikiCitations(
             assistantMessage,
             wikiContext,
           );
-          // LLM が一度も引用しなかった場合は候補タイトルを trailing list に並べる。
-          const finalSources = sources.length > 0 ? sources : candidateTitles;
-          assistantMessage = appendKnowledgeReferenced(message, finalSources);
+          // モデルが実際に引用できた内部ノートだけを「ノート内の知識」として付ける。
+          // 引用ゼロなら何も付けない（候補の機械的な流し込み＝誤った参照表示を廃止）。
+          assistantMessage = appendKnowledgeReferenced(
+            message,
+            sources,
+            t("chat.sources.fromNotes"),
+          );
+        }
+        // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
+        // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+        const webHeading = t("chat.sources.fromWeb");
+        assistantMessage = assistantMessage.replace(
+          /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
+          `**${webHeading}**`,
+        );
+        // 検索 MCP（Tavily 等 = B 経路）の出典はツール結果から決定論的に拾えている。
+        // モデルが散文で出典を出さない B 経路の取りこぼしを埋めるため、ここで明示的に付与する。
+        // A 経路で既に「🌐 Web の出典」見出しが付いている場合は重複させない。
+        const webSources = response.web_sources ?? [];
+        if (webSources.length > 0 && !assistantMessage.includes(webHeading)) {
+          const list = webSources
+            .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
+            .join("\n");
+          assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
         }
         // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
         // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
@@ -1961,36 +2153,127 @@ function NoteEditorInner({
   //   2. 選んだ kind に合わせて LLM で「タイトル + 本文」に整形（他の知見/洞察と体裁を揃える）
   //   3. 整形 markdown を editor.tryParseMarkdownToBlocks でブロック化（テーブル・@ が正しく展開）
   //   4. verb が精査した引用ノートを「引用元」として @<title> + reference リンクで引き継ぐ
-  const handleMakeKnowledge = useCallback(
-    async (answer: string, kind: "claim" | "atom") => {
-      if (!onCreateKnowledgeNote || !editorRef.current) return;
+  // 「ナレッジにする」候補生成（Loop M2 改）。
+  //   旧実装は AI 回答を 1 ノートに即整形して保存していたが、「押すまで何が出るか
+  //   見えない」ため押しにくかった。今は AI 回答を ingester / atomizer パイプラインに
+  //   通して**複数候補**を作り、ユーザーが選んだものだけを保存する（脱ブラックボックス化、
+  //   [[project-knowledge-simplicity-philosophy]]）。砂時計の首＝人間の選択は維持される。
+  //
+  //   knowledge は 知見(claim) と 洞察(atom) を 1 リストに混ぜて出す（kind は候補ごとの
+  //   バッジで示す。押す前に二択を迫らない = kind 版「押すまで見えない」の解消）。
+  //   - 知見(claim): AI 回答を ingester（chat: prefix = document-mode で命題を多めに抽出）に
+  //     通す。ingester は一度だけ走らせ、知見候補ができた時点で onClaimsReady で即返す
+  //     （プログレッシブ表示。洞察は時間がかかるので待たせない）。
+  //   - 洞察(atom): 抽出した知見を atomizer に渡して一般化候補を作る。中間 claim は保存しない
+  //     （揮発）ので derivedFromClaims は空に倒し、由来は現ノート（derivedFromNotes）に記録する。
+  const handleGenerateKnowledgeCandidates = useCallback(
+    async (
+      answer: string,
+      onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
+    ): Promise<KnowledgeCandidate[]> => {
       const cleaned = cleanSuggestionText(answer);
-      // kind を強制した整形指示。ingester（kind を AI 任せ）は通さず、ここで体裁だけ揃える。
-      const kindLabel = kind === "claim" ? tStatic("wikiList.kindClaim") : tStatic("wikiList.kindAtom");
-      const formatHint = tStatic("composer.makeKnowledge.formatHint", { kind: kindLabel });
-      let formatted: string;
-      try {
-        formatted = await runComposerAgent(cleaned, formatHint);
-      } catch {
-        // 整形に失敗しても取り込みは続行（生テキストで作る）。
-        formatted = cleaned;
-      }
-      // 先頭の H1 見出しをタイトルとして取り出し、本文からは除く（重複防止）。
-      const { title: parsedTitle, body } = splitTitleAndBody(formatted);
-      const bodyBlocks = await editorRef.current.tryParseMarkdownToBlocks(body);
-      const citedNotes = collectCitedNotes().map((n) => ({ noteId: n.id, title: n.title }));
-      const doc = buildVerbSuggestionDocument({
-        bodyBlocks,
-        kind,
-        title: parsedTitle || deriveSuggestionTitle(body),
-        sourceNoteId: fileId,
-        citedNotes,
-        model: getSelectedModel() || null,
-        language: "ja",
+      const model = getSelectedModel() || null;
+      const noteTitle = initialDoc?.title || "Chat";
+      // 既存 Wiki タイトル一覧（重複タイトルの抑制 + インライン引用解決用）。
+      const existingWikis = (noteIndex?.notes ?? [])
+        .filter((n) => n.source === "ai" && n.wikiKind)
+        .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
+      const existingWikiTitles = existingWikis.map((w) => ({ id: w.id, title: w.title }));
+      // verb が精査した引用知見（現ノートの reference リンク先）を PROV の素地として温存する。
+      const citedIds = collectCitedNotes().map((n) => n.id);
+
+      // 1) ingester で AI 回答から知見(claim)を抽出（chat: prefix で document-mode）。一度だけ。
+      const ingestRes = await ingestFromChat(
+        [{ role: "assistant", content: cleaned }],
+        noteTitle,
+        existingWikis,
+        "ja",
+      );
+      const claimOutputs = ingestRes.wikis.filter((w) => w.kind === "claim");
+      if (claimOutputs.length === 0) return [];
+
+      // 知見候補を組み立てて即コールバック（プログレッシブ表示）。
+      const claimCandidates: KnowledgeCandidate[] = claimOutputs.map((w) => {
+        const baseDoc = buildWikiDocument(
+          w,
+          fileId ?? "",
+          ingestRes.model ?? model,
+          noteTitle,
+          existingWikiTitles,
+          "ja",
+        );
+        const doc: GraphiumDocument = citedIds.length
+          ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
+          : baseDoc;
+        return {
+          key: crypto.randomUUID(),
+          kind: "claim",
+          title: doc.title,
+          preview: extractBodyPreview(doc, 160),
+          doc,
+        };
       });
-      await onCreateKnowledgeNote(doc, kind);
+      onClaimsReady?.(claimCandidates);
+
+      // 2) 抽出した知見を atomizer に渡して洞察(atom)候補を作る。
+      //    洞察生成が失敗しても知見候補は返す（知見だけでも価値がある）。
+      let atomCandidates: KnowledgeCandidate[] = [];
+      try {
+        const snapshots: ClaimSnapshot[] = claimOutputs.map((w, i) => ({
+          id: `eph-claim-${i}`,
+          title: w.title,
+          bodyPreview: w.sections.map((s) => s.content).join("\n\n").slice(0, 240),
+          level: w.level,
+          relatedClaims: [],
+          sourceSummaryPreviews: [],
+          atomType: undefined,
+        }));
+        const atomRes = await atomizeConcepts(snapshots, "ja", {
+          model: model ?? getChatSynthesisModelName() ?? undefined,
+        });
+        atomCandidates = atomRes.atoms.map((a) => {
+          // 中間 claim は揮発（保存しない）ため、ephemeral id を指す derivedFromClaims は捨てる
+          // （リンク切れ防止）。由来は現ノート（derivedFromNotes）に記録する。
+          const baseDoc = buildAtomDocument(
+            { ...a, derivedFromClaims: [], derivedFromConceptTitles: [] },
+            atomRes.model ?? model,
+            "ja",
+          );
+          const doc: GraphiumDocument = {
+            ...baseDoc,
+            wikiMeta: {
+              ...baseDoc.wikiMeta!,
+              derivedFromNotes: fileId ? [fileId] : [],
+              ...(citedIds.length ? { citedKnowledgeIds: citedIds } : {}),
+            },
+          };
+          return {
+            key: crypto.randomUUID(),
+            kind: "atom",
+            title: doc.title,
+            preview: extractBodyPreview(doc, 160),
+            doc,
+          };
+        });
+      } catch (err) {
+        console.error("洞察候補の生成に失敗:", err);
+      }
+
+      return [...claimCandidates, ...atomCandidates];
     },
-    [onCreateKnowledgeNote, collectCitedNotes, fileId, runComposerAgent],
+    [collectCitedNotes, fileId, initialDoc?.title, noteIndex],
+  );
+
+  // 選択された候補を保存する。候補ごとに 1 ノート（onCreateKnowledgeNote が
+  // PROV リビジョン記録 + embedding + wikiLog まで行う）。
+  const handleAdoptKnowledgeCandidates = useCallback(
+    async (candidates: KnowledgeCandidate[]) => {
+      if (!onCreateKnowledgeNote) return;
+      for (const c of candidates) {
+        await onCreateKnowledgeNote(c.doc, c.kind);
+      }
+    },
+    [onCreateKnowledgeNote],
   );
 
   // 挿入されたブロック配列に対して、抽出済みラベルを path 経由で実 ID に解決して
@@ -2218,6 +2501,7 @@ function NoteEditorInner({
       if (page.mediaInlineLabels) {
         mediaInlineLabelStore.restoreSnapshot(page.mediaInlineLabels);
       }
+      blockAlignmentStore.restoreSnapshot(page.blockAlignments);
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
         const existingLinks = noteLinksRef.current;
@@ -2523,6 +2807,7 @@ function NoteEditorInner({
           onSelect={handlePickerSelect}
           onClose={() => setPickerMediaType(null)}
           onUpload={uploadFile}
+          allowDisplayMode
         />
       )}
       {/* メモピッカーモーダル（スラッシュメニュー /memo から） */}
@@ -2564,6 +2849,7 @@ function NoteEditorInner({
           onSelect={handleUrlSlashPickerSelect}
           onClose={() => setUrlSlashPickerOpen(false)}
           onAddUrlBookmark={onAddUrlBookmark}
+          allowDisplayMode
         />
       )}
       {/* テンプレートピッカーモーダル（スラッシュメニュー /template から） */}
@@ -2629,6 +2915,12 @@ function NoteEditorInner({
               ? () => onNavigateNote(`wiki:${wikiEntriesForCurrentNote[0].noteId}`)
               : undefined
           }
+          archived={archived}
+          onArchive={onArchiveNote}
+          archiveDisabled={!fileId || saving}
+          onRestore={onRestoreFromArchive}
+          trashed={trashed}
+          onRestoreFromTrash={onRestoreFromTrash}
           onDelete={onDeleteNote}
           deleteDisabled={!fileId || saving}
           onShare={!isWikiDoc ? handleShare : undefined}
@@ -2642,6 +2934,104 @@ function NoteEditorInner({
 
       {/* タイトルバー直下のサブヘッダー（WikiBanner / SkillBanner 用、D1 配置） */}
       {subHeaderSlot}
+
+      {/* 通常ノートのアーカイブバナー。Wiki / Skill は専用バナー（subHeaderSlot）が
+          アーカイブ表示を担うため除外する。エディタは archived のとき read-only
+          （editable={!archived}）なので、ここでは状態の可視化と復元導線を提供する。 */}
+      {archived && !isWikiDoc && !isSkillDoc && (
+        <div style={{ padding: "0 16px", marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "6px 12px",
+              borderRadius: "var(--r-1)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-2)",
+              fontSize: 13,
+            }}
+          >
+            <Archive size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{t("archive.archivedHint")}</span>
+            {onRestoreFromArchive && (
+              <button
+                onClick={onRestoreFromArchive}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0,
+                  padding: "4px 10px",
+                  borderRadius: "var(--r-1)",
+                  border: "1px solid var(--rule)",
+                  background: "var(--paper-2)",
+                  color: "var(--ink-2)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                title={t("archive.restore")}
+              >
+                <ArchiveRestore size={13} />
+                {t("archive.restore")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 通常ノートのゴミ箱バナー。ゴミ箱ノートはノートリンク経由で開けてしまうため、
+          read-only（editable={!trashed}）にしたうえで「ゴミ箱にある」ことを明示し、
+          復元導線を出す。archived と trashed は排他（両立しない）。 */}
+      {trashed && !isWikiDoc && !isSkillDoc && (
+        <div style={{ padding: "0 16px", marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "6px 12px",
+              borderRadius: "var(--r-1)",
+              background: "var(--paper)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-2)",
+              fontSize: 13,
+            }}
+          >
+            <Trash2 size={14} style={{ flexShrink: 0, color: "var(--ink-3)" }} />
+            <span style={{ flex: 1, lineHeight: 1.4 }}>{t("trash.trashedHint")}</span>
+            {onRestoreFromTrash && (
+              <button
+                onClick={onRestoreFromTrash}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexShrink: 0,
+                  padding: "4px 10px",
+                  borderRadius: "var(--r-1)",
+                  border: "1px solid var(--rule)",
+                  background: "var(--paper-2)",
+                  color: "var(--ink-2)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                title={t("trash.restoreFromTrash")}
+              >
+                <ArchiveRestore size={13} />
+                {t("trash.restoreFromTrash")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
@@ -2677,13 +3067,79 @@ function NoteEditorInner({
               aria-label={t("editor.titlePlaceholder")}
               className="block w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/50 text-3xl font-bold leading-tight mt-3 mb-5 px-[54px] resize-none overflow-hidden break-words"
             />
+            {/* 文脈タグ行（タイトル直下・人間ノートのみ）。本文と同じ autosave 経路で保存する */}
+            {!isWikiDoc && !isSkillDoc && fileId && (
+              <div className="px-[54px] -mt-3 mb-5 flex flex-wrap items-center gap-1.5">
+                {noteContexts.map((c) => (
+                  <ContextBadge
+                    key={c}
+                    value={c}
+                    onRemove={() => {
+                      const next = removeNoteContext(noteContextsRef.current, c) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    removeLabel={t("nav.removeContext")}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (headerContextPickerPos) {
+                      setHeaderContextPickerPos(null);
+                      return;
+                    }
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setHeaderContextPickerPos({ top: r.bottom + 4, left: r.left });
+                  }}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                  title={noteContexts.length > 0 ? t("nav.addContext") : t("nav.noteContextsTooltip")}
+                >
+                  ＋ {t("nav.noteContexts")}
+                </button>
+                {headerContextPickerPos && (
+                  <ContextTagPicker
+                    position={headerContextPickerPos}
+                    onClose={() => setHeaderContextPickerPos(null)}
+                    title={t("nav.noteContexts")}
+                    selected={noteContexts}
+                    suggestions={aggregateNoteContexts(noteIndex?.notes ?? [])}
+                    placeholder={t("nav.contextPlaceholder")}
+                    createLabel={(v) => t("nav.createContext", { value: v })}
+                    clearLabel={t("nav.clearContexts")}
+                    emptyText={t("nav.contextEmpty")}
+                    onDeleteCandidate={onDeleteContextEverywhere}
+                    onAdd={(v) => {
+                      const next = addNoteContext(noteContextsRef.current, v) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    onRemove={(v) => {
+                      const next = removeNoteContext(noteContextsRef.current, v) ?? [];
+                      noteContextsRef.current = next;
+                      setNoteContexts(next);
+                      markDirty();
+                    }}
+                    onClear={() => {
+                      noteContextsRef.current = [];
+                      setNoteContexts([]);
+                      markDirty();
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            {/* table / audio / file の配置揃えを CSS で適用（サイドストア駆動） */}
+            <AlignmentStyleLayer />
             <SandboxEditor
               key={fileId || "new"}
-              editable={!archived}
+              editable={!archived && !trashed}
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -2850,6 +3306,18 @@ function NoteEditorInner({
             uploadFile={uploadFile}
             onAddUrlBookmark={onAddUrlBookmark}
             noteIndex={noteIndex ?? null}
+            archived={isArchived?.(sidePeekNoteId) ?? false}
+            onRestoreFromArchive={
+              isArchived?.(sidePeekNoteId) && onRestoreArchivedById
+                ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
+            trashed={isTrashed?.(sidePeekNoteId) ?? false}
+            onRestoreFromTrash={
+              isTrashed?.(sidePeekNoteId) && onRestoreTrashedById
+                ? () => onRestoreTrashedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {sidePeekNoteId && !isDesktop && (
@@ -2867,6 +3335,18 @@ function NoteEditorInner({
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
+            archived={isArchived?.(sidePeekNoteId) ?? false}
+            onRestoreFromArchive={
+              isArchived?.(sidePeekNoteId) && onRestoreArchivedById
+                ? () => onRestoreArchivedById(sidePeekNoteId)
+                : undefined
+            }
+            trashed={isTrashed?.(sidePeekNoteId) ?? false}
+            onRestoreFromTrash={
+              isTrashed?.(sidePeekNoteId) && onRestoreTrashedById
+                ? () => onRestoreTrashedById(sidePeekNoteId)
+                : undefined
+            }
           />
         )}
         {/* @ で引用したドキュメント素材（PDF/docx）のサイドピーク。ノート SidePeek と同じ
@@ -2951,7 +3431,8 @@ function NoteEditorInner({
                   onReplaceBlocks={handleReplaceBlocks}
                   onDeriveNote={handleAiDeriveFromChat}
                   onIngestChat={onIngestChat}
-                  onMakeKnowledge={onCreateKnowledgeNote ? handleMakeKnowledge : undefined}
+                  onGenerateKnowledgeCandidates={onCreateKnowledgeNote ? handleGenerateKnowledgeCandidates : undefined}
+                  onAdoptKnowledgeCandidates={onCreateKnowledgeNote ? handleAdoptKnowledgeCandidates : undefined}
                   noteIndex={noteIndex}
                   onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
                 />
@@ -3113,6 +3594,9 @@ export function NoteApp() {
   const [showMemos, setShowMemos] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
+  // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
+  // データ構築は fm 宣言後に行う（globalGraphData）。
+  const [showGlobalGraph, setShowGlobalGraph] = useState(false);
   // ノートのグラフから素材ノードをクリックされたときに AssetGalleryView へ
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
@@ -3200,6 +3684,24 @@ export function NoteApp() {
   const capture = useCapture(authenticated);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
+  // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
+  const globalGraphData = useMemo(
+    () =>
+      showGlobalGraph && fm.noteIndex
+        ? buildGlobalGraph(fm.noteIndex, fm.mediaIndex ?? null)
+        : { nodes: [], edges: [] },
+    [showGlobalGraph, fm.noteIndex, fm.mediaIndex],
+  );
+  // ノートを開いたら（activeFileId が変わったら）全体グラフは畳む。
+  // SidePeek の「開く」/サイドバーの最近ノード/新規作成など、ノートを開くあらゆる経路を
+  // 1 箇所でカバーする（各ハンドラに個別の setShowGlobalGraph(false) を撒かずに済む）。
+  const prevActiveFileIdRef = useRef(fm.activeFileId);
+  useEffect(() => {
+    if (fm.activeFileId !== prevActiveFileIdRef.current) {
+      prevActiveFileIdRef.current = fm.activeFileId;
+      setShowGlobalGraph(false);
+    }
+  }, [fm.activeFileId]);
 
   // 世界モデル照合 共通ハンドラ（Phase 2 / PR 2A）。
   // 照合発火はすべて **ユーザー起動**（バナー単発 / 一覧 bulk）に統一する。
@@ -3441,6 +3943,9 @@ export function NoteApp() {
   // ⌘+⇧+M: どこからでも Quick Memo ダイアログを開く。
   // メモは「気軽な思いつきを書き留める原料」なので、画面状態に依存せず
   // ノート編集中でも一覧画面でも同じ操作で開けるよう document レベルで購読する。
+  // デスクトップ (Tauri/WKWebView) では Cmd 系キーが JS keydown まで届かないことがあるため、
+  // Rust 側で ⌘⇧M アクセラレータを持つネイティブメニュー項目 "new-memo" を併設し、
+  // その menu-action もここで購読する。Web では menu-action は発火しないので無害。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "m") {
@@ -3449,7 +3954,11 @@ export function NoteApp() {
       }
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    const offMenu = onMenuAction("new-memo", () => setShowQuickMemoDialog(true));
+    return () => {
+      document.removeEventListener("keydown", handler);
+      offMenu();
+    };
   }, []);
 
   // ノートにはグローバルショートカットを設けない。
@@ -3498,7 +4007,7 @@ export function NoteApp() {
       fm.setActiveWikiKind(null);
       setActiveWikiView(null);
       setShowMemos(false);
-      setShowSharedLibrary(false);
+      setShowSharedLibrary(false); setShowGlobalGraph(false);
     },
   }), [fm]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
@@ -4212,6 +4721,21 @@ export function NoteApp() {
 
   const t = useT();
 
+  // 文脈候補（タグ）を全ノートから削除する。ピッカーのゴミ箱から呼ばれる。
+  // 使用中の件数を数え、1 件以上なら確認ダイアログを出す。実際に削除したら true を返す
+  // （ピッカー側がセッション表示から即座に消すのに使う）。
+  const handleDeleteContextEverywhere = async (value: string): Promise<boolean> => {
+    const key = value.trim().toLowerCase();
+    const count = (fm.noteIndex?.notes ?? []).filter((n) =>
+      (n.noteContexts ?? []).some((c) => c.trim().toLowerCase() === key),
+    ).length;
+    if (count >= 1 && !window.confirm(t("nav.deleteContextConfirm", { value, count: String(count) }))) {
+      return false;
+    }
+    await fm.deleteNoteContextEverywhere(value);
+    return true;
+  };
+
   // エディタ参照（メディアリネーム時のブロック同期用）
   const noteEditorRef = useRef<any>(null);
 
@@ -4299,7 +4823,8 @@ export function NoteApp() {
       if (isAtom) {
         // Atom (Insight) は ingest パイプラインの出力に含まれないため、専用の
         // atomize 経由で再生成する。derivedFromClaims に記録された上流 Concept を
-        // ClaimSnapshot に詰めて atomizer に投げ、同タイトルの候補を採用する。
+        // ClaimSnapshot に詰めて atomizer に投げ、新しい構造抽象を採用する
+        // （decompose→shape→abstract→transfer の re-lift）。旧タイトルには寄せない。
         const claimIds = doc.wikiMeta.derivedFromClaims ?? [];
         const snapshots: ClaimSnapshot[] = [];
         for (const cId of claimIds) {
@@ -4320,12 +4845,14 @@ export function NoteApp() {
           });
         }
 
-        if (snapshots.length < 2) {
+        // 2 件必須ゲートは撤廃（サーバー側の可搬性テストと整合）。source Claim が
+        // 1 件でも可搬なら再生成できる。0 件のときだけ再生成不能としてエラーにする。
+        if (snapshots.length < 1) {
           const totalSources = claimIds.length;
           const errMsg =
             totalSources === 0
               ? "Atom has no source Concepts recorded"
-              : `Atom needs ≥2 source Concepts; only ${snapshots.length} of ${totalSources} remain as Claim`;
+              : `Atom's ${totalSources} source Concept(s) no longer exist as Claims`;
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
               i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: errMsg } : i
@@ -4335,12 +4862,14 @@ export function NoteApp() {
         }
 
         const atomResult = await atomizeConcepts(snapshots, "ja", {
-          // 同タイトルの再提案を阻害しないため existingAtomTitles は空で渡す
+          // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
+          // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
         });
-        const matchedAtom =
-          atomResult.atoms.find((a) => a.title === wikiTitle) ?? atomResult.atoms[0] ?? null;
-        if (!matchedAtom) {
+        // 旧タイトル一致で選ぶと元のドメイン語 Atom を再現してしまい re-lift にならない。
+        // 同じ source Claim から作り直した新しい構造抽象の主候補をそのまま採用する。
+        const regenAtom = atomResult.atoms[0] ?? null;
+        if (!regenAtom) {
           const errMsg = "No atom candidate generated";
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
@@ -4350,7 +4879,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const newDoc = buildAtomDocument(matchedAtom, atomResult.model ?? null, "ja");
+        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, "ja");
         // 既存 Atom が持っていた derivedFromClaims を温存する
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
@@ -4755,25 +5284,41 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
-    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
-    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
+    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
+    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
+    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
     noteListActive: fm.showNoteList,
     mediaIndex: fm.mediaIndex,
-    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
+    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
-    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
+    onShowGlobalGraph: () => {
+      // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
+      setShowGlobalGraph(true);
+      fm.setActiveAssetType(null);
+      fm.setActiveLabel(null);
+      fm.setActiveWikiKind(null);
+      fm.setShowNoteList(false);
+      setShowMemos(false);
+      setShowSkillList(false);
+      setActiveWikiView(null);
+      setShowTrash(false);
+      setShowSharedLibrary(false);
+      setListSidePeekNoteId(null);
+      setSidebarOpen(false);
+    },
+    globalGraphActive: showGlobalGraph,
+    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
     filesLoading: fm.filesLoading,
     memoCount: capture.captureIndex?.captures.length ?? 0,
-    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
+    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     wikiCounts: (() => {
       // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
@@ -4796,14 +5341,14 @@ export function NoteApp() {
     // experimental.atomLayer に関わらず常にサイドバーに表示する。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
     showAtomLayer: true,
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
+    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
-    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
+    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
+    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
     skillCount: fm.skillMetas.size,
-    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setSidebarOpen(false); },
+    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); },
     skillActive: showSkillList,
     onShowTrash: () => {
       setShowTrash(true);
@@ -4814,7 +5359,7 @@ export function NoteApp() {
       setShowMemos(false);
       setShowSkillList(false);
       setActiveWikiView(null);
-      setShowSharedLibrary(false);
+      setShowSharedLibrary(false); setShowGlobalGraph(false);
       setSidebarOpen(false);
     },
     trashActive: showTrash,
@@ -4830,6 +5375,7 @@ export function NoteApp() {
           setShowSkillList(false);
           setActiveWikiView(null);
           setShowTrash(false);
+          setShowGlobalGraph(false);
           setSidebarOpen(false);
           router.navigate({ view: "shared-library" });
         }
@@ -4872,7 +5418,26 @@ export function NoteApp() {
         )
       )}
       <main className="flex-1 overflow-hidden flex flex-col relative">
-        {fm.activeAssetType ? (
+        {showGlobalGraph ? (
+          <GlobalGraphView
+            data={globalGraphData}
+            onSelectNote={(noteId) => {
+              // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
+              // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
+              setListSidePeekNoteId(noteId);
+            }}
+            onOpenMedia={(fileId) => {
+              // 素材ノードクリック → 全体グラフを閉じて Material gallery で Full view 表示。
+              setShowGlobalGraph(false);
+              const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
+              if (!target) return;
+              fm.setActiveAssetType(target.type);
+              setFocusedMaterial({ fileId, fullMode: true });
+              router.navigate({ view: "assets", mediaType: target.type });
+            }}
+            onClose={() => setShowGlobalGraph(false)}
+          />
+        ) : fm.activeAssetType ? (
           <AssetGalleryView
             mediaIndex={fm.mediaIndex}
             mediaType={fm.activeAssetType}
@@ -5314,6 +5879,8 @@ export function NoteApp() {
               for (const id of ids) await fm.handleDelete(id);
             }}
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
+            onSetNoteContexts={fm.updateNoteContexts}
+            onDeleteContextEverywhere={handleDeleteContextEverywhere}
             onIngestNotes={aiAvailable ? async (ids) => {
               // Knowledge 化候補から AI 派生（wiki）と既に処理待ちの ID を除外
               const candidates: { id: string; title: string }[] = [];
@@ -5582,7 +6149,7 @@ export function NoteApp() {
                 }
               }
               const newFileId = await fm.handleCreateNoteFromImport(docToSave);
-              setShowSharedLibrary(false);
+              setShowSharedLibrary(false); setShowGlobalGraph(false);
               fm.handleOpenFile(newFileId);
               router.navigate({ view: "editor", fileId: newFileId });
             }}
@@ -5602,7 +6169,7 @@ export function NoteApp() {
                 alert(`Unshare failed: ${result.error}`);
               }
             }}
-            onBack={() => { setShowSharedLibrary(false); router.navigate({ view: "home" }); }}
+            onBack={() => { setShowSharedLibrary(false); setShowGlobalGraph(false); router.navigate({ view: "home" }); }}
           />
         ) : showTrash ? (
           <TrashView
@@ -5712,6 +6279,7 @@ export function NoteApp() {
             key={fm.editorKey}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
+            onDeleteContextEverywhere={handleDeleteContextEverywhere}
             contextDrawerSlot={
               fm.activeDoc?.source === "ai" && fm.activeDoc?.wikiMeta
                 ? (() => {
@@ -5754,6 +6322,24 @@ export function NoteApp() {
               const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
               return rawId ? fm.archivedIdSet.has(rawId) : false;
             })()}
+            onRestoreFromArchive={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              // 復元後はそのまま開いたままにする（archivedIdSet 更新でバナーが消え編集可に戻る）
+              return rawId ? () => fm.handleRestoreFromArchive(rawId) : undefined;
+            })()}
+            isArchived={(noteId: string) => fm.archivedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
+            onRestoreArchivedById={(noteId: string) => fm.handleRestoreFromArchive(noteId.replace(/^(wiki|skill):/, ""))}
+            trashed={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              return rawId ? fm.trashedIdSet.has(rawId) : false;
+            })()}
+            onRestoreFromTrash={(() => {
+              const rawId = fm.activeFileId?.replace(/^(wiki|skill):/, "");
+              // 復元後はそのまま開いたままにする（trashedIdSet 更新でバナーが消え編集可に戻る）
+              return rawId ? () => fm.handleRestore(rawId) : undefined;
+            })()}
+            isTrashed={(noteId: string) => fm.trashedIdSet.has(noteId.replace(/^(wiki|skill):/, ""))}
+            onRestoreTrashedById={(noteId: string) => fm.handleRestore(noteId.replace(/^(wiki|skill):/, ""))}
             onSave={fm.activeDoc?.source === "ai"
               ? (doc: GraphiumDocument) => {
                   const wikiId = fm.activeFileId?.replace("wiki:", "");
@@ -5780,6 +6366,12 @@ export function NoteApp() {
                 }
               }
               fm.handleDelete(id);
+              router.navigate({ view: "home" });
+            } : undefined}
+            onArchiveNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
+              // アーカイブは派生リンクを守るのが目的なので、削除と違い参照警告は出さない。
+              const id = fm.activeFileId!;
+              fm.handleArchiveNote(id);
               router.navigate({ view: "home" });
             } : undefined}
             onAiDeriveNote={async (doc) => {
@@ -5972,6 +6564,22 @@ export function NoteApp() {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);
               })()}
+              onRestoreFromArchive={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.archivedIdSet.has(rawId)
+                  ? () => fm.handleRestoreFromArchive(rawId)
+                  : undefined;
+              })()}
+              trashed={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.trashedIdSet.has(rawId);
+              })()}
+              onRestoreFromTrash={(() => {
+                const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
+                return fm.trashedIdSet.has(rawId)
+                  ? () => fm.handleRestore(rawId)
+                  : undefined;
+              })()}
               mediaIndex={fm.mediaIndex ?? null}
               captureIndex={capture.captureIndex ?? null}
               uploadFile={fm.handleUploadMedia}
@@ -5995,6 +6603,8 @@ export function NoteApp() {
                 }
                 router.navigate({ view: "editor", fileId: noteId });
               }}
+              onNoteContextsChange={(id, doc) => fm.reindexNoteFromDoc(id, doc)}
+              onDeleteContextEverywhere={handleDeleteContextEverywhere}
               wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
               onAddToKnowledge={
                 (aiAvailable ?? false) && !listSidePeekNoteId.startsWith("wiki:")

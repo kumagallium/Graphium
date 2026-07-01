@@ -125,6 +125,7 @@ export function buildIngesterSystemPrompt(
   language: string,
   existingWikis: ExistingWikiInfo[],
   skills?: IngestSkill[],
+  opts?: { isDocument?: boolean },
 ): string {
   const wikiListText = existingWikis.length > 0
     ? existingWikis.map((w) => `- [${w.kind}] ${w.title} (id: ${w.id})`).join("\n")
@@ -133,6 +134,30 @@ export function buildIngesterSystemPrompt(
   const hasExistingConcepts = existingWikis.some((w) => w.kind === "claim");
 
   const ja = language === "ja";
+
+  // 取り込んだ外部文書（PDF / Word / URL / チャット）は通常、複数の転用可能な知見を主張する。
+  // 短い個人ノート前提の「0-3 件」「ユーザー自身の経験」枠のままだと、文書を読み切ってリッチな
+  // Summary を作っても見出し級の 1 件だけを Claim に昇格させ、残りを Summary に埋もれさせる過少
+  // 抽出が起きる（ALCOA 資料で実観測）。文書モードでは以下のブロックでその既定を上書きする。
+  const isDocument = opts?.isDocument === true;
+
+  const documentHarvestBlock = isDocument
+    ? `**This source is an imported external document** (an article, PDF, web page, or transcript), not a short personal note. A document like this almost always argues **several distinct transferable claims**. The most common failure here is to write one rich Summary and then promote only the single headline claim — leaving the rest of the knowledge buried in the Summary. Do not do that.
+
+- **Harvest every distinct transferable insight as its own Claim.** Walk the document's argument from start to end and pull out each idea that can stand on its own and transfer to another context.
+- **A Claim here does NOT have to come from the user's own experience.** A proposition the *document itself* establishes or argues is a valid Claim. This overrides the "the user's own experience" framing in the level guidance below.
+- **Insights abstracted from narrative or structure count too**, not only domain findings. From an origin story you might abstract "a widely adopted framework can begin as one person's informal memory aid and become canon through adoption"; from a naming discussion, "labeling an existing set of requirements adds no new substance but creates memorability and spread." These are genuine, transferable Claims — promote them, don't leave them in the Summary.
+- **No fixed upper limit, and no padding.** A dense document commonly yields 5-8 Claims; a thin one may yield 1. Emit exactly as many as the document genuinely carries — never pad to reach a number, never clip to stay under one, never bundle two ideas to save space.
+- The quality gate is unchanged: no restatement of the Summary, no textbook filler, each Claim is one transferable idea with the source cited via [[title]].`
+    : "";
+
+  const claimCountHeading = isDocument
+    ? "harvest every distinct transferable insight — no fixed cap"
+    : "0-3 per note";
+
+  const claimCountGuideline = isDocument
+    ? `one per distinct transferable insight the document carries (no fixed cap; a substantial document commonly yields 5-8). **Harvest, don't collapse** — see the document-mode block above. Still no padding or restatement; each Claim holds exactly one idea.`
+    : `0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).`;
 
   const skillSection = skills && skills.length > 0
     ? `\n\n## Applied Style Skills (apply these to ALL output below)\n\nThe following style skills define the voice, register, and rhythm of every note you write. Treat them as overriding any default tone you would otherwise use. Re-read them before writing each Summary or Claim.\n\n${skills.map((s) => `### ${s.title}\n\n${s.prompt}`).join("\n\n")}`
@@ -420,8 +445,10 @@ If the source ends with a marker like \`[... truncated: read N of M pages]\`, yo
 
 Default to flowing prose with a single empty-heading section (\`heading: ""\`). Use real headings only when the source has 2+ genuinely distinct beats that benefit from being navigable, and let each heading **name the actual beat** (e.g., 「方法」「予想外だった結果」). Never invent decorative labels like 「核心の発見」「ジレンマの構造」 just to fill structure.
 
-## Claim (0-3 per note)
-
+## Claim (${claimCountHeading})
+${isDocument ? `
+${documentHarvestBlock}
+` : ""}
 **One Claim = one idea.** This is the strongest rule. If a note carries two transferable claims, generate two Claims — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Claim is in a single sentence after reading it.
 
 Claims are **transferable knowledge**, written so they make sense to a researcher who has never seen this lab. They MUST be PII-free and abstracted:
@@ -508,7 +535,7 @@ Output in: ${ja ? "Japanese" : "English"}
 ## Quality Guidelines
 
 - Summary: exactly 1 per note.
-- Claims: 0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).
+- Claims: ${claimCountGuideline}
 - Quality > quantity. If the note has no transferable claim worth abstracting, generate zero Claims and just produce the Summary.
 - Length: include what the Claim needs to be understood and traced — no more. A 3-sentence Claim that lands cleanly beats a 10-sentence one with filler. If you find yourself stretching to fill space, the Claim is done.
 - relatedClaims: \`{title, citation}\` pairs for connected existing Claims. \`citation\` explains the link in one line (e.g., "provides pH-dependency context"). Empty array if none.

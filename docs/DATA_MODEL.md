@@ -74,6 +74,15 @@ type GraphiumDocument = {
   // and sourcePdfFileId (a note *generated from* a PDF).
   citedAssetFileIds?: string[];
 
+  // ── user-assigned context labels ────────────────────
+  // Free-form categories the user attaches by hand (e.g. "eureco",
+  // "philosophy", "MCP research"). Note-level, multiple allowed. Orthogonal
+  // to PROV block labels (procedure/material/…, auto-extracted) and to
+  // wikiMeta.theme (a Synthesis-only lens). Used for note-list display /
+  // filtering; mirrored to NoteIndexEntry.noteContexts (index v21) and
+  // intended to later scope AI context to a chosen context.
+  noteContexts?: string[];
+
   // ── authorship / agent ──────────────────────────────
   generatedBy?: {
     agent: string;
@@ -168,6 +177,13 @@ type GraphiumPage = {
 
   // ── reference table feature ─────────────────────────
   indexTables?: Record<string, Record<string, string>>;  // tableBlockId → (sampleName → noteId)
+
+  // ── block alignment ─────────────────────────────────
+  blockAlignments?: Record<string, "left" | "center" | "right">;
+                                     // blockId → alignment, for blocks WITHOUT a
+                                     // BlockNote `textAlignment` prop (table / audio / file).
+                                     // Paragraph / heading / image / video / callout store
+                                     // alignment in their own `textAlignment` block prop instead.
 
   // ── lineage ─────────────────────────────────────────
   derivedFromPageId?: string;
@@ -345,7 +361,9 @@ type WikiMeta = {
 
   // Semantic types (Phase 1, all optional — additive, back-compatible)
   claimRole?: ClaimRole[];    // Claim only. Multi-valued.
-  atomType?: AtomType;            // Atom only.
+  atomType?: AtomType;            // Atom only. Logical character of the statement.
+  shape?: AtomShape;              // Atom only. Relationship-shape (structure-mapping axis).
+  transfer?: AtomTransfer;        // Atom only. Cross-domain analogy, kept only if the judge confirms a structural match.
   synthesisMode?: SynthesisMode;  // Synthesis only.
   hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
   procedureContext?: ProcedureContext; // Claim only. Atom/Synthesis are context-stripped by contract.
@@ -363,6 +381,26 @@ type ClaimRole =
 type AtomType =
   | "causal" | "correlational" | "mechanistic" | "conditional"
   | "definitional" | "methodological" | "observational" | "boundary";
+
+// Relationship-shape: the structure-mapping axis the atomizer classifies into
+// (it classifies, it does not invent — this is what keeps abstraction from going vacuous).
+type AtomShape =
+  | "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold"
+  | "trade-off" | "enabling-condition" | "composition-structure"
+  | "reinforcing-loop" | "balancing-loop"   // feedback cycles (systems-thinking R/B loops)
+  | "other";
+
+// Cross-domain analogy. The atomizer proposes a candidate; a skeptical judge keeps it
+// only when the example instances the SAME shape + role-structure. Absent if forced/none.
+type AtomTransfer = { field: string; example: string };
+
+// UI surfacing: only `shape` is shown, and only in the detail view's context drawer
+// (alongside world-grounding / derived-from), as understated text rather than a badge.
+// `transfer` is generated and stored but intentionally NOT surfaced — spotting where an
+// Atom transfers to another field is the user's creative work, and pre-filling it would
+// anchor the reader (it is reserved for a future human-triggered "Idea" layer). `shape`
+// is read directly from the full `WikiMeta`, so nothing is mirrored into
+// `WikiMetaSummary` / `NoteIndexEntry` and `INDEX_SCHEMA_VERSION` is unchanged.
 
 type SynthesisMode =
   | "deductive" | "abductive" | "analogical" | "dialectic";
@@ -435,6 +473,8 @@ versions stay valid with these fields absent.
 |---|---|---|
 | `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
 | `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
+| `shape` | Atom | monotonic-increase, monotonic-decrease, optimal-middle, threshold, trade-off, enabling-condition, composition-structure, reinforcing-loop, balancing-loop, other (structure-mapping axis; the atomizer classifies into this) |
+| `transfer` | Atom | `{ field, example }` — a cross-domain analogy kept only when the transfer judge confirms a structural match (forced ones are dropped) |
 | `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
 | `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
 | `epistemicStatus` | Claim, Atom | speculation, interpretation, observation, established (Phase η — see §3.6) |
@@ -637,7 +677,7 @@ type GroundingProfile = {
     rationale?: string;
     sources?: GroundingSource[];
     matchedKeywords?: string[];              // KB keywords that hit (PR 2A audit field)
-    checkedBy?: string;                      // PR 2A: "distilled-kb@v1"
+    checkedBy?: string;                      // "distilled-kb@v1" (KB hit) | "web-search" (web-grounded) | "<model-id>" (parametric) | "no-engine"/"engine-error"
     checkedAt?: string;                      // ISO 8601
     entryId?: string;                        // KB entry this grounded to (world-grounding edge)
     dismissed?: boolean;                     // user manually cleared the verdict (see below)
@@ -661,6 +701,13 @@ The lane is **strictly separate** from the existing layers:
 - The verdict is allowed to be **absent**. When the distilled KB has no
   hit, `validity` still records `{ checkedBy, checkedAt }` so the UI
   can say "checked but unmatched" without lying.
+- `GroundingSource.url` is populated **only** for web-grounded judgments,
+  where the URL is constrained to one that appeared in the retrieved
+  evidence (Wikipedia / OpenAlex / a search MCP). A purely parametric
+  judgment (model memory, when search is unavailable) emits **`ref` text
+  only, no `url`** — a recalled DOI/URL is high-entropy and can resolve to
+  an unrelated paper, so verifiable links come only from retrieval. See
+  [ARCHITECTURE.md §3.3](./ARCHITECTURE.md) for the two judge modes.
 - `entryId` records the KB entry the claim grounded to (the matched seed
   entry, or the `gen-…` id of a freshly sedimented LLM result). This is a
   **world-grounding edge**: two insights with the same `entryId` are
@@ -815,7 +862,7 @@ type NoteIndexEntry = {
   }[];
 
   deletedAt?: string;               // trashed timestamp (user intent)
-  archivedAt?: string;              // archived timestamp (system retention)
+  archivedAt?: string;              // archived timestamp (user retire OR system retention)
 
   // Phase 1 semantic types — mirrored from wikiMeta for fast list-view filtering
   claimRole?: ClaimRole[];
@@ -852,6 +899,14 @@ type NoteIndexEntry = {
   //   docs for back-compat and UI grouping. New Cmd-K Composer
   //   authoring does not populate it.
   theme?: string;
+
+  // v21: user-assigned context labels — mirrored from
+  //   GraphiumDocument.noteContexts (normalised: trimmed, de-duped
+  //   case-insensitively). Note-level free-form categories the user attaches
+  //   by hand; used by the note list for the "Context" column display and the
+  //   column-header filter. Orthogonal to PROV labels and to `theme`.
+  //   Absent → undefined (treated as "uncategorised").
+  noteContexts?: string[];
 };
 ```
 
@@ -878,6 +933,7 @@ Bumping rules:
 | **18** | Added `meta-atom` to `WikiKind` and `derivedFromAtoms` mirror (Phase ε — KJ-style mid-cluster + headline). Withdrawn at v19. |
 | **19** | Withdrew Phase ε. Removed `"meta-atom"` from `WikiKind` and the `derivedFromAtoms` mirror. LLM-driven axis invention proved unreliable (outputs collapsed to the source domain even at Anthropic Opus). Existing meta-atom JSON files on disk are tolerated by `ensureIndex` — their wiki kind falls outside the new enum and the index entry is rebuilt as a regular note-less placeholder until the user trashes it. The replacement is a human-provided theme threaded through the Synthesizer, landing in a follow-up PR. |
 | **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
+| **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
@@ -894,14 +950,28 @@ either flag — the file path stays the same so any link or
 | State | Flag | Meaning | List/search/graph | Citation/regenerate |
 |---|---|---|---|---|
 | active | (neither) | normal | shown | resolve |
-| archived | `archivedAt` | system retention (currently set when an auto-merge absorbs a Claim into another) | hidden | resolve |
+| archived | `archivedAt` | retired from the list but kept resolvable. Set either by the user (note header menu → Archive, when retiring a note whose derived versions should keep working) or by the system (auto-merge absorbing a Claim into another) | hidden | resolve |
 | trashed | `deletedAt` | user delete intent | hidden | not resolved |
+
+The "hidden" column covers list, search, graphs, and the citation picker.
+A note can still be *reached* while archived or trashed, though: a stale
+inline link, `@mention`, or index-table cell that predates the state change
+still points at the (soft-deleted) file. Opening a note in either state
+renders it **read-only** with a banner — an archive banner offering
+"Restore from archive", or a trash banner offering "Restore from trash" —
+so a lingering link never lets the user silently edit a note they thought
+was retired or deleted. This is a UI guard, not resolution: the trashed
+note is still "not resolved" for citations and regenerate.
 
 Transitions:
 
 - **active → trashed** via the trash action (manual).
-- **active → archived** via auto-merge (the absorbed Claim is archived,
-  not deleted, so notes that cited it keep working).
+- **active → archived** via the archive action (manual, note header
+  menu) when the user wants to retire a note from the list while keeping
+  its derivation links and citations alive — or via auto-merge (the
+  absorbed Claim is archived, not deleted, so notes that cited it keep
+  working). Unlike trash, archiving never warns about incoming
+  references, since preserving them is the whole point.
 - **archived → active** via the restore action. Note that a Claim
   archived by auto-merge will likely be re-archived on the next merge
   cycle unless the user edits its content to differentiate it.

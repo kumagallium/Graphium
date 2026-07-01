@@ -1772,6 +1772,10 @@ export type AtomCandidate = {
   confidence: number;
   /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
   atomType?: import("../../lib/document-types").AtomType;
+  /** 関係の形（構造写像の軸、decompose→shape→abstract） */
+  shape?: import("../../lib/document-types").AtomShape;
+  /** 越境転移（ジャッジ検証済みのみ。妥当な転移が無ければ undefined） */
+  transfer?: import("../../lib/document-types").AtomTransfer;
   /** Phase η: 入力 Claim の最低 status を継承した epistemicStatus */
   epistemicStatus?: import("../../lib/document-types").EpistemicStatus;
   /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal が Atom 層に伝播したもの */
@@ -1794,7 +1798,9 @@ export async function atomizeConcepts(
   language: string,
   options?: { existingAtomTitles?: string[]; model?: string },
 ): Promise<AtomizeResult> {
-  if (concepts.length < 2) return { atoms: [] };
+  // 単一ソース Atom は #459 で許可済み（route は concepts >= 1 を受ける）。
+  // ここで < 2 を弾くと regenerate の単一ソース re-lift が無言で失敗するため、空のときだけ弾く。
+  if (concepts.length < 1) return { atoms: [] };
   const res = await fetch(`${API_BASE}/atomize`, {
     method: "POST",
     headers: wikiHeaders("chatSynthesis"),
@@ -1886,6 +1892,9 @@ export function buildAtomDocument(
     confidence: candidate.confidence,
     // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
     atomType: candidate.atomType,
+    // 構造的抽象: 関係の形（shape）と越境転移（ジャッジ検証済みのみ route から渡る）
+    shape: candidate.shape,
+    transfer: candidate.transfer,
     // Phase η: source Claim から継承した最低 status（lowest-status inheritance, parser 側で強制）
     epistemicStatus: candidate.epistemicStatus,
     // Phase γ: 2+ Claim 共通の Rebuttal を Atom 層に伝播したもの。Atom には backing / modalQualifier は持たない。

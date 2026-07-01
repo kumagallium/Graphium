@@ -12,6 +12,7 @@ export type SortKey =
   | "createdAt"
   | "title"
   | "labels"
+  | "noteContexts"
   | "knowledgeCount"
   | "author";
 export type SortDirection = "asc" | "desc";

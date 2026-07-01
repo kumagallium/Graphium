@@ -154,10 +154,17 @@ function PickerItem({
   );
 }
 
+/**
+ * 挿入時の表示形式。
+ *   embed … 中身をノート内に展開（画像/PDF/file/bookmark ブロック）
+ *   link  … @リンク（素材は inline @名前、URL はハイパーリンク）として挿入し中身は展開しない
+ */
+export type AssetDisplayMode = "embed" | "link";
+
 export type MediaPickerModalProps = {
   mediaIndex: MediaIndex | null;
   mediaType: MediaType;
-  onSelect: (entry: MediaIndexEntry) => void;
+  onSelect: (entry: MediaIndexEntry, displayMode: AssetDisplayMode) => void;
   onClose: () => void;
   /** 新規アップロード（File → URL を返す） */
   onUpload?: (file: File) => Promise<string>;
@@ -165,6 +172,12 @@ export type MediaPickerModalProps = {
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
   /** 初期 URL（ペースト時に自動入力する） */
   initialUrl?: string;
+  /**
+   * 「埋め込み / リンク」の表示形式トグルを表示するか。
+   * onSelect 側で displayMode === "link" を処理できる呼び出し元のみ true にする。
+   * 未指定（false）なら従来どおり常に埋め込みで挿入する。
+   */
+  allowDisplayMode?: boolean;
 };
 
 export function MediaPickerModal({
@@ -175,10 +188,17 @@ export function MediaPickerModal({
   onUpload,
   onAddUrlBookmark,
   initialUrl,
+  allowDisplayMode = false,
 }: MediaPickerModalProps) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const [uploading, setUploading] = useState(false);
+  // 挿入時の表示形式（埋め込み / リンク）。
+  // document（PDF/docx）と URL は中身展開より参照が主目的なのでリンクを既定にする。
+  // 画像/動画/音声は見せること自体が目的なので埋め込みを既定にする。
+  const [displayMode, setDisplayMode] = useState<AssetDisplayMode>(
+    mediaType === "document" || mediaType === "url" ? "link" : "embed",
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -242,10 +262,10 @@ export function MediaPickerModal({
 
   const handleSelect = useCallback(
     (entry: MediaIndexEntry) => {
-      onSelect(entry);
+      onSelect(entry, displayMode);
       onClose();
     },
-    [onSelect, onClose],
+    [onSelect, onClose, displayMode],
   );
 
   // URL 新規登録
@@ -285,13 +305,13 @@ export function MediaPickerModal({
         },
       };
       onAddUrlBookmark(entry);
-      onSelect(entry);
+      onSelect(entry, displayMode);
       onClose();
     } finally {
       setUrlFetching(false);
       setUrlRegistering(false);
     }
-  }, [newUrl, onAddUrlBookmark, mediaIndex, handleSelect, onClose]);
+  }, [newUrl, onAddUrlBookmark, mediaIndex, handleSelect, onClose, onSelect, displayMode]);
 
   const isValidNewUrl = useMemo(() => {
     try {
@@ -337,6 +357,34 @@ export function MediaPickerModal({
             className="w-full text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
           />
         </div>
+
+        {/* 挿入方法トグル（埋め込み / リンク） */}
+        {allowDisplayMode && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {t("asset.displayMode")}
+          </span>
+          <div className="flex rounded border border-border overflow-hidden">
+            {(["embed", "link"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setDisplayMode(mode)}
+                className={`px-3 py-1 text-[11px] transition-colors ${
+                  displayMode === mode
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {mode === "embed" ? t("asset.displayEmbed") : t("asset.displayLink")}
+              </button>
+            ))}
+          </div>
+          <span className="text-[10px] text-muted-foreground truncate">
+            {displayMode === "embed" ? t("asset.displayEmbedHint") : t("asset.displayLinkHint")}
+          </span>
+        </div>
+        )}
 
         {/* グリッド */}
         <div className="flex-1 overflow-auto p-4">
@@ -435,7 +483,7 @@ export function MediaPickerModal({
                         thumbnailUrl: url.replace("=s0", "=s200"),
                         uploadedAt: new Date().toISOString(),
                         usedIn: [],
-                      });
+                      }, displayMode);
                       onClose();
                     } finally {
                       setUploading(false);

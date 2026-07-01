@@ -17,6 +17,14 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import { cn } from "../../lib/utils";
+import { ContextBadge } from "../note-context/ContextBadge";
+import { ContextTagPicker } from "../note-context/ContextTagPicker";
+import {
+  aggregateNoteContexts,
+  addNoteContext,
+  removeNoteContext,
+  noteContextHue,
+} from "../note-context/context-tags";
 
 // ラベル色マッピング（design.md PROV-DM ラベル色準拠）
 // ノート内の SideMenu バッジと同じゴーストスタイル: 薄い背景 + ラベル色テキスト + 薄いボーダー
@@ -91,6 +99,8 @@ export function NoteListView({
   onOpenWikiPeek,
   onImportMarkdown,
   onIngestNotes,
+  onSetNoteContexts,
+  onDeleteContextEverywhere,
 }: {
   noteIndex: GraphiumIndex | null;
   /** クリック時のコールバック（サイドピーク表示用） */
@@ -112,6 +122,13 @@ export function NoteListView({
   ) => Promise<void>;
   /** 選択中ノートを Knowledge 化（既存トーストキューに登録） */
   onIngestNotes?: (noteIds: string[]) => Promise<void>;
+  /**
+   * ノートの文脈ラベル（noteContexts）を更新して保存する。
+   * 一覧の行内付与・一括付与から呼ぶ。渡されなければ文脈列は読み取り専用になる。
+   */
+  onSetNoteContexts?: (noteId: string, contexts: string[]) => Promise<void> | void;
+  /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
+  onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +144,17 @@ export function NoteListView({
   const [authorFilterOpen, setAuthorFilterOpen] = useState(false);
   const [authorFilterPos, setAuthorFilterPos] = useState({ top: 0, left: 0 });
   const authorFilterBtnRef = useRef<HTMLButtonElement>(null);
+  // 文脈フィルタ（列ヘッダから絞り込み）
+  const [contextFilter, setContextFilter] = useState<string[]>([]);
+  const [contextFilterOpen, setContextFilterOpen] = useState(false);
+  const [contextFilterPos, setContextFilterPos] = useState({ top: 0, left: 0 });
+  const contextFilterBtnRef = useRef<HTMLButtonElement>(null);
+  // 文脈付与ピッカー（行内=single / 一括バー=bulk）。ids は付与対象ノート ID 群。
+  const [contextPicker, setContextPicker] = useState<
+    { ids: string[]; mode: "single" | "bulk"; pos: { top: number; left: number } } | null
+  >(null);
+  // 一括付与でこのセッション中に足した文脈（ピッカーのチェック表示用フィードバック）
+  const [bulkApplied, setBulkApplied] = useState<string[]>([]);
   // 選択状態
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // 削除確認ダイアログ
@@ -201,6 +229,12 @@ export function NoteListView({
       result = result.filter((e) => set.has(e.author ?? ""));
     }
 
+    // 文脈フィルタ（OR） — 列ヘッダから絞り込み。小文字比較で名寄せする。
+    if (contextFilter.length > 0) {
+      const set = new Set(contextFilter.map((c) => c.toLowerCase()));
+      result = result.filter((e) => e.noteContexts.some((c) => set.has(c.toLowerCase())));
+    }
+
     // ソート
     const sorted = [...result].sort((a, b) => {
       let cmp = 0;
@@ -224,6 +258,10 @@ export function NoteListView({
           // 先頭ラベルで比較（ラベル無しは最後）
           cmp = (a.labels[0] ?? "￿").localeCompare(b.labels[0] ?? "￿", "ja");
           break;
+        case "noteContexts":
+          // 先頭文脈で比較（文脈無しは最後）
+          cmp = (a.noteContexts[0] ?? "￿").localeCompare(b.noteContexts[0] ?? "￿", "ja");
+          break;
         case "knowledgeCount":
           cmp = a.knowledgeCount - b.knowledgeCount;
           break;
@@ -235,7 +273,7 @@ export function NoteListView({
     });
 
     return sorted;
-  }, [entries, searchQuery, labelFilter, authorFilter, sortKey, sortDir]);
+  }, [entries, searchQuery, labelFilter, authorFilter, contextFilter, sortKey, sortDir]);
 
   // 列ヘッダ filter の選択肢を entries から動的に集計
   const labelFilterOptions = useMemo<FilterOption[]>(() => {
@@ -266,6 +304,34 @@ export function NoteListView({
       .map(([value, count]) => ({ value, label: value, count }))
       .sort((a, b) => a.label.localeCompare(b.label, "ja"));
   }, [entries]);
+
+  // 文脈ラベルの集計（サジェスト候補 + 列ヘッダフィルタの選択肢の共通ソース）
+  const contextAggregate = useMemo(() => aggregateNoteContexts(entries), [entries]);
+  const contextFilterOptions = useMemo<FilterOption[]>(
+    () =>
+      contextAggregate.map(({ value, count }) => ({
+        value,
+        label: value,
+        count,
+        icon: <LabelDot color={`hsl(${noteContextHue(value)} 45% 45%)`} />,
+      })),
+    [contextAggregate],
+  );
+
+  // 文脈ラベルの更新（楽観的にローカル entries を先に書き換え、保存を後追いさせる）
+  const applyLocalContexts = useCallback((noteId: string, contexts: string[]) => {
+    setEntries((prev) =>
+      prev.map((e) => (e.noteId === noteId ? { ...e, noteContexts: contexts } : e)),
+    );
+  }, []);
+
+  const setNoteContexts = useCallback(
+    (noteId: string, contexts: string[]) => {
+      applyLocalContexts(noteId, contexts);
+      void onSetNoteContexts?.(noteId, contexts);
+    },
+    [applyLocalContexts, onSetNoteContexts],
+  );
 
   // ドラッグ範囲選択（チェックボックス列）
   const orderedIds = useMemo(() => filtered.map((e) => e.noteId), [filtered]);
@@ -437,6 +503,23 @@ export function NoteListView({
                 {selectedIds.size} 件を Knowledge 化
               </button>
             )}
+            {onSetNoteContexts && (
+              <button
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setBulkApplied([]);
+                  setContextPicker({
+                    ids: [...selectedIds],
+                    mode: "bulk",
+                    pos: { top: rect.bottom + 4, left: Math.max(8, rect.right - 240) },
+                  });
+                }}
+                className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
+                title={t("nav.applyContextsTooltip")}
+              >
+                {t("nav.applyContexts", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onDeleteNotes && (
               <button
                 onClick={() => setDeleteTarget([...selectedIds])}
@@ -546,16 +629,17 @@ export function NoteListView({
                 >
                   {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                <th className="py-2 px-3 w-[140px]">
-                  <div className="inline-flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="hover:text-foreground"
-                      onClick={() => handleSort("labels")}
-                    >
-                      {t("nav.labels")}{sortKey === "labels" && (sortDir === "desc" ? " ↓" : " ↑")}
-                    </button>
-                    {labelFilterOptions.length > 0 && (
+                {/* PROV ラベル列: どのノートにもラベルが無い時は列ごと隠す */}
+                {labelFilterOptions.length > 0 && (
+                  <th className="py-2 px-3 w-[140px]">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="hover:text-foreground"
+                        onClick={() => handleSort("labels")}
+                      >
+                        {t("nav.labels")}{sortKey === "labels" && (sortDir === "desc" ? " ↓" : " ↑")}
+                      </button>
                       <button
                         ref={labelFilterBtnRef}
                         type="button"
@@ -577,10 +661,50 @@ export function NoteListView({
                       >
                         <Filter size={12} strokeWidth={2.25} />
                       </button>
+                      {labelFilter.length > 0 && (
+                        <span className="text-[10px] tabular-nums text-primary">
+                          ({labelFilter.length})
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                )}
+                {/* 文脈ラベル列（ユーザーが手で付ける分類軸） */}
+                <th className="py-2 px-3 w-[150px]" title={t("nav.noteContextsTooltip")}>
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="hover:text-foreground"
+                      onClick={() => handleSort("noteContexts")}
+                    >
+                      {t("nav.noteContexts")}{sortKey === "noteContexts" && (sortDir === "desc" ? " ↓" : " ↑")}
+                    </button>
+                    {contextFilterOptions.length > 0 && (
+                      <button
+                        ref={contextFilterBtnRef}
+                        type="button"
+                        onClick={() => {
+                          if (contextFilterBtnRef.current) {
+                            const rect = contextFilterBtnRef.current.getBoundingClientRect();
+                            setContextFilterPos({ top: rect.bottom + 4, left: rect.left });
+                          }
+                          setContextFilterOpen((v) => !v);
+                        }}
+                        className={cn(
+                          "inline-flex items-center justify-center w-5 h-5 rounded transition-colors",
+                          contextFilter.length > 0
+                            ? "text-primary bg-primary/10 hover:bg-primary/15"
+                            : "text-text-tertiary hover:text-foreground hover:bg-muted",
+                        )}
+                        aria-label={t("nav.filterContexts")}
+                        title={t("nav.filterContexts")}
+                      >
+                        <Filter size={12} strokeWidth={2.25} />
+                      </button>
                     )}
-                    {labelFilter.length > 0 && (
+                    {contextFilter.length > 0 && (
                       <span className="text-[10px] tabular-nums text-primary">
-                        ({labelFilter.length})
+                        ({contextFilter.length})
                       </span>
                     )}
                   </div>
@@ -713,27 +837,77 @@ export function NoteListView({
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-3">
-                    <div className="flex flex-wrap gap-1">
-                      {entry.labels.map((label) => {
-                        const color = LABEL_HEX[label] ?? "#8fa394";
-                        return (
-                          <span
-                            key={label}
-                            className="inline-block text-xs font-semibold rounded-full whitespace-nowrap"
-                            style={{
-                              padding: "0px 6px",
-                              backgroundColor: color + "18",
-                              color,
-                              border: `1px solid ${color}38`,
-                              lineHeight: 1.6,
-                            }}
-                          >
-                            {getDisplayLabelName(label)}
+                  {/* PROV ラベル列: ヘッダと揃えて、ラベルが全体で 0 件なら列ごと隠す */}
+                  {labelFilterOptions.length > 0 && (
+                    <td className="py-2 px-3">
+                      <div className="flex flex-wrap gap-1">
+                        {entry.labels.map((label) => {
+                          const color = LABEL_HEX[label] ?? "#8fa394";
+                          return (
+                            <span
+                              key={label}
+                              className="inline-block text-xs font-semibold rounded-full whitespace-nowrap"
+                              style={{
+                                padding: "0px 6px",
+                                backgroundColor: color + "18",
+                                color,
+                                border: `1px solid ${color}38`,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              {getDisplayLabelName(label)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                  )}
+                  {/* 文脈ラベル列: 設定済みはピル（最大2個+「+N」）、未設定は hover で「+文脈」 */}
+                  <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
+                    {entry.noteContexts.length > 0 ? (
+                      <button
+                        type="button"
+                        disabled={!onSetNoteContexts}
+                        onClick={(e) => {
+                          if (!onSetNoteContexts) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setContextPicker({
+                            ids: [entry.noteId],
+                            mode: "single",
+                            pos: { top: rect.bottom + 4, left: rect.left },
+                          });
+                        }}
+                        className="inline-flex flex-wrap items-center gap-1 text-left disabled:cursor-default"
+                        title={onSetNoteContexts ? t("nav.editContexts") : entry.noteContexts.join(", ")}
+                      >
+                        {entry.noteContexts.slice(0, 2).map((c) => (
+                          <ContextBadge key={c} value={c} />
+                        ))}
+                        {entry.noteContexts.length > 2 && (
+                          <span className="text-[11px] text-muted-foreground">
+                            +{entry.noteContexts.length - 2}
                           </span>
-                        );
-                      })}
-                    </div>
+                        )}
+                      </button>
+                    ) : onSetNoteContexts ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setContextPicker({
+                            ids: [entry.noteId],
+                            mode: "single",
+                            pos: { top: rect.bottom + 4, left: rect.left },
+                          });
+                        }}
+                        className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all"
+                        title={t("nav.addContext")}
+                      >
+                        ＋ {t("nav.noteContexts")}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground/30 text-xs">—</span>
+                    )}
                   </td>
                   <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                     {entry.knowledgeCount > 0 ? (
@@ -835,6 +1009,71 @@ export function NoteListView({
           minWidth={220}
         />
       )}
+      {contextFilterOpen && (
+        <FilterPopup
+          position={contextFilterPos}
+          onClose={() => setContextFilterOpen(false)}
+          title={t("nav.filterContexts")}
+          options={contextFilterOptions}
+          selected={contextFilter}
+          onChange={setContextFilter}
+          searchPlaceholder={t("common.search")}
+          clearLabel={t("nav.clearFilter")}
+          noMatchText={t("nav.noMatchingNotes")}
+          minWidth={220}
+        />
+      )}
+      {/* 文脈付与ピッカー（行内 single / 一括 bulk 共通） */}
+      {contextPicker && (() => {
+        const singleId = contextPicker.mode === "single" ? contextPicker.ids[0] : null;
+        // 最新の entries から現在値を読む（楽観更新後の再描画で追従）
+        const contextsOf = (id: string) =>
+          entries.find((e) => e.noteId === id)?.noteContexts ?? [];
+        const selected = singleId ? contextsOf(singleId) : bulkApplied;
+        return (
+          <ContextTagPicker
+            position={contextPicker.pos}
+            onClose={() => setContextPicker(null)}
+            title={
+              contextPicker.mode === "bulk"
+                ? t("nav.applyContexts", { count: String(contextPicker.ids.length) })
+                : t("nav.noteContexts")
+            }
+            selected={selected}
+            suggestions={contextAggregate}
+            placeholder={t("nav.contextPlaceholder")}
+            createLabel={(v) => t("nav.createContext", { value: v })}
+            clearLabel={t("nav.clearContexts")}
+            emptyText={t("nav.contextEmpty")}
+            onDeleteCandidate={onDeleteContextEverywhere}
+            onAdd={(v) => {
+              if (contextPicker.mode === "bulk") {
+                for (const id of contextPicker.ids) {
+                  setNoteContexts(id, addNoteContext(contextsOf(id), v) ?? []);
+                }
+                setBulkApplied((s) => addNoteContext(s, v) ?? []);
+              } else if (singleId) {
+                setNoteContexts(singleId, addNoteContext(contextsOf(singleId), v) ?? []);
+              }
+            }}
+            onRemove={(v) => {
+              if (contextPicker.mode === "bulk") {
+                for (const id of contextPicker.ids) {
+                  setNoteContexts(id, removeNoteContext(contextsOf(id), v) ?? []);
+                }
+                setBulkApplied((s) => removeNoteContext(s, v) ?? []);
+              } else if (singleId) {
+                setNoteContexts(singleId, removeNoteContext(contextsOf(singleId), v) ?? []);
+              }
+            }}
+            onClear={
+              contextPicker.mode === "single" && singleId
+                ? () => setNoteContexts(singleId, [])
+                : undefined
+            }
+          />
+        );
+      })()}
 
       {/* 削除確認ダイアログ */}
       {deleteTarget && (

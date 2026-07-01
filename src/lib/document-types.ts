@@ -64,6 +64,31 @@ export type AtomType =
   | "observational"    // 経験的観測: 実験で X が観測された（理論解釈なし）
   | "boundary";        // 限界・境界: X は Y の範囲では成立しない
 
+// Atom の関係の「形」（構造写像の軸）。固定語彙＝LLM に発明させず分類させる。
+// decompose→shape→abstract の中核。atomType（論理的性格）とは別軸。
+export type AtomShape =
+  | "monotonic-increase"      // X が増えるほど Y が増える
+  | "monotonic-decrease"      // X が増えるほど Y が減る
+  | "optimal-middle"          // Y は X の中間で最大（両極端は損）＝sweet spot
+  | "threshold"               // X がある点を越えると Y が質的に切り替わる
+  | "trade-off"               // X を得ると Y を失う（両立しない）
+  | "enabling-condition"      // X が成り立って初めて Y が可能になる
+  | "composition-structure"   // X の構成・構造が Y を決める
+  // 循環（フィードバック）— 結果が原因に戻る構造。ペアワイズな依存とは別の位相で、
+  // 越境類推の宝庫。増幅と打ち消しは正反対の動態なので分けて分類する（システム思考の R/B ループ）。
+  | "reinforcing-loop"        // 結果が原因を増幅する自己強化の循環（好循環／悪循環）
+  | "balancing-loop"          // 結果が変化を打ち消し均衡へ向かう自己調整の循環
+  | "other";                  // 上記に当てはまらない
+
+// Atom の越境転移（同じ shape+role 構造が成り立つ別分野）。
+// atomizer が候補を出し、敵対的ジャッジが構造一致を検証して妥当なものだけ残す。
+export type AtomTransfer = {
+  /** 転移先の分野 */
+  field: string;
+  /** その分野で同じ形が成り立つ具体例（1 文） */
+  example: string;
+};
+
 // Synthesis の推論モード
 // 設計判断 (PR-B4): induction は Synthesis ではなく Claim → Atom 段の中核操作
 // として位置付けた。Atomizer は「N 個の Claim にまたがる共通抽象を factor out」
@@ -338,6 +363,10 @@ export type WikiMeta = {
   claimRole?: ClaimRole[];
   /** Atom の推論的役割 */
   atomType?: AtomType;
+  /** Atom の関係の形（構造写像の軸、decompose→shape→abstract）。atom のみ意味を持つ */
+  shape?: AtomShape;
+  /** Atom の越境転移（敵対的ジャッジ検証済み。atom のみ。妥当な転移が無ければ undefined） */
+  transfer?: AtomTransfer;
   /** Synthesis の推論モード */
   synthesisMode?: SynthesisMode;
   /** Synthesis の検証状態（特に abductive 型で意味を持つ） */
@@ -680,6 +709,15 @@ export type GraphiumDocument = {
    */
   citedAssetFileIds?: string[];
   /**
+   * ユーザーが手で付ける「文脈ラベル」（例: "eureco" / "MCP研究" / "哲学"）。
+   * ノート単位の自由な分類軸で、PROV ブロックラベル（procedure/material/…）や
+   * wikiMeta.theme（Synthesis 専用 lens）とは別物・非流用。1 ノートに複数の文脈を
+   * 持てる（跨ぎノートを表現するため配列）。付与 UX は「1 個ずつ足せる」を基本にする。
+   * 一覧の絞り込み・整理に使い、将来は「この文脈だけに絞った AI コンテキスト利用」の
+   * seed になる。additive optional のため旧データは従来通り動く。
+   */
+  noteContexts?: string[];
+  /**
    * 計画ノートへの所属関係（external-source-extraction-prompt.md §6, Phase 5a）。
    * 1 つの論文が複数 procedure を含む場合に、論文単位の計画ノート（navigation note）と
    * 実施ノート（PROV を持つ）を分けて出力する。実施ノートにこのフィールドを付け、
@@ -726,6 +764,16 @@ export type GraphiumPage = {
    * テキストハイライトと完全に一致する。
    */
   mediaInlineLabels?: Record<string, MediaInlineLabel>;
+  /**
+   * ブロックの配置揃え（左 / 中央 / 右）。2026-06 で導入。
+   *
+   * BlockNote の `textAlignment` プロパティを持たないブロック（table / audio /
+   * file）の配置をサイドストアとして保存する。段落・見出し・画像・動画・Callout
+   * は標準の `textAlignment` プロパティで保存されるため、ここには含めない。
+   * mediaInlineLabels と同じ「独立アノテーション層」方式（blockId → 値）。
+   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   */
+  blockAlignments?: Record<string, "left" | "center" | "right">;
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
 };

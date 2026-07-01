@@ -42,7 +42,7 @@ export type {
 } from "./media-index";
 
 export { MediaPickerModal } from "./MediaPickerModal";
-export type { MediaPickerModalProps } from "./MediaPickerModal";
+export type { MediaPickerModalProps, AssetDisplayMode } from "./MediaPickerModal";
 
 export { LabelGalleryView } from "./LabelGalleryView";
 

@@ -2,16 +2,25 @@
 //
 // LLM 呼び出しなしで以下を assert する:
 //   1. detectRung1Tokens の pattern が corpus 既出の rung-1 token を catch する
-//   2. parseAtomizerOutput が rung-1 atom 候補を post-emit で drop する
-//   3. clean な rung-2 候補は通る (回帰防止)
+//      （関数は可視化・signal 用途のため残置。parser での silent drop は廃止）
+//   2. parseAtomizerOutput は可搬性ゲート（2 件必須 / confidence 閾値 / rung-1）を
+//      撤廃し、prompt の可搬性テスト一本に寄せた。parser は hallucination（未知の
+//      source ID のみ）だけを落とす。
 //
-// μ-1.3 までの bench で lift_score median = 0.714 までしか上がらなかった原因は、
-// LLM atomizer が prompt で「rung-2 を出せ」と言われても "Al3V" "Klemens-Callaway"
-// "PROV-DM" "ローレンツ数" 等を捨てられない点にあった。post-emit guard はこれの
-// safety net。
+// 以前は LLM atomizer が "Al3V" "Klemens-Callaway" "PROV-DM" 等を捨てられない問題に
+// 対し parser 側で post-emit drop していたが、「黙って消す」不透明さを排し、可搬か否かの
+// 判定を prompt の一般原則（可搬性テスト）に一本化した。
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { detectRung1Tokens, parseAtomizerOutput } from "./wiki-atomizer.ts";
+import { describe, it, expect } from "vitest";
+import {
+  detectRung1Tokens,
+  parseAtomizerOutput,
+  buildAtomizerUserMessage,
+  parseReliftOutput,
+  buildReliftUserMessage,
+  parseTransferJudgeOutput,
+  buildTransferJudgeUserMessage,
+} from "./wiki-atomizer.ts";
 
 describe("detectRung1Tokens — corpus-actual failing tokens", () => {
   it("catches digit-bearing chemical formulas (Bi2Te3, TiO2)", () => {
@@ -61,17 +70,7 @@ describe("detectRung1Tokens — corpus-actual failing tokens", () => {
   });
 });
 
-describe("parseAtomizerOutput — post-emit rung-1 guard", () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warnSpy.mockRestore();
-  });
-
+describe("parseAtomizerOutput — portability gates removed (single rule = prompt portability test)", () => {
   function makeIdMap(snapshots: { id: string; title: string }[]): Map<string, string> {
     return new Map(snapshots.map((c) => [c.id, c.title]));
   }
@@ -81,25 +80,39 @@ describe("parseAtomizerOutput — post-emit rung-1 guard", () => {
     { id: "c2", title: "Claim 2" },
   ];
 
-  it("drops rung-1 atom title (Al3V) even with confidence ≥ 0.7", () => {
+  it("keeps a single-source atom (2+ Claim requirement removed)", () => {
     const llmJson = JSON.stringify({
       atoms: [
         {
-          title: "Al3V 系合金では Nb 置換で熱伝導率が低下する",
-          body: "Al-V 系の合金に微量の Nb を置換することで熱伝導率が下がる。",
-          sourceConceptIds: ["c1", "c2"],
+          title: "命名は実践より後に来やすい",
+          body: "ある実践が定着してから、それを指す名前が後付けされることが多い。",
+          sourceConceptIds: ["c1"],
           confidence: 0.9,
-          atomType: "causal",
-          epistemicStatus: "interpretation",
         },
       ],
     });
     const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
-    expect(out).toEqual([]);
-    expect(warnSpy).toHaveBeenCalled();
+    expect(out).toHaveLength(1);
+    expect(out[0].derivedFromClaims).toEqual(["c1"]);
   });
 
-  it("drops rung-1 atom (Klemens-Callaway)", () => {
+  it("keeps a low-confidence atom (confidence is recorded, not a drop gate)", () => {
+    const llmJson = JSON.stringify({
+      atoms: [
+        {
+          title: "小さな介入が全体の性質を大きく変えないことがある",
+          body: "一部に少量を足しても、系全体の構造的な性質はあまり動かない場合がある。",
+          sourceConceptIds: ["c1", "c2"],
+          confidence: 0.4,
+        },
+      ],
+    });
+    const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
+    expect(out).toHaveLength(1);
+    expect(out[0].confidence).toBe(0.4);
+  });
+
+  it("keeps an atom that still carries a domain token (rung-1 silent drop removed)", () => {
     const llmJson = JSON.stringify({
       atoms: [
         {
@@ -111,60 +124,163 @@ describe("parseAtomizerOutput — post-emit rung-1 guard", () => {
       ],
     });
     const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
-    expect(out).toEqual([]);
-  });
-
-  it("drops rung-1 atom (PROV-DM)", () => {
-    const llmJson = JSON.stringify({
-      atoms: [
-        {
-          title: "PROV-DM は合成手順の分岐と合流を柔軟に表現できる",
-          body: "履歴を残せる表現は工程設計の自由度を高める。",
-          sourceConceptIds: ["c1", "c2"],
-          confidence: 0.9,
-        },
-      ],
-    });
-    const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
-    expect(out).toEqual([]);
-  });
-
-  it("passes a clean rung-2 atom through", () => {
-    const llmJson = JSON.stringify({
-      atoms: [
-        {
-          title: "短時間の高温処理で揮発しやすい成分が抜けると、均一な仕上がりに繋がる",
-          body: "高温で短い時間の処理では、まず揮発成分が動きやすくなり、結果として組成が揃いやすい状態に近づく。",
-          sourceConceptIds: ["c1", "c2"],
-          confidence: 0.9,
-          atomType: "mechanistic",
-        },
-      ],
-    });
-    const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
+    // 可搬性の判定は prompt 側のテストに一本化。parser は黙って消さない。
     expect(out).toHaveLength(1);
-    expect(out[0].title).toContain("短時間の高温処理");
+    expect(out[0].title).toContain("Klemens-Callaway");
   });
 
-  it("filters rung-1 candidates but keeps clean ones in the same batch", () => {
+  it("still drops atoms whose sourceConceptIds are all unknown (hallucination guard)", () => {
     const llmJson = JSON.stringify({
       atoms: [
         {
-          title: "Klemens-Callaway モデルで予測できる",
-          body: "理論名に依存した記述。",
-          sourceConceptIds: ["c1", "c2"],
+          title: "どこにも紐づかない主張",
+          body: "存在しない Claim を参照している。",
+          sourceConceptIds: ["nope", "ghost"],
+          confidence: 0.9,
+        },
+      ],
+    });
+    const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
+    expect(out).toEqual([]);
+  });
+
+  it("keeps multiple atoms in one batch", () => {
+    const llmJson = JSON.stringify({
+      atoms: [
+        {
+          title: "命名は実践より後に来やすい",
+          body: "実践が定着してから名前が後付けされる。",
+          sourceConceptIds: ["c1"],
           confidence: 0.9,
         },
         {
           title: "助触媒の担持で還元活性点が増える",
           body: "触媒の活性は分散度合いで変わる。",
           sourceConceptIds: ["c1", "c2"],
-          confidence: 0.9,
+          confidence: 0.6,
         },
       ],
     });
     const out = parseAtomizerOutput(llmJson, makeIdMap(baseSnapshots));
+    expect(out).toHaveLength(2);
+  });
+});
+
+describe("buildAtomizerUserMessage — minimum-2 gate removed (single source allowed)", () => {
+  const oneClaim = [
+    { id: "c1", title: "電気陰性度差が小さいほどキャリア移動度が高い", bodyPreview: "均質な構成ほど流れが妨げられにくい。", relatedClaims: [] },
+  ];
+
+  it("builds a real atomization prompt from a single Claim (no 'minimum 2' short-circuit)", () => {
+    const msg = buildAtomizerUserMessage(oneClaim, []);
+    // 旧実装は < 2 で "Not enough Claim pages ... minimum 2 required" を返し、
+    // 単一ソースの re-lift が無言で 0 atom になっていた。
+    expect(msg).not.toContain("minimum 2");
+    expect(msg).toContain("1 Claim");
+    expect(msg).toContain("電気陰性度差");
+    // four-step 手順を含む本物のプロンプトであることを確認
+    expect(msg).toContain("decompose");
+  });
+});
+
+describe("parseReliftOutput / buildReliftUserMessage — plain-language stage (C+D)", () => {
+  it("parses the relift JSON and keeps index / title / body", () => {
+    const json = JSON.stringify({
+      atoms: [
+        { index: 1, title: "合金を高温で処理すると別の相ができる", body: "本文1" },
+        { index: 2, title: "性質の近い要素どうしは粒子が動きやすい", body: "本文2" },
+      ],
+    });
+    const out = parseReliftOutput(json);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ index: 1, title: "合金を高温で処理すると別の相ができる", body: "本文1" });
+  });
+
+  it("tolerates a fenced json block and drops entries missing title/body", () => {
+    const json =
+      "```json\n" +
+      JSON.stringify({ atoms: [{ index: 1, title: "ok", body: "ok" }, { index: 2, title: "no body" }] }) +
+      "\n```";
+    const out = parseReliftOutput(json);
     expect(out).toHaveLength(1);
-    expect(out[0].title).toContain("助触媒");
+    expect(out[0].title).toBe("ok");
+  });
+
+  it("returns [] on malformed JSON (relift failure stays non-fatal)", () => {
+    expect(parseReliftOutput("not json at all")).toEqual([]);
+  });
+
+  it("flags still-technical tokens when given, and omits the line when empty", () => {
+    const withTokens = buildReliftUserMessage([
+      { title: "SPS は圧力不足で…", body: "本文", jargon: ["SPS", "XRD"] },
+    ]);
+    expect(withTokens).toContain("[1]");
+    expect(withTokens).toContain("still too technical");
+    expect(withTokens).toContain("SPS, XRD");
+    expect(withTokens).toContain('title: "SPS は圧力不足で…"');
+
+    // pass 1（全 Atom・jargon 空）では技術語の指定行を付けない
+    const noTokens = buildReliftUserMessage([{ title: "命名は実践より後に来る", body: "本文", jargon: [] }]);
+    expect(noTokens).not.toContain("still too technical");
+    expect(noTokens).toContain('title: "命名は実践より後に来る"');
+  });
+});
+
+describe("parseAtomizerOutput — shape / transfer (structural abstraction)", () => {
+  const idMap = new Map([["c1", "Claim 1"], ["c2", "Claim 2"]]);
+
+  it("parses a valid shape and a complete transfer", () => {
+    const json = JSON.stringify({
+      atoms: [{
+        title: "調整できる量は中間の最適値で性能が最大になる",
+        body: "本文",
+        sourceConceptIds: ["c1"],
+        confidence: 0.85,
+        shape: "optimal-middle",
+        transfer: { field: "触媒設計", example: "吸着エネルギーが中間で反応速度が最大になる（サバティエ原理）" },
+      }],
+    });
+    const out = parseAtomizerOutput(json, idMap);
+    expect(out).toHaveLength(1);
+    expect(out[0].shape).toBe("optimal-middle");
+    expect(out[0].transfer).toEqual({ field: "触媒設計", example: "吸着エネルギーが中間で反応速度が最大になる（サバティエ原理）" });
+  });
+
+  it("parses feedback-loop shapes (reinforcing / balancing) added for the Idea layer", () => {
+    const reinforcing = JSON.stringify({ atoms: [{ title: "使うほど価値が増す", body: "本文", sourceConceptIds: ["c1"], confidence: 0.8, shape: "reinforcing-loop" }] });
+    expect(parseAtomizerOutput(reinforcing, idMap)[0].shape).toBe("reinforcing-loop");
+    const balancing = JSON.stringify({ atoms: [{ title: "ずれると戻る力が働く", body: "本文", sourceConceptIds: ["c1"], confidence: 0.8, shape: "balancing-loop" }] });
+    expect(parseAtomizerOutput(balancing, idMap)[0].shape).toBe("balancing-loop");
+  });
+
+  it("drops an out-of-vocabulary shape to undefined", () => {
+    const json = JSON.stringify({ atoms: [{ title: "x", body: "y", sourceConceptIds: ["c1"], confidence: 0.8, shape: "wiggly" }] });
+    expect(parseAtomizerOutput(json, idMap)[0].shape).toBeUndefined();
+  });
+
+  it("drops a partial transfer (missing example) to undefined", () => {
+    const json = JSON.stringify({ atoms: [{ title: "x", body: "y", sourceConceptIds: ["c1"], confidence: 0.8, transfer: { field: "x" } }] });
+    expect(parseAtomizerOutput(json, idMap)[0].transfer).toBeUndefined();
+  });
+});
+
+describe("parseTransferJudgeOutput / buildTransferJudgeUserMessage", () => {
+  it("parses verdicts and coerces valid to boolean", () => {
+    const json = JSON.stringify({ items: [{ index: 1, valid: true, reason: "genuine match" }, { index: 2, valid: false, reason: "topical only" }] });
+    const out = parseTransferJudgeOutput(json);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ index: 1, valid: true, reason: "genuine match" });
+    expect(out[1].valid).toBe(false);
+  });
+
+  it("returns [] on malformed JSON (judge failure → caller drops transfers conservatively)", () => {
+    expect(parseTransferJudgeOutput("not json")).toEqual([]);
+  });
+
+  it("builds a judge message with principle / shape / transfer per item", () => {
+    const msg = buildTransferJudgeUserMessage([{ title: "中間最適の原理", shape: "optimal-middle", field: "料理", example: "塩は中間量で旨味が最大" }]);
+    expect(msg).toContain("[1]");
+    expect(msg).toContain("shape: optimal-middle");
+    expect(msg).toContain("transfer.field: 料理");
   });
 });

@@ -197,7 +197,17 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
           className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 mb-1 text-sm font-medium border border-sidebar-border text-sidebar-foreground/85 bg-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
         >
           <span>{t("sidebar.newMemo")}</span>
-          <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">⌘⇧M</span>
+          {/* 実コンポーネント (FileSidebar.tsx) と揃える: ⌘ ⇧ M を keycap 分離して Shift を明示 */}
+          <span className="flex items-center gap-0.5 font-normal tabular-nums">
+            {["⌘", "⇧", "M"].map((k) => (
+              <kbd
+                key={k}
+                className="inline-flex min-w-[15px] justify-center rounded border border-sidebar-foreground/20 bg-sidebar-foreground/10 px-1 py-px text-[10px] leading-none text-sidebar-foreground/75"
+              >
+                {k}
+              </kbd>
+            ))}
+          </span>
         </button>
         <button
           onClick={onNewNote}

@@ -3,7 +3,8 @@
 
 import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/document-types";
 import type { MediaIndex, MediaType } from "../asset-browser/media-index";
-import { parseExternalSource } from "./external-source";
+import type { GraphiumIndex } from "../navigation/index-file";
+import { parseExternalSource, type ExternalSourceKind } from "./external-source";
 
 export type NoteNode = {
   id: string;
@@ -25,11 +26,20 @@ export type NoteNode = {
   mediaType?: MediaType;
 };
 
+/** エッジが表す関係種別（全ノードグラフで線種・色を分けるために使う）。
+ *  - derived   : 派生（PROV 派生・ノート→Knowledge の取り込み・Concept→Atom など上流→下流）
+ *  - used      : 素材利用（外部ソース pdf:/url:/document:/chat: → ノート）
+ *  - reference : 参照（knowledge link）
+ * 2ホップグラフ（buildNoteGraph）では未設定。全ノードグラフ（buildGlobalGraph）でのみ付与する。 */
+export type EdgeRelation = "derived" | "used" | "reference";
+
 export type NoteEdge = {
   source: string;
   target: string;
   /** 引用元ブロックのテキスト（派生元ブロック内容） */
   sourceBlockLabel?: string;
+  /** 関係種別（全ノードグラフでのみ付与）。 */
+  relation?: EdgeRelation;
 };
 
 export type NoteGraphData = {
@@ -200,8 +210,15 @@ export function buildNoteGraph(
         // これを入れないと、アセットグラフには URL が出るのに近接グラフには出ない
         // という素材タイプ間の不一致になる（usedIn ベースで両グラフの定義を揃える）。
         addEdge(`url:${m.url}`, currentNoteId, "url");
+      } else if (m.type === "pdf") {
+        // PDF は埋め込み（pdf ブロック）・@リンク引用どちらも usedIn 経由でここに来る。
+        // pdf: ノードとして近接グラフに出す（アセットグラフと定義を揃える）。
+        addEdge(`pdf:${m.fileId}`, currentNoteId, "media");
+      } else if (m.type === "document") {
+        // Word(.docx) 等の document 素材。埋め込み（file ブロック）・@リンク引用とも
+        // usedIn 経由で document: ノードとして近接グラフに出す。
+        addEdge(`document:${m.fileId}`, currentNoteId, "media");
       }
-      // PDF は pdf ブロック / sourcePdfFileId の既存経路で表示するため、ここでは扱わない。
     }
   }
 
@@ -349,4 +366,128 @@ export function buildNoteGraph(
   });
 
   return { nodes, edges: uniqueEdges };
+}
+
+// ── 全ノードグラフ（Obsidian 風グローバルグラフ） ──
+//
+// buildNoteGraph が「現在ノートから 2 ホップ」だったのに対し、こちらは
+// インデックス（GraphiumIndex）を起点に全ノート・全エッジを一括構築する。
+// 全 doc をメモリに載せずに済むよう、ノード／エッジはインデックスのみから組み立てる
+// （外部ソース名の解決にだけ MediaIndex を任意で使う）。
+//
+// エッジには relation（derived / used / reference）を付与し、ビュー側で線種・色を分ける。
+
+const RELATION_PRIORITY: Record<EdgeRelation, number> = {
+  derived: 0,
+  used: 1,
+  reference: 2,
+};
+
+/**
+ * インデックスから全ノードグラフを構築する。
+ *
+ * @param index     GraphiumIndex（ensureIndex で常時メモリにある想定）
+ * @param mediaIndex 外部ソース（pdf:/url:）の表示名解決に使う。null なら ID から仮の名前を作る。
+ */
+export function buildGlobalGraph(
+  index: GraphiumIndex,
+  mediaIndex: MediaIndex | null = null,
+): NoteGraphData {
+  // ゴミ箱・アーカイブを除いた「見える」エントリだけを対象にする
+  // （2ホップグラフの files 集合＝trash 除外、と揃える）。
+  // 加えて、グラフ化する Knowledge は claim / atom のみに限定する。
+  // summary（要約）はノートの派生物で関係グラフ上の価値が薄く、synthesis（発想）と
+  // 旧 meta-atom は撤退済みレイヤ。これらは除外して「原料 → ノート → 結晶(claim/atom)」に絞る。
+  const entries = index.notes.filter(
+    (e) =>
+      !e.deletedAt &&
+      !e.archivedAt &&
+      !(e.wikiKind && e.wikiKind !== "claim" && e.wikiKind !== "atom"),
+  );
+  const validIds = new Set(entries.map((e) => e.noteId));
+
+  // 関係つきエッジを収集（同じ無向ペアは relation 優先度の高い 1 本に畳む）。
+  type RawEdge = { source: string; target: string; relation: EdgeRelation };
+  const edgeByPair = new Map<string, RawEdge>();
+  const externalIds = new Map<string, ExternalSourceKind>();
+
+  const addEdge = (source: string, target: string, relation: EdgeRelation) => {
+    if (source === target) return; // 自己ループは描かない（buildNoteGraph と同様）
+    const undirectedKey =
+      source < target ? `${source}|${target}` : `${target}|${source}`;
+    const existing = edgeByPair.get(undirectedKey);
+    if (existing && RELATION_PRIORITY[existing.relation] <= RELATION_PRIORITY[relation]) {
+      return; // 既により強い（または同等の）関係がある
+    }
+    edgeByPair.set(undirectedKey, { source, target, relation });
+  };
+
+  for (const e of entries) {
+    // outgoingLinks: prov 層＝派生、knowledge 層＝参照。方向は e → target。
+    for (const link of e.outgoingLinks) {
+      if (!validIds.has(link.targetNoteId)) continue; // 孤児／除外ノードへのリンクは捨てる
+      addEdge(e.noteId, link.targetNoteId, link.layer === "prov" ? "derived" : "reference");
+    }
+    // Wiki の derivedFromNotes: 外部ソース→ノートは素材利用、通常ノート→Wiki は派生。
+    if (e.derivedFromNotes) {
+      for (const sid of e.derivedFromNotes) {
+        const ext = parseExternalSource(sid);
+        if (ext) {
+          externalIds.set(sid, ext.kind);
+          addEdge(sid, e.noteId, "used");
+        } else if (validIds.has(sid)) {
+          addEdge(sid, e.noteId, "derived");
+        }
+      }
+    }
+  }
+
+  // 外部ソースの表示名解決用（pdf は fileId、url は生 URL がキー）。
+  const mediaByFileId = new Map<string, { name: string; url: string }>();
+  const mediaByUrl = new Map<string, string>();
+  if (mediaIndex) {
+    for (const m of mediaIndex.media) {
+      mediaByFileId.set(m.fileId, { name: m.name, url: m.url });
+      if (m.type === "url") mediaByUrl.set(m.url, m.name);
+    }
+  }
+
+  // ノード構築。全エントリ（孤立ノートも含む）＋ 参照された外部ソース。
+  const nodes: NoteNode[] = [];
+  for (const e of entries) {
+    const isWiki = e.source === "ai";
+    nodes.push({
+      id: e.noteId,
+      title: e.title || "無題",
+      isCurrent: false,
+      hop: 0, // 全ノードグラフではホップ概念を使わない（kind で色分けする）
+      isWiki,
+      wikiKind: isWiki ? e.wikiKind : undefined,
+    });
+  }
+  for (const [id, kind] of externalIds) {
+    if (kind === "pdf") {
+      const fileId = id.slice("pdf:".length);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({ id, title: m?.name ?? `PDF ${fileId.slice(0, 8)}`, isCurrent: false, hop: 0, external: "pdf", externalUrl: m?.url });
+    } else if (kind === "document") {
+      const fileId = id.slice("document:".length);
+      const m = mediaByFileId.get(fileId);
+      nodes.push({ id, title: m?.name ?? `Document ${fileId.slice(0, 8)}`, isCurrent: false, hop: 0, external: "document", externalUrl: m?.url, mediaFileId: fileId });
+    } else if (kind === "url") {
+      const url = id.slice("url:".length);
+      nodes.push({ id, title: mediaByUrl.get(url) ?? url, isCurrent: false, hop: 0, external: "url", externalUrl: url });
+    } else {
+      // chat
+      nodes.push({ id, title: "AI Chat", isCurrent: false, hop: 0, external: "chat" });
+    }
+  }
+
+  const edges: NoteEdge[] = [...edgeByPair.values()].map((e) => ({
+    source: e.source,
+    target: e.target,
+    relation: e.relation,
+  }));
+
+  return { nodes, edges };
 }

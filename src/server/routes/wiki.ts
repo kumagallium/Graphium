@@ -31,6 +31,13 @@ import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   parseAtomizerOutput,
+  detectRung1Tokens,
+  buildReliftSystemPrompt,
+  buildReliftUserMessage,
+  parseReliftOutput,
+  buildTransferJudgeSystemPrompt,
+  buildTransferJudgeUserMessage,
+  parseTransferJudgeOutput,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -76,10 +83,16 @@ app.post("/ingest", async (c) => {
     );
   }
 
+  // 取り込んだ外部文書（PDF / Word / URL / チャット）は noteId に prefix が付く
+  // （pdf: / document: / url: / chat:、external-source.ts の規約）。これらは複数の
+  // 転用可能な知見を持つので ingester を「文書モード」に切り替え、過少抽出を防ぐ。
+  const isDocument = /^(pdf|document|url|chat):/.test(body.noteId ?? "");
+
   const systemPrompt = buildIngesterSystemPrompt(
     body.language || "en",
     body.existingWikiTitles || [],
     body.skills,
+    { isDocument },
   );
 
   // PROV 構造があれば user message の先頭にコンパクトに添える。
@@ -384,7 +397,7 @@ app.post("/cross-update", async (c) => {
 
 // Atomize（複数 Concept にまたがる共通抽象を発見する discovery）
 //   experimental.atomLayer 有効時にクライアントから呼ばれる。
-//   Concept[] を入力し、2 件以上の Concept にまたがる Atom 候補 0〜N 件を返す。
+//   Concept[] を入力し、可搬性テストを通った Atom 候補 0〜N 件を返す（1 件の Concept からでも可）。
 //   既存 Atom のタイトル一覧を渡すと重複提案を抑える。
 app.post("/atomize", async (c) => {
   const body = await c.req.json<{
@@ -394,7 +407,8 @@ app.post("/atomize", async (c) => {
     model?: string;
   }>();
 
-  if (!body.concepts || body.concepts.length < 2) {
+  // 1 件の Concept からでも可搬な規則なら Atom 化する（2 件必須は撤廃）。
+  if (!body.concepts || body.concepts.length < 1) {
     return c.json({ atoms: [] });
   }
 
@@ -425,9 +439,100 @@ app.post("/atomize", async (c) => {
     const idToRebuttals = new Map(
       body.concepts.map((c) => [c.id, c.rebuttalConditions]),
     );
-    const atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
+    let atoms = parseAtomizerOutput(result.message, idToTitle, idToEpistemic, idToRebuttals);
     // PR-B4.5: procedureContext は Atom に持たせない（砂時計のくびれ）。
     // fallback ロジックは削除した。
+
+    // 越境転移の敵対的ジャッジ: atomizer が出した transfer 候補（別分野の類推）の構造一致を
+    // 厳格に判定し、こじつけ（valid=false）の transfer は外す。principle(洞察) 自体は常に残す。
+    // 検証では opus で 88-96%、弱モデル生成でも transfer の劣化をここで吸収できる。
+    const withTransfer: { i: number; field: string; example: string }[] = [];
+    atoms.forEach((a, i) => {
+      if (a.transfer) withTransfer.push({ i, field: a.transfer.field, example: a.transfer.example });
+    });
+    if (withTransfer.length > 0) {
+      try {
+        const judgeRes = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt: buildTransferJudgeSystemPrompt(body.language || "en"),
+          messages: [
+            {
+              role: "user" as const,
+              content: buildTransferJudgeUserMessage(
+                withTransfer.map((w) => ({
+                  title: atoms[w.i].title,
+                  shape: atoms[w.i].shape,
+                  field: w.field,
+                  example: w.example,
+                })),
+              ),
+            },
+          ],
+          maxSteps: 1,
+          feature: "wiki.transfer-judge",
+          modelConfig,
+        });
+        const verdicts = parseTransferJudgeOutput(judgeRes.message);
+        atoms = atoms.map((a) => ({ ...a }));
+        withTransfer.forEach((w, k) => {
+          const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
+          // 妥当と確認できないものは外す（判定が取れない場合も保守的に外す）。
+          if (!v || !v.valid) atoms[w.i] = { ...atoms[w.i], transfer: undefined };
+        });
+      } catch (err) {
+        // ジャッジ失敗時は保守的に全 transfer を外す（こじつけを残すより安全）。
+        console.error("Wiki transfer-judge error:", err);
+        atoms = atoms.map((a) => (a.transfer ? { ...a, transfer: undefined } : a));
+      }
+    }
+
+    // パイプライン C+D（平易化 / readability）— 分野非依存。
+    //   pass 1: D を「全 Atom」に 1 回かける。LLM が任意分野のジャーゴンを判断して自然な
+    //           文に整える（regex の検出範囲＝化学式/略語 に依存しない。生物/経済/人文も可）。
+    //   pass 2: C（detectRung1Tokens, コード）で式/略語の取りこぼしを検出し、残っていれば
+    //           該当 Atom だけ D を再適用（安いダブルチェック）。
+    // silent drop はしない。relift が失敗しても B の Atom はそのまま返す。
+    const runRelift = async (targets: { i: number; jargon: string[] }[]) => {
+      if (targets.length === 0) return;
+      const reliftRes = await runAgentLoop({
+        model,
+        modelId: modelConfig.modelId,
+        systemPrompt: buildReliftSystemPrompt(body.language || "en"),
+        messages: [
+          {
+            role: "user" as const,
+            content: buildReliftUserMessage(
+              targets.map((t) => ({ title: atoms[t.i].title, body: atoms[t.i].body, jargon: t.jargon })),
+            ),
+          },
+        ],
+        maxSteps: 1,
+        feature: "wiki.relift",
+        modelConfig,
+      });
+      const rewrites = parseReliftOutput(reliftRes.message);
+      atoms = atoms.map((a) => ({ ...a }));
+      targets.forEach((t, k) => {
+        const rw = rewrites.find((r) => r.index === k + 1) ?? rewrites[k];
+        if (rw && rw.title && rw.body) {
+          atoms[t.i] = { ...atoms[t.i], title: rw.title, body: rw.body };
+        }
+      });
+    };
+    try {
+      // pass 1: 全 Atom（jargon 指定なし＝LLM が自分で判断・分野非依存）
+      await runRelift(atoms.map((_, i) => ({ i, jargon: [] as string[] })));
+      // pass 2: regex で式/略語の残りを検出 → 該当だけ再適用
+      const residual = atoms
+        .map((a, i) => ({ i, jargon: detectRung1Tokens(a.title, a.body) }))
+        .filter((x) => x.jargon.length > 0);
+      await runRelift(residual);
+    } catch (err) {
+      // relift 失敗時も B の Atom を消さずそのまま返す。
+      console.error("Wiki relift error:", err);
+    }
+
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "不明なエラー";

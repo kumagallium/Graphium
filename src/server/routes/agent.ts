@@ -9,10 +9,30 @@ import { runAgentLoop } from "../services/agent-loop.js";
 import { resolveModelConfig } from "../services/header-model.js";
 import { fetchRegistryServers, filterSkills, buildSkillPromptSection, buildMCPUrl, detectTransport } from "../services/registry.js";
 import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
+import { extractWebSources } from "../services/web-sources.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 
 const app = new Hono();
+
+/**
+ * ノート本文の取得先に関するガードレール。
+ *
+ * Graphium のノート本文は、ホスト（フロントエンド）が会話メッセージ内に直接
+ * 埋め込んで渡す（`---` 区切りで同梱）。一方でチャットには接続済みの MCP ツール
+ * （Notion / Drive 等）が丸ごと供給され、かつ「現在のノートを読む」専用ツールは
+ * 存在しない。そのため LLM が「ノートを取得しろ」と言われると、最も近い外部検索
+ * ツール（例: Notion 検索）に取り違えて飛びつき、本来不要な認可フローを始める。
+ * それを止めるための明示指示。常時 system prompt に付与する。
+ */
+export const NOTE_CONTEXT_GUARDRAIL = [
+  "The user's notes live inside Graphium itself.",
+  "When the user refers to \"this note\", \"my note\", \"the document\", or \"the note I just edited\",",
+  "its content is provided to you directly in this conversation (delimited by `---` markers in the user's message).",
+  "It is NOT stored in Notion, Google Drive, or any other external service.",
+  "Never call external MCP tools (such as Notion or Drive search/fetch) to look up the user's own note — you already have it inline.",
+  "If you cannot find the note content in the conversation, ask the user to resend or attach it; do not search external services for it.",
+].join("\n");
 
 // Crucible Agent 互換のリクエスト/レスポンス形式
 app.post("/run", async (c) => {
@@ -52,6 +72,8 @@ app.post("/run", async (c) => {
   const profileName = body.profile || "general";
   const profile = getProfile(profileName) ?? listProfiles()[0];
   let systemPrompt = profile?.content ?? "You are a helpful assistant.";
+  // ノート本文は会話内に同梱される。外部 MCP ツールでの誤検索を防ぐガードレール。
+  systemPrompt += `\n\n${NOTE_CONTEXT_GUARDRAIL}`;
   if (body.custom_instructions) {
     systemPrompt += `\n\n${body.custom_instructions}`;
   }
@@ -135,7 +157,9 @@ app.post("/run", async (c) => {
   const { tools } = await getMCPTools([...byName.values()]);
 
   try {
-    const model = await createModel(modelConfig);
+    // チャットだけは claude-subscription で内蔵 WebSearch / WebFetch を解禁する
+    // （翻訳・Wiki 等の非チャット経路には波及させない。詳細は createModel の allowWebSearch）。
+    const model = await createModel(modelConfig, { allowWebSearch: true });
     const result = await runAgentLoop({
       model,
       modelId: modelConfig.modelId,
@@ -147,10 +171,25 @@ app.post("/run", async (c) => {
       modelConfig,
     });
 
+    // 検索 MCP（Tavily 等）のツール結果から web 出典を決定論的に抽出する。
+    // A 経路（内蔵 WebSearch）はツール呼び出しが見えないため空になり、その場合は
+    // モデル出力の "Sources:" 見出しを note-app 側でラベル置換する（既存の別経路）。
+    const webSources = extractWebSources(result.toolCalls);
+    // 診断ログ: どのツールが使われたか / web 出典を何件拾えたか（どの検索経路かの切り分け用）。
+    console.log(
+      "[agent.chat] " +
+        JSON.stringify({
+          provider: modelConfig.provider,
+          toolsUsed: result.toolCalls.map((t) => t.tool_name),
+          webSourceCount: webSources.length,
+        }),
+    );
+
     return c.json({
       session_id: body.session_id ?? crypto.randomUUID(),
       message: result.message,
       tool_calls: result.toolCalls,
+      web_sources: webSources,
       provenance_id: null,
       token_usage: result.tokenUsage,
       model: result.model,

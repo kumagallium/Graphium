@@ -43,7 +43,7 @@ app.post("/", async (c) => {
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) {
     return c.json(
-      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
+      { error: "使用するモデルを解決できませんでした。Settings → AI Setup でモデルを登録・選択してください。" },
       400,
     );
   }
@@ -100,7 +100,7 @@ app.post("/glossary", async (c) => {
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) {
     return c.json(
-      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
+      { error: "使用するモデルを解決できませんでした。Settings → AI Setup でモデルを登録・選択してください。" },
       400,
     );
   }

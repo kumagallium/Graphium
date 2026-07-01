@@ -4,7 +4,40 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { execSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, cpSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
+
+// pdfjs-dist の実体ディレクトリを解決する。pnpm は node_modules/pdfjs-dist を
+// .pnpm 配下への symlink にするため、package.json を resolve して実パスを得る。
+const pdfjsDistDir = path.dirname(
+  createRequire(import.meta.url).resolve("pdfjs-dist/package.json"),
+);
+
+/**
+ * pdf.js の cmap / 標準フォントを public/pdfjs/ にコピーする Vite プラグイン。
+ *
+ * CJK（日本語等）PDF は CID フォントを使い、これらを描画するには cmap データが
+ * 必須。未指定だとフォントが埋め込まれていても文字だけ消える。実体は
+ * pdfjs-dist に同梱されているので、バージョン追従のため public/ にコミットせず
+ * node_modules からビルド/dev 起動時にコピーする（public 配下なので dev も
+ * build も BASE_URL 経由で同じ URL で配信される）。
+ * 出力先 public/pdfjs/{cmaps,standard_fonts} は src/lib/pdfjs-config.ts と対応。
+ */
+function pdfjsAssetsPlugin(): Plugin {
+  const copy = () => {
+    const dest = path.resolve(__dirname, "public/pdfjs");
+    for (const sub of ["cmaps", "standard_fonts"]) {
+      const from = path.join(pdfjsDistDir, sub);
+      if (existsSync(from)) {
+        cpSync(from, path.join(dest, sub), { recursive: true });
+      }
+    }
+  };
+  return {
+    name: "copy-pdfjs-assets",
+    buildStart: copy,
+  };
+}
 
 /**
  * dev/build 起動時に git log からリリースノート JSON を生成する Vite プラグイン。
@@ -57,6 +90,7 @@ export default defineConfig({
   },
   plugins: [
     releaseNotesPlugin(),
+    pdfjsAssetsPlugin(),
     tailwindcss(),
     react(),
     // PWA: スタンドアローン対応（ホーム画面追加時にオフラインでもアプリシェルを表示）
