@@ -487,7 +487,7 @@ export function AiAssistantPanel({
                 <Send size={12} />
               </Button>
             </div>
-            <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground mt-2 flex items-center justify-between gap-3">
               <span>{t("aiChat.sendHint")}</span>
               <GroundingScopeChip value={scope} onChange={setScope} />
             </div>

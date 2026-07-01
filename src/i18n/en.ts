@@ -1252,8 +1252,8 @@ export const en: Record<string, string> = {
   "composer.scope.label": "Grounding",
   "composer.scope.overview": "Diverge",
   "composer.scope.primary": "Converge",
-  "composer.scope.overviewHint": "Include knowledge (claims, insights, related entries) broadly — for ideation and structuring",
-  "composer.scope.primaryHint": "Source text and memos only, excluding knowledge — for writing and citation accuracy",
+  "composer.scope.overviewHint": "Everything you cited, plus a cross-search for related knowledge — for ideation",
+  "composer.scope.primaryHint": "Only what you cited, without a cross-search — for accurate writing and citations",
   // verb メニュー（R2）
   "composer.verb.title": "Ask the AI (this note + {count} citations)",
   "composer.verb.commentPlaceholder": "Add a note to steer the AI (optional)",
