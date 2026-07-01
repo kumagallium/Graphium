@@ -383,6 +383,14 @@ type AtomShape =
 // only when the example instances the SAME shape + role-structure. Absent if forced/none.
 type AtomTransfer = { field: string; example: string };
 
+// UI surfacing: only `shape` is shown, and only in the detail view's context drawer
+// (alongside world-grounding / derived-from), as understated text rather than a badge.
+// `transfer` is generated and stored but intentionally NOT surfaced — spotting where an
+// Atom transfers to another field is the user's creative work, and pre-filling it would
+// anchor the reader (it is reserved for a future human-triggered "Idea" layer). `shape`
+// is read directly from the full `WikiMeta`, so nothing is mirrored into
+// `WikiMetaSummary` / `NoteIndexEntry` and `INDEX_SCHEMA_VERSION` is unchanged.
+
 type SynthesisMode =
   | "deductive" | "abductive" | "analogical" | "dialectic";
   // "inductive" was retired in PR-B4 — induction is the Claim → Atom operation,

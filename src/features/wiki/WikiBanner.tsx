@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type {
   AtomRelation,
+  AtomShape,
   BackingEntry,
   EpistemicStatus,
   GroundingValidityVerdict,
@@ -463,6 +464,12 @@ export function WikiContextDrawer({
     wikiMeta.kind === "claim" && !!wikiMeta.backing && wikiMeta.backing.length > 0;
   const showRebuttal =
     !!wikiMeta.rebuttalConditions && wikiMeta.rebuttalConditions.length > 0;
+  // Atom の構造の形（shape）。バッジで identity 層に出すと情報過多になるため、
+  // 世界照合・派生元などと同じ context drawer 下部に控えめなテキストで置く。
+  // transfer（越境転移）は表示しない — 「別分野への越境」を発想するのはユーザーの
+  // 創造的な仕事であり、AI が先回りして示すとアンカリングになる。データは保持し、
+  // 将来の発想（Idea）レイヤ（人間トリガー）で使う。
+  const showAtomShape = wikiMeta.kind === "atom" && !!wikiMeta.shape;
 
   const hasAny =
     showProcedure ||
@@ -470,7 +477,8 @@ export function WikiContextDrawer({
     showWorldDetail ||
     hasGroundingSiblings ||
     showBacking ||
-    showRebuttal;
+    showRebuttal ||
+    showAtomShape;
   if (!hasAny) return null;
 
   return (
@@ -509,10 +517,40 @@ export function WikiContextDrawer({
           onNavigateNote={onNavigateNote}
         />
       )}
+      {showAtomShape && <AtomShapeSection shape={wikiMeta.shape!} />}
       {showBacking && <BackingSection backing={wikiMeta.backing!} />}
       {showRebuttal && (
         <RebuttalConditionsSection conditions={wikiMeta.rebuttalConditions!} />
       )}
+    </div>
+  );
+}
+
+// Atom の構造の形（shape）— バッジにせず、世界照合・派生元と同じ context drawer に
+// 「構造の形」ラベル + 平易語の 1 行で控えめに置く。backing / rebuttal と同じ neutral な
+// dashed トーンに揃える。transfer はここには出さない（越境の発想はユーザーの仕事）。
+function AtomShapeSection({ shape }: { shape: AtomShape }) {
+  const t = useT();
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: "6px 10px",
+        borderRadius: "var(--r-2)",
+        background: "var(--paper)",
+        border: "1px dashed var(--rule)",
+        fontSize: 14,
+        lineHeight: 1.55,
+        color: "var(--ink-2)",
+        display: "flex",
+        alignItems: "baseline",
+        gap: 6,
+      }}
+    >
+      <span style={{ color: "var(--ink-4)", fontWeight: 500, flexShrink: 0 }}>
+        {t("wikiBanner.shapeTitle")}
+      </span>
+      <span>{t(`wikiTypes.atomShape.${shape}` as any)}</span>
     </div>
   );
 }

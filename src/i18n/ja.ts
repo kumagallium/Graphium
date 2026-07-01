@@ -728,6 +728,15 @@ export const ja: Record<string, string> = {
   "wikiTypes.atomType.methodological": "方法",
   "wikiTypes.atomType.observational": "経験的観測",
   "wikiTypes.atomType.boundary": "限界・境界",
+  // atomShape: Atom の関係の「形」（構造写像の軸）。atomType とは別軸。平易語で表示する。
+  "wikiTypes.atomShape.monotonic-increase": "増えるほど強まる",
+  "wikiTypes.atomShape.monotonic-decrease": "増えるほど弱まる",
+  "wikiTypes.atomShape.optimal-middle": "中間が最適",
+  "wikiTypes.atomShape.threshold": "しきい値で切替",
+  "wikiTypes.atomShape.trade-off": "トレードオフ",
+  "wikiTypes.atomShape.enabling-condition": "成立条件",
+  "wikiTypes.atomShape.composition-structure": "構造で決まる",
+  "wikiTypes.atomShape.other": "その他",
   // atomRelation (Phase δ): Atom 間の dimensional 関係（axial coding）。
   "wikiTypes.atomRelation.extends": "拡張",
   "wikiTypes.atomRelation.is-special-case-of": "特殊ケース",
@@ -824,6 +833,9 @@ export const ja: Record<string, string> = {
   "wikiBanner.backingSource.internal-claim": "内部 Claim",
   "wikiBanner.rebuttalTitle": "Rebuttal（反例条件）",
   "wikiBanner.rebuttalHint": "この主張が成立しない条件・領域。",
+  // 構造の形（shape）: バッジにせず context drawer に控えめなテキストで表示。
+  // transfer（越境転移）は表示しない — 越境の発想はユーザーの仕事。
+  "wikiBanner.shapeTitle": "構造の形",
   "wikiList.colWorldVerdict": "世界",
   "wikiList.colWorldVerdictTooltip": "最新の世界モデル照合 verdict。verdict の強さでソートできる。",
   "wikiList.colWorldVerdictNoMatch": "マッチなし",

@@ -728,6 +728,15 @@ export const en: Record<string, string> = {
   "wikiTypes.atomType.methodological": "Methodological",
   "wikiTypes.atomType.observational": "Observational",
   "wikiTypes.atomType.boundary": "Boundary",
+  // atomShape: the "shape" of an Atom's relation (the structural-mapping axis). A different axis from atomType. Plain-language labels.
+  "wikiTypes.atomShape.monotonic-increase": "increases with",
+  "wikiTypes.atomShape.monotonic-decrease": "decreases with",
+  "wikiTypes.atomShape.optimal-middle": "sweet spot",
+  "wikiTypes.atomShape.threshold": "threshold",
+  "wikiTypes.atomShape.trade-off": "trade-off",
+  "wikiTypes.atomShape.enabling-condition": "enabling condition",
+  "wikiTypes.atomShape.composition-structure": "structure-driven",
+  "wikiTypes.atomShape.other": "other",
   // atomRelation (Phase δ): Atom-to-Atom dimensional relations (axial coding).
   "wikiTypes.atomRelation.extends": "Extends",
   "wikiTypes.atomRelation.is-special-case-of": "Special case of",
@@ -824,6 +833,10 @@ export const en: Record<string, string> = {
   "wikiBanner.backingSource.internal-claim": "Internal claim",
   "wikiBanner.rebuttalTitle": "Rebuttal conditions",
   "wikiBanner.rebuttalHint": "Conditions or regimes under which this claim would not hold.",
+  // Structural shape: shown as understated text in the context drawer, not as a badge.
+  // transfer (cross-domain analogy) is intentionally NOT surfaced — spotting where an
+  // Atom transfers is the user's creative work.
+  "wikiBanner.shapeTitle": "Structural shape",
   "wikiList.colWorldVerdict": "World",
   "wikiList.colWorldVerdictTooltip": "Latest world-grounding verdict. Sort by verdict strength.",
   "wikiList.colWorldVerdictNoMatch": "no match",
