@@ -72,7 +72,7 @@ export const en: Record<string, string> = {
 
   // ── Welcome / Legacy Drive layout migration ──
   "welcome.title": "Welcome to Graphium",
-  "welcome.subtitle": "Block editor with PROV-DM provenance tracking",
+  "welcome.subtitle": "Notes that remember how you made them",
   "welcome.saveLocation": "Notes are saved at",
   "welcome.saveLocationHint": "You can change the save location anytime in Settings. Point it at a Google Drive / iCloud / Dropbox synced folder to ride on top of OS-level cloud sync.",
   "welcome.browserStorage": "Notes are saved in this browser (offline)",
@@ -803,7 +803,7 @@ export const en: Record<string, string> = {
   "wikiBanner.derivedFromHint": "Where this knowledge piece was drawn from — source notes, claims, and dimensional relations between atoms. Existing provenance only.",
   "wikiBanner.derivedFromNotesLabel": "Notes",
   "wikiBanner.derivedFromClaimsLabel": "Source claims",
-  "wikiBanner.relatedAtomsLabel": "Related atoms",
+  "wikiBanner.relatedAtomsLabel": "Related insights",
   "wikiBanner.relatedAtomsHint": "Dimensional relations to other atoms (axial coding).",
   "wikiBanner.derivedFromMissing": "(unknown)",
   // world-grounding (Phase 2 / PR 2A) — 蒸留KB のみ。LLM fallback / auto-trigger は PR 2B
@@ -1282,7 +1282,7 @@ export const en: Record<string, string> = {
   "onboarding.guide.aria": "Empty note tips",
   "onboarding.guide.lead": "Start writing, or try one of these:",
   "onboarding.chip.cmdk.label": "Ask AI",
-  "onboarding.chip.cmdk.desc": "Open the Composer to ask, compose, or insert",
+  "onboarding.chip.cmdk.desc": "Ask AI about your note, or insert its answer",
   "onboarding.chip.hash.label": "Label",
   "onboarding.chip.hash.desc": "Type # at the start of a line to tag it",
   "onboarding.chip.at.label": "Link a note",
