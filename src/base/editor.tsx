@@ -45,6 +45,7 @@ import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
+import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
@@ -245,6 +246,8 @@ export function SandboxEditor({
       const toItem = (s: any) => ({
         title: s.label,
         group: s.group,
+        // 同名ノート区別用の 2 行目（shadcn の SuggestionMenu.Item が描画する）
+        subtext: s.subtext,
         onItemClick: () => {
           const block = (editor as any).getTextCursorPosition?.()?.block;
           if (block && onMentionSelect) {
@@ -313,6 +316,10 @@ export function SandboxEditor({
         <SuggestionMenuController
           triggerCharacter="@"
           getItems={getMentionItems as any}
+          // 同名ノートが並んでも React の duplicate key 警告でメニューが壊れないよう、
+          // key を title ではなくインデックスにするカスタムメニューを使う。
+          // 同時に item.subtext（更新日時）も描画して同名ノートを見分けられる。
+          suggestionMenuComponent={MentionSuggestionMenu as any}
           {...({} as any)}
         />
       )}
