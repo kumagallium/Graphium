@@ -24,7 +24,7 @@ export const en = {
   "hero.tryOnline": "Try online",
   "hero.download": "Download desktop",
   "hero.starOnGithub": "Star on GitHub",
-  "hero.shotAlt": "Graphium editor showing a note linked to other notes with @-references",
+  "hero.shotAlt": "Graphium's graph view: notes, claims, and insights connected",
 
   // How it works (3 steps)
   "how.heading": "Write, expand, trace.",
@@ -48,10 +48,10 @@ export const en = {
   "screens.knowledge.body":
     "One click, and the AI proposes claims and insights from your notes. You decide what stays.",
   "screens.knowledge.alt": "Knowledge list with AI-extracted claims and insights",
-  "screens.graph.title": "Connections and origins, in one view",
-  "screens.graph.body":
-    "See which insight grew from which note, and walk any spark back to where it came from.",
-  "screens.graph.alt": "Graph view showing notes and knowledge connected",
+  "screens.trace.title": "Walk back to the origin",
+  "screens.trace.body":
+    "Every claim the AI writes links back to its source notes. \"Where did this line come from?\" always has an answer.",
+  "screens.trace.alt": "A claim page with links back to its source notes",
 
   // For everyone
   "everyone.heading": "For everyone who tinkers.",
@@ -131,7 +131,7 @@ export const ja: Record<keyof typeof en, string> = {
   "hero.tryOnline": "オンラインで試す",
   "hero.download": "デスクトップ版を入手",
   "hero.starOnGithub": "GitHub でスター",
-  "hero.shotAlt": "他のノートと @ 参照で繋がったノートを開いた Graphium エディタ",
+  "hero.shotAlt": "ノート・知見・洞察が繋がった Graphium のグラフビュー",
 
   "how.heading": "書く、広げる、辿る。",
   "how.step1.title": "書く",
@@ -153,10 +153,10 @@ export const ja: Record<keyof typeof en, string> = {
   "screens.knowledge.body":
     "ワンクリックで、AI がノートから「知見」と「洞察」の候補を取り出します。残すかどうかは、あなたが決めます。",
   "screens.knowledge.alt": "AI が抽出した知見・洞察が並ぶ Knowledge リスト",
-  "screens.graph.title": "繋がりと起源をひと目で",
-  "screens.graph.body":
-    "どの洞察がどのノートから育ったのか。点と点の繋がりを俯瞰して、ひらめきの出どころまでいつでも遡れます。",
-  "screens.graph.alt": "ノートとナレッジの繋がりを示すグラフビュー",
+  "screens.trace.title": "ひらめきの起源まで遡れる",
+  "screens.trace.body":
+    "AI が書いた知見には、出どころのノートへのリンクが付きます。「この一文はどこから来たのか」に、いつでも答えられるのです。",
+  "screens.trace.alt": "出どころのノートへのリンクが付いた知見ページ",
 
   "everyone.heading": "試行錯誤するすべての人へ。",
   "everyone.sub": "実験室でも、台所でも、工房でも、コードベースでも、教室でも。",

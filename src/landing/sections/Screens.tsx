@@ -16,10 +16,10 @@ export function Screens() {
       body: t("screens.knowledge.body"),
     },
     {
-      src: "/Graphium/landing/screen-graph.png",
-      alt: t("screens.graph.alt"),
-      title: t("screens.graph.title"),
-      body: t("screens.graph.body"),
+      src: "/Graphium/landing/screen-trace.png",
+      alt: t("screens.trace.alt"),
+      title: t("screens.trace.title"),
+      body: t("screens.trace.body"),
     },
   ];
 
