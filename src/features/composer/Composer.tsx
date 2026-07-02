@@ -311,6 +311,9 @@ export function Composer(props: ComposerProps) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            // 3 セグメント化でチップが縮まないため、狭い幅ではチップを 2 行目に落とす
+            //（wrap が無いと左のヒントが数 px 幅まで潰れて縦柱に崩れる）
+            flexWrap: "wrap",
             gap: 10,
           }}
         >
@@ -323,7 +326,10 @@ export function Composer(props: ComposerProps) {
           >
             ↑↓ {t("composer.search.hintFilters")} · ⌘+Enter {t("composer.kbd.submit")} · Esc {t("composer.kbd.close")}
           </span>
-          <GroundingScopeChip value={scope} onChange={setScope} />
+          {/* 折返しで 2 行目に落ちたときも右寄せを保つ */}
+          <span style={{ marginLeft: "auto" }}>
+            <GroundingScopeChip value={scope} onChange={setScope} />
+          </span>
         </div>
 
         {/* 結果リスト（onNoteSelect 未配線のときは出さない）

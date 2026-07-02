@@ -1320,7 +1320,7 @@ export const en: Record<string, string> = {
   "composer.scope.external": "External",
   "composer.scope.internal": "Internal",
   "composer.scope.notes": "This note",
-  "composer.scope.externalHint": "Force a web search and ground the answer in external sources — for investigating something new",
+  "composer.scope.externalHint": "Search the web and ground the answer in external sources — for investigating something new",
   "composer.scope.internalHint": "Everything you cited, plus a cross-search of your accumulated knowledge — for ideation",
   "composer.scope.notesHint": "Only what this note cites, without a cross-search — for accurate writing and citations",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）

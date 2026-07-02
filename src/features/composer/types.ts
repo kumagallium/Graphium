@@ -28,7 +28,7 @@ export type ComposerSubmission = {
   /** R2: verb メニュー由来の送信のとき、選ばれた動詞 id。
    *  PROV-DM の Activity subtype 記録（後続 PR）に伝播するため optional で持つ。 */
   verb?: ComposerVerb;
-  /** grounding スコープ（俯瞰/原典）。AI 送信時に引用資料のどの層を渡すか。
-   *  未指定なら呼び出し側のデフォルト（overview）。 */
+  /** grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すか。
+   *  未指定なら呼び出し側のデフォルト（DEFAULT_GROUNDING_SCOPE = 内部参照）。 */
   scope?: GroundingScope;
 };

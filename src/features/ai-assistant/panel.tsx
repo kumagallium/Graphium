@@ -509,9 +509,12 @@ export function AiAssistantPanel({
                 <Send size={12} />
               </Button>
             </div>
-            <div className="text-xs text-muted-foreground mt-2 flex items-center justify-between gap-3">
+            {/* 3 セグメントのチップは縮まないため、320px 級の狭幅では 2 行目に折り返す */}
+            <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">
               <span>{t("aiChat.sendHint")}</span>
-              <GroundingScopeChip value={scope} onChange={setScope} />
+              <span className="ml-auto">
+                <GroundingScopeChip value={scope} onChange={setScope} />
+              </span>
             </div>
           </div>
         </>

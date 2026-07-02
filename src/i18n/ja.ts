@@ -1318,7 +1318,7 @@ export const ja: Record<string, string> = {
   "composer.scope.external": "外部参照",
   "composer.scope.internal": "内部参照",
   "composer.scope.notes": "ノート内参照",
-  "composer.scope.externalHint": "Web 検索を必ず実行し、外部の情報源で答えを裏づける（調査向け）",
+  "composer.scope.externalHint": "Web 検索で外部の情報源を取り込んで裏づける（調査向け）",
   "composer.scope.internalHint": "引用したもの＋蓄積した知識を横断検索してつなぐ（着想・構成向け）",
   "composer.scope.notesHint": "このノートで引用したものだけに絞る（横断検索しない・執筆や引用の正確さ向け）",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
