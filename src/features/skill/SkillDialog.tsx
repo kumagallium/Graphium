@@ -1,29 +1,51 @@
-// 新規 Skill 作成ダイアログ
+// Skill 作成 / 編集ダイアログ
+// mode="create" で新規作成、mode="edit" で既存 Skill のメタ情報（説明・Ingest 自動適用・
+// 適用言語・タイトル）を後から修正する。本文（プロンプトテンプレート）はエディタ側で編集する。
 
 import { useState } from "react";
 import { X } from "lucide-react";
 
-type Props = {
-  onClose: () => void;
-  onCreate: (title: string, description: string, availableForIngest: boolean) => void;
+export type SkillFormValues = {
+  title: string;
+  description: string;
+  availableForIngest: boolean;
+  /** 適用言語。undefined = 全言語に適用 */
+  language?: "ja" | "en";
 };
 
-export function NewSkillDialog({ onClose, onCreate }: Props) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [availableForIngest, setAvailableForIngest] = useState(true);
+type Props = {
+  mode: "create" | "edit";
+  /** 編集時の初期値。create のときは未指定でよい。 */
+  initial?: SkillFormValues;
+  onClose: () => void;
+  onSubmit: (values: SkillFormValues) => void;
+};
+
+export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [availableForIngest, setAvailableForIngest] = useState(initial?.availableForIngest ?? true);
+  // 適用言語: "all"（全言語）= language 未指定
+  const [language, setLanguage] = useState<"all" | "ja" | "en">(initial?.language ?? "all");
+
+  const isEdit = mode === "edit";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    onCreate(title.trim(), description.trim(), availableForIngest);
+    onSubmit({
+      title: title.trim(),
+      description: description.trim(),
+      availableForIngest,
+      language: language === "all" ? undefined : language,
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-md mx-4">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold">New Skill</h2>
+          <h2 className="text-sm font-semibold">{isEdit ? "Edit Skill" : "New Skill"}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X size={16} />
           </button>
@@ -53,6 +75,26 @@ export function NewSkillDialog({ onClose, onCreate }: Props) {
               placeholder="What does this skill do? (one line)"
               className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              一覧に表示されるラベルです（AI には渡りません。AI が読むのは本文のプロンプトです）。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">
+              適用言語
+            </label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as "all" | "ja" | "en")}
+              className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">全言語</option>
+              <option value="ja">日本語</option>
+              <option value="en">English</option>
+            </select>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              生成言語が一致するときだけ適用されます。
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -79,7 +121,7 @@ export function NewSkillDialog({ onClose, onCreate }: Props) {
               disabled={!title.trim()}
               className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              Create
+              {isEdit ? "Save" : "Create"}
             </button>
           </div>
         </form>

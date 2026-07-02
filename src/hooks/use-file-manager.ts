@@ -2013,6 +2013,55 @@ export function useFileManager(authenticated: boolean) {
     []
   );
 
+  // Skill のメタ情報（タイトル・説明・自動適用・適用言語）を更新する。
+  // 本文ブロックには触らず、キャッシュ（無ければストレージ）の最新 doc をベースに書き換える。
+  const handleUpdateSkillMeta = useCallback(
+    async (
+      skillId: string,
+      values: { title: string; description: string; availableForIngest: boolean; language?: "ja" | "en" }
+    ) => {
+      try {
+        const base = docCacheRef.current.get(`skill:${skillId}`) ?? (await loadSkillFile(skillId));
+        const doc: GraphiumDocument = {
+          ...base,
+          title: values.title,
+          skillMeta: {
+            ...(base.skillMeta ?? { createdAt: new Date().toISOString() }),
+            description: values.description,
+            availableForIngest: values.availableForIngest,
+            language: values.language,
+          },
+        };
+        await saveSkillFile(skillId, doc);
+        docCacheRef.current.set(`skill:${skillId}`, doc);
+        setSkillMetas((prev) => {
+          const next = new Map(prev);
+          next.set(skillId, {
+            title: doc.title,
+            description: values.description,
+            availableForIngest: values.availableForIngest,
+            systemSkillId: doc.skillMeta?.systemSkillId,
+            language: values.language,
+          });
+          return next;
+        });
+        setSkillFiles((prev) => prev.map((f) =>
+          f.id === skillId
+            ? { ...f, name: `${doc.title}.skill.graphium.json`, modifiedTime: new Date().toISOString() }
+            : f
+        ));
+        // 開いている Skill のタイトル/メタが変わったらエディタ側にも反映する
+        if (activeFileId === `skill:${skillId}`) {
+          setActiveDoc(doc);
+          setEditorKey((k) => k + 1);
+        }
+      } catch (err) {
+        console.error("Skill メタ情報の更新に失敗:", err);
+      }
+    },
+    [activeFileId]
+  );
+
   // Recent ノートは noteIndex のアクティブエントリに存在するもののみ表示する。
   // 完全削除・ゴミ箱送りされたノートが localStorage 由来で残るのを防ぐ。
   // noteIndex 未ロード時はそのまま見せる（読み込み前に空になるのを避ける）。
@@ -2099,5 +2148,6 @@ export function useFileManager(authenticated: boolean) {
     handleDeleteSkillFile,
     handleResetSystemSkill,
     handleCreateSkillFile,
+    handleUpdateSkillMeta,
   };
 }

@@ -144,7 +144,7 @@ import { KnowledgeStatusChip } from "./features/wiki/KnowledgeStatusChip";
 import { attachValidity, checkValidity } from "./features/world-grounding";
 import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocument } from "./features/url-to-prov";
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
-import { SkillListView, SkillBanner, NewSkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
+import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
 import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
@@ -3716,6 +3716,8 @@ export function NoteApp() {
   // Skill 表示状態
   const [showSkillList, setShowSkillList] = useState(false);
   const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
+  // 編集ダイアログを開いている Skill の id（null なら閉じている）
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [lintReport, setLintReport] = useState<import("./server/services/wiki-linter").LintReport | null>(null);
   const [lintLoading, setLintLoading] = useState(false);
   // メモ挿入リクエスト（メモギャラリー → エディタ）
@@ -6275,6 +6277,7 @@ export function NoteApp() {
               await fm.handleDeleteSkillFile(skillId);
             }}
             onNewSkill={() => setShowNewSkillDialog(true)}
+            onEditSkill={(skillId) => setEditingSkillId(skillId)}
             onResetSystemSkill={fm.handleResetSystemSkill}
           />
         ) : !isDesktop && !fm.activeFileId ? (
@@ -6297,7 +6300,13 @@ export function NoteApp() {
           <>
           {/* Skill バナー（Skill ドキュメントの場合）— D0 配置: タイトルバーの上 */}
           {fm.activeDoc?.source === "skill" && fm.activeDoc?.skillMeta && (
-            <SkillBanner availableForIngest={fm.activeDoc.skillMeta.availableForIngest} />
+            <SkillBanner
+              availableForIngest={fm.activeDoc.skillMeta.availableForIngest}
+              onEdit={() => {
+                const id = fm.activeFileId?.replace(/^skill:/, "");
+                if (id) setEditingSkillId(id);
+              }}
+            />
           )}
           {/* Wiki バナー（AI 生成ドキュメントの場合）— D0 配置: タイトルバーの上
               2026-05-22 議論で D1 (subHeaderSlot 経由) を試したが、右パネル展開時に
@@ -6758,10 +6767,11 @@ export function NoteApp() {
         citationCount={composerCitationCount}
       />
       {showNewSkillDialog && (
-        <NewSkillDialog
+        <SkillDialog
+          mode="create"
           onClose={() => setShowNewSkillDialog(false)}
-          onCreate={async (title, description, availableForIngest) => {
-            const doc = buildSkillDocument(title, description, "", availableForIngest);
+          onSubmit={async ({ title, description, availableForIngest, language }) => {
+            const doc = buildSkillDocument(title, description, "", availableForIngest, language ? { language } : undefined);
             const newId = await fm.handleCreateSkillFile(doc);
             setShowNewSkillDialog(false);
             setShowSkillList(false);
@@ -6769,6 +6779,27 @@ export function NoteApp() {
           }}
         />
       )}
+      {editingSkillId && (() => {
+        const id = editingSkillId;
+        const meta = fm.skillMetas.get(id);
+        if (!meta) return null;
+        return (
+          <SkillDialog
+            mode="edit"
+            initial={{
+              title: meta.title,
+              description: meta.description,
+              availableForIngest: meta.availableForIngest,
+              language: meta.language,
+            }}
+            onClose={() => setEditingSkillId(null)}
+            onSubmit={async (values) => {
+              await fm.handleUpdateSkillMeta(id, values);
+              setEditingSkillId(null);
+            }}
+          />
+        );
+      })()}
       {showQuickMemoDialog && (
         <CaptureDialog
           variant={isDesktop ? "centered" : "fullscreen"}
