@@ -50,8 +50,8 @@ export const en = {
   "screens.knowledge.alt": "Knowledge list with AI-extracted claims and insights",
   "screens.trace.title": "Walk back to the origin",
   "screens.trace.body":
-    "Every claim the AI writes links back to its source notes. \"Where did this line come from?\" always has an answer.",
-  "screens.trace.alt": "A claim page with links back to its source notes",
+    "Open an insight and its lineage sits in the side panel: the claim it grew from, and the notes that claim came from. The origin is always one glance away.",
+  "screens.trace.alt": "An insight page with its lineage panel showing the source claim and source notes",
 
   // For everyone
   "everyone.heading": "For everyone who tinkers.",
@@ -155,8 +155,8 @@ export const ja: Record<keyof typeof en, string> = {
   "screens.knowledge.alt": "AI が抽出した知見・洞察が並ぶ Knowledge リスト",
   "screens.trace.title": "ひらめきの起源まで遡れる",
   "screens.trace.body":
-    "AI が書いた知見には、出どころのノートへのリンクが付きます。「この一文はどこから来たのか」に、いつでも答えられるのです。",
-  "screens.trace.alt": "出どころのノートへのリンクが付いた知見ページ",
+    "洞察を開くと、右のパネルに「来歴」が並びます。もとになった知見、その知見のもとのノートへと、いつでも遡れるのです。",
+  "screens.trace.alt": "来歴パネル(洞察・知見・元ノート)を開いた洞察ページ",
 
   "everyone.heading": "試行錯誤するすべての人へ。",
   "everyone.sub": "実験室でも、台所でも、工房でも、コードベースでも、教室でも。",
