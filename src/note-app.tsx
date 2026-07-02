@@ -1233,11 +1233,15 @@ function NoteEditorInner({
   // スラッシュメニューからの URL ピッカーモーダル用状態
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
 
-  // URL 素材の登録完了後に即時保存するための ref。
+  // URL 素材の登録完了後に保存を予約するための ref。
   // 登録がオートセーブ（3秒）より後に完了すると、syncUsedIn を再実行する保存
   // イベントが来ず usedIn が空のまま = グラフに URL ノードが出ない。
   // useAutoSave はこの位置より後で宣言されるため ref 経由で参照する。
-  const saveNowRef = useRef<() => void>(() => {});
+  // saveNow（即時保存）ではなく markDirty を使う: fetchUrlMetadata は最大 5 秒
+  // かかり、その間にノートを切り替えるとアンマウント後の stale save が
+  // 「切替先ノートに旧ノートの内容を保存」するデータ破壊になる。markDirty の
+  // タイマーは useAutoSave がアンマウント時に必ずクリアするため安全。
+  const markDirtyRef = useRef<() => void>(() => {});
 
   // ペースト → ブックマーク選択: モーダルなしで直接挿入 + 裏でアセット登録
   const handleInsertBookmarkDirect = useCallback((url: string, blockId: string) => {
@@ -1255,9 +1259,11 @@ function NoteEditorInner({
         block,
         "after",
       );
-      // 元のテキストブロックに URL テキストだけが残っていたら削除
+      // 元のテキストブロックに URL テキストだけが残っていたら削除。
+      // 子ブロックを持つ場合は巻き添え削除になるため残す（ネストしたリスト項目など）
       const content = block.content;
-      if (Array.isArray(content) && content.length <= 1) {
+      const hasChildren = Array.isArray(block.children) && block.children.length > 0;
+      if (Array.isArray(content) && content.length <= 1 && !hasChildren) {
         const text = content[0]?.text?.trim() ?? "";
         if (text === url || text === "") {
           removeBlockMetadata([block.id]);
@@ -1279,9 +1285,9 @@ function NoteEditorInner({
           usedIn: [],
           urlMeta: { domain: meta.domain, description: meta.description, ogImage: meta.ogImage },
         });
-        // 登録後に即時保存して syncUsedIn を走らせる（オートセーブが先に完了して
-        // いた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）
-        saveNowRef.current();
+        // 登録後に保存を予約して syncUsedIn を走らせる（オートセーブが先に完了
+        // していた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）
+        markDirtyRef.current();
       });
     }
   }, [onAddUrlBookmark, removeBlockMetadata]);
@@ -1319,9 +1325,9 @@ function NoteEditorInner({
           usedIn: [],
           urlMeta: { domain: meta.domain, description: meta.description, ogImage: meta.ogImage },
         });
-        // 登録後に即時保存して syncUsedIn を走らせる（オートセーブが先に完了して
-        // いた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）
-        saveNowRef.current();
+        // 登録後に保存を予約して syncUsedIn を走らせる（オートセーブが先に完了
+        // していた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）
+        markDirtyRef.current();
       });
     }
   }, [onAddUrlBookmark]);
@@ -1778,7 +1784,7 @@ function NoteEditorInner({
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
-  saveNowRef.current = saveNow;
+  markDirtyRef.current = markDirty;
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
