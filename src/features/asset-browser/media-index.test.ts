@@ -1,6 +1,6 @@
 // findBlockIdsByMediaUrl のユニットテスト
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   findBlockIdsByMediaUrl,
   updateBlockNameByUrl,
@@ -8,10 +8,17 @@ import {
   collectSourceAssetFileIdsFromDoc,
   extractMediaFromBlocks,
   syncUsedIn,
+  ensureMediaIndex,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
+  type MediaIndexEntry,
 } from "./media-index";
+import { getActiveProvider } from "../../lib/storage/registry";
+
+vi.mock("../../lib/storage/registry", () => ({
+  getActiveProvider: vi.fn(),
+}));
 
 describe("findBlockIdsByMediaUrl", () => {
   const targetUrl = "https://example.com/image.png";
@@ -346,5 +353,120 @@ describe("collectSourceAssetFileIdsFromDoc (URL 出典)", () => {
       new Set(["ok-1"]),
     );
     expect(collectSourceAssetFileIdsFromDoc({})).toEqual(new Set());
+  });
+});
+
+describe("ensureMediaIndex (フル再構築時の URL ブックマーク usedIn)", () => {
+  const RAW_URL = "https://example.com/article";
+
+  const urlBookmark = (usedIn: MediaIndexEntry["usedIn"]): MediaIndexEntry => ({
+    fileId: "url_1700000000000_abc123",
+    name: "example.com",
+    type: "url",
+    mimeType: "text/uri-list",
+    url: RAW_URL,
+    thumbnailUrl: "",
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn,
+  });
+
+  /** ブックマークブロックで RAW_URL を参照するノート doc */
+  const docWithBookmark = {
+    title: "ノート1",
+    pages: [
+      {
+        blocks: [
+          { id: "block-1", type: "bookmark", props: { url: RAW_URL } },
+        ],
+      },
+    ],
+  };
+
+  const setupProvider = (existing: MediaIndex | null) => {
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn().mockResolvedValue(existing),
+      writeAppData: vi.fn().mockResolvedValue(undefined),
+      listMediaFiles: vi.fn().mockResolvedValue([]),
+    } as any);
+  };
+
+  const runRebuild = (existing: MediaIndex | null) => {
+    setupProvider(existing);
+    const docCache = new Map<string, any>([["note-1", docWithBookmark]]);
+    return ensureMediaIndex(
+      [{ id: "note-1", name: "ノート1" }],
+      docCache,
+      async () => docWithBookmark,
+    );
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("既存 usedIn を温存せず走査で埋め直し、同一 noteId+blockId が重複しない", async () => {
+    const existing: MediaIndex = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [
+        urlBookmark([{ noteId: "note-1", noteTitle: "ノート1", blockId: "block-1" }]),
+      ],
+    };
+    const index = await runRebuild(existing);
+    const entry = index.media.find((m) => m.type === "url")!;
+    expect(entry.usedIn).toEqual([
+      { noteId: "note-1", noteTitle: "ノート1", blockId: "block-1" },
+    ]);
+  });
+
+  it("再構築を繰り返しても usedIn が増えない", async () => {
+    const initial: MediaIndex = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [urlBookmark([])],
+    };
+    // 1回目の走査で usage が 1 件付く
+    let index = await runRebuild(initial);
+    expect(index.media[0].usedIn).toHaveLength(1);
+    // 1回目の結果を既存インデックスとして 2 回目・3 回目を実行
+    index = await runRebuild(index);
+    index = await runRebuild(index);
+    expect(index.media[0].usedIn).toHaveLength(1);
+  });
+
+  it("重複が積み上がった旧バージョンのインデックスは強制再構築で解消される", async () => {
+    const dupUsage = { noteId: "note-1", noteTitle: "古いタイトル", blockId: "block-1" };
+    const existing: MediaIndex = {
+      version: 3,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [urlBookmark([dupUsage, dupUsage, dupUsage])],
+    };
+    const index = await runRebuild(existing);
+    expect(index.version).toBe(CURRENT_MEDIA_INDEX_VERSION);
+    const entry = index.media.find((m) => m.type === "url")!;
+    // 重複が解消され、noteTitle も最新化される
+    expect(entry.usedIn).toEqual([
+      { noteId: "note-1", noteTitle: "ノート1", blockId: "block-1" },
+    ]);
+  });
+
+  it("ノートから参照が消えた URL ブックマークは usedIn が空になる（エントリ自体は残る）", async () => {
+    const existing: MediaIndex = {
+      version: CURRENT_MEDIA_INDEX_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      media: [
+        urlBookmark([{ noteId: "note-1", noteTitle: "ノート1", blockId: "block-1" }]),
+      ],
+    };
+    setupProvider(existing);
+    const docWithoutUrl = { title: "ノート1", pages: [{ blocks: [] }] };
+    const docCache = new Map<string, any>([["note-1", docWithoutUrl]]);
+    const index = await ensureMediaIndex(
+      [{ id: "note-1", name: "ノート1" }],
+      docCache,
+      async () => docWithoutUrl,
+    );
+    const entry = index.media.find((m) => m.type === "url")!;
+    expect(entry.usedIn).toEqual([]);
   });
 });
