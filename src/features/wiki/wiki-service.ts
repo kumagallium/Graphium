@@ -1304,6 +1304,7 @@ export async function applyCrossUpdate(
   model: string | null,
   noteIndex?: NoteIndex,
   skills?: { title: string; prompt: string }[],
+  language?: string,
 ): Promise<GraphiumDocument> {
   const now = new Date().toISOString();
   const page = existingDoc.pages[0];
@@ -1355,7 +1356,7 @@ export async function applyCrossUpdate(
             existingSections: [{ heading: proposal.section.heading, content: existingContent }],
             newSections: [{ heading: proposal.section.heading, content: proposal.section.content }],
             editedSectionHeadings: existingDoc.wikiMeta?.editedSections ?? [],
-            language: existingDoc.wikiMeta?.language ?? "ja",
+            language: existingDoc.wikiMeta?.language ?? language ?? "en",
             ...(model ? { model } : wikiBodyModel()),
             ...(skills && skills.length > 0 ? { skills } : {}),
           }),
