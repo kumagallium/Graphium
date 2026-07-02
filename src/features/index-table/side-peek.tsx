@@ -47,7 +47,7 @@ import {
   blockContainsUrlLink,
   registerUrlAsset,
 } from "@features/asset-browser";
-import type { MediaIndex, MediaIndexEntry, MediaType } from "@features/asset-browser";
+import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
 import {
   GRAPHIUM_CLIPBOARD_MIME,
   extractPayloadFromHtml,
@@ -485,8 +485,31 @@ function SidePeekInner({
   // currentBlock を都度取り直すと、ピッカーモーダル表示中にフォーカスが移って
   // cursor position が変わる可能性があるので、useState で記憶する。
 
-  // 既存メディアから image/video/audio/pdf 挿入
-  const handlePickerSelect = useCallback((entry: MediaIndexEntry) => {
+  // スラッシュ起点で inline コンテンツ（@リンク / ハイパーリンク）を挿入する
+  // （main editor の insertInlineAtSlash と同じ流儀）。
+  const insertInlineAtSlash = useCallback((editor: any, currentBlock: any, inline: any[]) => {
+    const content = currentBlock.content;
+    const isSlashOnly =
+      Array.isArray(content) &&
+      content.length <= 1 &&
+      (!content[0] || (content[0].type === "text" && content[0].text.replace("/", "").trim() === ""));
+    if (isSlashOnly) {
+      editor.updateBlock(currentBlock, { type: "paragraph", content: [] });
+    }
+    const target = editor.getBlock(currentBlock.id) ?? currentBlock;
+    editor.setTextCursorPosition(target, "end");
+    setTimeout(() => {
+      editor.insertInlineContent(inline);
+    }, 0);
+  }, []);
+
+  // 既存メディアから挿入（main editor の handlePickerSelect と同じ挙動）。
+  // displayMode:
+  //   "embed" → 中身を展開（pdf / file / image / video / audio ブロック）
+  //   "link"  → @素材名 の inline リンク + citedAssetFileIds に登録
+  //             （Cmd-K / チャットの AI がその素材を読めるようにする。
+  //              doSave は docRef.current を spread するので一緒に永続化される）
+  const handlePickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = editorRef.current;
     if (!editor) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
@@ -494,12 +517,30 @@ function SidePeekInner({
       setPickerMediaType(null);
       return;
     }
+    if (displayMode === "link") {
+      const cur = docRef.current;
+      if (entry.fileId && cur && !(cur.citedAssetFileIds ?? []).includes(entry.fileId)) {
+        docRef.current = {
+          ...cur,
+          citedAssetFileIds: [...(cur.citedAssetFileIds ?? []), entry.fileId],
+        };
+      }
+      // insertInlineContent の onChange 経由で自動保存される
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "text", text: `@${entry.name}`, styles: { textColor: "blue" } },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      setPickerMediaType(null);
+      return;
+    }
     const newBlock = entry.type === "pdf"
       ? { type: "pdf", props: { url: entry.url, name: entry.name } }
-      : {
-          type: entry.type === "video" ? "video" : entry.type === "audio" ? "audio" : "image",
-          props: { url: entry.url, name: entry.name },
-        };
+      : entry.type === "document"
+        ? { type: "file", props: { url: entry.url, name: entry.name } }
+        : {
+            type: entry.type === "video" ? "video" : entry.type === "audio" ? "audio" : "image",
+            props: { url: entry.url, name: entry.name },
+          };
     editor.insertBlocks([newBlock], currentBlock, "after");
     const content = currentBlock.content;
     if (
@@ -510,7 +551,7 @@ function SidePeekInner({
       editor.removeBlocks([currentBlock]);
     }
     setPickerMediaType(null);
-  }, []);
+  }, [insertInlineAtSlash]);
 
   // /claims, /Insights で選んだ claim / atom ノートを引用挿入。
   // main editor (note-app.tsx handleCitePickerConfirm) と同じ流儀:
@@ -560,12 +601,27 @@ function SidePeekInner({
     setCitePickerKind(null);
   }, [linkStore]);
 
-  // 既存 URL ピッカーから bookmark 挿入
-  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry) => {
+  // 既存 URL ピッカーから挿入（main editor の handleUrlSlashPickerSelect と同じ挙動）。
+  // displayMode "link" はインラインのハイパーリンク、"embed" は bookmark ブロック。
+  const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
     const editor = editorRef.current;
     if (!editor) return;
     const currentBlock = editor.getTextCursorPosition()?.block;
     if (!currentBlock) {
+      setUrlSlashPickerOpen(false);
+      return;
+    }
+    if (displayMode === "link") {
+      insertInlineAtSlash(editor, currentBlock, [
+        { type: "link", href: entry.url, content: [{ type: "text", text: entry.name, styles: {} }] },
+        { type: "text", text: " ", styles: {} },
+      ]);
+      // 既存エントリの usedIn にこのノートをマージする（peek の保存は syncUsedIn を
+      // 通らないため。handleAddUrlBookmark は重複 URL のとき usedIn をマージする）
+      onAddUrlBookmark?.({
+        ...entry,
+        usedIn: [{ noteId, noteTitle: docRef.current?.title ?? "", blockId: currentBlock.id }],
+      });
       setUrlSlashPickerOpen(false);
       return;
     }
@@ -592,7 +648,7 @@ function SidePeekInner({
       editor.removeBlocks([currentBlock]);
     }
     setUrlSlashPickerOpen(false);
-  }, []);
+  }, [insertInlineAtSlash, onAddUrlBookmark, noteId]);
 
   // メモピッカーから挿入
   const handleMemoSelect = useCallback((entry: CaptureEntry) => {
@@ -1312,6 +1368,7 @@ function SidePeekInner({
             onSelect={handlePickerSelect}
             onClose={() => setPickerMediaType(null)}
             onUpload={uploadFile}
+            allowDisplayMode
           />
         )}
         {citePickerKind && (
@@ -1329,6 +1386,7 @@ function SidePeekInner({
             onSelect={handleUrlSlashPickerSelect}
             onClose={() => setUrlSlashPickerOpen(false)}
             onAddUrlBookmark={onAddUrlBookmark}
+            allowDisplayMode
           />
         )}
         <MemoPickerModal
