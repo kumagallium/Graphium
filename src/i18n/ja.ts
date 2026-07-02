@@ -412,7 +412,6 @@ export const ja: Record<string, string> = {
 
   // ── 設定モーダル追加 ──
   "settings.tab.general": "一般",
-  "settings.tab.labels": "来歴ラベル",
   "settings.tab.aiSetup": "AI セットアップ",
   "settings.tab.maintenance": "ナレッジ管理",
   "settings.tab.usage": "使用量",
@@ -469,7 +468,7 @@ export const ja: Record<string, string> = {
   "settings.embeddingModel.testing": "埋め込みテスト中…",
   "settings.embeddingModel.testSuccess": "対応しています（{dimensions} 次元）",
   "settings.embeddingModel.testSuccessNoDim": "対応しています",
-  "settings.section.display": "表示・ロケール",
+  "settings.section.display": "表示・言語",
   "settings.section.ai": "AI",
   "settings.section.storage": "ストレージ",
   // ── ローカル保存先（デスクトップ版のみ） ──
@@ -1251,7 +1250,7 @@ export const ja: Record<string, string> = {
   "pdf.exporting": "エクスポート中...",
 
   // ── ラベルカスタマイズ ──
-  "settings.labels.title": "コアラベルの表示名",
+  "settings.labels.title": "来歴ラベルの表記",
   "settings.labels.help": "PROV-DM のコアラベルの表示名をカスタマイズできます。空欄にするとデフォルト名が使われます。",
   "settings.labels.reset": "デフォルトに戻す",
   "settings.labels.provRole": "PROV-DM の役割",

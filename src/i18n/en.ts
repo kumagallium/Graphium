@@ -412,7 +412,6 @@ export const en: Record<string, string> = {
 
   // ── 設定モーダル追加 ──
   "settings.tab.general": "General",
-  "settings.tab.labels": "Provenance labels",
   "settings.tab.aiSetup": "AI Setup",
   "settings.tab.maintenance": "Knowledge",
   "settings.tab.usage": "Usage",
@@ -469,7 +468,7 @@ export const en: Record<string, string> = {
   "settings.embeddingModel.testing": "Testing embedding…",
   "settings.embeddingModel.testSuccess": "Supported ({dimensions} dim)",
   "settings.embeddingModel.testSuccessNoDim": "Supported",
-  "settings.section.display": "Display & Locale",
+  "settings.section.display": "Display & Language",
   "settings.section.ai": "AI",
   "settings.section.storage": "Storage",
   // ── ローカル保存先（デスクトップ版のみ） ──
@@ -1253,7 +1252,7 @@ export const en: Record<string, string> = {
   "pdf.exporting": "Exporting...",
 
   // ── ラベルカスタマイズ ──
-  "settings.labels.title": "Core Label Names",
+  "settings.labels.title": "Provenance label names",
   "settings.labels.help": "Customize the display names of PROV-DM core labels. Leave empty to use the default name.",
   "settings.labels.reset": "Reset to defaults",
   "settings.labels.provRole": "PROV-DM role",
