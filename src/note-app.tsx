@@ -685,6 +685,11 @@ type NoteEditorProps = {
   isTrashed?: (noteId: string) => boolean;
   /** SidePeek で開いたゴミ箱ノートを ID 指定で復元するコールバック */
   onRestoreTrashedById?: (noteId: string) => void;
+  /** SidePeek がストレージ保存に成功したとき、保存済み doc で doc キャッシュと
+   *  インデックスを最新化する（fm.reindexNoteFromDoc）。これが無いと、ピークを
+   *  閉じて再オープンしたとき stale な cachedDoc が表示され、そこからの保存で
+   *  旧タイトルがディスクへ書き戻される。 */
+  onPeekSaved?: (noteId: string, savedDoc: GraphiumDocument) => void;
   /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
@@ -817,6 +822,7 @@ function NoteEditorInner({
   onRestoreFromTrash,
   isTrashed,
   onRestoreTrashedById,
+  onPeekSaved,
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
@@ -3544,6 +3550,7 @@ function NoteEditorInner({
             inline
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
+            onSaved={onPeekSaved}
             onClose={() => setSidePeekNoteId(null)}
             onNavigate={(noteId, savedDoc) => {
               setSidePeekNoteId(null);
@@ -3578,6 +3585,7 @@ function NoteEditorInner({
             key={sidePeekNoteId}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
+            onSaved={onPeekSaved}
             onClose={() => setSidePeekNoteId(null)}
             mediaIndex={mediaIndex ?? null}
             captureIndex={captureIndexProp ?? null}
@@ -6103,6 +6111,7 @@ export function NoteApp() {
                     inline
                     noteId={noteId}
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
+                    onSaved={fm.reindexNoteFromDoc}
                     onClose={() => setAssetSidePeekNoteId(null)}
                     onNavigate={(navId, savedDoc) => {
                       // SidePeek 内のリンクから本格的に開く場合はアセット画面を離れる
@@ -6744,6 +6753,7 @@ export function NoteApp() {
             aiAvailable={aiAvailable ?? false}
             onOpenComposer={composer.openComposer}
             composerSubmitRef={composerSubmitRef}
+            onPeekSaved={fm.reindexNoteFromDoc}
             openSidePeekRef={openSidePeekRef}
             composerCitationRef={composerCitationRef}
             skillPrompts={(() => {
@@ -6848,6 +6858,7 @@ export function NoteApp() {
               key={listSidePeekNoteId}
               noteId={listSidePeekNoteId}
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
+              onSaved={fm.reindexNoteFromDoc}
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);

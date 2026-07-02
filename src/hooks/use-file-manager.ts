@@ -1343,11 +1343,16 @@ export function useFileManager(authenticated: boolean) {
   const reindexNoteFromDoc = useCallback(
     (noteId: string, doc: GraphiumDocument | null | undefined) => {
       if (!doc) return;
-      // doc キャッシュ（SidePeek 再オープン時の cachedDoc の源）を最新化
+      // doc キャッシュ（SidePeek 再オープン時の cachedDoc の源）を最新化。
+      // キャッシュのキーは wiki:/skill: プレフィックス付きのフルキー（呼び出し時の形のまま）。
       docCacheRef.current.set(noteId, doc);
-      // インデックス（一覧の「文脈」列表示の源）をエントリ単位で作り直す
-      if (noteIndexRef.current) {
-        const updated = updateIndexEntry(noteIndexRef.current, noteId, doc);
+      // インデックス（一覧のタイトル・「文脈」列表示の源）をエントリ単位で作り直す。
+      // インデックス側の noteId はプレフィックス無しの raw id。既存エントリがあるときだけ
+      // 更新する（updateIndexEntry は不一致だと新規追加するため、インデックス管理外の id で
+      // 幽霊エントリを作らない）。
+      const rawId = noteId.replace(/^(wiki|skill):/, "");
+      if (noteIndexRef.current?.notes.some((n) => n.noteId === rawId)) {
+        const updated = updateIndexEntry(noteIndexRef.current, rawId, doc);
         noteIndexRef.current = updated;
         setNoteIndex(updated);
         queueSaveIndex(updated);
