@@ -49,6 +49,14 @@ import {
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
+import {
+  getNoteSuggestions,
+  getCreateNoteSuggestion,
+  CREATE_NEW_NOTE_ID,
+  insertNoteMentionInline,
+  resolveMentionTargetFromLinks,
+} from "@features/block-link/mention-menu";
+import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
@@ -69,6 +77,11 @@ type SidePeekProps = {
   cachedDoc?: GraphiumDocument;
   onClose: () => void;
   onNavigate: (noteId: string, savedDoc?: GraphiumDocument) => void;
+  /**
+   * ピーク内のメンションをクリックしたとき、そのノートをピークで開き直す。
+   * peekId は wiki の場合 `wiki:<id>` プレフィックス付き。未指定だとピーク内クリックは無効。
+   */
+  onOpenNoteInPeek?: (peekId: string) => void;
   /**
    * このノートを派生元とする wiki エントリ。Knowledge 化状態チップ表示用。
    * 渡されないか空配列 + onAddToKnowledge 未指定の場合はチップは描画されない。
@@ -108,6 +121,12 @@ type SidePeekProps = {
   onNoteContextsChange?: (noteId: string, savedDoc: GraphiumDocument | null) => void;
   /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
+  /**
+   * `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す。
+   * sourceNoteId にはこのピークが表示中のノート ID を渡して派生元を記録する。
+   * 未指定だと `@` で既存ノート参照のみ（新規作成は出ない）。
+   */
+  onCreateLinkedNote?: (title: string, sourceNoteId?: string) => Promise<string | null>;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -163,6 +182,7 @@ function SidePeekInner({
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onDeleteContextEverywhere,
+  onCreateLinkedNote, onOpenNoteInPeek,
 }: SidePeekProps) {
   const t = useT();
   const labelStore = useLabelStore();
@@ -177,6 +197,8 @@ function SidePeekInner({
   const blockAlignmentStoreRef = useRef(blockAlignmentStore);
   blockAlignmentStoreRef.current = blockAlignmentStore;
   const editorRef = useRef<any>(null);
+  // @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全）
+  const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
   // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
@@ -283,6 +305,101 @@ function SidePeekInner({
     setSidePeekEditor(editor);
     labelAutoRef.current = setupLabelAutoAssign(editor, labelStoreRef.current, linkStore);
   }, []);
+
+  // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
+  // listener の closure が stale にならないよう ref 経由で最新の noteIndex を参照する。
+  const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
+  resolveNoteLinkTitleRef.current = (fileId: string) => {
+    const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
+    return entry ? entry.title : null;
+  };
+
+  // ノートリンク（…#note/<id>）を単体で貼ったら @タイトル のメンションに変換する
+  // （メインエディタと同じ挙動）。クリップボードリスナーの二重登録に備えて
+  // イベント単位の既処理フラグ＋ stopImmediatePropagation で 1 回だけ処理する。
+  useEffect(() => {
+    const editor = sidePeekEditor;
+    if (!editor) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text/plain")?.trim();
+      if (!text || /\s/.test(text)) return;
+      const m = /#note\/([^/\s#?]+)/.exec(text);
+      if (!m) return;
+      const fileId = decodeURIComponent(m[1]);
+      const title = resolveNoteLinkTitleRef.current(fileId);
+      if (!title) return;
+      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
+      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
+      if (sourceBlockId) {
+        linkStoreRef.current.addLink({
+          sourceBlockId,
+          targetBlockId: "",
+          targetNoteId: fileId,
+          type: "reference",
+          createdBy: "human",
+        });
+      }
+      // insertInlineContent の onChange で自動的に dirty 化・保存される
+      setTimeout(() => {
+        insertNoteMentionInline(editorRef.current, fileId, title);
+      }, 0);
+    };
+    let dom: HTMLElement | null = null;
+    let attempts = 0;
+    const attach = () => {
+      dom = editor.domElement ?? null;
+      if (!dom) {
+        if (attempts++ < 60) requestAnimationFrame(attach);
+        return;
+      }
+      dom.addEventListener("paste", onPaste, true);
+    };
+    attach();
+    return () => {
+      dom?.removeEventListener("paste", onPaste, true);
+    };
+  }, [sidePeekEditor]);
+
+  // ピーク内の @メンションクリック → そのノートをピークで開き直す。
+  // note-app の document ハンドラはピーク内（data-side-peek 配下）をスキップするので、
+  // ここで「このピーク自身の linkStore」を使って厳密な ID に解決する（同名ノートでも正しい）。
+  useEffect(() => {
+    if (!onOpenNoteInPeek) return;
+    const root = sidePeekRef.current;
+    if (!root) return;
+    const isMentionSpan = (el: HTMLElement): boolean => {
+      if (el.getAttribute("data-style-type") !== "textColor" || el.getAttribute("data-value") !== "blue") return false;
+      if (!el.closest(".bn-editor")) return false;
+      if (el.closest("table")) return false;
+      const text = el.textContent?.trim();
+      return !!text && text.startsWith("@") && !text.startsWith("@#");
+    };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!isMentionSpan(target)) return;
+      const noteName = target.textContent!.trim().slice(1);
+      const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
+      let resolved = resolveMentionTargetFromLinks(
+        blockId,
+        noteName,
+        linkStoreRef.current.getAllLinks(),
+        noteIndex ?? null,
+      );
+      if (!resolved) {
+        const entry = noteIndex?.notes.find((n) => n.title === noteName);
+        if (entry) resolved = { noteId: entry.noteId, isWiki: entry.source === "ai" };
+      }
+      if (!resolved) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onOpenNoteInPeek(resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
+    };
+    root.addEventListener("click", onClick, true);
+    return () => root.removeEventListener("click", onClick, true);
+  }, [onOpenNoteInPeek, noteIndex, sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
@@ -792,7 +909,11 @@ function SidePeekInner({
             {error}
           </div>
         )}
-        {!loading && !error && initialContent && (
+        {/* initialContent ではなく effectiveDoc でゲートする。空ノート（blocks 0 件、
+            例: `@` から新規作成した直後）は initialContent が undefined になるが、
+            SandboxEditor は undefined を既定の空段落として扱えるので、編集可能な
+            エディタ本体を描画する必要がある。 */}
+        {!loading && !error && effectiveDoc && (
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
@@ -1008,6 +1129,47 @@ function SidePeekInner({
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
                 onHashtagSelect={(blockId, label) => labelStoreRef.current.setLabel(blockId, label)}
+                // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
+                // 挿入後はピーク内に留まり、青い @テキストをクリックすると（note-app の
+                // document クリックハンドラが .bn-editor を拾うため）サイドピークで開く。
+                getMentionSuggestions={(query) => {
+                  // 見出し候補は DOM 全体から拾ってしまい（メイン+ピークが同居）紛れるため、
+                  // ピークでは他ノート参照と新規作成のみに絞る。
+                  const base = getNoteSuggestions([], noteId, noteIndex);
+                  if (onCreateLinkedNote) {
+                    const createItem = getCreateNoteSuggestion(query, base);
+                    if (createItem) base.push(createItem);
+                  }
+                  return base;
+                }}
+                onMentionSelect={async (sourceBlockId, suggestion) => {
+                  let s = suggestion;
+                  if (s.id === CREATE_NEW_NOTE_ID) {
+                    if (!onCreateLinkedNote) return;
+                    // 名前の確定は必ず IME 安全な入力欄で。打った文字は下書きとして渡す。
+                    const draft = s.createTitle ?? "";
+                    const title = (await promptNoteName(draft))?.trim() ?? "";
+                    if (!title) return;
+                    const newId = await onCreateLinkedNote(title, noteId);
+                    if (!newId) return;
+                    s = { type: "note", id: newId, label: title, group: "" };
+                  }
+                  if (s.type !== "note") return;
+                  linkStoreRef.current.addLink({
+                    sourceBlockId,
+                    targetBlockId: "",
+                    targetNoteId: s.id,
+                    type: "reference",
+                    createdBy: "human",
+                  });
+                  const noteRefId = s.id;
+                  const label = s.label;
+                  setTimeout(() => {
+                    // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
+                    insertNoteMentionInline(editorRef.current, noteRefId, label);
+                    handleChange();
+                  }, 100);
+                }}
                 // メインエディタと同様にメディア URL を解決する。
                 // これがないと image / video / audio のブロックが
                 // local-media:// 等の生 URL のままになり、BlockNote
@@ -1030,6 +1192,9 @@ function SidePeekInner({
           to { transform: translateX(0); }
         }
       `}</style>
+
+      {/* @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全） */}
+      {newNoteNameDialog}
 
       {/* スラッシュメニューのピッカーモーダル。
           SidePeek overlay (z-index:100) より前面に出すため、
