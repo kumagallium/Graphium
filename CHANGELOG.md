@@ -1,5 +1,32 @@
 # Changelog
 
+## [v0.16.8](https://github.com/kumagallium/Graphium/compare/v0.16.7...v0.16.8) - 2026-07-02
+
+- Re-lift atoms on regenerate instead of reproducing the old domain-word title by @kumagallium in https://github.com/kumagallium/Graphium/pull/477
+- Chat: turn Make Knowledge into a candidate picker by @kumagallium in https://github.com/kumagallium/Graphium/pull/479
+- [fix] Upload Windows NSIS updater bundle so auto-update works (+ never publish broken latest.json) by @kumagallium in https://github.com/kumagallium/Graphium/pull/480
+- [fix] Robust + non-fatal Windows updater-bundle upload by @kumagallium in https://github.com/kumagallium/Graphium/pull/482
+- [fix] Keep Windows updater bundle via includeUpdaterJson (root cause) by @kumagallium in https://github.com/kumagallium/Graphium/pull/483
+- [fix] Build Windows updater zip from installer .exe (stop depending on tauri-action) by @kumagallium in https://github.com/kumagallium/Graphium/pull/484
+- [fix] Let same-version rebuilds refresh the Pages updater latest.json by @kumagallium in https://github.com/kumagallium/Graphium/pull/485
+- [fix] Open trashed notes read-only with a restore banner by @kumagallium in https://github.com/kumagallium/Graphium/pull/486
+- Show Atom shape in the context drawer (transfer stays data-only) by @kumagallium in https://github.com/kumagallium/Graphium/pull/488
+- [fix] Make note title editable in the side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/487
+- Add reinforcing-loop / balancing-loop to the Atom shape vocabulary by @kumagallium in https://github.com/kumagallium/Graphium/pull/489
+- [feat] Add user-assigned note context labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/491
+- [fix] Plainer new-user copy: drop PROV-DM from welcome, purge leaked internal terms by @kumagallium in https://github.com/kumagallium/Graphium/pull/492
+- Add diverge/converge grounding scope for AI citations by @kumagallium in https://github.com/kumagallium/Graphium/pull/493
+- [fix] Honest AI-config badge + 1-click setup for new users (no raw 400) by @kumagallium in https://github.com/kumagallium/Graphium/pull/495
+- [feat] Render PDF URLs in the viewer instead of erroring by @kumagallium in https://github.com/kumagallium/Graphium/pull/496
+- Ground converge scope on URL source text via Reader by @kumagallium in https://github.com/kumagallium/Graphium/pull/497
+- [feat] One-click Claude-subscription setup for new users (no API key) by @kumagallium in https://github.com/kumagallium/Graphium/pull/498
+- [fix] i18n-ify hardcoded sidebar labels (Library / Shared / Skill) by @kumagallium in https://github.com/kumagallium/Graphium/pull/499
+- [feat] Persist URL source text for converge grounding (B-persist) by @kumagallium in https://github.com/kumagallium/Graphium/pull/500
+- Inline note linking: @-create, IME-safe slash+dialog, copy-link → paste-to-mention by @kumagallium in https://github.com/kumagallium/Graphium/pull/501
+- [fix] Remount SidePeek per note to stop it overwriting notes on switch by @kumagallium in https://github.com/kumagallium/Graphium/pull/502
+- [fix] Same-title @ mention menu: fix duplicate-key crash + add disambiguating subtext by @kumagallium in https://github.com/kumagallium/Graphium/pull/503
+- Extend AI grounding from 2 to 3 scopes (external / internal / notes) by @kumagallium in https://github.com/kumagallium/Graphium/pull/504
+
 ## [v0.16.7](https://github.com/kumagallium/Graphium/compare/v0.16.6...v0.16.7) - 2026-06-30
 
 - [feat] Add archive action for notes; fix archived flag loss on rebuild by @kumagallium in https://github.com/kumagallium/Graphium/pull/470
