@@ -38,8 +38,21 @@ import {
   MediaPickerModal,
   setMediaPickerCallback,
   extractDomain,
+  UrlPasteMenu,
+  isHttpUrl,
+  computeUrlPasteMenuPosition,
+  buildPastedTextContent,
+  insertBookmarkBlockFromPaste,
+  retroLinkifyPastedUrl,
+  blockContainsUrlLink,
+  registerUrlAsset,
 } from "@features/asset-browser";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "@features/asset-browser";
+import {
+  GRAPHIUM_CLIPBOARD_MIME,
+  extractPayloadFromHtml,
+  parseClipboardPayload,
+} from "@features/block-lifecycle/clipboard";
 import {
   getMemoSlashMenuItem,
   setMemoPickerCallback,
@@ -205,6 +218,8 @@ function SidePeekInner({
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
+  // URL ペースト検知 → ブックマーク/リンク選択メニュー（メインエディタと同じ挙動）
+  const [pastedUrl, setPastedUrl] = useState<{ url: string; position: { x: number; y: number }; blockId: string } | null>(null);
   const [citePickerKind, setCitePickerKind] = useState<CitePickerKind | null>(null);
   const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<GraphiumDocument | null>(null);
@@ -314,38 +329,84 @@ function SidePeekInner({
     return entry ? entry.title : null;
   };
 
-  // ノートリンク（…#note/<id>）を単体で貼ったら @タイトル のメンションに変換する
-  // （メインエディタと同じ挙動）。クリップボードリスナーの二重登録に備えて
-  // イベント単位の既処理フラグ＋ stopImmediatePropagation で 1 回だけ処理する。
+  // ペースト処理（メインエディタと同じ挙動に揃える）:
+  // 1) ノートリンク（…#note/<id>）単体 → @タイトル のメンションに変換
+  // 2) 空のリスト項目への paste 救済（BlockNote の paragraph 置換を防ぐ）
+  // 3) URL 単体 → ブックマーク/リンク選択メニュー（UrlPasteMenu）
+  // クリップボードリスナーの二重登録に備えてイベント単位の既処理フラグ＋
+  // stopImmediatePropagation で 1 回だけ処理する。
   useEffect(() => {
     const editor = sidePeekEditor;
     if (!editor) return;
+    // URL 単体ペーストならブックマーク選択メニューを出す。位置は表示直前に計算する
+    // （paste イベント同期時は空ブロックの caret rect が全ゼロを返し左上に張り付く）
+    const maybeShowUrlPasteMenu = (rawText: string | undefined, blockId: string) => {
+      const text = rawText?.trim();
+      if (!text || !isHttpUrl(text)) return;
+      setTimeout(() => {
+        setPastedUrl({ url: text, position: computeUrlPasteMenuPosition(editor, blockId), blockId });
+      }, 100);
+    };
     const onPaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData("text/plain")?.trim();
-      if (!text || /\s/.test(text)) return;
-      const m = /#note\/([^/\s#?]+)/.exec(text);
-      if (!m) return;
-      const fileId = decodeURIComponent(m[1]);
-      const title = resolveNoteLinkTitleRef.current(fileId);
-      if (!title) return;
-      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
-      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
-      if (sourceBlockId) {
-        linkStoreRef.current.addLink({
-          sourceBlockId,
-          targetBlockId: "",
-          targetNoteId: fileId,
-          type: "reference",
-          createdBy: "human",
-        });
+      // 1) ノートリンク単体 → メンション変換
+      if (text && !/\s/.test(text)) {
+        const m = /#note\/([^/\s#?]+)/.exec(text);
+        if (m) {
+          const fileId = decodeURIComponent(m[1]);
+          const title = resolveNoteLinkTitleRef.current(fileId);
+          if (title) {
+            if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
+            (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
+            if (sourceBlockId) {
+              linkStoreRef.current.addLink({
+                sourceBlockId,
+                targetBlockId: "",
+                targetNoteId: fileId,
+                type: "reference",
+                createdBy: "human",
+              });
+            }
+            // insertInlineContent の onChange で自動的に dirty 化・保存される
+            setTimeout(() => {
+              insertNoteMentionInline(editorRef.current, fileId, title);
+            }, 0);
+            return;
+          }
+        }
       }
-      // insertInlineContent の onChange で自動的に dirty 化・保存される
-      setTimeout(() => {
-        insertNoteMentionInline(editorRef.current, fileId, title);
-      }, 0);
+      // Graphium ペイロード付き（ブロックコピー）はネイティブパースに任せ、
+      // 救済・URL メニューとも対象外にする（メインエディタと同じ挙動）
+      const hasGraphiumPayload =
+        parseClipboardPayload(e.clipboardData?.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
+        extractPayloadFromHtml(e.clipboardData?.getData("text/html"));
+      if (hasGraphiumPayload) return;
+      // 2) 空のリスト系ブロックへのテキスト paste は BlockNote がブロック自体を
+      //    paragraph に置換してしまうため、ブロック型を保ったまま差し込む
+      const cursorBlock = editor.getTextCursorPosition?.()?.block;
+      const listBlockTypes = new Set(["checkListItem", "bulletListItem", "numberedListItem"]);
+      if (
+        cursorBlock &&
+        listBlockTypes.has(cursorBlock.type) &&
+        Array.isArray(cursorBlock.content) &&
+        cursorBlock.content.length === 0
+      ) {
+        const plain = e.clipboardData?.getData("text/plain");
+        if (plain) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const cleaned = plain.replace(/\r?\n+$/g, "");
+          editor.updateBlock(cursorBlock, { content: buildPastedTextContent(cleaned) });
+          maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
+          return;
+        }
+      }
+      // 3) URL 単体ペースト → ブックマーク選択メニュー
+      if (!cursorBlock) return;
+      maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), cursorBlock.id);
     };
     let dom: HTMLElement | null = null;
     let attempts = 0;
@@ -637,6 +698,38 @@ function SidePeekInner({
       doSaveRef.current();
     }, 3000);
   }, []);
+
+  // URL ペーストメニュー → ブックマーク/リンク選択（メインエディタと同じ挙動）。
+  // 素材登録の usedIn にはこのピークのノートを入れる: SidePeek の保存
+  // （doSave）は provider 直呼びで syncUsedIn を通らないため、登録時点で
+  // 利用ノートを確定させないとアセットグラフ・近傍グラフに URL が出ない
+  // （次にメインエディタで保存されたとき syncUsedIn が正として上書きする）。
+  // エディタ変更（insertBlocks / updateBlock）は onChange 経由で自動保存される。
+  const buildPeekUsage = useCallback((blockId: string) => ([{
+    noteId,
+    noteTitle: docRef.current?.title ?? "",
+    blockId,
+  }]), [noteId]);
+
+  const handlePasteBookmarkSelect = useCallback((url: string, blockId: string) => {
+    setPastedUrl(null);
+    const editor = editorRef.current;
+    if (!editor) return;
+    const insertedId = insertBookmarkBlockFromPaste(editor, url, blockId);
+    // 挿入に失敗した場合（ブロック消失など）は usedIn を充填しない
+    // （実体のないグラフエッジを作らない。登録自体はメインエディタと同様に行う）
+    registerUrlAsset(url, insertedId ? buildPeekUsage(insertedId) : [], onAddUrlBookmark);
+  }, [buildPeekUsage, onAddUrlBookmark]);
+
+  const handlePasteLinkSelect = useCallback((url: string, blockId: string) => {
+    setPastedUrl(null);
+    const editor = editorRef.current;
+    retroLinkifyPastedUrl(editor, url, blockId);
+    // リンクが実際にブロックに存在する場合のみ usedIn を充填する
+    // （codeBlock などリンク化が no-op のケースで実体のないエッジを作らない）
+    const linked = blockContainsUrlLink(editor, blockId, url);
+    registerUrlAsset(url, linked ? buildPeekUsage(blockId) : [], onAddUrlBookmark);
+  }, [buildPeekUsage, onAddUrlBookmark]);
 
   // 文脈ラベルの初期化（ノートを開いた最初のロード時に doc から取り込む。noteId 単位で一度だけ、
   // 以降の本文編集による doc 変化ではリセットしない）。
@@ -1195,6 +1288,17 @@ function SidePeekInner({
 
       {/* @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全） */}
       {newNoteNameDialog}
+
+      {/* URL ペースト → ブックマーク/リンク選択メニュー（メインエディタと同じ） */}
+      {pastedUrl && (
+        <UrlPasteMenu
+          url={pastedUrl.url}
+          position={pastedUrl.position}
+          onSelectBookmark={() => handlePasteBookmarkSelect(pastedUrl.url, pastedUrl.blockId)}
+          onSelectLink={() => handlePasteLinkSelect(pastedUrl.url, pastedUrl.blockId)}
+          onDismiss={() => setPastedUrl(null)}
+        />
+      )}
 
       {/* スラッシュメニューのピッカーモーダル。
           SidePeek overlay (z-index:100) より前面に出すため、
