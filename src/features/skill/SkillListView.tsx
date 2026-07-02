@@ -149,11 +149,22 @@ export function SkillListView({
         ) : (
           <div className="divide-y divide-border">
             {filtered.map((entry) => (
-              <button
+              // 行の中に編集・削除ボタンを置くため、行自体は button にしない（button 入れ子は HTML 仕様違反）
+              <div
                 key={entry.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpenSkill(entry.id)}
                 onDoubleClick={() => onOpenSkillFull?.(entry.id)}
-                className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors group"
+                onKeyDown={(e) => {
+                  // 内側のボタンからバブリングしてきたキー入力では行を開かない
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenSkill(entry.id);
+                  }
+                }}
+                className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors group cursor-pointer"
               >
                 <div className="flex items-start gap-3">
                   <Wrench size={14} className="text-primary mt-0.5 shrink-0" />
@@ -219,7 +230,7 @@ export function SkillListView({
                     )}
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
