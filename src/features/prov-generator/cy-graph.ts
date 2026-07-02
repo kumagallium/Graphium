@@ -86,6 +86,8 @@ export async function applyElkLayout(cy: cytoscape.Core) {
 const commonNodeStyle = {
   label: "data(label)",
   "text-wrap": "wrap" as any,
+  // auto(既定)は折返し行の字間が崩れて描画される(cytoscape の複数行描画の不具合回避)
+  "text-justification": "center" as any,
   "text-max-width": "120px",
   "font-size": "11px",
   "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
