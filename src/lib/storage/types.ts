@@ -61,6 +61,17 @@ export interface StorageProvider {
   deleteMedia?(fileId: string): Promise<void>;
   listMediaFiles?(): Promise<{ id: string; name: string; mimeType: string; createdTime: string }[]>;
 
+  // --- メディア原文テキスト（URL Reader 原文などの永続保存, B-persist） ---
+  /**
+   * 外部素材の原文プレーンテキスト（URL の Reader 抽出結果など、LLM 加工前）を永続保存する。
+   * fileId は呼び出し側が発行し、GraphiumDocument.sourceTextFileId に紐付ける。
+   * バイナリメディア（uploadMedia）とは別チャネル。収束 grounding でオフライン利用・鮮度固定するため。
+   * 未実装プロバイダでは undefined（呼び出し側は都度取得の loadUrlText にフォールバックする）。
+   */
+  saveMediaText?(fileId: string, text: string): Promise<void>;
+  /** 保存済み原文テキストを取得。存在しなければ undefined */
+  loadMediaText?(fileId: string): Promise<string | undefined>;
+
   // --- キャッシュクリア ---
   clearCache(): void;
 

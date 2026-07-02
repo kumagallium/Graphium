@@ -247,6 +247,44 @@ describe("assembleCitedDocumentContext", () => {
     expect(md).not.toContain("加工済み本文");
   });
 
+  it("URL ノートは sourceTextFileId があれば loadMediaText を最優先する（B-persist）", async () => {
+    const doc = makeDoc({
+      title: "記事",
+      sourceUrl: "https://example.com",
+      sourceTextFileId: "text-1",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "加工済み本文" }] }], "t")],
+    });
+    const md = await assembleCitedDocumentContext("note-2", doc, {
+      noteIndex: { notes: [] } as unknown as GraphiumIndex,
+      captureIndex: null,
+      provider: { loadFile: async () => doc, getMediaBlobUrl: async () => "" },
+      loadMediaText: async (fileId) => (fileId === "text-1" ? "永続保存された原語原文" : undefined),
+      loadUrlText: async () => "Reader の都度取得原文",
+    });
+    expect(md).toContain("永続保存された原語原文");
+    // 永続保存（B-persist）が最優先なので、Reader 都度取得もノート本文も使わない
+    expect(md).not.toContain("Reader の都度取得原文");
+    expect(md).not.toContain("加工済み本文");
+  });
+
+  it("URL ノートは loadMediaText が空なら loadUrlText にフォールバック（B-persist）", async () => {
+    const doc = makeDoc({
+      title: "記事",
+      sourceUrl: "https://example.com",
+      sourceTextFileId: "missing",
+      pages: [makePage([{ type: "paragraph", content: [{ text: "加工済み本文" }] }], "t")],
+    });
+    const md = await assembleCitedDocumentContext("note-2", doc, {
+      noteIndex: { notes: [] } as unknown as GraphiumIndex,
+      captureIndex: null,
+      provider: { loadFile: async () => doc, getMediaBlobUrl: async () => "" },
+      loadMediaText: async () => undefined,
+      loadUrlText: async () => "Reader の都度取得原文",
+    });
+    expect(md).toContain("Reader の都度取得原文");
+    expect(md).not.toContain("加工済み本文");
+  });
+
   it("URL ノートは loadUrlText が空ならノート本文へフォールバック", async () => {
     const doc = makeDoc({
       title: "記事",

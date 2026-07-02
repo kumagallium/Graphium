@@ -236,8 +236,28 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async listMediaFiles(): Promise<{ id: string; name: string; mimeType: string; createdTime: string }[]> {
-    const records = await getAll<{ id: string; name: string; mimeType: string; createdTime: string }>(STORE_MEDIA);
-    return records;
+    // saveMediaText で入れた原文テキストレコードは blob を持たないので、メディア一覧からは除外する
+    const records = await getAll<{ id: string; name: string; mimeType: string; createdTime: string; blob?: Blob }>(STORE_MEDIA);
+    return records
+      .filter((r) => r.blob != null)
+      .map((r) => ({ id: r.id, name: r.name, mimeType: r.mimeType, createdTime: r.createdTime }));
+  }
+
+  // --- メディア原文テキスト（B-persist: URL Reader 原文などの永続保存） ---
+
+  async saveMediaText(fileId: string, text: string): Promise<void> {
+    // STORE_MEDIA に textContent レコードとして保存する。バイナリ blob レコードと id 空間は
+    // 共有するが、saveMediaText の fileId は呼び出し側が別途発行するため別レコードになる。
+    await withStore(STORE_MEDIA, "readwrite", (store) =>
+      store.put({ id: fileId, textContent: text, mimeType: "text/plain", createdTime: new Date().toISOString() })
+    );
+  }
+
+  async loadMediaText(fileId: string): Promise<string | undefined> {
+    const record = await withStore<{ textContent?: string } | undefined>(STORE_MEDIA, "readonly", (store) =>
+      store.get(fileId)
+    );
+    return typeof record?.textContent === "string" ? record.textContent : undefined;
   }
 
   clearCache(): void {

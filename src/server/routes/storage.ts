@@ -307,6 +307,34 @@ app.delete("/media/:id", (c) => {
   }
 });
 
+// --- メディア原文テキスト（B-persist: URL Reader 原文などの永続保存） ---
+// バイナリメディア（media/）とは別チャネルで <DATA_DIR>/media-text/<id>.txt に置く。
+// 収束 grounding で URL 引用時に LLM 加工前の原語原文をオフラインでも参照するため。
+
+app.get("/media-text/:id", (c) => {
+  try {
+    const id = safeId(c.req.param("id"));
+    const path = join(subdir("media-text"), `${id}.txt`);
+    if (!existsSync(path)) return c.json({ error: "テキストが存在しません" }, 404);
+    return c.body(readFileSync(path, "utf-8"), 200, {
+      "content-type": "text/plain; charset=utf-8",
+    });
+  } catch (e) {
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
+app.put("/media-text/:id", async (c) => {
+  try {
+    const id = safeId(c.req.param("id"));
+    const body = await c.req.text();
+    writeFileSync(join(subdir("media-text"), `${id}.txt`), body, "utf-8");
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
 // --- アプリデータ（インデックスファイル等の内部メタデータ） ---
 
 app.get("/appdata/:key", (c) => {

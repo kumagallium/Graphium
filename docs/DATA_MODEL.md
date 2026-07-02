@@ -114,6 +114,7 @@ type GraphiumDocument = {
   sourceUrl?: string;
   sourceFetchedAt?: string;
   sourceTitle?: string;
+  sourceTextFileId?: string;  // media fileId of the persisted URL source text (B-persist)
   // Set when the note was generated from a PDF (PDF-to-PROV)
   sourcePdfFileId?: string;  // media-index fileId of the source PDF
   sourcePdfName?: string;    // display filename
@@ -997,6 +998,10 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **File CRUD** — `listFiles`, `loadFile`, `createFile`, `saveFile`,
   `deleteFile`. Files are `GraphiumDocument` blobs.
 - **Media** — `uploadMedia`, `getMediaBlobUrl`, `extractFileId`.
+  Optional `saveMediaText?` / `loadMediaText?` persist plain source text
+  (e.g. a URL's Reader-extracted original, before any LLM processing) as a
+  separate channel from binary media, keyed by a caller-issued fileId that
+  `GraphiumDocument.sourceTextFileId` points to.
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file and other internal metadata.
@@ -1020,6 +1025,7 @@ Vers:  1
 Stores:
   files   (keyPath: "id")   — { id, name, content: GraphiumDocument, modifiedTime, createdTime }
   media   (keyPath: "id")   — { id, name, mimeType, blob, createdTime }
+                            — saveMediaText adds text records { id, textContent, mimeType, createdTime } (no blob)
 ```
 
 The DB version has stayed at 1 since launch. Adding a store or changing
@@ -1040,6 +1046,8 @@ Graphium/
 │   └── <skillId>.graphium.json
 ├── media/
 │   └── <fileId>.<ext>
+├── media-text/
+│   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/
     └── note-index.json        # the GraphiumIndex
 ```

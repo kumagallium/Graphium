@@ -859,6 +859,26 @@ fn read_media_file(file_id: String) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
+/// URL の Reader 原文などのプレーンテキストを保存（B-persist）。
+/// バイナリメディア（save_media_file）とは別に <media_dir>/<id>.txt に置く。
+#[tauri::command]
+fn save_media_text(file_id: String, text: String) -> Result<(), String> {
+    let path = media_dir()?.join(format!("{file_id}.txt"));
+    fs::write(&path, text).map_err(|e| format!("原文テキスト書き込み失敗: {e}"))
+}
+
+/// 保存済みの原文テキストを読み込み（存在しなければ None）。
+#[tauri::command]
+fn read_media_text(file_id: String) -> Result<Option<String>, String> {
+    let path = media_dir()?.join(format!("{file_id}.txt"));
+    if !path.exists() {
+        return Ok(None);
+    }
+    fs::read_to_string(&path)
+        .map(Some)
+        .map_err(|e| format!("原文テキスト読み取り失敗: {e}"))
+}
+
 /// メディアファイル一覧を取得
 #[tauri::command]
 fn list_media_files_cmd() -> Result<Vec<MediaFileInfo>, String> {
@@ -1281,6 +1301,8 @@ pub fn run() {
             delete_skill_file,
             save_media_file,
             read_media_file,
+            save_media_text,
+            read_media_text,
             list_media_files_cmd,
             delete_media_file,
             rename_media_file,
