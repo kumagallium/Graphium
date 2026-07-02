@@ -66,6 +66,7 @@ import {
 
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
+import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
 
 // ストレージプロバイダー経由のファイル操作ヘルパー
 const storage = () => getActiveProvider();
@@ -1361,6 +1362,72 @@ export function useFileManager(authenticated: boolean) {
     [setNoteIndex, queueSaveIndex]
   );
 
+  // ノートのタイトル変更を、@メンションで参照している他ノートの本文ラベルへ伝播する。
+  // メンションのラベルは挿入時タイトルのスナップショット（青文字テキスト）なので、
+  // リネーム時にここで書き換えないと古いラベルが残り続ける（クリック解決はリンク
+  // レコード経由なので壊れないが、同一ブロック複数メンションの誤解決や、リンク
+  // レコードの無い旧メンションのクリック不能につながる）。
+  //
+  // - 参照元はインデックスの outgoingLinks 逆引きで特定（全ファイル走査はしない）
+  // - 人間ノートのみ対象（wiki/skill の本文は saveWikiFile 系の別経路のため触らない）
+  // - ゴミ箱のノートは触らない（アーカイブは復元があり得るので追従させる）
+  // - skipNoteIds: ライブエディタで開いているノートは呼び出し側がエディタ内で
+  //   直接更新するため除外する（ファイルを書き換えるとエディタの次のオートセーブが
+  //   旧内容で上書きし、伝播が巻き戻る）
+  const propagateMentionRename = useCallback(
+    async (
+      renamedNoteId: string,
+      oldTitle: string,
+      newTitle: string,
+      opts?: { skipNoteIds?: string[] },
+    ): Promise<void> => {
+      if (!oldTitle || !newTitle || oldTitle === newTitle) return;
+      const index = noteIndexRef.current;
+      if (!index) return;
+      const skip = new Set(opts?.skipNoteIds ?? []);
+      const referrers = index.notes.filter(
+        (n) =>
+          n.noteId !== renamedNoteId &&
+          !skip.has(n.noteId) &&
+          (n.source ?? "human") === "human" &&
+          !n.deletedAt &&
+          n.outgoingLinks?.some((l) => l.targetNoteId === renamedNoteId),
+      );
+      for (const ref of referrers) {
+        try {
+          const doc = await loadDoc(ref.noteId);
+          if (!doc) continue;
+          const result = applyMentionRenameToDoc(
+            doc,
+            renamedNoteId,
+            oldTitle,
+            newTitle,
+            (nid) => noteIndexRef.current?.notes.find((n) => n.noteId === nid)?.title,
+          );
+          if (!result) continue;
+          // 同じ id へ上書き保存（save-path 不変条件。createFile には決して落とさない）
+          await saveFile(ref.noteId, result.doc);
+          docCacheRef.current.set(ref.noteId, result.doc);
+          // 参照元が「開いている扱い」のノート（一覧ビュー背後の activeFileId 等、
+          // エディタ非マウント時のみ呼び出し側が skip しない）は activeDoc も追従させ、
+          // エディタ復帰時に旧ラベルへ巻き戻らないようにする
+          if (ref.noteId === activeFileIdRef.current) {
+            setActiveDoc(result.doc);
+          }
+          if (noteIndexRef.current) {
+            const updated = updateIndexEntry(noteIndexRef.current, ref.noteId, result.doc);
+            noteIndexRef.current = updated;
+            setNoteIndex(updated);
+            queueSaveIndex(updated);
+          }
+        } catch (err) {
+          console.error("メンションラベルの追従更新に失敗:", ref.noteId, err);
+        }
+      }
+    },
+    [loadDoc, setNoteIndex, queueSaveIndex],
+  );
+
   // 文脈ラベル（候補）を全ノートから一括削除する。使用中の各ノートから該当文脈を外して保存し、
   // インデックス・doc キャッシュを更新する。どのノートも使わなくなるので候補一覧からも消える。
   // 削除した件数を返す（呼び出し側の確認ダイアログは別途 count を見て出す）。
@@ -2199,6 +2266,7 @@ export function useFileManager(authenticated: boolean) {
     loadDoc,
     updateNoteContexts,
     reindexNoteFromDoc,
+    propagateMentionRename,
     deleteNoteContextEverywhere,
     handleUploadMedia,
     handleUploadAsset,
