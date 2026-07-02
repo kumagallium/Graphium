@@ -156,13 +156,17 @@ export type MediaIndexEntry = {
  *  - 3: URL 素材の利用も usedIn に含める（本文中のインラインリンク + document-level の
  *       URL 出典 sourceUrl / derivedFromNotes の "url:"）。これにより URL も画像・PDF と
  *       同じくアセットグラフに出るようになり、素材タイプ間で UI が一貫する
+ *  - 4: 再構築時に URL ブックマークの usedIn もリセットして再集計する（v3 までは既存の
+ *       usedIn を温存したまま全ノート走査で再 push していたため、再構築のたびに同一
+ *       noteId+blockId の usage が積み上がっていた）。bump により壊れた既存インデックスを
+ *       強制再構築して重複を解消する
  *    バージョンが古い既存インデックスは ensureMediaIndex で強制再構築する
  */
-export const CURRENT_MEDIA_INDEX_VERSION = 3 as const;
+export const CURRENT_MEDIA_INDEX_VERSION = 4 as const;
 
 /** メディアインデックス全体 */
 export type MediaIndex = {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   updatedAt: string;
   media: MediaIndexEntry[];
 };
@@ -622,8 +626,10 @@ export async function ensureMediaIndex(
   );
 
   const media: MediaIndexEntry[] = [];
-  // URL ブックマークを先に追加（Drive ファイルとは別管理）
-  media.push(...existingUrlBookmarks);
+  // URL ブックマークを先に追加（Drive ファイルとは別管理）。
+  // usedIn は Drive ファイルと同様に一旦リセットし、後段の全ノート走査で埋め直す。
+  // 温存すると走査の再 push で同じ usage が重複し、再構築のたびに積み上がる。
+  media.push(...existingUrlBookmarks.map((m) => ({ ...m, usedIn: [] })));
 
   // プロバイダー固有の URL 形式を尊重するため、既存エントリの url/thumbnailUrl はそのまま保持する。
   // 新規エントリ（disk にあるが index にまだ無い）は Drive 互換 URL でフォールバック。
