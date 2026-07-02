@@ -1233,6 +1233,12 @@ function NoteEditorInner({
   // スラッシュメニューからの URL ピッカーモーダル用状態
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
 
+  // URL 素材の登録完了後に即時保存するための ref。
+  // 登録がオートセーブ（3秒）より後に完了すると、syncUsedIn を再実行する保存
+  // イベントが来ず usedIn が空のまま = グラフに URL ノードが出ない。
+  // useAutoSave はこの位置より後で宣言されるため ref 経由で参照する。
+  const saveNowRef = useRef<() => void>(() => {});
+
   // ペースト → ブックマーク選択: モーダルなしで直接挿入 + 裏でアセット登録
   const handleInsertBookmarkDirect = useCallback((url: string, blockId: string) => {
     setPastedUrl(null);
@@ -1273,9 +1279,51 @@ function NoteEditorInner({
           usedIn: [],
           urlMeta: { domain: meta.domain, description: meta.description, ogImage: meta.ogImage },
         });
+        // 登録後に即時保存して syncUsedIn を走らせる（オートセーブが先に完了して
+        // いた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）
+        saveNowRef.current();
       });
     }
   }, [onAddUrlBookmark, removeBlockMetadata]);
+
+  // ペースト → リンク選択: テキストはインラインリンクのまま + 裏でアセット登録。
+  // 登録しないと media index に URL エントリが無く、保存時の syncUsedIn が
+  // usedIn を埋められないため、アセットグラフ・近傍グラフに URL が現れない。
+  const handleInsertLinkDirect = useCallback((url: string, blockId: string) => {
+    setPastedUrl(null);
+    const editor = editorRef.current;
+    const block = editor?.getBlock(blockId);
+    // URL がプレーンテキストのまま入っている場合はリンク化する
+    // （usedIn スキャンは {type:"link"} の href しか検出しない）。
+    // ネイティブ paste 経路は既にリンク化済みなのでこのガードには入らない。
+    if (editor && block && Array.isArray(block.content) && block.content.length === 1) {
+      const item = block.content[0];
+      if (item?.type === "text" && item.text?.trim() === url) {
+        editor.updateBlock(block, {
+          content: [{ type: "link", href: url, content: [{ type: "text", text: url, styles: {} }] }],
+        });
+      }
+    }
+    // 裏でアセットブラウザに登録（ブックマーク選択時と同じ扱い。重複は useFileManager 側で吸収）
+    if (onAddUrlBookmark) {
+      fetchUrlMetadata(url).then((meta) => {
+        onAddUrlBookmark!({
+          fileId: generateUrlBookmarkId(),
+          name: meta.title,
+          type: "url",
+          mimeType: "text/x-uri",
+          url,
+          thumbnailUrl: getFaviconUrl(meta.domain),
+          uploadedAt: new Date().toISOString(),
+          usedIn: [],
+          urlMeta: { domain: meta.domain, description: meta.description, ogImage: meta.ogImage },
+        });
+        // 登録後に即時保存して syncUsedIn を走らせる（オートセーブが先に完了して
+        // いた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）
+        saveNowRef.current();
+      });
+    }
+  }, [onAddUrlBookmark]);
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
@@ -1378,34 +1426,47 @@ function NoteEditorInner({
     };
     copyListenerRef.current = copyListener;
 
+    const isHttpUrl = (text: string): boolean => {
+      try {
+        return new URL(text).protocol.startsWith("http");
+      } catch {
+        return false;
+      }
+    };
+
     // URL 単体ペーストならブックマーク選択メニューを出す（段落・リスト項目共通）
     const maybeShowUrlPasteMenu = (rawText: string | undefined, blockId: string) => {
       const text = rawText?.trim();
-      if (!text) return;
-      try {
-        const parsed = new URL(text);
-        if (!parsed.protocol.startsWith("http")) return;
-      } catch {
-        return;
-      }
-      const sel = window.getSelection();
-      let x = 0, y = 0;
-      if (sel && sel.rangeCount > 0) {
-        const rect = sel.getRangeAt(0).getBoundingClientRect();
-        x = rect.left;
-        y = rect.bottom;
-      }
-      // 空のリスト項目などでは collapsed selection の rect が (0,0) になることが
-      // あるため、ブロック要素の位置にフォールバックする
-      if (x === 0 && y === 0) {
-        const blockEl = editor.domElement?.querySelector(`[data-id="${blockId}"]`);
-        const rect = blockEl?.getBoundingClientRect();
-        if (rect) {
+      if (!text || !isHttpUrl(text)) return;
+      // 位置はメニュー表示直前に計算する。paste イベント同期時の selection rect は
+      // ProseMirror の挿入処理と競合して (0,0) や剥離した rect を返すことがあり、
+      // メニューが画面左上に張り付く。挿入完了後なら caret 位置が安定して取れる。
+      setTimeout(() => {
+        let x = 0, y = 0;
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const rect = sel.getRangeAt(0).getBoundingClientRect();
           x = rect.left;
           y = rect.bottom;
         }
-      }
-      setTimeout(() => {
+        // 空ブロックの collapsed caret などで rect が (0,0) になる場合は
+        // ブロック要素の位置にフォールバックする
+        if (x === 0 && y === 0) {
+          const blockEl = editor.domElement?.querySelector(`[data-id="${blockId}"]`);
+          const rect = blockEl?.getBoundingClientRect();
+          if (rect && (rect.left !== 0 || rect.bottom !== 0)) {
+            x = rect.left;
+            y = rect.bottom;
+          }
+        }
+        // それでも取れなければエディタ要素基準に置く（左上張り付きの最終防止）
+        if (x === 0 && y === 0) {
+          const rect = editor.domElement?.getBoundingClientRect();
+          if (rect) {
+            x = rect.left + 48;
+            y = rect.top + 48;
+          }
+        }
         setPastedUrl({ url: text, position: { x, y }, blockId });
       }, 100);
     };
@@ -1483,8 +1544,14 @@ function NoteEditorInner({
           // capture phase で完全に乗っ取るため stopImmediatePropagation も呼ぶ。
           e.preventDefault();
           e.stopImmediatePropagation();
+          // URL 単体はネイティブ paste（GFM autolink）と同じくリンクとして挿入する。
+          // プレーンテキストで入れると usedIn スキャン（extractMediaFromBlocks）の
+          // 検出対象にならず、アセットグラフ・近傍グラフに URL が現れない。
+          const isUrlToken = !!token && !/\s/.test(token) && isHttpUrl(token);
           editor.updateBlock(cursorBlock, {
-            content: [{ type: "text", text: cleaned, styles: {} }],
+            content: isUrlToken
+              ? [{ type: "link", href: token, content: [{ type: "text", text: token, styles: {} }] }]
+              : [{ type: "text", text: cleaned, styles: {} }],
           });
           // URL 単体ならリスト項目でもブックマーク選択メニューを出す
           maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
@@ -1710,6 +1777,7 @@ function NoteEditorInner({
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
+  saveNowRef.current = saveNow;
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
@@ -3012,7 +3080,7 @@ function NoteEditorInner({
           url={pastedUrl.url}
           position={pastedUrl.position}
           onSelectBookmark={() => handleInsertBookmarkDirect(pastedUrl.url, pastedUrl.blockId)}
-          onSelectLink={() => setPastedUrl(null)}
+          onSelectLink={() => handleInsertLinkDirect(pastedUrl.url, pastedUrl.blockId)}
           onDismiss={() => setPastedUrl(null)}
         />
       )}

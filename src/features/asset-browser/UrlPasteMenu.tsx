@@ -77,11 +77,12 @@ export function UrlPasteMenu({
     };
   }, [onDismiss, activeIndex, handleSelect]);
 
-  // 画面外にはみ出さないよう調整
+  // 画面外にはみ出さないよう上下限ともクランプする
+  // （ブロックが画面外にスクロールしていた場合など、負の座標が渡ることがある）
   const style: React.CSSProperties = {
     position: "fixed",
-    left: Math.min(position.x, window.innerWidth - 220),
-    top: Math.min(position.y + 4, window.innerHeight - 120),
+    left: Math.max(8, Math.min(position.x, window.innerWidth - 220)),
+    top: Math.max(8, Math.min(position.y + 4, window.innerHeight - 120)),
     zIndex: 100,
   };
 
