@@ -412,9 +412,9 @@ export const ja: Record<string, string> = {
 
   // ── 設定モーダル追加 ──
   "settings.tab.general": "一般",
-  "settings.tab.labels": "ラベル",
+  "settings.tab.labels": "来歴ラベル",
   "settings.tab.aiSetup": "AI セットアップ",
-  "settings.tab.maintenance": "メンテナンス",
+  "settings.tab.maintenance": "ナレッジ管理",
   "settings.tab.usage": "使用量",
   "settings.maintenance.regenAll.title": "Knowledge の一括 Regenerate",
   "settings.maintenance.regenAll.help": "プロンプトやモデルを更新したあと、既存の Knowledge ページを最新仕様で作り直します。",
@@ -865,7 +865,7 @@ export const ja: Record<string, string> = {
   "wikiList.worldCheckSelectedTitle": "選択した Wiki をまとめて世界照合する（KB を見て、未登録の主張だけモデル判定）。既存の判定があれば上書きするので「付け直し」にも使える。",
   "wikiList.clearWorldSelected": "照合を消す ({count})",
   "wikiList.clearWorldSelectedTitle": "選択した Wiki に焼き付いた verdict と出典を消す（KB は触らない）。間違った判定や壊れたリンクをまとめて剥がす用途。",
-  "settings.tab.grounding": "世界照合",
+  "settings.tab.grounding": "照合データ",
   "settings.grounding.intro": "世界モデル照合が突き合わせる知識ベースの中身。最初は空で、照合を実行するほど育ちます。KB にヒットしなかった主張をモデルが判定した結果がここに自動で追加され、次回以降の照合で再利用されます（あなたの分野に最適化されていく）。",
   "settings.grounding.count": "{count} 件",
   "settings.grounding.filterAll": "全部",

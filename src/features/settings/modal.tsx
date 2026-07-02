@@ -1217,7 +1217,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
       <div className="flex border-b border-border px-6 max-w-3xl overflow-x-auto">
-        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "grounding", "maintenance", "usage", "labels", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
