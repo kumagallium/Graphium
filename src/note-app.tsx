@@ -2371,7 +2371,7 @@ function NoteEditorInner({
         [{ role: "assistant", content: cleaned }],
         noteTitle,
         existingWikis,
-        "ja",
+        getLocale(),
       );
       const claimOutputs = ingestRes.wikis.filter((w) => w.kind === "claim");
       if (claimOutputs.length === 0) return [];
@@ -2384,7 +2384,7 @@ function NoteEditorInner({
           ingestRes.model ?? model,
           noteTitle,
           existingWikiTitles,
-          "ja",
+          getLocale(),
         );
         const doc: GraphiumDocument = citedIds.length
           ? { ...baseDoc, wikiMeta: { ...baseDoc.wikiMeta!, citedKnowledgeIds: citedIds } }
@@ -2412,7 +2412,7 @@ function NoteEditorInner({
           sourceSummaryPreviews: [],
           atomType: undefined,
         }));
-        const atomRes = await atomizeConcepts(snapshots, "ja", {
+        const atomRes = await atomizeConcepts(snapshots, getLocale(), {
           model: model ?? getChatSynthesisModelName() ?? undefined,
         });
         atomCandidates = atomRes.atoms.map((a) => {
@@ -2421,7 +2421,7 @@ function NoteEditorInner({
           const baseDoc = buildAtomDocument(
             { ...a, derivedFromClaims: [], derivedFromConceptTitles: [] },
             atomRes.model ?? model,
-            "ja",
+            getLocale(),
           );
           const doc: GraphiumDocument = {
             ...baseDoc,
@@ -4301,12 +4301,12 @@ export function NoteApp() {
         const ingestSkills = pickActiveSkills(
           fm.skillMetas,
           (id) => fm.getCachedDoc(`skill:${id}`),
-          "ja",
+          getLocale(),
         );
 
         // 設定で選んだ既定モデル名を渡す。Tauri モードではヘッダーに API キーを乗せないため、
         // body.model 経由でサーバーに伝えないと models.json 先頭のモデルにフォールバックしてしまう。
-        const result = await ingestNote(job.noteId, job.doc, existingWikis, "ja", getSelectedModel() || undefined, ingestSkills);
+        const result = await ingestNote(job.noteId, job.doc, existingWikis, getLocale(), getSelectedModel() || undefined, ingestSkills);
 
         if (result.wikis.length === 0) {
           setIngestToast((prev) => ({
@@ -4334,7 +4334,7 @@ export function NoteApp() {
               const existingDoc = fm.getCachedDoc(`wiki:${wiki.mergeTargetId}`);
               if (existingDoc) {
                 const nIdx = buildNoteIndex(fm.noteIndex);
-                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, "ja", nIdx, ingestSkills);
+                const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
                   activityType: "ai_generation",
                   agentLabel: result.model ?? undefined,
@@ -4348,7 +4348,7 @@ export function NoteApp() {
             } catch { /* fallback to create */ }
           }
           const wikiTitleMap = existingWikis.map((w) => ({ id: w.id, title: w.title }));
-          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, "ja", buildNoteIndex(fm.noteIndex));
+          const wikiDoc = buildWikiDocument(wiki, job.noteId, result.model, job.noteTitle, wikiTitleMap, getLocale(), buildNoteIndex(fm.noteIndex));
           // 使用した Skill を記録
           if (ingestSkills.length > 0 && wikiDoc.wikiMeta) {
             wikiDoc.wikiMeta.skillsUsed = ingestSkills.map((s) => s.title);
@@ -4412,14 +4412,14 @@ export function NoteApp() {
                   newNoteContent: noteContent,
                   newWikiTitles: createdWikiTitles,
                   existingWikis: existingDetails,
-                  language: "ja",
+                  language: getLocale(),
                   ...(ingestSkills.length > 0 ? { skills: ingestSkills } : {}),
                 });
 
                 for (const proposal of crossResult.proposals) {
                   const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
                   if (!targetDoc) continue;
-                  const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model, buildNoteIndex(fm.noteIndex), ingestSkills);
+                  const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model, buildNoteIndex(fm.noteIndex), ingestSkills, getLocale());
                   await fm.handleSaveWikiFile(proposal.targetWikiId, updatedDoc, {
                     activityType: "ai_generation",
                     agentLabel: result.model ?? undefined,
@@ -4556,11 +4556,11 @@ export function NoteApp() {
             );
             const atomResult = await atomizeConcepts(
               slice,
-              "ja",
+              getLocale(),
               { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
             );
             for (const candidate of atomResult.atoms) {
-              const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, "ja");
+              const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, getLocale());
               const newId = await fm.handleCreateWikiFile(atomDoc);
               embedWikiSections(newId, atomDoc).catch(() => {});
               wikiLog.append(
@@ -4599,7 +4599,7 @@ export function NoteApp() {
         updateStage("lint", "running", `${snapshots.length} wikis を分析中...`);
         // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
         const useLlm = snapshots.length >= 5;
-        const report = await lintWikis(snapshots, "ja", !useLlm);
+        const report = await lintWikis(snapshots, getLocale(), !useLlm);
         const issues = report.issues;
 
         if (issues.length > 0) {
@@ -4652,19 +4652,19 @@ export function NoteApp() {
                   orphanCandidateFeatures,
                   ORPHAN_CROSS_UPDATE_CAP,
                 ).map((f) => f.detail);
-                const orphanSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
+                const orphanSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
                 const crossResult = await fetchCrossUpdateProposals({
                   newNoteTitle: doc.title,
                   newNoteContent: detail.sectionPreviews.join("\n"),
                   newWikiTitles: [doc.title],
                   existingWikis: otherConcepts,
-                  language: "ja",
+                  language: getLocale(),
                   ...(orphanSkills.length > 0 ? { skills: orphanSkills } : {}),
                 });
                 for (const proposal of crossResult.proposals) {
                   const targetDoc = fm.getCachedDoc(`wiki:${proposal.targetWikiId}`);
                   if (!targetDoc) continue;
-                  const updated = await applyCrossUpdate(targetDoc, proposal, wikiId, null, buildNoteIndex(fm.noteIndex), orphanSkills);
+                  const updated = await applyCrossUpdate(targetDoc, proposal, wikiId, null, buildNoteIndex(fm.noteIndex), orphanSkills, getLocale());
                   await fm.handleSaveWikiFile(proposal.targetWikiId, updated, {
                     activityType: "ai_generation",
                   });
@@ -4712,7 +4712,7 @@ export function NoteApp() {
               })).filter((s) => s.content);
 
               if (mergeSections.length > 0) {
-                const mergeSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
+                const mergeSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
                 const mergedResult = await rewriteAndMerge(
                   keepDoc,
                   {
@@ -4727,7 +4727,7 @@ export function NoteApp() {
                   },
                   mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
                   null,
-                  "ja",
+                  getLocale(),
                   buildNoteIndex(fm.noteIndex),
                   mergeSkills,
                 );
@@ -4862,7 +4862,7 @@ export function NoteApp() {
 
         // LLM Lint は 5 ページ以上かつ前回から 24h 以上のときのみ
         const useLlm = snapshots.length >= 5;
-        const report = await lintWikis(snapshots, "ja", !useLlm);
+        const report = await lintWikis(snapshots, getLocale(), !useLlm);
 
         if (report.issues.length > 0) {
           // contradiction / gap はトースト通知のみ
@@ -4906,7 +4906,7 @@ export function NoteApp() {
               })).filter((s) => s.content);
 
               if (mergeSections.length > 0) {
-                const mergeSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
+                const mergeSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
                 const mergedResult = await rewriteAndMerge(
                   keepDoc,
                   {
@@ -4921,7 +4921,7 @@ export function NoteApp() {
                   },
                   mergeDoc.wikiMeta?.derivedFromNotes[0] ?? "",
                   null,
-                  "ja",
+                  getLocale(),
                   buildNoteIndex(fm.noteIndex),
                   mergeSkills,
                 );
@@ -5112,7 +5112,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const atomResult = await atomizeConcepts(snapshots, "ja", {
+        const atomResult = await atomizeConcepts(snapshots, getLocale(), {
           // 自己重複（この Atom 自身）を Existing 扱いで抑止しないため existingAtomTitles は空で渡す。
           // re-lift では旧タイトルと別の抽象になってよい。
           model: selectedModel ?? getChatSynthesisModelName() ?? undefined,
@@ -5130,7 +5130,7 @@ export function NoteApp() {
           return { ok: false, error: errMsg };
         }
 
-        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, "ja");
+        const newDoc = buildAtomDocument(regenAtom, atomResult.model ?? null, getLocale());
         // 既存 Atom が持っていた derivedFromClaims を温存する
         // （atomizer 提案の derivedFromClaims はその回の入力に依存し、
         //  ユーザーが手動で集めたソース集合とは限らない）
@@ -5264,13 +5264,13 @@ export function NoteApp() {
           }
         }
 
-        const regenIngestSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
+        const regenIngestSkills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
         const result = await ingestFromMultiSource(
           parts,
           wikiTitle,
           wikiId,
           [],
-          "ja",
+          getLocale(),
           selectedModel,
           regenIngestSkills,
         );
@@ -5295,7 +5295,7 @@ export function NoteApp() {
             result.model,
             parts[0].title,
             undefined,
-            "ja",
+            getLocale(),
             buildNoteIndex(fm.noteIndex),
           );
           // derivedFromNotes は **元の配列をそのまま保持** する。
@@ -5455,7 +5455,7 @@ export function NoteApp() {
         }));
         const result = await atomizeConcepts(
           slice,
-          "ja",
+          getLocale(),
           { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
@@ -5467,7 +5467,7 @@ export function NoteApp() {
         const filtered = await dedupCandidatesByEmbedding(result.atoms, existingAtomDocIds);
         if (filtered.length === 0) continue; // このクラスタは既存と被り → 次のクラスタへ
         for (const candidate of filtered) {
-          const atomDoc = buildAtomDocument(candidate, result.model ?? null, "ja");
+          const atomDoc = buildAtomDocument(candidate, result.model ?? null, getLocale());
           const newId = await fm.handleCreateWikiFile(atomDoc);
           embedWikiSections(newId, atomDoc).catch(() => {});
           wikiLog.append(
@@ -5743,13 +5743,13 @@ export function NoteApp() {
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "generating" as const, detail: "Fetching URL..." } : i) }));
                   try {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                    const result = await ingestFromUrl(entry.url, existingWikis, "ja");
+                    const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, "ja", buildNoteIndex(fm.noteIndex));
+                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || entry.url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -5770,13 +5770,13 @@ export function NoteApp() {
                     const blobUrl = await provider.getMediaBlobUrl(entry.fileId);
                     const blob = await (await fetch(blobUrl)).blob();
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                    const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, "ja");
+                    const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, "ja", buildNoteIndex(fm.noteIndex));
+                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "PDF", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -5800,13 +5800,13 @@ export function NoteApp() {
                     const blobUrl = await provider.getMediaBlobUrl(fileId);
                     const blob = await (await fetch(blobUrl)).blob();
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                    const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, "ja");
+                    const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
                       setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
-                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, "ja", buildNoteIndex(fm.noteIndex));
+                      const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, entry.name || "Word", undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                       const newId = await fm.handleCreateWikiFile(wikiDoc);
                       embedWikiSections(newId, wikiDoc).catch(() => {});
                     }
@@ -6338,7 +6338,7 @@ export function NoteApp() {
                   });
                   return;
                 }
-                const report = await lintWikis(snapshots, "ja", localOnly);
+                const report = await lintWikis(snapshots, getLocale(), localOnly);
                 setLintReport(report);
               } catch (err) {
                 console.error("Lint failed:", err);
@@ -6729,7 +6729,7 @@ export function NoteApp() {
             composerCitationRef={composerCitationRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
-              const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), "ja");
+              const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
               if (skills.length === 0) return undefined;
               return buildSkillPromptSection(skills);
             })()}
@@ -6756,7 +6756,7 @@ export function NoteApp() {
                   const existingWikis = (fm.noteIndex?.notes ?? [])
                     .filter((n) => n.source === "ai" && n.wikiKind)
                     .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                  const result = await ingestFromUrl(url, existingWikis, "ja");
+                  const result = await ingestFromUrl(url, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
@@ -6764,7 +6764,7 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "saving" as const, detail: `${result.wikis.length} wiki(s)` } : i) }));
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, "ja", buildNoteIndex(fm.noteIndex));
+                    const wikiDoc = buildWikiDocument(wiki, sourceNoteId, result.model, url, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
@@ -6788,13 +6788,13 @@ export function NoteApp() {
                   const existingWikis = (fm.noteIndex?.notes ?? [])
                     .filter((n) => n.source === "ai" && n.wikiKind)
                     .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
-                  const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, "ja");
+                  const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
                     return;
                   }
                   for (const wiki of result.wikis) {
-                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, "ja", buildNoteIndex(fm.noteIndex));
+                    const wikiDoc = buildWikiDocument(wiki, jobId, result.model, chatTitle, undefined, getLocale(), buildNoteIndex(fm.noteIndex));
                     const newId = await fm.handleCreateWikiFile(wikiDoc);
                     embedWikiSections(newId, wikiDoc).catch(() => {});
                   }
