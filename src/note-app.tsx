@@ -1378,6 +1378,77 @@ function NoteEditorInner({
     };
     copyListenerRef.current = copyListener;
 
+    // URL 単体ペーストならブックマーク選択メニューを出す（段落・リスト項目共通）
+    const maybeShowUrlPasteMenu = (rawText: string | undefined, blockId: string) => {
+      const text = rawText?.trim();
+      if (!text) return;
+      try {
+        const parsed = new URL(text);
+        if (!parsed.protocol.startsWith("http")) return;
+      } catch {
+        return;
+      }
+      const sel = window.getSelection();
+      let x = 0, y = 0;
+      if (sel && sel.rangeCount > 0) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        x = rect.left;
+        y = rect.bottom;
+      }
+      // 空のリスト項目などでは collapsed selection の rect が (0,0) になることが
+      // あるため、ブロック要素の位置にフォールバックする
+      if (x === 0 && y === 0) {
+        const blockEl = editor.domElement?.querySelector(`[data-id="${blockId}"]`);
+        const rect = blockEl?.getBoundingClientRect();
+        if (rect) {
+          x = rect.left;
+          y = rect.bottom;
+        }
+      }
+      setTimeout(() => {
+        setPastedUrl({ url: text, position: { x, y }, blockId });
+      }, 100);
+    };
+
+    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // に変換する。処理した場合 true を返す（呼び出し元で return する）。
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
+      const noteLinkMatch = /#note\/([^/\s#?]+)/.exec(pastedText);
+      if (!noteLinkMatch) return false;
+      const linkedFileId = decodeURIComponent(noteLinkMatch[1]);
+      const linkedTitle = resolveNoteLinkTitleRef.current(linkedFileId);
+      if (!linkedTitle) return false;
+      // クリップボードリスナーが二重登録されると同一 paste イベントが 2 回
+      // このハンドラに届き、メンションが 2 個入る。イベント単位の既処理フラグ
+      // ＋ stopImmediatePropagation で 1 回だけ処理する。
+      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
+      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const sourceBlockId = editor.getTextCursorPosition()?.block?.id;
+      if (sourceBlockId) {
+        linkStore.addLink({
+          sourceBlockId,
+          targetBlockId: "",
+          targetNoteId: linkedFileId,
+          type: "reference",
+          createdBy: "human",
+        });
+        const exists = noteLinksRef.current.some((l) => l.targetNoteId === linkedFileId);
+        if (!exists) {
+          noteLinksRef.current = [
+            ...noteLinksRef.current,
+            { targetNoteId: linkedFileId, sourceBlockId, type: "derived_from" },
+          ];
+        }
+      }
+      // insertInlineContent の onChange で自動 markDirty される
+      setTimeout(() => {
+        insertNoteMentionInline(editorRef.current, linkedFileId, linkedTitle);
+      }, 0);
+      return true;
+    };
+
     // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
     const pasteListener = (e: ClipboardEvent) => {
       // 空のリスト系ブロック（checkListItem / bulletListItem / numberedListItem）に
@@ -1401,17 +1472,22 @@ function NoteEditorInner({
         // Graphium ペイロード（複数ブロック想定）はブロック置換でも構造が保たれるためスルー。
         // ここではプレーンテキスト相当の paste のみ救済する。
         if (!hasGraphiumPayload && plain) {
+          // 末尾の改行はクリップボードに含まれる「行末コピー」由来で、ブロック内に
+          // 持ち込むと BlockNote が hard break を増やすため除去する。
+          const cleaned = plain.replace(/\r?\n+$/g, "");
+          // 単一トークンのノートリンクは他ブロックと同様にメンション変換する
+          const token = cleaned.trim();
+          if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
           // ProseMirror / BlockNote の paste handler も同じ DOM に付いており、
           // preventDefault だけだと続けて走ってブロックを改行追加 + paragraph 置換してしまう。
           // capture phase で完全に乗っ取るため stopImmediatePropagation も呼ぶ。
           e.preventDefault();
           e.stopImmediatePropagation();
-          // 末尾の改行はクリップボードに含まれる「行末コピー」由来で、ブロック内に
-          // 持ち込むと BlockNote が hard break を増やすため除去する。
-          const cleaned = plain.replace(/\r?\n+$/g, "");
           editor.updateBlock(cursorBlock, {
             content: [{ type: "text", text: cleaned, styles: {} }],
           });
+          // URL 単体ならリスト項目でもブックマーク選択メニューを出す
+          maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
           return;
         }
       }
@@ -1461,65 +1537,13 @@ function NoteEditorInner({
       // （空白を含まない）のときだけ変換する。
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();
       if (pastedText && !/\s/.test(pastedText)) {
-        const noteLinkMatch = /#note\/([^/\s#?]+)/.exec(pastedText);
-        if (noteLinkMatch) {
-          const linkedFileId = decodeURIComponent(noteLinkMatch[1]);
-          const linkedTitle = resolveNoteLinkTitleRef.current(linkedFileId);
-          if (linkedTitle) {
-            // クリップボードリスナーが二重登録されると同一 paste イベントが 2 回
-            // このハンドラに届き、メンションが 2 個入る。イベント単位の既処理フラグ
-            // ＋ stopImmediatePropagation で 1 回だけ処理する。
-            if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
-            (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            const sourceBlockId = editor.getTextCursorPosition()?.block?.id;
-            if (sourceBlockId) {
-              linkStore.addLink({
-                sourceBlockId,
-                targetBlockId: "",
-                targetNoteId: linkedFileId,
-                type: "reference",
-                createdBy: "human",
-              });
-              const exists = noteLinksRef.current.some((l) => l.targetNoteId === linkedFileId);
-              if (!exists) {
-                noteLinksRef.current = [
-                  ...noteLinksRef.current,
-                  { targetNoteId: linkedFileId, sourceBlockId, type: "derived_from" },
-                ];
-              }
-            }
-            // insertInlineContent の onChange で自動 markDirty される
-            setTimeout(() => {
-              insertNoteMentionInline(editorRef.current, linkedFileId, linkedTitle);
-            }, 0);
-            return;
-          }
-        }
+        if (tryConvertNoteLinkPaste(e, pastedText)) return;
       }
 
       // 既存: URL のみのペーストならブックマーク選択メニューを出す
-      const text = e.clipboardData?.getData("text/plain")?.trim();
-      if (!text) return;
-      try {
-        const parsed = new URL(text);
-        if (!parsed.protocol.startsWith("http")) return;
-      } catch {
-        return;
-      }
       const currentBlock = editor.getTextCursorPosition()?.block;
       if (!currentBlock) return;
-      const sel = window.getSelection();
-      let x = 0, y = 0;
-      if (sel && sel.rangeCount > 0) {
-        const rect = sel.getRangeAt(0).getBoundingClientRect();
-        x = rect.left;
-        y = rect.bottom;
-      }
-      setTimeout(() => {
-        setPastedUrl({ url: text, position: { x, y }, blockId: currentBlock.id });
-      }, 100);
+      maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), currentBlock.id);
     };
     pasteListenerRef.current = pasteListener;
 
