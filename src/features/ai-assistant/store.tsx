@@ -21,6 +21,8 @@ export type AiAssistantState = {
   chats: ScopeChat[];
   /** crucible-agent セッション ID（チャット継続用） */
   sessionId: string | null;
+  /** アクティブなチャットのフォーク元（分岐で作られたチャットのみ） */
+  forkedFrom: ScopeChat["forkedFrom"] | null;
   /** Chat タブを開くリクエスト（カウンター。変化を検知して rightTab を切り替える） */
   chatRequestSeq: number;
 };
@@ -34,6 +36,17 @@ export type AiAssistantActions = {
   setError: (error: string | null) => void;
   /** メッセージを追加 */
   addMessage: (message: ChatMessage) => void;
+  /**
+   * messages を index 直前まで巻き戻し、新しい user メッセージで置き換える。
+   * 編集&再実行（index = 編集した user の位置）と回答の再生成
+   * （index = 再送する user の位置）の両方で使う。index 以降は破棄される。
+   */
+  rewriteFrom: (index: number, message: ChatMessage) => void;
+  /**
+   * 現在のチャットを退避し、messages[0..index]（そのメッセージを含む）を
+   * コピーした新チャットに分岐する。新チャットは forkedFrom を持つ。
+   */
+  forkChatAt: (index: number) => void;
   /** チャットを選択（既存チャットを開く） */
   selectChat: (chatId: string) => void;
   /** チャット一覧を復元 */
@@ -64,6 +77,7 @@ const INITIAL_STATE: AiAssistantState = {
   activeChatId: null,
   chats: [],
   sessionId: null,
+  forkedFrom: null,
   chatRequestSeq: 0,
 };
 
@@ -99,46 +113,57 @@ function buildGeneratedBy(
   };
 }
 
+// 現在アクティブなチャットを ScopeChat として構築する。
+// ScopeChat にフィールドを追加したら必ずここに通線すること
+// （ここに無いフィールドはチャットのアクティブ化→退避のたびに脱落する）。
+// export はユニットテスト用。
+export function buildCurrentChat(state: AiAssistantState): ScopeChat | null {
+  if (state.messages.length === 0) return null;
+  const now = new Date().toISOString();
+  const existing = state.activeChatId
+    ? state.chats.find((c) => c.id === state.activeChatId)
+    : null;
+  return {
+    id: resolveChatId(state, existing),
+    scopeBlockId: state.sourceBlockIds[0] ?? "",
+    scopeType: resolveScopeType(state.sourceBlockIds),
+    messages: state.messages,
+    generatedBy: buildGeneratedBy(state, existing),
+    ...(state.forkedFrom ?? existing?.forkedFrom
+      ? { forkedFrom: state.forkedFrom ?? existing?.forkedFrom }
+      : {}),
+    createdAt: existing?.createdAt ?? now,
+    modifiedAt: now,
+  };
+}
+
+// chats に chat を upsert する（同 ID があれば置換、無ければ末尾追加）
+// export はユニットテスト用。
+export function upsertChat(chats: ScopeChat[], chat: ScopeChat | null): ScopeChat[] {
+  if (!chat) return chats;
+  const idx = chats.findIndex((c) => c.id === chat.id);
+  return idx >= 0 ? chats.map((c, i) => (i === idx ? chat : c)) : [...chats, chat];
+}
+
 export function AiAssistantProvider({ children, aiAvailable = true }: { children: ReactNode; aiAvailable?: boolean }) {
   const [state, setState] = useState<AiAssistantState>(INITIAL_STATE);
 
   const openChat = useCallback(
     (params: { sourceBlockIds: string[]; quotedMarkdown: string }) => {
-      setState((prev) => {
+      setState((prev) => ({
+        ...prev,
         // 現在進行中のチャットがあれば chats に退避
-        let updatedChats = prev.chats;
-        if (prev.messages.length > 0) {
-          const now = new Date().toISOString();
-          const existing = prev.activeChatId
-            ? prev.chats.find((c) => c.id === prev.activeChatId)
-            : null;
-          const currentChat: ScopeChat = {
-            id: resolveChatId(prev, existing),
-            scopeBlockId: prev.sourceBlockIds[0] ?? "",
-            scopeType: resolveScopeType(prev.sourceBlockIds),
-            messages: prev.messages,
-            generatedBy: buildGeneratedBy(prev, existing),
-            createdAt: existing?.createdAt ?? now,
-            modifiedAt: now,
-          };
-          const idx = updatedChats.findIndex((c) => c.id === currentChat.id);
-          updatedChats = idx >= 0
-            ? updatedChats.map((c, i) => i === idx ? currentChat : c)
-            : [...updatedChats, currentChat];
-        }
-        return {
-          ...prev,
-          chats: updatedChats,
-          sourceBlockIds: params.sourceBlockIds,
-          quotedMarkdown: params.quotedMarkdown,
-          loading: false,
-          error: null,
-          messages: [],
-          activeChatId: null,
-          sessionId: null,
-          chatRequestSeq: prev.chatRequestSeq + 1,
-        };
-      });
+        chats: upsertChat(prev.chats, buildCurrentChat(prev)),
+        sourceBlockIds: params.sourceBlockIds,
+        quotedMarkdown: params.quotedMarkdown,
+        loading: false,
+        error: null,
+        messages: [],
+        activeChatId: null,
+        sessionId: null,
+        forkedFrom: null,
+        chatRequestSeq: prev.chatRequestSeq + 1,
+      }));
     },
     [],
   );
@@ -160,6 +185,32 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
     }));
   }, []);
 
+  const rewriteFrom = useCallback((index: number, message: ChatMessage) => {
+    setState((prev) => ({
+      ...prev,
+      messages: [...prev.messages.slice(0, index), message],
+      activeChatId: prev.activeChatId ?? crypto.randomUUID(),
+    }));
+  }, []);
+
+  const forkChatAt = useCallback((index: number) => {
+    setState((prev) => {
+      const current = buildCurrentChat(prev);
+      if (!current) return prev;
+      return {
+        ...prev,
+        // 元チャットを全量のまま chats に退避し、途中までのコピーで分岐する。
+        // sourceBlockIds / quotedMarkdown は同一スコープの分岐なので引き継ぐ。
+        chats: upsertChat(prev.chats, current),
+        messages: prev.messages.slice(0, index + 1),
+        activeChatId: crypto.randomUUID(),
+        sessionId: null,
+        forkedFrom: { chatId: current.id, messageIndex: index },
+        error: null,
+      };
+    });
+  }, []);
+
   const setSessionId = useCallback((sessionId: string | null) => {
     setState((prev) => ({ ...prev, sessionId }));
   }, []);
@@ -176,6 +227,7 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
         quotedMarkdown: "",
         error: null,
         sessionId: chat.generatedBy?.sessionId ?? null,
+        forkedFrom: chat.forkedFrom ?? null,
       };
     });
   }, []);
@@ -185,88 +237,34 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
   }, []);
 
   const getCurrentChat = useCallback((): ScopeChat | null => {
-    const s = state;
-    if (s.messages.length === 0) return null;
-    const now = new Date().toISOString();
-    const existing = s.activeChatId ? s.chats.find((c) => c.id === s.activeChatId) : null;
-    return {
-      id: resolveChatId(s, existing),
-      scopeBlockId: s.sourceBlockIds[0] ?? "",
-      scopeType: resolveScopeType(s.sourceBlockIds),
-      messages: s.messages,
-      generatedBy: buildGeneratedBy(s, existing),
-      createdAt: existing?.createdAt ?? now,
-      modifiedAt: now,
-    };
+    return buildCurrentChat(state);
   }, [state]);
 
   const clearMessages = useCallback(() => {
-    setState((prev) => {
+    setState((prev) => ({
+      ...prev,
       // 現在のチャットを chats に退避してからクリア
-      let updatedChats = prev.chats;
-      if (prev.messages.length > 0) {
-        const now = new Date().toISOString();
-        const existing = prev.activeChatId
-          ? prev.chats.find((c) => c.id === prev.activeChatId)
-          : null;
-        const currentChat: ScopeChat = {
-          id: resolveChatId(prev, existing),
-          scopeBlockId: prev.sourceBlockIds[0] ?? "",
-          scopeType: resolveScopeType(prev.sourceBlockIds),
-          messages: prev.messages,
-          generatedBy: buildGeneratedBy(prev, existing),
-          createdAt: existing?.createdAt ?? now,
-          modifiedAt: now,
-        };
-        const idx = updatedChats.findIndex((c) => c.id === currentChat.id);
-        updatedChats = idx >= 0
-          ? updatedChats.map((c, i) => i === idx ? currentChat : c)
-          : [...updatedChats, currentChat];
-      }
-      return {
-        ...prev,
-        chats: updatedChats,
-        messages: [],
-        activeChatId: null,
-        sessionId: null,
-        error: null,
-      };
-    });
+      chats: upsertChat(prev.chats, buildCurrentChat(prev)),
+      messages: [],
+      activeChatId: null,
+      sessionId: null,
+      forkedFrom: null,
+      error: null,
+    }));
   }, []);
 
   const parkChat = useCallback(() => {
-    setState((prev) => {
-      let updatedChats = prev.chats;
-      if (prev.messages.length > 0) {
-        const now = new Date().toISOString();
-        const existing = prev.activeChatId
-          ? prev.chats.find((c) => c.id === prev.activeChatId)
-          : null;
-        const currentChat: ScopeChat = {
-          id: resolveChatId(prev, existing),
-          scopeBlockId: prev.sourceBlockIds[0] ?? "",
-          scopeType: resolveScopeType(prev.sourceBlockIds),
-          messages: prev.messages,
-          generatedBy: buildGeneratedBy(prev, existing),
-          createdAt: existing?.createdAt ?? now,
-          modifiedAt: now,
-        };
-        const idx = updatedChats.findIndex((c) => c.id === currentChat.id);
-        updatedChats = idx >= 0
-          ? updatedChats.map((c, i) => i === idx ? currentChat : c)
-          : [...updatedChats, currentChat];
-      }
-      return {
-        ...prev,
-        chats: updatedChats,
-        messages: [],
-        activeChatId: null,
-        sessionId: null,
-        sourceBlockIds: [],
-        quotedMarkdown: "",
-        error: null,
-      };
-    });
+    setState((prev) => ({
+      ...prev,
+      chats: upsertChat(prev.chats, buildCurrentChat(prev)),
+      messages: [],
+      activeChatId: null,
+      sessionId: null,
+      forkedFrom: null,
+      sourceBlockIds: [],
+      quotedMarkdown: "",
+      error: null,
+    }));
   }, []);
 
   return (
@@ -278,6 +276,8 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
         setLoading,
         setError,
         addMessage,
+        rewriteFrom,
+        forkChatAt,
         setSessionId,
         selectChat,
         restoreChats,

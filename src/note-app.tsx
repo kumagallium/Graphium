@@ -1838,7 +1838,12 @@ function NoteEditorInner({
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
-    async (question: string, attachedNotes?: AttachedNote[], scope: GroundingScope = DEFAULT_GROUNDING_SCOPE) => {
+    async (
+      question: string,
+      attachedNotes?: AttachedNote[],
+      scope: GroundingScope = DEFAULT_GROUNDING_SCOPE,
+      rewindIndex?: number,
+    ) => {
       // 新規ノート（fileId 未採番）でも AI チャットを許可する
       // markDirty() 経由でオートセーブが走り、ファイルが作成される
       if (!editorRef.current) {
@@ -1856,10 +1861,19 @@ function NoteEditorInner({
       const displayContent = attachedNotes && attachedNotes.length > 0
         ? `${question}\n\n📎 ${attachedNotes.map((n) => n.isWiki ? `🤖 ${n.title}` : n.title).join(", ")}`
         : question;
-      aiAssistant.addMessage({ role: "user", content: displayContent, timestamp: now });
+      // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
+      // 新しい user メッセージを置く。履歴もそこまでで組み立てる。
+      const baseMessages = rewindIndex != null
+        ? aiAssistant.messages.slice(0, rewindIndex)
+        : aiAssistant.messages;
+      if (rewindIndex != null) {
+        aiAssistant.rewriteFrom(rewindIndex, { role: "user", content: displayContent, timestamp: now });
+      } else {
+        aiAssistant.addMessage({ role: "user", content: displayContent, timestamp: now });
+      }
       aiAssistant.setLoading(true);
       try {
-        const isFirstMessage = aiAssistant.messages.length === 0;
+        const isFirstMessage = baseMessages.length === 0;
         let userMessage = question;
         if (aiAssistant.quotedMarkdown) {
           // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
@@ -2015,7 +2029,7 @@ function NoteEditorInner({
         // 初回 user message は store に表示用の素の質問しか入っていないので、
         // backend 履歴では quotedMarkdown を改めて挟んで context を維持する
         // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
-        const history: AgentChatMessage[] = aiAssistant.messages.map((m, idx) => {
+        const history: AgentChatMessage[] = baseMessages.map((m, idx) => {
           if (idx === 0 && m.role === "user" && aiAssistant.quotedMarkdown) {
             return {
               role: m.role,
@@ -2102,6 +2116,16 @@ function NoteEditorInner({
       }
     },
     [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp, mediaIndex],
+  );
+
+  // チャットフォーク: 現在のチャットを一覧に退避し、指定メッセージまでの
+  // コピーを新チャットとしてアクティブ化する。markDirty で新チャットも永続化する。
+  const handleAiChatFork = useCallback(
+    (index: number) => {
+      aiAssistant.forkChatAt(index);
+      markDirty();
+    },
+    [aiAssistant, markDirty],
   );
 
   // Composer 結果をドキュメント末尾にブロックとして挿入するヘルパー。
@@ -3665,6 +3689,7 @@ function NoteEditorInner({
               {rightTab === "chat" && (
                 <AiAssistantPanel
                   onSubmit={handleAiChatSubmit}
+                  onForkChat={handleAiChatFork}
                   onInsertToScope={handleInsertToScope}
                   onReplaceBlocks={handleReplaceBlocks}
                   onDeriveNote={handleAiDeriveFromChat}

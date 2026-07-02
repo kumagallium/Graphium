@@ -305,6 +305,9 @@ type ScopeChat = {
   scopeType: "heading" | "block" | "page";
   messages: { role: "user" | "assistant"; content: string; timestamp: string }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
+  // Present only on chats created by forking another chat: the parent
+  // chat's id and the index of the last message carried over (inclusive).
+  forkedFrom?: { chatId: string; messageIndex: number };
   createdAt: string;
   modifiedAt: string;
 };
@@ -312,6 +315,13 @@ type ScopeChat = {
 
 Chats are anchored to a scope (a heading, block, or page) so they can be
 re-attached to the same context after edits.
+
+A chat can be **forked**: the messages up to a chosen point are copied
+into a new `ScopeChat` (new `id`, `forkedFrom` pointing at the parent)
+while the original chat is preserved unchanged. Editing a past user
+message and resending it, or regenerating an assistant response,
+rewrites the active chat in place: messages after the edit point are
+discarded and replaced by the new exchange.
 
 ## 3. Knowledge layer documents
 
