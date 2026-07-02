@@ -1,6 +1,7 @@
 export { SkillListView } from "./SkillListView";
 export { SkillBanner } from "./SkillBanner";
-export { NewSkillDialog } from "./NewSkillDialog";
+export { SkillDialog } from "./SkillDialog";
+export type { SkillFormValues } from "./SkillDialog";
 export {
   buildSkillDocument,
   extractSkillPrompt,

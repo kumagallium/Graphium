@@ -2,7 +2,7 @@
 // プロンプトテンプレートの一覧表示・新規作成・削除
 
 import { useMemo, useState } from "react";
-import { Wrench, Search, Trash2, Plus, Zap, Lock, RotateCcw } from "lucide-react";
+import { Wrench, Search, Trash2, Plus, Zap, Lock, RotateCcw, Pencil } from "lucide-react";
 import type { GraphiumFile, SkillMeta } from "../../lib/document-types";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
@@ -34,6 +34,8 @@ type Props = {
   onBack: () => void;
   onDeleteSkill: (skillId: string) => Promise<void>;
   onNewSkill: () => void;
+  /** 編集ダイアログを開く（説明・Ingest 自動適用・言語・タイトルの修正） */
+  onEditSkill: (skillId: string) => void;
   /** システムスキルをデフォルト内容に戻す */
   onResetSystemSkill?: (skillId: string) => Promise<void>;
 };
@@ -46,6 +48,7 @@ export function SkillListView({
   onBack,
   onDeleteSkill,
   onNewSkill,
+  onEditSkill,
   onResetSystemSkill,
 }: Props) {
   const t = useT();
@@ -185,27 +188,36 @@ export function SkillListView({
                       )}
                     </div>
                   </div>
-                  {entry.systemSkillId ? (
-                    onResetSystemSkill && (
-                      <button
-                        onClick={(e) => handleReset(e, entry.id)}
-                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border bg-background text-[10px]"
-                        title="このスキルをデフォルト内容に戻します"
-                      >
-                        <RotateCcw size={12} />
-                        <span>デフォルトに戻す</span>
-                      </button>
-                    )
-                  ) : (
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={(e) => handleDelete(e, entry.id)}
-                      disabled={deletingId === entry.id}
-                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-                      title="Delete"
+                      onClick={(e) => { e.stopPropagation(); onEditSkill(entry.id); }}
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1"
+                      title="編集（説明・Ingest 自動適用・言語）"
                     >
-                      <Trash2 size={14} />
+                      <Pencil size={14} />
                     </button>
-                  )}
+                    {entry.systemSkillId ? (
+                      onResetSystemSkill && (
+                        <button
+                          onClick={(e) => handleReset(e, entry.id)}
+                          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border bg-background text-[10px]"
+                          title="このスキルをデフォルト内容に戻します"
+                        >
+                          <RotateCcw size={12} />
+                          <span>デフォルトに戻す</span>
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={(e) => handleDelete(e, entry.id)}
+                        disabled={deletingId === entry.id}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
+                        title="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </button>
             ))}
