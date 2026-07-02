@@ -83,8 +83,8 @@ type SandboxEditorProps = {
   onHashtagSelect?: (blockId: string, label: string) => void;
   /** @ 参照リンクで選択されたときのコールバック */
   onMentionSelect?: (sourceBlockId: string, suggestion: import("@features/block-link/mention-menu").ReferenceSuggestion) => void;
-  /** @ 参照リンクの候補を取得する関数（外部から注入） */
-  getMentionSuggestions?: () => import("@features/block-link/mention-menu").ReferenceSuggestion[];
+  /** @ 参照リンクの候補を取得する関数（外部から注入）。query は @ の後に入力中の文字列 */
+  getMentionSuggestions?: (query: string) => import("@features/block-link/mention-menu").ReferenceSuggestion[];
   /** 読み取り専用モード（アーカイブ済みノートの閲覧などで使う） */
   editable?: boolean;
 };
@@ -241,8 +241,8 @@ export function SandboxEditor({
   // @ 参照リンクオートコンプリート
   const getMentionItems = useCallback(
     async (query: string) => {
-      const suggestions = getMentionSuggestions?.() ?? [];
-      const items = suggestions.map((s) => ({
+      const suggestions = getMentionSuggestions?.(query) ?? [];
+      const toItem = (s: any) => ({
         title: s.label,
         group: s.group,
         onItemClick: () => {
@@ -251,8 +251,19 @@ export function SandboxEditor({
             onMentionSelect(block.id, s);
           }
         },
-      }));
-      return _filterSuggestionItems(items as any, query) as any;
+      });
+      // createTitle を持つ候補（「新規ノートを作成」）は _filterSuggestionItems を通さず
+      // 常に付与する。query に IME 変換中のスペース等が紛れても脱落させないため。
+      const createSuggestions = suggestions.filter((s) => s.createTitle !== undefined);
+      const normalSuggestions = suggestions.filter((s) => s.createTitle === undefined);
+      const filtered = _filterSuggestionItems(normalSuggestions.map(toItem) as any, query);
+      const createItems = createSuggestions.map(toItem);
+      // `@` 直後（空クエリ）は「新しいノートを作成」を先頭＝ハイライトに出す。
+      // 名前を打つ前に Enter/クリックで確定入力ダイアログへ入れるので、IME で最も確実。
+      // クエリがあるときは既存ノートの一致を優先し、新規作成は末尾に置く。
+      return (query.trim().length === 0
+        ? [...createItems, ...(filtered as any[])]
+        : [...(filtered as any[]), ...createItems]) as any;
     },
     [editor, getMentionSuggestions, onMentionSelect],
   );

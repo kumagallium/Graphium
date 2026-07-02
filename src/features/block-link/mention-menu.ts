@@ -15,7 +15,107 @@ export type ReferenceSuggestion = {
   label: string;
   /** グループ名 */
   group: string;
+  /**
+   * 「新規ノートを作成」候補のとき、作成するノートのタイトル。
+   * label は装飾文（例「『〇〇』を新規ノートに」）になるため、
+   * 実際に作るノート名・本文に挿入する @テキストはこちらを使う。
+   */
+  createTitle?: string;
 };
+
+/** 「新規ノートを作成」候補を識別するための sentinel ID */
+export const CREATE_NEW_NOTE_ID = "__graphium_create_new_note__";
+
+/**
+ * ノートメンションを青い `@タイトル` テキストとして本文に挿入する。
+ * ノート ID は呼び出し側が linkStore.addLink({sourceBlockId, targetNoteId}) で
+ * 別途記録しており、クリック解決はその linkStore を参照して厳密な ID を得る
+ * （同名ノートでも正しく解決するため。resolveMentionTargetFromLinks 参照）。
+ * 末尾に半角スペースを足して続けて書けるようにする。
+ */
+export function insertNoteMentionInline(editor: any, _noteId: string, title: string): void {
+  editor?.insertInlineContent?.([
+    { type: "text", text: `@${title}`, styles: { textColor: "blue" } },
+    { type: "text", text: " ", styles: {} },
+  ]);
+}
+
+/**
+ * クリックされたメンション（青文字 `@タイトル`）を、記録済みリンクから厳密な
+ * ノート ID に解決する。タイトル逆引き（同名で曖昧）と違い、挿入時に linkStore へ
+ * 記録した targetNoteId を使うので、同名ノートが複数あっても正しいノートを開ける。
+ *
+ * @param blockId クリックされたメンションが属するブロック ID（DOM の data-id）
+ * @param mentionText 先頭の `@` を除いたメンション表示テキスト（＝タイトル）
+ * @param links そのエディタの linkStore.getAllLinks()
+ * @param noteIndex source（human/ai）判定とタイトル照合に使う
+ */
+export function resolveMentionTargetFromLinks(
+  blockId: string | null | undefined,
+  mentionText: string,
+  links: ReadonlyArray<{ sourceBlockId: string; targetNoteId?: string; type?: string }>,
+  noteIndex: GraphiumIndex | null | undefined,
+): { noteId: string; isWiki: boolean } | null {
+  if (!blockId) return null;
+  const candidates = links.filter(
+    (l) => l.sourceBlockId === blockId && !!l.targetNoteId,
+  );
+  if (candidates.length === 0) return null;
+  // 同一ブロックに複数メンションがある場合は、タイトル一致で対応リンクを選ぶ。
+  for (const c of candidates) {
+    const entry = noteIndex?.notes.find((n) => n.noteId === c.targetNoteId);
+    if (entry && entry.title === mentionText) {
+      return { noteId: c.targetNoteId as string, isWiki: entry.source === "ai" };
+    }
+  }
+  // タイトル一致が無い（作成後にタイトル変更された等）→ 先頭候補にフォールバック。
+  const first = candidates[0];
+  const entry = noteIndex?.notes.find((n) => n.noteId === first.targetNoteId);
+  return { noteId: first.targetNoteId as string, isWiki: entry?.source === "ai" };
+}
+
+/**
+ * 新規ノート作成候補を返す。常に 1 件返す（`@` 直後の空クエリでも出す）。
+ *
+ * - 空クエリ: `createTitle=""` の「新しいノートを作成…」。選ぶと名前入力ダイアログを開く。
+ *   IME で名前を打つと変換確定でメニューが閉じてしまうため、`@` 直後にこれを選び、
+ *   名前は通常の入力欄（ダイアログ）で打てるようにするのが日本語入力での確実な経路。
+ * - 非空クエリで既存ノートにタイトル完全一致が無いとき: `createTitle=query` の
+ *   「『〇〇』を新規ノートに」。英語などインラインで打ち切れた場合はダイアログ無しで即作成。
+ * - 非空クエリで完全一致があるとき: null（既存を選ばせる。同名ノートの量産も防ぐ）。
+ *
+ * この候補は呼び出し側（editor.tsx）で `_filterSuggestionItems` を通さずに常に付与する。
+ * そうしないと変換中に query へ紛れるスペース等でフィルタ脱落してしまう。
+ * @param query `@` の後にユーザーが入力中の文字列
+ * @param existing すでに集めた候補（重複判定に使う）
+ */
+export function getCreateNoteSuggestion(
+  query: string,
+  existing: ReferenceSuggestion[],
+): ReferenceSuggestion | null {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return {
+      type: "note",
+      id: CREATE_NEW_NOTE_ID,
+      label: "新しいノートを作成…",
+      group: "新規作成",
+      createTitle: "",
+    };
+  }
+  const normalized = trimmed.toLowerCase();
+  const hasExact = existing.some(
+    (s) => s.type === "note" && !s.createTitle && s.label.trim().toLowerCase() === normalized,
+  );
+  if (hasExact) return null;
+  return {
+    type: "note",
+    id: CREATE_NEW_NOTE_ID,
+    label: `「${trimmed}」を新規ノートに`,
+    group: "新規作成",
+    createTitle: trimmed,
+  };
+}
 
 /**
  * 同ノート内の見出しブロックを候補として収集する。

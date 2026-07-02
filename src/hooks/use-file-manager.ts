@@ -915,6 +915,60 @@ export function useFileManager(authenticated: boolean) {
     [activeDoc, handleOpenFile, setActiveFileId]
   );
 
+  // `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返すだけで、
+  // ナビゲーションはしない（呼び出し側が本文に @リンクを挿入し、開いているノートに
+  // 留まる）。クリック解決はタイトル逆引きのため、作成と同時に files / index へ
+  // 載せて、直後のクリックでサイドピークが開けるようにする。
+  const handleCreateLinkedNote = useCallback(
+    async (title: string, sourceNoteId?: string): Promise<string | null> => {
+      const cleanTitle = title.trim();
+      if (!cleanTitle) return null;
+      try {
+        const now = new Date().toISOString();
+        // 派生元: 明示指定（サイドピーク = 表示中ノート）があればそれ、無ければ
+        // アクティブノート。Wiki / Skill は通常ノートの派生元として扱わない。
+        const rawSource = sourceNoteId ?? activeFileIdRef.current ?? undefined;
+        const derivedFromNoteId =
+          rawSource && !rawSource.startsWith("wiki:") && !rawSource.startsWith("skill:")
+            ? rawSource
+            : undefined;
+        let newDoc: GraphiumDocument = {
+          version: 2,
+          title: cleanTitle,
+          pages: [{ id: "main", title: cleanTitle, blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+          // 派生元を記録（handleDeriveNote と同じ来歴の張り方）。
+          // 元ノート側の noteLinks(derived_from) は呼び出し側の挿入フローが追加する。
+          derivedFromNoteId,
+          createdAt: now,
+          modifiedAt: now,
+        };
+        newDoc = await recordRevision(newDoc, null, "human_derivation");
+        const newFileId = await createFile(newDoc.title, newDoc);
+        docCacheRef.current.set(newFileId, newDoc);
+
+        // ファイル一覧に追加（resolveMentionNoteId のフォールバック逆引き用）
+        setFiles((prev) => [
+          { id: newFileId, name: `${cleanTitle}.graphium.json`, modifiedTime: now, createdTime: now },
+          ...prev,
+        ]);
+
+        // インデックスに追加（resolveMentionNoteId のタイトル逆引きの主経路）
+        if (noteIndexRef.current) {
+          const updated = updateIndexEntry(noteIndexRef.current, newFileId, newDoc);
+          noteIndexRef.current = updated;
+          setNoteIndex(updated);
+          queueSaveIndex(updated);
+        }
+
+        return newFileId;
+      } catch (err) {
+        console.error("リンクノートの作成に失敗:", err);
+        return null;
+      }
+    },
+    [],
+  );
+
   // ノート全体を派生する（Phase 4）
   // 既存ノートの blocks / labels / provLinks / knowledgeLinks を新 ID で複製し、
   // derivedFromNoteId を張った別ファイルとして保存する。
@@ -2057,6 +2111,7 @@ export function useFileManager(authenticated: boolean) {
     handleNewFromTemplate,
     handleSave,
     handleDeriveNote,
+    handleCreateLinkedNote,
     handleDeriveWholeNote,
     handleAiDeriveNote,
     handleDelete,

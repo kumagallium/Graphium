@@ -2,11 +2,12 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
+import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
@@ -66,7 +67,12 @@ import {
   getHeadingSuggestions,
   getNoteSuggestions,
   getAssetSuggestions,
+  getCreateNoteSuggestion,
+  CREATE_NEW_NOTE_ID,
+  insertNoteMentionInline,
+  resolveMentionTargetFromLinks,
 } from "./features/block-link/mention-menu";
+import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -338,6 +344,7 @@ function NoteHeaderMenu({
   isShared,
   shareBusy,
   shareDisabledReason,
+  onCopyLink,
   t,
 }: {
   onSave: () => void;
@@ -379,9 +386,12 @@ function NoteHeaderMenu({
   shareBusy?: boolean;
   /** Shared が無効な理由（disabled 時のヒント表示用） */
   shareDisabledReason?: string;
+  /** このノートへのリンク（URL）をクリップボードにコピーする。別ノートに貼るとメンション化される。 */
+  onCopyLink?: () => void;
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // メニュー外クリックで閉じる
@@ -434,6 +444,26 @@ function NoteHeaderMenu({
             <Share2 size={14} />
             {t("prov.export")}
           </button>
+          {onCopyLink && (
+            <>
+              <div className="my-1 border-t border-border" />
+              <button
+                className={itemClass}
+                onClick={() => {
+                  onCopyLink();
+                  setCopied(true);
+                  // コピーしたことが分かるよう少し見せてから閉じる
+                  setTimeout(() => {
+                    setCopied(false);
+                    setOpen(false);
+                  }, 1000);
+                }}
+              >
+                {copied ? <Check size={14} /> : <Link2 size={14} />}
+                {copied ? "コピーしました" : "リンクをコピー"}
+              </button>
+            </>
+          )}
           {onShare && (
             <>
               <div className="my-1 border-t border-border" />
@@ -558,6 +588,8 @@ type NoteEditorProps = {
   initialDoc: GraphiumDocument | null;
   onSave: (doc: GraphiumDocument) => void;
   onDeriveNote: (title: string, sourceBlockId: string) => void;
+  /** `@` メニューの「新規ノートを作成」用。空ノートを作って ID を返す（ナビゲーションしない） */
+  onCreateLinkedNote?: (title: string) => Promise<string | null>;
   /** AI 派生ノートを作成し、生成された新ファイル ID を返す */
   onAiDeriveNote: (doc: GraphiumDocument) => Promise<string>;
   /** knowledge ノート（claim/atom）を作成し、新ファイル ID を返す（R2 / Loop M2 の手動取り込み） */
@@ -737,6 +769,7 @@ function NoteEditorInner({
   initialDoc,
   onSave,
   onDeriveNote,
+  onCreateLinkedNote,
   onAiDeriveNote,
   onCreateKnowledgeNote,
   onNavigateNote,
@@ -815,7 +848,19 @@ function NoteEditorInner({
     }
     return map;
   }, [noteIndex]);
+  // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
+  // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex/files を参照する。
+  const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
+  resolveNoteLinkTitleRef.current = (fileId: string) => {
+    const entry = noteIndex?.notes.find((n) => n.noteId === fileId);
+    if (entry) return entry.title;
+    const f = files.find((file) => file.id === fileId);
+    if (f) return f.name.replace(/\.(graphium|provnote)\.json$/, "");
+    return null;
+  };
   const [sidePeekNoteId, setSidePeekNoteId] = useState<string | null>(null);
+  // @ メニューの「新しいノートを作成」で名前を入力するダイアログ（IME 安全）
+  const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
   const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
@@ -1131,6 +1176,49 @@ function NoteEditorInner({
   const memoSlashItem = useMemo(() => getMemoSlashMenuItem(), []);
   const templateSlashItem = useMemo(() => getTemplateSlashMenuItem(), []);
   const citeSlashItems = useMemo(() => getCiteSlashMenuItems(), []);
+  // 「新しいノート」スラッシュコマンド。`@` メニューは IME 変換確定でメニューが
+  // 閉じてしまい日本語名を打ち切れないため、名前入力を IME 安全なダイアログに寄せた
+  // 確実な作成入口。`/` メニューは矢印キーで選べる（日本語入力不要）ので、名前だけを
+  // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
+  const newNoteSlashItem: SlashMenuItem = useMemo(
+    () => ({
+      title: "新しいノート",
+      subtext: "名前を付けて新規ノートを作成し、ここにリンク",
+      group: "ノート",
+      aliases: ["note", "newnote", "新規ノート", "しんきのーと", "あたらしいのーと"],
+      onItemClick: (editor: any) => {
+        const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
+        void (async () => {
+          if (!onCreateLinkedNote) return;
+          const title = (await promptNoteName(""))?.trim() ?? "";
+          if (!title) return;
+          const newId = await onCreateLinkedNote(title);
+          if (!newId) return;
+          if (sourceBlockId) {
+            linkStore.addLink({
+              sourceBlockId,
+              targetBlockId: "",
+              targetNoteId: newId,
+              type: "reference",
+              createdBy: "human",
+            });
+            const exists = noteLinksRef.current.some((l) => l.targetNoteId === newId);
+            if (!exists) {
+              noteLinksRef.current = [
+                ...noteLinksRef.current,
+                { targetNoteId: newId, sourceBlockId, type: "derived_from" },
+              ];
+            }
+          }
+          // insertInlineContent の onChange で自動 markDirty される
+          setTimeout(() => {
+            insertNoteMentionInline(editorRef.current, newId, title);
+          }, 50);
+        })();
+      },
+    }),
+    [onCreateLinkedNote, promptNoteName, linkStore],
+  );
 
   // テンプレートピッカーモーダル
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -1365,6 +1453,50 @@ function NoteEditorInner({
 
       // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
       scheduleEntityRegen();
+
+      // Graphium ノートのリンク（…#note/<id>）を単体で貼った場合は、生 URL では
+      // なく @タイトル のメンションに変換する（`@` で参照するのと同じ扱い）。
+      // 長文中に URL が混ざっているケースは誤爆を避けるため、貼り付けが URL 単体
+      // （空白を含まない）のときだけ変換する。
+      const pastedText = e.clipboardData?.getData("text/plain")?.trim();
+      if (pastedText && !/\s/.test(pastedText)) {
+        const noteLinkMatch = /#note\/([^/\s#?]+)/.exec(pastedText);
+        if (noteLinkMatch) {
+          const linkedFileId = decodeURIComponent(noteLinkMatch[1]);
+          const linkedTitle = resolveNoteLinkTitleRef.current(linkedFileId);
+          if (linkedTitle) {
+            // クリップボードリスナーが二重登録されると同一 paste イベントが 2 回
+            // このハンドラに届き、メンションが 2 個入る。イベント単位の既処理フラグ
+            // ＋ stopImmediatePropagation で 1 回だけ処理する。
+            if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
+            (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const sourceBlockId = editor.getTextCursorPosition()?.block?.id;
+            if (sourceBlockId) {
+              linkStore.addLink({
+                sourceBlockId,
+                targetBlockId: "",
+                targetNoteId: linkedFileId,
+                type: "reference",
+                createdBy: "human",
+              });
+              const exists = noteLinksRef.current.some((l) => l.targetNoteId === linkedFileId);
+              if (!exists) {
+                noteLinksRef.current = [
+                  ...noteLinksRef.current,
+                  { targetNoteId: linkedFileId, sourceBlockId, type: "derived_from" },
+                ];
+              }
+            }
+            // insertInlineContent の onChange で自動 markDirty される
+            setTimeout(() => {
+              insertNoteMentionInline(editorRef.current, linkedFileId, linkedTitle);
+            }, 0);
+            return;
+          }
+        }
+      }
 
       // 既存: URL のみのペーストならブックマーク選択メニューを出す
       const text = e.clipboardData?.getData("text/plain")?.trim();
@@ -2654,9 +2786,18 @@ function NoteEditorInner({
     };
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      // サイドピーク内のメンションは、そのピーク自身の linkStore で解決する必要があるため
+      // ここでは扱わない（side-peek.tsx の専用ハンドラが処理する）。
+      if (target.closest("[data-side-peek]")) return;
       if (!isMentionSpan(target)) return;
       const noteName = target.textContent!.trim().slice(1);
-      const resolved = resolveMentionNoteId(noteName);
+      // まず記録済みリンク（linkStore）から厳密な ID で解決する。挿入時に
+      // targetNoteId を記録してあるので、同名ノートが複数あっても正しく開ける。
+      // 解決できなければタイトル逆引きにフォールバック（旧データや素材引用向け）。
+      const blockId = target.closest("[data-id]")?.getAttribute("data-id") ?? null;
+      const resolved =
+        resolveMentionTargetFromLinks(blockId, noteName, linkStore.getAllLinks(), noteIndex) ??
+        resolveMentionNoteId(noteName);
       if (resolved) {
         e.preventDefault();
         e.stopPropagation();
@@ -2703,7 +2844,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -2977,6 +3118,16 @@ function NoteEditorInner({
           shareDisabledReason={shareDisabledReason}
           isShared={isShared}
           shareBusy={shareBusy}
+          onCopyLink={
+            fileId && !isWikiDoc
+              ? () => {
+                  // このノートを開ける URL（#note/<id>）をコピー。外部に貼れば
+                  // そのノートを開け、Graphium の別ノートに貼るとメンション化される。
+                  const url = `${window.location.origin}${window.location.pathname}#note/${fileId}`;
+                  void navigator.clipboard?.writeText(url);
+                }
+              : undefined
+          }
           t={t}
         />
       </div>
@@ -3188,7 +3339,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, ...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -3201,7 +3352,7 @@ function NoteEditorInner({
                 return url;
               }}
               onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
-              getMentionSuggestions={() => {
+              getMentionSuggestions={(query) => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
                 const sel = window.getSelection();
                 const focusEl = sel?.focusNode instanceof HTMLElement
@@ -3220,13 +3371,34 @@ function NoteEditorInner({
                     }
                   }
                 }
-                return [
+                const base = [
                   ...getHeadingSuggestions(),
                   ...getNoteSuggestions(files, fileId ?? undefined, noteIndex),
                   ...getAssetSuggestions(mediaIndex),
                 ];
+                // 入力中の文字が既存ノートに一致しないとき「新規ノートを作成」を末尾に追加。
+                // テーブルセル内（インデックステーブル）では既存の行→ノート生成フローに
+                // 委ねるため、新規作成候補は出さない。
+                if (onCreateLinkedNote && !mentionContextRef.current.tableBlockId) {
+                  const createItem = getCreateNoteSuggestion(query, base);
+                  if (createItem) base.push(createItem);
+                }
+                return base;
               }}
-              onMentionSelect={(sourceBlockId, suggestion) => {
+              onMentionSelect={async (sourceBlockId, suggestion) => {
+                // 「新規ノートを作成」候補: 名前の確定は必ず IME 安全な入力欄で行う。
+                // メニューに打った文字（IME 変換前のローマ字などの可能性あり）は
+                // 下書きとしてダイアログへ渡し、そこで確認・修正して確定する。
+                // これでメニューが変換確定で閉じても入力が失われず、確実に作成できる。
+                if (suggestion.type === "note" && suggestion.id === CREATE_NEW_NOTE_ID) {
+                  if (!onCreateLinkedNote) return;
+                  const draft = suggestion.createTitle ?? "";
+                  const title = (await promptNoteName(draft))?.trim() ?? "";
+                  if (!title) return; // キャンセル
+                  const newId = await onCreateLinkedNote(title);
+                  if (!newId) return;
+                  suggestion = { type: "note", id: newId, label: title, group: "" };
+                }
                 if (suggestion.type === "heading") {
                   linkStore.addLink({
                     sourceBlockId,
@@ -3284,11 +3456,11 @@ function NoteEditorInner({
                     }
                     markDirty();
                   } else {
+                    const targetId = suggestion.id;
+                    const targetLabel = suggestion.label;
                     setTimeout(() => {
-                      editorRef.current?.insertInlineContent([
-                        { type: "text", text: `@${suggestion.label}`, styles: { textColor: "blue" } },
-                        { type: "text", text: " ", styles: {} },
-                      ]);
+                      // href に noteId を埋めた link として挿入（同名ノートでも正しく解決）
+                      insertNoteMentionInline(editorRef.current, targetId, targetLabel);
                     }, 100);
                     const exists = noteLinksRef.current.some(
                       (l) => l.targetNoteId === suggestion.id
@@ -3320,6 +3492,8 @@ function NoteEditorInner({
                 }
               }}
             />
+            {/* @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全） */}
+            {newNoteNameDialog}
             {/* Cmd+F: ドキュメント内検索バー（fixed 配置。mainEditor 未準備時は自前で null 描画） */}
             <DocumentSearchBar editor={mainEditor} />
             {/* 空ノート予示: ⌘K / # / @ / / の入口をさりげなく案内 */}
@@ -3355,6 +3529,8 @@ function NoteEditorInner({
             uploadFile={uploadFile}
             onAddUrlBookmark={onAddUrlBookmark}
             noteIndex={noteIndex ?? null}
+            onCreateLinkedNote={onCreateLinkedNote}
+            onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -3384,6 +3560,8 @@ function NoteEditorInner({
             }}
             wikiEntries={knowledgeMap.get(sidePeekNoteId) ?? []}
             noteIndex={noteIndex ?? null}
+            onCreateLinkedNote={onCreateLinkedNote}
+            onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -5905,6 +6083,8 @@ export function NoteApp() {
                     uploadFile={fm.handleUploadMedia}
                     onAddUrlBookmark={fm.handleAddUrlBookmark}
                     noteIndex={fm.noteIndex ?? null}
+                    onCreateLinkedNote={fm.handleCreateLinkedNote}
+                    onOpenNoteInPeek={(peekId) => setAssetSidePeekNoteId(peekId)}
                   />
                 </ListSidePeekBoundary>
               </AiAssistantProvider>
@@ -6416,6 +6596,7 @@ export function NoteApp() {
                 }
               : fm.handleSave}
             onDeriveNote={fm.handleDeriveNote}
+            onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
             derivingDisabled={fm.deriving}
             onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
@@ -6649,6 +6830,8 @@ export function NoteApp() {
               uploadFile={fm.handleUploadMedia}
               onAddUrlBookmark={fm.handleAddUrlBookmark}
               noteIndex={fm.noteIndex ?? null}
+              onCreateLinkedNote={fm.handleCreateLinkedNote}
+              onOpenNoteInPeek={(peekId) => setListSidePeekNoteId(peekId)}
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
