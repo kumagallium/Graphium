@@ -171,10 +171,13 @@ import {
   setMediaPickerCallback,
   DEFAULT_MEDIA_SLASH_TITLES,
   UrlPasteMenu,
-  generateUrlBookmarkId,
-  getFaviconUrl,
   extractDomain,
-  fetchUrlMetadata,
+  isHttpUrl,
+  computeUrlPasteMenuPosition,
+  buildPastedTextContent,
+  insertBookmarkBlockFromPaste,
+  retroLinkifyPastedUrl,
+  registerUrlAsset,
   type MediaType,
   findBlockIdsByMediaUrl,
   type MediaIndexEntry,
@@ -1233,49 +1236,35 @@ function NoteEditorInner({
   // スラッシュメニューからの URL ピッカーモーダル用状態
   const [urlSlashPickerOpen, setUrlSlashPickerOpen] = useState(false);
 
-  // ペースト → ブックマーク選択: モーダルなしで直接挿入 + 裏でアセット登録
+  // URL 素材の登録完了後に保存を予約するための ref。
+  // 登録がオートセーブ（3秒）より後に完了すると、syncUsedIn を再実行する保存
+  // イベントが来ず usedIn が空のまま = グラフに URL ノードが出ない。
+  // useAutoSave はこの位置より後で宣言されるため ref 経由で参照する。
+  // saveNow（即時保存）ではなく markDirty を使う: fetchUrlMetadata は最大 5 秒
+  // かかり、その間にノートを切り替えるとアンマウント後の stale save が
+  // 「切替先ノートに旧ノートの内容を保存」するデータ破壊になる。markDirty の
+  // タイマーは useAutoSave がアンマウント時に必ずクリアするため安全。
+  const markDirtyRef = useRef<() => void>(() => {});
+
+  // ペースト → ブックマーク選択: モーダルなしで直接挿入 + 裏でアセット登録。
+  // 登録後は保存を予約して syncUsedIn を走らせる（オートセーブが先に完了して
+  // いた場合、次の編集まで usedIn が埋まらずグラフに出ないのを防ぐ）。
   const handleInsertBookmarkDirect = useCallback((url: string, blockId: string) => {
     setPastedUrl(null);
     const editor = editorRef.current;
     if (!editor) return;
-    const block = editor.getBlock(blockId);
-    if (block) {
-      // bookmark ブロックを即座に挿入（メタデータはブロック側で非同期取得）
-      editor.insertBlocks(
-        [{
-          type: "bookmark",
-          props: { url, title: "", description: "", ogImage: "", domain: extractDomain(url) },
-        }],
-        block,
-        "after",
-      );
-      // 元のテキストブロックに URL テキストだけが残っていたら削除
-      const content = block.content;
-      if (Array.isArray(content) && content.length <= 1) {
-        const text = content[0]?.text?.trim() ?? "";
-        if (text === url || text === "") {
-          removeBlockMetadata([block.id]);
-          editor.removeBlocks([block]);
-        }
-      }
-    }
-    // 裏でアセットブラウザに登録（重複チェックは useFileManager 側で行う）
-    if (onAddUrlBookmark) {
-      fetchUrlMetadata(url).then((meta) => {
-        onAddUrlBookmark!({
-          fileId: generateUrlBookmarkId(),
-          name: meta.title,
-          type: "url",
-          mimeType: "text/x-uri",
-          url,
-          thumbnailUrl: getFaviconUrl(meta.domain),
-          uploadedAt: new Date().toISOString(),
-          usedIn: [],
-          urlMeta: { domain: meta.domain, description: meta.description, ogImage: meta.ogImage },
-        });
-      });
-    }
+    insertBookmarkBlockFromPaste(editor, url, blockId, removeBlockMetadata);
+    registerUrlAsset(url, [], onAddUrlBookmark, () => markDirtyRef.current());
   }, [onAddUrlBookmark, removeBlockMetadata]);
+
+  // ペースト → リンク選択: テキストはインラインリンクのまま + 裏でアセット登録。
+  // 登録しないと media index に URL エントリが無く、保存時の syncUsedIn が
+  // usedIn を埋められないため、アセットグラフ・近傍グラフに URL が現れない。
+  const handleInsertLinkDirect = useCallback((url: string, blockId: string) => {
+    setPastedUrl(null);
+    retroLinkifyPastedUrl(editorRef.current, url, blockId);
+    registerUrlAsset(url, [], onAddUrlBookmark, () => markDirtyRef.current());
+  }, [onAddUrlBookmark]);
 
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
@@ -1378,6 +1367,57 @@ function NoteEditorInner({
     };
     copyListenerRef.current = copyListener;
 
+    // URL 単体ペーストならブックマーク選択メニューを出す（段落・リスト項目共通）。
+    // 位置はメニュー表示直前に計算する。paste イベント同期時の selection rect は
+    // ProseMirror の挿入処理と競合して (0,0) や剥離した rect を返すことがあり、
+    // メニューが画面左上に張り付く。挿入完了後なら caret 位置が安定して取れる。
+    const maybeShowUrlPasteMenu = (rawText: string | undefined, blockId: string) => {
+      const text = rawText?.trim();
+      if (!text || !isHttpUrl(text)) return;
+      setTimeout(() => {
+        setPastedUrl({ url: text, position: computeUrlPasteMenuPosition(editor, blockId), blockId });
+      }, 100);
+    };
+
+    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // に変換する。処理した場合 true を返す（呼び出し元で return する）。
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
+      const noteLinkMatch = /#note\/([^/\s#?]+)/.exec(pastedText);
+      if (!noteLinkMatch) return false;
+      const linkedFileId = decodeURIComponent(noteLinkMatch[1]);
+      const linkedTitle = resolveNoteLinkTitleRef.current(linkedFileId);
+      if (!linkedTitle) return false;
+      // クリップボードリスナーが二重登録されると同一 paste イベントが 2 回
+      // このハンドラに届き、メンションが 2 個入る。イベント単位の既処理フラグ
+      // ＋ stopImmediatePropagation で 1 回だけ処理する。
+      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
+      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const sourceBlockId = editor.getTextCursorPosition()?.block?.id;
+      if (sourceBlockId) {
+        linkStore.addLink({
+          sourceBlockId,
+          targetBlockId: "",
+          targetNoteId: linkedFileId,
+          type: "reference",
+          createdBy: "human",
+        });
+        const exists = noteLinksRef.current.some((l) => l.targetNoteId === linkedFileId);
+        if (!exists) {
+          noteLinksRef.current = [
+            ...noteLinksRef.current,
+            { targetNoteId: linkedFileId, sourceBlockId, type: "derived_from" },
+          ];
+        }
+      }
+      // insertInlineContent の onChange で自動 markDirty される
+      setTimeout(() => {
+        insertNoteMentionInline(editorRef.current, linkedFileId, linkedTitle);
+      }, 0);
+      return true;
+    };
+
     // paste: Graphium ペイロードを最優先で処理し、なければ既存の URL 検知に流す
     const pasteListener = (e: ClipboardEvent) => {
       // 空のリスト系ブロック（checkListItem / bulletListItem / numberedListItem）に
@@ -1401,17 +1441,22 @@ function NoteEditorInner({
         // Graphium ペイロード（複数ブロック想定）はブロック置換でも構造が保たれるためスルー。
         // ここではプレーンテキスト相当の paste のみ救済する。
         if (!hasGraphiumPayload && plain) {
+          // 末尾の改行はクリップボードに含まれる「行末コピー」由来で、ブロック内に
+          // 持ち込むと BlockNote が hard break を増やすため除去する。
+          const cleaned = plain.replace(/\r?\n+$/g, "");
+          // 単一トークンのノートリンクは他ブロックと同様にメンション変換する
+          const token = cleaned.trim();
+          if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
           // ProseMirror / BlockNote の paste handler も同じ DOM に付いており、
           // preventDefault だけだと続けて走ってブロックを改行追加 + paragraph 置換してしまう。
           // capture phase で完全に乗っ取るため stopImmediatePropagation も呼ぶ。
           e.preventDefault();
           e.stopImmediatePropagation();
-          // 末尾の改行はクリップボードに含まれる「行末コピー」由来で、ブロック内に
-          // 持ち込むと BlockNote が hard break を増やすため除去する。
-          const cleaned = plain.replace(/\r?\n+$/g, "");
-          editor.updateBlock(cursorBlock, {
-            content: [{ type: "text", text: cleaned, styles: {} }],
-          });
+          // URL 単体はネイティブ paste（GFM autolink）と同じくリンクとして挿入する
+          // （プレーンテキストだと usedIn スキャンの検出対象にならずグラフに出ない）
+          editor.updateBlock(cursorBlock, { content: buildPastedTextContent(cleaned) });
+          // URL 単体ならリスト項目でもブックマーク選択メニューを出す
+          maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
           return;
         }
       }
@@ -1461,65 +1506,13 @@ function NoteEditorInner({
       // （空白を含まない）のときだけ変換する。
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();
       if (pastedText && !/\s/.test(pastedText)) {
-        const noteLinkMatch = /#note\/([^/\s#?]+)/.exec(pastedText);
-        if (noteLinkMatch) {
-          const linkedFileId = decodeURIComponent(noteLinkMatch[1]);
-          const linkedTitle = resolveNoteLinkTitleRef.current(linkedFileId);
-          if (linkedTitle) {
-            // クリップボードリスナーが二重登録されると同一 paste イベントが 2 回
-            // このハンドラに届き、メンションが 2 個入る。イベント単位の既処理フラグ
-            // ＋ stopImmediatePropagation で 1 回だけ処理する。
-            if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
-            (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            const sourceBlockId = editor.getTextCursorPosition()?.block?.id;
-            if (sourceBlockId) {
-              linkStore.addLink({
-                sourceBlockId,
-                targetBlockId: "",
-                targetNoteId: linkedFileId,
-                type: "reference",
-                createdBy: "human",
-              });
-              const exists = noteLinksRef.current.some((l) => l.targetNoteId === linkedFileId);
-              if (!exists) {
-                noteLinksRef.current = [
-                  ...noteLinksRef.current,
-                  { targetNoteId: linkedFileId, sourceBlockId, type: "derived_from" },
-                ];
-              }
-            }
-            // insertInlineContent の onChange で自動 markDirty される
-            setTimeout(() => {
-              insertNoteMentionInline(editorRef.current, linkedFileId, linkedTitle);
-            }, 0);
-            return;
-          }
-        }
+        if (tryConvertNoteLinkPaste(e, pastedText)) return;
       }
 
       // 既存: URL のみのペーストならブックマーク選択メニューを出す
-      const text = e.clipboardData?.getData("text/plain")?.trim();
-      if (!text) return;
-      try {
-        const parsed = new URL(text);
-        if (!parsed.protocol.startsWith("http")) return;
-      } catch {
-        return;
-      }
       const currentBlock = editor.getTextCursorPosition()?.block;
       if (!currentBlock) return;
-      const sel = window.getSelection();
-      let x = 0, y = 0;
-      if (sel && sel.rangeCount > 0) {
-        const rect = sel.getRangeAt(0).getBoundingClientRect();
-        x = rect.left;
-        y = rect.bottom;
-      }
-      setTimeout(() => {
-        setPastedUrl({ url: text, position: { x, y }, blockId: currentBlock.id });
-      }, 100);
+      maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), currentBlock.id);
     };
     pasteListenerRef.current = pasteListener;
 
@@ -1686,6 +1679,7 @@ function NoteEditorInner({
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
+  markDirtyRef.current = markDirty;
 
   // ── team-shared storage（Phase 2a / 2b-1） ──
   // sharedRefState は handleSave の上で宣言済み（buildDocument 結果への再注入用）
@@ -2988,7 +2982,7 @@ function NoteEditorInner({
           url={pastedUrl.url}
           position={pastedUrl.position}
           onSelectBookmark={() => handleInsertBookmarkDirect(pastedUrl.url, pastedUrl.blockId)}
-          onSelectLink={() => setPastedUrl(null)}
+          onSelectLink={() => handleInsertLinkDirect(pastedUrl.url, pastedUrl.blockId)}
           onDismiss={() => setPastedUrl(null)}
         />
       )}

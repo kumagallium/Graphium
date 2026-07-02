@@ -54,5 +54,15 @@ export { getMediaSlashMenuItems, setMediaPickerCallback, DEFAULT_MEDIA_SLASH_TIT
 export { UrlPasteMenu } from "./UrlPasteMenu";
 export type { UrlPasteMenuProps } from "./UrlPasteMenu";
 
+export {
+  isHttpUrl,
+  computeUrlPasteMenuPosition,
+  buildPastedTextContent,
+  insertBookmarkBlockFromPaste,
+  retroLinkifyPastedUrl,
+  blockContainsUrlLink,
+  registerUrlAsset,
+} from "./url-paste";
+
 export { NoteMemosSection, filterMemosByNote } from "./NoteMemosSection";
 export type { NoteMemosSectionProps } from "./NoteMemosSection";

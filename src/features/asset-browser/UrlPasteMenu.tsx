@@ -1,5 +1,7 @@
 // URL ペースト時のスタイル選択メニュー
-// ペーストされた URL を「ブックマーク」か「リンク（そのまま）」か選択する
+// ペーストされた URL を「リンク（そのまま）」か「ブックマーク」か選択する
+// URL は中身展開より参照が主目的なのでリンクを既定（先頭・初期選択）にする
+// （MediaPickerModal の displayMode 既定と同じ方針）
 // 矢印キー + Enter でキーボード操作可能
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,7 +17,7 @@ export type UrlPasteMenuProps = {
   onDismiss: () => void;
 };
 
-const ITEMS = ["bookmark", "link"] as const;
+const ITEMS = ["link", "bookmark"] as const;
 
 export function UrlPasteMenu({
   url,
@@ -29,8 +31,8 @@ export function UrlPasteMenu({
   const [activeIndex, setActiveIndex] = useState(0);
 
   const handleSelect = useCallback((index: number) => {
-    if (ITEMS[index] === "bookmark") onSelectBookmark();
-    else onSelectLink();
+    if (ITEMS[index] === "link") onSelectLink();
+    else onSelectBookmark();
   }, [onSelectBookmark, onSelectLink]);
 
   // キーボード操作 + 外側クリック
@@ -77,11 +79,12 @@ export function UrlPasteMenu({
     };
   }, [onDismiss, activeIndex, handleSelect]);
 
-  // 画面外にはみ出さないよう調整
+  // 画面外にはみ出さないよう上下限ともクランプする
+  // （ブロックが画面外にスクロールしていた場合など、負の座標が渡ることがある）
   const style: React.CSSProperties = {
     position: "fixed",
-    left: Math.min(position.x, window.innerWidth - 220),
-    top: Math.min(position.y + 4, window.innerHeight - 120),
+    left: Math.max(8, Math.min(position.x, window.innerWidth - 220)),
+    top: Math.max(8, Math.min(position.y + 4, window.innerHeight - 120)),
     zIndex: 100,
   };
 
@@ -102,10 +105,10 @@ export function UrlPasteMenu({
           onMouseEnter={() => setActiveIndex(0)}
           className={itemClass(0)}
         >
-          <ExternalLink size={14} className="text-muted-foreground shrink-0" />
+          <Link size={14} className="text-muted-foreground shrink-0" />
           <div className="text-left">
-            <div className="font-medium">{t("asset.urlStyleBookmark")}</div>
-            <div className="text-[10px] text-muted-foreground">{t("asset.urlStyleBookmarkSub")}</div>
+            <div className="font-medium">{t("asset.urlStyleLink")}</div>
+            <div className="text-[10px] text-muted-foreground">{t("asset.urlStyleLinkSub")}</div>
           </div>
         </button>
         <button
@@ -113,10 +116,10 @@ export function UrlPasteMenu({
           onMouseEnter={() => setActiveIndex(1)}
           className={itemClass(1)}
         >
-          <Link size={14} className="text-muted-foreground shrink-0" />
+          <ExternalLink size={14} className="text-muted-foreground shrink-0" />
           <div className="text-left">
-            <div className="font-medium">{t("asset.urlStyleLink")}</div>
-            <div className="text-[10px] text-muted-foreground">{t("asset.urlStyleLinkSub")}</div>
+            <div className="font-medium">{t("asset.urlStyleBookmark")}</div>
+            <div className="text-[10px] text-muted-foreground">{t("asset.urlStyleBookmarkSub")}</div>
           </div>
         </button>
       </div>

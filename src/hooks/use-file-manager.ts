@@ -1536,8 +1536,28 @@ export function useFileManager(authenticated: boolean) {
   const handleAddUrlBookmark = useCallback((entry: MediaIndexEntry) => {
     const current = mediaIndexRef.current ?? createEmptyIndex();
     // URL の重複チェック（mediaIndexRef は常に最新）
-    if (entry.type === "url" && current.media.some((m) => m.type === "url" && m.url === entry.url)) {
-      return; // 既に登録済み
+    const existing = entry.type === "url"
+      ? current.media.find((m) => m.type === "url" && m.url === entry.url)
+      : undefined;
+    if (existing) {
+      // 既に登録済み。usedIn の事前充填付き（SidePeek 経路）なら usedIn だけマージする。
+      // SidePeek の保存は syncUsedIn を通らないため、ここで取り込まないと
+      // 「2 回目以降の利用ノート」のグラフエッジが恒久的に欠落する。
+      const incoming = entry.usedIn.filter(
+        (u) => !existing.usedIn.some((e) => e.noteId === u.noteId),
+      );
+      if (incoming.length === 0) return;
+      const updated = {
+        ...current,
+        updatedAt: new Date().toISOString(),
+        media: current.media.map((m) =>
+          m === existing ? { ...m, usedIn: [...m.usedIn, ...incoming] } : m,
+        ),
+      };
+      mediaIndexRef.current = updated;
+      setMediaIndex(updated);
+      saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      return;
     }
     const updated = addMediaEntry(current, entry);
     mediaIndexRef.current = updated;
