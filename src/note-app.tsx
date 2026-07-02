@@ -3515,6 +3515,11 @@ function NoteEditorInner({
             デスクトップのみ inline（モバイルは overlay にフォールバック）。 */}
         {sidePeekNoteId && isDesktop && (
           <SidePeek
+            // ノートを切り替えたら SidePeek を丸ごと作り直す。key が無いと、別ノートに
+            // 切り替えても内部の editor / docRef / オートセーブ状態が前のノートのまま残り、
+            // 前ノートの本文を新ノートのファイルに保存してしまう（同名ノートを続けて
+            // クリックすると「B の中身が A になる」データ破壊）。
+            key={sidePeekNoteId}
             inline
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
@@ -3547,6 +3552,9 @@ function NoteEditorInner({
         )}
         {sidePeekNoteId && !isDesktop && (
           <SidePeek
+            // ノート切替時に丸ごと作り直す（前ノートの本文が新ノートに保存される
+            // データ破壊を防ぐ）。desktop 側と同じ理由。
+            key={sidePeekNoteId}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             onClose={() => setSidePeekNoteId(null)}
@@ -6066,6 +6074,8 @@ export function NoteApp() {
               <AiAssistantProvider aiAvailable={aiAvailable ?? false}>
                 <ListSidePeekBoundary onClose={() => setAssetSidePeekNoteId(null)}>
                   <SidePeek
+                    // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
+                    key={noteId}
                     inline
                     noteId={noteId}
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
@@ -6803,6 +6813,8 @@ export function NoteApp() {
         <AiAssistantProvider aiAvailable={false}>
           <ListSidePeekBoundary onClose={() => setListSidePeekNoteId(null)}>
             <SidePeek
+              // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
+              key={listSidePeekNoteId}
               noteId={listSidePeekNoteId}
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
               archived={(() => {
