@@ -1296,7 +1296,8 @@ function NoteEditorInner({
     // URL がプレーンテキストのまま入っている場合はリンク化する
     // （usedIn スキャンは {type:"link"} の href しか検出しない）。
     // ネイティブ paste 経路は既にリンク化済みなのでこのガードには入らない。
-    if (editor && block && Array.isArray(block.content) && block.content.length === 1) {
+    // codeBlock は link インラインを許可しないため除外する。
+    if (editor && block && block.type !== "codeBlock" && Array.isArray(block.content) && block.content.length === 1) {
       const item = block.content[0];
       if (item?.type === "text" && item.text?.trim() === url) {
         editor.updateBlock(block, {
