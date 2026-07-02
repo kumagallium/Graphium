@@ -18,13 +18,13 @@
 //   渡せることに価値がある。
 
 import type { GraphiumDocument } from "../../lib/document-types";
-import type { GroundingScope } from "../../lib/grounding-scope";
+import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch, type GroundingScope } from "../../lib/grounding-scope";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { CaptureEntry, CaptureIndex } from "../mobile-capture/capture-store";
 
-// grounding スコープ（overview/primary）の型は lib/grounding-scope.ts に一元化（Composer と共有）。
+// grounding スコープ（external/internal/notes）の型は lib/grounding-scope.ts に一元化（Composer と共有）。
 // 後方互換のためこのモジュールからも re-export する。
-// 派生メモは両スコープで載せる: ハイライト由来の抜書き＝ユーザーが選んだ原文断片で原典寄りのため。
+// 派生メモは全スコープで載せる: ハイライト由来の抜書き＝ユーザーが選んだ原文断片で原典寄りのため。
 export type { GroundingScope };
 
 /** 1引用文書あたりに割り当てるデフォルト文字数予算（概ね 4-5K トークン相当） */
@@ -120,15 +120,15 @@ export type CitedDocParts = {
 export function formatCitedDocument(
   parts: CitedDocParts,
   budgetChars = DEFAULT_BUDGET_CHARS,
-  scope: GroundingScope = "overview",
+  scope: GroundingScope = DEFAULT_GROUNDING_SCOPE,
 ): string {
   const out: string[] = [];
   out.push(`## 引用文書: ${parts.title}（${parts.mediumLabel}）`);
   let used = out[0].length;
 
   const hasMemos = parts.memos.length > 0;
-  // 原典スコープでは派生知識（二次的な索引）を出さず、原文に絞る
-  const showKnowledge = scope !== "primary" && parts.knowledge.length > 0;
+  // ノート内参照では派生知識（二次的な索引）を出さず、原文に絞る
+  const showKnowledge = includesCrossSearch(scope) && parts.knowledge.length > 0;
 
   if (hasMemos) {
     const lines = [`### あなたの派生メモ（${parts.memos.length}件）`];
@@ -192,10 +192,10 @@ export type CitedDocDeps = {
   /** メディア fileId から Blob を取得。未指定なら getMediaBlobUrl + fetch */
   loadBlob?: (fileId: string) => Promise<Blob>;
   budgetChars?: number;
-  /** grounding スコープ（未指定なら "overview"） */
+  /** grounding スコープ（未指定なら既定の内部参照） */
   scope?: GroundingScope;
   /** URL ノートの原語原文を取得（Reader 経由）。未指定 or 失敗時はノート本文にフォールバック。
-   *  収束スコープで URL の原文（LLM 加工前）を grounding に載せるため。 */
+   *  ノート内参照スコープで URL の原文（LLM 加工前）を grounding に載せるため。 */
   loadUrlText?: (url: string) => Promise<string | undefined>;
   /** 永続保存された原文テキストを取得（B-persist）。doc.sourceTextFileId があれば loadUrlText より優先する。 */
   loadMediaText?: (fileId: string) => Promise<string | undefined>;
@@ -240,7 +240,7 @@ export async function assembleCitedDocumentContext(
 ): Promise<string | null> {
   if (!isDocumentNote(doc)) return null;
 
-  const scope = deps.scope ?? "overview";
+  const scope = deps.scope ?? DEFAULT_GROUNDING_SCOPE;
   const mediaFileId = docMediaFileId(doc);
   const title = doc.title || doc.sourceTitle || doc.sourcePdfName || doc.sourceDocumentName || noteId;
   const mediumLabel = doc.sourcePdfFileId
@@ -252,9 +252,9 @@ export async function assembleCitedDocumentContext(
   // 1ホップ派生メモ
   const memos = gatherDerivedMemos(deps.captureIndex, mediaFileId, noteId).map((m) => m.text);
 
-  // 1ホップ派生知識（本文をロード）。原典スコープでは二次的なため収集自体をスキップ
+  // 1ホップ派生知識（本文をロード）。ノート内参照では二次的なため収集自体をスキップ
   const knowledge: { title: string; text: string }[] = [];
-  if (scope !== "primary") {
+  if (includesCrossSearch(scope)) {
     const knowledgeEntries = gatherDerivedKnowledge(deps.noteIndex, noteId);
     for (const entry of knowledgeEntries) {
       try {
@@ -313,7 +313,7 @@ export type CitedAssetDeps = {
   extractPdfText?: (blob: Blob) => Promise<{ text: string }>;
   loadBlob?: (fileId: string) => Promise<Blob>;
   budgetChars?: number;
-  /** grounding スコープ（未指定なら "overview"）。素材は知識を持たないため主に呼び出しの一貫性のため */
+  /** grounding スコープ（未指定なら既定の内部参照）。素材は知識を持たないため主に呼び出しの一貫性のため */
   scope?: GroundingScope;
 };
 
@@ -346,6 +346,6 @@ export async function assembleCitedAssetContext(
   return formatCitedDocument(
     { title: asset.name, mediumLabel, memos, knowledge: [], fullText },
     deps.budgetChars ?? DEFAULT_BUDGET_CHARS,
-    deps.scope ?? "overview",
+    deps.scope ?? DEFAULT_GROUNDING_SCOPE,
   );
 }

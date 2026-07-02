@@ -1315,12 +1315,14 @@ export const en: Record<string, string> = {
   "composer.submit": "Send",
   "composer.kbd.submit": "to send",
   "composer.kbd.close": "to close",
-  // grounding スコープ（発散/収束）
+  // grounding スコープ（外部参照/内部参照/ノート内参照）
   "composer.scope.label": "Grounding",
-  "composer.scope.overview": "Diverge",
-  "composer.scope.primary": "Converge",
-  "composer.scope.overviewHint": "Everything you cited, plus a cross-search for related knowledge — for ideation",
-  "composer.scope.primaryHint": "Only what you cited, without a cross-search — for accurate writing and citations",
+  "composer.scope.external": "External",
+  "composer.scope.internal": "Internal",
+  "composer.scope.notes": "This note",
+  "composer.scope.externalHint": "Force a web search and ground the answer in external sources — for investigating something new",
+  "composer.scope.internalHint": "Everything you cited, plus a cross-search of your accumulated knowledge — for ideation",
+  "composer.scope.notesHint": "Only what this note cites, without a cross-search — for accurate writing and citations",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
   "chat.sources.fromNotes": "📓 From your notes",
   "chat.sources.fromWeb": "🌐 Web sources",

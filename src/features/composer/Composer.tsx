@@ -20,7 +20,7 @@ import { createPortal } from "react-dom";
 import { Bot } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
-import type { GroundingScope } from "../../lib/grounding-scope";
+import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
 import { GroundingScopeChip } from "./GroundingScopeChip";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { searchNotes, type SearchHit } from "./search";
@@ -73,8 +73,8 @@ export function Composer(props: ComposerProps) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  // grounding スコープ（発散/収束）。AI 送信時に引用資料のどの層を渡すかを切り替える。
-  const [scope, setScope] = useState<GroundingScope>("overview");
+  // grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すかを切り替える。
+  const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
 
   // 検索結果（純関数なので useMemo で十分）
   const hits = useMemo(() => {

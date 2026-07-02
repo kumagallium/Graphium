@@ -61,6 +61,8 @@ export type AgentRunRequest = {
   disabled_tools?: string[];
   /** Wiki Retriever が検索したコンテキスト */
   wiki_context?: string;
+  /** grounding スコープ。"external"（外部参照）のときサーバーが Web 検索の強制指示を注入する */
+  grounding_scope?: "external" | "internal" | "notes";
   /** 構造化出力用のシステムプロンプトに使う言語（"en" | "ja"） */
   language?: string;
   options?: {

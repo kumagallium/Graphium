@@ -1,5 +1,5 @@
 // GroundingScopeChip のビジュアル確認用ストーリー。
-// 俯瞰 / 原典 の 2 状態と、トグルの操作感を確認する。
+// 外部参照 / 内部参照 / ノート内参照 の 3 状態と、トグルの操作感を確認する。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
@@ -14,7 +14,7 @@ const meta: Meta<typeof GroundingScopeChip> = {
     docs: {
       description: {
         component:
-          "Cmd+K Composer の grounding スコープ切り替え。俯瞰（派生知識+Wiki を含め広く・着想/構成向け）/ 原典（原文＋派生メモに絞る・執筆/引用/検証向け）の 2 状態セグメント。",
+          "Cmd+K Composer の grounding スコープ切り替え。外部参照（Web 検索を強制・調査向け）/ 内部参照（引用＋蓄積した知識を横断検索・着想/構成向け）/ ノート内参照（引用したものだけ・執筆/引用/検証向け）の 3 状態セグメント。",
       },
     },
   },
@@ -46,21 +46,26 @@ function Interactive({ initial }: { initial: GroundingScope }) {
   );
 }
 
-/** 既定（俯瞰）。着想・構成段階で派生知識＋Wiki を含めて広く渡す。 */
-export const Overview: Story = {
-  render: () => <Interactive initial="overview" />,
+/** 外部参照。Web 検索を強制して世界の知見を取り込む（調査向け）。 */
+export const External: Story = {
+  render: () => <Interactive initial="external" />,
 };
 
-/** 原典に絞った状態。執筆・引用・検証段階で原文＋派生メモのみ渡す。 */
-export const Primary: Story = {
-  render: () => <Interactive initial="primary" />,
+/** 既定（内部参照）。着想・構成段階で引用＋蓄積した知識を横断検索して渡す。 */
+export const Internal: Story = {
+  render: () => <Interactive initial="internal" />,
+};
+
+/** ノート内参照。執筆・引用・検証段階で引用したものだけに絞って渡す。 */
+export const Notes: Story = {
+  render: () => <Interactive initial="notes" />,
 };
 
 /** Composer 下段（ショートカット行の右）に置いたときの並びイメージ。 */
 export const InShortcutRow: Story = {
   render: () => {
     function Row() {
-      const [scope, setScope] = useState<GroundingScope>("overview");
+      const [scope, setScope] = useState<GroundingScope>("internal");
       return (
         <div
           style={{

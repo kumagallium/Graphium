@@ -138,7 +138,7 @@ describe("formatCitedDocument", () => {
     expect(md).not.toContain("### 原文");
   });
 
-  it("原典スコープ(primary)では派生知識を出さず、派生メモと原文を載せる", () => {
+  it("ノート内参照(notes)では派生知識を出さず、派生メモと原文を載せる", () => {
     const md = formatCitedDocument(
       {
         title: "論文X",
@@ -148,7 +148,7 @@ describe("formatCitedDocument", () => {
         fullText: "これは原文の本文です。",
       },
       20_000,
-      "primary",
+      "notes",
     );
     // 派生メモ（原文の抜書き）は両スコープで残る
     expect(md).toContain("- ハイライト抜書き");
@@ -159,7 +159,23 @@ describe("formatCitedDocument", () => {
     expect(md).toContain("これは原文の本文です。");
   });
 
-  it("原典スコープでは派生知識があっても原文を予算いっぱい載せる（フィラー閾値を無視）", () => {
+  it("外部参照(external)では内部参照と同じく派生知識を載せる", () => {
+    const md = formatCitedDocument(
+      {
+        title: "論文X",
+        mediumLabel: "PDF",
+        memos: [],
+        knowledge: [{ title: "洞察A", text: "AはBである" }],
+        fullText: "これは原文の本文です。",
+      },
+      20_000,
+      "external",
+    );
+    expect(md).toContain("この文書から導いた知見・洞察");
+    expect(md).toContain("洞察A");
+  });
+
+  it("ノート内参照では派生知識があっても原文を予算いっぱい載せる（フィラー閾値を無視）", () => {
     const full = "z".repeat(100);
     const md = formatCitedDocument(
       {
@@ -170,9 +186,9 @@ describe("formatCitedDocument", () => {
         fullText: full,
       },
       80,
-      "primary",
+      "notes",
     );
-    // overview なら knowledge で予算を使い切り原文は出ないが、primary は knowledge を捨てて原文を載せる
+    // internal なら knowledge で予算を使い切り原文は出ないが、notes は knowledge を捨てて原文を載せる
     expect(md).toContain("### 原文");
     expect(md).not.toContain("**K**");
   });
@@ -300,7 +316,7 @@ describe("assembleCitedDocumentContext", () => {
     expect(md).toContain("記事本文");
   });
 
-  it("原典スコープでは派生知識を収集せず原文に絞る", async () => {
+  it("ノート内参照では派生知識を収集せず原文に絞る", async () => {
     const doc = makeDoc({ title: "論文X", sourcePdfFileId: "pdf-1", source: "human" });
     const noteIndex = {
       notes: [{ noteId: "k1", title: "洞察1", source: "ai", derivedFromNotes: ["note-1"] }],
@@ -321,7 +337,7 @@ describe("assembleCitedDocumentContext", () => {
       },
       loadBlob: async () => new Blob(),
       extractPdfText: async () => ({ text: "PDF の全文テキスト" }),
-      scope: "primary",
+      scope: "notes",
     });
     expect(md).toContain("PDF の全文テキスト");
     expect(md).not.toContain("知見本文");
