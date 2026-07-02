@@ -309,7 +309,7 @@ app.delete("/media/:id", (c) => {
 
 // --- メディア原文テキスト（B-persist: URL Reader 原文などの永続保存） ---
 // バイナリメディア（media/）とは別チャネルで <DATA_DIR>/media-text/<id>.txt に置く。
-// 収束 grounding で URL 引用時に LLM 加工前の原語原文をオフラインでも参照するため。
+// ノート内参照 grounding で URL 引用時に LLM 加工前の原語原文をオフラインでも参照するため。
 
 app.get("/media-text/:id", (c) => {
   try {

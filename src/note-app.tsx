@@ -95,6 +95,7 @@ import type { AgentChatMessage } from "./features/ai-assistant";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
+import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
@@ -213,7 +214,7 @@ import type { GraphiumFile } from "./lib/document-types";
 import type { NoteGraphData, LineageNode } from "./features/network-graph";
 import type { CitationSource } from "./features/asset-browser/SelectionPill";
 
-// URL 原文の Reader 取得（収束 grounding 用, B-runtime）。LLM 加工前の原語原文を Reader 経由で
+// URL 原文の Reader 取得（ノート内参照 grounding 用, B-runtime）。LLM 加工前の原語原文を Reader 経由で
 // 取り、セッション内キャッシュする。永続保存版（B-persist）は下の persistUrlSourceText / loadMediaText。
 const urlTextCache = new Map<string, string>();
 async function loadUrlText(url: string): Promise<string | undefined> {
@@ -249,7 +250,7 @@ async function persistUrlSourceText(text: string): Promise<string | undefined> {
 }
 
 // 永続保存済みの URL 原文を取得する（B-persist）。cited-document-context の deps に渡し、
-// doc.sourceTextFileId があれば loadUrlText より優先して収束 grounding に載せる。
+// doc.sourceTextFileId があれば loadUrlText より優先してノート内参照 grounding に載せる。
 async function loadMediaText(fileId: string): Promise<string | undefined> {
   const provider = getActiveProvider();
   if (!provider.loadMediaText) return undefined;
@@ -1837,7 +1838,7 @@ function NoteEditorInner({
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
-    async (question: string, attachedNotes?: AttachedNote[], scope: GroundingScope = "overview") => {
+    async (question: string, attachedNotes?: AttachedNote[], scope: GroundingScope = DEFAULT_GROUNDING_SCOPE) => {
       // 新規ノート（fileId 未採番）でも AI チャットを許可する
       // markDirty() 経由でオートセーブが走り、ファイルが作成される
       if (!editorRef.current) {
@@ -1990,10 +1991,10 @@ function NoteEditorInner({
         const selectedModel = getSelectedModel();
         const disabledTools = getDisabledTools();
         // Wiki Retriever: 関連する Wiki コンテキスト（横断検索）を取得。
-        // 収束スコープ（primary）では横断検索を抑制し、@引用したものだけに絞る。
-        // 発散スコープでは横断を足すが、@引用・派生知識と重複するものは除外して二重掲載を防ぐ。
+        // ノート内参照（notes）では横断検索を抑制し、@引用したものだけに絞る。
+        // 内部参照・外部参照では横断を足すが、@引用・派生知識と重複するものは除外して二重掲載を防ぐ。
         let wikiContext: string | undefined;
-        if (scope !== "primary") {
+        if (includesCrossSearch(scope)) {
           try {
             const excludeIds = new Set<string>();
             for (const n of attachedNotes ?? []) {
@@ -2038,6 +2039,8 @@ function NoteEditorInner({
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
           ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
+          // 外部参照（external）のときサーバーが Web 検索の強制指示を system prompt に注入する
+          grounding_scope: scope,
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
         });
@@ -5943,7 +5946,7 @@ export function NoteApp() {
                       },
                     });
                     // B-persist: Reader が取得した原語原文を永続保存し、翻訳ノートに紐付ける。
-                    // これで収束 grounding 時にオフラインでも・URL 内容が変わっても同じ原文を引ける。
+                    // これでノート内参照 grounding 時にオフラインでも・URL 内容が変わっても同じ原文を引ける。
                     const textFileId = await persistUrlSourceText(article.textContent);
                     if (textFileId) result.doc.sourceTextFileId = textFileId;
                     const newNoteId = await fm.handleCreateNoteFromDocument(result.doc);

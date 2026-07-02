@@ -20,7 +20,7 @@ import { createPortal } from "react-dom";
 import { Bot } from "lucide-react";
 import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
-import type { GroundingScope } from "../../lib/grounding-scope";
+import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
 import { GroundingScopeChip } from "./GroundingScopeChip";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { searchNotes, type SearchHit } from "./search";
@@ -73,8 +73,8 @@ export function Composer(props: ComposerProps) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  // grounding スコープ（発散/収束）。AI 送信時に引用資料のどの層を渡すかを切り替える。
-  const [scope, setScope] = useState<GroundingScope>("overview");
+  // grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すかを切り替える。
+  const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
 
   // 検索結果（純関数なので useMemo で十分）
   const hits = useMemo(() => {
@@ -311,6 +311,9 @@ export function Composer(props: ComposerProps) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            // 3 セグメント化でチップが縮まないため、狭い幅ではチップを 2 行目に落とす
+            //（wrap が無いと左のヒントが数 px 幅まで潰れて縦柱に崩れる）
+            flexWrap: "wrap",
             gap: 10,
           }}
         >
@@ -323,7 +326,10 @@ export function Composer(props: ComposerProps) {
           >
             ↑↓ {t("composer.search.hintFilters")} · ⌘+Enter {t("composer.kbd.submit")} · Esc {t("composer.kbd.close")}
           </span>
-          <GroundingScopeChip value={scope} onChange={setScope} />
+          {/* 折返しで 2 行目に落ちたときも右寄せを保つ */}
+          <span style={{ marginLeft: "auto" }}>
+            <GroundingScopeChip value={scope} onChange={setScope} />
+          </span>
         </div>
 
         {/* 結果リスト（onNoteSelect 未配線のときは出さない）

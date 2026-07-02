@@ -1,12 +1,13 @@
 // Cmd+K Composer の grounding スコープ切り替えチップ。
-// 発散（overview）/ 収束（primary）の 2 状態セグメント。
-//   - 発散: 引用したもの ＋ 関連を横断検索（着想・構成向け・デフォルト）
-//   - 収束: 引用したものだけに絞る（横断検索しない・執筆・引用向け）
+// 外部参照（external）/ 内部参照（internal）/ ノート内参照（notes）の 3 状態セグメント。
+//   - 外部参照: Web 検索を強制して世界の知見を取り込む（調査向け）
+//   - 内部参照: 引用したもの ＋ 蓄積した知識を横断検索（着想・構成向け・デフォルト）
+//   - ノート内参照: 引用したものだけに絞る（横断検索しない・執筆・引用向け）
 // 詳細: docs/internal/citation-grounding-scope-design-2026-06.md
 //
 // 純粋な制御コンポーネント（value/onChange のみ）。状態は呼び出し側が持つ。
 
-import { Network, Target } from "lucide-react";
+import { Globe, Network, Target } from "lucide-react";
 import { useT } from "@/i18n";
 import type { GroundingScope } from "../../lib/grounding-scope";
 
@@ -22,16 +23,22 @@ const SEGMENTS: {
   hintKey: string;
 }[] = [
   {
-    scope: "overview",
-    Icon: Network,
-    labelKey: "composer.scope.overview",
-    hintKey: "composer.scope.overviewHint",
+    scope: "external",
+    Icon: Globe,
+    labelKey: "composer.scope.external",
+    hintKey: "composer.scope.externalHint",
   },
   {
-    scope: "primary",
+    scope: "internal",
+    Icon: Network,
+    labelKey: "composer.scope.internal",
+    hintKey: "composer.scope.internalHint",
+  },
+  {
+    scope: "notes",
     Icon: Target,
-    labelKey: "composer.scope.primary",
-    hintKey: "composer.scope.primaryHint",
+    labelKey: "composer.scope.notes",
+    hintKey: "composer.scope.notesHint",
   },
 ];
 

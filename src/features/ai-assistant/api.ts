@@ -2,6 +2,7 @@
 // /api/* エンドポイントを呼び出して AI 機能を提供する
 
 import { apiBase, isTauri } from "../../lib/platform";
+import type { GroundingScope } from "../../lib/grounding-scope";
 import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
 
 /**
@@ -61,6 +62,8 @@ export type AgentRunRequest = {
   disabled_tools?: string[];
   /** Wiki Retriever が検索したコンテキスト */
   wiki_context?: string;
+  /** grounding スコープ。"external"（外部参照）のときサーバーが Web 検索の強制指示を注入する */
+  grounding_scope?: GroundingScope;
   /** 構造化出力用のシステムプロンプトに使う言語（"en" | "ja"） */
   language?: string;
   options?: {

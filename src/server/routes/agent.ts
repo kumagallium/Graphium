@@ -12,6 +12,7 @@ import { getMCPTools, type MCPServerInfo } from "../services/mcp.js";
 import { extractWebSources } from "../services/web-sources.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
+import { forcesWebSearch, type GroundingScope } from "../../lib/grounding-scope.js";
 
 const app = new Hono();
 
@@ -34,6 +35,18 @@ export const NOTE_CONTEXT_GUARDRAIL = [
   "If you cannot find the note content in the conversation, ask the user to resend or attach it; do not search external services for it.",
 ].join("\n");
 
+// 外部参照（external grounding scope）のときに注入する Web 検索の強制指示。
+// ユーザーがチップで明示的に選んだ場合のみ入る（既定の internal / notes では入らない）。
+export const EXTERNAL_GROUNDING_INSTRUCTION = [
+  "## External grounding mode",
+  "The user has explicitly chosen EXTERNAL grounding for this question.",
+  "- You MUST search the web (using WebSearch or a connected search tool) before answering, and ground your answer in what the search returns.",
+  "- Prefer fresh external sources over your own memory for facts, and cite the sources you used.",
+  "- Only cite URLs that actually appeared in search or fetch results. NEVER produce a URL, DOI, or citation from memory.",
+  "- Cite web sources as inline markdown links or in a final \"Sources:\" list of markdown links. Do NOT cite web sources with bare numeric footnotes like [1] or with [Source: \"...\"] markers — those formats are reserved for the user's internal knowledge context.",
+  "- If no web search tool is available in this environment, say so explicitly, then answer from the provided context while clearly noting it was not externally verified.",
+].join("\n");
+
 // Crucible Agent 互換のリクエスト/レスポンス形式
 app.post("/run", async (c) => {
   const body = await c.req.json<{
@@ -46,6 +59,8 @@ app.post("/run", async (c) => {
     disabled_tools?: string[];
     /** Wiki Retriever が検索したコンテキスト（フロントエンドで embedding 検索済み） */
     wiki_context?: string;
+    /** grounding スコープ。"external"（外部参照）のとき Web 検索の強制指示を注入する */
+    grounding_scope?: GroundingScope;
     /** 構造化出力（コンテキストラベル）の指示に使う言語 */
     language?: string;
     options?: {
@@ -98,6 +113,14 @@ app.post("/run", async (c) => {
   // Wiki コンテキストを注入（Retriever 結果）
   if (body.wiki_context) {
     systemPrompt += `\n\n${body.wiki_context}`;
+  }
+
+  // 外部参照（external grounding）: ユーザーが明示的に「世界の known を取り込む」を選んだ。
+  // Web 検索を必ず実行して外部ソースで裏づけるよう強制する。検索経路は既存の 2 本
+  // （claude-subscription 内蔵 WebSearch = A / 検索 MCP = B）で、ここでは指示のみ足す。
+  // 記憶由来 URL の禁止は world-grounding と同じ原則（モデルは DOI/URL を捏造する）。
+  if (body.grounding_scope && forcesWebSearch(body.grounding_scope)) {
+    systemPrompt += `\n\n${EXTERNAL_GROUNDING_INSTRUCTION}`;
   }
 
   // 構造化出力（コンテキストラベル）指示

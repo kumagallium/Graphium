@@ -65,7 +65,7 @@ export interface StorageProvider {
   /**
    * 外部素材の原文プレーンテキスト（URL の Reader 抽出結果など、LLM 加工前）を永続保存する。
    * fileId は呼び出し側が発行し、GraphiumDocument.sourceTextFileId に紐付ける。
-   * バイナリメディア（uploadMedia）とは別チャネル。収束 grounding でオフライン利用・鮮度固定するため。
+   * バイナリメディア（uploadMedia）とは別チャネル。ノート内参照 grounding でオフライン利用・鮮度固定するため。
    * 未実装プロバイダでは undefined（呼び出し側は都度取得の loadUrlText にフォールバックする）。
    */
   saveMediaText?(fileId: string, text: string): Promise<void>;
