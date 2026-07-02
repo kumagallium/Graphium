@@ -121,7 +121,7 @@ type ToolsResponse = {
   };
 };
 
-type Tab = "display" | "storage" | "ai" | "labels" | "grounding" | "maintenance" | "usage" | "about";
+type Tab = "display" | "storage" | "ai" | "grounding" | "maintenance" | "usage" | "about";
 
 // Settings → Maintenance タブで使う Wiki サマリー
 export type WikiSummaryForSettings = {
@@ -1217,12 +1217,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       {/* タブ。タブ名は折り返さない（日本語の長いタブが縮められて 2 行になるのを防ぐ）。
        *  はみ出した場合のみ overflow-x-auto で横スクロール可能にする。 */}
       <div className="flex border-b border-border px-6 max-w-3xl overflow-x-auto">
-        {(["display", "storage", "ai", "labels", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
+        {(["display", "storage", "ai", "grounding", "maintenance", "usage", "about"] as Tab[]).map((tabId) => {
           const labelKey =
             tabId === "display" ? "settings.section.display"
             : tabId === "storage" ? "settings.section.storage"
             : tabId === "ai" ? "settings.section.ai"
-            : tabId === "labels" ? "settings.tab.labels"
             : tabId === "grounding" ? "settings.tab.grounding"
             : tabId === "maintenance" ? "settings.tab.maintenance"
             : tabId === "usage" ? "settings.tab.usage"
@@ -1359,6 +1358,56 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{t("settings.fontHelp")}</p>
+            </div>
+
+            {/* 来歴ラベルの表記 — PROV コアラベルの表示名カスタマイズ（旧 Labels タブから統合） */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Tag size={14} className="text-muted-foreground" />
+                <label className="text-xs font-semibold text-foreground">
+                  {t("settings.labels.title")}
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
+
+              <div className="space-y-2">
+                {CORE_LABELS.map((label) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <div className="w-28 shrink-0">
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {CORE_LABEL_PROV[label]}
+                      </span>
+                    </div>
+                    <Input
+                      type="text"
+                      value={customLabels[label] ?? ""}
+                      onChange={(e) => {
+                        setCustomLabels((prev) => {
+                          const next = { ...prev };
+                          if (e.target.value.trim()) {
+                            next[label] = e.target.value.trim();
+                          } else {
+                            delete next[label];
+                          }
+                          return next;
+                        });
+                        setSaved(false);
+                      }}
+                      placeholder={t(LABEL_I18N_KEYS[label])}
+                      className="flex-1"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {Object.keys(customLabels).length > 0 && (
+                <button
+                  onClick={() => { setCustomLabels({}); setSaved(false); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-3 transition-colors"
+                >
+                  <RotateCcw size={12} /> {t("settings.labels.reset")}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1869,60 +1918,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ── Labels タブ ── */}
-        {tab === "labels" && (
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Tag size={14} className="text-muted-foreground" />
-                <label className="text-xs font-semibold text-foreground">
-                  {t("settings.labels.title")}
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
-
-              <div className="space-y-2">
-                {CORE_LABELS.map((label) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <div className="w-28 shrink-0">
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {CORE_LABEL_PROV[label]}
-                      </span>
-                    </div>
-                    <Input
-                      type="text"
-                      value={customLabels[label] ?? ""}
-                      onChange={(e) => {
-                        setCustomLabels((prev) => {
-                          const next = { ...prev };
-                          if (e.target.value.trim()) {
-                            next[label] = e.target.value.trim();
-                          } else {
-                            delete next[label];
-                          }
-                          return next;
-                        });
-                        setSaved(false);
-                      }}
-                      placeholder={t(LABEL_I18N_KEYS[label])}
-                      className="flex-1"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {Object.keys(customLabels).length > 0 && (
-                <button
-                  onClick={() => { setCustomLabels({}); setSaved(false); }}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-3 transition-colors"
-                >
-                  <RotateCcw size={12} /> {t("settings.labels.reset")}
-                </button>
-              )}
-            </div>
           </div>
         )}
 

@@ -799,7 +799,7 @@ The `groundingModel` Settings slot follows the same degrade pattern as
 when no model is registered at all the check returns `checkedAt`-only
 and the badge shows "checked · no KB match" without erroring.
 
-The Settings → Grounding KB tab now exposes per-entry deletion for
+The Settings → Grounding data tab now exposes per-entry deletion for
 sedimented (model-judged) entries. Seed entries are read-only from the
 UI; editing them requires changing `public/grounding-kb/seed.v1.json`
 through a PR.

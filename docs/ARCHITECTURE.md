@@ -479,7 +479,7 @@ The lane is strictly separate from `epistemicStatus` /
 [DATA_MODEL.md §3.7](./DATA_MODEL.md) for the contract and
 sedimentation rules.
 
-Settings → Grounding KB tab lists the merged seed + cache, filters by
+Settings → Grounding data tab lists the merged seed + cache, filters by
 verdict and free-text search, and lets the user delete individual
 sedimented entries that the model produced (seed entries are read-only
 from the UI; editing them requires changing `seed.v1.json` through a

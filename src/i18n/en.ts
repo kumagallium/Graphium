@@ -412,9 +412,8 @@ export const en: Record<string, string> = {
 
   // ── 設定モーダル追加 ──
   "settings.tab.general": "General",
-  "settings.tab.labels": "Labels",
   "settings.tab.aiSetup": "AI Setup",
-  "settings.tab.maintenance": "Maintenance",
+  "settings.tab.maintenance": "Knowledge",
   "settings.tab.usage": "Usage",
   "settings.maintenance.regenAll.title": "Bulk regenerate Knowledge",
   "settings.maintenance.regenAll.help": "Rebuild existing Knowledge pages with the latest prompts or model after you update them.",
@@ -469,7 +468,7 @@ export const en: Record<string, string> = {
   "settings.embeddingModel.testing": "Testing embedding…",
   "settings.embeddingModel.testSuccess": "Supported ({dimensions} dim)",
   "settings.embeddingModel.testSuccessNoDim": "Supported",
-  "settings.section.display": "Display & Locale",
+  "settings.section.display": "Display & Language",
   "settings.section.ai": "AI",
   "settings.section.storage": "Storage",
   // ── ローカル保存先（デスクトップ版のみ） ──
@@ -866,7 +865,7 @@ export const en: Record<string, string> = {
   "wikiList.worldCheckSelectedTitle": "Run world-grounding for selected (KB first, model only on KB misses). Overwrites any existing verdict, so it doubles as a re-check.",
   "wikiList.clearWorldSelected": "Clear result ({count})",
   "wikiList.clearWorldSelectedTitle": "Remove the verdict and sources baked onto the selected entries (does not touch the KB). Use to strip wrong judgments or broken links in bulk.",
-  "settings.tab.grounding": "World-grounding",
+  "settings.tab.grounding": "Grounding data",
   "settings.grounding.intro": "The knowledge base that world-grounding checks against. It starts empty and grows as you run checks: model judgments on KB misses are cached here automatically and reused on later checks, so it adapts to your own field over time.",
   "settings.grounding.count": "{count} entries",
   "settings.grounding.filterAll": "all",
@@ -1253,7 +1252,7 @@ export const en: Record<string, string> = {
   "pdf.exporting": "Exporting...",
 
   // ── ラベルカスタマイズ ──
-  "settings.labels.title": "Core Label Names",
+  "settings.labels.title": "Provenance label names",
   "settings.labels.help": "Customize the display names of PROV-DM core labels. Leave empty to use the default name.",
   "settings.labels.reset": "Reset to defaults",
   "settings.labels.provRole": "PROV-DM role",
