@@ -119,6 +119,15 @@ type SidePeekProps = {
    * 二重保存はしない。未指定でも表示・編集・ファイル保存は動く（一覧列への即時反映のみ省略）。
    */
   onNoteContextsChange?: (noteId: string, savedDoc: GraphiumDocument | null) => void;
+  /**
+   * doSave がストレージへの保存に成功するたびに、保存済みの doc を渡して呼ばれる。
+   * 呼び出し側はここで doc キャッシュとインデックスを最新化する（reindexNoteFromDoc）。
+   * 未配線だと、ピークを閉じて再オープンしたときに古い cachedDoc が表示され、
+   * その stale な doc を起点にした次の保存で旧タイトル・旧メタデータがディスクへ
+   * 書き戻される（タイトル変更が巻き戻るデータ破壊）。noteId は wiki:/skill:
+   * プレフィックス付きのまま渡す（doc キャッシュのキーと同じ形）。
+   */
+  onSaved?: (noteId: string, savedDoc: GraphiumDocument) => void;
   /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /**
@@ -181,7 +190,7 @@ function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
-  onNoteContextsChange, onDeleteContextEverywhere,
+  onNoteContextsChange, onSaved, onDeleteContextEverywhere,
   onCreateLinkedNote, onOpenNoteInPeek,
 }: SidePeekProps) {
   const t = useT();
@@ -219,13 +228,24 @@ function SidePeekInner({
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sidePeekRef = useRef<HTMLDivElement>(null);
   const labelAutoRef = useRef<(() => void) | null>(null);
+  // onSaved は毎レンダリング新しい関数になり得るため ref 経由で参照する
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+  // cachedDoc は「開いた瞬間を即時表示する」ための mount 時スナップショットに固定する。
+  // 開いている間に親の doc キャッシュが更新されて prop の参照が変わっても
+  // （onSaved → reindexNoteFromDoc 直後など）、load effect を再発火させて編集中の
+  // docRef / オートセーブ状態を巻き戻してはいけない。ノートの切り替えは親が
+  // key={noteId} で remount して処理する。
+  const initialCachedDocRef = useRef(cachedDoc);
+  const initialCachedDoc = initialCachedDocRef.current;
 
-  // ノート読み込み（cachedDoc がなければ API 取得）
+  // ノート読み込み（mount 時に cachedDoc がなければ API 取得）
   useEffect(() => {
-    if (cachedDoc) {
+    if (initialCachedDocRef.current) {
       // cachedDoc がある場合は API 不要
-      setDoc(cachedDoc);
-      docRef.current = cachedDoc;
+      const cached = initialCachedDocRef.current;
+      setDoc(cached);
+      docRef.current = cached;
       setLoading(false);
       setError(null);
       setSaveStatus("saved");
@@ -269,7 +289,7 @@ function SidePeekInner({
         autoSaveTimerRef.current = null;
       }
     };
-  }, [noteId, cachedDoc]);
+  }, [noteId]);
 
   // ドキュメント読み込み後にラベル・リンクを復元
   // setLabel / restoreLinks は useCallback で安定な参照
@@ -555,17 +575,17 @@ function SidePeekInner({
 
   // 表示・編集の基準ドキュメント。タイトル編集は doc（state）にのみ反映されるため
   // doc を優先する。初回レンダリング（load effect 実行前）は doc が null なので
-  // cachedDoc へフォールバックして即時表示を維持する。
+  // mount 時の cachedDoc へフォールバックして即時表示を維持する。
   // （cachedDoc を優先すると title 編集が stale な cachedDoc.title に固定され、
   //  サイドピークで「タイトルが変えられない」不具合になる。）
-  const effectiveDoc = doc ?? cachedDoc;
+  const effectiveDoc = doc ?? initialCachedDoc;
   const initialContent = effectiveDoc?.pages?.[0]?.blocks?.length
     ? sanitizeBlocks(effectiveDoc.pages[0].blocks)
     : undefined;
 
   // docRef も cachedDoc から即時設定（保存時に必要）
-  if (cachedDoc && !docRef.current) {
-    docRef.current = cachedDoc;
+  if (initialCachedDoc && !docRef.current) {
+    docRef.current = initialCachedDoc;
   }
 
   // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）
@@ -618,6 +638,10 @@ function SidePeekInner({
       }
       docRef.current = updatedDoc;
       setSaveStatus("saved");
+      // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
+      // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
+      // 旧内容がディスクへ書き戻される。
+      onSavedRef.current?.(noteId, updatedDoc);
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
       setSaveStatus("dirty");
