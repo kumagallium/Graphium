@@ -272,14 +272,42 @@ body {
   text-decoration: underline;
 }
 
-.lp-pillars {
+/* Hero の製品スクショ。CTA の直下に置き、ページを開いた瞬間に
+   「どんなアプリか」が見えるようにする。 */
+.lp-hero-shot {
+  margin: 3rem 0 0;
+  border-radius: 14px;
+  border: 1px solid var(--color-border, #d5e0d7);
+  overflow: hidden;
+  background: var(--color-card, #ffffff);
+  box-shadow: 0 24px 64px -28px color-mix(in srgb, var(--forest, #4b7a52) 45%, transparent);
+}
+
+.lp-hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* How it works: 番号付き 3 ステップ */
+.lp-steps {
   margin-top: 2.4rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: clamp(20px, 2.6vw, 32px);
 }
 
-.lp-pillar h3 {
+.lp-step .lp-step-num {
+  display: inline-block;
+  font-family: var(--ui, "Inter", system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 1.9rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--forest, #4b7a52) 55%, transparent);
+  margin-bottom: 0.55rem;
+}
+
+.lp-step h3 {
   font-family: var(--ui, "Inter", system-ui, sans-serif);
   font-weight: 600;
   font-size: 1.4rem;
@@ -287,19 +315,99 @@ body {
   margin: 0 0 0.5rem;
 }
 
-.lp-pillar .lp-pillar-num {
-  display: inline-block;
-  font-family: var(--ui, "Inter", system-ui, sans-serif);
-  color: var(--forest, #4b7a52);
-  font-size: 0.9rem;
-  letter-spacing: 0.1em;
-  margin-bottom: 0.4rem;
-}
-
-.lp-pillar p {
+.lp-step p {
   margin: 0;
   color: color-mix(in srgb, var(--ink, #1a2e1d) 75%, transparent);
   font-size: 0.98rem;
+}
+
+/* 実際の画面: スクショ + キャプションの交互 2 カラム */
+.lp-screens {
+  margin-top: 2.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(40px, 6vw, 72px);
+}
+
+.lp-screen-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: clamp(20px, 3.4vw, 44px);
+  align-items: center;
+}
+
+/* 偶数行はスクショを右側に(ジグザグでスキャンのリズムを作る) */
+.lp-screen-row:nth-child(even) .lp-screen-shot {
+  order: 2;
+}
+
+.lp-screen-shot {
+  margin: 0;
+  border-radius: 12px;
+  border: 1px solid var(--color-border, #d5e0d7);
+  overflow: hidden;
+  background: var(--color-card, #ffffff);
+  box-shadow: 0 18px 44px -24px color-mix(in srgb, var(--forest, #4b7a52) 40%, transparent);
+}
+
+.lp-screen-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.lp-screen-caption h3 {
+  font-family: var(--ui, "Inter", system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: #2d4a32;
+  margin: 0 0 0.5rem;
+}
+
+.lp-screen-caption p {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink, #1a2e1d) 75%, transparent);
+  font-size: 0.98rem;
+}
+
+@media (max-width: 720px) {
+  .lp-screen-row {
+    grid-template-columns: 1fr;
+  }
+  /* 縦積みでは常にスクショ→キャプションの順 */
+  .lp-screen-row:nth-child(even) .lp-screen-shot {
+    order: 0;
+  }
+}
+
+/* FAQ: details/summary の軽量アコーディオン */
+.lp-faq {
+  margin-top: 1.6rem;
+  border-top: 1px solid color-mix(in srgb, var(--ink, #1a2e1d) 10%, transparent);
+}
+
+.lp-faq details {
+  border-bottom: 1px solid color-mix(in srgb, var(--ink, #1a2e1d) 10%, transparent);
+  padding: 1.05rem 0.2rem;
+}
+
+.lp-faq summary {
+  cursor: pointer;
+  font-family: var(--ui, "Inter", system-ui, sans-serif);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #2d4a32;
+}
+
+.lp-faq summary:hover {
+  color: var(--forest, #4b7a52);
+}
+
+.lp-faq p {
+  margin: 0.8rem 0 0;
+  color: color-mix(in srgb, var(--ink, #1a2e1d) 75%, transparent);
+  font-size: 0.98rem;
+  max-width: 72ch;
 }
 
 /* Accent sections (Pillars, GetStarted) get a soft green→transparent gradient

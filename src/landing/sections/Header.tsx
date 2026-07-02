@@ -1,7 +1,7 @@
 import { useI18n } from "../i18n";
 
 export function Header() {
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
 
   return (
     <header className="lp-header">
@@ -11,9 +11,10 @@ export function Header() {
           <span>Graphium</span>
         </a>
         <nav className="lp-nav">
-          <a href="#how">How</a>
-          <a href="#trust">Trust</a>
-          <a href="#start">Get started</a>
+          <a href="#how">{t("nav.how")}</a>
+          <a href="#screens">{t("nav.screens")}</a>
+          <a href="#start">{t("nav.start")}</a>
+          <a href="#faq">{t("nav.faq")}</a>
           <a
             href="https://github.com/kumagallium/Graphium"
             target="_blank"

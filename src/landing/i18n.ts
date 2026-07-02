@@ -10,60 +10,48 @@ export type Locale = "en" | "ja";
 const STORAGE_KEY = "graphium_locale";
 
 export const en = {
+  // Header nav
+  "nav.how": "How",
+  "nav.screens": "Screens",
+  "nav.faq": "FAQ",
+  "nav.start": "Get started",
+
   // Hero
-  "hero.title": "Turn information into knowledge you can reuse, anytime.",
+  "hero.eyebrow": "Graphium · An inspiration notebook for the AI era",
+  "hero.title": "The more you write, the more the dots connect into insight.",
   "hero.subtitle":
-    "A block-based note editor where every claim — yours and the AI's — is anchored to the notes that justify it. PROV-DM provenance, an editable Knowledge layer, and content-addressed sharing, all in one place.",
+    "Every line — the ones you wrote and the ones the AI handed you — traces back to the note it came from. That traceable trust is what lets the dots connect and insight emerge — and even the insight can show its own origin, later.",
   "hero.tryOnline": "Try online",
   "hero.download": "Download desktop",
   "hero.starOnGithub": "Star on GitHub",
+  "hero.shotAlt": "Graphium editor showing a note linked to other notes with @-references",
 
-  // Problem
-  "problem.heading": "Most notes get vaguer with time.",
-  "problem.lead":
-    "Months later, you re-read your own page and cannot tell: was that number measured, or assumed? Was that paragraph yours, or did an LLM hand it to you on a tired afternoon? How did you arrive at this idea in the first place?",
-  "problem.tagline": "Graphium notes get sharper as you write.",
-  "problem.body":
-    "The fix is provenance, and provenance cannot be bolted on later. It has to live in the spine of how the editor stores text. Graphium's spine is W3C PROV-DM, and its AI features are obligated to travel the same trail.",
+  // How it works (3 steps)
+  "how.heading": "Write, expand, trace.",
+  "how.step1.title": "Write",
+  "how.step1.body":
+    "Jot ideas down as they come and connect them with @ references. Up to here, it feels as light as any note app.",
+  "how.step2.title": "Expand with AI",
+  "how.step2.body":
+    "Connect your own AI — a Claude subscription or an API key — and it lifts claims and insights out of your notes: connections you didn't notice yourself.",
+  "how.step3.title": "Trace to the origin",
+  "how.step3.body":
+    "Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.",
 
-  // How it thinks (3 pillars)
-  "pillars.heading": "Three layers, one editor.",
-  "pillars.sub": "Use as much, or as little, as you need.",
-
-  "pillar.link.title": "Link",
-  "pillar.link.body":
-    "Write atomic notes and connect them with `@` references. Drop into ⌘K to search, jump, or ask. Small ideas linking until something clicks — Zettelkasten-style, on top of BlockNote.js.",
-
-  "pillar.trace.title": "Trace",
-  "pillar.trace.body":
-    "Two passes, both optional. Tag a heading as `[Step]` (or as a phase, `[Plan]` / `[Result]`); highlight inline spans as `[Input]` / `[Tool]` / `[Parameter]` / `[Output]` to mark the entities involved. The two layers compose into a W3C PROV-DM graph you can export as JSON-LD.",
-
-  "pillar.extend.title": "Extend",
-  "pillar.extend.body":
-    "Plug in an LLM and a second layer emerges: a Knowledge layer of Claims, Insights, and Ideas, every claim citing the notes it came from. Reusable Skills (prompt templates) and ⌘K composer ride on top.",
-
-  // Built for trust
-  "trust.heading": "Built for trust.",
-  "trust.sub": "Open standards, open source, your storage.",
-  "trust.standards.title": "Open standards",
-  "trust.standards.body":
-    "Provenance exports as W3C PROV-JSON-LD. Any tool that reads PROV-DM can read your data.",
-  "trust.openSource.title": "Open source (Apache 2.0)",
-  "trust.openSource.body":
-    "A personal open-source project, all of it on GitHub. Self-host with Docker, audit the code, or send a PR.",
-  "trust.storage.title": "Your storage",
-  "trust.storage.body":
-    "Notes are plain JSON files on your filesystem (desktop) or in your browser (web). Point the desktop app at a Google Drive / iCloud / Dropbox synced folder if you want sync, with no extra OAuth.",
-  "trust.ai.title": "AI is opt-in",
-  "trust.ai.body":
-    "Without an LLM, Graphium is a clean linked-note editor. Plug one in to activate the Knowledge Layer.",
-  "trust.reading.title": "Reading comfort",
-  "trust.reading.body":
-    "Inter by default, with Atkinson Hyperlegible Next and Lexend bundled as opt-in fonts for dyslexia-aware reading.",
-
-  "trust.share.title": "Share with provenance intact",
-  "trust.share.body":
-    "Library, Fork, and content-addressed blob storage let a note travel without losing its trail. Today the shared backend is a local folder; other backends (S3, NAS, Zenodo) are pluggable.",
+  // Screens
+  "screens.heading": "See it in action.",
+  "screens.editor.title": "Write and link",
+  "screens.editor.body":
+    "A block editor with @ references between notes. A recipe tweak, a lab log, an investigation note — any style works.",
+  "screens.editor.alt": "Graphium editor showing a note with @-references to other notes",
+  "screens.knowledge.title": "AI lifts out the knowledge",
+  "screens.knowledge.body":
+    "One click, and the AI proposes claims and insights from your notes. You decide what stays.",
+  "screens.knowledge.alt": "Knowledge list with AI-extracted claims and insights",
+  "screens.graph.title": "Connections and origins, in one view",
+  "screens.graph.body":
+    "See which insight grew from which note, and walk any spark back to where it came from.",
+  "screens.graph.alt": "Graph view showing notes and knowledge connected",
 
   // For everyone
   "everyone.heading": "For everyone who tinkers.",
@@ -71,31 +59,56 @@ export const en = {
     "The vocabulary is generic: labs, kitchens, workshops, codebases, classrooms.",
   "everyone.case.lab": "Researchers",
   "everyone.case.lab.body":
-    "Experimental logs with full provenance. Steps, materials, tools, results — labeled and linked.",
+    "Experiment logs with provenance — steps, materials, results, all linked.",
   "everyone.case.maker": "Cooks & makers",
   "everyone.case.maker.body":
-    "Recipes that remember every variation. Why this version of the bread worked, and the four that didn't.",
+    "Recipes that remember why this loaf worked, and the four that didn't.",
   "everyone.case.engineer": "Engineers",
   "everyone.case.engineer.body":
-    "Investigation notes that survive the next post-mortem. Hypotheses, evidence, decisions — all linked.",
+    "Investigation notes that survive the next post-mortem.",
   "everyone.case.student": "Students & writers",
   "everyone.case.student.body":
-    "A second brain that links ideas across courses, books, and conversations, and explains itself when you come back.",
+    "A second brain that links courses, books, and conversations — and explains itself.",
+
+  // Built for trust
+  "trust.heading": "Built for trust.",
+  "trust.sub": "Your AI, your storage, open source.",
+  "trust.ai.title": "Runs on your own AI",
+  "trust.ai.body":
+    "Graphium is built to think alongside AI — your AI. A Claude subscription or an API key connects it, and nothing is sent anywhere without your say.",
+  "trust.storage.title": "Your storage",
+  "trust.storage.body":
+    "Notes are plain JSON files on your disk (desktop) or in your browser (web). Point the desktop app at a Drive / iCloud / Dropbox folder for sync with no extra accounts.",
+  "trust.open.title": "Open source & open standards",
+  "trust.open.body":
+    "A personal open-source project under Apache 2.0. Provenance exports as W3C PROV-DM JSON-LD, so your data stays readable outside Graphium.",
 
   // Get started
   "start.heading": "Get started.",
   "start.online.title": "Preview in browser",
   "start.online.body":
-    "No install. Try the editor and PROV-DM labeling. Notes live in your browser (IndexedDB), which is fine for kicking the tires. The desktop app or self-hosted Docker is what you want for the full experience (AI Knowledge Layer, durable storage, cross-device sync).",
+    "No install — try the writing feel first. Notes stay in your browser.",
   "start.online.cta": "Open the preview",
   "start.desktop.title": "Desktop app",
   "start.desktop.body":
-    "macOS Apple Silicon and Windows x64 today (Intel macOS and Linux on the roadmap). Local files, AI features, optional cloud sync via OS-level Drive / iCloud / Dropbox folders.",
+    "Where Graphium comes into its own. With a Claude subscription, AI is one click away — no API key. macOS (Apple Silicon) and Windows.",
   "start.desktop.cta": "Download",
   "start.selfhost.title": "Self-host with Docker",
   "start.selfhost.body":
-    "Notes stored on your server, accessible from any browser at the same URL. AI backend included.",
+    "Notes on your own server, reachable from any browser. AI backend included.",
   "start.selfhost.cta": "Read the guide",
+
+  // FAQ
+  "faq.heading": "FAQ",
+  "faq.ai.q": "Do I need AI to use it?",
+  "faq.ai.a":
+    "Writing, linking, and tracing all work without AI. But Graphium comes into its own when you think with it — a Claude subscription or an API key connects in minutes.",
+  "faq.data.q": "Where does my data live?",
+  "faq.data.a":
+    "With you. Desktop notes are plain JSON files on your disk, the browser preview keeps them in your browser, and self-hosting keeps them on your server. Nothing is sent anywhere without your say.",
+  "faq.free.q": "Is it free?",
+  "faq.free.a":
+    "Yes — Graphium is open source under Apache 2.0 and free to use. If you use the AI features, the only cost is your own Claude subscription or API key.",
 
   // Footer
   "footer.builtBy": "Built by",
@@ -106,86 +119,96 @@ export const en = {
 } as const;
 
 export const ja: Record<keyof typeof en, string> = {
-  "hero.title": "情報を、いつでも再利用可能な「知識」へと変える。",
+  "nav.how": "仕組み",
+  "nav.screens": "画面",
+  "nav.faq": "FAQ",
+  "nav.start": "はじめる",
+
+  "hero.eyebrow": "Graphium · AI 時代のひらめきノート",
+  "hero.title": "書けば書くほど、点と点が繋がる「ひらめきノート」",
   "hero.subtitle":
-    "あなたが書いた一文も、AI が手渡してくれた一文も、その根拠となるノートまで辿れる。PROV-DM 来歴・編集可能なナレッジ層・コンテンツアドレス型の共有を、ひとつのエディタにまとめました。",
+    "あなたが書いた一文も、AI が手渡してくれた一文も、その出どころのノートまで辿れます。辿れるという信頼があるからこそ、安心して点と点が繋がり、ひらめきが生まれます。そしてその「ひらめきの起源」も、あとから示せるのです。",
   "hero.tryOnline": "オンラインで試す",
   "hero.download": "デスクトップ版を入手",
   "hero.starOnGithub": "GitHub でスター",
+  "hero.shotAlt": "他のノートと @ 参照で繋がったノートを開いた Graphium エディタ",
 
-  "problem.heading": "普通のノートは、時間とともに曖昧になる。",
-  "problem.lead":
-    "数ヶ月後、自分のページを読み返してこう問われると、答えに詰まります。その数字は測ったものか、それとも仮定だったか。その段落は自分の言葉か、それとも疲れた午後に LLM が手渡してくれたものか。このアイデアに、自分はどんな道のりで辿り着いたのか。",
-  "problem.tagline": "Graphium のノートは、書くほどに鋭くなります。",
-  "problem.body":
-    "答えは「来歴（プロヴェナンス）」にあります。来歴は、後から付け足せる機能ではありません。エディタがテキストを保存するときの背骨に組み込む必要があります。Graphium の背骨は W3C の [PROV-DM](https://www.w3.org/TR/prov-dm/) であり、AI 機能にも同じ来歴の道を辿らせています。",
+  "how.heading": "書く、広げる、辿る。",
+  "how.step1.title": "書く",
+  "how.step1.body":
+    "思いつきをそのまま書き、@ 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。",
+  "how.step2.title": "AI と広げる",
+  "how.step2.body":
+    "あなたの AI(Claude のサブスクや API キー)を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。",
+  "how.step3.title": "起源まで辿る",
+  "how.step3.body":
+    "AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられるのです。",
 
-  "pillars.heading": "3 つのレイヤー、ひとつのエディタ。",
-  "pillars.sub": "必要な分だけ使えばいい。",
-
-  "pillar.link.title": "つなぐ",
-  "pillar.link.body":
-    "原子ノートを書き、`@` 参照でつなぎます。⌘K で検索・ジャンプ・AI への問いかけを 1 アクションで。小さなアイデアが繋がって何かが噛み合う瞬間を、BlockNote.js ベースのエディタの上に作ります。",
-
-  "pillar.trace.title": "辿る",
-  "pillar.trace.body":
-    "ラベル付けは独立した二層からなります。見出しを `[ステップ]`（または Phase の `[計画]` / `[結果]`）でタグ付けし、本文内の語句を `[インプット]` / `[ツール]` / `[パラメータ]` / `[アウトプット]` でハイライトして関わるエンティティをマーク。両者が組み合わさって W3C PROV-DM のグラフを成し、JSON-LD として書き出せます。",
-
-  "pillar.extend.title": "広げる",
-  "pillar.extend.body":
-    "LLM をつなぐと、もう一層が立ち上がります。知見・洞察・発想からなる「ナレッジ層」、再利用可能な Skill（プロンプトテンプレート）、⌘K の Composer。AI のすべての主張は、出どころのノートを引用します。",
-
-  "trust.heading": "信頼できる土台。",
-  "trust.sub": "オープン標準、オープンソース、あなたのストレージ。",
-  "trust.standards.title": "オープン標準",
-  "trust.standards.body":
-    "来歴は W3C PROV-JSON-LD として書き出せます。PROV-DM を読めるツールならどれでも読み込めます。",
-  "trust.openSource.title": "オープンソース（Apache 2.0）",
-  "trust.openSource.body":
-    "個人で開発しているオープンソース・プロジェクトで、コードはすべて GitHub にあります。Docker でセルフホストもでき、監査も Pull Request も自由です。",
-  "trust.storage.title": "あなたのストレージ",
-  "trust.storage.body":
-    "ノートはあなたのファイルシステム（デスクトップ版）またはブラウザ（Web 版）にプレーンな JSON で保存されます。デスクトップ版の保存先を Google Drive / iCloud / Dropbox の同期フォルダに指定すれば、追加の OAuth 連携なしでクラウド同期できます。",
-  "trust.ai.title": "AI はオプトイン",
-  "trust.ai.body":
-    "LLM を繋がなくても、シンプルなリンクノートエディタとして動きます。繋ぐと Knowledge Layer が立ち上がります。",
-  "trust.reading.title": "読みやすさへの配慮",
-  "trust.reading.body":
-    "デフォルトは Inter。ディスレクシアに配慮した Atkinson Hyperlegible Next と Lexend を同梱し、設定で切り替えられます。",
-
-  "trust.share.title": "来歴を保ったまま共有する",
-  "trust.share.body":
-    "Library・Fork・コンテンツアドレス型ブロブストレージにより、ノートが来歴を失わずに移動できます。共有バックエンドは現状ローカルフォルダのみですが、S3 / NAS / Zenodo など差し替え可能な構造です。",
+  "screens.heading": "実際の画面。",
+  "screens.editor.title": "書いて、繋ぐ",
+  "screens.editor.body":
+    "ブロックエディタに書いて、@ 参照で繋ぎます。レシピの改良メモから実験ログまで、書き方は自由です。",
+  "screens.editor.alt": "他のノートへの @ 参照を含むノートを開いた Graphium エディタ",
+  "screens.knowledge.title": "AI が知見を拾い上げる",
+  "screens.knowledge.body":
+    "ワンクリックで、AI がノートから「知見」と「洞察」の候補を取り出します。残すかどうかは、あなたが決めます。",
+  "screens.knowledge.alt": "AI が抽出した知見・洞察が並ぶ Knowledge リスト",
+  "screens.graph.title": "繋がりと起源をひと目で",
+  "screens.graph.body":
+    "どの洞察がどのノートから育ったのか。点と点の繋がりを俯瞰して、ひらめきの出どころまでいつでも遡れます。",
+  "screens.graph.alt": "ノートとナレッジの繋がりを示すグラフビュー",
 
   "everyone.heading": "試行錯誤するすべての人へ。",
-  "everyone.sub":
-    "語彙は汎用的です。実験室でも、台所でも、工房でも、コードベースでも、教室でも。",
+  "everyone.sub": "実験室でも、台所でも、工房でも、コードベースでも、教室でも。",
   "everyone.case.lab": "研究者",
   "everyone.case.lab.body":
-    "完全な来歴付きの実験ログ。ステップ・材料・ツール・結果が、ラベル付きで繋がります。",
+    "来歴付きの実験ログ。ステップ・材料・結果が繋がったまま残ります。",
   "everyone.case.maker": "料理人・つくる人",
   "everyone.case.maker.body":
-    "あらゆるバリエーションを覚えているレシピ。今回のパンが上手くいった理由と、上手くいかなかった 4 回も。",
+    "今回のパンが上手くいった理由を覚えているレシピ。上手くいかなかった 4 回も一緒に。",
   "everyone.case.engineer": "エンジニア",
   "everyone.case.engineer.body":
-    "次のポストモーテムでも残る調査ノート。仮説・証拠・決断のすべてが、リンクされた状態で。",
+    "次のポストモーテムまで生き残る調査ノート。",
   "everyone.case.student": "学生・書き手",
   "everyone.case.student.body":
-    "授業・本・会話を横断してアイデアを繋げる「第二の脳」。戻ってきたときに、自分で説明してくれます。",
+    "授業・本・会話を繋ぐ「第二の脳」。戻ってきたとき、自分で説明してくれます。",
+
+  "trust.heading": "信頼できる土台。",
+  "trust.sub": "あなたの AI、あなたのストレージ、オープンソース。",
+  "trust.ai.title": "あなたの AI で動く",
+  "trust.ai.body":
+    "Graphium は AI と一緒に考えるためのノートです。動かすのは「あなたの AI」(Claude のサブスクや API キー)。何を渡すかはあなたが決め、断りなく外部へ送りません。",
+  "trust.storage.title": "あなたのストレージ",
+  "trust.storage.body":
+    "ノートはプレーンな JSON ファイルとして、デスクトップ版ならローカルに、Web 版ならブラウザ内に保存されます。保存先を Drive / iCloud / Dropbox の同期フォルダにすれば、追加のアカウント連携なしで同期できます。",
+  "trust.open.title": "オープンソース & オープン標準",
+  "trust.open.body":
+    "Apache 2.0 で公開している個人開発プロジェクトです。来歴は W3C PROV-DM 準拠の JSON-LD として書き出せるので、データは Graphium の外でも読めます。",
 
   "start.heading": "はじめる。",
   "start.online.title": "ブラウザでプレビュー",
   "start.online.body":
-    "インストール不要です。エディタの感触と PROV-DM ラベリングを試せます。ノートはブラウザ（IndexedDB）に保存されます。お試しには十分ですが、AI Knowledge Layer・永続的な保存・複数端末同期がほしい場合は、デスクトップ版か Docker セルフホストをご利用ください。",
+    "インストール不要で、まず書き心地を試せます。ノートはブラウザ内に保存されます。",
   "start.online.cta": "プレビューを開く",
   "start.desktop.title": "デスクトップアプリ",
   "start.desktop.body":
-    "現在は macOS Apple Silicon と Windows x64 に対応（Intel macOS / Linux はロードマップ）。ファイルシステム保存、AI 機能、Drive / iCloud / Dropbox 同期フォルダによる任意のクラウド同期。",
+    "Graphium の本領はこちらです。Claude のサブスクがあれば API キーなしの 1 クリックで AI が動き出します。macOS (Apple Silicon) / Windows 対応。",
   "start.desktop.cta": "ダウンロード",
   "start.selfhost.title": "Docker でセルフホスト",
   "start.selfhost.body":
-    "ノートはサーバーに保存され、同じ URL に接続するすべてのブラウザで共有されます。AI バックエンド付き。",
+    "ノートは自分のサーバーに置き、どのブラウザからも同じノートに繋がります。AI バックエンド付き。",
   "start.selfhost.cta": "ガイドを読む",
+
+  "faq.heading": "よくある質問",
+  "faq.ai.q": "AI は必須ですか?",
+  "faq.ai.a":
+    "書く・繋ぐ・辿るだけなら、AI なしでも動きます。ただ、Graphium の本領は AI と一緒に考えるところにあります。Claude のサブスクか API キーがあれば、数分で繋がります。",
+  "faq.data.q": "データはどこに保存されますか?",
+  "faq.data.a":
+    "あなたの手元です。デスクトップ版はローカルのプレーンな JSON ファイル、ブラウザ版はブラウザ内、セルフホスト版はあなたのサーバーに保存されます。断りなく外部へ送ることはありません。",
+  "faq.free.q": "無料ですか?",
+  "faq.free.a":
+    "はい。Apache 2.0 のオープンソースで、アプリは無料です。AI 機能を使うときにかかるのは、あなた自身の Claude サブスクや API キーの費用だけです。",
 
   "footer.builtBy": "作: ",
   "footer.repo": "GitHub",
