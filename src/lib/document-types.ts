@@ -605,6 +605,13 @@ export type ScopeChat = {
     model?: string;
     tokenUsage?: { input_tokens: number; output_tokens: number; total_tokens: number };
   };
+  /**
+   * フォーク元（別チャットの途中から分岐した場合のみ）。
+   * messageIndex はフォーク時に引き継いだ最後のメッセージの index（そのメッセージを含む）。
+   * 旧ビルドは本フィールドを知らないが plain JSON なので読み込みで壊れない
+   * （旧ビルドでチャットを再アクティブ化→保存すると脱落する点は許容）。
+   */
+  forkedFrom?: { chatId: string; messageIndex: number };
   createdAt: string;
   modifiedAt: string;
 };

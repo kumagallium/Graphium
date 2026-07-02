@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check } from "lucide-react";
+import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -27,8 +27,15 @@ export type AttachedNote = {
 };
 
 type AiAssistantPanelProps = {
-  /** AI にメッセージを送信する */
-  onSubmit: (question: string, attachedNotes?: AttachedNote[], scope?: GroundingScope) => void;
+  /** AI にメッセージを送信する。rewindIndex 指定時はその位置以降を破棄して再実行する */
+  onSubmit: (
+    question: string,
+    attachedNotes?: AttachedNote[],
+    scope?: GroundingScope,
+    rewindIndex?: number,
+  ) => void;
+  /** 指定メッセージまで（含む）を引き継いだ新チャットに分岐する */
+  onForkChat?: (index: number) => void;
   /** AI 回答をスコープ内にブロックとして挿入する */
   onInsertToScope?: (markdown: string) => void;
   /** AI 回答で対象ブロックを置換する */
@@ -55,6 +62,7 @@ type AiAssistantPanelProps = {
 
 export function AiAssistantPanel({
   onSubmit,
+  onForkChat,
   onInsertToScope,
   onReplaceBlocks,
   onDeriveNote,
@@ -403,8 +411,24 @@ export function AiAssistantPanel({
               <ChatBubble
                 key={i}
                 message={msg}
+                busy={loading}
                 onInsert={onInsertToScope}
                 onReplace={canReplace ? onReplaceBlocks : undefined}
+                onEditResend={
+                  msg.role === "user"
+                    ? (newText) => onSubmit(newText, undefined, scope, i)
+                    : undefined
+                }
+                onRegenerate={
+                  msg.role === "assistant" && messages[i - 1]?.role === "user"
+                    ? () => onSubmit(messages[i - 1].content, undefined, scope, i - 1)
+                    : undefined
+                }
+                onFork={
+                  onForkChat && msg.role === "assistant"
+                    ? () => onForkChat(i)
+                    : undefined
+                }
                 onDerive={
                   onDeriveNote && i > 0 && msg.role === "assistant"
                     ? () => {
@@ -561,6 +585,15 @@ function ChatListView({
             >
               <div className="flex items-center gap-1.5 mb-0.5">
                 {scopeLabel && <span className={`text-xs font-medium truncate ${isPageChat ? "text-emerald-600" : "text-violet-600"}`}>{scopeLabel}</span>}
+                {chat.forkedFrom && (
+                  <span
+                    title={t("aiChat.forkedFrom")}
+                    className="inline-flex items-center gap-0.5 text-xs text-muted-foreground shrink-0"
+                  >
+                    <GitFork size={9} />
+                    {t("aiChat.forkedFrom")}
+                  </span>
+                )}
                 <span className="text-xs text-muted-foreground ml-auto shrink-0">{date}</span>
               </div>
               <div className="text-sm text-foreground/70 truncate">{preview}</div>
@@ -576,8 +609,12 @@ function ChatListView({
 // チャットバブルコンポーネント
 function ChatBubble({
   message,
+  busy,
   onInsert,
   onReplace,
+  onEditResend,
+  onRegenerate,
+  onFork,
   onDerive,
   onGenerateKnowledgeCandidates,
   onAdoptKnowledgeCandidates,
@@ -585,8 +622,16 @@ function ChatBubble({
   onOpenWiki,
 }: {
   message: ChatMessage;
+  /** AI 実行中（編集・再実行・分岐を無効化する） */
+  busy?: boolean;
   onInsert?: (markdown: string) => void;
   onReplace?: (markdown: string) => void;
+  /** user メッセージを編集して再実行する（それ以降の会話は破棄される） */
+  onEditResend?: (newText: string) => void;
+  /** この回答を破棄して同じ質問で生成し直す */
+  onRegenerate?: () => void;
+  /** このメッセージまでを引き継いだ新チャットに分岐する */
+  onFork?: () => void;
   onDerive?: () => void;
   onGenerateKnowledgeCandidates?: (
     onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
@@ -598,6 +643,19 @@ function ChatBubble({
   const t = useT();
   const isUser = message.role === "user";
   const hasMakeKnowledge = !!onGenerateKnowledgeCandidates;
+  // user メッセージの編集状態（編集&再実行）
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const startEdit = () => {
+    setDraft(message.content);
+    setEditing(true);
+  };
+  const submitEdit = () => {
+    const trimmed = draft.trim();
+    if (!trimmed || busy) return;
+    setEditing(false);
+    onEditResend?.(trimmed);
+  };
   // 「ナレッジにする」候補生成・選択フローの状態（バブル単位）。
   // 1 ボタンで 知見 + 洞察 を 1 リストに混ぜて出す。知見は即表示し、洞察は後から追加（progressive）。
   //   phase:      null / "claims"（知見抽出中） / "atoms"（洞察生成中、知見は表示済み）
@@ -687,27 +745,81 @@ function ChatBubble({
     : stripDisplayMarkers(message.content);
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-      <div
-        className={`rounded-lg px-3 py-2 text-sm max-w-[90%] leading-relaxed ${
-          isUser ? "whitespace-pre-wrap" : ""
-        } ${
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-foreground"
-        }`}
-      >
-        {isUser ? (
-          displayContent
-        ) : (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={buildMarkdownComponents(wikiTitleToId, onOpenWiki)}
+      {isUser && editing ? (
+        <div className="w-full max-w-[90%] flex flex-col gap-1">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                submitEdit();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            autoFocus
+            rows={3}
+            className="text-xs resize-none"
+          />
+          <div className="flex items-center gap-1 justify-end">
+            <span className="mr-auto text-xs text-muted-foreground">
+              {t("aiChat.editDiscardNote")}
+            </span>
+            <button
+              onClick={() => setEditing(false)}
+              className="px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-muted transition-colors"
+            >
+              {t("aiChat.cancelEdit")}
+            </button>
+            <button
+              onClick={submitEdit}
+              disabled={!draft.trim() || busy}
+              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-violet-600 hover:text-violet-700 rounded hover:bg-violet-50 transition-colors font-medium disabled:opacity-50"
+            >
+              <Send size={10} />
+              {t("aiChat.editAndResend")}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className={`rounded-lg px-3 py-2 text-sm max-w-[90%] leading-relaxed ${
+            isUser ? "whitespace-pre-wrap" : ""
+          } ${
+            isUser
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-foreground"
+          }`}
+        >
+          {isUser ? (
+            displayContent
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={buildMarkdownComponents(wikiTitleToId, onOpenWiki)}
+            >
+              {displayContent}
+            </ReactMarkdown>
+          )}
+        </div>
+      )}
+      {isUser && !editing && onEditResend && (
+        <div className="mt-1 flex gap-0.5">
+          <button
+            onClick={startEdit}
+            disabled={busy}
+            title={t("aiChat.editMessage")}
+            aria-label={t("aiChat.editMessage")}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
           >
-            {displayContent}
-          </ReactMarkdown>
-        )}
-      </div>
-      {!isUser && (onInsert || onReplace || onDerive || hasMakeKnowledge) && (
+            <Pencil size={10} />
+          </button>
+        </div>
+      )}
+      {!isUser && (onInsert || onReplace || onDerive || hasMakeKnowledge || onRegenerate || onFork) && (
         <div className="mt-1 w-full max-w-[95%] flex flex-col gap-1">
           <div className="flex gap-1 flex-wrap">
             {onReplace && (
@@ -758,6 +870,32 @@ function ChatBubble({
               <span className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-emerald-700 font-medium">
                 <Check size={10} />
                 {t("aiChat.candidatesSaved", { n: String(done.count) })}
+              </span>
+            )}
+            {(onRegenerate || onFork) && (
+              <span className="ml-auto flex gap-0.5">
+                {onRegenerate && (
+                  <button
+                    onClick={onRegenerate}
+                    disabled={busy}
+                    title={t("aiChat.regenerate")}
+                    aria-label={t("aiChat.regenerate")}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    <RotateCcw size={10} />
+                  </button>
+                )}
+                {onFork && (
+                  <button
+                    onClick={onFork}
+                    disabled={busy}
+                    title={t("aiChat.forkFromHere")}
+                    aria-label={t("aiChat.forkFromHere")}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    <GitFork size={10} />
+                  </button>
+                )}
               </span>
             )}
           </div>
