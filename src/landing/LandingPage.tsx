@@ -1,10 +1,11 @@
 import { Header } from "./sections/Header";
 import { Hero } from "./sections/Hero";
-import { Problem } from "./sections/Problem";
-import { Pillars } from "./sections/Pillars";
-import { Trust } from "./sections/Trust";
+import { HowItWorks } from "./sections/HowItWorks";
+import { Screens } from "./sections/Screens";
 import { ForEveryone } from "./sections/ForEveryone";
+import { Trust } from "./sections/Trust";
 import { GetStarted } from "./sections/GetStarted";
+import { Faq } from "./sections/Faq";
 import { Footer } from "./sections/Footer";
 
 export function LandingPage() {
@@ -13,11 +14,12 @@ export function LandingPage() {
       <Header />
       <main>
         <Hero />
-        <Problem />
-        <Pillars />
-        <Trust />
+        <HowItWorks />
+        <Screens />
         <ForEveryone />
+        <Trust />
         <GetStarted />
+        <Faq />
       </main>
       <Footer />
     </div>

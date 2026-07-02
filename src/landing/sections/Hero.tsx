@@ -4,7 +4,7 @@ export function Hero() {
   const { t } = useI18n();
   return (
     <section className="lp-section" id="top">
-      <p className="lp-eyebrow">Graphium</p>
+      <p className="lp-eyebrow">{t("hero.eyebrow")}</p>
       <h1 className="lp-h1" style={{ marginTop: "0.6rem" }}>
         {t("hero.title")}
       </h1>
@@ -32,6 +32,9 @@ export function Hero() {
           ★ {t("hero.starOnGithub")}
         </a>
       </div>
+      <figure className="lp-hero-shot">
+        <img src="/Graphium/landing/hero.png" alt={t("hero.shotAlt")} />
+      </figure>
     </section>
   );
 }

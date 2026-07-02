@@ -37,6 +37,8 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     style: {
       label: "data(label)",
       "text-wrap": "wrap",
+      // auto(既定)は折返し行の字間が崩れて描画される(cytoscape の複数行描画の不具合回避)
+      "text-justification": "center" as any,
       "text-max-width": "100px",
       "font-size": "10px",
       "font-family": "Atkinson Hyperlegible Next, BIZ UDPGothic, Inter, system-ui, sans-serif",
