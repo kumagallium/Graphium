@@ -189,6 +189,17 @@ export function getHeadingSuggestions(currentBlockId?: string): ReferenceSuggest
 }
 
 /**
+ * Wiki ドキュメントのメンションラベル（タイトル部を除く装飾込み）を組み立てる。
+ * `@` メニューの候補ラベルと、挿入される青文字テキスト（@ の後ろ）はこの形式になる。
+ * リネーム伝播（mention-rename.ts の buildMentionPatterns）が同じ形式で置換パターンを
+ * 組むため、フォーマットはここで一元管理する。変更時は両方に効く。
+ */
+export function formatWikiMentionLabel(wikiKind: string | undefined, title: string): string {
+  const kindPrefix = wikiKind === "summary" ? "Summary" : "Concept";
+  return `🤖 ${kindPrefix}: ${title}`;
+}
+
+/**
  * 他ノートの候補を構築する。
  * インデックスがあればそこから取得（見出し付き）、なければ files から取得。
  * @param files Google Drive のファイル一覧
@@ -231,11 +242,10 @@ export function getNoteSuggestions(
       .slice(0, 10);
 
     for (const wiki of wikis) {
-      const kindPrefix = wiki.wikiKind === "summary" ? "Summary" : "Concept";
       const s: ReferenceSuggestion = {
         type: "note",
         id: wiki.noteId,
-        label: `🤖 ${kindPrefix}: ${wiki.title}`,
+        label: formatWikiMentionLabel(wiki.wikiKind, wiki.title),
         group: "AI Knowledge",
       };
       suggestions.push(s);
