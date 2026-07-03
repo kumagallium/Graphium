@@ -12,7 +12,9 @@
 
 import { isTauri } from "./platform";
 
-const HEALTH_URL = "http://localhost:3001/api/health";
+// sidecar は 127.0.0.1 にのみバインドするため、localhost（::1 に解決されうる）
+// ではなく 127.0.0.1 で直接叩く
+const HEALTH_URL = "http://127.0.0.1:3001/api/health";
 const SIDECAR_PORT = 3001;
 const MAX_RETRIES = 20;
 const RETRY_INTERVAL_MS = 500;

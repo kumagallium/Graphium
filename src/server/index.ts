@@ -157,12 +157,20 @@ if (staticDir && existsSync(staticDir)) {
 
 // サーバー起動
 const port = Number(process.env.PORT ?? 3001);
-bootLog(`calling serve() on port=${port}`);
+
+// バインド先アドレス。既定はループバック（127.0.0.1）に限定する。
+// デスクトップ（Tauri sidecar）とローカル開発では同一マシン内からしか
+// アクセスできないようにする — API の大半は無認証なので、0.0.0.0 で
+// 待ち受けると LAN 内の他端末からノート読み書きや LLM キー利用が可能になる。
+// Docker などコンテナ外へ意図的に公開するデプロイでは GRAPHIUM_BIND_HOST=0.0.0.0
+// を明示する（Dockerfile で設定済み。ポート公開範囲は compose の ports で制御）。
+const hostname = process.env.GRAPHIUM_BIND_HOST ?? "127.0.0.1";
+bootLog(`calling serve() on host=${hostname} port=${port}`);
 
 try {
-  serve({ fetch: app.fetch, port }, (info: { port: number }) => {
-    bootLog(`listening on port=${info.port}`);
-    console.log(`Graphium backend running on http://localhost:${port}`);
+  serve({ fetch: app.fetch, port, hostname }, (info: { port: number }) => {
+    bootLog(`listening on ${hostname}:${info.port}`);
+    console.log(`Graphium backend running on http://${hostname}:${port}`);
     if (staticDir) {
       console.log(`Serving static files from ${staticDir}`);
     }

@@ -38,6 +38,9 @@ VOLUME /app/data
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV DATA_DIR=/app/data
+# コンテナ内では全インターフェースで待ち受ける（サーバーの既定は 127.0.0.1。
+# 外部への公開範囲は compose / docker run の ports 設定で制御する）
+ENV GRAPHIUM_BIND_HOST=0.0.0.0
 # フロントエンド配信はバックエンドではなく nginx で行う場合はこの行を削除
 ENV SERVE_STATIC=dist
 

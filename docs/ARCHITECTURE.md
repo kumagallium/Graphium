@@ -604,6 +604,11 @@ The same `src/` tree is built three different ways.
   exits as soon as `GRAPHIUM_PARENT_PID` is gone, so it can never outlive the
   app and orphan port 3001 — an orphan would otherwise let a newer app reuse
   old code and return 404 for routes added after that build.
+- The sidecar binds to loopback only (`127.0.0.1`; override with
+  `GRAPHIUM_BIND_HOST`). Most of the local API is unauthenticated, so the
+  server must never be reachable from other machines on the network. The
+  Docker image sets `GRAPHIUM_BIND_HOST=0.0.0.0` instead, because inside a
+  container the exposure boundary is the container port mapping.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
