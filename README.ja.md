@@ -151,9 +151,9 @@ docker compose -f docker-compose.standalone.yml up -d
 
 **http://localhost:5174/Graphium/** を開いて書き始められます。
 
-### 方法 3: Docker で起動 — フルスタック（AI + MCP ツール）
+### 方法 3: Docker で起動 — AI バックエンド付き
 
-ビルトイン AI バックエンド付きで Graphium を起動し、[Crucible Registry](https://github.com/kumagallium/Crucible) で MCP ツール管理も利用できます。
+ビルトイン AI バックエンド付きで Graphium を起動します。AI アシスタント・ナレッジ層・MCP サーバーへの直接接続はすべて単体で動作し、外部サービスは不要です。
 
 ```bash
 git clone https://github.com/kumagallium/Graphium.git
@@ -165,7 +165,7 @@ docker compose up -d
 |-----|------|
 | http://localhost:5174/Graphium/ | Graphium エディタ（AI セットアップ含む） |
 
-> **上級者向け:** [Crucible Registry UI](http://localhost:8081) で MCP サーバーを管理できます。
+> **上級者向け:** この compose ファイルには、多数の MCP サーバーを一元管理するためのオプションの [Crucible Registry](https://github.com/kumagallium/Crucible)（[UI](http://localhost:8081)）も同梱されています。必須ではありません — 下の「MCP ツールの追加」を参照してください。
 
 #### AI モデルの設定
 
@@ -175,9 +175,13 @@ docker compose up -d
 
 #### MCP ツールの追加（オプション）
 
-1. **http://localhost:8081**（Crucible Registry UI）を開く
-2. GitHub リポジトリから MCP サーバーを登録
-3. **⚙ 設定 → AI セットアップ** にツールが表示され、有効/無効を切り替え可能
+Graphium は MCP サーバーに直接接続します — レジストリは不要です。**⚙ 設定 → AI セットアップ → MCP サーバー** を開いてソースを追加してください。すべてのエントリが 1 つのリストに並び、それぞれ有効/無効の切り替え・編集・削除ができます:
+
+- **ローカル** — Claude Desktop と同じ方式で、Graphium がサーバーを起動・管理します。コマンドと引数（例: `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`）を入力すると、Graphium が stdio 経由でプロセスを起動します。プロセスを自分で起動・停止する必要はありません。デスクトップアプリまたはセルフホストのバックエンドが必要です（ブラウザはローカルプロセスを起動できません）。
+- **リモート** — 稼働中のサーバーにエンドポイント URL（例: `http://localhost:8100/sse`）で接続します。必要に応じて API キーも指定できます。
+- **レジストリから** — [Crucible Registry](https://github.com/kumagallium/Crucible) の URL を入力して MCP サーバーの一覧を取得し、使いたいものを選ぶと、それぞれが個別のリモートエントリになります。レジストリ URL は記憶されるので、あとから再閲覧できます。オプションであり、Crucible はあくまで発見用のソースで、依存関係ではありません。
+
+いちばん手早いのは **JSON 貼り付け** です。サーバーの README にある `mcpServers` ブロック（Claude Desktop / Cursor 形式）をそのままコピーすると、Graphium がインポートします — ローカル（`command`/`args`/`env`）もリモート（`url`/`type`/`headers`）も、1 件でも複数件でもまとめて取り込めます。
 
 `.env` の編集は不要 — すべてブラウザから設定できます。
 
@@ -199,7 +203,7 @@ docker compose up -d
 
 ```bash
 git pull                      # 最新の Graphium コードを取得
-docker compose pull           # 最新の Crucible イメージを取得
+docker compose pull           # 最新のバックエンドイメージを取得
 docker compose up -d --build  # Graphium をリビルドして全サービスを再起動
 ```
 
@@ -335,9 +339,9 @@ Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScrip
 
 レイヤー詳細・Wiki パイプラインのトリガーフロー・配布形態・認証モデル・既知の継ぎ目は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を、JSON 形式と互換性ルールは [docs/DATA_MODEL.md](docs/DATA_MODEL.md) を参照してください（いずれも英語）。
 
-### Crucible Registry（オプション）
+### MCP ツール
 
-[Crucible Registry](https://github.com/kumagallium/Crucible) は MCP サーバーの管理と自動検出を提供します。接続すると、登録済み MCP ツールが **⚙ 設定 → AI セットアップ** に表示され、AI アシスタントが利用できるようになります。
+AI アシスタントは [MCP](https://modelcontextprotocol.io/) ツールを呼び出せます。**⚙ 設定 → AI セットアップ → MCP サーバー** の 1 つのリストでまとめて管理します。**ローカル** サーバー（Claude Desktop 方式で Graphium が stdio 経由で起動。デスクトップアプリまたはセルフホストのバックエンドが必要）と **リモート** サーバー（URL で接続）を追加でき、追加方法は README の JSON 貼り付け・フォーム入力・[Crucible Registry](https://github.com/kumagallium/Crucible) を閲覧してサーバーを選ぶ、のいずれでも構いません。Crucible はあくまで発見用のソースで、依存関係ではありません。
 
 ## エディタの外から書く
 
