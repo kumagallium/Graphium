@@ -17,6 +17,7 @@ import {
   parseGlossaryOutput,
   type GlossaryEntry,
 } from "../services/translate.js";
+import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 
 const app = new Hono();
 
@@ -37,15 +38,12 @@ app.post("/", async (c) => {
   }>();
 
   if (!body.text || body.text.trim().length < 1) {
-    return c.json({ error: "翻訳対象のテキストが空です。" }, 400);
+    return c.json({ error: "Text to translate is empty." }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) {
-    return c.json(
-      { error: "使用するモデルを解決できませんでした。Settings → AI Setup でモデルを登録・選択してください。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   const language = body.language || "en";
@@ -73,7 +71,7 @@ app.post("/", async (c) => {
 
     const markdown = stripOuterFence(result.message ?? "");
     if (!markdown) {
-      return c.json({ error: "翻訳結果が空でした。" }, 502);
+      return c.json({ error: "Translation result was empty." }, 502);
     }
 
     return c.json({
@@ -82,9 +80,9 @@ app.post("/", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("translate error:", err);
-    return c.json({ error: message }, 500);
+    // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
   }
 });
 
@@ -99,10 +97,7 @@ app.post("/glossary", async (c) => {
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) {
-    return c.json(
-      { error: "使用するモデルを解決できませんでした。Settings → AI Setup でモデルを登録・選択してください。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   const language = body.language || "en";

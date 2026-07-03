@@ -13,6 +13,7 @@ import { extractWebSources } from "../services/web-sources.js";
 import { getRegistryUrl, getRegistryKey, getManualMcpServers } from "../services/env.js";
 import { buildLabeledOutputInstruction } from "../../features/ai-assistant/label-markers.js";
 import { forcesWebSearch, type GroundingScope } from "../../lib/grounding-scope.js";
+import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 
 const app = new Hono();
 
@@ -70,17 +71,14 @@ app.post("/run", async (c) => {
   }>();
 
   if (!body.message && (!body.messages || body.messages.length === 0)) {
-    return c.json({ error: "message は必須です" }, 400);
+    return c.json({ error: "message is required" }, 400);
   }
 
   // モデル解決: ヘッダー → options.model → デフォルト
   const modelConfig = resolveModelConfig(c, { modelName: body.options?.model });
 
   if (!modelConfig) {
-    return c.json(
-      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   // プロファイル解決（明示指定がなければ汎用アシスタントを既定とする）
@@ -218,9 +216,9 @@ app.post("/run", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Agent run error:", err);
-    return c.json({ error: message }, 500);
+    // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
   }
 });
 
@@ -228,7 +226,7 @@ app.post("/run", async (c) => {
 app.post("/sessions/title", async (c) => {
   const body = await c.req.json<{ first_message: string; model?: string }>();
   if (!body.first_message) {
-    return c.json({ error: "first_message は必須です" }, 400);
+    return c.json({ error: "first_message is required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });

@@ -8,6 +8,7 @@
 import { Hono } from "hono";
 import { listModels, addModel, updateModel, removeModel, getDefaultModel, getModel } from "../config/models.js";
 import { fetchAvailableModels, isClaudeCliAvailable } from "../services/llm.js";
+import { errorBody } from "../../lib/ai-error-codes.js";
 
 const app = new Hono();
 
@@ -178,8 +179,8 @@ app.post("/available", async (c) => {
     const models = await fetchAvailableModels(provider, apiKey, apiBaseUrl);
     return c.json({ models });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
-    return c.json({ error: message }, 502);
+    // fetchAvailableModels 由来の CodedError（INVALID_API_KEY 等）は code を JSON に通す
+    return c.json(errorBody(err), 502);
   }
 });
 

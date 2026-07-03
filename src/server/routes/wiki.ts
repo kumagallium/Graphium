@@ -48,6 +48,7 @@ import {
 import { generateEmbeddings } from "../services/embedding.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
 import type { ClaimSnapshot } from "../services/wiki-types.js";
+import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 
 const app = new Hono();
 
@@ -70,17 +71,14 @@ app.post("/ingest", async (c) => {
   }>();
 
   if (!body.noteContent) {
-    return c.json({ error: "noteContent は必須です" }, 400);
+    return c.json({ error: "noteContent is required" }, 400);
   }
 
   // モデル解決: ヘッダー → body.model → デフォルト
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
-    return c.json(
-      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   // 取り込んだ外部文書（PDF / Word / URL / チャット）は noteId に prefix が付く
@@ -122,9 +120,9 @@ app.post("/ingest", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki ingest error:", err);
-    return c.json({ error: message }, 500);
+    // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
   }
 });
 
@@ -137,17 +135,14 @@ app.post("/embed", async (c) => {
   }>();
 
   if (!body.texts || body.texts.length === 0) {
-    return c.json({ error: "texts は必須です" }, 400);
+    return c.json({ error: "texts is required" }, 400);
   }
 
   // Embedding 用モデルを解決: ヘッダー → embedding_model → model → デフォルト
   const modelConfig = resolveModelConfig(c, { modelName: body.embedding_model || body.model });
 
   if (!modelConfig) {
-    return c.json(
-      { error: "モデルが登録されていません。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   try {
@@ -165,9 +160,9 @@ app.post("/embed", async (c) => {
       modelVersion: result.modelVersion,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki embed error:", err);
-    return c.json({ error: message }, 500);
+    // generateEmbeddings 由来の CodedError（EMBEDDING_MODEL_UNSUPPORTED 等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
   }
 });
 
@@ -182,7 +177,7 @@ app.post("/lint", async (c) => {
   }>();
 
   if (!body.wikis || body.wikis.length === 0) {
-    return c.json({ error: "wikis は必須です" }, 400);
+    return c.json({ error: "wikis is required" }, 400);
   }
 
   // ローカル検出（LLM 不要）
@@ -242,15 +237,14 @@ app.post("/lint", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki lint error:", err);
-    // LLM 失敗時はローカル結果のみ返す
+    // LLM 失敗時はローカル結果のみ返す（degrade）。lintError に英語メッセージを添える。
     const report: LintReport = {
       issues: localIssues,
       summary: buildSummary(localIssues),
       analyzedAt: new Date().toISOString(),
     };
-    return c.json({ ...report, lintError: message });
+    return c.json({ ...report, lintError: errorBody(err).error });
   }
 });
 
@@ -294,16 +288,13 @@ app.post("/rewrite", async (c) => {
   }>();
 
   if (!body.existingSections || !body.newSections) {
-    return c.json({ error: "existingSections と newSections は必須です" }, 400);
+    return c.json({ error: "existingSections and newSections are required" }, 400);
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
-    return c.json(
-      { error: "モデルが登録されていません。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   const systemPrompt = buildRewriterSystemPrompt(body.language || "en", body.skills);
@@ -333,9 +324,8 @@ app.post("/rewrite", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki rewrite error:", err);
-    return c.json({ error: message }, 500);
+    return c.json(errorBody(err), 500);
   }
 });
 
@@ -389,9 +379,9 @@ app.post("/cross-update", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki cross-update error:", err);
-    return c.json({ proposals: [], error: message });
+    // degrade（200 + 空 proposals）だが code は添えておく
+    return c.json({ proposals: [], ...errorBody(err) });
   }
 });
 
@@ -535,9 +525,9 @@ app.post("/atomize", async (c) => {
 
     return c.json({ atoms, model: result.model, tokenUsage: result.tokenUsage });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("Wiki atomize error:", err);
-    return c.json({ atoms: [], error: message });
+    // degrade（200 + 空 atoms）だが code は添えておく（クライアントで i18n 変換される）
+    return c.json({ atoms: [], ...errorBody(err) });
   }
 });
 
@@ -546,7 +536,7 @@ app.post("/fetch-url", async (c) => {
   const body = await c.req.json<{ url: string }>();
 
   if (!body.url) {
-    return c.json({ error: "url は必須です" }, 400);
+    return c.json({ error: "url is required" }, 400);
   }
 
   try {
@@ -562,8 +552,7 @@ app.post("/fetch-url", async (c) => {
     if (typeof e?.status === "number" && typeof e?.message === "string") {
       return c.json({ error: e.message }, e.status as 400 | 500);
     }
-    const message = err instanceof Error ? err.message : "不明なエラー";
-    return c.json({ error: message }, 500);
+    return c.json(errorBody(err), 500);
   }
 });
 
