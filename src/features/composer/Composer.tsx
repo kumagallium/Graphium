@@ -25,6 +25,7 @@ import { GroundingScopeChip } from "./GroundingScopeChip";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { searchNotes, type SearchHit } from "./search";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
 type ComposerProps = {
   open: boolean;
@@ -72,6 +73,8 @@ export function Composer(props: ComposerProps) {
 
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [activeIndex, setActiveIndex] = useState(0);
   // grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すかを切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
@@ -176,9 +179,10 @@ export function Composer(props: ComposerProps) {
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     // 日本語 IME 変換中は無視。
-    // WebKit（Tauri）では IME 確定の Enter で isComposing が false になる場合があるため
-    // keyCode === 229 も併せて判定する。
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    // WebKit（Tauri）では確定 Enter が compositionend の後に keydown(13,
+    // isComposing=false) として飛ぶため、共通ガード（composition 追跡 +
+    // compositionend からの経過時間）で判定する。
+    if (isImeKey(e)) return;
 
     if (e.key === "ArrowDown") {
       if (rows.length === 0) return;
@@ -286,6 +290,7 @@ export function Composer(props: ComposerProps) {
             ref={inputRef}
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
+            {...compositionHandlers}
             onKeyDown={handleKeyDown}
             placeholder={t("composer.placeholder")}
             type="text"

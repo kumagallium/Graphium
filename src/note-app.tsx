@@ -195,6 +195,7 @@ import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "
 
 // hooks
 import { useAutoSave } from "./hooks/use-auto-save";
+import { useImeEnterGuard } from "./hooks/use-ime-enter-guard";
 import { useAutoGrounding } from "./hooks/use-auto-grounding";
 import { useProvGeneration } from "./hooks/use-prov-generation";
 import { useFileManager } from "./hooks/use-file-manager";
@@ -3095,6 +3096,9 @@ function NoteEditorInner({
     [markDirty]
   );
 
+  // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
+
   // エディタ内容変更時にも再生成をトリガー + ラベル自動設定
   const handleContentChange = useCallback(() => {
     markDirty();
@@ -3428,13 +3432,14 @@ function NoteEditorInner({
                   el.style.height = el.scrollHeight + "px";
                 }
               }}
+              {...titleCompositionHandlers}
               onKeyDown={(e) => {
-                // IME 変換確定の Enter を奪わない。
-                // isComposing (および Safari 互換のための keyCode 229) を見て
-                // 変換中の Enter は素通しする。これを忘れると、変換確定の
-                // Enter で focus が editor に移り、確定文字がエディタの
-                // 1 行目へ流れ込む（タイトル直下に同じ文字が現れる）バグになる。
-                if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                // IME 変換確定の Enter を奪わない。isComposing / keyCode 229 だけの
+                // ガードでは WKWebView（デスクトップ）の compositionend → keydown(13)
+                // 順を取りこぼす。これを忘れると、変換確定の Enter で focus が editor
+                // に移り、確定文字がエディタの 1 行目へ流れ込む（タイトル直下に
+                // 同じ文字が現れる）バグになる。
+                if (e.key === "Enter" && !isTitleImeKey(e)) {
                   e.preventDefault();
                   editorRef.current?.focus();
                 }

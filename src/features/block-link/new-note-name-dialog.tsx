@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
 type DialogState = {
   initial: string;
@@ -29,6 +30,8 @@ export function NewNoteNameDialog({
 }) {
   const [value, setValue] = useState(initial);
   const inputRef = useRef<HTMLInputElement>(null);
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // マウント時にフォーカスし、prefill があれば全選択して上書きしやすくする
   useEffect(() => {
@@ -70,10 +73,12 @@ export function NewNoteNameDialog({
             type="text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            {...compositionHandlers}
             onKeyDown={(e) => {
-              // IME 変換確定の Enter（isComposing=true）では送信しない。
-              // 確定後の Enter でのみノートを作成する。
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              // IME 変換確定の Enter では送信しない。isComposing だけでは
+              // WKWebView（デスクトップ）の compositionend → keydown(13) 順を
+              // 取りこぼすため、共通ガードで判定する。
+              if (e.key === "Enter" && !isImeKey(e)) {
                 e.preventDefault();
                 submit();
               } else if (e.key === "Escape") {

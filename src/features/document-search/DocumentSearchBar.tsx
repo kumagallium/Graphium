@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { IconButton } from "@/ui/icon-button";
 import { useT } from "@/i18n";
 import { useDocumentSearch } from "./use-document-search";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
 interface DocumentSearchBarProps {
   /** 検索対象の BlockNote editor インスタンス（未準備なら null）。 */
@@ -22,6 +23,8 @@ export function DocumentSearchBar({ editor }: DocumentSearchBarProps) {
   const { state, close, setQuery, toggleCaseSensitive, next, prev } =
     useDocumentSearch(editor);
   const inputRef = useRef<HTMLInputElement>(null);
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // 開いた瞬間に入力欄へフォーカス＋全選択（続けて打ち直せるように）。
   useEffect(() => {
@@ -38,8 +41,9 @@ export function DocumentSearchBar({ editor }: DocumentSearchBarProps) {
   const noHits = hasQuery && state.total === 0;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // IME 変換確定の Enter は移動に使わない。
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    // IME 変換確定の Enter は移動に使わない（WebKit の compositionend →
+    // keydown(13) 順にも対応する共通ガードで判定）。
+    if (isImeKey(e)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (e.shiftKey) prev();
@@ -69,6 +73,7 @@ export function DocumentSearchBar({ editor }: DocumentSearchBarProps) {
         type="text"
         value={state.query}
         onChange={(e) => setQuery(e.target.value)}
+        {...compositionHandlers}
         onKeyDown={handleKeyDown}
         placeholder={t("docSearch.placeholder")}
         aria-label={t("docSearch.placeholder")}
