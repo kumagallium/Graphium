@@ -80,6 +80,66 @@ export type AtomShape =
   | "balancing-loop"          // 結果が変化を打ち消し均衡へ向かう自己調整の循環
   | "other";                  // 上記に当てはまらない
 
+// Atom shape の上位軸（family）。
+//
+// 指摘: 既存の 10 個の `shape`（＝form）は、実は異なる 4 つの軸を 1 つの enum に
+// 混在させていた（機能依存＝monotonic/threshold/… ／ 構造＝composition-structure ／
+// 前提条件＝enabling-condition ／ 動態フィードバック＝R/B ループ）。そのため
+// 「pick exactly ONE」が clean partition にならないケースがあった。
+//
+// 非破壊的な整理として、form（`shape`）はそのまま温存し、上位軸 family を additive
+// optional で足す。各 form はちょうど 1 つの family に属する（SHAPE_FORM_TO_FAMILY）。
+// これで分類は上位軸で partition され、既存 atom（shape あり / shapeFamily なし）も
+// form から決定論的に family を復元できる（データ移行・LLM 再実行は不要）。
+export type ShapeFamily =
+  | "functional-dependence" // つまみ X が結果 Y をどう曲げるか（一方向・ペアワイズ依存）
+  | "structural"            // 構成・構造が結果を決める（写像でなく composition）
+  | "conditional"           // 前提・成立条件（X が成り立って初めて Y が可能）
+  | "dynamic-feedback"      // 結果が原因に戻る循環（R/B ループ）
+  | "other";                // 上記のいずれにも当てはまらない
+
+// form（既存 10 値）→ family の決定論マップ。各 form はちょうど 1 family に属する。
+// 「pick exactly ONE」が clean partition でなかった問題を、上位軸で partition し直す。
+export const SHAPE_FORM_TO_FAMILY: Record<AtomShape, ShapeFamily> = {
+  "monotonic-increase": "functional-dependence",
+  "monotonic-decrease": "functional-dependence",
+  "optimal-middle": "functional-dependence",
+  "threshold": "functional-dependence",
+  // trade-off は 2 変数の結合（X を得ると Y を失う）で、循環ではなく一方向の依存関係の
+  // 一種として functional-dependence に置く。将来「対立/結合」family を独立させたく
+  // なったら enum に 1 値 + このマップ 1 行を足すだけで済む（それも非破壊）。
+  "trade-off": "functional-dependence",
+  "composition-structure": "structural",
+  "enabling-condition": "conditional",
+  "reinforcing-loop": "dynamic-feedback",
+  "balancing-loop": "dynamic-feedback",
+  "other": "other",
+};
+
+/** ShapeFamily の実行時 allow-list（parser のバリデーションに使う）。 */
+export const SHAPE_FAMILY_VALUES: ShapeFamily[] = [
+  "functional-dependence",
+  "structural",
+  "conditional",
+  "dynamic-feedback",
+  "other",
+];
+
+/**
+ * Atom の shapeFamily を返す。
+ * 明示保存された shapeFamily があればそれを、無ければ form(`shape`) から決定論的に
+ * 導出する。既存 atom（family 未保存）でもこの関数を通せば family を復元できるので、
+ * データのバックフィルは不要。
+ */
+export function resolveShapeFamily(
+  shape: AtomShape | undefined,
+  shapeFamily?: ShapeFamily,
+): ShapeFamily | undefined {
+  if (shapeFamily) return shapeFamily;
+  if (shape) return SHAPE_FORM_TO_FAMILY[shape];
+  return undefined;
+}
+
 // Atom の越境転移（同じ shape+role 構造が成り立つ別分野）。
 // atomizer が候補を出し、敵対的ジャッジが構造一致を検証して妥当なものだけ残す。
 export type AtomTransfer = {
@@ -365,6 +425,12 @@ export type WikiMeta = {
   atomType?: AtomType;
   /** Atom の関係の形（構造写像の軸、decompose→shape→abstract）。atom のみ意味を持つ */
   shape?: AtomShape;
+  /**
+   * Atom shape の上位軸（family）。atom のみ意味を持つ。additive optional。
+   * 省略時は `resolveShapeFamily(shape)` = `SHAPE_FORM_TO_FAMILY[shape]` で決定論的に
+   * 導出できる（form が真実源）。既存 atom（shape あり / shapeFamily なし）も読み取り可能。
+   */
+  shapeFamily?: ShapeFamily;
   /** Atom の越境転移（敵対的ジャッジ検証済み。atom のみ。妥当な転移が無ければ undefined） */
   transfer?: AtomTransfer;
   /** Synthesis の推論モード */

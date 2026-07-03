@@ -790,6 +790,12 @@ export const ja: Record<string, string> = {
   "wikiTypes.atomShape.reinforcing-loop": "回って増幅する",
   "wikiTypes.atomShape.balancing-loop": "回って打ち消す",
   "wikiTypes.atomShape.other": "その他",
+  // shapeFamily: Atom の shape の上位軸（family）。form(shape) から決定論導出。各 form はちょうど 1 family に属する。
+  "wikiTypes.shapeFamily.functional-dependence": "機能依存",
+  "wikiTypes.shapeFamily.structural": "構造",
+  "wikiTypes.shapeFamily.conditional": "前提条件",
+  "wikiTypes.shapeFamily.dynamic-feedback": "フィードバック",
+  "wikiTypes.shapeFamily.other": "その他",
   // atomRelation (Phase δ): Atom 間の dimensional 関係（axial coding）。
   "wikiTypes.atomRelation.extends": "拡張",
   "wikiTypes.atomRelation.is-special-case-of": "特殊ケース",
