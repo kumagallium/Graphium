@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLabelStore } from "./store";
+import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { deriveActivityName } from "./activity-name";
 import { useLinkStore } from "../block-link/store";
 import {
@@ -107,6 +107,7 @@ export function ProvIndicatorLayer({
   /** 画面下端からの予約領域（モバイルのボトムバー高さ等）。この内側にラベルを置かない */
   bottomInset?: number;
 } = {}) {
+  const provLabelsEnabled = useProvLabelsEnabled();
   const { labels, getLabel, setLabel, openBlockId } = useLabelStore();
   const { links, getOutgoing, getIncoming, removeLink } = useLinkStore();
   const [indicators, setIndicators] = useState<IndicatorInfo[]>([]);
@@ -241,7 +242,8 @@ export function ProvIndicatorLayer({
 
   // モバイルで全画面オーバーレイ（右パネル）が開いている間は、エディタが隠れているため
   // ラベルが空白に孤立して見える。描画自体を止める。
-  if (hidden || indicators.length === 0) return null;
+  // 来歴ラベル機能がオフなら、ラベル / PROV リンクのインジケータ層を一切描画しない。
+  if (!provLabelsEnabled || hidden || indicators.length === 0) return null;
 
   return createPortal(
     <>
@@ -665,6 +667,7 @@ function LinkRow({
 // ラベルもリンクもないブロックにホバーすると右端に表示
 // ──────────────────────────────────
 export function ProvIndicatorHoverHint({ wrapperEl, zIndex, hidden = false }: { wrapperEl?: HTMLElement | null; zIndex?: number; hidden?: boolean } = {}) {
+  const provLabelsEnabled = useProvLabelsEnabled();
   const { labels, openDropdown } = useLabelStore();
   const { links } = useLinkStore();
   const [hoverBlock, setHoverBlock] = useState<{
@@ -749,7 +752,8 @@ export function ProvIndicatorHoverHint({ wrapperEl, zIndex, hidden = false }: { 
     };
   }, [labels, links, wrapperEl]);
 
-  if (hidden || !hoverBlock) return null;
+  // 来歴ラベル機能がオフなら # 付与ヒントを出さない。
+  if (!provLabelsEnabled || hidden || !hoverBlock) return null;
 
   // 対象ブロックのハイライト用 rect を取得
   const targetOuter = document.querySelector(

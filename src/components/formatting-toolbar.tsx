@@ -12,6 +12,7 @@ import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { FormattingToolbarProps } from "@blocknote/react";
 import { LABEL_TO_STYLE } from "../features/inline-label/styles";
+import { useProvLabelsEnabled } from "../features/context-label";
 import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
@@ -113,6 +114,7 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   const editor = useBlockNoteEditor<any, any, any>();
   const aiAssistant = useAiAssistant();
   const mediaStore = useMediaInlineLabelStoreOptional();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const t = useT();
   const mediaSel = getSelectedMediaBlock(editor);
 
@@ -176,7 +178,7 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   return (
     <FormattingToolbar {...props}>
       {getFormattingToolbarItems(props.blockTypeSelectItems)}
-      {!hideInlineLabels && INLINE_LABEL_ORDER.map((label) => {
+      {!hideInlineLabels && provLabelsEnabled && INLINE_LABEL_ORDER.map((label) => {
         const isActive = mediaSel
           ? mediaCurrent?.label === label
           : Boolean(activeStyles[LABEL_TO_STYLE[label]]);

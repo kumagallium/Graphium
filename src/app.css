@@ -358,6 +358,15 @@ body[data-label-dropdown-open="true"] .bn-side-menu {
   pointer-events: auto !important;
 }
 
+/* 来歴ラベル機能オフ時: インラインハイライトの装飾（inline-label/styles.ts が
+   span へ直書きする背景色・下線）を通常テキストに戻す。style mark 自体はデータとして
+   残す（再度オンにすれば復帰）。inline style を上書きするため !important が必要。 */
+body[data-prov-labels-off="true"] [data-inline-label] {
+  background-color: transparent !important;
+  border-bottom: none !important;
+  padding: 0 !important;
+}
+
 /* @メンションテキスト（青色）をクリック可能に見せる */
 .bn-editor [data-style-type="textColor"][data-value="blue"] {
   cursor: pointer;
