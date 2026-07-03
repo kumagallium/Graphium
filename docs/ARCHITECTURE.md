@@ -342,7 +342,12 @@ Notes:
   in `src/server/routes/wiki.ts` and changes only the Claim guidance inside
   `buildIngesterSystemPrompt`.
 - **Failure handling:** retries are not centralized today. Each stage
-  surfaces its own errors back through the response.
+  surfaces its own errors back through the response. AI-setup and
+  authentication failures additionally carry a machine-readable `code`
+  field (see §6, "Error responses") that the client maps to a localized
+  message; the client also pre-checks model registration before firing
+  any AI request (`ensureAgentConfigured()` in `src/lib/ai-error.ts`),
+  so an unconfigured install gets a settings prompt instead of a raw 400.
 - **Embeddings** (per Wiki section) are stored via
   `src/lib/embedding-store.ts` and used as the retrieval substrate for AI
   chat. The retriever is `src/features/wiki/retriever.ts`.
@@ -673,6 +678,21 @@ thin. It does four jobs:
    matching priced model are left untouched, and the monthly summary is
    not affected. The Usage tab exposes this as a "Recalculate cost"
    button.
+
+**Error responses.** AI routes answer failures as JSON
+`{ error, code? }`. `error` is always an English, human-readable string
+(the server does not know the UI locale). `code` is an optional
+machine-readable identifier for AI-setup / authentication failures —
+`NO_MODEL_REGISTERED`, `SUBSCRIPTION_AUTH_EXPIRED`, `INVALID_API_KEY`,
+`API_KEY_FORBIDDEN`, `EMBEDDING_MODEL_UNSUPPORTED` — defined in
+`src/lib/ai-error-codes.ts` (shared by server and client). The client
+maps known codes to localized messages via `localizeAiError()`
+(`src/lib/ai-error.ts`) and falls back to the raw `error` string for
+unknown or missing codes, so mixed old/new client-server pairs degrade
+gracefully. Auth errors (401) from any LLM call are normalized in one
+place — `runAgentLoop()` / `describeAuthError()` in
+`src/server/services/agent-loop.ts` — because every AI feature funnels
+through that loop.
 
 When running as PWA only, all of this is absent and the editor still
 works.
