@@ -29,6 +29,25 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
 
+            // release-failure ラベル付き Issue を重複なしで起票する共通処理
+            const openIssueOnce = async (title, body) => {
+              const existing = await github.rest.issues.listForRepo({
+                owner, repo, state: 'open', labels: 'release-failure', per_page: 100,
+              });
+              if (existing.data.some((i) => i.title === title)) {
+                core.info(`Issue already open ("${title}"); not duplicating.`);
+                return;
+              }
+              await github.rest.issues.createLabel({
+                owner, repo, name: 'release-failure', color: 'b60205',
+                description: 'Release/desktop build pipeline failure',
+              }).catch(() => {});
+              const created = await github.rest.issues.create({
+                owner, repo, title, body, labels: ['release-failure'],
+              });
+              core.notice(`Opened issue #${created.data.number}`);
+            };
+
             // 1. 最新の安定版リリース（draft / prerelease を除く）を取得
             const releases = await github.rest.repos.listReleases({
               owner, repo, per_page: 30,
@@ -54,10 +73,53 @@ jobs:
             }
 
             // 2. GitHub Pages が配信中の latest.json の version を取得
+            //
+            // 取得失敗（404 / 5xx / ネットワークエラー）は「更新経路そのものが壊れている」
+            // 状態なので、version 乖離と同様に Issue 起票の対象にする。
+            // 以前は warning のみで握りつぶしていた（fail-open）ため、Pages の
+            // legacy 二重デプロイで latest.json が 404 になっても検知できなかった
+            // （2026-07-03 の監査で発覚した実害）。一時的なネットワーク断での誤検知を
+            // 避けるため 3 回リトライしてから起票する。
             const url = 'https://kumagallium.github.io/Graphium/updater/latest.json';
-            const res = await fetch(url, { cache: 'no-store' });
-            if (!res.ok) {
-              core.warning(`Failed to fetch ${url}: HTTP ${res.status}`);
+            let res = null;
+            let lastError = '';
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                res = await fetch(url, { cache: 'no-store' });
+                if (res.ok) break;
+                lastError = `HTTP ${res.status}`;
+              } catch (e) {
+                res = null;
+                lastError = `fetch error: ${e.message}`;
+              }
+              core.warning(`Attempt ${attempt}/3 failed for ${url}: ${lastError}`);
+              if (attempt < 3) await new Promise((r) => setTimeout(r, 30_000));
+            }
+            if (!res || !res.ok) {
+              // タイトルは status を含めず固定にする（日によって 404/503 が揺れても
+              // 重複起票しないため。詳細は body に書く）
+              await openIssueOnce(
+                '🚨 Updater endpoint unreachable: /Graphium/updater/latest.json',
+                [
+                  '**自動更新エンドポイントの latest.json が取得できません。**',
+                  '',
+                  `- URL: ${url}`,
+                  `- 直近のエラー: \`${lastError}\`（3 回リトライ後）`,
+                  '',
+                  'デスクトップアプリはこの latest.json（第1エンドポイント）を見て更新有無を',
+                  '判定します。GitHub Releases 側の第2エンドポイントがあるため即座に更新停止には',
+                  'なりませんが、片肺運転の状態です。',
+                  '',
+                  '## 典型的な原因',
+                  '- GitHub Pages の Source 設定が「GitHub Actions」以外になっている',
+                  '  （legacy ブランチ直配信だと生ソースが配られ latest.json は 404 になる。',
+                  '  Settings → Pages → Source = GitHub Actions を確認）',
+                  '- deploy.yml（Deploy to GitHub Pages）が失敗している',
+                  '- 復旧後: `gh workflow run "Deploy to GitHub Pages"` で再デプロイ',
+                  '',
+                  '_この Issue は release-update-drift-check.yml が自動起票しました。_',
+                ].join('\n'),
+              );
               return;
             }
             const updater = await res.json();
@@ -101,18 +163,4 @@ jobs:
               '_この Issue は release-update-drift-check.yml が自動起票しました。_',
             ].join('\n');
 
-            const existing = await github.rest.issues.listForRepo({
-              owner, repo, state: 'open', labels: 'release-failure', per_page: 100,
-            });
-            if (existing.data.some((i) => i.title === title)) {
-              core.info('Drift issue already open; not duplicating.');
-              return;
-            }
-            await github.rest.issues.createLabel({
-              owner, repo, name: 'release-failure', color: 'b60205',
-              description: 'Release/desktop build pipeline failure',
-            }).catch(() => {});
-            const created = await github.rest.issues.create({
-              owner, repo, title, body, labels: ['release-failure'],
-            });
-            core.notice(`Opened drift issue #${created.data.number}`);
+            await openIssueOnce(title, body);
