@@ -397,8 +397,19 @@ function SidePeekInner({
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
     setSidePeekEditor(editor);
-    labelAutoRef.current = setupLabelAutoAssign(editor, labelStoreRef.current, linkStore);
   }, []);
+
+  // ラベル自動設定のセットアップ（editor 準備後・ストア更新のたびに貼り直す）。
+  // label-auto は「渡された labelStore の labels Map」を読んで継承・孤立清掃を判断するが、
+  // labelStore / linkStore は毎レンダリング新オブジェクトになる。editor 準備時に一度だけ
+  // 捕捉すると空 Map に凍結され、読み取りが最新ラベルを見られず継承も清掃も効かない。
+  // メインエディタは handleEditorReady の deps [labelStore, linkStore] で再セットアップして
+  // これを回避しているが、ピークは handleEditorReady を安定化しているため、専用 effect で
+  // 最新ストアを渡し直す。実際の発火は handleChange 内の labelAutoRef.current?.() が担う。
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    labelAutoRef.current = setupLabelAutoAssign(sidePeekEditor, labelStore, linkStore);
+  }, [sidePeekEditor, labelStore, linkStore]);
 
   // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
   // listener の closure が stale にならないよう ref 経由で最新の noteIndex を参照する。
@@ -829,9 +840,12 @@ function SidePeekInner({
     doSaveRef.current = doSave;
   }, [doSave]);
 
-  // 変更検知 → 3秒後に自動保存
+  // 変更検知 → ラベル自動設定 + 3秒後に自動保存
+  // labelAutoRef はメインエディタ（note-app.tsx の handleContentChange）と同様、
+  // 毎変更時に呼ぶ契約（箇条書き Enter のラベル継承・削除ブロックの孤立ラベル清掃）
   const handleChange = useCallback(() => {
     setSaveStatus("dirty");
+    labelAutoRef.current?.();
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       doSaveRef.current();
