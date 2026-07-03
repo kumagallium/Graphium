@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.16.10](https://github.com/kumagallium/Graphium/compare/v0.16.9...v0.16.10) - 2026-07-03
+
+- [fix] Derive knowledge generation language from UI locale by @kumagallium in https://github.com/kumagallium/Graphium/pull/511
+- [fix] Show bookmark menu for URLs pasted into empty list items by @kumagallium in https://github.com/kumagallium/Graphium/pull/509
+- [feat] Chat message edit & resend, response regeneration, and chat forking by @kumagallium in https://github.com/kumagallium/Graphium/pull/513
+- [fix] Prevent usedIn duplication for URL bookmarks on media index rebuild by @kumagallium in https://github.com/kumagallium/Graphium/pull/515
+- [feat] Rebuild landing page: lean, scannable layout with real product screenshots by @kumagallium in https://github.com/kumagallium/Graphium/pull/510
+- [fix] Sync doc cache and index after SidePeek save to prevent title revert by @kumagallium in https://github.com/kumagallium/Graphium/pull/514
+- [feat] Propagate note title renames to @mention labels in referring notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/516
+- [fix] i18n-ify hardcoded Japanese in the graph panel legend by @kumagallium in https://github.com/kumagallium/Graphium/pull/517
+- [feat] Re-expand attached notes on chat edit & resend / regenerate by @kumagallium in https://github.com/kumagallium/Graphium/pull/518
+- [feat] Extend mention rename propagation to wiki documents by @kumagallium in https://github.com/kumagallium/Graphium/pull/519
+- [feat] Propagate main-editor title renames to @mention labels by @kumagallium in https://github.com/kumagallium/Graphium/pull/520
+- fix: bind local server to 127.0.0.1 by default by @kumagallium in https://github.com/kumagallium/Graphium/pull/521
+- feat: Markdown export and JSON backup by @kumagallium in https://github.com/kumagallium/Graphium/pull/522
+- fix: guard all AI entry points when unconfigured + machine-readable AI error codes by @kumagallium in https://github.com/kumagallium/Graphium/pull/523
+
 ## [v0.16.9](https://github.com/kumagallium/Graphium/compare/v0.16.8...v0.16.9) - 2026-07-02
 
 - [feat] Add skill edit dialog for title/description/ingest/language by @kumagallium in https://github.com/kumagallium/Graphium/pull/505
