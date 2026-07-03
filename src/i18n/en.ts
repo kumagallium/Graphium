@@ -522,6 +522,14 @@ export const en: Record<string, string> = {
   "settings.serverStorage.savedReloading": "Saved. Reloading…",
   "settings.serverStorage.tokenHelp": "The server requires GRAPHIUM_AUTH_TOKEN. Enter the same value you set in docker-compose env.",
   "settings.serverStorage.noAuth": "This server is open without authentication (GRAPHIUM_AUTH_TOKEN is not set). Setting a token is recommended for any non-localhost deployment.",
+  // ── エクスポート / バックアップ ──
+  "settings.export.title": "Export & backup",
+  "settings.export.help": "Download all notes as Markdown files, or as a raw-data backup (.graphium.json) covering every note, knowledge, and skill document — including archived and trashed ones. Media files (images, PDFs) are not included.",
+  "settings.export.markdownZip": "Export all notes (Markdown)",
+  "settings.export.backupZip": "Download backup (JSON)",
+  "settings.export.done": "Exported {count} files.",
+  "settings.export.doneWithFailures": "Exported {count} files ({failed} failed — see console for details).",
+  "settings.export.failed": "Export failed",
   // ── 接続状態 ──
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
@@ -1266,6 +1274,9 @@ export const en: Record<string, string> = {
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "Exporting...",
+
+  // ── Markdown エクスポート ──
+  "markdown.export": "Markdown",
 
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "Provenance label names",

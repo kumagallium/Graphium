@@ -17,6 +17,7 @@ import {
   Tag,
   FolderOpen,
   Info,
+  Download,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -39,6 +40,12 @@ import { useLocale, type Locale } from "../../i18n";
 import { CORE_LABELS, CORE_LABEL_PROV, type CoreLabel } from "../context-label/labels";
 import type { WikiKind } from "../../lib/document-types";
 import { fetchCapabilities, setServerStorageToken } from "../../lib/storage/providers/server-fs";
+import { getActiveProvider } from "../../lib/storage/registry";
+import {
+  exportAllNotesAsMarkdownZip,
+  exportBackupZip,
+  type BulkExportResult,
+} from "../markdown-export";
 import { AiUpgradeNotice } from "../../components/AiUpgradeNotice";
 import { Globe2 } from "lucide-react";
 import {
@@ -276,6 +283,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
   const [sharedTestRunning, setSharedTestRunning] = useState(false);
   const [blobTestRunning, setBlobTestRunning] = useState(false);
+
+  // エクスポート / バックアップ（ストレージタブ）
+  const [exportBusy, setExportBusy] = useState<"markdown" | "backup" | null>(null);
+  const [exportResult, setExportResult] = useState<BulkExportResult | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // サーバーストレージ機能（Docker / セルフホスト Web）
   const [serverCaps, setServerCaps] = useState<{ serverStorage: boolean; requiresAuth: boolean } | null>(null);
@@ -613,6 +625,26 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       window.location.reload();
     }, 600);
   }, [serverToken]);
+
+  // ── エクスポート / バックアップ（ストレージタブ） ──
+  // アクティブな StorageProvider から全ノートを読み出して zip を組み立てる。
+  // 個々のノートの失敗は BulkExportResult.failed に集計され、全体は続行する。
+  const handleBulkExport = useCallback(async (kind: "markdown" | "backup") => {
+    setExportBusy(kind);
+    setExportResult(null);
+    setExportError(null);
+    try {
+      const provider = getActiveProvider();
+      const result = kind === "markdown"
+        ? await exportAllNotesAsMarkdownZip(provider)
+        : await exportBackupZip(provider);
+      setExportResult(result);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportBusy(null);
+    }
+  }, []);
 
   const handlePickGraphiumRoot = useCallback(async () => {
     setRootBusy(true);
@@ -1918,6 +1950,60 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </p>
               </div>
             )}
+
+            {/* エクスポート / バックアップ */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Download size={14} className="text-muted-foreground" />
+                <label className="text-xs font-semibold text-foreground">
+                  {t("settings.export.title")}
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                {t("settings.export.help")}
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleBulkExport("markdown")}
+                  disabled={exportBusy !== null}
+                >
+                  {exportBusy === "markdown" ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    t("settings.export.markdownZip")
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleBulkExport("backup")}
+                  disabled={exportBusy !== null}
+                >
+                  {exportBusy === "backup" ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    t("settings.export.backupZip")
+                  )}
+                </Button>
+              </div>
+              {exportResult && (
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                  <CheckCircle size={12} className="text-green-600" />
+                  {exportResult.failed > 0
+                    ? t("settings.export.doneWithFailures", {
+                        count: String(exportResult.exported),
+                        failed: String(exportResult.failed),
+                      })
+                    : t("settings.export.done", { count: String(exportResult.exported) })}
+                </p>
+              )}
+              {exportError && (
+                <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                  <AlertCircle size={12} /> {t("settings.export.failed")}: {exportError}
+                </p>
+              )}
+            </div>
           </div>
         )}
 

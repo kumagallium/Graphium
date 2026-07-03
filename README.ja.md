@@ -234,6 +234,7 @@ pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 - **テンプレート** — `/template` スラッシュコマンドで Plan / Run の雛形を呼び出せる（拡張可能）
 - **読みやすさ設定** — デフォルトは Inter。Atkinson Hyperlegible Next / Lexend を opt-in で切り替え可能（dyslexia 配慮）
 - **ローカルファースト保存** — デスクトップ版・Docker 版はファイルシステム上の JSON、Web 版はブラウザ IndexedDB
+- **Markdown エクスポート & バックアップ** — ノートメニューから Markdown 書き出し。設定 → ストレージから全ノートの Markdown zip / 生 .graphium.json バックアップをダウンロード（Web 版 IndexedDB ユーザーのデータ出口）
 - **デスクトップアプリ** — Tauri v2 のネイティブアプリ。保存先を Drive / iCloud / Dropbox 同期フォルダに指定すれば、追加の OAuth なしでクラウド同期できる
 
 ### スクリーンショット

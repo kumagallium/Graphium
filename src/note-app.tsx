@@ -189,6 +189,7 @@ import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { exportNoteToPdf } from "./features/pdf-export";
+import { exportNoteToMarkdown } from "./features/markdown-export";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
 
 // hooks
@@ -327,6 +328,7 @@ function NoteHeaderMenu({
   saveDisabled,
   onExportPdf,
   pdfExporting,
+  onExportMarkdown,
   onExportProvJsonLd,
   provExportDisabled,
   onDeriveWholeNote,
@@ -357,6 +359,8 @@ function NoteHeaderMenu({
   saveDisabled: boolean;
   onExportPdf: () => void;
   pdfExporting: boolean;
+  /** ノートを Markdown ファイルとしてエクスポートする */
+  onExportMarkdown: () => void;
   onExportProvJsonLd: () => void;
   provExportDisabled: boolean;
   onDeriveWholeNote?: () => void;
@@ -441,6 +445,13 @@ function NoteHeaderMenu({
           >
             <FileDown size={14} />
             {pdfExporting ? t("pdf.exporting") : t("pdf.export")}
+          </button>
+          <button
+            className={itemClass}
+            onClick={() => { onExportMarkdown(); setOpen(false); }}
+          >
+            <FileText size={14} />
+            {t("markdown.export")}
           </button>
           <button
             className={itemClass}
@@ -1913,6 +1924,19 @@ function NoteEditorInner({
     }
   }, [title, provDoc, labelStore.labels]);
 
+  // ── Markdown エクスポートハンドラー ──
+  // ライブエディタ（フルスキーマ）の blocksToMarkdownLossy を使う。
+  // PDF と同じくエディタの現在内容（未保存の編集含む）が対象。
+  const handleExportMarkdown = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    try {
+      await exportNoteToMarkdown({ title, editor });
+    } catch (e) {
+      console.error("[markdown-export] export failed:", e);
+    }
+  }, [title]);
+
   // ── PROV-JSON-LD エクスポートハンドラー ──
   // Phase 4 (PR-B7): Wiki Knowledge Layer も @graph に含める。NoteApp 側で
   // wiki state から組み立てた wikiEntities を prop で受け取り、ここでは受け流す。
@@ -3238,6 +3262,7 @@ function NoteEditorInner({
           saveDisabled={saving}
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
+          onExportMarkdown={handleExportMarkdown}
           onExportProvJsonLd={handleExportProvJsonLd}
           provExportDisabled={!provDoc || provDoc["@graph"].length === 0}
           onIngestToWiki={onIngestToWiki}

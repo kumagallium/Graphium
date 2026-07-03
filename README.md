@@ -238,6 +238,7 @@ Notes are saved to your browser's IndexedDB by default. AI features require the 
 - **Templates** — `/template` slash command with Plan and Run scaffolds (extensible)
 - **Reading-font setting** — pick between Inter (default), Atkinson Hyperlegible Next, and Lexend; opt-in for dyslexia-aware reading
 - **Local-first storage** — plain JSON files on your filesystem (desktop / Docker) or IndexedDB (browser)
+- **Markdown export & backup** — export any note as Markdown from the note menu; Settings → Storage can export all notes as a Markdown zip or download a raw .graphium.json backup (the data exit for browser/IndexedDB users)
 - **Desktop app** — Tauri v2 native app with local file storage; point the save folder at a synced cloud folder (Drive / iCloud / Dropbox) for cross-device sync without OAuth
 
 ### Screenshots

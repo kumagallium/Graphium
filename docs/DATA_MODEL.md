@@ -1036,6 +1036,12 @@ Three backends ship today:
 | `filesystem` | OPFS in browser; native filesystem via Tauri |
 | `server-fs` | Filesystem on the Node companion server |
 
+Settings → Storage offers a provider-agnostic export built on `listFiles` /
+`loadFile`: all notes as a zip of Markdown files, or a raw backup zip of
+`.graphium.json` blobs (notes, knowledge, and skill documents — including
+archived and trashed ones). The JSON backup is the supported data exit for
+`local` (IndexedDB) users; media binaries are not included.
+
 ### 6.2 IndexedDB layout (`local` provider)
 
 ```
