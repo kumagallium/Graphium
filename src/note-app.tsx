@@ -4161,6 +4161,27 @@ export function NoteApp() {
     },
     [fm.getCachedDoc, fm.noteIndex, fm.reindexNoteFromDoc, fm.propagateMentionRename],
   );
+  // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
+  // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
+  // activeLabel → showNoteList → showMemos → activeWikiView → activeWikiKind →
+  // showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
+  // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
+  // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
+  // 開いた後にノートを最大化するとスキル一覧が出続けるバグ）。
+  // 各ハンドラが個別に N-1 個クリアする方式は、ビューを 1 つ足すたびに消し忘れ、
+  // 同種のバグを再発させてきた。ここに集約し「畳んでから自分のフラグだけ立てる」に統一する。
+  const closeAllViews = useCallback(() => {
+    fm.setShowNoteList(false);
+    fm.setActiveAssetType(null);
+    fm.setActiveLabel(null);
+    fm.setActiveWikiKind(null);
+    setShowMemos(false);
+    setShowTrash(false);
+    setShowSharedLibrary(false);
+    setShowGlobalGraph(false);
+    setShowSkillList(false);
+    setActiveWikiView(null);
+  }, [fm]);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
   // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
@@ -5780,41 +5801,33 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
-    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
-    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
+    onSelect: (fileId: string) => { closeAllViews(); fm.handleOpenFile(fileId); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
+    onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
+    onShowNoteList: () => { closeAllViews(); fm.setShowNoteList(true); setSidebarOpen(false); router.navigate({ view: "notes" }); },
     noteListActive: fm.showNoteList,
     mediaIndex: fm.mediaIndex,
-    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
+    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { closeAllViews(); fm.setActiveAssetType(type); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
     onShowGlobalGraph: () => {
       // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
+      closeAllViews();
       setShowGlobalGraph(true);
-      fm.setActiveAssetType(null);
-      fm.setActiveLabel(null);
-      fm.setActiveWikiKind(null);
-      fm.setShowNoteList(false);
-      setShowMemos(false);
-      setShowSkillList(false);
-      setActiveWikiView(null);
-      setShowTrash(false);
-      setShowSharedLibrary(false);
       setListSidePeekNoteId(null);
       setSidebarOpen(false);
     },
     globalGraphActive: showGlobalGraph,
-    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
+    onShowLabelGallery: (label: string) => { closeAllViews(); fm.setActiveLabel(label); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
     filesLoading: fm.filesLoading,
     memoCount: capture.captureIndex?.captures.length ?? 0,
-    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
+    onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     wikiCounts: (() => {
       // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
@@ -5837,41 +5850,26 @@ export function NoteApp() {
     // experimental.atomLayer に関わらず常にサイドバーに表示する。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
     showAtomLayer: true,
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
+    onShowWikiList: (kind: WikiKind) => { closeAllViews(); fm.setActiveWikiKind(kind); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
-    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
+    onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
+    onShowWikiLint: () => { closeAllViews(); setActiveWikiView("lint"); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
     skillCount: fm.skillMetas.size,
-    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); },
+    onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
     skillActive: showSkillList,
     onShowTrash: () => {
+      closeAllViews();
       setShowTrash(true);
-      fm.setActiveAssetType(null);
-      fm.setActiveLabel(null);
-      fm.setActiveWikiKind(null);
-      fm.setShowNoteList(false);
-      setShowMemos(false);
-      setShowSkillList(false);
-      setActiveWikiView(null);
-      setShowSharedLibrary(false); setShowGlobalGraph(false);
       setSidebarOpen(false);
     },
     trashActive: showTrash,
     trashCount: fm.trashedNotes.length + fm.archivedNotes.length,
     onShowSharedLibrary: getSharedRoot()
       ? () => {
+          closeAllViews();
           setShowSharedLibrary(true);
-          fm.setActiveAssetType(null);
-          fm.setActiveLabel(null);
-          fm.setActiveWikiKind(null);
-          fm.setShowNoteList(false);
-          setShowMemos(false);
-          setShowSkillList(false);
-          setActiveWikiView(null);
-          setShowTrash(false);
-          setShowGlobalGraph(false);
           setSidebarOpen(false);
           router.navigate({ view: "shared-library" });
         }
@@ -5951,7 +5949,7 @@ export function NoteApp() {
             }}
             onNavigateNote={(noteId) => {
               setAssetSidePeekNoteId(null);
-              fm.setActiveAssetType(null);
+              closeAllViews();
               // PDF アセットの利用ノートグラフから Wiki ノートをクリックしたケース：
               // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
               if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
@@ -6338,9 +6336,10 @@ export function NoteApp() {
                     onSaved={handleListPeekSaved}
                     onClose={() => setAssetSidePeekNoteId(null)}
                     onNavigate={(navId, savedDoc) => {
-                      // SidePeek 内のリンクから本格的に開く場合はアセット画面を離れる
+                      // SidePeek 内のリンクから本格的に開く場合はアセット画面を含む
+                      // 上位ビューを全て畳んでから本文へ遷移する。
                       setAssetSidePeekNoteId(null);
-                      fm.setActiveAssetType(null);
+                      closeAllViews();
                       if (navId.startsWith("wiki:")) fm.handleOpenWikiFile(navId.slice(5));
                       else fm.handleOpenFile(navId, savedDoc);
                     }}
@@ -6368,7 +6367,7 @@ export function NoteApp() {
           <NoteListView
             noteIndex={fm.noteIndex}
             onOpenNote={(noteId) => { setListSidePeekNoteId(noteId); }}
-            onOpenNoteFull={(noteId) => { setListSidePeekNoteId(null); fm.setShowNoteList(false); fm.handleOpenFile(noteId); router.navigate({ view: "editor", fileId: noteId }); }}
+            onOpenNoteFull={(noteId) => { setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenFile(noteId); router.navigate({ view: "editor", fileId: noteId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
             onDeleteNotes={async (ids) => {
               // 参照警告: 1件以上から参照されている場合は info 確認を出してから移動
@@ -6627,7 +6626,7 @@ export function NoteApp() {
             wikiFiles={fm.wikiFiles}
             wikiMetas={fm.wikiMetas}
             onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
-            onOpenWikiFull={(wikiId) => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind: fm.activeWikiKind!, wikiId }); }}
+            onOpenWikiFull={(wikiId) => { const kind = fm.activeWikiKind!; setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind, wikiId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
@@ -7123,14 +7122,11 @@ export function NoteApp() {
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
-                // アーカイブ画面 (showTrash) などの上位ビューを閉じてからルート遷移する。
-                // これを忘れると activeFileId が wiki に変わっても上位ビューが残り続け、
-                // 「Open full」が無反応に見える。
-                setShowTrash(false);
-                fm.setShowNoteList(false);
-                fm.setActiveAssetType(null);
-                fm.setActiveLabel(null);
-                setShowMemos(false);
+                // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）を
+                // 全て畳んでから本文へ遷移する。1 つでも残すと activeFileId が変わっても
+                // そのビューが優先表示され、「最大化したのに別の一覧が出る」バグになる
+                // （例: スキル一覧を開いた後にノートを最大化するとスキル一覧が残る）。
+                closeAllViews();
                 if (noteId.startsWith("wiki:")) {
                   fm.handleOpenWikiFile(noteId.replace(/^wiki:/, ""));
                 } else {
