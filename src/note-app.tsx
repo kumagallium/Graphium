@@ -93,6 +93,7 @@ import {
 } from "./features/ai-assistant";
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage } from "./features/ai-assistant";
+import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
@@ -1916,19 +1917,31 @@ function NoteEditorInner({
         return;
       }
       const now = new Date().toISOString();
-      // 添付ノートがある場合はメッセージ表示に含める
-      const displayContent = attachedNotes && attachedNotes.length > 0
-        ? `${question}\n\n📎 ${attachedNotes.map((n) => n.isWiki ? `🤖 ${n.title}` : n.title).join(", ")}`
+      // 添付ノートがある場合はメッセージ表示に含め、参照（ID + タイトル）を
+      // メッセージに永続化する（編集&再実行・回答の再生成で中身を再展開するため）
+      const attachmentRefs = attachedNotes?.map((n) => ({
+        id: n.id,
+        title: n.title,
+        ...(n.isWiki ? { isWiki: true } : {}),
+      }));
+      const displayContent = attachmentRefs && attachmentRefs.length > 0
+        ? `${question}${buildAttachmentSuffix(attachmentRefs)}`
         : question;
+      const userChatMessage = {
+        role: "user" as const,
+        content: displayContent,
+        timestamp: now,
+        ...(attachmentRefs && attachmentRefs.length > 0 ? { attachments: attachmentRefs } : {}),
+      };
       // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
       // 新しい user メッセージを置く。履歴もそこまでで組み立てる。
       const baseMessages = rewindIndex != null
         ? aiAssistant.messages.slice(0, rewindIndex)
         : aiAssistant.messages;
       if (rewindIndex != null) {
-        aiAssistant.rewriteFrom(rewindIndex, { role: "user", content: displayContent, timestamp: now });
+        aiAssistant.rewriteFrom(rewindIndex, userChatMessage);
       } else {
-        aiAssistant.addMessage({ role: "user", content: displayContent, timestamp: now });
+        aiAssistant.addMessage(userChatMessage);
       }
       aiAssistant.setLoading(true);
       try {

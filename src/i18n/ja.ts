@@ -640,6 +640,7 @@ export const ja: Record<string, string> = {
   "aiChat.editAndResend": "再実行",
   "aiChat.cancelEdit": "キャンセル",
   "aiChat.editDiscardNote": "再実行すると、これ以降の会話は置き換わります。",
+  "aiChat.editAttachmentsNote": "📎 {titles} も再送信されます",
   "aiChat.regenerate": "回答を生成し直す",
   "aiChat.forkFromHere": "ここから新しいチャット",
   "aiChat.forkedFrom": "分岐",
