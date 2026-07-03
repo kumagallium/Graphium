@@ -66,7 +66,7 @@ function subdir(name: string): string {
 function safeId(id: string): string {
   // パストラバーサル防止: スラッシュ・バックスラッシュ・ヌル文字を拒否
   if (!id || id.includes("/") || id.includes("\\") || id.includes("\0") || id.startsWith(".")) {
-    throw new Error("不正なファイル ID です");
+    throw new Error("Invalid file ID");
   }
   return id;
 }
@@ -108,7 +108,7 @@ async function authMiddleware(c: Context, next: Next) {
   }
   const token = c.req.header("x-graphium-token");
   if (token !== expected) {
-    return c.json({ error: "認証に失敗しました" }, 401);
+    return c.json({ error: "Authentication failed" }, 401);
   }
   await next();
 }
@@ -135,7 +135,7 @@ for (const { slug, sub } of docTypes) {
     try {
       const id = safeId(c.req.param("id"));
       const path = join(subdir(sub), `${id}.json`);
-      if (!existsSync(path)) return c.json({ error: "ファイルが存在しません" }, 404);
+      if (!existsSync(path)) return c.json({ error: "File not found" }, 404);
       return c.body(readFileSync(path, "utf-8"), 200, {
         "content-type": "application/json",
       });
@@ -232,7 +232,7 @@ app.post("/media", async (c) => {
       const form = await c.req.formData();
       const file = form.get("file");
       if (!(file instanceof File)) {
-        return c.json({ error: "file フィールドが必要です" }, 400);
+        return c.json({ error: "The file field is required" }, 400);
       }
       const buffer = await file.arrayBuffer();
       bytes = new Uint8Array(buffer);
@@ -266,7 +266,7 @@ app.get("/media/:id", (c) => {
   try {
     const id = safeId(c.req.param("id"));
     const path = findMediaFile(id);
-    if (!path) return c.json({ error: "メディアが存在しません" }, 404);
+    if (!path) return c.json({ error: "Media not found" }, 404);
     const meta = readMediaMeta(id);
     const data = readFileSync(path);
     return c.body(new Uint8Array(data), 200, {
@@ -282,7 +282,7 @@ app.patch("/media/:id", async (c) => {
   try {
     const id = safeId(c.req.param("id"));
     const meta = readMediaMeta(id);
-    if (!meta) return c.json({ error: "メディアが存在しません" }, 404);
+    if (!meta) return c.json({ error: "Media not found" }, 404);
     const body = await c.req.json<{ name?: string }>();
     if (typeof body.name === "string" && body.name.trim()) {
       meta.name = body.name.trim();
@@ -315,7 +315,7 @@ app.get("/media-text/:id", (c) => {
   try {
     const id = safeId(c.req.param("id"));
     const path = join(subdir("media-text"), `${id}.txt`);
-    if (!existsSync(path)) return c.json({ error: "テキストが存在しません" }, 404);
+    if (!existsSync(path)) return c.json({ error: "Text not found" }, 404);
     return c.body(readFileSync(path, "utf-8"), 200, {
       "content-type": "text/plain; charset=utf-8",
     });

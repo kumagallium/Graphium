@@ -20,7 +20,7 @@ app.post("/test", async (c) => {
   const modelConfig = resolveModelConfig(c);
   if (!modelConfig) {
     return c.json(
-      { ok: false, error: "モデル設定が見つかりませんでした。" },
+      { ok: false, error: "Model configuration not found." },
       400,
     );
   }

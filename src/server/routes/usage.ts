@@ -14,7 +14,7 @@ app.get("/", (c) => {
       raw: [],
       summary: [],
       mode: "vercel",
-      note: "Vercel モードでは使用量ログは未対応です",
+      note: "Usage logging is not supported in Vercel mode",
     });
   }
   const raw = loadUsageLog();
@@ -27,7 +27,7 @@ app.get("/", (c) => {
 // 単価を後から修正したときに過去のコスト表示を揃え直す用途。
 app.post("/recalculate", (c) => {
   if (getServerMode() === "vercel") {
-    return c.json({ error: "Vercel モードでは使用量ログは未対応です" }, 400);
+    return c.json({ error: "Usage logging is not supported in Vercel mode" }, 400);
   }
   const models = listModels();
   const result = recalculateUsageCosts((ev) => {
