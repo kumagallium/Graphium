@@ -3,13 +3,19 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>A note editor that turns information into knowledge you can reuse, anytime.</b>
+  <b>An inspiration notebook for the AI era.</b>
 </p>
 <p align="center">
-  Block-based note editor with <b>PROV-DM</b> provenance tracking, built on <a href="https://www.blocknotejs.org/">BlockNote.js</a>.
+  The more you write, the more the dots connect into insight.<br />
+  Every line — the ones you wrote and the ones the AI handed you — traces back to the note it came from, so you can trust it enough to explore.
 </p>
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
+</p>
+
+<p align="center">
+  <a href="https://kumagallium.github.io/Graphium/"><img alt="Try in browser" src="https://img.shields.io/badge/Try_in_browser-2ea44f?style=for-the-badge"></a>
+  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="Download desktop" src="https://img.shields.io/badge/Download_desktop-24292f?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -21,27 +27,51 @@
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/kumagallium/Graphium/main">
 </p>
 
+<p align="center">
+  <a href="https://kumagallium.github.io/Graphium/"><img src="public/landing/hero.png" alt="Graphium's graph view: notes, claims, and insights connected" width="880" /></a>
+</p>
+
 Graphium is a personal open-source project that combines [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten)-style atomic note-taking with [PROV-DM](https://www.w3.org/TR/prov-dm/), a W3C provenance standard. The result is a notebook where every claim, including the ones an AI hands you, can be traced back to the notes and sources that justify it.
 
-### Learn more before you install
+## How it works — write, expand, trace
 
-- 📘 [**CONCEPT**](docs/CONCEPT.md) ([日本語](docs/CONCEPT.ja.md)) — the design philosophy: why provenance matters, the two brains, the hourglass.
+### 1. Write
+Jot ideas down as they come and connect them with `@` references. Up to here, it feels as light as any note app.
+
+<p align="center"><img src="public/landing/screen-editor.png" alt="Graphium editor showing a note with @-references to other notes" width="760" /></p>
+
+### 2. Expand with AI
+Connect your own AI — a Claude subscription or an API key — and it lifts claims and insights out of your notes: connections you didn't notice yourself.
+
+<p align="center"><img src="public/landing/screen-knowledge.png" alt="Knowledge list with AI-extracted claims and insights" width="760" /></p>
+
+### 3. Trace to the origin
+Any line — yours or the AI's — walks back to its source note in one click. Because you can trace it, you can trust it enough to explore.
+
+<p align="center"><img src="public/landing/screen-trace.png" alt="An insight page with its lineage panel showing the source claim and source notes" width="760" /></p>
+
+## For everyone who tinkers
+
+The vocabulary is generic: labs, kitchens, workshops, codebases, classrooms.
+
+- **Researchers** — experiment logs with provenance: steps, materials, results, all linked.
+- **Cooks & makers** — recipes that remember why this loaf worked, and the four that didn't.
+- **Engineers** — investigation notes that survive the next post-mortem.
+- **Students & writers** — a second brain that links courses, books, and conversations — and explains itself.
+
+### Dig deeper (optional)
+
+Not needed to get started — these are for the curious and for contributors:
+
+- 📘 [**CONCEPT**](docs/CONCEPT.md) ([日本語](docs/CONCEPT.ja.md)) — the thinking behind Graphium: why provenance matters, the two brains, the hourglass.
 - 🏗️ [**ARCHITECTURE**](docs/ARCHITECTURE.md) — layers, distribution targets, the Wiki pipeline, known seams.
 - 🗂️ [**DATA_MODEL**](docs/DATA_MODEL.md) — the on-disk JSON shapes, schemas, and compatibility rules.
 
-## Use as much, or as little, as you need
+## Label as much, or as little, as you want
 
-Graphium is designed around **progressive disclosure**. Labelling is optional, and it comes in two layers you can adopt independently.
+You can use Graphium as a plain linked-note app and never touch a label. When a note is worth the structure, mark heading blocks as `[Step]` and highlight spans inside them as `[Input]` / `[Tool]` / `[Output]` — and a provenance graph builds up, but only where you choose. Notes, block labels, and inline detail are independent passes over the same text; nothing is all-or-nothing.
 
-| Level | What you do | What you get |
-|-------|------------|--------------|
-| **Just notes** | Write and link notes with `@` references | A linked notebook on your filesystem (or browser IndexedDB on the web) |
-| **Block-level structure** | Mark heading blocks as `[Step]` (or as a phase: `[Plan]` / `[Result]`) | The skeleton of a provenance graph — what happened, in what order |
-| **Inline detail** | Highlight spans inside a block as `[Input]` / `[Tool]` / `[Parameter]` / `[Output]` | A full provenance graph — what was used, with what conditions, what came out |
-
-The `#` block labels and the inline highlights are two passes over the same content, not a single all-or-nothing label. You can write a note with no labels, give it a step structure later, and add inline detail only on the parts that matter. **The provenance layer activates only where you choose** — that gradient *is* the design.
-
-For the deeper rationale, see [docs/CONCEPT.md §6](docs/CONCEPT.md#6-progressive-disclosure-use-as-much-or-as-little-as-you-need).
+See [PROV-DM compliance](#prov-dm-compliance) for what each label maps to, or [CONCEPT §6](docs/CONCEPT.md#6-progressive-disclosure-use-as-much-or-as-little-as-you-need) for the rationale.
 
 ## Try it now
 
