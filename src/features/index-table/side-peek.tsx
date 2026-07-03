@@ -50,9 +50,15 @@ import {
 import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
 import {
   GRAPHIUM_CLIPBOARD_MIME,
+  applyClipboardPayload,
+  buildClipboardPayload,
+  computeIdMap,
+  embedPayloadInHtml,
   extractPayloadFromHtml,
+  flattenBlockIds,
   parseClipboardPayload,
 } from "@features/block-lifecycle/clipboard";
+import { regenInlineEntitiesInBlocks } from "@features/inline-label/regen-on-paste";
 import {
   getMemoSlashMenuItem,
   setMemoPickerCallback,
@@ -408,12 +414,18 @@ function SidePeekInner({
     return entry ? entry.title : null;
   };
 
-  // ペースト処理（メインエディタと同じ挙動に揃える）:
-  // 1) ノートリンク（…#note/<id>）単体 → @タイトル のメンションに変換
-  // 2) 空のリスト項目への paste 救済（BlockNote の paragraph 置換を防ぐ）
-  // 3) URL 単体 → ブックマーク/リンク選択メニュー（UrlPasteMenu）
+  // クリップボード処理（メインエディタ src/note-app.tsx の handleEditorReady 内と挙動を揃える）:
+  //   copy) 選択ブロックの labels / links を buildClipboardPayload でシリアライズし、
+  //         カスタム MIME ＋ text/html の base64 コメントに載せて運ぶ
+  //   paste) Graphium ペイロードがあれば applyClipboardPayload で labels / links を復元し、
+  //          全ペーストで inline entityId を再発番する。以下の救済も行う:
+  //     1) ノートリンク（…#note/<id>）単体 → @タイトル のメンションに変換
+  //     2) 空のリスト項目への paste 救済（BlockNote の paragraph 置換を防ぐ）
+  //     3) URL 単体 → ブックマーク/リンク選択メニュー（UrlPasteMenu）
   // クリップボードリスナーの二重登録に備えてイベント単位の既処理フラグ＋
   // stopImmediatePropagation で 1 回だけ処理する。
+  // ※ ピークは独自の LabelStoreProvider / LinkStoreProvider を持つため、
+  //   effect closure が stale ストアを掴まないよう labelStoreRef / linkStoreRef を使う。
   useEffect(() => {
     const editor = sidePeekEditor;
     if (!editor) return;
@@ -426,67 +438,148 @@ function SidePeekInner({
         setPastedUrl({ url: text, position: computeUrlPasteMenuPosition(editor, blockId), blockId });
       }, 100);
     };
-    const onPaste = (e: ClipboardEvent) => {
-      const text = e.clipboardData?.getData("text/plain")?.trim();
-      // 1) ノートリンク単体 → メンション変換
-      if (text && !/\s/.test(text)) {
-        const m = /#note\/([^/\s#?]+)/.exec(text);
-        if (m) {
-          const fileId = decodeURIComponent(m[1]);
-          const title = resolveNoteLinkTitleRef.current(fileId);
-          if (title) {
-            if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
-            (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
-            if (sourceBlockId) {
-              linkStoreRef.current.addLink({
-                sourceBlockId,
-                targetBlockId: "",
-                targetNoteId: fileId,
-                type: "reference",
-                createdBy: "human",
-              });
-            }
-            // insertInlineContent の onChange で自動的に dirty 化・保存される
-            setTimeout(() => {
-              insertNoteMentionInline(editorRef.current, fileId, title);
-            }, 0);
-            return;
-          }
-        }
+
+    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // に変換する。処理した場合 true を返す（呼び出し元で return する）。
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
+      const m = /#note\/([^/\s#?]+)/.exec(pastedText);
+      if (!m) return false;
+      const fileId = decodeURIComponent(m[1]);
+      const title = resolveNoteLinkTitleRef.current(fileId);
+      if (!title) return false;
+      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
+      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
+      if (sourceBlockId) {
+        linkStoreRef.current.addLink({
+          sourceBlockId,
+          targetBlockId: "",
+          targetNoteId: fileId,
+          type: "reference",
+          createdBy: "human",
+        });
       }
-      // Graphium ペイロード付き（ブロックコピー）はネイティブパースに任せ、
-      // 救済・URL メニューとも対象外にする（メインエディタと同じ挙動）
-      const hasGraphiumPayload =
-        parseClipboardPayload(e.clipboardData?.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
-        extractPayloadFromHtml(e.clipboardData?.getData("text/html"));
-      if (hasGraphiumPayload) return;
-      // 2) 空のリスト系ブロックへのテキスト paste は BlockNote がブロック自体を
-      //    paragraph に置換してしまうため、ブロック型を保ったまま差し込む
+      // insertInlineContent の onChange で自動的に dirty 化・保存される
+      setTimeout(() => {
+        insertNoteMentionInline(editorRef.current, fileId, title);
+      }, 0);
+      return true;
+    };
+
+    // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（メインと同じ Phase 3）。
+    // Chrome はカスタム MIME を OS clipboard へ書き出す際に捨てるため、
+    //   1. 同タブ内で完結する場合に備えて application/x-graphium-clipboard にも setData
+    //   2. OS clipboard 経由でも生存させるため text/html の先頭に base64 ペイロードを埋め込む
+    // capture phase だけだと ProseMirror が後から text/html を上書きするため、bubble phase でも埋め込む。
+    const copyListener = (e: ClipboardEvent) => {
+      try {
+        let blockIds: string[] = [];
+        const selection = editor.getSelection?.();
+        const selectedBlocks = selection?.blocks;
+        if (selectedBlocks && selectedBlocks.length > 0) {
+          blockIds = flattenBlockIds(selectedBlocks);
+        } else {
+          // フォールバック: カーソル位置のブロック 1 つ（部分テキスト選択など）
+          const cursorBlock = editor.getTextCursorPosition?.()?.block;
+          if (cursorBlock?.id) blockIds = [cursorBlock.id];
+        }
+        if (blockIds.length === 0) return;
+        const payload = buildClipboardPayload({
+          blockIds,
+          getLabel: (id) => labelStoreRef.current.getLabel(id),
+          getAttributes: (id) => labelStoreRef.current.getAttributes(id),
+          allLinks: linkStoreRef.current.getAllLinks(),
+        });
+        if (!payload) return;
+        e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
+        const existingHtml = e.clipboardData?.getData("text/html") ?? "";
+        e.clipboardData?.setData("text/html", embedPayloadInHtml(payload, existingHtml));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[Graphium copy] error", err);
+      }
+    };
+
+    const onPaste = (e: ClipboardEvent) => {
+      // 1) 空のリスト系ブロックへのテキスト paste は BlockNote がブロック自体を
+      //    paragraph に置換してしまうため、ブロック型を保ったまま差し込む。
+      //    Graphium ペイロード（複数ブロック）は構造が保たれるため下の payload 処理に流す。
       const cursorBlock = editor.getTextCursorPosition?.()?.block;
       const listBlockTypes = new Set(["checkListItem", "bulletListItem", "numberedListItem"]);
       if (
         cursorBlock &&
         listBlockTypes.has(cursorBlock.type) &&
         Array.isArray(cursorBlock.content) &&
-        cursorBlock.content.length === 0
+        cursorBlock.content.length === 0 &&
+        e.clipboardData
       ) {
-        const plain = e.clipboardData?.getData("text/plain");
-        if (plain) {
+        const hasGraphiumPayload =
+          parseClipboardPayload(e.clipboardData.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
+          extractPayloadFromHtml(e.clipboardData.getData("text/html"));
+        const plain = e.clipboardData.getData("text/plain");
+        if (!hasGraphiumPayload && plain) {
+          const cleaned = plain.replace(/\r?\n+$/g, "");
+          const token = cleaned.trim();
+          if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
           e.preventDefault();
           e.stopImmediatePropagation();
-          const cleaned = plain.replace(/\r?\n+$/g, "");
           editor.updateBlock(cursorBlock, { content: buildPastedTextContent(cleaned) });
           maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
           return;
         }
       }
-      // 3) URL 単体ペースト → ブックマーク選択メニュー
+
+      // 全コピペ共通: 挿入後にインライン entityId を再発番する後処理（メインと同じ Phase E）。
+      // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
+      // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
+      const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
+      const scheduleEntityRegen = () => {
+        setTimeout(() => {
+          const afterIds = flattenBlockIds(editor.document);
+          const newIds = new Set(afterIds.filter((id) => !beforeIdsForRegen.has(id)));
+          if (newIds.size > 0) regenInlineEntitiesInBlocks(editor, newIds);
+        }, 0);
+      };
+
+      // 2) Graphium ペイロード（ブロックコピー）を適用: labels / links を復元する。
+      //    1) 同タブ内はカスタム MIME、2) OS clipboard 経由は text/html コメントから取り出す。
+      const graphiumRaw = e.clipboardData?.getData(GRAPHIUM_CLIPBOARD_MIME);
+      const htmlData = e.clipboardData?.getData("text/html");
+      const payload = parseClipboardPayload(graphiumRaw) ?? extractPayloadFromHtml(htmlData);
+      if (payload) {
+        const beforeIds = new Set(flattenBlockIds(editor.document));
+        // BlockNote のネイティブパースを動かしてから、追加されたブロック ID を確定させる
+        setTimeout(() => {
+          const afterIds = flattenBlockIds(editor.document);
+          const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          const idMap = computeIdMap(payload.blockIds, newIds);
+          if (idMap.size === 0) return;
+          applyClipboardPayload(idMap, payload, {
+            setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+            setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+            addLink: (params) => linkStoreRef.current.addLink(params),
+          });
+        }, 0);
+        scheduleEntityRegen();
+        return;
+      }
+
+      // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
+      scheduleEntityRegen();
+
+      // 3) ノートリンク（…#note/<id>）単体 → @タイトルのメンションに変換
+      const pastedText = e.clipboardData?.getData("text/plain")?.trim();
+      if (pastedText && !/\s/.test(pastedText)) {
+        if (tryConvertNoteLinkPaste(e, pastedText)) return;
+      }
+
+      // 4) URL 単体ペースト → ブックマーク選択メニュー
       if (!cursorBlock) return;
       maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), cursorBlock.id);
     };
+
     let dom: HTMLElement | null = null;
     let attempts = 0;
     const attach = () => {
@@ -496,10 +589,16 @@ function SidePeekInner({
         return;
       }
       dom.addEventListener("paste", onPaste, true);
+      // copy は capture / bubble の両方に登録する（capture で setData した内容を
+      // ProseMirror が clearData している場合、bubble の最後でもう一度 setData する）
+      dom.addEventListener("copy", copyListener, true);
+      dom.addEventListener("copy", copyListener, false);
     };
     attach();
     return () => {
       dom?.removeEventListener("paste", onPaste, true);
+      dom?.removeEventListener("copy", copyListener, true);
+      dom?.removeEventListener("copy", copyListener, false);
     };
   }, [sidePeekEditor]);
 
