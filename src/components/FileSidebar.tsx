@@ -10,6 +10,7 @@ import { useT, getDisplayLabelName } from "../i18n";
 import type { MediaIndex, MediaType } from "../features/asset-browser";
 import { countByType } from "../features/asset-browser";
 import type { GraphiumIndex } from "../features/navigation/index-file";
+import { NavBackButton } from "./NavBackButton";
 
 export type FileSidebarProps = {
   activeFileId: string | null;
@@ -17,6 +18,10 @@ export type FileSidebarProps = {
   onNewNote: () => void;
   /** Quick Memo ダイアログを開く（思いつきを 1 行で書き留める入口） */
   onNewMemo?: () => void;
+  /** ヘッダーの「戻る」操作（履歴を 1 段戻す）。canGoBack が false のときは非表示。 */
+  onBack?: () => void;
+  /** 戻れる履歴があるか。 */
+  canGoBack?: boolean;
   onRefresh: () => void;
   onShowReleaseNotes: () => void;
   onShowSettings: () => void;
@@ -116,6 +121,8 @@ export function FileSidebar({
   onSelect,
   onNewNote,
   onNewMemo,
+  onBack,
+  canGoBack,
   onRefresh,
   onShowReleaseNotes,
   onShowSettings,
@@ -227,6 +234,9 @@ export function FileSidebar({
             <img src={`${import.meta.env.BASE_URL}logo-text.png`} alt="Graphium" className="h-[18px] mt-px" />
           </div>
           <div className="flex items-center gap-2">
+            {onBack && (
+              <NavBackButton onBack={onBack} canGoBack={canGoBack ?? false} />
+            )}
             <button
               onClick={onRefresh}
               title={t("sidebar.refresh")}
