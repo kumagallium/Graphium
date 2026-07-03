@@ -522,6 +522,14 @@ export const ja: Record<string, string> = {
   "settings.serverStorage.savedReloading": "保存しました。再読み込みします…",
   "settings.serverStorage.tokenHelp": "サーバーが GRAPHIUM_AUTH_TOKEN を要求しています。docker-compose の環境変数で設定したトークンと同じ値を入力してください。",
   "settings.serverStorage.noAuth": "このサーバーは認証なしで利用できます（GRAPHIUM_AUTH_TOKEN が未設定）。本番運用ではトークンの設定を推奨します。",
+  // ── エクスポート / バックアップ ──
+  "settings.export.title": "エクスポート / バックアップ",
+  "settings.export.help": "全ノートを Markdown ファイルとして、または生データ (.graphium.json) のバックアップとしてダウンロードできます。バックアップにはアーカイブ・ゴミ箱を含む全ノートと Knowledge・Skill ドキュメントが含まれます（画像・PDF などのメディアファイルは含みません）。",
+  "settings.export.markdownZip": "全ノートを書き出す (Markdown)",
+  "settings.export.backupZip": "バックアップをダウンロード (JSON)",
+  "settings.export.done": "{count} 件を書き出しました。",
+  "settings.export.doneWithFailures": "{count} 件を書き出しました（{failed} 件失敗 — 詳細はコンソールを確認）。",
+  "settings.export.failed": "書き出しに失敗しました",
   // ── 接続状態 ──
   "settings.health.title": "接続状態",
   "settings.health.checking": "確認中...",
@@ -1264,6 +1272,9 @@ export const ja: Record<string, string> = {
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "エクスポート中...",
+
+  // ── Markdown エクスポート ──
+  "markdown.export": "Markdown",
 
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "来歴ラベルの表記",

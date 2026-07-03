@@ -1,0 +1,177 @@
+// sanitize-blocks.ts（一括 Markdown 変換前のブロックサニタイズ）のユニットテスト
+
+import { describe, it, expect } from "vitest";
+import { sanitizeBlocksForMarkdown, extractInlineText, type SanitizeSchemaInfo } from "./sanitize-blocks";
+
+// default スキーマ相当のテスト用 schema 情報
+// （実物は doc-to-markdown.ts が defaultBlockSpecs / defaultStyleSpecs から導出する）
+const SCHEMA: SanitizeSchemaInfo = {
+  knownBlockTypes: new Set([
+    "paragraph", "heading", "quote", "bulletListItem", "numberedListItem",
+    "checkListItem", "codeBlock", "table", "file", "image", "video", "audio",
+  ]),
+  knownStyles: new Set([
+    "bold", "italic", "underline", "strike", "code", "textColor", "backgroundColor",
+  ]),
+};
+
+const text = (t: string, styles: Record<string, unknown> = {}) => ({ type: "text", text: t, styles });
+
+describe("sanitizeBlocksForMarkdown", () => {
+  it("標準ブロックはそのまま維持する", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{ id: "b1", type: "heading", props: { level: 2 }, content: [text("Title")], children: [] }],
+      SCHEMA,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("heading");
+    expect(result[0].props).toEqual({ level: 2 });
+    expect(result[0].content).toEqual([text("Title")]);
+    // id はヘッドレスエディタ側で採番させるため落とす
+    expect(result[0].id).toBeUndefined();
+  });
+
+  it("未知のカスタム style（来歴ハイライト）を取り除き、既知 style は残す", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "paragraph",
+        content: [text("KOH aq", { bold: true, inlineMaterial: "entity-123" })],
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([text("KOH aq", { bold: true })]);
+  });
+
+  it("bookmark ブロックをリンク付き paragraph に変換する", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "bookmark",
+        props: { url: "https://example.com/x", title: "Example", domain: "example.com" },
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].type).toBe("paragraph");
+    expect(result[0].content).toEqual([
+      { type: "link", href: "https://example.com/x", content: [text("Example")] },
+    ]);
+  });
+
+  it("pdfViewer ブロックをファイル名リンクの paragraph に変換する", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "pdfViewer", props: { url: "local-media://abc", name: "paper.pdf" }, children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].type).toBe("paragraph");
+    expect(result[0].content).toEqual([
+      { type: "link", href: "local-media://abc", content: [text("paper.pdf")] },
+    ]);
+  });
+
+  it("callout ブロックは本文を維持した paragraph に変換する", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "callout", props: { variant: "warning" }, content: [text("注意書き")], children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].type).toBe("paragraph");
+    expect(result[0].content).toEqual([text("注意書き")]);
+  });
+
+  it("未知ブロックはプレーンテキストの paragraph にフォールバックする", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "futureBlock", content: [text("hello "), text("world")], children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].type).toBe("paragraph");
+    expect(result[0].content).toEqual([text("hello world")]);
+  });
+
+  it("children を再帰的にサニタイズする", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "bulletListItem",
+        content: [text("parent")],
+        children: [{
+          type: "bulletListItem",
+          content: [text("child", { inlineTool: "entity-9" })],
+          children: [],
+        }],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].children[0].content).toEqual([text("child")]);
+  });
+
+  it("link inline の中の style もサニタイズする", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "paragraph",
+        content: [{
+          type: "link",
+          href: "https://example.com",
+          content: [text("site", { inlineOutput: "e-1", italic: true })],
+        }],
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([
+      { type: "link", href: "https://example.com", content: [text("site", { italic: true })] },
+    ]);
+  });
+
+  it("table のセル内 style をサニタイズする（配列セル形式）", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [{ cells: [[text("A", { inlineMaterial: "e-1" })], [text("B")]] }],
+        },
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].content.rows[0].cells).toEqual([[text("A")], [text("B")]]);
+  });
+
+  it("table の tableCell オブジェクト形式のセルもサニタイズする", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [{ cells: [{ type: "tableCell", content: [text("X", { inlineTool: "e" })] }] }],
+        },
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].content.rows[0].cells).toEqual([
+      { type: "tableCell", content: [text("X")] },
+    ]);
+  });
+
+  it("配列でない入力には空配列を返す", () => {
+    expect(sanitizeBlocksForMarkdown(undefined, SCHEMA)).toEqual([]);
+    expect(sanitizeBlocksForMarkdown(null, SCHEMA)).toEqual([]);
+  });
+});
+
+describe("extractInlineText", () => {
+  it("text inline を連結する", () => {
+    expect(extractInlineText([text("a"), text("b")])).toBe("ab");
+  });
+
+  it("link inline の中のテキストも拾う", () => {
+    expect(
+      extractInlineText([{ type: "link", href: "x", content: [text("label")] }]),
+    ).toBe("label");
+  });
+
+  it("配列以外は空文字を返す", () => {
+    expect(extractInlineText(undefined)).toBe("");
+    expect(extractInlineText({})).toBe("");
+  });
+});

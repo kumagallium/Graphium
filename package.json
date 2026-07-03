@@ -65,6 +65,7 @@
     "cytoscape-edgehandles": "^4.0.1",
     "cytoscape-fcose": "^2.2.0",
     "elkjs": "^0.11.1",
+    "fflate": "^0.8.3",
     "hono": "^4.12.12",
     "html2pdf.js": "^0.14.0",
     "linkedom": "^0.18.12",
