@@ -290,11 +290,74 @@ fn shutdown_ack(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-/// 任意 PID にシグナルを送って終了させる。
+/// 指定 PID のコマンドラインを取得する。取得できなければ None。
+/// macOS/Linux: `ps -p <pid> -o command=` の 1 行。
+/// Windows: PowerShell の CIM 経由で CommandLine を引く。
+fn process_command_line(pid: u32) -> Option<String> {
+    #[cfg(unix)]
+    let output = std::process::Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "command="])
+        .output()
+        .ok()?;
+    #[cfg(windows)]
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"
+            ),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+    let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if line.is_empty() {
+        None
+    } else {
+        Some(line)
+    }
+}
+
+/// 対象 PID が Graphium sidecar プロセスか判定する。
+///
+/// sidecar は必ず `node <...>/sidecar/server.mjs` として起動される
+/// (start_native_sidecar / fetch-node.mjs 参照)。消えた worktree の
+/// 幽霊 sidecar も同じ形で起動しているため、この判定で回収できる。
+/// kill 対象をこの形のプロセスに限定し、webview から任意 PID を落とせる
+/// 状態を塞ぐ。
+fn is_graphium_sidecar_process(pid: u32) -> bool {
+    match process_command_line(pid) {
+        Some(cmd) => {
+            let lower = cmd.to_lowercase();
+            // node ランタイム上で server.mjs（sidecar のエントリ）を動かしている
+            // プロセスに限定する。パス区切りは OS 差を吸収するため両方を許容。
+            let is_node = lower.contains("node");
+            let is_sidecar_entry =
+                lower.contains("sidecar/server.mjs") || lower.contains("sidecar\\server.mjs");
+            is_node && is_sidecar_entry
+        }
+        None => false,
+    }
+}
+
+/// Graphium sidecar プロセスにシグナルを送って終了させる。
 /// port 3001 に居座る "他人 sidecar"（消えた worktree の幽霊など）を回収するために使う。
 /// Unix: SIGTERM、Windows: taskkill /F /PID
+///
+/// **セキュリティ**: 任意 PID を落とせないよう、対象が Graphium sidecar
+/// (`node .../sidecar/server.mjs`) である場合のみ実行する。それ以外は Err を返す。
 #[tauri::command]
 fn kill_pid(pid: u32) -> Result<(), String> {
+    if !is_graphium_sidecar_process(pid) {
+        return Err(format!(
+            "refusing to kill pid={pid}: not a Graphium sidecar process"
+        ));
+    }
+
     #[cfg(unix)]
     let mut command = {
         let mut c = std::process::Command::new("/bin/kill");
