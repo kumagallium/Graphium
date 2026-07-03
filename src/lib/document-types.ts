@@ -591,6 +591,14 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  /**
+   * @ メンションで添付されたノートの参照（user メッセージのみ）。
+   * 送信時に AI へ展開した添付の中身を、編集&再実行・回答の再生成で
+   * 再展開できるようにするために持つ。content 末尾の「📎 タイトル」は
+   * 表示用テキストで、実際の再展開はこの参照から行う。
+   * optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   */
+  attachments?: { id: string; title: string; isWiki?: boolean }[];
 };
 
 // スコープに紐づく AI チャット

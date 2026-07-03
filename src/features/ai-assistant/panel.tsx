@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
 import { useAiAssistant } from "./store";
+import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
 import { getWikiTitleToIdMap } from "../wiki/retriever";
 import { fetchModels } from "./api";
 import { ensureSidecar } from "../../lib/sidecar";
@@ -416,12 +417,20 @@ export function AiAssistantPanel({
                 onReplace={canReplace ? onReplaceBlocks : undefined}
                 onEditResend={
                   msg.role === "user"
-                    ? (newText) => onSubmit(newText, undefined, scope, i)
+                    ? (newText) => onSubmit(newText, msg.attachments, scope, i)
                     : undefined
                 }
                 onRegenerate={
                   msg.role === "assistant" && messages[i - 1]?.role === "user"
-                    ? () => onSubmit(messages[i - 1].content, undefined, scope, i - 1)
+                    ? () => {
+                        // 元の質問文（添付サフィックス除去済み）と添付参照で再実行。
+                        // 添付の中身は handleAiChatSubmit が再展開する。
+                        const prev = messages[i - 1];
+                        const question = prev.attachments?.length
+                          ? stripAttachmentSuffix(prev.content)
+                          : prev.content;
+                        onSubmit(question, prev.attachments, scope, i - 1);
+                      }
                     : undefined
                 }
                 onFork={
@@ -647,7 +656,14 @@ function ChatBubble({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const startEdit = () => {
-    setDraft(message.content);
+    // 添付参照があるメッセージは表示用サフィックス（📎 行）を除いた生の質問文から
+    // 編集を始める（再送時に handleAiChatSubmit がサフィックスを付け直す）。
+    // 添付参照の無い旧メッセージは content をそのまま使う。
+    setDraft(
+      message.attachments?.length
+        ? stripAttachmentSuffix(message.content)
+        : message.content,
+    );
     setEditing(true);
   };
   const submitEdit = () => {
@@ -747,6 +763,13 @@ function ChatBubble({
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       {isUser && editing ? (
         <div className="w-full max-w-[90%] flex flex-col gap-1">
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="text-xs text-muted-foreground">
+              {t("aiChat.editAttachmentsNote", {
+                titles: message.attachments.map(formatAttachmentTitle).join(", "),
+              })}
+            </div>
+          )}
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

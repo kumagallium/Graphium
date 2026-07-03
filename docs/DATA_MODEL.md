@@ -303,7 +303,17 @@ type ScopeChat = {
   id: string;
   scopeBlockId: string;
   scopeType: "heading" | "block" | "page";
-  messages: { role: "user" | "assistant"; content: string; timestamp: string }[];
+  messages: {
+    role: "user" | "assistant";
+    content: string;
+    timestamp: string;
+    // User messages only: references to notes attached via @-mention.
+    // The attached notes' contents are expanded into the model prompt at
+    // send time (not stored in `content`); these references allow the
+    // expansion to be reproduced when the message is edited & resent or
+    // the response is regenerated.
+    attachments?: { id: string; title: string; isWiki?: boolean }[];
+  }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent
   // chat's id and the index of the last message carried over (inclusive).

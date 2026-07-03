@@ -647,6 +647,7 @@ export const en: Record<string, string> = {
   "aiChat.editAndResend": "Resend",
   "aiChat.cancelEdit": "Cancel",
   "aiChat.editDiscardNote": "Resending replaces the conversation after this message.",
+  "aiChat.editAttachmentsNote": "📎 {titles} will be attached again",
   "aiChat.regenerate": "Regenerate response",
   "aiChat.forkFromHere": "New chat from here",
   "aiChat.forkedFrom": "Forked",
