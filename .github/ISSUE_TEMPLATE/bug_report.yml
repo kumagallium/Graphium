@@ -1,0 +1,74 @@
+name: Bug report
+description: Report something that is broken or behaving unexpectedly
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please search
+        [existing issues](https://github.com/kumagallium/Graphium/issues) first to avoid duplicates.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do? Be as specific as you can.
+      placeholder: |
+        1. Open a note
+        2. Highlight a span and label it as [Input]
+        3. Open the provenance graph
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Screenshots are welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: distribution
+    attributes:
+      label: How are you running Graphium?
+      options:
+        - Desktop app — macOS (Apple Silicon)
+        - Desktop app — Windows (x64)
+        - Browser (GitHub Pages)
+        - Self-hosted (Docker)
+        - Development build (pnpm dev)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: e.g. macOS 15.5 / Windows 11 / Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Graphium version
+      description: Shown in the release you downloaded (e.g. 0.16.9). For the browser version, write "GitHub Pages".
+      placeholder: e.g. 0.16.9
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Paste any relevant logs.
+        - **Desktop (macOS)**: the AI backend (sidecar) log is at `~/Library/Logs/Graphium/sidecar.log`
+        - **Desktop (Windows)**: `%LOCALAPPDATA%\com.graphium.app\logs\sidecar.log`
+        - **Browser / Docker**: browser DevTools console output, or `docker compose logs`
+      render: text
+    validations:
+      required: false
