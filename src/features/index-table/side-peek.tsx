@@ -20,6 +20,7 @@ import {
 } from "../block-alignment";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -781,32 +782,26 @@ function SidePeekInner({
     if (!editor || !docRef.current) return;
 
     const currentBlocks = editor.document;
-    const labelSnapshot = labelStoreRef.current.getSnapshot();
-    const labelsObj: Record<string, string> = {};
-    for (const [k, v] of labelSnapshot.labels) {
-      labelsObj[k] = v;
-    }
+    // ページ差分フィールド（labels / provLinks / knowledgeLinks / blockAlignments）は
+    // メインエディタ（note-app.tsx buildDocument）と同じ組み立てを共有モジュールに集約。
+    // リンクは restoreLinks 済みの linkStore を真実として layer 別に書き出す
+    // （/claims /Insights の引用で追加した reference リンクを永続化するため）。
+    const { labels, provLinks, knowledgeLinks, blockAlignments } = buildSavedPageFields({
+      labelStore: labelStoreRef.current,
+      linkStore: linkStoreRef.current,
+      blockAlignmentStore: blockAlignmentStoreRef.current,
+    });
 
-    // リンクを linkStore から書き戻す（main editor の buildDocument と同じ方式）。
-    // 従来は元の page.provLinks/knowledgeLinks をそのまま温存していたが、
-    // /claims /Insights の引用で追加した reference リンクを永続化するため、
-    // 開いたときに restoreLinks 済みの linkStore を真実として layer 別に書き出す。
-    const allLinks = linkStoreRef.current.getAllLinks();
-    const provLinks = allLinks.filter((l) => l.layer === "prov");
-    const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
-
-    // ブロック配置揃え（table / audio / file）。空なら undefined（フィールド省略）。
-    const alignmentsSnapshot = blockAlignmentStoreRef.current.getSnapshot();
-    const blockAlignments =
-      Object.keys(alignmentsSnapshot).length > 0 ? alignmentsSnapshot : undefined;
-
+    // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
+    // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
+    // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
     const updatedDoc: GraphiumDocument = {
       ...docRef.current,
       pages: [
         {
           ...docRef.current.pages[0],
           blocks: currentBlocks,
-          labels: labelsObj,
+          labels,
           provLinks,
           knowledgeLinks,
           blockAlignments,
@@ -817,18 +812,20 @@ function SidePeekInner({
 
     setSaveStatus("saving");
     try {
-      const isWiki = noteId.startsWith("wiki:");
-      if (isWiki) {
-        await getActiveProvider().saveWikiFile?.(noteId.replace(/^wiki:/, ""), updatedDoc);
-      } else {
-        await getActiveProvider().saveFile(noteId, updatedDoc);
-      }
-      docRef.current = updatedDoc;
-      setSaveStatus("saved");
-      // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
-      // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
-      // 旧内容がディスクへ書き戻される。
-      onSavedRef.current?.(noteId, updatedDoc);
+      // saveNoteDoc が provider への保存と wiki:/skill: の振り分けを担い、
+      // 保存成功時のみ onSaved を発火する（#514: 保存後 reindex 漏れ防止の順序を強制）。
+      await saveNoteDoc({
+        noteId,
+        doc: updatedDoc,
+        onSaved: (savedId, savedDoc) => {
+          docRef.current = savedDoc;
+          setSaveStatus("saved");
+          // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
+          // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
+          // 旧内容がディスクへ書き戻される。
+          onSavedRef.current?.(savedId, savedDoc);
+        },
+      });
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
       setSaveStatus("dirty");
