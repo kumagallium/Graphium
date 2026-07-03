@@ -59,25 +59,19 @@ The vocabulary is generic: labs, kitchens, workshops, codebases, classrooms.
 - **Engineers** — investigation notes that survive the next post-mortem.
 - **Students & writers** — a second brain that links courses, books, and conversations — and explains itself.
 
-### Learn more before you install
+### Dig deeper (optional)
 
-- 📘 [**CONCEPT**](docs/CONCEPT.md) ([日本語](docs/CONCEPT.ja.md)) — the design philosophy: why provenance matters, the two brains, the hourglass.
+Not needed to get started — these are for the curious and for contributors:
+
+- 📘 [**CONCEPT**](docs/CONCEPT.md) ([日本語](docs/CONCEPT.ja.md)) — the thinking behind Graphium: why provenance matters, the two brains, the hourglass.
 - 🏗️ [**ARCHITECTURE**](docs/ARCHITECTURE.md) — layers, distribution targets, the Wiki pipeline, known seams.
 - 🗂️ [**DATA_MODEL**](docs/DATA_MODEL.md) — the on-disk JSON shapes, schemas, and compatibility rules.
 
-## Use as much, or as little, as you need
+## Label as much, or as little, as you want
 
-Graphium is designed around **progressive disclosure**. Labelling is optional, and it comes in two layers you can adopt independently.
+You can use Graphium as a plain linked-note app and never touch a label. When a note is worth the structure, mark heading blocks as `[Step]` and highlight spans inside them as `[Input]` / `[Tool]` / `[Output]` — and a provenance graph builds up, but only where you choose. Notes, block labels, and inline detail are independent passes over the same text; nothing is all-or-nothing.
 
-| Level | What you do | What you get |
-|-------|------------|--------------|
-| **Just notes** | Write and link notes with `@` references | A linked notebook on your filesystem (or browser IndexedDB on the web) |
-| **Block-level structure** | Mark heading blocks as `[Step]` (or as a phase: `[Plan]` / `[Result]`) | The skeleton of a provenance graph — what happened, in what order |
-| **Inline detail** | Highlight spans inside a block as `[Input]` / `[Tool]` / `[Parameter]` / `[Output]` | A full provenance graph — what was used, with what conditions, what came out |
-
-The `#` block labels and the inline highlights are two passes over the same content, not a single all-or-nothing label. You can write a note with no labels, give it a step structure later, and add inline detail only on the parts that matter. **The provenance layer activates only where you choose** — that gradient *is* the design.
-
-For the deeper rationale, see [docs/CONCEPT.md §6](docs/CONCEPT.md#6-progressive-disclosure-use-as-much-or-as-little-as-you-need).
+See [PROV-DM compliance](#prov-dm-compliance) for what each label maps to, or [CONCEPT §6](docs/CONCEPT.md#6-progressive-disclosure-use-as-much-or-as-little-as-you-need) for the rationale.
 
 ## Try it now
 
