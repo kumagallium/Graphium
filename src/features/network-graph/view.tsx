@@ -463,7 +463,7 @@ export function NetworkGraphPanel({
   if (data.nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-        派生関係がありません
+        {t("panel.graph.empty")}
       </div>
     );
   }
@@ -472,15 +472,15 @@ export function NetworkGraphPanel({
     <div className="px-3 py-2 border-b border-border flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
       <span className="flex items-center gap-1">
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.current }} />
-        現在
+        {t("panel.graph.legend.current")}
       </span>
       <span className="flex items-center gap-1">
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop1 }} />
-        1ホップ
+        {t("panel.graph.legend.hop1")}
       </span>
       <span className="flex items-center gap-1">
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_COLORS.hop2 }} />
-        2ホップ
+        {t("panel.graph.legend.hop2")}
       </span>
       {KNOWLEDGE_KIND_LEGEND_ORDER.map((kind) => (
         <span key={kind} className="flex items-center gap-1">
@@ -492,11 +492,11 @@ export function NetworkGraphPanel({
         </span>
       ))}
       <span className="ml-auto flex items-center gap-1">
-        <span>{data.nodes.length} ノード / {data.edges.length} エッジ</span>
+        <span>{t("panel.graph.stats", { nodes: String(data.nodes.length), edges: String(data.edges.length) })}</span>
         <button
           onClick={() => setExpanded((v) => !v)}
           className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title={expanded ? "閉じる (Esc)" : "全画面表示"}
+          title={expanded ? t("panel.graph.collapse") : t("panel.graph.expand")}
         >
           {expanded ? <X size={12} /> : <Maximize2 size={12} />}
         </button>
