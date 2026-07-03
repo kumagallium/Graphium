@@ -136,16 +136,6 @@ export const BookmarkBlock = createReactBlockSpec(
               />
             </div>
           )}
-          {/* 外部ブラウザで開くボタン（カード右上） */}
-          <button
-            type="button"
-            style={styles.externalBtn}
-            title={t("block.bookmark.openExternal")}
-            aria-label={t("block.bookmark.openExternal")}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); openExternal(); }}
-          >
-            ↗
-          </button>
         </div>
       );
     },
@@ -155,7 +145,6 @@ export const BookmarkBlock = createReactBlockSpec(
 // ── スタイル ──
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    position: "relative",
     display: "flex",
     border: "1px solid var(--color-border-subtle)",
     borderRadius: 8,
@@ -167,26 +156,6 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "border-color 0.15s, box-shadow 0.15s",
     maxWidth: "100%",
     minHeight: 80,
-  },
-  externalBtn: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 24,
-    height: 24,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 6,
-    background: "var(--color-card)",
-    color: "var(--color-text-tertiary)",
-    cursor: "pointer",
-    fontSize: 13,
-    lineHeight: 1,
-    opacity: 0.85,
-    zIndex: 1,
   },
   cardBody: {
     flex: 1,

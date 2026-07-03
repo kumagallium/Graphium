@@ -1485,7 +1485,6 @@ export const en: Record<string, string> = {
   // カスタムブロック
   "block.pdf.placeholder": "Drag & drop a PDF file, or insert one from the slash menu",
   "block.bookmark.placeholder": "🔗 Enter a URL",
-  "block.bookmark.openExternal": "Open in a new tab",
 
   // 共通
   "common.openMenu": "Open menu",
