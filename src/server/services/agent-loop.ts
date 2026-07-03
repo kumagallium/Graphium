@@ -6,6 +6,7 @@ import type { ModelConfig } from "../config/models.js";
 import { recordUsage, extractTokenFields } from "./llm-usage.js";
 import { runTextToolsLoop } from "./agent-loop-text-tools.js";
 import { toWellFormed, sanitizeMessages } from "./well-formed-text.js";
+import { CodedError, type AiErrorCode } from "../../lib/ai-error-codes.js";
 
 export type AgentRunParams = {
   model: LanguageModel;
@@ -53,10 +54,15 @@ export type ToolCallRecord = {
  */
 /**
  * LLM 呼び出しで生じた認証エラー（401 / authentication_error）を、ユーザーが次に
- * 何をすべきか分かる日本語メッセージへ変換する。認証エラーでなければ null を返す。
+ * 何をすべきか分かるメッセージ + 機械可読コードへ変換する。認証エラーでなければ null を返す。
+ * メッセージはサーバー発の英語フォールバック（サーバーは locale を知らない）。
+ * クライアントは code を i18n 文言に置き換える（src/lib/ai-error.ts の localizeAiError）。
  * 全 AI 機能（翻訳・Wiki・Chat 等）は runAgentLoop を通るため、ここ 1 箇所で導線を集約できる。
  */
-export function describeAuthError(err: unknown, provider?: string): string | null {
+export function describeAuthError(
+  err: unknown,
+  provider?: string,
+): { message: string; code: AiErrorCode } | null {
   const e = err as { statusCode?: number; status?: number; message?: string } | undefined;
   const status = e?.statusCode ?? e?.status;
   const msg = String(e?.message ?? err ?? "").toLowerCase();
@@ -69,18 +75,27 @@ export function describeAuthError(err: unknown, provider?: string): string | nul
   if (!isAuth) return null;
   if (provider === "claude-subscription") {
     // サブスク（Claude Code CLI 経由）は OAuth セッション切れが原因。API キー再設定では直らない。
-    return "Claude のサブスク認証が切れています。ターミナルで `claude` を実行して再ログインし、Graphium を再起動してから、もう一度お試しください。";
+    return {
+      message:
+        "Claude subscription authentication has expired. Run `claude` in a terminal to log in again, then restart Graphium and retry.",
+      code: "SUBSCRIPTION_AUTH_EXPIRED",
+    };
   }
-  return "モデルの API キーが無効か期限切れです。Settings → AI Setup でキーを確認してください。";
+  return {
+    message:
+      "The model API key is invalid or expired. Check the key in Settings → AI Setup.",
+    code: "INVALID_API_KEY",
+  };
 }
 
 export async function runAgentLoop(params: AgentRunParams): Promise<AgentRunResult> {
   try {
     return await runAgentLoopInner(params);
   } catch (err) {
-    // 認証エラー（401）だけ provider 別の導線メッセージへ変換。それ以外はそのまま投げ直す。
+    // 認証エラー（401）だけ provider 別の導線メッセージ + code へ変換。それ以外はそのまま投げ直す。
+    // CodedError の code は各ルートの catch（errorBody）が JSON レスポンスへ通す。
     const friendly = describeAuthError(err, params.modelConfig?.provider);
-    if (friendly) throw new Error(friendly);
+    if (friendly) throw new CodedError(friendly.message, friendly.code);
     throw err;
   }
 }

@@ -6,6 +6,7 @@
 // PDF 固有のロジックは含まれていないため）。
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
 
@@ -67,8 +68,8 @@ export async function ingestDocxToProv(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（localizeAiError が i18n 表示する）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   return await res.json();

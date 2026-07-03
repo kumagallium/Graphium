@@ -19,6 +19,7 @@ import {
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
+import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
 
 const app = new Hono();
 
@@ -31,17 +32,14 @@ app.post("/ingest-url", async (c) => {
   }>();
 
   if (!body.url) {
-    return c.json({ error: "url は必須です" }, 400);
+    return c.json({ error: "url is required" }, 400);
   }
 
   // モデル解決: ヘッダー → body.model → デフォルト
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
 
   if (!modelConfig) {
-    return c.json(
-      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   // URL fetch
@@ -53,13 +51,12 @@ app.post("/ingest-url", async (c) => {
     if (typeof e?.status === "number" && typeof e?.message === "string") {
       return c.json({ error: e.message }, e.status as 400 | 500);
     }
-    const message = err instanceof Error ? err.message : "不明なエラー";
-    return c.json({ error: message }, 500);
+    return c.json(errorBody(err), 500);
   }
 
   if (!page.text || page.text.length < 50) {
     return c.json(
-      { error: "ページから十分なテキストを取得できませんでした。" },
+      { error: "Could not extract enough text from the page." },
       400,
     );
   }
@@ -91,7 +88,7 @@ app.post("/ingest-url", async (c) => {
 
     if (parsed.blocks.length === 0) {
       return c.json(
-        { error: "LLM が有効な PROV 構造を生成できませんでした。" },
+        { error: "The LLM could not generate a valid PROV structure." },
         502,
       );
     }
@@ -106,9 +103,9 @@ app.post("/ingest-url", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("PROV ingest-url error:", err);
-    return c.json({ error: message }, 500);
+    // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
   }
 });
 
@@ -124,17 +121,14 @@ app.post("/ingest-pdf", async (c) => {
 
   if (!body.text || body.text.trim().length < 50) {
     return c.json(
-      { error: "PDF から十分なテキストを取得できませんでした。" },
+      { error: "Could not extract enough text from the PDF." },
       400,
     );
   }
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) {
-    return c.json(
-      { error: "モデルが登録されていません。Settings → AI Setup からモデルを追加してください。" },
-      400,
-    );
+    return c.json(noModelRegisteredBody(), 400);
   }
 
   // 抽出テキスト冒頭に出力言語ヒントを再掲する。長文中で system 末尾の指示が
@@ -170,7 +164,7 @@ app.post("/ingest-pdf", async (c) => {
 
     if (parsed.blocks.length === 0) {
       return c.json(
-        { error: "LLM が有効な PROV 構造を生成できませんでした。" },
+        { error: "The LLM could not generate a valid PROV structure." },
         502,
       );
     }
@@ -184,9 +178,9 @@ app.post("/ingest-pdf", async (c) => {
       model: result.model,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "不明なエラー";
     console.error("PROV ingest-pdf error:", err);
-    return c.json({ error: message }, 500);
+    // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
+    return c.json(errorBody(err), 500);
   }
 });
 

@@ -269,6 +269,13 @@ export const ja: Record<string, string> = {
   "settings.aiNotConfigured": "AI モデルが登録されていません。設定 → AI Setup からモデルを追加してください。",
   "settings.aiSetupCta": "AI をセットアップ",
 
+  // ── AI エラー（サーバーの機械可読 code → 表示文言。src/lib/ai-error.ts が参照） ──
+  "aiError.noModelRegistered": "AI モデルが登録されていません。設定 → AI Setup からモデルを追加してください。",
+  "aiError.subscriptionAuthExpired": "Claude のサブスク認証が切れています。ターミナルで `claude` を実行して再ログインし、Graphium を再起動してください。",
+  "aiError.invalidApiKey": "モデルの API キーが無効か期限切れです。設定 → AI Setup でキーを確認してください。",
+  "aiError.apiKeyForbidden": "API キーにこの操作の権限がありません。",
+  "aiError.embeddingModelUnsupported": "Embedding は OpenAI 互換モデルのみ対応です。設定 → AI Setup で OpenAI 互換モデルを追加してください。",
+
   // ── AI チャット ──
   "aiChat.title": "AI チャット",
   "aiChat.history": "チャット履歴",

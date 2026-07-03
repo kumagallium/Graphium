@@ -188,6 +188,7 @@ import {
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
+import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
 import { exportNoteToPdf } from "./features/pdf-export";
 import { exportNoteToMarkdown } from "./features/markdown-export";
 import { exportProvJsonLd, selectNoteScopedWikiIds, type WikiEntityInfo } from "./features/prov-export";
@@ -2254,9 +2255,8 @@ function NoteEditorInner({
         aiAssistant.setLoading(false);
         markDirty();
       } catch (err) {
-        aiAssistant.setError(
-          err instanceof Error ? err.message : "AI 実行に失敗しました",
-        );
+        // 既知の code（NO_MODEL_REGISTERED / 401 系）は i18n 文言に変換して表示する
+        aiAssistant.setError(localizeAiError(err));
       }
     },
     [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp, mediaIndex],
@@ -2364,6 +2364,8 @@ function NoteEditorInner({
       const h = composerHandlersRef.current;
 
       if (mode === "ask") {
+        // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+        if (!ensureAgentConfigured()) return;
         // Cmd+K で開く Composer は「新しい問いを立てる」ショートカットとして扱う。
         // 既存チャットがあれば履歴 (chats) に退避してから新セッションを開始する。
         // チャット欄を開いている状態での追加質問は、チャット欄の input を使えばよい。
@@ -2383,10 +2385,8 @@ function NoteEditorInner({
         return;
       }
 
-      if (!isAgentConfigured()) {
-        window.alert(tStatic("settings.aiNotConfigured"));
-        return;
-      }
+      // 素の window.alert ではなく、共通ガード（トースト + 設定 AI タブ導線）に統一する
+      if (!ensureAgentConfigured()) return;
 
       try {
         if (mode === "compose") {
@@ -2402,7 +2402,8 @@ function NoteEditorInner({
         }
       } catch (err) {
         console.error("[Composer] submit failed:", err);
-        const baseMsg = err instanceof Error ? err.message : tStatic("aiChat.runFailed");
+        // 既知の code（NO_MODEL_REGISTERED / 401 系）は i18n 文言に変換して表示する
+        const baseMsg = localizeAiError(err);
         // ネットワーク系（"failed to fetch" 等）は原因切り分け用に API base と Tauri 判定を併記する。
         // 検証者がそのままコピーして共有できるよう、複数行の alert で出す。
         const isNetworkErr = /failed to fetch|networkerror|err_/i.test(baseMsg);
@@ -2523,6 +2524,10 @@ function NoteEditorInner({
       answer: string,
       onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
     ): Promise<KnowledgeCandidate[]> => {
+      // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
+      // [] を返すと候補ピッカーが「候補が見つからなかった」と誤表示するため、
+      // throw で静かに中断する（panel 側の catch は表示を出さずリセットする）。
+      if (!ensureAgentConfigured()) throw new Error("AI model not configured");
       const cleaned = cleanSuggestionText(answer);
       const model = getSelectedModel() || null;
       const noteTitle = initialDoc?.title || "Chat";
@@ -3968,7 +3973,15 @@ export function NoteApp() {
   const checkAiReadiness = useCallback(async () => {
     const { fetchModels } = await import("./features/ai-assistant/api");
     const applyReachable = (serverModelCount: number) => {
-      const hasModels = isTauri() ? serverModelCount > 0 : getLLMModels().length > 0;
+      // desktop はサーバーの models.json が唯一のレジストリ。web はサーバー側
+      // models.json（ヘッダー無しリクエストのフォールバック先 = header-model.ts の
+      // getDefaultModel）と localStorage（X-LLM-API-Key として送信）のどちらかに
+      // モデルがあれば実際に AI は使えるので、両方を数える。localStorage だけを
+      // 見ると、サーバー側にモデル登録済みの dev / セルフホスト構成でガードが
+      // 誤発火して動くはずの機能を塞いでしまう。
+      const hasModels = isTauri()
+        ? serverModelCount > 0
+        : serverModelCount > 0 || getLLMModels().length > 0;
       setAiAvailable(true);
       setAgentConfigured(hasModels);
       setAiModelsAvailable(hasModels);
@@ -4074,6 +4087,27 @@ export function NoteApp() {
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
+  // AI 未設定ガード（ensureAgentConfigured）発火時のトースト表示。
+  // 設定モーダル自体は既存の `graphium-open-settings` リスナーが AI タブで開く。
+  // 固定 id で置き換えるので、連続発火（複数ノート一括 Knowledge 化等）でも 1 件に収まる。
+  useEffect(() => {
+    const handler = () => {
+      const id = "ai-guard";
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== id),
+          {
+            id,
+            status: "error" as const,
+            noteTitle: tStatic("sidebar.aiNotConfigured"),
+            result: tStatic("settings.aiNotConfigured"),
+          },
+        ],
+      }));
+    };
+    window.addEventListener(AI_NOT_CONFIGURED_EVENT, handler);
+    return () => window.removeEventListener(AI_NOT_CONFIGURED_EVENT, handler);
+  }, []);
   // Wiki Log 表示状態
   const [activeWikiView, setActiveWikiView] = useState<"log" | "lint" | null>(null);
   // Skill 表示状態
@@ -4238,7 +4272,7 @@ export function NoteApp() {
         }
       } catch (err) {
         console.error("[world-grounding] check failed:", err);
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = localizeAiError(err);
         if (!silent) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
@@ -4645,7 +4679,7 @@ export function NoteApp() {
         setIngestToast((prev) => ({
           items: (prev?.items ?? []).map((i) =>
             i.id === jobId
-              ? { ...i, status: "error" as const, detail: undefined, result: err instanceof Error ? err.message : "Error" }
+              ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) }
               : i
           ),
         }));
@@ -4776,7 +4810,7 @@ export function NoteApp() {
         }
       } catch (err) {
         console.error("Atomize failed:", err);
-        updateStage("atomize", "error", err instanceof Error ? err.message : String(err));
+        updateStage("atomize", "error", localizeAiError(err));
       }
     } else {
       updateStage("atomize", "skipped", "Atom Layer が無効");
@@ -4990,13 +5024,16 @@ export function NoteApp() {
     } catch (err) {
       // Lint 失敗は ingest 全体には影響させない
       console.error("Lint failed:", err);
-      updateStage("lint", "error", err instanceof Error ? err.message : String(err));
+      updateStage("lint", "error", localizeAiError(err));
     }
 
     ingestRunningRef.current = false;
   }, [fm]);
 
   const enqueueIngest = useCallback((noteId: string, noteTitle: string, doc: import("./lib/document-types").GraphiumDocument) => {
+    // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
+    // ノート / メモ / 一括 Knowledge 化のすべてがここを通るチョークポイント。
+    if (!ensureAgentConfigured()) return;
     if (ingestQueueRef.current.some((j) => j.noteId === noteId)) return;
     const newItem: IngestToastItem = { id: noteId, status: "queued", noteTitle };
     ingestQueueRef.current.push({ noteId, noteTitle, doc });
@@ -5245,6 +5282,10 @@ export function NoteApp() {
     wikiId: string,
     options?: { model?: string; openAfter?: boolean },
   ): Promise<{ ok: boolean; error?: string }> => {
+    // AI 未設定なら発火させない（WikiBanner / 一覧 / Maintenance すべてここを通る）
+    if (!ensureAgentConfigured()) {
+      return { ok: false, error: tStatic("settings.aiNotConfigured") };
+    }
     const fileId = `wiki:${wikiId}`;
     const doc = fm.getCachedDoc(fileId) ?? (await fm.loadDoc(fileId)) ?? null;
     if (!doc || !doc.wikiMeta) {
@@ -5553,10 +5594,10 @@ export function NoteApp() {
       console.error("Wiki の再生成に失敗:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
-          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: err instanceof Error ? err.message : "Failed" } : i
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
         ),
       }));
-      return { ok: false, error: err instanceof Error ? err.message : "Failed" };
+      return { ok: false, error: localizeAiError(err) };
     }
   }, [fm]);
 
@@ -5579,6 +5620,10 @@ export function NoteApp() {
   ): Promise<{ ok: boolean; created: number; iterations: number; error?: string }> => {
     if (!isAtomLayerEnabled()) {
       return { ok: false, created: 0, iterations: 0, error: "Atom layer is disabled" };
+    }
+    // AI 未設定なら発火させない（Maintenance タブの「発見」ボタン経路）
+    if (!ensureAgentConfigured()) {
+      return { ok: false, created: 0, iterations: 0, error: tStatic("settings.aiNotConfigured") };
     }
     // Phase 1: クラスタ集中サンプリング（Synthesis Discovery と同じ手法）。
     // 母集団は modifiedTime 上限なしで全 Claim を取得し、farthest-point で
@@ -5688,10 +5733,10 @@ export function NoteApp() {
       console.error("Atomize discovery failed:", err);
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
-          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: err instanceof Error ? err.message : "Failed" } : i
+          i.id === toastId ? { ...i, status: "error" as const, detail: undefined, result: localizeAiError(err) } : i
         ),
       }));
-      return { ok: false, created: totalCreated, iterations: lastIteration, error: err instanceof Error ? err.message : "Failed" };
+      return { ok: false, created: totalCreated, iterations: lastIteration, error: localizeAiError(err) };
     }
   }, [fm]);
 
@@ -5927,6 +5972,8 @@ export function NoteApp() {
               return undefined;
             }}
             onIngestMedia={aiAvailable ? (entry) => {
+              // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+              if (!ensureAgentConfigured()) return;
               if (entry.type === "url" && entry.url) {
                 // toast ID は一意にしておくが、wiki に保存する sourceNoteId は URL ベースの安定 ID
                 // にしておくことで、同じ URL を再 ingest した際に逆引き（Knowledge 化済み判定）
@@ -5951,7 +5998,7 @@ export function NoteApp() {
                     }
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
               } else if (entry.type === "pdf" && entry.fileId) {
@@ -5978,7 +6025,7 @@ export function NoteApp() {
                     }
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
               } else if (entry.type === "document" && entry.fileId
@@ -6008,12 +6055,14 @@ export function NoteApp() {
                     }
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
               }
             } : undefined}
             onCreateProvNote={aiAvailable ? (entry) => {
+              // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+              if (!ensureAgentConfigured()) return;
               // URL 経路
               if (entry.type === "url" && entry.url) {
                 const jobId = `prov-url:${Date.now()}:${crypto.randomUUID().slice(0, 8)}`;
@@ -6039,7 +6088,7 @@ export function NoteApp() {
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
                 return;
@@ -6072,7 +6121,7 @@ export function NoteApp() {
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
                 return;
@@ -6107,13 +6156,15 @@ export function NoteApp() {
                     await fm.handleCreateNoteFromDocument(provDoc);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.blocks.length} blocks` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
                 return;
               }
             } : undefined}
             onTranslatePdf={aiAvailable ? (entry) => {
+              // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+              if (!ensureAgentConfigured()) return;
               // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
               // PDF と違いページ概念が無いので、本文を段落境界でチャンク分割して並列翻訳する。
               if (entry.type === "url" && entry.url) {
@@ -6153,7 +6204,7 @@ export function NoteApp() {
                     setAssetSidePeekNoteId(newNoteId);
                     setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.pageCount} parts` } : i) }));
                   } catch (err) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                   }
                 })();
                 return;
@@ -6204,7 +6255,7 @@ export function NoteApp() {
                     + (result.truncated ? " (truncated)" : "");
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: note } : i) }));
                 } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                 }
               })();
             } : undefined}
@@ -6338,6 +6389,9 @@ export function NoteApp() {
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
             onIngestNotes={aiAvailable ? async (ids) => {
+              // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
+              // doc ロード等の無駄な前処理に入る前にここで止める）
+              if (!ensureAgentConfigured()) return;
               // Knowledge 化候補から AI 派生（wiki）と既に処理待ちの ID を除外
               const candidates: { id: string; title: string }[] = [];
               const skippedAi: string[] = [];
@@ -6496,6 +6550,8 @@ export function NoteApp() {
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
             onKnowledgeMemos={aiAvailable ? (captureIds) => {
+              // AI 未設定なら発火させない（materialize 前に止める。enqueueIngest にも同ガードあり）
+              if (!ensureAgentConfigured()) return;
               // 選択メモを各 1 ノートに materialize → 既存 ingest キューに流す。
               // （ノート複数選択 Knowledge 化と同じ挙動: 各ノート ingest 後に
               //   vault 全 Claim で atomize がまとめて走る）
@@ -6937,6 +6993,8 @@ export function NoteApp() {
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
             } : undefined}
             onIngestFromUrl={aiAvailable ? () => {
+              // AI 未設定なら URL 入力の前に止める（トースト + 設定 AI タブ導線はヘルパー側）
+              if (!ensureAgentConfigured()) return;
               const url = prompt("URL を入力してください:");
               if (!url) return;
               // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
@@ -6969,12 +7027,14 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "success" as const, detail: undefined, result: `${result.wikis.length} wiki(s)` } : i) }));
                 } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                 }
                 ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
               })();
             } : undefined}
             onIngestChat={aiAvailable ? (chatMessages) => {
+              // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
+              if (!ensureAgentConfigured()) return;
               const jobId = `chat:${Date.now()}`;
               const chatTitle = chatMessages[0]?.content.slice(0, 30) ?? "Chat";
               const newItem: IngestToastItem = { id: jobId, status: "queued", noteTitle: `Chat: ${chatTitle}` };
@@ -6999,7 +7059,7 @@ export function NoteApp() {
                   }
                   setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "success" as const, result: `${result.wikis.length} wiki(s)` } : i) }));
                 } catch (err) {
-                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: err instanceof Error ? err.message : "Error" } : i) }));
+                  setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: localizeAiError(err) } : i) }));
                 }
               })();
             } : undefined}

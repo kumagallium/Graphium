@@ -23,6 +23,7 @@
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import { apiBase, isTauri } from "../../lib/platform";
+import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import { extractPdfPages } from "../wiki/pdf-text-extractor";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "../asset-browser/pdf-image-extractor";
@@ -124,8 +125,8 @@ async function translatePage(
     }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error || `Translate failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（localizeAiError が i18n 表示する）
+    throw await aiErrorFromResponse(res, `Translate failed (${res.status})`);
   }
   return (await res.json()) as TranslateChunkResponse;
 }
@@ -410,8 +411,7 @@ export async function fetchReaderArticle(url: string): Promise<ReaderArticleClie
     body: JSON.stringify({ url }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error || `Reader failed (${res.status})`);
+    throw await aiErrorFromResponse(res, `Reader failed (${res.status})`);
   }
   const a = await res.json();
   return {

@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { LanguageModel } from "ai";
 import type { ModelConfig } from "../config/models.js";
+import { CodedError } from "../../lib/ai-error-codes.js";
 
 /**
  * ModelConfig からプロバイダーインスタンスを生成する
@@ -240,7 +241,7 @@ async function fetchOpenAIModels(
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-  if (!res.ok) throw new Error(await formatApiError(res));
+  if (!res.ok) throw await formatApiError(res);
   const data = (await res.json()) as {
     data?: { id: string }[];
   };
@@ -263,7 +264,7 @@ async function fetchAnthropicModels(
         "anthropic-version": "2023-06-01",
       },
     });
-    if (!res.ok) throw new Error(await formatApiError(res));
+    if (!res.ok) throw await formatApiError(res);
     const data = (await res.json()) as {
       data?: { id: string }[];
       has_more?: boolean;
@@ -287,7 +288,7 @@ async function fetchGoogleModels(
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const res = await fetch(`${url}?${params}`);
-    if (!res.ok) throw new Error(await formatApiError(res));
+    if (!res.ok) throw await formatApiError(res);
     const data = (await res.json()) as {
       models?: {
         name: string;
@@ -308,9 +309,16 @@ async function fetchGoogleModels(
   return all.sort();
 }
 
-async function formatApiError(res: Response): Promise<string> {
-  if (res.status === 401) return "API キーが無効です";
-  if (res.status === 403) return "API キーに権限がありません";
+// プロバイダー API の失敗レスポンスを、code 付き Error（認証系）または素の Error に変換する。
+// メッセージは英語フォールバック（サーバーは locale を知らない）。クライアントは code を
+// i18n 文言に置き換える（src/lib/ai-error.ts の localizeAiError）。
+async function formatApiError(res: Response): Promise<Error> {
+  if (res.status === 401) {
+    return new CodedError("The API key is invalid.", "INVALID_API_KEY");
+  }
+  if (res.status === 403) {
+    return new CodedError("The API key does not have permission.", "API_KEY_FORBIDDEN");
+  }
   const text = await res.text().catch(() => "");
-  return `プロバイダー API エラー (${res.status}): ${text.slice(0, 200)}`;
+  return new Error(`Provider API error (${res.status}): ${text.slice(0, 200)}`);
 }

@@ -49,8 +49,8 @@ app.post("/check", async (c) => {
 
   const modelConfig = resolveModelConfig(c, { modelName: body.model });
   if (!modelConfig) {
-    // モデル未登録 → degrade。エラーにはしない（PR 2A 方針 §7）
-    return c.json({ result: null, error: "no model registered" });
+    // モデル未登録 → degrade。エラーにはしない（PR 2A 方針 §7）。code だけ添える。
+    return c.json({ result: null, error: "no model registered", code: "NO_MODEL_REGISTERED" });
   }
 
   // ── web-grounding: 判定前に証拠を集める ──

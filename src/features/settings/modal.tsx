@@ -28,6 +28,7 @@ import {
   type ModelInfo,
 } from "../ai-assistant/api";
 import { apiBase, isTauri } from "../../lib/platform";
+import { aiErrorFromResponse, localizeAiError } from "../../lib/ai-error";
 import { getAppVersion, checkForUpdates, type CheckResult } from "../../lib/updater";
 import { restartSidecar, getSidecarState, getRecentSidecarLog } from "../../lib/sidecar";
 import {
@@ -746,8 +747,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           body: JSON.stringify(reqBody),
         });
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `Error ${res.status}`);
+          // { error, code } を code 付き Error に変換（INVALID_API_KEY 等を i18n 表示するため）
+          throw await aiErrorFromResponse(res, `Error ${res.status}`);
         }
         const data = await res.json();
         setAvailableModels(data.models ?? []);
@@ -756,7 +757,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           setModelDisplayName(data.models[0]);
         }
       } catch (err) {
-        setAddError(err instanceof Error ? err.message : "Unknown error");
+        setAddError(localizeAiError(err));
       } finally {
         setFetchingAvailable(false);
       }
@@ -783,8 +784,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Error ${res.status}`);
+        // { error, code } を code 付き Error に変換（INVALID_API_KEY 等を i18n 表示するため）
+        throw await aiErrorFromResponse(res, `Error ${res.status}`);
       }
       const data = await res.json();
       setAvailableModels(data.models ?? []);
@@ -793,7 +794,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         setModelDisplayName(data.models[0]);
       }
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Unknown error");
+      setAddError(localizeAiError(err));
     } finally {
       setFetchingAvailable(false);
     }

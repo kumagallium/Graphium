@@ -3,6 +3,7 @@
 
 import type { ModelConfig } from "../config/models.js";
 import { recordUsage } from "./llm-usage.js";
+import { CodedError } from "../../lib/ai-error-codes.js";
 
 export type EmbeddingResult = {
   vectors: number[][];
@@ -37,7 +38,7 @@ export async function generateEmbeddings(
       : createOpenAI({ apiKey: config.apiKey });
     embeddingModel = provider.textEmbeddingModel(embeddingModelId);
   } else if (config.provider === "openai-compatible") {
-    if (!config.apiBase) throw new Error("apiBase が必要です");
+    if (!config.apiBase) throw new Error("apiBase is required for openai-compatible providers");
     const provider = createOpenAICompatible({
       name: config.name,
       baseURL: config.apiBase,
@@ -45,9 +46,11 @@ export async function generateEmbeddings(
     });
     embeddingModel = provider.textEmbeddingModel(embeddingModelId);
   } else {
-    throw new Error(
-      `Embedding は OpenAI / OpenAI 互換プロバイダーのみ対応しています（現在: ${config.provider}）。` +
-      "Settings → AI Setup で OpenAI 互換モデルを追加してください。"
+    // code 付きで throw し、wiki /embed ルートの catch（errorBody）が JSON へ通す
+    throw new CodedError(
+      `Embedding requires an OpenAI or OpenAI-compatible provider (current: ${config.provider}). ` +
+      "Add an OpenAI-compatible model in Settings → AI Setup.",
+      "EMBEDDING_MODEL_UNSUPPORTED",
     );
   }
 
