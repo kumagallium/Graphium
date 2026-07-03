@@ -37,7 +37,9 @@ export class CodedError extends Error {
 /** err から既知の AI エラーコードを取り出す（未知の code / code 無しは undefined） */
 export function aiErrorCodeOf(err: unknown): AiErrorCode | undefined {
   const code = (err as { code?: unknown } | null | undefined)?.code;
-  return typeof code === "string" && code in AI_ERROR_CODES
+  // `in` はプロトタイプ鎖を通す（"toString" in {} === true）ため hasOwnProperty で判定する
+  return typeof code === "string" &&
+    Object.prototype.hasOwnProperty.call(AI_ERROR_CODES, code)
     ? (code as AiErrorCode)
     : undefined;
 }

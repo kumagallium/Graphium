@@ -2500,8 +2500,10 @@ function NoteEditorInner({
       answer: string,
       onClaimsReady?: (claims: KnowledgeCandidate[]) => void,
     ): Promise<KnowledgeCandidate[]> => {
-      // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
-      if (!ensureAgentConfigured()) return [];
+      // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
+      // [] を返すと候補ピッカーが「候補が見つからなかった」と誤表示するため、
+      // throw で静かに中断する（panel 側の catch は表示を出さずリセットする）。
+      if (!ensureAgentConfigured()) throw new Error("AI model not configured");
       const cleaned = cleanSuggestionText(answer);
       const model = getSelectedModel() || null;
       const noteTitle = initialDoc?.title || "Chat";
@@ -3946,7 +3948,15 @@ export function NoteApp() {
   const checkAiReadiness = useCallback(async () => {
     const { fetchModels } = await import("./features/ai-assistant/api");
     const applyReachable = (serverModelCount: number) => {
-      const hasModels = isTauri() ? serverModelCount > 0 : getLLMModels().length > 0;
+      // desktop はサーバーの models.json が唯一のレジストリ。web はサーバー側
+      // models.json（ヘッダー無しリクエストのフォールバック先 = header-model.ts の
+      // getDefaultModel）と localStorage（X-LLM-API-Key として送信）のどちらかに
+      // モデルがあれば実際に AI は使えるので、両方を数える。localStorage だけを
+      // 見ると、サーバー側にモデル登録済みの dev / セルフホスト構成でガードが
+      // 誤発火して動くはずの機能を塞いでしまう。
+      const hasModels = isTauri()
+        ? serverModelCount > 0
+        : serverModelCount > 0 || getLLMModels().length > 0;
       setAiAvailable(true);
       setAgentConfigured(hasModels);
       setAiModelsAvailable(hasModels);

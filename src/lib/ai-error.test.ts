@@ -74,8 +74,15 @@ describe("aiErrorFromResponse", () => {
     expect((err as Error & { code?: string }).code).toBeUndefined();
   });
 
-  it("JSON でないレスポンスは fallback メッセージになる", async () => {
+  it("JSON でないレスポンスは fallback + 生ボディ先頭を診断用に残す", async () => {
+    // 孤児 sidecar が返す 404 HTML 等の切り分け材料を落とさない
     const res = new Response("<html>gateway error</html>", { status: 502 });
+    const err = await aiErrorFromResponse(res, "Ingest failed (502)");
+    expect(err.message).toBe("Ingest failed (502): <html>gateway error</html>");
+  });
+
+  it("空ボディのレスポンスは fallback メッセージのみになる", async () => {
+    const res = new Response("", { status: 502 });
     const err = await aiErrorFromResponse(res, "Ingest failed (502)");
     expect(err.message).toBe("Ingest failed (502)");
   });

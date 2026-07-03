@@ -20,13 +20,21 @@ export async function aiErrorFromResponse(
   res: Response,
   fallback: string,
 ): Promise<Error> {
-  const data = (await res.json().catch(() => ({}))) as {
-    error?: string;
-    code?: string;
-  };
-  const err = new Error(
-    typeof data.error === "string" && data.error ? data.error : fallback,
-  );
+  const raw = await res.text().catch(() => "");
+  let data: { error?: string; code?: string } = {};
+  try {
+    data = JSON.parse(raw) as { error?: string; code?: string };
+  } catch {
+    // 非 JSON ボディ（孤児 sidecar の 404 HTML 等）は下で先頭を切り出して残す。
+    // この生テキストが「古い sidecar が port を握っている」系障害の切り分け材料になる。
+  }
+  const message =
+    typeof data.error === "string" && data.error
+      ? data.error
+      : raw.trim()
+        ? `${fallback}: ${raw.trim().slice(0, 200)}`
+        : fallback;
+  const err = new Error(message);
   if (typeof data.code === "string") {
     (err as Error & { code?: string }).code = data.code;
   }
@@ -58,17 +66,28 @@ export function localizeAiError(err: unknown): string {
 /** AI 未設定ガード発火の通知イベント。note-app がトースト表示のために listen する */
 export const AI_NOT_CONFIGURED_EVENT = "graphium-ai-not-configured";
 
+// ガード発火の連続 dispatch 抑制用タイムスタンプ（下の ensureAgentConfigured 参照）
+let lastGuardDispatchAt = 0;
+
 /**
  * AI 発火経路の共通ガード。モデル未登録ならリクエストを発火させず、
  * トースト通知（AI_NOT_CONFIGURED_EVENT → note-app）と設定画面 AI タブへの導線
  * （graphium-open-settings、chat panel.tsx と同じ dispatch 形状）を出して false を返す。
  * 使い方: `if (!ensureAgentConfigured()) return;`
+ *
+ * 一括処理（Maintenance の bulk regenerate 等）でアイテムごとにガードが連続発火
+ * すると、graphium-open-settings が毎回飛んで開いている設定モーダルのタブを
+ * 強奪し続けるため、dispatch は短時間で 1 回に抑える（false は毎回返す）。
  */
 export function ensureAgentConfigured(): boolean {
   if (isAgentConfigured()) return true;
-  window.dispatchEvent(new CustomEvent(AI_NOT_CONFIGURED_EVENT));
-  window.dispatchEvent(
-    new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }),
-  );
+  const now = Date.now();
+  if (now - lastGuardDispatchAt > 1500) {
+    lastGuardDispatchAt = now;
+    window.dispatchEvent(new CustomEvent(AI_NOT_CONFIGURED_EVENT));
+    window.dispatchEvent(
+      new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }),
+    );
+  }
   return false;
 }
