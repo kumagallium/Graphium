@@ -25,7 +25,7 @@ import {
 } from "./labels";
 import { getVisibleCoreLabels, isHeadingBlock } from "./label-visibility";
 // label-attributes は将来のステータス機能で再利用
-import { useLabelStore } from "./store";
+import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { useT, getDisplayLabel } from "../../i18n";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
@@ -83,6 +83,7 @@ export function setOnPrevStepLinkSelected(fn: typeof _onPrevStepLinkSelected) {
 
 export function LabelDropdownPortal() {
   const t = useT();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const { labels, openBlockId, setLabel, closeDropdown } = useLabelStore();
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [freeInput, setFreeInput] = useState("");
@@ -129,7 +130,7 @@ export function LabelDropdownPortal() {
     setPrevStepMode(false);
   }, [openBlockId]);
 
-  if (!openBlockId) return null;
+  if (!provLabelsEnabled || !openBlockId) return null;
 
   const currentLabel = labels.get(openBlockId);
 
@@ -306,6 +307,7 @@ export function LabelDropdownPortal() {
 export function LabelSideMenuButton() {
   const t = useT();
   const editor = useBlockNoteEditor<any, any, any>();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const { getLabel, openDropdown } = useLabelStore();
 
   const block = useExtensionState(SideMenuExtension, {
@@ -313,7 +315,7 @@ export function LabelSideMenuButton() {
     selector: (state) => state?.block,
   });
 
-  if (!block) return null;
+  if (!block || !provLabelsEnabled) return null;
 
   const label = getLabel(block.id);
 

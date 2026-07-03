@@ -1291,6 +1291,10 @@ export const en: Record<string, string> = {
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",
 
+  // ── 来歴ラベル機能のオン/オフ ──
+  "settings.provLabels.title": "Provenance labels",
+  "settings.provLabels.help": "The provenance labeling feature (labeling steps, materials, and tools for PROV tracking) is fairly specialized. When off, all label controls and displays are hidden and notes behave like a plain editor. Your existing labels are kept and reappear if you turn it back on.",
+
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "Provenance label names",
   "settings.labels.help": "Customize the display names of PROV-DM core labels. Leave empty to use the default name.",

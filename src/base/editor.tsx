@@ -45,6 +45,7 @@ import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
+import { useProvLabelsEnabled } from "@features/context-label/store";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
@@ -108,6 +109,7 @@ export function SandboxEditor({
   getMentionSuggestions,
   editable = true,
 }: SandboxEditorProps) {
+  const provLabelsEnabled = useProvLabelsEnabled();
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
   );
@@ -305,7 +307,7 @@ export function SandboxEditor({
           {...({} as any)}
         />
       )}
-      {onHashtagSelect && (
+      {onHashtagSelect && provLabelsEnabled && (
         <SuggestionMenuController
           triggerCharacter="#"
           getItems={getHashtagItems as any}

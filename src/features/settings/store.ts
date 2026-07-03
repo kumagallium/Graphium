@@ -294,6 +294,17 @@ export type Settings = {
   displayCurrency: LLMRateCurrency;
   /** USD ⇔ JPY 換算レート（1 USD = ¥X）。表示通貨と異なる単位の cost を換算するときに使う。 */
   usdJpyRate: number;
+  /**
+   * 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効。
+   * かなり専門的な機能なので、設定で丸ごとオフにできる。オフのときはラベルの
+   * 付与 UI・表示（バッジ / インライン装飾 / PROV パネル）を一切描画しない。
+   * ラベルデータ自体（page.labels / mediaInlineLabels / inline style mark）は
+   * 保持され、再度オンにすれば復帰する（削除ではなく非表示）。
+   *
+   * undefined = 未確定。起動時に一度だけ「既にラベルを使っているか」をインデックスから
+   * 判定し、既存ユーザー = ON / 新規ユーザー = OFF に確定する（resolveProvLabelsDefault）。
+   */
+  enableProvLabels?: boolean;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -481,6 +492,9 @@ export function loadSettings(): Settings {
         synthesis: typeof exp?.synthesis === "boolean" && exp?.atomLayer === true ? exp.synthesis : false,
         autoGrounding: typeof exp?.autoGrounding === "boolean" ? exp.autoGrounding : false,
       },
+      // boolean 以外（壊れた値）は undefined（未確定）に倒す。起動時に判定して確定する。
+      enableProvLabels:
+        typeof parsed.enableProvLabels === "boolean" ? parsed.enableProvLabels : undefined,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -637,6 +651,38 @@ export function isAutoGroundingEnabled(): boolean {
  */
 export function isSynthesisEnabled(): boolean {
   return false;
+}
+
+/**
+ * 来歴ラベル機能（手順の PROV 化のためのラベルづけ）が有効かどうか（同期・即時判定用）。
+ * 未確定（undefined）のときは false を返す（新規ユーザー既定 OFF）。
+ * リアクティブに使いたい箇所は NoteApp の provLabelsEnabled state /
+ * useProvLabelsEnabled() Context を使うこと。これはコンポーネント外からの即時判定用。
+ */
+export function isProvLabelsEnabled(): boolean {
+  return loadSettings().enableProvLabels ?? false;
+}
+
+/**
+ * 起動時に一度だけ、既にラベルを使っているか（= 既存ユーザーか）を
+ * インデックスから判定して enableProvLabels を確定・永続化する。
+ * 既に明示設定済み（boolean）なら確定値をそのまま返し、何も書き込まない。
+ *
+ * @param indexHasLabels ノートインデックスにブロックラベル / インラインラベルが
+ *   1 件でも存在するか。true = 既存ユーザー（ON 確定）、false = 新規（OFF 確定）。
+ * @returns 確定後の有効値。
+ */
+export function resolveProvLabelsDefault(indexHasLabels: boolean): boolean {
+  const s = loadSettings();
+  if (typeof s.enableProvLabels === "boolean") return s.enableProvLabels;
+  const resolved = indexHasLabels;
+  saveSettings({ ...s, enableProvLabels: resolved });
+  return resolved;
+}
+
+/** 来歴ラベル機能の有効/無効を明示的に設定して永続化する（設定 UI のトグル用）。 */
+export function setProvLabelsEnabled(enabled: boolean): void {
+  saveSettings({ ...loadSettings(), enableProvLabels: enabled });
 }
 
 /** 選択中のラテン用フォントを取得する（空文字 = デフォルト） */

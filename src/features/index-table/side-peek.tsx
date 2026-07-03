@@ -67,7 +67,7 @@ import {
   buildMemoInsertBlock,
 } from "@features/mobile-capture";
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
-import { LabelStoreProvider, useLabelStore } from "@features/context-label/store";
+import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
 import {
   getNoteSuggestions,
@@ -81,6 +81,7 @@ import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/bloc
 import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
+import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
 import type { GraphiumIndex, NoteIndexEntry } from "@features/navigation";
@@ -172,6 +173,7 @@ type SidePeekProps = {
 
 export function SidePeek(props: SidePeekProps) {
   return (
+    <ProvLabelsEnabledProvider enabled={isProvLabelsEnabled()}>
     <LabelStoreProvider>
       <LinkStoreProvider>
         <BlockAlignmentProvider>
@@ -179,6 +181,7 @@ export function SidePeek(props: SidePeekProps) {
         </BlockAlignmentProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
+    </ProvLabelsEnabledProvider>
   );
 }
 
@@ -226,6 +229,7 @@ function SidePeekInner({
   onCreateLinkedNote, onOpenNoteInPeek,
 }: SidePeekProps) {
   const t = useT();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   // labelStore/linkStore は毎レンダリング新しいオブジェクトになるため、
@@ -1464,7 +1468,7 @@ function SidePeekInner({
                 // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
                 // SidePeek のエディタに挿入される。
                 extraSlashMenuItems={[
-                  ...buildLabelSlashMenuItems(),
+                  ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
                   calloutSlashItem,

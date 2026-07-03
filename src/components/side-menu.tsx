@@ -16,7 +16,7 @@ import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
-import { useLabelStore, type CoreLabel } from "../features/context-label";
+import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
 import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
@@ -211,6 +211,7 @@ function BlockLabelMenuItems() {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
   const mediaStore = useMediaInlineLabelStoreOptional();
   const block = useExtensionState(SideMenuExtension, {
@@ -219,6 +220,8 @@ function BlockLabelMenuItems() {
   });
 
   if (!block) return null;
+  // 来歴ラベル機能がオフなら「ラベル ▸」サブメニューを出さない。
+  if (!provLabelsEnabled) return null;
   const blockType = block.type as string;
   const spec = resolveBlockLabelSpec(blockType);
   if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる

@@ -9,6 +9,7 @@
 // 呼び出し側で `visible={false}` を渡す。
 
 import { useT } from "@/i18n";
+import { useProvLabelsEnabled } from "@features/context-label/store";
 
 type EmptyNoteGuideProps = {
   visible: boolean;
@@ -56,8 +57,12 @@ const chips: Chip[] = [
 
 export function EmptyNoteGuide({ visible, onOpenComposer }: EmptyNoteGuideProps) {
   const t = useT();
+  const provLabelsEnabled = useProvLabelsEnabled();
 
   if (!visible) return null;
+
+  // 来歴ラベル機能がオフなら # ラベルのチップは予示しない（# を打っても何も出ないため）
+  const visibleChips = provLabelsEnabled ? chips : chips.filter((c) => c.key !== "hash");
 
   const handleClick = (action?: Chip["action"]) => {
     if (action === "composer") onOpenComposer?.();
@@ -95,7 +100,7 @@ export function EmptyNoteGuide({ visible, onOpenComposer }: EmptyNoteGuideProps)
           gap: 8,
         }}
       >
-        {chips.map((chip) => {
+        {visibleChips.map((chip) => {
           const clickable = chip.action != null;
           return (
             <button

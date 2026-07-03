@@ -13,6 +13,8 @@ import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
+  ProvLabelsEnabledProvider,
+  useProvLabelsEnabled,
   useLabelStore,
   LabelDropdownPortal,
 } from "./features/context-label";
@@ -99,7 +101,7 @@ import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-mar
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -117,7 +119,7 @@ import {
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
-import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
@@ -632,6 +634,8 @@ type NoteEditorProps = {
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
   /** ノートインデックス（@ オートコンプリート用） */
   noteIndex?: GraphiumIndex | null;
+  /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
+  provLabelsEnabled?: boolean;
   /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
@@ -741,6 +745,7 @@ type NoteEditorProps = {
 
 function NoteEditor(props: NoteEditorProps) {
   return (
+    <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
       <LinkStoreProvider>
         <IndexTableStoreProvider>
@@ -754,6 +759,7 @@ function NoteEditor(props: NoteEditorProps) {
         </IndexTableStoreProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
+    </ProvLabelsEnabledProvider>
   );
 }
 
@@ -854,6 +860,7 @@ function NoteEditorInner({
   subHeaderSlot,
   contextDrawerSlot,
 }: NoteEditorProps) {
+  const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const { removeBlockMetadata } = useBlockLifecycle();
@@ -1896,6 +1903,7 @@ function NoteEditorInner({
   // - block ラベル / インラインラベル / メディアラベルどの経路でも procedure 経由で
   //   Activity が立ち上がれば同じ条件で発火する
   useEffect(() => {
+    if (!provLabelsEnabled) return;
     if (provAutoOpenedRef.current) return;
     if (rightTab !== null) return;
     const hasActivity =
@@ -1904,7 +1912,14 @@ function NoteEditorInner({
       setRightTab("prov");
       provAutoOpenedRef.current = true;
     }
-  }, [provDoc, rightTab]);
+  }, [provDoc, rightTab, provLabelsEnabled]);
+
+  // 来歴ラベル機能がオフになったら、開いている PROV グラフパネルを閉じる（一貫性のため）。
+  // タブ自体は非表示になるが、既に "prov" を開いた状態で設定を切り替えた場合に空パネルが
+  // 残らないよう、明示的に null に戻す。
+  useEffect(() => {
+    if (!provLabelsEnabled && rightTab === "prov") setRightTab(null);
+  }, [provLabelsEnabled, rightTab]);
 
   // ── PDF エクスポートハンドラー ──
   const handleExportPdf = useCallback(async () => {
@@ -3514,7 +3529,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -3835,7 +3850,7 @@ function NoteEditorInner({
                   onOpenMedia={onOpenMedia}
                 />
               )}
-              {rightTab === "prov" && (
+              {rightTab === "prov" && provLabelsEnabled && (
                 <ProvGraphPanel doc={provDoc} />
               )}
               {rightTab === "chat" && (
@@ -3884,7 +3899,7 @@ function NoteEditorInner({
             // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
             { tab: "chat" as const, icon: <MessageSquare size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
@@ -3962,6 +3977,41 @@ export function NoteApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
+  // 来歴ラベル機能（手順の PROV 化）の有効/無効。
+  // 未確定（初回）は OFF で描画を開始し、起動時にインデックスから「既にラベルを使っているか」を
+  // 判定して確定する（既存ユーザー=ON / 新規=OFF）。以降は settings の値を尊重する。
+  const [provLabelsEnabled, setProvLabelsEnabled] = useState<boolean>(
+    () => loadSettings().enableProvLabels ?? false,
+  );
+  // 起動時に一度だけ、未確定なら既存ラベルの有無から enableProvLabels を確定する。
+  useEffect(() => {
+    if (typeof loadSettings().enableProvLabels === "boolean") return; // 確定済み
+    let cancelled = false;
+    void (async () => {
+      try {
+        const idx = await readIndexFile();
+        const hasLabels = !!idx?.notes.some(
+          (n) => (n.labels?.length ?? 0) > 0 || (n.inlineLabels?.length ?? 0) > 0,
+        );
+        if (cancelled) return;
+        setProvLabelsEnabled(resolveProvLabelsDefault(hasLabels));
+      } catch {
+        // 判定に失敗しても既定 OFF のまま（新規ユーザー想定）
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // inline ハイライト装飾（BlockNote style の直書き色）を CSS で消すため body 属性を同期する。
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (provLabelsEnabled) {
+      document.body.removeAttribute("data-prov-labels-off");
+    } else {
+      document.body.setAttribute("data-prov-labels-off", "true");
+    }
+  }, [provLabelsEnabled]);
   // AI バックエンド接続チェック（GitHub Pages 等の静的サイトでは false）
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
   // バックエンド到達性（aiAvailable）と「モデルが 1 件以上登録されているか」
@@ -6796,6 +6846,7 @@ export function NoteApp() {
           })()}
           <NoteEditor
             key={fm.editorKey}
+            provLabelsEnabled={provLabelsEnabled}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
@@ -7173,6 +7224,8 @@ export function NoteApp() {
           setSettingsInitialTab(undefined);
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
+          // 設定モーダルで来歴ラベル機能のトグルを変えた場合に即時反映する。
+          setProvLabelsEnabled(loadSettings().enableProvLabels ?? false);
         }}
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}

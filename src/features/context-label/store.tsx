@@ -143,3 +143,37 @@ export function useLabelStore(): LabelStore {
   if (!ctx) throw new Error("LabelStoreProvider が見つかりません");
   return ctx;
 }
+
+// ──────────────────────────────────────────────
+// ProvLabelsEnabledContext: 来歴ラベル機能のオン/オフを配布する軽量 Context
+//
+// 「手順の PROV 化のためのラベルづけ」はかなり専門的な機能なので、設定で丸ごと
+// オフにできる。オフのときはラベルの付与 UI・表示（バッジ / インライン装飾 /
+// PROV パネル）を一切描画しない。ラベルデータ（page.labels / mediaInlineLabels /
+// inline style mark）は保持されるため、再度オンにすれば元に戻る（削除ではなく非表示）。
+//
+// 既定 true（後方互換）: Provider を張らない文脈（Storybook 等）では従来どおり
+// ラベル機能が有効に見える。実アプリでは NoteEditor / SidePeek が settings 由来の
+// 値を Provider で渡す。全ラベル UI コンポーネントの入口でこのフックを読み、
+// false なら描画をスキップすることで、メイン / SidePeek 両方で漏れなく消える。
+// ──────────────────────────────────────────────
+const ProvLabelsEnabledContext = createContext<boolean>(true);
+
+export function ProvLabelsEnabledProvider({
+  enabled,
+  children,
+}: {
+  enabled: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <ProvLabelsEnabledContext.Provider value={enabled}>
+      {children}
+    </ProvLabelsEnabledContext.Provider>
+  );
+}
+
+/** 来歴ラベル機能が有効かどうか（オフなら全ラベル UI を描画しない）。 */
+export function useProvLabelsEnabled(): boolean {
+  return useContext(ProvLabelsEnabledContext);
+}

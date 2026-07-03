@@ -1290,6 +1290,10 @@ export const ja: Record<string, string> = {
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",
 
+  // ── 来歴ラベル機能のオン/オフ ──
+  "settings.provLabels.title": "来歴ラベル機能",
+  "settings.provLabels.help": "手順・材料・ツールに来歴（PROV）ラベルを付ける機能です。かなり専門的な機能なので、不要ならオフにできます。オフにするとラベルの付与・表示がすべて隠れ、ふつうのノートとして使えます。付けたラベルのデータは保持され、再びオンにすれば元に戻ります。",
+
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "来歴ラベルの表記",
   "settings.labels.help": "PROV-DM のコアラベルの表示名をカスタマイズできます。空欄にするとデフォルト名が使われます。",
