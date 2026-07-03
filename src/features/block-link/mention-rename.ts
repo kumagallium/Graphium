@@ -26,7 +26,13 @@ type InlineRun = {
   href?: string;
 };
 
-export type MentionPattern = { from: string; to: string };
+export type MentionPattern = {
+  from: string;
+  to: string;
+  /** ラベルの装飾部（`@` / `@🤖 Summary: ` 等）。一意フォールバック時に、
+   *  run の現在の装飾形式を保ったまま新タイトルへ書き換えるために使う。 */
+  prefix: string;
+};
 
 /**
  * リネームに対応する置換パターン集合を組み立てる。
@@ -40,12 +46,16 @@ export function buildMentionPatterns(
   newTitle: string,
   opts?: { includeWikiLabels?: boolean },
 ): MentionPattern[] {
-  const patterns: MentionPattern[] = [{ from: `@${oldTitle}`, to: `@${newTitle}` }];
+  const patterns: MentionPattern[] = [
+    { from: `@${oldTitle}`, to: `@${newTitle}`, prefix: "@" },
+  ];
   if (opts?.includeWikiLabels) {
     for (const kind of ["summary", "concept"]) {
+      const prefix = `@${formatWikiMentionLabel(kind, "")}`;
       patterns.push({
         from: `@${formatWikiMentionLabel(kind, oldTitle)}`,
         to: `@${formatWikiMentionLabel(kind, newTitle)}`,
+        prefix,
       });
     }
   }
@@ -87,6 +97,43 @@ export function replaceMentionRunsInContent(
   return changed ? next : null;
 }
 
+/**
+ * 1 ブロック分のインラインコンテンツを書き換える。
+ * 1) まずパターン完全一致で置換（replaceMentionRunsInContent）。
+ * 2) 一致が無い場合、uniqueFallback が真（= このブロックのノート参照リンクが
+ *    リネーム対象宛てのみ、と呼び出し側が判定済み）かつ青文字の `@` run が
+ *    ちょうど 1 個なら、その run を新ラベルへ書き換える。
+ *
+ * (2) は「skip 等でラベルが旧世代のまま取り残された」メンションの自動修復。
+ * 参照リンクが対象宛てのみ + 候補 run が 1 個なら、テキストが何世代前でも
+ * その run が対象のメンションであることは一意に決まるので安全に書き換えられる。
+ * 装飾（🤖 Summary/Concept:）は run の現在の形式（prefix 最長一致）を保つ。
+ */
+export function rewriteMentionRunsForBlock(
+  content: unknown,
+  patterns: MentionPattern[],
+  opts?: { uniqueFallback?: boolean },
+): InlineRun[] | null {
+  const exact = replaceMentionRunsInContent(content, patterns);
+  if (exact || !opts?.uniqueFallback || !Array.isArray(content)) return exact;
+  const runs = content as InlineRun[];
+  const candidateIdxs: number[] = [];
+  runs.forEach((r, i) => {
+    if (r?.type === "text" && r.styles?.textColor === "blue" && r.text?.startsWith("@")) {
+      candidateIdxs.push(i);
+    }
+  });
+  if (candidateIdxs.length !== 1) return null;
+  const idx = candidateIdxs[0];
+  const run = runs[idx];
+  const byLongestPrefix = [...patterns].sort((a, b) => b.prefix.length - a.prefix.length);
+  const pat = byLongestPrefix.find((p) => run.text!.startsWith(p.prefix)) ?? patterns[0];
+  if (run.text === pat.to) return null; // 既に新ラベル
+  const next = [...runs];
+  next[idx] = { ...run, text: pat.to };
+  return next;
+}
+
 export type MentionRenameResult = {
   doc: GraphiumDocument;
   /** ラベルを書き換えたブロック ID（ライブエディタへの反映用） */
@@ -122,10 +169,14 @@ export function applyMentionRenameToDoc(
     ...(page.links ?? []),
   ];
   const targetBlockIds = new Set<string>();
+  // ブロックごとのノート参照先集合（一意フォールバック判定用）
+  const blockTargets = new Map<string, Set<string>>();
   for (const l of links) {
-    if (l?.targetNoteId === renamedNoteId && l.sourceBlockId) {
-      targetBlockIds.add(l.sourceBlockId);
-    }
+    if (!l?.sourceBlockId || !l.targetNoteId) continue;
+    let set = blockTargets.get(l.sourceBlockId);
+    if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
+    set.add(l.targetNoteId);
+    if (l.targetNoteId === renamedNoteId) targetBlockIds.add(l.sourceBlockId);
   }
   if (targetBlockIds.size === 0) return null;
 
@@ -149,7 +200,11 @@ export function applyMentionRenameToDoc(
     const next = blocks.map((b) => {
       let nb = b;
       if (b?.id && targetBlockIds.has(b.id)) {
-        const nc = replaceMentionRunsInContent(b.content, patterns);
+        const nc = rewriteMentionRunsForBlock(b.content, patterns, {
+          // 参照リンクがリネーム対象宛てのみのブロックは、完全一致しない旧世代
+          // ラベルも一意に特定できるため修復する
+          uniqueFallback: blockTargets.get(b.id)?.size === 1,
+        });
         if (nc) {
           nb = { ...nb, content: nc };
           changedBlockIds.push(b.id);
