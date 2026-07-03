@@ -46,6 +46,7 @@ import {
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek } from "./features/index-table/side-peek";
+import { buildSavedPageFields } from "./features/note-save";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
@@ -1642,14 +1643,14 @@ function NoteEditorInner({
   // ── 保存ロジック ──
   const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {
     const blocks = editorRef.current?.document || [];
-    const labelSnapshot = labelStore.getSnapshot();
-    const labelsObj: Record<string, string> = {};
-    for (const [k, v] of labelSnapshot.labels) {
-      labelsObj[k] = v;
-    }
-    const allLinks = linkStore.getAllLinks();
-    const provLinks = allLinks.filter((l) => l.layer === "prov");
-    const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
+    // labels / provLinks / knowledgeLinks / blockAlignments の組み立ては
+    // SidePeek（side-peek.tsx doSave）と同一なので共有モジュールに集約。
+    const {
+      labels: labelsObj,
+      provLinks,
+      knowledgeLinks,
+      blockAlignments,
+    } = buildSavedPageFields({ labelStore, linkStore, blockAlignmentStore });
     // チャット履歴を収集（現在のアクティブチャットを含む）
     const currentChat = aiAssistant.getCurrentChat();
     const savedChats = [...aiAssistant.chats];
@@ -1668,9 +1669,6 @@ function NoteEditorInner({
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
       Object.keys(mediaInlineLabelsSnapshot).length > 0;
-    // ブロック配置揃え（table / audio / file 用サイドストア）
-    const blockAlignmentsSnapshot = blockAlignmentStore.getSnapshot();
-    const hasBlockAlignments = Object.keys(blockAlignmentsSnapshot).length > 0;
     let doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
@@ -1686,7 +1684,7 @@ function NoteEditorInner({
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
-          blockAlignments: hasBlockAlignments ? blockAlignmentsSnapshot : undefined,
+          blockAlignments,
         },
       ],
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
