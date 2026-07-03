@@ -206,7 +206,7 @@ export function addModel(
   input: Omit<ModelConfig, "id" | "createdAt">,
 ): ModelConfig {
   if (serverMode === "vercel") {
-    throw new Error("Vercel モードではモデルの永続化はできません");
+    throw new Error("Model persistence is not available in Vercel mode");
   }
   migrateIfNeeded();
   const stored = readRawStored();
@@ -247,7 +247,7 @@ export function updateModel(
   input: Partial<Omit<ModelConfig, "id" | "createdAt">>,
 ): ModelConfig | undefined {
   if (serverMode === "vercel") {
-    throw new Error("Vercel モードではモデルの永続化はできません");
+    throw new Error("Model persistence is not available in Vercel mode");
   }
   migrateIfNeeded();
   const stored = readRawStored();
@@ -289,7 +289,7 @@ export function updateModel(
 
 export function removeModel(id: string): boolean {
   if (serverMode === "vercel") {
-    throw new Error("Vercel モードではモデルの永続化はできません");
+    throw new Error("Model persistence is not available in Vercel mode");
   }
   migrateIfNeeded();
   const stored = readRawStored();

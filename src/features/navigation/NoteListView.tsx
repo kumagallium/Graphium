@@ -396,8 +396,8 @@ export function NoteListView({
             }}
             disabled={importing}
             className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-            title="ファイルを取り込む"
-            aria-label="ファイルを取り込む"
+            title={t("noteList.importFiles")}
+            aria-label={t("noteList.importFiles")}
           >
             <Download size={14} />
           </button>
@@ -417,7 +417,7 @@ export function NoteListView({
                       importMdInputRef.current?.click();
                     }}
                   >
-                    Markdown (.md) を取り込む
+                    {t("noteList.importMarkdown")}
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
@@ -425,7 +425,7 @@ export function NoteListView({
                       importMdFolderInputRef.current?.click();
                     }}
                   >
-                    Obsidian Vault フォルダを取り込む
+                    {t("noteList.importObsidianVault")}
                   </MenuItem>
                 </>
               )}
@@ -498,9 +498,9 @@ export function NoteListView({
                   setSelectedIds(new Set());
                 }}
                 className="px-3 py-1 text-xs font-medium rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
-                title="選択したノートから Concept / Summary を抽出してナレッジに追加します"
+                title={t("noteList.ingestTooltip")}
               >
-                {selectedIds.size} 件を Knowledge 化
+                {t("noteList.ingestSelected", { count: String(selectedIds.size) })}
               </button>
             )}
             {onSetNoteContexts && (
@@ -537,10 +537,10 @@ export function NoteListView({
         <div className="px-6 py-2 border-b border-border bg-muted/30 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium text-foreground">
-              Markdown 取り込み: {importProgress.done} / {importProgress.total}
+              {t("noteList.importProgress", { done: String(importProgress.done), total: String(importProgress.total) })}
               {importProgress.failed.length > 0 && (
                 <span className="text-destructive ml-2">
-                  （失敗: {importProgress.failed.length}）
+                  {t("noteList.importFailedCount", { count: String(importProgress.failed.length) })}
                 </span>
               )}
             </span>
@@ -549,7 +549,7 @@ export function NoteListView({
                 onClick={() => setImportProgress(null)}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                閉じる
+                {t("common.close")}
               </button>
             )}
           </div>
@@ -561,12 +561,12 @@ export function NoteListView({
           </div>
           {importProgress.current && importing && (
             <div className="text-[11px] text-muted-foreground truncate">
-              処理中: {importProgress.current}
+              {t("noteList.importProcessing", { name: importProgress.current })}
             </div>
           )}
           {importProgress.failed.length > 0 && !importing && (
             <div className="text-[11px] text-destructive">
-              失敗したファイル: {importProgress.failed.join(", ")}
+              {t("noteList.importFailedFiles", { names: importProgress.failed.join(", ") })}
             </div>
           )}
         </div>
@@ -618,14 +618,14 @@ export function NoteListView({
                 <th
                   className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("outgoingLinkCount")}
-                  title="参照先（このノートが参照しているノート数）"
+                  title={t("nav.outgoingTooltip")}
                 >
                   {t("nav.outgoing")}{sortKey === "outgoingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
                 <th
                   className="py-2 px-2 w-[56px] cursor-pointer hover:text-foreground text-center"
                   onClick={() => handleSort("incomingLinkCount")}
-                  title="被参照（他ノートから参照されている数）"
+                  title={t("nav.incomingTooltip")}
                 >
                   {t("nav.incoming")}{sortKey === "incomingLinkCount" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>

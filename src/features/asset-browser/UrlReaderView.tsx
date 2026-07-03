@@ -61,7 +61,7 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
   // ── Reader 取得 ──
   useEffect(() => {
     if (!entry.url) {
-      setStatus({ kind: "empty", reason: "URL が空です" });
+      setStatus({ kind: "empty", reason: t("asset.url.empty") });
       return;
     }
     let cancelled = false;
@@ -108,7 +108,7 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
         });
       } catch (err) {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : "Reader 取得に失敗しました";
+        const message = err instanceof Error ? err.message : t("asset.url.readerError");
         setStatus({ kind: "error", message });
       }
     })();

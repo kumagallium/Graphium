@@ -110,7 +110,7 @@ export async function fetchAsReaderArticle(url: string): Promise<ReaderArticle> 
       status: 400,
       code: "pdf",
       message:
-        "PDF URL は Reader Mode で扱えません。PDF ブロックとしてノートに貼り付けてください。",
+        "PDF URLs cannot be opened in Reader Mode. Paste the URL into a note as a PDF block instead.",
     } satisfies ReaderError;
   }
 

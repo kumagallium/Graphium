@@ -12,6 +12,7 @@
 //   ケースを `compositionend` からの経過時間で吸収する
 import { useRef, useState, type KeyboardEvent } from "react";
 import { StickyNote } from "lucide-react";
+import { useT } from "../../i18n";
 
 export type MemoComposerProps = {
   onSubmit: (text: string) => void | Promise<void>;
@@ -50,6 +51,7 @@ export function shouldSubmitOnEnter(g: EnterSubmitGuard): boolean {
 }
 
 export function MemoComposer({ onSubmit, placeholder }: MemoComposerProps) {
+  const t = useT();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -124,7 +126,7 @@ export function MemoComposer({ onSubmit, placeholder }: MemoComposerProps) {
             composingRef.current = false;
             lastCompositionEndAtRef.current = Date.now();
           }}
-          placeholder={placeholder ?? "メモを書く… ⏎ で保存・Shift+⏎ で改行"}
+          placeholder={placeholder ?? t("memo.composerPlaceholder")}
           rows={1}
           disabled={submitting}
           className="

@@ -528,7 +528,7 @@ export function AiAssistantPanel({
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={noteIndex ? t("aiChat.placeholder") + "  (@でページ参照)" : t("aiChat.placeholder")}
+                placeholder={noteIndex ? `${t("aiChat.placeholder")}  ${t("aiChat.mentionHint")}` : t("aiChat.placeholder")}
                 disabled={loading}
                 rows={2}
                 className="flex-1 text-xs resize-none"

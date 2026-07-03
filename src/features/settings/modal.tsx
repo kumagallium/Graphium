@@ -736,7 +736,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         let reqBody: Record<string, string | undefined>;
         if (isWebMode) {
           const source = getLLMModels().find((m) => m.id === sourceModelId);
-          if (!source) throw new Error("モデルが見つかりません");
+          if (!source) throw new Error(t("settings.ai.modelNotFound"));
           reqBody = { provider: source.provider, api_key: source.apiKey, api_base: source.apiBase ?? undefined };
         } else {
           reqBody = { source_model_id: sourceModelId };
@@ -3113,7 +3113,7 @@ function MaintenanceTab({
               Re-embed all Wikis
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              AI チャットの引用検索（Retriever）が動かないときに使う。全 Wiki の埋め込みを作り直して IndexedDB に保存する。
+              {t("settings.maintenance.reembedHelp")}
             </p>
           </div>
           {reembedProgress && reembedRunning && (
@@ -3247,7 +3247,7 @@ function MaintenanceTab({
                 <option key={m.id || m.name} value={m.name}>
                   {m.name}
                   {m.provider ? ` — ${m.provider}` : ""}
-                  {m.name === (chatSynthesisModel || defaultModel) ? " (現在の設定)" : ""}
+                  {m.name === (chatSynthesisModel || defaultModel) ? ` ${t("settings.maintenance.currentSetting")}` : ""}
                 </option>
               ))}
             </select>

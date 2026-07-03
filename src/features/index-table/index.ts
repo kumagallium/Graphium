@@ -33,9 +33,9 @@ export const indexTableSlashItem = {
             rows: [
               {
                 cells: [
-                  [{ type: "text", text: "名前", styles: {} }],
-                  [{ type: "text", text: "条件1", styles: {} }],
-                  [{ type: "text", text: "条件2", styles: {} }],
+                  [{ type: "text", text: t("indexTable.colName"), styles: {} }],
+                  [{ type: "text", text: t("indexTable.colCond1"), styles: {} }],
+                  [{ type: "text", text: t("indexTable.colCond2"), styles: {} }],
                 ],
               },
               {

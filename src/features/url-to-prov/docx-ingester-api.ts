@@ -9,6 +9,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
+import { t } from "../../i18n";
 
 export type IngestDocxResult = {
   title: string;
@@ -51,7 +52,7 @@ export async function ingestDocxToProv(
   const text = (extracted.value ?? "").trim();
 
   if (!text || text.length < 50) {
-    throw new Error("Word から十分なテキストを抽出できませんでした");
+    throw new Error(t("ingest.docxNoText"));
   }
 
   const title = fileName.replace(/\.(docx|doc)$/i, "");

@@ -9,6 +9,7 @@ import type { CaptureIndex, CaptureEntry } from "../mobile-capture";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndexEntry } from "./media-index";
 import { MemoComposer } from "./MemoComposer";
+import { useT } from "../../i18n";
 
 export type AssetMemosSectionProps = {
   entry: MediaIndexEntry;
@@ -49,6 +50,7 @@ export function AssetMemosSection({
   onDeleteMemo,
   onCreateMemo,
 }: AssetMemosSectionProps) {
+  const t = useT();
   const memos = useMemo(() => filterMemosByAsset(captureIndex, entry), [captureIndex, entry]);
 
   return (
@@ -65,16 +67,16 @@ export function AssetMemosSection({
             lineHeight: 1.6,
           }}
         >
-          この素材に紐づくメモはまだありません。
+          {t("memo.emptyForAsset")}
           {onCreateMemo ? (
             <>
               <br />
-              上の入力欄から書き込むか、PDF のテキストを選択して「メモに保存」できます。
+              {t("memo.assetWriteHint")}
             </>
           ) : (
             <>
               <br />
-              PDF のテキストを選択して「メモに保存」を押すと、ここに並びます。
+              {t("memo.assetPdfHint")}
             </>
           )}
         </div>
@@ -127,7 +129,7 @@ export function AssetMemosSection({
                   >
                     {formatDateTime(memo.createdAt)}
                     {memo.usedIn && memo.usedIn.length > 0 && (
-                      <span style={{ marginLeft: 8 }}>· 引用済み {memo.usedIn.length} 件</span>
+                      <span style={{ marginLeft: 8 }}>{t("memo.citedCount", { count: String(memo.usedIn.length) })}</span>
                     )}
                   </p>
                 </div>
@@ -135,8 +137,8 @@ export function AssetMemosSection({
                   <button
                     type="button"
                     onClick={() => onDeleteMemo(memo.id)}
-                    title="メモを削除"
-                    aria-label="メモを削除"
+                    title={t("memo.delete")}
+                    aria-label={t("memo.delete")}
                     style={{
                       border: "none",
                       background: "transparent",

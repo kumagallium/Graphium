@@ -12,6 +12,7 @@ import type { BlockLink } from "../block-link/link-types";
 import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
 import { buildDocumentProvenanceBundle, type DocumentProvenanceBundle } from "../document-provenance/prov-output";
+import { t } from "../../i18n";
 
 // ── PROV-JSON-LD の型定義（Phase 3: 埋め込み形式） ──
 
@@ -1067,11 +1068,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         // 何も無いので synthetic placeholder を作る（graph connectivity の最終 fallback）
         const syntheticId = `result_synthetic_${link.targetBlockId}`;
         if (!nodes.find((n) => n["@id"] === syntheticId)) {
-          const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? "前手順";
+          const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? t("prov.prevStepFallback");
           nodes.push({
             "@id": syntheticId,
             "@type": "prov:Entity",
-            label: `${prevActLabel} の結果`,
+            label: t("prov.resultOf", { label: prevActLabel }),
             blockId: link.targetBlockId,
           });
           relations.push({

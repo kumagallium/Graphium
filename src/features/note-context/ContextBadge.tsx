@@ -6,6 +6,7 @@
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { noteContextHue } from "./context-tags";
+import { useT } from "../../i18n";
 
 export function ContextBadge({
   value,
@@ -19,6 +20,7 @@ export function ContextBadge({
   removeLabel?: string;
   className?: string;
 }) {
+  const t = useT();
   const h = noteContextHue(value);
   // ライト/ダーク両対応: 中間トーンの色を基準に、背景=低アルファ、境界=中アルファ。
   // PROV バッジ（固定 hex + 不透明度）と同じ「淡背景に濃文字」の構造を HSL で再現する。
@@ -45,8 +47,8 @@ export function ContextBadge({
             e.stopPropagation();
             onRemove();
           }}
-          aria-label={removeLabel ?? `${value} を外す`}
-          title={removeLabel ?? `${value} を外す`}
+          aria-label={removeLabel ?? t("nav.removeContextValue", { value })}
+          title={removeLabel ?? t("nav.removeContextValue", { value })}
           className="inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors"
           style={{ color: base }}
         >

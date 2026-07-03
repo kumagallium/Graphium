@@ -61,7 +61,7 @@ app.post("/", async (c) => {
   if (body.source_model_id) {
     const source = getModel(body.source_model_id);
     if (!source) {
-      return c.json({ error: "参照元モデルが見つかりません" }, 404);
+      return c.json({ error: "Source model not found" }, 404);
     }
     apiKey = source.apiKey;
     if (apiBase === undefined) apiBase = source.apiBase ?? undefined;
@@ -75,7 +75,7 @@ app.post("/", async (c) => {
     !body.model_id ||
     (requiresApiKey && !apiKey)
   ) {
-    return c.json({ error: "必須フィールドが不足しています" }, 400);
+    return c.json({ error: "Required fields are missing" }, 400);
   }
 
   const model = addModel({
@@ -131,7 +131,7 @@ app.put("/:id", async (c) => {
   });
 
   if (!updated) {
-    return c.json({ error: "モデルが見つかりません" }, 404);
+    return c.json({ error: "Model not found" }, 404);
   }
   return c.json({ message: `Model '${updated.name}' updated` });
 });
@@ -141,7 +141,7 @@ app.delete("/:id", (c) => {
   const id = c.req.param("id");
   const removed = removeModel(id);
   if (!removed) {
-    return c.json({ error: "モデルが見つかりません" }, 404);
+    return c.json({ error: "Model not found" }, 404);
   }
   return c.json({ message: "Model deleted" });
 });
@@ -164,7 +164,7 @@ app.post("/available", async (c) => {
   if (body.source_model_id) {
     const source = getModel(body.source_model_id);
     if (!source) {
-      return c.json({ error: "参照元モデルが見つかりません" }, 404);
+      return c.json({ error: "Source model not found" }, 404);
     }
     provider = source.provider;
     apiKey = source.apiKey;
@@ -172,7 +172,7 @@ app.post("/available", async (c) => {
   }
 
   if (!provider || !apiKey) {
-    return c.json({ error: "provider と api_key は必須です" }, 400);
+    return c.json({ error: "provider and api_key are required" }, 400);
   }
 
   try {

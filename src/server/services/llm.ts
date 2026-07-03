@@ -69,7 +69,7 @@ export async function createModel(
     }
     case "openai-compatible": {
       if (!config.apiBase) {
-        throw new Error("openai-compatible プロバイダーには apiBase が必要です");
+        throw new Error("The openai-compatible provider requires apiBase");
       }
       const provider = createOpenAICompatible({
         name: config.name,
@@ -107,7 +107,7 @@ export async function createModel(
       return provider(config.modelId || "sonnet");
     }
     default:
-      throw new Error(`未知のプロバイダー: ${config.provider}`);
+      throw new Error(`Unknown provider: ${config.provider}`);
   }
 }
 
@@ -211,7 +211,7 @@ export async function fetchAvailableModels(
 ): Promise<string[]> {
   const base = apiBase || DEFAULT_API_BASE[provider];
   if (!base) {
-    throw new Error(`${provider} には API Base URL が必要です`);
+    throw new Error(`${provider} requires an API Base URL`);
   }
 
   const fetcher = PROVIDER_FETCHER[provider] ?? fetchOpenAIModels;

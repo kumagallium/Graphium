@@ -33,6 +33,7 @@ import {
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { loadAllSharedEntries } from "./shared-library-loader";
 import { formatDate } from "../../lib/format-datetime";
+import { t } from "../../i18n";
 
 type Props = {
   /** Settings の shared root path */
@@ -150,8 +151,7 @@ export function SharedLibraryView({
   const handleUnshare = useCallback(
     async (entry: SharedEntry) => {
       const confirmed = window.confirm(
-        `Unshare "${entryTitle(entry)}"?\n\n` +
-          `他のメンバーがすでに見た / キャッシュした / fork した可能性があります。完全な抹消はできません。`,
+        `Unshare "${entryTitle(entry)}"?\n\n` + t("share.unshareConfirmBody"),
       );
       if (!confirmed) return;
       setBusyId(entry.id);
@@ -523,8 +523,8 @@ function SharedEntryDetail({
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-2">
           <div className="text-xs text-muted-foreground">
             {isMine
-              ? "更新するにはローカルで編集して再 Share してください。"
-              : "他人の共有エントリは読み取り専用です。"}
+              ? t("share.updateHint")
+              : t("share.readOnlyOthers")}
           </div>
           <div className="flex items-center gap-2">
             {onFork && !isMine && (
@@ -633,7 +633,7 @@ function SharedEntryBody({
             {doc.pages?.length ?? 0} page · {blockCount} block
           </p>
           <p className="text-xs text-muted-foreground">
-            Fork してローカルで開くとフル内容を確認できます。
+            {t("share.forkToView")}
           </p>
         </div>
       );
@@ -735,7 +735,7 @@ function BlobPreviewCard({
       {/* preview slot */}
       {!blobRoot ? (
         <div className="p-3 text-xs text-muted-foreground">
-          Blob root が未設定のためプレビューできません。
+          {t("share.noBlobRootPreview")}
         </div>
       ) : error ? (
         <div className="p-3 text-xs text-destructive flex items-center gap-2">
