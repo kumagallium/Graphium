@@ -73,7 +73,7 @@ import {
   resolveMentionTargetFromLinks,
 } from "./features/block-link/mention-menu";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
-import { buildMentionPatterns, replaceMentionRunsInContent } from "./features/block-link/mention-rename";
+import { buildMentionPatterns, rewriteMentionRunsForBlock } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -915,8 +915,13 @@ function NoteEditorInner({
       });
       const allLinks = linkStore.getAllLinks();
       const blockIds = new Set<string>();
+      const blockTargets = new Map<string, Set<string>>();
       for (const l of allLinks) {
-        if (l.targetNoteId === rawPeekId && l.sourceBlockId) blockIds.add(l.sourceBlockId);
+        if (!l.sourceBlockId || !l.targetNoteId) continue;
+        let set = blockTargets.get(l.sourceBlockId);
+        if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
+        set.add(l.targetNoteId);
+        if (l.targetNoteId === rawPeekId) blockIds.add(l.sourceBlockId);
       }
       // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）: 同じブロックに
       // 「別ノートだが現タイトルが旧タイトルと同じ」参照が同居していたら触らない
@@ -931,7 +936,9 @@ function NoteEditorInner({
         try {
           const block = editor.getBlock?.(bid);
           if (!block || !Array.isArray(block.content)) continue;
-          const nc = replaceMentionRunsInContent(block.content, patterns);
+          const nc = rewriteMentionRunsForBlock(block.content, patterns, {
+            uniqueFallback: blockTargets.get(bid)?.size === 1,
+          });
           if (nc) editor.updateBlock(block, { content: nc });
         } catch {
           // ブロックが削除済み等は無視（伝播はベストエフォート）
@@ -940,6 +947,12 @@ function NoteEditorInner({
     },
     [onPeekSaved, onPropagateMentionRename, fileId, noteIndex, getCachedDoc, linkStore],
   );
+  // メインのタイトルリネームをピーク側の本文へライブ反映するための命令口。
+  // SidePeek がここに実装を登録する（openSidePeekRef と同じ流儀）。
+  const peekMentionRenameRef = useRef<
+    | ((rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean) => void)
+    | null
+  >(null);
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
@@ -1745,10 +1758,11 @@ function NoteEditorInner({
     onSave(doc);
     // タイトルが変わった保存なら、@メンションのラベルを参照元ノートへ伝播する。
     // ピークで開いているノートはファイル直書きすると、ピークの次のオートセーブが
-    // 旧内容で上書きして伝播が巻き戻るため対象から外す（そのノートのラベルは従来
-    // どおり古いまま残るが、クリック解決はリンクレコード経由なので壊れない）。
-    // skill をフルで開いている場合は raw id のまま渡るが、skill は @メンションの
-    // 参照が構造上存在しないため propagate 側で自然に no-op になる。
+    // 旧内容で上書きして伝播が巻き戻るため対象から外し、代わりにピークのエディタを
+    // ライブ更新する（peekMentionRenameRef → updateBlock → ピーク自身のオート
+    // セーブ経路で永続化）。skill をフルで開いている場合は raw id のまま渡るが、
+    // skill は @メンションの参照が構造上存在しないため propagate 側で自然に
+    // no-op になる。
     const prevTitle = lastSavedTitleRef.current;
     if (fileId && prevTitle && doc.title && prevTitle !== doc.title) {
       const peekRaw = sidePeekNoteId?.replace(/^(wiki|skill):/, "");
@@ -1758,6 +1772,7 @@ function NoteEditorInner({
         doc.title,
         { skipNoteIds: peekRaw ? [peekRaw] : undefined },
       );
+      peekMentionRenameRef.current?.(fileId, prevTitle, doc.title, isWikiDoc ?? false);
     }
     lastSavedTitleRef.current = doc.title ?? "";
     // 保存後に documentProvenance を state に反映（History パネル更新用）
@@ -3656,6 +3671,7 @@ function NoteEditorInner({
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             onSaved={handlePeekSaved}
+            applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
             onNavigate={(noteId, savedDoc) => {
               setSidePeekNoteId(null);
@@ -3691,6 +3707,7 @@ function NoteEditorInner({
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
             onSaved={handlePeekSaved}
+            applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
             mediaIndex={mediaIndex ?? null}
             captureIndex={captureIndexProp ?? null}

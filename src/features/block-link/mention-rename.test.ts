@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildMentionPatterns,
   replaceMentionRunsInContent,
+  rewriteMentionRunsForBlock,
   applyMentionRenameToDoc,
 } from "./mention-rename";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -16,16 +17,58 @@ const pat = (oldTitle: string, newTitle: string) => buildMentionPatterns(oldTitl
 
 describe("buildMentionPatterns", () => {
   it("通常ノートは @旧 → @新 の 1 パターン", () => {
-    expect(buildMentionPatterns("旧", "新")).toEqual([{ from: "@旧", to: "@新" }]);
+    expect(buildMentionPatterns("旧", "新")).toEqual([{ from: "@旧", to: "@新", prefix: "@" }]);
   });
 
   it("wiki は装飾付きラベル（Summary / Concept）も含む 3 パターン", () => {
     const patterns = buildMentionPatterns("旧", "新", { includeWikiLabels: true });
     expect(patterns).toEqual([
-      { from: "@旧", to: "@新" },
-      { from: "@🤖 Summary: 旧", to: "@🤖 Summary: 新" },
-      { from: "@🤖 Concept: 旧", to: "@🤖 Concept: 新" },
+      { from: "@旧", to: "@新", prefix: "@" },
+      { from: "@🤖 Summary: 旧", to: "@🤖 Summary: 新", prefix: "@🤖 Summary: " },
+      { from: "@🤖 Concept: 旧", to: "@🤖 Concept: 新", prefix: "@🤖 Concept: " },
     ]);
+  });
+});
+
+describe("rewriteMentionRunsForBlock（一意フォールバック）", () => {
+  it("完全一致しない旧世代ラベルでも、候補 run が 1 個なら新ラベルへ修復する", () => {
+    const content = [plainText("出典: "), blueMention("2世代前のラベル")];
+    const result = rewriteMentionRunsForBlock(content, pat("現タイトル", "新タイトル"), {
+      uniqueFallback: true,
+    });
+    expect(result).not.toBeNull();
+    expect(result![1].text).toBe("@新タイトル");
+    expect(result![0].text).toBe("出典: ");
+  });
+
+  it("装飾付きの旧世代ラベルは装飾（prefix）を保って修復する", () => {
+    const content = [blueMention("🤖 Concept: 大昔のタイトル")];
+    const result = rewriteMentionRunsForBlock(
+      content,
+      buildMentionPatterns("現タイトル", "新タイトル", { includeWikiLabels: true }),
+      { uniqueFallback: true },
+    );
+    expect(result).not.toBeNull();
+    expect(result![0].text).toBe("@🤖 Concept: 新タイトル");
+  });
+
+  it("青い @run が複数あるブロックでは発動しない", () => {
+    const content = [blueMention("ラベルA"), plainText(" "), blueMention("ラベルB")];
+    expect(
+      rewriteMentionRunsForBlock(content, pat("現", "新"), { uniqueFallback: true }),
+    ).toBeNull();
+  });
+
+  it("uniqueFallback が偽なら完全一致のみ（従来挙動）", () => {
+    const content = [blueMention("旧世代")];
+    expect(rewriteMentionRunsForBlock(content, pat("現", "新"))).toBeNull();
+  });
+
+  it("既に新ラベルなら変更なし", () => {
+    const content = [blueMention("新タイトル")];
+    expect(
+      rewriteMentionRunsForBlock(content, pat("現", "新タイトル"), { uniqueFallback: true }),
+    ).toBeNull();
   });
 });
 
@@ -220,9 +263,25 @@ describe("applyMentionRenameToDoc", () => {
     expect(applyMentionRenameToDoc(doc, "note-B", "旧B", "新B", () => undefined)).toBeNull();
   });
 
-  it("リンクはあるがテキストが一致しなければ null（既に手動編集済み等）", () => {
-    const doc = makeDoc([para("b1", [blueMention("手で変えた")])], [refLink("b1", "note-B")]);
-    expect(applyMentionRenameToDoc(doc, "note-B", "旧B", "新B", () => undefined)).toBeNull();
+  it("テキスト不一致でも参照が対象宛てのみなら一意フォールバックで修復する", () => {
+    // skip 等でラベルが旧世代のまま取り残されたケース。ブロックの参照リンクが
+    // リネーム対象宛てのみ + 青い @run が 1 個なら一意に特定できるので書き換える。
+    const doc = makeDoc([para("b1", [blueMention("取り残された旧ラベル")])], [refLink("b1", "note-B")]);
+    const result = applyMentionRenameToDoc(doc, "note-B", "旧B", "新B", () => undefined);
+    expect(result).not.toBeNull();
+    expect(result!.doc.pages[0].blocks[0].content[0].text).toBe("@新B");
+  });
+
+  it("別ノート宛てリンクが同居するブロックでは一意フォールバックは発動しない", () => {
+    const doc = makeDoc(
+      [para("b1", [blueMention("取り残された旧ラベル"), plainText(" と "), blueMention("別ノート")])],
+      [refLink("b1", "note-B"), refLink("b1", "note-C")],
+    );
+    expect(
+      applyMentionRenameToDoc(doc, "note-B", "旧B", "新B", (id) =>
+        id === "note-C" ? "別ノート" : undefined,
+      ),
+    ).toBeNull();
   });
 
   it("タイトルが同一・空のときは null", () => {

@@ -70,6 +70,7 @@ import {
   resolveMentionTargetFromLinks,
 } from "@features/block-link/mention-menu";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
+import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
 import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
@@ -141,6 +142,17 @@ type SidePeekProps = {
    * プレフィックス付きのまま渡す（doc キャッシュのキーと同じ形）。
    */
   onSaved?: (noteId: string, savedDoc: GraphiumDocument) => void;
+  /**
+   * メインエディタ側でのタイトルリネーム時に、このピークで開いているノートの本文内
+   * メンションラベルをライブ更新するための命令口。NoteEditorInner が ref に関数登録の
+   * 口を渡し、SidePeek 側が実装を登録する（openSidePeekRef と同じ流儀）。
+   * ピークで開いているノートはファイル直書きすると次のオートセーブで巻き戻るため、
+   * エディタ経由で書き換えて通常のオートセーブ経路に乗せる。
+   */
+  applyMentionRenameRef?: React.MutableRefObject<
+    | ((rawRenamedId: string, oldTitle: string, newTitle: string, includeWikiLabels: boolean) => void)
+    | null
+  >;
   /** 文脈候補（タグ）を全ノートから削除する（ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /**
@@ -203,7 +215,7 @@ function SidePeekInner({
   noteId, cachedDoc, onClose, onNavigate, wikiEntries, onAddToKnowledge,
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
-  onNoteContextsChange, onSaved, onDeleteContextEverywhere,
+  onNoteContextsChange, onSaved, applyMentionRenameRef, onDeleteContextEverywhere,
   onCreateLinkedNote, onOpenNoteInPeek,
 }: SidePeekProps) {
   const t = useT();
@@ -246,6 +258,53 @@ function SidePeekInner({
   // onSaved は毎レンダリング新しい関数になり得るため ref 経由で参照する
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  // メインエディタ側のタイトルリネームを、このピークで開いているノートの本文へ
+  // ライブ反映する命令口を登録する。ファイル直書きだとピークの次のオートセーブが
+  // 旧内容で上書きして伝播が巻き戻るため、エディタ経由で書き換えて通常のオート
+  // セーブ経路（updateBlock → onChange → doSave → onSaved）に乗せる。
+  const noteIndexPropRef = useRef(noteIndex);
+  noteIndexPropRef.current = noteIndex;
+  useEffect(() => {
+    if (!applyMentionRenameRef) return;
+    applyMentionRenameRef.current = (rawRenamedId, oldTitle, newTitle, includeWikiLabels) => {
+      const editor = editorRef.current;
+      if (!editor || !oldTitle || !newTitle || oldTitle === newTitle) return;
+      const patterns = buildMentionPatterns(oldTitle, newTitle, { includeWikiLabels });
+      const allLinks = linkStoreRef.current.getAllLinks();
+      const blockIds = new Set<string>();
+      const blockTargets = new Map<string, Set<string>>();
+      for (const l of allLinks) {
+        if (!l.sourceBlockId || !l.targetNoteId) continue;
+        let set = blockTargets.get(l.sourceBlockId);
+        if (!set) blockTargets.set(l.sourceBlockId, (set = new Set()));
+        set.add(l.targetNoteId);
+        if (l.targetNoteId === rawRenamedId) blockIds.add(l.sourceBlockId);
+      }
+      // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）
+      for (const l of allLinks) {
+        if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
+        if (l.targetNoteId && l.targetNoteId !== rawRenamedId) {
+          const t2 = noteIndexPropRef.current?.notes.find((n) => n.noteId === l.targetNoteId)?.title;
+          if (t2 === oldTitle) blockIds.delete(l.sourceBlockId);
+        }
+      }
+      for (const bid of blockIds) {
+        try {
+          const block = editor.getBlock?.(bid);
+          if (!block || !Array.isArray(block.content)) continue;
+          const nc = rewriteMentionRunsForBlock(block.content, patterns, {
+            uniqueFallback: blockTargets.get(bid)?.size === 1,
+          });
+          if (nc) editor.updateBlock(block, { content: nc });
+        } catch {
+          // ブロックが削除済み等は無視（伝播はベストエフォート）
+        }
+      }
+    };
+    return () => {
+      applyMentionRenameRef.current = null;
+    };
+  }, [applyMentionRenameRef]);
   // cachedDoc は「開いた瞬間を即時表示する」ための mount 時スナップショットに固定する。
   // 開いている間に親の doc キャッシュが更新されて prop の参照が変わっても
   // （onSaved → reindexNoteFromDoc 直後など）、load effect を再発火させて編集中の
