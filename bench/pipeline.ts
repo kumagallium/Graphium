@@ -517,7 +517,7 @@ async function ingestNoteLive(
 ): Promise<{ claims: BenchClaim[]; parseRetried: boolean; parseFailed: boolean }> {
   const systemPrompt = buildIngesterSystemPrompt(note.language, [], undefined);
   const userMessage = `Source note title: "${note.title}"\nUse this exact title for inline citations (e.g., "Based on [${note.title}], ...").\n\n# ${note.title}\n\n${note.body}`;
-  const model = createModel(modelConfig);
+  const model = await createModel(modelConfig);
 
   let result = await runAgentLoop({
     model,
@@ -682,7 +682,7 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
     const systemPrompt = buildAtomizerSystemPrompt("ja");
     const userMessage = buildAtomizerUserMessage(snapshots, []);
     try {
-      const model = createModel(modelConfig);
+      const model = await createModel(modelConfig);
       let result = await runAgentLoop({
         model,
         modelId: modelConfig.modelId,

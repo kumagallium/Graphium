@@ -197,11 +197,15 @@ function buildModelConfig(): ModelConfig {
 
 export function createLiveJudges(): JudgePack {
   const modelConfig = buildModelConfig();
-  const model = createModel(modelConfig);
+  // createModel は async（Promise<LanguageModel> を返す）。createLiveJudges を async 化すると
+  // buildJudges / runner まで波及するため、ここで Promise を 1 度だけ生成し、async な lift
+  // クロージャ内で await して解決する（解決済み Promise の再 await は即時なのでキャッシュになる）。
+  const modelPromise = createModel(modelConfig);
 
   const lift: LiftJudge = async (atom) => {
     const userMessage = `Atom title: "${atom.title}"\nAtom body: ${atom.body || "(empty)"}`;
     try {
+      const model = await modelPromise;
       const result = await generateText({
         model,
         system: LIFT_RUBRIC,
