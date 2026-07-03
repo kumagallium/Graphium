@@ -20,6 +20,9 @@ import {
   buildReliftUserMessage,
   parseTransferJudgeOutput,
   buildTransferJudgeUserMessage,
+  parseFoldJudgeOutput,
+  buildFoldJudgeUserMessage,
+  resolveFoldVerdict,
 } from "./wiki-atomizer.ts";
 
 describe("detectRung1Tokens — corpus-actual failing tokens", () => {
@@ -262,6 +265,36 @@ describe("parseAtomizerOutput — shape / transfer (structural abstraction)", ()
     const json = JSON.stringify({ atoms: [{ title: "x", body: "y", sourceConceptIds: ["c1"], confidence: 0.8, transfer: { field: "x" } }] });
     expect(parseAtomizerOutput(json, idMap)[0].transfer).toBeUndefined();
   });
+
+  it("derives shapeFamily deterministically from the form, ignoring the LLM's raw family", () => {
+    // form=optimal-middle は functional-dependence に属す。LLM が矛盾する family を出しても
+    // form を真実源に補正する（self-heal）。
+    const json = JSON.stringify({
+      atoms: [{ title: "中間最適", body: "本文", sourceConceptIds: ["c1"], confidence: 0.8, shape: "optimal-middle", shapeFamily: "dynamic-feedback" }],
+    });
+    const out = parseAtomizerOutput(json, idMap);
+    expect(out[0].shape).toBe("optimal-middle");
+    expect(out[0].shapeFamily).toBe("functional-dependence"); // raw の dynamic-feedback は捨てる
+  });
+
+  it("maps each family's forms correctly (structural / conditional / dynamic-feedback)", () => {
+    const comp = JSON.stringify({ atoms: [{ title: "a", body: "b", sourceConceptIds: ["c1"], confidence: 0.8, shape: "composition-structure" }] });
+    expect(parseAtomizerOutput(comp, idMap)[0].shapeFamily).toBe("structural");
+    const enab = JSON.stringify({ atoms: [{ title: "a", body: "b", sourceConceptIds: ["c1"], confidence: 0.8, shape: "enabling-condition" }] });
+    expect(parseAtomizerOutput(enab, idMap)[0].shapeFamily).toBe("conditional");
+    const loop = JSON.stringify({ atoms: [{ title: "a", body: "b", sourceConceptIds: ["c1"], confidence: 0.8, shape: "reinforcing-loop" }] });
+    expect(parseAtomizerOutput(loop, idMap)[0].shapeFamily).toBe("dynamic-feedback");
+  });
+
+  it("falls back to the raw family only when the form is absent, and drops an out-of-vocab family", () => {
+    // form 無し + 妥当な raw family → raw を採用。
+    const valid = JSON.stringify({ atoms: [{ title: "a", body: "b", sourceConceptIds: ["c1"], confidence: 0.8, shapeFamily: "structural" }] });
+    expect(parseAtomizerOutput(valid, idMap)[0].shapeFamily).toBe("structural");
+    expect(parseAtomizerOutput(valid, idMap)[0].shape).toBeUndefined();
+    // form 無し + 語彙外 family → undefined。
+    const bad = JSON.stringify({ atoms: [{ title: "a", body: "b", sourceConceptIds: ["c1"], confidence: 0.8, shapeFamily: "wobbly" }] });
+    expect(parseAtomizerOutput(bad, idMap)[0].shapeFamily).toBeUndefined();
+  });
 });
 
 describe("parseTransferJudgeOutput / buildTransferJudgeUserMessage", () => {
@@ -282,5 +315,102 @@ describe("parseTransferJudgeOutput / buildTransferJudgeUserMessage", () => {
     expect(msg).toContain("[1]");
     expect(msg).toContain("shape: optimal-middle");
     expect(msg).toContain("transfer.field: 料理");
+  });
+});
+
+describe("parseFoldJudgeOutput / buildFoldJudgeUserMessage — fold verification (co-structure)", () => {
+  it("parses per-atom coherent subsets and coerces ids to trimmed strings", () => {
+    const json = JSON.stringify({
+      items: [
+        { index: 1, coherentClaimIds: ["c1", "c3"], reason: "c1,c3 optimal-middle; c2 monotonic" },
+        { index: 2, coherentClaimIds: ["c4"], reason: "only c4 instances the shape" },
+      ],
+    });
+    const out = parseFoldJudgeOutput(json);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ index: 1, coherentClaimIds: ["c1", "c3"], reason: "c1,c3 optimal-middle; c2 monotonic" });
+    expect(out[1].coherentClaimIds).toEqual(["c4"]);
+  });
+
+  it("parses an empty coherent set (judge says none cohere → caller collapses to best claim)", () => {
+    const json = JSON.stringify({ items: [{ index: 1, coherentClaimIds: [], reason: "three different shapes" }] });
+    const out = parseFoldJudgeOutput(json);
+    expect(out).toHaveLength(1);
+    expect(out[0].coherentClaimIds).toEqual([]);
+  });
+
+  it("drops non-string / empty ids inside coherentClaimIds", () => {
+    const json = JSON.stringify({ items: [{ index: 1, coherentClaimIds: ["c1", "", 42, null, "  c2  "] }] });
+    const out = parseFoldJudgeOutput(json);
+    expect(out[0].coherentClaimIds).toEqual(["c1", "c2"]); // trimmed, non-strings dropped
+  });
+
+  it("drops rows whose coherentClaimIds is not an array (malformed → no verdict / fail-open)", () => {
+    const json = JSON.stringify({ items: [{ index: 1, reason: "forgot the array" }, { index: 2, coherentClaimIds: ["c9"] }] });
+    const out = parseFoldJudgeOutput(json);
+    expect(out).toHaveLength(1);
+    expect(out[0].index).toBe(2);
+  });
+
+  it("defaults index to 0 and reason to empty string when absent", () => {
+    const json = JSON.stringify({ items: [{ coherentClaimIds: ["c1"] }] });
+    const out = parseFoldJudgeOutput(json);
+    expect(out[0]).toEqual({ index: 0, coherentClaimIds: ["c1"], reason: "" });
+  });
+
+  it("accepts a bare array (no items wrapper) and strips a fenced json block", () => {
+    expect(parseFoldJudgeOutput(JSON.stringify([{ index: 1, coherentClaimIds: ["c1"] }]))).toHaveLength(1);
+    const fenced = "```json\n" + JSON.stringify({ items: [{ index: 1, coherentClaimIds: ["c1"] }] }) + "\n```";
+    expect(parseFoldJudgeOutput(fenced)[0].coherentClaimIds).toEqual(["c1"]);
+  });
+
+  it("returns [] on malformed JSON (judge failure → route fails open, keeps atoms)", () => {
+    expect(parseFoldJudgeOutput("not json")).toEqual([]);
+    expect(parseFoldJudgeOutput("")).toEqual([]);
+  });
+
+  it("builds a judge message with principle / shape / per-claim id+title+preview", () => {
+    const msg = buildFoldJudgeUserMessage([
+      {
+        title: "中間の最適値で性能が最大になる",
+        shape: "optimal-middle",
+        claims: [
+          { id: "c1", title: "塩は中間量で旨味が最大", preview: "少なすぎても多すぎても味が落ちる" },
+          { id: "c2", title: "熱処理は中間温度で強度が最大", preview: "低温だと未反応、高温だと粗大化" },
+        ],
+      },
+    ]);
+    expect(msg).toContain("[1]");
+    expect(msg).toContain("shape: optimal-middle");
+    expect(msg).toContain("(id: c1)");
+    expect(msg).toContain("塩は中間量で旨味が最大");
+    expect(msg).toContain("少なすぎても多すぎても味が落ちる"); // preview surfaced
+  });
+
+  it("renders shape as (none) and omits the em-dash when preview is empty", () => {
+    const msg = buildFoldJudgeUserMessage([
+      { title: "x", shape: undefined, claims: [{ id: "c1", title: "t1", preview: "" }] },
+    ]);
+    expect(msg).toContain("shape: (none)");
+    expect(msg).toContain('(id: c1) "t1"');
+    expect(msg).not.toContain('"t1" —'); // no trailing " — " with empty preview
+  });
+});
+
+describe("resolveFoldVerdict — subset / collapse rules", () => {
+  it("no change when all sent ids cohere", () => {
+    expect(resolveFoldVerdict(["c1", "c2"], ["c1", "c2"])).toEqual({ confirmed: ["c1", "c2"], dropped: 0, changed: false });
+  });
+  it("restricts to the coherent subset (keeping sent order)", () => {
+    expect(resolveFoldVerdict(["c1", "c2", "c3"], ["c3", "c1"])).toEqual({ confirmed: ["c1", "c3"], dropped: 1, changed: true });
+  });
+  it("collapses to the first (best-cited) claim when none cohere", () => {
+    expect(resolveFoldVerdict(["c1", "c2"], [])).toEqual({ confirmed: ["c1"], dropped: 1, changed: true });
+  });
+  it("ignores hallucinated ids the judge invented", () => {
+    expect(resolveFoldVerdict(["c1", "c2"], ["c1", "c9"])).toEqual({ confirmed: ["c1"], dropped: 1, changed: true });
+  });
+  it("collapses to first when judge returns only hallucinated ids", () => {
+    expect(resolveFoldVerdict(["c1", "c2"], ["zzz"])).toEqual({ confirmed: ["c1"], dropped: 1, changed: true });
   });
 });

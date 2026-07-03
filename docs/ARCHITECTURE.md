@@ -363,18 +363,25 @@ Notes:
 - **Insights are structural abstractions, not tidied Claims.** A Claim is a
   domain finding; the Insight (Atom) is the *transferable structure* behind it,
   produced by the atomizer (`buildAtomizerSystemPrompt`) in four steps:
-  **decompose** the relationship (control → outcome), **classify the shape** from
-  a fixed vocabulary (`monotonic-increase` / `monotonic-decrease` /
-  `optimal-middle` / `threshold` / `trade-off` / `enabling-condition` /
-  `composition-structure` / `reinforcing-loop` / `balancing-loop` (feedback
-  cycles) / `other`), **abstract** the roles to their general
+  **decompose** the relationship (control → outcome), **classify the shape** in
+  two levels — first the **family** (the axis: `functional-dependence` /
+  `structural` / `conditional` / `dynamic-feedback` / `other`), then the **form**
+  (the leaf inside that family: `monotonic-increase` / `monotonic-decrease` /
+  `optimal-middle` / `threshold` / `trade-off` under functional-dependence;
+  `composition-structure` under structural; `enabling-condition` under
+  conditional; `reinforcing-loop` / `balancing-loop` (feedback cycles) under
+  dynamic-feedback; `other`) — **abstract** the roles to their general
   category while keeping the shape, and optionally name a **transfer** (a
   different field where the same shape + role-structure holds). The fixed shape
   vocabulary is the key: the LLM *classifies* into it rather than inventing an
   axis, which is what keeps the abstraction from going vacuous (the failure mode
-  of the retired meta-atom layer). A single Claim that instances a real shape is
-  enough; the source-Claim count is a support signal, not a gate. The `shape`
-  and the verified `transfer` are stored on the Atom's `WikiMeta`.
+  of the retired meta-atom layer). Picking the family before the form is what
+  makes "pick exactly one" a clean partition — each form belongs to exactly one
+  family (`SHAPE_FORM_TO_FAMILY`), so the family is derived deterministically from
+  the form and any LLM family/form mismatch self-heals to the form. A single
+  Claim that instances a real shape is enough; the source-Claim count is a support
+  signal, not a gate. The `shape` (form), `shapeFamily`, and the verified
+  `transfer` are stored on the Atom's `WikiMeta`.
 - **Transfer judge — adversarial verification of the analogy.** The transfer the
   atomizer proposes is a *candidate*. The `/atomize` route runs a skeptical judge
   (`buildTransferJudgeSystemPrompt`) asking whether the example genuinely
@@ -382,6 +389,15 @@ Notes:
   ("こじつけ") transfers are dropped while the principle itself is always kept. On
   a 24-Claim check this kept ~88% of transfers and correctly dropped the rest;
   the principle stays valid even when its transfer is discarded.
+- **Fold judge — adversarial verification of the co-structure.** When an Atom
+  folds 2+ Claims into one insight it asserts they share the same shape. The
+  `/atomize` route runs a second skeptical judge (`buildFoldJudgeSystemPrompt`)
+  that checks each cited Claim actually instances that shape and **restricts
+  `derivedFromClaims` to the coherent subset** (narrowing `derivedFromConceptTitles`
+  in lockstep). If none cohere the insight collapses to its single best-cited
+  Claim — the principle is never deleted, only the over-broad fold is trimmed.
+  Unlike the transfer judge it **fails open**: an unverifiable fold is the
+  atomizer's honest best guess, so on judge error the Atom keeps its citations.
 - **Readability re-lift (Claim → Insight pipeline, stages C+D).** The Atomizer
   reliably *generalizes* (finds the rule) but, asked to also strip jargon in the
   same pass, often leaves raw chemical formulas / acronyms in the wording. After
@@ -398,9 +414,9 @@ Notes:
     pass. The regex is a cheap residual check, not the primary gate.
 
   Nothing is silently dropped; a relift failure leaves the original Insight
-  intact. Full path: **cluster (A) → decompose→shape→abstract→transfer (B) →
-  transfer judge → readability rewrite (D, all) → residual check (C) → fix
-  residuals (D)** — each an explicit, nameable step.
+  intact. Full path: **cluster (A) → decompose→shape(family→form)→abstract→transfer (B) →
+  transfer judge → fold judge → readability rewrite (D, all) → residual check (C) →
+  fix residuals (D)** — each an explicit, nameable step.
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.

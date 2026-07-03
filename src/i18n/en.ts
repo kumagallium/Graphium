@@ -789,6 +789,12 @@ export const en: Record<string, string> = {
   "wikiTypes.atomShape.reinforcing-loop": "reinforcing loop",
   "wikiTypes.atomShape.balancing-loop": "balancing loop",
   "wikiTypes.atomShape.other": "other",
+  // shapeFamily: the upper axis (family) of an Atom's shape. Derived deterministically from the form (shape); each form belongs to exactly one family.
+  "wikiTypes.shapeFamily.functional-dependence": "functional dependence",
+  "wikiTypes.shapeFamily.structural": "structure",
+  "wikiTypes.shapeFamily.conditional": "precondition",
+  "wikiTypes.shapeFamily.dynamic-feedback": "feedback loop",
+  "wikiTypes.shapeFamily.other": "other",
   // atomRelation (Phase δ): Atom-to-Atom dimensional relations (axial coding).
   "wikiTypes.atomRelation.extends": "Extends",
   "wikiTypes.atomRelation.is-special-case-of": "Special case of",

@@ -383,7 +383,8 @@ type WikiMeta = {
   // Semantic types (Phase 1, all optional — additive, back-compatible)
   claimRole?: ClaimRole[];    // Claim only. Multi-valued.
   atomType?: AtomType;            // Atom only. Logical character of the statement.
-  shape?: AtomShape;              // Atom only. Relationship-shape (structure-mapping axis).
+  shape?: AtomShape;              // Atom only. Relationship-shape FORM (structure-mapping leaf).
+  shapeFamily?: ShapeFamily;      // Atom only. Upper axis of the shape. Derived deterministically from `shape`.
   transfer?: AtomTransfer;        // Atom only. Cross-domain analogy, kept only if the judge confirms a structural match.
   synthesisMode?: SynthesisMode;  // Synthesis only.
   hypothesisStatus?: HypothesisStatus; // Synthesis only. Default "speculative" when mode is set.
@@ -405,23 +406,37 @@ type AtomType =
 
 // Relationship-shape: the structure-mapping axis the atomizer classifies into
 // (it classifies, it does not invent — this is what keeps abstraction from going vacuous).
-type AtomShape =
+// Classification is 2-level: the atomizer first picks a FAMILY (the axis) then a FORM
+// (the leaf) inside it. `shape` stores the form (unchanged, 10 values); `shapeFamily`
+// stores the family. Each form belongs to exactly one family (SHAPE_FORM_TO_FAMILY),
+// so the family is derivable from the form — `shapeFamily` is additive/optional and the
+// parser self-heals any family/form mismatch by trusting the form.
+type AtomShape =  // the FORM (leaf)
   | "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold"
   | "trade-off" | "enabling-condition" | "composition-structure"
   | "reinforcing-loop" | "balancing-loop"   // feedback cycles (systems-thinking R/B loops)
   | "other";
 
+type ShapeFamily =  // the upper axis; SHAPE_FORM_TO_FAMILY maps each form to exactly one
+  | "functional-dependence"  // monotonic-increase/-decrease, optimal-middle, threshold, trade-off
+  | "structural"             // composition-structure
+  | "conditional"            // enabling-condition
+  | "dynamic-feedback"       // reinforcing-loop, balancing-loop
+  | "other";                 // other
+
 // Cross-domain analogy. The atomizer proposes a candidate; a skeptical judge keeps it
 // only when the example instances the SAME shape + role-structure. Absent if forced/none.
 type AtomTransfer = { field: string; example: string };
 
-// UI surfacing: only `shape` is shown, and only in the detail view's context drawer
-// (alongside world-grounding / derived-from), as understated text rather than a badge.
+// UI surfacing: `shape` is shown (form), prefixed by its `shapeFamily` (family) when the
+// family is known, in the detail view's context drawer (alongside world-grounding /
+// derived-from), as understated text rather than a badge.
 // `transfer` is generated and stored but intentionally NOT surfaced — spotting where an
 // Atom transfers to another field is the user's creative work, and pre-filling it would
 // anchor the reader (it is reserved for a future human-triggered "Idea" layer). `shape`
-// is read directly from the full `WikiMeta`, so nothing is mirrored into
-// `WikiMetaSummary` / `NoteIndexEntry` and `INDEX_SCHEMA_VERSION` is unchanged.
+// and `shapeFamily` are read directly from the full `WikiMeta`, so nothing is mirrored into
+// `WikiMetaSummary` / `NoteIndexEntry` and `INDEX_SCHEMA_VERSION` is unchanged. Legacy atoms
+// (with `shape` but no `shapeFamily`) recover their family for free via `resolveShapeFamily(shape)`.
 
 type SynthesisMode =
   | "deductive" | "abductive" | "analogical" | "dialectic";
@@ -494,7 +509,8 @@ versions stay valid with these fields absent.
 |---|---|---|
 | `claimRole[]` | Claim | finding, decision, anomaly, question, setup, interpretation, issue |
 | `atomType` | Atom | causal, correlational, mechanistic, conditional, definitional, methodological, observational, boundary |
-| `shape` | Atom | monotonic-increase, monotonic-decrease, optimal-middle, threshold, trade-off, enabling-condition, composition-structure, reinforcing-loop, balancing-loop, other (structure-mapping axis; the atomizer classifies into this) |
+| `shape` | Atom | The FORM (leaf) of the structure-mapping axis: monotonic-increase, monotonic-decrease, optimal-middle, threshold, trade-off, enabling-condition, composition-structure, reinforcing-loop, balancing-loop, other. The atomizer classifies into this (2-level: family → form). |
+| `shapeFamily` | Atom | The upper axis (family) of `shape`: functional-dependence, structural, conditional, dynamic-feedback, other. Additive/optional; derivable from `shape` via `SHAPE_FORM_TO_FAMILY` (each form → exactly one family), so legacy atoms recover it for free. |
 | `transfer` | Atom | `{ field, example }` — a cross-domain analogy kept only when the transfer judge confirms a structural match (forced ones are dropped) |
 | `synthesisMode` | Synthesis | deductive, abductive, analogical, dialectic (induction relocated to Atom layer; see `docs/inference-types.md`) |
 | `hypothesisStatus` | Synthesis | speculative (default), tested, confirmed, refuted |
@@ -623,6 +639,33 @@ caller passes a `conceptIdToRebuttals` map, atoms emitted by the LLM
 without ≥2 source rebuttals get their `rebuttalConditions` reset to
 `undefined`. This is a structural propagation rule, not a judgment
 call — the same shape as Phase η's lowest-status inheritance.
+
+#### Fold verification (co-structure judge)
+
+When an Atom folds **2 or more** Claims into one insight, it asserts
+those Claims all instance the *same* structural shape — that is why it
+cites them together in `derivedFromClaims`. A separate skeptical judge
+(mirroring the transfer judge, in the `/atomize` route) checks that
+claim of co-structure and **restricts `derivedFromClaims` to the subset
+that genuinely folds** into the insight. A Claim whose relationship is
+actually a different shape is dropped from the citation list. Semantics:
+
+1. Only Atoms with `derivedFromClaims.length >= 2` are judged.
+2. The judge returns the coherent subset; the route narrows both
+   `derivedFromClaims` **and** `derivedFromConceptTitles` together
+   (they stay positionally paired) to that subset.
+3. If the judge confirms none cohere, the insight is **never deleted** —
+   it collapses to its single best-cited Claim (the first-listed one).
+   The principle survives; only the over-broad fold is trimmed.
+4. The judge **fails open**: on any error or unparseable output the Atom
+   keeps its original `derivedFromClaims` (an unverifiable fold is the
+   atomizer's honest best guess). This is the opposite of the transfer
+   judge, which fails closed — dropping an unverifiable analogy is pure
+   upside, but dropping unverifiable citations would degrade real atoms.
+
+The narrowed `derivedFromClaims` is what persists; a transport-only
+`foldDroppedClaims` count is exposed for display/audit but is **not**
+written to `WikiMeta`.
 
 #### Honesty defaults
 

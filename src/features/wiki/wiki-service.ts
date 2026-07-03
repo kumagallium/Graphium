@@ -1773,10 +1773,17 @@ export type AtomCandidate = {
   confidence: number;
   /** 推論的役割（提案 v4 Phase 1.2）。LLM 推定。undefined でも従来通り。 */
   atomType?: import("../../lib/document-types").AtomType;
-  /** 関係の形（構造写像の軸、decompose→shape→abstract） */
+  /** 関係の形（form＝構造写像の軸のリーフ、decompose→shape→abstract） */
   shape?: import("../../lib/document-types").AtomShape;
+  /** 関係の形の上位軸（family）。form を真実源に決定論導出（route 側で補正済み）。 */
+  shapeFamily?: import("../../lib/document-types").ShapeFamily;
   /** 越境転移（ジャッジ検証済みのみ。妥当な転移が無ければ undefined） */
   transfer?: import("../../lib/document-types").AtomTransfer;
+  /**
+   * フォール検証で derivedFromClaims から外された Claim 数（transport-only、非永続）。
+   * >0 = 束ねた Claim の一部が同じ shape でないと判定され除外された。
+   */
+  foldDroppedClaims?: number;
   /** Phase η: 入力 Claim の最低 status を継承した epistemicStatus */
   epistemicStatus?: import("../../lib/document-types").EpistemicStatus;
   /** Phase γ: 2+ Claim 共通の Toulmin Rebuttal が Atom 層に伝播したもの */
@@ -1898,8 +1905,11 @@ export function buildAtomDocument(
     confidence: candidate.confidence,
     // Phase 1.2: Atom の推論的役割（LLM 推定。undefined でも従来通り動作）
     atomType: candidate.atomType,
-    // 構造的抽象: 関係の形（shape）と越境転移（ジャッジ検証済みのみ route から渡る）
+    // 構造的抽象: 関係の形（form=shape / 上位軸=shapeFamily）と越境転移（ジャッジ検証済みのみ）
+    // shapeFamily は form から決定論導出できるが、明示保存して読み出しコストを省く。
+    // 注: foldDroppedClaims は transport-only（診断用カウント）なので永続化しない。
     shape: candidate.shape,
+    shapeFamily: candidate.shapeFamily,
     transfer: candidate.transfer,
     // Phase η: source Claim から継承した最低 status（lowest-status inheritance, parser 側で強制）
     epistemicStatus: candidate.epistemicStatus,

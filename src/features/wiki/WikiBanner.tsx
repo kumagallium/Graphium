@@ -27,10 +27,12 @@ import type {
   GroundingValidityVerdict,
   ModalQualifier,
   ProcedureContext,
+  ShapeFamily,
   SynthesisMode,
   WikiMeta,
   WikiMetaSummary,
 } from "../../lib/document-types";
+import { resolveShapeFamily } from "../../lib/document-types";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource } from "../network-graph/external-source";
@@ -517,7 +519,9 @@ export function WikiContextDrawer({
           onNavigateNote={onNavigateNote}
         />
       )}
-      {showAtomShape && <AtomShapeSection shape={wikiMeta.shape!} />}
+      {showAtomShape && (
+        <AtomShapeSection shape={wikiMeta.shape!} shapeFamily={wikiMeta.shapeFamily} />
+      )}
       {showBacking && <BackingSection backing={wikiMeta.backing!} />}
       {showRebuttal && (
         <RebuttalConditionsSection conditions={wikiMeta.rebuttalConditions!} />
@@ -529,8 +533,16 @@ export function WikiContextDrawer({
 // Atom の構造の形（shape）— バッジにせず、世界照合・派生元と同じ context drawer に
 // 「構造の形」ラベル + 平易語の 1 行で控えめに置く。backing / rebuttal と同じ neutral な
 // dashed トーンに揃える。transfer はここには出さない（越境の発想はユーザーの仕事）。
-function AtomShapeSection({ shape }: { shape: AtomShape }) {
+function AtomShapeSection({
+  shape,
+  shapeFamily,
+}: {
+  shape: AtomShape;
+  shapeFamily?: ShapeFamily;
+}) {
   const t = useT();
+  // family は保存があればそれを、無ければ form から決定論導出（既存 atom も表示できる）。
+  const family = resolveShapeFamily(shape, shapeFamily);
   return (
     <div
       style={{
@@ -550,7 +562,15 @@ function AtomShapeSection({ shape }: { shape: AtomShape }) {
       <span style={{ color: "var(--ink-4)", fontWeight: 500, flexShrink: 0 }}>
         {t("wikiBanner.shapeTitle")}
       </span>
-      <span>{t(`wikiTypes.atomShape.${shape}` as any)}</span>
+      <span>
+        {family && family !== "other" && (
+          <span style={{ color: "var(--ink-4)" }}>
+            {t(`wikiTypes.shapeFamily.${family}` as any)}
+            <span style={{ margin: "0 4px" }}>›</span>
+          </span>
+        )}
+        {t(`wikiTypes.atomShape.${shape}` as any)}
+      </span>
     </div>
   );
 }
