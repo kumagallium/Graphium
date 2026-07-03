@@ -469,10 +469,15 @@ import {
   buildAtomizerSystemPrompt,
   buildAtomizerUserMessage,
   parseAtomizerOutput,
+  buildFoldJudgeSystemPrompt,
+  buildFoldJudgeUserMessage,
+  parseFoldJudgeOutput,
+  resolveFoldVerdict,
   type AtomCandidate,
 } from "../src/server/services/wiki-atomizer.js";
 import type { ClaimSnapshot } from "../src/server/services/wiki-types.js";
 import type { ModelConfig } from "../src/server/config/models.js";
+import type { LanguageModel } from "ai";
 
 function toModelConfig(): ModelConfig {
   const cfg = getBenchModelConfig();
@@ -630,6 +635,83 @@ function atomCandidatesToBenchAtoms(
   });
 }
 
+/**
+ * フォール検証ジャッジを bench pipeline に適用する（BENCH_FOLD_JUDGE=1 のときだけ呼ばれる）。
+ * route(wiki.ts) の fold-judge ブロックと同じロジックで、derivedFromClaims を coherent
+ * subset に絞る。bench は本来 route を通さず atomizer 関数を直接呼ぶため fold judge が
+ * 効かない。この任意ステージで A/B（judge なし vs あり）を測り、fold judge が cross-language
+ * のフォールドを不当に割って cross_language_consistency を下げていないかを検証する。
+ */
+async function applyBenchFoldJudge(
+  atoms: AtomCandidate[],
+  snapshots: ClaimSnapshot[],
+  model: LanguageModel,
+  modelConfig: ModelConfig,
+): Promise<AtomCandidate[]> {
+  const idToSnapshot = new Map(snapshots.map((s) => [s.id, s]));
+  const withFold: { i: number; ids: string[] }[] = [];
+  atoms.forEach((a, i) => {
+    if (a.derivedFromClaims.length >= 2) withFold.push({ i, ids: [...a.derivedFromClaims] });
+  });
+  if (withFold.length === 0) return atoms;
+  const out = atoms.map((a) => ({ ...a }));
+  try {
+    const res = await runAgentLoop({
+      model,
+      modelId: modelConfig.modelId,
+      systemPrompt: buildFoldJudgeSystemPrompt("ja"),
+      messages: [
+        {
+          role: "user" as const,
+          content: buildFoldJudgeUserMessage(
+            withFold.map((w) => ({
+              title: out[w.i].title,
+              shape: out[w.i].shape,
+              claims: w.ids.map((id, pos) => {
+                const snap = idToSnapshot.get(id);
+                return {
+                  id,
+                  title: snap?.title ?? out[w.i].derivedFromConceptTitles[pos] ?? id,
+                  preview: snap?.bodyPreview ?? "",
+                };
+              }),
+            })),
+          ),
+        },
+      ],
+      maxSteps: 1,
+    });
+    const verdicts = parseFoldJudgeOutput(res.message);
+    let dropped = 0;
+    withFold.forEach((w, k) => {
+      const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
+      if (!v) return;
+      const { confirmed, dropped: d, changed } = resolveFoldVerdict(w.ids, v.coherentClaimIds);
+      if (!changed) return;
+      dropped += d;
+      const atom = out[w.i];
+      const titles = confirmed.map((id) => {
+        const idx = atom.derivedFromClaims.indexOf(id);
+        return idx >= 0
+          ? atom.derivedFromConceptTitles[idx]
+          : (idToSnapshot.get(id)?.title ?? id);
+      });
+      out[w.i] = {
+        ...atom,
+        derivedFromClaims: confirmed,
+        derivedFromConceptTitles: titles,
+        foldDroppedClaims: d > 0 ? d : undefined,
+      };
+    });
+    console.log(
+      `[bench] fold-judge: dropped ${dropped} claim(s) across ${withFold.length} multi-claim atom(s)`,
+    );
+  } catch (err) {
+    console.error("  fold-judge error (kept atoms as-is):", (err as Error).message);
+  }
+  return out;
+}
+
 export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResult> {
   const cfg = getBenchModelConfig();
   // claude-subscription はローカル claude CLI の OAuth 認証を使うため apiKey 不要。
@@ -717,6 +799,11 @@ export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResul
           maxSteps: 1,
         });
         atomCandidates = parseAtomizerOutput(result.message, idToTitle);
+      }
+      // 任意: フォール検証ジャッジ（route 相当）を適用して derivedFromClaims を絞る。
+      // BENCH_FOLD_JUDGE=1 のときだけ。判定は snapshots(=全 Claim) を根拠に行う。
+      if (process.env.BENCH_FOLD_JUDGE === "1" && atomCandidates.length > 0) {
+        atomCandidates = await applyBenchFoldJudge(atomCandidates, snapshots, model, modelConfig);
       }
       allAtoms = atomCandidatesToBenchAtoms(atomCandidates, allClaims);
       console.log(`[bench] atomize result: ${allAtoms.length} atom(s)`);
