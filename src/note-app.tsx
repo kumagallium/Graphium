@@ -73,6 +73,7 @@ import {
   resolveMentionTargetFromLinks,
 } from "./features/block-link/mention-menu";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
+import { replaceMentionRunsInContent } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -690,6 +691,15 @@ type NoteEditorProps = {
    *  閉じて再オープンしたとき stale な cachedDoc が表示され、そこからの保存で
    *  旧タイトルがディスクへ書き戻される。 */
   onPeekSaved?: (noteId: string, savedDoc: GraphiumDocument) => void;
+  /** ピークでのタイトル変更を、@メンションで参照している他ノートの本文ラベルへ
+   *  伝播する（fm.propagateMentionRename）。skipNoteIds はライブエディタで開いて
+   *  いるためファイル書き換えではなくエディタ内で直接更新するノート。 */
+  onPropagateMentionRename?: (
+    renamedNoteId: string,
+    oldTitle: string,
+    newTitle: string,
+    opts?: { skipNoteIds?: string[] },
+  ) => Promise<void>;
   /** Phase 4: PROV-JSON-LD エクスポートに含める Wiki Knowledge Layer のメタ。
    *  NoteApp が wiki state から組み立てて渡す。空配列 / undefined のときは
    *  Wiki Entity を出力しない（ノートの PROV だけになる）。 */
@@ -823,6 +833,7 @@ function NoteEditorInner({
   isTrashed,
   onRestoreTrashedById,
   onPeekSaved,
+  onPropagateMentionRename,
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
@@ -873,6 +884,54 @@ function NoteEditorInner({
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
   const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
+  // ピーク保存後のフック: 親のキャッシュ/インデックス更新（onPeekSaved）に加え、
+  // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
+  // このエディタで開いているノート自身はファイル書き換えの対象から外し、ライブの
+  // エディタを直接更新する（ファイル直書きは次のオートセーブが旧内容で上書きして
+  // 巻き戻るため）。updateBlock は onChange を発火させるので、変更は通常の
+  // オートセーブ経路で永続化される。
+  const handlePeekSaved = useCallback(
+    (peekId: string, savedDoc: GraphiumDocument) => {
+      const isPrefixed = peekId.startsWith("wiki:") || peekId.startsWith("skill:");
+      // 旧タイトルは reindex 前のキャッシュ / インデックスから取る
+      const prevTitle = isPrefixed
+        ? undefined
+        : getCachedDoc?.(peekId)?.title ??
+          noteIndex?.notes.find((n) => n.noteId === peekId)?.title;
+      onPeekSaved?.(peekId, savedDoc);
+      if (isPrefixed || !prevTitle || prevTitle === savedDoc.title) return;
+      void onPropagateMentionRename?.(peekId, prevTitle, savedDoc.title, {
+        skipNoteIds: fileId ? [fileId] : undefined,
+      });
+      const editor = editorRef.current;
+      if (!editor) return;
+      const allLinks = linkStore.getAllLinks();
+      const blockIds = new Set<string>();
+      for (const l of allLinks) {
+        if (l.targetNoteId === peekId && l.sourceBlockId) blockIds.add(l.sourceBlockId);
+      }
+      // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）: 同じブロックに
+      // 「別ノートだが現タイトルが旧タイトルと同じ」参照が同居していたら触らない
+      for (const l of allLinks) {
+        if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
+        if (l.targetNoteId && l.targetNoteId !== peekId) {
+          const t = noteIndex?.notes.find((n) => n.noteId === l.targetNoteId)?.title;
+          if (t === prevTitle) blockIds.delete(l.sourceBlockId);
+        }
+      }
+      for (const bid of blockIds) {
+        try {
+          const block = editor.getBlock?.(bid);
+          if (!block || !Array.isArray(block.content)) continue;
+          const nc = replaceMentionRunsInContent(block.content, prevTitle, savedDoc.title);
+          if (nc) editor.updateBlock(block, { content: nc });
+        } catch {
+          // ブロックが削除済み等は無視（伝播はベストエフォート）
+        }
+      }
+    },
+    [onPeekSaved, onPropagateMentionRename, fileId, noteIndex, getCachedDoc, linkStore],
+  );
   const noteLinksRef = useRef<NoteLink[]>(initialDoc?.noteLinks ?? []);
   // @ で引用したドキュメント素材（PDF/docx）の fileId 配列。保存時に doc へ書き出す。
   const citedAssetFileIdsRef = useRef<string[]>(initialDoc?.citedAssetFileIds ?? []);
@@ -3550,7 +3609,7 @@ function NoteEditorInner({
             inline
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
-            onSaved={onPeekSaved}
+            onSaved={handlePeekSaved}
             onClose={() => setSidePeekNoteId(null)}
             onNavigate={(noteId, savedDoc) => {
               setSidePeekNoteId(null);
@@ -3585,7 +3644,7 @@ function NoteEditorInner({
             key={sidePeekNoteId}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
-            onSaved={onPeekSaved}
+            onSaved={handlePeekSaved}
             onClose={() => setSidePeekNoteId(null)}
             mediaIndex={mediaIndex ?? null}
             captureIndex={captureIndexProp ?? null}
@@ -3960,6 +4019,25 @@ export function NoteApp() {
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
   const capture = useCapture(authenticated);
+  // 一覧 / アセットピークの保存後フック: キャッシュ / インデックス更新に加え、
+  // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
+  // これらのビューではメインエディタは非マウントなので、直前まで開いていたノート
+  // （activeFileId）もファイル書き換えで安全に追従できる（skip 指定なし。
+  // fm 側が activeDoc も更新するため、エディタ復帰時も旧ラベルに巻き戻らない）。
+  const handleListPeekSaved = useCallback(
+    (id: string, savedDoc: GraphiumDocument) => {
+      const isPrefixed = id.startsWith("wiki:") || id.startsWith("skill:");
+      // 旧タイトルは reindex 前のキャッシュ / インデックスから取る
+      const prevTitle = isPrefixed
+        ? undefined
+        : fm.getCachedDoc?.(id)?.title ??
+          fm.noteIndex?.notes.find((n) => n.noteId === id)?.title;
+      fm.reindexNoteFromDoc(id, savedDoc);
+      if (isPrefixed || !prevTitle || prevTitle === savedDoc.title) return;
+      void fm.propagateMentionRename(id, prevTitle, savedDoc.title);
+    },
+    [fm.getCachedDoc, fm.noteIndex, fm.reindexNoteFromDoc, fm.propagateMentionRename],
+  );
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
   // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
@@ -6111,7 +6189,7 @@ export function NoteApp() {
                     inline
                     noteId={noteId}
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
-                    onSaved={fm.reindexNoteFromDoc}
+                    onSaved={handleListPeekSaved}
                     onClose={() => setAssetSidePeekNoteId(null)}
                     onNavigate={(navId, savedDoc) => {
                       // SidePeek 内のリンクから本格的に開く場合はアセット画面を離れる
@@ -6754,6 +6832,7 @@ export function NoteApp() {
             onOpenComposer={composer.openComposer}
             composerSubmitRef={composerSubmitRef}
             onPeekSaved={fm.reindexNoteFromDoc}
+            onPropagateMentionRename={fm.propagateMentionRename}
             openSidePeekRef={openSidePeekRef}
             composerCitationRef={composerCitationRef}
             skillPrompts={(() => {
@@ -6858,7 +6937,7 @@ export function NoteApp() {
               key={listSidePeekNoteId}
               noteId={listSidePeekNoteId}
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
-              onSaved={fm.reindexNoteFromDoc}
+              onSaved={handleListPeekSaved}
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);
