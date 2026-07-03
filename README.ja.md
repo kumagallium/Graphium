@@ -3,13 +3,19 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>情報を、いつでも再利用可能な「知識」へと変えるノートエディタ。</b>
+  <b>AI 時代のひらめきノート。</b>
 </p>
 <p align="center">
-  <b>PROV-DM</b> 来歴追跡を備えたブロックベースのノートエディタ（<a href="https://www.blocknotejs.org/">BlockNote.js</a> ベース）
+  書けば書くほど、点と点が繋がって「ひらめき」になる。<br />
+  あなたが書いた一文も、AI が手渡した一文も、その出どころのノートまで辿れる。辿れるからこそ、安心して広げられます。
 </p>
 <p align="center">
   <a href="README.md">English</a> | <b>日本語</b>
+</p>
+
+<p align="center">
+  <a href="https://kumagallium.github.io/Graphium/"><img alt="ブラウザで試す" src="https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A9%A6%E3%81%99-2ea44f?style=for-the-badge"></a>
+  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="デスクトップ版を入手" src="https://img.shields.io/badge/%E3%83%87%E3%82%B9%E3%82%AF%E3%83%88%E3%83%83%E3%83%97%E7%89%88%E3%82%92%E5%85%A5%E6%89%8B-24292f?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -21,7 +27,37 @@
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/kumagallium/Graphium/main">
 </p>
 
+<p align="center">
+  <a href="https://kumagallium.github.io/Graphium/"><img src="public/landing/hero.png" alt="ノート・知見・洞察が繋がった Graphium のグラフビュー" width="880" /></a>
+</p>
+
 Graphium は、[Zettelkasten](https://ja.wikipedia.org/wiki/%E3%83%84%E3%82%A7%E3%83%86%E3%83%AB%E3%82%AB%E3%82%B9%E3%83%86%E3%83%B3) スタイルの小さなノート術と、W3C の来歴標準 [PROV-DM](https://www.w3.org/TR/prov-dm/) を組み合わせた、個人開発のオープンソースプロジェクトです。AI が手渡してくれた一文も含めて、すべての主張をその根拠となるノートまで辿れる状態を目指しています。
+
+## 仕組み — 書く、広げる、辿る
+
+### 1. 書く
+思いつきをそのまま書き、`@` 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。
+
+<p align="center"><img src="public/landing/screen-editor.png" alt="他のノートへの @ 参照を含むノートを開いた Graphium エディタ" width="760" /></p>
+
+### 2. AI と広げる
+あなたの AI（Claude のサブスクや API キー）を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。
+
+<p align="center"><img src="public/landing/screen-knowledge.png" alt="AI が抽出した知見・洞察が並ぶ Knowledge リスト" width="760" /></p>
+
+### 3. 起源まで辿る
+AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられます。
+
+<p align="center"><img src="public/landing/screen-trace.png" alt="来歴パネル（洞察・知見・元ノート）を開いた洞察ページ" width="760" /></p>
+
+## 試行錯誤するすべての人へ
+
+語彙は汎用的です。実験室でも、台所でも、工房でも、コードベースでも、教室でも。
+
+- **研究者** — 来歴付きの実験ログ。ステップ・材料・結果が繋がったまま残ります。
+- **料理人・つくる人** — 今回のパンが上手くいった理由を覚えているレシピ。上手くいかなかった 4 回も一緒に。
+- **エンジニア** — 次のポストモーテムまで生き残る調査ノート。
+- **学生・書き手** — 授業・本・会話を繋ぐ「第二の脳」。戻ってきたとき、自分で説明してくれます。
 
 ### インストール前に読むもの
 
