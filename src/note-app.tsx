@@ -1725,6 +1725,15 @@ function NoteEditorInner({
     setSharedRefState(initialDoc?.sharedRef);
   }, [initialDoc]);
 
+  // 最後に保存したタイトル。メインエディタのタイトル欄でのリネームを保存時に検知し、
+  // @メンションのラベル伝播（onPropagateMentionRename）を発火するための基準。
+  // オートセーブは本文編集でも頻繁に走るため、タイトルが実際に変わった保存のときだけ
+  // 伝播する。別ノートを開いたら（initialDoc が変わったら）その時点のタイトルに追従する。
+  const lastSavedTitleRef = useRef(initialDoc?.title ?? "");
+  useEffect(() => {
+    lastSavedTitleRef.current = initialDoc?.title ?? "";
+  }, [initialDoc]);
+
   const handleSave = useCallback(async () => {
     const baseDoc = await buildDocument();
     // 通常保存時にも sharedRef を持たせる（buildDocument が落とすため）。
@@ -1734,6 +1743,23 @@ function NoteEditorInner({
       ? { ...baseDoc, sharedRef: sharedRefState }
       : baseDoc;
     onSave(doc);
+    // タイトルが変わった保存なら、@メンションのラベルを参照元ノートへ伝播する。
+    // ピークで開いているノートはファイル直書きすると、ピークの次のオートセーブが
+    // 旧内容で上書きして伝播が巻き戻るため対象から外す（そのノートのラベルは従来
+    // どおり古いまま残るが、クリック解決はリンクレコード経由なので壊れない）。
+    // skill をフルで開いている場合は raw id のまま渡るが、skill は @メンションの
+    // 参照が構造上存在しないため propagate 側で自然に no-op になる。
+    const prevTitle = lastSavedTitleRef.current;
+    if (fileId && prevTitle && doc.title && prevTitle !== doc.title) {
+      const peekRaw = sidePeekNoteId?.replace(/^(wiki|skill):/, "");
+      void onPropagateMentionRename?.(
+        isWikiDoc ? `wiki:${fileId}` : fileId,
+        prevTitle,
+        doc.title,
+        { skipNoteIds: peekRaw ? [peekRaw] : undefined },
+      );
+    }
+    lastSavedTitleRef.current = doc.title ?? "";
     // 保存後に documentProvenance を state に反映（History パネル更新用）
     if (doc.documentProvenance) {
       setCurrentProvenance(doc.documentProvenance);
@@ -1748,7 +1774,7 @@ function NoteEditorInner({
         });
       }
     }
-  }, [onSave, buildDocument, fileId, sharedRefState]);
+  }, [onSave, buildDocument, fileId, sharedRefState, sidePeekNoteId, isWikiDoc, onPropagateMentionRename]);
 
   // ── オートセーブ ──
   const { dirty, setDirty, markDirty, saveNow } = useAutoSave(handleSave);
