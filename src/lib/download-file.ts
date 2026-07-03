@@ -8,16 +8,11 @@ import { isTauri } from "./platform";
 
 export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
   if (isTauri()) {
-    const [{ save }, { invoke }] = await Promise.all([
-      import("@tauri-apps/plugin-dialog"),
-      import("@tauri-apps/api/core"),
-    ]);
-    const ext = filename.includes(".") ? filename.split(".").pop()! : undefined;
-    const path = await save({
-      defaultPath: filename,
-      filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined,
-    });
-    if (!path) return; // ユーザーがキャンセル
+    // セキュリティ: 保存先の選択とディスク書き込みは Rust 側の
+    // save_bytes_with_dialog に一本化する。JS からは保存先パスを一切
+    // 指定せず、ファイル名の初期候補だけ渡す。ダイアログを開き、ユーザーが
+    // 選んだパスに書き込むところまで Rust が行う（任意パス書き込みの排除）。
+    const { invoke } = await import("@tauri-apps/api/core");
     const buf = await blob.arrayBuffer();
     const bytes = new Uint8Array(buf);
     // バイト→base64（btoa は引数長が大きいと RangeError になるのでチャンク化）
@@ -27,7 +22,11 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<void> 
       binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
     }
     const content_base64 = btoa(binary);
-    await invoke("save_bytes_to_path", { path, contentBase64: content_base64 });
+    // 戻り値 false はユーザーがダイアログをキャンセルした場合（従来と同じ挙動）。
+    await invoke<boolean>("save_bytes_with_dialog", {
+      suggestedName: filename,
+      contentBase64: content_base64,
+    });
     return;
   }
 
