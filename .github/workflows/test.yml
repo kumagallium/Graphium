@@ -34,3 +34,28 @@ jobs:
 
       - name: Build check
         run: pnpm build
+
+  # 保存経路の E2E スモーク（e2e/save-smoke.mjs）。
+  # 実サーバー + vite + Chromium で「作成 → 保存 → SidePeek 開閉 → リロード →
+  # 内容一致」を検証する（PR #454 / #502 / #514 級のデータ破壊の再発防止）。
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Save-path E2E smoke
+        run: pnpm test:e2e
