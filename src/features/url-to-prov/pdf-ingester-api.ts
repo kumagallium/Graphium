@@ -3,6 +3,7 @@
 // 構造化済みブロック列を受け取る。
 
 import { apiBase, isTauri } from "../../lib/platform";
+import { aiErrorFromResponse } from "../../lib/ai-error";
 import { extractPdfText } from "../wiki/pdf-text-extractor";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
@@ -74,8 +75,8 @@ export async function ingestPdfToProv(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（localizeAiError が i18n 表示する）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   const json = await res.json();

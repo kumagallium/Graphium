@@ -3,6 +3,7 @@
 
 import { apiBase, isTauri } from "../../lib/platform";
 import type { GroundingScope } from "../../lib/grounding-scope";
+import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, getChatSynthesisModelName } from "../settings/store";
 
 /**
@@ -181,8 +182,8 @@ export async function runAgent(
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Agent API error ${res.status}: ${text}`);
+    // { error, code } を code 付き Error に変換（localizeAiError が i18n 表示する）
+    throw await aiErrorFromResponse(res, `Agent API error ${res.status}`);
   }
 
   return res.json();

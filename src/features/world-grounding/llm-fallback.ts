@@ -11,6 +11,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 import {
   getGroundingLLMModel,
   getGroundingModelName,
+  isAgentConfigured,
 } from "../settings/store";
 import type { GroundingValidityVerdict } from "../../lib/document-types";
 
@@ -78,8 +79,12 @@ export async function checkValidityViaModel(
   claimText: string,
   options: CheckValidityViaModelOptions = {},
 ): Promise<CheckValidityViaModelOutcome> {
+  // モデル名が未設定、またはモデルが 1 件も登録されていない（Tauri で localStorage に
+  // 旧名だけ残っているケース等）はサーバーへ投げず degrade する。
+  // world-grounding のキーレス経路（KB / Wikipedia / OpenAlex）はこのガードの影響を受けない —
+  // ここは LLM fallback だけの入口なので、未設定でも従来どおり "no-model" として静かに落ちる。
   const modelName = getGroundingModelName();
-  if (!modelName) {
+  if (!modelName || !isAgentConfigured()) {
     return { kind: "failure", failure: { reason: "no-model" } };
   }
 

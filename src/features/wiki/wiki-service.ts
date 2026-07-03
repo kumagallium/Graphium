@@ -8,6 +8,7 @@ import type { IngesterOutput } from "../../server/services/wiki-ingester";
 import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
+import { aiErrorFromResponse } from "../../lib/ai-error";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -120,8 +121,8 @@ export async function ingestNote(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（クライアントで i18n 表示するため）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   return res.json();
@@ -996,8 +997,7 @@ export async function ingestFromUrl(
   });
 
   if (!fetchRes.ok) {
-    const err = await fetchRes.json().catch(() => ({ error: "Fetch failed" }));
-    throw new Error(err.error || `URL fetch failed (${fetchRes.status})`);
+    throw await aiErrorFromResponse(fetchRes, `URL fetch failed (${fetchRes.status})`);
   }
 
   const urlData = await fetchRes.json() as {
@@ -1027,8 +1027,8 @@ export async function ingestFromUrl(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（クライアントで i18n 表示するため）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   return res.json();
@@ -1087,8 +1087,8 @@ export async function ingestFromPdf(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（クライアントで i18n 表示するため）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   const data = (await res.json()) as IngestResult;
@@ -1139,8 +1139,8 @@ export async function ingestFromDocx(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（クライアントで i18n 表示するため）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   return (await res.json()) as IngestResult;
@@ -1214,8 +1214,8 @@ export async function ingestFromMultiSource(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（クライアントで i18n 表示するため）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   return res.json() as Promise<IngestResult>;
@@ -1249,8 +1249,8 @@ export async function ingestFromChat(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Ingest failed (${res.status})`);
+    // { error, code } を code 付き Error に変換（クライアントで i18n 表示するため）
+    throw await aiErrorFromResponse(res, `Ingest failed (${res.status})`);
   }
 
   return res.json();
@@ -1539,8 +1539,7 @@ export async function lintWikis(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `Lint failed (${res.status})`);
+    throw await aiErrorFromResponse(res, `Lint failed (${res.status})`);
   }
 
   return res.json();
@@ -1816,9 +1815,14 @@ export async function atomizeConcepts(
     const detail = await res.text().catch(() => "");
     throw new Error(`Atomize API failed (${res.status}): ${detail.slice(0, 200) || "no body"}`);
   }
-  // サーバーは内部例外時 200 + { atoms: [], error: "..." } を返すため、ここでも検出する
-  const data = await res.json() as AtomizeResult & { error?: string };
-  if (data.error) throw new Error(`Atomize failed on server: ${data.error}`);
+  // サーバーは内部例外時 200 + { atoms: [], error: "...", code? } を返すため、ここでも検出する
+  const data = await res.json() as AtomizeResult & { error?: string; code?: string };
+  if (data.error) {
+    const err = new Error(`Atomize failed on server: ${data.error}`);
+    // code があれば Error に載せる（localizeAiError が i18n 文言に変換する）
+    if (typeof data.code === "string") (err as Error & { code?: string }).code = data.code;
+    throw err;
+  }
   return data;
 }
 
