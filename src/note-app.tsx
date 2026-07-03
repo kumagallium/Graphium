@@ -478,7 +478,7 @@ function NoteHeaderMenu({
                 }}
               >
                 {copied ? <Check size={14} /> : <Link2 size={14} />}
-                {copied ? "コピーしました" : "リンクをコピー"}
+                {copied ? t("share.linkCopied") : t("share.copyLink")}
               </button>
             </>
           )}
@@ -1284,10 +1284,10 @@ function NoteEditorInner({
   // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
   const newNoteSlashItem: SlashMenuItem = useMemo(
     () => ({
-      title: "新しいノート",
-      subtext: "名前を付けて新規ノートを作成し、ここにリンク",
-      group: "ノート",
-      aliases: ["note", "newnote", "新規ノート", "しんきのーと", "あたらしいのーと"],
+      title: tStatic("slashMenu.newNote.title"),
+      subtext: tStatic("slashMenu.newNote.subtext"),
+      group: tStatic("slashMenu.newNote.group"),
+      aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
       onItemClick: (editor: any) => {
         const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
         void (async () => {
@@ -3804,7 +3804,7 @@ function NoteEditorInner({
                 <button
                   onClick={() => toggleRightTab(rightTab)}
                   className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/50 transition-colors mr-1"
-                  aria-label="閉じる"
+                  aria-label={t("common.close")}
                 >
                   ✕
                 </button>
@@ -4541,7 +4541,7 @@ export function NoteApp() {
         if (result.wikis.length === 0) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
-              i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: "内容不足" } : i
+              i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: tStatic("ingest.insufficientContent") } : i
             ),
           }));
           ingestQueueRef.current.shift();
@@ -4749,7 +4749,7 @@ export function NoteApp() {
           Number.POSITIVE_INFINITY,
         );
         if (allClaimSnapshots.length < 2) {
-          updateStage("atomize", "skipped", `Claim ${allClaimSnapshots.length} 件（2 件以上で実行）`);
+          updateStage("atomize", "skipped", tStatic("ingest.needTwoClaims", { count: String(allClaimSnapshots.length) }));
         } else {
           const claimModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
           const claimEmbeddings = await Promise.all(
@@ -4773,7 +4773,7 @@ export function NoteApp() {
           updateStage(
             "atomize",
             "running",
-            `${allClaimSnapshots.length} claims / ${seeds.length} clusters を分析中...`,
+            tStatic("ingest.analyzingClusters", { claims: String(allClaimSnapshots.length), clusters: String(seeds.length) }),
           );
           for (let i = 0; i < seeds.length; i++) {
             const seed = seeds[i];
@@ -4782,7 +4782,13 @@ export function NoteApp() {
             updateStage(
               "atomize",
               "running",
-              `cluster ${i + 1}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})`,
+              tStatic("ingest.clusterProgress", {
+                current: String(i + 1),
+                total: String(seeds.length),
+                title: seed.snapshot.title,
+                count: String(slice.length),
+                kind: atomLabel,
+              }),
             );
             const atomResult = await atomizeConcepts(
               slice,
@@ -4805,7 +4811,7 @@ export function NoteApp() {
           updateStage(
             "atomize",
             "done",
-            createdAtoms > 0 ? `${createdAtoms} ${atomLabel}` : `新規 ${atomLabel} なし`,
+            createdAtoms > 0 ? `${createdAtoms} ${atomLabel}` : tStatic("ingest.noNewAtoms", { kind: atomLabel }),
           );
         }
       } catch (err) {
@@ -4813,7 +4819,7 @@ export function NoteApp() {
         updateStage("atomize", "error", localizeAiError(err));
       }
     } else {
-      updateStage("atomize", "skipped", "Atom Layer が無効");
+      updateStage("atomize", "skipped", tStatic("ingest.atomLayerDisabled"));
     }
 
     // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
@@ -4824,9 +4830,9 @@ export function NoteApp() {
     try {
       const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
       if (snapshots.length < 2) {
-        updateStage("lint", "skipped", `Wiki ${snapshots.length} 件（2 件以上で実行）`);
+        updateStage("lint", "skipped", tStatic("ingest.needTwoWikis", { count: String(snapshots.length) }));
       } else {
-        updateStage("lint", "running", `${snapshots.length} wikis を分析中...`);
+        updateStage("lint", "running", tStatic("ingest.analyzingWikis", { count: String(snapshots.length) }));
         // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
         const useLlm = snapshots.length >= 5;
         const report = await lintWikis(snapshots, getLocale(), !useLlm);
@@ -5018,7 +5024,7 @@ export function NoteApp() {
         updateStage(
           "lint",
           "done",
-          issues.length > 0 ? `${issues.length} issues` : "問題なし",
+          issues.length > 0 ? `${issues.length} issues` : tStatic("ingest.noIssues"),
         );
       }
     } catch (err) {
@@ -5254,9 +5260,9 @@ export function NoteApp() {
 
       if (files.length === 0) {
         if (stats.attempted === 0) {
-          throw new Error("この Word からは画像オブジェクトを取り出せませんでした。");
+          throw new Error(tStatic("asset.docxNoImages"));
         }
-        throw new Error("対応形式の画像が含まれていませんでした（EMF/WMF など）。");
+        throw new Error(tStatic("asset.docxUnsupportedImages"));
       }
 
       let extracted = 0;
@@ -5988,7 +5994,7 @@ export function NoteApp() {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
@@ -6015,7 +6021,7 @@ export function NoteApp() {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
@@ -6045,7 +6051,7 @@ export function NoteApp() {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
@@ -6073,7 +6079,7 @@ export function NoteApp() {
                   try {
                     const result = await ingestUrlToProv(entry.url, getLocale());
                     if (!result.blocks || result.blocks.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
                     }
                     const provDoc = buildProvNoteDocument({
@@ -6106,7 +6112,7 @@ export function NoteApp() {
                     const blob = await (await fetch(blobUrl)).blob();
                     const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getLocale());
                     if (!result.blocks || result.blocks.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
                     }
                     const provDoc = buildProvNoteDocument({
@@ -6141,7 +6147,7 @@ export function NoteApp() {
                     const blob = await (await fetch(blobUrl)).blob();
                     const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale());
                     if (!result.blocks || result.blocks.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
                     }
                     const provDoc = buildProvNoteDocument({
@@ -6399,13 +6405,13 @@ export function NoteApp() {
                 const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
                 if (!entry) continue;
                 if (entry.source === "ai") {
-                  skippedAi.push(entry.title || "(無題)");
+                  skippedAi.push(entry.title || tStatic("nav.untitled"));
                   continue;
                 }
-                candidates.push({ id, title: entry.title || "(無題)" });
+                candidates.push({ id, title: entry.title || tStatic("nav.untitled") });
               }
               if (skippedAi.length > 0) {
-                window.alert(`Wiki ノートはスキップしました（${skippedAi.length} 件）`);
+                window.alert(tStatic("ingest.skippedWikiNotes", { count: String(skippedAi.length) }));
               }
               if (candidates.length === 0) return;
 
@@ -6426,7 +6432,7 @@ export function NoteApp() {
 
               const mdFiles = files.filter(isMarkdownFile);
               if (mdFiles.length === 0) {
-                window.alert("Markdown ファイルが見つかりませんでした。");
+                window.alert(tStatic("import.noMarkdownFiles"));
                 return;
               }
 
@@ -6520,9 +6526,9 @@ export function NoteApp() {
 
               const successCount = mdFiles.length - failed.length;
               if (successCount > 0) {
-                const msg = [`${successCount} 件のノートを取り込みました。`];
+                const msg = [tStatic("import.importedCount", { count: String(successCount) })];
                 if (vaultMap.size > 0) {
-                  msg.push("", "解決できなかった [[リンク]] はテキストとして残しています。");
+                  msg.push("", tStatic("import.unresolvedLinksNote"));
                 }
                 window.alert(msg.join("\n"));
               }
@@ -6717,7 +6723,7 @@ export function NoteApp() {
             onDeleteSkill={async (skillId) => {
               const meta = fm.skillMetas.get(skillId);
               if (meta?.systemSkillId) {
-                alert("システム同梱スキルは削除できません。デフォルトに戻すには「リセット」を使ってください。");
+                alert(tStatic("skill.cannotDeleteSystem"));
                 return;
               }
               await fm.handleDeleteSkillFile(skillId);
@@ -6995,7 +7001,7 @@ export function NoteApp() {
             onIngestFromUrl={aiAvailable ? () => {
               // AI 未設定なら URL 入力の前に止める（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
-              const url = prompt("URL を入力してください:");
+              const url = prompt(tStatic("ingest.enterUrl"));
               if (!url) return;
               // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
               // を使い分ける。後者で逆引きが効くようにする。
@@ -7015,7 +7021,7 @@ export function NoteApp() {
                     .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                   const result = await ingestFromUrl(url, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
                     return;
                   }
@@ -7049,7 +7055,7 @@ export function NoteApp() {
                     .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                   const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     return;
                   }
                   for (const wiki of result.wikis) {

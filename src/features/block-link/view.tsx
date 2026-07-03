@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLinkStore } from "./store";
 import { LINK_TYPE_CONFIG, type LinkType } from "./link-types";
+import { useT } from "../../i18n";
 
 type HeadingCandidate = {
   blockId: string;
@@ -56,6 +57,7 @@ export function PrevStepLinkDropdown({
   anchorRect: { top: number; left: number };
   onClose: () => void;
 }) {
+  const t = useT();
   const { addLink, getOutgoing } = useLinkStore();
   const [candidates, setCandidates] = useState<HeadingCandidate[]>([]);
   const [filter, setFilter] = useState("");
@@ -118,7 +120,7 @@ export function PrevStepLinkDropdown({
       }}
     >
       <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.05em" }}>
-        前手順: @ リンク先を選択
+        {t("blockLink.prevStepHeader")}
       </div>
       <div style={{ padding: "2px 10px 6px" }}>
         <input
@@ -131,7 +133,7 @@ export function PrevStepLinkDropdown({
               handleSelect(filtered[0].blockId);
             }
           }}
-          placeholder="見出しを検索..."
+          placeholder={t("blockLink.searchHeadings")}
           style={{
             width: "100%",
             fontSize: 12,
@@ -145,7 +147,7 @@ export function PrevStepLinkDropdown({
 
       {filtered.length === 0 && (
         <div style={{ padding: "8px 12px", fontSize: 12, color: "#9ca3af" }}>
-          候補なし
+          {t("blockLink.noMatches")}
         </div>
       )}
 
@@ -178,8 +180,8 @@ export function PrevStepLinkDropdown({
             }}>
               H{c.level}
             </span>
-            <span style={{ flex: 1 }}>{c.text || "(空の見出し)"}</span>
-            {isLinked && <span style={{ fontSize: 10 }}>リンク済</span>}
+            <span style={{ flex: 1 }}>{c.text || t("blockLink.emptyHeading")}</span>
+            {isLinked && <span style={{ fontSize: 10 }}>{t("blockLink.linked")}</span>}
           </button>
         );
       })}
@@ -200,6 +202,7 @@ export function AddLinkDropdown({
   anchorRect: { top: number; left: number };
   onClose: () => void;
 }) {
+  const t = useT();
   const { addLink } = useLinkStore();
   const [selectedType, setSelectedType] = useState<LinkType | null>(null);
   const [candidates, setCandidates] = useState<HeadingCandidate[]>([]);
@@ -254,7 +257,7 @@ export function AddLinkDropdown({
       {!selectedType ? (
         <>
           <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af" }}>
-            リンクタイプを選択
+            {t("blockLink.chooseLinkType")}
           </div>
           {(Object.entries(LINK_TYPE_CONFIG) as [LinkType, typeof LINK_TYPE_CONFIG[LinkType]][]).map(
             ([type, conf]) => (
@@ -290,7 +293,7 @@ export function AddLinkDropdown({
       ) : (
         <>
           <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af" }}>
-            {LINK_TYPE_CONFIG[selectedType].label} のターゲットを選択
+            {t("blockLink.chooseTargetFor", { label: LINK_TYPE_CONFIG[selectedType].label })}
           </div>
           <button
             onClick={() => setSelectedType(null)}
@@ -299,7 +302,7 @@ export function AddLinkDropdown({
               background: "none", border: "none", cursor: "pointer",
             }}
           >
-            ← タイプ選択に戻る
+            {t("blockLink.backToTypes")}
           </button>
           {candidates.map((c) => (
             <button
@@ -315,7 +318,7 @@ export function AddLinkDropdown({
               <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, minWidth: 20 }}>
                 H{c.level}
               </span>
-              {c.text || "(空の見出し)"}
+              {c.text || t("blockLink.emptyHeading")}
             </button>
           ))}
         </>

@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IconButton } from "./icon-button";
+import { t } from "../i18n";
 
 type ModalProps = {
   /** モーダルの開閉状態 */
@@ -65,7 +66,7 @@ const ModalHeader = forwardRef<HTMLDivElement, ModalHeaderProps>(
     >
       <h2 className="text-sm font-semibold text-foreground">{children}</h2>
       {onClose && (
-        <IconButton size="sm" aria-label="閉じる" onClick={onClose}>
+        <IconButton size="sm" aria-label={t("common.close")} onClick={onClose}>
           <X />
         </IconButton>
       )}

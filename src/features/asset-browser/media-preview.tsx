@@ -10,6 +10,7 @@ import { UrlReaderView } from "./UrlReaderView";
 import { UrlPreviewCard } from "./url-preview-card";
 import { DocumentViewer } from "./DocumentViewer";
 import type { CitationSource } from "./SelectionPill";
+import { useT } from "../../i18n";
 
 /** 動画・音声用: Blob URL を非同期取得して再生するラッパー */
 function BlobMediaPlayer({
@@ -19,6 +20,7 @@ function BlobMediaPlayer({
   entry: MediaIndexEntry;
   tag: "video" | "audio";
 }) {
+  const t = useT();
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
@@ -44,7 +46,7 @@ function BlobMediaPlayer({
   if (error) {
     return (
       <div className="flex items-center justify-center text-muted-foreground text-sm">
-        再生できませんでした
+        {t("asset.playbackFailed")}
       </div>
     );
   }
@@ -52,7 +54,7 @@ function BlobMediaPlayer({
   if (!blobUrl) {
     return (
       <div className="flex items-center justify-center text-muted-foreground text-sm">
-        読み込み中...
+        {t("common.loading")}
       </div>
     );
   }
@@ -82,6 +84,7 @@ function BlobMediaPlayer({
 }
 
 function ResolvedImage({ entry }: { entry: MediaIndexEntry }) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     const provider = getActiveProvider();
@@ -89,7 +92,7 @@ function ResolvedImage({ entry }: { entry: MediaIndexEntry }) {
     if (!fileId) { setSrc(entry.url); return; }
     provider.getMediaBlobUrl(fileId).then(setSrc).catch(() => {});
   }, [entry.url]);
-  if (!src) return <div className="flex items-center justify-center text-muted-foreground">読み込み中...</div>;
+  if (!src) return <div className="flex items-center justify-center text-muted-foreground">{t("common.loading")}</div>;
   return <img src={src} alt={entry.name} className="max-w-full max-h-full object-contain rounded" />;
 }
 

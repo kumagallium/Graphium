@@ -7,6 +7,7 @@ import { aiErrorFromResponse } from "../../lib/ai-error";
 import { extractPdfText } from "../wiki/pdf-text-extractor";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import type { ProvIngesterBlock } from "./prov-note-builder";
+import { t } from "../../i18n";
 
 export type IngestPdfResult = {
   title: string;
@@ -48,7 +49,7 @@ export async function ingestPdfToProv(
   const extracted = await extractPdfText(blob);
 
   if (!extracted.text || extracted.text.length < 50) {
-    throw new Error("PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）");
+    throw new Error(t("ingest.pdfNoText"));
   }
 
   // wiki ingester と同じ方針でタイトルを決定:

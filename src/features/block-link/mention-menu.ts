@@ -4,6 +4,7 @@
 import type { GraphiumFile } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { MediaIndex } from "../asset-browser/media-index";
+import { t } from "../../i18n";
 
 // 参照候補の型
 export type ReferenceSuggestion = {
@@ -134,8 +135,8 @@ export function getCreateNoteSuggestion(
     return {
       type: "note",
       id: CREATE_NEW_NOTE_ID,
-      label: "新しいノートを作成…",
-      group: "新規作成",
+      label: t("mention.createNoteEllipsis"),
+      group: t("mention.groupCreate"),
       createTitle: "",
     };
   }
@@ -147,8 +148,8 @@ export function getCreateNoteSuggestion(
   return {
     type: "note",
     id: CREATE_NEW_NOTE_ID,
-    label: `「${trimmed}」を新規ノートに`,
-    group: "新規作成",
+    label: t("mention.createNamed", { title: trimmed }),
+    group: t("mention.groupCreate"),
     createTitle: trimmed,
   };
 }
@@ -181,7 +182,7 @@ export function getHeadingSuggestions(currentBlockId?: string): ReferenceSuggest
       type: "heading",
       id: blockId,
       label: `${"#".repeat(level)} ${text}`,
-      group: "このノート",
+      group: t("mention.groupThisNote"),
     });
   });
 
@@ -229,7 +230,7 @@ export function getNoteSuggestions(
         type: "note",
         id: note.noteId,
         label: note.title,
-        group: "他のノート",
+        group: t("mention.groupOtherNotes"),
       };
       suggestions.push(s);
       entries.push({ suggestion: s, title: note.title, modifiedAt: note.modifiedAt });
@@ -268,7 +269,7 @@ export function getNoteSuggestions(
         type: "note",
         id: f.id,
         label: title,
-        group: "他のノート",
+        group: t("mention.groupOtherNotes"),
       };
       entries.push({ suggestion: s, title, modifiedAt: f.modifiedTime });
       return s;
@@ -292,6 +293,6 @@ export function getAssetSuggestions(mediaIndex?: MediaIndex | null): ReferenceSu
       type: "asset" as const,
       id: m.fileId,
       label: `📄 ${m.name}`,
-      group: "ドキュメント素材",
+      group: t("mention.groupAssets"),
     }));
 }

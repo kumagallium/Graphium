@@ -101,7 +101,7 @@ export function SkillListView({
   const handleReset = async (e: React.MouseEvent, skillId: string) => {
     e.stopPropagation();
     if (!onResetSystemSkill) return;
-    if (!confirm("このスキルをデフォルト内容に戻します。よろしいですか？")) return;
+    if (!confirm(t("skill.resetConfirm"))) return;
     await onResetSystemSkill(skillId);
   };
 
@@ -174,18 +174,18 @@ export function SkillListView({
                         {entry.title}
                       </span>
                       {entry.systemSkillId && (
-                        <span title="システム同梱スキル（削除不可）" className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground">
+                        <span title={t("skill.systemBadgeTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground">
                           <Lock size={9} />
                           <span>System</span>
                         </span>
                       )}
                       {entry.language && (
-                        <span title={`適用言語: ${entry.language === "ja" ? "日本語" : "English"}`} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
+                        <span title={t("skill.languageTooltip", { language: entry.language === "ja" ? t("skill.langJa") : t("skill.langEn") })} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
                           {entry.language}
                         </span>
                       )}
                       {entry.availableForIngest && (
-                        <span title="Ingest に自動適用"><Zap size={12} className="text-amber-500 shrink-0" /></span>
+                        <span title={t("skill.autoApplyBadge")}><Zap size={12} className="text-amber-500 shrink-0" /></span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -203,7 +203,7 @@ export function SkillListView({
                     <button
                       onClick={(e) => { e.stopPropagation(); onEditSkill(entry.id); }}
                       className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1"
-                      title="編集（説明・Ingest 自動適用・言語）"
+                      title={t("skill.editTooltip")}
                     >
                       <Pencil size={14} />
                     </button>
@@ -212,10 +212,10 @@ export function SkillListView({
                         <button
                           onClick={(e) => handleReset(e, entry.id)}
                           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border bg-background text-[10px]"
-                          title="このスキルをデフォルト内容に戻します"
+                          title={t("skill.resetTooltip")}
                         >
                           <RotateCcw size={12} />
-                          <span>デフォルトに戻す</span>
+                          <span>{t("skill.resetToDefault")}</span>
                         </button>
                       )
                     ) : (

@@ -4,6 +4,8 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { useState, useEffect } from "react";
 import { fetchUrlMetadata, extractDomain, getFaviconUrl } from "../../features/asset-browser/media-index";
+// BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
+import { t } from "../../i18n";
 
 export const BookmarkBlock = createReactBlockSpec(
   {
@@ -66,7 +68,7 @@ export const BookmarkBlock = createReactBlockSpec(
       if (!url) {
         return (
           <div style={styles.placeholder}>
-            <span style={styles.placeholderText}>🔗 URL を入力してください</span>
+            <span style={styles.placeholderText}>{t("block.bookmark.placeholder")}</span>
           </div>
         );
       }
@@ -76,7 +78,7 @@ export const BookmarkBlock = createReactBlockSpec(
         return (
           <div style={styles.card}>
             <div style={styles.cardBody}>
-              <span style={styles.loadingText}>読み込み中…</span>
+              <span style={styles.loadingText}>{t("common.loading")}</span>
             </div>
           </div>
         );

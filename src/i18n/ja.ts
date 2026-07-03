@@ -1391,4 +1391,188 @@ export const ja: Record<string, string> = {
   "globalGraph.layer.note": "ノート",
   "globalGraph.layer.crystal": "結晶",
   "globalGraph.empty": "まだノートがありません",
+
+  // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
+  // ノート一覧: インポート・一括 Knowledge 化
+  "noteList.importFiles": "ファイルを取り込む",
+  "noteList.importMarkdown": "Markdown (.md) を取り込む",
+  "noteList.importObsidianVault": "Obsidian Vault フォルダを取り込む",
+  "noteList.ingestTooltip": "選択したノートから Concept / Summary を抽出してナレッジに追加します",
+  "noteList.ingestSelected": "{count} 件を Knowledge 化",
+  "noteList.importProgress": "Markdown 取り込み: {done} / {total}",
+  "noteList.importFailedCount": "（失敗: {count}）",
+  "noteList.importProcessing": "処理中: {name}",
+  "noteList.importFailedFiles": "失敗したファイル: {names}",
+  "nav.outgoingTooltip": "参照先（このノートが参照しているノート数）",
+  "nav.incomingTooltip": "被参照（他ノートから参照されている数）",
+  "nav.removeContextValue": "{value} を外す",
+  "nav.deleteContextOptionAria": "{value} を候補から削除（全ノートから外す）",
+  "nav.deleteContextOptionTooltip": "この文脈を候補から削除（使用中の全ノートから外す）",
+  "nav.contextSaveFailed": "文脈の保存に失敗しました。再度お試しください。",
+
+  // Skill 一覧・ダイアログ
+  "skill.resetConfirm": "このスキルをデフォルト内容に戻します。よろしいですか？",
+  "skill.systemBadgeTooltip": "システム同梱スキル（削除不可）",
+  "skill.languageTooltip": "適用言語: {language}",
+  "skill.langAll": "全言語",
+  "skill.langJa": "日本語",
+  "skill.langEn": "English",
+  "skill.autoApplyBadge": "Ingest に自動適用",
+  "skill.editTooltip": "Skill の設定（説明・Ingest 自動適用・言語）を編集",
+  "skill.edit": "編集",
+  "skill.resetTooltip": "このスキルをデフォルト内容に戻します",
+  "skill.resetToDefault": "デフォルトに戻す",
+  "skill.descriptionHelp": "一覧に表示されるラベルです（AI には渡りません。AI が読むのは本文のプロンプトです）。",
+  "skill.languageLabel": "適用言語",
+  "skill.languageHelp": "生成言語が一致するときだけ適用されます。",
+  "skill.autoApplyLabel": "Ingest 時に自動適用する",
+  "skill.cannotDeleteSystem": "システム同梱スキルは削除できません。デフォルトに戻すには「リセット」を使ってください。",
+
+  // エディタ・共有メニュー
+  "editor.saveFailed": "保存に失敗しました。再度お試しください。",
+  "share.copyLink": "リンクをコピー",
+  "share.linkCopied": "コピーしました",
+  "share.unshareConfirmBody": "他のメンバーがすでに見た / キャッシュした / fork した可能性があります。完全な抹消はできません。",
+  "share.updateHint": "更新するにはローカルで編集して再 Share してください。",
+  "share.readOnlyOthers": "他人の共有エントリは読み取り専用です。",
+  "share.forkToView": "Fork してローカルで開くとフル内容を確認できます。",
+  "share.noBlobRootPreview": "Blob root が未設定のためプレビューできません。",
+
+  // スラッシュメニュー: 新規ノート
+  "slashMenu.newNote.title": "新しいノート",
+  "slashMenu.newNote.subtext": "名前を付けて新規ノートを作成し、ここにリンク",
+  "slashMenu.newNote.group": "ノート",
+
+  // Ingest トースト・パイプライン進捗
+  "ingest.generatingHeader": "Knowledge 生成中 ({done}/{total})",
+  "ingest.doneSummary": "完了: {count} 件生成",
+  "ingest.doneErrorSuffix": ", {count} 件エラー",
+  "ingest.insufficientContent": "内容不足",
+  "ingest.needTwoClaims": "Claim {count} 件（2 件以上で実行）",
+  "ingest.analyzingClusters": "{claims} claims / {clusters} clusters を分析中...",
+  "ingest.clusterProgress": "cluster {current}/{total} 「{title}」 ({count} {kind})",
+  "ingest.noNewAtoms": "新規 {kind} なし",
+  "ingest.atomLayerDisabled": "Atom Layer が無効",
+  "ingest.needTwoWikis": "Wiki {count} 件（2 件以上で実行）",
+  "ingest.analyzingWikis": "{count} wikis を分析中...",
+  "ingest.noIssues": "問題なし",
+  "ingest.provFailed": "PROV 構造を生成できませんでした",
+  "ingest.skippedWikiNotes": "Wiki ノートはスキップしました（{count} 件）",
+  "ingest.enterUrl": "URL を入力してください:",
+  "ingest.pdfNoText": "PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）",
+  "ingest.docxNoText": "Word から十分なテキストを抽出できませんでした",
+  "ingest.noSources": "ソースが 1 件もありません",
+
+  // Markdown インポート
+  "import.noMarkdownFiles": "Markdown ファイルが見つかりませんでした。",
+  "import.importedCount": "{count} 件のノートを取り込みました。",
+  "import.unresolvedLinksNote": "解決できなかった [[リンク]] はテキストとして残しています。",
+
+  // 素材ビューア・抽出
+  "asset.docxNoImages": "この Word からは画像オブジェクトを取り出せませんでした。",
+  "asset.docxUnsupportedImages": "対応形式の画像が含まれていませんでした（EMF/WMF など）。",
+  "asset.pdfUrlEmpty": "PDF の URL が空です",
+  "asset.pdfFetchFailed": "PDF の取得に失敗しました",
+  "asset.pdfLoadFailed": "PDF の読み込みに失敗しました",
+  "asset.previewUnsupportedDocxOnly": "この形式のプレビューはまだ対応していません（現状は .docx のみ）。",
+  "asset.previewUnsupported": "プレビュー非対応のファイル形式です。",
+  "asset.previewLoadFailed": "プレビューの読み込みに失敗しました。",
+  "asset.playbackFailed": "再生できませんでした",
+  "asset.url.empty": "URL が空です",
+
+  // カスタムブロック
+  "block.pdf.placeholder": "PDF ファイルをドラッグ＆ドロップ、またはスラッシュメニューから挿入",
+  "block.bookmark.placeholder": "🔗 URL を入力してください",
+
+  // 共通
+  "common.openMenu": "メニューを開く",
+  "common.create": "作成",
+
+  // @ メンションメニュー
+  "mention.createNoteEllipsis": "新しいノートを作成…",
+  "mention.createNamed": "「{title}」を新規ノートに",
+  "mention.groupCreate": "新規作成",
+  "mention.groupThisNote": "このノート",
+  "mention.groupOtherNotes": "他のノート",
+  "mention.groupAssets": "ドキュメント素材",
+
+  // ブロックリンク（@ メニュー・前手順リンク）
+  "blockLink.prevStepHeader": "前手順: @ リンク先を選択",
+  "blockLink.searchHeadings": "見出しを検索...",
+  "blockLink.noMatches": "候補なし",
+  "blockLink.emptyHeading": "(空の見出し)",
+  "blockLink.linked": "リンク済",
+  "blockLink.chooseLinkType": "リンクタイプを選択",
+  "blockLink.chooseTargetFor": "{label} のターゲットを選択",
+  "blockLink.backToTypes": "← タイプ選択に戻る",
+  "blockLink.newNoteDialogTitle": "新しいノートを作成",
+  "blockLink.newNoteDialogHint": "Enter で作成 / Esc でキャンセル",
+
+  // メモ（素材・ノート紐付け）
+  "memo.emptyForNote": "このノートに紐づくメモはまだありません。",
+  "memo.emptyForNoteTitled": "「{title}」に紐づくメモはまだありません。",
+  "memo.writeHint": "上の入力欄から書き込めます。",
+  "memo.emptyForAsset": "この素材に紐づくメモはまだありません。",
+  "memo.assetWriteHint": "上の入力欄から書き込むか、PDF のテキストを選択して「メモに保存」できます。",
+  "memo.assetPdfHint": "PDF のテキストを選択して「メモに保存」を押すと、ここに並びます。",
+  "memo.citedCount": "· 引用済み {count} 件",
+  "memo.delete": "メモを削除",
+  "memo.composerPlaceholder": "メモを書く… ⏎ で保存・Shift+⏎ で改行",
+
+  // インデックステーブル
+  "indexTable.colName": "名前",
+  "indexTable.colCond1": "条件1",
+  "indexTable.colCond2": "条件2",
+  "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
+
+  // リリースノート
+  "releaseNotes.empty": "リリースノートがありません",
+  "releaseNotes.fetchFailed": "最新のリリース情報を取得できませんでした。直近のコミットログを表示しています。",
+  "releaseNotes.noDescription": "（説明なし）",
+
+  // AI チャット・派生ノート
+  "aiChat.mentionHint": "(@でページ参照)",
+  "aiDerived.quoteHeading": "引用",
+  "aiDerived.questionHeading": "質問",
+  "aiDerived.answerHeading": "回答",
+
+  // グラフ・PROV
+  "graph.unknownNote": "不明なノート",
+  "prov.prevStepFallback": "前手順",
+  "prov.resultOf": "{label} の結果",
+
+  // 設定
+  "settings.ai.modelNotFound": "モデルが見つかりません",
+  "settings.maintenance.currentSetting": "(現在の設定)",
+  "settings.maintenance.reembedHelp": "AI チャットの引用検索（Retriever）が動かないときに使う。全 Wiki の埋め込みを作り直して IndexedDB に保存する。",
+  "settings.health.exitDetail": "（プロセスは既に {info} で終了）",
+  "settings.health.timeoutError": "ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）{detail}",
+
+  // 翻訳
+  "translate.emptyResult": "翻訳結果が空でした。",
+  "translate.noBodyText": "本文を抽出できませんでした（ペイウォール・ログイン必須・動的サイトの可能性）。",
+
+  // Composer 発見カード
+  "composer.discovery.clarifyTitle": "この Knowledge を整理する",
+  "composer.discovery.clarifyHint": "矛盾や繰り返しを洗い出して書き直すヒントをもらう",
+  "composer.discovery.summarizeTitle": "このノートを要約する",
+  "composer.discovery.summarizeHint": "見出し単位で 3 行にまとめる",
+  "composer.discovery.hintIngest": "最近作られた Wiki",
+  "composer.discovery.hintCrossUpdate": "他ノートとの横断更新の提案",
+  "composer.discovery.hintRegenerate": "別モデルでの再生成結果",
+  "composer.discovery.hintMerge": "複数ノートを統合した Synthesis",
+  "composer.discovery.tellMeAbout": "「{title}」について教えて",
+  "composer.discovery.editedNoteHint": "{time}に編集したノート",
+  "composer.discovery.timeNow": "今",
+  "composer.discovery.timeHoursAgo": "{hours}h 前",
+  "composer.discovery.timeDaysAgo": "{days}d 前",
+  "composer.discovery.ingestTitle": "このノートを Knowledge に追加",
+  "composer.discovery.ingestHint": "AI が要約・抽象化して Wiki エントリを作成",
+  "composer.discovery.promptSummarize": "このノートを見出し単位で 3 行にまとめてください。",
+  "composer.discovery.promptContinue": "直前の段落を踏まえて、続きを 1〜2 段落書いてください。",
+  "composer.discovery.promptVisualizeProv": "このノートの来歴グラフ（PROV-DM）を可視化してください。",
+  "composer.discovery.promptConceptWiki": "頻出キーワードから Concept Wiki の下書きを作ってください。",
+  "composer.discovery.promptClarify": "この Wiki の矛盾・繰り返しを洗い出し、書き直しのヒントをください。",
+  "composer.discovery.promptTellMeAbout": "「{title}」について教えてください。",
+  "composer.citationSource": "引用元",
 };

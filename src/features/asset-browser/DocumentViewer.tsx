@@ -14,6 +14,7 @@ import { getActiveProvider } from "../../lib/storage/registry";
 import { isDocumentMime } from "./media-index";
 import type { MediaIndexEntry } from "./media-index";
 import { SelectionPill, type CitationSource, type PillState } from "./SelectionPill";
+import { useT } from "../../i18n";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -24,6 +25,7 @@ export type DocumentViewerProps = {
 };
 
 export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerProps) {
+  const t = useT();
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,8 +43,8 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
         const isKnownDoc = isDocumentMime(entry.mimeType);
         setError(
           isKnownDoc
-            ? "この形式のプレビューはまだ対応していません（現状は .docx のみ）。"
-            : "プレビュー非対応のファイル形式です。",
+            ? t("asset.previewUnsupportedDocxOnly")
+            : t("asset.previewUnsupported"),
         );
         return;
       }
@@ -62,7 +64,7 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
       } catch (err) {
         if (cancelled) return;
         console.error("[document-viewer] プレビュー読み込み失敗:", err);
-        setError("プレビューの読み込みに失敗しました。");
+        setError(t("asset.previewLoadFailed"));
       }
     })();
 
@@ -156,7 +158,7 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
   if (!html) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-6">
-        読み込み中…
+        {t("common.loading")}
       </div>
     );
   }

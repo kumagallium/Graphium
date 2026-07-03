@@ -6,6 +6,8 @@ import { useState, useCallback, useEffect } from "react";
 import { Document, Page } from "react-pdf";
 import { getActiveProvider } from "../../lib/storage/registry";
 import "../../lib/pdfjs-config";
+// BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
+import { t } from "../../i18n";
 
 export const PdfViewerBlock = createReactBlockSpec(
   {
@@ -43,7 +45,7 @@ export const PdfViewerBlock = createReactBlockSpec(
             if (!cancelled) setBlobUrl(blob);
           })
           .catch(() => {
-            if (!cancelled) setError("PDF の取得に失敗しました");
+            if (!cancelled) setError(t("asset.pdfFetchFailed"));
           })
           .finally(() => {
             if (!cancelled) setLoading(false);
@@ -61,7 +63,7 @@ export const PdfViewerBlock = createReactBlockSpec(
       );
 
       const onDocumentLoadError = useCallback(() => {
-        setError("PDF の読み込みに失敗しました");
+        setError(t("asset.pdfLoadFailed"));
       }, []);
 
       // URL 未設定時のプレースホルダ
@@ -70,7 +72,7 @@ export const PdfViewerBlock = createReactBlockSpec(
           <div style={styles.placeholder}>
             <div style={styles.placeholderIcon}>📄</div>
             <div style={styles.placeholderText}>
-              PDF ファイルをドラッグ＆ドロップ、またはスラッシュメニューから挿入
+              {t("block.pdf.placeholder")}
             </div>
           </div>
         );
@@ -84,7 +86,7 @@ export const PdfViewerBlock = createReactBlockSpec(
               <span style={styles.fileName}>{name || "PDF"}</span>
             </div>
             <div style={styles.viewer}>
-              <div style={styles.loading}>読み込み中…</div>
+              <div style={styles.loading}>{t("common.loading")}</div>
             </div>
           </div>
         );
@@ -142,7 +144,7 @@ export const PdfViewerBlock = createReactBlockSpec(
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={onDocumentLoadError}
               loading={
-                <div style={styles.loading}>読み込み中…</div>
+                <div style={styles.loading}>{t("common.loading")}</div>
               }
             >
               <Page

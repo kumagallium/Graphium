@@ -2,6 +2,7 @@
 // Wiki の WikiBanner と同等の役割
 
 import { Wrench, Zap, Pencil } from "lucide-react";
+import { useT } from "../../i18n";
 
 type Props = {
   availableForIngest: boolean;
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function SkillBanner({ availableForIngest, onEdit }: Props) {
+  const t = useT();
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 text-xs">
       <Wrench size={12} className="text-amber-600 dark:text-amber-400" />
@@ -17,7 +19,7 @@ export function SkillBanner({ availableForIngest, onEdit }: Props) {
       {availableForIngest && (
         <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
           <Zap size={10} />
-          <span>Ingest 自動適用</span>
+          <span>{t("skill.autoApplyBadge")}</span>
         </span>
       )}
       {onEdit && (
@@ -26,10 +28,10 @@ export function SkillBanner({ availableForIngest, onEdit }: Props) {
           <button
             onClick={onEdit}
             className="flex items-center gap-1 text-amber-700 dark:text-amber-300 hover:opacity-80 transition-opacity"
-            title="Skill の設定（説明・Ingest 自動適用・言語）を編集"
+            title={t("skill.editTooltip")}
           >
             <Pencil size={11} />
-            <span>編集</span>
+            <span>{t("skill.edit")}</span>
           </button>
         </>
       )}

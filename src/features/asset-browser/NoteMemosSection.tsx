@@ -15,6 +15,7 @@ import { Trash2, FileText } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "../mobile-capture";
 import { formatDateTime } from "../../lib/format-datetime";
 import { MemoComposer } from "./MemoComposer";
+import { useT } from "../../i18n";
 
 export type NoteMemosSectionProps = {
   /** 現在開いているノートの fileId */
@@ -56,6 +57,7 @@ export function NoteMemosSection({
   onDeleteMemo,
   onCreateMemo,
 }: NoteMemosSectionProps) {
+  const t = useT();
   const memos = useMemo(
     () => filterMemosByNote(captureIndex, noteFileId),
     [captureIndex, noteFileId],
@@ -75,12 +77,13 @@ export function NoteMemosSection({
             lineHeight: 1.6,
           }}
         >
-          {noteTitle ? `「${noteTitle}」に` : "このノートに"}
-          紐づくメモはまだありません。
+          {noteTitle
+            ? t("memo.emptyForNoteTitled", { title: noteTitle })
+            : t("memo.emptyForNote")}
           {onCreateMemo && (
             <>
               <br />
-              上の入力欄から書き込めます。
+              {t("memo.writeHint")}
             </>
           )}
         </div>
@@ -114,7 +117,7 @@ export function NoteMemosSection({
                 >
                   {formatDateTime(memo.createdAt)}
                   {memo.usedIn && memo.usedIn.length > 0 && (
-                    <span style={{ marginLeft: 8 }}>· 引用済み {memo.usedIn.length} 件</span>
+                    <span style={{ marginLeft: 8 }}>{t("memo.citedCount", { count: String(memo.usedIn.length) })}</span>
                   )}
                 </p>
               </div>
@@ -122,8 +125,8 @@ export function NoteMemosSection({
                 <button
                   type="button"
                   onClick={() => onDeleteMemo(memo.id)}
-                  title="メモを削除"
-                  aria-label="メモを削除"
+                  title={t("memo.delete")}
+                  aria-label={t("memo.delete")}
                   style={{
                     border: "none",
                     background: "transparent",

@@ -67,6 +67,7 @@ import {
 import { isIncomingDocNewer } from "./doc-recency";
 import { normalizeNoteContexts } from "../features/note-context/context-tags";
 import { applyMentionRenameToDoc } from "../features/block-link/mention-rename";
+import { t as tStatic } from "../i18n";
 
 // ストレージプロバイダー経由のファイル操作ヘルパー
 const storage = () => getActiveProvider();
@@ -841,7 +842,7 @@ export function useFileManager(authenticated: boolean) {
         }
       } catch (err) {
         console.error("保存に失敗:", err);
-        alert("保存に失敗しました。再度お試しください。");
+        alert(tStatic("editor.saveFailed"));
       } finally {
         savingRef.current = false;
         setSaving(false);
@@ -1325,7 +1326,7 @@ export function useFileManager(authenticated: boolean) {
         }
       } catch (err) {
         console.error("文脈の保存に失敗:", err);
-        alert("文脈の保存に失敗しました。再度お試しください。");
+        alert(tStatic("nav.contextSaveFailed"));
       }
     },
     [loadDoc, setNoteIndex, queueSaveIndex]

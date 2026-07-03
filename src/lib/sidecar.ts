@@ -11,6 +11,7 @@
 // 避けるためにこの設計。Mac でも同経路を使う（OS で分岐しない）。
 
 import { isTauri } from "./platform";
+import { t } from "../i18n";
 
 // sidecar は 127.0.0.1 にのみバインドするため、localhost（::1 に解決されうる）
 // ではなく 127.0.0.1 で直接叩く
@@ -233,11 +234,11 @@ export async function startSidecar(): Promise<boolean> {
       console.warn("[sidecar] Backend server failed to start");
       // exit イベントを観測していれば、その内容を lastError に含める。
       const exitDetail = exitRef.info
-        ? `（プロセスは既に ${exitRef.info} で終了）`
+        ? t("settings.health.exitDetail", { info: exitRef.info })
         : "";
       setState({
         status: "failed",
-        lastError: `ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）${exitDetail}`,
+        lastError: t("settings.health.timeoutError", { detail: exitDetail }),
         lastErrorAt: Date.now(),
       });
     }

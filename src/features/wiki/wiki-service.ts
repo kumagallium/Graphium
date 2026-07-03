@@ -9,6 +9,7 @@ import { summarizeNoteProv } from "../prov-extractor";
 import { getEmbeddingModel, getDefaultLLMModel, getChatSynthesisLLMModel, getEmbeddingLLMModel, getSelectedModel, getChatSynthesisModelName } from "../settings/store";
 import { apiBase, isTauri } from "../../lib/platform";
 import { aiErrorFromResponse } from "../../lib/ai-error";
+import { t } from "../../i18n";
 
 import type { GraphiumIndex } from "../navigation";
 
@@ -1051,7 +1052,7 @@ export async function ingestFromPdf(
   const extracted = await extractPdfText(blob);
 
   if (!extracted.text || extracted.text.length < 50) {
-    throw new Error("PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）");
+    throw new Error(t("ingest.pdfNoText"));
   }
 
   // 本文に CJK 文字が一定比率含まれていれば、PDF メタデータ Title が ASCII のみ
@@ -1113,7 +1114,7 @@ export async function ingestFromDocx(
   const text = (extracted.value ?? "").trim();
 
   if (!text || text.length < 50) {
-    throw new Error("Word から十分なテキストを抽出できませんでした");
+    throw new Error(t("ingest.docxNoText"));
   }
 
   const noteTitle = fileName.replace(/\.(docx|doc)$/i, "");
@@ -1179,7 +1180,7 @@ export async function ingestFromMultiSource(
   skills?: { title: string; prompt: string }[],
 ): Promise<IngestResult> {
   if (parts.length === 0) {
-    throw new Error("ソースが 1 件もありません");
+    throw new Error(t("ingest.noSources"));
   }
 
   const languageHint =

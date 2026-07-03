@@ -1,12 +1,18 @@
 // verb 回答の手動取り込み（PR3 / Loop M2）の純関数テスト
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import {
   buildVerbSuggestionDocument,
   deriveSuggestionTitle,
   cleanSuggestionText,
   splitTitleAndBody,
 } from "./verb-suggestion-doc";
+import { syncLocale } from "../../i18n";
+
+// 生成文言は i18n 化されたため、既存の日本語アサーションに合わせて ja 固定にする
+beforeAll(() => {
+  syncLocale("ja");
+});
 
 // editor.tryParseMarkdownToBlocks の出力を模したダミーブロック
 const block = (text: string) => ({
@@ -192,6 +198,7 @@ describe("deriveSuggestionTitle", () => {
   });
 
   it("空文字は無題にフォールバック", () => {
-    expect(deriveSuggestionTitle("   ")).toBe("無題");
+    // i18n 化に伴い nav.untitled（ja: "(無題)"）を使う
+    expect(deriveSuggestionTitle("   ")).toBe("(無題)");
   });
 });
