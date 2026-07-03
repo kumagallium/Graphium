@@ -1903,6 +1903,7 @@ function NoteEditorInner({
   // - block ラベル / インラインラベル / メディアラベルどの経路でも procedure 経由で
   //   Activity が立ち上がれば同じ条件で発火する
   useEffect(() => {
+    if (!provLabelsEnabled) return;
     if (provAutoOpenedRef.current) return;
     if (rightTab !== null) return;
     const hasActivity =
@@ -1911,7 +1912,14 @@ function NoteEditorInner({
       setRightTab("prov");
       provAutoOpenedRef.current = true;
     }
-  }, [provDoc, rightTab]);
+  }, [provDoc, rightTab, provLabelsEnabled]);
+
+  // 来歴ラベル機能がオフになったら、開いている PROV グラフパネルを閉じる（一貫性のため）。
+  // タブ自体は非表示になるが、既に "prov" を開いた状態で設定を切り替えた場合に空パネルが
+  // 残らないよう、明示的に null に戻す。
+  useEffect(() => {
+    if (!provLabelsEnabled && rightTab === "prov") setRightTab(null);
+  }, [provLabelsEnabled, rightTab]);
 
   // ── PDF エクスポートハンドラー ──
   const handleExportPdf = useCallback(async () => {
@@ -3842,7 +3850,7 @@ function NoteEditorInner({
                   onOpenMedia={onOpenMedia}
                 />
               )}
-              {rightTab === "prov" && (
+              {rightTab === "prov" && provLabelsEnabled && (
                 <ProvGraphPanel doc={provDoc} />
               )}
               {rightTab === "chat" && (
@@ -3891,7 +3899,7 @@ function NoteEditorInner({
             // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
             { tab: "chat" as const, icon: <MessageSquare size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
