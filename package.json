@@ -18,6 +18,7 @@
     "build:server": "tsc -p tsconfig.server.json --noEmit",
     "preview": "vite preview",
     "test": "vitest",
+    "test:e2e": "node e2e/save-smoke.mjs",
     "test:benchmark": "tsx --env-file .env tests/benchmark/material-science/runner.ts",
     "test:benchmark:fetch": "tsx --env-file .env tests/benchmark/material-science/fetch-dataset.ts",
     "test:benchmark:fetch-notion": "tsx --env-file .env tests/benchmark/material-science/fetch-notion-fixture.ts",
