@@ -592,8 +592,23 @@ The same `src/` tree is built three different ways.
   sidecar is started with `GRAPHIUM_USE_KEYCHAIN=1` on macOS, and the
   first read of an existing `models.json` migrates any plaintext
   `apiKey` field into the Keychain and rewrites the file without it.
-  On non-Tauri deployments (Docker / dev), keys continue to live in
-  `data/models.json` as before.
+  The Keychain path is macOS-specific (`security` CLI): on **Windows and
+  Linux desktop**, and on non-Tauri deployments (Docker / dev), keys live
+  in `models.json` as plaintext. See `SECURITY.md` §"Key storage & threat
+  model" for the recommended mitigations (disk encryption, scoped/capped
+  keys) until a platform credential store is wired up.
+- The webview runs under a restrictive Content Security Policy
+  (`app.security.csp` in `tauri.conf.json`): `script-src 'self'` so
+  injected scripts from note content / imported URLs / AI output cannot
+  execute, with `img-src`/`connect-src` allowing `https:` for arbitrary
+  bookmark images and user-pasted URL previews. `devCsp` additionally
+  allows the Vite dev server (`localhost:5174` + its HMR websocket).
+- Two Tauri commands that touch the host are deliberately narrowed:
+  `kill_pid` refuses any PID that is not Graphium's own sidecar
+  (`node .../sidecar/server.mjs`), and file export goes through
+  `save_bytes_with_dialog`, which opens a native save dialog in Rust and
+  writes only to the path the user picks — JavaScript never supplies a
+  filesystem path.
 - Sidecar stdout/stderr is appended to `~/Library/Logs/Graphium/sidecar.log`
   on macOS (`<data_local_dir>/com.graphium.app/logs/sidecar.log` on other
   platforms). The file is rotated to `sidecar.log.1` once it exceeds

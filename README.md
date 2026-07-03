@@ -173,6 +173,8 @@ docker compose up -d
 2. Go to **⚙ Settings → AI Setup**, add your LLM model and API key
 3. Start using the AI assistant
 
+> **Where your API key is stored:** macOS desktop keeps it in the Keychain; Windows/Linux desktop and the web/self-hosted build keep it in plaintext (`models.json` / browser `localStorage`). Prefer a scoped, spending-capped key. See [SECURITY.md](SECURITY.md#key-storage--threat-model).
+
 #### Add MCP tools (optional)
 
 Graphium connects to MCP servers directly — no registry required. Open **⚙ Settings → AI Setup → MCP Servers** and add a source. Everything lives in one list, where each entry can be toggled on/off, edited, or removed:
