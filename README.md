@@ -436,6 +436,10 @@ src/
 └── blocks/            # Custom BlockNote blocks
 ```
 
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold it.
+
 ## License
 
 [Apache License 2.0](LICENSE)
