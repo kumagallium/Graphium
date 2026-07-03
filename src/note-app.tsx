@@ -4500,16 +4500,10 @@ export function NoteApp() {
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
     setShowSharedLibrary: (show: boolean) => setShowSharedLibrary(show),
-    clearViews: () => {
-      fm.setShowNoteList(false);
-      fm.setActiveAssetType(null);
-      fm.setActiveLabel(null);
-      fm.setActiveWikiKind(null);
-      setActiveWikiView(null);
-      setShowMemos(false);
-      setShowSharedLibrary(false); setShowGlobalGraph(false);
-    },
-  }), [fm]);
+    // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
+    // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
+    clearViews: closeAllViews,
+  }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
   // Ingest キューを処理する関数
@@ -5801,6 +5795,9 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
+    // ヘッダーの「戻る」導線。ノート A →（ピーク等経由で）ノート B / 素材へ飛んだあと A へ戻る。
+    onBack: router.back,
+    canGoBack: router.canGoBack,
     onSelect: (fileId: string) => { closeAllViews(); fm.handleOpenFile(fileId); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
     onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
