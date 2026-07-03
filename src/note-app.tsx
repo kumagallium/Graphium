@@ -8,7 +8,7 @@ import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
-import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
@@ -1062,6 +1062,32 @@ function NoteEditorInner({
       setCitePickerCallback(mainEditor, null);
     };
   }, [mainEditor]);
+
+  // ブックマークカードのクリック → URL 素材としてサイドピークで開く。
+  // 既存の URL 素材があればそれを、無ければ URL からアドホックなエントリを組み立てる。
+  // mediaIndex を最新に保つため専用の effect（picker 登録とは別依存）にする。
+  useEffect(() => {
+    if (!mainEditor) return;
+    setBookmarkPeekCallback(mainEditor, (url) => {
+      if (!url) return;
+      const existing = mediaIndex?.media.find((m) => m.type === "url" && m.url === url);
+      const entry: MediaIndexEntry = existing ?? {
+        fileId: `url:${url}`,
+        name: extractDomain(url) || url,
+        mimeType: "text/x-uri",
+        type: "url",
+        url,
+        thumbnailUrl: "",
+        uploadedAt: new Date().toISOString(),
+        usedIn: [],
+        urlMeta: { domain: extractDomain(url) },
+      };
+      setMaterialSidePeekEntry(entry);
+    });
+    return () => {
+      setBookmarkPeekCallback(mainEditor, null);
+    };
+  }, [mainEditor, mediaIndex]);
 
   // スラッシュメニューからテンプレートピッカーを開くコールバック登録
   useEffect(() => {

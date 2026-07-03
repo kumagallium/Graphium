@@ -1484,6 +1484,7 @@ export const ja: Record<string, string> = {
   // カスタムブロック
   "block.pdf.placeholder": "PDF ファイルをドラッグ＆ドロップ、またはスラッシュメニューから挿入",
   "block.bookmark.placeholder": "🔗 URL を入力してください",
+  "block.bookmark.openExternal": "別タブで開く",
 
   // 共通
   "common.openMenu": "メニューを開く",
