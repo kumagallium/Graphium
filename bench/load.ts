@@ -12,7 +12,15 @@ export const REPO_ROOT = join(__dirname, "..");
 
 export function loadCorpus(): CorpusNote[] {
   const dir = join(BENCH_DIR, "corpus");
-  const files = readdirSync(dir).filter((f) => f.endsWith(".note.json")).sort();
+  let files = readdirSync(dir).filter((f) => f.endsWith(".note.json")).sort();
+  // BENCH_CORPUS_ONLY: カンマ区切りの部分一致リストで corpus を絞る（BENCH_CORPUS_LIMIT が
+  // 先頭 N 件しか取れないのに対し、特定ノートだけを狙って回せる）。cross-language pair
+  // (047..052) だけで cross_language_consistency を安く実測する等に使う。
+  const only = (process.env.BENCH_CORPUS_ONLY ?? "").trim();
+  if (only.length > 0) {
+    const needles = only.split(",").map((s) => s.trim()).filter(Boolean);
+    files = files.filter((f) => needles.some((n) => f.includes(n)));
+  }
   return files.map((f) => {
     const raw = readFileSync(join(dir, f), "utf-8");
     return JSON.parse(raw) as CorpusNote;

@@ -233,7 +233,10 @@ export function createLiveJudges(): JudgePack {
 export function buildJudges(mode: "live" | "dry-run"): JudgePack {
   if (mode === "live") {
     const cfg = getBenchJudgeConfig();
-    if (cfg.apiKey.trim().length === 0) {
+    // claude-subscription は apiKey ではなくローカル claude CLI の OAuth で認証するため、
+    // apiKey 空でも live judge を使える。それ以外の provider は従来通り apiKey を要求する。
+    const hasCreds = cfg.apiKey.trim().length > 0 || cfg.provider === "claude-subscription";
+    if (!hasCreds) {
       console.warn("[bench] live judge requested but no judge API key; falling back to heuristic.");
       return createHeuristicJudges();
     }

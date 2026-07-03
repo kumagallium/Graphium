@@ -632,13 +632,17 @@ function atomCandidatesToBenchAtoms(
 
 export async function runLivePipeline(corpus: CorpusNote[]): Promise<DryRunResult> {
   const cfg = getBenchModelConfig();
-  if (!cfg.apiKey.trim()) {
+  // claude-subscription はローカル claude CLI の OAuth 認証を使うため apiKey 不要。
+  // それ以外の provider は従来通り apiKey が無ければ live pipeline を止める。
+  if (!cfg.apiKey.trim() && cfg.provider !== "claude-subscription") {
     throw new Error(
       "BENCH_API_KEY (または SAKURA_AI_API_KEY) が未設定です。BENCH_MODE=dry-run で実行するか API キーを設定してください。",
     );
   }
   const modelConfig = toModelConfig();
-  console.log(`[bench] live mode: model=${cfg.modelId} via ${cfg.apiBase}`);
+  console.log(
+    `[bench] live mode: model=${cfg.modelId} via ${cfg.provider === "claude-subscription" ? "claude-subscription (local CLI OAuth)" : cfg.apiBase}`,
+  );
 
   // 1) ingester: ノートごとに直列で呼ぶ（rate limit と無償枠を意識した素直な実装）
   const pipelineByNote: BenchPipelineOutput[] = [];
