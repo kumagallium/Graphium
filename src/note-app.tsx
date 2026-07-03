@@ -73,7 +73,7 @@ import {
   resolveMentionTargetFromLinks,
 } from "./features/block-link/mention-menu";
 import { useNewNoteNamePrompt } from "./features/block-link/new-note-name-dialog";
-import { replaceMentionRunsInContent } from "./features/block-link/mention-rename";
+import { buildMentionPatterns, replaceMentionRunsInContent } from "./features/block-link/mention-rename";
 import {
   ProvGraphPanel,
 } from "./features/prov-generator";
@@ -893,29 +893,36 @@ function NoteEditorInner({
   // オートセーブ経路で永続化される。
   const handlePeekSaved = useCallback(
     (peekId: string, savedDoc: GraphiumDocument) => {
-      const isPrefixed = peekId.startsWith("wiki:") || peekId.startsWith("skill:");
+      // skill はインデックス非掲載で @メンション候補に出ない = 参照が存在しないため
+      // 伝播不要。wiki はリンクレコード上 raw id で参照されるのでプレフィックスを剥がす。
+      const isSkill = peekId.startsWith("skill:");
+      const isWiki = peekId.startsWith("wiki:");
+      const rawPeekId = peekId.replace(/^(wiki|skill):/, "");
       // 旧タイトルは reindex 前のキャッシュ / インデックスから取る
-      const prevTitle = isPrefixed
+      const prevTitle = isSkill
         ? undefined
         : getCachedDoc?.(peekId)?.title ??
-          noteIndex?.notes.find((n) => n.noteId === peekId)?.title;
+          noteIndex?.notes.find((n) => n.noteId === rawPeekId)?.title;
       onPeekSaved?.(peekId, savedDoc);
-      if (isPrefixed || !prevTitle || prevTitle === savedDoc.title) return;
+      if (isSkill || !prevTitle || prevTitle === savedDoc.title) return;
       void onPropagateMentionRename?.(peekId, prevTitle, savedDoc.title, {
         skipNoteIds: fileId ? [fileId] : undefined,
       });
       const editor = editorRef.current;
       if (!editor) return;
+      const patterns = buildMentionPatterns(prevTitle, savedDoc.title, {
+        includeWikiLabels: isWiki,
+      });
       const allLinks = linkStore.getAllLinks();
       const blockIds = new Set<string>();
       for (const l of allLinks) {
-        if (l.targetNoteId === peekId && l.sourceBlockId) blockIds.add(l.sourceBlockId);
+        if (l.targetNoteId === rawPeekId && l.sourceBlockId) blockIds.add(l.sourceBlockId);
       }
       // 同名曖昧ガード（applyMentionRenameToDoc と同じ基準）: 同じブロックに
       // 「別ノートだが現タイトルが旧タイトルと同じ」参照が同居していたら触らない
       for (const l of allLinks) {
         if (!l.sourceBlockId || !blockIds.has(l.sourceBlockId)) continue;
-        if (l.targetNoteId && l.targetNoteId !== peekId) {
+        if (l.targetNoteId && l.targetNoteId !== rawPeekId) {
           const t = noteIndex?.notes.find((n) => n.noteId === l.targetNoteId)?.title;
           if (t === prevTitle) blockIds.delete(l.sourceBlockId);
         }
@@ -924,7 +931,7 @@ function NoteEditorInner({
         try {
           const block = editor.getBlock?.(bid);
           if (!block || !Array.isArray(block.content)) continue;
-          const nc = replaceMentionRunsInContent(block.content, prevTitle, savedDoc.title);
+          const nc = replaceMentionRunsInContent(block.content, patterns);
           if (nc) editor.updateBlock(block, { content: nc });
         } catch {
           // ブロックが削除済み等は無視（伝播はベストエフォート）
@@ -4039,14 +4046,17 @@ export function NoteApp() {
   // fm 側が activeDoc も更新するため、エディタ復帰時も旧ラベルに巻き戻らない）。
   const handleListPeekSaved = useCallback(
     (id: string, savedDoc: GraphiumDocument) => {
-      const isPrefixed = id.startsWith("wiki:") || id.startsWith("skill:");
+      // skill はインデックス非掲載で @メンション候補に出ない = 参照が存在しないため
+      // 伝播不要。wiki はリンクレコード上 raw id で参照されるのでプレフィックスを剥がす。
+      const isSkill = id.startsWith("skill:");
+      const rawId = id.replace(/^(wiki|skill):/, "");
       // 旧タイトルは reindex 前のキャッシュ / インデックスから取る
-      const prevTitle = isPrefixed
+      const prevTitle = isSkill
         ? undefined
         : fm.getCachedDoc?.(id)?.title ??
-          fm.noteIndex?.notes.find((n) => n.noteId === id)?.title;
+          fm.noteIndex?.notes.find((n) => n.noteId === rawId)?.title;
       fm.reindexNoteFromDoc(id, savedDoc);
-      if (isPrefixed || !prevTitle || prevTitle === savedDoc.title) return;
+      if (isSkill || !prevTitle || prevTitle === savedDoc.title) return;
       void fm.propagateMentionRename(id, prevTitle, savedDoc.title);
     },
     [fm.getCachedDoc, fm.noteIndex, fm.reindexNoteFromDoc, fm.propagateMentionRename],

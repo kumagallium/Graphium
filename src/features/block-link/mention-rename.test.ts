@@ -1,16 +1,33 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildMentionPatterns,
   replaceMentionRunsInContent,
   applyMentionRenameToDoc,
 } from "./mention-rename";
 import type { GraphiumDocument } from "../../lib/document-types";
 
-const blueMention = (title: string) => ({
+const blueMention = (label: string) => ({
   type: "text",
-  text: `@${title}`,
+  text: `@${label}`,
   styles: { textColor: "blue" },
 });
 const plainText = (text: string) => ({ type: "text", text, styles: {} });
+const pat = (oldTitle: string, newTitle: string) => buildMentionPatterns(oldTitle, newTitle);
+
+describe("buildMentionPatterns", () => {
+  it("通常ノートは @旧 → @新 の 1 パターン", () => {
+    expect(buildMentionPatterns("旧", "新")).toEqual([{ from: "@旧", to: "@新" }]);
+  });
+
+  it("wiki は装飾付きラベル（Summary / Concept）も含む 3 パターン", () => {
+    const patterns = buildMentionPatterns("旧", "新", { includeWikiLabels: true });
+    expect(patterns).toEqual([
+      { from: "@旧", to: "@新" },
+      { from: "@🤖 Summary: 旧", to: "@🤖 Summary: 新" },
+      { from: "@🤖 Concept: 旧", to: "@🤖 Concept: 新" },
+    ]);
+  });
+});
 
 describe("replaceMentionRunsInContent", () => {
   it("青文字の完全一致メンションだけを置換する", () => {
@@ -19,7 +36,7 @@ describe("replaceMentionRunsInContent", () => {
       blueMention("旧タイトル"),
       plainText(" 後置き"),
     ];
-    const result = replaceMentionRunsInContent(content, "旧タイトル", "新タイトル");
+    const result = replaceMentionRunsInContent(content, pat("旧タイトル", "新タイトル"));
     expect(result).not.toBeNull();
     expect(result![1].text).toBe("@新タイトル");
     expect(result![1].styles?.textColor).toBe("blue");
@@ -27,16 +44,31 @@ describe("replaceMentionRunsInContent", () => {
     expect(result![2].text).toBe(" 後置き");
   });
 
+  it("wiki の装飾付きラベルを kind を保って置換する", () => {
+    const content = [
+      blueMention("🤖 Concept: 旧タイトル"),
+      plainText(" と "),
+      blueMention("🤖 Summary: 旧タイトル"),
+    ];
+    const result = replaceMentionRunsInContent(
+      content,
+      buildMentionPatterns("旧タイトル", "新タイトル", { includeWikiLabels: true }),
+    );
+    expect(result).not.toBeNull();
+    expect(result![0].text).toBe("@🤖 Concept: 新タイトル");
+    expect(result![2].text).toBe("@🤖 Summary: 新タイトル");
+  });
+
   it("青文字でないテキストは同じ文字列でも置換しない", () => {
     const content = [plainText("@旧タイトル")];
-    expect(replaceMentionRunsInContent(content, "旧タイトル", "新")).toBeNull();
+    expect(replaceMentionRunsInContent(content, pat("旧タイトル", "新"))).toBeNull();
   });
 
   it("部分一致（文中に @旧タイトル を含む run）は置換しない", () => {
     const content = [
       { type: "text", text: "これは @旧タイトル を含む文", styles: { textColor: "blue" } },
     ];
-    expect(replaceMentionRunsInContent(content, "旧タイトル", "新")).toBeNull();
+    expect(replaceMentionRunsInContent(content, pat("旧タイトル", "新"))).toBeNull();
   });
 
   it("link run の内側コンテンツにも再帰する", () => {
@@ -47,14 +79,14 @@ describe("replaceMentionRunsInContent", () => {
         content: [blueMention("旧タイトル")],
       },
     ];
-    const result = replaceMentionRunsInContent(content, "旧タイトル", "新タイトル");
+    const result = replaceMentionRunsInContent(content, pat("旧タイトル", "新タイトル"));
     expect(result).not.toBeNull();
     expect((result![0] as any).content[0].text).toBe("@新タイトル");
   });
 
   it("配列でない content（table 等）は null", () => {
-    expect(replaceMentionRunsInContent({ type: "tableContent" }, "a", "b")).toBeNull();
-    expect(replaceMentionRunsInContent(undefined, "a", "b")).toBeNull();
+    expect(replaceMentionRunsInContent({ type: "tableContent" }, pat("a", "b"))).toBeNull();
+    expect(replaceMentionRunsInContent(undefined, pat("a", "b"))).toBeNull();
   });
 });
 
@@ -111,6 +143,26 @@ describe("applyMentionRenameToDoc", () => {
     expect(blocks[0].content[0].text).toBe("@新B");
     expect(blocks[1].content[0].text).toBe("@旧B");
     expect(result!.doc.modifiedAt).not.toBe(doc.modifiedAt);
+  });
+
+  it("includeWikiLabels 指定で wiki の装飾付きメンションも書き換える", () => {
+    const doc = makeDoc(
+      [
+        para("b1", [
+          blueMention("🤖 Concept: 旧W"),
+          plainText(" と引用 "),
+          blueMention("旧W"),
+        ]),
+      ],
+      [refLink("b1", "wiki-W")],
+    );
+    const result = applyMentionRenameToDoc(doc, "wiki-W", "旧W", "新W", () => undefined, {
+      includeWikiLabels: true,
+    });
+    expect(result).not.toBeNull();
+    const content = result!.doc.pages[0].blocks[0].content;
+    expect(content[0].text).toBe("@🤖 Concept: 新W");
+    expect(content[2].text).toBe("@新W");
   });
 
   it("同名曖昧ガード: 同ブロックに現タイトルが同じ別ノート参照があれば触らない", () => {
