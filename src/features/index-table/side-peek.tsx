@@ -1211,7 +1211,11 @@ function SidePeekInner({
                   }
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  // IME 変換確定の Enter を奪わない（メインエディタのタイトル欄と
+                  // 同じガード）。isComposing / keyCode 229 を見ずに focus を移すと、
+                  // 変換確定の Enter でフォーカスがエディタ本文へ飛び、確定文字が
+                  // 本文の 1 行目へ流れ込む。
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                     e.preventDefault();
                     editorRef.current?.focus();
                   }
