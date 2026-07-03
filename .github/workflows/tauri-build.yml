@@ -112,7 +112,7 @@ jobs:
           trap "kill $SIDECAR_PID 2>/dev/null || true" EXIT
           # 起動完了を最大 15 秒待つ
           for i in $(seq 1 15); do
-            if curl -fsS "http://localhost:${PORT}/api/health" > /tmp/sidecar-health.json 2>/dev/null; then
+            if curl -fsS "http://127.0.0.1:${PORT}/api/health" > /tmp/sidecar-health.json 2>/dev/null; then
               echo "Sidecar healthy after ${i}s"
               cat /tmp/sidecar-health.json
               echo ""

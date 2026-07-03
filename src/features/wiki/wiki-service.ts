@@ -11,7 +11,7 @@ import { apiBase, isTauri } from "../../lib/platform";
 
 import type { GraphiumIndex } from "../navigation";
 
-/** サーバー API の URL ベース（Tauri: http://localhost:3001/api/wiki, Web: /api/wiki） */
+/** サーバー API の URL ベース（Tauri: http://127.0.0.1:3001/api/wiki, Web: /api/wiki） */
 const API_BASE = `${apiBase()}/wiki`;
 
 /**

@@ -61,8 +61,11 @@ export function tauriDetectionDetail(): string {
 /**
  * API のベース URL を取得する。
  * Web 版: "/api" (Vite proxy 経由)
- * Tauri: "http://localhost:3001/api" (sidecar に直接アクセス)
+ * Tauri: "http://127.0.0.1:3001/api" (sidecar に直接アクセス)
+ *
+ * sidecar は 127.0.0.1 にのみバインドするため、ホスト名も 127.0.0.1 で
+ * 固定する（"localhost" だと環境によって ::1 に解決され接続に失敗しうる）。
  */
 export function apiBase(): string {
-  return isTauri() ? "http://localhost:3001/api" : "/api";
+  return isTauri() ? "http://127.0.0.1:3001/api" : "/api";
 }

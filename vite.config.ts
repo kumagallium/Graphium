@@ -155,8 +155,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       // /api/* をバックエンドサーバーに転送
+      // （サーバーは 127.0.0.1 バインドなので localhost 表記を避ける）
       "/api": {
-        target: `http://localhost:${process.env.PORT ?? 3001}`,
+        target: `http://127.0.0.1:${process.env.PORT ?? 3001}`,
         changeOrigin: true,
       },
     },
