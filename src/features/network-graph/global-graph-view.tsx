@@ -215,6 +215,7 @@ export function GlobalGraphCanvas({
   hideIsolated = false,
   onNavigate,
   onOpenMedia,
+  onOpenUrl,
   height = 560,
 }: {
   data: NoteGraphData;
@@ -223,6 +224,8 @@ export function GlobalGraphCanvas({
   hideIsolated?: boolean;
   onNavigate?: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  /** URL ソースノードをアプリ内で開く。未指定なら外部ブラウザ。 */
+  onOpenUrl?: (url: string) => void;
   height?: number | string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -341,7 +344,11 @@ export function GlobalGraphCanvas({
       }
       if (id.startsWith("chat:")) return;
       if (id.startsWith("url:")) {
-        if (externalUrl) void openExternalUrl(externalUrl);
+        if (externalUrl) {
+          // アプリ内（素材の URL リーダー）を優先。未配線の文脈のみ外部ブラウザ。
+          if (onOpenUrl) onOpenUrl(externalUrl);
+          else void openExternalUrl(externalUrl);
+        }
         return;
       }
       const isWiki = !!evt.target.data("isWiki");
@@ -353,7 +360,7 @@ export function GlobalGraphCanvas({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [shownNodes, shownEdges, onNavigate, onOpenMedia]);
+  }, [shownNodes, shownEdges, onNavigate, onOpenMedia, onOpenUrl]);
 
   return (
     <div
@@ -475,12 +482,15 @@ export function GlobalGraphView({
   data,
   onSelectNote,
   onOpenMedia,
+  onOpenUrl,
   onClose,
 }: {
   data: NoteGraphData;
   /** ノード単クリック。noteId は wiki ノードに `wiki:` prefix が付く（SidePeek の規約に合わせる）。 */
   onSelectNote?: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  /** URL ソースノードをアプリ内で開く。未指定なら外部ブラウザ。 */
+  onOpenUrl?: (url: string) => void;
   /** ヘッダーの × / Esc。全体グラフ表示を閉じてエディタに戻る。 */
   onClose: () => void;
 }) {
@@ -570,6 +580,7 @@ export function GlobalGraphView({
             hideIsolated={!showIsolated}
             onNavigate={onSelectNote}
             onOpenMedia={onOpenMedia}
+            onOpenUrl={onOpenUrl}
             height="100%"
           />
         )}

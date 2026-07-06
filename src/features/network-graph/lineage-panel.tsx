@@ -36,10 +36,12 @@ function NodeRow({
   node,
   onNavigate,
   onOpenMedia,
+  onOpenUrl,
 }: {
   node: LineageNode;
   onNavigate: (id: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  onOpenUrl?: (url: string) => void;
 }) {
   // pdf / document はストレージ上の素材として開ける（onOpenMedia 経由でアセットモーダル）。
   const openableAsset =
@@ -51,7 +53,9 @@ function NodeRow({
       const key = parseExternalSource(node.id)?.key;
       if (key) onOpenMedia!(key);
     } else if (node.externalUrl) {
-      void openExternalUrl(node.externalUrl);
+      // URL ソースはアプリ内リーダー（素材サイドピーク）を優先。未配線なら外部ブラウザ。
+      if (node.kind === "url" && onOpenUrl) onOpenUrl(node.externalUrl);
+      else void openExternalUrl(node.externalUrl);
     }
   };
   const clickable = !!(node.navId || node.externalUrl || openableAsset);
@@ -91,15 +95,17 @@ function LineageBranch({
   node,
   onNavigate,
   onOpenMedia,
+  onOpenUrl,
 }: {
   node: LineageNode;
   onNavigate: (id: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  onOpenUrl?: (url: string) => void;
 }) {
   const hasParents = node.parents.length > 0 && !node.cycle;
   return (
     <div className="flex flex-col">
-      <NodeRow node={node} onNavigate={onNavigate} onOpenMedia={onOpenMedia} />
+      <NodeRow node={node} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
       {hasParents && (
         <div className="ml-3 pl-3 border-l border-border/70 mt-0.5 flex flex-col gap-0.5">
           {node.parents.map((parent, i) => (
@@ -108,6 +114,7 @@ function LineageBranch({
               node={parent}
               onNavigate={onNavigate}
               onOpenMedia={onOpenMedia}
+              onOpenUrl={onOpenUrl}
             />
           ))}
         </div>
@@ -120,10 +127,13 @@ export function LineagePanel({
   tree,
   onNavigate,
   onOpenMedia,
+  onOpenUrl,
 }: {
   tree: LineageNode | null;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  /** URL ソースノードをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
+  onOpenUrl?: (url: string) => void;
 }) {
   const t = useT();
 
@@ -159,7 +169,7 @@ export function LineagePanel({
         </div>
         <div className="flex flex-col">
           <div className="p-2">
-            <NodeRow node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} />
+            <NodeRow node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
           </div>
           <div className="flex items-center justify-center px-4 py-6 text-xs text-muted-foreground text-center">
             {t("lineage.noAncestors")}
@@ -181,7 +191,7 @@ export function LineagePanel({
         </div>
       </div>
       <div className="p-2">
-        <LineageBranch node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} />
+        <LineageBranch node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
       </div>
     </div>
   );

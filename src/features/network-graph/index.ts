@@ -5,3 +5,4 @@ export { buildNoteGraph, buildGlobalGraph, type NoteGraphData } from "./graph-bu
 export { GlobalGraphView } from "./global-graph-view";
 export { buildLineageTree, type LineageNode } from "./lineage-builder";
 export { LineagePanel } from "./lineage-panel";
+export { parseExternalSource, isExternalSourceId, type ExternalSourceKind } from "./external-source";
