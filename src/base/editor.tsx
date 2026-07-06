@@ -50,6 +50,8 @@ import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
 import { preserveChildIndentOnBackspaceExtension } from "./preserve-child-indent-on-backspace";
+import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
+import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { t as tStatic } from "../i18n";
@@ -140,8 +142,17 @@ export function SandboxEditor({
     // が効くほうが直感的。
     tabBehavior: "prefer-indent",
     // 「子持ちの空 list item を Backspace」した時に、子のインデントを保つ。
+    // imeConfirmEnterGuardExtension: WKWebView の IME 確定 Enter を本文でも無害化。
+    // imeCompositionHealExtension: WKWebView の変換確定でネスト箇条書きが複製/空行に
+    //   壊れるのを、確定の正しい結果に自己修復する。
     // documentSearchExtension: Cmd+F のドキュメント内検索ハイライト（decoration）。
-    extensions: [preserveChildIndentOnBackspaceExtension, documentSearchExtension, openLinkInSidePeekExtension],
+    extensions: [
+      imeConfirmEnterGuardExtension,
+      imeCompositionHealExtension,
+      preserveChildIndentOnBackspaceExtension,
+      documentSearchExtension,
+      openLinkInSidePeekExtension,
+    ],
   });
 
   // エディタインスタンスを外部に公開
