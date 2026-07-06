@@ -1,5 +1,25 @@
 # Changelog
 
+## [v0.17.0](https://github.com/kumagallium/Graphium/compare/v0.16.10...v0.17.0) - 2026-07-06
+
+- chore: issue/PR templates, code of conduct, version sync by @kumagallium in https://github.com/kumagallium/Graphium/pull/524
+- test: save-path invariant tests (hooks + E2E smoke) by @kumagallium in https://github.com/kumagallium/Graphium/pull/525
+- fix: move hardcoded Japanese UI strings to i18n + English server errors by @kumagallium in https://github.com/kumagallium/Graphium/pull/527
+- fix: run label auto-assign on SidePeek edits with a fresh label store by @kumagallium in https://github.com/kumagallium/Graphium/pull/530
+- fix: harden Tauri desktop (kill_pid scope, dialog-only writes, CSP) by @kumagallium in https://github.com/kumagallium/Graphium/pull/531
+- refactor: extract shared note-save module (main editor + SidePeek) by @kumagallium in https://github.com/kumagallium/Graphium/pull/529
+- docs: realign README with the landing page (LP-led hero, 3-step flow, screenshots) by @kumagallium in https://github.com/kumagallium/Graphium/pull/533
+- fix: carry block labels/links through SidePeek copy & paste by @kumagallium in https://github.com/kumagallium/Graphium/pull/532
+- Harden the hourglass waist: fold-verification judge + 2-level shape taxonomy by @kumagallium in https://github.com/kumagallium/Graphium/pull/534
+- fix: maximize lands on the note (not a stale view) + add header Back button by @kumagallium in https://github.com/kumagallium/Graphium/pull/535
+- feat: setting to disable provenance labeling (hides all label UI + PROV graph) by @kumagallium in https://github.com/kumagallium/Graphium/pull/536
+- feat: open bookmark cards & inline links in the side peek reader by @kumagallium in https://github.com/kumagallium/Graphium/pull/537
+- fix: break circular import in bookmark block (index <-> view) by @kumagallium in https://github.com/kumagallium/Graphium/pull/538
+- fix: catch WebKit-order IME confirm Enter in title fields and Enter-submit inputs by @kumagallium in https://github.com/kumagallium/Graphium/pull/526
+- feat: add minimize toggle to the ingest toast by @kumagallium in https://github.com/kumagallium/Graphium/pull/539
+- docs: position Graphium as an AI-era Zettelkasten (CONCEPT / README / LP FAQ) by @kumagallium in https://github.com/kumagallium/Graphium/pull/540
+- fix: keep even-row LP screenshots at full 3fr width by @kumagallium in https://github.com/kumagallium/Graphium/pull/541
+
 ## [v0.16.10](https://github.com/kumagallium/Graphium/compare/v0.16.9...v0.16.10) - 2026-07-03
 
 - [fix] Derive knowledge generation language from UI locale by @kumagallium in https://github.com/kumagallium/Graphium/pull/511
