@@ -191,10 +191,13 @@ export function NetworkGraphPanel({
   data,
   onNavigate,
   onOpenMedia,
+  onOpenUrl,
 }: {
   data: NoteGraphData;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
+  /** URL ソースノードをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
+  onOpenUrl?: (url: string) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -438,7 +441,9 @@ export function NetworkGraphPanel({
       }
       if (nodeId.startsWith("url:")) {
         if (externalUrl) {
-          void openExternalUrl(externalUrl);
+          // アプリ内リーダー（素材サイドピーク）を優先。未配線の文脈のみ外部ブラウザ。
+          if (onOpenUrl) onOpenUrl(externalUrl);
+          else void openExternalUrl(externalUrl);
         }
         return;
       }
@@ -458,7 +463,7 @@ export function NetworkGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, handleNavigate, onOpenMedia, expanded, mediaThumbs]);
+  }, [data, handleNavigate, onOpenMedia, onOpenUrl, expanded, mediaThumbs]);
 
   if (data.nodes.length === 0) {
     return (

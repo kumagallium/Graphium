@@ -765,6 +765,32 @@ export function getFaviconUrl(domain: string, size = 64): string {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
 }
 
+/**
+ * URL 文字列を素材サイドピーク（URL リーダー）用の MediaIndexEntry に解決する。
+ * 既存の URL 素材があればそれを、無ければ URL からアドホックに組み立てる。
+ * ブックマークカード・本文内インラインリンク・@メンション・グラフの URL ノードの
+ * クリックで共用する（#537 で導入したリゾルバの共有版）。
+ */
+export function buildUrlPeekEntry(
+  url: string,
+  mediaIndex: { media: MediaIndexEntry[] } | null | undefined,
+): MediaIndexEntry {
+  const existing = mediaIndex?.media.find((m) => m.type === "url" && m.url === url);
+  if (existing) return existing;
+  const domain = extractDomain(url);
+  return {
+    fileId: `url:${url}`,
+    name: domain || url,
+    mimeType: "text/x-uri",
+    type: "url",
+    url,
+    thumbnailUrl: "",
+    uploadedAt: new Date().toISOString(),
+    usedIn: [],
+    urlMeta: { domain },
+  };
+}
+
 /** URL のメタデータを取得（OGP タイトル・説明・画像）
  *  CORS エラー等で取得できない場合はドメイン名のみ返す */
 export async function fetchUrlMetadata(url: string): Promise<{

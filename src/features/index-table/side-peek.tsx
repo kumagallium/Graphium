@@ -47,8 +47,11 @@ import {
   retroLinkifyPastedUrl,
   blockContainsUrlLink,
   registerUrlAsset,
+  buildUrlPeekEntry,
 } from "@features/asset-browser";
 import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
+import { parseExternalSource } from "@features/network-graph/external-source";
+import { openExternalUrl } from "../../lib/external-link";
 import {
   GRAPHIUM_CLIPBOARD_MIME,
   applyClipboardPayload,
@@ -105,6 +108,13 @@ type SidePeekProps = {
    * peekId は wiki の場合 `wiki:<id>` プレフィックス付き。未指定だとピーク内クリックは無効。
    */
   onOpenNoteInPeek?: (peekId: string) => void;
+  /**
+   * ピーク内のメンションが外部ソース（url:/pdf:/document:）に解決されたとき、
+   * 素材サイドピークで開く。未指定の場合、URL は外部ブラウザにフォールバックする
+   * （外部ソース ID をノートピークとして開き直すと「読み込みに失敗しました」になるため、
+   * どちらの場合も onOpenNoteInPeek には渡さない）。
+   */
+  onOpenMaterialPeek?: (entry: MediaIndexEntry) => void;
   /**
    * このノートを派生元とする wiki エントリ。Knowledge 化状態チップ表示用。
    * 渡されないか空配列 + onAddToKnowledge 未指定の場合はチップは描画されない。
@@ -236,7 +246,7 @@ function SidePeekInner({
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef, onDeleteContextEverywhere,
-  onCreateLinkedNote, onOpenNoteInPeek, getCachedDoc,
+  onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, getCachedDoc,
 }: SidePeekProps) {
   const t = useT();
   const provLabelsEnabled = useProvLabelsEnabled();
@@ -662,11 +672,29 @@ function SidePeekInner({
       if (!resolved) return;
       e.preventDefault();
       e.stopPropagation();
+      // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
+      // （url:/pdf:/document:/chat:）がそのまま入る。ノートピークとして開き直すと
+      // loadFile が失敗して「読み込みに失敗しました」になるため、素材ピークへ振り分ける。
+      const ext = parseExternalSource(resolved.noteId);
+      if (ext) {
+        if (ext.kind === "url") {
+          if (onOpenMaterialPeek) {
+            onOpenMaterialPeek(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
+          } else {
+            void openExternalUrl(ext.key);
+          }
+        } else if (ext.kind === "pdf" || ext.kind === "document") {
+          const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
+          if (entry && onOpenMaterialPeek) onOpenMaterialPeek(entry);
+        }
+        // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
+        return;
+      }
       onOpenNoteInPeek(resolved.isWiki ? `wiki:${resolved.noteId}` : resolved.noteId);
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, noteIndex, sidePeekEditor]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, noteIndex, mediaIndex, sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、
