@@ -103,6 +103,12 @@ export const en = {
   "faq.ai.q": "Do I need AI to use it?",
   "faq.ai.a":
     "Writing, linking, and tracing all work without AI. But Graphium comes into its own when you think with it — a Claude subscription or an API key connects in minutes.",
+  "faq.scope.q": "Can I control what the AI reads?",
+  "faq.scope.a":
+    "Yes. Every AI conversation has a three-way grounding scope: External adds a fresh web search and is told to cite only what it actually finds, Internal cross-searches the knowledge distilled from your notes, and This note narrows down to just what the note cites — originals first, so quotes come from the source text rather than a summary.",
+  "faq.zettel.q": "Is Graphium a Zettelkasten?",
+  "faq.zettel.a":
+    "In spirit, yes. Insights play the role of permanent notes — one context-free claim per page, with citations back to the notes that justify it — and memos play fleeting notes. The difference: the AI drafts the candidates and you decide what stays, with every step traceable. The step where Insights are woven into new Ideas stays yours.",
   "faq.data.q": "Where does my data live?",
   "faq.data.a":
     "With you. Desktop notes are plain JSON files on your disk, the browser preview keeps them in your browser, and self-hosting keeps them on your server. Nothing is sent anywhere without your say.",
@@ -203,6 +209,12 @@ export const ja: Record<keyof typeof en, string> = {
   "faq.ai.q": "AI は必須ですか?",
   "faq.ai.a":
     "書く・繋ぐ・辿るだけなら、AI なしでも動きます。ただ、Graphium の本領は AI と一緒に考えるところにあります。Claude のサブスクか API キーがあれば、数分で繋がります。",
+  "faq.scope.q": "AI が読む範囲は選べますか?",
+  "faq.scope.a":
+    "選べます。AI との会話には「渡す範囲」という切り替えが付いています。「外部参照」は Web を検索して実際に見つかった出典だけを引くよう指示され、「内部参照」はノートから蒸留された知識を横断検索し、「ノート内参照」は引用したものだけに絞る、という 3 段階です。範囲を絞るのは、引用や数値を要約ではなく原文から引くためなのです。",
+  "faq.zettel.q": "Graphium は Zettelkasten ですか?",
+  "faq.zettel.a":
+    "考え方は Zettelkasten を受け継いでいます。「洞察」は 1 ページ 1 主張で文脈に依存せず、出どころまで辿れる、いわゆる permanent notes の役割です。「メモ」は fleeting notes（走り書き）に当たります。違いは、候補を AI が下書きし、残すかどうかをあなたが決めること。委ねた工程もすべて辿れます。そして、洞察を編んで新しい発想にする工程は、あなたの手に残してあります。",
   "faq.data.q": "データはどこに保存されますか?",
   "faq.data.a":
     "あなたの手元です。デスクトップ版はローカルのプレーンな JSON ファイル、ブラウザ版はブラウザ内、セルフホスト版はあなたのサーバーに保存されます。断りなく外部へ送ることはありません。",

@@ -106,6 +106,8 @@ If you want to follow or help restart this work, see the [issues](https://github
 
 When you connect an LLM, Graphium builds a **second layer** on top of your notes — an editable Knowledge layer auto-generated from what you've written. Think of it as *Zettelkasten extended by an LLM*: the AI reads your notes, extracts stable ideas, keeps them cross-linked, and cites back to the source blocks — all while carrying the same PROV-DM provenance as the rest of the editor.
 
+The mapping to Zettelkasten is deliberate: **Insights** play the role of permanent notes (one context-free claim per page, cited back to its sources), memos play fleeting notes, and the citation note you weave in Cmd-K Composer plays the structure note — except here the map doubles as the AI's search space. The AI drafts candidates, you curate what stays, and the weaving of Insights into Ideas stays a human move. See [CONCEPT — The hourglass, read as a Zettelkasten](docs/CONCEPT.md#the-hourglass-read-as-a-zettelkasten) for the full correspondence.
+
 The layer has four document kinds, each with a distinct role:
 
 | Kind | Role |
@@ -124,6 +126,7 @@ The layer has four document kinds, each with a distinct role:
 | **Lint** | Detects orphan Insights, broken citations, and redundant Claims. |
 | **Edit protection** | Sections you manually edited are skipped during re-ingest, so your corrections survive. |
 | **Retriever for AI chat** | Knowledge context is injected into AI responses — the assistant remembers what you wrote last week without re-reading every note. |
+| **Grounding scopes** | Every AI conversation carries a three-way scope: **External** (adds a fresh web search on top of Internal, told to cite only what it actually found), **Internal** (cross-search of your distilled knowledge; the default), **This note** (only what the note cites, originals first — so quotes come from the source text, not a summary). |
 | **Auto-labeled answers** | AI replies are inserted with PROV-DM structure already attached: `[Step]` labels on activity headings, inline highlights for `[Input]` / `[Tool]` / `[Parameter]` / `[Output]`, and `informed_by` links between consecutive steps. A provenance graph emerges from the chat itself, no manual labeling required. |
 
 Knowledge pages live in the same storage as your notes (IndexedDB on web, filesystem on Tauri / Docker) and are fully editable by hand. Every Knowledge edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
