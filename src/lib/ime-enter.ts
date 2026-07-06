@@ -51,3 +51,16 @@ export function shouldSubmitOnEnter(g: EnterSubmitGuard): boolean {
   if (!g.isEnter || g.shiftKey) return false;
   return !isImeKeyEvent(g);
 }
+
+/**
+ * この keydown が「WebKit 順の確定 Enter」（compositionend 直後に届く、
+ * 見た目は普通の Enter）かを判定する。isImeKeyEvent() との違いは、変換中の
+ * キー（isComposing / keyCode 229）を対象に **含めない** こと — エディタ本文では
+ * 変換中のキーは prosemirror-view の composition 処理に任せる必要があり、
+ * 完全に消費（preventDefault + 捕捉）してよいのはこの確定 Enter だけ。
+ */
+export function isWebKitConfirmEnter(s: ImeKeySignals & { isEnter: boolean }): boolean {
+  if (!s.isEnter) return false;
+  if (s.composingNow || s.isComposing || s.keyCode === 229) return false;
+  return s.msSinceCompositionEnd < IME_CONFIRM_KEY_WINDOW_MS;
+}
