@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, ExternalLink } from "lucide-react";
 import { useT } from "../../i18n";
+import { isImeKeyEvent } from "../../lib/ime-enter";
 
 export type UrlPasteMenuProps = {
   url: string;
@@ -29,6 +30,10 @@ export function UrlPasteMenu({
   const t = useT();
   const menuRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  // メニュー表示中もフォーカスはエディタに残り IME 入力が継続し得るため、
+  // document レベルで composition を追跡する（lib/ime-enter.ts 参照）
+  const composingRef = useRef(false);
+  const lastCompositionEndAtRef = useRef(0);
 
   const handleSelect = useCallback((index: number) => {
     if (ITEMS[index] === "link") onSelectLink();
@@ -42,7 +47,28 @@ export function UrlPasteMenu({
         onDismiss();
       }
     };
+    const handleCompositionStart = () => {
+      composingRef.current = true;
+    };
+    const handleCompositionEnd = () => {
+      composingRef.current = false;
+      lastCompositionEndAtRef.current = Date.now();
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
+      // IME 変換中・確定直後のキーはメニュー操作として扱わない（矢印は IME の
+      // 候補選択、Enter は変換確定）。capture で奪うと WKWebView の確定 Enter
+      // （compositionend → keydown(13, isComposing=false)）で「リンク」が誤発火
+      // し、エディタに Enter が届かなくなる。
+      if (
+        isImeKeyEvent({
+          composingNow: composingRef.current,
+          isComposing: e.isComposing,
+          keyCode: e.keyCode,
+          msSinceCompositionEnd: Date.now() - lastCompositionEndAtRef.current,
+        })
+      ) {
+        return;
+      }
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -66,6 +92,9 @@ export function UrlPasteMenu({
           break;
       }
     };
+    // composition はメニュー表示前から進行中の可能性があるため即時登録する
+    document.addEventListener("compositionstart", handleCompositionStart, true);
+    document.addEventListener("compositionend", handleCompositionEnd, true);
     // 少し遅延して登録（ペーストイベントと競合しないため）
     // capture フェーズで登録し、エディタより先にキーイベントを捕捉する
     const timer = setTimeout(() => {
@@ -74,6 +103,8 @@ export function UrlPasteMenu({
     }, 50);
     return () => {
       clearTimeout(timer);
+      document.removeEventListener("compositionstart", handleCompositionStart, true);
+      document.removeEventListener("compositionend", handleCompositionEnd, true);
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKeyDown, true);
     };

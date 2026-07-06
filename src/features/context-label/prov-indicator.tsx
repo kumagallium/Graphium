@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { deriveActivityName } from "./activity-name";
 import { useLinkStore } from "../block-link/store";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   FREE_LABEL_EXAMPLES,
 } from "./labels";
@@ -340,6 +341,8 @@ function ProvPanel({
     { blockId: string; text: string }[]
   >([]);
   const [freeInput, setFreeInput] = useState("");
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // パネル位置の調整（画面端対応）
   const adjustedTop = Math.min(top, window.innerHeight - 400);
@@ -446,8 +449,11 @@ function ProvPanel({
                 <Input
                   value={freeInput}
                   onChange={(e) => setFreeInput(e.target.value)}
+                  {...compositionHandlers}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && freeInput.trim()) {
+                    // IME 変換確定の Enter では確定しない（WKWebView の
+                    // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
+                    if (e.key === "Enter" && !isImeKey(e) && freeInput.trim()) {
                       onLabelChange(freeInput.trim());
                       setShowLabelPicker(false);
                     }

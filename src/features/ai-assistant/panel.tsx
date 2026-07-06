@@ -7,6 +7,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
 import { Textarea } from "@ui/form-field";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useAiAssistant } from "./store";
 import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
 import { getWikiTitleToIdMap } from "../wiki/retriever";
@@ -91,6 +92,8 @@ export function AiAssistantPanel({
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // [Source: "title"] 引用クリック用にタイトル→wikiId マップを構築。
   // Retriever が LLM に渡したのと同じタイトル空間を使う（noteIndex に wiki が無くても動く）。
@@ -215,6 +218,10 @@ export function AiAssistantPanel({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // IME 変換中・確定直後のキーはアプリ操作として扱わない（矢印は IME の
+      // 候補選択、Enter/Tab は変換確定）。isComposing だけでは WKWebView の
+      // compositionend → keydown(13) 順を取りこぼすため、共通ガードで判定する。
+      if (isImeKey(e)) return;
       // メンションメニューが開いている場合
       if (mentionQuery !== null && mentionSuggestions.length > 0) {
         if (e.key === "ArrowDown") {
@@ -243,7 +250,7 @@ export function AiAssistantPanel({
         handleSubmit();
       }
     },
-    [handleSubmit, mentionQuery, mentionSuggestions, mentionSelectedIdx, confirmMention],
+    [handleSubmit, mentionQuery, mentionSuggestions, mentionSelectedIdx, confirmMention, isImeKey],
   );
 
   // テキスト入力時の @ 検出
@@ -527,6 +534,7 @@ export function AiAssistantPanel({
                 ref={textareaRef}
                 value={input}
                 onChange={handleInputChange}
+                {...compositionHandlers}
                 onKeyDown={handleKeyDown}
                 placeholder={noteIndex ? `${t("aiChat.placeholder")}  ${t("aiChat.mentionHint")}` : t("aiChat.placeholder")}
                 disabled={loading}

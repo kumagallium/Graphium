@@ -27,6 +27,7 @@ import { getVisibleCoreLabels, isHeadingBlock } from "./label-visibility";
 // label-attributes は将来のステータス機能で再利用
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { useT, getDisplayLabel } from "../../i18n";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
 import { Button } from "@ui/button";
@@ -87,6 +88,8 @@ export function LabelDropdownPortal() {
   const { labels, openBlockId, setLabel, closeDropdown } = useLabelStore();
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [freeInput, setFreeInput] = useState("");
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [prevStepMode, setPrevStepMode] = useState(false);
   const [headingCandidates, setHeadingCandidates] = useState<{ blockId: string; text: string; level: number }[]>([]);
 
@@ -258,8 +261,11 @@ export function LabelDropdownPortal() {
               autoFocus
               value={freeInput}
               onChange={(e) => setFreeInput(e.target.value)}
+              {...compositionHandlers}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && freeInput.trim()) {
+                // IME 変換確定の Enter では確定しない（WKWebView の
+                // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
+                if (e.key === "Enter" && !isImeKey(e) && freeInput.trim()) {
                   select(freeInput.trim());
                 }
                 if (e.key === "Escape") closeDropdown();
