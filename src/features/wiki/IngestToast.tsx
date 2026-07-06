@@ -2,7 +2,7 @@
 // 複数ノートの連続 Ingest をキューで管理し、詳細進捗を表示
 
 import { useEffect, useState } from "react";
-import { Bot, Check, X, Loader2, Minus } from "lucide-react";
+import { Bot, Check, X, Loader2, Minus, ChevronDown, ChevronUp } from "lucide-react";
 import { useT } from "../../i18n";
 
 /** パイプライン各ステージの状態 */
@@ -42,6 +42,8 @@ type Props = {
 export function IngestToast({ state, onDismiss }: Props) {
   const t = useT();
   const [visible, setVisible] = useState(false);
+  // 最小化中はピル表示のみ（大量アイテム時にチャット欄等と重なるのを避ける）
+  const [minimized, setMinimized] = useState(false);
 
   const items = state?.items ?? [];
   // stages を持つアイテムは、いずれかのステージが pending/running の間 active 扱い。
@@ -69,6 +71,8 @@ export function IngestToast({ state, onDismiss }: Props) {
       }
     } else {
       setVisible(false);
+      // 次のバッチは展開状態から始める
+      setMinimized(false);
     }
   }, [items, allDone, onDismiss]);
 
@@ -79,15 +83,48 @@ export function IngestToast({ state, onDismiss }: Props) {
   const activeItem = items.find((i) => i.status === "generating" || i.status === "saving");
   const queuedCount = items.filter((i) => i.status === "queued").length;
 
+  // 展開表示とピル表示で共有する色・フェードのクラス
+  const toneClasses = allDone
+    ? errorCount > 0
+      ? "bg-destructive/10 border-destructive/20"
+      : "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
+    : "bg-popover border-border";
+  const fadeClasses = visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2";
+
+  // 最小化中: 進捗カウントだけの小さなピル。クリックで再展開
+  if (minimized) {
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        title={t("ingest.expand")}
+        aria-label={t("ingest.expand")}
+        className={`fixed bottom-4 right-4 z-[9999] flex items-center gap-1.5 rounded-full border shadow-lg pl-3 pr-2 py-1.5 transition-all duration-300 ${toneClasses} ${fadeClasses}`}
+      >
+        {hasActive ? (
+          <Loader2 size={12} className="animate-spin text-primary shrink-0" />
+        ) : errorCount > 0 ? (
+          <X size={12} className="text-destructive shrink-0" />
+        ) : (
+          <Check size={12} className="text-emerald-600 shrink-0" />
+        )}
+        <Bot size={12} className="text-muted-foreground shrink-0" />
+        <span className="text-[11px] font-medium text-foreground tabular-nums">
+          {completedCount}/{items.length}
+        </span>
+        {errorCount > 0 && (
+          <span className="flex items-center gap-0.5 text-[11px] font-medium text-destructive tabular-nums">
+            <X size={10} className="shrink-0" />
+            {errorCount}
+          </span>
+        )}
+        <ChevronUp size={12} className="text-muted-foreground shrink-0" />
+      </button>
+    );
+  }
+
   return (
     <div
-      className={`fixed bottom-4 right-4 z-[9999] w-80 rounded-lg border shadow-lg transition-all duration-300 ${
-        allDone
-          ? errorCount > 0
-            ? "bg-destructive/10 border-destructive/20"
-            : "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
-          : "bg-popover border-border"
-      } ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+      className={`fixed bottom-4 right-4 z-[9999] w-80 rounded-lg border shadow-lg transition-all duration-300 ${toneClasses} ${fadeClasses}`}
     >
       {/* ヘッダー */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
@@ -105,10 +142,18 @@ export function IngestToast({ state, onDismiss }: Props) {
             : `${t("ingest.doneSummary", { count: String(completedCount) })}${errorCount > 0 ? t("ingest.doneErrorSuffix", { count: String(errorCount) }) : ""}`
           }
         </span>
+        <button
+          onClick={() => setMinimized(true)}
+          title={t("ingest.minimize")}
+          aria-label={t("ingest.minimize")}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+        >
+          <ChevronDown size={12} />
+        </button>
         {allDone && (
           <button
             onClick={() => { setVisible(false); setTimeout(onDismiss, 300); }}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground shrink-0"
           >
             <X size={12} />
           </button>

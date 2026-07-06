@@ -1458,6 +1458,8 @@ export const ja: Record<string, string> = {
   "ingest.generatingHeader": "Knowledge 生成中 ({done}/{total})",
   "ingest.doneSummary": "完了: {count} 件生成",
   "ingest.doneErrorSuffix": ", {count} 件エラー",
+  "ingest.minimize": "最小化",
+  "ingest.expand": "詳細を表示",
   "ingest.insufficientContent": "内容不足",
   "ingest.needTwoClaims": "Claim {count} 件（2 件以上で実行）",
   "ingest.analyzingClusters": "{claims} claims / {clusters} clusters を分析中...",
