@@ -2080,6 +2080,7 @@ function NoteEditorInner({
       attachedNotes?: AttachedNote[],
       scope: GroundingScope = DEFAULT_GROUNDING_SCOPE,
       rewindIndex?: number,
+      opts?: { freshChat?: boolean },
     ) => {
       // 新規ノート（fileId 未採番）でも AI チャットを許可する
       // markDirty() 経由でオートセーブが走り、ファイルが作成される
@@ -2093,6 +2094,16 @@ function NoteEditorInner({
         );
         return;
       }
+      // Composer(Cmd+K) Ask は parkChat() 直後に同一 tick で呼ばれるため、この
+      // クロージャの aiAssistant は park 前の stale な state を見ている。そのまま
+      // activeChatId / messages / sessionId を読むと、退避したはずのチャットの id で
+      // run が走り、退避済みの会話を上書き・融合してしまう。freshChat 指定時は
+      // 「新しい会話を開始する」前提で会話コンテキストを空にそろえる。
+      const freshChat = opts?.freshChat ?? false;
+      const effectiveQuotedMarkdown = freshChat ? "" : aiAssistant.quotedMarkdown;
+      const effectiveSourceBlockIds = freshChat ? [] : aiAssistant.sourceBlockIds;
+      const effectiveSessionId = freshChat ? null : aiAssistant.sessionId;
+      const effectiveForkedFrom = freshChat ? null : aiAssistant.forkedFrom;
       const now = new Date().toISOString();
       // 添付ノートがある場合はメッセージ表示に含め、参照（ID + タイトル）を
       // メッセージに永続化する（編集&再実行・回答の再生成で中身を再展開するため）
@@ -2112,12 +2123,16 @@ function NoteEditorInner({
       };
       // rewindIndex 指定時（編集&再実行・回答の再生成）は、その位置以降を破棄して
       // 新しい user メッセージを置く。履歴もそこまでで組み立てる。
-      const baseMessages = rewindIndex != null
-        ? aiAssistant.messages.slice(0, rewindIndex)
-        : aiAssistant.messages;
+      const baseMessages = freshChat
+        ? []
+        : rewindIndex != null
+          ? aiAssistant.messages.slice(0, rewindIndex)
+          : aiAssistant.messages;
       // 応答の書き戻し先となる ScopeChat id を送信前に確定する。store の遅延発行に
       // 任せると外から id を知る手段がなく、ノート切替後の書き戻し先を特定できない
-      const chatId = aiAssistant.activeChatId ?? crypto.randomUUID();
+      const chatId = freshChat
+        ? crypto.randomUUID()
+        : aiAssistant.activeChatId ?? crypto.randomUUID();
       if (rewindIndex != null) {
         aiAssistant.rewriteFrom(rewindIndex, userChatMessage, chatId);
       } else {
@@ -2127,7 +2142,7 @@ function NoteEditorInner({
       try {
         const isFirstMessage = baseMessages.length === 0;
         let userMessage = question;
-        if (aiAssistant.quotedMarkdown) {
+        if (effectiveQuotedMarkdown) {
           // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
           // 継続会話では下記 history 側で idx=0 に quotedMarkdown を再注入して維持する。
           if (isFirstMessage) {
@@ -2135,13 +2150,13 @@ function NoteEditorInner({
               "以下の内容について質問があります。",
               "",
               "---",
-              aiAssistant.quotedMarkdown,
+              effectiveQuotedMarkdown,
               "---",
               "",
               question,
             ].join("\n");
           }
-        } else if (aiAssistant.sourceBlockIds.length === 0 && editorRef.current) {
+        } else if (effectiveSourceBlockIds.length === 0 && editorRef.current) {
           // ページ全体チャット: 毎ターン、現在のドキュメント本文（最新）を再同梱する。
           // スナップショット方式だと「修正しました、見てください」と続けたときに
           // AI が編集前の本文しか見えず「修正したノートを見せてください」と返してしまう。
@@ -2282,14 +2297,14 @@ function NoteEditorInner({
         // backend 履歴では quotedMarkdown を改めて挟んで context を維持する
         // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
         const history: AgentChatMessage[] = baseMessages.map((m, idx) => {
-          if (idx === 0 && m.role === "user" && aiAssistant.quotedMarkdown) {
+          if (idx === 0 && m.role === "user" && effectiveQuotedMarkdown) {
             return {
               role: m.role,
               content: [
                 "以下の内容について質問があります。",
                 "",
                 "---",
-                aiAssistant.quotedMarkdown,
+                effectiveQuotedMarkdown,
                 "---",
                 "",
                 m.content,
@@ -2301,7 +2316,7 @@ function NoteEditorInner({
         const req: AgentRunRequest = {
           message: userMessage,
           messages: [...history, { role: "user", content: userMessage }],
-          session_id: aiAssistant.sessionId ?? undefined,
+          session_id: effectiveSessionId ?? undefined,
           ...(disabledTools.length > 0 ? { disabled_tools: disabledTools } : {}),
           ...(wikiContext ? { wiki_context: wikiContext } : {}),
           ...(skillPrompts ? { custom_instructions: skillPrompts } : {}),
@@ -2324,10 +2339,10 @@ function NoteEditorInner({
             runId,
             noteId: chatStorageId,
             chatId,
-            scopeBlockIds: [...aiAssistant.sourceBlockIds],
-            quotedMarkdown: aiAssistant.quotedMarkdown,
-            sessionId: aiAssistant.sessionId,
-            forkedFrom: aiAssistant.forkedFrom,
+            scopeBlockIds: [...effectiveSourceBlockIds],
+            quotedMarkdown: effectiveQuotedMarkdown,
+            sessionId: effectiveSessionId,
+            forkedFrom: effectiveForkedFrom,
             baseMessages,
             userMessage: userChatMessage,
           },
@@ -2512,7 +2527,16 @@ function NoteEditorInner({
         // 引用した論文 PDF 等の中身を踏まえて答えられるよう常に収集する。文書ノートは
         // handleAiChatSubmit 側の attachedNotes 経路で 1ホップ派生知識＋全文に展開される。
         const citedNotes = h.collectCitedNotes();
-        await h.handleAiChatSubmit(prompt, citedNotes.length > 0 ? citedNotes : undefined, scope);
+        // freshChat: parkChat() と同一 tick で呼ぶため handleAiChatSubmit のクロージャは
+        // park 前の stale な state を見ている。新しいチャットとして開始することを明示し、
+        // 退避済みチャットの id・履歴・セッションを引きずらないようにする
+        await h.handleAiChatSubmit(
+          prompt,
+          citedNotes.length > 0 ? citedNotes : undefined,
+          scope,
+          undefined,
+          { freshChat: true },
+        );
         return;
       }
 
@@ -3036,13 +3060,29 @@ function NoteEditorInner({
   // 戻り、ディスパッチャはファイル書き戻しへフォールバックする
   useEffect(() => {
     if (!chatRunApplyRef) return;
+    // 同じノートに別の実行中 run が残っている間は loading を維持する
+    // （無関係な run の完了が実行中チャットの二重送信ガードを外さないように）。
+    // 未採番（noteId null）の並行 run は照合できないが、従来どおり解除で許容する
+    const hasOtherRunningRun = (run: ChatRunState): boolean =>
+      run.noteId
+        ? chatRunManager
+            .getRunsForNote(run.noteId)
+            .some((r) => r.runId !== run.runId && r.status === "running")
+        : false;
     chatRunApplyRef.current = {
       noteId: chatStorageId,
+      // 未採番（noteId が null）の run は noteId の一致では照合できないため、
+      // このエディタインスタンスが開始した run（pendingNoteIdRunsRef に残って
+      // いるもの）だけを自分宛と判定する。別の未採番ノートに切り替えた場合は
+      // 新インスタンスの ref が空なので誤配しない
+      ownsRun: (runId) => pendingNoteIdRunsRef.current.includes(runId),
       applyResult: (run) => {
         const h = chatRunHandlersRef.current;
         const existing = h.aiAssistant.chats.find((c) => c.id === run.chatId) ?? null;
         const chat = buildRunScopeChat(run, existing);
-        h.aiAssistant.applyChatRunResult(chat, run.result?.sessionId ?? null);
+        h.aiAssistant.applyChatRunResult(chat, run.result?.sessionId ?? null, {
+          keepLoading: hasOtherRunningRun(run),
+        });
         // 永続化は従来どおりエディタの保存フロー（buildDocument が store の chats を
         // 読む）に乗せる。ファイル直書きしない（次のオートセーブと競合するため）
         h.markDirty();
@@ -3051,6 +3091,7 @@ function NoteEditorInner({
         chatRunHandlersRef.current.aiAssistant.applyChatRunError(
           run.chatId,
           run.errorMessage ?? "",
+          { keepLoading: hasOtherRunningRun(run) },
         );
       },
       refreshChats: (doc) => {
@@ -3074,7 +3115,14 @@ function NoteEditorInner({
     runRestoredRef.current = true;
     const runs = chatRunManager.getRunsForNote(chatStorageId);
     if (runs.length === 0) return;
+    // 複数 run（Composer 経由の並行等）は最後の run を優先して復元する。先行する
+    // エラー run は表示先がなく残留し続けるため、ここで掃除する
     const run = runs[runs.length - 1];
+    for (const r of runs) {
+      if (r.runId !== run.runId && r.status === "error") {
+        chatRunManager.consume(r.runId);
+      }
+    }
     const existing = initialDoc?.chats?.find((c) => c.id === run.chatId) ?? null;
     const chat = buildRunScopeChat(run, existing);
     if (run.status === "error") {
@@ -3087,15 +3135,18 @@ function NoteEditorInner({
         error: run.errorMessage ?? "",
       });
       chatRunManager.consume(run.runId);
-      return;
+    } else {
+      aiAssistant.resumeRunningChat(chat, {
+        sourceBlockIds: run.scopeBlockIds,
+        quotedMarkdown: run.quotedMarkdown,
+        sessionId: (run.status === "done" ? run.result?.sessionId : null) ?? run.sessionId,
+        forkedFrom: run.forkedFrom,
+        running: run.status === "running",
+      });
     }
-    aiAssistant.resumeRunningChat(chat, {
-      sourceBlockIds: run.scopeBlockIds,
-      quotedMarkdown: run.quotedMarkdown,
-      sessionId: (run.status === "done" ? run.result?.sessionId : null) ?? run.sessionId,
-      forkedFrom: run.forkedFrom,
-      running: run.status === "running",
-    });
+    // 「ノートに戻れば会話の続きが見える」ように Chat タブを開く。実行中・
+    // 未処理完了・エラーの復元時だけ動くので、通常のノート閲覧には影響しない
+    setRightTab("chat");
   }, [chatStorageId, aiAssistant, initialDoc]);
 
   // ── グローバルコールバック登録 ──
@@ -4436,6 +4487,12 @@ export function NoteApp() {
   // 影響されない。
   const fmGetCachedDocStable = fm.getCachedDoc;
   const fmReindexNoteFromDocStable = fm.reindexNoteFromDoc;
+  // 同一ノート宛の書き戻しを直列化するチェーン。並行 settle した 2 つの run が
+  // 同じ doc を読み合うと、後着の save が先行の chat を含まない chats で上書きする
+  // （load→save の交錯）ため、ノート単位で順番に処理する（queueSaveIndex と同じ方式）
+  const chatWritebackChainsRef = useRef(new Map<string, Promise<void>>());
+  // 書き戻しの一時失敗（オフライン等）のリトライ回数
+  const chatWritebackAttemptsRef = useRef(new Map<string, number>());
   useEffect(() => {
     const dispatch = async (run: ChatRunState) => {
       if (run.status === "running") return;
@@ -4443,31 +4500,41 @@ export function NoteApp() {
       //    エディタの store が chats の正であり、ファイル直書きは次のオートセーブ
       //    （buildDocument が store から全量再構成）で巻き戻るため
       //    （propagateMentionRename の skipNoteIds と同じ理由）。
+      //    未採番（noteId null）の run は noteId では照合できないため、開始した
+      //    エディタインスタンスの所有権（ownsRun）で判定する。ライブ反映後の
+      //    markDirty → オートセーブが新規ファイルを作成し、応答も一緒に保存される
       const apply = chatRunApplyRef.current;
-      if (apply && run.noteId && apply.noteId === run.noteId) {
+      if (apply && (run.noteId ? apply.noteId === run.noteId : apply.ownsRun(run.runId))) {
         if (!chatRunManager.claim(run.runId)) return;
         if (run.status === "done") apply.applyResult(run);
         else apply.applyError(run);
         chatRunManager.consume(run.runId);
         return;
       }
-      // 2) エラーはファイルに書き戻さない（エラーを保存しない現行仕様に合わせる）。
-      //    manager に残し、元ノートの再マウント時に表示して消費する
-      if (run.status === "error") return;
-      // 3) 未採番の新規ノートのまま完了した run は書き戻し先が無い（極小ケース）
+      // 2) 未採番の新規ノートのまま閉じられた run は書き戻し先が無い（極小ケース）。
+      //    エラー run も含めて破棄する（残すと復元経路が無く manager に漏れ続ける）
       if (!run.noteId) {
         console.warn("[chat-run] 書き戻し先ノートが未採番のため応答を破棄:", run.runId);
         chatRunManager.consume(run.runId);
         return;
       }
-      // 4) ファイルへ書き戻す。実行中のユーザー編集を巻き戻さないよう、最新 doc を
+      // 3) エラーはファイルに書き戻さない（エラーを保存しない現行仕様に合わせる）。
+      //    manager に残し、元ノートの再マウント時に表示して消費する
+      if (run.status === "error") return;
+      // 4) 対象ノートが一覧・アセットビューのサイドピークで開かれている間は保留する。
+      //    ピークの doSave（docRef spread）と書き戻しの load→save が交錯すると、
+      //    直前のピーク保存の本文が巻き戻るため。ピークが閉じたら effect 再実行
+      //    （deps の peek state 変化）の取りこぼし回収で書き戻される
+      if (run.noteId === listSidePeekNoteId || run.noteId === assetSidePeekNoteId) return;
+      // 5) ファイルへ書き戻す。実行中のユーザー編集を巻き戻さないよう、最新 doc を
       //    読み直して chats だけ upsert する（buildDocument は経由しない）
       if (!chatRunManager.claim(run.runId)) return;
-      try {
-        const baseDoc = await loadNoteDocByFullKey(run.noteId, fmGetCachedDocStable);
+      const noteId = run.noteId;
+      const chain = chatWritebackChainsRef.current.get(noteId) ?? Promise.resolve();
+      const task = chain.then(async () => {
+        const baseDoc = await loadNoteDocByFullKey(noteId, fmGetCachedDocStable);
         if (!baseDoc) {
-          console.warn("[chat-run] 書き戻し先ノートが読み込めませんでした:", run.noteId);
-          return;
+          throw new Error(`書き戻し先ノートが読み込めませんでした: ${noteId}`);
         }
         const existing = baseDoc.chats?.find((c) => c.id === run.chatId) ?? null;
         const chat = buildRunScopeChat(run, existing);
@@ -4479,7 +4546,7 @@ export function NoteApp() {
           modifiedAt: new Date().toISOString(),
         };
         await saveNoteDoc({
-          noteId: run.noteId,
+          noteId,
           doc: nextDoc,
           // 保存成功時のみ doc キャッシュ・インデックスを最新化（#514 の不変条件）。
           // キャッシュ更新が無いと、次に開いたとき stale キャッシュから復元され、
@@ -4490,20 +4557,37 @@ export function NoteApp() {
         // マウント時の復元は書き戻し前の doc を読んでいるため、ライブ store の
         // チャット一覧にも反映して取りこぼしを防ぐ
         const applyAfter = chatRunApplyRef.current;
-        if (applyAfter && applyAfter.noteId === run.noteId) {
+        if (applyAfter && applyAfter.noteId === noteId) {
           applyAfter.refreshChats(nextDoc);
         }
-      } catch (err) {
-        console.error("[chat-run] チャット応答の書き戻しに失敗:", err);
-      } finally {
+      });
+      // チェーンは失敗しても後続を止めない（リトライは run 単位で管理する）
+      chatWritebackChainsRef.current.set(noteId, task.catch(() => {}));
+      try {
+        await task;
+        chatWritebackAttemptsRef.current.delete(run.runId);
         chatRunManager.consume(run.runId);
+      } catch (err) {
+        // 一時失敗（オフライン・プロバイダ不調等）の可能性があるため即破棄しない。
+        // claim を返上し、次のディスパッチ機会（新たな settle / effect 再購読）で
+        // 再試行する。3 回失敗したら諦めて破棄する（無限リトライ防止）
+        const attempts = (chatWritebackAttemptsRef.current.get(run.runId) ?? 0) + 1;
+        chatWritebackAttemptsRef.current.set(run.runId, attempts);
+        if (attempts >= 3) {
+          console.error("[chat-run] チャット応答の書き戻しに 3 回失敗したため破棄:", err);
+          chatWritebackAttemptsRef.current.delete(run.runId);
+          chatRunManager.consume(run.runId);
+        } else {
+          console.warn(`[chat-run] チャット応答の書き戻しに失敗（${attempts} 回目）:`, err);
+          chatRunManager.unclaim(run.runId);
+        }
       }
     };
     const unsubscribe = chatRunManager.subscribe((run) => void dispatch(run));
-    // 購読開始前に完了していた run を回収する（取りこぼし防止）
+    // 購読開始前に完了していた run・保留していた run を回収する（取りこぼし防止）
     for (const run of chatRunManager.getSettledRuns()) void dispatch(run);
     return unsubscribe;
-  }, [fmGetCachedDocStable, fmReindexNoteFromDocStable]);
+  }, [fmGetCachedDocStable, fmReindexNoteFromDocStable, listSidePeekNoteId, assetSidePeekNoteId]);
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
   // activeLabel → showNoteList → showMemos → activeWikiView → activeWikiKind →

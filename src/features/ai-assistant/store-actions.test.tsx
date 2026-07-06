@@ -105,6 +105,29 @@ describe("applyChatRunResult", () => {
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.chats.filter((c) => c.id === "chat-1")).toHaveLength(1);
   });
+
+  it("keepLoading: 別 run が実行中なら不一致 settle で loading を解除しない", () => {
+    const { result } = setup();
+    // chat-2 を表示して実行中（loading true）の想定
+    act(() => {
+      result.current.addMessage(msg("user", "X1"), "chat-2");
+      result.current.setLoading(true);
+    });
+    // 無関係な chat-1 の run が完了（同ノートに chat-2 の run が実行中）
+    act(() =>
+      result.current.applyChatRunResult(chat("chat-1", ["Q1", "A1"]), "s", {
+        keepLoading: true,
+      }),
+    );
+    expect(result.current.loading).toBe(true);
+    // 実行中 run が無ければ従来どおり解除される
+    act(() =>
+      result.current.applyChatRunResult(chat("chat-1", ["Q1", "A1"]), "s", {
+        keepLoading: false,
+      }),
+    );
+    expect(result.current.loading).toBe(false);
+  });
 });
 
 describe("applyChatRunError", () => {

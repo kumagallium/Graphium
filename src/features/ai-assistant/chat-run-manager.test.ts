@@ -117,6 +117,16 @@ describe("chatRunManager: run のライフサイクル", () => {
     expect(chatRunManager.claim("run-1")).toBe(false);
   });
 
+  it("unclaim で処理権を返上すると再 claim でき、getSettledRuns にも再び載る", async () => {
+    chatRunManager.start(snapshot(), async () => RESULT);
+    await flush();
+    expect(chatRunManager.claim("run-1")).toBe(true);
+    // 書き戻しの一時失敗を想定: 返上 → 回収対象に戻る → 再 claim できる
+    chatRunManager.unclaim("run-1");
+    expect(chatRunManager.getSettledRuns()).toHaveLength(1);
+    expect(chatRunManager.claim("run-1")).toBe(true);
+  });
+
   it("assignNoteId は noteId が null の run にだけ効く", () => {
     let resolve1!: (r: ChatRunResult) => void;
     let resolve2!: (r: ChatRunResult) => void;

@@ -1348,6 +1348,13 @@ export function useFileManager(authenticated: boolean) {
       // doc キャッシュ（SidePeek 再オープン時の cachedDoc の源）を最新化。
       // キャッシュのキーは wiki:/skill: プレフィックス付きのフルキー（呼び出し時の形のまま）。
       docCacheRef.current.set(noteId, doc);
+      // 開いているノート（一覧・グラフ表示中でエディタが非マウントの場合を含む）なら
+      // activeDoc も追従させる。これが無いと、エディタ復帰時に stale な activeDoc から
+      // マウントされ、次のオートセーブが外部保存の内容（チャット書き戻し等）を
+      // ディスクから巻き戻す（updateNoteContexts と同じ追従ルール）。
+      if (noteId === activeFileIdRef.current) {
+        setActiveDoc(doc);
+      }
       // インデックス（一覧のタイトル・「文脈」列表示の源）をエントリ単位で作り直す。
       // インデックス側の noteId はプレフィックス無しの raw id。既存エントリがあるときだけ
       // 更新する（updateIndexEntry は不一致だと新規追加するため、インデックス管理外の id で

@@ -85,11 +85,18 @@ export type AiAssistantActions = {
    * チャット run の完了結果を反映する。chat.id が activeChatId と一致すれば
    * アクティブ会話（messages / sessionId）を確定形に置き換え、一致しなければ
    * chats への upsert のみ行う（応答待ち中に別チャットへ切り替えても、応答が
-   * 切替先へ混入しない）。いずれも loading を解除する。冪等に再適用できる。
+   * 切替先へ混入しない）。冪等に再適用できる。
+   * opts.keepLoading: 同じノートに別の実行中 run が残っている場合に true を渡す
+   * （無関係な run の完了が実行中チャットの loading を解除して二重送信ガードを
+   * 外してしまわないように）。
    */
-  applyChatRunResult: (chat: ScopeChat, sessionId: string | null) => void;
+  applyChatRunResult: (
+    chat: ScopeChat,
+    sessionId: string | null,
+    opts?: { keepLoading?: boolean },
+  ) => void;
   /** チャット run の失敗を反映する。対象チャット表示中のみエラー文言を出す */
-  applyChatRunError: (chatId: string, error: string) => void;
+  applyChatRunError: (chatId: string, error: string, opts?: { keepLoading?: boolean }) => void;
 };
 
 export type AiAssistantStore = AiAssistantState & AiAssistantActions & {
@@ -333,33 +340,40 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
     [],
   );
 
-  const applyChatRunResult = useCallback((chat: ScopeChat, sessionId: string | null) => {
-    setState((prev) => {
-      const chats = upsertChat(prev.chats, chat);
-      if (prev.activeChatId === chat.id) {
-        return {
-          ...prev,
-          chats,
-          messages: chat.messages,
-          sessionId,
-          loading: false,
-          error: null,
-        };
-      }
-      // 応答待ち中に別チャットへ切り替えた場合: 応答は元チャット（chats 内）にのみ
-      // 反映し、表示中の会話には混入させない
-      return { ...prev, chats, loading: false };
-    });
-  }, []);
+  const applyChatRunResult = useCallback(
+    (chat: ScopeChat, sessionId: string | null, opts?: { keepLoading?: boolean }) => {
+      setState((prev) => {
+        const chats = upsertChat(prev.chats, chat);
+        if (prev.activeChatId === chat.id) {
+          return {
+            ...prev,
+            chats,
+            messages: chat.messages,
+            sessionId,
+            loading: false,
+            error: null,
+          };
+        }
+        // 応答待ち中に別チャットへ切り替えた場合: 応答は元チャット（chats 内）にのみ
+        // 反映し、表示中の会話には混入させない。loading は「表示中のチャットに
+        // 実行中 run が残っているか」（keepLoading）に従う
+        return { ...prev, chats, loading: opts?.keepLoading ? prev.loading : false };
+      });
+    },
+    [],
+  );
 
-  const applyChatRunError = useCallback((chatId: string, error: string) => {
-    setState((prev) => {
-      if (prev.activeChatId !== chatId) {
-        return { ...prev, loading: false };
-      }
-      return { ...prev, loading: false, error };
-    });
-  }, []);
+  const applyChatRunError = useCallback(
+    (chatId: string, error: string, opts?: { keepLoading?: boolean }) => {
+      setState((prev) => {
+        if (prev.activeChatId !== chatId) {
+          return { ...prev, loading: opts?.keepLoading ? prev.loading : false };
+        }
+        return { ...prev, loading: false, error };
+      });
+    },
+    [],
+  );
 
   return (
     <AiAssistantContext.Provider

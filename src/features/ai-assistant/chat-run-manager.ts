@@ -64,6 +64,12 @@ export type ChatRunState = ChatRunSnapshot & {
 export type ChatRunApplyHandle = {
   /** このハンドルが属するノートのフルキー（未採番の新規ノートは null） */
   noteId: string | null;
+  /**
+   * 未採番（noteId が null 同士）の run がこのエディタインスタンス発かを判定する。
+   * null === null の単純比較だと「別の未採番ノートに切り替えた」ケースで他ノートの
+   * store に誤配するため、runId ベースで所有権を確認する。
+   */
+  ownsRun: (runId: string) => boolean;
   /** done した run をライブ store に反映して markDirty する */
   applyResult: (run: ChatRunState) => void;
   /** error した run をライブ store に反映する（保存はしない） */
@@ -126,6 +132,14 @@ class ChatRunManager {
     if (!this.runs.has(runId) || this.claimedIds.has(runId)) return false;
     this.claimedIds.add(runId);
     return true;
+  }
+
+  /**
+   * claim を返上する（書き戻しの一時失敗時のリトライ用）。run は getSettledRuns に
+   * 再び載り、次のディスパッチ機会（新たな settle / effect 再購読）で再処理される。
+   */
+  unclaim(runId: string): void {
+    this.claimedIds.delete(runId);
   }
 
   /** 処理が終わった run を破棄する */
