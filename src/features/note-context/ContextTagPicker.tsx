@@ -14,6 +14,7 @@ import { Dropdown } from "@/ui/dropdown";
 import { cn } from "@/lib/utils";
 import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { noteContextHue } from "./context-tags";
+import { useT } from "../../i18n";
 
 export type ContextSuggestion = { value: string; count: number };
 
@@ -56,12 +57,18 @@ export function ContextTagPicker({
   onClear,
   onDeleteCandidate,
   title,
-  placeholder = "文脈を検索、なければ入力して追加…",
-  createLabel = (v) => `「${v}」を追加`,
-  clearLabel = "文脈をすべて外す",
-  emptyText = "まだ文脈がありません",
+  placeholder,
+  createLabel,
+  clearLabel,
+  emptyText,
   minWidth = 240,
 }: ContextTagPickerProps) {
+  const t = useT();
+  // 呼び出し側が上書きしない限り、既存の nav.* キーでローカライズした既定文言を使う
+  const placeholderText = placeholder ?? t("nav.contextPlaceholder");
+  const createLabelFn = createLabel ?? ((v: string) => t("nav.createContext", { value: v }));
+  const clearLabelText = clearLabel ?? t("nav.clearContexts");
+  const emptyTextText = emptyText ?? t("nav.contextEmpty");
   const [query, setQuery] = useState("");
   // seenValuesRef を変えたときに再描画させるためのカウンタ（ref はそれ自体では再描画しない）
   const [, bumpRender] = useState(0);
@@ -142,7 +149,7 @@ export function ContextTagPicker({
 
   return (
     <Dropdown position={position} onClose={onClose} minWidth={minWidth}>
-      <div className="py-1.5" role="dialog" aria-label={title ?? "文脈"}>
+      <div className="py-1.5" role="dialog" aria-label={title ?? t("nav.noteContexts")}>
         {title && (
           <div className="px-3 pt-1 pb-1.5 text-xs font-bold text-muted-foreground">
             {title}
@@ -170,7 +177,7 @@ export function ContextTagPicker({
                   commitTyped();
                 }
               }}
-              placeholder={placeholder}
+              placeholder={placeholderText}
               className="w-full text-xs pl-6 pr-2 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40"
               autoFocus
             />
@@ -188,13 +195,13 @@ export function ContextTagPicker({
             className="w-full text-left text-xs px-3 py-1.5 hover:bg-muted transition-colors flex items-center gap-2 text-primary"
           >
             <Plus size={13} className="shrink-0" aria-hidden />
-            <span className="flex-1 truncate">{createLabel(q)}</span>
+            <span className="flex-1 truncate">{createLabelFn(q)}</span>
           </button>
         )}
 
         {/* 候補リスト */}
         {merged.length === 0 && !canCreate ? (
-          <div className="px-3 py-2 text-xs text-muted-foreground">{emptyText}</div>
+          <div className="px-3 py-2 text-xs text-muted-foreground">{emptyTextText}</div>
         ) : (
           <div className="max-h-[240px] overflow-y-auto">
             {filtered.map((opt) => {
@@ -244,8 +251,8 @@ export function ContextTagPicker({
                         void handleDeleteCandidate(opt.value);
                       }}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-5 h-5 rounded text-text-tertiary hover:text-destructive hover:bg-destructive/10 transition-all"
-                      aria-label={`${opt.value} を候補から削除（全ノートから外す）`}
-                      title="この文脈を候補から削除（使用中の全ノートから外す）"
+                      aria-label={t("nav.deleteContextOptionAria", { value: opt.value })}
+                      title={t("nav.deleteContextOptionTooltip")}
                     >
                       <Trash2 size={12} />
                     </button>
@@ -264,9 +271,9 @@ export function ContextTagPicker({
               type="button"
               onClick={onClear}
               className="w-full text-left text-xs px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              aria-label={`${clearLabel} (${selected.length})`}
+              aria-label={`${clearLabelText} (${selected.length})`}
             >
-              {clearLabel}
+              {clearLabelText}
               <span className="ml-1 tabular-nums">({selected.length})</span>
             </button>
           </>

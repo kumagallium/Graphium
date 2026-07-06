@@ -290,11 +290,74 @@ fn shutdown_ack(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-/// 任意 PID にシグナルを送って終了させる。
+/// 指定 PID のコマンドラインを取得する。取得できなければ None。
+/// macOS/Linux: `ps -p <pid> -o command=` の 1 行。
+/// Windows: PowerShell の CIM 経由で CommandLine を引く。
+fn process_command_line(pid: u32) -> Option<String> {
+    #[cfg(unix)]
+    let output = std::process::Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "command="])
+        .output()
+        .ok()?;
+    #[cfg(windows)]
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"
+            ),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+    let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if line.is_empty() {
+        None
+    } else {
+        Some(line)
+    }
+}
+
+/// 対象 PID が Graphium sidecar プロセスか判定する。
+///
+/// sidecar は必ず `node <...>/sidecar/server.mjs` として起動される
+/// (start_native_sidecar / fetch-node.mjs 参照)。消えた worktree の
+/// 幽霊 sidecar も同じ形で起動しているため、この判定で回収できる。
+/// kill 対象をこの形のプロセスに限定し、webview から任意 PID を落とせる
+/// 状態を塞ぐ。
+fn is_graphium_sidecar_process(pid: u32) -> bool {
+    match process_command_line(pid) {
+        Some(cmd) => {
+            let lower = cmd.to_lowercase();
+            // node ランタイム上で server.mjs（sidecar のエントリ）を動かしている
+            // プロセスに限定する。パス区切りは OS 差を吸収するため両方を許容。
+            let is_node = lower.contains("node");
+            let is_sidecar_entry =
+                lower.contains("sidecar/server.mjs") || lower.contains("sidecar\\server.mjs");
+            is_node && is_sidecar_entry
+        }
+        None => false,
+    }
+}
+
+/// Graphium sidecar プロセスにシグナルを送って終了させる。
 /// port 3001 に居座る "他人 sidecar"（消えた worktree の幽霊など）を回収するために使う。
 /// Unix: SIGTERM、Windows: taskkill /F /PID
+///
+/// **セキュリティ**: 任意 PID を落とせないよう、対象が Graphium sidecar
+/// (`node .../sidecar/server.mjs`) である場合のみ実行する。それ以外は Err を返す。
 #[tauri::command]
 fn kill_pid(pid: u32) -> Result<(), String> {
+    if !is_graphium_sidecar_process(pid) {
+        return Err(format!(
+            "refusing to kill pid={pid}: not a Graphium sidecar process"
+        ));
+    }
+
     #[cfg(unix)]
     let mut command = {
         let mut c = std::process::Command::new("/bin/kill");
@@ -1260,22 +1323,65 @@ fn shared_blob_delete(root: String, hash: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 任意のパスへバイナリ書き込み。base64 でエンコードされたバイト列を受け取る。
-/// 呼び出し側で `dialog.save()` を使ってユーザーが選んだパスを取得してから渡すこと。
-/// PDF などフロント側で生成したファイルを WKWebView の `<a download>` に頼らず保存するための入口。
+/// フロント側で生成したファイル（PDF / PROV-JSON-LD / Markdown / zip）を
+/// ネイティブの保存ダイアログ経由でディスクに保存する。
+///
+/// **セキュリティ**: 旧 `save_bytes_to_path` は JS から渡された任意パスへ
+/// 無条件書き込みしていた。本コマンドは保存先ダイアログを Rust 側で開き、
+/// ユーザーが明示的に選んだパスにのみ書き込む。JS からは保存先を一切
+/// 指定できない（ファイル名の初期候補のみ渡せる）。
+///
+/// 戻り値:
+///   - `Ok(true)`  保存した
+///   - `Ok(false)` ユーザーがダイアログをキャンセルした
+///   - `Err(..)`   書き込み等に失敗した
 #[tauri::command]
-fn save_bytes_to_path(path: String, content_base64: String) -> Result<(), String> {
+async fn save_bytes_with_dialog(
+    app: tauri::AppHandle,
+    suggested_name: String,
+    content_base64: String,
+) -> Result<bool, String> {
     use base64::Engine;
+    use tauri_plugin_dialog::DialogExt;
+
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&content_base64)
         .map_err(|e| format!("base64 デコード失敗: {e}"))?;
-    let target = PathBuf::from(&path);
-    if let Some(parent) = target.parent() {
-        if !parent.as_os_str().is_empty() && !parent.exists() {
-            fs::create_dir_all(parent).map_err(|e| format!("親ディレクトリ作成失敗: {e}"))?;
-        }
+
+    // ファイル名初期候補から拡張子を割り出し、ダイアログのフィルタに使う。
+    let ext = std::path::Path::new(&suggested_name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string());
+
+    let mut builder = app.dialog().file().set_file_name(&suggested_name);
+    if let Some(ext) = &ext {
+        builder = builder.add_filter(ext.to_uppercase(), &[ext.as_str()]);
     }
-    fs::write(&target, bytes).map_err(|e| format!("ファイル書き込み失敗: {e}"))
+
+    // save_file はノンブロッキング（コールバック）。ダイアログはメイン
+    // スレッドで回る必要があるため、blocking_save_file をここで直接呼ぶと
+    // async ランタイム上でデッドロックしうる。std の mpsc チャネルで結果を
+    // 受け取る。この async タスクはワーカースレッドで走るため、recv で
+    // 待ってもダイアログのメインスレッドはブロックしない。
+    let (tx, rx) = std::sync::mpsc::channel();
+    builder.save_file(move |path| {
+        let _ = tx.send(path);
+    });
+    let selected = rx
+        .recv()
+        .map_err(|e| format!("保存ダイアログの結果取得に失敗: {e}"))?;
+
+    let Some(file_path) = selected else {
+        // ユーザーがキャンセル
+        return Ok(false);
+    };
+    let target = file_path
+        .into_path()
+        .map_err(|e| format!("保存先パスの解決に失敗: {e}"))?;
+
+    fs::write(&target, bytes).map_err(|e| format!("ファイル書き込み失敗: {e}"))?;
+    Ok(true)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1323,7 +1429,7 @@ pub fn run() {
             shared_blob_delete,
             shutdown_ack,
             kill_pid,
-            save_bytes_to_path,
+            save_bytes_with_dialog,
             start_native_sidecar,
             stop_native_sidecar,
         ])

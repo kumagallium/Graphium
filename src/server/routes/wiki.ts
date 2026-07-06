@@ -38,6 +38,10 @@ import {
   buildTransferJudgeSystemPrompt,
   buildTransferJudgeUserMessage,
   parseTransferJudgeOutput,
+  buildFoldJudgeSystemPrompt,
+  buildFoldJudgeUserMessage,
+  parseFoldJudgeOutput,
+  resolveFoldVerdict,
 } from "../services/wiki-atomizer.js";
 import {
   buildRewriterSystemPrompt,
@@ -420,6 +424,8 @@ app.post("/atomize", async (c) => {
       modelConfig,
     });
     const idToTitle = new Map<string, string>(body.concepts.map((c) => [c.id, c.title]));
+    // フォール検証ジャッジ用: id → ClaimSnapshot（title + bodyPreview を判定に渡す）。
+    const idToSnapshot = new Map<string, ClaimSnapshot>(body.concepts.map((c) => [c.id, c]));
     // Phase η: source Claim の epistemicStatus も parser に渡し、lowest-status inheritance を強制する。
     const idToEpistemic = new Map(
       body.concepts.map((c) => [c.id, c.epistemicStatus]),
@@ -474,6 +480,79 @@ app.post("/atomize", async (c) => {
         // ジャッジ失敗時は保守的に全 transfer を外す（こじつけを残すより安全）。
         console.error("Wiki transfer-judge error:", err);
         atoms = atoms.map((a) => (a.transfer ? { ...a, transfer: undefined } : a));
+      }
+    }
+
+    // ── フォール検証（co-structure）の敵対的ジャッジ ──────────────────────────
+    // derivedFromClaims が 2+ の Atom（= N 個の Claim を「同じ shape を共有する」と束ねた
+    // フォール）だけを対象に、本当に同じ shape・role 構造を instantiate している Claim の
+    // 部分集合を懐疑的に選び直す。confirm された subset に derivedFromClaims を絞り込み、
+    // 落とした Claim 数を foldDroppedClaims に記録する（洞察=principle 自体は常に残す。
+    // transfer judge と同じ「原理は残し、行き過ぎだけ削る」哲学）。
+    // ジャッジ失敗時は fail-open で Atom をそのまま返す（検証できないフォールを黙って
+    // 削るより、atomizer の誠実な当て推量を残すほうが安全。transfer judge が fail-closed
+    // なのと意図的に逆）。relift の前に走らせ、元の atomizer 文言に対して fold を検証する。
+    const withFold: { i: number; ids: string[] }[] = [];
+    atoms.forEach((a, i) => {
+      if (a.derivedFromClaims.length >= 2) withFold.push({ i, ids: [...a.derivedFromClaims] });
+    });
+    if (withFold.length > 0) {
+      try {
+        const foldRes = await runAgentLoop({
+          model,
+          modelId: modelConfig.modelId,
+          systemPrompt: buildFoldJudgeSystemPrompt(body.language || "en"),
+          messages: [
+            {
+              role: "user" as const,
+              content: buildFoldJudgeUserMessage(
+                withFold.map((w) => ({
+                  title: atoms[w.i].title,
+                  shape: atoms[w.i].shape,
+                  claims: w.ids.map((id, pos) => {
+                    const snap = idToSnapshot.get(id);
+                    return {
+                      id,
+                      title: snap?.title ?? atoms[w.i].derivedFromConceptTitles[pos] ?? id,
+                      preview: snap?.bodyPreview ?? "",
+                    };
+                  }),
+                })),
+              ),
+            },
+          ],
+          maxSteps: 1,
+          feature: "wiki.fold-judge",
+          modelConfig,
+        });
+        const verdicts = parseFoldJudgeOutput(foldRes.message);
+        atoms = atoms.map((a) => ({ ...a }));
+        withFold.forEach((w, k) => {
+          const v = verdicts.find((r) => r.index === k + 1) ?? verdicts[k];
+          // 判定が取れない Atom は fail-open で as-is（何も削らない）。
+          if (!v) return;
+          const { confirmed, dropped, changed } = resolveFoldVerdict(w.ids, v.coherentClaimIds);
+          if (!changed) return;
+          const atom = atoms[w.i];
+          // derivedFromConceptTitles を id と同じ並びで作り直す（位置対応の維持は必須。
+          // グラフ描画 / @リンク解決 / regenerate がこの 2 配列を zip して読む）。
+          const titles = confirmed.map((id) => {
+            const idx = atom.derivedFromClaims.indexOf(id);
+            return idx >= 0
+              ? atom.derivedFromConceptTitles[idx]
+              : (idToSnapshot.get(id)?.title ?? id);
+          });
+          atoms[w.i] = {
+            ...atom,
+            derivedFromClaims: confirmed,
+            derivedFromConceptTitles: titles,
+            foldDroppedClaims: dropped > 0 ? dropped : undefined,
+          };
+        });
+      } catch (err) {
+        // fail-open: ジャッジ失敗時は Atom をそのまま返す（検証できないフォールを黙って
+        // 削るより、atomizer の誠実な当て推量を残すほうが安全）。
+        console.error("Wiki fold-judge error:", err);
       }
     }
 

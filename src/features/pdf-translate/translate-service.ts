@@ -28,6 +28,7 @@ import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import { extractPdfPages } from "../wiki/pdf-text-extractor";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "../asset-browser/pdf-image-extractor";
 import { imageBlock, imageOrder, insertImagesAtCaptions } from "./figure-placement";
+import { t } from "../../i18n";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import { chunkTextByParagraph, isSameLanguage } from "./url-chunk";
@@ -246,7 +247,7 @@ export async function translatePdfToNote(
     .filter((p) => p.text.length > 0);
 
   if (translatable.length === 0) {
-    throw new Error("PDF から十分なテキストを抽出できませんでした（スキャン PDF など？）");
+    throw new Error(t("ingest.pdfNoText"));
   }
 
   // 1) 図: 既に抽出済みなら再利用（重複防止）、無ければ初回のみ抽出・アップロード
@@ -331,7 +332,7 @@ export async function translatePdfToNote(
   }
 
   if (combinedMarkdown.trim().length === 0 && imageCount === 0) {
-    throw new Error("翻訳結果が空でした。");
+    throw new Error(t("translate.emptyResult"));
   }
 
   const fallbackTitle = fileName.replace(/\.pdf$/i, "");
@@ -449,9 +450,7 @@ export async function translateUrlToNote(
 
   const text = article.textContent.trim();
   if (text.length < 1) {
-    throw new Error(
-      "本文を抽出できませんでした（ペイウォール・ログイン必須・動的サイトの可能性）。",
-    );
+    throw new Error(t("translate.noBodyText"));
   }
 
   const chunks = chunkTextByParagraph(text, URL_CHUNK_CHARS);
@@ -485,7 +484,7 @@ export async function translateUrlToNote(
 
   const combinedMarkdown = translations.filter((m) => m.length > 0).join("\n\n");
   if (combinedMarkdown.trim().length === 0) {
-    throw new Error("翻訳結果が空でした。");
+    throw new Error(t("translate.emptyResult"));
   }
 
   const bodyBlocks: any[] = [];

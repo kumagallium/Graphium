@@ -2,6 +2,7 @@
 
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { t } from "../../i18n";
 
 // テーブル行の1列目テキストを取得する
 export function getFirstCellText(tableBlock: any, rowIndex: number): string {
@@ -56,7 +57,7 @@ export async function createNoteFromRow(
     (f) => f.name.replace(/\.(graphium|provnote)\.json$/, "") === title
   );
   if (existing) {
-    const ok = confirm(`「${title}」という名前のノートが既に存在します。新しいノートを作成しますか？`);
+    const ok = confirm(t("indexTable.duplicateNoteConfirm", { title }));
     if (!ok) return null;
   }
 

@@ -3,6 +3,7 @@
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AgentRunResponse } from "./api";
 import { extractLabelMarkersFromBlocks } from "./label-markers";
+import { t } from "../../i18n";
 
 type BuildParams = {
   /** AI が生成した要約タイトル */
@@ -39,18 +40,18 @@ export function buildAiDerivedDocument(params: BuildParams): GraphiumDocument {
 
   // 引用 + 質問 + 回答をまとめたマークダウンを構築
   const combinedMarkdown = [
-    "## 引用",
+    `## ${t("aiDerived.quoteHeading")}`,
     "",
     quotedMarkdown
       .split("\n")
       .map((line) => `> ${line}`)
       .join("\n"),
     "",
-    "## 質問",
+    `## ${t("aiDerived.questionHeading")}`,
     "",
     question,
     "",
-    "## 回答",
+    `## ${t("aiDerived.answerHeading")}`,
     "",
     agentResponse.message,
   ].join("\n");

@@ -20,6 +20,7 @@ import {
 } from "../block-alignment";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { buildSavedPageFields, saveNoteDoc } from "@features/note-save";
 import { SandboxEditor } from "../../base/editor";
 import { ContextBadge } from "../note-context/ContextBadge";
 import { ContextTagPicker } from "../note-context/ContextTagPicker";
@@ -50,9 +51,15 @@ import {
 import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
 import {
   GRAPHIUM_CLIPBOARD_MIME,
+  applyClipboardPayload,
+  buildClipboardPayload,
+  computeIdMap,
+  embedPayloadInHtml,
   extractPayloadFromHtml,
+  flattenBlockIds,
   parseClipboardPayload,
 } from "@features/block-lifecycle/clipboard";
+import { regenInlineEntitiesInBlocks } from "@features/inline-label/regen-on-paste";
 import {
   getMemoSlashMenuItem,
   setMemoPickerCallback,
@@ -60,7 +67,7 @@ import {
   buildMemoInsertBlock,
 } from "@features/mobile-capture";
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
-import { LabelStoreProvider, useLabelStore } from "@features/context-label/store";
+import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
@@ -75,6 +82,7 @@ import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/bloc
 import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
+import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
 import type { GraphiumIndex, NoteIndexEntry } from "@features/navigation";
@@ -166,6 +174,7 @@ type SidePeekProps = {
 
 export function SidePeek(props: SidePeekProps) {
   return (
+    <ProvLabelsEnabledProvider enabled={isProvLabelsEnabled()}>
     <LabelStoreProvider>
       <LinkStoreProvider>
         <BlockAlignmentProvider>
@@ -173,6 +182,7 @@ export function SidePeek(props: SidePeekProps) {
         </BlockAlignmentProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
+    </ProvLabelsEnabledProvider>
   );
 }
 
@@ -220,6 +230,7 @@ function SidePeekInner({
   onCreateLinkedNote, onOpenNoteInPeek,
 }: SidePeekProps) {
   const t = useT();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   // labelStore/linkStore は毎レンダリング新しいオブジェクトになるため、
@@ -400,8 +411,19 @@ function SidePeekInner({
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
     setSidePeekEditor(editor);
-    labelAutoRef.current = setupLabelAutoAssign(editor, labelStoreRef.current, linkStore);
   }, []);
+
+  // ラベル自動設定のセットアップ（editor 準備後・ストア更新のたびに貼り直す）。
+  // label-auto は「渡された labelStore の labels Map」を読んで継承・孤立清掃を判断するが、
+  // labelStore / linkStore は毎レンダリング新オブジェクトになる。editor 準備時に一度だけ
+  // 捕捉すると空 Map に凍結され、読み取りが最新ラベルを見られず継承も清掃も効かない。
+  // メインエディタは handleEditorReady の deps [labelStore, linkStore] で再セットアップして
+  // これを回避しているが、ピークは handleEditorReady を安定化しているため、専用 effect で
+  // 最新ストアを渡し直す。実際の発火は handleChange 内の labelAutoRef.current?.() が担う。
+  useEffect(() => {
+    if (!sidePeekEditor) return;
+    labelAutoRef.current = setupLabelAutoAssign(sidePeekEditor, labelStore, linkStore);
+  }, [sidePeekEditor, labelStore, linkStore]);
 
   // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
   // listener の closure が stale にならないよう ref 経由で最新の noteIndex を参照する。
@@ -411,12 +433,18 @@ function SidePeekInner({
     return entry ? entry.title : null;
   };
 
-  // ペースト処理（メインエディタと同じ挙動に揃える）:
-  // 1) ノートリンク（…#note/<id>）単体 → @タイトル のメンションに変換
-  // 2) 空のリスト項目への paste 救済（BlockNote の paragraph 置換を防ぐ）
-  // 3) URL 単体 → ブックマーク/リンク選択メニュー（UrlPasteMenu）
+  // クリップボード処理（メインエディタ src/note-app.tsx の handleEditorReady 内と挙動を揃える）:
+  //   copy) 選択ブロックの labels / links を buildClipboardPayload でシリアライズし、
+  //         カスタム MIME ＋ text/html の base64 コメントに載せて運ぶ
+  //   paste) Graphium ペイロードがあれば applyClipboardPayload で labels / links を復元し、
+  //          全ペーストで inline entityId を再発番する。以下の救済も行う:
+  //     1) ノートリンク（…#note/<id>）単体 → @タイトル のメンションに変換
+  //     2) 空のリスト項目への paste 救済（BlockNote の paragraph 置換を防ぐ）
+  //     3) URL 単体 → ブックマーク/リンク選択メニュー（UrlPasteMenu）
   // クリップボードリスナーの二重登録に備えてイベント単位の既処理フラグ＋
   // stopImmediatePropagation で 1 回だけ処理する。
+  // ※ ピークは独自の LabelStoreProvider / LinkStoreProvider を持つため、
+  //   effect closure が stale ストアを掴まないよう labelStoreRef / linkStoreRef を使う。
   useEffect(() => {
     const editor = sidePeekEditor;
     if (!editor) return;
@@ -429,67 +457,148 @@ function SidePeekInner({
         setPastedUrl({ url: text, position: computeUrlPasteMenuPosition(editor, blockId), blockId });
       }, 100);
     };
-    const onPaste = (e: ClipboardEvent) => {
-      const text = e.clipboardData?.getData("text/plain")?.trim();
-      // 1) ノートリンク単体 → メンション変換
-      if (text && !/\s/.test(text)) {
-        const m = /#note\/([^/\s#?]+)/.exec(text);
-        if (m) {
-          const fileId = decodeURIComponent(m[1]);
-          const title = resolveNoteLinkTitleRef.current(fileId);
-          if (title) {
-            if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return;
-            (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
-            if (sourceBlockId) {
-              linkStoreRef.current.addLink({
-                sourceBlockId,
-                targetBlockId: "",
-                targetNoteId: fileId,
-                type: "reference",
-                createdBy: "human",
-              });
-            }
-            // insertInlineContent の onChange で自動的に dirty 化・保存される
-            setTimeout(() => {
-              insertNoteMentionInline(editorRef.current, fileId, title);
-            }, 0);
-            return;
-          }
-        }
+
+    // 単一トークンの Graphium ノートリンク（…#note/<id>）を @タイトル のメンション
+    // に変換する。処理した場合 true を返す（呼び出し元で return する）。
+    const tryConvertNoteLinkPaste = (e: ClipboardEvent, pastedText: string): boolean => {
+      const m = /#note\/([^/\s#?]+)/.exec(pastedText);
+      if (!m) return false;
+      const fileId = decodeURIComponent(m[1]);
+      const title = resolveNoteLinkTitleRef.current(fileId);
+      if (!title) return false;
+      if ((e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled) return true;
+      (e as unknown as { __ghNoteLinkHandled?: boolean }).__ghNoteLinkHandled = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const sourceBlockId = editor.getTextCursorPosition?.()?.block?.id;
+      if (sourceBlockId) {
+        linkStoreRef.current.addLink({
+          sourceBlockId,
+          targetBlockId: "",
+          targetNoteId: fileId,
+          type: "reference",
+          createdBy: "human",
+        });
       }
-      // Graphium ペイロード付き（ブロックコピー）はネイティブパースに任せ、
-      // 救済・URL メニューとも対象外にする（メインエディタと同じ挙動）
-      const hasGraphiumPayload =
-        parseClipboardPayload(e.clipboardData?.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
-        extractPayloadFromHtml(e.clipboardData?.getData("text/html"));
-      if (hasGraphiumPayload) return;
-      // 2) 空のリスト系ブロックへのテキスト paste は BlockNote がブロック自体を
-      //    paragraph に置換してしまうため、ブロック型を保ったまま差し込む
+      // insertInlineContent の onChange で自動的に dirty 化・保存される
+      setTimeout(() => {
+        insertNoteMentionInline(editorRef.current, fileId, title);
+      }, 0);
+      return true;
+    };
+
+    // copy: 選択範囲の labels / links をクリップボードに載せて運ぶ（メインと同じ Phase 3）。
+    // Chrome はカスタム MIME を OS clipboard へ書き出す際に捨てるため、
+    //   1. 同タブ内で完結する場合に備えて application/x-graphium-clipboard にも setData
+    //   2. OS clipboard 経由でも生存させるため text/html の先頭に base64 ペイロードを埋め込む
+    // capture phase だけだと ProseMirror が後から text/html を上書きするため、bubble phase でも埋め込む。
+    const copyListener = (e: ClipboardEvent) => {
+      try {
+        let blockIds: string[] = [];
+        const selection = editor.getSelection?.();
+        const selectedBlocks = selection?.blocks;
+        if (selectedBlocks && selectedBlocks.length > 0) {
+          blockIds = flattenBlockIds(selectedBlocks);
+        } else {
+          // フォールバック: カーソル位置のブロック 1 つ（部分テキスト選択など）
+          const cursorBlock = editor.getTextCursorPosition?.()?.block;
+          if (cursorBlock?.id) blockIds = [cursorBlock.id];
+        }
+        if (blockIds.length === 0) return;
+        const payload = buildClipboardPayload({
+          blockIds,
+          getLabel: (id) => labelStoreRef.current.getLabel(id),
+          getAttributes: (id) => labelStoreRef.current.getAttributes(id),
+          allLinks: linkStoreRef.current.getAllLinks(),
+        });
+        if (!payload) return;
+        e.clipboardData?.setData(GRAPHIUM_CLIPBOARD_MIME, JSON.stringify(payload));
+        const existingHtml = e.clipboardData?.getData("text/html") ?? "";
+        e.clipboardData?.setData("text/html", embedPayloadInHtml(payload, existingHtml));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[Graphium copy] error", err);
+      }
+    };
+
+    const onPaste = (e: ClipboardEvent) => {
+      // 1) 空のリスト系ブロックへのテキスト paste は BlockNote がブロック自体を
+      //    paragraph に置換してしまうため、ブロック型を保ったまま差し込む。
+      //    Graphium ペイロード（複数ブロック）は構造が保たれるため下の payload 処理に流す。
       const cursorBlock = editor.getTextCursorPosition?.()?.block;
       const listBlockTypes = new Set(["checkListItem", "bulletListItem", "numberedListItem"]);
       if (
         cursorBlock &&
         listBlockTypes.has(cursorBlock.type) &&
         Array.isArray(cursorBlock.content) &&
-        cursorBlock.content.length === 0
+        cursorBlock.content.length === 0 &&
+        e.clipboardData
       ) {
-        const plain = e.clipboardData?.getData("text/plain");
-        if (plain) {
+        const hasGraphiumPayload =
+          parseClipboardPayload(e.clipboardData.getData(GRAPHIUM_CLIPBOARD_MIME)) ??
+          extractPayloadFromHtml(e.clipboardData.getData("text/html"));
+        const plain = e.clipboardData.getData("text/plain");
+        if (!hasGraphiumPayload && plain) {
+          const cleaned = plain.replace(/\r?\n+$/g, "");
+          const token = cleaned.trim();
+          if (token && !/\s/.test(token) && tryConvertNoteLinkPaste(e, token)) return;
           e.preventDefault();
           e.stopImmediatePropagation();
-          const cleaned = plain.replace(/\r?\n+$/g, "");
           editor.updateBlock(cursorBlock, { content: buildPastedTextContent(cleaned) });
           maybeShowUrlPasteMenu(cleaned, cursorBlock.id);
           return;
         }
       }
-      // 3) URL 単体ペースト → ブックマーク選択メニュー
+
+      // 全コピペ共通: 挿入後にインライン entityId を再発番する後処理（メインと同じ Phase E）。
+      // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
+      // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
+      const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
+      const scheduleEntityRegen = () => {
+        setTimeout(() => {
+          const afterIds = flattenBlockIds(editor.document);
+          const newIds = new Set(afterIds.filter((id) => !beforeIdsForRegen.has(id)));
+          if (newIds.size > 0) regenInlineEntitiesInBlocks(editor, newIds);
+        }, 0);
+      };
+
+      // 2) Graphium ペイロード（ブロックコピー）を適用: labels / links を復元する。
+      //    1) 同タブ内はカスタム MIME、2) OS clipboard 経由は text/html コメントから取り出す。
+      const graphiumRaw = e.clipboardData?.getData(GRAPHIUM_CLIPBOARD_MIME);
+      const htmlData = e.clipboardData?.getData("text/html");
+      const payload = parseClipboardPayload(graphiumRaw) ?? extractPayloadFromHtml(htmlData);
+      if (payload) {
+        const beforeIds = new Set(flattenBlockIds(editor.document));
+        // BlockNote のネイティブパースを動かしてから、追加されたブロック ID を確定させる
+        setTimeout(() => {
+          const afterIds = flattenBlockIds(editor.document);
+          const newIds = afterIds.filter((id) => !beforeIds.has(id));
+          const idMap = computeIdMap(payload.blockIds, newIds);
+          if (idMap.size === 0) return;
+          applyClipboardPayload(idMap, payload, {
+            setLabel: (blockId, label) => labelStoreRef.current.setLabel(blockId, label),
+            setAttributes: (blockId, attrs) => labelStoreRef.current.setAttributes(blockId, attrs),
+            addLink: (params) => linkStoreRef.current.addLink(params),
+          });
+        }, 0);
+        scheduleEntityRegen();
+        return;
+      }
+
+      // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
+      scheduleEntityRegen();
+
+      // 3) ノートリンク（…#note/<id>）単体 → @タイトルのメンションに変換
+      const pastedText = e.clipboardData?.getData("text/plain")?.trim();
+      if (pastedText && !/\s/.test(pastedText)) {
+        if (tryConvertNoteLinkPaste(e, pastedText)) return;
+      }
+
+      // 4) URL 単体ペースト → ブックマーク選択メニュー
       if (!cursorBlock) return;
       maybeShowUrlPasteMenu(e.clipboardData?.getData("text/plain"), cursorBlock.id);
     };
+
     let dom: HTMLElement | null = null;
     let attempts = 0;
     const attach = () => {
@@ -499,10 +608,16 @@ function SidePeekInner({
         return;
       }
       dom.addEventListener("paste", onPaste, true);
+      // copy は capture / bubble の両方に登録する（capture で setData した内容を
+      // ProseMirror が clearData している場合、bubble の最後でもう一度 setData する）
+      dom.addEventListener("copy", copyListener, true);
+      dom.addEventListener("copy", copyListener, false);
     };
     attach();
     return () => {
       dom?.removeEventListener("paste", onPaste, true);
+      dom?.removeEventListener("copy", copyListener, true);
+      dom?.removeEventListener("copy", copyListener, false);
     };
   }, [sidePeekEditor]);
 
@@ -773,32 +888,26 @@ function SidePeekInner({
     if (!editor || !docRef.current) return;
 
     const currentBlocks = editor.document;
-    const labelSnapshot = labelStoreRef.current.getSnapshot();
-    const labelsObj: Record<string, string> = {};
-    for (const [k, v] of labelSnapshot.labels) {
-      labelsObj[k] = v;
-    }
+    // ページ差分フィールド（labels / provLinks / knowledgeLinks / blockAlignments）は
+    // メインエディタ（note-app.tsx buildDocument）と同じ組み立てを共有モジュールに集約。
+    // リンクは restoreLinks 済みの linkStore を真実として layer 別に書き出す
+    // （/claims /Insights の引用で追加した reference リンクを永続化するため）。
+    const { labels, provLinks, knowledgeLinks, blockAlignments } = buildSavedPageFields({
+      labelStore: labelStoreRef.current,
+      linkStore: linkStoreRef.current,
+      blockAlignmentStore: blockAlignmentStoreRef.current,
+    });
 
-    // リンクを linkStore から書き戻す（main editor の buildDocument と同じ方式）。
-    // 従来は元の page.provLinks/knowledgeLinks をそのまま温存していたが、
-    // /claims /Insights の引用で追加した reference リンクを永続化するため、
-    // 開いたときに restoreLinks 済みの linkStore を真実として layer 別に書き出す。
-    const allLinks = linkStoreRef.current.getAllLinks();
-    const provLinks = allLinks.filter((l) => l.layer === "prov");
-    const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
-
-    // ブロック配置揃え（table / audio / file）。空なら undefined（フィールド省略）。
-    const alignmentsSnapshot = blockAlignmentStoreRef.current.getSnapshot();
-    const blockAlignments =
-      Object.keys(alignmentsSnapshot).length > 0 ? alignmentsSnapshot : undefined;
-
+    // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
+    // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
+    // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
     const updatedDoc: GraphiumDocument = {
       ...docRef.current,
       pages: [
         {
           ...docRef.current.pages[0],
           blocks: currentBlocks,
-          labels: labelsObj,
+          labels,
           provLinks,
           knowledgeLinks,
           blockAlignments,
@@ -809,18 +918,20 @@ function SidePeekInner({
 
     setSaveStatus("saving");
     try {
-      const isWiki = noteId.startsWith("wiki:");
-      if (isWiki) {
-        await getActiveProvider().saveWikiFile?.(noteId.replace(/^wiki:/, ""), updatedDoc);
-      } else {
-        await getActiveProvider().saveFile(noteId, updatedDoc);
-      }
-      docRef.current = updatedDoc;
-      setSaveStatus("saved");
-      // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
-      // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
-      // 旧内容がディスクへ書き戻される。
-      onSavedRef.current?.(noteId, updatedDoc);
+      // saveNoteDoc が provider への保存と wiki:/skill: の振り分けを担い、
+      // 保存成功時のみ onSaved を発火する（#514: 保存後 reindex 漏れ防止の順序を強制）。
+      await saveNoteDoc({
+        noteId,
+        doc: updatedDoc,
+        onSaved: (savedId, savedDoc) => {
+          docRef.current = savedDoc;
+          setSaveStatus("saved");
+          // 親の doc キャッシュ / インデックスを保存済み doc で最新化する。
+          // これが無いと再オープン時に stale な cachedDoc が出て、そこからの保存で
+          // 旧内容がディスクへ書き戻される。
+          onSavedRef.current?.(savedId, savedDoc);
+        },
+      });
     } catch (err) {
       console.error("サイドピーク保存に失敗:", err);
       setSaveStatus("dirty");
@@ -832,9 +943,12 @@ function SidePeekInner({
     doSaveRef.current = doSave;
   }, [doSave]);
 
-  // 変更検知 → 3秒後に自動保存
+  // 変更検知 → ラベル自動設定 + 3秒後に自動保存
+  // labelAutoRef はメインエディタ（note-app.tsx の handleContentChange）と同様、
+  // 毎変更時に呼ぶ契約（箇条書き Enter のラベル継承・削除ブロックの孤立ラベル清掃）
   const handleChange = useCallback(() => {
     setSaveStatus("dirty");
+    labelAutoRef.current?.();
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       doSaveRef.current();
@@ -1358,7 +1472,7 @@ function SidePeekInner({
                 // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
                 // SidePeek のエディタに挿入される。
                 extraSlashMenuItems={[
-                  ...buildLabelSlashMenuItems(),
+                  ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
                   calloutSlashItem,

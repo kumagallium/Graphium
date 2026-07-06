@@ -14,6 +14,7 @@
 // 候補型（AtomCandidate / IngesterOutput）には依存しない（生テキストから組み立てる）。
 
 import type { GraphiumDocument, WikiKind, WikiMeta } from "../../lib/document-types";
+import { t } from "../../i18n";
 
 /** 取り込みボタンで作れる kind。verb 回答は claim（知見）か atom（洞察）に落とす。 */
 export type VerbSuggestionKind = Extract<WikiKind, "claim" | "atom">;
@@ -112,7 +113,7 @@ export function buildVerbSuggestionDocument(
       id: crypto.randomUUID(),
       type: "heading",
       props: { textColor: "default", backgroundColor: "default", textAlignment: "left", level: 2 },
-      content: [{ type: "text", text: "引用元", styles: {} }],
+      content: [{ type: "text", text: t("composer.citationSource"), styles: {} }],
       children: [],
     };
     blocks.push(heading);
@@ -227,5 +228,5 @@ export function deriveSuggestionTitle(text: string, maxLen = 40): string {
     .map((l) => l.replace(/^#+\s*/, "").replace(/^[-*]\s*/, ""))
     .find((l) => l.length > 0);
   const base = (firstLine ?? text).trim();
-  return base.length > maxLen ? base.slice(0, maxLen) + "…" : base || "無題";
+  return base.length > maxLen ? base.slice(0, maxLen) + "…" : base || t("nav.untitled");
 }

@@ -10,11 +10,13 @@
 //
 //   Atom が安定すれば、Atom を組み合わせる Synthesis も安定する。
 
-import type { AtomRelation, AtomType, AtomShape, AtomTransfer, EpistemicStatus } from "../../lib/document-types.js";
+import type { AtomRelation, AtomType, AtomShape, AtomTransfer, EpistemicStatus, ShapeFamily } from "../../lib/document-types.js";
 import {
   ATOM_RELATION_TYPE_VALUES,
   lowestEpistemicStatus,
   EPISTEMIC_STATUS_ORDER,
+  SHAPE_FORM_TO_FAMILY,
+  SHAPE_FAMILY_VALUES,
 } from "../../lib/document-types.js";
 import type { ClaimSnapshot } from "./wiki-types.js";
 
@@ -127,6 +129,11 @@ export type AtomCandidate = {
   atomType?: AtomType;
   /** Atom の関係の形（構造写像の軸、decompose→shape→abstract）。固定語彙外は undefined。 */
   shape?: AtomShape;
+  /**
+   * Atom shape の上位軸（family）。form(`shape`) を真実源に決定論導出する（parser 側で
+   * SHAPE_FORM_TO_FAMILY[shape] に補正）。LLM の family↔form 不整合は構造的に排除される。
+   */
+  shapeFamily?: ShapeFamily;
   /** 越境転移の候補（atomizer が出す）。route の敵対的ジャッジが構造一致を検証し、妥当時のみ残す。 */
   transfer?: AtomTransfer;
   /**
@@ -150,6 +157,14 @@ export type AtomCandidate = {
    * 空配列 / undefined は「関係宣言なし」を意味する。
    */
   relatedAtoms?: AtomRelation[];
+  /**
+   * フォール検証（co-structure ジャッジ）で derivedFromClaims から外された Claim の件数。
+   * >0 なら「atomizer が束ねた Claim のうち N 件は同じ shape ではないと判定され、
+   * derivedFromClaims から除外された」ことを表す（洞察=principle 自体は残す）。
+   * undefined / 0 は「フォールは検証を素通り（または単一ソースで検証対象外）」。
+   * 表示・監査・bench signal 用の transport-only フィールド（WikiMeta には永続化しない）。
+   */
+  foldDroppedClaims?: number;
   // procedureContext は意図的に持たない (PR-B4.5)。Atom は context-stripped。
   // Toulmin の backing / modalQualifier も Atom に持たない（Claim 層のみ）。
 };
@@ -162,17 +177,33 @@ Work through four steps for each cluster of Claims:
 
 **1. Decompose.** Identify the relationship inside the Claim(s): the control / condition (what varies), the outcome (what changes), and the mechanism if one is stated.
 
-**2. Classify the shape.** Pick exactly ONE relationship-shape from this fixed vocabulary. You CLASSIFY into it — you do not invent a new axis. This is the heart of the abstraction.
-- "monotonic-increase" — more X, steadily more Y
-- "monotonic-decrease" — more X, steadily less Y
-- "optimal-middle" — Y peaks at a middling X; both extremes hurt (a sweet spot)
-- "threshold" — Y switches or changes qualitatively once X crosses a point
-- "trade-off" — gaining X costs Y; the two cannot both be maximized
-- "enabling-condition" — X must hold for Y to be possible at all
-- "composition-structure" — the makeup or structure of X determines Y
-- "reinforcing-loop" — a feedback cycle where the outcome loops back to amplify its own cause (a self-reinforcing virtuous/vicious cycle: X → Y → more X). Use ONLY when the Claim(s) describe circular causation, not a one-way dependence
-- "balancing-loop" — a feedback cycle where the outcome loops back to counteract the change, pushing toward equilibrium (self-correcting: X → Y → less X). Same rule: reserve for genuine circular causation
-- "other" — none of the above fits cleanly
+**2. Classify the shape — first the family (the axis), then the form (the leaf).** You CLASSIFY into a fixed vocabulary — you do not invent a new axis. This is the heart of the abstraction. Do it in two moves so you pick the axis before the leaf.
+
+First pick exactly ONE **family** — the axis the relationship lives on:
+- "functional-dependence" — a knob X bends an outcome Y, one-way and pairwise (how much / which direction)
+- "structural" — the makeup or arrangement of the parts is what determines the outcome (not a knob, a composition)
+- "conditional" — a precondition that must hold for the outcome to be possible at all
+- "dynamic-feedback" — the outcome loops back onto its own cause; a cycle, not a one-way dependence
+- "other" — none of the axes above fits cleanly
+
+Then pick exactly ONE **form** inside that family:
+- functional-dependence →
+  - "monotonic-increase" — more X, steadily more Y
+  - "monotonic-decrease" — more X, steadily less Y
+  - "optimal-middle" — Y peaks at a middling X; both extremes hurt (a sweet spot)
+  - "threshold" — Y switches or changes qualitatively once X crosses a point
+  - "trade-off" — gaining X costs Y; the two cannot both be maximized
+- structural →
+  - "composition-structure" — the makeup or structure of X determines Y
+- conditional →
+  - "enabling-condition" — X must hold for Y to be possible at all
+- dynamic-feedback →
+  - "reinforcing-loop" — a feedback cycle where the outcome loops back to amplify its own cause (a self-reinforcing virtuous/vicious cycle: X → Y → more X). Use ONLY when the Claim(s) describe circular causation, not a one-way dependence
+  - "balancing-loop" — a feedback cycle where the outcome loops back to counteract the change, pushing toward equilibrium (self-correcting: X → Y → less X). Same rule: reserve for genuine circular causation
+- other →
+  - "other" — none of the above fits cleanly
+
+Picking the family first stops the common error of grabbing a topically-familiar leaf from the wrong axis (e.g. tagging a one-way dependence as a "loop"). The form must belong to the family you named.
 
 **3. Abstract.** Lift the roles to their general category while KEEPING the shape, and state the principle as a general rule. "バンドギャップ" → "調整できる量", "熱電性能" → "性能", "電気陰性度差" → "構成要素の性質の違い". The principle must still assert a real X→Y at the abstract level — **do not dilute into a platitude** ("何かが効く" / "バランスが大事" are empty). A single Claim is enough if it instances a real shape; when several Claims share the same shape, fold them into one Atom and cite all of them.
 
@@ -193,7 +224,8 @@ Respond with valid JSON only:
     {
       "title": "Atom title — a short noun phrase naming the structural rule (the shape applied to the lifted roles)",
       "body": "1-3 short paragraphs stating the general principle: the lifted roles and the shape of their relationship, with a concrete verb. Domain terms are acceptable here; the wording is polished downstream.",
-      "shape": "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold" | "trade-off" | "enabling-condition" | "composition-structure" | "reinforcing-loop" | "balancing-loop" | "other",   // REQUIRED. The relationship-shape from step 2.
+      "shapeFamily": "functional-dependence" | "structural" | "conditional" | "dynamic-feedback" | "other",   // REQUIRED. The family (axis) from step 2.
+      "shape": "monotonic-increase" | "monotonic-decrease" | "optimal-middle" | "threshold" | "trade-off" | "enabling-condition" | "composition-structure" | "reinforcing-loop" | "balancing-loop" | "other",   // REQUIRED. The form (leaf) inside that family, from step 2.
       "transfer": { "field": "the other domain", "example": "one sentence showing the SAME shape + role-structure there" },   // OPTIONAL. Omit entirely if there is no honest cross-domain instance (a downstream judge verifies it).
       "sourceConceptIds": ["concept-id-1", "concept-id-2", ...],
       "confidence": 0.0-1.0,
@@ -321,7 +353,7 @@ If two or more Atoms you are emitting in this batch (or one of your Atoms + an A
 This section is the structural backbone for analogical-mode Synthesis. **Honest relations help; forced relations actively hurt downstream synthesis.**
 
 ## Rules (strict)
-- **Every Atom MUST carry a \`shape\`** from the fixed vocabulary (step 2). If the relationship genuinely fits none of them, use \`"other"\` — but most real Claims fit one of the named shapes.
+- **Every Atom MUST carry a \`shapeFamily\` (axis) and a \`shape\` (form)** from the fixed vocabulary (step 2), and the form must belong to the family you named. If the relationship genuinely fits no axis, use \`"other"\` / \`"other"\` — but most real Claims fit one of the named shapes.
 - **Each Atom must cite every Claim its rule covers** in \`sourceConceptIds\` (one or more — a single Claim that instances a real shape is valid). Use the EXACT id from the Claim list. More sources = stronger support, not a gate.
 - **Avoid duplicating existing Atoms.** If an Atom title in "Existing Atoms" already covers a pattern, do NOT propose it again. Propose only genuinely new abstractions.
 - **Quality over quantity, but don't artificially cap.** Generate 0-8 candidates. Emit each distinct structural pattern as its own Atom. If the Claims carry no relationship you can abstract into a real shape (e.g. a one-off fact with no X→Y), **return an empty list** — an empty list beats a forced Atom.
@@ -418,11 +450,22 @@ export function parseAtomizerOutput(
           ? (rawAtomType as AtomType)
           : undefined;
 
-      // 関係の形（構造写像の軸）。固定語彙外は undefined に倒す。
+      // 関係の形（form＝構造写像の軸のリーフ）。固定語彙外は undefined に倒す。
       const rawShape = typeof a.shape === "string" ? a.shape : undefined;
       const shape: AtomShape | undefined =
         rawShape && (ATOM_SHAPE_VALUES as string[]).includes(rawShape)
           ? (rawShape as AtomShape)
+          : undefined;
+
+      // 上位軸（family）。**form を真実源にして決定論導出**する（self-heal）。
+      // form があれば SHAPE_FORM_TO_FAMILY[shape] で必ず整合する family を入れ、
+      // LLM が出した family↔form の不整合を構造的に排除する。form が無いときだけ、
+      // LLM の raw family を固定語彙フィルタにかけて拾う（fallback）。
+      const rawFamily = typeof a.shapeFamily === "string" ? a.shapeFamily : undefined;
+      const shapeFamily: ShapeFamily | undefined = shape
+        ? SHAPE_FORM_TO_FAMILY[shape]
+        : rawFamily && (SHAPE_FAMILY_VALUES as string[]).includes(rawFamily)
+          ? (rawFamily as ShapeFamily)
           : undefined;
 
       // 越境転移の候補。{field, example} が両方とも非空のときだけ採用する。
@@ -516,6 +559,7 @@ export function parseAtomizerOutput(
         confidence,
         atomType,
         shape,
+        shapeFamily,
         transfer,
         epistemicStatus,
         rebuttalConditions,
@@ -643,4 +687,113 @@ export function parseTransferJudgeOutput(text: string): TransferJudgeResult[] {
     console.error("Transfer judge 出力のパース失敗:", err);
     return [];
   }
+}
+
+// ============================================================
+// フォール検証（co-structure）の敵対的ジャッジ — 偽フォール検出
+// ------------------------------------------------------------
+// atomizer は N 個の Claim を「同じ shape・同じ role 構造を instantiate している」と
+// 束ねて 1 つの Atom にする（derivedFromClaims が 2+）。この束ね（fold）自体は今まで
+// 独立検証がなかった。表層・話題が似ているだけの Claim を混ぜると、Atom が自分の出典を
+// 誤って代表してしまう（N 件の支持を騙る）。越境転移(transfer)には敵対ジャッジがあるのに、
+// atom 内部の fold には無い、という非対称を埋める。
+//
+// このジャッジは、Atom の shape + role 構造を **本当に** instantiate している Claim の
+// 部分集合を懐疑的に選び直す。route 側は confirm された subset に derivedFromClaims を
+// 絞り込む（洞察=principle 自体は常に残す。transfer judge と同じ「原理は残し、行き過ぎだけ
+// 削る」哲学）。ジャッジ失敗時は fail-open で Atom をそのまま返す（検証できないフォールを
+// 黙って削るより、atomizer の誠実な当て推量を残すほうが安全 — transfer judge が fail-closed
+// なのと意図的に逆）。derivedFromClaims.length >= 2 の Atom だけが対象。
+// ============================================================
+
+/** ジャッジに渡す 1 件の source Claim（id + title + 本文プレビュー）。 */
+export type FoldJudgeClaim = { id: string; title: string; preview: string };
+
+/** ジャッジ入力 1 件 = 1 Atom（title + shape + その Atom がまとめた Claim 群）。 */
+export type FoldJudgeInput = { title: string; shape?: string; claims: FoldJudgeClaim[] };
+
+/** ジャッジ出力 1 件。coherentClaimIds = shape を本当に共有する Claim id の部分集合。 */
+export type FoldJudgeResult = { index: number; coherentClaimIds: string[]; reason: string };
+
+export function buildFoldJudgeSystemPrompt(language: string): string {
+  const ja = language === "ja";
+  return `You are a skeptical reviewer of Atom "folds". An Atom claims that SEVERAL source Claims all instance the SAME structural shape and the same role-structure — that is why it cites them together. Your job is to check that claim of co-structure, one Atom at a time.
+
+Each item gives an Atom (a general principle), its relationship-shape, and the list of source Claims it folded together (each with an id, title, and a short preview).
+
+For each item, return \`coherentClaimIds\`: the subset of the given Claim ids that GENUINELY instance the Atom's shape AND role-structure.
+- Include a Claim ONLY when its own control → outcome relationship is the same shape as the Atom, with roles that map cleanly onto the Atom's roles (same kind of thing varying, same kind of thing changing). A checkable structural match, not a topical one.
+- **Exclude a Claim when** its relationship is actually a different shape (e.g. the Atom is "optimal-middle" but the Claim is plainly "monotonic-increase"); when it is about the same *topic* but a different *structure*; when the preview shows no X→Y relationship at all; or when you cannot tell that it instances the shape. **If the co-structure is not tight and checkable, leave the Claim out.**
+- Be strict. A Claim wrongly kept in the fold makes the Atom misrepresent its sources — worse than a fold that is honestly smaller.
+- It is fine to keep ALL of them (return every id) when they truly cohere, and fine to keep only one. Do not force a Claim out just to look strict, and do not keep one just because it is on the list.
+- \`coherentClaimIds\` MUST be a subset of the ids given for that item. Use the ids verbatim.
+- \`reason\`: one short line — especially which Claims you excluded and why their structure differs.
+
+Return JSON only: {"items":[{"index":<the index given>,"coherentClaimIds":["id",...],"reason":"..."}]}.
+Output language: ${ja ? "Japanese" : "English"}.`;
+}
+
+export function buildFoldJudgeUserMessage(items: FoldJudgeInput[]): string {
+  const blocks = items.map((it, i) => {
+    const claimLines = it.claims
+      .map((c) => `    - (id: ${c.id}) "${c.title}"${c.preview ? ` — ${c.preview}` : ""}`)
+      .join("\n");
+    return `[${i + 1}] principle: "${it.title}" | shape: ${it.shape ?? "(none)"}\n  source Claims folded into this Atom:\n${claimLines}`;
+  });
+  return `For each Atom, decide which of its folded source Claims genuinely share the Atom's shape + role-structure (return their ids):\n\n${blocks.join("\n\n")}`;
+}
+
+export function parseFoldJudgeOutput(text: string): FoldJudgeResult[] {
+  try {
+    let jsonText = text.trim();
+    const m = jsonText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (m) jsonText = m[1].trim();
+    const parsed = JSON.parse(jsonText);
+    const arr = parsed.items ?? parsed;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((a: any) => a && Array.isArray(a.coherentClaimIds))
+      .map((a: any) => ({
+        index: typeof a.index === "number" ? a.index : 0,
+        // id は必ず文字列化し、空文字は捨てる（hallucination の一次防御はここ、
+        // 「送った id の部分集合か」の最終防御は route 側 / resolveFoldVerdict の filter）。
+        coherentClaimIds: (a.coherentClaimIds as unknown[])
+          .map((x) => (typeof x === "string" ? x.trim() : ""))
+          .filter((x: string) => x.length > 0),
+        reason: typeof a.reason === "string" ? a.reason : "",
+      }));
+  } catch (err) {
+    console.error("Fold judge 出力のパース失敗:", err);
+    return [];
+  }
+}
+
+/**
+ * fold judge の verdict を「送った id リスト」に対して解決する純粋関数（LLM 不要でテスト可能）。
+ *
+ * ルール:
+ *   (a) confirmed が全件と一致 → 変更なし（フォールは健全）。changed=false。
+ *   (b) 1 <= confirmed < 全件 → confirmed に絞る（部分的に健全）。
+ *   (c) confirmed == 0（judge は「どれも同じ shape ではない」と言った、または送った id を
+ *       1 つも返さなかった） → 洞察は消さない。**最も強い 1 件**（＝元の並びの先頭。atomizer は
+ *       sourceConceptIds を最有力から並べる規約で、parseAtomizerOutput は入力順を保つ）に縮退する。
+ *
+ * hallucination 防御: judge が送っていない id を返しても sent の部分集合に強制する。
+ * 返り値 confirmed は必ず sentIds の非空部分集合（順序も sentIds に揃える → title 再構築が
+ * 位置対応のまま保たれる）。
+ */
+export function resolveFoldVerdict(
+  sentIds: string[],
+  coherentClaimIds: string[],
+): { confirmed: string[]; dropped: number; changed: boolean } {
+  const sent = new Set(sentIds);
+  // sentIds の順序を保ったまま「judge が confirm した id」に絞る（位置対応の維持）。
+  let confirmed = sentIds.filter((id) => coherentClaimIds.includes(id) && sent.has(id));
+  if (confirmed.length === sentIds.length) {
+    return { confirmed: sentIds, dropped: 0, changed: false };
+  }
+  if (confirmed.length === 0) {
+    confirmed = [sentIds[0]]; // (c) single best-cited claim
+  }
+  return { confirmed, dropped: sentIds.length - confirmed.length, changed: true };
 }

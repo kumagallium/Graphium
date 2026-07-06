@@ -5,6 +5,7 @@ import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/documen
 import type { MediaIndex, MediaType } from "../asset-browser/media-index";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { parseExternalSource, type ExternalSourceKind } from "./external-source";
+import { t } from "../../i18n";
 
 export type NoteNode = {
   id: string;
@@ -332,7 +333,7 @@ export function buildNoteGraph(
       continue;
     }
     const title =
-      docs.get(id)?.title ?? fileNameMap.get(id) ?? "不明なノート";
+      docs.get(id)?.title ?? fileNameMap.get(id) ?? t("graph.unknownNote");
     const doc = docs.get(id);
     const isWiki = doc?.source === "ai";
     nodes.push({
@@ -458,7 +459,7 @@ export function buildGlobalGraph(
     const isWiki = e.source === "ai";
     nodes.push({
       id: e.noteId,
-      title: e.title || "無題",
+      title: e.title || t("nav.untitled"),
       isCurrent: false,
       hop: 0, // 全ノードグラフではホップ概念を使わない（kind で色分けする）
       isWiki,

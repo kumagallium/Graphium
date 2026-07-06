@@ -789,6 +789,12 @@ export const en: Record<string, string> = {
   "wikiTypes.atomShape.reinforcing-loop": "reinforcing loop",
   "wikiTypes.atomShape.balancing-loop": "balancing loop",
   "wikiTypes.atomShape.other": "other",
+  // shapeFamily: the upper axis (family) of an Atom's shape. Derived deterministically from the form (shape); each form belongs to exactly one family.
+  "wikiTypes.shapeFamily.functional-dependence": "functional dependence",
+  "wikiTypes.shapeFamily.structural": "structure",
+  "wikiTypes.shapeFamily.conditional": "precondition",
+  "wikiTypes.shapeFamily.dynamic-feedback": "feedback loop",
+  "wikiTypes.shapeFamily.other": "other",
   // atomRelation (Phase δ): Atom-to-Atom dimensional relations (axial coding).
   "wikiTypes.atomRelation.extends": "Extends",
   "wikiTypes.atomRelation.is-special-case-of": "Special case of",
@@ -1285,6 +1291,10 @@ export const en: Record<string, string> = {
   // ── Markdown エクスポート ──
   "markdown.export": "Markdown",
 
+  // ── 来歴ラベル機能のオン/オフ ──
+  "settings.provLabels.title": "Provenance labels",
+  "settings.provLabels.help": "The provenance labeling feature (labeling steps, materials, and tools for PROV tracking) is fairly specialized. When off, all label controls and displays are hidden and notes behave like a plain editor. Your existing labels are kept and reappear if you turn it back on.",
+
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "Provenance label names",
   "settings.labels.help": "Customize the display names of PROV-DM core labels. Leave empty to use the default name.",
@@ -1393,4 +1403,188 @@ export const en: Record<string, string> = {
   "globalGraph.layer.note": "Notes",
   "globalGraph.layer.crystal": "Claim · Insight",
   "globalGraph.empty": "No notes to show yet",
+
+  // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
+  // ノート一覧: インポート・一括 Knowledge 化
+  "noteList.importFiles": "Import files",
+  "noteList.importMarkdown": "Import Markdown (.md)",
+  "noteList.importObsidianVault": "Import Obsidian Vault folder",
+  "noteList.ingestTooltip": "Extract Concepts / Summaries from the selected notes and add them to Knowledge",
+  "noteList.ingestSelected": "Add {count} to Knowledge",
+  "noteList.importProgress": "Importing Markdown: {done} / {total}",
+  "noteList.importFailedCount": "({count} failed)",
+  "noteList.importProcessing": "Processing: {name}",
+  "noteList.importFailedFiles": "Failed files: {names}",
+  "nav.outgoingTooltip": "Outgoing links (notes this note references)",
+  "nav.incomingTooltip": "Incoming links (times this note is referenced by others)",
+  "nav.removeContextValue": "Remove {value}",
+  "nav.deleteContextOptionAria": "Remove \"{value}\" from suggestions (removes it from all notes)",
+  "nav.deleteContextOptionTooltip": "Remove this context from suggestions (removes it from all notes using it)",
+  "nav.contextSaveFailed": "Failed to save contexts. Please try again.",
+
+  // Skill 一覧・ダイアログ
+  "skill.resetConfirm": "Reset this skill to its default content. Continue?",
+  "skill.systemBadgeTooltip": "Built-in system skill (cannot be deleted)",
+  "skill.languageTooltip": "Applies to: {language}",
+  "skill.langAll": "All languages",
+  "skill.langJa": "Japanese",
+  "skill.langEn": "English",
+  "skill.autoApplyBadge": "Auto-applied on Ingest",
+  "skill.editTooltip": "Edit skill settings (description, auto-apply on Ingest, language)",
+  "skill.edit": "Edit",
+  "skill.resetTooltip": "Reset this skill to its default content",
+  "skill.resetToDefault": "Reset to default",
+  "skill.descriptionHelp": "Shown as a label in the list (not sent to the AI — the AI reads the prompt body).",
+  "skill.languageLabel": "Language",
+  "skill.languageHelp": "Applied only when the generation language matches.",
+  "skill.autoApplyLabel": "Auto-apply on Ingest",
+  "skill.cannotDeleteSystem": "Built-in system skills cannot be deleted. Use \"Reset\" to restore the default content.",
+
+  // エディタ・共有メニュー
+  "editor.saveFailed": "Failed to save. Please try again.",
+  "share.copyLink": "Copy link",
+  "share.linkCopied": "Copied",
+  "share.unshareConfirmBody": "Other members may have already viewed, cached, or forked it. It cannot be fully erased.",
+  "share.updateHint": "To update it, edit locally and share again.",
+  "share.readOnlyOthers": "Shared entries from others are read-only.",
+  "share.forkToView": "Fork it to open locally and view the full content.",
+  "share.noBlobRootPreview": "Preview unavailable because no blob root is configured.",
+
+  // スラッシュメニュー: 新規ノート
+  "slashMenu.newNote.title": "New note",
+  "slashMenu.newNote.subtext": "Create a named note and link it here",
+  "slashMenu.newNote.group": "Notes",
+
+  // Ingest トースト・パイプライン進捗
+  "ingest.generatingHeader": "Generating Knowledge ({done}/{total})",
+  "ingest.doneSummary": "Done: {count} generated",
+  "ingest.doneErrorSuffix": ", {count} failed",
+  "ingest.insufficientContent": "Not enough content",
+  "ingest.needTwoClaims": "{count} Claim(s) (needs at least 2)",
+  "ingest.analyzingClusters": "Analyzing {claims} claims / {clusters} clusters...",
+  "ingest.clusterProgress": "cluster {current}/{total} \"{title}\" ({count} {kind})",
+  "ingest.noNewAtoms": "No new {kind}",
+  "ingest.atomLayerDisabled": "Atom Layer is disabled",
+  "ingest.needTwoWikis": "{count} wiki(s) (needs at least 2)",
+  "ingest.analyzingWikis": "Analyzing {count} wikis...",
+  "ingest.noIssues": "No issues",
+  "ingest.provFailed": "Could not generate a PROV structure",
+  "ingest.skippedWikiNotes": "Skipped {count} Wiki note(s)",
+  "ingest.enterUrl": "Enter a URL:",
+  "ingest.pdfNoText": "Could not extract enough text from the PDF (scanned PDF?)",
+  "ingest.docxNoText": "Could not extract enough text from the Word file",
+  "ingest.noSources": "No sources available",
+
+  // Markdown インポート
+  "import.noMarkdownFiles": "No Markdown files found.",
+  "import.importedCount": "Imported {count} note(s).",
+  "import.unresolvedLinksNote": "Unresolved [[links]] were kept as plain text.",
+
+  // 素材ビューア・抽出
+  "asset.docxNoImages": "No image objects could be extracted from this Word file.",
+  "asset.docxUnsupportedImages": "No supported image formats found (EMF/WMF, etc.).",
+  "asset.pdfUrlEmpty": "PDF URL is empty",
+  "asset.pdfFetchFailed": "Failed to fetch the PDF",
+  "asset.pdfLoadFailed": "Failed to load the PDF",
+  "asset.previewUnsupportedDocxOnly": "Preview for this format isn't supported yet (currently .docx only).",
+  "asset.previewUnsupported": "This file format cannot be previewed.",
+  "asset.previewLoadFailed": "Failed to load the preview.",
+  "asset.playbackFailed": "Playback failed",
+  "asset.url.empty": "URL is empty",
+
+  // カスタムブロック
+  "block.pdf.placeholder": "Drag & drop a PDF file, or insert one from the slash menu",
+  "block.bookmark.placeholder": "🔗 Enter a URL",
+
+  // 共通
+  "common.openMenu": "Open menu",
+  "common.create": "Create",
+
+  // @ メンションメニュー
+  "mention.createNoteEllipsis": "Create a new note…",
+  "mention.createNamed": "Create \"{title}\" as a new note",
+  "mention.groupCreate": "New",
+  "mention.groupThisNote": "This note",
+  "mention.groupOtherNotes": "Other notes",
+  "mention.groupAssets": "Document materials",
+
+  // ブロックリンク（@ メニュー・前手順リンク）
+  "blockLink.prevStepHeader": "Previous step: choose a link target",
+  "blockLink.searchHeadings": "Search headings...",
+  "blockLink.noMatches": "No matches",
+  "blockLink.emptyHeading": "(empty heading)",
+  "blockLink.linked": "Linked",
+  "blockLink.chooseLinkType": "Choose a link type",
+  "blockLink.chooseTargetFor": "Choose a target for {label}",
+  "blockLink.backToTypes": "← Back to type selection",
+  "blockLink.newNoteDialogTitle": "Create a new note",
+  "blockLink.newNoteDialogHint": "Enter to create / Esc to cancel",
+
+  // メモ（素材・ノート紐付け）
+  "memo.emptyForNote": "No memos attached to this note yet.",
+  "memo.emptyForNoteTitled": "No memos attached to \"{title}\" yet.",
+  "memo.writeHint": "You can write one in the box above.",
+  "memo.emptyForAsset": "No memos attached to this material yet.",
+  "memo.assetWriteHint": "Write one in the box above, or select text in the PDF and choose \"Save as memo\".",
+  "memo.assetPdfHint": "Select text in the PDF and press \"Save as memo\" to collect it here.",
+  "memo.citedCount": "· {count} citation(s)",
+  "memo.delete": "Delete memo",
+  "memo.composerPlaceholder": "Write a memo… ⏎ to save, Shift+⏎ for newline",
+
+  // インデックステーブル
+  "indexTable.colName": "Name",
+  "indexTable.colCond1": "Condition 1",
+  "indexTable.colCond2": "Condition 2",
+  "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
+
+  // リリースノート
+  "releaseNotes.empty": "No release notes",
+  "releaseNotes.fetchFailed": "Couldn't fetch the latest release info. Showing the recent commit log instead.",
+  "releaseNotes.noDescription": "(no description)",
+
+  // AI チャット・派生ノート
+  "aiChat.mentionHint": "(@ to reference notes)",
+  "aiDerived.quoteHeading": "Quote",
+  "aiDerived.questionHeading": "Question",
+  "aiDerived.answerHeading": "Answer",
+
+  // グラフ・PROV
+  "graph.unknownNote": "Unknown note",
+  "prov.prevStepFallback": "Previous step",
+  "prov.resultOf": "Result of {label}",
+
+  // 設定
+  "settings.ai.modelNotFound": "Model not found",
+  "settings.maintenance.currentSetting": "(current setting)",
+  "settings.maintenance.reembedHelp": "Use this when the AI chat citation search (Retriever) stops working. Rebuilds the embeddings for all Wikis and stores them in IndexedDB.",
+  "settings.health.exitDetail": " (the process already exited: {info})",
+  "settings.health.timeoutError": "Health check timed out (no response within 10 seconds){detail}",
+
+  // 翻訳
+  "translate.emptyResult": "The translation result was empty.",
+  "translate.noBodyText": "Could not extract the page body (possibly a paywall, login-required page, or dynamic site).",
+
+  // Composer 発見カード
+  "composer.discovery.clarifyTitle": "Tidy up this Knowledge",
+  "composer.discovery.clarifyHint": "Get rewriting hints by surfacing contradictions and repetition",
+  "composer.discovery.summarizeTitle": "Summarize this note",
+  "composer.discovery.summarizeHint": "Boil it down to 3 lines per heading",
+  "composer.discovery.hintIngest": "Recently created Wiki",
+  "composer.discovery.hintCrossUpdate": "Suggested cross-note update",
+  "composer.discovery.hintRegenerate": "Regenerated with another model",
+  "composer.discovery.hintMerge": "Synthesis merged from multiple notes",
+  "composer.discovery.tellMeAbout": "Tell me about \"{title}\"",
+  "composer.discovery.editedNoteHint": "Note edited {time}",
+  "composer.discovery.timeNow": "just now",
+  "composer.discovery.timeHoursAgo": "{hours}h ago",
+  "composer.discovery.timeDaysAgo": "{days}d ago",
+  "composer.discovery.ingestTitle": "Add this note to Knowledge",
+  "composer.discovery.ingestHint": "AI summarizes and abstracts it into Wiki entries",
+  "composer.discovery.promptSummarize": "Summarize this note in 3 lines per heading.",
+  "composer.discovery.promptContinue": "Building on the previous paragraph, write the next 1-2 paragraphs.",
+  "composer.discovery.promptVisualizeProv": "Visualize this note's provenance graph (PROV-DM).",
+  "composer.discovery.promptConceptWiki": "Draft a Concept Wiki from the frequent keywords.",
+  "composer.discovery.promptClarify": "Surface the contradictions and repetition in this Wiki and give me hints for rewriting.",
+  "composer.discovery.promptTellMeAbout": "Tell me more about \"{title}\".",
+  "composer.citationSource": "Source",
 };

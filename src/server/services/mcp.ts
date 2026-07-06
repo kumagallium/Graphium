@@ -77,7 +77,7 @@ function connectWithTimeout(s: MCPServerInfo): Promise<MCPClient> {
   return Promise.race([
     build(),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("接続タイムアウト")), CONNECTION_TIMEOUT_MS),
+      setTimeout(() => reject(new Error("Connection timeout")), CONNECTION_TIMEOUT_MS),
     ),
   ]);
 }

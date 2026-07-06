@@ -23,12 +23,12 @@ app.post("/reader", async (c) => {
   const url = body?.url?.trim();
 
   if (!url) {
-    return c.json({ error: "url は必須です" }, 400);
+    return c.json({ error: "url is required" }, 400);
   }
 
   // 簡易バリデーション: http(s) のみ受け付ける
   if (!/^https?:\/\//i.test(url)) {
-    return c.json({ error: "http(s):// で始まる URL のみ対応しています" }, 400);
+    return c.json({ error: "Only http(s):// URLs are supported" }, 400);
   }
 
   // キャッシュヒット
@@ -52,7 +52,7 @@ app.post("/reader", async (c) => {
     if (typeof e?.status === "number" && typeof e?.message === "string") {
       return c.json({ error: e.message }, e.status);
     }
-    const message = err instanceof Error ? err.message : "不明なエラー";
+    const message = err instanceof Error ? err.message : "Unknown error";
     console.error("URL reader error:", err);
     return c.json({ error: message }, 500);
   }
@@ -70,7 +70,7 @@ app.post("/reader", async (c) => {
 app.get("/pdf-proxy", async (c) => {
   const url = c.req.query("url")?.trim();
   if (!url || !/^https?:\/\//i.test(url)) {
-    return c.json({ error: "http(s):// で始まる url クエリが必要です" }, 400);
+    return c.json({ error: "A url query parameter starting with http(s):// is required" }, 400);
   }
 
   let res: Response;
@@ -81,11 +81,11 @@ app.get("/pdf-proxy", async (c) => {
       redirect: "follow",
     });
   } catch {
-    return c.json({ error: "PDF の取得に失敗しました" }, 502);
+    return c.json({ error: "Failed to fetch the PDF" }, 502);
   }
 
   if (!res.ok || !res.body) {
-    return c.json({ error: `PDF の取得に失敗しました (${res.status})` }, 502);
+    return c.json({ error: `Failed to fetch the PDF (${res.status})` }, 502);
   }
 
   // HTML のエラーページ等をそのまま PDF として返さない。拡張子だけで PDF を配る
@@ -94,7 +94,7 @@ app.get("/pdf-proxy", async (c) => {
   const looksPdf =
     contentType.includes("application/pdf") || contentType.includes("application/octet-stream");
   if (!looksPdf) {
-    return c.json({ error: "この URL は PDF ではありません" }, 415);
+    return c.json({ error: "This URL is not a PDF" }, 415);
   }
 
   const headers: Record<string, string> = {

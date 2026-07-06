@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { Bot, Check, X, Loader2, Minus } from "lucide-react";
+import { useT } from "../../i18n";
 
 /** パイプライン各ステージの状態 */
 export type IngestStageStatus = "pending" | "running" | "done" | "skipped" | "error";
@@ -39,6 +40,7 @@ type Props = {
 };
 
 export function IngestToast({ state, onDismiss }: Props) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
 
   const items = state?.items ?? [];
@@ -99,8 +101,8 @@ export function IngestToast({ state, onDismiss }: Props) {
         <Bot size={14} className="text-muted-foreground shrink-0" />
         <span className="text-xs font-medium text-foreground flex-1">
           {hasActive
-            ? `Knowledge 生成中 (${completedCount}/${items.length})`
-            : `完了: ${completedCount} 件生成${errorCount > 0 ? `, ${errorCount} 件エラー` : ""}`
+            ? t("ingest.generatingHeader", { done: String(completedCount), total: String(items.length) })
+            : `${t("ingest.doneSummary", { count: String(completedCount) })}${errorCount > 0 ? t("ingest.doneErrorSuffix", { count: String(errorCount) }) : ""}`
           }
         </span>
         {allDone && (

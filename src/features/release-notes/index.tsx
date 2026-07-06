@@ -4,6 +4,7 @@
 // フォールバックとしてコミット履歴を表示する。
 
 import { useState, useEffect } from "react";
+import { useT } from "../../i18n";
 
 const REPO = "kumagallium/Graphium";
 const RELEASES_API = `https://api.github.com/repos/${REPO}/releases?per_page=30`;
@@ -253,6 +254,7 @@ function FallbackCommitList({ commits }: { commits: ParsedCommit[] }) {
 // --- メインパネル ---
 
 export function ReleaseNotesPanel({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const [mode, setMode] = useState<Mode>("loading");
   const [releases, setReleases] = useState<GitHubRelease[]>([]);
   const [commits, setCommits] = useState<ParsedCommit[]>([]);
@@ -317,18 +319,18 @@ export function ReleaseNotesPanel({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {mode === "loading" && (
             <p className="text-xs text-muted-foreground text-center py-8">
-              読み込み中...
+              {t("common.loading")}
             </p>
           )}
           {mode === "empty" && (
             <p className="text-xs text-muted-foreground text-center py-8">
-              リリースノートがありません
+              {t("releaseNotes.empty")}
             </p>
           )}
           {mode === "fallback" && (
             <>
               <p className="text-[11px] text-muted-foreground mb-3">
-                最新のリリース情報を取得できませんでした。直近のコミットログを表示しています。
+                {t("releaseNotes.fetchFailed")}
               </p>
               <FallbackCommitList commits={commits} />
             </>
@@ -358,7 +360,7 @@ export function ReleaseNotesPanel({ onClose }: { onClose: () => void }) {
                   <div>{renderBody(rel.body)}</div>
                 ) : (
                   <p className="text-xs text-muted-foreground italic">
-                    （説明なし）
+                    {t("releaseNotes.noDescription")}
                   </p>
                 )}
               </section>

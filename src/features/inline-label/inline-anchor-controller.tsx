@@ -32,7 +32,7 @@ import {
   type EntityWithContext,
 } from "./attribute-binding";
 import { useT, getDisplayLabelName } from "../../i18n";
-import { useLabelStore } from "../context-label/store";
+import { useLabelStore, useProvLabelsEnabled } from "../context-label/store";
 
 const LABEL_BORDER: Record<InlineLabel, string> = {
   material: "#4B7A52",
@@ -78,6 +78,7 @@ type FloatingButtonState = {
 export function InlineAnchorController() {
   const editor = useBlockNoteEditor<any, any, any>();
   const t = useT();
+  const provLabelsEnabled = useProvLabelsEnabled();
   const { labels } = useLabelStore();
   const [anchor, setAnchor] = useState<AnchorState | null>(null);
   const [floating, setFloating] = useState<FloatingButtonState | null>(null);
@@ -181,6 +182,9 @@ export function InlineAnchorController() {
     out.push(buildMergeSection(editor, anchor, t));
     return out;
   }, [anchor, editor, t, labels]);
+
+  // 来歴ラベル機能がオフなら 🔗 紐付けボタン・RelationshipPicker を出さない。
+  if (!provLabelsEnabled) return null;
 
   return (
     <>

@@ -68,7 +68,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
   // Blob URL を取得
   useEffect(() => {
     if (!entry.url) {
-      setError("PDF の URL が空です");
+      setError(t("asset.pdfUrlEmpty"));
       return;
     }
     let cancelled = false;
@@ -97,7 +97,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
         if (!cancelled) setBlobUrl(url);
       })
       .catch(() => {
-        if (!cancelled) setError("PDF の取得に失敗しました");
+        if (!cancelled) setError(t("asset.pdfFetchFailed"));
       });
     return () => {
       cancelled = true;
@@ -249,8 +249,8 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
   }, []);
 
   const onDocumentError = useCallback(() => {
-    setError("PDF の読み込みに失敗しました");
-  }, []);
+    setError(t("asset.pdfLoadFailed"));
+  }, [t]);
 
   const buildSource = useCallback(
     (state: PillState): CitationSource => ({
@@ -398,7 +398,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
   if (!blobUrl) {
     return (
       <div className="flex items-center justify-center text-muted-foreground text-sm">
-        読み込み中...
+        {t("common.loading")}
       </div>
     );
   }
@@ -525,7 +525,7 @@ export function PdfViewer({ entry, onSaveSelectionAsMemo }: PdfViewerProps) {
             options={PDFJS_DOC_OPTIONS}
             onLoadSuccess={onDocumentLoad}
             onLoadError={onDocumentError}
-            loading={<div className="text-muted-foreground text-sm text-center py-8">読み込み中...</div>}
+            loading={<div className="text-muted-foreground text-sm text-center py-8">{t("common.loading")}</div>}
           >
             {numPages > 0 &&
               Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (

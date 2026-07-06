@@ -13,6 +13,8 @@ import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
+  ProvLabelsEnabledProvider,
+  useProvLabelsEnabled,
   useLabelStore,
   LabelDropdownPortal,
 } from "./features/context-label";
@@ -46,6 +48,7 @@ import {
   setRegisterIndexTableCallback,
 } from "./features/index-table";
 import { SidePeek } from "./features/index-table/side-peek";
+import { buildSavedPageFields } from "./features/note-save";
 import { DocumentSearchBar } from "./features/document-search/DocumentSearchBar";
 import { setupLabelAutoAssign } from "./features/context-label/label-auto";
 import {
@@ -98,7 +101,7 @@ import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-mar
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
@@ -116,7 +119,7 @@ import {
 import { LocalFolderBlobProvider, type BlobRef } from "./lib/storage/shared";
 import { DocumentProvenancePanel } from "./features/document-provenance";
 import { cn } from "./lib/utils";
-import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
+import { NoteListView, TrashView, buildKnowledgeMap, findIncomingReferences, readIndexFile, type GraphiumIndex, type NoteIndexEntry } from "./features/navigation";
 import { ContextBadge } from "./features/note-context/ContextBadge";
 import { ContextTagPicker } from "./features/note-context/ContextTagPicker";
 import { aggregateNoteContexts, addNoteContext, removeNoteContext } from "./features/note-context/context-tags";
@@ -479,7 +482,7 @@ function NoteHeaderMenu({
                 }}
               >
                 {copied ? <Check size={14} /> : <Link2 size={14} />}
-                {copied ? "コピーしました" : "リンクをコピー"}
+                {copied ? t("share.linkCopied") : t("share.copyLink")}
               </button>
             </>
           )}
@@ -632,6 +635,8 @@ type NoteEditorProps = {
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
   /** ノートインデックス（@ オートコンプリート用） */
   noteIndex?: GraphiumIndex | null;
+  /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
+  provLabelsEnabled?: boolean;
   /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
   onDeleteContextEverywhere?: (value: string) => boolean | Promise<boolean>;
   /** メディアアップロード関数（メディアインデックス自動登録付き） */
@@ -741,6 +746,7 @@ type NoteEditorProps = {
 
 function NoteEditor(props: NoteEditorProps) {
   return (
+    <ProvLabelsEnabledProvider enabled={props.provLabelsEnabled ?? true}>
     <LabelStoreProvider>
       <LinkStoreProvider>
         <IndexTableStoreProvider>
@@ -754,6 +760,7 @@ function NoteEditor(props: NoteEditorProps) {
         </IndexTableStoreProvider>
       </LinkStoreProvider>
     </LabelStoreProvider>
+    </ProvLabelsEnabledProvider>
   );
 }
 
@@ -854,6 +861,7 @@ function NoteEditorInner({
   subHeaderSlot,
   contextDrawerSlot,
 }: NoteEditorProps) {
+  const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
   const { removeBlockMetadata } = useBlockLifecycle();
@@ -1285,10 +1293,10 @@ function NoteEditorInner({
   // ダイアログで入れられる。選ぶと空ノートを作成し、本文に @名前 リンクを挿入する。
   const newNoteSlashItem: SlashMenuItem = useMemo(
     () => ({
-      title: "新しいノート",
-      subtext: "名前を付けて新規ノートを作成し、ここにリンク",
-      group: "ノート",
-      aliases: ["note", "newnote", "新規ノート", "しんきのーと", "あたらしいのーと"],
+      title: tStatic("slashMenu.newNote.title"),
+      subtext: tStatic("slashMenu.newNote.subtext"),
+      group: tStatic("slashMenu.newNote.group"),
+      aliases: ["note", "newnote", "新しいノート", "新規ノート", "しんきのーと", "あたらしいのーと"],
       onItemClick: (editor: any) => {
         const sourceBlockId = editor?.getTextCursorPosition?.()?.block?.id;
         void (async () => {
@@ -1643,14 +1651,14 @@ function NoteEditorInner({
   // ── 保存ロジック ──
   const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {
     const blocks = editorRef.current?.document || [];
-    const labelSnapshot = labelStore.getSnapshot();
-    const labelsObj: Record<string, string> = {};
-    for (const [k, v] of labelSnapshot.labels) {
-      labelsObj[k] = v;
-    }
-    const allLinks = linkStore.getAllLinks();
-    const provLinks = allLinks.filter((l) => l.layer === "prov");
-    const knowledgeLinks = allLinks.filter((l) => l.layer === "knowledge");
+    // labels / provLinks / knowledgeLinks / blockAlignments の組み立ては
+    // SidePeek（side-peek.tsx doSave）と同一なので共有モジュールに集約。
+    const {
+      labels: labelsObj,
+      provLinks,
+      knowledgeLinks,
+      blockAlignments,
+    } = buildSavedPageFields({ labelStore, linkStore, blockAlignmentStore });
     // チャット履歴を収集（現在のアクティブチャットを含む）
     const currentChat = aiAssistant.getCurrentChat();
     const savedChats = [...aiAssistant.chats];
@@ -1669,9 +1677,6 @@ function NoteEditorInner({
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
       Object.keys(mediaInlineLabelsSnapshot).length > 0;
-    // ブロック配置揃え（table / audio / file 用サイドストア）
-    const blockAlignmentsSnapshot = blockAlignmentStore.getSnapshot();
-    const hasBlockAlignments = Object.keys(blockAlignmentsSnapshot).length > 0;
     let doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
@@ -1687,7 +1692,7 @@ function NoteEditorInner({
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
-          blockAlignments: hasBlockAlignments ? blockAlignmentsSnapshot : undefined,
+          blockAlignments,
         },
       ],
       noteLinks: noteLinksRef.current.length > 0 ? noteLinksRef.current : undefined,
@@ -1899,6 +1904,7 @@ function NoteEditorInner({
   // - block ラベル / インラインラベル / メディアラベルどの経路でも procedure 経由で
   //   Activity が立ち上がれば同じ条件で発火する
   useEffect(() => {
+    if (!provLabelsEnabled) return;
     if (provAutoOpenedRef.current) return;
     if (rightTab !== null) return;
     const hasActivity =
@@ -1907,7 +1913,14 @@ function NoteEditorInner({
       setRightTab("prov");
       provAutoOpenedRef.current = true;
     }
-  }, [provDoc, rightTab]);
+  }, [provDoc, rightTab, provLabelsEnabled]);
+
+  // 来歴ラベル機能がオフになったら、開いている PROV グラフパネルを閉じる（一貫性のため）。
+  // タブ自体は非表示になるが、既に "prov" を開いた状態で設定を切り替えた場合に空パネルが
+  // 残らないよう、明示的に null に戻す。
+  useEffect(() => {
+    if (!provLabelsEnabled && rightTab === "prov") setRightTab(null);
+  }, [provLabelsEnabled, rightTab]);
 
   // ── PDF エクスポートハンドラー ──
   const handleExportPdf = useCallback(async () => {
@@ -3521,7 +3534,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...buildLabelSlashMenuItems(), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -3809,7 +3822,7 @@ function NoteEditorInner({
                 <button
                   onClick={() => toggleRightTab(rightTab)}
                   className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/50 transition-colors mr-1"
-                  aria-label="閉じる"
+                  aria-label={t("common.close")}
                 >
                   ✕
                 </button>
@@ -3842,7 +3855,7 @@ function NoteEditorInner({
                   onOpenMedia={onOpenMedia}
                 />
               )}
-              {rightTab === "prov" && (
+              {rightTab === "prov" && provLabelsEnabled && (
                 <ProvGraphPanel doc={provDoc} />
               )}
               {rightTab === "chat" && (
@@ -3891,7 +3904,7 @@ function NoteEditorInner({
             // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
             { tab: "chat" as const, icon: <MessageSquare size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: labelStore.labels.size > 0 },
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
@@ -3969,6 +3982,41 @@ export function NoteApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
+  // 来歴ラベル機能（手順の PROV 化）の有効/無効。
+  // 未確定（初回）は OFF で描画を開始し、起動時にインデックスから「既にラベルを使っているか」を
+  // 判定して確定する（既存ユーザー=ON / 新規=OFF）。以降は settings の値を尊重する。
+  const [provLabelsEnabled, setProvLabelsEnabled] = useState<boolean>(
+    () => loadSettings().enableProvLabels ?? false,
+  );
+  // 起動時に一度だけ、未確定なら既存ラベルの有無から enableProvLabels を確定する。
+  useEffect(() => {
+    if (typeof loadSettings().enableProvLabels === "boolean") return; // 確定済み
+    let cancelled = false;
+    void (async () => {
+      try {
+        const idx = await readIndexFile();
+        const hasLabels = !!idx?.notes.some(
+          (n) => (n.labels?.length ?? 0) > 0 || (n.inlineLabels?.length ?? 0) > 0,
+        );
+        if (cancelled) return;
+        setProvLabelsEnabled(resolveProvLabelsDefault(hasLabels));
+      } catch {
+        // 判定に失敗しても既定 OFF のまま（新規ユーザー想定）
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // inline ハイライト装飾（BlockNote style の直書き色）を CSS で消すため body 属性を同期する。
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (provLabelsEnabled) {
+      document.body.removeAttribute("data-prov-labels-off");
+    } else {
+      document.body.setAttribute("data-prov-labels-off", "true");
+    }
+  }, [provLabelsEnabled]);
   // AI バックエンド接続チェック（GitHub Pages 等の静的サイトでは false）
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
   // バックエンド到達性（aiAvailable）と「モデルが 1 件以上登録されているか」
@@ -4168,6 +4216,27 @@ export function NoteApp() {
     },
     [fm.getCachedDoc, fm.noteIndex, fm.reindexNoteFromDoc, fm.propagateMentionRename],
   );
+  // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
+  // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
+  // activeLabel → showNoteList → showMemos → activeWikiView → activeWikiKind →
+  // showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
+  // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
+  // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
+  // 開いた後にノートを最大化するとスキル一覧が出続けるバグ）。
+  // 各ハンドラが個別に N-1 個クリアする方式は、ビューを 1 つ足すたびに消し忘れ、
+  // 同種のバグを再発させてきた。ここに集約し「畳んでから自分のフラグだけ立てる」に統一する。
+  const closeAllViews = useCallback(() => {
+    fm.setShowNoteList(false);
+    fm.setActiveAssetType(null);
+    fm.setActiveLabel(null);
+    fm.setActiveWikiKind(null);
+    setShowMemos(false);
+    setShowTrash(false);
+    setShowSharedLibrary(false);
+    setShowGlobalGraph(false);
+    setShowSkillList(false);
+    setActiveWikiView(null);
+  }, [fm]);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
   // 全ノードグラフ用データ。開いている間だけ index から構築する（閉じている間は空）。
@@ -4486,16 +4555,10 @@ export function NoteApp() {
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
     setShowSharedLibrary: (show: boolean) => setShowSharedLibrary(show),
-    clearViews: () => {
-      fm.setShowNoteList(false);
-      fm.setActiveAssetType(null);
-      fm.setActiveLabel(null);
-      fm.setActiveWikiKind(null);
-      setActiveWikiView(null);
-      setShowMemos(false);
-      setShowSharedLibrary(false); setShowGlobalGraph(false);
-    },
-  }), [fm]);
+    // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
+    // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
+    clearViews: closeAllViews,
+  }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
   // Ingest キューを処理する関数
@@ -4546,7 +4609,7 @@ export function NoteApp() {
         if (result.wikis.length === 0) {
           setIngestToast((prev) => ({
             items: (prev?.items ?? []).map((i) =>
-              i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: "内容不足" } : i
+              i.id === jobId ? { ...i, status: "error" as const, detail: undefined, result: tStatic("ingest.insufficientContent") } : i
             ),
           }));
           ingestQueueRef.current.shift();
@@ -4754,7 +4817,7 @@ export function NoteApp() {
           Number.POSITIVE_INFINITY,
         );
         if (allClaimSnapshots.length < 2) {
-          updateStage("atomize", "skipped", `Claim ${allClaimSnapshots.length} 件（2 件以上で実行）`);
+          updateStage("atomize", "skipped", tStatic("ingest.needTwoClaims", { count: String(allClaimSnapshots.length) }));
         } else {
           const claimModifiedByFileId = new Map(fm.wikiFiles.map((f) => [f.id, f.modifiedTime]));
           const claimEmbeddings = await Promise.all(
@@ -4778,7 +4841,7 @@ export function NoteApp() {
           updateStage(
             "atomize",
             "running",
-            `${allClaimSnapshots.length} claims / ${seeds.length} clusters を分析中...`,
+            tStatic("ingest.analyzingClusters", { claims: String(allClaimSnapshots.length), clusters: String(seeds.length) }),
           );
           for (let i = 0; i < seeds.length; i++) {
             const seed = seeds[i];
@@ -4787,7 +4850,13 @@ export function NoteApp() {
             updateStage(
               "atomize",
               "running",
-              `cluster ${i + 1}/${seeds.length} 「${seed.snapshot.title}」 (${slice.length} ${atomLabel})`,
+              tStatic("ingest.clusterProgress", {
+                current: String(i + 1),
+                total: String(seeds.length),
+                title: seed.snapshot.title,
+                count: String(slice.length),
+                kind: atomLabel,
+              }),
             );
             const atomResult = await atomizeConcepts(
               slice,
@@ -4810,7 +4879,7 @@ export function NoteApp() {
           updateStage(
             "atomize",
             "done",
-            createdAtoms > 0 ? `${createdAtoms} ${atomLabel}` : `新規 ${atomLabel} なし`,
+            createdAtoms > 0 ? `${createdAtoms} ${atomLabel}` : tStatic("ingest.noNewAtoms", { kind: atomLabel }),
           );
         }
       } catch (err) {
@@ -4818,7 +4887,7 @@ export function NoteApp() {
         updateStage("atomize", "error", localizeAiError(err));
       }
     } else {
-      updateStage("atomize", "skipped", "Atom Layer が無効");
+      updateStage("atomize", "skipped", tStatic("ingest.atomLayerDisabled"));
     }
 
     // Synthesis 自動生成パイプラインは撤退（2026-05-27、design revision）。
@@ -4829,9 +4898,9 @@ export function NoteApp() {
     try {
       const snapshots = buildWikiSnapshots(fm.wikiFiles, fm.wikiMetas, fm.getCachedDoc);
       if (snapshots.length < 2) {
-        updateStage("lint", "skipped", `Wiki ${snapshots.length} 件（2 件以上で実行）`);
+        updateStage("lint", "skipped", tStatic("ingest.needTwoWikis", { count: String(snapshots.length) }));
       } else {
-        updateStage("lint", "running", `${snapshots.length} wikis を分析中...`);
+        updateStage("lint", "running", tStatic("ingest.analyzingWikis", { count: String(snapshots.length) }));
         // LLM Lint: 5ページ以上で矛盾・ギャップを LLM で分析
         const useLlm = snapshots.length >= 5;
         const report = await lintWikis(snapshots, getLocale(), !useLlm);
@@ -5023,7 +5092,7 @@ export function NoteApp() {
         updateStage(
           "lint",
           "done",
-          issues.length > 0 ? `${issues.length} issues` : "問題なし",
+          issues.length > 0 ? `${issues.length} issues` : tStatic("ingest.noIssues"),
         );
       }
     } catch (err) {
@@ -5259,9 +5328,9 @@ export function NoteApp() {
 
       if (files.length === 0) {
         if (stats.attempted === 0) {
-          throw new Error("この Word からは画像オブジェクトを取り出せませんでした。");
+          throw new Error(tStatic("asset.docxNoImages"));
         }
-        throw new Error("対応形式の画像が含まれていませんでした（EMF/WMF など）。");
+        throw new Error(tStatic("asset.docxUnsupportedImages"));
       }
 
       let extracted = 0;
@@ -5781,41 +5850,36 @@ export function NoteApp() {
 
   const sidebarProps = {
     activeFileId: fm.activeFileId,
-    onSelect: (fileId: string) => { fm.handleOpenFile(fileId); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
-    onNewNote: () => { fm.handleNewNote(); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setShowSkillList(false); setActiveWikiView(null); setSidebarOpen(false); },
+    // ヘッダーの「戻る」導線。ノート A →（ピーク等経由で）ノート B / 素材へ飛んだあと A へ戻る。
+    onBack: router.back,
+    canGoBack: router.canGoBack,
+    onSelect: (fileId: string) => { closeAllViews(); fm.handleOpenFile(fileId); setSidebarOpen(false); router.navigate({ view: "editor", fileId }); },
+    onNewNote: () => { closeAllViews(); fm.handleNewNote(); setSidebarOpen(false); },
     onNewMemo: () => { setShowQuickMemoDialog(true); setSidebarOpen(false); },
     onRefresh: fm.refreshFiles,
     onShowReleaseNotes: () => setShowReleaseNotes(true),
     onShowSettings: () => { setShowSettings(true); setSidebarOpen(false); },
     agentConfigured,
     recentNotes: fm.recentNotes,
-    onShowNoteList: () => { fm.setShowNoteList(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "notes" }); },
+    onShowNoteList: () => { closeAllViews(); fm.setShowNoteList(true); setSidebarOpen(false); router.navigate({ view: "notes" }); },
     noteListActive: fm.showNoteList,
     mediaIndex: fm.mediaIndex,
-    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { fm.setActiveAssetType(type); fm.setShowNoteList(false); fm.setActiveLabel(null); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
+    onShowAssetGallery: (type: import("./features/asset-browser").MediaType) => { closeAllViews(); fm.setActiveAssetType(type); setSidebarOpen(false); router.navigate({ view: "assets", mediaType: type }); },
     noteIndex: fm.noteIndex,
     onShowGlobalGraph: () => {
       // 他の排他ビューを全部畳んでから全体グラフを表示する（他の onShow* と同じ作法）。
+      closeAllViews();
       setShowGlobalGraph(true);
-      fm.setActiveAssetType(null);
-      fm.setActiveLabel(null);
-      fm.setActiveWikiKind(null);
-      fm.setShowNoteList(false);
-      setShowMemos(false);
-      setShowSkillList(false);
-      setActiveWikiView(null);
-      setShowTrash(false);
-      setShowSharedLibrary(false);
       setListSidePeekNoteId(null);
       setSidebarOpen(false);
     },
     globalGraphActive: showGlobalGraph,
-    onShowLabelGallery: (label: string) => { fm.setActiveLabel(label); fm.setActiveAssetType(null); fm.setShowNoteList(false); setShowMemos(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
+    onShowLabelGallery: (label: string) => { closeAllViews(); fm.setActiveLabel(label); setSidebarOpen(false); router.navigate({ view: "labels", label }); },
     activeAssetType: fm.activeAssetType,
     activeLabel: fm.activeLabel,
     filesLoading: fm.filesLoading,
     memoCount: capture.captureIndex?.captures.length ?? 0,
-    onShowMemos: () => { setShowMemos(true); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "memos" }); },
+    onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     wikiCounts: (() => {
       // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
@@ -5838,41 +5902,26 @@ export function NoteApp() {
     // experimental.atomLayer に関わらず常にサイドバーに表示する。
     // synthesis（発想）レイヤはサイドバーから完全に外したので prop 自体を渡さない。
     showAtomLayer: true,
-    onShowWikiList: (kind: WikiKind) => { fm.setActiveWikiKind(kind); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
+    onShowWikiList: (kind: WikiKind) => { closeAllViews(); fm.setActiveWikiKind(kind); setSidebarOpen(false); router.navigate({ view: "wiki-list", kind }); },
     activeWikiKind: fm.activeWikiKind,
     aiAvailable: aiAvailable ?? false,
-    onShowWikiLog: () => { setActiveWikiView("log"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
-    onShowWikiLint: () => { setActiveWikiView("lint"); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setShowSkillList(false); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
+    onShowWikiLog: () => { closeAllViews(); setActiveWikiView("log"); setSidebarOpen(false); router.navigate({ view: "wiki-log" }); },
+    onShowWikiLint: () => { closeAllViews(); setActiveWikiView("lint"); setSidebarOpen(false); router.navigate({ view: "wiki-lint" }); },
     activeWikiView,
     skillCount: fm.skillMetas.size,
-    onShowSkillList: () => { setShowSkillList(true); fm.setActiveWikiKind(null); fm.setActiveAssetType(null); fm.setActiveLabel(null); fm.setShowNoteList(false); setShowMemos(false); setActiveWikiView(null); setShowTrash(false); setShowSharedLibrary(false); setShowGlobalGraph(false); setSidebarOpen(false); },
+    onShowSkillList: () => { closeAllViews(); setShowSkillList(true); setSidebarOpen(false); },
     skillActive: showSkillList,
     onShowTrash: () => {
+      closeAllViews();
       setShowTrash(true);
-      fm.setActiveAssetType(null);
-      fm.setActiveLabel(null);
-      fm.setActiveWikiKind(null);
-      fm.setShowNoteList(false);
-      setShowMemos(false);
-      setShowSkillList(false);
-      setActiveWikiView(null);
-      setShowSharedLibrary(false); setShowGlobalGraph(false);
       setSidebarOpen(false);
     },
     trashActive: showTrash,
     trashCount: fm.trashedNotes.length + fm.archivedNotes.length,
     onShowSharedLibrary: getSharedRoot()
       ? () => {
+          closeAllViews();
           setShowSharedLibrary(true);
-          fm.setActiveAssetType(null);
-          fm.setActiveLabel(null);
-          fm.setActiveWikiKind(null);
-          fm.setShowNoteList(false);
-          setShowMemos(false);
-          setShowSkillList(false);
-          setActiveWikiView(null);
-          setShowTrash(false);
-          setShowGlobalGraph(false);
           setSidebarOpen(false);
           router.navigate({ view: "shared-library" });
         }
@@ -5952,7 +6001,7 @@ export function NoteApp() {
             }}
             onNavigateNote={(noteId) => {
               setAssetSidePeekNoteId(null);
-              fm.setActiveAssetType(null);
+              closeAllViews();
               // PDF アセットの利用ノートグラフから Wiki ノートをクリックしたケース：
               // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
               if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
@@ -5993,7 +6042,7 @@ export function NoteApp() {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromUrl(entry.url, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
@@ -6020,7 +6069,7 @@ export function NoteApp() {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromPdf(blob, entry.name || "document.pdf", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
@@ -6050,7 +6099,7 @@ export function NoteApp() {
                     const existingWikis = (fm.noteIndex?.notes ?? []).filter((n) => n.source === "ai" && n.wikiKind).map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                     const result = await ingestFromDocx(blob, entry.name || "document.docx", sourceNoteId, existingWikis, getLocale());
                     if (result.wikis.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === toastId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                       return;
                     }
                     for (const wiki of result.wikis) {
@@ -6078,7 +6127,7 @@ export function NoteApp() {
                   try {
                     const result = await ingestUrlToProv(entry.url, getLocale());
                     if (!result.blocks || result.blocks.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
                     }
                     const provDoc = buildProvNoteDocument({
@@ -6111,7 +6160,7 @@ export function NoteApp() {
                     const blob = await (await fetch(blobUrl)).blob();
                     const result = await ingestPdfToProv(blob, entry.name || "document.pdf", getLocale());
                     if (!result.blocks || result.blocks.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
                     }
                     const provDoc = buildProvNoteDocument({
@@ -6146,7 +6195,7 @@ export function NoteApp() {
                     const blob = await (await fetch(blobUrl)).blob();
                     const result = await ingestDocxToProv(blob, entry.name || "document.docx", getLocale());
                     if (!result.blocks || result.blocks.length === 0) {
-                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "PROV 構造を生成できませんでした" } : i) }));
+                      setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.provFailed") } : i) }));
                       return;
                     }
                     const provDoc = buildProvNoteDocument({
@@ -6339,9 +6388,10 @@ export function NoteApp() {
                     onSaved={handleListPeekSaved}
                     onClose={() => setAssetSidePeekNoteId(null)}
                     onNavigate={(navId, savedDoc) => {
-                      // SidePeek 内のリンクから本格的に開く場合はアセット画面を離れる
+                      // SidePeek 内のリンクから本格的に開く場合はアセット画面を含む
+                      // 上位ビューを全て畳んでから本文へ遷移する。
                       setAssetSidePeekNoteId(null);
-                      fm.setActiveAssetType(null);
+                      closeAllViews();
                       if (navId.startsWith("wiki:")) fm.handleOpenWikiFile(navId.slice(5));
                       else fm.handleOpenFile(navId, savedDoc);
                     }}
@@ -6369,7 +6419,7 @@ export function NoteApp() {
           <NoteListView
             noteIndex={fm.noteIndex}
             onOpenNote={(noteId) => { setListSidePeekNoteId(noteId); }}
-            onOpenNoteFull={(noteId) => { setListSidePeekNoteId(null); fm.setShowNoteList(false); fm.handleOpenFile(noteId); router.navigate({ view: "editor", fileId: noteId }); }}
+            onOpenNoteFull={(noteId) => { setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenFile(noteId); router.navigate({ view: "editor", fileId: noteId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setShowNoteList(false); router.navigate({ view: "home" }); }}
             onDeleteNotes={async (ids) => {
               // 参照警告: 1件以上から参照されている場合は info 確認を出してから移動
@@ -6404,13 +6454,13 @@ export function NoteApp() {
                 const entry = fm.noteIndex?.notes.find((n) => n.noteId === id);
                 if (!entry) continue;
                 if (entry.source === "ai") {
-                  skippedAi.push(entry.title || "(無題)");
+                  skippedAi.push(entry.title || tStatic("nav.untitled"));
                   continue;
                 }
-                candidates.push({ id, title: entry.title || "(無題)" });
+                candidates.push({ id, title: entry.title || tStatic("nav.untitled") });
               }
               if (skippedAi.length > 0) {
-                window.alert(`Wiki ノートはスキップしました（${skippedAi.length} 件）`);
+                window.alert(tStatic("ingest.skippedWikiNotes", { count: String(skippedAi.length) }));
               }
               if (candidates.length === 0) return;
 
@@ -6431,7 +6481,7 @@ export function NoteApp() {
 
               const mdFiles = files.filter(isMarkdownFile);
               if (mdFiles.length === 0) {
-                window.alert("Markdown ファイルが見つかりませんでした。");
+                window.alert(tStatic("import.noMarkdownFiles"));
                 return;
               }
 
@@ -6525,9 +6575,9 @@ export function NoteApp() {
 
               const successCount = mdFiles.length - failed.length;
               if (successCount > 0) {
-                const msg = [`${successCount} 件のノートを取り込みました。`];
+                const msg = [tStatic("import.importedCount", { count: String(successCount) })];
                 if (vaultMap.size > 0) {
-                  msg.push("", "解決できなかった [[リンク]] はテキストとして残しています。");
+                  msg.push("", tStatic("import.unresolvedLinksNote"));
                 }
                 window.alert(msg.join("\n"));
               }
@@ -6628,7 +6678,7 @@ export function NoteApp() {
             wikiFiles={fm.wikiFiles}
             wikiMetas={fm.wikiMetas}
             onOpenWiki={(wikiId) => { setListSidePeekNoteId(`wiki:${wikiId}`); }}
-            onOpenWikiFull={(wikiId) => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind: fm.activeWikiKind!, wikiId }); }}
+            onOpenWikiFull={(wikiId) => { const kind = fm.activeWikiKind!; setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind, wikiId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
             onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
@@ -6722,7 +6772,7 @@ export function NoteApp() {
             onDeleteSkill={async (skillId) => {
               const meta = fm.skillMetas.get(skillId);
               if (meta?.systemSkillId) {
-                alert("システム同梱スキルは削除できません。デフォルトに戻すには「リセット」を使ってください。");
+                alert(tStatic("skill.cannotDeleteSystem"));
                 return;
               }
               await fm.handleDeleteSkillFile(skillId);
@@ -6801,6 +6851,7 @@ export function NoteApp() {
           })()}
           <NoteEditor
             key={fm.editorKey}
+            provLabelsEnabled={provLabelsEnabled}
             fileId={fm.activeFileId?.replace("wiki:", "").replace("skill:", "") ?? fm.activeFileId}
             initialDoc={fm.activeDoc}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
@@ -7000,7 +7051,7 @@ export function NoteApp() {
             onIngestFromUrl={aiAvailable ? () => {
               // AI 未設定なら URL 入力の前に止める（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
-              const url = prompt("URL を入力してください:");
+              const url = prompt(tStatic("ingest.enterUrl"));
               if (!url) return;
               // toast の追跡には一意な ID、wiki の sourceNoteId には URL ベースの安定 ID
               // を使い分ける。後者で逆引きが効くようにする。
@@ -7020,7 +7071,7 @@ export function NoteApp() {
                     .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                   const result = await ingestFromUrl(url, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
                     return;
                   }
@@ -7054,7 +7105,7 @@ export function NoteApp() {
                     .map((n) => ({ id: n.noteId, title: n.title, kind: n.wikiKind! }));
                   const result = await ingestFromChat(chatMessages, chatTitle, existingWikis, getLocale());
                   if (result.wikis.length === 0) {
-                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: "内容不足" } : i) }));
+                    setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "error" as const, result: tStatic("ingest.insufficientContent") } : i) }));
                     return;
                   }
                   for (const wiki of result.wikis) {
@@ -7124,14 +7175,11 @@ export function NoteApp() {
               onClose={() => setListSidePeekNoteId(null)}
               onNavigate={(noteId, savedDoc) => {
                 setListSidePeekNoteId(null);
-                // アーカイブ画面 (showTrash) などの上位ビューを閉じてからルート遷移する。
-                // これを忘れると activeFileId が wiki に変わっても上位ビューが残り続け、
-                // 「Open full」が無反応に見える。
-                setShowTrash(false);
-                fm.setShowNoteList(false);
-                fm.setActiveAssetType(null);
-                fm.setActiveLabel(null);
-                setShowMemos(false);
+                // 上位のリスト／オーバーレイビュー（スキル一覧・知見一覧・ゴミ箱など）を
+                // 全て畳んでから本文へ遷移する。1 つでも残すと activeFileId が変わっても
+                // そのビューが優先表示され、「最大化したのに別の一覧が出る」バグになる
+                // （例: スキル一覧を開いた後にノートを最大化するとスキル一覧が残る）。
+                closeAllViews();
                 if (noteId.startsWith("wiki:")) {
                   fm.handleOpenWikiFile(noteId.replace(/^wiki:/, ""));
                 } else {
@@ -7181,6 +7229,8 @@ export function NoteApp() {
           setSettingsInitialTab(undefined);
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
+          // 設定モーダルで来歴ラベル機能のトグルを変えた場合に即時反映する。
+          setProvLabelsEnabled(loadSettings().enableProvLabels ?? false);
         }}
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}

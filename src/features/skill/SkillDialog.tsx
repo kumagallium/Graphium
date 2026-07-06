@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
+import { useT } from "../../i18n";
 
 export type SkillFormValues = {
   title: string;
@@ -22,6 +23,7 @@ type Props = {
 };
 
 export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
+  const t = useT();
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [availableForIngest, setAvailableForIngest] = useState(initial?.availableForIngest ?? true);
@@ -76,24 +78,24 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
               className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <p className="mt-1 text-[10px] text-muted-foreground">
-              一覧に表示されるラベルです（AI には渡りません。AI が読むのは本文のプロンプトです）。
+              {t("skill.descriptionHelp")}
             </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">
-              適用言語
+              {t("skill.languageLabel")}
             </label>
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as "all" | "ja" | "en")}
               className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
-              <option value="all">全言語</option>
-              <option value="ja">日本語</option>
-              <option value="en">English</option>
+              <option value="all">{t("skill.langAll")}</option>
+              <option value="ja">{t("skill.langJa")}</option>
+              <option value="en">{t("skill.langEn")}</option>
             </select>
             <p className="mt-1 text-[10px] text-muted-foreground">
-              生成言語が一致するときだけ適用されます。
+              {t("skill.languageHelp")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -105,7 +107,7 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
               className="rounded border-border"
             />
             <label htmlFor="ingest-toggle" className="text-xs text-foreground">
-              Ingest 時に自動適用する
+              {t("skill.autoApplyLabel")}
             </label>
           </div>
           <div className="flex justify-end gap-2 pt-2">

@@ -14,6 +14,7 @@ import { buildKnowledgeMap } from "../navigation/index-file";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { WikiLogEntry } from "../wiki/wiki-log";
 import type { DiscoveryCard } from "./types";
+import { t } from "../../i18n";
 
 const MAX_CARDS = 4;
 const RECENT_DAYS = 7;
@@ -55,15 +56,15 @@ function baseCardForActiveNote(
   if (entry.source === "ai") {
     return {
       id: `base-clarify-${entry.noteId}`,
-      title: "この Knowledge を整理する",
-      hint: "矛盾や繰り返しを洗い出して書き直すヒントをもらう",
+      title: t("composer.discovery.clarifyTitle"),
+      hint: t("composer.discovery.clarifyHint"),
       action: { kind: "custom", key: "clarify-wiki" },
     };
   }
   return {
     id: `base-summarize-${entry.noteId}`,
-    title: "このノートを要約する",
-    hint: "見出し単位で 3 行にまとめる",
+    title: t("composer.discovery.summarizeTitle"),
+    hint: t("composer.discovery.summarizeHint"),
     action: { kind: "summarize-note" },
   };
 }
@@ -101,17 +102,17 @@ function cardsFromWikiLog(
     // 直近のイベント種別は hint 側で補足する。
     let hint: string | undefined;
     switch (e.type) {
-      case "ingest":      hint = "最近作られた Wiki"; break;
-      case "cross-update": hint = "他ノートとの横断更新の提案"; break;
-      case "regenerate":  hint = "別モデルでの再生成結果"; break;
-      case "merge":       hint = "複数ノートを統合した Synthesis"; break;
+      case "ingest":      hint = t("composer.discovery.hintIngest"); break;
+      case "cross-update": hint = t("composer.discovery.hintCrossUpdate"); break;
+      case "regenerate":  hint = t("composer.discovery.hintRegenerate"); break;
+      case "merge":       hint = t("composer.discovery.hintMerge"); break;
       default:
         // lint, delete はカード化しない
         continue;
     }
     cards.push({
       id: `log-${e.id}`,
-      title: `「${wikiTitle}」について教えて`,
+      title: t("composer.discovery.tellMeAbout", { title: wikiTitle }),
       hint,
       action: { kind: "custom", key: `wiki:${wikiId}` },
     });
@@ -139,8 +140,8 @@ function recentNoteCards(
 
   return sorted.map((n) => ({
     id: `recent-${n.noteId}`,
-    title: `「${n.title}」について教えて`,
-    hint: `${formatRelativeTime(n.modifiedAt, now)}に編集したノート`,
+    title: t("composer.discovery.tellMeAbout", { title: n.title }),
+    hint: t("composer.discovery.editedNoteHint", { time: formatRelativeTime(n.modifiedAt, now) }),
     action: { kind: "custom", key: `note:${n.noteId}` },
   }));
 }
@@ -148,10 +149,10 @@ function recentNoteCards(
 function formatRelativeTime(iso: string, now: Date): string {
   const diffMs = now.getTime() - new Date(iso).getTime();
   const hours = Math.floor(diffMs / (60 * 60 * 1000));
-  if (hours < 1) return "今";
-  if (hours < 24) return `${hours}h 前`;
+  if (hours < 1) return t("composer.discovery.timeNow");
+  if (hours < 24) return t("composer.discovery.timeHoursAgo", { hours: String(hours) });
   const days = Math.floor(hours / 24);
-  return `${days}d 前`;
+  return t("composer.discovery.timeDaysAgo", { days: String(days) });
 }
 
 /** 現ノートが未 ingest なら「Knowledge に追加」を高優先で 1 枚。
@@ -169,8 +170,8 @@ function ingestCardForActiveNote(
   if ((knowledgeMap.get(entry.noteId)?.length ?? 0) > 0) return null;
   return {
     id: `ingest-${entry.noteId}`,
-    title: "このノートを Knowledge に追加",
-    hint: "AI が要約・抽象化して Wiki エントリを作成",
+    title: t("composer.discovery.ingestTitle"),
+    hint: t("composer.discovery.ingestHint"),
     action: { kind: "custom", key: "ingest-current-note" },
   };
 }
@@ -212,13 +213,13 @@ export function buildDiscoveryCards(ctx: DiscoveryCardContext): DiscoveryCard[] 
 export function promptForDiscoveryCard(card: DiscoveryCard): string {
   switch (card.action.kind) {
     case "summarize-note":
-      return "このノートを見出し単位で 3 行にまとめてください。";
+      return t("composer.discovery.promptSummarize");
     case "continue-writing":
-      return "直前の段落を踏まえて、続きを 1〜2 段落書いてください。";
+      return t("composer.discovery.promptContinue");
     case "visualize-prov":
-      return "このノートの来歴グラフ（PROV-DM）を可視化してください。";
+      return t("composer.discovery.promptVisualizeProv");
     case "make-concept-wiki":
-      return "頻出キーワードから Concept Wiki の下書きを作ってください。";
+      return t("composer.discovery.promptConceptWiki");
     case "custom":
       // custom 内のキーで分岐
       if (card.action.key === "ingest-current-note") {
@@ -227,13 +228,14 @@ export function promptForDiscoveryCard(card: DiscoveryCard): string {
         return "";
       }
       if (card.action.key === "clarify-wiki") {
-        return "この Wiki の矛盾・繰り返しを洗い出し、書き直しのヒントをください。";
+        return t("composer.discovery.promptClarify");
       }
       if (card.action.key.startsWith("wiki:") || card.action.key.startsWith("note:")) {
-        // 「<タイトル>」について教えて → 「<タイトル>」について教えてください。
-        const m = card.title.match(/「(.+?)」/);
-        const name = m ? m[1] : card.title;
-        return `「${name}」について教えてください。`;
+        // タイトル文言（ja: 「<タイトル>」について教えて / en: Tell me about "<title>"）から
+        // タイトル部分を取り出し、prompt 用の文言に組み替える
+        const m = card.title.match(/「(.+?)」|"(.+?)"/);
+        const name = m ? (m[1] ?? m[2]) : card.title;
+        return t("composer.discovery.promptTellMeAbout", { title: name });
       }
       return card.title;
   }

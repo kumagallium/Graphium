@@ -3,13 +3,19 @@
 </p>
 <h1 align="center">Graphium</h1>
 <p align="center">
-  <b>情報を、いつでも再利用可能な「知識」へと変えるノートエディタ。</b>
+  <b>AI 時代のひらめきノート。</b>
 </p>
 <p align="center">
-  <b>PROV-DM</b> 来歴追跡を備えたブロックベースのノートエディタ（<a href="https://www.blocknotejs.org/">BlockNote.js</a> ベース）
+  書けば書くほど、点と点が繋がって「ひらめき」になる。<br />
+  あなたが書いた一文も、AI が手渡した一文も、その出どころのノートまで辿れる。辿れるからこそ、安心して広げられます。
 </p>
 <p align="center">
   <a href="README.md">English</a> | <b>日本語</b>
+</p>
+
+<p align="center">
+  <a href="https://kumagallium.github.io/Graphium/"><img alt="ブラウザで試す" src="https://img.shields.io/badge/%E3%83%96%E3%83%A9%E3%82%A6%E3%82%B6%E3%81%A7%E8%A9%A6%E3%81%99-2ea44f?style=for-the-badge"></a>
+  <a href="https://github.com/kumagallium/Graphium/releases/latest"><img alt="デスクトップ版を入手" src="https://img.shields.io/badge/%E3%83%87%E3%82%B9%E3%82%AF%E3%83%88%E3%83%83%E3%83%97%E7%89%88%E3%82%92%E5%85%A5%E6%89%8B-24292f?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -21,27 +27,51 @@
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/kumagallium/Graphium/main">
 </p>
 
+<p align="center">
+  <a href="https://kumagallium.github.io/Graphium/"><img src="public/landing/hero.png" alt="ノート・知見・洞察が繋がった Graphium のグラフビュー" width="880" /></a>
+</p>
+
 Graphium は、[Zettelkasten](https://ja.wikipedia.org/wiki/%E3%83%84%E3%82%A7%E3%83%86%E3%83%AB%E3%82%AB%E3%82%B9%E3%83%86%E3%83%B3) スタイルの小さなノート術と、W3C の来歴標準 [PROV-DM](https://www.w3.org/TR/prov-dm/) を組み合わせた、個人開発のオープンソースプロジェクトです。AI が手渡してくれた一文も含めて、すべての主張をその根拠となるノートまで辿れる状態を目指しています。
 
-### インストール前に読むもの
+## 仕組み — 書く、広げる、辿る
 
-- 📘 [**CONCEPT**](docs/CONCEPT.ja.md)（[English](docs/CONCEPT.md)）: 設計思想（なぜ来歴か、二つの脳、砂時計）
+### 1. 書く
+思いつきをそのまま書き、`@` 参照でノート同士を繋ぎます。ここまでは、ふつうのノートと同じ気軽さです。
+
+<p align="center"><img src="public/landing/screen-editor.png" alt="他のノートへの @ 参照を含むノートを開いた Graphium エディタ" width="760" /></p>
+
+### 2. AI と広げる
+あなたの AI（Claude のサブスクや API キー）を繋ぐと、AI がノートの群れから「知見」や「洞察」を拾い上げます。自分では気づかなかった繋がりが見えてきます。
+
+<p align="center"><img src="public/landing/screen-knowledge.png" alt="AI が抽出した知見・洞察が並ぶ Knowledge リスト" width="760" /></p>
+
+### 3. 起源まで辿る
+AI が手渡した一文も、あなたが書いた一文も、出どころのノートまでワンクリックで遡れます。辿れるからこそ、安心して広げられます。
+
+<p align="center"><img src="public/landing/screen-trace.png" alt="来歴パネル（洞察・知見・元ノート）を開いた洞察ページ" width="760" /></p>
+
+## 試行錯誤するすべての人へ
+
+語彙は汎用的です。実験室でも、台所でも、工房でも、コードベースでも、教室でも。
+
+- **研究者** — 来歴付きの実験ログ。ステップ・材料・結果が繋がったまま残ります。
+- **料理人・つくる人** — 今回のパンが上手くいった理由を覚えているレシピ。上手くいかなかった 4 回も一緒に。
+- **エンジニア** — 次のポストモーテムまで生き残る調査ノート。
+- **学生・書き手** — 授業・本・会話を繋ぐ「第二の脳」。戻ってきたとき、自分で説明してくれます。
+
+### もっと知りたい人へ（任意）
+
+はじめるのに読む必要はありません。設計に興味がある人・コントリビューター向けです。
+
+- 📘 [**CONCEPT**](docs/CONCEPT.ja.md)（[English](docs/CONCEPT.md)）: Graphium の背後にある考え方（なぜ来歴か、二つの脳、砂時計）
 - 🏗️ [**ARCHITECTURE**](docs/ARCHITECTURE.md): レイヤー、配布形態、Wiki パイプライン、既知の継ぎ目（英語）
 - 🗂️ [**DATA_MODEL**](docs/DATA_MODEL.md): JSON 形式、スキーマ、互換性ルール（英語）
 
-## 必要な分だけ使う
+## 必要な分だけラベルを付ける
 
-Graphium は **段階的開示（progressive disclosure）** を設計の中心に据えています。ラベル付けは任意で、しかも独立した 2 つの層から成ります。
+Graphium は、ラベルを一切付けなくても、ふつうのリンクノートアプリとして使えます。構造を残す価値があるノートだけ、見出しブロックに `[ステップ]` を付けたり、テキスト範囲を `[インプット]` / `[ツール]` / `[アウトプット]` でハイライトしたりすると、来歴グラフが——あなたがラベルを付けた範囲だけ——立ち上がります。ノート・ブロックラベル・インラインの詳細は、同じ文章を独立になぞる別々の層で、全か無かではありません。
 
-| レベル | やること | 得られるもの |
-|--------|---------|-------------|
-| **ノートだけ** | `@` 参照でノートを書いてリンクする | ファイルシステム上のリンクされたノート群（Web 版はブラウザ IndexedDB） |
-| **ブロックレベルの構造** | 見出しブロックに `[ステップ]`（または Phase の `[計画]` / `[結果]`）を付ける | 来歴グラフの骨格。何が、どの順で起きたか |
-| **インラインの詳細** | ブロック内のテキスト範囲を `[インプット]` / `[ツール]` / `[パラメータ]` / `[アウトプット]` でハイライト | 完全な来歴グラフ。何を使い、どんな条件で、何ができたか |
-
-`#` のブロックレベル層とインラインハイライト層は、同じ内容を **2 回なぞる別々の層** であり、全か無かのラベルではありません。ラベルなしで書き始め、後から `#` だけ付け、必要な箇所にだけインラインの詳細を載せる、という使い方ができます。**来歴層は、あなたがラベルを付けた範囲だけで立ち上がります**。このグラデーションこそが設計の中核です。
-
-設計の根拠は [docs/CONCEPT.ja.md §6](docs/CONCEPT.ja.md#6-段階的な開示必要な分だけ使う) を参照してください。
+各ラベルが何に対応するかは下の [PROV-DM 準拠](#prov-dm-準拠)、設計の根拠は [CONCEPT §6](docs/CONCEPT.ja.md#6-段階的な開示必要な分だけ使う) を参照してください。
 
 ## すぐに試す
 
@@ -151,9 +181,9 @@ docker compose -f docker-compose.standalone.yml up -d
 
 **http://localhost:5174/Graphium/** を開いて書き始められます。
 
-### 方法 3: Docker で起動 — フルスタック（AI + MCP ツール）
+### 方法 3: Docker で起動 — AI バックエンド付き
 
-ビルトイン AI バックエンド付きで Graphium を起動し、[Crucible Registry](https://github.com/kumagallium/Crucible) で MCP ツール管理も利用できます。
+ビルトイン AI バックエンド付きで Graphium を起動します。AI アシスタント・ナレッジ層・MCP サーバーへの直接接続はすべて単体で動作し、外部サービスは不要です。
 
 ```bash
 git clone https://github.com/kumagallium/Graphium.git
@@ -165,7 +195,7 @@ docker compose up -d
 |-----|------|
 | http://localhost:5174/Graphium/ | Graphium エディタ（AI セットアップ含む） |
 
-> **上級者向け:** [Crucible Registry UI](http://localhost:8081) で MCP サーバーを管理できます。
+> **上級者向け:** この compose ファイルには、多数の MCP サーバーを一元管理するためのオプションの [Crucible Registry](https://github.com/kumagallium/Crucible)（[UI](http://localhost:8081)）も同梱されています。必須ではありません — 下の「MCP ツールの追加」を参照してください。
 
 #### AI モデルの設定
 
@@ -175,9 +205,13 @@ docker compose up -d
 
 #### MCP ツールの追加（オプション）
 
-1. **http://localhost:8081**（Crucible Registry UI）を開く
-2. GitHub リポジトリから MCP サーバーを登録
-3. **⚙ 設定 → AI セットアップ** にツールが表示され、有効/無効を切り替え可能
+Graphium は MCP サーバーに直接接続します — レジストリは不要です。**⚙ 設定 → AI セットアップ → MCP サーバー** を開いてソースを追加してください。すべてのエントリが 1 つのリストに並び、それぞれ有効/無効の切り替え・編集・削除ができます:
+
+- **ローカル** — Claude Desktop と同じ方式で、Graphium がサーバーを起動・管理します。コマンドと引数（例: `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`）を入力すると、Graphium が stdio 経由でプロセスを起動します。プロセスを自分で起動・停止する必要はありません。デスクトップアプリまたはセルフホストのバックエンドが必要です（ブラウザはローカルプロセスを起動できません）。
+- **リモート** — 稼働中のサーバーにエンドポイント URL（例: `http://localhost:8100/sse`）で接続します。必要に応じて API キーも指定できます。
+- **レジストリから** — [Crucible Registry](https://github.com/kumagallium/Crucible) の URL を入力して MCP サーバーの一覧を取得し、使いたいものを選ぶと、それぞれが個別のリモートエントリになります。レジストリ URL は記憶されるので、あとから再閲覧できます。オプションであり、Crucible はあくまで発見用のソースで、依存関係ではありません。
+
+いちばん手早いのは **JSON 貼り付け** です。サーバーの README にある `mcpServers` ブロック（Claude Desktop / Cursor 形式）をそのままコピーすると、Graphium がインポートします — ローカル（`command`/`args`/`env`）もリモート（`url`/`type`/`headers`）も、1 件でも複数件でもまとめて取り込めます。
 
 `.env` の編集は不要 — すべてブラウザから設定できます。
 
@@ -199,7 +233,7 @@ docker compose up -d
 
 ```bash
 git pull                      # 最新の Graphium コードを取得
-docker compose pull           # 最新の Crucible イメージを取得
+docker compose pull           # 最新のバックエンドイメージを取得
 docker compose up -d --build  # Graphium をリビルドして全サービスを再起動
 ```
 
@@ -335,9 +369,9 @@ Graphium は [BlockNote.js](https://www.blocknotejs.org/) ベースの TypeScrip
 
 レイヤー詳細・Wiki パイプラインのトリガーフロー・配布形態・認証モデル・既知の継ぎ目は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) を、JSON 形式と互換性ルールは [docs/DATA_MODEL.md](docs/DATA_MODEL.md) を参照してください（いずれも英語）。
 
-### Crucible Registry（オプション）
+### MCP ツール
 
-[Crucible Registry](https://github.com/kumagallium/Crucible) は MCP サーバーの管理と自動検出を提供します。接続すると、登録済み MCP ツールが **⚙ 設定 → AI セットアップ** に表示され、AI アシスタントが利用できるようになります。
+AI アシスタントは [MCP](https://modelcontextprotocol.io/) ツールを呼び出せます。**⚙ 設定 → AI セットアップ → MCP サーバー** の 1 つのリストでまとめて管理します。**ローカル** サーバー（Claude Desktop 方式で Graphium が stdio 経由で起動。デスクトップアプリまたはセルフホストのバックエンドが必要）と **リモート** サーバー（URL で接続）を追加でき、追加方法は README の JSON 貼り付け・フォーム入力・[Crucible Registry](https://github.com/kumagallium/Crucible) を閲覧してサーバーを選ぶ、のいずれでも構いません。Crucible はあくまで発見用のソースで、依存関係ではありません。
 
 ## エディタの外から書く
 

@@ -4,10 +4,16 @@
 // - 直近更新ノート（埋め）
 // - 最大 4 枚
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { buildDiscoveryCards, promptForDiscoveryCard } from "./discovery-cards";
+import { syncLocale } from "../../i18n";
 import type { GraphiumIndex, NoteIndexEntry } from "../navigation/index-file";
 import type { WikiLogEntry } from "../wiki/wiki-log";
+
+// カード文言は i18n 化されたため、既存の日本語アサーションに合わせて ja 固定にする
+beforeAll(() => {
+  syncLocale("ja");
+});
 
 const NOW = new Date("2026-04-25T10:00:00Z");
 

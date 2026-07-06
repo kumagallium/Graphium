@@ -197,11 +197,15 @@ function buildModelConfig(): ModelConfig {
 
 export function createLiveJudges(): JudgePack {
   const modelConfig = buildModelConfig();
-  const model = createModel(modelConfig);
+  // createModel は async（Promise<LanguageModel> を返す）。createLiveJudges を async 化すると
+  // buildJudges / runner まで波及するため、ここで Promise を 1 度だけ生成し、async な lift
+  // クロージャ内で await して解決する（解決済み Promise の再 await は即時なのでキャッシュになる）。
+  const modelPromise = createModel(modelConfig);
 
   const lift: LiftJudge = async (atom) => {
     const userMessage = `Atom title: "${atom.title}"\nAtom body: ${atom.body || "(empty)"}`;
     try {
+      const model = await modelPromise;
       const result = await generateText({
         model,
         system: LIFT_RUBRIC,
@@ -229,7 +233,10 @@ export function createLiveJudges(): JudgePack {
 export function buildJudges(mode: "live" | "dry-run"): JudgePack {
   if (mode === "live") {
     const cfg = getBenchJudgeConfig();
-    if (cfg.apiKey.trim().length === 0) {
+    // claude-subscription は apiKey ではなくローカル claude CLI の OAuth で認証するため、
+    // apiKey 空でも live judge を使える。それ以外の provider は従来通り apiKey を要求する。
+    const hasCreds = cfg.apiKey.trim().length > 0 || cfg.provider === "claude-subscription";
+    if (!hasCreds) {
       console.warn("[bench] live judge requested but no judge API key; falling back to heuristic.");
       return createHeuristicJudges();
     }

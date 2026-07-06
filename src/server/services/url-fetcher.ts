@@ -60,7 +60,7 @@ export async function fetchPageAsText(
     throw {
       status: 400,
       message:
-        "PDF URL の直接取得は未対応です。PDF ブロックとしてノートに貼り付けてから Ingest してください。",
+        "Fetching PDF URLs directly is not supported. Paste the URL into a note as a PDF block, then run Ingest.",
     } satisfies FetchPageError;
   }
 

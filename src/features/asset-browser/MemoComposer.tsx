@@ -11,6 +11,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { StickyNote } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { useT } from "../../i18n";
 
 // 既存の import 元を壊さないための再エクスポート（テスト・他 feature 向け）
 export { shouldSubmitOnEnter, type EnterSubmitGuard } from "../../lib/ime-enter";
@@ -22,6 +23,7 @@ export type MemoComposerProps = {
 };
 
 export function MemoComposer({ onSubmit, placeholder }: MemoComposerProps) {
+  const t = useT();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -82,7 +84,7 @@ export function MemoComposer({ onSubmit, placeholder }: MemoComposerProps) {
           }}
           onKeyDown={handleKeyDown}
           {...compositionHandlers}
-          placeholder={placeholder ?? "メモを書く… ⏎ で保存・Shift+⏎ で改行"}
+          placeholder={placeholder ?? t("memo.composerPlaceholder")}
           rows={1}
           disabled={submitting}
           className="

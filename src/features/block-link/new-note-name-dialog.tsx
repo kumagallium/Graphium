@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { useT } from "../../i18n";
 
 type DialogState = {
   initial: string;
@@ -28,6 +29,7 @@ export function NewNoteNameDialog({
   onConfirm: (title: string) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState(initial);
   const inputRef = useRef<HTMLInputElement>(null);
   // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
@@ -57,11 +59,11 @@ export function NewNoteNameDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">新しいノートを作成</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t("blockLink.newNoteDialogTitle")}</h2>
           <button
             onClick={onCancel}
             className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            aria-label="閉じる"
+            aria-label={t("common.close")}
           >
             <X size={16} />
           </button>
@@ -86,19 +88,19 @@ export function NewNoteNameDialog({
                 onCancel();
               }
             }}
-            placeholder="ノートのタイトル"
+            placeholder={t("editor.titlePlaceholder")}
             className="w-full bg-transparent text-foreground text-base placeholder:text-muted-foreground/60 focus:outline-none"
           />
         </div>
 
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-muted/30">
-          <p className="text-xs text-muted-foreground">Enter で作成 / Esc でキャンセル</p>
+          <p className="text-xs text-muted-foreground">{t("blockLink.newNoteDialogHint")}</p>
           <button
             onClick={submit}
             disabled={!value.trim()}
             className="px-3 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            作成
+            {t("common.create")}
           </button>
         </div>
       </div>

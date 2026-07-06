@@ -5,7 +5,9 @@
 // 環境変数で上書き可能。API キー未設定なら自動的に dry-run に落ちる。
 
 export type BenchModelConfig = {
-  provider: "openai-compatible" | "openai" | "anthropic" | "google";
+  // claude-subscription: ローカル claude CLI の OAuth を使うキーレス経路（apiKey 不要）。
+  // API キーが手元に無い環境でも live bench を回せるようにするための選択肢。
+  provider: "openai-compatible" | "openai" | "anthropic" | "google" | "claude-subscription";
   name: string;
   modelId: string;
   apiBase: string | null;
