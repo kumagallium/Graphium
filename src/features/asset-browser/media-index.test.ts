@@ -9,6 +9,7 @@ import {
   extractMediaFromBlocks,
   syncUsedIn,
   ensureMediaIndex,
+  buildUrlPeekEntry,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
@@ -468,5 +469,40 @@ describe("ensureMediaIndex (フル再構築時の URL ブックマーク usedIn)
     );
     const entry = index.media.find((m) => m.type === "url")!;
     expect(entry.usedIn).toEqual([]);
+  });
+});
+
+describe("buildUrlPeekEntry", () => {
+  const url = "https://en.wikipedia.org/wiki/Electronic_lab_notebook";
+
+  it("同一 URL の既存素材があればそのエントリを返す（登録名・fileId を保持）", () => {
+    const existing: MediaIndexEntry = {
+      fileId: "url_123_abc",
+      name: "Electronic lab notebook",
+      mimeType: "text/x-uri",
+      type: "url",
+      url,
+      thumbnailUrl: "",
+      uploadedAt: "2026-01-01T00:00:00.000Z",
+      usedIn: [],
+      urlMeta: { domain: "en.wikipedia.org" },
+    };
+    const result = buildUrlPeekEntry(url, { media: [existing] });
+    expect(result).toBe(existing);
+  });
+
+  it("既存素材が無ければ URL からアドホックなエントリを組み立てる", () => {
+    const result = buildUrlPeekEntry(url, { media: [] });
+    expect(result.type).toBe("url");
+    expect(result.url).toBe(url);
+    expect(result.fileId).toBe(`url:${url}`);
+    expect(result.name).toBe("en.wikipedia.org");
+    expect(result.urlMeta?.domain).toBe("en.wikipedia.org");
+  });
+
+  it("mediaIndex が null でもアドホックに組み立てられる", () => {
+    const result = buildUrlPeekEntry(url, null);
+    expect(result.type).toBe("url");
+    expect(result.url).toBe(url);
   });
 });

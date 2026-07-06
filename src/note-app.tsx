@@ -6,6 +6,7 @@ import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSqua
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
+import { openExternalUrl } from "./lib/external-link";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
@@ -84,6 +85,7 @@ import {
   GraphLinksPanel,
   GlobalGraphView,
   buildGlobalGraph,
+  parseExternalSource,
 } from "./features/network-graph";
 import { ReleaseNotesPanel } from "./features/release-notes";
 import {
@@ -177,6 +179,7 @@ import {
   DEFAULT_MEDIA_SLASH_TITLES,
   UrlPasteMenu,
   extractDomain,
+  buildUrlPeekEntry,
   isHttpUrl,
   computeUrlPasteMenuPosition,
   buildPastedTextContent,
@@ -328,25 +331,6 @@ function buildCitationSourceLabel(source: CitationSource): string {
 }
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
-// URL 文字列を素材サイドピーク用の MediaIndexEntry に解決する。
-// 既存の URL 素材があればそれを、無ければ URL からアドホックに組み立てる。
-// ブックマークカードのクリックと本文内インラインリンクのクリックで共用する。
-function buildUrlPeekEntry(url: string, mediaIndex: { media: MediaIndexEntry[] } | null | undefined): MediaIndexEntry {
-  const existing = mediaIndex?.media.find((m) => m.type === "url" && m.url === url);
-  if (existing) return existing;
-  const domain = extractDomain(url);
-  return {
-    fileId: `url:${url}`,
-    name: domain || url,
-    mimeType: "text/x-uri",
-    type: "url",
-    url,
-    thumbnailUrl: "",
-    uploadedAt: new Date().toISOString(),
-    usedIn: [],
-    urlMeta: { domain },
-  };
-}
 
 function NoteHeaderMenu({
   onSave,
@@ -3037,6 +3021,20 @@ function NoteEditorInner({
       if (resolved) {
         e.preventDefault();
         e.stopPropagation();
+        // References の「Source: @ラベル」等は linkStore の targetNoteId に外部ソース ID
+        // （url:/pdf:/document:/chat:）がそのまま入る。ノート ID として SidePeek に渡すと
+        // loadFile が失敗して「読み込みに失敗しました」になるため、素材ピークへ振り分ける。
+        const ext = parseExternalSource(resolved.noteId);
+        if (ext) {
+          if (ext.kind === "url") {
+            setMaterialSidePeekEntry(buildUrlPeekEntry(ext.key, mediaIndex ?? null));
+          } else if (ext.kind === "pdf" || ext.kind === "document") {
+            const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
+            if (entry) setMaterialSidePeekEntry(entry);
+          }
+          // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
+          return;
+        }
         // ノート / Wiki どちらでもまずサイドピークで開く。SidePeek 内の「Open full」で
         // 完全表示に切り替えられる方が、いきなりページ遷移するより流れが良い。
         // Wiki の場合は SidePeek が wiki: プレフィックスで loadWikiFile を呼ぶ。
@@ -3779,6 +3777,7 @@ function NoteEditorInner({
             noteIndex={noteIndex ?? null}
             onCreateLinkedNote={onCreateLinkedNote}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
+            onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -3815,6 +3814,7 @@ function NoteEditorInner({
             noteIndex={noteIndex ?? null}
             onCreateLinkedNote={onCreateLinkedNote}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
+            onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -3899,6 +3899,7 @@ function NoteEditorInner({
                   onNavigate={onNavigateNote}
                   onPeek={(noteId) => setSidePeekNoteId(noteId)}
                   onOpenMedia={onOpenMedia}
+                  onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
@@ -6026,6 +6027,19 @@ export function NoteApp() {
               fm.setActiveAssetType(target.type);
               setFocusedMaterial({ fileId, fullMode: true });
               router.navigate({ view: "assets", mediaType: target.type });
+            }}
+            onOpenUrl={(url) => {
+              // URL ソースノードクリック → 素材登録済みなら pdf/document と同じく
+              // gallery の Full view（URL リーダー）で開く。未登録のみ外部ブラウザ。
+              const target = fm.mediaIndex?.media.find((m) => m.type === "url" && m.url === url);
+              if (!target) {
+                void openExternalUrl(url);
+                return;
+              }
+              setShowGlobalGraph(false);
+              fm.setActiveAssetType("url");
+              setFocusedMaterial({ fileId: target.fileId, fullMode: true });
+              router.navigate({ view: "assets", mediaType: "url" });
             }}
             onClose={() => setShowGlobalGraph(false)}
           />

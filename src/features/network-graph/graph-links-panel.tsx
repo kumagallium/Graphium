@@ -19,6 +19,7 @@ export function GraphLinksPanel({
   onNavigate,
   onOpenMedia,
   onPeek,
+  onOpenUrl,
 }: {
   data: NoteGraphData;
   lineageTree: LineageNode | null;
@@ -29,6 +30,8 @@ export function GraphLinksPanel({
    * サイドピークで開く。未指定なら従来通り onNavigate を呼ぶ。
    */
   onPeek?: (noteId: string) => void;
+  /** URL ソースノードをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
+  onOpenUrl?: (url: string) => void;
 }) {
   const [subTab, setSubTab] = useState<SubTab>("graph");
   const t = useT();
@@ -59,9 +62,9 @@ export function GraphLinksPanel({
       {/* パネル本体 */}
       <div className="flex-1 overflow-hidden">
         {subTab === "graph" ? (
-          <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} />
+          <NetworkGraphPanel data={data} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
         ) : (
-          <LineagePanel tree={lineageTree} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} />
+          <LineagePanel tree={lineageTree} onNavigate={onPeek ?? onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
         )}
       </div>
     </div>
