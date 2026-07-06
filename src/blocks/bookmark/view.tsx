@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { fetchUrlMetadata, extractDomain, getFaviconUrl } from "../../features/asset-browser/media-index";
 // BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
 import { t } from "../../i18n";
-import { openBookmarkPeek } from "./index";
+import { openBookmarkPeek } from "./callbacks";
 
 export const BookmarkBlock = createReactBlockSpec(
   {
