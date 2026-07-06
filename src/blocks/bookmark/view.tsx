@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { fetchUrlMetadata, extractDomain, getFaviconUrl } from "../../features/asset-browser/media-index";
 // BlockNote のブロック render は React ツリー外でも呼ばれ得るため、Context 不要の t を使う
 import { t } from "../../i18n";
+import { openBookmarkPeek } from "./callbacks";
 
 export const BookmarkBlock = createReactBlockSpec(
   {
@@ -87,17 +88,23 @@ export const BookmarkBlock = createReactBlockSpec(
       const displayDomain = meta.domain || extractDomain(url);
       const faviconUrl = getFaviconUrl(displayDomain, 32);
 
+      // カード本体クリック: サイドピークが登録されていればそこで開く。
+      // 未登録（フォールバック）や外部ボタンでは従来どおり新規タブで開く。
+      const openExternal = () => window.open(url, "_blank", "noopener,noreferrer");
+      const handleCardClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (!openBookmarkPeek(props.editor, url)) openExternal();
+      };
+
       return (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
+          role="button"
+          tabIndex={0}
           style={styles.card}
           contentEditable={false}
-          onClick={(e) => {
-            // エディタ内でのクリックは新しいタブで開く
-            e.preventDefault();
-            window.open(url, "_blank", "noopener,noreferrer");
+          onClick={handleCardClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCardClick(e as unknown as React.MouseEvent); }
           }}
         >
           {/* 左: テキスト情報 */}
@@ -129,7 +136,7 @@ export const BookmarkBlock = createReactBlockSpec(
               />
             </div>
           )}
-        </a>
+        </div>
       );
     },
   },
