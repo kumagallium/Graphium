@@ -87,6 +87,31 @@ one. Graphium keeps them as separate layers and connects them on purpose.
 The point of the product is the **bridge** between the two — and keeping that
 bridge auditable in both directions.
 
+### Choosing which brain the AI reads from
+
+The two-brains split is not just a storage layout — it is a choice you make
+every time you talk to the AI. Every AI conversation in Graphium carries a
+**grounding scope**, a small three-way switch next to the input:
+
+| Scope | What the AI reads | When I reach for it |
+|---|---|---|
+| **External** | Everything Internal reads, plus the web searched fresh — with instructions to cite only sources that actually appeared in the results | Investigating something new |
+| **Internal** (default) | Everything you cited, plus a cross-search of the crystallized brain — the Knowledge layer, not raw notes | Connecting and structuring what you have |
+| **This note** | Only what the note cites, with the original documents taking priority over anything AI-derived | Writing accurately, quoting faithfully |
+
+Two details carry the design. The cross-search in **Internal** reads the
+crystallized layer only; raw notes enter a conversation when you cite them
+with `@`, not by ambient similarity. And **This note** deliberately
+*excludes* the AI-derived layer, so quotes and numbers come from the
+original text rather than from a summary of it. Most AI tools treat context
+as a quantity — more is better. Here, narrowing the scope is the point: it
+is how you tell the AI **which brain to think with**.
+
+One asymmetry in that table is deliberate. A scope controls what the AI
+reads; none of them automates ideation. **Internal** is the scope I reach
+for when ideating — it hands you the material — but weaving Insights into
+new Ideas is the step I keep in human hands (§5). No scope automates that.
+
 ## 5. The hourglass: where portable knowledge is born
 
 Knowledge in Graphium is shaped like an hourglass on its side. The flow goes
@@ -172,6 +197,45 @@ changes downstream behavior is whether `speculation` is present. The
 other distinctions are kept for humans reading the page, not for the
 generator's own decisions.
 
+### The hourglass, read as a Zettelkasten
+
+If you keep a [Zettelkasten](https://en.wikipedia.org/wiki/Zettelkasten), the
+hourglass will look familiar — deliberately so. The correspondence I am
+building toward:
+
+| Zettelkasten | Graphium |
+|---|---|
+| Fleeting notes | Memos — quick captures, kept as raw material |
+| Literature notes | Notes on sources — the URLs, PDFs, and papers you ingest |
+| *(no equivalent)* | Project notes — your own trial-and-error log, an input the classic paper workflow didn't center on |
+| Permanent notes | Insights — one context-free claim per page, cited back to the notes that justify it |
+| Structure notes (MOCs, in [LYT](https://notes.linkingyourthinking.com/Cards/MOCs+%28defn%29) terms) | The citation note you weave in Cmd-K Composer — a curated map of Insights |
+
+Two things in this table could not have happened on paper.
+
+First, the step where Zettelkasten practice often quietly stalls — turning
+raw material into permanent notes — is assisted. The AI proposes Claims and
+Insights as candidates; you decide what stays. Two things keep the
+delegation honest by default: every candidate carries PROV-DM lineage back
+to its sources, and an epistemic status that refuses to launder speculation
+(above). A third is there when you ask for it: a world-knowledge check you
+can run on any candidate, labeling how it sits against what is already
+known — aligned with established or supported knowledge, weakly grounded,
+or facing counter-evidence. When it finds no match, it says so rather than
+claiming novelty.
+
+Second, the map became executable. In the Zettelkasten tradition a
+structure note is something you read. Here, the citation note you weave in
+the Composer *is* the AI's search space: drawing the map and scoping the
+AI's attention are the same act (see §4).
+
+There is an objection I take seriously: in the classic method, writing
+permanent notes in your own words *is* the thinking, and delegating the
+draft could hollow that out. I have not resolved this, and I do not claim
+to — it is one of the bets in §8. The half I am sure of is the other one:
+the weaving of Insights into Ideas stayed human because I tried automating
+it, watched the results, and took it back.
+
 ## 6. Progressive disclosure: use as much, or as little, as you need
 
 A core design choice I keep returning to: **the labels are optional, and
@@ -229,6 +293,12 @@ am making.
 - I want to **build** something I can live with for years, not something
   that ships easily this quarter. When I get something wrong, I will admit
   it as I notice it.
+- The bet I am least sure of: that extracting Claims and Insights can be
+  delegated to an AI without hollowing out the thinking that writing them
+  by hand used to force. I have designed for it — candidates rather than
+  conclusions, curation rather than acceptance — but I treat it as a
+  hypothesis under test, and the provenance layer exists partly so I will
+  notice if it fails.
 
 This is a personal open-source project, built in the open. Pull requests,
 issues, and disagreements are welcome — especially the disagreements.
