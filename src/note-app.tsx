@@ -8,7 +8,7 @@ import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
-import { bookmarkSlashItem, setBookmarkPickerCallback } from "./blocks/bookmark";
+import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
 import {
@@ -327,6 +327,26 @@ function buildCitationSourceLabel(source: CitationSource): string {
 }
 
 // ── ヘッダーメニュー（Notion 風ドロップダウン） ──
+// URL 文字列を素材サイドピーク用の MediaIndexEntry に解決する。
+// 既存の URL 素材があればそれを、無ければ URL からアドホックに組み立てる。
+// ブックマークカードのクリックと本文内インラインリンクのクリックで共用する。
+function buildUrlPeekEntry(url: string, mediaIndex: { media: MediaIndexEntry[] } | null | undefined): MediaIndexEntry {
+  const existing = mediaIndex?.media.find((m) => m.type === "url" && m.url === url);
+  if (existing) return existing;
+  const domain = extractDomain(url);
+  return {
+    fileId: `url:${url}`,
+    name: domain || url,
+    mimeType: "text/x-uri",
+    type: "url",
+    url,
+    thumbnailUrl: "",
+    uploadedAt: new Date().toISOString(),
+    usedIn: [],
+    urlMeta: { domain },
+  };
+}
+
 function NoteHeaderMenu({
   onSave,
   saveDisabled,
@@ -1069,6 +1089,20 @@ function NoteEditorInner({
       setCitePickerCallback(mainEditor, null);
     };
   }, [mainEditor]);
+
+  // ブックマークカードのクリック → URL 素材としてサイドピークで開く。
+  // 既存の URL 素材があればそれを、無ければ URL からアドホックなエントリを組み立てる。
+  // mediaIndex を最新に保つため専用の effect（picker 登録とは別依存）にする。
+  useEffect(() => {
+    if (!mainEditor) return;
+    setBookmarkPeekCallback(mainEditor, (url) => {
+      if (!url) return;
+      setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null));
+    });
+    return () => {
+      setBookmarkPeekCallback(mainEditor, null);
+    };
+  }, [mainEditor, mediaIndex]);
 
   // スラッシュメニューからテンプレートピッカーを開くコールバック登録
   useEffect(() => {
@@ -2978,6 +3012,18 @@ function NoteEditorInner({
       // サイドピーク内のメンションは、そのピーク自身の linkStore で解決する必要があるため
       // ここでは扱わない（side-peek.tsx の専用ハンドラが処理する）。
       if (target.closest("[data-side-peek]")) return;
+      // 本文内の通常リンク（http(s)）はサイドピークのリーダーで開く。
+      // アプリ chrome の <a> を誤爆しないよう、編集領域（contenteditable）内に限定する。
+      const linkEl = target.closest("a[href]") as HTMLAnchorElement | null;
+      if (linkEl && linkEl.closest('[contenteditable="true"]')) {
+        const href = linkEl.getAttribute("href") || "";
+        if (/^https?:\/\//i.test(href)) {
+          e.preventDefault();
+          e.stopPropagation();
+          setMaterialSidePeekEntry(buildUrlPeekEntry(href, mediaIndex ?? null));
+          return;
+        }
+      }
       if (!isMentionSpan(target)) return;
       const noteName = target.textContent!.trim().slice(1);
       // まず記録済みリンク（linkStore）から厳密な ID で解決する。挿入時に
