@@ -336,7 +336,13 @@ body {
   align-items: center;
 }
 
-/* 偶数行はスクショを右側に(ジグザグでスキャンのリズムを作る) */
+/* 偶数行はスクショを右側に(ジグザグでスキャンのリズムを作る)。
+   order だけだと画像が狭い 2fr 列に落ちて他の行より小さく写るため、
+   列幅も入れ替えて 3 枚のスクショを同じ大きさに保つ。 */
+.lp-screen-row:nth-child(even) {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
 .lp-screen-row:nth-child(even) .lp-screen-shot {
   order: 2;
 }
