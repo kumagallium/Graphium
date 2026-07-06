@@ -1459,6 +1459,8 @@ export const en: Record<string, string> = {
   "ingest.generatingHeader": "Generating Knowledge ({done}/{total})",
   "ingest.doneSummary": "Done: {count} generated",
   "ingest.doneErrorSuffix": ", {count} failed",
+  "ingest.minimize": "Minimize",
+  "ingest.expand": "Show details",
   "ingest.insufficientContent": "Not enough content",
   "ingest.needTwoClaims": "{count} Claim(s) (needs at least 2)",
   "ingest.analyzingClusters": "Analyzing {claims} claims / {clusters} clusters...",
