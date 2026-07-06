@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, GitBranch } from "lucide-react";
 import { useT } from "../../i18n";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
 import { formatDateTime } from "../../lib/format-datetime";
 
@@ -71,6 +72,8 @@ export function MaterialMetadataSection({
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(entry.name);
   const [renaming, setRenaming] = useState(false);
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   useEffect(() => {
     if (!editing) setEditName(entry.name);
@@ -156,8 +159,11 @@ export function MaterialMetadataSection({
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 onBlur={handleRename}
+                {...compositionHandlers}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRename();
+                  // IME 変換確定の Enter では確定しない（WKWebView の
+                  // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
+                  if (e.key === "Enter" && !isImeKey(e)) handleRename();
                   if (e.key === "Escape") {
                     setEditing(false);
                     setEditName(entry.name);

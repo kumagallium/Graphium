@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
 import { apiBase } from "../../lib/platform";
 import { useLocale } from "../../i18n";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { loadSettings, saveSettings, type LLMRateCurrency } from "./store";
 
 type RateCurrency = LLMRateCurrency;
@@ -351,6 +352,8 @@ export function UsageTab() {
   const [displayCurrency, setDisplayCurrencyState] = useState<RateCurrency>("usd");
   const [usdJpyRate, setUsdJpyRateState] = useState<number>(150);
   const [usdJpyInput, setUsdJpyInput] = useState<string>("150");
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   useEffect(() => {
     const s = loadSettings();
@@ -570,8 +573,11 @@ export function UsageTab() {
             value={usdJpyInput}
             onChange={(e) => setUsdJpyInput(e.target.value)}
             onBlur={commitUsdJpyRate}
+            {...compositionHandlers}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              // IME 変換確定の Enter では確定しない（WKWebView の
+              // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
+              if (e.key === "Enter" && !isImeKey(e)) {
                 e.preventDefault();
                 commitUsdJpyRate();
               }

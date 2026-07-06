@@ -12,6 +12,7 @@ import { useMemo, useRef, useState } from "react";
 import { Search, Plus, Trash2 } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { cn } from "@/lib/utils";
+import { useImeEnterGuard } from "@/hooks/use-ime-enter-guard";
 import { noteContextHue } from "./context-tags";
 import { useT } from "../../i18n";
 
@@ -71,6 +72,8 @@ export function ContextTagPicker({
   const [query, setQuery] = useState("");
   // seenValuesRef を変えたときに再描画させるためのカウンタ（ref はそれ自体では再描画しない）
   const [, bumpRender] = useState(0);
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   const selectedKeys = useMemo(
     () => new Set(selected.map((s) => s.trim().toLowerCase())),
@@ -164,8 +167,12 @@ export function ContextTagPicker({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              {...compositionHandlers}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                // IME 変換確定の Enter では追加しない。isComposing だけでは
+                // WKWebView（デスクトップ）の compositionend → keydown(13) 順を
+                // 取りこぼすため、共通ガードで判定する。
+                if (e.key === "Enter" && !isImeKey(e)) {
                   e.preventDefault();
                   commitTyped();
                 }

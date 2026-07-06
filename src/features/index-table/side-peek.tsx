@@ -69,6 +69,7 @@ import {
 import type { CaptureIndex, CaptureEntry } from "@features/mobile-capture";
 import { LabelStoreProvider, ProvLabelsEnabledProvider, useProvLabelsEnabled, useLabelStore } from "@features/context-label/store";
 import { LinkStoreProvider, useLinkStore } from "@features/block-link/store";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import {
   getNoteSuggestions,
   getCreateNoteSuggestion,
@@ -242,6 +243,8 @@ function SidePeekInner({
   const blockAlignmentStoreRef = useRef(blockAlignmentStore);
   blockAlignmentStoreRef.current = blockAlignmentStore;
   const editorRef = useRef<any>(null);
+  // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
   // @ メニュー「新しいノートを作成」の名前入力ダイアログ（IME 安全）
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
@@ -1383,12 +1386,13 @@ function SidePeekInner({
                     el.style.height = el.scrollHeight + "px";
                   }
                 }}
+                {...titleCompositionHandlers}
                 onKeyDown={(e) => {
-                  // IME 変換確定の Enter を奪わない（メインエディタのタイトル欄と
-                  // 同じガード）。isComposing / keyCode 229 を見ずに focus を移すと、
-                  // 変換確定の Enter でフォーカスがエディタ本文へ飛び、確定文字が
-                  // 本文の 1 行目へ流れ込む。
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                  // IME 変換確定の Enter を奪わない。isComposing / keyCode 229 だけの
+                  // ガードでは WKWebView（デスクトップ）の compositionend → keydown(13)
+                  // 順を取りこぼし、確定 Enter でフォーカスが本文へ飛んで確定文字が
+                  // 本文の 1 行目へ流れ込む（同じ文字の二重出現・迷子の改行の原因）。
+                  if (e.key === "Enter" && !isTitleImeKey(e)) {
                     e.preventDefault();
                     editorRef.current?.focus();
                   }

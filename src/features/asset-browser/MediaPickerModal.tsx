@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useT } from "../../i18n";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { getActiveProvider } from "../../lib/storage/registry";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import {
@@ -207,6 +208,8 @@ export function MediaPickerModal({
   const [urlFetching, setUrlFetching] = useState(false);
   const [urlRegistering, setUrlRegistering] = useState(false);
   const lastFetchedUrl = useRef("");
+  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // 自動フォーカス: URL タイプでは「新しい URL を追加する」入力欄を最初の焦点にする
   // （既存検索より新規追加が主目的のため）。それ以外のタイプは検索ボックス。
@@ -418,8 +421,11 @@ export function MediaPickerModal({
                   type="url"
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
+                  {...compositionHandlers}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && isValidNewUrl && !urlRegistering) {
+                    // IME 変換確定の Enter では登録しない（WKWebView の
+                    // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
+                    if (e.key === "Enter" && !isImeKey(e) && isValidNewUrl && !urlRegistering) {
                       e.preventDefault();
                       handleUrlRegister();
                     }
