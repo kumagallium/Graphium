@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.17.1](https://github.com/kumagallium/Graphium/compare/v0.17.0...v0.17.1) - 2026-07-06
+
+- fix: open URL sources in-app instead of failing or leaving to the browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/543
+- feat: keep AI chat runs alive across note switches by @kumagallium in https://github.com/kumagallium/Graphium/pull/545
+- fix: repair WebKit IME composition corruption in nested bullet lists (dup + stray empty line) by @kumagallium in https://github.com/kumagallium/Graphium/pull/542
+
 ## [v0.17.0](https://github.com/kumagallium/Graphium/compare/v0.16.10...v0.17.0) - 2026-07-06
 
 - chore: issue/PR templates, code of conduct, version sync by @kumagallium in https://github.com/kumagallium/Graphium/pull/524
