@@ -180,6 +180,15 @@ type SidePeekProps = {
    * 未指定だと `@` で既存ノート参照のみ（新規作成は出ない）。
    */
   onCreateLinkedNote?: (title: string, sourceNoteId?: string) => Promise<string | null>;
+  /**
+   * 保存直前に doc キャッシュから最新の chats を採用するための getter。
+   * チャット実行のアプリレベル書き戻し（chat-run-manager）が、ピーク表示中の
+   * ノートの doc.chats を更新することがある。doSave は docRef（このピークが
+   * 最後に読んだ/保存した doc）を spread するため、そのままだと旧 chats で
+   * 上書きして応答が消える。ピーク自身は chats を編集しないので、キャッシュ側
+   * （reindexNoteFromDoc で常に最新化される）を常に優先してよい。
+   */
+  getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
 };
 
 export function SidePeek(props: SidePeekProps) {
@@ -237,7 +246,7 @@ function SidePeekInner({
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef, onDeleteContextEverywhere,
-  onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek,
+  onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, getCachedDoc,
 }: SidePeekProps) {
   const t = useT();
   const provLabelsEnabled = useProvLabelsEnabled();
@@ -910,6 +919,11 @@ function SidePeekInner({
     docRef.current = initialCachedDoc;
   }
 
+  // getCachedDoc は親の再レンダーで変わり得るため ref 経由で最新を参照する
+  // （doSave の依存を noteId のみに保つ。labelStoreRef 等と同じ流儀）
+  const getCachedDocRef = useRef(getCachedDoc);
+  getCachedDocRef.current = getCachedDoc;
+
   // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）
   const doSave = useCallback(async () => {
     const editor = editorRef.current;
@@ -926,11 +940,17 @@ function SidePeekInner({
       blockAlignmentStore: blockAlignmentStoreRef.current,
     });
 
+    // chats はピーク内で編集されないため、doc キャッシュ側が新しければそちらを
+    // 採用する（チャット run のアプリレベル書き戻しが、ピーク表示中のノートの
+    // chats を更新した場合に docRef の旧 chats で巻き戻さないため）
+    const latestChats = getCachedDocRef.current?.(noteId)?.chats;
+
     // SidePeek は歴史的に syncUsedIn / recordRevision を迂回する（=メタデータは
     // docRef.current の spread で温存する）。この迂回はバグではなく現行仕様であり、
     // 共有モジュール（saveNoteDoc）も来歴・usedIn 同期は行わない。統合は別 PR。
     const updatedDoc: GraphiumDocument = {
       ...docRef.current,
+      ...(latestChats ? { chats: latestChats } : {}),
       pages: [
         {
           ...docRef.current.pages[0],

@@ -34,14 +34,19 @@ export type AiAssistantActions = {
   setLoading: (loading: boolean) => void;
   /** エラーを設定 */
   setError: (error: string | null) => void;
-  /** メッセージを追加 */
-  addMessage: (message: ChatMessage) => void;
+  /**
+   * メッセージを追加。chatId を渡すと activeChatId が未発行のときだけその id を
+   * 採用する（チャット実行のアプリレベル管理が、送信前に応答の書き戻し先 id を
+   * 確定させるため）。既発行なら無視される。
+   */
+  addMessage: (message: ChatMessage, chatId?: string) => void;
   /**
    * messages を index 直前まで巻き戻し、新しい user メッセージで置き換える。
    * 編集&再実行（index = 編集した user の位置）と回答の再生成
    * （index = 再送する user の位置）の両方で使う。index 以降は破棄される。
+   * chatId は addMessage と同じ扱い。
    */
-  rewriteFrom: (index: number, message: ChatMessage) => void;
+  rewriteFrom: (index: number, message: ChatMessage, chatId?: string) => void;
   /**
    * 現在のチャットを退避し、messages[0..index]（そのメッセージを含む）を
    * コピーした新チャットに分岐する。新チャットは forkedFrom を持つ。
@@ -59,6 +64,39 @@ export type AiAssistantActions = {
   clearMessages: () => void;
   /** 現在のチャットを退避して非アクティブにする（リスト表示用） */
   parkChat: () => void;
+  /**
+   * 実行中（または直後に完了/失敗した）チャット run をアクティブ会話として復元する。
+   * ノート切替からの復帰時、chat-run-manager のスナップショットから会話と
+   * ローディング表示を再現するために使う（remount で store が初期化されるため）。
+   * chat は chats へ upsert され、そのままアクティブ展開される。
+   */
+  resumeRunningChat: (
+    chat: ScopeChat,
+    opts: {
+      sourceBlockIds: string[];
+      quotedMarkdown: string;
+      sessionId: string | null;
+      forkedFrom: ScopeChat["forkedFrom"] | null;
+      running: boolean;
+      error?: string;
+    },
+  ) => void;
+  /**
+   * チャット run の完了結果を反映する。chat.id が activeChatId と一致すれば
+   * アクティブ会話（messages / sessionId）を確定形に置き換え、一致しなければ
+   * chats への upsert のみ行う（応答待ち中に別チャットへ切り替えても、応答が
+   * 切替先へ混入しない）。冪等に再適用できる。
+   * opts.keepLoading: 同じノートに別の実行中 run が残っている場合に true を渡す
+   * （無関係な run の完了が実行中チャットの loading を解除して二重送信ガードを
+   * 外してしまわないように）。
+   */
+  applyChatRunResult: (
+    chat: ScopeChat,
+    sessionId: string | null,
+    opts?: { keepLoading?: boolean },
+  ) => void;
+  /** チャット run の失敗を反映する。対象チャット表示中のみエラー文言を出す */
+  applyChatRunError: (chatId: string, error: string, opts?: { keepLoading?: boolean }) => void;
 };
 
 export type AiAssistantStore = AiAssistantState & AiAssistantActions & {
@@ -176,20 +214,21 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
     setState((prev) => ({ ...prev, error, loading: false }));
   }, []);
 
-  const addMessage = useCallback((message: ChatMessage) => {
+  const addMessage = useCallback((message: ChatMessage, chatId?: string) => {
     setState((prev) => ({
       ...prev,
       messages: [...prev.messages, message],
-      // 最初のメッセージ追加時に activeChatId を確定（保存時の ID 安定化）
-      activeChatId: prev.activeChatId ?? crypto.randomUUID(),
+      // 最初のメッセージ追加時に activeChatId を確定（保存時の ID 安定化）。
+      // chatId 指定時はそれを採用する（run 側と書き戻し先 id を一致させる）
+      activeChatId: prev.activeChatId ?? chatId ?? crypto.randomUUID(),
     }));
   }, []);
 
-  const rewriteFrom = useCallback((index: number, message: ChatMessage) => {
+  const rewriteFrom = useCallback((index: number, message: ChatMessage, chatId?: string) => {
     setState((prev) => ({
       ...prev,
       messages: [...prev.messages.slice(0, index), message],
-      activeChatId: prev.activeChatId ?? crypto.randomUUID(),
+      activeChatId: prev.activeChatId ?? chatId ?? crypto.randomUUID(),
     }));
   }, []);
 
@@ -267,6 +306,75 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
     }));
   }, []);
 
+  const resumeRunningChat = useCallback(
+    (
+      chat: ScopeChat,
+      opts: {
+        sourceBlockIds: string[];
+        quotedMarkdown: string;
+        sessionId: string | null;
+        forkedFrom: ScopeChat["forkedFrom"] | null;
+        running: boolean;
+        error?: string;
+      },
+    ) => {
+      setState((prev) => ({
+        ...prev,
+        // 別のチャットが表示中なら先に退避する（上書きで消さない）
+        chats: upsertChat(
+          prev.activeChatId !== chat.id
+            ? upsertChat(prev.chats, buildCurrentChat(prev))
+            : prev.chats,
+          chat,
+        ),
+        activeChatId: chat.id,
+        messages: chat.messages,
+        sourceBlockIds: opts.sourceBlockIds,
+        quotedMarkdown: opts.quotedMarkdown,
+        sessionId: opts.sessionId,
+        forkedFrom: opts.forkedFrom ?? null,
+        loading: opts.running,
+        error: opts.error ?? null,
+      }));
+    },
+    [],
+  );
+
+  const applyChatRunResult = useCallback(
+    (chat: ScopeChat, sessionId: string | null, opts?: { keepLoading?: boolean }) => {
+      setState((prev) => {
+        const chats = upsertChat(prev.chats, chat);
+        if (prev.activeChatId === chat.id) {
+          return {
+            ...prev,
+            chats,
+            messages: chat.messages,
+            sessionId,
+            loading: false,
+            error: null,
+          };
+        }
+        // 応答待ち中に別チャットへ切り替えた場合: 応答は元チャット（chats 内）にのみ
+        // 反映し、表示中の会話には混入させない。loading は「表示中のチャットに
+        // 実行中 run が残っているか」（keepLoading）に従う
+        return { ...prev, chats, loading: opts?.keepLoading ? prev.loading : false };
+      });
+    },
+    [],
+  );
+
+  const applyChatRunError = useCallback(
+    (chatId: string, error: string, opts?: { keepLoading?: boolean }) => {
+      setState((prev) => {
+        if (prev.activeChatId !== chatId) {
+          return { ...prev, loading: opts?.keepLoading ? prev.loading : false };
+        }
+        return { ...prev, loading: false, error };
+      });
+    },
+    [],
+  );
+
   return (
     <AiAssistantContext.Provider
       value={{
@@ -284,6 +392,9 @@ export function AiAssistantProvider({ children, aiAvailable = true }: { children
         getCurrentChat,
         clearMessages,
         parkChat,
+        resumeRunningChat,
+        applyChatRunResult,
+        applyChatRunError,
       }}
     >
       {children}
