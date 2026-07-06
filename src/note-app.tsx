@@ -95,8 +95,16 @@ import {
   buildAiDerivedDocument,
 } from "./features/ai-assistant";
 import type { AttachedNote } from "./features/ai-assistant/panel";
-import type { AgentChatMessage } from "./features/ai-assistant";
+import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
+import {
+  chatRunManager,
+  buildRunScopeChat,
+  type ChatRunState,
+  type ChatRunApplyHandle,
+} from "./features/ai-assistant/chat-run-manager";
+import { upsertChat } from "./features/ai-assistant/store";
+import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
@@ -750,6 +758,11 @@ type NoteEditorProps = {
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
+  /** 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
+   *  NoteApp のディスパッチャが、完了時に元ノートが開かれていればこのハンドル経由で
+   *  store へ反映する。NoteEditorInner が useEffect で登録する（composerSubmitRef と
+   *  同じ流儀）。 */
+  chatRunApplyRef?: React.MutableRefObject<ChatRunApplyHandle | null>;
   /**
    * タイトルバー直下に挟みたい UI（WikiBanner / SkillBanner 等）。
    * 2026-05-22 デザイン議論 D1 案: バナーは title bar の下に置いて、ノートと一貫した
@@ -824,6 +837,29 @@ function sanitizeBlocks(blocks: any[]): any[] {
     }));
 }
 
+// wiki:/skill: プレフィックス付きフルキーで doc を読む（キャッシュ優先）。
+// saveNoteDoc（保存側のプレフィックス振り分け）と対になる読み込みヘルパーで、
+// チャット run の書き戻し（閉じられたノートの doc.chats 更新）が使う。
+async function loadNoteDocByFullKey(
+  fullKey: string,
+  getCachedDoc?: (noteId: string) => GraphiumDocument | undefined,
+): Promise<GraphiumDocument | null> {
+  const cached = getCachedDoc?.(fullKey);
+  if (cached) return cached;
+  const provider = getActiveProvider();
+  try {
+    if (fullKey.startsWith("wiki:")) {
+      return (await provider.loadWikiFile?.(fullKey.slice(5))) ?? null;
+    }
+    if (fullKey.startsWith("skill:")) {
+      return (await provider.loadSkillFile?.(fullKey.slice(6))) ?? null;
+    }
+    return await provider.loadFile(fullKey);
+  } catch {
+    return null;
+  }
+}
+
 function NoteEditorInner({
   fileId,
   initialDoc,
@@ -878,6 +914,7 @@ function NoteEditorInner({
   provWikiEntities,
   openSidePeekRef,
   composerCitationRef,
+  chatRunApplyRef,
   subHeaderSlot,
   contextDrawerSlot,
 }: NoteEditorProps) {
@@ -890,6 +927,25 @@ function NoteEditorInner({
   const blockAlignmentStore = useBlockAlignmentStore();
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
+  // チャット実行（chat-run-manager）用のノート識別子。doc キャッシュ・saveNoteDoc と
+  // 同じ「wiki:/skill: プレフィックス込みフルキー」。未採番の新規ノートは null。
+  const chatStorageId = fileId
+    ? initialDoc?.source === "ai"
+      ? `wiki:${fileId}`
+      : initialDoc?.source === "skill"
+        ? `skill:${fileId}`
+        : fileId
+    : null;
+  // 未採番の新規ノートで開始したチャット run。オートセーブでファイル id が
+  // 確定したら chat-run-manager に書き戻し先を補完する
+  const pendingNoteIdRunsRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!chatStorageId || pendingNoteIdRunsRef.current.length === 0) return;
+    for (const runId of pendingNoteIdRunsRef.current) {
+      chatRunManager.assignNoteId(runId, chatStorageId);
+    }
+    pendingNoteIdRunsRef.current = [];
+  }, [chatStorageId]);
   const editorRef = useRef<any>(null);
   // picker callbacks をエディタ単位で登録するために、エディタ実体を state でも持つ。
   // editorRef.current は ref なので useEffect の依存に乗せられない。
@@ -2059,10 +2115,13 @@ function NoteEditorInner({
       const baseMessages = rewindIndex != null
         ? aiAssistant.messages.slice(0, rewindIndex)
         : aiAssistant.messages;
+      // 応答の書き戻し先となる ScopeChat id を送信前に確定する。store の遅延発行に
+      // 任せると外から id を知る手段がなく、ノート切替後の書き戻し先を特定できない
+      const chatId = aiAssistant.activeChatId ?? crypto.randomUUID();
       if (rewindIndex != null) {
-        aiAssistant.rewriteFrom(rewindIndex, userChatMessage);
+        aiAssistant.rewriteFrom(rewindIndex, userChatMessage, chatId);
       } else {
-        aiAssistant.addMessage(userChatMessage);
+        aiAssistant.addMessage(userChatMessage, chatId);
       }
       aiAssistant.setLoading(true);
       try {
@@ -2239,7 +2298,7 @@ function NoteEditorInner({
           }
           return { role: m.role, content: m.content };
         });
-        const response = await runAgent({
+        const req: AgentRunRequest = {
           message: userMessage,
           messages: [...history, { role: "user", content: userMessage }],
           session_id: aiAssistant.sessionId ?? undefined,
@@ -2250,64 +2309,93 @@ function NoteEditorInner({
           grounding_scope: scope,
           language: getLocale(),
           options: { max_turns: 5, ...(selectedModel && { model: selectedModel }) },
-        });
-        // Wiki コンテキストが使われた場合、引用情報を処理する。
-        // 番号引用 [#N] / タイトル引用 / 全角【】を正規の [Source: "title"] に揃え、
-        // hallucination を除去して、末尾に「Knowledge referenced」一覧を付ける。
-        // ロジックは citation-normalize.ts に切り出してユニットテスト可能にしている。
-        let assistantMessage = response.message;
-        if (wikiContext) {
-          const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
-            "./features/ai-assistant/citation-normalize"
-          );
-          const { message, sources } = normalizeWikiCitations(
-            assistantMessage,
-            wikiContext,
-          );
-          // モデルが実際に引用できた内部ノートだけを「ノート内の知識」として付ける。
-          // 引用ゼロなら何も付けない（候補の機械的な流し込み＝誤った参照表示を廃止）。
-          assistantMessage = appendKnowledgeReferenced(
-            message,
-            sources,
-            t("chat.sources.fromNotes"),
-          );
-        }
-        // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
-        // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+        };
+        // 完了処理はノート切替後（このコンポーネントの unmount 後）にも走るため、
+        // i18n 文言は送信時に確定してクロージャに固定する
+        const fromNotesHeading = t("chat.sources.fromNotes");
         const webHeading = t("chat.sources.fromWeb");
-        assistantMessage = assistantMessage.replace(
-          /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
-          `**${webHeading}**`,
+        const runId = crypto.randomUUID();
+        if (!chatStorageId) pendingNoteIdRunsRef.current.push(runId);
+        // 実行はアプリレベル（chat-run-manager）に渡す。応答の store 反映・保存は
+        // NoteApp のディスパッチャが行う: このノートが開かれていれば chatRunApplyRef
+        // 経由でライブ反映、ノート切替で閉じられていればファイルの doc.chats へ書き戻す。
+        chatRunManager.start(
+          {
+            runId,
+            noteId: chatStorageId,
+            chatId,
+            scopeBlockIds: [...aiAssistant.sourceBlockIds],
+            quotedMarkdown: aiAssistant.quotedMarkdown,
+            sessionId: aiAssistant.sessionId,
+            forkedFrom: aiAssistant.forkedFrom,
+            baseMessages,
+            userMessage: userChatMessage,
+          },
+          async () => {
+            try {
+              const response = await runAgent(req);
+              // Wiki コンテキストが使われた場合、引用情報を処理する。
+              // 番号引用 [#N] / タイトル引用 / 全角【】を正規の [Source: "title"] に揃え、
+              // hallucination を除去して、末尾に「Knowledge referenced」一覧を付ける。
+              // ロジックは citation-normalize.ts に切り出してユニットテスト可能にしている。
+              let assistantMessage = response.message;
+              if (wikiContext) {
+                const { normalizeWikiCitations, appendKnowledgeReferenced } = await import(
+                  "./features/ai-assistant/citation-normalize"
+                );
+                const { message, sources } = normalizeWikiCitations(
+                  assistantMessage,
+                  wikiContext,
+                );
+                // モデルが実際に引用できた内部ノートだけを「ノート内の知識」として付ける。
+                // 引用ゼロなら何も付けない（候補の機械的な流し込み＝誤った参照表示を廃止）。
+                assistantMessage = appendKnowledgeReferenced(
+                  message,
+                  sources,
+                  fromNotesHeading,
+                );
+              }
+              // WebSearch（claude-subscription 内蔵 = A 経路）由来の "Sources:" 見出しはモデル出力
+              // なので、ローカライズ済みの「🌐 Web の出典」に差し替え、内部ノート（📓）と区別する。
+              assistantMessage = assistantMessage.replace(
+                /^[ \t]*(?:#{1,6}[ \t]*)?\*{0,2}Sources:?\*{0,2}[ \t]*$/im,
+                `**${webHeading}**`,
+              );
+              // 検索 MCP（Tavily 等 = B 経路）の出典はツール結果から決定論的に拾えている。
+              // モデルが散文で出典を出さない B 経路の取りこぼしを埋めるため、ここで明示的に付与する。
+              // A 経路で既に「🌐 Web の出典」見出しが付いている場合は重複させない。
+              const webSources = response.web_sources ?? [];
+              if (webSources.length > 0 && !assistantMessage.includes(webHeading)) {
+                const list = webSources
+                  .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
+                  .join("\n");
+                assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
+              }
+              // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
+              // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
+              const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
+              return {
+                assistantMessage: {
+                  role: "assistant" as const,
+                  content: cleanMessage,
+                  timestamp: new Date().toISOString(),
+                },
+                sessionId: response.session_id,
+              };
+            } catch (err) {
+              // 既知の code（NO_MODEL_REGISTERED / 401 系）は i18n 文言に変換し、
+              // manager には表示用文言を message に持つ Error として渡す契約
+              throw new Error(localizeAiError(err));
+            }
+          },
         );
-        // 検索 MCP（Tavily 等 = B 経路）の出典はツール結果から決定論的に拾えている。
-        // モデルが散文で出典を出さない B 経路の取りこぼしを埋めるため、ここで明示的に付与する。
-        // A 経路で既に「🌐 Web の出典」見出しが付いている場合は重複させない。
-        const webSources = response.web_sources ?? [];
-        if (webSources.length > 0 && !assistantMessage.includes(webHeading)) {
-          const list = webSources
-            .map((s) => `  - [${(s.title ?? s.url).replace(/[[\]]/g, "")}](${s.url})`)
-            .join("\n");
-          assistantMessage = `${assistantMessage}\n\n---\n**${webHeading}**\n${list}`;
-        }
-        // <!-- wiki_worthy: true/false --> タグは表示には不要なので除去する。
-        // 自動 Wiki 保存はユーザーフィードバックを受けて廃止。Wiki 化は明示的なボタン操作で行う。
-        const cleanMessage = assistantMessage.replace(/\s*<!--\s*wiki_worthy:\s*(?:true|false)\s*-->\s*$/, "");
-
-        const assistantTimestamp = new Date().toISOString();
-        aiAssistant.addMessage({
-          role: "assistant",
-          content: cleanMessage,
-          timestamp: assistantTimestamp,
-        });
-        aiAssistant.setSessionId(response.session_id);
-        aiAssistant.setLoading(false);
-        markDirty();
       } catch (err) {
-        // 既知の code（NO_MODEL_REGISTERED / 401 系）は i18n 文言に変換して表示する
+        // プロンプト組み立て（エディタ・ストレージ依存の前処理）で失敗した場合。
+        // run は未開始なので従来どおりその場でエラー表示する
         aiAssistant.setError(localizeAiError(err));
       }
     },
-    [fileId, aiAssistant, markDirty, noteIndex, captureIndexProp, mediaIndex],
+    [chatStorageId, aiAssistant, noteIndex, captureIndexProp, mediaIndex],
   );
 
   // チャットフォーク: 現在のチャットを一覧に退避し、指定メッセージまでの
@@ -2935,6 +3023,80 @@ function NoteEditorInner({
       aiAssistant.restoreChats(initialDoc.chats);
     }
   }, [initialDoc, labelStore, linkStore, indexTableStore, aiAssistant]);
+
+  // ── 実行中チャット run のライブ反映ハンドル登録と復元 ──
+
+  // aiAssistant / markDirty は state 変化のたびに再生成されるため、composerHandlersRef
+  // と同じ「stable callback via ref」パターンで最新を拾う（useEffect の再実行を防ぐ）
+  const chatRunHandlersRef = useRef({ aiAssistant, markDirty });
+  chatRunHandlersRef.current = { aiAssistant, markDirty };
+
+  // NoteApp のディスパッチャが「元ノートが今も開かれているか」を判定し、開かれて
+  // いればライブ store へ反映するためのハンドル。unmount（ノート切替）で null に
+  // 戻り、ディスパッチャはファイル書き戻しへフォールバックする
+  useEffect(() => {
+    if (!chatRunApplyRef) return;
+    chatRunApplyRef.current = {
+      noteId: chatStorageId,
+      applyResult: (run) => {
+        const h = chatRunHandlersRef.current;
+        const existing = h.aiAssistant.chats.find((c) => c.id === run.chatId) ?? null;
+        const chat = buildRunScopeChat(run, existing);
+        h.aiAssistant.applyChatRunResult(chat, run.result?.sessionId ?? null);
+        // 永続化は従来どおりエディタの保存フロー（buildDocument が store の chats を
+        // 読む）に乗せる。ファイル直書きしない（次のオートセーブと競合するため）
+        h.markDirty();
+      },
+      applyError: (run) => {
+        chatRunHandlersRef.current.aiAssistant.applyChatRunError(
+          run.chatId,
+          run.errorMessage ?? "",
+        );
+      },
+      refreshChats: (doc) => {
+        if (doc.chats && doc.chats.length > 0) {
+          chatRunHandlersRef.current.aiAssistant.restoreChats(doc.chats);
+        }
+      },
+    };
+    return () => {
+      if (chatRunApplyRef.current) chatRunApplyRef.current = null;
+    };
+  }, [chatRunApplyRef, chatStorageId]);
+
+  // ノート切替からの復帰時、このノート宛の実行中 run があれば会話とローディング
+  // 表示を復元する（remount で store が初期化されるため）。完了済みで未処理の run は
+  // 確定形で展開する（結果の反映・保存は NoteApp のディスパッチャが冪等に行う）。
+  // エラー済み run はここで一度だけ表示して消費する（エラーは保存しない現行仕様）。
+  const runRestoredRef = useRef(false);
+  useEffect(() => {
+    if (runRestoredRef.current || !chatStorageId) return;
+    runRestoredRef.current = true;
+    const runs = chatRunManager.getRunsForNote(chatStorageId);
+    if (runs.length === 0) return;
+    const run = runs[runs.length - 1];
+    const existing = initialDoc?.chats?.find((c) => c.id === run.chatId) ?? null;
+    const chat = buildRunScopeChat(run, existing);
+    if (run.status === "error") {
+      aiAssistant.resumeRunningChat(chat, {
+        sourceBlockIds: run.scopeBlockIds,
+        quotedMarkdown: run.quotedMarkdown,
+        sessionId: run.sessionId,
+        forkedFrom: run.forkedFrom,
+        running: false,
+        error: run.errorMessage ?? "",
+      });
+      chatRunManager.consume(run.runId);
+      return;
+    }
+    aiAssistant.resumeRunningChat(chat, {
+      sourceBlockIds: run.scopeBlockIds,
+      quotedMarkdown: run.quotedMarkdown,
+      sessionId: (run.status === "done" ? run.result?.sessionId : null) ?? run.sessionId,
+      forkedFrom: run.forkedFrom,
+      running: run.status === "running",
+    });
+  }, [chatStorageId, aiAssistant, initialDoc]);
 
   // ── グローバルコールバック登録 ──
 
@@ -3764,6 +3926,7 @@ function NoteEditorInner({
             inline
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
+            getCachedDoc={getCachedDoc}
             onSaved={handlePeekSaved}
             applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
@@ -3800,6 +3963,7 @@ function NoteEditorInner({
             key={sidePeekNoteId}
             noteId={sidePeekNoteId}
             cachedDoc={getCachedDoc?.(sidePeekNoteId)}
+            getCachedDoc={getCachedDoc}
             onSaved={handlePeekSaved}
             applyMentionRenameRef={peekMentionRenameRef}
             onClose={() => setSidePeekNoteId(null)}
@@ -4160,6 +4324,9 @@ export function NoteApp() {
   const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
+  // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
+  // NoteEditorInner が useEffect でハンドルを登録する（composerSubmitRef と同じ流儀）。
+  const chatRunApplyRef = useRef<ChatRunApplyHandle | null>(null);
   // 世界モデル照合（Phase 2 / PR 2A）— 照合中の Wiki ID を覚えてバナーボタンを disable する
   const [worldCheckingWikiId, setWorldCheckingWikiId] = useState<string | null>(null);
   const handleComposerSubmit = useCallback(
@@ -4262,6 +4429,81 @@ export function NoteApp() {
     },
     [fm.getCachedDoc, fm.noteIndex, fm.reindexNoteFromDoc, fm.propagateMentionRename],
   );
+  // ── チャット run 完了のディスパッチ（アプリレベル常駐） ──
+  // ノート切替に耐えるチャット実行（chat-run-manager）の完了を受け、元ノートが
+  // 開かれていればライブ store へ、閉じられていればファイルの doc.chats へ書き戻す。
+  // ingest（ingestQueueRef）と同じく NoteApp 常駐なので、NoteEditor の remount に
+  // 影響されない。
+  const fmGetCachedDocStable = fm.getCachedDoc;
+  const fmReindexNoteFromDocStable = fm.reindexNoteFromDoc;
+  useEffect(() => {
+    const dispatch = async (run: ChatRunState) => {
+      if (run.status === "running") return;
+      // 1) 元ノートがメインエディタで開かれている → ライブ store へ反映する。
+      //    エディタの store が chats の正であり、ファイル直書きは次のオートセーブ
+      //    （buildDocument が store から全量再構成）で巻き戻るため
+      //    （propagateMentionRename の skipNoteIds と同じ理由）。
+      const apply = chatRunApplyRef.current;
+      if (apply && run.noteId && apply.noteId === run.noteId) {
+        if (!chatRunManager.claim(run.runId)) return;
+        if (run.status === "done") apply.applyResult(run);
+        else apply.applyError(run);
+        chatRunManager.consume(run.runId);
+        return;
+      }
+      // 2) エラーはファイルに書き戻さない（エラーを保存しない現行仕様に合わせる）。
+      //    manager に残し、元ノートの再マウント時に表示して消費する
+      if (run.status === "error") return;
+      // 3) 未採番の新規ノートのまま完了した run は書き戻し先が無い（極小ケース）
+      if (!run.noteId) {
+        console.warn("[chat-run] 書き戻し先ノートが未採番のため応答を破棄:", run.runId);
+        chatRunManager.consume(run.runId);
+        return;
+      }
+      // 4) ファイルへ書き戻す。実行中のユーザー編集を巻き戻さないよう、最新 doc を
+      //    読み直して chats だけ upsert する（buildDocument は経由しない）
+      if (!chatRunManager.claim(run.runId)) return;
+      try {
+        const baseDoc = await loadNoteDocByFullKey(run.noteId, fmGetCachedDocStable);
+        if (!baseDoc) {
+          console.warn("[chat-run] 書き戻し先ノートが読み込めませんでした:", run.noteId);
+          return;
+        }
+        const existing = baseDoc.chats?.find((c) => c.id === run.chatId) ?? null;
+        const chat = buildRunScopeChat(run, existing);
+        const nextDoc: GraphiumDocument = {
+          ...baseDoc,
+          chats: upsertChat(baseDoc.chats ?? [], chat),
+          // modifiedAt を必ず進める（doc キャッシュ採用判定・index の stale 判定が
+          // modifiedAt 依存のため。bump 漏れは「古い doc」と判定され巻き戻る）
+          modifiedAt: new Date().toISOString(),
+        };
+        await saveNoteDoc({
+          noteId: run.noteId,
+          doc: nextDoc,
+          // 保存成功時のみ doc キャッシュ・インデックスを最新化（#514 の不変条件）。
+          // キャッシュ更新が無いと、次に開いたとき stale キャッシュから復元され、
+          // そこからのオートセーブでディスク側の応答も巻き戻る
+          onSaved: (id, savedDoc) => fmReindexNoteFromDocStable(id, savedDoc),
+        });
+        // 書き戻し中（load→save の間）にユーザーが元ノートを開き直していた場合、
+        // マウント時の復元は書き戻し前の doc を読んでいるため、ライブ store の
+        // チャット一覧にも反映して取りこぼしを防ぐ
+        const applyAfter = chatRunApplyRef.current;
+        if (applyAfter && applyAfter.noteId === run.noteId) {
+          applyAfter.refreshChats(nextDoc);
+        }
+      } catch (err) {
+        console.error("[chat-run] チャット応答の書き戻しに失敗:", err);
+      } finally {
+        chatRunManager.consume(run.runId);
+      }
+    };
+    const unsubscribe = chatRunManager.subscribe((run) => void dispatch(run));
+    // 購読開始前に完了していた run を回収する（取りこぼし防止）
+    for (const run of chatRunManager.getSettledRuns()) void dispatch(run);
+    return unsubscribe;
+  }, [fmGetCachedDocStable, fmReindexNoteFromDocStable]);
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
   // activeLabel → showNoteList → showMemos → activeWikiView → activeWikiKind →
@@ -6431,6 +6673,7 @@ export function NoteApp() {
                     inline
                     noteId={noteId}
                     cachedDoc={fm.getCachedDoc(noteId) ?? undefined}
+                    getCachedDoc={fm.getCachedDoc}
                     onSaved={handleListPeekSaved}
                     onClose={() => setAssetSidePeekNoteId(null)}
                     onNavigate={(navId, savedDoc) => {
@@ -7084,6 +7327,7 @@ export function NoteApp() {
             onPropagateMentionRename={fm.propagateMentionRename}
             openSidePeekRef={openSidePeekRef}
             composerCitationRef={composerCitationRef}
+            chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
               const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());
@@ -7190,6 +7434,7 @@ export function NoteApp() {
               key={listSidePeekNoteId}
               noteId={listSidePeekNoteId}
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
+              getCachedDoc={fm.getCachedDoc}
               onSaved={handleListPeekSaved}
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
