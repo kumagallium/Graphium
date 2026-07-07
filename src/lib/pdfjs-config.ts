@@ -1,14 +1,22 @@
 // pdfjs worker のロケーション設定
-// 全ての pdfjs 利用箇所が import するだけで side-effect として workerSrc が設定される。
+// 全ての pdfjs 利用箇所が import するだけで side-effect として workerPort が設定される。
 //
 // 以前は unpkg.com の CDN を直叩きしていたが、Tauri デスクトップ配布の CSP と
-// オフライン環境で動かないため、Vite の `?url` import で worker をローカル
-// バンドルに同梱する方式に切り替えた。worker は別チャンクとして配信されるので
-// main bundle は太らない。
+// オフライン環境で動かないため worker をローカルに同梱する方式へ移行した。
+// さらに `?url` + workerSrc（URL 参照）方式では、Tauri の asset protocol が worker の
+// .mjs を正しい MIME で返せず module worker の起動に失敗する（Web は動くのに
+// デスクトップだけ「PDF の読み込みに失敗しました」になる）。そこで `?worker&inline` で
+// worker を blob として埋め込み、workerPort に渡すことで asset protocol を一切経由させず
+// MIME 問題を回避する。
 import { pdfjs } from "react-pdf";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import PdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker&inline";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+// Worker が存在する環境（ブラウザ／Tauri WebView）でのみ worker を起動する。
+// jsdom/vitest など Worker 未定義の環境では import 時の `new PdfjsWorker()` が
+// ReferenceError になる（テストは PDF を実描画しないため起動不要）。
+if (typeof Worker !== "undefined") {
+  pdfjs.GlobalWorkerOptions.workerPort = new PdfjsWorker();
+}
 
 // CJK（日本語・中国語・韓国語）PDF は CID フォント（Adobe-Japan1 等）を使う。
 // pdf.js はフォントが埋め込まれていても、これらを描画するには cmap データを
