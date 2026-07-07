@@ -639,6 +639,7 @@ export const ja: Record<string, string> = {
   // ── AI チャット追加 ──
   "aiChat.helpText": "ページ全体や選択ブロックについて AI に質問できます。\nCmd+Enter で送信",
   "aiChat.thinking": "考え中...",
+  "aiChat.stop": "停止",
   "aiChat.sendHint": "Cmd+Enter で送信",
   "aiChat.newChat": "+ 新しいチャット",
   "aiChat.noBackend": "AI 機能を使うには Docker またはローカル開発環境で Graphium を起動してください。GitHub Pages では利用できません。",

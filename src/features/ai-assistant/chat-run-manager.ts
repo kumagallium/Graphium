@@ -20,7 +20,7 @@
 
 import type { ChatMessage, GraphiumDocument, ScopeChat } from "../../lib/document-types";
 
-export type ChatRunStatus = "running" | "done" | "error";
+export type ChatRunStatus = "running" | "done" | "error" | "aborted";
 
 export type ChatRunSnapshot = {
   runId: string;
@@ -74,6 +74,8 @@ export type ChatRunApplyHandle = {
   applyResult: (run: ChatRunState) => void;
   /** error した run をライブ store に反映する（保存はしない） */
   applyError: (run: ChatRunState) => void;
+  /** 中断（aborted）した run をライブ store に反映する。応答なしで会話を確定し loading 解除・保存する */
+  applyAborted: (run: ChatRunState) => void;
   /** ファイル書き戻し後の doc.chats を store のチャット一覧へ反映する */
   refreshChats: (doc: GraphiumDocument) => void;
 };
@@ -81,8 +83,18 @@ export type ChatRunApplyHandle = {
 /** run が完了（done / error）したときに呼ばれるリスナー */
 type ChatRunListener = (run: ChatRunState) => void;
 
+/** fetch / AI SDK が中断時に投げる AbortError を判定する（DOMException / 非 DOM 環境の両対応） */
+function isAbortError(err: unknown): boolean {
+  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
+    return err.name === "AbortError";
+  }
+  return typeof err === "object" && err !== null && (err as { name?: string }).name === "AbortError";
+}
+
 class ChatRunManager {
   private runs = new Map<string, ChatRunState>();
+  // 実行中 run の中断ハンドル（Stop ボタン用）。settle / consume で掃除する。
+  private controllers = new Map<string, AbortController>();
   private listeners = new Set<ChatRunListener>();
   private claimedIds = new Set<string>();
 
@@ -91,17 +103,52 @@ class ChatRunManager {
    * リスナーに通知される。exec 側はエラーを表示用文言（localizeAiError 済み）の
    * Error に変換して throw する契約。
    */
-  start(snapshot: ChatRunSnapshot, exec: () => Promise<ChatRunResult>): void {
+  start(
+    snapshot: ChatRunSnapshot,
+    exec: (signal: AbortSignal) => Promise<ChatRunResult>,
+  ): void {
+    // 各 run に中断ハンドルを紐づける。Stop ボタン → abort(runId) で
+    // controller.abort() し、exec の fetch（signal 経由）とサーバー側 LLM 呼び出し
+    // （リクエスト切断で発火）の両方を止める。
+    const controller = new AbortController();
+    this.controllers.set(snapshot.runId, controller);
     const run: ChatRunState = { ...snapshot, status: "running" };
     this.runs.set(snapshot.runId, run);
-    void exec().then(
+    void exec(controller.signal).then(
       (result) => this.settle(snapshot.runId, { status: "done", result }),
-      (err: unknown) =>
-        this.settle(snapshot.runId, {
-          status: "error",
-          errorMessage: err instanceof Error ? err.message : String(err),
-        }),
+      (err: unknown) => {
+        // ユーザーの中断（Stop）は「エラー」ではなく "aborted" として確定する。
+        // exec 側で AbortError を握りつぶした場合の保険に signal.aborted も見る。
+        if (isAbortError(err) || controller.signal.aborted) {
+          this.settle(snapshot.runId, { status: "aborted" });
+        } else {
+          this.settle(snapshot.runId, {
+            status: "error",
+            errorMessage: err instanceof Error ? err.message : String(err),
+          });
+        }
+      },
     );
+  }
+
+  /**
+   * 実行中の run を中断する（Stop ボタン）。running でなければ何もしない。
+   * controller.abort() が exec の fetch を止め、その reject が settle("aborted") を発火する。
+   */
+  abort(runId: string): void {
+    const controller = this.controllers.get(runId);
+    const run = this.runs.get(runId);
+    if (!controller || !run || run.status !== "running") return;
+    controller.abort();
+  }
+
+  /** 指定チャット（activeChatId）宛の実行中 run をすべて中断する */
+  abortRunsForChat(chatId: string): void {
+    for (const run of this.runs.values()) {
+      if (run.chatId === chatId && run.status === "running") {
+        this.abort(run.runId);
+      }
+    }
   }
 
   /** 未採番だった run に、オートセーブで確定したノートのフルキーを紐づける */
@@ -146,6 +193,7 @@ class ChatRunManager {
   consume(runId: string): void {
     this.runs.delete(runId);
     this.claimedIds.delete(runId);
+    this.controllers.delete(runId);
   }
 
   /** 完了通知を購読する。返り値で解除 */
@@ -159,16 +207,22 @@ class ChatRunManager {
   /** テスト用: 全状態を破棄する */
   reset(): void {
     this.runs.clear();
+    this.controllers.clear();
     this.listeners.clear();
     this.claimedIds.clear();
   }
 
   private settle(
     runId: string,
-    outcome: { status: "done"; result: ChatRunResult } | { status: "error"; errorMessage: string },
+    outcome:
+      | { status: "done"; result: ChatRunResult }
+      | { status: "error"; errorMessage: string }
+      | { status: "aborted" },
   ): void {
     const run = this.runs.get(runId);
     if (!run) return; // consume 済み（リロード間際など）
+    // 中断ハンドルは用済み（このあと done/error/aborted で確定）。参照を残さない。
+    this.controllers.delete(runId);
     const settled: ChatRunState = { ...run, ...outcome };
     this.runs.set(runId, settled);
     for (const listener of this.listeners) {

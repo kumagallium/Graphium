@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork } from "lucide-react";
+import { Bot, BookPlus, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -36,6 +36,8 @@ type AiAssistantPanelProps = {
     scope?: GroundingScope,
     rewindIndex?: number,
   ) => void;
+  /** 実行中の AI 応答を中断する（Stop ボタン）。未指定なら停止 UI は出さない */
+  onStop?: () => void;
   /** 指定メッセージまで（含む）を引き継いだ新チャットに分岐する */
   onForkChat?: (index: number) => void;
   /** AI 回答をスコープ内にブロックとして挿入する */
@@ -64,6 +66,7 @@ type AiAssistantPanelProps = {
 
 export function AiAssistantPanel({
   onSubmit,
+  onStop,
   onForkChat,
   onInsertToScope,
   onReplaceBlocks,
@@ -541,14 +544,27 @@ export function AiAssistantPanel({
                 rows={2}
                 className="flex-1 text-xs resize-none"
               />
-              <Button
-                size="sm"
-                onClick={handleSubmit}
-                disabled={loading || !input.trim()}
-                className="self-end"
-              >
-                <Send size={12} />
-              </Button>
+              {loading && onStop ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onStop}
+                  title={t("aiChat.stop")}
+                  aria-label={t("aiChat.stop")}
+                  className="self-end"
+                >
+                  <Square size={12} className="fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={handleSubmit}
+                  disabled={loading || !input.trim()}
+                  className="self-end"
+                >
+                  <Send size={12} />
+                </Button>
+              )}
             </div>
             {/* 3 セグメントのチップは縮まないため、320px 級の狭幅では 2 行目に折り返す */}
             <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-3">

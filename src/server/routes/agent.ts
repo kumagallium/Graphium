@@ -190,6 +190,8 @@ app.post("/run", async (c) => {
       maxSteps: body.options?.max_turns ?? 10,
       feature: "agent.chat",
       modelConfig,
+      // クライアントが Stop で接続を切ると発火する。LLM 呼び出しを打ち切ってトークン消費を止める。
+      abortSignal: c.req.raw.signal,
     });
 
     // 検索 MCP（Tavily 等）のツール結果から web 出典を決定論的に抽出する。
@@ -216,6 +218,11 @@ app.post("/run", async (c) => {
       model: result.model,
     });
   } catch (err) {
+    // クライアントが Stop で接続を切った場合（AbortError）はエラーではない。
+    // レスポンスは届かない（fetch は既に abort 済み）ので、ログを汚さず静かに返す。
+    if (err instanceof Error && err.name === "AbortError") {
+      return c.json({ error: "aborted" }, 408);
+    }
     console.error("Agent run error:", err);
     // runAgentLoop 由来の CodedError（認証エラー等）は code を JSON に通す
     return c.json(errorBody(err), 500);
