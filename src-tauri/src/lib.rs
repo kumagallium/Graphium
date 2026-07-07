@@ -121,7 +121,7 @@ fn start_native_sidecar(
         let mut guard = state.0.lock().unwrap();
         if let Some(old_pid) = guard.take() {
             emit_log(&app, format!("[native] killing previous sidecar pid={old_pid}"));
-            let _ = kill_pid(old_pid);
+            let _ = kill_pid_sync(old_pid);
         }
     }
 
@@ -278,7 +278,7 @@ fn stop_native_sidecar(state: tauri::State<'_, NativeSidecarState>) -> Result<()
         guard.take()
     };
     if let Some(pid) = pid {
-        let _ = kill_pid(pid);
+        let _ = kill_pid_sync(pid);
     }
     Ok(())
 }
@@ -344,14 +344,18 @@ fn is_graphium_sidecar_process(pid: u32) -> bool {
     }
 }
 
-/// Graphium sidecar プロセスにシグナルを送って終了させる。
+/// Graphium sidecar プロセスにシグナルを送って終了させる（同期の実処理）。
 /// port 3001 に居座る "他人 sidecar"（消えた worktree の幽霊など）を回収するために使う。
 /// Unix: SIGTERM、Windows: taskkill /F /PID
 ///
 /// **セキュリティ**: 任意 PID を落とせないよう、対象が Graphium sidecar
 /// (`node .../sidecar/server.mjs`) である場合のみ実行する。それ以外は Err を返す。
-#[tauri::command]
-fn kill_pid(pid: u32) -> Result<(), String> {
+///
+/// `is_graphium_sidecar_process`（`ps` を起動）と `kill` の外部プロセス実行を含むため、
+/// Tauri command から直接呼ぶとメインスレッドを塞ぐ。command 経由は下の async
+/// `kill_pid` が `spawn_blocking` で逃がす。Rust 内部（start/stop_native_sidecar）
+/// からは同期のままこの関数を直接呼ぶ。
+fn kill_pid_sync(pid: u32) -> Result<(), String> {
     if !is_graphium_sidecar_process(pid) {
         return Err(format!(
             "refusing to kill pid={pid}: not a Graphium sidecar process"
@@ -382,6 +386,18 @@ fn kill_pid(pid: u32) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Graphium sidecar プロセスを kill する Tauri command。
+/// 内部で `ps`（コマンドライン確認）と `kill` を外部プロセスとして実行するため、
+/// 同期 command のままだと Tauri のメインスレッドを塞ぎ、起動直後に並行する他の
+/// invoke（例: list_note_files）を待たせて「読み込み中」ハングの一因になりうる。
+/// `spawn_blocking` で専用スレッドへ逃がし、メインスレッドを空けておく。
+#[tauri::command]
+async fn kill_pid(pid: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || kill_pid_sync(pid))
+        .await
+        .map_err(|e| format!("kill task join failed: {e}"))?
 }
 
 // --- アプリ設定（Graphium ルート配下のパス解決用） ---
