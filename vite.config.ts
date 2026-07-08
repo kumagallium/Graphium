@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { execSync } from "node:child_process";
-import { writeFileSync, cpSync, existsSync } from "node:fs";
+import { writeFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 
 // pdfjs-dist の実体ディレクトリを解決する。pnpm は node_modules/pdfjs-dist を
@@ -14,7 +14,7 @@ const pdfjsDistDir = path.dirname(
 );
 
 /**
- * pdf.js の cmap / 標準フォントを public/pdfjs/ にコピーする Vite プラグイン。
+ * pdf.js の cmap / 標準フォント / worker を public/pdfjs/ にコピーする Vite プラグイン。
  *
  * CJK（日本語等）PDF は CID フォントを使い、これらを描画するには cmap データが
  * 必須。未指定だとフォントが埋め込まれていても文字だけ消える。実体は
@@ -26,11 +26,23 @@ const pdfjsDistDir = path.dirname(
 function pdfjsAssetsPlugin(): Plugin {
   const copy = () => {
     const dest = path.resolve(__dirname, "public/pdfjs");
+    mkdirSync(dest, { recursive: true });
     for (const sub of ["cmaps", "standard_fonts"]) {
       const from = path.join(pdfjsDistDir, sub);
       if (existsSync(from)) {
         cpSync(from, path.join(dest, sub), { recursive: true });
       }
+    }
+    // pdf.js worker を .js 拡張子でコピーする。pdf.js は worker を
+    // `new Worker(workerSrc, { type: "module" })` で生成するので workerSrc は
+    // 同一オリジンの URL でよい。Tauri の asset protocol は worker の .mjs を
+    // module worker 用の MIME で配信できず起動に失敗するが、.js はアプリ本体の
+    // スクリプトと同様に正しく配信されるため module worker を起動できる。
+    // workerSrc 方式は <Document> ごとに worker を生成・破棄するため、単一
+    // workerPort を共有したときの「the worker is being destroyed」も起きない。
+    const workerFrom = path.join(pdfjsDistDir, "build", "pdf.worker.min.mjs");
+    if (existsSync(workerFrom)) {
+      cpSync(workerFrom, path.join(dest, "pdf.worker.min.js"));
     }
   };
   return {

@@ -1,24 +1,24 @@
-// pdfjs worker のロケーション設定
+// pdfjs worker と CJK アセットのロケーション設定。
 // 全ての pdfjs 利用箇所が import するだけで side-effect として workerSrc が設定される。
 //
-// 以前は unpkg.com の CDN を直叩きしていたが、Tauri デスクトップ配布の CSP と
-// オフライン環境で動かないため、Vite の `?url` import で worker をローカル
-// バンドルに同梱する方式に切り替えた。worker は別チャンクとして配信されるので
-// main bundle は太らない。
-import { pdfjs } from "react-pdf";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-
-// CJK（日本語・中国語・韓国語）PDF は CID フォント（Adobe-Japan1 等）を使う。
-// pdf.js はフォントが埋め込まれていても、これらを描画するには cmap データを
-// 必要とし、未指定だと translateFont が失敗してテキストだけ消える（画像は出る）。
-// standardFontData は base-14 を非埋め込みで使う PDF の fallback 用。
+// worker は「ドキュメントごとに専用」で動かす（workerSrc = URL 方式）。単一の
+// workerPort を共有すると、最大化などで一方の <Document> がアンマウントされ
+// loadingTask.destroy() が走った時に共有 worker を破棄し、次の getDocument が
+// 「PDFWorker.create - the worker is being destroyed」で失敗する。workerSrc 方式は
+// pdf.js が <Document> ごとに worker を生成・破棄するためこの問題が起きない。
 //
-// 実体は vite-plugin-static-copy が node_modules/pdfjs-dist から dist 直下の
-// pdfjs/ 配下にコピーする（vite.config.ts 参照）。BASE_URL を前置することで
-// Web (/Graphium/) と Tauri (/) の双方で正しく解決される。
+// worker の実体は vite.config.ts の pdfjsAssetsPlugin が public/pdfjs/ に
+// pdf.worker.min.js（.mjs を .js にリネーム）としてコピーする。pdf.js は worker を
+// `new Worker(workerSrc, { type: "module" })` で生成する。Tauri の asset protocol は
+// .mjs を module worker 用の MIME で配信できないが、.js はアプリ本体スクリプトと
+// 同様に配信されるため module worker を起動できる（Web/Tauri 双方で BASE_URL 経由）。
+import { pdfjs } from "react-pdf";
+
+// public/pdfjs/ 配下。BASE_URL を前置することで Web (/Graphium/) と Tauri (/) の
+// 双方で正しく解決される。
 const PDFJS_ASSET_BASE = `${import.meta.env.BASE_URL}pdfjs/`;
+
+pdfjs.GlobalWorkerOptions.workerSrc = `${PDFJS_ASSET_BASE}pdf.worker.min.js`;
 
 /**
  * getDocument / react-pdf の <Document options> に渡す共通オプション。
