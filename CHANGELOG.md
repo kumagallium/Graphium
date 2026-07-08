@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.17.2](https://github.com/kumagallium/Graphium/compare/v0.17.1...v0.17.2) - 2026-07-08
+
+- fix: recover from startup "Loading" hang after auto-update by @kumagallium in https://github.com/kumagallium/Graphium/pull/546
+- fix: open + maximize uploaded PDFs in the Tauri desktop app (CSP blob: + .js worker) by @kumagallium in https://github.com/kumagallium/Graphium/pull/548
+- feat: add a Stop button to cancel in-flight AI chat responses by @kumagallium in https://github.com/kumagallium/Graphium/pull/549
+
 ## [v0.17.1](https://github.com/kumagallium/Graphium/compare/v0.17.0...v0.17.1) - 2026-07-06
 
 - fix: open URL sources in-app instead of failing or leaving to the browser by @kumagallium in https://github.com/kumagallium/Graphium/pull/543
