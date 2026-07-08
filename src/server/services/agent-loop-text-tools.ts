@@ -25,7 +25,7 @@ type ParsedCall = {
 const TOOL_CALL_REGEX = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
 
 export async function runTextToolsLoop(params: AgentRunParams): Promise<AgentRunResult> {
-  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig } = params;
+  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, abortSignal } = params;
 
   const toolMap: Record<string, AnyTool> = (tools ?? {}) as Record<string, AnyTool>;
   const toolNames = Object.keys(toolMap);
@@ -48,10 +48,13 @@ export async function runTextToolsLoop(params: AgentRunParams): Promise<AgentRun
   const startedAt = Date.now();
 
   for (let step = 0; step < maxSteps; step += 1) {
+    // 中断されたらツール実行の合間でも離脱する（次ステップの LLM 呼び出しを避ける）
+    if (abortSignal?.aborted) break;
     const r = await generateText({
       model,
       system: augmentedSystem,
       messages: currentMessages,
+      ...(abortSignal ? { abortSignal } : {}),
     });
     const tokens = extractTokenFields(r.usage);
     totalInput += tokens.inputTokens;

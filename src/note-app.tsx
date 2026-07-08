@@ -2330,9 +2330,9 @@ function NoteEditorInner({
             baseMessages,
             userMessage: userChatMessage,
           },
-          async () => {
+          async (signal) => {
             try {
-              const response = await runAgent(req);
+              const response = await runAgent(req, signal);
               // Wiki コンテキストが使われた場合、引用情報を処理する。
               // 番号引用 [#N] / タイトル引用 / 全角【】を正規の [Source: "title"] に揃え、
               // hallucination を除去して、末尾に「Knowledge referenced」一覧を付ける。
@@ -2382,6 +2382,9 @@ function NoteEditorInner({
                 sessionId: response.session_id,
               };
             } catch (err) {
+              // ユーザーが Stop した場合は中断（AbortError）。エラー文言に変換せず
+              // そのまま投げ直し、manager 側に "aborted" と判定させる（エラー表示しない）。
+              if (signal.aborted) throw err;
               // 既知の code（NO_MODEL_REGISTERED / 401 系）は i18n 文言に変換し、
               // manager には表示用文言を message に持つ Error として渡す契約
               throw new Error(localizeAiError(err));
@@ -2406,6 +2409,13 @@ function NoteEditorInner({
     },
     [aiAssistant, markDirty],
   );
+
+  // AI チャット停止（Stop ボタン）: 現在アクティブな会話の実行中 run を中断する。
+  // fetch abort + サーバー側 LLM 停止で、無駄なトークン消費を止めて入力に戻れる。
+  const handleAiChatStop = useCallback(() => {
+    const chatId = aiAssistant.activeChatId;
+    if (chatId) chatRunManager.abortRunsForChat(chatId);
+  }, [aiAssistant.activeChatId]);
 
   // Composer 結果をドキュメント末尾にブロックとして挿入するヘルパー。
   // Compose / Insert PROV で共通利用。scope は意図的に気にせず常に末尾挿入（Composer の呼び出し点は
@@ -3077,6 +3087,19 @@ function NoteEditorInner({
           run.errorMessage ?? "",
           { keepLoading: hasOtherRunningRun(run) },
         );
+      },
+      applyAborted: (run) => {
+        // 中断はエラーではない。応答（assistant）なしで会話を確定し loading を解除する。
+        // buildRunScopeChat は status !== "done" のとき user メッセージまでを返すので、
+        // applyChatRunResult に通せば「質問だけ」の会話になる。sessionId は送信時のものを
+        // 維持し（result が無いので run.sessionId）、markDirty で保存に乗せる。
+        const h = chatRunHandlersRef.current;
+        const existing = h.aiAssistant.chats.find((c) => c.id === run.chatId) ?? null;
+        const chat = buildRunScopeChat(run, existing);
+        h.aiAssistant.applyChatRunResult(chat, run.sessionId, {
+          keepLoading: hasOtherRunningRun(run),
+        });
+        h.markDirty();
       },
       refreshChats: (doc) => {
         if (doc.chats && doc.chats.length > 0) {
@@ -4123,6 +4146,7 @@ function NoteEditorInner({
               {rightTab === "chat" && (
                 <AiAssistantPanel
                   onSubmit={handleAiChatSubmit}
+                  onStop={handleAiChatStop}
                   onForkChat={handleAiChatFork}
                   onInsertToScope={handleInsertToScope}
                   onReplaceBlocks={handleReplaceBlocks}
@@ -4508,6 +4532,7 @@ export function NoteApp() {
       if (apply && (run.noteId ? apply.noteId === run.noteId : apply.ownsRun(run.runId))) {
         if (!chatRunManager.claim(run.runId)) return;
         if (run.status === "done") apply.applyResult(run);
+        else if (run.status === "aborted") apply.applyAborted(run);
         else apply.applyError(run);
         chatRunManager.consume(run.runId);
         return;
@@ -4519,9 +4544,10 @@ export function NoteApp() {
         chatRunManager.consume(run.runId);
         return;
       }
-      // 3) エラーはファイルに書き戻さない（エラーを保存しない現行仕様に合わせる）。
-      //    manager に残し、元ノートの再マウント時に表示して消費する
-      if (run.status === "error") return;
+      // 3) エラー・中断はファイルに書き戻さない（エラーを保存しない現行仕様に合わせる）。
+      //    アクティブノートで止めた場合は case 1 の applyAborted が markDirty 経由で
+      //    保存する。切替後に止めた稀ケースはここへ来るが、破棄で許容する。
+      if (run.status === "error" || run.status === "aborted") return;
       // 4) 対象ノートが一覧・アセットビューのサイドピークで開かれている間は保留する。
       //    ピークの doSave（docRef spread）と書き戻しの load→save が交錯すると、
       //    直前のピーク保存の本文が巻き戻るため。ピークが閉じたら effect 再実行

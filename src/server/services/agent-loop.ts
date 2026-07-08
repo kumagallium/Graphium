@@ -21,6 +21,8 @@ export type AgentRunParams = {
   modelConfig?: ModelConfig;
   /** サンプリング温度。0 で実行間のブレを抑える（翻訳など決定性が欲しい用途向け）。未指定はモデル既定。 */
   temperature?: number;
+  /** 中断シグナル。ユーザーが Stop したとき LLM 呼び出しを打ち切る（無駄なトークン消費を止める）。 */
+  abortSignal?: AbortSignal;
 };
 
 export type AgentRunResult = {
@@ -110,7 +112,7 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
     systemPrompt: toWellFormed(params.systemPrompt),
     messages: sanitizeMessages(params.messages),
   };
-  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature } = safeParams;
+  const { model, modelId, systemPrompt, messages, tools, maxSteps = 10, feature, modelConfig, temperature, abortSignal } = safeParams;
 
   // openai-compatible（sakura / gpt-oss-120b 等）に加え、claude-subscription
   // （ai-sdk-provider-claude-code 経由）も AI SDK の tools パラメータをネイティブに
@@ -137,6 +139,7 @@ async function runAgentLoopInner(params: AgentRunParams): Promise<AgentRunResult
     // tools が空の場合は undefined にする
     ...(tools && Object.keys(tools).length > 0 ? { tools: tools as any } : {}),
     stopWhen: stepCountIs(maxSteps),
+    ...(abortSignal ? { abortSignal } : {}),
   });
   const durationMs = Date.now() - startedAt;
 
