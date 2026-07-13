@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInlineCitations } from "./wiki-service";
+import { parseInlineCitations, promoteClaimStatusIfCorroborated } from "./wiki-service";
 
 const emptyIndex: any[] = [];
 
@@ -149,5 +149,88 @@ describe("parseInlineCitations - 装飾と引用の組み合わせ", () => {
       styles: { textColor: "blue" },
     });
     expect(knowledgeLinks).toHaveLength(1);
+  });
+});
+
+describe("promoteClaimStatusIfCorroborated - candidate → verified 昇格", () => {
+  const baseMeta = (over: Record<string, unknown> = {}) => ({
+    kind: "claim",
+    derivedFromNotes: ["note-a"],
+    derivedFromChats: [],
+    generatedAt: "2026-07-01T00:00:00Z",
+    generatedBy: { model: "m", version: "1.0.0" },
+    status: "candidate",
+    ...over,
+  }) as any;
+
+  it("単一ソースの candidate は昇格しない", () => {
+    const meta = promoteClaimStatusIfCorroborated(baseMeta());
+    expect(meta.status).toBe("candidate");
+  });
+
+  it("2 ノート以上が依拠したら verified に昇格する", () => {
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ derivedFromNotes: ["note-a", "note-b"] }),
+    );
+    expect(meta.status).toBe("verified");
+  });
+
+  it("重複・空文字は独立ソースとして数えない", () => {
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ derivedFromNotes: ["note-a", "note-a", ""] }),
+    );
+    expect(meta.status).toBe("candidate");
+  });
+
+  it("外部ソース（pdf:/url:）も独立ソースとして数える", () => {
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ derivedFromNotes: ["note-a", "pdf:paper-1"] }),
+    );
+    expect(meta.status).toBe("verified");
+  });
+
+  it("claim 以外は触らない", () => {
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ kind: "summary", status: undefined, derivedFromNotes: ["a", "b"] }),
+    );
+    expect(meta.status).toBeUndefined();
+  });
+
+  it("既に verified なら何もしない（冪等）", () => {
+    const meta = baseMeta({ status: "verified", derivedFromNotes: ["a", "b", "c"] });
+    expect(promoteClaimStatusIfCorroborated(meta)).toBe(meta);
+  });
+
+  it("status 未設定（旧データ）の claim は昇格させない", () => {
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ status: undefined, derivedFromNotes: ["a", "b"] }),
+    );
+    expect(meta.status).toBeUndefined();
+  });
+
+  it("selfId（自己参照混入）は独立ソースとして数えない", () => {
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ derivedFromNotes: ["wiki-self", "note-a"] }),
+      { selfId: "wiki-self" },
+    );
+    expect(meta.status).toBe("candidate");
+  });
+
+  it("isIndependentSource が false を返した ID（他 wiki ページ等）は数えない", () => {
+    const wikiIds = new Set(["other-wiki"]);
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ derivedFromNotes: ["note-a", "other-wiki"] }),
+      { isIndependentSource: (id) => !wikiIds.has(id) },
+    );
+    expect(meta.status).toBe("candidate");
+  });
+
+  it("selfId と wiki ID を除いても 2 件残れば昇格する", () => {
+    const wikiIds = new Set(["other-wiki"]);
+    const meta = promoteClaimStatusIfCorroborated(
+      baseMeta({ derivedFromNotes: ["wiki-self", "other-wiki", "note-a", "pdf:paper-1"] }),
+      { selfId: "wiki-self", isIndependentSource: (id) => !wikiIds.has(id) },
+    );
+    expect(meta.status).toBe("verified");
   });
 });

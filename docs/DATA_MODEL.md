@@ -502,11 +502,26 @@ Claims can be qualified along two axes:
     experience.
   - `bridge` — an abstraction across multiple findings (produced by the
     cross-updater).
-- **`status`** (mostly for `principle`):
-  - `candidate` — supported by one note. Included in retrieval but
-    rendered dimly in UI.
-  - `verified` — supported by two or more notes. Treated as a principle
-    the user repeatedly relies on.
+- **`status`**:
+  - `candidate` — supported by one source. Every newly generated Claim
+    starts here.
+  - `verified` — supported by two or more independent sources.
+    Promotion is automatic and evaluated at the wiki save chokepoint
+    (`handleSaveWikiFile` / `handleCreateWikiFile` in
+    `src/hooks/use-file-manager.ts`, using
+    `promoteClaimStatusIfCorroborated` from
+    `src/features/wiki/wiki-service.ts`): a `candidate` Claim whose
+    `derivedFromNotes` contains two or more distinct *independent*
+    sources is promoted. Independent means the id is not the wiki's
+    own id (legacy self-references exist from an old regenerate bug)
+    and not another wiki page's id (the orphan auto-link can add
+    those); external-source ids (`pdf:` / `url:` / `document:` /
+    `chat:`) do count. Promotion never reverses — removing a source
+    later does not demote, and a regenerate (which rebuilds
+    `wikiMeta` as `candidate`) carries the previous `verified` over.
+    Verified Claims show a "Corroborated" badge on the entry banner;
+    this is a separate axis from world-grounding verdicts and
+    `epistemicStatus`.
 
 ### 3.3 Section embeddings
 

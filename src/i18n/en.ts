@@ -878,6 +878,9 @@ export const en: Record<string, string> = {
   "wikiBanner.worldMatchedKeywords": "Matched keywords",
   "wikiBanner.worldMatchedKeywordsCount": "{count} keyword(s) matched",
   "wikiBanner.worldMatchedKeywordsHint": "How many KB keywords this piece contained. Count, not percentage — independent of KB entry's total keyword count.",
+  // Claim corroboration (candidate → verified promotion)
+  "wikiBanner.corroborated": "Corroborated",
+  "wikiBanner.corroboratedHint": "Backed by two or more independent notes (automatically promoted from a single-source candidate). Separate from world-grounding verdicts.",
   // Phase γ: Toulmin extension (rebuttal / backing / modalQualifier) + Phase η: epistemicStatus
   "wikiBanner.epistemicStatusLabel": "Epistemic status",
   "wikiBanner.epistemicStatusHint": "How firmly grounded this claim is in the source notes. Speculation → Interpretation → Observation → Established.",

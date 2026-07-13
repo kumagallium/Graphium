@@ -15,6 +15,7 @@ export {
   extractPlainTextFromDoc,
   type MultiSourcePart,
   buildWikiDocument, mergeIntoWikiDocument, rewriteAndMerge,
+  promoteClaimStatusIfCorroborated,
   embedWikiSections, markEditedSections,
   // 横断更新
   fetchCrossUpdateProposals, applyCrossUpdate, extractWikiDetail, extractBodyPreview,
