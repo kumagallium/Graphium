@@ -330,6 +330,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [showAddForm, setShowAddForm] = useState(false);
   // claude-subscription 1-click（desktop で CLI 検出時のみ提示）
   const [claudeCliAvailable, setClaudeCliAvailable] = useState(false);
+  // CLI にログイン中のアカウント（登録済みサブスクモデルに「どのアカウントで推論されるか」を表示）
+  const [claudeCliAccount, setClaudeCliAccount] = useState<{
+    email: string | null;
+    organization: string | null;
+  } | null>(null);
+  // CLAUDE_CODE_OAUTH_TOKEN 設定時は CLI がログインよりトークンを優先するため表示を切り替える
+  const [claudeTokenFromEnv, setClaudeTokenFromEnv] = useState(false);
   const [registeringSubscription, setRegisteringSubscription] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState("");
   const [addMode, setAddMode] = useState<"new" | "existing">("new");
@@ -884,7 +891,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         const res = await fetch(`${apiBase()}/models/claude-cli-status`);
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled) setClaudeCliAvailable(!!data.available);
+        if (!cancelled) {
+          setClaudeCliAvailable(!!data.available);
+          setClaudeCliAccount(data.account ?? null);
+          setClaudeTokenFromEnv(data.token_source === "env");
+        }
       } catch { /* 検出できなければ提示しないだけ */ }
     })();
     return () => { cancelled = true; };
@@ -2200,6 +2211,26 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <div className="min-w-0 mr-2">
                         <span className="text-sm font-medium text-foreground">{m.name}</span>
                         <span className="text-xs text-muted-foreground ml-2">{m.provider} / {m.model_id}</span>
+                        {/* サブスクは認証が CLI 側にあり Graphium から制御できないため、
+                            どのアカウントで推論されるか+切替手順をここで見える化する */}
+                        {m.provider === "claude-subscription" && (
+                          <div className="mt-1 space-y-0.5">
+                            <p className="text-[11px] text-foreground/80">
+                              {claudeTokenFromEnv
+                                ? t("settings.models.subscriptionAccountEnvToken")
+                                : claudeCliAccount
+                                  ? t("settings.models.subscriptionAccount", {
+                                      account: [claudeCliAccount.email, claudeCliAccount.organization]
+                                        .filter(Boolean)
+                                        .join(" · "),
+                                    })
+                                  : t("settings.models.subscriptionAccountUnknown")}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {t("settings.models.subscriptionSwitchHint")}
+                            </p>
+                          </div>
+                        )}
                       </div>
                       {deleteConfirm === m.id ? (
                         <div className="flex items-center gap-1 shrink-0">
