@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.17.3](https://github.com/kumagallium/Graphium/compare/v0.17.2...v0.17.3) - 2026-07-13
+
+- Fix hover-highlight scroll drift; default AI chat grounding to This note by @kumagallium in https://github.com/kumagallium/Graphium/pull/550
+- feat: record Knowledge Layer growth as first-class PROV activities by @kumagallium in https://github.com/kumagallium/Graphium/pull/553
+- feat: show ingested sources per revision in the history panel (growth timeline) by @kumagallium in https://github.com/kumagallium/Graphium/pull/555
+- feat: promote corroborated Claims from candidate to verified by @kumagallium in https://github.com/kumagallium/Graphium/pull/556
+- feat: show Claude Code CLI account for subscription models by @kumagallium in https://github.com/kumagallium/Graphium/pull/554
+- fix: skip tiny decorative fragments in PDF embedded-image extraction by @kumagallium in https://github.com/kumagallium/Graphium/pull/552
+- feat: grow existing Insights by reinforcement instead of dropping duplicates by @kumagallium in https://github.com/kumagallium/Graphium/pull/557
+- feat: surface Knowledge growth history in lineage and graph views by @kumagallium in https://github.com/kumagallium/Graphium/pull/558
+- fix: close two small Knowledge gaps (side-peek growth strip, Insight lead embedding) by @kumagallium in https://github.com/kumagallium/Graphium/pull/559
+
 ## [v0.17.2](https://github.com/kumagallium/Graphium/compare/v0.17.1...v0.17.2) - 2026-07-08
 
 - fix: recover from startup "Loading" hang after auto-update by @kumagallium in https://github.com/kumagallium/Graphium/pull/546
