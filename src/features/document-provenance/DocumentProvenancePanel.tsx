@@ -6,10 +6,24 @@ import { useState } from "react";
 import type { DocumentProvenance, RevisionSummary, RevisionEntity, BlockContentDiff } from "./types";
 import { useT } from "../../i18n";
 
+/** 取り込みソース（EditActivity.used）の表示用解決結果 */
+export type ResolvedRevisionSource = {
+  /** 表示ラベル（ノートタイトル / 外部ソースのキー） */
+  label: string;
+  /** ソース種別（note / wiki / pdf / url / document / chat） */
+  kind: string;
+  /** SidePeek 等で開ける ID（開けないソースは undefined） */
+  openId?: string;
+};
+
 type Props = {
   provenance: DocumentProvenance | null | undefined;
   /** リビジョン選択時のコールバック（ブロック ID 一覧） */
   onHighlightBlocks?: (blockIds: string[]) => void;
+  /** EditActivity.used の ID を表示用に解決する（未指定なら生 ID をそのまま表示） */
+  resolveSource?: (id: string) => ResolvedRevisionSource;
+  /** ソースチップのクリックで開く（resolveSource が openId を返したチップのみ有効） */
+  onOpenSource?: (openId: string) => void;
 };
 
 /** テキストを省略表示（長すぎる場合） */
@@ -118,7 +132,7 @@ function ContentDiffView({ diffs }: { diffs: BlockContentDiff[] }) {
   );
 }
 
-export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props) {
+export function DocumentProvenancePanel({ provenance, onHighlightBlocks, resolveSource, onOpenSource }: Props) {
   const t = useT();
   const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
 
@@ -199,6 +213,39 @@ export function DocumentProvenancePanel({ provenance, onHighlightBlocks }: Props
                 );
               })()}
             </div>
+            {/* 成長タイムライン: この操作が取り込んだソース（EditActivity.used） */}
+            {activity && activity.used && activity.used.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                <span className="text-[10px] text-muted-foreground/70 shrink-0">
+                  {t("history.sources")}
+                </span>
+                {activity.used.map((srcId) => {
+                  const resolved = resolveSource?.(srcId) ?? { label: srcId, kind: "note" };
+                  const clickable = Boolean(resolved.openId && onOpenSource);
+                  const chipClass =
+                    "max-w-[160px] truncate rounded border border-border/70 bg-muted/40 px-1 py-px text-[10px] text-muted-foreground";
+                  return clickable ? (
+                    <button
+                      key={srcId}
+                      type="button"
+                      title={`${resolved.kind}: ${srcId}`}
+                      className={`${chipClass} cursor-pointer hover:border-primary/60 hover:text-foreground`}
+                      onClick={(e) => {
+                        // 行クリック（ハイライト切替）に伝播させない
+                        e.stopPropagation();
+                        onOpenSource!(resolved.openId!);
+                      }}
+                    >
+                      {resolved.label}
+                    </button>
+                  ) : (
+                    <span key={srcId} title={`${resolved.kind}: ${srcId}`} className={chipClass}>
+                      {resolved.label}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             {summaryParts.length > 0 && (
               <div className="text-muted-foreground">
                 {summaryParts.join(" | ")}

@@ -230,6 +230,7 @@ export const en: Record<string, string> = {
   "history.type.wikiDedupMerge": "Dedup merge",
   "history.type.wikiRegenerate": "Regenerate",
   "history.type.wikiAtomize": "Insight discovery",
+  "history.sources": "Sources",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",
