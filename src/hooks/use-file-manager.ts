@@ -1702,9 +1702,12 @@ export function useFileManager(authenticated: boolean) {
   }, [setActiveFileId]);
 
   // Wiki を保存
+  // 戻り値: 実際に保存できたら true。savingRef ガードでスキップした場合と
+  // 保存例外の場合は false（従来は void で成功と区別できず、バックグラウンド
+  // パイプラインが「保存されていないのに成功記録する」偽成功の温床だった）。
   const handleSaveWikiFile = useCallback(
-    async (wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions) => {
-      if (savingRef.current) return;
+    async (wikiId: string, doc: GraphiumDocument, options?: WikiSaveOptions): Promise<boolean> => {
+      if (savingRef.current) return false;
       savingRef.current = true;
       setSaving(true);
       try {
@@ -1808,8 +1811,10 @@ export function useFileManager(authenticated: boolean) {
           setMediaIndex(updated);
           saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
         }
+        return true;
       } catch (err) {
         console.error("Wiki の保存に失敗:", err);
+        return false;
       } finally {
         savingRef.current = false;
         setSaving(false);

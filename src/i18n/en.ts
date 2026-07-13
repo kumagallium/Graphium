@@ -230,6 +230,7 @@ export const en: Record<string, string> = {
   "history.type.wikiDedupMerge": "Dedup merge",
   "history.type.wikiRegenerate": "Regenerate",
   "history.type.wikiAtomize": "Insight discovery",
+  "history.type.wikiReinforce": "Reinforced",
   "history.sources": "Sources",
 
   // ── ラベル UI ──
@@ -1481,6 +1482,7 @@ export const en: Record<string, string> = {
   "ingest.analyzingClusters": "Analyzing {claims} claims / {clusters} clusters...",
   "ingest.clusterProgress": "cluster {current}/{total} \"{title}\" ({count} {kind})",
   "ingest.noNewAtoms": "No new {kind}",
+  "ingest.reinforced": "{count} reinforced",
   "ingest.atomLayerDisabled": "Atom Layer is disabled",
   "ingest.needTwoWikis": "{count} wiki(s) (needs at least 2)",
   "ingest.analyzingWikis": "Analyzing {count} wikis...",

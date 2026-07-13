@@ -76,7 +76,10 @@ export type EditActivityType =
   /** 既存 Wiki のソースからの再生成（re-lift / マルチソース regenerate） */
   | "wiki_regenerate"
   /** Claim 群からの構造抽象（Atom / Insight）の生成 */
-  | "wiki_atomize";
+  | "wiki_atomize"
+  /** 既存 Atom への支持追加 — discovery の重複候補が依拠していた新しい Claim を
+   *  derivedFromClaims に取り込む（本文は変えない。Atom の成長経路）。 */
+  | "wiki_reinforce";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {

@@ -73,6 +73,7 @@ function activityTypeLabel(type: string, t: ReturnType<typeof useT>): string {
     case "wiki_dedup_merge": return t("history.type.wikiDedupMerge");
     case "wiki_regenerate": return t("history.type.wikiRegenerate");
     case "wiki_atomize": return t("history.type.wikiAtomize");
+    case "wiki_reinforce": return t("history.type.wikiReinforce");
     default: return type;
   }
 }
