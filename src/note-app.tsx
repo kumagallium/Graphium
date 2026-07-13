@@ -4821,10 +4821,11 @@ export function NoteApp() {
 
     // 各 wiki の derivedFromNotes をまず確定（キャッシュ優先・無ければ index）。
     const entries = fm.wikiFiles.map((wf) => {
-      const wm = fm.getCachedDoc(`wiki:${wf.id}`)?.wikiMeta;
+      const cachedDoc = fm.getCachedDoc(`wiki:${wf.id}`);
+      const wm = cachedDoc?.wikiMeta;
       const derivedFromNotes =
         wm?.derivedFromNotes ?? indexById.get(wf.id)?.derivedFromNotes ?? [];
-      return { wf, wm, derivedFromNotes };
+      return { wf, wm, cachedDoc, derivedFromNotes };
     });
 
     const scope = selectNoteScopedWikiIds(
@@ -4833,11 +4834,12 @@ export function NoteApp() {
     );
 
     const out: WikiEntityInfo[] = [];
-    for (const { wf, wm, derivedFromNotes } of entries) {
+    for (const { wf, wm, cachedDoc, derivedFromNotes } of entries) {
       if (!scope.has(wf.id)) continue;
       const meta = fm.wikiMetas.get(wf.id);
       if (!meta) continue;
       out.push({
+        id: wf.id,
         title: meta.title,
         kind: meta.kind,
         status: meta.status ?? "active",
@@ -4847,6 +4849,10 @@ export function NoteApp() {
         citedKnowledgeIds: wm?.citedKnowledgeIds,
         // Atom の上流（atomize lane）。export で Derivation を出さないと孤児になる。
         derivedFromClaims: wm?.derivedFromClaims,
+        derivedFromChats: wm?.derivedFromChats,
+        // 成長過程（編集来歴）。キャッシュ未ロードの wiki は同梱されない
+        // （derivedFromNotes と同じキャッシュ依存の制約）。
+        documentProvenance: cachedDoc?.documentProvenance,
         atomType: meta.atomType,
         synthesisMode: meta.synthesisMode,
         hypothesisStatus: meta.hypothesisStatus,
@@ -5033,8 +5039,9 @@ export function NoteApp() {
                 const nIdx = buildNoteIndex(fm.noteIndex);
                 const mergedDoc = await rewriteAndMerge(existingDoc, wiki, job.noteId, result.model, getLocale(), nIdx, ingestSkills);
                 await fm.handleSaveWikiFile(wiki.mergeTargetId, mergedDoc, {
-                  activityType: "ai_generation",
+                  activityType: "wiki_merge",
                   agentLabel: result.model ?? undefined,
+                  sources: [job.noteId],
                 });
                 embedWikiSections(wiki.mergeTargetId, mergedDoc).catch(() => {});
                 createdWikiIds.push(wiki.mergeTargetId);
@@ -5118,8 +5125,9 @@ export function NoteApp() {
                   if (!targetDoc) continue;
                   const updatedDoc = await applyCrossUpdate(targetDoc, proposal, job.noteId, result.model, buildNoteIndex(fm.noteIndex), ingestSkills, getLocale());
                   await fm.handleSaveWikiFile(proposal.targetWikiId, updatedDoc, {
-                    activityType: "ai_generation",
+                    activityType: "wiki_cross_update",
                     agentLabel: result.model ?? undefined,
+                    sources: [job.noteId],
                   });
                   embedWikiSections(proposal.targetWikiId, updatedDoc).catch(() => {});
                   wikiLog.append(
@@ -5264,7 +5272,7 @@ export function NoteApp() {
             );
             for (const candidate of atomResult.atoms) {
               const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, getLocale());
-              const newId = await fm.handleCreateWikiFile(atomDoc);
+              const newId = await fm.handleCreateWikiFile(atomDoc, { activityType: "wiki_atomize" });
               embedWikiSections(newId, atomDoc).catch(() => {});
               wikiLog.append(
                 "ingest",
@@ -5369,7 +5377,8 @@ export function NoteApp() {
                   if (!targetDoc) continue;
                   const updated = await applyCrossUpdate(targetDoc, proposal, wikiId, null, buildNoteIndex(fm.noteIndex), orphanSkills, getLocale());
                   await fm.handleSaveWikiFile(proposal.targetWikiId, updated, {
-                    activityType: "ai_generation",
+                    activityType: "wiki_cross_update",
+                    sources: [wikiId],
                   });
                   wikiLog.append("cross-update", [proposal.targetWikiId, wikiId],
                     `Auto-fix orphan: linked "${doc.title}" → "${proposal.targetWikiTitle}"`).catch(() => {});
@@ -5446,7 +5455,8 @@ export function NoteApp() {
                 }
 
                 await fm.handleSaveWikiFile(keepId, mergedResult, {
-                  activityType: "ai_generation",
+                  activityType: "wiki_dedup_merge",
+                  sources: [mergeId],
                 });
                 embedWikiSections(keepId, mergedResult).catch(() => {});
 
@@ -5642,7 +5652,8 @@ export function NoteApp() {
                 }
 
                 await fm.handleSaveWikiFile(keepId, mergedResult, {
-                  activityType: "ai_generation",
+                  activityType: "wiki_dedup_merge",
+                  sources: [mergeId],
                 });
                 embedWikiSections(keepId, mergedResult).catch(() => {});
                 // 統合元をアーカイブ（参照保護のため物理削除しない）
@@ -5846,6 +5857,10 @@ export function NoteApp() {
         //  ユーザーが手動で集めたソース集合とは限らない）
         const rewritten: GraphiumDocument = {
           ...newDoc,
+          // buildAtomDocument は素の新規 doc を返すため、ここで引き継がないと
+          // それまでの成長履歴（ingest/merge/cross-update のリビジョン連鎖）が
+          // 再生成 1 回で全消去される。recordRevision は既存チェーンに追記する。
+          documentProvenance: doc.documentProvenance,
           createdAt: doc.createdAt ?? newDoc.createdAt,
           modifiedAt: new Date().toISOString(),
           wikiMeta: {
@@ -5858,8 +5873,10 @@ export function NoteApp() {
           },
         };
         await fm.handleSaveWikiFile(wikiId, rewritten, {
-          activityType: "ai_generation",
+          activityType: "wiki_regenerate",
           agentLabel: atomResult.model ?? selectedModel ?? undefined,
+          // 実際に再生成へ投入できた Claim だけを used に残す
+          sources: snapshots.map((s) => s.id),
         });
         embedWikiSections(wikiId, rewritten).catch(() => {});
         if (openAfter) fm.handleOpenWikiFile(wikiId);
@@ -6015,6 +6032,9 @@ export function NoteApp() {
           );
           const rewritten: GraphiumDocument = {
             ...newDoc,
+            // buildWikiDocument は素の新規 doc を返すため、ここで引き継がないと
+            // それまでの成長履歴（リビジョン連鎖・hash chain）が全消去される。
+            documentProvenance: doc.documentProvenance,
             createdAt: doc.createdAt ?? newDoc.createdAt,
             modifiedAt: new Date().toISOString(),
             wikiMeta: {
@@ -6028,8 +6048,10 @@ export function NoteApp() {
             },
           };
           await fm.handleSaveWikiFile(wikiId, rewritten, {
-            activityType: "ai_generation",
+            activityType: "wiki_regenerate",
             agentLabel: result.model ?? selectedModel ?? undefined,
+            // 解決に成功して実際に投入したソースだけを used に残す
+            sources: parts.map((p) => p.sourceNoteId),
           });
           embedWikiSections(wikiId, rewritten).catch(() => {});
           if (openAfter) fm.handleOpenWikiFile(wikiId);
@@ -6182,7 +6204,7 @@ export function NoteApp() {
         if (filtered.length === 0) continue; // このクラスタは既存と被り → 次のクラスタへ
         for (const candidate of filtered) {
           const atomDoc = buildAtomDocument(candidate, result.model ?? null, getLocale());
-          const newId = await fm.handleCreateWikiFile(atomDoc);
+          const newId = await fm.handleCreateWikiFile(atomDoc, { activityType: "wiki_atomize" });
           embedWikiSections(newId, atomDoc).catch(() => {});
           wikiLog.append(
             "ingest",
@@ -7377,8 +7399,11 @@ export function NoteApp() {
             }}
             onCreateKnowledgeNote={aiAvailable ? async (doc, kind) => {
               // R2 / Loop M2: AI 回答を 知見(claim) / 洞察(atom) として手動取り込み。
-              // handleCreateWikiFile が PROV リビジョン記録（ai_generation）まで行う。
-              const newId = await fm.handleCreateWikiFile(doc);
+              // handleCreateWikiFile が PROV リビジョン記録まで行う。洞察は他の
+              // atomize 経路（自動/手動 discovery）と分類を揃えて wiki_atomize にする。
+              const newId = await fm.handleCreateWikiFile(doc, {
+                activityType: kind === "atom" ? "wiki_atomize" : "wiki_ingest",
+              });
               embedWikiSections(newId, doc).catch(() => {});
               wikiLog.append("ingest", [newId], `${kind}: "${doc.title}"`).catch(() => {});
               // 取り込んだノートは SidePeek で開いて即確認できるようにする。

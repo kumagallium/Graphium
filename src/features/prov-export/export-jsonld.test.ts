@@ -283,14 +283,18 @@ describe("buildW3CProvJsonLd — PROV-DM compliance fixes", () => {
     const doc = buildW3CProvJsonLd(provWithBundle, "my note");
     const bundle = doc["@graph"].find((n: any) => n["@type"] === "prov:Bundle");
     expect(bundle).toBeDefined();
+    // Bundle 内の相対 ID（rev_*/edit_*/agent_*）は Bundle @id でスコープ化される
+    // （複数 Bundle 同居時の IRI 衝突防止）
+    const scope = bundle!["@id"];
+    expect(scope).toBe(`graphium:documentProvenance/${encodeURIComponent("my note")}`);
     const inner = bundle!["@graph"];
     expect(inner.find((n: any) => n["@type"] === "Association")).toMatchObject({
-      activity: "edit_1",
-      agent: "agent_h",
+      activity: `${scope}/edit_1`,
+      agent: `${scope}/agent_h`,
     });
     expect(inner.find((n: any) => n["@type"] === "Generation")).toMatchObject({
-      entity: "rev_1",
-      activity: "edit_1",
+      entity: `${scope}/rev_1`,
+      activity: `${scope}/edit_1`,
     });
   });
 
@@ -312,6 +316,214 @@ describe("buildW3CProvJsonLd — PROV-DM compliance fixes", () => {
       entity: "result_o",
       activity: "activity_a",
     });
+  });
+
+  it("reifies bundle Activity prov:used as Usage relations with declared source stubs", () => {
+    const provWithUsed: ProvJsonLd = {
+      ...emptyProv,
+      "graphium:documentProvenance": {
+        "@type": "prov:Bundle",
+        "@graph": [
+          { "@id": "agent_ai", "@type": "prov:Agent", "rdfs:label": "m", "graphium:agentType": "ai" },
+          {
+            "@id": "edit_1",
+            "@type": "prov:Activity",
+            "graphium:editType": "wiki_merge",
+            "prov:startedAtTime": "2026-07-01T00:00:00Z",
+            "prov:endedAtTime": "2026-07-01T00:00:00Z",
+            "prov:wasAssociatedWith": { "@id": "agent_ai" },
+            "prov:used": [{ "@id": "note-a" }, { "@id": "pdf:file-9" }],
+          },
+        ],
+      } as any,
+    };
+    const doc = buildW3CProvJsonLd(provWithUsed, "n");
+    const bundle = doc["@graph"].find((n: any) => n["@type"] === "prov:Bundle");
+    const scope = bundle!["@id"];
+    const inner = bundle!["@graph"];
+    const usages = inner.filter(
+      (n: any) => n["@type"] === "Usage" && n.activity === `${scope}/edit_1`,
+    );
+    const usedEntities = usages.map((u: any) => u.entity).sort();
+    // 素のノート ID と外部ソース prefix の両方が型付き @id に解決される
+    expect(usedEntities).toEqual(["graphium:note/note-a", "graphium:pdf/file-9"]);
+    // 参照先は Bundle 内に Entity として宣言される（dangling 防止）
+    for (const id of usedEntities) {
+      const decl = inner.find((n: any) => n["@id"] === id && n["@type"] === "Entity");
+      expect(decl, `used source ${id} should be declared`).toBeDefined();
+    }
+  });
+
+  it("emits a Derivation for each derivedFromChats entry (chat lane)", () => {
+    const wiki: WikiEntityInfo = {
+      title: "from-chat",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-07-01T00:00:00Z",
+      model: "m",
+      derivedFromNotes: [],
+      derivedFromChats: ["chat:abc"],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const used = doc["@graph"]
+      .filter((n: any) => n["@type"] === "Derivation")
+      .map((d: any) => d.usedEntity);
+    expect(used).toEqual(["graphium:chat/abc"]);
+  });
+
+  it("attaches a per-wiki provenance Bundle (growth history) with contentDiff stripped", () => {
+    const wiki: WikiEntityInfo = {
+      id: "wiki-file-1",
+      title: "growing-claim",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-07-01T00:00:00Z",
+      model: "m",
+      derivedFromNotes: ["note-a"],
+      documentProvenance: {
+        agents: [{ id: "agent_ai_m", type: "ai", label: "m" }],
+        activities: [
+          {
+            id: "edit_001",
+            type: "wiki_ingest",
+            startedAt: "2026-07-01T00:00:00Z",
+            endedAt: "2026-07-01T00:00:00Z",
+            wasAssociatedWith: "agent_ai_m",
+            used: ["note-a"],
+          },
+          {
+            id: "edit_002",
+            type: "wiki_merge",
+            startedAt: "2026-07-02T00:00:00Z",
+            endedAt: "2026-07-02T00:00:00Z",
+            wasAssociatedWith: "agent_ai_m",
+            used: ["note-b"],
+          },
+        ],
+        revisions: [
+          {
+            id: "rev_001",
+            savedAt: "2026-07-01T00:00:00Z",
+            summary: {
+              blocksAdded: 3, blocksRemoved: 0, blocksModified: 0,
+              labelsChanged: [], provLinksAdded: 0, provLinksRemoved: 0,
+              knowledgeLinksAdded: 0, knowledgeLinksRemoved: 0,
+              contentDiff: [{ blockId: "b1", type: "add", after: "secret body text" }],
+            },
+            contentHash: "h1",
+            wasGeneratedBy: "edit_001",
+          },
+          {
+            id: "rev_002",
+            savedAt: "2026-07-02T00:00:00Z",
+            summary: {
+              blocksAdded: 0, blocksRemoved: 0, blocksModified: 2,
+              labelsChanged: [], provLinksAdded: 0, provLinksRemoved: 0,
+              knowledgeLinksAdded: 0, knowledgeLinksRemoved: 0,
+            },
+            contentHash: "h2",
+            prevContentHash: "h1",
+            wasDerivedFrom: "rev_001",
+            wasGeneratedBy: "edit_002",
+          },
+        ],
+      },
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+
+    // wiki ノードが Bundle への node reference（@id オブジェクト）を持ち、
+    // Bundle @id は同名タイトル衝突を避けるため内部 wiki ID キー
+    const wikiNode = findWikiNode(doc["@graph"], wiki.title);
+    expect(wikiNode!["graphium:noteId"]).toBe("wiki-file-1");
+    const bundleRef = wikiNode!["graphium:provenanceBundle"];
+    const bundleId = `graphium:documentProvenance/wiki/${encodeURIComponent(wiki.id!)}`;
+    expect(bundleRef).toEqual({ "@id": bundleId });
+    const bundle = doc["@graph"].find(
+      (n: any) => n["@type"] === "prov:Bundle" && n["@id"] === bundleId,
+    );
+    expect(bundle).toBeDefined();
+    const inner = bundle!["@graph"];
+
+    // 成長系譜: 型付き Activity・リビジョン連鎖・取り込みソースが全て残る
+    // （rev_*/edit_* は Bundle @id でスコープ化される）
+    const acts = inner.filter((n: any) => n["@type"] === "Activity");
+    expect(acts.map((a: any) => a["graphium:editType"]).sort()).toEqual([
+      "wiki_ingest",
+      "wiki_merge",
+    ]);
+    const deriv = inner.find((n: any) => n["@type"] === "Derivation");
+    expect(deriv).toMatchObject({
+      generatedEntity: `${bundleId}/rev_002`,
+      usedEntity: `${bundleId}/rev_001`,
+    });
+    const usages = inner.filter((n: any) => n["@type"] === "Usage");
+    // 取り込みソースは Bundle 外の実体なのでスコープ化されない
+    expect(usages.map((u: any) => u.entity).sort()).toEqual([
+      "graphium:note/note-a",
+      "graphium:note/note-b",
+    ]);
+
+    // contentDiff（本文差分）は export に同梱しない
+    expect(JSON.stringify(bundle)).not.toContain("secret body text");
+  });
+
+  it("keys growth Bundles by wiki id so same-titled wikis do not conflate", () => {
+    const mk = (id: string): WikiEntityInfo => ({
+      id,
+      title: "same-title",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-07-01T00:00:00Z",
+      model: "m",
+      derivedFromNotes: [],
+      documentProvenance: {
+        agents: [{ id: "agent_ai_m", type: "ai", label: "m" }],
+        activities: [{
+          id: "edit_001", type: "wiki_ingest",
+          startedAt: "2026-07-01T00:00:00Z", endedAt: "2026-07-01T00:00:00Z",
+          wasAssociatedWith: "agent_ai_m",
+        }],
+        revisions: [{
+          id: "rev_001", savedAt: "2026-07-01T00:00:00Z",
+          summary: {
+            blocksAdded: 1, blocksRemoved: 0, blocksModified: 0,
+            labelsChanged: [], provLinksAdded: 0, provLinksRemoved: 0,
+            knowledgeLinksAdded: 0, knowledgeLinksRemoved: 0,
+          },
+          contentHash: `h-${id}`, wasGeneratedBy: "edit_001",
+        }],
+      },
+    });
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [mk("wiki-a"), mk("wiki-b")]);
+    const bundles = doc["@graph"].filter((n: any) => n["@type"] === "prov:Bundle");
+    const ids = bundles.map((b: any) => b["@id"]).sort();
+    expect(ids).toEqual([
+      "graphium:documentProvenance/wiki/wiki-a",
+      "graphium:documentProvenance/wiki/wiki-b",
+    ]);
+    // Bundle 内の rev_001 もスコープ化されて衝突しない
+    const revIds = bundles.flatMap((b: any) =>
+      b["@graph"].filter((n: any) => n["@type"] === "Entity").map((n: any) => n["@id"]),
+    ).sort();
+    expect(revIds).toEqual([
+      "graphium:documentProvenance/wiki/wiki-a/rev_001",
+      "graphium:documentProvenance/wiki/wiki-b/rev_001",
+    ]);
+  });
+
+  it("emits no provenance Bundle for a wiki without documentProvenance", () => {
+    const wiki: WikiEntityInfo = {
+      title: "no-history",
+      kind: "claim",
+      status: "active",
+      generatedAt: "2026-07-01T00:00:00Z",
+      model: "m",
+      derivedFromNotes: [],
+    };
+    const doc = buildW3CProvJsonLd(emptyProv, "n", [wiki]);
+    const wikiNode = findWikiNode(doc["@graph"], wiki.title);
+    expect(wikiNode!["graphium:provenanceBundle"]).toBeUndefined();
+    expect(doc["@graph"].find((n: any) => n["@type"] === "prov:Bundle")).toBeUndefined();
   });
 
   it("emits one Generation per generating activity when an entity has multiple (H1)", () => {

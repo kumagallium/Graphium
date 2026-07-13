@@ -4,6 +4,8 @@
 
 import type { ProvJsonLd, ProvJsonLdNode } from "../prov-generator";
 import type { DocumentProvenanceBundle } from "../document-provenance/prov-output";
+import { buildDocumentProvenanceBundle } from "../document-provenance/prov-output";
+import type { DocumentProvenance } from "../document-provenance/types";
 import type {
   AtomType,
   ClaimRole,
@@ -182,9 +184,20 @@ function convertContentProvenance(provDoc: ProvJsonLd): W3CProvNode[] {
   return w3cNodes;
 }
 
-/** Document Provenance Bundle を W3C 形式に変換 */
-function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNode[] {
+/**
+ * Document Provenance Bundle を W3C 形式に変換。
+ *
+ * tracker の rev_001 / edit_001 / agent_* はドキュメント毎の相対 ID なので、
+ * 複数 Bundle（ノート + wiki 群の成長 Bundle）が同一エクスポートに同居すると、
+ * flatten / SPARQL union 時に別ドキュメントのリビジョンが同一 IRI に合体する。
+ * `idScope`（Bundle の @id）を前置して Bundle 間で一意な絶対 ID にする。
+ * Activity の prov:used が参照するソースは Bundle 外の実体なのでスコープ化しない。
+ */
+function convertDocumentProvenance(bundle: DocumentProvenanceBundle, idScope?: string): W3CProvNode[] {
+  const scoped = (id: string) => (idScope ? `${idScope}/${id}` : id);
   const w3cNodes: W3CProvNode[] = [];
+  // Activity の prov:used が参照するソース Entity の宣言スタブ（Bundle 内 dedup）
+  const declaredSources = new Map<string, W3CProvNode>();
 
   for (const node of bundle["@graph"]) {
     const w3cType = TYPE_MAP[node["@type"]] ?? node["@type"];
@@ -192,7 +205,7 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
     if (w3cType === "Agent") {
       const w3cNode: W3CProvNode = {
         "@type": "Agent",
-        "@id": node["@id"],
+        "@id": scoped(node["@id"]),
         label: toW3CLabel(node["rdfs:label"]),
       };
       if (node["graphium:agentType"]) {
@@ -203,9 +216,10 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
       }
       w3cNodes.push(w3cNode);
     } else if (w3cType === "Activity") {
+      const activityId = scoped(node["@id"]);
       const w3cNode: W3CProvNode = {
         "@type": "Activity",
-        "@id": node["@id"],
+        "@id": activityId,
       };
       if (node["graphium:editType"]) {
         w3cNode["graphium:editType"] = node["graphium:editType"];
@@ -222,15 +236,32 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
       if (node["prov:wasAssociatedWith"]) {
         w3cNodes.push({
           "@type": "Association",
-          "@id": `_:assoc_${node["@id"]}`,
-          activity: node["@id"],
-          agent: node["prov:wasAssociatedWith"]["@id"],
+          "@id": `_:assoc_${encodeURIComponent(activityId)}`,
+          activity: activityId,
+          agent: scoped(node["prov:wasAssociatedWith"]["@id"]),
         });
       }
+
+      // Usage 関係を分離（Wiki 成長操作が取り込んだソース → prov:used）。
+      // ソース ID は Bundle 外のノート / 外部ソースなので resolveSourceEntity で
+      // 型付き @id に解決し、宣言スタブも Bundle 内に積む（dangling 防止）。
+      if (node["prov:used"]) {
+        for (const ref of node["prov:used"]) {
+          const { usedEntity, declare } = resolveSourceEntity(ref["@id"]);
+          w3cNodes.push({
+            "@type": "Usage",
+            "@id": `_:usage_${encodeURIComponent(activityId)}_${encodeURIComponent(ref["@id"])}`,
+            activity: activityId,
+            entity: usedEntity,
+          });
+          if (!declaredSources.has(usedEntity)) declaredSources.set(usedEntity, declare);
+        }
+      }
     } else if (w3cType === "Entity") {
+      const entityId = scoped(node["@id"]);
       const w3cNode: W3CProvNode = {
         "@type": "Entity",
-        "@id": node["@id"],
+        "@id": entityId,
       };
       if (node["prov:generatedAtTime"]) {
         // xsd:dateTime として型付け（startTime/endTime と整合。無タグだと文字列扱い）
@@ -257,9 +288,9 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
       if (node["prov:wasGeneratedBy"]) {
         w3cNodes.push({
           "@type": "Generation",
-          "@id": `_:gen_${node["@id"]}`,
-          entity: node["@id"],
-          activity: node["prov:wasGeneratedBy"]["@id"],
+          "@id": `_:gen_${encodeURIComponent(entityId)}`,
+          entity: entityId,
+          activity: scoped(node["prov:wasGeneratedBy"]["@id"]),
         });
       }
 
@@ -267,13 +298,16 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
       if (node["prov:wasDerivedFrom"]) {
         w3cNodes.push({
           "@type": "Derivation",
-          "@id": `_:deriv_${node["@id"]}`,
-          generatedEntity: node["@id"],
-          usedEntity: node["prov:wasDerivedFrom"]["@id"],
+          "@id": `_:deriv_${encodeURIComponent(entityId)}`,
+          generatedEntity: entityId,
+          usedEntity: scoped(node["prov:wasDerivedFrom"]["@id"]),
         });
       }
     }
   }
+
+  // Usage が参照したソースの宣言スタブを最後にまとめて積む
+  w3cNodes.push(...declaredSources.values());
 
   return w3cNodes;
 }
@@ -282,6 +316,10 @@ function convertDocumentProvenance(bundle: DocumentProvenanceBundle): W3CProvNod
  * Graphium 内部形式を W3C PROV-JSON-LD 準拠ドキュメントに変換
  */
 export type WikiEntityInfo = {
+  /** wiki ファイルの内部 ID。タイトルは一意でない（同名 wiki は実運用で発生する）
+   *  ため、成長 Bundle の @id と graphium:noteId の一意キーとして使う。
+   *  未指定時はタイトルにフォールバック（テスト・後方互換用）。 */
+  id?: string;
   title: string;
   kind: WikiKind | string;
   status: string;
@@ -295,6 +333,14 @@ export type WikiEntityInfo = {
    *  Atom の上流はこの lane に入るため、export に出さないと Atom が来歴エッジを
    *  持たない孤児になる。app 内グラフ（atomize エッジ）と揃えるため Derivation を出す。 */
   derivedFromClaims?: string[];
+  /** チャット由来の派生元 ID（`WikiMeta.derivedFromChats`）。
+   *  現状の ingest 経路は `chat:` prefix で derivedFromNotes に入れるため
+   *  通常は空だが、型契約を揃えて lane の取りこぼしを無くす。 */
+  derivedFromChats?: string[];
+  /** Wiki 自身の編集来歴（Layer 1）。ingest / merge / cross-update /
+   *  regenerate / atomize のリビジョン連鎖 = 知識の成長過程。
+   *  与えられた場合は named Bundle として export に同梱する。 */
+  documentProvenance?: DocumentProvenance;
   // Phase 4 (PR-B7): 提案 v4 Phase 1 の意味的な型を PROV-JSON-LD に持ち出す。
   // 内部識別子はそのまま emit する（UI ラベル "Insights" / "Ideas" は表示層の話で、
   // データ上は atomType / synthesisMode を保持し続ける）。
@@ -313,6 +359,22 @@ export type WikiEntityInfo = {
   /** Claim が依存する手順条件（reproducibility scaffold）。Claim 層のみ */
   procedureContext?: ProcedureContext;
 };
+
+/**
+ * Wiki の編集来歴から export 用に contentDiff（ブロック単位 before/after テキスト）
+ * を落とす。監査用 diff は wiki ファイル本体に残っており、export の目的は
+ * 成長系譜（activity 種別 / used / hash chain）なので、サイズだけ膨らむ
+ * 本文差分は同梱しない。
+ */
+function stripContentDiff(prov: DocumentProvenance): DocumentProvenance {
+  return {
+    ...prov,
+    revisions: prov.revisions.map((r) => ({
+      ...r,
+      summary: { ...r.summary, contentDiff: undefined },
+    })),
+  };
+}
 
 export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntities?: WikiEntityInfo[]): W3CProvDocument {
   const graph: W3CProvNode[] = [];
@@ -341,6 +403,10 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
       // Phase 4 (PR-B7): 砂時計のくびれに対応する意味的な型を持ち出す。
       // atomType / synthesisMode / procedureContext は kind ごとに片方しか意味がないが、
       // 出力側は kind 判別を呼び出し側に委ねず、与えられた値だけを安全に emit する。
+      // 内部 wiki ID。他 wiki の成長 Bundle の Usage が `graphium:note/<id>` スタブで
+      // この wiki を参照したとき（dedup-merge の吸収元など）、消費側が id で
+      // 実体ノードと結合できるようにする。
+      if (wiki.id) wikiNode["graphium:noteId"] = wiki.id;
       if (wiki.atomType) wikiNode["graphium:atomType"] = wiki.atomType;
       if (wiki.synthesisMode) wikiNode["graphium:synthesisMode"] = wiki.synthesisMode;
       if (wiki.hypothesisStatus) wikiNode["graphium:hypothesisStatus"] = wiki.hypothesisStatus;
@@ -350,14 +416,16 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
       if (wiki.procedureContext) wikiNode["graphium:procedureContext"] = wiki.procedureContext;
       graph.push(wikiNode);
 
-      // Derivation: Wiki → 上流ソース。3 つの来歴 lane を同じ規則で出す。
+      // Derivation: Wiki → 上流ソース。4 つの来歴 lane を同じ規則で出す。
       //   - derivedFromNotes : 派生元ノート（外部ソース prefix を含み得る）
       //   - citedKnowledgeIds: Cmd-K verb 取り込みで引用・精査した知見/洞察（PR4 L2）
       //   - derivedFromClaims: Atom が抽象化した元 Claim/Concept（atomize lane / app グラフと整合）
+      //   - derivedFromChats : チャット由来の派生元（現状はほぼ空だが契約として揃える）
       const deriveLanes: { ids: string[] | undefined; tag: string }[] = [
         { ids: wiki.derivedFromNotes, tag: "deriv" },
         { ids: wiki.citedKnowledgeIds, tag: "cited" },
         { ids: wiki.derivedFromClaims, tag: "claim" },
+        { ids: wiki.derivedFromChats, tag: "chat" },
       ];
       for (const { ids, tag } of deriveLanes) {
         for (const sourceId of ids ?? []) {
@@ -369,6 +437,30 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
             usedEntity,
           } as any);
           if (!declaredRefs.has(usedEntity)) declaredRefs.set(usedEntity, declare);
+        }
+      }
+
+      // 成長過程（編集来歴 = Layer 1）を Wiki ごとの named Bundle として同梱。
+      // ingest / merge / cross-update / regenerate / atomize のリビジョン連鎖と、
+      // 各操作が取り込んだソース（prov:used）が入る。現在値スナップショット
+      // （上の Derivation lane）だけでは畳まれてしまう「どの操作で・いつ・
+      // どのソースから育ったか」を外部 PROV ツールから見えるようにする。
+      if (wiki.documentProvenance && wiki.documentProvenance.revisions.length > 0) {
+        const wikiBundle = buildDocumentProvenanceBundle(
+          stripContentDiff(wiki.documentProvenance),
+        );
+        if (wikiBundle) {
+          // @id キーは内部 wiki ID（タイトルは一意でないため、タイトルキーだと
+          // 同名 wiki の成長履歴が同一 named graph に conflate する）。
+          const bundleId = `graphium:documentProvenance/wiki/${encodeURIComponent(wiki.id ?? wiki.title)}`;
+          // 素の文字列だと RDF 上 xsd:string リテラルになりグラフリンクが成立
+          // しないため、node reference（@id オブジェクト）として出す。
+          wikiNode["graphium:provenanceBundle"] = { "@id": bundleId };
+          graph.push({
+            "@type": "prov:Bundle",
+            "@id": bundleId,
+            "@graph": convertDocumentProvenance(wikiBundle, bundleId),
+          } as any);
         }
       }
 
@@ -398,12 +490,18 @@ export function buildW3CProvJsonLd(provDoc: ProvJsonLd, title: string, wikiEntit
 
   // Document Provenance（編集来歴）を Bundle として追加
   if (provDoc["graphium:documentProvenance"]) {
-    const docProvNodes = convertDocumentProvenance(provDoc["graphium:documentProvenance"]);
+    // wiki 群の成長 Bundle と同居するため、内部の rev_*/edit_*/agent_* も
+    // Bundle @id でスコープ化して衝突を防ぐ（convertDocumentProvenance 参照）。
+    const noteBundleId = `graphium:documentProvenance/${encodeURIComponent(title)}`;
+    const docProvNodes = convertDocumentProvenance(
+      provDoc["graphium:documentProvenance"],
+      noteBundleId,
+    );
     graph.push({
       // prov:Bundle（prov 接頭辞はローカル context で定義済み）。bare "Bundle" は
       // openprovenance context にもローカルにも未定義で prov:Bundle に展開されないため使わない。
       "@type": "prov:Bundle",
-      "@id": `graphium:documentProvenance/${encodeURIComponent(title)}`,
+      "@id": noteBundleId,
       "@graph": docProvNodes,
     } as any);
   }

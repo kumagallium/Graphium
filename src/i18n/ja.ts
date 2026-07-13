@@ -224,6 +224,12 @@ export const ja: Record<string, string> = {
   "history.type.aiDerive": "AI 派生",
   "history.type.template": "テンプレート",
   "history.type.deriveSource": "派生元",
+  "history.type.wikiIngest": "Knowledge 化",
+  "history.type.wikiMerge": "Knowledge マージ",
+  "history.type.wikiCrossUpdate": "横断更新",
+  "history.type.wikiDedupMerge": "重複統合",
+  "history.type.wikiRegenerate": "再生成",
+  "history.type.wikiAtomize": "洞察抽出",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",

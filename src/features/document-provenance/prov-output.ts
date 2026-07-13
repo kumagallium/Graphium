@@ -38,14 +38,19 @@ export function buildDocumentProvenanceBundle(
 
   // prov:Activity ノード
   for (const activity of provenance.activities) {
-    graph.push({
+    const activityNode: ProvBundleNode = {
       "@id": activity.id,
       "@type": "prov:Activity",
       "graphium:editType": activity.type,
       "prov:startedAtTime": activity.startedAt,
       "prov:endedAtTime": activity.endedAt,
       "prov:wasAssociatedWith": { "@id": activity.wasAssociatedWith },
-    });
+    };
+    // 取り込みソース（Wiki 成長操作の由来ノート / Wiki / 外部ソース）
+    if (activity.used && activity.used.length > 0) {
+      activityNode["prov:used"] = activity.used.map((id) => ({ "@id": id }));
+    }
+    graph.push(activityNode);
   }
 
   // prov:Entity ノード（リビジョン）

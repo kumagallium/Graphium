@@ -14,6 +14,10 @@ export type WikiSaveOptions = {
    *  エディタ経由のユーザー保存は呼び出し側で recordRevision 済みなので省略する。 */
   activityType?: EditActivityType;
   agentLabel?: string;
+  /** この操作が取り込んだソース ID（→ EditActivity.used / prov:used）。
+   *  merge ならマージ元ノート、cross-update ならトリガーノート、
+   *  regenerate なら再生成に使った全ソースを渡す。 */
+  sources?: string[];
 };
 import {
   buildDerivedDocument,
@@ -1711,6 +1715,7 @@ export function useFileManager(authenticated: boolean) {
           doc = await recordRevision(doc, prevPage, options.activityType, {
             agentLabel: options.agentLabel,
             force: true,
+            sources: options.sources,
           });
         }
         await saveWikiFile(wikiId, doc);
@@ -1993,17 +1998,28 @@ export function useFileManager(authenticated: boolean) {
   );
 
   // Wiki の新規作成（Ingest 結果の保存用）
-  // 呼び出し元はすべて AI 生成フローのため、デフォルトで ai_generation を記録する。
+  // 呼び出し元はすべて AI 生成フローのため、デフォルトで wiki_ingest を記録する。
+  // Atom 生成（wiki_atomize）だけは呼び出し側が activityType を明示する。
   const handleCreateWikiFile = useCallback(
     async (doc: GraphiumDocument, options?: WikiSaveOptions): Promise<string> => {
-      const activityType: EditActivityType = options?.activityType ?? "ai_generation";
+      const activityType: EditActivityType = options?.activityType ?? "wiki_ingest";
       const agentLabel =
         options?.agentLabel
           ?? doc.wikiMeta?.generatedBy?.model
           ?? doc.generatedBy?.model
           ?? doc.generatedBy?.agent
           ?? "ai";
-      doc = await recordRevision(doc, null, activityType, { agentLabel, force: true });
+      // 生成ソースは wikiMeta の来歴 lane がそのまま初期値になる
+      // （ingest 元ノート / チャット / Atom の元 Claim / 引用・精査した知識）。
+      const sources =
+        options?.sources ??
+        [
+          ...(doc.wikiMeta?.derivedFromNotes ?? []),
+          ...(doc.wikiMeta?.derivedFromChats ?? []),
+          ...(doc.wikiMeta?.derivedFromClaims ?? []),
+          ...(doc.wikiMeta?.citedKnowledgeIds ?? []),
+        ];
+      doc = await recordRevision(doc, null, activityType, { agentLabel, force: true, sources });
       const newId = await createWikiFile(doc.title, doc);
       console.log(`[wiki-debug] createWikiFile: id=${newId}, title=${doc.title}`);
       docCacheRef.current.set(`wiki:${newId}`, doc);

@@ -80,6 +80,13 @@ export type RecordRevisionOptions = {
   author?: AuthorIdentity;
   /** true にすると diff が空でもリビジョンを記録する（アクティビティログ用） */
   force?: boolean;
+  /**
+   * この操作が取り込んだソースの ID（→ EditActivity.used / prov:used）。
+   * Wiki の成長操作（merge / cross-update / regenerate / atomize / ingest）で、
+   * 「このリビジョンはどのノート・Wiki・外部ソースを取り込んで生まれたか」を
+   * 操作単位で残すために渡す。
+   */
+  sources?: string[];
 };
 
 /** 保存時にリビジョンを追記する */
@@ -89,7 +96,7 @@ export async function recordRevision(
   activityType: EditActivityType,
   options?: RecordRevisionOptions,
 ): Promise<GraphiumDocument> {
-  const { agentLabel, email, author, force } = options ?? {};
+  const { agentLabel, email, author, force, sources } = options ?? {};
   const provenance = doc.documentProvenance
     ? structuredClone(doc.documentProvenance)
     : createEmptyProvenance();
@@ -126,6 +133,9 @@ export async function recordRevision(
     endedAt: now,
     wasAssociatedWith: agentId,
   };
+  // 取り込みソース → prov:used（重複と空文字は落とす）
+  const usedSources = [...new Set((sources ?? []).filter(Boolean))];
+  if (usedSources.length > 0) activity.used = usedSources;
   provenance.activities.push(activity);
 
   // Revision 作成
