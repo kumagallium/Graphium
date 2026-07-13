@@ -7,10 +7,10 @@
 //   引用＋横断検索に加えて Web 検索を強制し、世界の known を取り込む。
 // - "internal"（内部参照 / 知識の蓄積 = 世界 known × 自分 known）:
 //   @引用したもの ＋ 蓄積した知識の横断検索（関連ナレッジ・派生知識）。
-//   多文献を横断する着想・構成向け（デフォルト）。旧 "overview"（発散）。
+//   多文献を横断する着想・構成向け。旧 "overview"（発散）。
 // - "notes"（ノート内参照 / 文章化 = 世界 unknown × 自分 known）:
 //   @引用したものだけ（横断検索・派生知識を除外）。
-//   正確な引用が要る執筆・引用・検証向け。旧 "primary"（収束）。
+//   正確な引用が要る執筆・引用・検証向け（デフォルト）。旧 "primary"（収束）。
 //
 // 包含関係は notes ⊂ internal ⊂ external の単調拡大。
 // 「引用したもの」は種類を問わない（原文/ノート/ナレッジ/メモ、@で明示引用したもの全て）。
@@ -21,8 +21,8 @@
 // feature をまたぐ単一定義としてここ（lib）に置く。
 export type GroundingScope = "external" | "internal" | "notes";
 
-/** UI・配線のデフォルト。既存挙動（旧 "overview" = 引用＋横断検索）を保つ。 */
-export const DEFAULT_GROUNDING_SCOPE: GroundingScope = "internal";
+/** UI・配線のデフォルト。ノート内参照（@引用したものだけ）で始める。 */
+export const DEFAULT_GROUNDING_SCOPE: GroundingScope = "notes";
 
 /** 横断検索（wikiContext・派生知識）を行うか。notes（ノート内参照）だけが引用のみに絞る。 */
 export function includesCrossSearch(scope: GroundingScope): boolean {
