@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  displayAreaFromMatrix,
   embeddedImageToFile,
   imageOrientationFromMatrix,
   type ExtractedEmbeddedImage,
@@ -82,5 +83,29 @@ describe("imageOrientationFromMatrix", () => {
       flipX: false,
       flipY: false,
     });
+  });
+});
+
+// 表示面積は |det| = |a·d − b·c|。回転・反転を通して不変であることをここで固定する。
+// 軸並行の値は imageOrientationFromMatrix と同じ実測 CTM を流用している。
+describe("displayAreaFromMatrix", () => {
+  it("軸並行スケールは幅×高さ（pt²）", () => {
+    expect(displayAreaFromMatrix([192.2, 0, 0, 148.4, 0, 0])).toBeCloseTo(28522.48, 1);
+  });
+
+  it("d<0（縦反転）でも面積は正", () => {
+    expect(displayAreaFromMatrix([199.0, 0, 0, -253.0, 0, 0])).toBe(50347);
+  });
+
+  it("90 度回転でも面積は保存される", () => {
+    expect(displayAreaFromMatrix([0, 100, -100, 0, 0, 0])).toBe(10000);
+  });
+
+  it("潰れた変換（det=0）は 0", () => {
+    expect(displayAreaFromMatrix([100, 0, 0, 0, 0, 0])).toBe(0);
+  });
+
+  it("矢印・罫線パーツ相当（8pt 角）は図版と桁が分かれる", () => {
+    expect(displayAreaFromMatrix([8, 0, 0, 8, 0, 0])).toBe(64);
   });
 });

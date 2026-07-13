@@ -54,6 +54,13 @@ export type ExtractEmbeddedImagesOptions = {
    * 装飾アイコンを除外したいときに使う。デフォルト 16x16。
    */
   minSize?: { width: number; height: number };
+  /**
+   * ページ上の表示面積（pt²）がこれ未満の画像はスキップする。矢印・罫線など
+   * 図として意味を持たない小さな部品（image mask で埋め込まれがち）を除外する。
+   * ビットマップ解像度でなく紙面上のサイズで判定する点が `minSize` と異なる。
+   * 0 で無効。デフォルト 576（24pt 角 ≈ 8.5mm 角 相当）。
+   */
+  minDisplayArea?: number;
 };
 
 /** pdfjs から渡される画像オブジェクトの最小限のシェイプ */
@@ -113,6 +120,21 @@ export function imageOrientationFromMatrix(ctm: Matrix): ImageOrientation {
 }
 
 /**
+ * paintImage 時点の CTM から、ページ上での画像の表示面積（pt²）を求める。
+ * 画像 XObject は単位正方形に対して CTM で配置されるため、表示面積は
+ * 行列式の絶対値 |a·d − b·c| になる（回転・反転・スキューを通して不変）。
+ */
+export function displayAreaFromMatrix(ctm: Matrix): number {
+  const [a, b, c, d] = ctm;
+  return Math.abs(a * d - b * c);
+}
+
+// 表示面積フィルタの既定値: 24pt 角（≈ 8.5mm 角）。実測では本物の図版は
+// 数万 pt² 規模、矢印・罫線などの図形パーツは数十〜数百 pt² 規模と桁が
+// 分かれるため、その間に置く。消えすぎ・残りすぎが出たらここを調整する。
+const DEFAULT_MIN_DISPLAY_AREA = 576;
+
+/**
  * PDF Blob を読み込み、各ページの operator list を走査して埋め込み画像を抽出する。
  *
  * 各ページの抽出は次の流れ:
@@ -129,7 +151,12 @@ export async function extractEmbeddedPdfImages(
   source: Blob,
   options: ExtractEmbeddedImagesOptions = {},
 ): Promise<ExtractedEmbeddedImage[]> {
-  const { signal, onProgress, minSize = { width: 16, height: 16 } } = options;
+  const {
+    signal,
+    onProgress,
+    minSize = { width: 16, height: 16 },
+    minDisplayArea = DEFAULT_MIN_DISPLAY_AREA,
+  } = options;
 
   const { pdfjs, options: docOptions } = await loadPdfjs();
   const buffer = await source.arrayBuffer();
@@ -150,7 +177,7 @@ export async function extractEmbeddedPdfImages(
         const opList = await page.getOperatorList();
         const OPS = pdfjs.OPS as Record<string, number>;
         // CTM スタックを追って paintImage 時点の変換行列を捕まえる。
-        // これが無いと画像の向き（上下反転）を復元できない。
+        // 画像の向き（上下反転）の復元と、表示面積フィルタの両方に使う。
         let ctm: Matrix = IDENTITY;
         const ctmStack: Matrix[] = [];
         for (let i = 0; i < opList.fnArray.length; i++) {
@@ -167,6 +194,21 @@ export async function extractEmbeddedPdfImages(
           }
           if (fn === OPS.transform) {
             ctm = composeMatrix(ctm, args as unknown as Matrix);
+            continue;
+          }
+          if (fn === OPS.paintFormXObjectBegin) {
+            // form XObject は save → 配置行列を合成 → 中身を描画 → restore として
+            // 描画される。ここで行列を畳み込まないと、form 内に埋め込まれた画像の
+            // 表示面積と向きを取り違える。
+            ctmStack.push(ctm);
+            const m = args?.[0];
+            if (Array.isArray(m) && m.length === 6) {
+              ctm = composeMatrix(ctm, m as unknown as Matrix);
+            }
+            continue;
+          }
+          if (fn === OPS.paintFormXObjectEnd) {
+            ctm = ctmStack.pop() ?? IDENTITY;
             continue;
           }
 
@@ -189,6 +231,15 @@ export async function extractEmbeddedPdfImages(
           const w = imageObj.width ?? 0;
           const h = imageObj.height ?? 0;
           if (w < minSize.width || h < minSize.height) continue;
+
+          // ビットマップ解像度とは別に、ページ上の表示面積でも判定する。論文 PDF は
+          // 矢印・罫線・記号を高解像度の小さな image mask として埋め込むことがあり、
+          // minSize だけでは素通りするため。CTM を一度も合成していない場合は
+          // 配置情報が無いので判定せず通す（誤除外を避ける）。
+          if (minDisplayArea > 0 && ctm !== IDENTITY) {
+            const displayArea = displayAreaFromMatrix(ctm);
+            if (displayArea < minDisplayArea) continue;
+          }
 
           const orientation = imageOrientationFromMatrix(ctm);
           const blob = await encodeImageObjectToPng(imageObj, w, h, orientation);

@@ -266,7 +266,7 @@ straight document translation.
 | Step | File | What it does |
 |---|---|---|
 | Extract text | `src/features/wiki/pdf-text-extractor.ts` (`extractPdfPages`) | Client-side pdfjs extraction, returned **per page** (the unit of translation and figure placement) |
-| Extract figures | `src/features/asset-browser/pdf-image-extractor.ts` (`extractEmbeddedPdfImages`) | Pulls embedded raster images grouped by page number, uploaded as media derived from the source PDF |
+| Extract figures | `src/features/asset-browser/pdf-image-extractor.ts` (`extractEmbeddedPdfImages`) | Pulls embedded raster images grouped by page number, skipping tiny decorative fragments (arrows, rules) by their on-page display area; uploaded as media derived from the source PDF |
 | Glossary | `POST /api/translate/glossary` | One pass over a text sample extracts key domain terms + target-language translations, so parallel page translations stay consistent |
 | Translate | `src/server/services/translate.ts` + `POST /api/translate` | Per-page prompt (glossary injected): reconstruct structure from the flattened text, translate prose into the target language, keep math / code / citations / references verbatim, output Markdown |
 | Build | `src/features/pdf-translate/translate-service.ts` | Per page: Markdown → BlockNote blocks (`tryParseMarkdownToBlocks`) followed by that page's figure blocks; assembles a `GraphiumDocument` linked to the source PDF |
