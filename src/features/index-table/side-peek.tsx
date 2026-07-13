@@ -5,7 +5,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, TrendingUp } from "lucide-react";
+import { summarizeWikiGrowth } from "../network-graph/growth-summary";
+import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -1507,6 +1509,22 @@ function SidePeekInner({
                     )}
                   </div>
                 )}
+              {/* wiki の成長ストリップ（タイトル直下・文脈タグ行の鏡像）。
+                  SidePeek には WikiBanner / 履歴タブが無いパリティギャップの最小埋め:
+                  #553 で記録される wiki_* 操作のサマリを 1 行で出す。
+                  育っていないエントリには何も出さない（summarizeWikiGrowth が undefined）。 */}
+              {effectiveDoc && noteId.startsWith("wiki:") && (() => {
+                const growth = summarizeWikiGrowth(effectiveDoc);
+                if (!growth) return null;
+                const key = activityTypeLabelKey(growth.lastOp);
+                const op = key ? t(key as never) : growth.lastOp;
+                return (
+                  <div className="px-[54px] -mt-2 mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <TrendingUp size={12} className="shrink-0" />
+                    {t("graph.growthSummary", { count: String(growth.count), op })}
+                  </div>
+                );
+              })()}
               {/* table / audio / file の配置揃えを CSS で適用 */}
               <AlignmentStyleLayer />
               <SandboxEditor
