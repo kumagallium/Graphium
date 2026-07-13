@@ -5,6 +5,7 @@
 import { useState } from "react";
 import type { DocumentProvenance, RevisionSummary, RevisionEntity, BlockContentDiff } from "./types";
 import { useT } from "../../i18n";
+import { activityTypeLabelKey } from "./activity-label";
 
 /** 取り込みソース（EditActivity.used）の表示用解決結果 */
 export type ResolvedRevisionSource = {
@@ -58,24 +59,10 @@ function relativeTime(isoString: string): string {
   return `${days}d ago`;
 }
 
-/** 操作種別の表示ラベル */
+/** 操作種別の表示ラベル（キー対応は activity-label.ts に一元化。lineage/グラフと共用） */
 function activityTypeLabel(type: string, t: ReturnType<typeof useT>): string {
-  switch (type) {
-    case "human_edit": return t("history.type.edit");
-    case "human_derivation": return t("history.type.derive");
-    case "ai_generation": return t("history.type.aiGen");
-    case "ai_derivation": return t("history.type.aiDerive");
-    case "template_create": return t("history.type.template");
-    case "derive_source": return t("history.type.deriveSource");
-    case "wiki_ingest": return t("history.type.wikiIngest");
-    case "wiki_merge": return t("history.type.wikiMerge");
-    case "wiki_cross_update": return t("history.type.wikiCrossUpdate");
-    case "wiki_dedup_merge": return t("history.type.wikiDedupMerge");
-    case "wiki_regenerate": return t("history.type.wikiRegenerate");
-    case "wiki_atomize": return t("history.type.wikiAtomize");
-    case "wiki_reinforce": return t("history.type.wikiReinforce");
-    default: return type;
-  }
+  const key = activityTypeLabelKey(type);
+  return key ? t(key as never) : type;
 }
 
 /** RevisionSummary から変更ブロック ID を集約 */

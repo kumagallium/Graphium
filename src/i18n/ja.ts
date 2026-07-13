@@ -1568,6 +1568,7 @@ export const ja: Record<string, string> = {
 
   // グラフ・PROV
   "graph.unknownNote": "不明なノート",
+  "graph.growthSummary": "成長 {count} 回 · 最終: {op}",
   "prov.prevStepFallback": "前手順",
   "prov.resultOf": "{label} の結果",
 
