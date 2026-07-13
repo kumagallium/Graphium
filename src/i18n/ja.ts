@@ -230,6 +230,7 @@ export const ja: Record<string, string> = {
   "history.type.wikiDedupMerge": "重複統合",
   "history.type.wikiRegenerate": "再生成",
   "history.type.wikiAtomize": "洞察抽出",
+  "history.sources": "取り込み元",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",

@@ -647,6 +647,9 @@ type NoteEditorProps = {
   onSourceDocChange: (doc: GraphiumDocument | null) => void;
   /** ノートインデックス（@ オートコンプリート用） */
   noteIndex?: GraphiumIndex | null;
+  /** アーカイブ・ゴミ箱込みの全件インデックス。履歴パネルの取り込みソース解決で、
+   *  重複統合後にアーカイブされた吸収元のタイトルも引けるようにする。 */
+  rawNoteIndex?: GraphiumIndex | null;
   /** 来歴ラベル機能（手順の PROV 化）が有効か。false なら全ラベル UI を描画しない。 */
   provLabelsEnabled?: boolean;
   /** 文脈候補（タグ）を全ノートから削除する（ヘッダ文脈ピッカーのゴミ箱）。削除したら true を返す。 */
@@ -863,6 +866,7 @@ function NoteEditorInner({
   onSourceDocChange,
   getCachedDoc,
   noteIndex,
+  rawNoteIndex,
   onDeleteContextEverywhere,
   uploadFile,
   mediaIndex,
@@ -951,6 +955,33 @@ function NoteEditorInner({
     }
     return map;
   }, [noteIndex]);
+  // 履歴パネル（成長タイムライン）の取り込みソース解決。
+  // EditActivity.used の ID を表示ラベルと SidePeek で開ける ID に解決する。
+  // アーカイブ済み（重複統合の吸収元など）も引けるよう rawNoteIndex を優先する。
+  const revisionSourceIndex = useMemo(() => {
+    const map = new Map<string, { title: string; wikiKind?: string }>();
+    for (const n of (rawNoteIndex ?? noteIndex)?.notes ?? []) {
+      map.set(n.noteId, { title: n.title, wikiKind: n.wikiKind });
+    }
+    return map;
+  }, [rawNoteIndex, noteIndex]);
+  const resolveRevisionSource = useCallback(
+    (id: string) => {
+      const ext = parseExternalSource(id);
+      if (ext) return { label: ext.key, kind: ext.kind };
+      const entry = revisionSourceIndex.get(id);
+      if (entry) {
+        return {
+          label: entry.title || id,
+          kind: entry.wikiKind ? "wiki" : "note",
+          openId: entry.wikiKind ? `wiki:${id}` : id,
+        };
+      }
+      // インデックスに無い（完全削除済み等）→ 生 ID を短縮表示
+      return { label: `${id.slice(0, 8)}…`, kind: "note" };
+    },
+    [revisionSourceIndex],
+  );
   // ペーストされたノートリンク（#note/<id>）を現在のタイトルへ解決する。
   // paste リスナーの closure が stale にならないよう、ref 経由で最新の noteIndex/files を参照する。
   const resolveNoteLinkTitleRef = useRef<(fileId: string) => string | null>(() => null);
@@ -4159,7 +4190,17 @@ function NoteEditorInner({
                 />
               )}
               {rightTab === "history" && (
-                <DocumentProvenancePanel provenance={currentProvenance} onHighlightBlocks={setHighlightBlockIds} />
+                <DocumentProvenancePanel
+                  provenance={currentProvenance}
+                  onHighlightBlocks={setHighlightBlockIds}
+                  resolveSource={resolveRevisionSource}
+                  onOpenSource={(openId) => {
+                    // モバイルではこのパネルが全画面（z-200）で SidePeek（z-100）を
+                    // 覆い隠すため、パネルを閉じてから開く。デスクトップは共存できる。
+                    if (!isDesktop) setRightTab(null);
+                    setSidePeekNoteId(openId);
+                  }}
+                />
               )}
               {rightTab === "source" && sourceDoc && (
                 <SourceDocPanel doc={sourceDoc} />
@@ -7439,6 +7480,7 @@ export function NoteApp() {
             sourceDoc={fm.sourceDoc}
             onSourceDocChange={fm.setSourceDoc}
             noteIndex={fm.noteIndex}
+            rawNoteIndex={fm.rawNoteIndex}
             uploadFile={fm.handleUploadMedia}
             mediaIndex={fm.mediaIndex}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
