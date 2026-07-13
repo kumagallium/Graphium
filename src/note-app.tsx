@@ -153,9 +153,9 @@ import {
   type AtomCandidate, getDocEmbedding, pickFarthestSeeds, buildClusterSlice, pickClusterCount,
   rankCandidatesByRelevance,
   // Atom（実験的）
-  atomizeConcepts, buildAtomDocument,
+  atomizeConcepts, buildAtomDocument, reinforceAtomWithClaims,
   // Discovery 共通: embedding ベース重複検出
-  dedupCandidatesByEmbedding,
+  partitionCandidatesByEmbedding,
   // インライン引用リンク
   buildNoteIndex,
   // 操作ログ
@@ -845,6 +845,53 @@ async function loadNoteDocByFullKey(
   } catch {
     return null;
   }
+}
+
+/**
+ * Atom reinforcement（支持追加）— discovery の重複候補を捨てずに、一致した既存 Atom の
+ * derivedFromClaims へ新しい支持 Claim を取り込む（Atom の成長経路）。
+ * 本文は変えない（育った支持集合は次の re-lift / regenerate で本文に反映される）ので
+ * embedding の再計算も不要。取り込みに成功した Atom 数を返す。
+ */
+async function applyAtomReinforcement(opts: {
+  // note-app には sampling 用の同名 AtomCandidate（クラスタ候補）があるため、
+  // wiki-service の Atom 候補は構造的型で受ける
+  duplicates: { candidate: { title: string; derivedFromClaims: string[] }; matchedDocId: string; score?: number }[];
+  loadDoc: (key: string) => Promise<GraphiumDocument | null>;
+  saveWikiFile: (id: string, doc: GraphiumDocument, options?: { activityType?: import("./features/document-provenance/types").EditActivityType; sources?: string[] }) => Promise<boolean>;
+}): Promise<number> {
+  let reinforced = 0;
+  for (const dup of opts.duplicates) {
+    try {
+      const existing = await opts.loadDoc(`wiki:${dup.matchedDocId}`);
+      if (!existing) continue;
+      const result = reinforceAtomWithClaims(existing, dup.candidate);
+      if (!result) continue; // 新しい支持 Claim なし → 従来どおり捨てるだけ
+      // handleSaveWikiFile は savingRef（エディタ autosave と共有）が塞がっていると
+      // false でスキップする。短い保存往復との衝突なので少し待ってリトライし、
+      // それでも保存できなければ成功として数えない（偽成功ログを残さない）。
+      let saved = false;
+      for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+        saved = await opts.saveWikiFile(dup.matchedDocId, result.doc, {
+          activityType: "wiki_reinforce",
+          sources: result.addedClaimIds,
+        });
+      }
+      if (!saved) continue;
+      wikiLog.append(
+        "merge",
+        [dup.matchedDocId],
+        `Reinforced "${existing.title}" with ${result.addedClaimIds.length} new claim(s) (folded duplicate "${dup.candidate.title}")`,
+        // 監査用: embedding 一致のスコアを残す（偽陽性の事後調査に使う）
+        dup.score !== undefined ? { matchScore: dup.score, candidateTitle: dup.candidate.title } : undefined,
+      ).catch(() => {});
+      reinforced += 1;
+    } catch {
+      // 支持追加の失敗は無視（従来どおり重複候補が捨てられるだけで、既存動作は壊れない）
+    }
+  }
+  return reinforced;
 }
 
 function NoteEditorInner({
@@ -5286,6 +5333,7 @@ export function NoteApp() {
             .filter(([, m]) => m.kind === "atom")
             .map(([, m]) => m.title);
           let createdAtoms = 0;
+          let reinforcedAtoms = 0;
           updateStage(
             "atomize",
             "running",
@@ -5311,7 +5359,26 @@ export function NoteApp() {
               getLocale(),
               { existingAtomTitles, model: getChatSynthesisModelName() || undefined },
             );
-            for (const candidate of atomResult.atoms) {
+            // 既存 Atom との embedding 類似で「新規」と「重複」に分割し、
+            // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
+            // ゴミ箱/アーカイブ済み Atom は除外 — 不可視の Atom に候補が吸収されると
+            // 「支持追加と表示されたのに何も現れない」事故になる（embedding は
+            // soft-delete では消えないため wikiMetas だけでは弾けない）。
+            const hiddenWikiIds = new Set(
+              (fm.rawNoteIndex?.notes ?? [])
+                .filter((n) => n.deletedAt || n.archivedAt)
+                .map((n) => n.noteId),
+            );
+            const existingAtomDocIds = new Set(
+              [...fm.wikiMetas.entries()]
+                .filter(([id, m]) => m.kind === "atom" && !hiddenWikiIds.has(id))
+                .map(([id]) => id),
+            );
+            const { kept, duplicates } = await partitionCandidatesByEmbedding(
+              atomResult.atoms,
+              existingAtomDocIds,
+            );
+            for (const candidate of kept) {
               const atomDoc = buildAtomDocument(candidate, atomResult.model ?? null, getLocale());
               const newId = await fm.handleCreateWikiFile(atomDoc, { activityType: "wiki_atomize" });
               embedWikiSections(newId, atomDoc).catch(() => {});
@@ -5323,11 +5390,19 @@ export function NoteApp() {
               createdAtoms += 1;
               existingAtomTitles.push(candidate.title);
             }
+            reinforcedAtoms += await applyAtomReinforcement({
+              duplicates,
+              loadDoc: fm.loadDoc,
+              saveWikiFile: fm.handleSaveWikiFile,
+            });
           }
           updateStage(
             "atomize",
             "done",
-            createdAtoms > 0 ? `${createdAtoms} ${atomLabel}` : tStatic("ingest.noNewAtoms", { kind: atomLabel }),
+            createdAtoms > 0 || reinforcedAtoms > 0
+              ? `${createdAtoms} ${atomLabel}`
+                + (reinforcedAtoms > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(reinforcedAtoms) })}` : "")
+              : tStatic("ingest.noNewAtoms", { kind: atomLabel }),
           );
         }
       } catch (err) {
@@ -6208,6 +6283,7 @@ export function NoteApp() {
     }));
 
     let totalCreated = 0;
+    let totalReinforced = 0;
     let lastIteration = 0;
     try {
       for (let iter = 1; iter <= seeds.length; iter++) {
@@ -6237,13 +6313,27 @@ export function NoteApp() {
         );
         // クラスタごとに独立して回すため、収束（候補なし）時も次のクラスタは試す。
         if (result.atoms.length === 0) continue;
-        // 既存 Atom との embedding 類似度で post-filter（embedding 未設定なら素通し）
-        const existingAtomDocIds = new Set(
-          [...fm.wikiMetas.entries()].filter(([, m]) => m.kind === "atom").map(([id]) => id),
+        // 既存 Atom との embedding 類似度で「新規」と「重複」に分割（embedding 未設定なら全て新規扱い）。
+        // 重複候補は捨てずに一致先 Atom への支持追加（reinforcement）に回す。
+        // ゴミ箱/アーカイブ済み Atom は除外（不可視 Atom への吸収防止。自動経路と同じ理由）。
+        const hiddenWikiIds = new Set(
+          (fm.rawNoteIndex?.notes ?? [])
+            .filter((n) => n.deletedAt || n.archivedAt)
+            .map((n) => n.noteId),
         );
-        const filtered = await dedupCandidatesByEmbedding(result.atoms, existingAtomDocIds);
-        if (filtered.length === 0) continue; // このクラスタは既存と被り → 次のクラスタへ
-        for (const candidate of filtered) {
+        const existingAtomDocIds = new Set(
+          [...fm.wikiMetas.entries()]
+            .filter(([id, m]) => m.kind === "atom" && !hiddenWikiIds.has(id))
+            .map(([id]) => id),
+        );
+        const { kept, duplicates } = await partitionCandidatesByEmbedding(result.atoms, existingAtomDocIds);
+        totalReinforced += await applyAtomReinforcement({
+          duplicates,
+          loadDoc: fm.loadDoc,
+          saveWikiFile: fm.handleSaveWikiFile,
+        });
+        if (kept.length === 0) continue; // このクラスタの新規候補は既存と被り → 次のクラスタへ
+        for (const candidate of kept) {
           const atomDoc = buildAtomDocument(candidate, result.model ?? null, getLocale());
           const newId = await fm.handleCreateWikiFile(atomDoc, { activityType: "wiki_atomize" });
           embedWikiSections(newId, atomDoc).catch(() => {});
@@ -6260,7 +6350,14 @@ export function NoteApp() {
       setIngestToast((prev) => ({
         items: (prev?.items ?? []).map((i) =>
           i.id === toastId
-            ? { ...i, status: "success" as const, detail: undefined, result: `${totalCreated} ${atomLabel}` }
+            ? {
+                ...i,
+                status: "success" as const,
+                detail: undefined,
+                result:
+                  `${totalCreated} ${atomLabel}`
+                  + (totalReinforced > 0 ? ` / ${tStatic("ingest.reinforced", { count: String(totalReinforced) })}` : ""),
+              }
             : i
         ),
       }));

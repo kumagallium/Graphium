@@ -1731,27 +1731,38 @@ export function formatWikiIndexForLLM(entries: WikiIndexEntry[]): string {
 
 // ── Discovery 共通: embedding ベースの post-filter（重複検出の safety net） ──
 
+/** partitionCandidatesByEmbedding の戻り値 */
+export type CandidatePartition<T> = {
+  /** 重複と判定されなかった候補（新規作成に回す） */
+  kept: T[];
+  /** 既存同 kind ドキュメントとの重複と判定された候補。
+   *  matchedDocId は最も類似度が高かった既存ドキュメントの ID —
+   *  Atom なら reinforceAtomWithClaims でその Atom の支持 Claim として取り込める。 */
+  duplicates: { candidate: T; matchedDocId: string; score: number }[];
+};
+
 /**
  * Atom / Synthesis の discovery 候補を、既存同 kind ドキュメントとの embedding 類似度で
- * filter する。LLM プロンプトベースの "Existing titles" 重複防止に対する安全網。
+ * 「新規（kept）」と「既存との重複（duplicates + 一致先 ID）」に分割する。
+ * LLM プロンプトベースの "Existing titles" 重複防止に対する安全網。
  *
  * 設計の意図:
- *   - embedding モデル必須にはしない。設定が無い / API が失敗したら **そのまま素通し**（fail-open）。
+ *   - embedding モデル必須にはしない。設定が無い / API が失敗したら **全て kept**（fail-open）。
  *   - 既存が空 / 候補が空のときは即返す（embedding API を叩かない）。
- *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら drop。
- *
- * @returns 重複と判定されなかった候補のみ
+ *   - 類似度はセクション単位で計算され、同 kind の任意のセクションと閾値超えしたら duplicate。
  */
-export async function dedupCandidatesByEmbedding<T extends { title: string; body: string }>(
+export async function partitionCandidatesByEmbedding<T extends { title: string; body: string }>(
   candidates: T[],
   existingSameKindDocIds: Set<string>,
   threshold = 0.9,
-): Promise<T[]> {
-  if (candidates.length === 0 || existingSameKindDocIds.size === 0) return candidates;
+): Promise<CandidatePartition<T>> {
+  if (candidates.length === 0 || existingSameKindDocIds.size === 0) {
+    return { kept: candidates, duplicates: [] };
+  }
 
   // embedding モデルが未設定なら fail-open（プロンプトベース dedup に任せる）
   const embModel = getEmbeddingLLMModel();
-  if (!embModel) return candidates;
+  if (!embModel) return { kept: candidates, duplicates: [] };
 
   try {
     // 各候補の title + body を embed
@@ -1768,15 +1779,16 @@ export async function dedupCandidatesByEmbedding<T extends { title: string; body
         embedding_model: getEmbeddingModel() || undefined,
       }),
     });
-    if (!res.ok) return candidates; // fail-open
+    if (!res.ok) return { kept: candidates, duplicates: [] }; // fail-open
 
     const data = await res.json() as {
       embeddings: { documentId: string; sectionId: string; vector: number[] }[];
     };
 
-    // 既存同 kind ドキュメントの中で類似度 > threshold のものがあれば drop
+    // 既存同 kind ドキュメントの中で類似度 > threshold のものがあれば duplicate
     const TOP_K = 3;
     const kept: T[] = [];
+    const duplicates: CandidatePartition<T>["duplicates"] = [];
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
       const emb = data.embeddings.find((e) => e.documentId === `__candidate_${i}__`);
@@ -1785,16 +1797,33 @@ export async function dedupCandidatesByEmbedding<T extends { title: string; body
         continue;
       }
       const results = await embeddingStore.searchByVector(emb.vector, TOP_K);
-      const dup = results.some(
-        (r) => existingSameKindDocIds.has(r.documentId) && r.score > threshold,
-      );
-      if (!dup) kept.push(candidate);
+      const best = results
+        .filter((r) => existingSameKindDocIds.has(r.documentId) && r.score > threshold)
+        .sort((a, b) => b.score - a.score)[0];
+      if (best) {
+        duplicates.push({ candidate, matchedDocId: best.documentId, score: best.score });
+      } else {
+        kept.push(candidate);
+      }
     }
-    return kept;
+    return { kept, duplicates };
   } catch (err) {
-    console.warn("dedupCandidatesByEmbedding failed, falling through:", err);
-    return candidates; // fail-open
+    console.warn("partitionCandidatesByEmbedding failed, falling through:", err);
+    return { kept: candidates, duplicates: [] }; // fail-open
   }
+}
+
+/**
+ * @deprecated 呼び出し側が重複の一致先を使わない場合の互換ラッパ。
+ * 新規コードは partitionCandidatesByEmbedding を使う。
+ */
+export async function dedupCandidatesByEmbedding<T extends { title: string; body: string }>(
+  candidates: T[],
+  existingSameKindDocIds: Set<string>,
+  threshold = 0.9,
+): Promise<T[]> {
+  const { kept } = await partitionCandidatesByEmbedding(candidates, existingSameKindDocIds, threshold);
+  return kept;
 }
 
 // ── Atom（実験的レイヤ）──
@@ -1982,6 +2011,43 @@ export function buildAtomDocument(
     },
     createdAt: now,
     modifiedAt: now,
+  };
+}
+
+/**
+ * Atom の「支持追加（reinforcement）」— Atom の成長経路。
+ *
+ * discovery が既存 Atom と重複する候補を出したとき、従来は候補ごと捨てていた
+ * （新しい Claim 群と既存 Atom の対応が失われる）。代わりに、候補が依拠していた
+ * Claim のうち既存 Atom がまだ知らないものを derivedFromClaims に取り込む。
+ *
+ * 本文には触れない — 「保存より再生成優先」の設計に合わせて、育った支持集合は
+ * 次の re-lift / regenerate（derivedFromClaims を温存して使う）で本文に反映される。
+ * 新しい支持 Claim が無ければ null（保存不要）。
+ */
+export function reinforceAtomWithClaims(
+  existingDoc: GraphiumDocument,
+  candidate: Pick<AtomCandidate, "derivedFromClaims">,
+): { doc: GraphiumDocument; addedClaimIds: string[] } | null {
+  if (existingDoc.wikiMeta?.kind !== "atom") return null;
+  const known = new Set(existingDoc.wikiMeta.derivedFromClaims ?? []);
+  // LLM 出力の sourceConceptIds は同一 ID を重複列挙し得るので候補側も dedupe する
+  const fresh = [
+    ...new Set((candidate.derivedFromClaims ?? []).filter((id) => id && !known.has(id))),
+  ];
+  if (fresh.length === 0) return null;
+  const now = new Date().toISOString();
+  return {
+    doc: {
+      ...existingDoc,
+      wikiMeta: {
+        ...existingDoc.wikiMeta,
+        derivedFromClaims: [...(existingDoc.wikiMeta.derivedFromClaims ?? []), ...fresh],
+        lastIngestedAt: now,
+      },
+      modifiedAt: now,
+    },
+    addedClaimIds: fresh,
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInlineCitations, promoteClaimStatusIfCorroborated } from "./wiki-service";
+import { parseInlineCitations, promoteClaimStatusIfCorroborated, reinforceAtomWithClaims } from "./wiki-service";
 
 const emptyIndex: any[] = [];
 
@@ -232,5 +232,63 @@ describe("promoteClaimStatusIfCorroborated - candidate → verified 昇格", () 
       { selfId: "wiki-self", isIndependentSource: (id) => !wikiIds.has(id) },
     );
     expect(meta.status).toBe("verified");
+  });
+});
+
+describe("reinforceAtomWithClaims - Atom の支持追加", () => {
+  const atomDoc = (derivedFromClaims: string[]) => ({
+    version: 2,
+    title: "atom",
+    pages: [{ id: "main", title: "atom", blocks: [], labels: {}, provLinks: [], knowledgeLinks: [] }],
+    wikiMeta: {
+      kind: "atom",
+      derivedFromNotes: [],
+      derivedFromChats: [],
+      derivedFromClaims,
+      generatedAt: "2026-07-01T00:00:00Z",
+      generatedBy: { model: "m", version: "1.0.0" },
+    },
+    createdAt: "2026-07-01T00:00:00Z",
+    modifiedAt: "2026-07-01T00:00:00Z",
+  }) as any;
+
+  it("新しい支持 Claim だけが末尾に追加される", () => {
+    const result = reinforceAtomWithClaims(atomDoc(["claim-a"]), {
+      derivedFromClaims: ["claim-a", "claim-b", "claim-c"],
+    });
+    expect(result).not.toBeNull();
+    expect(result!.doc.wikiMeta!.derivedFromClaims).toEqual(["claim-a", "claim-b", "claim-c"]);
+    expect(result!.addedClaimIds).toEqual(["claim-b", "claim-c"]);
+  });
+
+  it("既知の Claim のみ（差分なし）なら null（保存不要）", () => {
+    expect(
+      reinforceAtomWithClaims(atomDoc(["claim-a", "claim-b"]), { derivedFromClaims: ["claim-a"] }),
+    ).toBeNull();
+  });
+
+  it("atom 以外の doc には何もしない", () => {
+    const doc = atomDoc(["claim-a"]);
+    doc.wikiMeta.kind = "claim";
+    expect(reinforceAtomWithClaims(doc, { derivedFromClaims: ["claim-b"] })).toBeNull();
+  });
+
+  it("本文（pages）は変更しない", () => {
+    const doc = atomDoc(["claim-a"]);
+    const result = reinforceAtomWithClaims(doc, { derivedFromClaims: ["claim-b"] });
+    expect(result!.doc.pages).toBe(doc.pages);
+  });
+
+  it("lastIngestedAt と modifiedAt が更新される", () => {
+    const doc = atomDoc(["claim-a"]);
+    const result = reinforceAtomWithClaims(doc, { derivedFromClaims: ["claim-b"] });
+    expect(result!.doc.wikiMeta!.lastIngestedAt).toBeDefined();
+    expect(result!.doc.modifiedAt).not.toBe(doc.modifiedAt);
+  });
+
+  it("空文字 ID は追加しない", () => {
+    expect(
+      reinforceAtomWithClaims(atomDoc(["claim-a"]), { derivedFromClaims: ["", "claim-a"] }),
+    ).toBeNull();
   });
 });
