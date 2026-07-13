@@ -3,8 +3,10 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  displayAreaFromMatrix,
   embeddedImageToFile,
   imageOrientationFromMatrix,
+  isEffectivelySolidColor,
   type ExtractedEmbeddedImage,
 } from "./pdf-image-extractor";
 
@@ -82,5 +84,86 @@ describe("imageOrientationFromMatrix", () => {
       flipX: false,
       flipY: false,
     });
+  });
+});
+
+// 表示面積は |det| = |a·d − b·c|。回転・反転を通して不変であることをここで固定する。
+// 軸並行の値は imageOrientationFromMatrix と同じ実測 CTM を流用している。
+describe("displayAreaFromMatrix", () => {
+  it("軸並行スケールは幅×高さ（pt²）", () => {
+    expect(displayAreaFromMatrix([192.2, 0, 0, 148.4, 0, 0])).toBeCloseTo(28522.48, 1);
+  });
+
+  it("d<0（縦反転）でも面積は正", () => {
+    expect(displayAreaFromMatrix([199.0, 0, 0, -253.0, 0, 0])).toBe(50347);
+  });
+
+  it("90 度回転でも面積は保存される", () => {
+    expect(displayAreaFromMatrix([0, 100, -100, 0, 0, 0])).toBe(10000);
+  });
+
+  it("潰れた変換（det=0）は 0", () => {
+    expect(displayAreaFromMatrix([100, 0, 0, 0, 0, 0])).toBe(0);
+  });
+
+  it("矢印・罫線パーツ相当（8pt 角）は図版と桁が分かれる", () => {
+    expect(displayAreaFromMatrix([8, 0, 0, 8, 0, 0])).toBe(64);
+  });
+});
+
+// 実測（MatPath_NCS.pdf）: 図がすべてベクターの論文では、埋め込み「画像」は
+// 背景パネル・帯などの単色矩形だけだった。単色判定がそれらを漏れなく弾き、
+// かつ実内容のある画像を巻き込まないことをここで固定する。
+describe("isEffectivelySolidColor", () => {
+  const rgba = (w: number, h: number, fill: [number, number, number]) => {
+    const d = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      d[i * 4] = fill[0];
+      d[i * 4 + 1] = fill[1];
+      d[i * 4 + 2] = fill[2];
+      d[i * 4 + 3] = 255;
+    }
+    return d;
+  };
+  const setPx = (d: Uint8ClampedArray, w: number, x: number, y: number, v: number) => {
+    const q = (y * w + x) * 4;
+    d[q] = d[q + 1] = d[q + 2] = v;
+  };
+
+  it("完全な単色は true", () => {
+    expect(isEffectivelySolidColor(rgba(100, 100, [170, 170, 170]), 100, 100)).toBe(true);
+  });
+
+  it("角丸パネル相当（縁だけ別色）は true — 内側 5% だけを見る", () => {
+    const d = rgba(100, 100, [170, 170, 170]);
+    // 外周 3px を白にする（角丸・アンチエイリアスの近似）
+    for (let y = 0; y < 100; y++) {
+      for (let x = 0; x < 100; x++) {
+        if (x < 3 || x >= 97 || y < 3 || y >= 97) setPx(d, 100, x, y, 255);
+      }
+    }
+    expect(isEffectivelySolidColor(d, 100, 100)).toBe(true);
+  });
+
+  it("内部に線があれば false — 実内容のある図は残す", () => {
+    const d = rgba(100, 100, [255, 255, 255]);
+    for (let x = 10; x < 90; x++) setPx(d, 100, x, 50, 0); // 水平線
+    expect(isEffectivelySolidColor(d, 100, 100)).toBe(false);
+  });
+
+  it("±3/チャンネル以内の圧縮ノイズは単色扱い", () => {
+    const d = rgba(64, 64, [170, 170, 170]);
+    setPx(d, 64, 32, 32, 172);
+    expect(isEffectivelySolidColor(d, 64, 64)).toBe(true);
+  });
+
+  it("それを超える色差は false", () => {
+    const d = rgba(64, 64, [170, 170, 170]);
+    setPx(d, 64, 32, 32, 120);
+    expect(isEffectivelySolidColor(d, 64, 64)).toBe(false);
+  });
+
+  it("縮退サイズ（2×2 以下）は情報なしとして true", () => {
+    expect(isEffectivelySolidColor(rgba(2, 2, [0, 0, 0]), 2, 2)).toBe(true);
   });
 });

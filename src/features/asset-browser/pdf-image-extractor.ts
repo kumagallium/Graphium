@@ -12,6 +12,9 @@
 //   呼び出し側でその旨を UI 上で案内する。
 // - 同一画像（ロゴ等）が複数ページで参照されている場合は最初の出現だけを返す
 //   （pdfjs の object name に基づく dedup）。
+// - 図の部品（矢印・罫線・単色の背景パネル等）は表示面積フィルタと
+//   単色判定で除外する。ベクター figure の一部として埋め込まれた
+//   ベタ矩形だけが「画像」の場合、その PDF からは何も抽出されない。
 
 // pdfjs はブラウザ専用（DOMMatrix 依存）。テスト環境（node）で純粋関数だけ
 // 呼びたいケースのために、トップレベル import を避けて関数内で遅延 import する。
@@ -54,6 +57,13 @@ export type ExtractEmbeddedImagesOptions = {
    * 装飾アイコンを除外したいときに使う。デフォルト 16x16。
    */
   minSize?: { width: number; height: number };
+  /**
+   * ページ上の表示面積（pt²）がこれ未満の画像はスキップする。矢印・罫線など
+   * 図として意味を持たない小さな部品（image mask で埋め込まれがち）を除外する。
+   * ビットマップ解像度でなく紙面上のサイズで判定する点が `minSize` と異なる。
+   * 0 で無効。デフォルト 576（24pt 角 ≈ 8.5mm 角 相当）。
+   */
+  minDisplayArea?: number;
 };
 
 /** pdfjs から渡される画像オブジェクトの最小限のシェイプ */
@@ -113,6 +123,21 @@ export function imageOrientationFromMatrix(ctm: Matrix): ImageOrientation {
 }
 
 /**
+ * paintImage 時点の CTM から、ページ上での画像の表示面積（pt²）を求める。
+ * 画像 XObject は単位正方形に対して CTM で配置されるため、表示面積は
+ * 行列式の絶対値 |a·d − b·c| になる（回転・反転・スキューを通して不変）。
+ */
+export function displayAreaFromMatrix(ctm: Matrix): number {
+  const [a, b, c, d] = ctm;
+  return Math.abs(a * d - b * c);
+}
+
+// 表示面積フィルタの既定値: 24pt 角（≈ 8.5mm 角）。実測では本物の図版は
+// 数万 pt² 規模、矢印・罫線などの図形パーツは数十〜数百 pt² 規模と桁が
+// 分かれるため、その間に置く。消えすぎ・残りすぎが出たらここを調整する。
+const DEFAULT_MIN_DISPLAY_AREA = 576;
+
+/**
  * PDF Blob を読み込み、各ページの operator list を走査して埋め込み画像を抽出する。
  *
  * 各ページの抽出は次の流れ:
@@ -129,7 +154,12 @@ export async function extractEmbeddedPdfImages(
   source: Blob,
   options: ExtractEmbeddedImagesOptions = {},
 ): Promise<ExtractedEmbeddedImage[]> {
-  const { signal, onProgress, minSize = { width: 16, height: 16 } } = options;
+  const {
+    signal,
+    onProgress,
+    minSize = { width: 16, height: 16 },
+    minDisplayArea = DEFAULT_MIN_DISPLAY_AREA,
+  } = options;
 
   const { pdfjs, options: docOptions } = await loadPdfjs();
   const buffer = await source.arrayBuffer();
@@ -150,7 +180,7 @@ export async function extractEmbeddedPdfImages(
         const opList = await page.getOperatorList();
         const OPS = pdfjs.OPS as Record<string, number>;
         // CTM スタックを追って paintImage 時点の変換行列を捕まえる。
-        // これが無いと画像の向き（上下反転）を復元できない。
+        // 画像の向き（上下反転）の復元と、表示面積フィルタの両方に使う。
         let ctm: Matrix = IDENTITY;
         const ctmStack: Matrix[] = [];
         for (let i = 0; i < opList.fnArray.length; i++) {
@@ -167,6 +197,21 @@ export async function extractEmbeddedPdfImages(
           }
           if (fn === OPS.transform) {
             ctm = composeMatrix(ctm, args as unknown as Matrix);
+            continue;
+          }
+          if (fn === OPS.paintFormXObjectBegin) {
+            // form XObject は save → 配置行列を合成 → 中身を描画 → restore として
+            // 描画される。ここで行列を畳み込まないと、form 内に埋め込まれた画像の
+            // 表示面積と向きを取り違える。
+            ctmStack.push(ctm);
+            const m = args?.[0];
+            if (Array.isArray(m) && m.length === 6) {
+              ctm = composeMatrix(ctm, m as unknown as Matrix);
+            }
+            continue;
+          }
+          if (fn === OPS.paintFormXObjectEnd) {
+            ctm = ctmStack.pop() ?? IDENTITY;
             continue;
           }
 
@@ -189,6 +234,15 @@ export async function extractEmbeddedPdfImages(
           const w = imageObj.width ?? 0;
           const h = imageObj.height ?? 0;
           if (w < minSize.width || h < minSize.height) continue;
+
+          // ビットマップ解像度とは別に、ページ上の表示面積でも判定する。論文 PDF は
+          // 矢印・罫線・記号を高解像度の小さな image mask として埋め込むことがあり、
+          // minSize だけでは素通りするため。CTM を一度も合成していない場合は
+          // 配置情報が無いので判定せず通す（誤除外を避ける）。
+          if (minDisplayArea > 0 && ctm !== IDENTITY) {
+            const displayArea = displayAreaFromMatrix(ctm);
+            if (displayArea < minDisplayArea) continue;
+          }
 
           const orientation = imageOrientationFromMatrix(ctm);
           const blob = await encodeImageObjectToPng(imageObj, w, h, orientation);
@@ -231,6 +285,59 @@ function getImageObject(page: any, name: string): Promise<PdfImageObject | null>
 }
 
 /**
+ * RGBA バッファが「実質単色」かどうかを判定する。
+ *
+ * 論文 PDF は図の背景パネル・帯・角丸矩形などを単色のラスター画像として
+ * 埋め込むことが多く、これらは表示面積が大きくても図としての情報を持たない。
+ * 角丸コーナーやアンチエイリアスされた縁が混ざっても判定できるよう、
+ * 上下左右 5% を除いた内側だけを最大 96×96 のグリッドでサンプリングし、
+ * 全サンプルが基準色から ±3/チャンネル以内なら単色とみなす。
+ * アルファは比較しない（mask 由来の画像は透明部も RGB が一様になるため、
+ * 矢印・罫線マスクもここで弾ける）。
+ */
+export function isEffectivelySolidColor(
+  data: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+): boolean {
+  if (width < 3 || height < 3) return true;
+  const insetX = Math.max(1, Math.round(width * 0.05));
+  const insetY = Math.max(1, Math.round(height * 0.05));
+  const x0 = insetX;
+  const x1 = width - insetX;
+  const y0 = insetY;
+  const y1 = height - insetY;
+  const cols = Math.min(96, x1 - x0);
+  const rows = Math.min(96, y1 - y0);
+  if (cols <= 0 || rows <= 0) return true;
+  const TOLERANCE = 3;
+  let r = -1;
+  let g = -1;
+  let b = -1;
+  for (let yi = 0; yi < rows; yi++) {
+    const y = y0 + Math.floor(((y1 - y0 - 1) * yi) / Math.max(1, rows - 1));
+    for (let xi = 0; xi < cols; xi++) {
+      const x = x0 + Math.floor(((x1 - x0 - 1) * xi) / Math.max(1, cols - 1));
+      const q = (y * width + x) * 4;
+      if (r < 0) {
+        r = data[q];
+        g = data[q + 1];
+        b = data[q + 2];
+        continue;
+      }
+      if (
+        Math.abs(data[q] - r) > TOLERANCE ||
+        Math.abs(data[q + 1] - g) > TOLERANCE ||
+        Math.abs(data[q + 2] - b) > TOLERANCE
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/**
  * pdfjs から受け取った画像オブジェクトを canvas で PNG に encode。
  * - `bitmap` (ImageBitmap) があればそれを drawImage する
  * - `data` (RGBA/RGB/Grayscale) があれば ImageData を組み立てて putImageData
@@ -265,6 +372,12 @@ async function encodeImageObjectToPng(
   } else {
     return null;
   }
+
+  // 実質単色の画像（図の背景パネル・帯など）は図としての情報を持たないため
+  // ここで除外する。表示面積フィルタだけでは大きなベタ矩形が残る
+  // （本物の図版より大きいことすらある）ので、内容で判定するしかない。
+  const pixels = sctx.getImageData(0, 0, width, height);
+  if (isEffectivelySolidColor(pixels.data, width, height)) return null;
 
   // 反転不要なら従来どおりソースをそのまま出力（余計な再描画をしない）。
   let outCanvas = source;
