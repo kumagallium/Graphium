@@ -758,51 +758,58 @@ export function ProvIndicatorHoverHint({ wrapperEl, zIndex, hidden = false }: { 
     };
   }, [labels, links, wrapperEl]);
 
+  // スクロール/リサイズ中も「#」ボタンが対象ブロックに追従するよう座標を再計算する。
+  // （fixed 配置のため、購読しないとスクロールでボタン位置がズレる）
+  useEffect(() => {
+    const blockId = hoverBlock?.blockId;
+    if (!blockId) return;
+    const update = () => {
+      const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
+      if (!wrapper) return;
+      const targetOuter = document.querySelector(
+        `[data-id="${blockId}"][data-node-type="blockOuter"]`
+      ) as HTMLElement | null;
+      if (!targetOuter) return;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const content = targetOuter.querySelector(".bn-block-content") as HTMLElement | null;
+      const r = content ? content.getBoundingClientRect() : targetOuter.getBoundingClientRect();
+      setHoverBlock((prev) =>
+        prev && prev.blockId === blockId
+          ? { blockId, top: r.top + r.height / 2, left: wrapperRect.right - 8 }
+          : prev
+      );
+    };
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [hoverBlock?.blockId, wrapperEl]);
+
   // 来歴ラベル機能がオフなら # 付与ヒントを出さない。
   if (!provLabelsEnabled || hidden || !hoverBlock) return null;
 
-  // 対象ブロックのハイライト用 rect を取得
-  const targetOuter = document.querySelector(
-    `[data-id="${hoverBlock.blockId}"][data-node-type="blockOuter"]`
-  ) as HTMLElement | null;
-  const targetContent = targetOuter?.querySelector(".bn-block-content") as HTMLElement | null;
-  const highlightRect = (targetContent || targetOuter)?.getBoundingClientRect();
-
+  // # ボタンのみ描画する。ブロックのホバー背景は BlockHoverHighlight が
+  // 全ブロック共通で描くため、ここでは重ねて描かない（重ねるとスクロール中に
+  // 二枚が分離して二重に見える原因になる）。
   return createPortal(
-    <>
-      {/* 対象ブロックのハイライト */}
-      {highlightRect && (
-        <div
-          className="fixed rounded-lg pointer-events-none"
-          style={{
-            zIndex: zIndex ?? 9,
-            top: highlightRect.top - 2,
-            left: highlightRect.left - 4,
-            width: highlightRect.width + 8,
-            height: highlightRect.height + 4,
-            background: "rgba(75, 122, 82, 0.05)",
-            border: "1.5px solid rgba(75, 122, 82, 0.15)",
-          }}
-        />
-      )}
-      {/* # ボタン */}
-      <button
-        onClick={() => openDropdown(hoverBlock.blockId)}
-        onMouseEnter={() => { hintHoveredRef.current = true; }}
-        onMouseLeave={() => { hintHoveredRef.current = false; setHoverBlock(null); }}
-        data-prov-label-anchor={hoverBlock.blockId}
-        data-prov-hover-hint="true"
-        className="fixed inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary hover:opacity-100 transition-colors duration-200"
-        style={{
-          zIndex: zIndex ? zIndex + 5 : 9996,
-          top: hoverBlock.top,
-          right: window.innerWidth - hoverBlock.left,
-          transform: "translateY(-50%)",
-        }}
-      >
-        #
-      </button>
-    </>,
+    <button
+      onClick={() => openDropdown(hoverBlock.blockId)}
+      onMouseEnter={() => { hintHoveredRef.current = true; }}
+      onMouseLeave={() => { hintHoveredRef.current = false; setHoverBlock(null); }}
+      data-prov-label-anchor={hoverBlock.blockId}
+      data-prov-hover-hint="true"
+      className="fixed inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary hover:opacity-100 transition-colors duration-200"
+      style={{
+        zIndex: zIndex ? zIndex + 5 : 9996,
+        top: hoverBlock.top,
+        right: window.innerWidth - hoverBlock.left,
+        transform: "translateY(-50%)",
+      }}
+    >
+      #
+    </button>,
     document.body
   );
 }
@@ -881,6 +888,7 @@ export function ScopeHighlight({ blockIds }: { blockIds: string[] }) {
 // ──────────────────────────────────
 export function BlockHoverHighlight({ wrapperEl, zIndex = 9 }: { wrapperEl?: HTMLElement | null; zIndex?: number } = {}) {
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
     const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
@@ -914,15 +922,35 @@ export function BlockHoverHighlight({ wrapperEl, zIndex = 9 }: { wrapperEl?: HTM
     };
   }, [wrapperEl]);
 
-  if (!hoveredBlockId) return null;
+  // ホバー対象ブロックの座標を計算する。position:fixed のオーバーレイは
+  // スクロールしても再描画されないため、scroll（capture）/resize を購読して
+  // 実ブロックと同じ位置に描き直す。購読しないとスクロール中に背景がズレる。
+  useEffect(() => {
+    if (!hoveredBlockId) {
+      setRect(null);
+      return;
+    }
+    const update = () => {
+      const outer = document.querySelector(
+        `[data-id="${hoveredBlockId}"][data-node-type="blockOuter"]`
+      ) as HTMLElement | null;
+      if (!outer) {
+        setRect(null);
+        return;
+      }
+      const content = outer.querySelector(".bn-block-content") as HTMLElement | null;
+      setRect((content || outer).getBoundingClientRect());
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [hoveredBlockId]);
 
-  const outer = document.querySelector(
-    `[data-id="${hoveredBlockId}"][data-node-type="blockOuter"]`
-  ) as HTMLElement | null;
-  if (!outer) return null;
-
-  const content = outer.querySelector(".bn-block-content") as HTMLElement | null;
-  const rect = (content || outer).getBoundingClientRect();
+  if (!rect) return null;
 
   return createPortal(
     <div
