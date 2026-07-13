@@ -224,6 +224,12 @@ export const en: Record<string, string> = {
   "history.type.aiDerive": "AI Derive",
   "history.type.template": "Template",
   "history.type.deriveSource": "Forked",
+  "history.type.wikiIngest": "Knowledge ingest",
+  "history.type.wikiMerge": "Knowledge merge",
+  "history.type.wikiCrossUpdate": "Cross-update",
+  "history.type.wikiDedupMerge": "Dedup merge",
+  "history.type.wikiRegenerate": "Regenerate",
+  "history.type.wikiAtomize": "Insight discovery",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",

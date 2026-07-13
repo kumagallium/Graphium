@@ -53,6 +53,12 @@ function activityTypeLabel(type: string, t: ReturnType<typeof useT>): string {
     case "ai_derivation": return t("history.type.aiDerive");
     case "template_create": return t("history.type.template");
     case "derive_source": return t("history.type.deriveSource");
+    case "wiki_ingest": return t("history.type.wikiIngest");
+    case "wiki_merge": return t("history.type.wikiMerge");
+    case "wiki_cross_update": return t("history.type.wikiCrossUpdate");
+    case "wiki_dedup_merge": return t("history.type.wikiDedupMerge");
+    case "wiki_regenerate": return t("history.type.wikiRegenerate");
+    case "wiki_atomize": return t("history.type.wikiAtomize");
     default: return type;
   }
 }

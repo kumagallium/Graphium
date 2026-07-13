@@ -166,12 +166,41 @@ provenance export, if needed, is a separate workspace-level action.
 
 Each in-scope Wiki entity is added as an `Entity` node with a
 `prov:wasAttributedTo` edge to the generating AI agent, plus a
-`prov:wasDerivedFrom` edge for every recorded upstream source. Three
+`prov:wasDerivedFrom` edge for every recorded upstream source. Four
 lineage lanes are emitted as derivations: `derivedFromNotes` (source
 notes), `citedKnowledgeIds` (knowledge cited/examined via the Cmd-K
-verb intake), and `derivedFromClaims` (the Claims an Insight abstracts —
-the *atomize* lane). A Wiki entity with no recorded sources is emitted
-with only the attribution edge.
+verb intake), `derivedFromClaims` (the Claims an Insight abstracts —
+the *atomize* lane), and `derivedFromChats` (chat-derived sources; in
+practice chat ingestion currently records a `chat:`-prefixed id in
+`derivedFromNotes`, so this lane is usually empty but kept for contract
+completeness). A Wiki entity with no recorded sources is emitted with
+only the attribution edge.
+
+These derivations are a *current-value snapshot* — they say where the
+entity's knowledge comes from, not how it grew. The growth history is
+exported separately: each in-scope Wiki entity whose document is loaded
+also carries its own edit-log as a named `prov:Bundle`
+(`graphium:documentProvenance/wiki/<wiki file id>` — keyed by the
+internal id, not the title, because titles are not unique — referenced
+from the entity via `graphium:provenanceBundle` as a node reference).
+Node ids inside every bundle (revisions, activities, agents) are
+prefixed with the bundle's `@id`, because the tracker numbers them
+per-document (`rev_001`, `edit_001`, …) and unprefixed ids from
+different bundles would merge into one node when the export is
+flattened. Each Wiki entity also carries its internal id as
+`graphium:noteId`, so `graphium:note/<id>` stubs referenced from
+another wiki's growth bundle (e.g. the absorbed side of a dedup merge)
+can be joined back to the entity. The bundle contains the revision
+chain (`prov:wasDerivedFrom` between revisions, hash chain), one typed
+`Activity` per operation (`graphium:editType`: `wiki_ingest` /
+`wiki_merge` / `wiki_cross_update` / `wiki_dedup_merge` /
+`wiki_regenerate` / `wiki_atomize` — see
+[DATA_MODEL.md §2.4](./DATA_MODEL.md#24-document-provenance-edit-log)),
+and a `Usage` edge per ingested source (`prov:used`), so external PROV
+tools can reconstruct *when, by which operation, and from which sources*
+each Knowledge entry grew. Per-block content diffs are stripped from
+these bundles (they stay in the wiki file itself); only the growth
+lineage is exported.
 
 Every node referenced by these relations is also **declared** so the
 export contains no dangling references: the AI agent is emitted as a

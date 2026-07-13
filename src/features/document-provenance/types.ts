@@ -49,14 +49,34 @@ export type RevisionEntity = {
   wasGeneratedBy: string;
 };
 
-/** 編集操作の種別 */
+/**
+ * 編集操作の種別。
+ *
+ * `wiki_*` は Knowledge Layer の成長操作。以前はすべて `ai_generation` に
+ * 潰していたが、それでは PROV 上で「マージ」と「再生成」を区別できず、
+ * 知識の成長過程が来歴として残らない。wikiLog（表示用の要約ログ）と
+ * 意味論を揃えた専用の型で記録する。
+ * 旧ビルドは未知の型をラベル無変換で表示するだけなので互換性は壊れない。
+ */
 export type EditActivityType =
   | "human_edit"
   | "human_derivation"
   | "ai_generation"
   | "ai_derivation"
   | "template_create"
-  | "derive_source";
+  | "derive_source"
+  /** ソース（ノート / PDF / URL / チャット）からの Wiki 新規生成 */
+  | "wiki_ingest"
+  /** Ingester の merge 提案による既存 Wiki への統合（rewriteAndMerge） */
+  | "wiki_merge"
+  /** 新ノート取り込み後の既存 Wiki 横断更新（cross-update） */
+  | "wiki_cross_update"
+  /** Lint の redundant 検出による重複 Wiki の自動統合 */
+  | "wiki_dedup_merge"
+  /** 既存 Wiki のソースからの再生成（re-lift / マルチソース regenerate） */
+  | "wiki_regenerate"
+  /** Claim 群からの構造抽象（Atom / Insight）の生成 */
+  | "wiki_atomize";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {
@@ -66,6 +86,14 @@ export type EditActivity = {
   endedAt: string;
   /** EditAgent ID → prov:wasAssociatedWith */
   wasAssociatedWith: string;
+  /**
+   * この操作が取り込んだソースの ID → prov:used。
+   * ノート ID / Wiki ID / 外部ソース ID（`pdf:` / `url:` / `document:` /
+   * `chat:` prefix）が入る。「このリビジョンはどのソースを取り込んで
+   * 生まれたか」の因果を残すためのフィールドで、wikiMeta.derivedFromNotes
+   * （現在値の集合）と違い操作単位の対応が保たれる。
+   */
+  used?: string[];
 };
 
 /**
