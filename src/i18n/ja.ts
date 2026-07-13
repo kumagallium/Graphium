@@ -230,6 +230,7 @@ export const ja: Record<string, string> = {
   "history.type.wikiDedupMerge": "重複統合",
   "history.type.wikiRegenerate": "再生成",
   "history.type.wikiAtomize": "洞察抽出",
+  "history.type.wikiReinforce": "支持追加",
   "history.sources": "取り込み元",
 
   // ── ラベル UI ──
@@ -1480,6 +1481,7 @@ export const ja: Record<string, string> = {
   "ingest.analyzingClusters": "{claims} claims / {clusters} clusters を分析中...",
   "ingest.clusterProgress": "cluster {current}/{total} 「{title}」 ({count} {kind})",
   "ingest.noNewAtoms": "新規 {kind} なし",
+  "ingest.reinforced": "支持追加 {count} 件",
   "ingest.atomLayerDisabled": "Atom Layer が無効",
   "ingest.needTwoWikis": "Wiki {count} 件（2 件以上で実行）",
   "ingest.analyzingWikis": "{count} wikis を分析中...",

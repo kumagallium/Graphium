@@ -446,6 +446,17 @@ Notes:
   intact. Full path: **cluster (A) → decompose→shape(family→form)→abstract→transfer (B) →
   transfer judge → fold judge → readability rewrite (D, all) → residual check (C) →
   fix residuals (D)** — each an explicit, nameable step.
+- **Reinforcement — how an existing Insight grows.** Discovery candidates
+  are partitioned against existing Insights by embedding similarity
+  (`partitionCandidatesByEmbedding`; fail-open when no embedding model is
+  configured). A candidate that duplicates an existing Insight used to be
+  dropped outright, losing the link between the new Claims and the
+  abstraction they support. Instead the candidate's `derivedFromClaims`
+  that the matched Insight does not yet cite are folded into it
+  (`reinforceAtomWithClaims`), recorded as a `wiki_reinforce` activity
+  with the new Claim ids as `used`. The Insight's body is deliberately
+  not rewritten — regeneration stays the way text changes, and a later
+  re-lift regenerates from the grown support set.
 
 **World-model grounding retriever (Phase 2 / PR 2B + 2C).** A separate
 lane that scores a knowledge piece against external world knowledge.
