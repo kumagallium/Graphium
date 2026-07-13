@@ -96,8 +96,8 @@ every time you talk to the AI. Every AI conversation in Graphium carries a
 | Scope | What the AI reads | When I reach for it |
 |---|---|---|
 | **External** | Everything Internal reads, plus the web searched fresh — with instructions to cite only sources that actually appeared in the results | Investigating something new |
-| **Internal** (default) | Everything you cited, plus a cross-search of the crystallized brain — the Knowledge layer, not raw notes | Connecting and structuring what you have |
-| **This note** | Only what the note cites, with the original documents taking priority over anything AI-derived | Writing accurately, quoting faithfully |
+| **Internal** | Everything you cited, plus a cross-search of the crystallized brain — the Knowledge layer, not raw notes | Connecting and structuring what you have |
+| **This note** (default) | Only what the note cites, with the original documents taking priority over anything AI-derived | Writing accurately, quoting faithfully |
 
 Two details carry the design. The cross-search in **Internal** reads the
 crystallized layer only; raw notes enter a conversation when you cite them

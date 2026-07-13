@@ -98,13 +98,19 @@ describe("gatherDerivedKnowledge", () => {
 
 describe("formatCitedDocument", () => {
   it("メモ・知見・原文を順に並べる", () => {
-    const md = formatCitedDocument({
-      title: "論文X",
-      mediumLabel: "PDF",
-      memos: ["抜書き1", "抜書き2"],
-      knowledge: [{ title: "洞察A", text: "AはBである" }],
-      fullText: "これは原文の本文です。",
-    });
+    // 派生知識を出すのは internal / external スコープ（notes は横断検索を除外）。
+    // デフォルトに依存しないよう internal を明示する。
+    const md = formatCitedDocument(
+      {
+        title: "論文X",
+        mediumLabel: "PDF",
+        memos: ["抜書き1", "抜書き2"],
+        knowledge: [{ title: "洞察A", text: "AはBである" }],
+        fullText: "これは原文の本文です。",
+      },
+      20_000,
+      "internal",
+    );
     expect(md).toContain("## 引用文書: 論文X（PDF）");
     expect(md).toContain("### あなたの派生メモ（2件）");
     expect(md).toContain("- 抜書き1");
@@ -125,6 +131,7 @@ describe("formatCitedDocument", () => {
   });
 
   it("派生知識で予算を使い切ったら原文フィラーを足さない", () => {
+    // 派生知識を出す internal スコープでの予算配分ロジックを検証する。
     const md = formatCitedDocument(
       {
         title: "T",
@@ -134,6 +141,7 @@ describe("formatCitedDocument", () => {
         fullText: "原文",
       },
       120,
+      "internal",
     );
     expect(md).not.toContain("### 原文");
   });
