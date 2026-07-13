@@ -953,6 +953,10 @@ function extractSectionsForEmbedding(
 
   let currentHeading: { id: string; text: string } | null = null;
   let currentContent: string[] = [];
+  // 最初の H2 より前の本文（lead）。Atom は洞察の本文がここに来るため、
+  // H2 セクションだけを embed すると重複判定・Retriever が「Source Claims」
+  // （Claim タイトルの列挙）頼みになり、本文の主張で照合できない。
+  const leadContent: string[] = [];
 
   const flushSection = () => {
     if (currentHeading && currentContent.length > 0) {
@@ -976,9 +980,24 @@ function extractSectionsForEmbedding(
     } else if (currentHeading) {
       const text = extractInlineText(block.content);
       if (text) currentContent.push(text);
+    } else {
+      const text = extractInlineText(block.content);
+      if (text) leadContent.push(text);
     }
   }
   flushSection();
+
+  // lead は先頭に置く（本文の主張が照合の主役になるように）。
+  // sectionId "lead" は擬似 ID — embedding store の複合キー要素と検索結果の
+  // スニペット表示にしか使われず、block ID として逆引きされることはない。
+  const lead = leadContent.join(" ").trim();
+  if (lead) {
+    sections.unshift({
+      documentId,
+      sectionId: "lead",
+      text: `${kind}: ${docTitle}: ${lead}`,
+    });
+  }
 
   return sections;
 }
