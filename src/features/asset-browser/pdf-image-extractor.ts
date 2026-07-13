@@ -12,6 +12,9 @@
 //   呼び出し側でその旨を UI 上で案内する。
 // - 同一画像（ロゴ等）が複数ページで参照されている場合は最初の出現だけを返す
 //   （pdfjs の object name に基づく dedup）。
+// - 図の部品（矢印・罫線・単色の背景パネル等）は表示面積フィルタと
+//   単色判定で除外する。ベクター figure の一部として埋め込まれた
+//   ベタ矩形だけが「画像」の場合、その PDF からは何も抽出されない。
 
 // pdfjs はブラウザ専用（DOMMatrix 依存）。テスト環境（node）で純粋関数だけ
 // 呼びたいケースのために、トップレベル import を避けて関数内で遅延 import する。
@@ -282,6 +285,59 @@ function getImageObject(page: any, name: string): Promise<PdfImageObject | null>
 }
 
 /**
+ * RGBA バッファが「実質単色」かどうかを判定する。
+ *
+ * 論文 PDF は図の背景パネル・帯・角丸矩形などを単色のラスター画像として
+ * 埋め込むことが多く、これらは表示面積が大きくても図としての情報を持たない。
+ * 角丸コーナーやアンチエイリアスされた縁が混ざっても判定できるよう、
+ * 上下左右 5% を除いた内側だけを最大 96×96 のグリッドでサンプリングし、
+ * 全サンプルが基準色から ±3/チャンネル以内なら単色とみなす。
+ * アルファは比較しない（mask 由来の画像は透明部も RGB が一様になるため、
+ * 矢印・罫線マスクもここで弾ける）。
+ */
+export function isEffectivelySolidColor(
+  data: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+): boolean {
+  if (width < 3 || height < 3) return true;
+  const insetX = Math.max(1, Math.round(width * 0.05));
+  const insetY = Math.max(1, Math.round(height * 0.05));
+  const x0 = insetX;
+  const x1 = width - insetX;
+  const y0 = insetY;
+  const y1 = height - insetY;
+  const cols = Math.min(96, x1 - x0);
+  const rows = Math.min(96, y1 - y0);
+  if (cols <= 0 || rows <= 0) return true;
+  const TOLERANCE = 3;
+  let r = -1;
+  let g = -1;
+  let b = -1;
+  for (let yi = 0; yi < rows; yi++) {
+    const y = y0 + Math.floor(((y1 - y0 - 1) * yi) / Math.max(1, rows - 1));
+    for (let xi = 0; xi < cols; xi++) {
+      const x = x0 + Math.floor(((x1 - x0 - 1) * xi) / Math.max(1, cols - 1));
+      const q = (y * width + x) * 4;
+      if (r < 0) {
+        r = data[q];
+        g = data[q + 1];
+        b = data[q + 2];
+        continue;
+      }
+      if (
+        Math.abs(data[q] - r) > TOLERANCE ||
+        Math.abs(data[q + 1] - g) > TOLERANCE ||
+        Math.abs(data[q + 2] - b) > TOLERANCE
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/**
  * pdfjs から受け取った画像オブジェクトを canvas で PNG に encode。
  * - `bitmap` (ImageBitmap) があればそれを drawImage する
  * - `data` (RGBA/RGB/Grayscale) があれば ImageData を組み立てて putImageData
@@ -316,6 +372,12 @@ async function encodeImageObjectToPng(
   } else {
     return null;
   }
+
+  // 実質単色の画像（図の背景パネル・帯など）は図としての情報を持たないため
+  // ここで除外する。表示面積フィルタだけでは大きなベタ矩形が残る
+  // （本物の図版より大きいことすらある）ので、内容で判定するしかない。
+  const pixels = sctx.getImageData(0, 0, width, height);
+  if (isEffectivelySolidColor(pixels.data, width, height)) return null;
 
   // 反転不要なら従来どおりソースをそのまま出力（余計な再描画をしない）。
   let outCanvas = source;
