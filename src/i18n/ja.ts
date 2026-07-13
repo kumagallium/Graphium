@@ -880,6 +880,9 @@ export const ja: Record<string, string> = {
   "wikiBanner.worldMatchedKeywords": "マッチした語彙",
   "wikiBanner.worldMatchedKeywordsCount": "{count} 語彙ヒット",
   "wikiBanner.worldMatchedKeywordsHint": "ノートが KB の keyword をいくつ含んでいたか。%ではなく件数のみ表示する（KB entry の keyword 数に依存しないため）。",
+  // Claim corroboration（candidate → verified 昇格）
+  "wikiBanner.corroborated": "確証済み",
+  "wikiBanner.corroboratedHint": "複数の独立したノートがこの知見に依拠しています（単一ソースの候補から自動昇格）。世界照合の結果とは別の指標です。",
   // Phase γ: Toulmin extension（rebuttal / backing / modalQualifier） + Phase η: epistemicStatus
   "wikiBanner.epistemicStatusLabel": "認識的ステータス",
   "wikiBanner.epistemicStatusHint": "この主張がノート上でどこまで地に足が付いているかの段階。推測 → 解釈 → 観察 → 定説の順で強くなる。",

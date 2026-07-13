@@ -213,6 +213,41 @@ export function buildWikiDocument(
 /**
  * 既存 Wiki ドキュメントに新しいセクションを追記（merge）する
  */
+/**
+ * Claim の corroboration 昇格（candidate → verified）。
+ *
+ * DATA_MODEL.md §3.2 の約束（candidate = 1 ソース依拠 / verified = 独立した
+ * 2 ソース以上が依拠）の実装。呼び出しは保存チョークポイント
+ * （use-file-manager の handleSaveWikiFile / handleCreateWikiFile）に一本化する。
+ * 成長関数ごとに散らばらせると、orphan 自動リンクが混入させる wiki ID や
+ * 自己参照 ID（過去の regenerate バグ由来）を「独立ノート」と誤認して
+ * 誤昇格する穴が生まれるため。
+ * claim 以外・candidate 以外・独立ソース 1 件以下なら何もしない（冪等・降格なし）。
+ */
+export type PromoteClaimOptions = {
+  /** この wiki 自身のファイル ID。自己参照混入（過去バグ由来）を数えない */
+  selfId?: string;
+  /** id を独立ソースとして数えるかの判定。他の wiki ページの ID を
+   *  corroboration に数えないためのフィルタ。未指定なら全 id を数える */
+  isIndependentSource?: (id: string) => boolean;
+};
+
+export function promoteClaimStatusIfCorroborated<T extends GraphiumDocument["wikiMeta"]>(
+  meta: T,
+  options?: PromoteClaimOptions,
+): T {
+  if (!meta || meta.kind !== "claim" || meta.status !== "candidate") return meta;
+  const { selfId, isIndependentSource } = options ?? {};
+  const distinctSources = new Set(
+    (meta.derivedFromNotes ?? [])
+      .filter(Boolean)
+      .filter((id) => id !== selfId)
+      .filter((id) => (isIndependentSource ? isIndependentSource(id) : true)),
+  );
+  if (distinctSources.size < 2) return meta;
+  return { ...meta, status: "verified" as const };
+}
+
 export function mergeIntoWikiDocument(
   existingDoc: GraphiumDocument,
   ingesterOutput: IngesterOutput,

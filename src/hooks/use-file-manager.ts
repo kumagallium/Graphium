@@ -7,6 +7,7 @@ import { getActiveProvider } from "../lib/storage/registry";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
 import type { EditActivityType } from "../features/document-provenance/types";
+import { promoteClaimStatusIfCorroborated } from "../features/wiki/wiki-service";
 
 /** Wiki 保存・新規作成時のリビジョン記録オプション */
 export type WikiSaveOptions = {
@@ -1707,6 +1708,29 @@ export function useFileManager(authenticated: boolean) {
       savingRef.current = true;
       setSaving(true);
       try {
+        // Claim corroboration（candidate → verified）は保存チョークポイントで一括評価する。
+        // - 独立ソース = derivedFromNotes のうち「自分自身」と「他の wiki ページ
+        //   （index で wikiKind を持つ ID — orphan 自動リンク等で混入する）」を除いた
+        //   distinct な ID。外部ソース（pdf:/url:/document:/chat:）は数える。
+        // - 不可逆（DATA_MODEL §3.2）: regenerate が wikiMeta を candidate で再構築
+        //   しても、直前キャッシュが verified なら verified を維持する。
+        if (doc.wikiMeta?.kind === "claim") {
+          const prevStatus = docCacheRef.current.get(`wiki:${wikiId}`)?.wikiMeta?.status;
+          if (prevStatus === "verified" && doc.wikiMeta.status !== "verified") {
+            doc = { ...doc, wikiMeta: { ...doc.wikiMeta, status: "verified" } };
+          } else {
+            const wikiIdSet = new Set(
+              (noteIndexRef.current?.notes ?? []).filter((n) => n.wikiKind).map((n) => n.noteId),
+            );
+            doc = {
+              ...doc,
+              wikiMeta: promoteClaimStatusIfCorroborated(doc.wikiMeta, {
+                selfId: wikiId,
+                isIndependentSource: (id) => !wikiIdSet.has(id),
+              }),
+            };
+          }
+        }
         // AI 由来の更新（merge / cross-update など）はここでリビジョンを刻む。
         // エディタ経由のユーザー保存は buildDocument で記録済みなので options 未指定。
         if (options?.activityType) {
@@ -2019,6 +2043,19 @@ export function useFileManager(authenticated: boolean) {
           ...(doc.wikiMeta?.derivedFromClaims ?? []),
           ...(doc.wikiMeta?.citedKnowledgeIds ?? []),
         ];
+      // Claim corroboration は保存チョークポイントで評価（handleSaveWikiFile と同じ規則。
+      // 新規作成なので selfId・verified キャリーオーバーは不要）。
+      if (doc.wikiMeta?.kind === "claim") {
+        const wikiIdSet = new Set(
+          (noteIndexRef.current?.notes ?? []).filter((n) => n.wikiKind).map((n) => n.noteId),
+        );
+        doc = {
+          ...doc,
+          wikiMeta: promoteClaimStatusIfCorroborated(doc.wikiMeta, {
+            isIndependentSource: (id) => !wikiIdSet.has(id),
+          }),
+        };
+      }
       doc = await recordRevision(doc, null, activityType, { agentLabel, force: true, sources });
       const newId = await createWikiFile(doc.title, doc);
       console.log(`[wiki-debug] createWikiFile: id=${newId}, title=${doc.title}`);

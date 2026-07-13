@@ -18,6 +18,7 @@ import {
   Link as LinkIcon,
   AlertTriangle,
   Sparkles,
+  BadgeCheck,
 } from "lucide-react";
 import type {
   AtomRelation,
@@ -269,6 +270,14 @@ export function WikiBanner({
             wiki kind を問わず情報があるなら一目で読めるようにする。 */}
         {wikiMeta.epistemicStatus && (
           <EpistemicStatusBadge status={wikiMeta.epistemicStatus} />
+        )}
+
+        {/* Claim の corroboration バッジ — 複数の独立したノートが依拠して
+            candidate → verified に昇格した claim にのみ出す。candidate は
+            表示しない（概念過多を避ける段階的開示）。世界照合 verdict や
+            epistemicStatus とは別レーン（DATA_MODEL.md §3.2）。 */}
+        {wikiMeta.kind === "claim" && wikiMeta.status === "verified" && (
+          <CorroboratedBadge />
         )}
 
         {/* Phase γ: modalQualifier バッジ — claim のみ（document-types.ts でも claim 専用）。
@@ -1490,6 +1499,36 @@ function EpistemicStatusBadge({ status }: { status: EpistemicStatus }) {
     >
       <p.Icon size={11} />
       {label}
+    </span>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Claim corroboration バッジ: 複数の独立したノートが同じ知見に依拠した
+// （candidate → verified に自動昇格した）ことを示す。世界照合 verdict とは別レーン。
+// EpistemicStatusBadge の established（forest-soft のソフトピル）と隣接し得るため、
+// 塗りつぶし forest で「別軸のバッジ」だと一目で区別できるようにする。
+function CorroboratedBadge() {
+  const t = useT();
+  return (
+    <span
+      title={t("wikiBanner.corroboratedHint")}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: "var(--pill)",
+        border: "1px solid var(--forest, var(--rule))",
+        background: "var(--forest)",
+        color: "var(--paper, #fff)",
+        fontSize: 12,
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      <BadgeCheck size={11} />
+      {t("wikiBanner.corroborated")}
     </span>
   );
 }

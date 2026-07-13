@@ -222,6 +222,21 @@ export const Claim: StoryObj = {
   render: () => <Wrapper wikiMeta={{ ...baseMeta, kind: "claim", generatedBy: { model: "claude-haiku-4-5", version: "" } }} />,
 };
 
+export const ClaimCorroborated: StoryObj = {
+  name: "Claim — 確証済み（複数ノート依拠で自動昇格）",
+  render: () => (
+    <Wrapper
+      wikiMeta={{
+        ...baseMeta,
+        kind: "claim",
+        status: "verified",
+        derivedFromNotes: ["note-abc123", "note-def456"],
+        generatedBy: { model: "claude-haiku-4-5", version: "" },
+      }}
+    />
+  ),
+};
+
 export const Synthesis: StoryObj = {
   name: "Synthesis",
   render: () => <Wrapper wikiMeta={{ ...baseMeta, kind: "synthesis", generatedBy: { model: "claude-sonnet-4-6", version: "" } }} />,
