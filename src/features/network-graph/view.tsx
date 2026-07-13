@@ -16,6 +16,7 @@ import {
 } from "./knowledge-colors";
 import { useT } from "../../i18n";
 import { resolveMediaThumbUrl } from "../asset-browser/media-thumbnails";
+import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import { openExternalUrl } from "../../lib/external-link";
 
 // fcose レイアウト登録（重複防止）
@@ -295,6 +296,14 @@ export function NetworkGraphPanel({
         : node.isWiki
         ? `🤖 ${node.title}`
         : node.title;
+      // wiki ノードの成長サマリ（hover 時のフルラベルにのみ出す。通常表示は不変）
+      const growthLine = node.growth
+        ? (() => {
+            const key = activityTypeLabelKey(node.growth.lastOp);
+            const op = key ? t(key as never) : node.growth.lastOp;
+            return `\n↗ ${t("graph.growthSummary", { count: String(node.growth.count), op })}`;
+          })()
+        : "";
       // 画像 / 動画メディアでサムネイルが解決済みなら背景画像表示にする
       const thumbUrl =
         node.external === "media" &&
@@ -307,7 +316,7 @@ export function NetworkGraphPanel({
         data: {
           id: node.id,
           label: truncate(baseTitle, 18),
-          fullLabel: baseTitle,
+          fullLabel: baseTitle + growthLine,
           color,
           borderColor: getBorderColor(node.hop, node.isCurrent, node.isWiki, node.external, node.wikiKind),
           size: getNodeSize(node.isCurrent),

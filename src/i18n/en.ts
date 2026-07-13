@@ -1567,6 +1567,7 @@ export const en: Record<string, string> = {
 
   // グラフ・PROV
   "graph.unknownNote": "Unknown note",
+  "graph.growthSummary": "Grew {count}× · last: {op}",
   "prov.prevStepFallback": "Previous step",
   "prov.resultOf": "Result of {label}",
 

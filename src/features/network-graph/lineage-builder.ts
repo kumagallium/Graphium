@@ -7,6 +7,7 @@
 import type { GraphiumDocument, GraphiumFile } from "../../lib/document-types";
 import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource, isExternalSourceId } from "./external-source";
+import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
 
 export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "chat";
 
@@ -28,6 +29,8 @@ export type LineageNode = {
   cycle?: boolean;
   /** 外部リンク先 URL: PDF は CDN URL、URL は元 URL */
   externalUrl?: string;
+  /** wiki ノードの成長サマリ（Layer 1 の wiki_* 操作。生成のみの wiki は undefined） */
+  growth?: WikiGrowthSummary;
 };
 
 export type LineageRelation =
@@ -205,6 +208,7 @@ export function buildLineageTree(
       depth,
       relations,
       parents: [],
+      growth: wiki ? summarizeWikiGrowth(docs.get(id)) : undefined,
     };
   };
 

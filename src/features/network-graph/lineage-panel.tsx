@@ -7,6 +7,7 @@ import type { LineageNode } from "./lineage-builder";
 import { parseExternalSource } from "./external-source";
 import { useT } from "../../i18n";
 import { openExternalUrl } from "../../lib/external-link";
+import { activityTypeLabelKey } from "../document-provenance/activity-label";
 
 const NODE_COLORS = {
   current: "#4B7A52",
@@ -59,6 +60,18 @@ function NodeRow({
     }
   };
   const clickable = !!(node.navId || node.externalUrl || openableAsset);
+  const t = useT();
+  // wiki ノードの成長サマリ（#553 で記録される wiki_* 操作の集計）。
+  // 生成のみの wiki には出さない（growth 自体が undefined）。
+  const growthText = node.growth
+    ? t("graph.growthSummary", {
+        count: String(node.growth.count),
+        op: (() => {
+          const key = activityTypeLabelKey(node.growth.lastOp);
+          return key ? t(key as never) : node.growth.lastOp;
+        })(),
+      })
+    : null;
   return (
     <button
       onClick={handleClick}
@@ -69,18 +82,25 @@ function NodeRow({
           ? "hover:bg-muted/50 cursor-pointer"
           : "cursor-default")
       }
-      title={node.externalUrl ?? node.title}
+      title={(node.externalUrl ?? node.title) + (growthText ? `\n${growthText}` : "")}
     >
       <span className="shrink-0" style={{ color: nodeColor(node) }}>
         <NodeIcon node={node} />
       </span>
-      <span
-        className={
-          "text-sm truncate group-hover:text-foreground " +
-          (node.isCurrent ? "font-medium text-foreground" : "text-foreground/80")
-        }
-      >
-        {node.title}
+      <span className="min-w-0 flex flex-col">
+        <span
+          className={
+            "text-sm truncate group-hover:text-foreground " +
+            (node.isCurrent ? "font-medium text-foreground" : "text-foreground/80")
+          }
+        >
+          {node.title}
+        </span>
+        {growthText && (
+          <span className="text-[10px] leading-tight text-muted-foreground truncate">
+            {growthText}
+          </span>
+        )}
       </span>
       {node.cycle && (
         <span className="shrink-0 text-amber-500" title="cycle detected">

@@ -5,6 +5,7 @@ import type { GraphiumDocument, GraphiumFile, WikiKind } from "../../lib/documen
 import type { MediaIndex, MediaType } from "../asset-browser/media-index";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { parseExternalSource, type ExternalSourceKind } from "./external-source";
+import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
 import { t } from "../../i18n";
 
 export type NoteNode = {
@@ -25,6 +26,9 @@ export type NoteNode = {
   mediaFileId?: string;
   /** external === "media" のときのメディア種別（画像はサムネイル表示、それ以外はアイコン） */
   mediaType?: MediaType;
+  /** wiki ノードの成長サマリ（Layer 1 の wiki_* 操作。hover のフルラベルに出す）。
+   *  フル docs を持つ buildNoteGraph でのみ付与（index 駆動の buildGlobalGraph は不可）。 */
+  growth?: WikiGrowthSummary;
 };
 
 /** エッジが表す関係種別（全ノードグラフで線種・色を分けるために使う）。
@@ -343,6 +347,7 @@ export function buildNoteGraph(
       hop,
       isWiki,
       wikiKind: isWiki ? doc?.wikiMeta?.kind : undefined,
+      growth: isWiki ? summarizeWikiGrowth(doc) : undefined,
     });
   }
 
