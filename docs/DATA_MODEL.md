@@ -320,6 +320,30 @@ linearly in number of saves. If this becomes a measured problem,
 preferred mitigations are content-hash deduplication or
 user-controlled pruning, not silent truncation.
 
+Separately from the automatic edit log, a user can pin a **manual
+version snapshot** of a note ("Save version"). Unlike revisions, which
+store only diff metadata, a snapshot is a full `GraphiumDocument` copy,
+so an old version can be reopened in its entirety. Snapshots live in the
+provider's app-data channel and never enter `listFiles()`, so they do
+not appear in the note list, search, or graphs, and no index schema
+change is involved:
+
+```ts
+type SnapshotMeta = {
+  id: string;          // full document stored under key snapshot:<id>
+  noteId: string;      // meta list stored under key snapshot-index:<noteId>
+  version: number;     // auto-numbered 1..N per note
+  label?: string;      // optional user-given name
+  savedAt: string;     // ISO 8601
+  contentHash: string; // same page hash as the revision log
+};
+```
+
+Versions are immutable once taken; taking a snapshot whose content hash
+equals the latest one is a no-op instead of a duplicate. The history
+panel interleaves snapshots with the automatic revision log into a
+single timeline ordered by timestamp.
+
 ### 2.5 Conversational layer
 
 ```ts
@@ -1106,7 +1130,8 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
   `GraphiumDocument.sourceTextFileId` points to.
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
-  index file and other internal metadata.
+  index file, manual version snapshots (`snapshot-index:<noteId>` /
+  `snapshot:<snapshotId>`, see §2.4), and other internal metadata.
 - **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 

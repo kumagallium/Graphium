@@ -232,6 +232,15 @@ export const en: Record<string, string> = {
   "history.type.wikiAtomize": "Insight discovery",
   "history.type.wikiReinforce": "Reinforced",
   "history.sources": "Sources",
+  "version.take": "Save version",
+  "version.unnamed": "(unnamed)",
+  "version.open": "Open",
+  "version.derive": "Fork from here",
+  "version.rename": "Rename",
+  "version.delete": "Delete",
+  "version.readonly": "Read-only",
+  "version.count": "versions",
+  "version.deleteConfirm": "Delete this version?",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",

@@ -114,6 +114,8 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
+import { takeSnapshot, listSnapshots, deleteSnapshot } from "./features/version-snapshots/snapshot-store";
+import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
@@ -3470,6 +3472,61 @@ function NoteEditorInner({
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
 
+  // ── 版スナップショット（手動で残す全文版）──
+  // 一覧はノート切替時に内部チャネル（readAppData）から読み直す。Wiki は対象外。
+  const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+
+  useEffect(() => {
+    if (!fileId || isWikiDoc) {
+      setSnapshots([]);
+      return;
+    }
+    let cancelled = false;
+    listSnapshots(getActiveProvider(), fileId)
+      .then((list) => {
+        if (!cancelled) setSnapshots(list);
+      })
+      .catch((e) => console.error("版一覧の取得に失敗:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId, isWikiDoc]);
+
+  // 「版を残す」: いまの編集を通常経路（handleSave）で確定してから、保存済み全文を
+  // 版としてコピーする。buildDocument を直接呼ばないことで、recordRevision /
+  // prevPageRef 更新の副作用を正規の保存経路にだけ起こさせる。
+  const handleTakeSnapshot = useCallback(async () => {
+    if (!fileId || snapshotBusy) return;
+    setSnapshotBusy(true);
+    try {
+      await handleSave();
+      const provider = getActiveProvider();
+      const doc = await provider.loadFile(fileId);
+      await takeSnapshot(provider, fileId, doc);
+      setSnapshots(await listSnapshots(provider, fileId));
+    } catch (e) {
+      console.error("版の作成に失敗:", e);
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }, [fileId, snapshotBusy, handleSave]);
+
+  const handleDeleteSnapshot = useCallback(
+    async (snapshotId: string) => {
+      if (!fileId) return;
+      if (!window.confirm(t("version.deleteConfirm"))) return;
+      try {
+        const provider = getActiveProvider();
+        await deleteSnapshot(provider, fileId, snapshotId);
+        setSnapshots(await listSnapshots(provider, fileId));
+      } catch (e) {
+        console.error("版の削除に失敗:", e);
+      }
+    },
+    [fileId, t],
+  );
+
   // エディタ内容変更時にも再生成をトリガー + ラベル自動設定
   const handleContentChange = useCallback(() => {
     markDirty();
@@ -4206,6 +4263,16 @@ function NoteEditorInner({
                   {t("panel.generate")}
                 </button>
               )}
+              {rightTab === "history" && fileId && initialDoc?.source !== "ai" && initialDoc?.source !== "skill" && (
+                <button
+                  onClick={handleTakeSnapshot}
+                  disabled={snapshotBusy}
+                  title={t("version.take")}
+                  className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto disabled:opacity-50"
+                >
+                  {t("version.take")}
+                </button>
+              )}
             </div>
             <div className="flex-1 overflow-auto">
               {rightTab === "graph" && (
@@ -4239,6 +4306,8 @@ function NoteEditorInner({
               {rightTab === "history" && (
                 <DocumentProvenancePanel
                   provenance={currentProvenance}
+                  snapshots={snapshots}
+                  onDeleteSnapshot={handleDeleteSnapshot}
                   onHighlightBlocks={setHighlightBlockIds}
                   resolveSource={resolveRevisionSource}
                   onOpenSource={(openId) => {
