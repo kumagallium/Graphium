@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -114,7 +114,7 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
-import { takeSnapshot, listSnapshots, deleteSnapshot } from "./features/version-snapshots/snapshot-store";
+import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
@@ -3497,7 +3497,10 @@ function NoteEditorInner({
   // 版としてコピーする。buildDocument を直接呼ばないことで、recordRevision /
   // prevPageRef 更新の副作用を正規の保存経路にだけ起こさせる。
   const handleTakeSnapshot = useCallback(async () => {
-    if (!fileId || snapshotBusy) return;
+    // ボタンは条件レンダで守られるが、⌘⇧S ショートカットからも直接呼ばれるため
+    // wiki / skill ノートのガードをここにも置く（loadFile が wiki id を解決できない）。
+    if (!fileId || snapshotBusy || isWikiDoc) return;
+    if (initialDoc?.source === "ai" || initialDoc?.source === "skill") return;
     setSnapshotBusy(true);
     try {
       await handleSave();
@@ -3510,7 +3513,21 @@ function NoteEditorInner({
     } finally {
       setSnapshotBusy(false);
     }
-  }, [fileId, snapshotBusy, handleSave]);
+  }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave]);
+
+  // ⌘⇧S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
+  // ⌘⇧M と同様、デスクトップ WKWebView では Cmd 系が JS keydown に届かない場合が
+  // あるが、その場合もヘッダー / 履歴パネルのボタンで代替できる。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void handleTakeSnapshot();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [handleTakeSnapshot]);
 
   const handleDeleteSnapshot = useCallback(
     async (snapshotId: string) => {
@@ -3525,6 +3542,20 @@ function NoteEditorInner({
       }
     },
     [fileId, t],
+  );
+
+  const handleRenameSnapshot = useCallback(
+    async (snapshotId: string, label: string) => {
+      if (!fileId) return;
+      try {
+        const provider = getActiveProvider();
+        await renameSnapshot(provider, fileId, snapshotId, label);
+        setSnapshots(await listSnapshots(provider, fileId));
+      } catch (e) {
+        console.error("版の名前変更に失敗:", e);
+      }
+    },
+    [fileId],
   );
 
   // エディタ内容変更時にも再生成をトリガー + ラベル自動設定
@@ -3681,6 +3712,18 @@ function NoteEditorInner({
             onOpen={(wikiNoteId) => onNavigateNote(wikiNoteId)}
             disabled={!fileId || saving}
           />
+        )}
+        {fileId && !isWikiDoc && initialDoc?.source !== "ai" && initialDoc?.source !== "skill" && (
+          <button
+            type="button"
+            onClick={handleTakeSnapshot}
+            disabled={snapshotBusy}
+            title={`${t("version.take")} (⌘⇧S / Ctrl+Shift+S)`}
+            aria-label={t("version.take")}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0 disabled:opacity-50"
+          >
+            <Pin size={14} />
+          </button>
         )}
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
@@ -4307,6 +4350,7 @@ function NoteEditorInner({
                 <DocumentProvenancePanel
                   provenance={currentProvenance}
                   snapshots={snapshots}
+                  onRenameSnapshot={handleRenameSnapshot}
                   onDeleteSnapshot={handleDeleteSnapshot}
                   onHighlightBlocks={setHighlightBlockIds}
                   resolveSource={resolveRevisionSource}

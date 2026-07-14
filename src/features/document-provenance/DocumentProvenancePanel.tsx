@@ -35,8 +35,8 @@ type Props = {
   onOpenSnapshot?: (snapshotId: string) => void;
   /** 版を下敷きに新ノートを派生する */
   onDeriveSnapshot?: (snapshotId: string) => void;
-  /** 版のラベルを変更する */
-  onRenameSnapshot?: (snapshotId: string) => void;
+  /** 版のラベルを変更する（空文字は「未命名に戻す」） */
+  onRenameSnapshot?: (snapshotId: string, label: string) => void;
   /** 版を削除する */
   onDeleteSnapshot?: (snapshotId: string) => void;
 };
@@ -294,7 +294,7 @@ export function DocumentProvenancePanel({
             labels={rowLabels}
             onOpen={onOpenSnapshot ? () => onOpenSnapshot(item.snap.id) : undefined}
             onDerive={onDeriveSnapshot ? () => onDeriveSnapshot(item.snap.id) : undefined}
-            onRename={onRenameSnapshot ? () => onRenameSnapshot(item.snap.id) : undefined}
+            onRename={onRenameSnapshot ? (label: string) => onRenameSnapshot(item.snap.id, label) : undefined}
             onDelete={onDeleteSnapshot ? () => onDeleteSnapshot(item.snap.id) : undefined}
           />
         ) : (
