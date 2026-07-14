@@ -344,6 +344,7 @@ function buildCitationSourceLabel(source: CitationSource): string {
 
 function NoteHeaderMenu({
   onSave,
+  onTakeSnapshot,
   saveDisabled,
   onExportPdf,
   pdfExporting,
@@ -375,6 +376,8 @@ function NoteHeaderMenu({
   t,
 }: {
   onSave: () => void;
+  /** 版を残す（対象外ノートでは undefined にして項目ごと隠す） */
+  onTakeSnapshot?: () => void;
   saveDisabled: boolean;
   onExportPdf: () => void;
   pdfExporting: boolean;
@@ -457,6 +460,16 @@ function NoteHeaderMenu({
             <Save size={14} />
             {t("common.save")}
           </button>
+          {onTakeSnapshot && (
+            <button
+              className={itemClass}
+              title={`${t("version.take")} (⌘⇧S / Ctrl+Shift+S)`}
+              onClick={() => { onTakeSnapshot(); setOpen(false); }}
+            >
+              <Pin size={14} />
+              {t("version.take")}
+            </button>
+          )}
           <button
             className={itemClass}
             disabled={pdfExporting}
@@ -3713,18 +3726,6 @@ function NoteEditorInner({
             disabled={!fileId || saving}
           />
         )}
-        {fileId && !isWikiDoc && initialDoc?.source !== "ai" && initialDoc?.source !== "skill" && (
-          <button
-            type="button"
-            onClick={handleTakeSnapshot}
-            disabled={snapshotBusy}
-            title={`${t("version.take")} (⌘⇧S / Ctrl+Shift+S)`}
-            aria-label={t("version.take")}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0 disabled:opacity-50"
-          >
-            <Pin size={14} />
-          </button>
-        )}
         <span className="text-[10px] text-muted-foreground shrink-0">
           {saving ? t("common.saving") : dirty ? t("common.unsaved") : t("common.saved")}
         </span>
@@ -3739,6 +3740,11 @@ function NoteEditorInner({
         )}
         <NoteHeaderMenu
           onSave={saveNow}
+          onTakeSnapshot={
+            fileId && !isWikiDoc && initialDoc?.source !== "ai" && initialDoc?.source !== "skill"
+              ? handleTakeSnapshot
+              : undefined
+          }
           saveDisabled={saving}
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
@@ -4350,6 +4356,17 @@ function NoteEditorInner({
                 <DocumentProvenancePanel
                   provenance={currentProvenance}
                   snapshots={snapshots}
+                  selectedSnapshotId={
+                    sidePeekNoteId?.startsWith("snapshot:")
+                      ? sidePeekNoteId.replace(/^snapshot:/, "")
+                      : null
+                  }
+                  onOpenSnapshot={(snapshotId) => {
+                    // モバイルではこのパネル（z-200）が SidePeek（z-100）を覆い隠すため、
+                    // パネルを閉じてから開く（onOpenSource と同じ流儀）。
+                    if (!isDesktop) setRightTab(null);
+                    setSidePeekNoteId(`snapshot:${snapshotId}`);
+                  }}
                   onRenameSnapshot={handleRenameSnapshot}
                   onDeleteSnapshot={handleDeleteSnapshot}
                   onHighlightBlocks={setHighlightBlockIds}

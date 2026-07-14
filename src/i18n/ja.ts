@@ -241,6 +241,7 @@ export const ja: Record<string, string> = {
   "version.readonly": "読み取り専用",
   "version.count": "版",
   "version.deleteConfirm": "この版を削除しますか？",
+  "version.peekHint": "過去に残した版を表示しています（読み取り専用）",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",

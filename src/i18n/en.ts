@@ -241,6 +241,7 @@ export const en: Record<string, string> = {
   "version.readonly": "Read-only",
   "version.count": "versions",
   "version.deleteConfirm": "Delete this version?",
+  "version.peekHint": "Viewing a saved version (read-only)",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",
