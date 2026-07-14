@@ -14,7 +14,7 @@ import {
   BlockColorsItem,
   SideMenu,
 } from "@blocknote/react";
-import { DeleteBlockMenuItem, AlignmentMenuItems } from "../../components/side-menu";
+import { DeleteBlockMenuItem, AlignmentMenuItems, TurnIntoMenuItems } from "../../components/side-menu";
 import {
   BlockAlignmentProvider,
   useBlockAlignmentStore,
@@ -214,6 +214,7 @@ function SidePeekSideMenu() {
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
+        <TurnIntoMenuItems />
         <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <AlignmentMenuItems />
