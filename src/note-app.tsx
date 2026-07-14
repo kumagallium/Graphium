@@ -693,6 +693,8 @@ type NoteEditorProps = {
   onIngestFromUrl?: () => void;
   /** ノート全体を派生コールバック（ヘッダーメニューから呼ばれる） */
   onDeriveWholeNote?: () => void;
+  /** 手動で残した版を下敷きに新ノートを派生する（履歴パネルの版行から呼ばれる） */
+  onDeriveSnapshot?: (snapshotId: string) => void;
   /** 派生処理中（ボタンを無効化） */
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
@@ -942,6 +944,7 @@ function NoteEditorInner({
   onIngestToWiki,
   onIngestFromUrl,
   onDeriveWholeNote,
+  onDeriveSnapshot,
   derivingDisabled,
   onDeleteNote,
   onArchiveNote,
@@ -4367,6 +4370,7 @@ function NoteEditorInner({
                     if (!isDesktop) setRightTab(null);
                     setSidePeekNoteId(`snapshot:${snapshotId}`);
                   }}
+                  onDeriveSnapshot={onDeriveSnapshot}
                   onRenameSnapshot={handleRenameSnapshot}
                   onDeleteSnapshot={handleDeleteSnapshot}
                   onHighlightBlocks={setHighlightBlockIds}
@@ -7632,6 +7636,7 @@ export function NoteApp() {
             onDeriveNote={fm.handleDeriveNote}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
+            onDeriveSnapshot={fm.handleDeriveFromSnapshot}
             derivingDisabled={fm.deriving}
             onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
               const id = fm.activeFileId!;
