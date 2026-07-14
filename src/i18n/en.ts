@@ -153,6 +153,18 @@ export const en: Record<string, string> = {
   "editor.align.left": "Align left",
   "editor.align.center": "Align center",
   "editor.align.right": "Align right",
+  // ── 種類を変更（Turn into）──
+  "editor.turnInto": "Turn into",
+  "editor.turnIntoType.paragraph": "Text",
+  "editor.turnIntoType.heading1": "Heading 1",
+  "editor.turnIntoType.heading2": "Heading 2",
+  "editor.turnIntoType.heading3": "Heading 3",
+  "editor.turnIntoType.bulletList": "Bulleted list",
+  "editor.turnIntoType.numberedList": "Numbered list",
+  "editor.turnIntoType.checkList": "Check list",
+  "editor.turnIntoType.toggleList": "Toggle list",
+  "editor.turnIntoType.quote": "Quote",
+  "editor.turnIntoType.codeBlock": "Code",
   // ── 関係指定ピッカー（共通） ──
   "linking.title": "Link & merge",
   "linking.target": "Target",

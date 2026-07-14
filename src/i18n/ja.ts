@@ -153,6 +153,18 @@ export const ja: Record<string, string> = {
   "editor.align.left": "左揃え",
   "editor.align.center": "中央揃え",
   "editor.align.right": "右揃え",
+  // ── 種類を変更（Turn into）──
+  "editor.turnInto": "種類を変更",
+  "editor.turnIntoType.paragraph": "テキスト",
+  "editor.turnIntoType.heading1": "見出し1",
+  "editor.turnIntoType.heading2": "見出し2",
+  "editor.turnIntoType.heading3": "見出し3",
+  "editor.turnIntoType.bulletList": "箇条書きリスト",
+  "editor.turnIntoType.numberedList": "番号付きリスト",
+  "editor.turnIntoType.checkList": "チェックリスト",
+  "editor.turnIntoType.toggleList": "トグルリスト",
+  "editor.turnIntoType.quote": "引用",
+  "editor.turnIntoType.codeBlock": "コード",
   // ── 関係指定ピッカー（共通） ──
   "linking.title": "紐付けと同一化",
   "linking.target": "対象",

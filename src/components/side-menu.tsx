@@ -11,7 +11,21 @@ import {
   useExtensionState,
   useComponentsContext,
 } from "@blocknote/react";
-import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import {
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Type,
+  Heading1,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  ListChecks,
+  ListCollapse,
+  Quote,
+  Code,
+} from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
 import { SideMenuExtension } from "@blocknote/core/extensions";
 import { useAiAssistant } from "../features/ai-assistant";
@@ -411,6 +425,161 @@ export function AlignmentMenuItems() {
   );
 }
 
+// ──────────────────────────────────────────────
+// DragHandle メニュー内: 種類を変更（Turn into）
+//
+// Notion の「Turn into」に相当。既存ブロックの種類を段落・見出し・各種リスト・
+// トグル・引用・コードへ後から変換する。テキスト選択時の浮上ツールバーにも
+// BlockTypeSelect（同等の変換）はあるが、見出しや空行を「選択せずに」ブロック単位で
+// 変換したい場面が多いため、Notion 同様ブロックメニューからも操作できるようにする。
+//
+// 変換は BlockNote 標準の editor.updateBlock(block, { type, props }) 一発。content を
+// 渡さないので本文（インラインテキスト）は保持される。
+//
+// 出すのはテキスト系ブロックのときだけ。メディア（image/video/audio/file/pdf）・
+// table・pageBreak は種類変換で本文が壊れる/意味を成さないため対象外。
+// ──────────────────────────────────────────────
+
+// Turn into メニューを出す「変換元」ブロック種別。
+const TURN_INTO_SOURCE_TYPES = new Set([
+  "paragraph",
+  "heading",
+  "bulletListItem",
+  "numberedListItem",
+  "checkListItem",
+  "toggleListItem",
+  "quote",
+  "codeBlock",
+]);
+
+// 変換候補（Notion 準拠の並び）。
+//   - props は変換先が要求するもののみ（見出しの level）。
+//   - match は「現在このタイプか」をチェックマーク表示 / no-op 判定に使う。
+const TURN_INTO_OPTIONS: {
+  labelKey: string;
+  type: string;
+  props?: Record<string, unknown>;
+  Icon: typeof AlignLeft;
+  match: (block: any) => boolean;
+}[] = [
+  {
+    labelKey: "editor.turnIntoType.paragraph",
+    type: "paragraph",
+    Icon: Type,
+    match: (b) => b.type === "paragraph",
+  },
+  {
+    labelKey: "editor.turnIntoType.heading1",
+    type: "heading",
+    props: { level: 1 },
+    Icon: Heading1,
+    match: (b) => b.type === "heading" && (b.props?.level ?? 1) === 1,
+  },
+  {
+    labelKey: "editor.turnIntoType.heading2",
+    type: "heading",
+    props: { level: 2 },
+    Icon: Heading2,
+    match: (b) => b.type === "heading" && b.props?.level === 2,
+  },
+  {
+    labelKey: "editor.turnIntoType.heading3",
+    type: "heading",
+    props: { level: 3 },
+    Icon: Heading3,
+    match: (b) => b.type === "heading" && b.props?.level === 3,
+  },
+  {
+    labelKey: "editor.turnIntoType.bulletList",
+    type: "bulletListItem",
+    Icon: List,
+    match: (b) => b.type === "bulletListItem",
+  },
+  {
+    labelKey: "editor.turnIntoType.numberedList",
+    type: "numberedListItem",
+    Icon: ListOrdered,
+    match: (b) => b.type === "numberedListItem",
+  },
+  {
+    labelKey: "editor.turnIntoType.checkList",
+    type: "checkListItem",
+    Icon: ListChecks,
+    match: (b) => b.type === "checkListItem",
+  },
+  {
+    labelKey: "editor.turnIntoType.toggleList",
+    type: "toggleListItem",
+    Icon: ListCollapse,
+    match: (b) => b.type === "toggleListItem",
+  },
+  {
+    labelKey: "editor.turnIntoType.quote",
+    type: "quote",
+    Icon: Quote,
+    match: (b) => b.type === "quote",
+  },
+  {
+    labelKey: "editor.turnIntoType.codeBlock",
+    type: "codeBlock",
+    Icon: Code,
+    match: (b) => b.type === "codeBlock",
+  },
+];
+
+export function TurnIntoMenuItems() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block) return null;
+  // テキスト系ブロックのみ変換導線を出す（メディア / テーブル / 改ページは対象外）。
+  if (!TURN_INTO_SOURCE_TYPES.has(block.type as string)) return null;
+
+  const apply = (option: (typeof TURN_INTO_OPTIONS)[number]) => {
+    // 既に同じ種類なら何もしない（no-op 変換で余計な変更履歴を作らない）。
+    if (option.match(block)) return;
+    editor.updateBlock(block, {
+      type: option.type,
+      props: option.props ?? {},
+    } as any);
+  };
+
+  // 「配置」「ラベル」と同じく Generic.Menu の sub でサブメニュー（flyout）にする。
+  return (
+    <Components.Generic.Menu.Root position="right" sub={true}>
+      <Components.Generic.Menu.Trigger sub={true}>
+        <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
+          {t("editor.turnInto")}
+        </Components.Generic.Menu.Item>
+      </Components.Generic.Menu.Trigger>
+      <Components.Generic.Menu.Dropdown sub={true} className="bn-menu-dropdown">
+        {TURN_INTO_OPTIONS.map((option) => {
+          const active = option.match(block);
+          const { Icon } = option;
+          return (
+            <Components.Generic.Menu.Item
+              key={option.labelKey}
+              className="bn-menu-item"
+              onClick={() => apply(option)}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <Icon size={14} />
+                <span style={{ fontWeight: active ? 700 : 400 }}>{t(option.labelKey)}</span>
+                {active && <span style={{ marginLeft: 4, opacity: 0.7 }}>✓</span>}
+              </span>
+            </Components.Generic.Menu.Item>
+          );
+        })}
+      </Components.Generic.Menu.Dropdown>
+    </Components.Generic.Menu.Root>
+  );
+}
+
 export function NoteSideMenu() {
   const t = useT();
   useFixDropdownPosition();
@@ -418,6 +587,7 @@ export function NoteSideMenu() {
     <SideMenu>
       <AddBlockButton />
       <DragHandleButton>
+        <TurnIntoMenuItems />
         <DeleteBlockMenuItem />
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <AlignmentMenuItems />
