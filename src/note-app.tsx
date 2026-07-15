@@ -463,7 +463,7 @@ function NoteHeaderMenu({
           {onTakeSnapshot && (
             <button
               className={itemClass}
-              title={`${t("version.take")} (⌘⇧S / Ctrl+Shift+S)`}
+              title={`${t("version.take")} (⌘⇧S / ⌘⌥S)`}
               onClick={() => { onTakeSnapshot(); setOpen(false); }}
             >
               <Pin size={14} />
@@ -3546,19 +3546,22 @@ function NoteEditorInner({
     }
   }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave, showVersionToast, t]);
 
-  // ⌘⇧S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
+  // ⌘⇧S / ⌘⌥S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
   // capture フェーズで購読する: エディタ（ProseMirror）内にフォーカスがあると、
   // バブリング段階の keydown はエディタ側で消費されて document まで届かないため、
   // ターゲットより先に受け取って preventDefault + stopPropagation で確定させる。
-  // e.code === "KeyS" の併用は IME・キーレイアウトで e.key が化けるケースの保険。
+  // ⌘⌥S を併設する理由: ⌘⇧S は環境（ブラウザ本体機能や拡張のグローバルショートカット）
+  // に予約されているとページの JS まで届かない実例があるため。Option+S は macOS で
+  // 文字 "ß" を生成し e.key が化けるので、判定は物理キー e.code === "KeyS" を正とする。
   // ⌘⇧M と同様、デスクトップ WKWebView では Cmd 系が JS keydown に届かない場合が
-  // あるが、その場合もヘッダー / 履歴パネルのボタンで代替できる。
+  // あるが、その場合もヘッダーメニュー / 履歴パネルのボタンで代替できる。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (
-        (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey &&
-        (e.key.toLowerCase() === "s" || e.code === "KeyS")
-      ) {
+      const isS = e.key.toLowerCase() === "s" || e.code === "KeyS";
+      const modOk =
+        (e.shiftKey && !e.altKey) || // ⌘⇧S / Ctrl+Shift+S
+        (e.altKey && !e.shiftKey);   // ⌘⌥S / Ctrl+Alt+S
+      if ((e.metaKey || e.ctrlKey) && isS && modOk) {
         e.preventDefault();
         e.stopPropagation();
         void handleTakeSnapshot();
