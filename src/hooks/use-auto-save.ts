@@ -48,7 +48,10 @@ export function useAutoSave(onSave: () => void | Promise<void>) {
   // サイドピーク内にフォーカスがある場合はサイドピーク側に任せる
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      // 素の ⌘S / Ctrl+S のみ。macOS Chrome は ⌘⇧S でも e.key が小文字 "s" のまま
+      // 届くため、Shift / Alt を除外しないと「版を残す」(⌘⇧S / ⌘⌥S) をここが
+      // window capture + stopPropagation で握り潰してしまう。
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
         const sidePeekEl = document.querySelector("[data-side-peek]");
         if (sidePeekEl && sidePeekEl.contains(document.activeElement)) {
           return; // サイドピーク側のハンドラに委譲

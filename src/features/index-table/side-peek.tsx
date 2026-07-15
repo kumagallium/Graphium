@@ -5,7 +5,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Trash2, TrendingUp } from "lucide-react";
+import { Archive, ArchiveRestore, Trash2, TrendingUp, Pin } from "lucide-react";
+import { loadSnapshot } from "../version-snapshots/snapshot-store";
 import { summarizeWikiGrowth } from "../network-graph/growth-summary";
 import { activityTypeLabelKey } from "../document-provenance/activity-label";
 import {
@@ -369,11 +370,18 @@ function SidePeekInner({
     setSaveStatus("saved");
     docRef.current = null;
 
-    // wiki:xxxx 形式のIDの場合は loadWikiFile を使用
+    // wiki:xxxx 形式のIDの場合は loadWikiFile を使用。
+    // snapshot:xxxx は手動で残した版（不変の全文スナップショット、読み取り専用）。
     const isWiki = noteId.startsWith("wiki:");
-    const loadFn = isWiki
-      ? getActiveProvider().loadWikiFile?.(noteId.replace(/^wiki:/, ""))
-      : getActiveProvider().loadFile(noteId);
+    const isSnapshot = noteId.startsWith("snapshot:");
+    const loadFn = isSnapshot
+      ? loadSnapshot(getActiveProvider(), noteId.replace(/^snapshot:/, "")).then((d) => {
+          if (!d) throw new Error(tStatic("sidePeek.loadError"));
+          return d;
+        })
+      : isWiki
+        ? getActiveProvider().loadWikiFile?.(noteId.replace(/^wiki:/, ""))
+        : getActiveProvider().loadFile(noteId);
 
     (loadFn ?? Promise.reject(new Error("Wiki not supported")))
       .then((d) => {
@@ -929,6 +937,9 @@ function SidePeekInner({
 
   // 保存処理（ref 経由で最新の store を参照し、依存を noteId のみに安定化）
   const doSave = useCallback(async () => {
+    // 版スナップショット（snapshot:）は不変・読み取り専用。エディタも editable=false に
+    // しているが、保存経路にも多重ガードを置く（誤って書き戻すと版が壊れるため）。
+    if (noteId.startsWith("snapshot:")) return;
     const editor = editorRef.current;
     if (!editor || !docRef.current) return;
 
@@ -998,13 +1009,16 @@ function SidePeekInner({
   // labelAutoRef はメインエディタ（note-app.tsx の handleContentChange）と同様、
   // 毎変更時に呼ぶ契約（箇条書き Enter のラベル継承・削除ブロックの孤立ラベル清掃）
   const handleChange = useCallback(() => {
+    // 版スナップショット（snapshot:）は読み取り専用。エディタ初期化時の change でも
+    // 「未保存」表示や自動保存タイマーを起こさない（doSave 側にも多重ガードあり）。
+    if (noteId.startsWith("snapshot:")) return;
     setSaveStatus("dirty");
     labelAutoRef.current?.();
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       doSaveRef.current();
     }, 3000);
-  }, []);
+  }, [noteId]);
 
   // URL ペーストメニュー → ブックマーク/リンク選択（メインエディタと同じ挙動）。
   // 素材登録の usedIn にはこのピークのノートを入れる: SidePeek の保存
@@ -1078,7 +1092,9 @@ function SidePeekInner({
   // Cmd+S / Ctrl+S
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      // 素の ⌘S のみ（Shift / Alt 併用は「版を残す」等の別ショートカットに譲る。
+      // macOS Chrome は ⌘⇧S でも e.key が小文字 "s" のまま届く点に注意）。
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
         const peekEl = sidePeekRef.current;
         if (peekEl && peekEl.contains(document.activeElement)) {
           e.preventDefault();
@@ -1213,36 +1229,40 @@ function SidePeekInner({
           </svg>
         </button>
 
-        <button
-          onClick={handleNavigate}
-          title={t("sidePeek.fullscreen")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 28,
-            height: 28,
-            borderRadius: 4,
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            color: "var(--color-text-tertiary)",
-            transition: "background 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "transparent";
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="14" y1="10" x2="21" y2="3" />
-            <polyline points="9 21 3 21 3 15" />
-            <line x1="10" y1="14" x2="3" y2="21" />
-          </svg>
-        </button>
+        {/* 版スナップショットは通常ノートとしてフル画面で開けない（index に無い ID のため）。
+            拡大ボタンは隠し、閲覧はピーク内で完結させる。 */}
+        {!noteId.startsWith("snapshot:") && (
+          <button
+            onClick={handleNavigate}
+            title={t("sidePeek.fullscreen")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: "var(--color-text-tertiary)",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "var(--color-surface-hover)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="14" y1="10" x2="21" y2="3" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="10" y1="14" x2="3" y2="21" />
+            </svg>
+          </button>
+        )}
 
         <span
           style={{
@@ -1329,6 +1349,26 @@ function SidePeekInner({
                   labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
               }}
             >
+              {/* 手動で残した版（snapshot:）の状態表示。エディタは read-only。 */}
+              {noteId.startsWith("snapshot:") && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                    padding: "6px 12px",
+                    borderRadius: "var(--r-1)",
+                    background: "var(--paper)",
+                    border: "1px solid var(--rule)",
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                  }}
+                >
+                  <Pin size={14} style={{ flexShrink: 0, color: "var(--color-primary)" }} />
+                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t("version.peekHint")}</span>
+                </div>
+              )}
               {/* アーカイブ済みノートの状態表示 + 復元導線。エディタは read-only
                   （editable={!archived}）なので、ここで状態を可視化する。 */}
               {archived && (
@@ -1530,7 +1570,7 @@ function SidePeekInner({
               <AlignmentStyleLayer />
               <SandboxEditor
                 key={noteId}
-                editable={!archived && !trashed}
+                editable={!archived && !trashed && !noteId.startsWith("snapshot:")}
                 blocks={customBlockEntries}
                 initialContent={initialContent}
                 sideMenu={SidePeekSideMenu}

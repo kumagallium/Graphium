@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -114,6 +114,8 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
+import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot } from "./features/version-snapshots/snapshot-store";
+import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
@@ -342,6 +344,7 @@ function buildCitationSourceLabel(source: CitationSource): string {
 
 function NoteHeaderMenu({
   onSave,
+  onTakeSnapshot,
   saveDisabled,
   onExportPdf,
   pdfExporting,
@@ -373,6 +376,8 @@ function NoteHeaderMenu({
   t,
 }: {
   onSave: () => void;
+  /** 版を残す（対象外ノートでは undefined にして項目ごと隠す） */
+  onTakeSnapshot?: () => void;
   saveDisabled: boolean;
   onExportPdf: () => void;
   pdfExporting: boolean;
@@ -455,6 +460,16 @@ function NoteHeaderMenu({
             <Save size={14} />
             {t("common.save")}
           </button>
+          {onTakeSnapshot && (
+            <button
+              className={itemClass}
+              title={`${t("version.take")} (⌘⇧S / ⌘⌥S)`}
+              onClick={() => { onTakeSnapshot(); setOpen(false); }}
+            >
+              <Pin size={14} />
+              {t("version.take")}
+            </button>
+          )}
           <button
             className={itemClass}
             disabled={pdfExporting}
@@ -678,6 +693,8 @@ type NoteEditorProps = {
   onIngestFromUrl?: () => void;
   /** ノート全体を派生コールバック（ヘッダーメニューから呼ばれる） */
   onDeriveWholeNote?: () => void;
+  /** 手動で残した版を下敷きに新ノートを派生する（履歴パネルの版行から呼ばれる） */
+  onDeriveSnapshot?: (snapshotId: string) => void;
   /** 派生処理中（ボタンを無効化） */
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
@@ -927,6 +944,7 @@ function NoteEditorInner({
   onIngestToWiki,
   onIngestFromUrl,
   onDeriveWholeNote,
+  onDeriveSnapshot,
   derivingDisabled,
   onDeleteNote,
   onArchiveNote,
@@ -3470,6 +3488,118 @@ function NoteEditorInner({
   // タイトル欄の IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
   const { compositionHandlers: titleCompositionHandlers, isImeKey: isTitleImeKey } = useImeEnterGuard();
 
+  // ── 版スナップショット（手動で残す全文版）──
+  // 一覧はノート切替時に内部チャネル（readAppData）から読み直す。Wiki は対象外。
+  const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+  // 「版を残す」の結果フィードバック。ショートカット発火時は履歴パネルが閉じている
+  // ことが多く、無言だと成功しても「効いていない」ように見えるため必ず出す。
+  const [versionToast, setVersionToast] = useState<string | null>(null);
+  const versionToastTimerRef = useRef<number | null>(null);
+  const showVersionToast = useCallback((msg: string) => {
+    setVersionToast(msg);
+    if (versionToastTimerRef.current) window.clearTimeout(versionToastTimerRef.current);
+    versionToastTimerRef.current = window.setTimeout(() => setVersionToast(null), 2600);
+  }, []);
+
+  useEffect(() => {
+    if (!fileId || isWikiDoc) {
+      setSnapshots([]);
+      return;
+    }
+    let cancelled = false;
+    listSnapshots(getActiveProvider(), fileId)
+      .then((list) => {
+        if (!cancelled) setSnapshots(list);
+      })
+      .catch((e) => console.error("版一覧の取得に失敗:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId, isWikiDoc]);
+
+  // 「版を残す」: いまの編集を通常経路（handleSave）で確定してから、保存済み全文を
+  // 版としてコピーする。buildDocument を直接呼ばないことで、recordRevision /
+  // prevPageRef 更新の副作用を正規の保存経路にだけ起こさせる。
+  const handleTakeSnapshot = useCallback(async () => {
+    // ボタンは条件レンダで守られるが、⌘⇧S ショートカットからも直接呼ばれるため
+    // wiki / skill ノートのガードをここにも置く（loadFile が wiki id を解決できない）。
+    if (!fileId || snapshotBusy || isWikiDoc) return;
+    if (initialDoc?.source === "ai" || initialDoc?.source === "skill") return;
+    setSnapshotBusy(true);
+    try {
+      await handleSave();
+      const provider = getActiveProvider();
+      const doc = await provider.loadFile(fileId);
+      const res = await takeSnapshot(provider, fileId, doc);
+      setSnapshots(await listSnapshots(provider, fileId));
+      showVersionToast(
+        res.status === "created"
+          ? t("version.savedToast", { version: String(res.meta.version) })
+          : t("version.unchangedToast"),
+      );
+    } catch (e) {
+      console.error("版の作成に失敗:", e);
+      showVersionToast(t("version.failedToast"));
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave, showVersionToast, t]);
+
+  // ⌘⇧S / ⌘⌥S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
+  // capture フェーズで購読する: エディタ（ProseMirror）内にフォーカスがあると、
+  // バブリング段階の keydown はエディタ側で消費されて document まで届かないため、
+  // ターゲットより先に受け取って preventDefault + stopPropagation で確定させる。
+  // ⌘⌥S を併設する理由: ⌘⇧S は環境（ブラウザ本体機能や拡張のグローバルショートカット）
+  // に予約されているとページの JS まで届かない実例があるため。Option+S は macOS で
+  // 文字 "ß" を生成し e.key が化けるので、判定は物理キー e.code === "KeyS" を正とする。
+  // ⌘⇧M と同様、デスクトップ WKWebView では Cmd 系が JS keydown に届かない場合が
+  // あるが、その場合もヘッダーメニュー / 履歴パネルのボタンで代替できる。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isS = e.key.toLowerCase() === "s" || e.code === "KeyS";
+      const modOk =
+        (e.shiftKey && !e.altKey) || // ⌘⇧S / Ctrl+Shift+S
+        (e.altKey && !e.shiftKey);   // ⌘⌥S / Ctrl+Alt+S
+      if ((e.metaKey || e.ctrlKey) && isS && modOk) {
+        e.preventDefault();
+        e.stopPropagation();
+        void handleTakeSnapshot();
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [handleTakeSnapshot]);
+
+  const handleDeleteSnapshot = useCallback(
+    async (snapshotId: string) => {
+      if (!fileId) return;
+      if (!window.confirm(t("version.deleteConfirm"))) return;
+      try {
+        const provider = getActiveProvider();
+        await deleteSnapshot(provider, fileId, snapshotId);
+        setSnapshots(await listSnapshots(provider, fileId));
+      } catch (e) {
+        console.error("版の削除に失敗:", e);
+      }
+    },
+    [fileId, t],
+  );
+
+  const handleRenameSnapshot = useCallback(
+    async (snapshotId: string, label: string) => {
+      if (!fileId) return;
+      try {
+        const provider = getActiveProvider();
+        await renameSnapshot(provider, fileId, snapshotId, label);
+        setSnapshots(await listSnapshots(provider, fileId));
+      } catch (e) {
+        console.error("版の名前変更に失敗:", e);
+      }
+    },
+    [fileId],
+  );
+
   // エディタ内容変更時にも再生成をトリガー + ラベル自動設定
   const handleContentChange = useCallback(() => {
     markDirty();
@@ -3639,6 +3769,11 @@ function NoteEditorInner({
         )}
         <NoteHeaderMenu
           onSave={saveNow}
+          onTakeSnapshot={
+            fileId && !isWikiDoc && initialDoc?.source !== "ai" && initialDoc?.source !== "skill"
+              ? handleTakeSnapshot
+              : undefined
+          }
           saveDisabled={saving}
           onExportPdf={handleExportPdf}
           pdfExporting={pdfExporting}
@@ -4064,6 +4199,14 @@ function NoteEditorInner({
           </div>
         </div>
 
+        {/* 版を残した結果のトースト（成功 / 変更なし / 失敗）。ショートカット発火でも
+            見えるよう画面右下に固定表示し、2.6 秒で自動消滅する。 */}
+        {versionToast && (
+          <div className="pointer-events-none fixed bottom-6 right-6 z-[300] flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground shadow-md">
+            <Pin size={14} className="shrink-0 text-primary" aria-hidden />
+            {versionToast}
+          </div>
+        )}
         {/* SidePeek（inline）— エディタの右、右パネルの左に差し込まれる。
             デスクトップのみ inline（モバイルは overlay にフォールバック）。 */}
         {sidePeekNoteId && isDesktop && (
@@ -4206,6 +4349,16 @@ function NoteEditorInner({
                   {t("panel.generate")}
                 </button>
               )}
+              {rightTab === "history" && fileId && initialDoc?.source !== "ai" && initialDoc?.source !== "skill" && (
+                <button
+                  onClick={handleTakeSnapshot}
+                  disabled={snapshotBusy}
+                  title={t("version.take")}
+                  className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto disabled:opacity-50"
+                >
+                  {t("version.take")}
+                </button>
+              )}
             </div>
             <div className="flex-1 overflow-auto">
               {rightTab === "graph" && (
@@ -4239,6 +4392,21 @@ function NoteEditorInner({
               {rightTab === "history" && (
                 <DocumentProvenancePanel
                   provenance={currentProvenance}
+                  snapshots={snapshots}
+                  selectedSnapshotId={
+                    sidePeekNoteId?.startsWith("snapshot:")
+                      ? sidePeekNoteId.replace(/^snapshot:/, "")
+                      : null
+                  }
+                  onOpenSnapshot={(snapshotId) => {
+                    // モバイルではこのパネル（z-200）が SidePeek（z-100）を覆い隠すため、
+                    // パネルを閉じてから開く（onOpenSource と同じ流儀）。
+                    if (!isDesktop) setRightTab(null);
+                    setSidePeekNoteId(`snapshot:${snapshotId}`);
+                  }}
+                  onDeriveSnapshot={onDeriveSnapshot}
+                  onRenameSnapshot={handleRenameSnapshot}
+                  onDeleteSnapshot={handleDeleteSnapshot}
                   onHighlightBlocks={setHighlightBlockIds}
                   resolveSource={resolveRevisionSource}
                   onOpenSource={(openId) => {
@@ -7502,6 +7670,7 @@ export function NoteApp() {
             onDeriveNote={fm.handleDeriveNote}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
+            onDeriveSnapshot={fm.handleDeriveFromSnapshot}
             derivingDisabled={fm.deriving}
             onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
               const id = fm.activeFileId!;
