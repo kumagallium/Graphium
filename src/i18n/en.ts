@@ -242,6 +242,9 @@ export const en: Record<string, string> = {
   "version.count": "versions",
   "version.deleteConfirm": "Delete this version?",
   "version.peekHint": "Viewing a saved version (read-only)",
+  "version.savedToast": "Saved version v{version}",
+  "version.unchangedToast": "No changes since the last version",
+  "version.failedToast": "Couldn't save the version",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",

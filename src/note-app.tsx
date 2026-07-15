@@ -3492,6 +3492,15 @@ function NoteEditorInner({
   // 一覧はノート切替時に内部チャネル（readAppData）から読み直す。Wiki は対象外。
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [snapshotBusy, setSnapshotBusy] = useState(false);
+  // 「版を残す」の結果フィードバック。ショートカット発火時は履歴パネルが閉じている
+  // ことが多く、無言だと成功しても「効いていない」ように見えるため必ず出す。
+  const [versionToast, setVersionToast] = useState<string | null>(null);
+  const versionToastTimerRef = useRef<number | null>(null);
+  const showVersionToast = useCallback((msg: string) => {
+    setVersionToast(msg);
+    if (versionToastTimerRef.current) window.clearTimeout(versionToastTimerRef.current);
+    versionToastTimerRef.current = window.setTimeout(() => setVersionToast(null), 2600);
+  }, []);
 
   useEffect(() => {
     if (!fileId || isWikiDoc) {
@@ -3522,14 +3531,20 @@ function NoteEditorInner({
       await handleSave();
       const provider = getActiveProvider();
       const doc = await provider.loadFile(fileId);
-      await takeSnapshot(provider, fileId, doc);
+      const res = await takeSnapshot(provider, fileId, doc);
       setSnapshots(await listSnapshots(provider, fileId));
+      showVersionToast(
+        res.status === "created"
+          ? t("version.savedToast", { version: String(res.meta.version) })
+          : t("version.unchangedToast"),
+      );
     } catch (e) {
       console.error("版の作成に失敗:", e);
+      showVersionToast(t("version.failedToast"));
     } finally {
       setSnapshotBusy(false);
     }
-  }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave]);
+  }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave, showVersionToast, t]);
 
   // ⌘⇧S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
   // capture フェーズで購読する: エディタ（ProseMirror）内にフォーカスがあると、
@@ -4181,6 +4196,14 @@ function NoteEditorInner({
           </div>
         </div>
 
+        {/* 版を残した結果のトースト（成功 / 変更なし / 失敗）。ショートカット発火でも
+            見えるよう画面右下に固定表示し、2.6 秒で自動消滅する。 */}
+        {versionToast && (
+          <div className="pointer-events-none fixed bottom-6 right-6 z-[300] flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground shadow-md">
+            <Pin size={14} className="shrink-0 text-primary" aria-hidden />
+            {versionToast}
+          </div>
+        )}
         {/* SidePeek（inline）— エディタの右、右パネルの左に差し込まれる。
             デスクトップのみ inline（モバイルは overlay にフォールバック）。 */}
         {sidePeekNoteId && isDesktop && (

@@ -242,6 +242,9 @@ export const ja: Record<string, string> = {
   "version.count": "版",
   "version.deleteConfirm": "この版を削除しますか？",
   "version.peekHint": "過去に残した版を表示しています（読み取り専用）",
+  "version.savedToast": "版 v{version} を残しました",
+  "version.unchangedToast": "前回の版から変更はありません",
+  "version.failedToast": "版の作成に失敗しました",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",
