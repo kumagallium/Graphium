@@ -25,6 +25,7 @@ import {
   appendDerivedNoteLink,
 } from "../features/derivation/clone-document";
 import { loadSnapshot } from "../features/version-snapshots/snapshot-store";
+import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
 import {
   buildNoteGraph,
   buildLineageTree,
@@ -53,6 +54,8 @@ import {
   createEmptyIndex,
   addMediaEntry,
   removeMediaEntry,
+  archiveMediaEntry,
+  restoreMediaEntry,
   syncUsedIn,
   removeNoteFromUsedIn,
   deleteMediaFile,
@@ -1707,6 +1710,41 @@ export function useFileManager(authenticated: boolean) {
     saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
   }, []);
 
+  // メディアをアーカイブ（一覧・ピッカーから隠すが、バイナリと既存ノート・版の中の
+  // 表示は生かす。ノートのアーカイブと同じ soft-delete 思想）
+  const handleArchiveMedia = useCallback((entry: MediaIndexEntry) => {
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const updated = archiveMediaEntry(current, entry.fileId);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+  }, []);
+
+  // アーカイブ済みメディアを一覧へ復元
+  const handleRestoreMedia = useCallback((entry: MediaIndexEntry) => {
+    const current = mediaIndexRef.current ?? createEmptyIndex();
+    const updated = restoreMediaEntry(current, entry.fileId);
+    mediaIndexRef.current = updated;
+    setMediaIndex(updated);
+    saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+  }, []);
+
+  // 素材を参照している版スナップショットの数を数える（削除ダイアログのオンデマンド集計。
+  // 版は usedIn スキャンの対象外なので、ここで別途走査する）
+  const countSnapshotRefsForAsset = useCallback(async (entry: MediaIndexEntry): Promise<number> => {
+    try {
+      const noteIds = (noteIndexRef.current?.notes ?? []).map((n) => n.noteId);
+      const refs = await findSnapshotsReferencingAsset(getActiveProvider(), noteIds, {
+        fileId: entry.fileId,
+        url: entry.url,
+      });
+      return refs.length;
+    } catch (err) {
+      console.warn("版参照の集計に失敗:", err);
+      return 0;
+    }
+  }, []);
+
   // URL ブックマーク追加（重複チェック付き）
   const handleAddUrlBookmark = useCallback((entry: MediaIndexEntry) => {
     const current = mediaIndexRef.current ?? createEmptyIndex();
@@ -2428,6 +2466,9 @@ export function useFileManager(authenticated: boolean) {
     handleUploadMedia,
     handleUploadAsset,
     handleDeleteMedia,
+    handleArchiveMedia,
+    handleRestoreMedia,
+    countSnapshotRefsForAsset,
     handleRenameMedia,
     handleUpdateMediaSharedRef,
     handleAddUrlBookmark,

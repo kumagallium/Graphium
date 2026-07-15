@@ -9,6 +9,8 @@ export {
   createEmptyIndex,
   addMediaEntry,
   removeMediaEntry,
+  archiveMediaEntry,
+  restoreMediaEntry,
   syncUsedIn,
   removeNoteFromUsedIn,
   countByType,

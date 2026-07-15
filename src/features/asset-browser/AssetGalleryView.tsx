@@ -18,27 +18,49 @@ import { MediaPickerModal } from "./MediaPickerModal";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
-// 削除確認ダイアログ
+// 削除確認ダイアログ。
+// ノート（usedIn）または版スナップショットから参照されている素材は、削除ではなく
+// アーカイブ（一覧から隠すが既存の表示は生かす）を推奨する。
 function DeleteConfirmDialog({
   fileName,
+  usedInCount,
+  snapshotRefCount,
   onConfirm,
+  onArchive,
   onCancel,
   deleting,
 }: {
   fileName: string;
+  /** この素材を参照しているノート数（usedIn） */
+  usedInCount: number;
+  /** この素材を参照している版スナップショット数（null = 集計中） */
+  snapshotRefCount: number | null;
   onConfirm: () => void;
+  /** アーカイブ確定（未指定なら従来の削除のみの2択） */
+  onArchive?: () => void;
   onCancel: () => void;
   deleting: boolean;
 }) {
   const t = useT();
+  const counting = snapshotRefCount === null;
+  const hasRefs = usedInCount > 0 || (snapshotRefCount ?? 0) > 0;
+  const showArchive = Boolean(onArchive) && !counting && hasRefs;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-popover border border-border rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-sm font-semibold text-foreground mb-2">
-          {t("asset.deleteConfirmTitle")}
+          {showArchive ? t("asset.archiveRecommendTitle") : t("asset.deleteConfirmTitle")}
         </h3>
         <p className="text-xs text-muted-foreground mb-4">
-          {t("asset.deleteConfirmMessage", { name: fileName })}
+          {counting
+            ? t("asset.countingSnapshots")
+            : showArchive
+              ? t("asset.archiveRecommendMessage", {
+                  name: fileName,
+                  noteCount: String(usedInCount),
+                  snapshotCount: String(snapshotRefCount ?? 0),
+                })
+              : t("asset.deleteConfirmMessage", { name: fileName })}
         </p>
         <div className="flex justify-end gap-2">
           <button
@@ -50,11 +72,28 @@ function DeleteConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            disabled={deleting}
-            className="px-3 py-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            disabled={deleting || counting}
+            className={
+              showArchive
+                ? "px-3 py-1.5 text-xs rounded border border-destructive/60 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                : "px-3 py-1.5 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+            }
           >
-            {deleting ? t("asset.deleting") : t("common.delete")}
+            {deleting
+              ? t("asset.deleting")
+              : showArchive
+                ? t("asset.deletePermanently")
+                : t("common.delete")}
           </button>
+          {showArchive && (
+            <button
+              onClick={onArchive}
+              disabled={deleting}
+              className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {t("asset.archive")}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -376,6 +415,10 @@ export type AssetGalleryViewProps = {
   onBack: () => void;
   onNavigateNote: (noteId: string) => void;
   onDeleteMedia: (entry: MediaIndexEntry) => Promise<void>;
+  /** 素材をアーカイブ（削除ダイアログの推奨アクション）。未指定なら従来の削除2択 */
+  onArchiveMedia?: (entry: MediaIndexEntry) => void;
+  /** 素材を参照している版スナップショット数のオンデマンド集計（削除ダイアログ用） */
+  countSnapshotRefs?: (entry: MediaIndexEntry) => Promise<number>;
   onRenameMedia: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   /** URL ブックマーク登録コールバック（type === "url" のときのみ使用） */
   onAddUrlBookmark?: (entry: MediaIndexEntry) => void;
@@ -494,6 +537,8 @@ export function AssetGalleryView({
   onBack,
   onNavigateNote,
   onDeleteMedia,
+  onArchiveMedia,
+  countSnapshotRefs,
   onRenameMedia,
   onAddUrlBookmark,
   onUploadMedia,
@@ -680,6 +725,7 @@ export function AssetGalleryView({
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
     let result = mediaIndex.media.filter((m) => {
+      if (m.archivedAt) return false;
       if (mediaType !== "document") return m.type === mediaType;
       if (docFilter === "pdf") return m.type === "pdf";
       if (docFilter === "word") return m.type === "document";
@@ -715,6 +761,7 @@ export function AssetGalleryView({
     let pdf = 0;
     let word = 0;
     for (const m of mediaIndex.media) {
+      if (m.archivedAt) continue;
       if (m.type === "pdf") pdf++;
       else if (m.type === "document") word++;
     }
@@ -731,6 +778,35 @@ export function AssetGalleryView({
       setDeleteTarget(null);
     }
   }, [deleteTarget, onDeleteMedia]);
+
+  // 削除対象が決まったら、版スナップショット内の参照をオンデマンドで数える。
+  // usedIn（ノート参照）は entry に同期値で載っているが、版は listFiles 外で
+  // usedIn スキャンに含まれないため、ダイアログを開いた瞬間に走査する。
+  const [snapshotRefCount, setSnapshotRefCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!deleteTarget || !countSnapshotRefs) {
+      setSnapshotRefCount(deleteTarget ? 0 : null);
+      return;
+    }
+    let cancelled = false;
+    setSnapshotRefCount(null);
+    countSnapshotRefs(deleteTarget)
+      .then((n) => {
+        if (!cancelled) setSnapshotRefCount(n);
+      })
+      .catch(() => {
+        if (!cancelled) setSnapshotRefCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deleteTarget, countSnapshotRefs]);
+
+  const handleArchiveConfirm = useCallback(() => {
+    if (!deleteTarget || !onArchiveMedia) return;
+    onArchiveMedia(deleteTarget);
+    setDeleteTarget(null);
+  }, [deleteTarget, onArchiveMedia]);
 
   // ── 複数選択（list モード）──
   // タイプ／検索／ソートが変わったら選択をクリア
@@ -1330,7 +1406,10 @@ export function AssetGalleryView({
       {deleteTarget && (
         <DeleteConfirmDialog
           fileName={deleteTarget.name}
+          usedInCount={deleteTarget.usedIn.length}
+          snapshotRefCount={snapshotRefCount}
           onConfirm={handleDeleteConfirm}
+          onArchive={onArchiveMedia ? handleArchiveConfirm : undefined}
           onCancel={() => setDeleteTarget(null)}
           deleting={deleting}
         />
