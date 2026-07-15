@@ -245,6 +245,7 @@ export const en: Record<string, string> = {
   "version.savedToast": "Saved version v{version}",
   "version.unchangedToast": "No changes since the last version",
   "version.failedToast": "Couldn't save the version",
+  "version.editGroup": "{count} edits",
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",

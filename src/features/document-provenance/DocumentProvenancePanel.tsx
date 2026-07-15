@@ -3,6 +3,7 @@
 // 版が主役（primary で強調・全文を開ける）、リビジョンは参考（差分ハイライト）。
 
 import { useState } from "react";
+import { ChevronRight, ChevronDown } from "lucide-react";
 import type { DocumentProvenance, RevisionSummary, RevisionEntity, BlockContentDiff, EditActivity, EditAgent } from "./types";
 import { useT } from "../../i18n";
 import { activityTypeLabelKey } from "./activity-label";
@@ -220,7 +221,9 @@ function RevisionCard({
 
 type TimelineItem =
   | { kind: "snap"; at: string; snap: SnapshotMeta }
-  | { kind: "rev"; at: string; rev: RevisionEntity };
+  | { kind: "rev"; at: string; rev: RevisionEntity }
+  /** 連続する自動リビジョンの集約（版が主役のとき、編集ログは畳む） */
+  | { kind: "revGroup"; at: string; revs: RevisionEntity[] };
 
 export function DocumentProvenancePanel({
   provenance,
@@ -236,6 +239,8 @@ export function DocumentProvenancePanel({
 }: Props) {
   const t = useT();
   const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
+  // 折りたたまれた「編集 N 回」グループのうち、開いているもの（key = 先頭 rev の id）
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const revisions = provenance?.revisions ?? [];
   const snaps = snapshots ?? [];
@@ -252,10 +257,37 @@ export function DocumentProvenancePanel({
   const agentMap = new Map((provenance?.agents ?? []).map((a) => [a.id, a]));
 
   // 版とリビジョンを時系列（新しい順）に統合
-  const items: TimelineItem[] = [
+  const flat: TimelineItem[] = [
     ...revisions.map((rev): TimelineItem => ({ kind: "rev", at: rev.savedAt, rev })),
     ...snaps.map((snap): TimelineItem => ({ kind: "snap", at: snap.savedAt, snap })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+  // 版が 1 つ以上あるときは版を主役にし、間の連続リビジョンを「編集 N 回」に畳む。
+  // 版を使っていないノートは従来どおり全リビジョンを並べる（体験を変えない）。
+  const items: TimelineItem[] = [];
+  if (snaps.length === 0) {
+    items.push(...flat);
+  } else {
+    for (const it of flat) {
+      const last = items[items.length - 1];
+      if (it.kind === "rev" && last?.kind === "revGroup") {
+        last.revs.push(it.rev);
+      } else if (it.kind === "rev") {
+        items.push({ kind: "revGroup", at: it.at, revs: [it.rev] });
+      } else {
+        items.push(it);
+      }
+    }
+  }
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const rowLabels = {
     unnamed: t("version.unnamed"),
@@ -283,37 +315,59 @@ export function DocumentProvenancePanel({
         )}
         {revisions.length} {t("history.revisions")}
       </div>
-      {items.map((item) =>
-        item.kind === "snap" ? (
-          <SnapshotRow
-            key={`snap-${item.snap.id}`}
-            version={item.snap.version}
-            label={item.snap.label}
-            savedAt={item.snap.savedAt}
-            selected={selectedSnapshotId === item.snap.id}
-            labels={rowLabels}
-            onOpen={onOpenSnapshot ? () => onOpenSnapshot(item.snap.id) : undefined}
-            onDerive={onDeriveSnapshot ? () => onDeriveSnapshot(item.snap.id) : undefined}
-            onRename={onRenameSnapshot ? (label: string) => onRenameSnapshot(item.snap.id, label) : undefined}
-            onDelete={onDeleteSnapshot ? () => onDeleteSnapshot(item.snap.id) : undefined}
-          />
-        ) : (
+      {items.map((item) => {
+        if (item.kind === "snap") {
+          return (
+            <SnapshotRow
+              key={`snap-${item.snap.id}`}
+              version={item.snap.version}
+              label={item.snap.label}
+              savedAt={item.snap.savedAt}
+              selected={selectedSnapshotId === item.snap.id}
+              labels={rowLabels}
+              onOpen={onOpenSnapshot ? () => onOpenSnapshot(item.snap.id) : undefined}
+              onDerive={onDeriveSnapshot ? () => onDeriveSnapshot(item.snap.id) : undefined}
+              onRename={onRenameSnapshot ? (label: string) => onRenameSnapshot(item.snap.id, label) : undefined}
+              onDelete={onDeleteSnapshot ? () => onDeleteSnapshot(item.snap.id) : undefined}
+            />
+          );
+        }
+        const renderRev = (rev: RevisionEntity) => (
           <RevisionCard
-            key={`rev-${item.rev.id}`}
-            rev={item.rev}
-            activity={activityMap.get(item.rev.wasGeneratedBy)}
+            key={`rev-${rev.id}`}
+            rev={rev}
+            activity={activityMap.get(rev.wasGeneratedBy)}
             agent={(() => {
-              const a = activityMap.get(item.rev.wasGeneratedBy);
+              const a = activityMap.get(rev.wasGeneratedBy);
               return a ? agentMap.get(a.wasAssociatedWith) ?? null : null;
             })()}
-            isSelected={selectedRevId === item.rev.id}
-            onClick={() => handleRevisionClick(item.rev.id, item.rev.summary)}
+            isSelected={selectedRevId === rev.id}
+            onClick={() => handleRevisionClick(rev.id, rev.summary)}
             resolveSource={resolveSource}
             onOpenSource={onOpenSource}
             t={t}
           />
-        ),
-      )}
+        );
+        if (item.kind === "revGroup") {
+          const groupKey = item.revs[0].id;
+          const expanded = expandedGroups.has(groupKey);
+          return (
+            <div key={`grp-${groupKey}`} className="space-y-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(groupKey)}
+                className="flex w-full items-center gap-1.5 rounded border border-transparent px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+              >
+                {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                <span>{t("version.editGroup", { count: String(item.revs.length) })}</span>
+                <span className="ml-auto">{formatDateTime(item.at)}</span>
+              </button>
+              {expanded && item.revs.map(renderRev)}
+            </div>
+          );
+        }
+        return renderRev(item.rev);
+      })}
     </div>
   );
 }
