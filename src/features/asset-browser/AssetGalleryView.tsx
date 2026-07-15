@@ -383,6 +383,8 @@ export type AssetGalleryViewProps = {
   onUploadMedia?: (file: File) => Promise<string>;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
+  /** 素材（PDF/URL）について AI に質問（3-dot メニュー経由） */
+  onAskAi?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する（PDF 限定） */
@@ -498,6 +500,7 @@ export function AssetGalleryView({
   onAddUrlBookmark,
   onUploadMedia,
   onIngestMedia,
+  onAskAi,
   onCreateProvNote,
   onTranslatePdf,
   onOpenNoteInSidePeek,
@@ -882,6 +885,7 @@ export function AssetGalleryView({
           await onRenameMedia(entry, newName);
         }}
         onIngest={onIngestMedia}
+        onAskAi={onAskAi}
         onCreateProvNote={onCreateProvNote}
         onTranslatePdf={onTranslatePdf}
         onOpenNoteInSidePeek={onOpenNoteInSidePeek}
@@ -1366,6 +1370,7 @@ export function AssetGalleryView({
             await onRenameMedia(entry, newName);
           }}
           onIngest={onIngestMedia}
+          onAskAi={onAskAi}
           onCreateProvNote={onCreateProvNote}
           onTranslatePdf={onTranslatePdf}
           onOpenNoteInSidePeek={onOpenNoteInSidePeek}

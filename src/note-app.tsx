@@ -779,6 +779,11 @@ type NoteEditorProps = {
    * 置くことで縦の圧迫を抑える。空のときは呼び出し側が null を渡す。
    */
   contextDrawerSlot?: React.ReactNode;
+  /** 素材ライブラリ（AssetGalleryView）の「AI に質問」から渡される素材。
+   *  素材ライブラリ表示中は NoteEditorInner がアンマウントされ ref 方式が使えないため、
+   *  prop で受けて mount/更新時にチャットを開き、onPendingAssetChatConsumed でクリアする。 */
+  pendingAssetChat?: MediaIndexEntry | null;
+  onPendingAssetChatConsumed?: () => void;
 };
 
 function NoteEditor(props: NoteEditorProps) {
@@ -970,6 +975,8 @@ function NoteEditorInner({
   chatRunApplyRef,
   subHeaderSlot,
   contextDrawerSlot,
+  pendingAssetChat,
+  onPendingAssetChatConsumed,
 }: NoteEditorProps) {
   const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
@@ -2614,6 +2621,15 @@ function NoteEditorInner({
       assetType: entry.type,
     });
   }, [aiAssistant]);
+
+  // 素材ライブラリ（AssetGalleryView）から「AI に質問」で渡された素材を、ノート編集画面へ
+  // 戻ってきたこのタイミングでチャットに載せる。素材ライブラリ表示中は NoteEditorInner が
+  // アンマウントされ ref 方式が使えないため、prop 経由で受けて useEffect で消費する。
+  useEffect(() => {
+    if (!pendingAssetChat) return;
+    handleAskAiAboutAsset(pendingAssetChat);
+    onPendingAssetChatConsumed?.();
+  }, [pendingAssetChat, handleAskAiAboutAsset, onPendingAssetChatConsumed]);
 
   // Composer（Cmd+K）からの送信を受けるハンドラを ref に登録する。
   // ── 実装メモ ──
@@ -4678,6 +4694,9 @@ export function NoteApp() {
   // 「この fileId を Full view で開いて」と渡すための一時 state。
   // AssetGalleryView 側が consume したら onFocusConsumed で null に戻す。
   const [focusedMaterial, setFocusedMaterial] = useState<{ fileId: string; fullMode: boolean } | null>(null);
+  // 素材ライブラリ（AssetGalleryView）の「AI に質問」から、ノート編集画面のチャットへ
+  // 素材を引き渡すための一時 state。NoteEditor(Inner) が消費したらクリアする。
+  const [pendingAssetChat, setPendingAssetChat] = useState<MediaIndexEntry | null>(null);
 
   // アセット閲覧画面の右に並べて開くノート（翻訳ノート等）。PDF を読みながら横で照合する用途。
   // PDF を Full view にしたうえで、その右に既存のノート SidePeek を inline で差し込む。
@@ -6900,6 +6919,12 @@ export function NoteApp() {
                 })();
               }
             } : undefined}
+            onAskAi={(entry) => {
+              // 素材ライブラリからの質問はノート編集画面のチャットで開く（この画面には
+              // チャットが無い）。素材を保持してノート表示へ戻し、NoteEditorInner に委ねる。
+              setPendingAssetChat(entry);
+              fm.setActiveAssetType(null);
+            }}
             onCreateProvNote={aiAvailable ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
@@ -7831,6 +7856,8 @@ export function NoteApp() {
             openSidePeekRef={openSidePeekRef}
             composerCitationRef={composerCitationRef}
             chatRunApplyRef={chatRunApplyRef}
+            pendingAssetChat={pendingAssetChat}
+            onPendingAssetChatConsumed={() => setPendingAssetChat(null)}
             skillPrompts={(() => {
               // チャットは ja デフォルト（既存ロジックに揃える。将来 i18n 設定で切替）
               const skills = pickActiveSkills(fm.skillMetas, (id) => fm.getCachedDoc(`skill:${id}`), getLocale());

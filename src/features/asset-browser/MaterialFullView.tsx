@@ -39,6 +39,8 @@ export type MaterialFullViewProps = {
   noteSidePeek?: ReactNode;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   onIngest?: (entry: MediaIndexEntry) => void;
+  /** 素材（PDF/URL）について AI に質問（3-dot メニュー経由） */
+  onAskAi?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   onTranslatePdf?: (entry: MediaIndexEntry) => void;
   onExtractPdfPages?: (
@@ -78,6 +80,7 @@ export function MaterialFullView({
   noteSidePeek,
   onRename,
   onIngest,
+  onAskAi,
   onCreateProvNote,
   onTranslatePdf,
   onExtractPdfPages,
@@ -142,6 +145,7 @@ export function MaterialFullView({
       <MaterialDetailHeader
         entry={entry}
         onClose={onClose}
+        onAskAi={onAskAi}
         onRename={onRename}
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
