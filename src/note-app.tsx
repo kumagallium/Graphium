@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -4468,7 +4468,7 @@ function NoteEditorInner({
             // Tauri 環境では aiAvailable===false でもタブを残す:
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
             // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
-            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
+            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
