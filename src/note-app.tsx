@@ -1062,6 +1062,9 @@ function NoteEditorInner({
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // @ で引用したドキュメント素材（PDF/docx）をクリックしたときに開く素材サイドピーク
   const [materialSidePeekEntry, setMaterialSidePeekEntry] = useState<MediaIndexEntry | null>(null);
+  // 素材の右パネル「AI に質問」から AiAssistantPanel へ添付を渡すための一時 state。
+  // パネル側が取り込んだら onPendingAttachmentConsumed で null に戻す。
+  const [pendingChatAttachment, setPendingChatAttachment] = useState<AttachedNote | null>(null);
   // ピーク保存後のフック: 親のキャッシュ/インデックス更新（onPeekSaved）に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
   // このエディタで開いているノート自身はファイル書き換えの対象から外し、ライブの
@@ -2191,6 +2194,7 @@ function NoteEditorInner({
         id: n.id,
         title: n.title,
         ...(n.isWiki ? { isWiki: true } : {}),
+        ...(n.kind === "asset" ? { kind: "asset" as const, assetType: n.assetType } : {}),
       }));
       const displayContent = attachmentRefs && attachmentRefs.length > 0
         ? `${question}${buildAttachmentSuffix(attachmentRefs)}`
@@ -2261,6 +2265,9 @@ function NoteEditorInner({
         if (attachedNotes && attachedNotes.length > 0) {
           const noteContents: string[] = [];
           for (const attached of attachedNotes) {
+            // 素材添付（右パネル「AI に質問」）はノートではないので loadFile 経路に載せず、
+            // 下の「引用・添付素材」経路（assembleCitedAssetContext）で本文を組み立てる。
+            if (attached.kind === "asset") continue;
             try {
               const provider = getActiveProvider();
               const doc = attached.isWiki && provider.loadWikiFile
@@ -2318,19 +2325,39 @@ function NoteEditorInner({
             ].join("\n");
           }
         }
-        // このノートが @ で引用したドキュメント素材（PDF/docx 本体）の中身を AI 文脈に載せる。
-        // ノート参照と違い「素材そのもの」を指すため、citedAssetFileIds から直接解決する。
-        const citedAssetIds = citedAssetFileIdsRef.current;
+        // このノートが @ で引用したドキュメント素材（PDF/URL/docx 本体）と、素材の右パネル
+        // 「AI に質問」で添付した素材の中身を AI 文脈に載せる。ノート参照と違い「素材そのもの」を
+        // 指すため、fileId から直接解決する。
+        const attachedAssetIds = (attachedNotes ?? [])
+          .filter((n) => n.kind === "asset")
+          .map((n) => n.id);
+        const citedAssetIds = [...new Set([...citedAssetFileIdsRef.current, ...attachedAssetIds])];
         if (citedAssetIds.length > 0) {
           const assetContents: string[] = [];
           for (const assetFileId of citedAssetIds) {
             const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
-            if (!entry) continue;
+            // URL 素材は Reader 経由で本文を取得（sourceUrl）、取れなければ抽出済み抜粋（excerpt）に
+            // フォールバックする。素材ライブラリ未登録の一時 URL ピーク（fileId が "url:<url>"）は
+            // mediaIndex に無いため、fileId から URL を復元して本文取得する。
+            const citedAsset = entry
+              ? {
+                  fileId: entry.fileId,
+                  name: entry.name,
+                  type: entry.type,
+                  sourceUrl: entry.type === "url" ? entry.url : undefined,
+                  excerpt: entry.urlMeta?.excerpt,
+                }
+              : assetFileId.startsWith("url:")
+                ? { fileId: assetFileId, name: assetFileId.slice(4), type: "url", sourceUrl: assetFileId.slice(4) }
+                : null;
+            if (!citedAsset) continue;
             try {
-              const md = await assembleCitedAssetContext(
-                { fileId: entry.fileId, name: entry.name, type: entry.type },
-                { captureIndex: captureIndexProp ?? null, provider: getActiveProvider(), scope },
-              );
+              const md = await assembleCitedAssetContext(citedAsset, {
+                captureIndex: captureIndexProp ?? null,
+                provider: getActiveProvider(),
+                scope,
+                loadUrlText,
+              });
               if (md) assetContents.push(md);
             } catch {
               // 抽出失敗は無視
@@ -2341,7 +2368,7 @@ function NoteEditorInner({
               userMessage,
               "",
               "---",
-              "以下はユーザーが @ で引用したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
+              "以下はユーザーが引用・添付したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
               "",
               ...assetContents,
               "---",
@@ -2572,6 +2599,21 @@ function NoteEditorInner({
     }
     return result;
   }, [linkStore, noteIndex]);
+
+  // 素材の右パネル「AI に質問」から呼ばれる。素材を添付済みにしてチャットを開く。
+  // Composer(Cmd+K) Ask と同じく「新しい問い」として既存チャットは park する。
+  const handleAskAiAboutAsset = useCallback((entry: MediaIndexEntry) => {
+    if (!ensureAgentConfigured()) return;
+    aiAssistant.parkChat();
+    setMaterialSidePeekEntry(null);
+    setRightTab("chat");
+    setPendingChatAttachment({
+      id: entry.fileId,
+      title: entry.name,
+      kind: "asset",
+      assetType: entry.type,
+    });
+  }, [aiAssistant]);
 
   // Composer（Cmd+K）からの送信を受けるハンドラを ref に登録する。
   // ── 実装メモ ──
@@ -4295,6 +4337,7 @@ function NoteEditorInner({
             inline
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
+            onAskAi={handleAskAiAboutAsset}
             mediaIndex={mediaIndex ?? null}
             onNavigateNote={(noteId) => {
               setMaterialSidePeekEntry(null);
@@ -4306,6 +4349,7 @@ function NoteEditorInner({
           <MaterialSidePeek
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
+            onAskAi={handleAskAiAboutAsset}
             mediaIndex={mediaIndex ?? null}
             onNavigateNote={(noteId) => {
               setMaterialSidePeekEntry(null);
@@ -4387,6 +4431,8 @@ function NoteEditorInner({
                   onAdoptKnowledgeCandidates={onCreateKnowledgeNote ? handleAdoptKnowledgeCandidates : undefined}
                   noteIndex={noteIndex}
                   onOpenWiki={(wikiId) => setSidePeekNoteId(`wiki:${wikiId}`)}
+                  pendingAttachment={pendingChatAttachment}
+                  onPendingAttachmentConsumed={() => setPendingChatAttachment(null)}
                 />
               )}
               {rightTab === "history" && (

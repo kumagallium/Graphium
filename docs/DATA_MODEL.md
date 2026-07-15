@@ -355,12 +355,20 @@ type ScopeChat = {
     role: "user" | "assistant";
     content: string;
     timestamp: string;
-    // User messages only: references to notes attached via @-mention.
-    // The attached notes' contents are expanded into the model prompt at
+    // User messages only: references to notes attached via @-mention, or to
+    // a material (PDF/URL) attached via "Ask AI" from the material side-peek.
+    // The attached items' contents are expanded into the model prompt at
     // send time (not stored in `content`); these references allow the
     // expansion to be reproduced when the message is edited & resent or
-    // the response is regenerated.
-    attachments?: { id: string; title: string; isWiki?: boolean }[];
+    // the response is regenerated. For `kind: "asset"`, `id` is the material's
+    // fileId and `assetType` is its MediaType ("pdf" / "url").
+    attachments?: {
+      id: string;
+      title: string;
+      isWiki?: boolean;
+      kind?: "asset";
+      assetType?: string;
+    }[];
   }[];
   generatedBy?: { agent; sessionId; model?; tokenUsage? };
   // Present only on chats created by forking another chat: the parent

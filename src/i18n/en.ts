@@ -1213,6 +1213,9 @@ export const en: Record<string, string> = {
   "asset.translatePdfTitle": "Translate the full PDF into your display language, keeping the original structure (AI)",
   "asset.translateUrlTitle": "Translate the full web page into your display language, keeping the original structure (AI)",
   "asset.translateSameLangConfirm": "This page already appears to be in your display language. Translate it anyway?",
+  "asset.askAi": "Ask AI",
+  "asset.askAiHint": "Open a chat to ask about this material (PDF / URL)",
+  "asset.askAiDisabled": "This material type can't be read yet (PDF / URL only)",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",

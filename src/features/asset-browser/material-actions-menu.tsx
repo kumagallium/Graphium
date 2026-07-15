@@ -26,6 +26,8 @@ import type { MediaIndexEntry, MediaSharedRef } from "./media-index";
 
 export type MaterialActionsMenuProps = {
   entry: MediaIndexEntry;
+  /** 素材（PDF/URL）についてチャットで質問する。表示は canAskAi 判定（pdf/url）に従う。 */
+  onAskAi?: (entry: MediaIndexEntry) => void;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   /** PDF / URL を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する */
@@ -50,6 +52,7 @@ export type MaterialActionsMenuProps = {
 
 export function MaterialActionsMenu({
   entry,
+  onAskAi,
   onIngest,
   onCreateProvNote,
   onTranslatePdf,
@@ -139,6 +142,8 @@ export function MaterialActionsMenu({
   // Word (.docx) も Knowledge 化 / PROV ノート化 / 埋め込み画像抽出対象に含める
   // （PDF と機能を揃える）。Excel/PowerPoint は未対応。
   const isDocxEntry = isWordDocxEntry(entry);
+  // 「AI に質問」は本文を文脈化できる PDF / URL のみ。docx は素材本体からの本文抽出経路が無い。
+  const canAskAi = !!onAskAi && (entry.type === "pdf" || entry.type === "url");
   const canIngest = !!onIngest && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   const canCreateProv = !!onCreateProvNote && (entry.type === "url" || entry.type === "pdf" || isDocxEntry);
   // 全文翻訳は PDF と URL（Reader 本文）が対象。Knowledge / PROV と動線を揃える。
@@ -200,6 +205,21 @@ export function MaterialActionsMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+          {canAskAi && (
+            <>
+              <button
+                className={itemClass}
+                onClick={() => { onAskAi!(entry); setOpen(false); }}
+                title={t("asset.askAiHint")}
+              >
+                <Bot size={14} className="text-primary" />
+                {t("asset.askAi")}
+              </button>
+              {(canIngest || canCreateProv || canTranslate || canExtract || canDownload) && (
+                <div className="my-1 border-t border-border" />
+              )}
+            </>
+          )}
           {canIngest && (
             knowledgeWikiNoteId ? (
               <>

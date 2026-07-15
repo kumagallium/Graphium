@@ -92,6 +92,8 @@ function GraphSection({
 export type MaterialSidePeekProps = {
   entry: MediaIndexEntry;
   onClose: () => void;
+  /** 素材（PDF/URL）について AI に質問（3-dot メニュー経由） */
+  onAskAi?: (entry: MediaIndexEntry) => void;
   /** Full view へ昇格 — 渡された場合のみ Maximize2 ボタンを表示 */
   onToggleFull?: () => void;
   /** 削除 */
@@ -140,6 +142,7 @@ export type MaterialSidePeekProps = {
 export function MaterialSidePeek({
   entry,
   onClose,
+  onAskAi,
   onToggleFull,
   onDelete,
   onNavigateNote,
@@ -201,6 +204,7 @@ export function MaterialSidePeek({
       <MaterialDetailHeader
         entry={entry}
         onClose={onClose}
+        onAskAi={onAskAi}
         onRename={onRename}
         onIngest={onIngest}
         onCreateProvNote={onCreateProvNote}
