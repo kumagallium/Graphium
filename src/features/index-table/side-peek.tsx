@@ -1091,7 +1091,9 @@ function SidePeekInner({
   // Cmd+S / Ctrl+S
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      // 素の ⌘S のみ（Shift / Alt 併用は「版を残す」等の別ショートカットに譲る。
+      // macOS Chrome は ⌘⇧S でも e.key が小文字 "s" のまま届く点に注意）。
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
         const peekEl = sidePeekRef.current;
         if (peekEl && peekEl.contains(document.activeElement)) {
           e.preventDefault();
