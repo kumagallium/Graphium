@@ -2,7 +2,7 @@
 // Google Drive と連携してノートの作成・保存・読み込みを行う
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
-import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, MessageSquare, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
+import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, History, FileText, PanelLeftOpen, BookPlus, BookOpen, Trash2, Archive, ArchiveRestore, StickyNote, Link2, Check, Pin } from "lucide-react";
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
@@ -2191,6 +2191,7 @@ function NoteEditorInner({
         id: n.id,
         title: n.title,
         ...(n.isWiki ? { isWiki: true } : {}),
+        ...(n.kind === "asset" ? { kind: "asset" as const, assetType: n.assetType } : {}),
       }));
       const displayContent = attachmentRefs && attachmentRefs.length > 0
         ? `${question}${buildAttachmentSuffix(attachmentRefs)}`
@@ -2261,6 +2262,9 @@ function NoteEditorInner({
         if (attachedNotes && attachedNotes.length > 0) {
           const noteContents: string[] = [];
           for (const attached of attachedNotes) {
+            // 素材添付（右パネル「AI に質問」）はノートではないので loadFile 経路に載せず、
+            // 下の「引用・添付素材」経路（assembleCitedAssetContext）で本文を組み立てる。
+            if (attached.kind === "asset") continue;
             try {
               const provider = getActiveProvider();
               const doc = attached.isWiki && provider.loadWikiFile
@@ -2318,19 +2322,39 @@ function NoteEditorInner({
             ].join("\n");
           }
         }
-        // このノートが @ で引用したドキュメント素材（PDF/docx 本体）の中身を AI 文脈に載せる。
-        // ノート参照と違い「素材そのもの」を指すため、citedAssetFileIds から直接解決する。
-        const citedAssetIds = citedAssetFileIdsRef.current;
+        // このノートが @ で引用したドキュメント素材（PDF/URL/docx 本体）と、素材の右パネル
+        // 「AI に質問」で添付した素材の中身を AI 文脈に載せる。ノート参照と違い「素材そのもの」を
+        // 指すため、fileId から直接解決する。
+        const attachedAssetIds = (attachedNotes ?? [])
+          .filter((n) => n.kind === "asset")
+          .map((n) => n.id);
+        const citedAssetIds = [...new Set([...citedAssetFileIdsRef.current, ...attachedAssetIds])];
         if (citedAssetIds.length > 0) {
           const assetContents: string[] = [];
           for (const assetFileId of citedAssetIds) {
             const entry = mediaIndex?.media.find((m) => m.fileId === assetFileId);
-            if (!entry) continue;
+            // URL 素材は Reader 経由で本文を取得（sourceUrl）、取れなければ抽出済み抜粋（excerpt）に
+            // フォールバックする。素材ライブラリ未登録の一時 URL ピーク（fileId が "url:<url>"）は
+            // mediaIndex に無いため、fileId から URL を復元して本文取得する。
+            const citedAsset = entry
+              ? {
+                  fileId: entry.fileId,
+                  name: entry.name,
+                  type: entry.type,
+                  sourceUrl: entry.type === "url" ? entry.url : undefined,
+                  excerpt: entry.urlMeta?.excerpt,
+                }
+              : assetFileId.startsWith("url:")
+                ? { fileId: assetFileId, name: assetFileId.slice(4), type: "url", sourceUrl: assetFileId.slice(4) }
+                : null;
+            if (!citedAsset) continue;
             try {
-              const md = await assembleCitedAssetContext(
-                { fileId: entry.fileId, name: entry.name, type: entry.type },
-                { captureIndex: captureIndexProp ?? null, provider: getActiveProvider(), scope },
-              );
+              const md = await assembleCitedAssetContext(citedAsset, {
+                captureIndex: captureIndexProp ?? null,
+                provider: getActiveProvider(),
+                scope,
+                loadUrlText,
+              });
               if (md) assetContents.push(md);
             } catch {
               // 抽出失敗は無視
@@ -2341,7 +2365,7 @@ function NoteEditorInner({
               userMessage,
               "",
               "---",
-              "以下はユーザーが @ で引用したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
+              "以下はユーザーが引用・添付したドキュメント素材です。質問はこの内容を踏まえて回答してください:",
               "",
               ...assetContents,
               "---",
@@ -4444,7 +4468,7 @@ function NoteEditorInner({
             // Tauri 環境では aiAvailable===false でもタブを残す:
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
             // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
-            { tab: "chat" as const, icon: <MessageSquare size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
+            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },

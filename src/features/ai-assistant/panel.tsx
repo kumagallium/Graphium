@@ -2,7 +2,7 @@
 // 右パネルの Chat タブに表示される継続対話 UI
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, BookPlus, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork } from "lucide-react";
+import { Bot, BookPlus, Send, Square, Trash2, FileDown, FilePlus, List, Replace, AlertCircle, X, AtSign, Info, Lightbulb, Sparkles, Loader2, Check, Pencil, RotateCcw, GitFork, FileText, Link as LinkIcon } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@ui/button";
@@ -21,11 +21,15 @@ import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
 import type { KnowledgeCandidate } from "../composer/verb-suggestion-doc";
 
-/** チャットに添付されたノート参照 */
+/** チャットに添付されたノート、または素材（PDF/URL）の参照 */
 export type AttachedNote = {
   id: string;
   title: string;
   isWiki?: boolean;
+  /** "asset" のとき id は素材の fileId を指す（省略時はノート）。 */
+  kind?: "asset";
+  /** 素材の MediaType（kind==="asset" のとき）。チップのアイコン表示と本文解決に使う。 */
+  assetType?: string;
 };
 
 type AiAssistantPanelProps = {
@@ -62,6 +66,12 @@ type AiAssistantPanelProps = {
   noteIndex?: GraphiumIndex | null;
   /** Wiki ノートを開く（[Source: "title"] 引用クリック時の遷移先） */
   onOpenWiki?: (wikiId: string) => void;
+  /**
+   * 外部（素材の右パネル「AI に質問」）から添付を注入する。値が変わるたびに
+   * attachedNotes へ取り込み、onPendingAttachmentConsumed で親に消費を通知する。
+   */
+  pendingAttachment?: AttachedNote | null;
+  onPendingAttachmentConsumed?: () => void;
 };
 
 export function AiAssistantPanel({
@@ -76,6 +86,8 @@ export function AiAssistantPanel({
   onAdoptKnowledgeCandidates,
   noteIndex,
   onOpenWiki,
+  pendingAttachment,
+  onPendingAttachmentConsumed,
 }: AiAssistantPanelProps) {
   const {
     messages, loading, error, parkChat,
@@ -202,6 +214,15 @@ export function AiAssistantPanel({
   useEffect(() => {
     if (messages.length > 0) setShowChatList(false);
   }, [messages.length]);
+
+  // 素材の右パネル「AI に質問」からの添付注入。重複は id で防ぐ。
+  useEffect(() => {
+    if (!pendingAttachment) return;
+    setAttachedNotes((prev) =>
+      prev.some((n) => n.id === pendingAttachment.id) ? prev : [...prev, pendingAttachment],
+    );
+    onPendingAttachmentConsumed?.();
+  }, [pendingAttachment, onPendingAttachmentConsumed]);
 
   const openAiSettings = useCallback(() => {
     window.dispatchEvent(new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }));
@@ -487,21 +508,29 @@ export function AiAssistantPanel({
             {/* 添付ノートバッジ */}
             {attachedNotes.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">
-                {attachedNotes.map((note) => (
-                  <span
-                    key={note.id}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-xs text-violet-700 dark:text-violet-300 max-w-[160px]"
-                  >
-                    <AtSign size={9} className="shrink-0" />
-                    <span className="truncate">{note.isWiki ? `🤖 ${note.title}` : note.title}</span>
-                    <button
-                      onClick={() => setAttachedNotes((prev) => prev.filter((n) => n.id !== note.id))}
-                      className="shrink-0 hover:text-destructive"
+                {attachedNotes.map((note) => {
+                  const isAsset = note.kind === "asset";
+                  const ChipIcon = isAsset ? (note.assetType === "url" ? LinkIcon : FileText) : AtSign;
+                  return (
+                    <span
+                      key={note.id}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs max-w-[160px] ${
+                        isAsset
+                          ? "bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300"
+                          : "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
+                      }`}
                     >
-                      <X size={9} />
-                    </button>
-                  </span>
-                ))}
+                      <ChipIcon size={9} className="shrink-0" />
+                      <span className="truncate">{note.isWiki ? `🤖 ${note.title}` : note.title}</span>
+                      <button
+                        onClick={() => setAttachedNotes((prev) => prev.filter((n) => n.id !== note.id))}
+                        className="shrink-0 hover:text-destructive"
+                      >
+                        <X size={9} />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
             {/* メンション候補メニュー */}

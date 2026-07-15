@@ -658,13 +658,15 @@ export type ChatMessage = {
   content: string;
   timestamp: string;
   /**
-   * @ メンションで添付されたノートの参照（user メッセージのみ）。
+   * @ メンションで添付されたノート、または素材の右パネルから「AI に質問」で
+   * 添付した素材（PDF/URL）の参照（user メッセージのみ）。
    * 送信時に AI へ展開した添付の中身を、編集&再実行・回答の再生成で
    * 再展開できるようにするために持つ。content 末尾の「📎 タイトル」は
    * 表示用テキストで、実際の再展開はこの参照から行う。
-   * optional な plain JSON なので旧ビルドの読み込みを壊さない。
+   * kind==="asset" のとき id は素材の fileId、assetType は MediaType（"pdf" / "url" 等）。
+   * optional な plain JSON なので旧ビルドの読み込みを壊さない（フィールド追加のみ）。
    */
-  attachments?: { id: string; title: string; isWiki?: boolean }[];
+  attachments?: { id: string; title: string; isWiki?: boolean; kind?: "asset"; assetType?: string }[];
 };
 
 // スコープに紐づく AI チャット

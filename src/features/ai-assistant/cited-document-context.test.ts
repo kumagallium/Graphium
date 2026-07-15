@@ -389,4 +389,30 @@ describe("assembleCitedAssetContext", () => {
     );
     expect(md).toBeNull();
   });
+
+  it("URL 素材は loadUrlText の本文を組み立てる", async () => {
+    const md = await assembleCitedAssetContext(
+      { fileId: "url-1", name: "記事タイトル", type: "url", sourceUrl: "https://example.com/a" },
+      {
+        captureIndex: null,
+        provider: { getMediaBlobUrl: async () => "" },
+        loadUrlText: async (u) => (u === "https://example.com/a" ? "記事の本文テキスト" : undefined),
+      },
+    );
+    expect(md).toContain("## 引用文書: 記事タイトル（URL）");
+    expect(md).toContain("記事の本文テキスト");
+  });
+
+  it("URL 素材は loadUrlText が取れなければ excerpt にフォールバックする", async () => {
+    const md = await assembleCitedAssetContext(
+      { fileId: "url-2", name: "記事B", type: "url", sourceUrl: "https://example.com/b", excerpt: "抜粋だけの本文" },
+      {
+        captureIndex: null,
+        provider: { getMediaBlobUrl: async () => "" },
+        loadUrlText: async () => undefined,
+      },
+    );
+    expect(md).toContain("（URL）");
+    expect(md).toContain("抜粋だけの本文");
+  });
 });

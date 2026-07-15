@@ -1220,6 +1220,7 @@ export const en: Record<string, string> = {
   "asset.translatePdfTitle": "Translate the full PDF into your display language, keeping the original structure (AI)",
   "asset.translateUrlTitle": "Translate the full web page into your display language, keeping the original structure (AI)",
   "asset.translateSameLangConfirm": "This page already appears to be in your display language. Translate it anyway?",
+  "asset.askAi": "Ask AI",
 
   // ── ラベルギャラリー ──
   "label.section": "Labels",

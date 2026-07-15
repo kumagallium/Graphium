@@ -12,8 +12,8 @@
 //   - Asset graph は full mode の **デフォルトで開く**（利用可能なら）
 //   - Metadata は右パネルのタブとして提供（Graph と相互排他）
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Network, Info, StickyNote } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Network, Info, StickyNote, Bot } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
@@ -24,8 +24,17 @@ import { MaterialDetailHeader } from "./material-detail-header";
 import { MaterialMetadataSection } from "./material-metadata-section";
 import { AssetMemosSection } from "./AssetMemosSection";
 import type { CaptureIndex } from "../mobile-capture";
+import { AiAssistantPanel, type AttachedNote } from "../ai-assistant/panel";
+import { useAiAssistant } from "../ai-assistant/store";
+import { assembleCitedAssetContext } from "../ai-assistant/cited-document-context";
+import { runAgent } from "../ai-assistant/api";
+import { isAgentConfigured, getSelectedModel } from "../settings";
+import { getActiveProvider } from "../../lib/storage/registry";
+import { getLocale } from "../../i18n";
+import { localizeAiError } from "../../lib/ai-error";
+import { DEFAULT_GROUNDING_SCOPE } from "../../lib/grounding-scope";
 
-type RightTab = "graph" | "metadata" | "memos" | null;
+type RightTab = "graph" | "metadata" | "memos" | "chat" | null;
 
 export type MaterialFullViewProps = {
   entry: MediaIndexEntry;
@@ -93,7 +102,75 @@ export function MaterialFullView({
   onCreateMemo,
 }: MaterialFullViewProps) {
   const t = useT();
+  const aiAssistant = useAiAssistant();
   const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
+
+  // 素材をチャットに添付する参照（AiAssistantPanel の pendingAttachment 経由で自動添付）。
+  const assetAttachment = useMemo<AttachedNote>(
+    () => ({ id: entry.fileId, title: entry.name, kind: "asset", assetType: entry.type }),
+    [entry.fileId, entry.name, entry.type],
+  );
+
+  // 素材特化の AI チャット送信。ノート編集の重い handleAiChatSubmit（chatRunManager 経由）とは
+  // 別に、その素材の本文（PDF 全文 / URL 抜粋）だけを文脈に載せる軽量版。会話は既存の aiAssistant
+  // ストアを共有する（履歴一覧の新規チャットで park すれば分離できる）。
+  const handleAssetChatSubmit = useCallback(
+    async (question: string) => {
+      if (!isAgentConfigured()) {
+        aiAssistant.setError(t("settings.aiNotConfigured"));
+        return;
+      }
+      const chatId = aiAssistant.activeChatId ?? crypto.randomUUID();
+      aiAssistant.addMessage(
+        { role: "user", content: question, timestamp: new Date().toISOString() },
+        chatId,
+      );
+      aiAssistant.setLoading(true);
+      aiAssistant.setError(null);
+      try {
+        const assetCtx = await assembleCitedAssetContext(
+          {
+            fileId: entry.fileId,
+            name: entry.name,
+            type: entry.type,
+            sourceUrl: entry.type === "url" ? entry.url : undefined,
+            excerpt: entry.urlMeta?.excerpt,
+          },
+          {
+            captureIndex: captureIndex ?? null,
+            provider: getActiveProvider(),
+            scope: DEFAULT_GROUNDING_SCOPE,
+          },
+        );
+        const message = assetCtx
+          ? [
+              question,
+              "",
+              "---",
+              "以下は質問対象の素材です。この内容を踏まえて回答してください:",
+              "",
+              assetCtx,
+              "---",
+            ].join("\n")
+          : question;
+        const selectedModel = getSelectedModel();
+        const response = await runAgent({
+          message,
+          language: getLocale(),
+          options: { max_turns: 5, ...(selectedModel ? { model: selectedModel } : {}) },
+        });
+        aiAssistant.addMessage(
+          { role: "assistant", content: response.message, timestamp: new Date().toISOString() },
+          chatId,
+        );
+      } catch (err) {
+        aiAssistant.setError(localizeAiError(err));
+      } finally {
+        aiAssistant.setLoading(false);
+      }
+    },
+    [entry, captureIndex, aiAssistant, t],
+  );
 
   // デフォルト rightTab: Graph が使えるなら graph、ダメなら metadata
   const [rightTab, setRightTab] = useState<RightTab>(() =>
@@ -191,10 +268,19 @@ export function MaterialFullView({
                   ? t("asset.rightPanel.graph")
                   : rightTab === "metadata"
                   ? t("asset.rightPanel.metadata")
+                  : rightTab === "chat"
+                  ? t("asset.askAi")
                   : t("asset.rightPanel.memos")}
               </span>
             </div>
-            <div className="flex-1 overflow-auto">
+            <div className={cn("flex-1", rightTab === "chat" ? "min-h-0 flex flex-col" : "overflow-auto")}>
+              {rightTab === "chat" && (
+                <AiAssistantPanel
+                  onSubmit={(q) => handleAssetChatSubmit(q)}
+                  pendingAttachment={assetAttachment}
+                  noteIndex={null}
+                />
+              )}
               {rightTab === "graph" && onNavigateNote && (
                 <AssetGraphPanel
                   entry={entry}
@@ -271,6 +357,20 @@ export function MaterialFullView({
               )}
             >
               <StickyNote size={18} />
+            </button>
+          )}
+          {(entry.type === "pdf" || entry.type === "url") && (
+            <button
+              onClick={() => toggleRight("chat")}
+              title={t("asset.askAi")}
+              className={cn(
+                "flex items-center justify-center rounded-md transition-colors w-8 h-8",
+                rightTab === "chat"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+              )}
+            >
+              <Bot size={18} />
             </button>
           )}
         </div>

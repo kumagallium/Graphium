@@ -302,8 +302,12 @@ export async function assembleCitedDocumentContext(
 export type CitedAsset = {
   fileId: string;
   name: string;
-  /** MediaType（"pdf" | "document" 等） */
+  /** MediaType（"pdf" | "url" | "document" 等） */
   type: string;
+  /** URL 素材（type==="url"）の元 URL。Reader 経由で本文を取得するために使う。 */
+  sourceUrl?: string;
+  /** URL 素材の抽出済み本文抜粋（urlMeta.excerpt）。loadUrlText が取れないときのフォールバック。 */
+  excerpt?: string;
 };
 
 /** assembleCitedAssetContext の依存 */
@@ -312,6 +316,8 @@ export type CitedAssetDeps = {
   provider: { getMediaBlobUrl(id: string): Promise<string> };
   extractPdfText?: (blob: Blob) => Promise<{ text: string }>;
   loadBlob?: (fileId: string) => Promise<Blob>;
+  /** URL 素材（type==="url"）の本文を Reader 経由で取得する。オフライン・bot 保護時は undefined を返しうる。 */
+  loadUrlText?: (url: string) => Promise<string | undefined>;
   budgetChars?: number;
   /** grounding スコープ（未指定なら既定の内部参照）。素材は知識を持たないため主に呼び出しの一貫性のため */
   scope?: GroundingScope;
@@ -330,7 +336,8 @@ export async function assembleCitedAssetContext(
   // 素材へのハイライト/抜書きメモ（sourceAsset.fileId 一致）。noteId 経路は使わない。
   const memos = gatherDerivedMemos(deps.captureIndex, asset.fileId, "").map((m) => m.text);
 
-  // 全文: PDF のみ抽出（docx 等はここでは抽出せずメモのみ）
+  // 全文: PDF は抽出、URL は Reader 経由の本文→抽出済み抜粋の順でフォールバック。
+  // docx 等は素材本体からの本文抽出経路が無いためメモのみ（本文は取り込んでノート化して初めて入る）。
   let fullText: string | undefined;
   if (asset.type === "pdf") {
     fullText = await loadPdfFullText(asset.fileId, {
@@ -338,11 +345,17 @@ export async function assembleCitedAssetContext(
       extractPdfText: deps.extractPdfText,
       loadBlob: deps.loadBlob,
     });
+  } else if (asset.type === "url") {
+    if (asset.sourceUrl && deps.loadUrlText) {
+      fullText = await deps.loadUrlText(asset.sourceUrl);
+    }
+    // Reader 取得に失敗（オフライン・bot 保護等）したら抽出済み抜粋で最低限の文脈を載せる
+    if (!fullText && asset.excerpt) fullText = asset.excerpt;
   }
 
   if (memos.length === 0 && !fullText) return null;
 
-  const mediumLabel = asset.type === "pdf" ? "PDF" : "ドキュメント";
+  const mediumLabel = asset.type === "pdf" ? "PDF" : asset.type === "url" ? "URL" : "ドキュメント";
   return formatCitedDocument(
     { title: asset.name, mediumLabel, memos, knowledge: [], fullText },
     deps.budgetChars ?? DEFAULT_BUDGET_CHARS,

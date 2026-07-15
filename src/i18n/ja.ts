@@ -1220,6 +1220,7 @@ export const ja: Record<string, string> = {
   "asset.translatePdfTitle": "PDF を原文の構成のまま表示言語へ全文翻訳してノートを作成（AI）",
   "asset.translateUrlTitle": "Web ページの本文を原文の構成のまま表示言語へ全文翻訳してノートを作成（AI）",
   "asset.translateSameLangConfirm": "このページは既に表示言語と同じ言語のようです。それでも全文翻訳しますか？",
+  "asset.askAi": "AI に質問",
 
   // ── ラベルギャラリー ──
   "label.section": "ラベル",

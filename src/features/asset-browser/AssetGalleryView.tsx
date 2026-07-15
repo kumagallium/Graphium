@@ -11,6 +11,7 @@ import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
+import { AiAssistantProvider } from "../ai-assistant/store";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
@@ -940,7 +941,10 @@ export function AssetGalleryView({
 
   // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）
   if (detailEntry && detailFullMode) {
+    // 素材全画面ビューの AI チャットタブ用に、素材ビュー専用の AiAssistantProvider で
+    // ラップする。ノート編集の Provider（ノートごとに分離）とは独立した会話ストアになる。
     return (
+      <AiAssistantProvider aiAvailable>
       <MaterialFullView
         entry={detailEntry}
         onClose={() => {
@@ -982,6 +986,7 @@ export function AssetGalleryView({
             : undefined
         }
       />
+      </AiAssistantProvider>
     );
   }
 
