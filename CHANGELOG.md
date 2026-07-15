@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.18.0](https://github.com/kumagallium/Graphium/compare/v0.17.3...v0.18.0) - 2026-07-15
+
+- [feat] Add "Turn into" block-type conversion to block handle menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/560
+- feat: manual version snapshots — save, compare, and fork note versions by @kumagallium in https://github.com/kumagallium/Graphium/pull/562
+- Editor heading vertical rhythm + 8pt spacing tokens (design system L1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/563
+- feat: soft-archive for media referenced by notes or saved versions by @kumagallium in https://github.com/kumagallium/Graphium/pull/564
+
 ## [v0.17.3](https://github.com/kumagallium/Graphium/compare/v0.17.2...v0.17.3) - 2026-07-13
 
 - Fix hover-highlight scroll drift; default AI chat grounding to This note by @kumagallium in https://github.com/kumagallium/Graphium/pull/550
