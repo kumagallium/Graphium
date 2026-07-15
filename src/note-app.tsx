@@ -3532,17 +3532,25 @@ function NoteEditorInner({
   }, [fileId, snapshotBusy, isWikiDoc, initialDoc, handleSave]);
 
   // ⌘⇧S: 版を残す。NoteEditorInner マウント中のみ購読（編集面があるときだけ効く）。
+  // capture フェーズで購読する: エディタ（ProseMirror）内にフォーカスがあると、
+  // バブリング段階の keydown はエディタ側で消費されて document まで届かないため、
+  // ターゲットより先に受け取って preventDefault + stopPropagation で確定させる。
+  // e.code === "KeyS" の併用は IME・キーレイアウトで e.key が化けるケースの保険。
   // ⌘⇧M と同様、デスクトップ WKWebView では Cmd 系が JS keydown に届かない場合が
   // あるが、その場合もヘッダー / 履歴パネルのボタンで代替できる。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") {
+      if (
+        (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey &&
+        (e.key.toLowerCase() === "s" || e.code === "KeyS")
+      ) {
         e.preventDefault();
+        e.stopPropagation();
         void handleTakeSnapshot();
       }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, [handleTakeSnapshot]);
 
   const handleDeleteSnapshot = useCallback(
