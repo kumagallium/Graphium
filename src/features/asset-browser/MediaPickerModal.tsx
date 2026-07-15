@@ -240,11 +240,13 @@ export function MediaPickerModal({
 
   const filtered = useMemo(() => {
     if (!mediaIndex) return [];
-    // Documents タブには PDF も含める（AssetGalleryView と同じ統合方針）
+    // Documents タブには PDF も含める（AssetGalleryView と同じ統合方針）。
+    // アーカイブ済み素材は新規挿入の候補に出さない（既存参照の表示は生きる）。
     let result = mediaIndex.media.filter((m) =>
-      mediaType === "document"
+      !m.archivedAt &&
+      (mediaType === "document"
         ? m.type === "document" || m.type === "pdf"
-        : m.type === mediaType
+        : m.type === mediaType)
     );
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();

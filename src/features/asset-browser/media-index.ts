@@ -148,6 +148,14 @@ export type MediaIndexEntry = {
    * 既存ユーザー互換のため optional。
    */
   derivedFromAssets?: string[];
+  /**
+   * アーカイブ日時（ISO 8601、optional）。設定されている素材はギャラリー・
+   * ピッカー・タイプ別件数から隠れるが、バイナリと URL 解決はそのまま残り、
+   * 既存ノート・版スナップショットの中では表示され続ける（ノートのアーカイブと
+   * 同じ soft-delete 思想）。ensureMediaIndex の再構築は既存 entry を spread で
+   * 温存するため、note-index のような明示的な引き継ぎ処理は不要。
+   */
+  archivedAt?: string;
 };
 
 /** メディアインデックスのスキーマバージョン。
@@ -416,9 +424,13 @@ export function collectSourceAssetFileIdsFromDoc(doc: {
   sourceDocumentFileId?: string | null | undefined;
   sourceUrl?: string | null | undefined;
   citedAssetFileIds?: string[] | null | undefined;
+  sourceTextFileId?: string | null | undefined;
 }): Set<string> {
   const ids = collectPdfFileIdsFromDoc(doc);
   if (doc.sourceDocumentFileId) ids.add(doc.sourceDocumentFileId);
+  // URL 原文テキスト（B-persist）。これを入れないと原文テキスト素材だけ usedIn が
+  // 空になり、削除前の参照チェックをすり抜ける。
+  if (doc.sourceTextFileId) ids.add(doc.sourceTextFileId);
   // @リンク（@mention / メディアピッカーのリンク挿入）で引用した素材。
   // citedAssetFileIds は素材本体の fileId（URL 素材は "url:<生URL>"）なので、
   // そのまま usedIn のキーに使える。これを入れないと「リンクで挿入した素材」だけ
@@ -483,13 +495,32 @@ export function removeNoteFromUsedIn(
   return { ...index, updatedAt: new Date().toISOString(), media };
 }
 
-/** メディアタイプ別にカウント */
+/** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
   const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, other: 0 };
   for (const entry of index.media) {
+    if (entry.archivedAt) continue;
     counts[entry.type]++;
   }
   return counts;
+}
+
+/** メディアをアーカイブする（一覧から隠すがバイナリ・URL 解決・usedIn は生かす） */
+export function archiveMediaEntry(index: MediaIndex, fileId: string): MediaIndex {
+  const media = index.media.map((entry) =>
+    entry.fileId === fileId ? { ...entry, archivedAt: new Date().toISOString() } : entry,
+  );
+  return { ...index, updatedAt: new Date().toISOString(), media };
+}
+
+/** アーカイブ済みメディアを一覧に復元する */
+export function restoreMediaEntry(index: MediaIndex, fileId: string): MediaIndex {
+  const media = index.media.map((entry) => {
+    if (entry.fileId !== fileId) return entry;
+    const { archivedAt: _archivedAt, ...rest } = entry;
+    return rest;
+  });
+  return { ...index, updatedAt: new Date().toISOString(), media };
 }
 
 /** メディアファイルの名前を変更 */

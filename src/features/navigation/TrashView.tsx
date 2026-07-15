@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { Trash2, RotateCcw, AlertTriangle, Archive, Send } from "lucide-react";
 import type { GraphiumIndex, NoteIndexEntry } from "./index-file";
 import { findIncomingReferences } from "./index-file";
+import type { MediaIndexEntry } from "../asset-browser/media-index";
 import { useT } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 
@@ -109,6 +110,9 @@ export function TrashView({
   onRestoreArchive,
   onSendArchiveToTrash,
   onOpenArchived,
+  archivedMedia = [],
+  onRestoreMedia,
+  onPermanentDeleteMedia,
 }: {
   rawNoteIndex: GraphiumIndex | null;
   trashedNotes: NoteIndexEntry[];
@@ -120,6 +124,12 @@ export function TrashView({
   onSendArchiveToTrash: (noteIds: string[]) => Promise<void>;
   /** アーカイブ行クリック時のサイドピーク呼び出し（archive タブのみ有効） */
   onOpenArchived?: (noteId: string, isWiki: boolean) => void;
+  /** アーカイブ済み素材（archive タブの下部に表示） */
+  archivedMedia?: MediaIndexEntry[];
+  /** 素材をギャラリー一覧へ復元 */
+  onRestoreMedia?: (entry: MediaIndexEntry) => void;
+  /** 素材を完全に削除（バイナリごと。確認はこのビュー内で行う） */
+  onPermanentDeleteMedia?: (entry: MediaIndexEntry) => Promise<void>;
 }) {
   const t = useT();
   const [tab, setTab] = useState<TabKey>("trash");
@@ -128,6 +138,19 @@ export function TrashView({
   const [confirmTarget, setConfirmTarget] = useState<string[] | null>(null);
 
   const entries = tab === "trash" ? trashedNotes : archivedNotes;
+  // 素材のアーカイブは archive タブのみに出す（素材にゴミ箱概念は無い）
+  const archivedMediaList = tab === "archive" ? archivedMedia : [];
+
+  const handleMediaPermanentDelete = async (entry: MediaIndexEntry) => {
+    if (!onPermanentDeleteMedia) return;
+    if (typeof window !== "undefined" && !window.confirm(t("asset.deleteConfirmMessage", { name: entry.name }))) return;
+    setBusy(true);
+    try {
+      await onPermanentDeleteMedia(entry);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // 参照数の事前計算（noteId → 参照元エントリ配列）
   const refMap = useMemo(() => {
@@ -292,7 +315,7 @@ export function TrashView({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {sorted.length === 0 ? (
+        {sorted.length === 0 && archivedMediaList.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
             {tab === "trash" ? (
               <Trash2 size={32} className="opacity-30" />
@@ -309,6 +332,8 @@ export function TrashView({
             )}
           </div>
         ) : (
+          <>
+          {sorted.length > 0 && (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-background border-b border-border">
               <tr className="text-xs text-muted-foreground">
@@ -398,6 +423,58 @@ export function TrashView({
               })}
             </tbody>
           </table>
+          )}
+          {/* アーカイブ済み素材（ノートと違いゴミ箱を経由せず、復元か完全削除の 2 択） */}
+          {archivedMediaList.length > 0 && (
+            <div className="px-6 py-4">
+              <h3 className="text-xs font-semibold text-muted-foreground mb-2">
+                {t("asset.archivedSection")}
+                <span className="ml-1.5 font-normal">{archivedMediaList.length}</span>
+              </h3>
+              <div className="space-y-1">
+                {archivedMediaList.map((m) => (
+                  <div
+                    key={m.fileId}
+                    className="flex items-center gap-3 rounded border border-border/60 px-3 py-1.5 text-xs hover:bg-muted/20"
+                  >
+                    <span className="flex-1 truncate text-foreground" title={m.name}>
+                      {m.name}
+                    </span>
+                    <span className="shrink-0 text-[10px] uppercase text-muted-foreground">{m.type}</span>
+                    <span className="shrink-0 text-muted-foreground">{formatDate(m.archivedAt)}</span>
+                    <span
+                      className="shrink-0 w-8 text-right text-muted-foreground"
+                      title={m.usedIn.map((u) => u.noteTitle).join("\n")}
+                    >
+                      {m.usedIn.length}
+                    </span>
+                    {onRestoreMedia && (
+                      <button
+                        onClick={() => onRestoreMedia(m)}
+                        disabled={busy}
+                        className="shrink-0 px-2 py-1 rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40 flex items-center gap-1"
+                      >
+                        <RotateCcw size={11} />
+                        {t("asset.restore")}
+                      </button>
+                    )}
+                    {onPermanentDeleteMedia && (
+                      <button
+                        onClick={() => void handleMediaPermanentDelete(m)}
+                        disabled={busy}
+                        className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
+                        title={t("asset.deletePermanently")}
+                        aria-label={t("asset.deletePermanently")}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 

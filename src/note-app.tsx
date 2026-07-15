@@ -6748,6 +6748,8 @@ export function NoteApp() {
               else fm.handleOpenFile(noteId);
             }}
             onDeleteMedia={fm.handleDeleteMedia}
+            onArchiveMedia={fm.handleArchiveMedia}
+            countSnapshotRefs={fm.countSnapshotRefsForAsset}
             onRenameMedia={handleRenameMediaWithBlockSync}
             onSharedRefUpdated={fm.handleUpdateMediaSharedRef}
             onAddUrlBookmark={fm.handleAddUrlBookmark}
@@ -7502,6 +7504,9 @@ export function NoteApp() {
               // 編集導線は WikiBanner 側で「Archived」表示にして抑制する。
               setListSidePeekNoteId(isWiki ? `wiki:${noteId}` : noteId);
             }}
+            archivedMedia={fm.mediaIndex?.media.filter((m) => m.archivedAt) ?? []}
+            onRestoreMedia={fm.handleRestoreMedia}
+            onPermanentDeleteMedia={fm.handleDeleteMedia}
           />
         ) : showSkillList ? (
           <SkillListView
