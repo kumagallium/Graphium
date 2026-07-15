@@ -11,6 +11,7 @@ import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
 import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages } from "./media-index";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
+import { AiAssistantProvider } from "../ai-assistant/store";
 import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
@@ -383,8 +384,6 @@ export type AssetGalleryViewProps = {
   onUploadMedia?: (file: File) => Promise<string>;
   /** メディアから Knowledge を生成（URL/PDF 用） */
   onIngestMedia?: (entry: MediaIndexEntry) => void;
-  /** 素材（PDF/URL）について AI に質問（3-dot メニュー経由） */
-  onAskAi?: (entry: MediaIndexEntry) => void;
   /** URL から PROV ラベル付きノートを生成する（URL エントリー限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
   /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化する（PDF 限定） */
@@ -500,7 +499,6 @@ export function AssetGalleryView({
   onAddUrlBookmark,
   onUploadMedia,
   onIngestMedia,
-  onAskAi,
   onCreateProvNote,
   onTranslatePdf,
   onOpenNoteInSidePeek,
@@ -867,7 +865,10 @@ export function AssetGalleryView({
 
   // Full view 中はギャラリーを完全に置き換える（左ナビは外側に残るので独立して見える）
   if (detailEntry && detailFullMode) {
+    // 素材全画面ビューの AI チャットタブ用に、素材ビュー専用の AiAssistantProvider で
+    // ラップする。ノート編集の Provider（ノートごとに分離）とは独立した会話ストアになる。
     return (
+      <AiAssistantProvider aiAvailable>
       <MaterialFullView
         entry={detailEntry}
         onClose={() => {
@@ -885,7 +886,6 @@ export function AssetGalleryView({
           await onRenameMedia(entry, newName);
         }}
         onIngest={onIngestMedia}
-        onAskAi={onAskAi}
         onCreateProvNote={onCreateProvNote}
         onTranslatePdf={onTranslatePdf}
         onOpenNoteInSidePeek={onOpenNoteInSidePeek}
@@ -910,6 +910,7 @@ export function AssetGalleryView({
             : undefined
         }
       />
+      </AiAssistantProvider>
     );
   }
 
@@ -1370,7 +1371,6 @@ export function AssetGalleryView({
             await onRenameMedia(entry, newName);
           }}
           onIngest={onIngestMedia}
-          onAskAi={onAskAi}
           onCreateProvNote={onCreateProvNote}
           onTranslatePdf={onTranslatePdf}
           onOpenNoteInSidePeek={onOpenNoteInSidePeek}

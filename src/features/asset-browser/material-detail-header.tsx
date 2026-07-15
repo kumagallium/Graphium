@@ -67,8 +67,6 @@ function TypeIcon({ type, size = 14 }: { type: MediaType; size?: number }) {
 export type MaterialDetailHeaderProps = {
   entry: MediaIndexEntry;
   onClose: () => void;
-  /** 素材（PDF/URL）について AI に質問（3-dot メニュー経由） */
-  onAskAi?: (entry: MediaIndexEntry) => void;
   onRename?: (entry: MediaIndexEntry, newName: string) => Promise<void>;
   onIngest?: (entry: MediaIndexEntry) => void;
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
@@ -96,7 +94,6 @@ export type MaterialDetailHeaderProps = {
 export function MaterialDetailHeader({
   entry,
   onClose,
-  onAskAi,
   onRename,
   onIngest,
   onCreateProvNote,
@@ -208,7 +205,6 @@ export function MaterialDetailHeader({
   const actionsMenu = (
     <MaterialActionsMenu
       entry={entry}
-      onAskAi={onAskAi}
       onIngest={onIngest}
       onCreateProvNote={onCreateProvNote}
       onTranslatePdf={onTranslatePdf}
