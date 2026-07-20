@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.18.1](https://github.com/kumagallium/Graphium/compare/v0.18.0...v0.18.1) - 2026-07-20
+
+- feat: Ask AI about a material from the full-view right panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/565
+- feat: save reader images into Graphium as derived assets by @kumagallium in https://github.com/kumagallium/Graphium/pull/567
+- Unify color tokens — scene tokens (oklch) become the single source of truth (R1) by @kumagallium in https://github.com/kumagallium/Graphium/pull/568
+- Unify shadow scale — Tailwind shadow-sm/md/lg resolve to scene elevation tokens by @kumagallium in https://github.com/kumagallium/Graphium/pull/569
+- feat: add drag-to-resize for side peek panels by @kumagallium in https://github.com/kumagallium/Graphium/pull/570
+
 ## [v0.18.0](https://github.com/kumagallium/Graphium/compare/v0.17.3...v0.18.0) - 2026-07-15
 
 - [feat] Add "Turn into" block-type conversion to block handle menu by @kumagallium in https://github.com/kumagallium/Graphium/pull/560
