@@ -1066,6 +1066,7 @@ export const ja: Record<string, string> = {
   "sidePeek.close": "サイドピークを閉じる",
   "sidePeek.fullscreen": "フルスクリーンで開く",
   "sidePeek.loadError": "読み込みに失敗しました",
+  "sidePeek.resizeHandle": "ドラッグで幅を変更 / ダブルクリックで元に戻す",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "1列目にノートのタイトルを入力してからクリックしてください",

@@ -99,6 +99,9 @@ import {
   type CitePickerKind,
 } from "@features/cite-picker";
 import { useT, t as tStatic } from "../../i18n";
+import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { ResizeHandle } from "../../components/ResizeHandle";
+import { useIsDesktop } from "../../hooks/use-media-query";
 
 type SidePeekProps = {
   noteId: string;
@@ -253,6 +256,10 @@ function SidePeekInner({
   onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, getCachedDoc,
 }: SidePeekProps) {
   const t = useT();
+  // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
+  // inline（エディタ画面）/ overlay（一覧ビュー等）のどちらもデスクトップなら対象。
+  const peekResize = useSidePeekWidth();
+  const isDesktop = useIsDesktop();
   const provLabelsEnabled = useProvLabelsEnabled();
   const labelStore = useLabelStore();
   const linkStore = useLinkStore();
@@ -1153,10 +1160,11 @@ function SidePeekInner({
         // inline: 親 flex レイアウトに組み込まれる。エディタ領域がその分圧縮される。
         // 狭いデスクトップ（768〜1100px）で固定 480px だとエディタが極端に細るため、
         // ビューポート幅に応じて 320〜480px の範囲で伸縮させる。
+        // ドラッグでリサイズ済みならその幅（localStorage 復元）を優先する。
         position: "relative",
         height: "100%",
         flexShrink: 0,
-        width: "clamp(320px, 38vw, 480px)",
+        width: peekResize.widthStyle ?? "clamp(320px, 38vw, 480px)",
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
         display: "flex",
@@ -1165,13 +1173,16 @@ function SidePeekInner({
       }
     : {
         // overlay（従来）: 画面右端から fixed で被せる
+        // デスクトップでリサイズ済みならその幅を優先（モバイルはハンドル自体を出さない）
         position: "fixed",
         top: 0,
         right: 0,
         bottom: 0,
-        width: "55%",
+        width: (isDesktop ? peekResize.widthStyle : undefined) ?? "55%",
         // 小型スマホ（〜420px）で固定 400px だと画面外にはみ出すため、ビューポート幅で頭打ちにする
-        minWidth: "min(400px, 90vw)",
+        // （リサイズ済みのときは保存値を尊重できるよう下限を緩める）
+        minWidth:
+          isDesktop && peekResize.width != null ? "min(320px, 90vw)" : "min(400px, 90vw)",
         maxWidth: 800,
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
@@ -1188,6 +1199,14 @@ function SidePeekInner({
       data-side-peek
       style={containerStyle}
     >
+      {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}
+      {isDesktop && (
+        <ResizeHandle
+          handleProps={peekResize.handleProps}
+          isResizing={peekResize.isResizing}
+          label={t("sidePeek.resizeHandle")}
+        />
+      )}
       {/* ヘッダー */}
       <div
         style={{
