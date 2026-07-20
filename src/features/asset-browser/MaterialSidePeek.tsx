@@ -9,6 +9,10 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useT } from "../../i18n";
+import { useSidePeekWidth } from "../../hooks/use-resizable-width";
+import { ResizeHandle } from "../../components/ResizeHandle";
+import { useIsDesktop } from "../../hooks/use-media-query";
 import type { MediaIndex, MediaIndexEntry, MediaSharedRef } from "./media-index";
 import { MediaPreview } from "./media-preview";
 import type { CitationSource } from "./SelectionPill";
@@ -161,6 +165,12 @@ export function MaterialSidePeek({
   onSaveImageAsAsset,
   inline = false,
 }: MaterialSidePeekProps) {
+  const t = useT();
+  // ドラッグリサイズ（デスクトップのみ）。ノートのサイドピークと幅設定を共有する。
+  // inline / overlay のどちらもデスクトップなら対象。
+  const peekResize = useSidePeekWidth();
+  const isDesktop = useIsDesktop();
+
   // ESC で閉じる
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -175,7 +185,7 @@ export function MaterialSidePeek({
         position: "relative",
         height: "100%",
         flexShrink: 0,
-        width: 480,
+        width: peekResize.widthStyle ?? 480,
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
         display: "flex",
@@ -183,12 +193,13 @@ export function MaterialSidePeek({
         animation: "sidePeekSlideIn 0.2s ease-out",
       }
     : {
+        // overlay: デスクトップでリサイズ済みならその幅を優先（モバイルはハンドル自体を出さない）
         position: "fixed",
         top: 0,
         right: 0,
         bottom: 0,
-        width: "55%",
-        minWidth: 400,
+        width: (isDesktop ? peekResize.widthStyle : undefined) ?? "55%",
+        minWidth: isDesktop && peekResize.width != null ? "min(320px, 90vw)" : 400,
         maxWidth: 800,
         background: "var(--color-card)",
         borderLeft: "1px solid var(--color-border-subtle)",
@@ -201,6 +212,14 @@ export function MaterialSidePeek({
 
   const body = (
     <div data-side-peek style={containerStyle}>
+      {/* 左端のドラッグリサイズハンドル（デスクトップのみ。inline / overlay 共通） */}
+      {isDesktop && (
+        <ResizeHandle
+          handleProps={peekResize.handleProps}
+          isResizing={peekResize.isResizing}
+          label={t("sidePeek.resizeHandle")}
+        />
+      )}
       <MaterialDetailHeader
         entry={entry}
         onClose={onClose}

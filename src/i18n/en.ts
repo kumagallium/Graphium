@@ -1066,6 +1066,7 @@ export const en: Record<string, string> = {
   "sidePeek.close": "Close side peek",
   "sidePeek.fullscreen": "Open in full screen",
   "sidePeek.loadError": "Failed to load",
+  "sidePeek.resizeHandle": "Drag to resize / double-click to reset",
 
   // ── インデックステーブル追加 ──
   "indexTable.enterTitleFirst": "Enter the note title in the first column before clicking",
