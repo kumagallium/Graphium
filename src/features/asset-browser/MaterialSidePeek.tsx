@@ -130,6 +130,8 @@ export type MaterialSidePeekProps = {
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
   /** PDF 内テキストの選択を新規メモとして保存 */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存 */
+  onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
   /**
    * inline=true: 親 flex に flex item として組み込まれる（ノートのサイドピーク同等）
    * inline=false（デフォルト）: 画面右端から portal で fixed 表示
@@ -156,6 +158,7 @@ export function MaterialSidePeek({
   getKnowledgeKind,
   onSwitchAsset,
   onSaveSelectionAsMemo,
+  onSaveImageAsAsset,
   inline = false,
 }: MaterialSidePeekProps) {
   // ESC で閉じる
@@ -228,7 +231,11 @@ export function MaterialSidePeek({
           minHeight: 0,
         }}
       >
-        <MediaPreview entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />
+        <MediaPreview
+          entry={entry}
+          onSaveSelectionAsMemo={onSaveSelectionAsMemo}
+          onSaveImageAsAsset={onSaveImageAsAsset}
+        />
       </div>
 
       {/* Metadata は SidePeek では非表示（面積圧迫のため）— Full view の右パネルから確認 */}

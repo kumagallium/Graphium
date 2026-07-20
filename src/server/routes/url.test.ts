@@ -77,4 +77,56 @@ describe("url routes", () => {
       expect(res.status).toBe(502);
     });
   });
+
+  describe("GET /image-proxy", () => {
+    it("上流の画像をそのまま content-type を保ってストリームする", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("PNGDATA", {
+          status: 200,
+          headers: { "content-type": "image/png", "content-length": "7" },
+        }) as Response,
+      );
+      const res = await urlApp.request(
+        "/image-proxy?url=" + encodeURIComponent("https://example.com/fig.png"),
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("image/png");
+      expect(await res.text()).toContain("PNGDATA");
+    });
+
+    it("http(s) でない url クエリは 400 で弾く", async () => {
+      const res = await urlApp.request(
+        "/image-proxy?url=" + encodeURIComponent("data:image/png;base64,AAAA"),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("url クエリが無ければ 400", async () => {
+      const res = await urlApp.request("/image-proxy");
+      expect(res.status).toBe(400);
+    });
+
+    it("画像でない content-type（HTML エラーページ等）は 415 で弾き、汎用プロキシへの転用を防ぐ", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("<html>not an image</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }) as Response,
+      );
+      const res = await urlApp.request(
+        "/image-proxy?url=" + encodeURIComponent("https://example.com/notimage"),
+      );
+      expect(res.status).toBe(415);
+    });
+
+    it("上流が non-2xx なら 502 を返す", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("", { status: 404 }) as Response,
+      );
+      const res = await urlApp.request(
+        "/image-proxy?url=" + encodeURIComponent("https://example.com/missing.png"),
+      );
+      expect(res.status).toBe(502);
+    });
+  });
 });

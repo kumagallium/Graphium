@@ -57,6 +57,8 @@ export type MaterialFullViewProps = {
   onSwitchAsset?: (entry: MediaIndexEntry) => void;
   /** PDF 内テキストの選択を新規メモとして保存 */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存 */
+  onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
   /** Memos タブ用のキャプチャインデックス。未指定なら Memos タブを出さない */
   captureIndex?: CaptureIndex | null;
   /** Memos タブからメモを削除する */
@@ -88,6 +90,7 @@ export function MaterialFullView({
   getKnowledgeKind,
   onSwitchAsset,
   onSaveSelectionAsMemo,
+  onSaveImageAsAsset,
   captureIndex,
   onDeleteMemo,
   onCreateMemo,
@@ -176,6 +179,7 @@ export function MaterialFullView({
               onSaveSelectionAsMemo={
                 onSaveSelectionAsMemo ? handleSaveSelectionAsMemo : undefined
               }
+              onSaveImageAsAsset={onSaveImageAsAsset}
             />
           </div>
         </div>
