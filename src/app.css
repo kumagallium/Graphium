@@ -125,6 +125,11 @@
   --color-sidebar-border: var(--rule);
   --color-sidebar-ring: var(--forest);
   --radius: var(--r-3); /* 10px = 旧 0.625rem と同値。radius の正も scene 側 */
+  /* 影 — Tailwind shadow-sm/md/lg を scene の elevation（--shadow-1/2/3）に一本化。
+     冷たいグレー影（Tailwind 既定）と暖色影の二重を解消（design.md: card=sm, dropdown=md, dialog=lg） */
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
 
   /* タイプスケール（ratio 1.25 / Notion 準拠 / design.md と整合）
      12 → 14 → 16 → 20 → 24 → 30 px
@@ -214,9 +219,10 @@
   --heading-space-above-3: 20px; /* H3: 直下の本文に寄せる */
   --heading-space-below-3: 4px;
 
-  /* Shadows */
+  /* Shadows — elevation 3 段（card / dropdown / dialog）。暖色系の柔らかい影 */
   --shadow-1: 0 1px 2px rgba(30, 20, 10, 0.05), 0 2px 6px rgba(30, 20, 10, 0.04);
   --shadow-2: 0 2px 6px rgba(30, 20, 10, 0.06), 0 10px 30px rgba(30, 20, 10, 0.06);
+  --shadow-3: 0 4px 10px rgba(30, 20, 10, 0.07), 0 24px 60px rgba(30, 20, 10, 0.12);
 
   /* Typography
      ラテン用と日本語用を 2 軸で独立に設定できる。
