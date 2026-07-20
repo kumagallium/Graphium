@@ -7127,6 +7127,54 @@ export function NoteApp() {
                 setIngestToast((prev) => prev ? { items: prev.items.filter((i) => i.id !== id) } : prev);
               }, 2500);
             }}
+            onSaveImageAsAsset={async (imageUrl, sourceEntry) => {
+              // Reader で表示中の記事画像を Graphium の画像アセットとして保存する。
+              // クロスオリジン画像のバイトは canvas の cross-origin taint を避けるため、
+              // sidecar の /url/image-proxy 経由で取得する（/url/reader と同じ信頼レベル）。
+              // 保存画像は元 URL 素材を親（derivedFromAssets）にして asset graph に並ぶ
+              // —— PDF 埋め込み画像抽出と対称。
+              const toastId = `save-image:${Date.now()}`;
+              try {
+                const proxied = `${apiBase()}/url/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                const res = await fetch(proxied);
+                if (!res.ok) throw new Error(`image-proxy ${res.status}`);
+                const blob = await res.blob();
+                if (!blob.type.startsWith("image/")) throw new Error("not an image");
+                // ファイル名: URL のベース名 + MIME 由来の拡張子（取れなければ image.<ext>）
+                const ext =
+                  (blob.type.split("/")[1] || "img").split("+")[0].replace(/[^a-z0-9]/gi, "").slice(0, 5) || "img";
+                let base = "image";
+                try {
+                  const path = new URL(imageUrl).pathname;
+                  const last = path.substring(path.lastIndexOf("/") + 1).replace(/\.[a-z0-9]+$/i, "");
+                  if (last) base = decodeURIComponent(last).replace(/[^\w.\- ]/g, "").slice(0, 40) || "image";
+                } catch {
+                  /* URL 解析失敗時は既定名を使う */
+                }
+                const file = new File([blob], `${base}.${ext}`, { type: blob.type });
+                await fm.handleUploadMedia(file, {
+                  derivedFromAssets: sourceEntry.fileId ? [sourceEntry.fileId] : [],
+                });
+                setIngestToast((prev) => ({
+                  items: [
+                    ...(prev?.items ?? []),
+                    { id: toastId, status: "success" as const, noteTitle: sourceEntry.name, result: tStatic("asset.imageSaved") },
+                  ],
+                }));
+                window.setTimeout(() => {
+                  setIngestToast((prev) => (prev ? { items: prev.items.filter((i) => i.id !== toastId) } : prev));
+                }, 2500);
+              } catch (err) {
+                setIngestToast((prev) => ({
+                  items: [
+                    ...(prev?.items ?? []),
+                    { id: toastId, status: "error" as const, noteTitle: sourceEntry.name, result: tStatic("asset.imageSaveFailed") },
+                  ],
+                }));
+                // UrlReaderView 側の catch が保存ボタンを閉じられるよう再スローする
+                throw err;
+              }
+            }}
             captureIndex={capture.captureIndex}
             onDeleteMemo={capture.handleDeleteCapture}
             onCreateMemoForAsset={async (assetEntry, text) => {

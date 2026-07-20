@@ -481,6 +481,8 @@ export type AssetGalleryViewProps = {
    * 引用は「メモに保存」の 1 ステップに揃えた（後でメモピッカーから任意のノートに引用できる）。
    */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存する（note-app から渡される） */
+  onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
   /** Memos タブ用のキャプチャインデックス */
   captureIndex?: import("../mobile-capture").CaptureIndex | null;
   /** Memos タブからメモを削除 */
@@ -558,6 +560,7 @@ export function AssetGalleryView({
   focusFullMode,
   onFocusConsumed,
   onSaveSelectionAsMemo,
+  onSaveImageAsAsset,
   captureIndex,
   onDeleteMemo,
   onCreateMemoForAsset,
@@ -978,6 +981,7 @@ export function AssetGalleryView({
         onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
         onDelete={(entry) => setDeleteTarget(entry)}
         onSaveSelectionAsMemo={onSaveSelectionAsMemo}
+        onSaveImageAsAsset={onSaveImageAsAsset}
         captureIndex={captureIndex}
         onDeleteMemo={onDeleteMemo}
         onCreateMemo={
@@ -1464,6 +1468,7 @@ export function AssetGalleryView({
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
           onSaveSelectionAsMemo={onSaveSelectionAsMemo}
+          onSaveImageAsAsset={onSaveImageAsAsset}
         />
       )}
 

@@ -10,7 +10,7 @@
 // 既存の OGP カード (UrlPreview) に fallback する。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw, ImageDown, Loader2, Check } from "lucide-react";
 import { useT } from "../../i18n";
 import { apiBase } from "../../lib/platform";
 import type { MediaIndexEntry } from "./media-index";
@@ -48,15 +48,29 @@ export type UrlReaderViewProps = {
   entry: MediaIndexEntry;
   /** Reader 内の選択を新規メモとして保存 — undefined のとき pill 自体を出さない */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /**
+   * Reader で表示中の記事画像を Graphium の画像アセットとして保存する。
+   * undefined のとき画像 hover の「保存」ボタン自体を出さない。
+   * PDF 埋め込み画像抽出（derivedFromAssets）と対称に、保存画像は
+   * この URL 素材（sourceEntry）を親として派生グラフに並ぶ。
+   */
+  onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
 };
 
-export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewProps) {
+export function UrlReaderView({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset }: UrlReaderViewProps) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const articleRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [pill, setPill] = useState<PillState | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // 記事内画像 hover 時に出す「Graphium に保存」ボタンの状態。
+  // src と viewport 座標（画像右上角）を保持する。
+  const [imgHover, setImgHover] = useState<{ src: string; top: number; left: number } | null>(null);
+  const [savingImg, setSavingImg] = useState(false);
+  const [savedImg, setSavedImg] = useState(false);
+  const saveBtnRef = useRef<HTMLDivElement | null>(null);
+  const imgClearTimer = useRef<number | undefined>(undefined);
 
   // ── Reader 取得 ──
   useEffect(() => {
@@ -217,6 +231,67 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
     setReloadKey((k) => k + 1);
   }, []);
 
+  // ── 記事内画像 → Graphium 保存 ──
+  // 本文は dangerouslySetInnerHTML なので、article コンテナ上のイベント委譲で
+  // <img> hover を検出し、画像右上角に保存ボタンを重ねて出す。
+  const cancelImgClear = () => {
+    if (imgClearTimer.current !== undefined) {
+      clearTimeout(imgClearTimer.current);
+      imgClearTimer.current = undefined;
+    }
+  };
+  const scheduleImgClear = () => {
+    cancelImgClear();
+    imgClearTimer.current = window.setTimeout(() => setImgHover(null), 160);
+  };
+
+  const handleArticleImgOver = (e: React.MouseEvent) => {
+    if (!onSaveImageAsAsset) return;
+    const target = e.target as HTMLElement;
+    if (!target || target.tagName !== "IMG") return;
+    const img = target as HTMLImageElement;
+    const src = img.currentSrc || img.src;
+    // data:/blob: はプロキシで取り込めない（外部 http(s) 画像のみ対象）
+    if (!/^https?:/i.test(src)) return;
+    const rect = img.getBoundingClientRect();
+    // アイコン・トラッカー等の小画像にはボタンを出さない
+    if (rect.width < 48 || rect.height < 48) return;
+    cancelImgClear();
+    setSavedImg(false);
+    setImgHover({ src, top: rect.top + 8, left: rect.right - 8 });
+  };
+
+  const handleArticleImgOut = (e: React.MouseEvent) => {
+    // 画像に重ねた保存ボタンへ移動する場合は維持する
+    const related = e.relatedTarget as Node | null;
+    if (related && saveBtnRef.current?.contains(related)) return;
+    scheduleImgClear();
+  };
+
+  const handleSaveHoveredImage = useCallback(async () => {
+    if (!imgHover || !onSaveImageAsAsset || savingImg) return;
+    setSavingImg(true);
+    try {
+      await onSaveImageAsAsset(imgHover.src, entry);
+      setSavedImg(true);
+      // 「保存しました」を一瞬見せてから閉じる
+      window.setTimeout(() => setImgHover(null), 900);
+    } catch {
+      // 失敗トーストは親（note-app）が出す。ボタンは閉じる。
+      setImgHover(null);
+    } finally {
+      setSavingImg(false);
+    }
+  }, [imgHover, onSaveImageAsAsset, savingImg, entry]);
+
+  // アンマウント時にタイマーを掃除
+  useEffect(
+    () => () => {
+      if (imgClearTimer.current !== undefined) clearTimeout(imgClearTimer.current);
+    },
+    [],
+  );
+
   // ── レンダリング ──
   if (status.kind === "loading") {
     return (
@@ -361,10 +436,17 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
           minHeight: 0,
           background: "var(--color-surface)",
         }}
+        // スクロールで座標が陳腐化するので保存ボタンは畳む（再 hover で出し直す）
+        onScroll={() => {
+          cancelImgClear();
+          setImgHover(null);
+        }}
       >
         <article
           ref={articleRef}
           data-graphium-reader-root
+          onMouseOver={handleArticleImgOver}
+          onMouseOut={handleArticleImgOut}
           lang={article.lang ?? undefined}
           style={{
             margin: "0 auto",
@@ -408,6 +490,59 @@ export function UrlReaderView({ entry, onSaveSelectionAsMemo }: UrlReaderViewPro
           }}
           position={{ top: pill.top, left: pill.left, placement: pill.placement }}
         />
+      )}
+
+      {/* 記事内画像の「Graphium に保存」ボタン（画像 hover 中のみ、右上角に重ねる） */}
+      {imgHover && onSaveImageAsAsset && (
+        <div
+          ref={saveBtnRef}
+          data-reader-image-save
+          onMouseEnter={cancelImgClear}
+          onMouseLeave={scheduleImgClear}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            top: imgHover.top,
+            left: imgHover.left,
+            transform: "translate(-100%, 0)",
+            zIndex: 200,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => void handleSaveHoveredImage()}
+            disabled={savingImg}
+            title={t("asset.saveImageToGraphiumTooltip")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "5px 9px",
+              borderRadius: 6,
+              border: "1px solid var(--color-border, #e5e7eb)",
+              background: "var(--color-popover, #fff)",
+              color: "var(--color-foreground)",
+              fontSize: 12,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+              cursor: savingImg ? "default" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+            className="hover:bg-muted transition-colors"
+          >
+            {savingImg ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : savedImg ? (
+              <Check size={14} className="text-primary" />
+            ) : (
+              <ImageDown size={14} />
+            )}
+            {savingImg
+              ? t("asset.imageSaving")
+              : savedImg
+                ? t("asset.imageSaved")
+                : t("asset.saveImageToGraphium")}
+          </button>
+        </div>
       )}
     </div>
   );

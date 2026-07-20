@@ -100,9 +100,11 @@ export type MediaPreviewProps = {
   entry: MediaIndexEntry;
   /** PDF text-layer / URL Reader 内の選択を新規メモとして保存 */
   onSaveSelectionAsMemo?: (source: CitationSource) => void;
+  /** URL Reader で表示中の記事画像を Graphium の画像アセットとして保存 */
+  onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
 };
 
-export function MediaPreview({ entry, onSaveSelectionAsMemo }: MediaPreviewProps) {
+export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
       return <ResolvedImage entry={entry} />;
@@ -115,7 +117,13 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo }: MediaPreviewProps
     case "document":
       return <DocumentViewer entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
     case "url":
-      return <UrlReaderView entry={entry} onSaveSelectionAsMemo={onSaveSelectionAsMemo} />;
+      return (
+        <UrlReaderView
+          entry={entry}
+          onSaveSelectionAsMemo={onSaveSelectionAsMemo}
+          onSaveImageAsAsset={onSaveImageAsAsset}
+        />
+      );
     default:
       return (
         <div className="flex items-center justify-center">
