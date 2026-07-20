@@ -60,33 +60,37 @@
 @source "../node_modules/@blocknote/react";
 
 @theme {
-  /* Crucible デザインガイドライン準拠（design.md / ブランドグリーン基調） */
-  /* ベース色 */
-  --color-background: #fafdf7;           /* 温かみのあるオフホワイト */
-  --color-foreground: #1a2e1d;           /* 深いグリーンブラック */
+  /* Crucible デザインガイドライン準拠（design.md / ブランドグリーン基調）
+     R1（トークン単一化 / 2026-07-15）: 単一の正は下の Scene tokens (oklch)。
+     ここにあった旧 hex 値は撤去し、同一意図の scene トークンへのエイリアスにした。
+     scene 側に対応が無い色（純白・ステータス・セマンティック・ラベル等）のみ実値を保持。
+     ※ Tailwind ユーティリティ（bg-background 等）は var チェーン経由で解決される */
+  /* ベース色 — scene tokens へのエイリアス */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
   --color-card: #ffffff;
-  --color-card-foreground: #1a2e1d;
+  --color-card-foreground: var(--ink);
   --color-popover: #ffffff;
-  --color-popover-foreground: #1a2e1d;
+  --color-popover-foreground: var(--ink);
   /* プライマリー（ブランドグリーン） */
-  --color-primary: #4B7A52;
+  --color-primary: var(--forest);
   --color-primary-foreground: #ffffff;
-  --color-secondary: #f0f5ef;
+  --color-secondary: var(--paper-2);
   --color-secondary-foreground: #2d4a32;
-  --color-muted: #f0f5ef;
-  --color-muted-foreground: #6b7f6e;
-  --color-accent: #e8f0e8;
+  --color-muted: var(--paper-2);
+  --color-muted-foreground: var(--ink-3);
+  --color-accent: var(--paper-3);
   --color-accent-foreground: #2d4a32;
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
-  --color-border: #d5e0d7;
-  --color-input: #d5e0d7;
-  --color-ring: #4B7A52;
-  /* ニュートラルスケール（グリーングレー系） */
-  --color-surface: #f5f8f5;
-  --color-surface-hover: #edf3ed;
-  --color-border-subtle: #dce5dd;
-  --color-text-tertiary: #8fa394;
+  --color-border: var(--rule);
+  --color-input: var(--rule);
+  --color-ring: var(--forest);
+  /* ニュートラルスケール — scene の paper/rule/ink 階層に一本化 */
+  --color-surface: var(--paper-2);
+  --color-surface-hover: var(--paper-3);
+  --color-border-subtle: var(--rule-2);
+  --color-text-tertiary: var(--ink-4);
   /* セマンティック色 */
   --color-success: #2d4a32;
   --color-success-bg: #edf5ee;
@@ -111,16 +115,16 @@
   --color-label-sample-bg: #f0edf6;
   --color-label-result: #c26356;
   --color-label-result-bg: #fbeae8;
-  /* サイドバー */
-  --color-sidebar-background: #f0f5ef;
-  --color-sidebar-foreground: #1a2e1d;
-  --color-sidebar-primary: #4B7A52;
+  /* サイドバー — scene tokens へのエイリアス */
+  --color-sidebar-background: var(--paper-2);
+  --color-sidebar-foreground: var(--ink);
+  --color-sidebar-primary: var(--forest);
   --color-sidebar-primary-foreground: #ffffff;
-  --color-sidebar-accent: #e8f0e8;
+  --color-sidebar-accent: var(--paper-3);
   --color-sidebar-accent-foreground: #2d4a32;
-  --color-sidebar-border: #d5e0d7;
-  --color-sidebar-ring: #4B7A52;
-  --radius: 0.625rem;
+  --color-sidebar-border: var(--rule);
+  --color-sidebar-ring: var(--forest);
+  --radius: var(--r-3); /* 10px = 旧 0.625rem と同値。radius の正も scene 側 */
 
   /* タイプスケール（ratio 1.25 / Notion 準拠 / design.md と整合）
      12 → 14 → 16 → 20 → 24 → 30 px
@@ -142,13 +146,13 @@
 }
 
 /* ============================================================
-   Scene tokens (oklch) — UX Audit redesign 用プリミティブ
+   Scene tokens (oklch) — デザイントークンの単一の正（canonical）
    ------------------------------------------------------------
-   新規 UI（書き面の静けさ / 中央 Composer / Wiki Banner リファイン 等）
-   が参照する oklch ベース・カラーパレット。
-   既存の --color-* (@theme) はそのまま維持し、新設 UI だけが
-   var(--paper) / var(--forest) 等を参照する。
-   ブランドグリーン --forest は既存 #4B7A52 とほぼ同値。
+   R1（トークン単一化 / 2026-07-15）: アプリ全体のベース色・ニュートラル・
+   角丸の正はこのブロック。@theme の --color-* は互換用エイリアスで、
+   ここを参照する（bg-background 等の Tailwind ユーティリティも
+   var チェーン経由でこの値に解決される）。
+   色を変えるときはここだけを触る。@theme に実値を書き戻さない。
    ============================================================ */
 :root {
   /* Paper — グリーンティントの温かみのあるオフホワイト（design.md #fafdf7 系） */
