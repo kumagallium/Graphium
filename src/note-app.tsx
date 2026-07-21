@@ -6,7 +6,6 @@ import { Save, FileDown, Share2, MoreHorizontal, Network, GitBranch, Bot, Histor
 import { apiBase, isTauri, tauriDetectionDetail } from "./lib/platform";
 import { onMenuAction } from "./lib/menu-events";
 import { ensureSidecar } from "./lib/sidecar";
-import { openExternalUrl } from "./lib/external-link";
 import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
@@ -4320,6 +4319,16 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
+            onToggleFull={
+              // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
+              onOpenMedia && mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId)
+                ? () => {
+                    const fid = materialSidePeekEntry.fileId;
+                    setMaterialSidePeekEntry(null);
+                    onOpenMedia(fid);
+                  }
+                : undefined
+            }
             onNavigateNote={(noteId) => {
               setMaterialSidePeekEntry(null);
               onNavigateNote(noteId);
@@ -4331,6 +4340,15 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
+            onToggleFull={
+              onOpenMedia && mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId)
+                ? () => {
+                    const fid = materialSidePeekEntry.fileId;
+                    setMaterialSidePeekEntry(null);
+                    onOpenMedia(fid);
+                  }
+                : undefined
+            }
             onNavigateNote={(noteId) => {
               setMaterialSidePeekEntry(null);
               onNavigateNote(noteId);
@@ -4391,7 +4409,13 @@ function NoteEditorInner({
                   lineageTree={lineageTree}
                   onNavigate={onNavigateNote}
                   onPeek={(noteId) => setSidePeekNoteId(noteId)}
-                  onOpenMedia={onOpenMedia}
+                  onOpenMedia={(fileId) => {
+                    // グラフの素材ノード（pdf/document/image 等）もノートを離れず素材サイドピークで
+                    // 開く。URL ノードや本文内 @素材と挙動を揃える（Full 表示はピーク内の Maximize から）。
+                    const entry = mediaIndex?.media.find((m) => m.fileId === fileId);
+                    if (entry) setMaterialSidePeekEntry(entry);
+                    else onOpenMedia?.(fileId);
+                  }}
                   onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
                 />
               )}
@@ -4706,6 +4730,9 @@ export function NoteApp() {
   // ここでは ref 経由で参照だけ確保しておく。
   // 一覧ビュー用サイドピーク（NoteEditorInner 外でも使えるグローバルな state）
   const [listSidePeekNoteId, setListSidePeekNoteId] = useState<string | null>(null);
+  // 一覧・全体グラフ用の素材サイドピーク。ノートピークと同時に開くと右端で重なるため
+  // 片方を開くとき他方を閉じる（切替式）。
+  const [listMaterialPeekEntry, setListMaterialPeekEntry] = useState<MediaIndexEntry | null>(null);
   const [ingestToast, setIngestToast] = useState<IngestToastState>(null);
   const ingestQueueRef = useRef<{ noteId: string; noteTitle: string; doc: import("./lib/document-types").GraphiumDocument }[]>([]);
   const ingestRunningRef = useRef(false);
@@ -6721,29 +6748,22 @@ export function NoteApp() {
             onSelectNote={(noteId) => {
               // ノード単クリック → 共有 SidePeek で中身プレビュー（本開きは SidePeek 内から）。
               // noteId は wiki ノードに `wiki:` prefix 付き（SidePeek の規約に合わせる）。
+              setListMaterialPeekEntry(null);
               setListSidePeekNoteId(noteId);
             }}
             onOpenMedia={(fileId) => {
-              // 素材ノードクリック → 全体グラフを閉じて Material gallery で Full view 表示。
-              setShowGlobalGraph(false);
+              // 素材ノードクリック → グラフを離れず素材サイドピークでプレビュー
+              //（ノートノードと同じ方針。Full view はピーク内の Maximize から）。
               const target = fm.mediaIndex?.media.find((m) => m.fileId === fileId);
               if (!target) return;
-              fm.setActiveAssetType(target.type);
-              setFocusedMaterial({ fileId, fullMode: true });
-              router.navigate({ view: "assets", mediaType: target.type });
+              setListSidePeekNoteId(null);
+              setListMaterialPeekEntry(target);
             }}
             onOpenUrl={(url) => {
-              // URL ソースノードクリック → 素材登録済みなら pdf/document と同じく
-              // gallery の Full view（URL リーダー）で開く。未登録のみ外部ブラウザ。
-              const target = fm.mediaIndex?.media.find((m) => m.type === "url" && m.url === url);
-              if (!target) {
-                void openExternalUrl(url);
-                return;
-              }
-              setShowGlobalGraph(false);
-              fm.setActiveAssetType("url");
-              setFocusedMaterial({ fileId: target.fileId, fullMode: true });
-              router.navigate({ view: "assets", mediaType: "url" });
+              // URL ソースノードクリック → 素材サイドピーク（URL リーダー）でプレビュー。
+              // 未登録 URL も本文内リンクと同じくアドホック entry でリーダー表示する。
+              setListSidePeekNoteId(null);
+              setListMaterialPeekEntry(buildUrlPeekEntry(url, fm.mediaIndex ?? null));
             }}
             onClose={() => setShowGlobalGraph(false)}
           />
@@ -7970,6 +7990,11 @@ export function NoteApp() {
               cachedDoc={fm.getCachedDoc?.(listSidePeekNoteId) ?? undefined}
               getCachedDoc={fm.getCachedDoc}
               onSaved={handleListPeekSaved}
+              onOpenMaterialPeek={(entry) => {
+                // ピーク内の素材リンク（URL/@素材）→ 素材サイドピークへ切り替える
+                setListSidePeekNoteId(null);
+                setListMaterialPeekEntry(entry);
+              }}
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);
@@ -8041,6 +8066,43 @@ export function NoteApp() {
             />
           </ListSidePeekBoundary>
         </AiAssistantProvider>
+      )}
+      {/* 一覧・全体グラフ用の素材サイドピーク（NoteEditorInner 外で表示） */}
+      {listMaterialPeekEntry && (
+        <MaterialSidePeek
+          entry={listMaterialPeekEntry}
+          onClose={() => setListMaterialPeekEntry(null)}
+          mediaIndex={fm.mediaIndex ?? null}
+          onToggleFull={
+            // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
+            fm.mediaIndex?.media.some((m) => m.fileId === listMaterialPeekEntry.fileId)
+              ? () => {
+                  const target = fm.mediaIndex?.media.find(
+                    (m) => m.fileId === listMaterialPeekEntry.fileId,
+                  );
+                  if (!target) return;
+                  setListMaterialPeekEntry(null);
+                  closeAllViews();
+                  fm.setActiveAssetType(target.type);
+                  setFocusedMaterial({ fileId: target.fileId, fullMode: true });
+                  router.navigate({ view: "assets", mediaType: target.type });
+                }
+              : undefined
+          }
+          onOpenNoteInSidePeek={(noteId) => {
+            // 素材ピーク内の利用ノードクリック → ノートの SidePeek に切り替える
+            setListMaterialPeekEntry(null);
+            setListSidePeekNoteId(noteId);
+          }}
+          onNavigateNote={(noteId) => {
+            setListMaterialPeekEntry(null);
+            setListSidePeekNoteId(null);
+            closeAllViews();
+            // MediaUsage.noteId は Wiki の場合 `wiki:{id}` prefix で格納されている。
+            if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice(5));
+            else fm.handleOpenFile(noteId);
+          }}
+        />
       )}
       {showReleaseNotes && (
         <ReleaseNotesPanel onClose={() => setShowReleaseNotes(false)} />
