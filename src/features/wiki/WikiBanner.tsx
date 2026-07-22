@@ -441,6 +441,7 @@ export function WikiContextDrawer({
   noteIndex,
   mediaIndex,
   onNavigateNote,
+  onOpenMemo,
   onClearWorldValidity,
   wikiId,
   allWikiMetas,
@@ -450,6 +451,8 @@ export function WikiContextDrawer({
   noteIndex?: GraphiumIndex | null;
   mediaIndex?: MediaIndex | null;
   onNavigateNote?: (noteId: string) => void;
+  /** memo: 派生元のクリックでメモ詳細を開く（未指定ならテキスト表示のみ） */
+  onOpenMemo?: (captureId: string) => void;
   onClearWorldValidity?: () => void;
   wikiId?: string;
   allWikiMetas?: Map<string, WikiMetaSummary>;
@@ -512,6 +515,7 @@ export function WikiContextDrawer({
           noteIndex={noteIndex ?? null}
           mediaIndex={mediaIndex ?? null}
           onNavigateNote={onNavigateNote}
+          onOpenMemo={onOpenMemo}
         />
       )}
       {showWorldDetail && (
@@ -981,11 +985,13 @@ type DerivedFromEntry = {
   label: string;
   /** タイトルを index から解決できたか。false なら「不明」扱いの薄い表示にする */
   resolved: boolean;
-  /** 外部ソース（pdf: / url: / document: / chat:）。ノート遷移ではなく素材表示扱いにする */
+  /** 外部ソース（pdf: / url: / document: / chat: / memo:）。ノート遷移ではなく素材表示扱いにする */
   external?: boolean;
+  /** memo: ソースのとき、クリックでメモ詳細を開くための captureId */
+  memoCaptureId?: string;
 };
 
-// 外部ソース ID（pdf:/url:/document:/chat:）のラベルを mediaIndex から解決する。
+// 外部ソース ID（pdf:/url:/document:/chat:/memo:）のラベルを mediaIndex から解決する。
 // pdf / document は mediaFileId、url はブックマーク URL でメディアを引く。
 function resolveExternalLabel(
   kind: string,
@@ -993,6 +999,7 @@ function resolveExternalLabel(
   mediaIndex: MediaIndex | null,
 ): string {
   if (kind === "chat") return "AI Chat";
+  if (kind === "memo") return "Memo";
   if (mediaIndex) {
     if (kind === "url") {
       const m = mediaIndex.media.find((e) => e.type === "url" && e.url === key);
@@ -1024,7 +1031,7 @@ function resolveDerivedEntries(
   for (const id of ids) {
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    // 外部ソース（pdf:/url:/document:/chat:）は素材として名前解決する。
+    // 外部ソース（pdf:/url:/document:/chat:/memo:）は素材として名前解決する。
     // これを noteIndex 解決より先に分岐しないと「(不明)」になる。
     const ext = parseExternalSource(id);
     if (ext) {
@@ -1033,6 +1040,8 @@ function resolveDerivedEntries(
         label: resolveExternalLabel(ext.kind, ext.key, mediaIndex),
         resolved: true,
         external: true,
+        // memo はアプリ内に実体があるので、クリックで開けるよう captureId を持たせる
+        ...(ext.kind === "memo" ? { memoCaptureId: ext.key } : {}),
       });
       continue;
     }
@@ -1103,16 +1112,19 @@ function DerivedFromSection({
   noteIndex,
   mediaIndex,
   onNavigateNote,
+  onOpenMemo,
 }: {
   wikiMeta: WikiMeta;
   noteIndex: GraphiumIndex | null;
   mediaIndex: MediaIndex | null;
   onNavigateNote?: (noteId: string) => void;
+  /** memo: 派生元のクリックでメモ詳細を開く */
+  onOpenMemo?: (captureId: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
-  // derivedFromNotes には pdf:/url:/document:/chat: の外部ソースが混ざるため mediaIndex を渡す。
+  // derivedFromNotes には pdf:/url:/document:/chat:/memo: の外部ソースが混ざるため mediaIndex を渡す。
   const noteEntries = useMemo(
     () => resolveDerivedEntries(wikiMeta.derivedFromNotes, noteIndex, mediaIndex),
     [wikiMeta.derivedFromNotes, noteIndex, mediaIndex],
@@ -1186,6 +1198,7 @@ function DerivedFromSection({
               label={t("wikiBanner.derivedFromNotesLabel")}
               entries={noteEntries}
               onNavigateNote={onNavigateNote}
+              onOpenMemo={onOpenMemo}
               missingLabel={t("wikiBanner.derivedFromMissing")}
             />
           )}
@@ -1305,11 +1318,14 @@ function DerivedFromGroup({
   label,
   entries,
   onNavigateNote,
+  onOpenMemo,
   missingLabel,
 }: {
   label: string;
   entries: DerivedFromEntry[];
   onNavigateNote?: (noteId: string) => void;
+  /** memo: ソースのクリックでメモ詳細を開く。未指定なら memo もテキスト表示のみ */
+  onOpenMemo?: (captureId: string) => void;
   missingLabel: string;
 }) {
   return (
@@ -1318,7 +1334,28 @@ function DerivedFromGroup({
       {entries.map((entry, i) => (
         <span key={entry.navigateId + i}>
           {i > 0 && <span style={{ color: "var(--ink-4)" }}>, </span>}
-          {entry.external ? (
+          {entry.memoCaptureId && onOpenMemo ? (
+            // メモ由来はアプリ内に実体があるので、クリックでメモ詳細を開ける
+            <button
+              type="button"
+              onClick={() => onOpenMemo(entry.memoCaptureId!)}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                margin: 0,
+                color: "var(--forest-ink, var(--ink-2))",
+                font: "inherit",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+                textDecorationColor: "var(--rule)",
+                cursor: "pointer",
+              }}
+              title={entry.label}
+            >
+              {entry.label}
+            </button>
+          ) : entry.external ? (
             // 外部ソース（Word/PDF/URL/チャット）は素材名をテキストで示す。
             // 深い系譜・素材を開く操作は右パネルの来歴タブが担う。
             <span title={entry.label}>{entry.label}</span>

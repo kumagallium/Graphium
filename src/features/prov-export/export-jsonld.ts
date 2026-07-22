@@ -55,7 +55,7 @@ function toW3CLabel(text: string): { "@value": string }[] {
  * ソース ID（derivedFromNotes / citedKnowledgeIds / derivedFromClaims に入る ID）を
  * PROV Entity の @id に解決する。
  *
- * - `pdf:` / `url:` / `document:` / `chat:` プレフィックス付き → 型付き外部ソースノード
+ * - `pdf:` / `url:` / `document:` / `chat:` / `memo:` プレフィックス付き → 型付き外部ソースノード
  *   （来歴ビューの parseExternalSource と同じ解決規則。`graphium:note/document:<id>` の
  *   ような不正参照を防ぐ）
  * - それ以外 → 通常ノート参照

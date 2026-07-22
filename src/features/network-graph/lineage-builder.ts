@@ -9,7 +9,7 @@ import type { MediaIndex } from "../asset-browser/media-index";
 import { parseExternalSource, isExternalSourceId } from "./external-source";
 import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
 
-export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "chat";
+export type LineageNodeKind = "note" | "wiki" | "pdf" | "url" | "document" | "chat" | "memo";
 
 export type LineageNode = {
   id: string;
@@ -198,6 +198,19 @@ export function buildLineageTree(
         parents: [],
       };
     }
+    if (ext?.kind === "memo") {
+      // メモを Knowledge 化したソース。chat: と同じく表示のみの末端ノード。
+      return {
+        id,
+        title: "Memo",
+        navId: null,
+        isCurrent: false,
+        kind: "memo",
+        depth,
+        relations,
+        parents: [],
+      };
+    }
     const wiki = isWikiOf(id);
     return {
       id,
@@ -214,7 +227,7 @@ export function buildLineageTree(
 
   const visit = (id: string, depth: number, ancestors: Set<string>, relations: LineageRelation[]): LineageNode => {
     const baseNode = buildNode(id, depth, relations);
-    // 外部ソース（pdf / url / document / chat）は末端ノード。これ以上は遡れない。
+    // 外部ソース（pdf / url / document / chat / memo）は末端ノード。これ以上は遡れない。
     if (baseNode.kind !== "note" && baseNode.kind !== "wiki") return baseNode;
     if (depth >= MAX_DEPTH) return baseNode;
     if (ancestors.has(id)) return { ...baseNode, cycle: true };

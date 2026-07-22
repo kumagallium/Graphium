@@ -161,7 +161,7 @@ function ProposedFileSidebar(props: typeof COMMON_PROPS) {
   } = props;
 
   const mediaCounts = useMemo(() => {
-    const acc: Record<MediaType, number> = { image: 0, pdf: 0, video: 0, audio: 0, url: 0, document: 0, other: 0 };
+    const acc: Record<MediaType, number> = { image: 0, pdf: 0, video: 0, audio: 0, url: 0, document: 0, memo: 0, other: 0 };
     for (const m of mediaIndex?.media ?? []) acc[m.type] = (acc[m.type] ?? 0) + 1;
     return acc;
   }, [mediaIndex]);

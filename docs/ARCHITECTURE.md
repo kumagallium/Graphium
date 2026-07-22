@@ -206,7 +206,7 @@ Every node referenced by these relations is also **declared** so the
 export contains no dangling references: the AI agent is emitted as a
 typed `prov:Agent` node (deduplicated per model), and each source id is
 emitted as a typed `Entity` node. Source ids carrying an external-source
-prefix (`pdf:` / `url:` / `document:` / `chat:`, see
+prefix (`pdf:` / `url:` / `document:` / `chat:` / `memo:`, see
 [`network-graph/external-source.ts`](../src/features/network-graph/external-source.ts))
 are resolved to a typed external-source Entity (`@id`
 `graphium:<kind>/<key>`, with `graphium:sourceKind`) rather than being
@@ -367,8 +367,14 @@ Notes:
   `document:` / `url:` / `chat:` prefix (the external-source convention) — the
   ingester switches to *document mode*: it harvests every distinct transferable
   insight the document argues as its own Claim, with no fixed cap, so a dense
-  article is not collapsed into a single headline Claim. The switch is decided
-  in `src/server/routes/wiki.ts` and changes only the Claim guidance inside
+  article is not collapsed into a single headline Claim. Memo-derived sources
+  (`memo:` prefix) get a third mode, *memo mode*: a memo is a short captured
+  fragment that usually carries exactly one spark, so the ingester is told to
+  extract that one insight as a Claim even from a quote or anecdote (instead
+  of falling back to Summary-only, which the conservative note-mode guidance
+  tends to do on short fragments) — while still emitting zero Claims when the
+  memo genuinely carries nothing transferable. Both switches are decided in
+  `src/server/routes/wiki.ts` and change only the Claim guidance inside
   `buildIngesterSystemPrompt`.
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response. AI-setup and

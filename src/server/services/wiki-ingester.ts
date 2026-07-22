@@ -125,7 +125,7 @@ export function buildIngesterSystemPrompt(
   language: string,
   existingWikis: ExistingWikiInfo[],
   skills?: IngestSkill[],
-  opts?: { isDocument?: boolean },
+  opts?: { isDocument?: boolean; isMemo?: boolean },
 ): string {
   const wikiListText = existingWikis.length > 0
     ? existingWikis.map((w) => `- [${w.kind}] ${w.title} (id: ${w.id})`).join("\n")
@@ -140,6 +140,11 @@ export function buildIngesterSystemPrompt(
   // Summary を作っても見出し級の 1 件だけを Claim に昇格させ、残りを Summary に埋もれさせる過少
   // 抽出が起きる（ALCOA 資料で実観測）。文書モードでは以下のブロックでその既定を上書きする。
   const isDocument = opts?.isDocument === true;
+  // メモ（capture）は「1 断片 ≈ 1 着想」の走り書き。通常ノート前提の保守的な
+  // 0-3 件ガイダンスのままだと、引用・エピソード型の短い断片が「主張ではない」
+  // として Claim 0 件（Summary のみ）に倒れやすい（実観測）。memo モードでは
+  // 「短さを理由に落とさず、含まれる着想 1 件の抽出を試みる」よう既定を上書きする。
+  const isMemo = opts?.isMemo === true && !isDocument;
 
   const documentHarvestBlock = isDocument
     ? `**This source is an imported external document** (an article, PDF, web page, or transcript), not a short personal note. A document like this almost always argues **several distinct transferable claims**. The most common failure here is to write one rich Summary and then promote only the single headline claim — leaving the rest of the knowledge buried in the Summary. Do not do that.
@@ -151,12 +156,24 @@ export function buildIngesterSystemPrompt(
 - The quality gate is unchanged: no restatement of the Summary, no textbook filler, each Claim is one transferable idea with the source cited via [[title]].`
     : "";
 
+  const memoSparkBlock = isMemo
+    ? `**This source is a quick personal memo** — a fleeting fragment the user captured on the spot, not a fully-written note. A memo usually carries **exactly one spark worth keeping**; the user bothered to capture it for a reason.
+
+- **Try hard to extract that one spark as a Claim.** Brevity is the nature of a memo, not evidence of emptiness. Do not fall back to Summary-only just because the text is one or two sentences.
+- **Quotes, anecdotes and observations count.** When a memo records someone's words or a small episode, abstract the transferable insight it carries — ask "why did the user capture this?". From a veteran craftsman's quip about doing the same thing for sixty years, one can abstract a Claim like "一つの対象を追い続けた時間そのものが、その人の専門性とアイデンティティになる". Promote that abstraction as the Claim, citing the memo as the source.
+- **But never pad.** If the memo genuinely carries no transferable idea (a bare URL, a shopping reminder, a lone keyword), emit the Summary only and zero Claims.`
+    : "";
+
   const claimCountHeading = isDocument
     ? "harvest every distinct transferable insight — no fixed cap"
+    : isMemo
+    ? "usually exactly 1 — extract the memo's spark"
     : "0-3 per note";
 
   const claimCountGuideline = isDocument
     ? `one per distinct transferable insight the document carries (no fixed cap; a substantial document commonly yields 5-8). **Harvest, don't collapse** — see the document-mode block above. Still no padding or restatement; each Claim holds exactly one idea.`
+    : isMemo
+    ? `usually exactly 1: the single transferable insight the memo captures. Extract it even from a short quote or observation (see the memo block above). 0 only when the memo genuinely carries nothing transferable; 2 at most when the fragment truly holds two independent ideas.`
     : `0-3. **Prefer splitting over bundling** — if a note carries two distinct transferable claims, two short Claims beat one long combined page. Each Claim must hold exactly one idea (see "Splitting test" above).`;
 
   const skillSection = skills && skills.length > 0
@@ -448,6 +465,8 @@ Default to flowing prose with a single empty-heading section (\`heading: ""\`). 
 ## Claim (${claimCountHeading})
 ${isDocument ? `
 ${documentHarvestBlock}
+` : isMemo ? `
+${memoSparkBlock}
 ` : ""}
 **One Claim = one idea.** This is the strongest rule. If a note carries two transferable claims, generate two Claims — never bundle them into a single longer page. Splitting beats one big page. A reader should be able to say what the Claim is in a single sentence after reading it.
 

@@ -72,6 +72,18 @@ describe("buildLineageTree — 外部ソースの解決", () => {
     expect(chatNode).toBeDefined();
   });
 
+  it("memo: ソースも末端ノードとして表示する", () => {
+    const docs = new Map<string, GraphiumDocument>([
+      ["claim-1", claim("claim-1", "メモ由来の知見", ["memo:cap_1753000000000_ab12"])],
+    ]);
+    const tree = buildLineageTree("claim-1", [file("claim-1")], docs, null);
+    const memoNode = flatten(tree).find((n) => n.kind === "memo");
+    expect(memoNode).toBeDefined();
+    expect(memoNode!.title).toBe("Memo");
+    // 外部ソースは末端ノード（これ以上遡らない）
+    expect(memoNode!.parents.length).toBe(0);
+  });
+
   it("通常ノート由来は従来どおり note ノードとして遡れる", () => {
     const docs = new Map<string, GraphiumDocument>([
       ["claim-1", claim("claim-1", "知見", ["note-1"])],

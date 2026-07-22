@@ -89,12 +89,16 @@ app.post("/ingest", async (c) => {
   // （pdf: / document: / url: / chat:、external-source.ts の規約）。これらは複数の
   // 転用可能な知見を持つので ingester を「文書モード」に切り替え、過少抽出を防ぐ。
   const isDocument = /^(pdf|document|url|chat):/.test(body.noteId ?? "");
+  // メモ（memo: prefix）は逆に「1 断片 ≈ 1 着想」の走り書き。通常ノートの保守的な
+  // Claim 基準だと引用・エピソード型の断片が Summary のみに倒れるため、
+  // 「短くても着想 1 件の抽出を試みる」memo モードに切り替える。
+  const isMemo = /^memo:/.test(body.noteId ?? "");
 
   const systemPrompt = buildIngesterSystemPrompt(
     body.language || "en",
     body.existingWikiTitles || [],
     body.skills,
-    { isDocument },
+    { isDocument, isMemo },
   );
 
   // PROV 構造があれば user message の先頭にコンパクトに添える。

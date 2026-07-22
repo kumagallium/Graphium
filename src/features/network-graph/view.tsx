@@ -35,7 +35,7 @@ const NODE_COLORS = {
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 const BG_COLOR = "#fafdf7";   // テーマ背景
 
-type ExternalKind = "pdf" | "url" | "document" | "chat" | "media";
+type ExternalKind = "pdf" | "url" | "document" | "chat" | "memo" | "media";
 
 function getNodeColor(
   hop: number,
@@ -193,12 +193,15 @@ export function NetworkGraphPanel({
   onNavigate,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
 }: {
   data: NoteGraphData;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
   onOpenUrl?: (url: string) => void;
+  /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
+  onOpenMemo?: (captureId: string) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -291,6 +294,8 @@ export function NetworkGraphPanel({
         ? `🔗 ${node.title}`
         : node.external === "chat"
         ? `💬 ${node.title}`
+        : node.external === "memo"
+        ? `🗒️ ${node.title}`
         : node.external === "media"
         ? `${mediaIcon} ${node.title}`
         : node.isWiki
@@ -448,6 +453,11 @@ export function NetworkGraphPanel({
         // AI チャット由来ソースは開けるアセットが無いので何もしない
         return;
       }
+      if (nodeId.startsWith("memo:")) {
+        // メモ由来ソースはメモギャラリーの該当詳細を開く（未配線なら表示のみ）
+        onOpenMemo?.(nodeId.slice("memo:".length));
+        return;
+      }
       if (nodeId.startsWith("url:")) {
         if (externalUrl) {
           // アプリ内リーダー（素材サイドピーク）を優先。未配線の文脈のみ外部ブラウザ。
@@ -472,7 +482,7 @@ export function NetworkGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, handleNavigate, onOpenMedia, onOpenUrl, expanded, mediaThumbs]);
+  }, [data, handleNavigate, onOpenMedia, onOpenUrl, onOpenMemo, expanded, mediaThumbs]);
 
   if (data.nodes.length === 0) {
     return (

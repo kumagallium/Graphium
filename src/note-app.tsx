@@ -189,6 +189,7 @@ import {
   UrlPasteMenu,
   extractDomain,
   buildUrlPeekEntry,
+  buildMemoPeekEntry,
   isHttpUrl,
   computeUrlPasteMenuPosition,
   buildPastedTextContent,
@@ -286,9 +287,10 @@ async function loadMediaText(fileId: string): Promise<string | undefined> {
 
 /**
  * メモ（capture）のプレーンテキストから最小の GraphiumDocument を組む。
- * 「複数選択メモ → Knowledge 化」で、各メモを 1 ノートに materialize して
- * 既存の ingest パイプラインに流すために使う（provenance を壊さないため、
- * capture.id を noteId に流用せず実ノートを作る）。
+ * 「複数選択メモ → Knowledge 化」で、メモ本文を ingest パイプラインに流すための
+ * 一時ドキュメント（保存しない。ノートは作らない）。来歴は external-source.ts の
+ * "memo:<captureId>" プレフィックスで derivedFromNotes に記録されるため、
+ * ノートを materialize しなくても provenance は保たれる。
  * @param text メモ本文（trim 済みを想定）
  * @param fallbackTitle 先頭が空のときのタイトル
  */
@@ -649,6 +651,11 @@ type NoteEditorProps = {
    * 未指定なら graph 上のメディアノードは反応しない（旧 blob: open はやめた）。
    */
   onOpenMedia?: (fileId: string) => void;
+  /**
+   * memo:<captureId> ソース（References の @ラベル・グラフ・来歴）クリック時に
+   * メモギャラリーの該当メモ詳細を開くハンドラ。未指定なら memo: は無反応。
+   */
+  onOpenMemoSource?: (captureId: string) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
   onRefreshFiles: () => void;
@@ -758,6 +765,11 @@ type NoteEditorProps = {
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
   openSidePeekRef?: React.MutableRefObject<((noteId: string) => void) | null>;
+  /**
+   * NoteApp 側から素材サイドピークを開くための命令口（openSidePeekRef と同じ流儀）。
+   * memo: ソースのその場プレビュー（メモピーク）で使う。
+   */
+  openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
@@ -920,6 +932,8 @@ function NoteEditorInner({
   onCreateKnowledgeNote,
   onNavigateNote,
   onOpenMedia,
+  onOpenMemoSource,
+  openMaterialPeekRef,
   onRefreshFiles,
   saving,
   files,
@@ -2711,6 +2725,17 @@ function NoteEditorInner({
     };
   }, [openSidePeekRef]);
 
+  // 素材サイドピーク版の命令口。エディタ表示中は memo: ソースのその場プレビューを
+  // エディタ内の素材ピークで開く（アンマウント時は null に戻り、呼び出し側は
+  // リスト用素材ピークにフォールバックする）。
+  useEffect(() => {
+    if (!openMaterialPeekRef) return;
+    openMaterialPeekRef.current = (entry: MediaIndexEntry) => setMaterialSidePeekEntry(entry);
+    return () => {
+      if (openMaterialPeekRef.current) openMaterialPeekRef.current = null;
+    };
+  }, [openMaterialPeekRef]);
+
   // 現ノートの引用（knowledge layer = reference リンク）数を Composer に渡すため ref に登録。
   // Composer は NoteApp 直下にあり linkStore に触れないので、この imperative ref で橋渡しする。
   useEffect(() => {
@@ -3386,6 +3411,9 @@ function NoteEditorInner({
           } else if (ext.kind === "pdf" || ext.kind === "document") {
             const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
             if (entry) setMaterialSidePeekEntry(entry);
+          } else if (ext.kind === "memo") {
+            // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
+            onOpenMemoSource?.(ext.key);
           }
           // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
           return;
@@ -3433,7 +3461,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -4259,6 +4287,7 @@ function NoteEditorInner({
             onCreateLinkedNote={onCreateLinkedNote}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
+            onOpenMemoSource={onOpenMemoSource}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -4297,6 +4326,7 @@ function NoteEditorInner({
             onCreateLinkedNote={onCreateLinkedNote}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
+            onOpenMemoSource={onOpenMemoSource}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -4417,6 +4447,7 @@ function NoteEditorInner({
                     else onOpenMedia?.(fileId);
                   }}
                   onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
+                  onOpenMemo={onOpenMemoSource}
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
@@ -4702,6 +4733,9 @@ export function NoteApp() {
   // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
   // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
   const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
+  // エディタ内の素材サイドピークを NoteApp 側から開く命令口（openSidePeekRef と同じ流儀）。
+  // memo: ソースのその場プレビューで使う。エディタ非表示時は null。
+  const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
   // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
@@ -5273,6 +5307,31 @@ export function NoteApp() {
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
+  // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
+  // 「その場」の素材サイドピークでプレビューする（pdf:/url: ソースと同じ流儀）。
+  // エディタ表示中は openMaterialPeekRef 経由でエディタ内ピーク、
+  // リスト・全体グラフ文脈ではリスト用素材ピークに出す。
+  // メモが削除済みのときだけメモ一覧へ遷移する（そこで存在しないことが分かる）。
+  const handleOpenMemoSource = useCallback((captureId: string) => {
+    const cap = capture.captureIndex?.captures?.find((c) => c.id === captureId);
+    if (!cap) {
+      setListSidePeekNoteId(null);
+      closeAllViews();
+      setShowMemos(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "memos" });
+      return;
+    }
+    const entry = buildMemoPeekEntry(cap);
+    if (openMaterialPeekRef.current) {
+      openMaterialPeekRef.current(entry);
+    } else {
+      // ノートピークと素材ピークを同時に開かない（既存の onOpenMaterialPeek と同じ扱い）
+      setListSidePeekNoteId(null);
+      setListMaterialPeekEntry(entry);
+    }
+  }, [capture.captureIndex, closeAllViews, router]);
+
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
     if (ingestRunningRef.current) return;
@@ -5354,6 +5413,11 @@ export function NoteApp() {
                 createdWikiIds.push(wiki.mergeTargetId);
                 createdWikiTitles.push(wiki.title);
                 wikiLog.append("merge", [wiki.mergeTargetId], `Merged into "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+                // memo: 由来ならナレッジ化先（マージ先 wiki）を元メモに逆リンク記録
+                //（一覧の In Knowledge バッジ・詳細の Knowledge 化先リンクに使う）
+                if (job.noteId.startsWith("memo:")) {
+                  void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${wiki.mergeTargetId}`, wiki.title);
+                }
                 continue;
               }
             } catch { /* fallback to create */ }
@@ -5369,6 +5433,11 @@ export function NoteApp() {
           createdWikiIds.push(newId);
           createdWikiTitles.push(wiki.title);
           wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+          // memo: 由来ならナレッジ化先 wiki を元メモに逆リンク記録
+          //（旧フローではノート ID を記録していたが、直接 ingest 化で wiki を記録する）
+          if (job.noteId.startsWith("memo:")) {
+            void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
+          }
         }
 
         // 横断更新: 既存 Concept ページの自動更新
@@ -5846,7 +5915,7 @@ export function NoteApp() {
     }
 
     ingestRunningRef.current = false;
-  }, [fm]);
+  }, [fm, capture.handleRecordKnowledged]);
 
   const enqueueIngest = useCallback((noteId: string, noteTitle: string, doc: import("./lib/document-types").GraphiumDocument) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
@@ -6296,6 +6365,22 @@ export function NoteApp() {
             continue;
           }
 
+          if (rawId.startsWith("memo:")) {
+            // メモ由来: capture store から本文を再取得する。
+            // メモは短い断片が普通なので pdf/url のような最小長ゲートは設けない
+            // （通常ノートと同じ trim 非空のみ）。メモが削除済みなら skip。
+            const capId = rawId.slice("memo:".length);
+            const capEntry = capture.captureIndex?.captures?.find((c) => c.id === capId);
+            const capText = capEntry?.text?.trim();
+            if (capText) {
+              const firstLine = capText.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+              parts.push({ sourceNoteId: rawId, kind: "memo", title: firstLine.slice(0, 40) || "Memo", text: capText });
+            } else {
+              skipped.push(rawId);
+            }
+            continue;
+          }
+
           // 通常ノート
           const sDoc = await fm.loadDoc(rawId);
           if (sDoc) {
@@ -6429,7 +6514,7 @@ export function NoteApp() {
       }));
       return { ok: false, error: localizeAiError(err) };
     }
-  }, [fm]);
+  }, [fm, capture.captureIndex]);
 
   // 全 Concept を見渡して共通抽象（Atom）を発見する discovery 呼び出し（auto-loop 付き）。
   // - Maintenance タブの「Atom を発見」ボタンから呼ばれる。
@@ -6751,6 +6836,7 @@ export function NoteApp() {
               setListMaterialPeekEntry(null);
               setListSidePeekNoteId(noteId);
             }}
+            onOpenMemo={handleOpenMemoSource}
             onOpenMedia={(fileId) => {
               // 素材ノードクリック → グラフを離れず素材サイドピークでプレビュー
               //（ノートノードと同じ方針。Full view はピーク内の Maximize から）。
@@ -7238,6 +7324,7 @@ export function NoteApp() {
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
                     onOpenNoteInPeek={(peekId) => setAssetSidePeekNoteId(peekId)}
+                    onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
               </AiAssistantProvider>
@@ -7439,29 +7526,35 @@ export function NoteApp() {
             onDeleteMemo={capture.handleDeleteCapture}
             onArchiveMemo={capture.handleArchiveCapture}
             onEditMemo={capture.handleEditCapture}
-            onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
+            onNavigateNote={(noteId) => {
+              setShowMemos(false);
+              // knowledgedInto は直接 ingest 化後は wiki:<id> を記録する（ノートではなく
+              // ナレッジが生成されるため）。旧フローで記録された生ノート ID とも共存。
+              if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice("wiki:".length));
+              else fm.handleOpenFile(noteId);
+            }}
             insertDisabled={!fm.activeFileId}
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
             onKnowledgeMemos={aiAvailable ? (captureIds) => {
-              // AI 未設定なら発火させない（materialize 前に止める。enqueueIngest にも同ガードあり）
+              // AI 未設定なら発火させない（enqueueIngest にも同ガードあり）
               if (!ensureAgentConfigured()) return;
-              // 選択メモを各 1 ノートに materialize → 既存 ingest キューに流す。
-              // （ノート複数選択 Knowledge 化と同じ挙動: 各ノート ingest 後に
-              //   vault 全 Claim で atomize がまとめて走る）
+              // 選択メモを一時 doc に変換し、ノートを作らず直接 ingest キューに流す。
+              // 由来は "memo:<captureId>"（external-source.ts 規約）として wiki の
+              // derivedFromNotes に残る。ノート複数選択 Knowledge 化と同じく、
+              // 各 ingest 後に vault 全 Claim で atomize がまとめて走る。
+              // captureId は安定 ID なので、enqueueIngest の重複ガードで
+              // キュー滞留中の二度押しも自然に弾かれる。
               const caps = capture.captureIndex?.captures ?? [];
               for (const id of captureIds) {
                 const entry = caps.find((c) => c.id === id);
                 const text = entry?.text?.trim();
                 if (!text) continue;
                 const doc = buildMemoNoteDoc(text, tStatic("memo.title"));
-                fm.handleCreateNoteFromImport(doc)
-                  .then((newId) => {
-                    enqueueIngest(newId, doc.title, doc);
-                    // 元メモにナレッジ化先ノートを逆リンク記録（一覧バッジ・詳細の導線に使う）
-                    void capture.handleRecordKnowledged(id, newId, doc.title);
-                  })
-                  .catch((err) => console.error("メモの Knowledge 化に失敗:", err));
+                // ナレッジ化先の逆リンク（knowledgedInto）はノートではなく、ingest で
+                // 生成された wiki を記録する。wiki ID はキュー処理内で確定するため、
+                // 記録は processIngestQueue 側（memo: ジョブの wiki 保存後）で行う。
+                enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
           />
@@ -7733,6 +7826,7 @@ export function NoteApp() {
                             fm.handleOpenFile(noteId);
                           }
                         }}
+                        onOpenMemo={handleOpenMemoSource}
                         onClearWorldValidity={
                           wikiIdForDrawer
                             ? () => void handleClearWorldValidity(wikiIdForDrawer)
@@ -7848,6 +7942,7 @@ export function NoteApp() {
               setFocusedMaterial({ fileId, fullMode: true });
               router.navigate({ view: "assets", mediaType: target.type });
             }}
+            onOpenMemoSource={handleOpenMemoSource}
             getCachedDoc={fm.getCachedDoc}
             onRefreshFiles={fm.refreshFiles}
             saving={fm.saving}
@@ -7894,6 +7989,7 @@ export function NoteApp() {
             onPeekSaved={fm.reindexNoteFromDoc}
             onPropagateMentionRename={fm.propagateMentionRename}
             openSidePeekRef={openSidePeekRef}
+            openMaterialPeekRef={openMaterialPeekRef}
             composerCitationRef={composerCitationRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {
@@ -8009,6 +8105,7 @@ export function NoteApp() {
                 setListSidePeekNoteId(null);
                 setListMaterialPeekEntry(entry);
               }}
+              onOpenMemoSource={handleOpenMemoSource}
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);

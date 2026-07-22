@@ -14,15 +14,22 @@
 //   - "url:<url>"              URL を Knowledge 化したソース
 //   - "document:<mediaFileId>" Word(.docx) など document 素材を Knowledge 化したソース
 //   - "chat:<timestamp>"       AI チャットを Knowledge 化したソース
+//   - "memo:<captureId>"       メモ（CaptureEntry）を Knowledge 化したソース
 //   上記以外（プレフィックス無し）は通常ノート / Knowledge ノートの素 ID。
+//
+// 注: server/routes/wiki.ts のモード判定 regex はここを import できない
+// （バンドル境界）ため列挙を複製している。pdf:/document:/url:/chat: は
+// document モード（多数の知見を収穫）、memo: は memo モード（1 断片 ≈ 1 着想を
+// 抽出）と、ingester の Claim ガイダンスがソース種別で切り替わる。
 
-export type ExternalSourceKind = "pdf" | "url" | "document" | "chat";
+export type ExternalSourceKind = "pdf" | "url" | "document" | "chat" | "memo";
 
 const PREFIXES: { kind: ExternalSourceKind; prefix: string }[] = [
   { kind: "pdf", prefix: "pdf:" },
   { kind: "url", prefix: "url:" },
   { kind: "document", prefix: "document:" },
   { kind: "chat", prefix: "chat:" },
+  { kind: "memo", prefix: "memo:" },
 ];
 
 /**
@@ -38,7 +45,7 @@ export function parseExternalSource(
   return null;
 }
 
-/** 外部ソース ID かどうか（pdf: / url: / document: / chat:）。 */
+/** 外部ソース ID かどうか（pdf: / url: / document: / chat: / memo:）。 */
 export function isExternalSourceId(id: string): boolean {
   return parseExternalSource(id) !== null;
 }

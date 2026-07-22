@@ -104,6 +104,35 @@ export type MediaPreviewProps = {
   onSaveImageAsAsset?: (imageUrl: string, sourceEntry: MediaIndexEntry) => Promise<void>;
 };
 
+/**
+ * メモピーク（type === "memo"）: buildMemoPeekEntry が組んだ transient エントリの
+ * 本文をそのまま表示する。素材と違い実体ファイルが無いので blob 解決は不要。
+ */
+function MemoPreviewCard({ entry }: { entry: MediaIndexEntry }) {
+  return (
+    <div
+      style={{
+        alignSelf: "stretch",
+        width: "100%",
+        maxWidth: 640,
+        margin: "0 auto",
+        padding: "20px 24px",
+        background: "var(--color-card)",
+        border: "1px solid var(--color-border-subtle)",
+        borderRadius: 12,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: "var(--ink-3)", fontSize: 12 }}>
+        <span aria-hidden>🗒️</span>
+        <span>{new Date(entry.uploadedAt).toLocaleString()}</span>
+      </div>
+      <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.8, color: "var(--ink-1, var(--color-foreground))" }}>
+        {entry.memoText ?? ""}
+      </div>
+    </div>
+  );
+}
+
 export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset }: MediaPreviewProps) {
   switch (entry.type) {
     case "image":
@@ -124,6 +153,8 @@ export function MediaPreview({ entry, onSaveSelectionAsMemo, onSaveImageAsAsset 
           onSaveImageAsAsset={onSaveImageAsAsset}
         />
       );
+    case "memo":
+      return <MemoPreviewCard entry={entry} />;
     default:
       return (
         <div className="flex items-center justify-center">

@@ -33,6 +33,7 @@ export {
   extractDomain,
   getFaviconUrl,
   buildUrlPeekEntry,
+  buildMemoPeekEntry,
   persistUrlMetaPatch,
   MEDIA_INDEX_CHANGED_EVENT,
 } from "./media-index";

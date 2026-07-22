@@ -660,7 +660,8 @@ export function MemoGalleryView({
   creating?: boolean;
   /**
    * 選択メモを Knowledge 化する（list モードの一括バーから呼ぶ）。
-   * 各メモを 1 ノートに変換して ingest パイプラインに流す（呼び出し側で配線）。
+   * ノートは作らず、メモ本文を直接 ingest パイプラインに流す（呼び出し側で配線）。
+   * 由来は "memo:<captureId>"（external-source.ts 規約）として wiki に残る。
    * AI 未接続時は undefined を渡してボタンを隠す。
    */
   onKnowledgeMemos?: (captureIds: string[]) => void;
