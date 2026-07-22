@@ -49,7 +49,13 @@ export function createApp(options: CreateAppOptions = { mode: "node" }): Hono {
     "/api/*",
     cors({
       origin: allowedOrigins,
-      allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token"],
+      // 注意: フロント（features/ai-assistant/api.ts の apiHeaders）が送るカスタム
+      // ヘッダーは必ずここに列挙すること。漏れると Tauri 版（tauri://localhost →
+      // 127.0.0.1:3001 の cross-origin）で preflight が失敗し、そのヘッダーが付く
+      // 全リクエストが落ちる。Web 版は vite proxy の same-origin で CORS 自体が
+      // 発生しないため、漏れは Tauri でしか発症しない（X-MCP-Servers 欠落で
+      // MCP 登録ユーザーの AI が全滅した実例あり）。回帰テスト: app.test.ts
+      allowHeaders: ["Content-Type", "X-API-Key", "X-Registry-URL", "X-LLM-API-Key", "X-Graphium-Token", "X-MCP-Servers"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
   );
