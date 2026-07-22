@@ -47,11 +47,18 @@ export function AiBackendDiagnostic({
     try {
       const ok = await restartSidecar();
       if (ok) {
-        try {
-          const res = await fetchModels();
-          onRecovered?.(res.models.length > 0 ? "connected" : "no-models");
-        } catch {
-          // 復旧したが models 取得が失敗 — そのまま
+        // 再起動直後は listen 直後の瞬断で 1 発目の fetch が落ちることがある。
+        // 少し間隔を空けてリトライし、onRecovered の取りこぼしを防ぐ。
+        // （全滅しても panel 側の sidecar ready 購読が再チェックするので致命ではない）
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetchModels();
+            onRecovered?.(res.models.length > 0 ? "connected" : "no-models");
+            break;
+          } catch {
+            // 復旧したが models 取得が失敗 — 間を置いて再試行
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 500));
+          }
         }
       }
     } finally {
