@@ -132,7 +132,8 @@ export function NoteListView({
 }) {
   const [entries, setEntries] = useState<NoteListEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
+  // 既定は作成日の新しい順（ツールバーで並べ替え可能）
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [authorFilter, setAuthorFilter] = useState<string[]>([]);

@@ -215,7 +215,8 @@ export function WikiListView({
 }: Props) {
   const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("modifiedAt");
+  // 既定は作成日の新しい順（ツールバーで並べ替え可能）
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
