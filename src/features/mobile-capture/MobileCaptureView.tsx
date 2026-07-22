@@ -368,6 +368,8 @@ export function MobileCaptureView({
     const items: TimelineItem[] = [];
     // メモ
     for (const entry of captureIndex?.captures ?? []) {
+      // アーカイブ・ゴミ箱のメモはタイムラインに出さない
+      if (entry.archivedAt || entry.deletedAt) continue;
       items.push({ kind: "memo", entry, timestamp: entry.createdAt });
     }
     // メディア（image, video, audio, url。PDF はスキップ）

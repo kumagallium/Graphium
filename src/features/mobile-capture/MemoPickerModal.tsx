@@ -65,7 +65,8 @@ export function MemoPickerModal({
 
   // フィルタリング
   const filtered = useMemo(() => {
-    const captures = captureIndex?.captures ?? [];
+    // アーカイブ・ゴミ箱のメモは挿入候補に出さない
+    const captures = (captureIndex?.captures ?? []).filter((c) => !c.archivedAt && !c.deletedAt);
     if (!searchQuery.trim()) return captures;
     const q = searchQuery.trim().toLowerCase();
     return captures.filter((c) => c.text.toLowerCase().includes(q));
