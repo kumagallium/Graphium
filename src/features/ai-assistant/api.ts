@@ -11,6 +11,10 @@ import { getEnabledMcpServers, getDefaultLLMModel, getChatSynthesisLLMModel, get
  * mode="chat" のとき、AI チャット用のモデル（Chat & Synthesis モデル、未設定なら default）の
  * 認証情報を送る。インフラ系（fetchModels / fetchProfiles）は default のみで十分。
  */
+// 注意: ここで送るカスタムヘッダーを追加・変更したら、server/app.ts の cors
+// allowHeaders にも必ず追加すること。漏れると Tauri 版（tauri:// → 127.0.0.1 の
+// cross-origin）で preflight が失敗し、そのヘッダーが付く全リクエストが落ちる
+// （server/app.test.ts の回帰テストが検知する）。
 function apiHeaders(
   mode: "default" | "chat" = "default",
   extra?: Record<string, string>,
