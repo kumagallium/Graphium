@@ -46,6 +46,7 @@ export function filterMemosByNote(
   if (!captureIndex) return [];
   if (!noteFileId) return [];
   return captureIndex.captures
+    .filter((c) => !c.archivedAt && !c.deletedAt)
     .filter((c) => c.sourceNote?.fileId === noteFileId)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }

@@ -547,6 +547,8 @@ fn set_graphium_root(path: Option<String>) -> Result<GraphiumRootInfo, String> {
         }
     }
     write_app_config(&config)?;
+    // 新しい保存先に旧形式（拡張子なし）メディアがあれば拡張子を付与する
+    migrate_media_extensions();
     get_graphium_root()
 }
 
@@ -895,6 +897,146 @@ fn delete_skill_file(file_id: String) -> Result<(), String> {
     Ok(())
 }
 
+// --- メディア本体の拡張子付き保存（脱ロックイン） ---
+//
+// v0.19 以降、メディア本体は `{id}.{ext}` 形式（拡張子付き）で保存する。
+// Graphium をやめても media/ フォルダの画像や PDF がそのまま開けるようにするため。
+// 旧形式 `{id}`（拡張子なし）は find_media_data_file が引き続き解決し、
+// 起動時の migrate_media_extensions が meta.json の情報から一括リネームする。
+
+/// 本体ファイルに使えない拡張子。
+/// "txt" は Reader 原文（save_media_text の `{id}.txt`）専用のため、
+/// 本体に使うと find_media_data_file の除外規則と衝突して読めなくなる。
+const RESERVED_MEDIA_EXTS: &[&str] = &["txt"];
+
+/// MIME タイプから代表的な拡張子を引く（ファイル名に拡張子がないときの補完）
+fn ext_from_mime(mime: &str) -> Option<&'static str> {
+    match mime {
+        "image/jpeg" => Some("jpg"),
+        "image/png" => Some("png"),
+        "image/gif" => Some("gif"),
+        "image/webp" => Some("webp"),
+        "image/svg+xml" => Some("svg"),
+        "image/heic" => Some("heic"),
+        "image/bmp" => Some("bmp"),
+        "image/tiff" => Some("tiff"),
+        "application/pdf" => Some("pdf"),
+        "video/mp4" => Some("mp4"),
+        "video/quicktime" => Some("mov"),
+        "video/webm" => Some("webm"),
+        "audio/mpeg" => Some("mp3"),
+        "audio/wav" | "audio/x-wav" => Some("wav"),
+        "audio/mp4" => Some("m4a"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+            Some("pptx")
+        }
+        "application/msword" => Some("doc"),
+        "application/vnd.ms-excel" => Some("xls"),
+        _ => None,
+    }
+}
+
+/// ファイル名と MIME タイプから保存に使う拡張子を決める。
+/// ファイル名の拡張子を優先し、なければ MIME から補完する。
+/// 英数字 1〜8 文字のみ許可（パス・予約名の混入防止）。決められなければ None（拡張子なし保存）。
+fn media_ext(name: &str, mime: &str) -> Option<String> {
+    let sanitize = |e: &str| -> Option<String> {
+        let e = e.to_ascii_lowercase();
+        if e.is_empty() || e.len() > 8 || !e.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return None;
+        }
+        if RESERVED_MEDIA_EXTS.contains(&e.as_str()) {
+            return None;
+        }
+        Some(e)
+    };
+    std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .and_then(sanitize)
+        .or_else(|| ext_from_mime(mime).and_then(sanitize))
+}
+
+/// メディア本体のパスを解決する。新形式 `{id}.{ext}` を優先し、旧形式 `{id}` にフォールバック。
+/// `.meta.json`（メタデータ）と `.txt`（Reader 原文）は本体ではないので除外する。
+fn find_media_data_file(dir: &std::path::Path, file_id: &str) -> Option<PathBuf> {
+    if file_id.is_empty() {
+        return None;
+    }
+    let prefix = format!("{file_id}.");
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if name.ends_with(".meta.json") || name.ends_with(".txt") {
+                continue;
+            }
+            if name.starts_with(&prefix) {
+                return Some(entry.path());
+            }
+        }
+    }
+    // 旧形式（拡張子なし）
+    let legacy = dir.join(file_id);
+    if legacy.is_file() {
+        return Some(legacy);
+    }
+    None
+}
+
+/// 旧形式（拡張子なし）のメディア本体に拡張子を付与する一括マイグレーション。
+/// meta.json の name / mimeType から拡張子を決め、決められないものはそのまま残す
+/// （find_media_data_file の旧形式フォールバックで読み続けられる）。
+/// rename は同一ディレクトリ内なので原子的。個別の失敗はログだけ出して続行する。
+fn migrate_media_extensions_in(dir: &std::path::Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(id) = name.strip_suffix(".meta.json") else {
+            continue;
+        };
+        if id.is_empty() {
+            continue;
+        }
+        let legacy = dir.join(id);
+        if !legacy.is_file() {
+            continue; // 本体なし、または既にリネーム済み
+        }
+        let Ok(content) = fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let Ok(meta) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        let file_name = meta["name"].as_str().unwrap_or_default();
+        let mime = meta["mimeType"].as_str().unwrap_or_default();
+        let Some(ext) = media_ext(file_name, mime) else {
+            continue;
+        };
+        let target = dir.join(format!("{id}.{ext}"));
+        if target.exists() {
+            continue; // 衝突ガード（中断からの再実行など）
+        }
+        if let Err(e) = fs::rename(&legacy, &target) {
+            eprintln!("メディア拡張子マイグレーション失敗 {id}: {e}");
+        }
+    }
+}
+
+/// 現在の Graphium ルートに対してメディア拡張子マイグレーションを実行する。
+/// 起動時と保存先変更時に呼ぶ。失敗しても致命的ではない（次回起動で再試行される）。
+fn migrate_media_extensions() {
+    let Ok(dir) = media_dir() else {
+        return;
+    };
+    migrate_media_extensions_in(&dir);
+}
+
 /// メディアファイルを保存（Base64 エンコードされたデータを受け取る）
 #[tauri::command]
 fn save_media_file(
@@ -924,8 +1066,18 @@ fn save_media_file(
     )
     .map_err(|e| format!("メタデータ書き込み失敗: {e}"))?;
 
-    // バイナリデータを保存
-    let data_path = dir.join(&file_id);
+    // バイナリデータを拡張子付きで保存（Finder 等でそのまま開けるようにする）
+    let filename = match media_ext(&name, &mime_type) {
+        Some(ext) => format!("{file_id}.{ext}"),
+        None => file_id.clone(),
+    };
+    let data_path = dir.join(&filename);
+    // 同じ id の既存本体が別名で残っていれば削除（再アップロードで拡張子が変わるケース）
+    if let Some(existing) = find_media_data_file(&dir, &file_id) {
+        if existing != data_path {
+            let _ = fs::remove_file(&existing);
+        }
+    }
     fs::write(&data_path, bytes).map_err(|e| format!("メディア書き込み失敗: {e}"))
 }
 
@@ -933,7 +1085,9 @@ fn save_media_file(
 #[tauri::command]
 fn read_media_file(file_id: String) -> Result<String, String> {
     use base64::Engine;
-    let path = media_dir()?.join(&file_id);
+    let dir = media_dir()?;
+    let path = find_media_data_file(&dir, &file_id)
+        .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
     let bytes = fs::read(&path).map_err(|e| format!("メディア読み取り失敗: {e}"))?;
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
@@ -994,8 +1148,8 @@ fn list_media_files_cmd() -> Result<Vec<MediaFileInfo>, String> {
 #[tauri::command]
 fn delete_media_file(file_id: String) -> Result<(), String> {
     let dir = media_dir()?;
-    let data_path = dir.join(&file_id);
-    if data_path.exists() {
+    // 新形式（拡張子付き）・旧形式（拡張子なし）どちらでも解決して削除
+    if let Some(data_path) = find_media_data_file(&dir, &file_id) {
         if let Err(e) = trash::delete(&data_path) {
             eprintln!("trash::delete 失敗（フォールバックで unlink）: {e}");
             fs::remove_file(&data_path).map_err(|e| format!("メディア削除失敗: {e}"))?;
@@ -1052,10 +1206,9 @@ fn write_app_data(key: String, data: String) -> Result<(), String> {
 /// メディアファイルのパスを取得（convertFileSrc 用）
 #[tauri::command]
 fn get_media_path(file_id: String) -> Result<String, String> {
-    let path = media_dir()?.join(&file_id);
-    if !path.exists() {
-        return Err(format!("メディアが見つかりません: {file_id}"));
-    }
+    let dir = media_dir()?;
+    let path = find_media_data_file(&dir, &file_id)
+        .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -1451,6 +1604,10 @@ pub fn run() {
         ])
         .manage(NativeSidecarState::default())
         .setup(|app| {
+            // 旧形式（拡張子なし）メディアの拡張子付与マイグレーション。
+            // フロントエンドのロード前に同期実行するので、読み込みとの競合はない。
+            migrate_media_extensions();
+
             // メニューバー構築
             // ⌘⇧M (Quick Memo) はネイティブメニューのアクセラレータとして登録する。
             // 理由: WKWebView では Cmd 系ショートカットがメニューの key-equivalent 処理に
@@ -1561,4 +1718,119 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// --- テスト ---
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// meta.json と本体（旧形式）のペアをテンポラリディレクトリに作る
+    fn put_legacy_media(dir: &std::path::Path, id: &str, name: &str, mime: &str, bytes: &[u8]) {
+        let meta = serde_json::json!({
+            "id": id,
+            "name": name,
+            "mimeType": mime,
+            "createdTime": "2026-01-01T00:00:00Z",
+        });
+        fs::write(
+            dir.join(format!("{id}.meta.json")),
+            serde_json::to_string(&meta).unwrap(),
+        )
+        .unwrap();
+        fs::write(dir.join(id), bytes).unwrap();
+    }
+
+    #[test]
+    fn media_ext_prefers_name_extension() {
+        assert_eq!(media_ext("photo.JPG", "image/png"), Some("jpg".into()));
+        assert_eq!(media_ext("archive.tar.gz", ""), Some("gz".into()));
+    }
+
+    #[test]
+    fn media_ext_falls_back_to_mime() {
+        assert_eq!(media_ext("pasted-image", "image/jpeg"), Some("jpg".into()));
+        assert_eq!(media_ext("", "application/pdf"), Some("pdf".into()));
+    }
+
+    #[test]
+    fn media_ext_rejects_reserved_and_invalid() {
+        // "txt" は Reader 原文（{id}.txt）専用なので本体には使わない
+        assert_eq!(media_ext("notes.txt", "text/plain"), None);
+        // 不正な拡張子（非英数字・過長）は無視して MIME にフォールバック
+        assert_eq!(media_ext("weird.pn g", "image/png"), Some("png".into()));
+        assert_eq!(media_ext("noext", "application/unknown"), None);
+    }
+
+    #[test]
+    fn find_media_data_file_resolves_new_and_legacy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        // 旧形式（拡張子なし）
+        fs::write(dir.join("legacy-id"), b"legacy").unwrap();
+        assert_eq!(
+            find_media_data_file(dir, "legacy-id"),
+            Some(dir.join("legacy-id"))
+        );
+
+        // 新形式（拡張子付き）
+        fs::write(dir.join("new-id.jpg"), b"new").unwrap();
+        assert_eq!(
+            find_media_data_file(dir, "new-id"),
+            Some(dir.join("new-id.jpg"))
+        );
+
+        // meta.json / txt は本体として拾わない
+        fs::write(dir.join("only-meta.meta.json"), b"{}").unwrap();
+        fs::write(dir.join("only-meta.txt"), b"reader text").unwrap();
+        assert_eq!(find_media_data_file(dir, "only-meta"), None);
+
+        // 存在しない id / 空 id
+        assert_eq!(find_media_data_file(dir, "missing"), None);
+        assert_eq!(find_media_data_file(dir, ""), None);
+    }
+
+    #[test]
+    fn migrate_renames_legacy_media_using_meta() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        put_legacy_media(dir, "img-1", "photo.jpg", "image/jpeg", b"jpeg-bytes");
+        put_legacy_media(dir, "doc-1", "report.docx", "application/msword", b"doc-bytes");
+        // 拡張子を決められないもの（name 拡張子なし・MIME 不明）はそのまま残る
+        put_legacy_media(dir, "unknown-1", "mystery", "application/x-unknown", b"???");
+        // Reader 原文 .txt は無関係に維持される
+        fs::write(dir.join("img-1.txt"), b"reader text").unwrap();
+
+        migrate_media_extensions_in(dir);
+
+        assert!(dir.join("img-1.jpg").is_file());
+        assert!(!dir.join("img-1").exists());
+        assert_eq!(fs::read(dir.join("img-1.jpg")).unwrap(), b"jpeg-bytes");
+        // name の拡張子（docx）が MIME 推定より優先される
+        assert!(dir.join("doc-1.docx").is_file());
+        assert!(dir.join("unknown-1").is_file());
+        assert!(dir.join("img-1.txt").is_file());
+
+        // 再実行しても安全（冪等）
+        migrate_media_extensions_in(dir);
+        assert!(dir.join("img-1.jpg").is_file());
+    }
+
+    #[test]
+    fn migrate_skips_when_target_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        put_legacy_media(dir, "dup-1", "a.png", "image/png", b"old");
+        fs::write(dir.join("dup-1.png"), b"already-migrated").unwrap();
+
+        migrate_media_extensions_in(dir);
+
+        // 既存の新形式を上書きしない（衝突ガード）
+        assert_eq!(fs::read(dir.join("dup-1.png")).unwrap(), b"already-migrated");
+        assert!(dir.join("dup-1").is_file());
+    }
 }

@@ -169,7 +169,7 @@ import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocume
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import {
   CitePickerModal,
@@ -5413,6 +5413,11 @@ export function NoteApp() {
                 createdWikiIds.push(wiki.mergeTargetId);
                 createdWikiTitles.push(wiki.title);
                 wikiLog.append("merge", [wiki.mergeTargetId], `Merged into "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+                // memo: 由来ならナレッジ化先（マージ先 wiki）を元メモに逆リンク記録
+                //（一覧の In Knowledge バッジ・詳細の Knowledge 化先リンクに使う）
+                if (job.noteId.startsWith("memo:")) {
+                  void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${wiki.mergeTargetId}`, wiki.title);
+                }
                 continue;
               }
             } catch { /* fallback to create */ }
@@ -5428,6 +5433,11 @@ export function NoteApp() {
           createdWikiIds.push(newId);
           createdWikiTitles.push(wiki.title);
           wikiLog.append("ingest", [newId], `Created "${wiki.title}" from "${job.noteTitle}"`).catch(() => {});
+          // memo: 由来ならナレッジ化先 wiki を元メモに逆リンク記録
+          //（旧フローではノート ID を記録していたが、直接 ingest 化で wiki を記録する）
+          if (job.noteId.startsWith("memo:")) {
+            void capture.handleRecordKnowledged(job.noteId.slice("memo:".length), `wiki:${newId}`, wiki.title);
+          }
         }
 
         // 横断更新: 既存 Concept ページの自動更新
@@ -5905,7 +5915,7 @@ export function NoteApp() {
     }
 
     ingestRunningRef.current = false;
-  }, [fm]);
+  }, [fm, capture.handleRecordKnowledged]);
 
   const enqueueIngest = useCallback((noteId: string, noteTitle: string, doc: import("./lib/document-types").GraphiumDocument) => {
     // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）。
@@ -7352,6 +7362,9 @@ export function NoteApp() {
               }
               for (const id of ids) await fm.handleDelete(id);
             }}
+            onArchiveNotes={async (ids) => {
+              for (const id of ids) await fm.handleArchiveNote(id);
+            }}
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
@@ -7511,8 +7524,15 @@ export function NoteApp() {
               setShowMemos(false);
             }}
             onDeleteMemo={capture.handleDeleteCapture}
+            onArchiveMemo={capture.handleArchiveCapture}
             onEditMemo={capture.handleEditCapture}
-            onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
+            onNavigateNote={(noteId) => {
+              setShowMemos(false);
+              // knowledgedInto は直接 ingest 化後は wiki:<id> を記録する（ノートではなく
+              // ナレッジが生成されるため）。旧フローで記録された生ノート ID とも共存。
+              if (noteId.startsWith("wiki:")) fm.handleOpenWikiFile(noteId.slice("wiki:".length));
+              else fm.handleOpenFile(noteId);
+            }}
             insertDisabled={!fm.activeFileId}
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
@@ -7531,6 +7551,9 @@ export function NoteApp() {
                 const text = entry?.text?.trim();
                 if (!text) continue;
                 const doc = buildMemoNoteDoc(text, tStatic("memo.title"));
+                // ナレッジ化先の逆リンク（knowledgedInto）はノートではなく、ingest で
+                // 生成された wiki を記録する。wiki ID はキュー処理内で確定するため、
+                // 記録は processIngestQueue 側（memo: ジョブの wiki 保存後）で行う。
                 enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
@@ -7677,6 +7700,12 @@ export function NoteApp() {
             archivedMedia={fm.mediaIndex?.media.filter((m) => m.archivedAt) ?? []}
             onRestoreMedia={fm.handleRestoreMedia}
             onPermanentDeleteMedia={fm.handleDeleteMedia}
+            trashedMemos={capture.captureIndex ? getTrashedCaptures(capture.captureIndex) : []}
+            archivedMemos={capture.captureIndex ? getArchivedCaptures(capture.captureIndex) : []}
+            onRestoreMemo={capture.handleRestoreCaptureFromTrash}
+            onPermanentDeleteMemo={capture.handlePermanentDeleteCapture}
+            onRestoreMemoFromArchive={capture.handleRestoreCaptureFromArchive}
+            onSendMemoArchiveToTrash={capture.handleSendCaptureArchiveToTrash}
           />
         ) : showSkillList ? (
           <SkillListView

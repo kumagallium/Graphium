@@ -40,6 +40,7 @@ export function filterMemosByAsset(
   if (!captureIndex) return [];
   const needle = `— ${entry.name}`;
   return captureIndex.captures
+    .filter((c) => !c.archivedAt && !c.deletedAt)
     .filter((c) => c.sourceAsset?.fileId === entry.fileId || c.text.includes(needle))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }

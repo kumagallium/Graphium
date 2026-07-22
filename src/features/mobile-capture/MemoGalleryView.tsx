@@ -2,11 +2,11 @@
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Trash2, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
+import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
-import type { CaptureIndex, CaptureEntry } from "./capture-store";
+import { getActiveCaptures, type CaptureIndex, type CaptureEntry } from "./capture-store";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { useRangeSelect } from "../../hooks/use-range-select";
@@ -138,12 +138,14 @@ function MemoDetailModal({
   entry,
   onClose,
   onDelete,
+  onArchive,
   onNavigateNote,
   onEdit,
 }: {
   entry: CaptureEntry;
   onClose: () => void;
   onDelete?: () => void;
+  onArchive?: () => void;
   onNavigateNote?: (noteId: string) => void;
   onEdit?: (captureId: string, newText: string) => void;
 }) {
@@ -307,6 +309,15 @@ function MemoDetailModal({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {onArchive && (
+              <button
+                onClick={() => { onArchive(); onClose(); }}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Archive size={13} />
+                {t("memo.archive")}
+              </button>
+            )}
             {onDelete && (
               <button
                 onClick={() => { onDelete(); onClose(); }}
@@ -359,6 +370,26 @@ function MemoDetailModal({
               >
                 {entry.text}
               </p>
+            )}
+            {!editing && (entry.knowledgedInto?.length ?? 0) > 0 && (
+              <div className="mt-4 pt-3 border-t border-border">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary mb-1.5">
+                  <BookOpen size={12} />
+                  {t("memo.knowledgedInto")}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {entry.knowledgedInto!.map((k) => (
+                    <button
+                      key={k.noteId}
+                      onClick={() => handleNavigate(k.noteId)}
+                      className="text-left text-xs text-foreground hover:text-primary hover:underline truncate transition-colors"
+                      title={k.noteTitle}
+                    >
+                      → {k.noteTitle}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
@@ -465,16 +496,22 @@ function MemoCard({
   onOpenDetail,
   onInsert,
   onDelete,
+  onArchive,
+  onOpenKnowledged,
   insertDisabled,
 }: {
   entry: CaptureEntry;
   onOpenDetail: () => void;
   onInsert?: () => void;
   onDelete?: () => void;
+  onArchive?: () => void;
+  /** ナレッジ化先ノートを開く（Knowledge 化済みのメモのみ） */
+  onOpenKnowledged?: () => void;
   insertDisabled?: boolean;
 }) {
   const t = useT();
   const usedCount = entry.usedIn?.length ?? 0;
+  const knowledgedCount = entry.knowledgedInto?.length ?? 0;
 
   return (
     <div
@@ -494,6 +531,24 @@ function MemoCard({
               {t("memo.usedCount", { count: String(usedCount) })}
             </span>
           )}
+          {knowledgedCount > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenKnowledged?.(); }}
+              disabled={!onOpenKnowledged}
+              title={
+                knowledgedCount === 1
+                  ? t("knowledge.inKnowledge")
+                  : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
+              }
+              className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors disabled:cursor-default"
+            >
+              <BookOpen size={12} />
+              {knowledgedCount > 1 && (
+                <span className="ml-0.5 text-[10px] font-semibold">{knowledgedCount}</span>
+              )}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {onInsert && (
@@ -504,6 +559,15 @@ function MemoCard({
               title={t("memo.insert")}
             >
               <ClipboardCopy size={14} />
+            </button>
+          )}
+          {onArchive && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onArchive(); }}
+              className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+              title={t("memo.archive")}
+            >
+              <Archive size={14} />
             </button>
           )}
           {onDelete && (
@@ -581,6 +645,7 @@ export function MemoGalleryView({
   onCreateMemo,
   creating,
   onKnowledgeMemos,
+  onArchiveMemo,
 }: {
   captureIndex: CaptureIndex | null;
   loading: boolean;
@@ -600,9 +665,12 @@ export function MemoGalleryView({
    * AI 未接続時は undefined を渡してボタンを隠す。
    */
   onKnowledgeMemos?: (captureIds: string[]) => void;
+  /** メモをアーカイブする（gallery / list / 詳細 / 一括バーから呼ぶ） */
+  onArchiveMemo?: (captureId: string) => void;
 }) {
   const t = useT();
-  const captures = captureIndex?.captures ?? [];
+  // アーカイブ・ゴミ箱を除いた active なメモのみ一覧に表示する
+  const captures = useMemo(() => (captureIndex ? getActiveCaptures(captureIndex) : []), [captureIndex]);
   const [pendingInsert, setPendingInsert] = useState<{ id: string; text: string } | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
@@ -791,6 +859,17 @@ export function MemoGalleryView({
                 {t("memo.knowledgeSelected", { count: String(selectedIds.size) })}
               </button>
             )}
+            {onArchiveMemo && (
+              <button
+                onClick={() => {
+                  for (const id of selectedIds) onArchiveMemo(id);
+                  setSelectedIds(new Set());
+                }}
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors"
+              >
+                {t("memo.archiveSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onDeleteMemo && (
               <button
                 onClick={() => setBulkDeleteOpen(true)}
@@ -823,6 +902,12 @@ export function MemoGalleryView({
                 onOpenDetail={() => setDetailEntry(entry)}
                 onInsert={onInsertMemo ? () => setPendingInsert({ id: entry.id, text: entry.text }) : undefined}
                 onDelete={onDeleteMemo ? () => onDeleteMemo(entry.id) : undefined}
+                onArchive={onArchiveMemo ? () => onArchiveMemo(entry.id) : undefined}
+                onOpenKnowledged={
+                  onNavigateNote && (entry.knowledgedInto?.length ?? 0) > 0
+                    ? () => onNavigateNote(entry.knowledgedInto![0].noteId)
+                    : undefined
+                }
                 insertDisabled={insertDisabled}
               />
             ))}
@@ -844,14 +929,20 @@ export function MemoGalleryView({
                 <th className="py-2 px-2 w-[60px] text-center" title={t("memo.colUsedIn")}>
                   {t("memo.colUsedIn")}
                 </th>
+                <th className="py-2 px-2 w-[60px] text-center" title={t("nav.knowledgeColumn")}>
+                  <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
+                    <BookOpen size={14} />
+                  </span>
+                </th>
                 <th className="py-2 pl-3 w-[110px]">{t("memo.colDate")}</th>
-                <th className="py-2 px-2 w-[40px]" />
+                <th className="py-2 px-2 w-[72px]" />
               </tr>
             </thead>
             <tbody>
               {captures.map((entry, index) => {
                 const isSelected = selectedIds.has(entry.id);
                 const usedCount = entry.usedIn?.length ?? 0;
+                const knowledgedCount = entry.knowledgedInto?.length ?? 0;
                 return (
                   <tr
                     key={entry.id}
@@ -887,19 +978,52 @@ export function MemoGalleryView({
                     <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
                       {usedCount > 0 ? usedCount : <span className="text-muted-foreground/30">—</span>}
                     </td>
+                    <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                      {knowledgedCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => onNavigateNote?.(entry.knowledgedInto![0].noteId)}
+                          disabled={!onNavigateNote}
+                          title={
+                            knowledgedCount === 1
+                              ? t("knowledge.inKnowledge")
+                              : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
+                          }
+                          className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors disabled:cursor-default"
+                        >
+                          <BookOpen size={14} />
+                          {knowledgedCount > 1 && (
+                            <span className="ml-0.5 text-[10px] font-semibold">{knowledgedCount}</span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground/30 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                       {formatCreatedDate(entry.createdAt)}
                     </td>
                     <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
-                      {onDeleteMemo && (
-                        <button
-                          onClick={() => onDeleteMemo(entry.id)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-                          title={t("common.delete")}
-                        >
-                          ✕
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {onArchiveMemo && (
+                          <button
+                            onClick={() => onArchiveMemo(entry.id)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all p-1"
+                            title={t("memo.archive")}
+                          >
+                            <Archive size={13} />
+                          </button>
+                        )}
+                        {onDeleteMemo && (
+                          <button
+                            onClick={() => onDeleteMemo(entry.id)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
+                            title={t("common.delete")}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -924,6 +1048,7 @@ export function MemoGalleryView({
           entry={detailEntry}
           onClose={() => setDetailEntry(null)}
           onDelete={onDeleteMemo ? () => { onDeleteMemo(detailEntry.id); setDetailEntry(null); } : undefined}
+          onArchive={onArchiveMemo ? () => { onArchiveMemo(detailEntry.id); setDetailEntry(null); } : undefined}
           onNavigateNote={onNavigateNote}
           onEdit={onEditMemo ? (id, text) => { onEditMemo(id, text); setDetailEntry({ ...detailEntry, text }); } : undefined}
         />

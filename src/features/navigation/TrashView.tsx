@@ -11,6 +11,7 @@ import { Trash2, RotateCcw, AlertTriangle, Archive, Send } from "lucide-react";
 import type { GraphiumIndex, NoteIndexEntry } from "./index-file";
 import { findIncomingReferences } from "./index-file";
 import type { MediaIndexEntry } from "../asset-browser/media-index";
+import type { CaptureEntry } from "../mobile-capture/capture-store";
 import { useT } from "../../i18n";
 import { Breadcrumb } from "../../components/Breadcrumb";
 
@@ -113,6 +114,12 @@ export function TrashView({
   archivedMedia = [],
   onRestoreMedia,
   onPermanentDeleteMedia,
+  trashedMemos = [],
+  archivedMemos = [],
+  onRestoreMemo,
+  onPermanentDeleteMemo,
+  onRestoreMemoFromArchive,
+  onSendMemoArchiveToTrash,
 }: {
   rawNoteIndex: GraphiumIndex | null;
   trashedNotes: NoteIndexEntry[];
@@ -130,6 +137,18 @@ export function TrashView({
   onRestoreMedia?: (entry: MediaIndexEntry) => void;
   /** 素材を完全に削除（バイナリごと。確認はこのビュー内で行う） */
   onPermanentDeleteMedia?: (entry: MediaIndexEntry) => Promise<void>;
+  /** ゴミ箱のメモ（trash タブに表示） */
+  trashedMemos?: CaptureEntry[];
+  /** アーカイブ済みメモ（archive タブに表示） */
+  archivedMemos?: CaptureEntry[];
+  /** メモをゴミ箱から復元 */
+  onRestoreMemo?: (captureId: string) => void;
+  /** メモを完全削除（テキストごと） */
+  onPermanentDeleteMemo?: (captureId: string) => Promise<void>;
+  /** メモをアーカイブから復元 */
+  onRestoreMemoFromArchive?: (captureId: string) => void;
+  /** アーカイブ済みメモをゴミ箱に送る */
+  onSendMemoArchiveToTrash?: (captureId: string) => void;
 }) {
   const t = useT();
   const [tab, setTab] = useState<TabKey>("trash");
@@ -147,6 +166,20 @@ export function TrashView({
     setBusy(true);
     try {
       await onPermanentDeleteMedia(entry);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // タブごとのメモ一覧（ゴミ箱 / アーカイブ）
+  const memoList = tab === "trash" ? trashedMemos : archivedMemos;
+
+  const handleMemoPermanentDelete = async (m: CaptureEntry) => {
+    if (!onPermanentDeleteMemo) return;
+    if (typeof window !== "undefined" && !window.confirm(t("memo.deleteConfirmMessage"))) return;
+    setBusy(true);
+    try {
+      await onPermanentDeleteMemo(m.id);
     } finally {
       setBusy(false);
     }
@@ -315,7 +348,7 @@ export function TrashView({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {sorted.length === 0 && archivedMediaList.length === 0 ? (
+        {sorted.length === 0 && archivedMediaList.length === 0 && memoList.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
             {tab === "trash" ? (
               <Trash2 size={32} className="opacity-30" />
@@ -465,6 +498,62 @@ export function TrashView({
                         className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
                         title={t("asset.deletePermanently")}
                         aria-label={t("asset.deletePermanently")}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* ゴミ箱 / アーカイブのメモ（capture-store 由来。タブでアクションが変わる） */}
+          {memoList.length > 0 && (
+            <div className="px-6 py-4">
+              <h3 className="text-xs font-semibold text-muted-foreground mb-2">
+                {t("memo.trashArchiveSection")}
+                <span className="ml-1.5 font-normal">{memoList.length}</span>
+              </h3>
+              <div className="space-y-1">
+                {memoList.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded border border-border/60 px-3 py-1.5 text-xs hover:bg-muted/20"
+                  >
+                    <span className="flex-1 truncate text-foreground" title={m.text}>
+                      {m.text || <span className="text-muted-foreground italic">{t("memo.untitled")}</span>}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {formatDate(tab === "trash" ? m.deletedAt : m.archivedAt)}
+                    </span>
+                    {(tab === "trash" ? onRestoreMemo : onRestoreMemoFromArchive) && (
+                      <button
+                        onClick={() => (tab === "trash" ? onRestoreMemo?.(m.id) : onRestoreMemoFromArchive?.(m.id))}
+                        disabled={busy}
+                        className="shrink-0 px-2 py-1 rounded border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-40 flex items-center gap-1"
+                      >
+                        <RotateCcw size={11} />
+                        {t("asset.restore")}
+                      </button>
+                    )}
+                    {tab === "archive" && onSendMemoArchiveToTrash && (
+                      <button
+                        onClick={() => onSendMemoArchiveToTrash(m.id)}
+                        disabled={busy}
+                        className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                        title={t("archive.sendToTrash")}
+                        aria-label={t("archive.sendToTrash")}
+                      >
+                        <Send size={12} />
+                      </button>
+                    )}
+                    {tab === "trash" && onPermanentDeleteMemo && (
+                      <button
+                        onClick={() => void handleMemoPermanentDelete(m)}
+                        disabled={busy}
+                        className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
+                        title={t("trash.permanentDelete")}
+                        aria-label={t("trash.permanentDelete")}
                       >
                         <Trash2 size={12} />
                       </button>

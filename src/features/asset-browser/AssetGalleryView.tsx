@@ -16,6 +16,7 @@ import type { KnowledgeKindLookup } from "./asset-graph-panel";
 import type { CitationSource } from "./SelectionPill";
 import { UrlBookmarkModal } from "./UrlBookmarkModal";
 import { MediaPickerModal } from "./MediaPickerModal";
+import { useIsDesktop } from "../../hooks/use-media-query";
 
 type SortKey = "uploadedAt" | "name" | "usedIn";
 
@@ -603,12 +604,15 @@ export function AssetGalleryView({
   }, [focusFileId, focusFullMode, mediaIndex, onFocusConsumed]);
 
   // ノートサイドピークを開くときは PDF を Full view にする（右パネルの左に並べるため）。
-  // 非 Full（MaterialSidePeek = fixed オーバーレイ）のままだと横並びにならない。
+  // MaterialSidePeek にはノートピークを並べる場所が無いため。
   useEffect(() => {
     if (notePeekId && detailEntry && !detailFullMode) {
       setDetailFullMode(true);
     }
   }, [notePeekId, detailEntry, detailFullMode]);
+  // デスクトップはサイドピークを inline（flex 兄弟）で並べてギャラリーをリフローさせ、
+  // モバイルは従来どおり overlay（portal fixed）で被せる — エディタ画面と同じ方針
+  const isDesktop = useIsDesktop();
   const [showUrlModal, setShowUrlModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
@@ -997,449 +1001,469 @@ export function AssetGalleryView({
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-background">
-      {/* ヘッダー */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
-        <button
-          onClick={onBack}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t("common.back")}
-        </button>
-        <h1 className="text-base font-semibold text-foreground">{typeLabel}</h1>
-        <span className="text-xs text-muted-foreground">
-          {t("asset.count", { count: String(filtered.length) })}
-        </span>
-        {mediaType === "url" && onAddUrlBookmark && (
+    <div className="flex-1 flex overflow-hidden bg-background">
+      {/* ギャラリー本体（縦 flex）。デスクトップでサイドピークが inline で並ぶと残り幅にリフローする */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* ヘッダー */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+          {/* サイドピークが inline で並んで狭くなっても縦折れしないよう nowrap にする */}
           <button
-            onClick={() => setShowUrlModal(true)}
-            className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            onClick={onBack}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap shrink-0"
           >
-            <Plus size={12} />
-            {t("asset.urlAdd")}
+            {t("common.back")}
           </button>
-        )}
-        {mediaType === "document" && onUploadMedia && (
-          <div className="ml-auto relative" ref={menuRef}>
+          <h1 className="text-base font-semibold text-foreground whitespace-nowrap shrink-0">{typeLabel}</h1>
+          <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+            {t("asset.count", { count: String(filtered.length) })}
+          </span>
+          {mediaType === "url" && onAddUrlBookmark && (
             <button
-              onClick={() => setMenuOpen((v) => !v)}
-              disabled={uploading}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-              title={t("common.menu")}
-              aria-label={t("common.menu")}
-            >
-              <MoreHorizontal size={14} />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
-                <button
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
-                  onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
-                  disabled={uploading}
-                  title={t("asset.uploadDocxHint")}
-                >
-                  <Plus size={14} />
-                  {uploading ? t("asset.uploading") : t("asset.uploadDocx")}
-                </button>
-                <button
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
-                  onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
-                  disabled={uploading}
-                  title={t("asset.uploadPdfHint")}
-                >
-                  <Plus size={14} />
-                  {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
-                </button>
-                <div className="my-1 border-t border-border" />
-                <button
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed"
-                  onClick={() => { setMenuOpen(false); void handleBulkDownload(); }}
-                  disabled={downloadableSelectedCount === 0 || bulkDownloading}
-                  title={
-                    downloadableSelectedCount === 0
-                      ? t("asset.downloadSelectedHint")
-                      : undefined
-                  }
-                >
-                  <Download size={14} />
-                  {bulkDownloading
-                    ? t("asset.downloading")
-                    : downloadableSelectedCount > 0
-                      ? t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })
-                      : t("asset.downloadSelected")}
-                </button>
-              </div>
-            )}
-            <input
-              ref={docxInputRef}
-              type="file"
-              accept=".docx"
-              multiple
-              onChange={handleFilePicked}
-              className="hidden"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/pdf"
-              multiple
-              onChange={handleFilePicked}
-              className="hidden"
-            />
-          </div>
-        )}
-        {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
-          <>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+              onClick={() => setShowUrlModal(true)}
+              className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
             >
               <Plus size={12} />
-              {uploading ? t("asset.uploading") : t("asset.upload")}
+              {t("asset.urlAdd")}
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={acceptByType[mediaType]}
-              multiple
-              onChange={handleFilePicked}
-              className="hidden"
-            />
-          </>
-        )}
-      </div>
-
-
-      {/* 検索バー + サブフィルタ + ソート */}
-      <div className="px-6 py-2 border-b border-border flex items-center gap-3 flex-wrap">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t("asset.search")}
-          className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
-        />
-        {/* Documents タブのサブフィルタ（PDF / Word / All） */}
-        {mediaType === "document" && (
-          <div className="flex items-center gap-1">
-            {([
-              { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
-              { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
-              { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
-            ]).map(({ key, label, count }) => (
+          )}
+          {mediaType === "document" && onUploadMedia && (
+            <div className="ml-auto relative" ref={menuRef}>
               <button
-                key={key}
-                onClick={() => setDocFilter(key)}
-                className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
-                  docFilter === key
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
+                onClick={() => setMenuOpen((v) => !v)}
+                disabled={uploading}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                title={t("common.menu")}
+                aria-label={t("common.menu")}
               >
-                {label}
-                <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
+                <MoreHorizontal size={14} />
               </button>
-            ))}
-          </div>
-        )}
-        <div className="flex items-center gap-1 ml-auto">
-          {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
-          {viewMode === "gallery" && (
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+                  <button
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                    onClick={() => { setMenuOpen(false); docxInputRef.current?.click(); }}
+                    disabled={uploading}
+                    title={t("asset.uploadDocxHint")}
+                  >
+                    <Plus size={14} />
+                    {uploading ? t("asset.uploading") : t("asset.uploadDocx")}
+                  </button>
+                  <button
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground"
+                    onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
+                    disabled={uploading}
+                    title={t("asset.uploadPdfHint")}
+                  >
+                    <Plus size={14} />
+                    {uploading ? t("asset.uploading") : t("asset.uploadPdf")}
+                  </button>
+                  <div className="my-1 border-t border-border" />
+                  <button
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors disabled:text-muted-foreground disabled:cursor-not-allowed"
+                    onClick={() => { setMenuOpen(false); void handleBulkDownload(); }}
+                    disabled={downloadableSelectedCount === 0 || bulkDownloading}
+                    title={
+                      downloadableSelectedCount === 0
+                        ? t("asset.downloadSelectedHint")
+                        : undefined
+                    }
+                  >
+                    <Download size={14} />
+                    {bulkDownloading
+                      ? t("asset.downloading")
+                      : downloadableSelectedCount > 0
+                        ? t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })
+                        : t("asset.downloadSelected")}
+                  </button>
+                </div>
+              )}
+              <input
+                ref={docxInputRef}
+                type="file"
+                accept=".docx"
+                multiple
+                onChange={handleFilePicked}
+                className="hidden"
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                multiple
+                onChange={handleFilePicked}
+                className="hidden"
+              />
+            </div>
+          )}
+          {mediaType !== "url" && mediaType !== "document" && onUploadMedia && (
             <>
               <button
-                onClick={() => handleSort("uploadedAt")}
-                className={`text-[11px] px-2 py-1 rounded transition-colors ${
-                  sortKey === "uploadedAt"
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="ml-auto flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-60 whitespace-nowrap shrink-0"
               >
-                {t("asset.sortDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
+                <Plus size={12} />
+                {uploading ? t("asset.uploading") : t("asset.upload")}
               </button>
-              <button
-                onClick={() => handleSort("name")}
-                className={`text-[11px] px-2 py-1 rounded transition-colors ${
-                  sortKey === "name"
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
-              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={acceptByType[mediaType]}
+                multiple
+                onChange={handleFilePicked}
+                className="hidden"
+              />
             </>
           )}
-          {/* ビュー切替 */}
-          <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
-            <button
-              onClick={() => changeViewMode("gallery")}
-              title={t("asset.viewGallery")}
-              aria-pressed={viewMode === "gallery"}
-              className={`px-2 py-1 transition-colors ${
-                viewMode === "gallery"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <LayoutGrid size={12} />
-            </button>
-            <button
-              onClick={() => changeViewMode("list")}
-              title={t("asset.viewList")}
-              aria-pressed={viewMode === "list"}
-              className={`px-2 py-1 transition-colors border-l border-border ${
-                viewMode === "list"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <ListIcon size={12} />
-            </button>
-          </div>
         </div>
-      </div>
 
-      {/* 一括アクションバー（list モードで選択時のみ） */}
-      {viewMode === "list" && someSelected && (
-        <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
-          <span className="text-xs text-foreground font-medium">
-            {selectedIds.size} / {filtered.length}
-          </span>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            {t("asset.deselectAll")}
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            {bulkActionable && onIngestMedia && (
-              <button
-                onClick={handleBulkIngest}
-                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                title={t("asset.bulkIngestTitle")}
-              >
-                <Bot size={12} />
-                {t("asset.bulkIngest", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {bulkActionable && onCreateProvNote && (
-              <button
-                onClick={handleBulkCreateProvNote}
-                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
-                title={t("asset.bulkCreateProvNoteTitle")}
-              >
-                <Bot size={12} />
-                {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
-              </button>
-            )}
-            {extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) && (
-              <button
-                onClick={() => void handleBulkExtractImages()}
-                disabled={bulkExtracting}
-                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-                title={t("asset.bulkExtractImagesTitle")}
-              >
-                {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
-                {bulkExtracting
-                  ? t("asset.pdfExtractImages.running")
-                  : t("asset.bulkExtractImages", { count: String(extractableSelectedCount) })}
-              </button>
-            )}
-            {downloadableSelectedCount > 0 && (
-              <button
-                onClick={() => void handleBulkDownload()}
-                disabled={bulkDownloading}
-                className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-                title={t("asset.downloadHint")}
-              >
-                <Download size={12} />
-                {bulkDownloading
-                  ? t("asset.downloading")
-                  : t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })}
-              </button>
-            )}
-            <button
-              onClick={() => setBulkDeleteOpen(true)}
-              className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-            >
-              {t("asset.deleteSelected", { count: String(selectedIds.size) })}
-            </button>
-          </div>
-        </div>
-      )}
 
-      {/* メイン表示（ギャラリー or リスト） */}
-      <div className="flex-1 overflow-auto px-6 py-4">
-        {!mediaIndex ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
-          </div>
-        ) : viewMode === "gallery" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {filtered.map((entry) => (
-              <MediaCard
-                key={entry.fileId}
-                entry={entry}
-                onDelete={setDeleteTarget}
-                onOpenDetail={setDetailEntry}
-              />
-            ))}
-          </div>
-        ) : (
-          <table className="w-full min-w-[700px] text-sm">
-            <thead>
-              <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
-                <th className="py-2 px-2 w-[36px]">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleSelectAll}
-                    className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
-                    title={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
-                  />
-                </th>
-                <th className="py-2 px-2 w-[56px]" />
-                <th
-                  className="py-2 px-3 whitespace-nowrap cursor-pointer hover:text-foreground"
-                  onClick={() => handleSort("name")}
+        {/* 検索バー + サブフィルタ + ソート */}
+        <div className="px-6 py-2 border-b border-border flex items-center gap-3 flex-wrap">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t("asset.search")}
+            className="w-full max-w-xs text-xs px-3 py-1.5 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+          />
+          {/* Documents タブのサブフィルタ（PDF / Word / All） */}
+          {mediaType === "document" && (
+            <div className="flex items-center gap-1">
+              {([
+                { key: "all" as const, label: t("asset.docFilter.all"), count: docCounts.all },
+                { key: "pdf" as const, label: t("asset.docFilter.pdf"), count: docCounts.pdf },
+                { key: "word" as const, label: t("asset.docFilter.word"), count: docCounts.word },
+              ]).map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setDocFilter(key)}
+                  className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
+                    docFilter === key
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
                 >
-                  {t("asset.colName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
-                </th>
-                <th
-                  className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
-                  onClick={() => handleSort("usedIn")}
-                  title={t("asset.colUsedIn")}
-                >
-                  {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
-                </th>
-                <th
-                  className="py-2 pl-3 w-[140px] whitespace-nowrap cursor-pointer hover:text-foreground"
+                  {label}
+                  <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-1 ml-auto">
+            {/* ソートボタンは gallery モード専用（list モードは列ヘッダのクリックで揃える） */}
+            {viewMode === "gallery" && (
+              <>
+                <button
                   onClick={() => handleSort("uploadedAt")}
+                  className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                    sortKey === "uploadedAt"
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  {t("asset.colDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
-                </th>
-                <th className="py-2 px-2 w-[40px]" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((entry, index) => {
-                const isSelected = selectedIds.has(entry.fileId);
-                return (
-                  <tr
-                    key={entry.fileId}
-                    className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
-                      isSelected ? "bg-primary/5" : ""
-                    }`}
-                    onMouseDown={(e) => range.onRowMouseDown(e, index)}
-                    onMouseEnter={() => range.onRowMouseEnter(index)}
-                    onClick={() => {
-                      if (range.shouldSuppressClick()) return;
-                      setDetailEntry(entry);
-                    }}
+                  {t("asset.sortDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
+                </button>
+                <button
+                  onClick={() => handleSort("name")}
+                  className={`text-[11px] px-2 py-1 rounded transition-colors ${
+                    sortKey === "name"
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t("asset.sortName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
+                </button>
+              </>
+            )}
+            {/* ビュー切替 */}
+            <div className="ml-2 inline-flex rounded border border-border overflow-hidden">
+              <button
+                onClick={() => changeViewMode("gallery")}
+                title={t("asset.viewGallery")}
+                aria-pressed={viewMode === "gallery"}
+                className={`px-2 py-1 transition-colors ${
+                  viewMode === "gallery"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <LayoutGrid size={12} />
+              </button>
+              <button
+                onClick={() => changeViewMode("list")}
+                title={t("asset.viewList")}
+                aria-pressed={viewMode === "list"}
+                className={`px-2 py-1 transition-colors border-l border-border ${
+                  viewMode === "list"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <ListIcon size={12} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 一括アクションバー（list モードで選択時のみ） */}
+        {viewMode === "list" && someSelected && (
+          <div className="px-6 py-2 border-b border-border bg-primary/5 flex items-center gap-3">
+            <span className="text-xs text-foreground font-medium">
+              {selectedIds.size} / {filtered.length}
+            </span>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t("asset.deselectAll")}
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {bulkActionable && onIngestMedia && (
+                <button
+                  onClick={handleBulkIngest}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  title={t("asset.bulkIngestTitle")}
+                >
+                  <Bot size={12} />
+                  {t("asset.bulkIngest", { count: String(selectedIds.size) })}
+                </button>
+              )}
+              {bulkActionable && onCreateProvNote && (
+                <button
+                  onClick={handleBulkCreateProvNote}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5"
+                  title={t("asset.bulkCreateProvNoteTitle")}
+                >
+                  <Bot size={12} />
+                  {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+                </button>
+              )}
+              {extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) && (
+                <button
+                  onClick={() => void handleBulkExtractImages()}
+                  disabled={bulkExtracting}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                  title={t("asset.bulkExtractImagesTitle")}
+                >
+                  {bulkExtracting ? <Loader2 size={12} className="animate-spin" /> : <Images size={12} />}
+                  {bulkExtracting
+                    ? t("asset.pdfExtractImages.running")
+                    : t("asset.bulkExtractImages", { count: String(extractableSelectedCount) })}
+                </button>
+              )}
+              {downloadableSelectedCount > 0 && (
+                <button
+                  onClick={() => void handleBulkDownload()}
+                  disabled={bulkDownloading}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                  title={t("asset.downloadHint")}
+                >
+                  <Download size={12} />
+                  {bulkDownloading
+                    ? t("asset.downloading")
+                    : t("asset.downloadSelectedWithCount", { count: String(downloadableSelectedCount) })}
+                </button>
+              )}
+              <button
+                onClick={() => setBulkDeleteOpen(true)}
+                className="px-3 py-1 text-xs font-medium rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+              >
+                {t("asset.deleteSelected", { count: String(selectedIds.size) })}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* メイン表示（ギャラリー or リスト） */}
+        <div className="flex-1 overflow-auto px-6 py-4">
+          {!mediaIndex ? (
+            <div className="flex items-center justify-center py-16">
+              <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex items-center justify-center py-16">
+              <p className="text-sm text-muted-foreground">{t("asset.noMedia")}</p>
+            </div>
+          ) : viewMode === "gallery" ? (
+            // 列数はコンテナ幅に追従（サイドピークが inline で並ぶと自動で減る）。
+            // モバイル（overlay 表示）はリフロー不要なので従来どおり 2 列固定
+            <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+              {filtered.map((entry) => (
+                <MediaCard
+                  key={entry.fileId}
+                  entry={entry}
+                  onDelete={setDeleteTarget}
+                  onOpenDetail={setDetailEntry}
+                />
+              ))}
+            </div>
+          ) : (
+            <table className="w-full min-w-[700px] text-sm">
+              <thead>
+                <tr className="text-left text-xs font-semibold bg-secondary text-secondary-foreground border-b border-border">
+                  <th className="py-2 px-2 w-[36px]">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      className="w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                      title={allSelected ? t("asset.deselectAll") : t("asset.selectAll")}
+                    />
+                  </th>
+                  <th className="py-2 px-2 w-[56px]" />
+                  <th
+                    className="py-2 px-3 whitespace-nowrap cursor-pointer hover:text-foreground"
+                    onClick={() => handleSort("name")}
                   >
-                    <td
-                      className="py-2 px-2 cursor-pointer"
-                      title={t("asset.dragToRangeSelect")}
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
+                    {t("asset.colName")}{sortKey === "name" && (sortAsc ? " ↑" : " ↓")}
+                  </th>
+                  <th
+                    className="py-2 px-2 w-[88px] text-center whitespace-nowrap cursor-pointer hover:text-foreground"
+                    onClick={() => handleSort("usedIn")}
+                    title={t("asset.colUsedIn")}
+                  >
+                    {t("asset.colUsedIn")}{sortKey === "usedIn" && (sortAsc ? " ↑" : " ↓")}
+                  </th>
+                  <th
+                    className="py-2 pl-3 w-[140px] whitespace-nowrap cursor-pointer hover:text-foreground"
+                    onClick={() => handleSort("uploadedAt")}
+                  >
+                    {t("asset.colDate")}{sortKey === "uploadedAt" && (sortAsc ? " ↑" : " ↓")}
+                  </th>
+                  <th className="py-2 px-2 w-[40px]" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((entry, index) => {
+                  const isSelected = selectedIds.has(entry.fileId);
+                  return (
+                    <tr
+                      key={entry.fileId}
+                      className={`border-b border-border/50 hover:bg-muted/50 transition-colors cursor-pointer group ${
+                        isSelected ? "bg-primary/5" : ""
+                      }`}
+                      onMouseDown={(e) => range.onRowMouseDown(e, index)}
+                      onMouseEnter={() => range.onRowMouseEnter(index)}
+                      onClick={() => {
+                        if (range.shouldSuppressClick()) return;
+                        setDetailEntry(entry);
+                      }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        readOnly
-                        tabIndex={-1}
-                        className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
-                      />
-                    </td>
-                    <td className="py-1 px-2">
-                      <MediaThumbnail entry={entry} compact />
-                    </td>
-                    <td className="py-2 px-3 max-w-0 w-full">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className="text-foreground truncate" title={entry.name}>
-                          {entry.name}
-                        </span>
-                        {entry.type === "url" && (
-                          <a
-                            href={entry.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-muted-foreground hover:text-primary transition-colors shrink-0"
-                            title={t("asset.urlOpen")}
-                          >
-                            <ExternalLink size={12} />
-                          </a>
-                        )}
-                      </div>
-                      {entry.type === "url" && entry.urlMeta?.domain && (
-                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                          {entry.urlMeta.domain}
-                        </p>
-                      )}
-                      {entry.type === "url" && (entry.urlMeta?.excerpt || entry.urlMeta?.description) && (
-                        <p
-                          className="text-[10px] text-muted-foreground truncate mt-0.5 italic"
-                          title={entry.urlMeta.excerpt || entry.urlMeta.description}
-                        >
-                          {entry.urlMeta.excerpt || entry.urlMeta.description}
-                        </p>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
-                      {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
-                    </td>
-                    <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {formatDateTime(entry.uploadedAt)}
-                    </td>
-                    <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => setDeleteTarget(entry)}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-                        title={t("common.delete")}
+                      <td
+                        className="py-2 px-2 cursor-pointer"
+                        title={t("asset.dragToRangeSelect")}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => range.onCheckboxMouseDown(e, index)}
                       >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          tabIndex={-1}
+                          className="w-3.5 h-3.5 rounded border-border accent-primary pointer-events-none"
+                        />
+                      </td>
+                      <td className="py-1 px-2">
+                        <MediaThumbnail entry={entry} compact />
+                      </td>
+                      <td className="py-2 px-3 max-w-0 w-full">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-foreground truncate" title={entry.name}>
+                            {entry.name}
+                          </span>
+                          {entry.type === "url" && (
+                            <a
+                              href={entry.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                              title={t("asset.urlOpen")}
+                            >
+                              <ExternalLink size={12} />
+                            </a>
+                          )}
+                        </div>
+                        {entry.type === "url" && entry.urlMeta?.domain && (
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                            {entry.urlMeta.domain}
+                          </p>
+                        )}
+                        {entry.type === "url" && (entry.urlMeta?.excerpt || entry.urlMeta?.description) && (
+                          <p
+                            className="text-[10px] text-muted-foreground truncate mt-0.5 italic"
+                            title={entry.urlMeta.excerpt || entry.urlMeta.description}
+                          >
+                            {entry.urlMeta.excerpt || entry.urlMeta.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
+                        {entry.usedIn.length > 0 ? entry.usedIn.length : <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                      <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                        {formatDateTime(entry.uploadedAt)}
+                      </td>
+                      <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setDeleteTarget(entry)}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
+                          title={t("common.delete")}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* 削除確認ダイアログ */}
+        {deleteTarget && (
+          <DeleteConfirmDialog
+            fileName={deleteTarget.name}
+            usedInCount={deleteTarget.usedIn.length}
+            snapshotRefCount={snapshotRefCount}
+            onConfirm={handleDeleteConfirm}
+            onArchive={onArchiveMedia ? handleArchiveConfirm : undefined}
+            onCancel={() => setDeleteTarget(null)}
+            deleting={deleting}
+          />
+        )}
+
+        {/* 一括削除確認ダイアログ */}
+        {bulkDeleteOpen && (
+          <BulkDeleteConfirmDialog
+            count={selectedIds.size}
+            refNoteCount={selectedRefNoteCount}
+            onConfirm={handleBulkDeleteConfirm}
+            onCancel={() => setBulkDeleteOpen(false)}
+            deleting={bulkDeleting}
+          />
+        )}
+
+        {/* URL ピッカーモーダル（新規登録 + 既存選択） */}
+        {showUrlModal && onAddUrlBookmark && (
+          <MediaPickerModal
+            mediaIndex={mediaIndex}
+            mediaType="url"
+            onSelect={() => setShowUrlModal(false)}
+            onClose={() => setShowUrlModal(false)}
+            onAddUrlBookmark={onAddUrlBookmark}
+          />
         )}
       </div>
 
-      {/* 削除確認ダイアログ */}
-      {deleteTarget && (
-        <DeleteConfirmDialog
-          fileName={deleteTarget.name}
-          usedInCount={deleteTarget.usedIn.length}
-          snapshotRefCount={snapshotRefCount}
-          onConfirm={handleDeleteConfirm}
-          onArchive={onArchiveMedia ? handleArchiveConfirm : undefined}
-          onCancel={() => setDeleteTarget(null)}
-          deleting={deleting}
-        />
-      )}
-
-      {/* 一括削除確認ダイアログ */}
-      {bulkDeleteOpen && (
-        <BulkDeleteConfirmDialog
-          count={selectedIds.size}
-          refNoteCount={selectedRefNoteCount}
-          onConfirm={handleBulkDeleteConfirm}
-          onCancel={() => setBulkDeleteOpen(false)}
-          deleting={bulkDeleting}
-        />
-      )}
-
-      {/* メディア詳細: サイドピーク（Full mode は早期 return で別ルートに渡す） */}
+      {/* メディア詳細: サイドピーク。デスクトップは inline flex item（ギャラリーが縮んでリフローし、
+          全サムネイルが触れる）、モバイルは overlay（portal fixed）。
+          Full mode は早期 return で別ルートに渡す */}
       {detailEntry && (
         <MaterialSidePeek
+          inline={isDesktop}
           entry={detailEntry}
           onClose={() => {
             setDetailEntry(null);
@@ -1465,23 +1489,12 @@ export function AssetGalleryView({
             if (onSharedRefUpdated) await onSharedRefUpdated(entry, sharedRef);
           }}
           onExtractPdfPages={onExtractPdfPages}
-        onExtractDocxImages={onExtractDocxImages}
+          onExtractDocxImages={onExtractDocxImages}
           mediaIndex={mediaIndex}
           getKnowledgeKind={getKnowledgeKind}
           onSwitchAsset={(nextEntry) => setDetailEntry(nextEntry)}
           onSaveSelectionAsMemo={onSaveSelectionAsMemo}
           onSaveImageAsAsset={onSaveImageAsAsset}
-        />
-      )}
-
-      {/* URL ピッカーモーダル（新規登録 + 既存選択） */}
-      {showUrlModal && onAddUrlBookmark && (
-        <MediaPickerModal
-          mediaIndex={mediaIndex}
-          mediaType="url"
-          onSelect={() => setShowUrlModal(false)}
-          onClose={() => setShowUrlModal(false)}
-          onAddUrlBookmark={onAddUrlBookmark}
         />
       )}
     </div>
