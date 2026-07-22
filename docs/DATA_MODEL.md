@@ -1186,12 +1186,21 @@ Graphium/
 ├── skills/
 │   └── <skillId>.graphium.json
 ├── media/
-│   └── <fileId>.<ext>
+│   ├── <fileId>.<ext>         # media binary, stored byte-for-byte as uploaded
+│   └── <fileId>.meta.json     # sidecar: original filename, mimeType, createdTime
 ├── media-text/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/
     └── note-index.json        # the GraphiumIndex
 ```
+
+Media binaries keep their original file extension (derived from the
+uploaded filename, falling back to the MIME type) so the `media/`
+folder stays usable outside Graphium — a JPEG is a plain `.jpg` file
+you can open directly. Files saved by older desktop builds
+(≤ v0.18.x) had no extension; on startup the desktop app renames them
+in place using the `.meta.json` sidecar, and readers still resolve the
+extensionless form as a fallback.
 
 Concrete paths and naming may vary between provider implementations;
 treat the layout above as a guide, and `local.ts` /
