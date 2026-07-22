@@ -189,6 +189,7 @@ import {
   UrlPasteMenu,
   extractDomain,
   buildUrlPeekEntry,
+  buildMemoPeekEntry,
   isHttpUrl,
   computeUrlPasteMenuPosition,
   buildPastedTextContent,
@@ -764,6 +765,11 @@ type NoteEditorProps = {
    *  NoteEditorInner が useEffect で setSidePeekNoteId を登録する。
    *  composerSubmitRef と同じ流儀。 */
   openSidePeekRef?: React.MutableRefObject<((noteId: string) => void) | null>;
+  /**
+   * NoteApp 側から素材サイドピークを開くための命令口（openSidePeekRef と同じ流儀）。
+   * memo: ソースのその場プレビュー（メモピーク）で使う。
+   */
+  openMaterialPeekRef?: React.MutableRefObject<((entry: MediaIndexEntry) => void) | null>;
   /** 現在開いているノートの引用（knowledge link）数を取得する ref。
    *  Composer の verb メニュー出し分け（J1.5）に使う。composerSubmitRef と同じ流儀。 */
   composerCitationRef?: React.MutableRefObject<(() => number) | null>;
@@ -927,6 +933,7 @@ function NoteEditorInner({
   onNavigateNote,
   onOpenMedia,
   onOpenMemoSource,
+  openMaterialPeekRef,
   onRefreshFiles,
   saving,
   files,
@@ -2717,6 +2724,17 @@ function NoteEditorInner({
       if (openSidePeekRef.current) openSidePeekRef.current = null;
     };
   }, [openSidePeekRef]);
+
+  // 素材サイドピーク版の命令口。エディタ表示中は memo: ソースのその場プレビューを
+  // エディタ内の素材ピークで開く（アンマウント時は null に戻り、呼び出し側は
+  // リスト用素材ピークにフォールバックする）。
+  useEffect(() => {
+    if (!openMaterialPeekRef) return;
+    openMaterialPeekRef.current = (entry: MediaIndexEntry) => setMaterialSidePeekEntry(entry);
+    return () => {
+      if (openMaterialPeekRef.current) openMaterialPeekRef.current = null;
+    };
+  }, [openMaterialPeekRef]);
 
   // 現ノートの引用（knowledge layer = reference リンク）数を Composer に渡すため ref に登録。
   // Composer は NoteApp 直下にあり linkStore に触れないので、この imperative ref で橋渡しする。
@@ -4684,9 +4702,6 @@ export function NoteApp() {
     try { localStorage.setItem("graphium-sidebar-collapsed", desktopSidebarCollapsed ? "1" : "0"); } catch {}
   }, [desktopSidebarCollapsed]);
   const [showMemos, setShowMemos] = useState(false);
-  // memo: ソース（wiki の派生元）から特定メモの詳細を開くための引き渡し。
-  // MemoGalleryView が consume したら null に戻る。
-  const [memoDetailCaptureId, setMemoDetailCaptureId] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -4718,6 +4733,9 @@ export function NoteApp() {
   // setSidePeekNoteId を登録する（composerSubmitRef と同じ流儀）。
   // 登録前 / ノート未開時は null。WikiBanner 側は null フォールバックで通常遷移する。
   const openSidePeekRef = useRef<((noteId: string) => void) | null>(null);
+  // エディタ内の素材サイドピークを NoteApp 側から開く命令口（openSidePeekRef と同じ流儀）。
+  // memo: ソースのその場プレビューで使う。エディタ非表示時は null。
+  const openMaterialPeekRef = useRef<((entry: MediaIndexEntry) => void) | null>(null);
   // 現ノートの引用数を取得する関数を NoteEditorInner が登録する（同じ流儀）。
   const composerCitationRef = useRef<(() => number) | null>(null);
   // 実行中チャット run（chat-run-manager）の完了をライブ store に反映するための ref。
@@ -5289,17 +5307,30 @@ export function NoteApp() {
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
-  // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）から
-  // メモギャラリーの該当メモ詳細を開く。メモが削除済みでも一覧は開く
-  // （そこで存在しないことが分かる）。ビュー排他フラグは closeAllViews で全畳みしてから立てる。
+  // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
+  // 「その場」の素材サイドピークでプレビューする（pdf:/url: ソースと同じ流儀）。
+  // エディタ表示中は openMaterialPeekRef 経由でエディタ内ピーク、
+  // リスト・全体グラフ文脈ではリスト用素材ピークに出す。
+  // メモが削除済みのときだけメモ一覧へ遷移する（そこで存在しないことが分かる）。
   const handleOpenMemoSource = useCallback((captureId: string) => {
-    setListSidePeekNoteId(null);
-    closeAllViews();
-    setShowMemos(true);
-    setSidebarOpen(false);
-    router.navigate({ view: "memos" });
-    setMemoDetailCaptureId(captureId);
-  }, [closeAllViews, router]);
+    const cap = capture.captureIndex?.captures?.find((c) => c.id === captureId);
+    if (!cap) {
+      setListSidePeekNoteId(null);
+      closeAllViews();
+      setShowMemos(true);
+      setSidebarOpen(false);
+      router.navigate({ view: "memos" });
+      return;
+    }
+    const entry = buildMemoPeekEntry(cap);
+    if (openMaterialPeekRef.current) {
+      openMaterialPeekRef.current(entry);
+    } else {
+      // ノートピークと素材ピークを同時に開かない（既存の onOpenMaterialPeek と同じ扱い）
+      setListSidePeekNoteId(null);
+      setListMaterialPeekEntry(entry);
+    }
+  }, [capture.captureIndex, closeAllViews, router]);
 
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
@@ -7503,8 +7534,6 @@ export function NoteApp() {
                 enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
-            openDetailCaptureId={memoDetailCaptureId}
-            onDetailConsumed={() => setMemoDetailCaptureId(null)}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView
@@ -7931,6 +7960,7 @@ export function NoteApp() {
             onPeekSaved={fm.reindexNoteFromDoc}
             onPropagateMentionRename={fm.propagateMentionRename}
             openSidePeekRef={openSidePeekRef}
+            openMaterialPeekRef={openMaterialPeekRef}
             composerCitationRef={composerCitationRef}
             chatRunApplyRef={chatRunApplyRef}
             skillPrompts={(() => {

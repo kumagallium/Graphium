@@ -581,8 +581,6 @@ export function MemoGalleryView({
   onCreateMemo,
   creating,
   onKnowledgeMemos,
-  openDetailCaptureId,
-  onDetailConsumed,
 }: {
   captureIndex: CaptureIndex | null;
   loading: boolean;
@@ -602,27 +600,12 @@ export function MemoGalleryView({
    * AI 未接続時は undefined を渡してボタンを隠す。
    */
   onKnowledgeMemos?: (captureIds: string[]) => void;
-  /**
-   * memo: ソース（wiki 派生元・グラフ・References）から特定メモの詳細を開く引き渡し。
-   * consume 後に onDetailConsumed で呼び出し側の state をクリアする。
-   */
-  openDetailCaptureId?: string | null;
-  onDetailConsumed?: () => void;
 }) {
   const t = useT();
   const captures = captureIndex?.captures ?? [];
   const [pendingInsert, setPendingInsert] = useState<{ id: string; text: string } | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
-
-  // memo: ソースから指定されたメモの詳細を開く。captures のロード完了を待ってから
-  // 解決し、見つからなくても consume する（削除済みメモは一覧表示のみで留まる）。
-  useEffect(() => {
-    if (!openDetailCaptureId || loading) return;
-    const entry = captures.find((c) => c.id === openDetailCaptureId);
-    if (entry) setDetailEntry(entry);
-    onDetailConsumed?.();
-  }, [openDetailCaptureId, loading, captures, onDetailConsumed]);
 
   // ビュー切替（gallery / list）— localStorage に永続化（AssetGalleryView と同パターン）
   const [viewMode, setViewMode] = useState<"gallery" | "list">(() => {

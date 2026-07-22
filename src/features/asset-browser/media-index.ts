@@ -10,7 +10,7 @@ const INDEX_FILE_NAME = ".graphium-media-index.json";
 // ── 型定義 ──
 
 /** メディアの種類 */
-export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "other";
+export type MediaType = "image" | "video" | "audio" | "pdf" | "url" | "document" | "memo" | "other";
 
 /**
  * 「素材ライブラリ」として扱うドキュメント MIME 一覧。
@@ -139,6 +139,11 @@ export type MediaIndexEntry = {
   usedIn: MediaUsage[];
   /** URL ブックマーク用メタデータ（type === "url" のとき） */
   urlMeta?: UrlMeta;
+  /**
+   * メモピーク用の本文（type === "memo" のとき）。
+   * buildMemoPeekEntry が組む transient エントリ専用で、media-index には保存されない。
+   */
+  memoText?: string;
   /** team-shared storage への共有状態（Phase 2b-media、optional） */
   sharedRef?: MediaSharedRef;
   /**
@@ -497,7 +502,7 @@ export function removeNoteFromUsedIn(
 
 /** メディアタイプ別にカウント（アーカイブ済みは一覧同様に数えない） */
 export function countByType(index: MediaIndex): Record<MediaType, number> {
-  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, other: 0 };
+  const counts: Record<MediaType, number> = { image: 0, video: 0, audio: 0, pdf: 0, url: 0, document: 0, memo: 0, other: 0 };
   for (const entry of index.media) {
     if (entry.archivedAt) continue;
     counts[entry.type]++;
@@ -802,6 +807,31 @@ export function getFaviconUrl(domain: string, size = 64): string {
  * ブックマークカード・本文内インラインリンク・@メンション・グラフの URL ノードの
  * クリックで共用する（#537 で導入したリゾルバの共有版）。
  */
+/**
+ * メモ（CaptureEntry）を素材サイドピークでその場プレビューするための
+ * transient エントリを組む。media-index には保存されない（buildUrlPeekEntry と同じ流儀）。
+ * fileId は "memo:<captureId>"（external-source.ts の来歴規約と同じ形）。
+ */
+export function buildMemoPeekEntry(capture: {
+  id: string;
+  text: string;
+  createdAt: string;
+}): MediaIndexEntry {
+  const firstLine =
+    capture.text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  return {
+    fileId: `memo:${capture.id}`,
+    name: firstLine.slice(0, 40) || "Memo",
+    mimeType: "text/plain",
+    type: "memo",
+    url: "",
+    thumbnailUrl: "",
+    uploadedAt: capture.createdAt,
+    usedIn: [],
+    memoText: capture.text,
+  };
+}
+
 export function buildUrlPeekEntry(
   url: string,
   mediaIndex: { media: MediaIndexEntry[] } | null | undefined,

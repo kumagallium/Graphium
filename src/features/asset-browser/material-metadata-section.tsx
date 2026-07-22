@@ -16,6 +16,7 @@ const TYPE_HEX: Record<MediaType, string> = {
   pdf: "#c26356",
   url: "#4B7A52",
   document: "#6f5b8b",
+  memo: "#b08d3a",
   other: "#7a7a7a",
 };
 

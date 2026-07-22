@@ -689,6 +689,8 @@ export function AssetGalleryView({
     url: "",
     // Documents タブは PDF + Word/Excel/PowerPoint を受ける
     document: ".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf",
+    // memo は transient なピーク専用タイプ（アップロード経路には現れない）
+    memo: "",
     other: "",
   };
 

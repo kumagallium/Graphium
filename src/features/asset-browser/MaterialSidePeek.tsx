@@ -170,6 +170,9 @@ export function MaterialSidePeek({
   // inline / overlay のどちらもデスクトップなら対象。
   const peekResize = useSidePeekWidth();
   const isDesktop = useIsDesktop();
+  // メモピーク（buildMemoPeekEntry の transient エントリ）は素材ではない。
+  // 素材系の操作・Asset graph を出さず、本文プレビューに徹する。
+  const isMemoEntry = entry.type === "memo";
 
   // ESC で閉じる
   useEffect(() => {
@@ -223,18 +226,20 @@ export function MaterialSidePeek({
       <MaterialDetailHeader
         entry={entry}
         onClose={onClose}
-        onRename={onRename}
-        onIngest={onIngest}
-        onCreateProvNote={onCreateProvNote}
-        onTranslatePdf={onTranslatePdf}
-        onExtractPdfPages={onExtractPdfPages}
-        onExtractDocxImages={onExtractDocxImages}
-        onSharedRefUpdated={onSharedRefUpdated}
+        // メモピーク（transient エントリ）は素材ではないため、素材系の操作
+        // （リネーム・Knowledge 化・PROV・抽出・共有・削除・Full 昇格）を出さない。
+        onRename={isMemoEntry ? undefined : onRename}
+        onIngest={isMemoEntry ? undefined : onIngest}
+        onCreateProvNote={isMemoEntry ? undefined : onCreateProvNote}
+        onTranslatePdf={isMemoEntry ? undefined : onTranslatePdf}
+        onExtractPdfPages={isMemoEntry ? undefined : onExtractPdfPages}
+        onExtractDocxImages={isMemoEntry ? undefined : onExtractDocxImages}
+        onSharedRefUpdated={isMemoEntry ? undefined : onSharedRefUpdated}
         onNavigateNote={onNavigateNote}
         knowledgeWikiNoteId={knowledgeWikiNoteId}
-        onToggleFull={onToggleFull}
+        onToggleFull={isMemoEntry ? undefined : onToggleFull}
         fullMode={false}
-        onDelete={onDelete}
+        onDelete={isMemoEntry ? undefined : onDelete}
       />
 
       {/* 本体 viewer */}
@@ -260,7 +265,7 @@ export function MaterialSidePeek({
       {/* Metadata は SidePeek では非表示（面積圧迫のため）— Full view の右パネルから確認 */}
 
       {/* Asset graph（関連ノート + 派生）— default open で discoverability 確保 */}
-      {onNavigateNote && (
+      {onNavigateNote && !isMemoEntry && (
         <GraphSection
           entry={entry}
           mediaIndex={mediaIndex}
