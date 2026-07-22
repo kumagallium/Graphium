@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.19.0](https://github.com/kumagallium/Graphium/compare/v0.18.2...v0.19.0) - 2026-07-22
+
+- fix: auto-recover AI panel status when sidecar becomes ready by @kumagallium in https://github.com/kumagallium/Graphium/pull/573
+- feat: default note and knowledge lists to sort by creation date by @kumagallium in https://github.com/kumagallium/Graphium/pull/575
+- fix: allow X-MCP-Servers header in sidecar CORS config by @kumagallium in https://github.com/kumagallium/Graphium/pull/577
+- fix: lay out material side peek inline in asset gallery by @kumagallium in https://github.com/kumagallium/Graphium/pull/578
+- feat: store media binaries with file extensions for data portability by @kumagallium in https://github.com/kumagallium/Graphium/pull/579
+- feat: memo knowledge status, archive, and note-list archive by @kumagallium in https://github.com/kumagallium/Graphium/pull/580
+- feat(memo): ingest memos directly into Knowledge without materializing notes by @kumagallium in https://github.com/kumagallium/Graphium/pull/576
+
 ## [v0.18.2](https://github.com/kumagallium/Graphium/compare/v0.18.1...v0.18.2) - 2026-07-21
 
 - fix: open materials in side peek consistently from graph node clicks by @kumagallium in https://github.com/kumagallium/Graphium/pull/571
