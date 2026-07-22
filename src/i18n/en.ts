@@ -1336,8 +1336,6 @@ export const en: Record<string, string> = {
   "memo.knowledgeHint": "Convert the selected memos into notes and extract Concepts / Summaries into Knowledge",
   "memo.archive": "Archive",
   "memo.archiveSelected": "Archive {count}",
-  "memo.knowledgedBadge": "In Knowledge",
-  "memo.knowledgedHint": "This memo has been turned into Knowledge",
   "memo.knowledgedInto": "Turned into Knowledge",
   "memo.trashArchiveSection": "Memos",
   "memo.untitled": "(empty memo)",

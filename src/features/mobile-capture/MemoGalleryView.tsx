@@ -2,7 +2,7 @@
 // サイドバーの「メモ」クリックで表示。カード一覧 + メモ単体の詳細モーダル（ネットワーク図付き）
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Trash2, Archive, Sparkles, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
+import { StickyNote, Trash2, Archive, BookOpen, ClipboardCopy, Network, History, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
 import { CaptureDialog } from "./CaptureDialog";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
@@ -373,8 +373,8 @@ function MemoDetailModal({
             )}
             {!editing && (entry.knowledgedInto?.length ?? 0) > 0 && (
               <div className="mt-4 pt-3 border-t border-border">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 mb-1.5">
-                  <Sparkles size={12} />
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary mb-1.5">
+                  <BookOpen size={12} />
                   {t("memo.knowledgedInto")}
                 </div>
                 <div className="flex flex-col gap-1">
@@ -497,6 +497,7 @@ function MemoCard({
   onInsert,
   onDelete,
   onArchive,
+  onOpenKnowledged,
   insertDisabled,
 }: {
   entry: CaptureEntry;
@@ -504,6 +505,8 @@ function MemoCard({
   onInsert?: () => void;
   onDelete?: () => void;
   onArchive?: () => void;
+  /** ナレッジ化先ノートを開く（Knowledge 化済みのメモのみ） */
+  onOpenKnowledged?: () => void;
   insertDisabled?: boolean;
 }) {
   const t = useT();
@@ -529,13 +532,22 @@ function MemoCard({
             </span>
           )}
           {knowledgedCount > 0 && (
-            <span
-              className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400"
-              title={t("memo.knowledgedHint")}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenKnowledged?.(); }}
+              disabled={!onOpenKnowledged}
+              title={
+                knowledgedCount === 1
+                  ? t("knowledge.inKnowledge")
+                  : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
+              }
+              className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors disabled:cursor-default"
             >
-              <Sparkles size={10} />
-              {t("memo.knowledgedBadge")}
-            </span>
+              <BookOpen size={12} />
+              {knowledgedCount > 1 && (
+                <span className="ml-0.5 text-[10px] font-semibold">{knowledgedCount}</span>
+              )}
+            </button>
           )}
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -890,6 +902,11 @@ export function MemoGalleryView({
                 onInsert={onInsertMemo ? () => setPendingInsert({ id: entry.id, text: entry.text }) : undefined}
                 onDelete={onDeleteMemo ? () => onDeleteMemo(entry.id) : undefined}
                 onArchive={onArchiveMemo ? () => onArchiveMemo(entry.id) : undefined}
+                onOpenKnowledged={
+                  onNavigateNote && (entry.knowledgedInto?.length ?? 0) > 0
+                    ? () => onNavigateNote(entry.knowledgedInto![0].noteId)
+                    : undefined
+                }
                 insertDisabled={insertDisabled}
               />
             ))}
@@ -911,6 +928,11 @@ export function MemoGalleryView({
                 <th className="py-2 px-2 w-[60px] text-center" title={t("memo.colUsedIn")}>
                   {t("memo.colUsedIn")}
                 </th>
+                <th className="py-2 px-2 w-[60px] text-center" title={t("nav.knowledgeColumn")}>
+                  <span className="inline-flex items-center justify-center" aria-label={t("nav.knowledgeColumn")}>
+                    <BookOpen size={14} />
+                  </span>
+                </th>
                 <th className="py-2 pl-3 w-[110px]">{t("memo.colDate")}</th>
                 <th className="py-2 px-2 w-[72px]" />
               </tr>
@@ -919,6 +941,7 @@ export function MemoGalleryView({
               {captures.map((entry, index) => {
                 const isSelected = selectedIds.has(entry.id);
                 const usedCount = entry.usedIn?.length ?? 0;
+                const knowledgedCount = entry.knowledgedInto?.length ?? 0;
                 return (
                   <tr
                     key={entry.id}
@@ -947,21 +970,34 @@ export function MemoGalleryView({
                       />
                     </td>
                     <td className="py-2 px-3 min-w-0">
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        {(entry.knowledgedInto?.length ?? 0) > 0 && (
-                          <Sparkles
-                            size={12}
-                            className="shrink-0 text-emerald-600 dark:text-emerald-400"
-                            aria-label={t("memo.knowledgedBadge")}
-                          />
-                        )}
-                        <span className="text-foreground line-clamp-1 whitespace-pre-wrap break-all" title={entry.text}>
-                          {entry.text}
-                        </span>
+                      <span className="text-foreground line-clamp-1 whitespace-pre-wrap break-all" title={entry.text}>
+                        {entry.text}
                       </span>
                     </td>
                     <td className="py-2 px-2 text-center text-xs text-muted-foreground tabular-nums">
                       {usedCount > 0 ? usedCount : <span className="text-muted-foreground/30">—</span>}
+                    </td>
+                    <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                      {knowledgedCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => onNavigateNote?.(entry.knowledgedInto![0].noteId)}
+                          disabled={!onNavigateNote}
+                          title={
+                            knowledgedCount === 1
+                              ? t("knowledge.inKnowledge")
+                              : t("knowledge.inKnowledgeCount", { count: String(knowledgedCount) })
+                          }
+                          className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors disabled:cursor-default"
+                        >
+                          <BookOpen size={14} />
+                          {knowledgedCount > 1 && (
+                            <span className="ml-0.5 text-[10px] font-semibold">{knowledgedCount}</span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground/30 text-xs">—</span>
+                      )}
                     </td>
                     <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums">
                       {formatCreatedDate(entry.createdAt)}
