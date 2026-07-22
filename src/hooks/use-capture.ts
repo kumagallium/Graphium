@@ -10,6 +10,12 @@ import {
   removeCapture,
   editCapture,
   recordMemoUsage,
+  recordMemoKnowledged,
+  archiveCapture,
+  restoreCaptureFromArchive,
+  trashCapture,
+  restoreCaptureFromTrash,
+  sendCaptureArchiveToTrash,
   generateCaptureId,
   clearCaptureCache,
   type CaptureIndex,
@@ -90,18 +96,82 @@ export function useCapture(authenticated: boolean) {
     }
   }, []);
 
-  // 付箋を削除
-  const handleDeleteCapture = useCallback(async (captureId: string) => {
-    try {
-      const current = indexRef.current ?? createEmptyCaptureIndex();
-      const updated = removeCapture(current, captureId);
-      indexRef.current = updated;
-      setCaptureIndex(updated);
-      await saveCaptureIndex(updated);
-    } catch (err) {
-      console.error("キャプチャ削除に失敗:", err);
-    }
-  }, []);
+  // 付箋のミューテーションを適用する共通処理（読み込み→変換→state 反映→永続化）
+  const applyCaptureMutation = useCallback(
+    async (mutate: (index: CaptureIndex) => CaptureIndex, errLabel: string) => {
+      try {
+        const current = indexRef.current ?? createEmptyCaptureIndex();
+        const updated = mutate(current);
+        indexRef.current = updated;
+        setCaptureIndex(updated);
+        await saveCaptureIndex(updated);
+      } catch (err) {
+        console.error(errLabel, err);
+      }
+    },
+    [],
+  );
+
+  // メモを削除（ゴミ箱送り＝soft-delete。完全削除は handlePermanentDeleteCapture）
+  const handleDeleteCapture = useCallback(
+    (captureId: string) =>
+      applyCaptureMutation((i) => trashCapture(i, captureId), "メモのゴミ箱送りに失敗:"),
+    [applyCaptureMutation],
+  );
+
+  // メモを完全削除（ゴミ箱・アーカイブビューからの物理削除）
+  const handlePermanentDeleteCapture = useCallback(
+    (captureId: string) =>
+      applyCaptureMutation((i) => removeCapture(i, captureId), "メモの完全削除に失敗:"),
+    [applyCaptureMutation],
+  );
+
+  // メモをアーカイブ
+  const handleArchiveCapture = useCallback(
+    (captureId: string) =>
+      applyCaptureMutation((i) => archiveCapture(i, captureId), "メモのアーカイブに失敗:"),
+    [applyCaptureMutation],
+  );
+
+  // メモをアーカイブから復元（active に戻す）
+  const handleRestoreCaptureFromArchive = useCallback(
+    (captureId: string) =>
+      applyCaptureMutation(
+        (i) => restoreCaptureFromArchive(i, captureId),
+        "メモのアーカイブ復元に失敗:",
+      ),
+    [applyCaptureMutation],
+  );
+
+  // メモをゴミ箱から復元（active に戻す）
+  const handleRestoreCaptureFromTrash = useCallback(
+    (captureId: string) =>
+      applyCaptureMutation(
+        (i) => restoreCaptureFromTrash(i, captureId),
+        "メモのゴミ箱復元に失敗:",
+      ),
+    [applyCaptureMutation],
+  );
+
+  // アーカイブ済みメモをゴミ箱に送る
+  const handleSendCaptureArchiveToTrash = useCallback(
+    (captureId: string) =>
+      applyCaptureMutation(
+        (i) => sendCaptureArchiveToTrash(i, captureId),
+        "メモのゴミ箱移動に失敗:",
+      ),
+    [applyCaptureMutation],
+  );
+
+  // メモのナレッジ化を記録（生成ノートへの逆リンク）
+  const handleRecordKnowledged = useCallback(
+    (captureId: string, noteId: string, noteTitle: string) =>
+      applyCaptureMutation(
+        (i) => recordMemoKnowledged(i, captureId, noteId, noteTitle),
+        "メモのナレッジ化記録に失敗:",
+      ),
+    [applyCaptureMutation],
+  );
 
   // メモの挿入を記録
   const handleRecordUsage = useCallback(async (captureId: string, noteId: string, noteTitle: string) => {
@@ -147,6 +217,12 @@ export function useCapture(authenticated: boolean) {
     capturing,
     handleCreateCapture,
     handleDeleteCapture,
+    handlePermanentDeleteCapture,
+    handleArchiveCapture,
+    handleRestoreCaptureFromArchive,
+    handleRestoreCaptureFromTrash,
+    handleSendCaptureArchiveToTrash,
+    handleRecordKnowledged,
     handleEditCapture,
     handleRecordUsage,
     refreshCaptures,

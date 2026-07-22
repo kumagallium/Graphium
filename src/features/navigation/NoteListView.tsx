@@ -2,7 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Filter } from "lucide-react";
+import { BookOpen, Download, Filter, Archive } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { MenuItem } from "@/ui/menu-item";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
@@ -96,6 +96,7 @@ export function NoteListView({
   onOpenNoteFull,
   onBack,
   onDeleteNotes,
+  onArchiveNotes,
   onOpenWikiPeek,
   onImportMarkdown,
   onIngestNotes,
@@ -109,6 +110,8 @@ export function NoteListView({
   onOpenNoteFull?: (noteId: string) => void;
   onBack: () => void;
   onDeleteNotes?: (noteIds: string[]) => Promise<void>;
+  /** 選択ノートをアーカイブ（削除ではなく退避。参照・引用は保持） */
+  onArchiveNotes?: (noteIds: string[]) => Promise<void>;
   /** Knowledge アイコン押下で対応 wiki エントリをサイドピークで開くコールバック */
   onOpenWikiPeek?: (wikiNoteId: string) => void;
   /**
@@ -520,6 +523,19 @@ export function NoteListView({
                 {t("nav.applyContexts", { count: String(selectedIds.size) })}
               </button>
             )}
+            {onArchiveNotes && (
+              <button
+                onClick={async () => {
+                  const ids = [...selectedIds];
+                  await onArchiveNotes(ids);
+                  setSelectedIds(new Set());
+                }}
+                className="px-3 py-1 text-xs font-medium rounded border border-border text-foreground hover:bg-muted transition-colors"
+                title={t("nav.archiveTooltip")}
+              >
+                {t("nav.archiveSelected", { count: String(selectedIds.size) })}
+              </button>
+            )}
             {onDeleteNotes && (
               <button
                 onClick={() => setDeleteTarget([...selectedIds])}
@@ -770,8 +786,8 @@ export function NoteListView({
                 >
                   {t("nav.modifiedDate")}{sortKey === "modifiedAt" && (sortDir === "desc" ? " ↓" : " ↑")}
                 </th>
-                {/* 削除ボタン列 */}
-                {onDeleteNotes && <th className="py-2 px-2 w-[40px]" />}
+                {/* アクション列（アーカイブ / 削除） */}
+                {(onDeleteNotes || onArchiveNotes) && <th className="py-2 px-2 w-[72px]" />}
               </tr>
             </thead>
             <tbody>
@@ -961,16 +977,29 @@ export function NoteListView({
                   <td className="py-2 pl-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                     {formatDateTime(entry.modifiedAt)}
                   </td>
-                  {/* 個別削除ボタン（ホバーで表示） */}
-                  {onDeleteNotes && (
+                  {/* 個別アクション（ホバーで表示: アーカイブ / 削除） */}
+                  {(onDeleteNotes || onArchiveNotes) && (
                     <td className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => setDeleteTarget([entry.noteId])}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
-                        title={t("nav.delete")}
-                      >
-                        ✕
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        {onArchiveNotes && (
+                          <button
+                            onClick={() => { void onArchiveNotes([entry.noteId]); }}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all p-1"
+                            title={t("nav.archive")}
+                          >
+                            <Archive size={13} />
+                          </button>
+                        )}
+                        {onDeleteNotes && (
+                          <button
+                            onClick={() => setDeleteTarget([entry.noteId])}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all text-xs p-1"
+                            title={t("nav.delete")}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>

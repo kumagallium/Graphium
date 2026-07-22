@@ -169,7 +169,7 @@ import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocume
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import {
   CitePickerModal,
@@ -7275,6 +7275,9 @@ export function NoteApp() {
               }
               for (const id of ids) await fm.handleDelete(id);
             }}
+            onArchiveNotes={async (ids) => {
+              for (const id of ids) await fm.handleArchiveNote(id);
+            }}
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
@@ -7434,6 +7437,7 @@ export function NoteApp() {
               setShowMemos(false);
             }}
             onDeleteMemo={capture.handleDeleteCapture}
+            onArchiveMemo={capture.handleArchiveCapture}
             onEditMemo={capture.handleEditCapture}
             onNavigateNote={(noteId) => { setShowMemos(false); fm.handleOpenFile(noteId); }}
             insertDisabled={!fm.activeFileId}
@@ -7452,7 +7456,11 @@ export function NoteApp() {
                 if (!text) continue;
                 const doc = buildMemoNoteDoc(text, tStatic("memo.title"));
                 fm.handleCreateNoteFromImport(doc)
-                  .then((newId) => { enqueueIngest(newId, doc.title, doc); })
+                  .then((newId) => {
+                    enqueueIngest(newId, doc.title, doc);
+                    // 元メモにナレッジ化先ノートを逆リンク記録（一覧バッジ・詳細の導線に使う）
+                    void capture.handleRecordKnowledged(id, newId, doc.title);
+                  })
                   .catch((err) => console.error("メモの Knowledge 化に失敗:", err));
               }
             } : undefined}
@@ -7599,6 +7607,12 @@ export function NoteApp() {
             archivedMedia={fm.mediaIndex?.media.filter((m) => m.archivedAt) ?? []}
             onRestoreMedia={fm.handleRestoreMedia}
             onPermanentDeleteMedia={fm.handleDeleteMedia}
+            trashedMemos={capture.captureIndex ? getTrashedCaptures(capture.captureIndex) : []}
+            archivedMemos={capture.captureIndex ? getArchivedCaptures(capture.captureIndex) : []}
+            onRestoreMemo={capture.handleRestoreCaptureFromTrash}
+            onPermanentDeleteMemo={capture.handlePermanentDeleteCapture}
+            onRestoreMemoFromArchive={capture.handleRestoreCaptureFromArchive}
+            onSendMemoArchiveToTrash={capture.handleSendCaptureArchiveToTrash}
           />
         ) : showSkillList ? (
           <SkillListView

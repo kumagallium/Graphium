@@ -17,6 +17,20 @@ export type MemoUsage = {
   insertedAt: string;
 };
 
+/**
+ * メモがナレッジ化されて生成されたノートの情報
+ *
+ * メモ一覧の「ナレッジ化」操作で新規ノートに変換された際、その生成先ノートを
+ * 元メモに逆リンクとして記録する。これにより ①どのメモがナレッジ化済みか
+ * （一覧のバッジ）②ナレッジ化してどのノートになったか（詳細から辿れる）を可能にする。
+ * usedIn（本文への挿入）とは意味が異なるため別フィールドにする。
+ */
+export type MemoKnowledged = {
+  noteId: string;
+  noteTitle: string;
+  knowledgedAt: string;
+};
+
 /** 編集履歴エントリ */
 export type MemoEditRecord = {
   /** 編集日時 */
@@ -79,6 +93,12 @@ export type CaptureEntry = {
   sourceAsset?: MemoSourceAsset;
   /** 出典ノート（ノート右パネルの Memos タブから作成された場合のみ） */
   sourceNote?: MemoSourceNote;
+  /** ナレッジ化して生成されたノート（ナレッジ化済みの記録・逆リンク） */
+  knowledgedInto?: MemoKnowledged[];
+  /** アーカイブ日時（ISO 文字列）。存在すれば一覧から退避するが参照・履歴は保持 */
+  archivedAt?: string;
+  /** ゴミ箱送り日時（ISO 文字列）。存在すれば一覧・アーカイブから除外。完全削除は removeCapture */
+  deletedAt?: string;
 };
 
 /** キャプチャインデックス全体 */
@@ -249,6 +269,111 @@ export function recordMemoUsage(
       };
     }),
   };
+}
+
+/** メモのナレッジ化記録を追加（同じノートへの重複記録は防ぐ） */
+export function recordMemoKnowledged(
+  index: CaptureIndex,
+  captureId: string,
+  noteId: string,
+  noteTitle: string,
+): CaptureIndex {
+  return {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    captures: index.captures.map((c) => {
+      if (c.id !== captureId) return c;
+      const knowledgedInto = c.knowledgedInto ?? [];
+      // 同じノートへの重複記録を防ぐ
+      if (knowledgedInto.some((k) => k.noteId === noteId)) return c;
+      return {
+        ...c,
+        knowledgedInto: [
+          ...knowledgedInto,
+          { noteId, noteTitle, knowledgedAt: new Date().toISOString() },
+        ],
+      };
+    }),
+  };
+}
+
+/** メモをアーカイブ（archivedAt をセット。ゴミ箱送りとは区別し参照は保持） */
+export function archiveCapture(index: CaptureIndex, captureId: string): CaptureIndex {
+  const now = new Date().toISOString();
+  return {
+    ...index,
+    updatedAt: now,
+    captures: index.captures.map((c) => (c.id === captureId ? { ...c, archivedAt: now } : c)),
+  };
+}
+
+/** メモをアーカイブから復元（archivedAt を解除して active に戻す） */
+export function restoreCaptureFromArchive(index: CaptureIndex, captureId: string): CaptureIndex {
+  return {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    captures: index.captures.map((c) => {
+      if (c.id !== captureId) return c;
+      const next = { ...c };
+      delete next.archivedAt;
+      return next;
+    }),
+  };
+}
+
+/** メモをゴミ箱に送る（deletedAt をセット。物理削除は removeCapture） */
+export function trashCapture(index: CaptureIndex, captureId: string): CaptureIndex {
+  const now = new Date().toISOString();
+  return {
+    ...index,
+    updatedAt: now,
+    captures: index.captures.map((c) => (c.id === captureId ? { ...c, deletedAt: now } : c)),
+  };
+}
+
+/** メモをゴミ箱から復元（deletedAt を解除して active に戻す） */
+export function restoreCaptureFromTrash(index: CaptureIndex, captureId: string): CaptureIndex {
+  return {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    captures: index.captures.map((c) => {
+      if (c.id !== captureId) return c;
+      const next = { ...c };
+      delete next.deletedAt;
+      return next;
+    }),
+  };
+}
+
+/** アーカイブ済みメモをゴミ箱に送る（archivedAt を解除し deletedAt へ付け替え） */
+export function sendCaptureArchiveToTrash(index: CaptureIndex, captureId: string): CaptureIndex {
+  const now = new Date().toISOString();
+  return {
+    ...index,
+    updatedAt: now,
+    captures: index.captures.map((c) => {
+      if (c.id !== captureId) return c;
+      const next = { ...c };
+      delete next.archivedAt;
+      next.deletedAt = now;
+      return next;
+    }),
+  };
+}
+
+/** アクティブなメモ（アーカイブ・ゴミ箱を除く） */
+export function getActiveCaptures(index: CaptureIndex): CaptureEntry[] {
+  return index.captures.filter((c) => !c.archivedAt && !c.deletedAt);
+}
+
+/** アーカイブ済みメモ（ゴミ箱を除く） */
+export function getArchivedCaptures(index: CaptureIndex): CaptureEntry[] {
+  return index.captures.filter((c) => c.archivedAt && !c.deletedAt);
+}
+
+/** ゴミ箱のメモ */
+export function getTrashedCaptures(index: CaptureIndex): CaptureEntry[] {
+  return index.captures.filter((c) => c.deletedAt);
 }
 
 /** ID 生成 */
