@@ -981,11 +981,11 @@ type DerivedFromEntry = {
   label: string;
   /** タイトルを index から解決できたか。false なら「不明」扱いの薄い表示にする */
   resolved: boolean;
-  /** 外部ソース（pdf: / url: / document: / chat:）。ノート遷移ではなく素材表示扱いにする */
+  /** 外部ソース（pdf: / url: / document: / chat: / memo:）。ノート遷移ではなく素材表示扱いにする */
   external?: boolean;
 };
 
-// 外部ソース ID（pdf:/url:/document:/chat:）のラベルを mediaIndex から解決する。
+// 外部ソース ID（pdf:/url:/document:/chat:/memo:）のラベルを mediaIndex から解決する。
 // pdf / document は mediaFileId、url はブックマーク URL でメディアを引く。
 function resolveExternalLabel(
   kind: string,
@@ -993,6 +993,7 @@ function resolveExternalLabel(
   mediaIndex: MediaIndex | null,
 ): string {
   if (kind === "chat") return "AI Chat";
+  if (kind === "memo") return "Memo";
   if (mediaIndex) {
     if (kind === "url") {
       const m = mediaIndex.media.find((e) => e.type === "url" && e.url === key);
@@ -1024,7 +1025,7 @@ function resolveDerivedEntries(
   for (const id of ids) {
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    // 外部ソース（pdf:/url:/document:/chat:）は素材として名前解決する。
+    // 外部ソース（pdf:/url:/document:/chat:/memo:）は素材として名前解決する。
     // これを noteIndex 解決より先に分岐しないと「(不明)」になる。
     const ext = parseExternalSource(id);
     if (ext) {
@@ -1112,7 +1113,7 @@ function DerivedFromSection({
   const t = useT();
   const [open, setOpen] = useState(false);
 
-  // derivedFromNotes には pdf:/url:/document:/chat: の外部ソースが混ざるため mediaIndex を渡す。
+  // derivedFromNotes には pdf:/url:/document:/chat:/memo: の外部ソースが混ざるため mediaIndex を渡す。
   const noteEntries = useMemo(
     () => resolveDerivedEntries(wikiMeta.derivedFromNotes, noteIndex, mediaIndex),
     [wikiMeta.derivedFromNotes, noteIndex, mediaIndex],

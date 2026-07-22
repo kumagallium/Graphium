@@ -305,7 +305,8 @@ merge is distinguishable from a regeneration in the provenance record:
 
 An `EditActivity` may also carry `used?: string[]` (PROV-DM `used`): the
 ids of the sources the operation ingested — note ids, Wiki ids, or
-prefixed external-source ids (`pdf:` / `url:` / `document:` / `chat:`).
+prefixed external-source ids (`pdf:` / `url:` / `document:` / `chat:` /
+`memo:`).
 Unlike `wikiMeta.derivedFromNotes` (a cumulative *current-value set*),
 `used` keeps the per-operation attribution: which save was caused by
 which source. Both fields are optional additions, so documents written
@@ -406,6 +407,7 @@ type WikiMeta = {
   //   "url:<url>"              ingested from a URL
   //   "document:<mediaFileId>" ingested from a Word (.docx) / document asset
   //   "chat:<timestamp>"       ingested from an AI chat session
+  //   "memo:<captureId>"       ingested from a memo (capture) — no note is created
   // Lineage / graph views resolve these prefixes to external source nodes
   // (see features/network-graph/external-source.ts).
   derivedFromNotes: string[];
@@ -549,7 +551,7 @@ Claims can be qualified along two axes:
     own id (legacy self-references exist from an old regenerate bug)
     and not another wiki page's id (the orphan auto-link can add
     those); external-source ids (`pdf:` / `url:` / `document:` /
-    `chat:`) do count. Promotion never reverses — removing a source
+    `chat:` / `memo:`) do count. Promotion never reverses — removing a source
     later does not demote, and a regenerate (which rebuilds
     `wikiMeta` as `candidate`) carries the previous `verified` over.
     Verified Claims show a "Corroborated" badge on the entry banner;

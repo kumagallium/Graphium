@@ -198,6 +198,7 @@ function nodeIcon(n: NoteNode): string {
   if (n.external === "document") return "📝 ";
   if (n.external === "url") return "🔗 ";
   if (n.external === "chat") return "💬 ";
+  if (n.external === "memo") return "🗒️ ";
   if (n.isWiki) return "🤖 ";
   return "";
 }
@@ -343,6 +344,8 @@ export function GlobalGraphCanvas({
         return;
       }
       if (id.startsWith("chat:")) return;
+      // メモ由来ソースも chat: と同じく表示のみ（メモ詳細を開く対応は将来課題）
+      if (id.startsWith("memo:")) return;
       if (id.startsWith("url:")) {
         if (externalUrl) {
           // アプリ内（素材の URL リーダー）を優先。未配線の文脈のみ外部ブラウザ。

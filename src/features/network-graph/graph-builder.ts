@@ -19,7 +19,7 @@ export type NoteNode = {
   /** Knowledge の kind（kind 別に色分けする） */
   wikiKind?: WikiKind;
   /** 外部ソース種別（pdf:/url:/document:/chat: prefix が付いた derivedFromNotes 由来 / media: prefix の使用メディア）。 */
-  external?: "pdf" | "url" | "document" | "chat" | "media";
+  external?: "pdf" | "url" | "document" | "chat" | "memo" | "media";
   /** 外部リンク先 URL（PDF は CDN URL、URL は元 URL）。クリックで新規タブで開く。 */
   externalUrl?: string;
   /** external === "media" のときの MediaIndex の fileId（サムネイル解決やクリック時の参照に使う） */
@@ -309,6 +309,17 @@ export function buildNoteGraph(
       });
       continue;
     }
+    if (id.startsWith("memo:")) {
+      // メモ由来のソース。chat: と同じく開けるアセットは無いので表示のみ。
+      nodes.push({
+        id,
+        title: "Memo",
+        isCurrent: false,
+        hop,
+        external: "memo",
+      });
+      continue;
+    }
     if (id.startsWith("url:")) {
       const url = id.slice(4);
       nodes.push({
@@ -483,6 +494,8 @@ export function buildGlobalGraph(
     } else if (kind === "url") {
       const url = id.slice("url:".length);
       nodes.push({ id, title: mediaByUrl.get(url) ?? url, isCurrent: false, hop: 0, external: "url", externalUrl: url });
+    } else if (kind === "memo") {
+      nodes.push({ id, title: "Memo", isCurrent: false, hop: 0, external: "memo" });
     } else {
       // chat
       nodes.push({ id, title: "AI Chat", isCurrent: false, hop: 0, external: "chat" });

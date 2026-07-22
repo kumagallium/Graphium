@@ -1330,7 +1330,7 @@ export const ja: Record<string, string> = {
   "memo.deselectAll": "選択解除",
   "memo.deleteSelected": "{count} 件削除",
   "memo.knowledgeSelected": "{count} 件を Knowledge 化",
-  "memo.knowledgeHint": "選択したメモをノートに変換し、Concept / Summary を抽出してナレッジに追加します",
+  "memo.knowledgeHint": "選択したメモから Concept / Summary を抽出してナレッジに追加します（ノートは作られません）",
   "memo.colText": "本文",
   "memo.colUsedIn": "使用",
   "memo.colDate": "作成日",

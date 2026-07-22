@@ -286,9 +286,10 @@ async function loadMediaText(fileId: string): Promise<string | undefined> {
 
 /**
  * メモ（capture）のプレーンテキストから最小の GraphiumDocument を組む。
- * 「複数選択メモ → Knowledge 化」で、各メモを 1 ノートに materialize して
- * 既存の ingest パイプラインに流すために使う（provenance を壊さないため、
- * capture.id を noteId に流用せず実ノートを作る）。
+ * 「複数選択メモ → Knowledge 化」で、メモ本文を ingest パイプラインに流すための
+ * 一時ドキュメント（保存しない。ノートは作らない）。来歴は external-source.ts の
+ * "memo:<captureId>" プレフィックスで derivedFromNotes に記録されるため、
+ * ノートを materialize しなくても provenance は保たれる。
  * @param text メモ本文（trim 済みを想定）
  * @param fallbackTitle 先頭が空のときのタイトル
  */
@@ -6296,6 +6297,22 @@ export function NoteApp() {
             continue;
           }
 
+          if (rawId.startsWith("memo:")) {
+            // メモ由来: capture store から本文を再取得する。
+            // メモは短い断片が普通なので pdf/url のような最小長ゲートは設けない
+            // （通常ノートと同じ trim 非空のみ）。メモが削除済みなら skip。
+            const capId = rawId.slice("memo:".length);
+            const capEntry = capture.captureIndex?.captures?.find((c) => c.id === capId);
+            const capText = capEntry?.text?.trim();
+            if (capText) {
+              const firstLine = capText.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+              parts.push({ sourceNoteId: rawId, kind: "memo", title: firstLine.slice(0, 40) || "Memo", text: capText });
+            } else {
+              skipped.push(rawId);
+            }
+            continue;
+          }
+
           // 通常ノート
           const sDoc = await fm.loadDoc(rawId);
           if (sDoc) {
@@ -6429,7 +6446,7 @@ export function NoteApp() {
       }));
       return { ok: false, error: localizeAiError(err) };
     }
-  }, [fm]);
+  }, [fm, capture.captureIndex]);
 
   // 全 Concept を見渡して共通抽象（Atom）を発見する discovery 呼び出し（auto-loop 付き）。
   // - Maintenance タブの「Atom を発見」ボタンから呼ばれる。
@@ -7440,20 +7457,21 @@ export function NoteApp() {
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
             onKnowledgeMemos={aiAvailable ? (captureIds) => {
-              // AI 未設定なら発火させない（materialize 前に止める。enqueueIngest にも同ガードあり）
+              // AI 未設定なら発火させない（enqueueIngest にも同ガードあり）
               if (!ensureAgentConfigured()) return;
-              // 選択メモを各 1 ノートに materialize → 既存 ingest キューに流す。
-              // （ノート複数選択 Knowledge 化と同じ挙動: 各ノート ingest 後に
-              //   vault 全 Claim で atomize がまとめて走る）
+              // 選択メモを一時 doc に変換し、ノートを作らず直接 ingest キューに流す。
+              // 由来は "memo:<captureId>"（external-source.ts 規約）として wiki の
+              // derivedFromNotes に残る。ノート複数選択 Knowledge 化と同じく、
+              // 各 ingest 後に vault 全 Claim で atomize がまとめて走る。
+              // captureId は安定 ID なので、enqueueIngest の重複ガードで
+              // キュー滞留中の二度押しも自然に弾かれる。
               const caps = capture.captureIndex?.captures ?? [];
               for (const id of captureIds) {
                 const entry = caps.find((c) => c.id === id);
                 const text = entry?.text?.trim();
                 if (!text) continue;
                 const doc = buildMemoNoteDoc(text, tStatic("memo.title"));
-                fm.handleCreateNoteFromImport(doc)
-                  .then((newId) => { enqueueIngest(newId, doc.title, doc); })
-                  .catch((err) => console.error("メモの Knowledge 化に失敗:", err));
+                enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
           />

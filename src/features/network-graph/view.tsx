@@ -35,7 +35,7 @@ const NODE_COLORS = {
 const EDGE_COLOR = "#b8d4bb"; // 淡いグリーン
 const BG_COLOR = "#fafdf7";   // テーマ背景
 
-type ExternalKind = "pdf" | "url" | "document" | "chat" | "media";
+type ExternalKind = "pdf" | "url" | "document" | "chat" | "memo" | "media";
 
 function getNodeColor(
   hop: number,
@@ -291,6 +291,8 @@ export function NetworkGraphPanel({
         ? `🔗 ${node.title}`
         : node.external === "chat"
         ? `💬 ${node.title}`
+        : node.external === "memo"
+        ? `🗒️ ${node.title}`
         : node.external === "media"
         ? `${mediaIcon} ${node.title}`
         : node.isWiki
@@ -446,6 +448,10 @@ export function NetworkGraphPanel({
       }
       if (nodeId.startsWith("chat:")) {
         // AI チャット由来ソースは開けるアセットが無いので何もしない
+        return;
+      }
+      if (nodeId.startsWith("memo:")) {
+        // メモ由来ソースも chat: と同じく表示のみ（メモ詳細を開く対応は将来課題）
         return;
       }
       if (nodeId.startsWith("url:")) {

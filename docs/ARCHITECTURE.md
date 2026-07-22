@@ -206,7 +206,7 @@ Every node referenced by these relations is also **declared** so the
 export contains no dangling references: the AI agent is emitted as a
 typed `prov:Agent` node (deduplicated per model), and each source id is
 emitted as a typed `Entity` node. Source ids carrying an external-source
-prefix (`pdf:` / `url:` / `document:` / `chat:`, see
+prefix (`pdf:` / `url:` / `document:` / `chat:` / `memo:`, see
 [`network-graph/external-source.ts`](../src/features/network-graph/external-source.ts))
 are resolved to a typed external-source Entity (`@id`
 `graphium:<kind>/<key>`, with `graphium:sourceKind`) rather than being
@@ -369,7 +369,9 @@ Notes:
   insight the document argues as its own Claim, with no fixed cap, so a dense
   article is not collapsed into a single headline Claim. The switch is decided
   in `src/server/routes/wiki.ts` and changes only the Claim guidance inside
-  `buildIngesterSystemPrompt`.
+  `buildIngesterSystemPrompt`. Memo-derived sources (`memo:` prefix) stay in
+  note mode on purpose: a memo is a short personal fragment, not a dense
+  document, so the "1 note ≈ 1 idea" assumption fits.
 - **Failure handling:** retries are not centralized today. Each stage
   surfaces its own errors back through the response. AI-setup and
   authentication failures additionally carry a machine-readable `code`

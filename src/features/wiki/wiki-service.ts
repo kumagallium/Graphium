@@ -1206,13 +1206,13 @@ export async function ingestFromDocx(
 /** 1 つの再生成対象につき複数のソース（note / pdf / url）から抽出したテキスト塊。
  * caller が事前に各ソースを解決して text 化しておく前提。 */
 export type MultiSourcePart = {
-  /** 元のソース ID（`<uuid>` / `pdf:<id>` / `url:<url>` 形式そのまま） */
+  /** 元のソース ID（`<uuid>` / `pdf:<id>` / `url:<url>` / `memo:<captureId>` 形式そのまま） */
   sourceNoteId: string;
   /** ヘッダ表示・LLM への手がかりとなる人間可読タイトル */
   title: string;
   /** プレーンテキスト本文 */
   text: string;
-  kind: "note" | "pdf" | "url";
+  kind: "note" | "pdf" | "url" | "memo";
 };
 
 /**
@@ -1244,7 +1244,7 @@ export async function ingestFromMultiSource(
 
   const sourceBlocks = parts
     .map((p, i) => {
-      const kindLabel = p.kind === "pdf" ? "PDF" : p.kind === "url" ? "URL" : "Note";
+      const kindLabel = p.kind === "pdf" ? "PDF" : p.kind === "url" ? "URL" : p.kind === "memo" ? "Memo" : "Note";
       return `## Source ${i + 1} [${kindLabel}]: ${p.title}\n\n${p.text}`;
     })
     .join("\n\n---\n\n");

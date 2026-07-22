@@ -2,7 +2,7 @@
 // メイン用途: ノート間 PROV のデバッグ + アイデアの経路の可視化
 
 import { useMemo } from "react";
-import { FileText, Diamond, GitBranch, RotateCcw, FileType, Link2, File, MessageSquare } from "lucide-react";
+import { FileText, Diamond, GitBranch, RotateCcw, FileType, Link2, File, MessageSquare, StickyNote } from "lucide-react";
 import type { LineageNode } from "./lineage-builder";
 import { parseExternalSource } from "./external-source";
 import { useT } from "../../i18n";
@@ -30,6 +30,7 @@ function NodeIcon({ node }: { node: LineageNode }) {
   if (node.kind === "document") return <File size={14} />;
   if (node.kind === "url") return <Link2 size={14} />;
   if (node.kind === "chat") return <MessageSquare size={14} />;
+  if (node.kind === "memo") return <StickyNote size={14} />;
   return <FileText size={14} />;
 }
 
