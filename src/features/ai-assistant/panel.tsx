@@ -12,7 +12,7 @@ import { useAiAssistant } from "./store";
 import { formatAttachmentTitle, stripAttachmentSuffix } from "./attachment-suffix";
 import { getWikiTitleToIdMap } from "../wiki/retriever";
 import { fetchModels } from "./api";
-import { ensureSidecar } from "../../lib/sidecar";
+import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib/sidecar";
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { useT } from "../../i18n";
 import { GroundingScopeChip } from "../composer/GroundingScopeChip";
@@ -174,33 +174,51 @@ export function AiAssistantPanel({
 
   // バックエンド接続 + モデル登録状態をチェック（sidecar 死亡時は自動復旧を試みる）
   useEffect(() => {
+    let cancelled = false;
     const check = async () => {
       // Web モード: localStorage のモデルを確認（サーバーに保存されないため）
       const { isTauri } = await import("../../lib/platform");
       if (!isTauri()) {
         const { getLLMModels } = await import("../settings/store");
         const localModels = getLLMModels();
-        setAiStatus(localModels.length > 0 ? "connected" : "no-models");
+        if (!cancelled) setAiStatus(localModels.length > 0 ? "connected" : "no-models");
         return;
       }
 
       try {
         const res = await fetchModels();
-        setAiStatus(res.models.length > 0 ? "connected" : "no-models");
+        if (!cancelled) setAiStatus(res.models.length > 0 ? "connected" : "no-models");
       } catch {
         // sidecar が死んでいたら再起動を試みる
         const recovered = await ensureSidecar();
         if (recovered) {
           try {
             const res = await fetchModels();
-            setAiStatus(res.models.length > 0 ? "connected" : "no-models");
+            if (!cancelled) setAiStatus(res.models.length > 0 ? "connected" : "no-models");
             return;
           } catch { /* 復旧後も失敗 */ }
         }
-        setAiStatus("no-backend");
+        if (!cancelled) setAiStatus("no-backend");
       }
     };
     check();
+
+    // マウント時チェックは 1 回きりのため、その瞬間に sidecar が未準備だと
+    // "no-backend" に固定されたままになる（自動更新直後のリロードで発生）。
+    // sidecar が ready に遷移したら再チェックして自動復帰させる。
+    // 「バックエンドを再起動」（restartSidecar）成功時もこの購読が拾う。
+    // ready→ready の同値通知では発火させない（check 内 ensureSidecar の
+    // setState(ready) と往復して無限ループするのを防ぐ）。
+    let prevStatus = getSidecarState().status;
+    const unsubscribe = subscribeSidecarState((s) => {
+      const was = prevStatus;
+      prevStatus = s.status;
+      if (s.status === "ready" && was !== "ready") void check();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   // 新しいメッセージが追加されたら自動スクロール
