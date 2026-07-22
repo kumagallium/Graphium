@@ -122,6 +122,11 @@ type SidePeekProps = {
    */
   onOpenMaterialPeek?: (entry: MediaIndexEntry) => void;
   /**
+   * ピーク内のメンションが memo:<captureId> に解決されたとき、メモギャラリーの
+   * 該当メモ詳細を開く。未指定なら memo: は無反応（chat: と同じ扱い）。
+   */
+  onOpenMemoSource?: (captureId: string) => void;
+  /**
    * このノートを派生元とする wiki エントリ。Knowledge 化状態チップ表示用。
    * 渡されないか空配列 + onAddToKnowledge 未指定の場合はチップは描画されない。
    */
@@ -253,7 +258,7 @@ function SidePeekInner({
   archived = false, onRestoreFromArchive, trashed = false, onRestoreFromTrash, inline = false,
   mediaIndex, captureIndex, uploadFile, onAddUrlBookmark, noteIndex,
   onNoteContextsChange, onSaved, applyMentionRenameRef, onDeleteContextEverywhere,
-  onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, getCachedDoc,
+  onCreateLinkedNote, onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, getCachedDoc,
 }: SidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。素材ピークと幅設定を共有する。
@@ -704,6 +709,9 @@ function SidePeekInner({
         } else if (ext.kind === "pdf" || ext.kind === "document") {
           const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
           if (entry && onOpenMaterialPeek) onOpenMaterialPeek(entry);
+        } else if (ext.kind === "memo") {
+          // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
+          onOpenMemoSource?.(ext.key);
         }
         // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
         return;
@@ -712,7 +720,7 @@ function SidePeekInner({
     };
     root.addEventListener("click", onClick, true);
     return () => root.removeEventListener("click", onClick, true);
-  }, [onOpenNoteInPeek, onOpenMaterialPeek, noteIndex, mediaIndex, sidePeekEditor]);
+  }, [onOpenNoteInPeek, onOpenMaterialPeek, onOpenMemoSource, noteIndex, mediaIndex, sidePeekEditor]);
 
   // SidePeek エディタごとに picker callback を登録する。
   // 同じスラッシュアイテムを main editor / SidePeek 双方で使うため、

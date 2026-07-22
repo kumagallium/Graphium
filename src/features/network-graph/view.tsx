@@ -193,12 +193,15 @@ export function NetworkGraphPanel({
   onNavigate,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
 }: {
   data: NoteGraphData;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
   onOpenUrl?: (url: string) => void;
+  /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
+  onOpenMemo?: (captureId: string) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -451,7 +454,8 @@ export function NetworkGraphPanel({
         return;
       }
       if (nodeId.startsWith("memo:")) {
-        // メモ由来ソースも chat: と同じく表示のみ（メモ詳細を開く対応は将来課題）
+        // メモ由来ソースはメモギャラリーの該当詳細を開く（未配線なら表示のみ）
+        onOpenMemo?.(nodeId.slice("memo:".length));
         return;
       }
       if (nodeId.startsWith("url:")) {
@@ -478,7 +482,7 @@ export function NetworkGraphPanel({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [data, handleNavigate, onOpenMedia, onOpenUrl, expanded, mediaThumbs]);
+  }, [data, handleNavigate, onOpenMedia, onOpenUrl, onOpenMemo, expanded, mediaThumbs]);
 
   if (data.nodes.length === 0) {
     return (

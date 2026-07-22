@@ -650,6 +650,11 @@ type NoteEditorProps = {
    * 未指定なら graph 上のメディアノードは反応しない（旧 blob: open はやめた）。
    */
   onOpenMedia?: (fileId: string) => void;
+  /**
+   * memo:<captureId> ソース（References の @ラベル・グラフ・来歴）クリック時に
+   * メモギャラリーの該当メモ詳細を開くハンドラ。未指定なら memo: は無反応。
+   */
+  onOpenMemoSource?: (captureId: string) => void;
   /** ドキュメントキャッシュ検索（サイドピーク即表示用） */
   getCachedDoc?: (noteId: string) => GraphiumDocument | undefined;
   onRefreshFiles: () => void;
@@ -921,6 +926,7 @@ function NoteEditorInner({
   onCreateKnowledgeNote,
   onNavigateNote,
   onOpenMedia,
+  onOpenMemoSource,
   onRefreshFiles,
   saving,
   files,
@@ -3387,6 +3393,9 @@ function NoteEditorInner({
           } else if (ext.kind === "pdf" || ext.kind === "document") {
             const entry = mediaIndex?.media.find((m) => m.fileId === ext.key);
             if (entry) setMaterialSidePeekEntry(entry);
+          } else if (ext.kind === "memo") {
+            // メモはアプリ内に実体があるので、メモギャラリーの該当詳細を開く
+            onOpenMemoSource?.(ext.key);
           }
           // chat: は開ける実体が無いので何もしない（グラフノードと同じ扱い）
           return;
@@ -3434,7 +3443,7 @@ function NoteEditorInner({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [noteIndex, files, mediaIndex, initialDoc, linkStore]);
+  }, [noteIndex, files, mediaIndex, initialDoc, linkStore, onOpenMemoSource]);
 
   // スラッシュメニューからのインデックステーブル登録コールバック
   useEffect(() => {
@@ -4260,6 +4269,7 @@ function NoteEditorInner({
             onCreateLinkedNote={onCreateLinkedNote}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
+            onOpenMemoSource={onOpenMemoSource}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -4298,6 +4308,7 @@ function NoteEditorInner({
             onCreateLinkedNote={onCreateLinkedNote}
             onOpenNoteInPeek={(peekId) => setSidePeekNoteId(peekId)}
             onOpenMaterialPeek={(entry) => setMaterialSidePeekEntry(entry)}
+            onOpenMemoSource={onOpenMemoSource}
             archived={isArchived?.(sidePeekNoteId) ?? false}
             onRestoreFromArchive={
               isArchived?.(sidePeekNoteId) && onRestoreArchivedById
@@ -4418,6 +4429,7 @@ function NoteEditorInner({
                     else onOpenMedia?.(fileId);
                   }}
                   onOpenUrl={(url) => setMaterialSidePeekEntry(buildUrlPeekEntry(url, mediaIndex ?? null))}
+                  onOpenMemo={onOpenMemoSource}
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
@@ -4672,6 +4684,9 @@ export function NoteApp() {
     try { localStorage.setItem("graphium-sidebar-collapsed", desktopSidebarCollapsed ? "1" : "0"); } catch {}
   }, [desktopSidebarCollapsed]);
   const [showMemos, setShowMemos] = useState(false);
+  // memo: ソース（wiki の派生元）から特定メモの詳細を開くための引き渡し。
+  // MemoGalleryView が consume したら null に戻る。
+  const [memoDetailCaptureId, setMemoDetailCaptureId] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -5273,6 +5288,18 @@ export function NoteApp() {
     clearViews: closeAllViews,
   }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
+
+  // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）から
+  // メモギャラリーの該当メモ詳細を開く。メモが削除済みでも一覧は開く
+  // （そこで存在しないことが分かる）。ビュー排他フラグは closeAllViews で全畳みしてから立てる。
+  const handleOpenMemoSource = useCallback((captureId: string) => {
+    setListSidePeekNoteId(null);
+    closeAllViews();
+    setShowMemos(true);
+    setSidebarOpen(false);
+    router.navigate({ view: "memos" });
+    setMemoDetailCaptureId(captureId);
+  }, [closeAllViews, router]);
 
   // Ingest キューを処理する関数
   const processIngestQueue = useCallback(async () => {
@@ -6768,6 +6795,7 @@ export function NoteApp() {
               setListMaterialPeekEntry(null);
               setListSidePeekNoteId(noteId);
             }}
+            onOpenMemo={handleOpenMemoSource}
             onOpenMedia={(fileId) => {
               // 素材ノードクリック → グラフを離れず素材サイドピークでプレビュー
               //（ノートノードと同じ方針。Full view はピーク内の Maximize から）。
@@ -7255,6 +7283,7 @@ export function NoteApp() {
                     noteIndex={fm.noteIndex ?? null}
                     onCreateLinkedNote={fm.handleCreateLinkedNote}
                     onOpenNoteInPeek={(peekId) => setAssetSidePeekNoteId(peekId)}
+                    onOpenMemoSource={handleOpenMemoSource}
                   />
                 </ListSidePeekBoundary>
               </AiAssistantProvider>
@@ -7474,6 +7503,8 @@ export function NoteApp() {
                 enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
+            openDetailCaptureId={memoDetailCaptureId}
+            onDetailConsumed={() => setMemoDetailCaptureId(null)}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView
@@ -7737,6 +7768,7 @@ export function NoteApp() {
                             fm.handleOpenFile(noteId);
                           }
                         }}
+                        onOpenMemo={handleOpenMemoSource}
                         onClearWorldValidity={
                           wikiIdForDrawer
                             ? () => void handleClearWorldValidity(wikiIdForDrawer)
@@ -7852,6 +7884,7 @@ export function NoteApp() {
               setFocusedMaterial({ fileId, fullMode: true });
               router.navigate({ view: "assets", mediaType: target.type });
             }}
+            onOpenMemoSource={handleOpenMemoSource}
             getCachedDoc={fm.getCachedDoc}
             onRefreshFiles={fm.refreshFiles}
             saving={fm.saving}
@@ -8013,6 +8046,7 @@ export function NoteApp() {
                 setListSidePeekNoteId(null);
                 setListMaterialPeekEntry(entry);
               }}
+              onOpenMemoSource={handleOpenMemoSource}
               archived={(() => {
                 const rawId = listSidePeekNoteId.replace(/^(wiki|skill):/, "");
                 return fm.archivedIdSet.has(rawId);

@@ -217,6 +217,7 @@ export function GlobalGraphCanvas({
   onNavigate,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
   height = 560,
 }: {
   data: NoteGraphData;
@@ -227,6 +228,8 @@ export function GlobalGraphCanvas({
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内で開く。未指定なら外部ブラウザ。 */
   onOpenUrl?: (url: string) => void;
+  /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
+  onOpenMemo?: (captureId: string) => void;
   height?: number | string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -344,8 +347,11 @@ export function GlobalGraphCanvas({
         return;
       }
       if (id.startsWith("chat:")) return;
-      // メモ由来ソースも chat: と同じく表示のみ（メモ詳細を開く対応は将来課題）
-      if (id.startsWith("memo:")) return;
+      if (id.startsWith("memo:")) {
+        // メモ由来ソースはメモギャラリーの該当詳細を開く（未配線なら表示のみ）
+        onOpenMemo?.(id.slice("memo:".length));
+        return;
+      }
       if (id.startsWith("url:")) {
         if (externalUrl) {
           // アプリ内（素材の URL リーダー）を優先。未配線の文脈のみ外部ブラウザ。
@@ -363,7 +369,7 @@ export function GlobalGraphCanvas({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [shownNodes, shownEdges, onNavigate, onOpenMedia, onOpenUrl]);
+  }, [shownNodes, shownEdges, onNavigate, onOpenMedia, onOpenUrl, onOpenMemo]);
 
   return (
     <div
@@ -486,6 +492,7 @@ export function GlobalGraphView({
   onSelectNote,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
   onClose,
 }: {
   data: NoteGraphData;
@@ -494,6 +501,8 @@ export function GlobalGraphView({
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内で開く。未指定なら外部ブラウザ。 */
   onOpenUrl?: (url: string) => void;
+  /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
+  onOpenMemo?: (captureId: string) => void;
   /** ヘッダーの × / Esc。全体グラフ表示を閉じてエディタに戻る。 */
   onClose: () => void;
 }) {
@@ -584,6 +593,7 @@ export function GlobalGraphView({
             onNavigate={onSelectNote}
             onOpenMedia={onOpenMedia}
             onOpenUrl={onOpenUrl}
+            onOpenMemo={onOpenMemo}
             height="100%"
           />
         )}

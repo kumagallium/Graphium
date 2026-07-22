@@ -39,28 +39,36 @@ function NodeRow({
   onNavigate,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
 }: {
   node: LineageNode;
   onNavigate: (id: string) => void;
   onOpenMedia?: (fileId: string) => void;
   onOpenUrl?: (url: string) => void;
+  /** memo: ソースをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
+  onOpenMemo?: (captureId: string) => void;
 }) {
   // pdf / document はストレージ上の素材として開ける（onOpenMedia 経由でアセットモーダル）。
   const openableAsset =
     (node.kind === "pdf" || node.kind === "document") && !!onOpenMedia;
+  // memo はアプリ内に実体があるので、メモギャラリーの該当詳細を開ける。
+  const openableMemo = node.kind === "memo" && !!onOpenMemo;
   const handleClick = () => {
     if (node.navId) {
       onNavigate(node.navId);
     } else if (openableAsset) {
       const key = parseExternalSource(node.id)?.key;
       if (key) onOpenMedia!(key);
+    } else if (openableMemo) {
+      const key = parseExternalSource(node.id)?.key;
+      if (key) onOpenMemo!(key);
     } else if (node.externalUrl) {
       // URL ソースはアプリ内リーダー（素材サイドピーク）を優先。未配線なら外部ブラウザ。
       if (node.kind === "url" && onOpenUrl) onOpenUrl(node.externalUrl);
       else void openExternalUrl(node.externalUrl);
     }
   };
-  const clickable = !!(node.navId || node.externalUrl || openableAsset);
+  const clickable = !!(node.navId || node.externalUrl || openableAsset || openableMemo);
   const t = useT();
   // wiki ノードの成長サマリ（#553 で記録される wiki_* 操作の集計）。
   // 生成のみの wiki には出さない（growth 自体が undefined）。
@@ -117,16 +125,18 @@ function LineageBranch({
   onNavigate,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
 }: {
   node: LineageNode;
   onNavigate: (id: string) => void;
   onOpenMedia?: (fileId: string) => void;
   onOpenUrl?: (url: string) => void;
+  onOpenMemo?: (captureId: string) => void;
 }) {
   const hasParents = node.parents.length > 0 && !node.cycle;
   return (
     <div className="flex flex-col">
-      <NodeRow node={node} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
+      <NodeRow node={node} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
       {hasParents && (
         <div className="ml-3 pl-3 border-l border-border/70 mt-0.5 flex flex-col gap-0.5">
           {node.parents.map((parent, i) => (
@@ -136,6 +146,7 @@ function LineageBranch({
               onNavigate={onNavigate}
               onOpenMedia={onOpenMedia}
               onOpenUrl={onOpenUrl}
+              onOpenMemo={onOpenMemo}
             />
           ))}
         </div>
@@ -149,12 +160,15 @@ export function LineagePanel({
   onNavigate,
   onOpenMedia,
   onOpenUrl,
+  onOpenMemo,
 }: {
   tree: LineageNode | null;
   onNavigate: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内（素材サイドピークのリーダー）で開く。未指定なら外部ブラウザ。 */
   onOpenUrl?: (url: string) => void;
+  /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
+  onOpenMemo?: (captureId: string) => void;
 }) {
   const t = useT();
 
@@ -190,7 +204,7 @@ export function LineagePanel({
         </div>
         <div className="flex flex-col">
           <div className="p-2">
-            <NodeRow node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
+            <NodeRow node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
           </div>
           <div className="flex items-center justify-center px-4 py-6 text-xs text-muted-foreground text-center">
             {t("lineage.noAncestors")}
@@ -212,7 +226,7 @@ export function LineagePanel({
         </div>
       </div>
       <div className="p-2">
-        <LineageBranch node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} />
+        <LineageBranch node={tree} onNavigate={onNavigate} onOpenMedia={onOpenMedia} onOpenUrl={onOpenUrl} onOpenMemo={onOpenMemo} />
       </div>
     </div>
   );

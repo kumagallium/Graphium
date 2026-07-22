@@ -17,9 +17,10 @@
 //   - "memo:<captureId>"       メモ（CaptureEntry）を Knowledge 化したソース
 //   上記以外（プレフィックス無し）は通常ノート / Knowledge ノートの素 ID。
 //
-// 注: server/routes/wiki.ts の document-mode 判定 regex はここを import できない
-// （バンドル境界）ため列挙を複製している。memo: は短い断片で通常ノートと同じ
-// 抽出挙動にしたいので、意図的に document-mode の対象へ入れていない。
+// 注: server/routes/wiki.ts のモード判定 regex はここを import できない
+// （バンドル境界）ため列挙を複製している。pdf:/document:/url:/chat: は
+// document モード（多数の知見を収穫）、memo: は memo モード（1 断片 ≈ 1 着想を
+// 抽出）と、ingester の Claim ガイダンスがソース種別で切り替わる。
 
 export type ExternalSourceKind = "pdf" | "url" | "document" | "chat" | "memo";
 
