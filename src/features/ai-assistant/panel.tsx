@@ -131,8 +131,10 @@ export function AiAssistantPanel({
   const [attachedNotes, setAttachedNotes] = useState<AttachedNote[]>([]);
   // grounding スコープ（外部参照/内部参照/ノート内参照）。Composer と共通のチップで切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
-  // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す
+  // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す。
+  // × で閉じたらこのマウント中は再表示しない（構成を直せば条件ごと消える）。
   const webSearch = useWebSearchAvailability(scope === "external");
+  const [webSearchHintDismissed, setWebSearchHintDismissed] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionCursorPos, setMentionCursorPos] = useState(0);
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
@@ -583,6 +585,12 @@ export function AiAssistantPanel({
                 ))}
               </div>
             )}
+            {/* 外部参照なのに Web 検索手段が無い構成への警告。入力の直上に出し、× で閉じられる */}
+            {scope === "external" && webSearch === "missing" && !webSearchHintDismissed && (
+              <div className="mb-2">
+                <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
+              </div>
+            )}
             <div className="flex gap-2">
               <Textarea
                 ref={textareaRef}
@@ -624,11 +632,6 @@ export function AiAssistantPanel({
                 <GroundingScopeChip value={scope} onChange={setScope} />
               </span>
             </div>
-            {scope === "external" && webSearch === "missing" && (
-              <div className="mt-1.5">
-                <WebSearchMissingHint />
-              </div>
-            )}
           </div>
         </>
       )}

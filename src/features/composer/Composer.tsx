@@ -80,8 +80,10 @@ export function Composer(props: ComposerProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   // grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すかを切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
-  // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す
+  // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す。
+  // × で閉じたらこのマウント中は再表示しない（構成を直せば条件ごと消える）。
   const webSearch = useWebSearchAvailability(scope === "external");
+  const [webSearchHintDismissed, setWebSearchHintDismissed] = useState(false);
 
   // 検索結果（純関数なので useMemo で十分）
   const hits = useMemo(() => {
@@ -341,10 +343,10 @@ export function Composer(props: ComposerProps) {
           </span>
         </div>
 
-        {/* 外部参照選択時、Web 検索手段が無い構成への警告（設定への導線つき） */}
-        {scope === "external" && webSearch === "missing" && (
+        {/* 外部参照選択時、Web 検索手段が無い構成への警告（設定への導線つき・× で閉じられる） */}
+        {scope === "external" && webSearch === "missing" && !webSearchHintDismissed && (
           <div style={{ padding: "0 16px 10px" }}>
-            <WebSearchMissingHint />
+            <WebSearchMissingHint onDismiss={() => setWebSearchHintDismissed(true)} />
           </div>
         )}
 

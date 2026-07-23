@@ -1,13 +1,18 @@
-// external（外部参照）選択時に Web 検索手段が見当たらないことを知らせる 1 行ヒント。
-// GroundingScopeChip の下に置く想定（チャットパネル / Cmd+K Composer 共通）。
-// 「使えない」ではなく「本領を発揮しない」レベルの劣化なので、既存の
-// no-models バナーより軽い控えめな警告行 + 設定（AI タブ）への導線に留める。
+// external（外部参照）選択時に Web 検索手段が見当たらないことを知らせる警告バナー。
+// チャットパネルでは入力欄の直上、Cmd+K Composer ではチップ行の下に置く。
+// 「使えない」ではなく「Web を見ずに回答する」劣化の告知なので、既存の
+// no-models バナーより軽く、× で閉じられる（onDismiss は呼び出し側が state 管理）。
 // 表示判定は use-web-search-availability.ts が持つ。
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { useT } from "@/i18n";
 
-export function WebSearchMissingHint() {
+type Props = {
+  /** 指定すると右端に × を出す。閉じた状態の管理は呼び出し側（セッション内 state）。 */
+  onDismiss?: () => void;
+};
+
+export function WebSearchMissingHint({ onDismiss }: Props) {
   const t = useT();
   const openAiSettings = () => {
     // panel.tsx / MissingApiKeyBanner と同じ間接化イベント。MCP セクションは AI タブ内。
@@ -21,14 +26,18 @@ export function WebSearchMissingHint() {
       style={{
         display: "flex",
         alignItems: "flex-start",
-        gap: 5,
+        gap: 6,
+        padding: "6px 8px 6px 10px",
+        borderRadius: 8,
+        border: "1px solid var(--color-warning-border)",
+        background: "var(--color-warning-bg)",
+        color: "var(--color-warning)",
         fontSize: 11,
         lineHeight: 1.5,
-        color: "var(--color-warning)",
       }}
     >
       <AlertTriangle size={12} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
-      <span>
+      <span style={{ flex: 1 }}>
         {t("composer.scope.webSearchMissing")}{" "}
         <button
           type="button"
@@ -49,6 +58,26 @@ export function WebSearchMissingHint() {
           {t("composer.scope.webSearchMissingCta")}
         </button>
       </span>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={t("common.close")}
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            padding: 2,
+            margin: -2,
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            color: "inherit",
+            opacity: 0.7,
+          }}
+        >
+          <X size={12} aria-hidden />
+        </button>
+      )}
     </div>
   );
 }

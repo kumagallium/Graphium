@@ -1,6 +1,7 @@
 // WebSearchMissingHint のビジュアル確認用ストーリー。
 // 外部参照（external）選択時に Web 検索手段（サブスクモデル/検索 MCP）が無い構成で
-// GroundingScopeChip の下へ出す警告行。単体と、チップと組み合わせた実配置を確認する。
+// チャット入力の直上（panel）/ チップ行の下（Composer）へ出す警告バナー。
+// 単体・× 付き・チップと組み合わせた実配置を確認する。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
@@ -16,7 +17,7 @@ const meta: Meta<typeof WebSearchMissingHint> = {
     docs: {
       description: {
         component:
-          "外部参照を選んだのに Web 検索手段が無い構成への警告行。「使えない」ではなく「Web を見ずに回答する」劣化の告知なので、バナーより軽い 1 行 + 設定（AI タブ）への導線に留める。表示判定は use-web-search-availability.ts（サブスクモデル or 検索系 MCP の heuristic）。",
+          "外部参照を選んだのに Web 検索手段が無い構成への警告バナー。「使えない」ではなく「Web を見ずに回答する」劣化の告知なので、no-models バナーより軽く、× で閉じられる（onDismiss は呼び出し側が state 管理）。表示判定は use-web-search-availability.ts（サブスクモデル or 検索系 MCP の heuristic）。",
       },
     },
   },
@@ -25,7 +26,7 @@ export default meta;
 
 type Story = StoryObj<typeof WebSearchMissingHint>;
 
-/** 単体。--color-warning の控えめな 1 行警告 + 設定リンク。 */
+/** 単体。--color-warning 系のバナー + 設定リンク（× なし）。 */
 export const Default: Story = {
   render: () => (
     <LocaleProvider>
@@ -34,6 +35,35 @@ export const Default: Story = {
       </div>
     </LocaleProvider>
   ),
+};
+
+/** × 付き（チャットパネルの実配置と同じ）。閉じると消え、リセットで戻せる。 */
+export const Dismissible: Story = {
+  render: () => {
+    function Demo() {
+      const [dismissed, setDismissed] = useState(false);
+      return (
+        <div style={{ padding: 24, maxWidth: 420, background: "var(--paper)" }}>
+          {dismissed ? (
+            <button
+              type="button"
+              onClick={() => setDismissed(false)}
+              style={{ fontSize: 11, color: "var(--ink-4)" }}
+            >
+              閉じた（クリックでリセット）
+            </button>
+          ) : (
+            <WebSearchMissingHint onDismiss={() => setDismissed(true)} />
+          )}
+        </div>
+      );
+    }
+    return (
+      <LocaleProvider>
+        <Demo />
+      </LocaleProvider>
+    );
+  },
 };
 
 /** GroundingScopeChip と組み合わせた実配置（external 選択時のみ表示）。 */

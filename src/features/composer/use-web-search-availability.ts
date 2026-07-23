@@ -79,10 +79,11 @@ async function resolveChatModelProvider(): Promise<string | null> {
  */
 export function useWebSearchAvailability(active: boolean): WebSearchAvailability {
   const [modelVerdict, setModelVerdict] = useState<WebSearchAvailability>("unknown");
-  // MCP は localStorage の同期読みなので毎レンダ評価する。警告の「設定を開く」から
-  // MCP を追加して戻ると、設定モーダル close に伴う再レンダでここが true になり
-  // 警告が即消える（イベント購読なしで主要導線に追従する）。
+  // MCP・選択モデル名は localStorage の同期読みなので毎レンダ評価する。警告の
+  // 「設定を開く」から MCP 追加やモデル切り替えをして戻ると、設定モーダル close に
+  // 伴う再レンダでここが変わり、警告が即追従する（イベント購読なしで主要導線を拾う）。
   const mcpAvailable = active && hasSearchCapableMcpServer();
+  const selectedModelName = active ? getSelectedModel() : "";
   useEffect(() => {
     if (!active || mcpAvailable) return;
     let cancelled = false;
@@ -99,7 +100,7 @@ export function useWebSearchAvailability(active: boolean): WebSearchAvailability
     return () => {
       cancelled = true;
     };
-  }, [active, mcpAvailable]);
+  }, [active, mcpAvailable, selectedModelName]);
   if (!active) return "unknown";
   return mcpAvailable ? "available" : modelVerdict;
 }
