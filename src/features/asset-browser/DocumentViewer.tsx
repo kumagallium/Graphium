@@ -2,7 +2,9 @@
 // .docx は mammoth.js で HTML 化して表示する。
 // 他のドキュメント形式（Excel/PowerPoint 等）は現状未対応で placeholder を出す。
 //
-// 取り込み時と同じ mammoth 経路を踏むため、画像はデフォルトで base64 埋め込みされる。
+// 取り込み時と同じ mammoth 経路を踏み、画像は base64 data URL で埋め込む。
+// ブラウザで表示できない形式（EMF / TIFF）は docx-import/renderable-image の
+// 変換器で PNG / SVG に変換してから埋め込む（研究文書の Excel グラフ貼り付け等）。
 // プレビュー用途なのでメディア層には書き出さず、表示の都度 HTML を生成する。
 //
 // テキスト選択 → メモ化フロー: PdfViewer と同じパターンで SelectionPill を表示し、
@@ -58,7 +60,45 @@ export function DocumentViewer({ entry, onSaveSelectionAsMemo }: DocumentViewerP
         if (cancelled) return;
 
         const mammoth = await import("mammoth");
-        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const { isRenderableImageMime, convertNonRenderableImage } = await import(
+          "../docx-import/renderable-image"
+        );
+        // File → data URL（プレビューはメディア層に保存せず、その場で埋め込む）
+        const fileToDataUrl = (file: File) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          });
+        const result = await mammoth.convertToHtml(
+          { arrayBuffer },
+          {
+            convertImage: mammoth.images.imgElement(async (image) => {
+              const base64 = await image.readAsBase64String();
+              // 表示できる形式は mammoth デフォルトと同じ base64 埋め込み
+              if (isRenderableImageMime(image.contentType)) {
+                return { src: `data:${image.contentType};base64,${base64}` };
+              }
+              // EMF / TIFF は表示可能な PNG / SVG に変換して埋め込む
+              try {
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const converted = await convertNonRenderableImage(
+                  image.contentType,
+                  bytes.buffer,
+                  "preview",
+                );
+                if (converted) return { src: await fileToDataUrl(converted) };
+              } catch (err) {
+                console.warn("[document-viewer] 非対応画像形式の変換失敗:", err);
+              }
+              // 変換できない形式（WMF 等）は空 src（従来どおり非表示）
+              return { src: "" };
+            }),
+          },
+        );
         if (cancelled) return;
         setHtml(result.value);
       } catch (err) {
