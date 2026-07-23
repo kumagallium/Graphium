@@ -100,12 +100,20 @@ export function removeNoteContext(
  * 文脈名から安定した色を決める（名前ハッシュ）。PROV ラベル（LABEL_HEX）とは別パレット。
  * ユーザーが色を選ぶ概念は v1 では出さない（段階的開示）。HSL で彩度・明度を固定し
  * 色相だけ名前から決めることで、design.md のトーン（淡い background + 濃いテキスト）に収める。
+ *
+ * 逐次 `% 360` の素朴なハッシュだと「実験A/実験B/実験C」のような 1 文字違いのタグが
+ * hue 205/206/207 とほぼ同色になり、全体グラフの文脈色分けで区別できなかった。
+ * murmur3 finalizer で攪拌してから 360 に折り畳み、似た名前でも色相を離す。
  */
 export function noteContextHue(value: string): number {
   let hash = 0;
   const key = value.trim().toLowerCase();
   for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) % 360;
+    hash = (Math.imul(hash, 31) + key.charCodeAt(i)) | 0;
   }
-  return hash;
+  // avalanche（murmur3 finalizer）: 下位ビットの差を全ビットに波及させる
+  hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+  hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+  hash ^= hash >>> 16;
+  return ((hash % 360) + 360) % 360;
 }

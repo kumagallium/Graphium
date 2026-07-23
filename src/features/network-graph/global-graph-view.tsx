@@ -147,7 +147,10 @@ const UNCAT_BORDER = "#8f998f";
 
 export type GraphColorMode = "kind" | "context";
 
-/** ノードの塗り・境界色を色モードに応じて返す。 */
+/** ノードの塗り・境界色を色モードに応じて返す。
+ *  注意: cytoscape のカラーパーサはモダン CSS の空白区切り hsl(h s% l%) を解釈できず
+ *  黙ってデフォルト色（グレー）に落ちる。必ずカンマ区切りで渡すこと
+ *  （React DOM に渡す ContextBadge / ContextLegend は空白区切りでも動くが、別系統）。 */
 function nodeColors(node: NoteNode, mode: GraphColorMode): { fill: string; border: string } {
   const kind = kindOf(node);
   if (mode === "context" && kind !== "external") {
@@ -155,7 +158,7 @@ function nodeColors(node: NoteNode, mode: GraphColorMode): { fill: string; borde
     if (!ctx) return { fill: UNCAT_FILL, border: UNCAT_BORDER };
     const h = noteContextHue(ctx);
     // ContextBadge の基準色 hsl(h 45% 45%) より明度を上げる（ノードは面で塗るため）
-    return { fill: `hsl(${h} 50% 62%)`, border: `hsl(${h} 50% 42%)` };
+    return { fill: `hsl(${h}, 50%, 62%)`, border: `hsl(${h}, 50%, 42%)` };
   }
   return { fill: kindFill(kind), border: kindBorder(kind) };
 }
