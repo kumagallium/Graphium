@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.19.1](https://github.com/kumagallium/Graphium/compare/v0.19.0...v0.19.1) - 2026-07-23
+
+- refactor(settings): reorder settings tabs to match setup flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/582
+- refactor(settings): put API endpoint before API key in model forms by @kumagallium in https://github.com/kumagallium/Graphium/pull/584
+- feat(chat): warn when External grounding has no web search path by @kumagallium in https://github.com/kumagallium/Graphium/pull/581
+
 ## [v0.19.0](https://github.com/kumagallium/Graphium/compare/v0.18.2...v0.19.0) - 2026-07-22
 
 - fix: auto-recover AI panel status when sidecar becomes ready by @kumagallium in https://github.com/kumagallium/Graphium/pull/573
