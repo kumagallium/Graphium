@@ -1,6 +1,7 @@
 export { MobileCaptureView } from "./MobileCaptureView";
 export { CaptureDialog } from "./CaptureDialog";
 export { MemoGalleryView } from "./MemoGalleryView";
+export { MemoIndicatorLayer, countBlockMemos } from "./MemoIndicatorLayer";
 export {
   readCaptureIndex,
   saveCaptureIndex,

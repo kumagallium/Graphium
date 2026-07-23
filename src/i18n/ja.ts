@@ -1605,6 +1605,11 @@ export const ja: Record<string, string> = {
   "memo.citedCount": "· 引用済み {count} 件",
   "memo.delete": "メモを削除",
   "memo.composerPlaceholder": "メモを書く… ⏎ で保存・Shift+⏎ で改行",
+  // ブロック紐付きメモ
+  "memo.addToBlock": "📝 メモを追加",
+  "memo.indicatorTooltip": "このブロックのメモを表示",
+  "memo.jumpToBlock": "該当ブロックへ移動",
+  "memo.linkedBlock": "紐付け先ブロック",
 
   // インデックステーブル
   "indexTable.colName": "名前",

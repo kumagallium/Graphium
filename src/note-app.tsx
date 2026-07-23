@@ -169,7 +169,7 @@ import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocume
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, MemoIndicatorLayer, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import {
   CitePickerModal,
@@ -220,7 +220,7 @@ import { useCapture } from "./hooks/use-capture";
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
 import { FileSidebar } from "./components/FileSidebar";
-import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn } from "./components/side-menu";
+import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -688,7 +688,10 @@ type NoteEditorProps = {
   /** メモピッカー用のキャプチャインデックス */
   captureIndex?: import("./features/mobile-capture").CaptureIndex | null;
   /** 右パネル「Memos」タブからメモを追加する（sourceNote は NoteApp 側で付与） */
-  onCreateNoteMemo?: (text: string) => void | Promise<void>;
+  onCreateNoteMemo?: (
+    text: string,
+    block?: { blockId: string; blockText: string },
+  ) => void | Promise<void>;
   /** 右パネル「Memos」タブからメモを削除する */
   onDeleteNoteMemo?: (memoId: string) => void;
   /** エディタ参照を親に伝播するコールバック */
@@ -1190,6 +1193,11 @@ function NoteEditorInner({
   const mentionContextRef = useRef<{ tableBlockId: string | null; rowIndex: number }>({ tableBlockId: null, rowIndex: -1 });
   // 右パネル: null = 閉じた状態（アイコンレールのみ表示）
   const [rightTab, setRightTab] = useState<"graph" | "prov" | "chat" | "history" | "source" | "memos" | null>(null);
+  // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
+  const [blockMemoTarget, setBlockMemoTarget] = useState<{ blockId: string; blockText: string } | null>(null);
+  const [blockMemoSubmitting, setBlockMemoSubmitting] = useState(false);
+  // メモインジケータ経由で Memos タブを開いたときのフォーカス対象ブロック
+  const [memoPanelFocusBlockId, setMemoPanelFocusBlockId] = useState<string | null>(null);
   // アイコンレールのトグル: 同じタブクリックで閉じる
   const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos") => {
     setRightTab((prev) => prev === tab ? null : tab);
@@ -3482,6 +3490,21 @@ function NoteEditorInner({
     return () => { setOpenLinkDropdownFn(null); };
   }, [onDeriveNote]);
 
+  // ブロックメニュー「メモ」→ ブロック紐付きメモ入力を開く
+  // onCreateNoteMemo が無い文脈（保存経路が無い）では登録しない = メニュー項目も出ない
+  useEffect(() => {
+    if (!onCreateNoteMemo) return;
+    setOpenBlockMemoFn((params) => {
+      setBlockMemoTarget(params);
+    });
+    return () => { setOpenBlockMemoFn(null); };
+  }, [onCreateNoteMemo]);
+
+  // Memos タブ以外に切り替わったらインジケータ由来のフォーカスを解除する
+  useEffect(() => {
+    if (rightTab !== "memos") setMemoPanelFocusBlockId(null);
+  }, [rightTab]);
+
   // ── エディタ内 video/audio の Blob URL 差し替え ──
   // lh3.googleusercontent.com の CDN URL は画像専用。
   // 動画・音声ブロックの <video>/<audio> src を認証付き Blob URL に差し替えて再生可能にする。
@@ -3710,6 +3733,37 @@ function NoteEditorInner({
       <ProvIndicatorHoverHint hidden={!isDesktop && rightTab !== null} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
+      {/* ブロック紐付きメモの付箋バッジ（クリックで Memos タブを開く） */}
+      <MemoIndicatorLayer
+        noteFileId={fileId ?? null}
+        captureIndex={captureIndexProp ?? null}
+        hidden={!isDesktop && rightTab !== null}
+        bottomInset={isDesktop ? 0 : 56}
+        onOpenMemos={(blockId) => {
+          setMemoPanelFocusBlockId(blockId);
+          setRightTab("memos");
+        }}
+      />
+      {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
+      {blockMemoTarget && onCreateNoteMemo && (
+        <CaptureDialog
+          variant={isDesktop ? "centered" : "fullscreen"}
+          contextLabel={blockMemoTarget.blockText || undefined}
+          submitting={blockMemoSubmitting}
+          onSubmit={async (text) => {
+            setBlockMemoSubmitting(true);
+            try {
+              await onCreateNoteMemo(text, blockMemoTarget);
+              setBlockMemoTarget(null);
+            } finally {
+              setBlockMemoSubmitting(false);
+            }
+          }}
+          onClose={() => {
+            if (!blockMemoSubmitting) setBlockMemoTarget(null);
+          }}
+        />
+      )}
       <LabelDropdownPortal />
       {/* URL ペーストスタイル選択メニュー */}
       {pastedUrl && (
@@ -4506,6 +4560,7 @@ function NoteEditorInner({
                   captureIndex={captureIndexProp ?? null}
                   onCreateMemo={onCreateNoteMemo}
                   onDeleteMemo={onDeleteNoteMemo}
+                  focusBlockId={memoPanelFocusBlockId}
                 />
               )}
             </div>
@@ -7971,13 +8026,17 @@ export function NoteApp() {
               setPendingMemoInsert(null);
             }}
             captureIndex={capture.captureIndex}
-            onCreateNoteMemo={async (text) => {
-              // 右パネル「Memos」タブからの新規メモ。
+            onCreateNoteMemo={async (text, block) => {
+              // 右パネル「Memos」タブ / ブロックメニュー「メモ」からの新規メモ。
               // sourceNote にノートの fileId とタイトルスナップショットを付与する。
+              // block があればブロック紐付け（blockId + テキスト抜粋）も記録する。
               if (!fm.activeFileId) return;
               await capture.handleCreateCapture(text, undefined, {
                 fileId: fm.activeFileId,
                 title: fm.activeDoc?.title,
+                ...(block
+                  ? { blockId: block.blockId, blockText: block.blockText }
+                  : {}),
               });
             }}
             onDeleteNoteMemo={capture.handleDeleteCapture}

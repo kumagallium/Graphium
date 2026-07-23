@@ -608,7 +608,9 @@ function extractInlineText(content: any): string {
 }
 
 // ブロックとその子ブロックからテキストを抽出
-function extractBlockText(block: any): string {
+// （ブロック紐付きメモの blockText スナップショット等、外部からも使う。
+//   挙動を変えた場合は INDEX_SCHEMA_VERSION のインクリメントを検討すること）
+export function extractBlockText(block: any): string {
   // 1. インラインコンテンツから直接取得
   let text = extractInlineText(block.content);
   if (text) return text;

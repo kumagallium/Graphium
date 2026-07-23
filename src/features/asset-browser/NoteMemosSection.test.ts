@@ -77,6 +77,19 @@ describe("filterMemosByNote", () => {
     expect(filterMemosByNote(index, NOTE_FILE_ID)).toEqual([]);
   });
 
+  it("ブロック紐付きメモ（sourceNote.blockId あり）もノート単位のフィルタで拾う", () => {
+    const index = makeIndex([
+      {
+        id: "cap_block",
+        text: "ブロックへのメモ",
+        createdAt: "2026-07-23T10:00:00.000Z",
+        sourceNote: { fileId: NOTE_FILE_ID, blockId: "block-1", blockText: "対象ブロック" },
+      },
+    ]);
+    const result = filterMemosByNote(index, NOTE_FILE_ID);
+    expect(result.map((c) => c.id)).toEqual(["cap_block"]);
+  });
+
   it("createdAt の新しい順に並ぶ", () => {
     const index = makeIndex([
       {
