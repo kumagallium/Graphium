@@ -716,6 +716,10 @@ type NoteEditorProps = {
   isWikiDoc?: boolean;
   /** AI バックエンドが利用可能か（false なら Chat タブを非表示） */
   aiAvailable?: boolean;
+  /** AI モデルが 1 件以上登録済みか。false なら Chat タブ・エディタ内 AI ボタン・
+   *  Knowledge チップ等の AI UI を非表示にする（バックエンド到達性とは別軸）。
+   *  aiAvailable=false かつ Tauri の「診断用に Chat タブを残す」分岐とは独立に効く。 */
+  agentConfigured?: boolean;
   /** ローカル Skill のプロンプト（AI チャットに注入） */
   skillPrompts?: string;
   /** Cmd+K Composer を開くコールバック（空ノート予示の ⌘K チップから呼ばれる） */
@@ -803,7 +807,9 @@ function NoteEditor(props: NoteEditorProps) {
         <IndexTableStoreProvider>
         <MediaInlineLabelProvider>
         <BlockAlignmentProvider>
-        <AiAssistantProvider aiAvailable={props.aiAvailable}>
+        {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
+            （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
+        <AiAssistantProvider aiAvailable={(props.aiAvailable ?? true) && (props.agentConfigured ?? true)}>
           <NoteEditorInner {...props} />
         </AiAssistantProvider>
         </BlockAlignmentProvider>
@@ -967,6 +973,7 @@ function NoteEditorInner({
   onIngestChat,
   isWikiDoc,
   aiAvailable = true,
+  agentConfigured = true,
   skillPrompts,
   onOpenComposer,
   composerSubmitRef,
@@ -3835,7 +3842,7 @@ function NoteEditorInner({
         >
           {title || t("editor.titlePlaceholder")}
         </div>
-        {!isWikiDoc && aiAvailable && (
+        {!isWikiDoc && aiAvailable && agentConfigured && (
           <KnowledgeStatusChip
             wikiEntries={wikiEntriesForCurrentNote}
             onAdd={onIngestToWiki}
@@ -4277,6 +4284,7 @@ function NoteEditorInner({
               <EmptyNoteGuide
                 visible={showEmptyNoteGuide}
                 onOpenComposer={onOpenComposer}
+                aiEnabled={!!aiAvailable && agentConfigured}
               />
             </div>
             {/* D2 配置: WikiContextDrawer（関連・文脈）を本文の下に展開する。
@@ -4567,10 +4575,11 @@ function NoteEditorInner({
             : "fixed bottom-0 left-0 right-0 z-[100] h-14 border-t justify-center px-2 bg-background/95 backdrop-blur-sm"
         )}>
           {([
-            // Tauri 環境では aiAvailable===false でもタブを残す:
+            // バックエンド到達（aiAvailable）時はモデル登録済み（agentConfigured）の
+            // ときだけ表示する。未到達（aiAvailable===false）でも Tauri ではタブを残す:
             // sidecar が起動できなかった場合の診断 UI (AiBackendDiagnostic) を
-            // 見せられるようにするため。Web 版では従来通り aiAvailable===true 時のみ。
-            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable || isTauri() },
+            // 見せられるようにするため。Web 版では従来通り非表示。
+            { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable ? agentConfigured : isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
@@ -4725,6 +4734,13 @@ export function NoteApp() {
     }
   }, []);
   useEffect(() => { void checkAiReadiness(); }, [checkAiReadiness]);
+  // AI UI の表示可否。到達性（aiAvailable）に加えて「モデルが 1 件以上登録済み」
+  // （agentConfigured）まで要求する。モデル未登録のユーザーには AI 関連 UI
+  // （ナレッジ生成・チャット・Composer・素材の AI アクション等）を出さない。
+  // チェック中（aiAvailable === null）は false に倒し、未登録ユーザーに一瞬
+  // AI UI が見えるちらつきを防ぐ。設定でモデルを追加/削除するとモーダル閉時の
+  // checkAiReadiness 再実行で反映される。
+  const aiUiEnabled = (aiAvailable ?? false) && agentConfigured;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // `graphium-open-settings` で開いたときに最初に表示するタブ。AI 未設定バナーの
   // 「Set up AI」からは "ai" を渡して AI Setup タブへ直接誘導する。
@@ -5280,13 +5296,15 @@ export function NoteApp() {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         if (!composerSubmitRef.current) return;
+        // AI モデル未登録なら Composer 自体を開かない（AI 専用 UI のため）
+        if (!aiUiEnabled) return;
         e.preventDefault();
         composer.toggleComposer();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [composer]);
+  }, [composer, aiUiEnabled]);
 
   // ⌘+⇧+M: どこからでも Quick Memo ダイアログを開く。
   // メモは「気軽な思いつきを書き留める原料」なので、画面状態に依存せず
@@ -6932,6 +6950,7 @@ export function NoteApp() {
           <AssetGalleryView
             mediaIndex={fm.mediaIndex}
             mediaType={fm.activeAssetType}
+            aiAvailable={aiUiEnabled}
             focusFileId={focusedMaterial?.fileId}
             focusFullMode={focusedMaterial?.fullMode}
             onFocusConsumed={() => setFocusedMaterial(null)}
@@ -6972,7 +6991,7 @@ export function NoteApp() {
               }
               return undefined;
             }}
-            onIngestMedia={aiAvailable ? (entry) => {
+            onIngestMedia={aiUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               if (entry.type === "url" && entry.url) {
@@ -7061,7 +7080,7 @@ export function NoteApp() {
                 })();
               }
             } : undefined}
-            onCreateProvNote={aiAvailable ? (entry) => {
+            onCreateProvNote={aiUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // URL 経路
@@ -7163,7 +7182,7 @@ export function NoteApp() {
                 return;
               }
             } : undefined}
-            onTranslatePdf={aiAvailable ? (entry) => {
+            onTranslatePdf={aiUiEnabled ? (entry) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               // URL 経路: Reader Mode 本文を「原文構成のまま UI 言語へ全文翻訳」した 1 ノートにする。
@@ -7372,7 +7391,7 @@ export function NoteApp() {
               // 右パネル（グラフ）の左に差し込まれる。
               // SidePeek 内部は AiAssistant コンテキストを要求するため Provider で包み、
               // エラーバウンダリでアプリ全体の白画面化を防ぐ。
-              <AiAssistantProvider aiAvailable={aiAvailable ?? false}>
+              <AiAssistantProvider aiAvailable={aiUiEnabled}>
                 <ListSidePeekBoundary onClose={() => setAssetSidePeekNoteId(null)}>
                   <SidePeek
                     // ノート切替で丸ごと作り直す（前ノートの本文で上書きするデータ破壊を防ぐ）
@@ -7443,7 +7462,7 @@ export function NoteApp() {
             onOpenWikiPeek={(wikiNoteId) => { setListSidePeekNoteId(wikiNoteId); }}
             onSetNoteContexts={fm.updateNoteContexts}
             onDeleteContextEverywhere={handleDeleteContextEverywhere}
-            onIngestNotes={aiAvailable ? async (ids) => {
+            onIngestNotes={aiUiEnabled ? async (ids) => {
               // AI 未設定なら発火させない（enqueueIngest にも同ガードがあるが、
               // doc ロード等の無駄な前処理に入る前にここで止める）
               if (!ensureAgentConfigured()) return;
@@ -7611,7 +7630,7 @@ export function NoteApp() {
             insertDisabled={!fm.activeFileId}
             onCreateMemo={capture.handleCreateCapture}
             creating={capture.capturing}
-            onKnowledgeMemos={aiAvailable ? (captureIds) => {
+            onKnowledgeMemos={aiUiEnabled ? (captureIds) => {
               // AI 未設定なら発火させない（enqueueIngest にも同ガードあり）
               if (!ensureAgentConfigured()) return;
               // 選択メモを一時 doc に変換し、ノートを作らず直接 ingest キューに流す。
@@ -7692,8 +7711,8 @@ export function NoteApp() {
             onOpenWikiFull={(wikiId) => { const kind = fm.activeWikiKind!; setListSidePeekNoteId(null); closeAllViews(); fm.handleOpenWikiFile(wikiId); router.navigate({ view: "wiki-editor", kind, wikiId }); }}
             onBack={() => { setListSidePeekNoteId(null); fm.setActiveWikiKind(null); router.navigate({ view: "home" }); }}
             onDeleteWiki={fm.handleDeleteWikiFile}
-            onRegenerateWiki={aiAvailable ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
-            onWorldCheckWiki={(wikiId) => handleWorldCheckWiki(wikiId, "bulk")}
+            onRegenerateWiki={aiUiEnabled ? (wikiId) => regenerateWikiById(wikiId, { openAfter: false }) : undefined}
+            onWorldCheckWiki={aiUiEnabled ? (wikiId) => handleWorldCheckWiki(wikiId, "bulk") : undefined}
             onClearWorldValidity={(wikiId) => handleClearWorldValidity(wikiId)}
           />
         ) : showSharedLibrary && getSharedRoot() ? (
@@ -7984,7 +8003,7 @@ export function NoteApp() {
               }
               return newFileId;
             }}
-            onCreateKnowledgeNote={aiAvailable ? async (doc, kind) => {
+            onCreateKnowledgeNote={aiUiEnabled ? async (doc, kind) => {
               // R2 / Loop M2: AI 回答を 知見(claim) / 洞察(atom) として手動取り込み。
               // handleCreateWikiFile が PROV リビジョン記録まで行う。洞察は他の
               // atomize 経路（自動/手動 discovery）と分類を揃えて wiki_atomize にする。
@@ -8063,6 +8082,7 @@ export function NoteApp() {
             onEditorRef={(editor) => { noteEditorRef.current = editor; }}
             isWikiDoc={fm.activeDoc?.source === "ai"}
             aiAvailable={aiAvailable ?? false}
+            agentConfigured={agentConfigured}
             onOpenComposer={composer.openComposer}
             composerSubmitRef={composerSubmitRef}
             onPeekSaved={fm.reindexNoteFromDoc}
@@ -8077,11 +8097,11 @@ export function NoteApp() {
               if (skills.length === 0) return undefined;
               return buildSkillPromptSection(skills);
             })()}
-            onIngestToWiki={aiAvailable && fm.activeDoc?.source !== "ai" ? () => {
+            onIngestToWiki={aiUiEnabled && fm.activeDoc?.source !== "ai" ? () => {
               if (!fm.activeFileId || !fm.activeDoc) return;
               enqueueIngest(fm.activeFileId, fm.activeDoc.title, fm.activeDoc);
             } : undefined}
-            onIngestFromUrl={aiAvailable ? () => {
+            onIngestFromUrl={aiUiEnabled ? () => {
               // AI 未設定なら URL 入力の前に止める（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               const url = prompt(tStatic("ingest.enterUrl"));
@@ -8121,7 +8141,7 @@ export function NoteApp() {
                 ingestQueueRef.current = ingestQueueRef.current.filter((j) => j.noteId !== jobId);
               })();
             } : undefined}
-            onIngestChat={aiAvailable ? (chatMessages) => {
+            onIngestChat={aiUiEnabled ? (chatMessages) => {
               // AI 未設定なら発火させない（トースト + 設定 AI タブ導線はヘルパー側）
               if (!ensureAgentConfigured()) return;
               const jobId = `chat:${Date.now()}`;
@@ -8231,7 +8251,7 @@ export function NoteApp() {
               onDeleteContextEverywhere={handleDeleteContextEverywhere}
               wikiEntries={appKnowledgeMap.get(listSidePeekNoteId) ?? []}
               onAddToKnowledge={
-                (aiAvailable ?? false) && !listSidePeekNoteId.startsWith("wiki:")
+                aiUiEnabled && !listSidePeekNoteId.startsWith("wiki:")
                   ? () => {
                       // 一覧→ピークのフローでは fm.cachedDocs に doc が乗っていないことが
                       // ある（SidePeek が独自にロードするため）ので、未キャッシュ時は
