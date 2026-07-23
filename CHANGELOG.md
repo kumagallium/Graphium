@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.19.2](https://github.com/kumagallium/Graphium/compare/v0.19.1...v0.19.2) - 2026-07-23
+
+- feat(docx-import): convert EMF/TIFF images instead of skipping them by @kumagallium in https://github.com/kumagallium/Graphium/pull/585
+- feat(global-graph): search, context-tag coloring, and context filtering by @kumagallium in https://github.com/kumagallium/Graphium/pull/586
+- feat(memo): block-anchored memos with editor indicator badges by @kumagallium in https://github.com/kumagallium/Graphium/pull/587
+
 ## [v0.19.1](https://github.com/kumagallium/Graphium/compare/v0.19.0...v0.19.1) - 2026-07-23
 
 - refactor(settings): reorder settings tabs to match setup flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/582
