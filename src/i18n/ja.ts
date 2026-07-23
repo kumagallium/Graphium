@@ -1481,6 +1481,7 @@ export const ja: Record<string, string> = {
   "globalGraph.clusterByContext": "文脈で寄せる",
   "globalGraph.clusterByContextHint": "同じ文脈のノートを近くに集めてクラスターにする",
   "globalGraph.uncategorized": "未分類",
+  "globalGraph.toggleUncategorizedHint": "クリックで未分類ノートの表示/非表示を切り替え",
   "globalGraph.noContexts": "文脈ラベルの付いたノートがまだありません",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）

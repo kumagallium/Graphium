@@ -222,4 +222,41 @@ describe("filterGlobalGraph — 文脈タグ絞り込み（contextFilter）", ()
     expect(ids).toContain("expB1");
     expect(ids).not.toContain("far"); // 非隣接のタグ無しは選択がある限り消えたまま
   });
+
+  it("hideUncategorized はタグ無しの通常ノートだけを消す（wiki・外部ソースは残る）", () => {
+    const r = filterGlobalGraph(data, {
+      visibleLayers: all,
+      hideIsolated: false,
+      hideUncategorized: true,
+    });
+    const ids = r.nodes.map((n) => n.id);
+    // タグ無し通常ノート（helper, far）が消える
+    expect(ids).not.toContain("helper");
+    expect(ids).not.toContain("far");
+    // タグ付きノートと、タグを持てない層（wiki の claim1）は残る
+    expect(ids).toContain("expA1");
+    expect(ids).toContain("expB1");
+    expect(ids).toContain("claim1");
+    // 消えたノードに繋がっていたエッジも消える
+    for (const e of r.edges) {
+      expect(ids).toContain(e.source);
+      expect(ids).toContain(e.target);
+    }
+  });
+
+  it("hideUncategorized は contextFilter の「タグ無し隣接を残す」より優先される", () => {
+    const r = filterGlobalGraph(data, {
+      visibleLayers: all,
+      hideIsolated: false,
+      contextFilter: new Set(["実験a"]),
+      hideUncategorized: true,
+    });
+    const ids = r.nodes.map((n) => n.id);
+    // 通常なら残る「タグ無し隣接」の helper が、明示的な非表示指定で消える
+    expect(ids).not.toContain("helper");
+    // タグ一致ノートと wiki（タグを持てない層）は残る
+    expect(ids).toContain("expA1");
+    expect(ids).toContain("expA2");
+    expect(ids).toContain("claim1");
+  });
 });
