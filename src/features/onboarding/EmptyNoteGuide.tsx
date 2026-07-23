@@ -15,6 +15,8 @@ type EmptyNoteGuideProps = {
   visible: boolean;
   /** ⌘K チップを押したときのハンドラ（Composer を開く） */
   onOpenComposer?: () => void;
+  /** AI が使えるか（バックエンド到達 + モデル登録済み）。false なら ⌘K チップを予示しない */
+  aiEnabled?: boolean;
 };
 
 type Chip = {
@@ -55,14 +57,17 @@ const chips: Chip[] = [
   },
 ];
 
-export function EmptyNoteGuide({ visible, onOpenComposer }: EmptyNoteGuideProps) {
+export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true }: EmptyNoteGuideProps) {
   const t = useT();
   const provLabelsEnabled = useProvLabelsEnabled();
 
   if (!visible) return null;
 
-  // 来歴ラベル機能がオフなら # ラベルのチップは予示しない（# を打っても何も出ないため）
-  const visibleChips = provLabelsEnabled ? chips : chips.filter((c) => c.key !== "hash");
+  // 来歴ラベル機能がオフなら # ラベルのチップは予示しない（# を打っても何も出ないため）。
+  // AI が使えない（モデル未登録等）なら ⌘K チップも予示しない（押しても Composer を開けないため）。
+  const visibleChips = chips.filter(
+    (c) => (provLabelsEnabled || c.key !== "hash") && (aiEnabled || c.key !== "cmdk"),
+  );
 
   const handleClick = (action?: Chip["action"]) => {
     if (action === "composer") onOpenComposer?.();

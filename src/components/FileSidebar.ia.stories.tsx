@@ -468,6 +468,32 @@ export const Current: Story = {
   ),
 };
 
+export const NoAiConfigured: Story = {
+  name: "AI 未登録（ナレッジ/スキル非表示）",
+  render: () => (
+    <div style={{ height: "100vh", display: "flex", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <FileSidebar
+        {...COMMON_PROPS}
+        agentConfigured={false}
+        wikiCounts={{ summary: 0, claim: 0, atom: 0, synthesis: 0 }}
+        skillCount={0}
+      />
+      <div className="flex-1 p-8 text-sm text-muted-foreground">
+        <h2 className="text-base font-semibold mb-2">AI モデル未登録時</h2>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>ナレッジセクション非表示（wiki データも空の場合）</li>
+          <li>スキル非表示</li>
+          <li>設定に橙ドット（AI 未設定の導線）だけ残る</li>
+        </ol>
+        <p className="mt-4 text-xs">
+          既存の wiki データが残っている場合（wikiCounts &gt; 0）はナレッジセクションを
+          閲覧用に維持する（データ喪失に見せないため）。
+        </p>
+      </div>
+    </div>
+  ),
+};
+
 export const Proposed: Story = {
   name: "提案（IA見直し）",
   render: () => (

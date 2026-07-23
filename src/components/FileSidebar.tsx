@@ -355,7 +355,10 @@ export function FileSidebar({
             <AiUpgradeNotice variant="card" />
           </CollapsibleSection>
         )}
-        {onShowWikiList && aiAvailable && (
+        {/* AI モデル未登録（agentConfigured=false）ならナレッジセクション自体を隠す。
+            ただし既存のナレッジデータが残っている場合は閲覧用に表示を維持する
+            （モデルを消しただけで既存データへの導線が消えるとデータ喪失に見えるため）。 */}
+        {onShowWikiList && aiAvailable && (agentConfigured || aiTotalCount > 0) && (
           <CollapsibleSection
             storageKey="ai"
             // 見出しに title ツールチップを付けて「ナレッジ」が何かを補足する。
@@ -542,7 +545,10 @@ export function FileSidebar({
 
       {/* フッター（メタ群: Skill / 全体グラフ / 設定 / ゴミ箱 / Release Notes） */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
-        {onShowSkillList && (
+        {/* スキルは AI チャット / ingest への注入専用なので、AI が使えない
+            （バックエンド未到達 or モデル未登録）ときは項目ごと隠す。
+            データ自体は残るのでモデル再登録で復活する。 */}
+        {onShowSkillList && aiAvailable && agentConfigured && (
           <button
             onClick={onShowSkillList}
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${

@@ -383,6 +383,13 @@ Notes:
   message; the client also pre-checks model registration before firing
   any AI request (`ensureAgentConfigured()` in `src/lib/ai-error.ts`),
   so an unconfigured install gets a settings prompt instead of a raw 400.
+  On top of that runtime guard, the UI hides AI entry points altogether
+  while no model is registered: the sidebar Knowledge section (unless
+  existing wiki data remains, which stays browsable), the Skills entry,
+  the chat tab, the ⌘K composer, editor AI buttons, and per-asset AI
+  actions (ingest / procedure extraction / translation / "ask AI") all
+  disappear until a model is added in Settings → AI (gated by
+  `aiUiEnabled` in `src/note-app.tsx`).
 - **Embeddings** (per Wiki section) are stored via
   `src/lib/embedding-store.ts` and used as the retrieval substrate for AI
   chat. The retriever is `src/features/wiki/retriever.ts`.

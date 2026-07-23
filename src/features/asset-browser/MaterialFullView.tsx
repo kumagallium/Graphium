@@ -363,7 +363,10 @@ export function MaterialFullView({
               <StickyNote size={18} />
             </button>
           )}
-          {(entry.type === "pdf" || entry.type === "url") && (
+          {/* AI が使えない（バックエンド未到達 or モデル未登録）ときは
+              「AI に質問」タブごと隠す。Provider の aiAvailable が実体
+              （AssetGalleryView → note-app の aiUiEnabled）。 */}
+          {aiAssistant.aiAvailable && (entry.type === "pdf" || entry.type === "url") && (
             <button
               onClick={() => toggleRight("chat")}
               title={t("asset.askAi")}

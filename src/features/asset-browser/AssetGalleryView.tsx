@@ -414,6 +414,10 @@ function MediaCard({
 export type AssetGalleryViewProps = {
   mediaIndex: MediaIndex | null;
   mediaType: MediaType;
+  /** AI が使えるか（バックエンド到達 + モデル登録済み）。false なら Full view の
+   *  AI チャットタブ等を隠す。AI 系コールバック（onIngestMedia 等）の undefined
+   *  ガードとは別に、Provider 経由で子の AI UI 表示を制御する。 */
+  aiAvailable?: boolean;
   onBack: () => void;
   onNavigateNote: (noteId: string) => void;
   onDeleteMedia: (entry: MediaIndexEntry) => Promise<void>;
@@ -538,6 +542,7 @@ function persistViewMode(type: MediaType, mode: AssetViewMode): void {
 export function AssetGalleryView({
   mediaIndex,
   mediaType,
+  aiAvailable = true,
   onBack,
   onNavigateNote,
   onDeleteMedia,
@@ -953,7 +958,7 @@ export function AssetGalleryView({
     // 素材全画面ビューの AI チャットタブ用に、素材ビュー専用の AiAssistantProvider で
     // ラップする。ノート編集の Provider（ノートごとに分離）とは独立した会話ストアになる。
     return (
-      <AiAssistantProvider aiAvailable>
+      <AiAssistantProvider aiAvailable={aiAvailable}>
       <MaterialFullView
         entry={detailEntry}
         onClose={() => {
