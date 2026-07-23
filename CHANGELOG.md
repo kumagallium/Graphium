@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.20.1](https://github.com/kumagallium/Graphium/compare/v0.20.0...v0.20.1) - 2026-07-23
+
+- fix(chat): use chat/synthesis model instead of default model by @kumagallium in https://github.com/kumagallium/Graphium/pull/592
+
 ## [v0.20.0](https://github.com/kumagallium/Graphium/compare/v0.19.2...v0.20.0) - 2026-07-23
 
 - feat(global-graph): toggle to hide uncategorized notes in context mode by @kumagallium in https://github.com/kumagallium/Graphium/pull/589
