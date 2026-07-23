@@ -75,6 +75,10 @@ function PanelFrame({ children }: { children: React.ReactNode }) {
 // ── ノート単位 + ブロック紐付きの混在（標準表示） ─────────────
 // ブロック紐付きメモのカードをクリックすると選択スタイル（青背景 + 左ボーダー）
 // が付き、onHighlightBlock に blockId が渡る（再クリックで解除）。
+// ¶ チップは resolveBlockLabel でライブ解決される:
+//   - block-claim → 編集後の現在テキスト（ライブ）が出る
+//   - block-image → null（ブロック削除済みを模擬）→ 作成時スナップショットに
+//     フォールバック
 export const Mixed: Story = {
   name: "混在（ノート単位 + ブロック紐付き）",
   render: () => (
@@ -87,6 +91,11 @@ export const Mixed: Story = {
         onCreateMemo={async (text) => console.log("[NoteMemosSection] create:", text)}
         onHighlightBlock={(blockId) =>
           console.log("[NoteMemosSection] highlight:", blockId)
+        }
+        resolveBlockLabel={(blockId) =>
+          blockId === "block-claim"
+            ? "焼成温度を 950°C に上げると導電率が二桁向上した（編集後）"
+            : null
         }
       />
     </PanelFrame>

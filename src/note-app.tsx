@@ -169,7 +169,7 @@ import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocume
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures, resolveMemoBlockLabel } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import {
   CitePickerModal,
@@ -4547,6 +4547,12 @@ function NoteEditorInner({
                   onHighlightBlock={(blockId) =>
                     setHighlightBlockIds(blockId ? [blockId] : [])
                   }
+                  // ¶ チップは現在のエディタ内容でライブ解決（削除済みなら null →
+                  // 作成時スナップショットにフォールバック）
+                  resolveBlockLabel={(blockId) => {
+                    const block = editorRef.current?.getBlock(blockId);
+                    return block ? resolveMemoBlockLabel(block) || null : null;
+                  }}
                 />
               )}
             </div>

@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
 import { SideMenuExtension } from "@blocknote/core/extensions";
-import { extractBlockText } from "../features/navigation/index-file";
+import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
@@ -175,10 +175,9 @@ function AddMemoMenuItem() {
       className="bn-menu-item"
       onClick={() => {
         // メニュー表示中の block は content が古い可能性があるため、
-        // クリック時点の最新ブロックからテキスト抜粋を取り直す
+        // クリック時点の最新ブロックから表示ラベルを取り直す
         const latest = editor.getBlock(block.id) ?? block;
-        const text = extractBlockText(latest).slice(0, 80);
-        openBlockMemoFn?.({ blockId: block.id, blockText: text });
+        openBlockMemoFn?.({ blockId: block.id, blockText: resolveMemoBlockLabel(latest) });
       }}
     >
       {t("memo.addToBlock")}

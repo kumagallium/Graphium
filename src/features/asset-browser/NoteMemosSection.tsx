@@ -46,6 +46,14 @@ export type NoteMemosSectionProps = {
    * 差分表示と同じ highlightBlockIds 機構で描画する。
    */
   onHighlightBlock?: (blockId: string | null) => void;
+  /**
+   * ¶ チップのライブ解決（オプション）。現在のエディタからブロックの表示
+   * ラベルを返す。ブロックが編集されてもチップが古い抜粋のままにならない。
+   * null（ブロック削除済み等）のときは blockText スナップショットに
+   * フォールバックする — スナップショットは「何に対するメモだったか」の
+   * 墓標としてだけ使う。
+   */
+  resolveBlockLabel?: (blockId: string) => string | null;
 };
 
 /**
@@ -82,6 +90,7 @@ export function NoteMemosSection({
   onDeleteMemo,
   onCreateMemo,
   onHighlightBlock,
+  resolveBlockLabel,
 }: NoteMemosSectionProps) {
   const t = useT();
   const memos = useMemo(
@@ -154,6 +163,10 @@ export function NoteMemosSection({
           const blockId = memo.sourceNote?.blockId;
           const selectable = Boolean(blockId && onHighlightBlock);
           const isSelected = selectedMemoId === memo.id;
+          // ¶ チップ: 現在のブロック内容（ライブ）→ 作成時スナップショット → 汎用文言
+          const liveLabel = blockId ? resolveBlockLabel?.(blockId) : null;
+          const chipLabel =
+            liveLabel || memo.sourceNote?.blockText || t("memo.linkedBlock");
           return (
             <div
               key={memo.id}
@@ -202,7 +215,7 @@ export function NoteMemosSection({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {memo.sourceNote?.blockText || t("memo.linkedBlock")}
+                        {chipLabel}
                       </span>
                     </span>
                   )}
