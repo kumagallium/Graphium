@@ -68,8 +68,10 @@ export function MissingApiKeyBanner() {
   const handleOpenSettings = useCallback(() => {
     // note-app 側がこの CustomEvent を捕まえて Settings モーダルを開く。
     // UpdateBanner の "graphium-update-available" と同じ間接化パターン。
+    // tab は settings/modal.tsx の Tab 型に存在する値を渡す（"ai-setup" は存在せず
+    // AI タブが開かないバグだったので "ai" に修正）。
     window.dispatchEvent(
-      new CustomEvent("graphium-open-settings", { detail: { tab: "ai-setup" } }),
+      new CustomEvent("graphium-open-settings", { detail: { tab: "ai" } }),
     );
   }, []);
 
