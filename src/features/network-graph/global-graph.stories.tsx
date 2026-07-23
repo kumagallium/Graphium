@@ -44,6 +44,13 @@ const NODES: NoteNode[] = [
 ];
 
 const EDGES: NoteEdge[] = [
+  // 派生・参照（ノート → ノート: 手順の連鎖と実験間の繋がり。
+  // 文脈モードはノート層のみ表示なので、この層内のエッジが俯瞰の骨格になる）
+  { source: "n2", target: "n1", relation: "derived" },
+  { source: "n1", target: "n3", relation: "derived" },
+  { source: "n2", target: "n4", relation: "derived" },
+  { source: "n4", target: "n6", relation: "derived" },
+  { source: "n5", target: "n1", relation: "reference" },
   // 素材利用（外部ソース → ノート）
   { source: "pdf:ext1", target: "n5", relation: "used" },
   { source: "url:ext2", target: "n5", relation: "used" },
@@ -130,14 +137,15 @@ export const CanvasForce: StoryObj = {
 };
 
 // キャンバス単体（文脈タグ色モード）。色 = noteContexts 先頭タグの名前ハッシュ色、
-// タグ無しは淡いセージ、外部ソースは従来グレー。形状は kind のまま変わらない。
+// タグ無しは淡いセージ。本番の文脈モードは既定でノート層のみ表示（原料・結晶は
+// 文脈を持てないため）なので、ここも note 層だけを渡す。
 export const CanvasContextColors: StoryObj = {
   name: "キャンバス: 文脈タグ色",
   render: () => (
     <div style={{ padding: 16 }}>
       <GlobalGraphCanvas
         data={SAMPLE}
-        visibleLayers={new Set(ALL_LAYERS)}
+        visibleLayers={new Set(["note"] as const)}
         colorMode="context"
         height={560}
       />
@@ -145,15 +153,15 @@ export const CanvasContextColors: StoryObj = {
   ),
 };
 
-// キャンバス単体（文脈クラスター）。同じ noteContexts のノードを不可視エッジで
-// 引き寄せ、クラスターとして固まらせる。色も文脈モードにして塊が見えるように。
+// キャンバス単体（文脈クラスター）。同じ noteContexts のノードを不可視ハブ経由で
+// 引き寄せ、クラスターとして固まらせる。ノート層のみ（本番の文脈モード既定）。
 export const CanvasContextCluster: StoryObj = {
   name: "キャンバス: 文脈クラスター",
   render: () => (
     <div style={{ padding: 16 }}>
       <GlobalGraphCanvas
         data={SAMPLE}
-        visibleLayers={new Set(ALL_LAYERS)}
+        visibleLayers={new Set(["note"] as const)}
         colorMode="context"
         clusterByContext
         height={560}

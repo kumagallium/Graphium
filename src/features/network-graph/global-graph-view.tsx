@@ -266,6 +266,12 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     selector: "edge.cluster-edge",
     style: { opacity: 0, events: "no" as any },
   },
+  {
+    // クラスタ重心のダミーハブノード。見えない・触れないがレイアウトには参加し、
+    // ハブ同士の反発でクラスタ間の距離を生む。
+    selector: "node.cluster-hub",
+    style: { opacity: 0, events: "no" as any, label: "", width: 1, height: 1 },
+  },
 ];
 
 function nodeIcon(n: NoteNode): string {
@@ -405,10 +411,12 @@ export function GlobalGraphCanvas({
       });
     }
     if (clusterByContext) {
-      // 「文脈で寄せる」: タグごとにスター型（先頭ノードをハブ）の不可視エッジを張り、
-      // 同じ文脈のノードが fcose の引力で固まるようにする。完全グラフは O(n²) で
-      // レイアウトが硬直するのでスター型に留める。複数タグのノートは複数クラスタに
-      // 引かれる（跨ぎノートがクラスタ間に位置する＝妥当な挙動）。
+      // 「文脈で寄せる」: タグごとに不可視のハブノード（クラスタ重心）を置き、
+      // メンバーを不可視エッジで繋いで fcose の引力で固まらせる。
+      // ハブを実ノードでなくダミーにするのが分離の要 — ハブ自体が他ノード・
+      // 他ハブと反発し合うのでクラスタ間が押し離される（実ノードをハブにすると
+      // そのノードの実エッジや跨ぎタグ経由でクラスタ同士が引き寄り、塊が近づく）。
+      // 複数タグのノートは複数ハブに繋がれ、クラスタの間に位置する（妥当な挙動）。
       const byTag = new Map<string, string[]>();
       for (const node of shownNodes) {
         for (const c of node.noteContexts ?? []) {
@@ -420,13 +428,14 @@ export function GlobalGraphCanvas({
       }
       for (const [key, ids] of byTag) {
         if (ids.length < 2) continue;
-        const hub = ids[0];
-        for (let i = 1; i < ids.length; i++) {
+        const hubId = `cluster-hub:${key}`;
+        elements.push({ data: { id: hubId }, classes: "cluster-hub" });
+        for (const id of ids) {
           elements.push({
             data: {
-              id: `cluster:${key}:${i}`,
-              source: hub,
-              target: ids[i],
+              id: `cluster:${key}:${id}`,
+              source: hubId,
+              target: id,
               virtual: true,
             },
             classes: "cluster-edge",
@@ -455,17 +464,20 @@ export function GlobalGraphCanvas({
     // パン可能であることを示すため掴むカーソルにする。
     containerRef.current.style.cursor = "grab";
 
+    // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
+    // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジの理想長を伸ばして
+    // クラスターを繋ぐ腕を長くし、反発を強め・中心重力を弱めて塊同士を引き離す。
     const lay = cy.layout({
       name: "fcose",
       animate: true,
       animationDuration: 700,
       randomize: true,
       quality: "default",
-      nodeRepulsion: 9000,
-      // クラスター用の不可視エッジは短く・強めに（同じ文脈が引き合って固まる）
-      idealEdgeLength: (edge: any) => (edge.data("virtual") ? 45 : 110),
+      nodeRepulsion: clusterByContext ? 20000 : 9000,
+      idealEdgeLength: (edge: any) =>
+        edge.data("virtual") ? 40 : clusterByContext ? 230 : 110,
       edgeElasticity: (edge: any) => (edge.data("virtual") ? 0.9 : 0.4),
-      gravity: 0.3,
+      gravity: clusterByContext ? 0.1 : 0.3,
       nodeSeparation: 120,
       padding: 50,
     } as any);
@@ -669,10 +681,13 @@ function ContextLegend({
 }) {
   const t = useT();
   const tags = useMemo(() => aggregateNoteContexts(data.nodes), [data]);
+  // 未分類 = 「文脈を持てるのに付いていない」通常ノートのみ。外部ソース・結晶
+  // （wiki）は文脈を持たせられない層なのでカウントに含めない。
   const uncategorized = useMemo(
     () =>
-      data.nodes.filter((n) => !n.external && !(n.noteContexts && n.noteContexts.length > 0))
-        .length,
+      data.nodes.filter(
+        (n) => !n.external && !n.isWiki && !(n.noteContexts && n.noteContexts.length > 0),
+      ).length,
     [data],
   );
   if (tags.length === 0) {
@@ -854,10 +869,20 @@ export function GlobalGraphView({
       return next;
     });
 
-  // 種類モードに戻すと絞り込みチップが見えなくなるので、絞り込みも一緒に解除する
+  // モード切替は層の既定もセットで切り替える:
+  // 文脈モードは「文脈を持てるノート層」だけを表示（原料・結晶は noteContexts を
+  // 持たないため常に未分類となり、色分けのノイズ＋クラスター間の詰め物になる）。
+  // 層チップは残すので、文脈モード中でも手動で原料・結晶を再表示できる。
+  // 種類モードに戻したら全層+絞り込み解除+クラスターも解除（文脈系の状態を畳む）。
   const changeColorMode = (m: GraphColorMode) => {
     setColorMode(m);
-    if (m === "kind") setSelectedContexts(new Set());
+    if (m === "kind") {
+      setSelectedContexts(new Set());
+      setClusterByContext(false);
+      setVisible(new Set(ALL_LAYERS));
+    } else {
+      setVisible(new Set<LayerId>(["note"]));
+    }
   };
 
   // Esc で閉じる
@@ -903,17 +928,19 @@ export function GlobalGraphView({
             ))}
           </div>
         </div>
-        <label
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
-          title={t("globalGraph.clusterByContextHint")}
-        >
-          <input
-            type="checkbox"
-            checked={clusterByContext}
-            onChange={(e) => setClusterByContext(e.target.checked)}
-          />
-          {t("globalGraph.clusterByContext")}
-        </label>
+        {colorMode === "context" && (
+          <label
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+            title={t("globalGraph.clusterByContextHint")}
+          >
+            <input
+              type="checkbox"
+              checked={clusterByContext}
+              onChange={(e) => setClusterByContext(e.target.checked)}
+            />
+            {t("globalGraph.clusterByContext")}
+          </label>
+        )}
         <span className="ml-auto flex items-center gap-3">
           {/* 検索: ヒットを強調 + Enter でヒットへ順にパン（Esc でクリア） */}
           <span className="relative">
