@@ -5,22 +5,11 @@
 import mammoth from "mammoth";
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import type { GraphiumDocument } from "../../lib/document-types";
-
-/** ブラウザで表示できる画像 MIME → 拡張子。リスト外は「非対応」として扱う */
-const RENDERABLE_IMAGE_EXTS: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/bmp": "bmp",
-};
-
-/** ブラウザで表示できる画像か（EMF/WMF/TIFF など `<img>` で映らない形式は false） */
-function isRenderableImageMime(mime: string): boolean {
-  return mime.toLowerCase() in RENDERABLE_IMAGE_EXTS;
-}
+import {
+  RENDERABLE_IMAGE_EXTS,
+  convertNonRenderableImage,
+  isRenderableImageMime,
+} from "./renderable-image";
 
 export type DocxImportOptions = {
   /** 画像を Graphium のメディア層にアップロードする処理。返り値は ブロックに埋め込む URL */
@@ -70,8 +59,32 @@ export async function importDocxToGraphiumDoc(
         convertImage: mammoth.images.imgElement(async (image) => {
           const idx = nextIdx++;
           stats.attempted++;
-          // ブラウザで表示できない形式（EMF / WMF / 不明形式 など）はメディア層に保存しない。
+          // ブラウザで表示できない形式（EMF / TIFF 等）は PNG / SVG への変換を試み、
+          // 変換できないもの（WMF / 不明形式 など）だけメディア層に保存せずスキップする。
           if (!isRenderableImageMime(image.contentType)) {
+            try {
+              const base64 = await image.readAsBase64String();
+              const binary = atob(base64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              const converted = await convertNonRenderableImage(
+                image.contentType,
+                bytes.buffer,
+                `${baseTitle}-${crypto.randomUUID().slice(0, 8)}`,
+              );
+              if (converted) {
+                console.info(
+                  `[docx-import] #${idx} 非対応画像形式を変換:`,
+                  image.contentType,
+                  "→",
+                  converted.type,
+                );
+                pending[idx] = { kind: "renderable", file: converted };
+                return { src: placeholderFor(idx) };
+              }
+            } catch (err) {
+              console.warn(`[docx-import] #${idx} 非対応画像形式の変換失敗:`, err);
+            }
             stats.skipped++;
             console.warn(`[docx-import] #${idx} 非対応画像形式をスキップ:`, image.contentType);
             pending[idx] = { kind: "skipped" };

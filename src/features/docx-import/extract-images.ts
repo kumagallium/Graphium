@@ -2,24 +2,16 @@
 // mammoth の convertImage コールバックで各画像を File 化し、HTML 出力は捨てる。
 // 取り出した File 列を呼び出し側でメディア層に登録する想定。
 //
-// import.ts と同じ MIME フィルタを使い、ブラウザで表示できない形式
-// （EMF / WMF / TIFF など）は黙ってスキップする。
+// import.ts と同じ MIME フィルタ（renderable-image.ts）を使う。
+// ブラウザで表示できない形式は PNG / SVG への変換を試み（EMF / TIFF）、
+// 変換できないもの（WMF / 不明形式 など）だけ黙ってスキップする。
 
 import mammoth from "mammoth";
-
-const RENDERABLE_IMAGE_EXTS: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/bmp": "bmp",
-};
-
-function isRenderableImageMime(mime: string): boolean {
-  return mime.toLowerCase() in RENDERABLE_IMAGE_EXTS;
-}
+import {
+  RENDERABLE_IMAGE_EXTS,
+  convertNonRenderableImage,
+  isRenderableImageMime,
+} from "./renderable-image";
 
 export type DocxImageExtractStats = {
   /** mammoth が convertImage を呼び出した総回数 */
@@ -51,15 +43,35 @@ export async function extractDocxImages(
     {
       convertImage: mammoth.images.imgElement(async (image) => {
         stats.attempted++;
-        if (!isRenderableImageMime(image.contentType)) {
-          stats.skipped++;
-          return { src: "" };
-        }
-        try {
+        const readBytes = async () => {
           const base64 = await image.readAsBase64String();
           const binary = atob(base64);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          return bytes;
+        };
+        if (!isRenderableImageMime(image.contentType)) {
+          // 非対応形式は変換を試し、ダメならスキップ
+          try {
+            const bytes = await readBytes();
+            const converted = await convertNonRenderableImage(
+              image.contentType,
+              bytes.buffer,
+              `${baseTitle}-${crypto.randomUUID().slice(0, 8)}`,
+            );
+            if (converted) {
+              files.push(converted);
+              stats.collected++;
+              return { src: "" };
+            }
+          } catch (err) {
+            console.warn("[docx-extract-images] 非対応画像形式の変換失敗:", err);
+          }
+          stats.skipped++;
+          return { src: "" };
+        }
+        try {
+          const bytes = await readBytes();
           const ext = RENDERABLE_IMAGE_EXTS[image.contentType.toLowerCase()];
           const blob = new Blob([bytes], { type: image.contentType });
           const file = new File(
