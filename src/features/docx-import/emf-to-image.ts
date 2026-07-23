@@ -103,22 +103,37 @@ function parseEmfHeader(buf: ArrayBuffer): EmfHeader {
 // 系統 1: bitmap ラップ型 — DIB 抽出
 // ---------------------------------------------------------------------------
 
-type DibEntry = { cbBits: number; bmp: Uint8Array<ArrayBuffer> };
+/** EMF 内の 1 つの bitmap 描画命令（配置情報付き） */
+export type DibDraw = {
+  /** 描画先（論理座標） */
+  xDest: number;
+  yDest: number;
+  cxDest: number;
+  cyDest: number;
+  /** ソース bitmap 内の切り出し範囲（px） */
+  xSrc: number;
+  ySrc: number;
+  cxSrc: number;
+  cySrc: number;
+  /** BMP ファイル形式に組み立て済みのバイト列 */
+  bmp: Uint8Array<ArrayBuffer>;
+};
 
 /**
- * STRETCHDIBITS / BITBLT レコードから DIB (BITMAPINFO + ピクセル) を取り出し、
- * BMP ファイルのバイト列に組み立てる。複数ある場合は最大のものを返す
- * （小さい DIB は背景塗りつぶし等のことが多い）。
+ * STRETCHDIBITS / BITBLT レコードから bitmap 描画命令を配置情報ごと取り出す。
+ * VESTA / Office の「図として貼り付け」は複数 bitmap（本体 + 座標軸等の
+ * オーバーレイ）で構成されることがあるため、全描画命令を保持して
+ * 呼び出し側で EMF 内の配置どおりに合成する。DIB を持たないレコード
+ * （塗りつぶし・no-op ROP 等）は対象外。
  */
-export function extractLargestDibAsBmp(buf: ArrayBuffer): Uint8Array<ArrayBuffer> | null {
-  const dibs: DibEntry[] = [];
+export function extractDibDraws(buf: ArrayBuffer): DibDraw[] {
+  const draws: DibDraw[] = [];
   scanRecords(buf, (iType, off, _size, dv) => {
     // offBmiSrc/cbBmiSrc/offBitsSrc/cbBitsSrc のレコード内オフセット
     // STRETCHDIBITS: 48/52/56/60, BITBLT: 84/88/92/96 (MS-EMF §2.3.1)
-    let base: number | null = null;
-    if (iType === EMR.STRETCHDIBITS) base = 48;
-    else if (iType === EMR.BITBLT) base = 84;
-    if (base === null) return;
+    const isStretch = iType === EMR.STRETCHDIBITS;
+    if (!isStretch && iType !== EMR.BITBLT) return;
+    const base = isStretch ? 48 : 84;
     const offBmi = dv.getUint32(off + base, true);
     const cbBmi = dv.getUint32(off + base + 4, true);
     const offBits = dv.getUint32(off + base + 8, true);
@@ -136,11 +151,39 @@ export function extractLargestDibAsBmp(buf: ArrayBuffer): Uint8Array<ArrayBuffer
     bdv.setUint32(10, 14 + cbBmi, true); // ピクセルデータ開始位置
     bmp.set(new Uint8Array(buf, off + offBmi, cbBmi), 14);
     bmp.set(new Uint8Array(buf, off + offBits, cbBits), 14 + cbBmi);
-    dibs.push({ cbBits, bmp });
+
+    const xDest = dv.getInt32(off + 24, true);
+    const yDest = dv.getInt32(off + 28, true);
+    if (isStretch) {
+      draws.push({
+        xDest,
+        yDest,
+        cxDest: dv.getInt32(off + 72, true),
+        cyDest: dv.getInt32(off + 76, true),
+        xSrc: dv.getInt32(off + 32, true),
+        ySrc: dv.getInt32(off + 36, true),
+        cxSrc: dv.getInt32(off + 40, true),
+        cySrc: dv.getInt32(off + 44, true),
+        bmp,
+      });
+    } else {
+      // BITBLT は等倍転送: dest サイズ = src サイズ
+      const cxDest = dv.getInt32(off + 32, true);
+      const cyDest = dv.getInt32(off + 36, true);
+      draws.push({
+        xDest,
+        yDest,
+        cxDest,
+        cyDest,
+        xSrc: dv.getInt32(off + 44, true),
+        ySrc: dv.getInt32(off + 48, true),
+        cxSrc: cxDest,
+        cySrc: cyDest,
+        bmp,
+      });
+    }
   });
-  if (dibs.length === 0) return null;
-  dibs.sort((a, b) => b.cbBits - a.cbBits);
-  return dibs[0].bmp;
+  return draws;
 }
 
 // ---------------------------------------------------------------------------
@@ -452,8 +495,8 @@ export async function renderVectorEmfToSvg(buf: ArrayBuffer): Promise<string | n
 // 統合エントリ
 // ---------------------------------------------------------------------------
 
-/** BMP バイト列を canvas 経由で PNG Blob に変換（ブラウザの BMP デコーダを利用） */
-async function bmpToPngBlob(bmp: Uint8Array<ArrayBuffer>): Promise<Blob | null> {
+/** BMP バイト列をブラウザの BMP デコーダで Image 化する */
+async function decodeBmp(bmp: Uint8Array<ArrayBuffer>): Promise<HTMLImageElement | null> {
   const url = URL.createObjectURL(new Blob([bmp], { type: "image/bmp" }));
   try {
     const img = new Image();
@@ -463,21 +506,72 @@ async function bmpToPngBlob(bmp: Uint8Array<ArrayBuffer>): Promise<Blob | null> 
       img.src = url;
     });
     if (img.naturalWidth === 0 || img.naturalHeight === 0) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0);
-    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return img;
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
+/** 合成 canvas の辺の上限（px）。壊れた EMF での巨大確保を防ぐ */
+const MAX_COMPOSE_EDGE = 8192;
+
+/**
+ * 全 bitmap 描画命令を EMF 内の配置どおりに canvas へ合成して PNG 化する。
+ * 単一 bitmap でも配置（余白・部分配置）を保つため同じ経路で描く。
+ * スケールは「最も精細な bitmap がドットバイドット以上になる」値を選び、
+ * 拡大配置されたオーバーレイ以外は解像度を落とさない。
+ */
+async function composeDibDrawsToPng(draws: DibDraw[], hdr: EmfHeader): Promise<Blob | null> {
+  const boundsW = hdr.boundsR - hdr.boundsL;
+  const boundsH = hdr.boundsB - hdr.boundsT;
+  if (boundsW <= 0 || boundsH <= 0) return null;
+
+  // 論理座標 → px のスケール: 各 bitmap の実解像度 (cxSrc/cxDest) の最大値
+  let scale = 0;
+  for (const d of draws) {
+    if (d.cxDest !== 0) scale = Math.max(scale, Math.abs(d.cxSrc / d.cxDest));
+    if (d.cyDest !== 0) scale = Math.max(scale, Math.abs(d.cySrc / d.cyDest));
+  }
+  if (scale <= 0) return null;
+  scale = Math.min(scale, MAX_COMPOSE_EDGE / boundsW, MAX_COMPOSE_EDGE / boundsH);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(boundsW * scale));
+  canvas.height = Math.max(1, Math.round(boundsH * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  // EMF の下地は白（Word 上の docx プレビューと同じ見た目にする）
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  let drawn = 0;
+  for (const d of draws) {
+    const img = await decodeBmp(d.bmp).catch(() => null);
+    if (!img) continue;
+    const sw = Math.abs(d.cxSrc) || img.naturalWidth;
+    const sh = Math.abs(d.cySrc) || img.naturalHeight;
+    ctx.drawImage(
+      img,
+      d.xSrc,
+      d.ySrc,
+      Math.min(sw, img.naturalWidth),
+      Math.min(sh, img.naturalHeight),
+      (d.xDest - hdr.boundsL) * scale,
+      (d.yDest - hdr.boundsT) * scale,
+      Math.abs(d.cxDest) * scale,
+      Math.abs(d.cyDest) * scale,
+    );
+    drawn++;
+  }
+  if (drawn === 0) return null;
+  return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
 /**
  * EMF を表示可能な画像 File に変換する。
- * - bitmap ラップ型 → PNG（無圧縮 DIB を PNG に再圧縮）
+ * - bitmap ラップ型 → PNG（全 bitmap を EMF 内の配置どおりに合成）
  * - ベクター型 → SVG（テキスト・拡大に強い）
  * - 変換不能（EMF でない / 対応外レコード構成）→ null
  */
@@ -489,9 +583,9 @@ export async function convertEmfToImageFile(
 
   try {
     // bitmap ラップ型を優先（DIB があるならそれが本体で、ベクターは飾りが多い）
-    const bmp = extractLargestDibAsBmp(buf);
-    if (bmp) {
-      const png = await bmpToPngBlob(bmp);
+    const draws = extractDibDraws(buf);
+    if (draws.length > 0) {
+      const png = await composeDibDrawsToPng(draws, parseEmfHeader(buf));
       if (png) {
         return new File([png], `${baseName}.png`, { type: "image/png" });
       }

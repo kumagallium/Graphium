@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composeWorldTransform,
-  extractLargestDibAsBmp,
+  extractDibDraws,
   extractTextRuns,
   isEmfMime,
 } from "./emf-to-image";
@@ -57,12 +57,16 @@ function emfStretchDiBits(pixelSeed: number): RecordBytes {
   const dv = new DataView(b.buffer);
   dv.setUint32(0, 81, true); // EMR_STRETCHDIBITS
   dv.setUint32(4, recSize, true);
+  dv.setInt32(24, 10, true); // xDest
+  dv.setInt32(28, 20, true); // yDest
   dv.setInt32(40, 2, true); // cxSrc
   dv.setInt32(44, 2, true); // cySrc
   dv.setUint32(48, 80, true); // offBmiSrc
   dv.setUint32(52, bmiSize, true); // cbBmiSrc
   dv.setUint32(56, 80 + bmiSize, true); // offBitsSrc
   dv.setUint32(60, bitsSize, true); // cbBitsSrc
+  dv.setInt32(72, 50, true); // cxDest
+  dv.setInt32(76, 60, true); // cyDest
   // BITMAPINFOHEADER
   dv.setUint32(80, 40, true); // biSize
   dv.setInt32(84, 2, true); // biWidth
@@ -187,15 +191,18 @@ describe("isEmfMime / isTiffMime / isRenderableImageMime", () => {
   });
 });
 
-describe("extractLargestDibAsBmp", () => {
-  it("STRETCHDIBITS から BMP を組み立てる", () => {
+describe("extractDibDraws", () => {
+  it("STRETCHDIBITS から BMP と配置情報を取り出す", () => {
     const emf = buildEmf(emfHeader(), emfStretchDiBits(10), emfEof());
-    const bmp = extractLargestDibAsBmp(emf);
-    expect(bmp).not.toBeNull();
+    const draws = extractDibDraws(emf);
+    expect(draws).toHaveLength(1);
+    const d = draws[0];
+    // 配置情報（emfStretchDiBits が書いた値）
+    expect(d).toMatchObject({ xDest: 10, yDest: 20, cxDest: 50, cyDest: 60, cxSrc: 2, cySrc: 2 });
     // BMP マジック "BM"
-    expect(bmp![0]).toBe(0x42);
-    expect(bmp![1]).toBe(0x4d);
-    const dv = new DataView(bmp!.buffer);
+    expect(d.bmp[0]).toBe(0x42);
+    expect(d.bmp[1]).toBe(0x4d);
+    const dv = new DataView(d.bmp.buffer);
     // ファイルサイズ = 14 + 40 (BITMAPINFOHEADER) + 16 (bits)
     expect(dv.getUint32(2, true)).toBe(14 + 40 + 16);
     // ピクセルデータ開始 = 14 + 40
@@ -205,36 +212,33 @@ describe("extractLargestDibAsBmp", () => {
     expect(dv.getInt32(18, true)).toBe(2); // biWidth
   });
 
-  it("複数 DIB があればピクセルデータ最大のものを選ぶ", () => {
-    // 2 つ目の STRETCHDIBITS のピクセル部を大きくする
-    const small = emfStretchDiBits(1);
-    const large = emfStretchDiBits(2);
-    // large の cbBitsSrc を偽装的に増やす代わりに、実際に大きなレコードを作る
-    const bigBits = 64;
-    const recSize = 80 + 40 + bigBits;
-    const b = new Uint8Array(recSize);
-    const dv = new DataView(b.buffer);
-    dv.setUint32(0, 81, true);
-    dv.setUint32(4, recSize, true);
-    dv.setUint32(48, 80, true);
-    dv.setUint32(52, 40, true);
-    dv.setUint32(56, 120, true);
-    dv.setUint32(60, bigBits, true);
-    dv.setUint32(80, 40, true);
-    dv.setInt32(84, 4, true);
-    dv.setInt32(88, 4, true);
-    dv.setUint16(92, 1, true);
-    dv.setUint16(94, 24, true);
-    b.fill(0xaa, 120);
-    const emf = buildEmf(emfHeader(), small, b, large, emfEof());
-    const bmp = extractLargestDibAsBmp(emf);
-    expect(bmp).not.toBeNull();
-    expect(new DataView(bmp!.buffer).getUint32(2, true)).toBe(14 + 40 + bigBits);
+  it("複数 DIB は全部レコード順に取り出す（本体 + 座標軸オーバーレイ等）", () => {
+    const first = emfStretchDiBits(1);
+    const second = emfStretchDiBits(2);
+    // 2 つ目は配置を変えておく（オーバーレイ想定）
+    const sdv = new DataView(second.buffer);
+    sdv.setInt32(24, 0, true); // xDest
+    sdv.setInt32(28, 1505, true); // yDest
+    const emf = buildEmf(emfHeader(), first, second, emfEof());
+    const draws = extractDibDraws(emf);
+    expect(draws).toHaveLength(2);
+    expect(draws[0].xDest).toBe(10);
+    expect(draws[1]).toMatchObject({ xDest: 0, yDest: 1505 });
   });
 
-  it("DIB が無ければ null", () => {
+  it("DIB が無ければ空配列", () => {
     const emf = buildEmf(emfHeader(), emfEof());
-    expect(extractLargestDibAsBmp(emf)).toBeNull();
+    expect(extractDibDraws(emf)).toHaveLength(0);
+  });
+
+  it("DIB を持たない BITBLT（no-op ROP 等）は対象外", () => {
+    // BITBLT レコード（cbBmi=0, cbBits=0 — 実物の DSTCOPY no-op と同じ形）
+    const rec = new Uint8Array(100);
+    const dv = new DataView(rec.buffer);
+    dv.setUint32(0, 76, true); // EMR_BITBLT
+    dv.setUint32(4, 100, true);
+    const emf = buildEmf(emfHeader(), rec, emfEof());
+    expect(extractDibDraws(emf)).toHaveLength(0);
   });
 
   it("バッファ外を指す壊れた DIB オフセットは無視する", () => {
@@ -242,7 +246,7 @@ describe("extractLargestDibAsBmp", () => {
     // offBitsSrc をバッファ外に書き換える
     new DataView(rec.buffer).setUint32(56, 100000, true);
     const emf = buildEmf(emfHeader(), rec, emfEof());
-    expect(extractLargestDibAsBmp(emf)).toBeNull();
+    expect(extractDibDraws(emf)).toHaveLength(0);
   });
 });
 
