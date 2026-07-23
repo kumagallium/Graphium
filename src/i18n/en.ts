@@ -1476,6 +1476,11 @@ export const en: Record<string, string> = {
   "globalGraph.layer.note": "Notes",
   "globalGraph.layer.crystal": "Claim · Insight",
   "globalGraph.empty": "No notes to show yet",
+  "globalGraph.colorBy": "Color:",
+  "globalGraph.colorMode.kind": "Type",
+  "globalGraph.colorMode.context": "Context",
+  "globalGraph.uncategorized": "Uncategorized",
+  "globalGraph.noContexts": "No notes with context labels yet",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化

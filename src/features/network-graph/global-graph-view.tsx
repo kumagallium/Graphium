@@ -10,11 +10,13 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
 import { openExternalUrl } from "../../lib/external-link";
+import { aggregateNoteContexts, noteContextHue } from "../note-context/context-tags";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { useT } from "../../i18n";
 import type { NoteNode, NoteGraphData, EdgeRelation } from "./graph-builder";
 
@@ -56,27 +58,54 @@ const KIND_LAYER: Record<GraphKind, LayerId> = {
 const ALL_LAYERS: LayerId[] = ["source", "note", "crystal"];
 
 /**
- * 層フィルタ・参照フィルタ・孤立ノード除外を適用したサブグラフを返す。
+ * 層フィルタ・参照フィルタ・文脈タグ絞り込み・孤立ノード除外を適用したサブグラフを返す。
  * オーバーレイ（件数表示）とキャンバス（描画）で同じ結果を使うため切り出している。
  *
  * hideIsolated: 実データではリンクの無いノートが大半を占める（Obsidian と同じ）。
  *   既定で孤立ノードを隠すと、連結した「網」だけが残って俯瞰しやすくなる。
+ *
+ * contextFilter: 文脈タグ（noteContexts）の小文字キー集合。空/未指定なら絞り込まない。
+ *   選択タグを持つノートに加え「タグを持たない隣接ノード」（素材・知見・未分類）も残す —
+ *   実験 A に絞ったときにその素材や生まれた知見は一緒に見え、別タグの実験 B は消える。
  */
 export function filterGlobalGraph(
   data: NoteGraphData,
-  opts: { visibleLayers: Set<LayerId>; hideReferences?: boolean; hideIsolated?: boolean },
+  opts: {
+    visibleLayers: Set<LayerId>;
+    hideReferences?: boolean;
+    hideIsolated?: boolean;
+    contextFilter?: Set<string>;
+  },
 ): NoteGraphData {
-  const { visibleLayers, hideReferences = false, hideIsolated = false } = opts;
+  const { visibleLayers, hideReferences = false, hideIsolated = false, contextFilter } = opts;
   const visibleIds = new Set(
     data.nodes.filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)])).map((n) => n.id),
   );
-  const edges = data.edges.filter(
+  let edges = data.edges.filter(
     (e) =>
       visibleIds.has(e.source) &&
       visibleIds.has(e.target) &&
       !(hideReferences && e.relation === "reference"),
   );
   let nodes = data.nodes.filter((n) => visibleIds.has(n.id));
+  if (contextFilter && contextFilter.size > 0) {
+    const hasSelectedTag = (n: NoteNode) =>
+      (n.noteContexts ?? []).some((c) => contextFilter.has(c.toLowerCase()));
+    const taggedIds = new Set(nodes.filter(hasSelectedTag).map((n) => n.id));
+    const neighborIds = new Set<string>();
+    for (const e of edges) {
+      if (taggedIds.has(e.source)) neighborIds.add(e.target);
+      if (taggedIds.has(e.target)) neighborIds.add(e.source);
+    }
+    nodes = nodes.filter((n) => {
+      if (taggedIds.has(n.id)) return true;
+      if (!neighborIds.has(n.id)) return false;
+      // タグを持たない隣接（素材・知見・未分類）は残し、別タグのノートは消す
+      return (n.noteContexts ?? []).length === 0;
+    });
+    const kept = new Set(nodes.map((n) => n.id));
+    edges = edges.filter((e) => kept.has(e.source) && kept.has(e.target));
+  }
   if (hideIsolated) {
     const connected = new Set<string>();
     for (const e of edges) {
@@ -104,6 +133,31 @@ function kindBorder(kind: GraphKind): string {
   if (kind === "note") return NOTE_BORDER;
   if (kind === "external") return EXT_BORDER;
   return knowledgeKindBorder(kind);
+}
+
+// ── 文脈タグ色モード ──
+//
+// 色 = 文脈タグ（noteContextHue の名前ハッシュ、ContextBadge と同系統）、形 = kind のまま。
+// 種類の情報は形状（ellipse/round-rect/diamond）で残るので、色の軸だけ差し替わる。
+// 外部ソースは文脈を持たないので従来のグレーのまま（形も round-rect で区別が付く）。
+
+/** 文脈タグ未付与ノートの色。ノート青・外部グレーのどちらとも紛れない淡いセージ。 */
+const UNCAT_FILL = "#b9c2b9";
+const UNCAT_BORDER = "#8f998f";
+
+export type GraphColorMode = "kind" | "context";
+
+/** ノードの塗り・境界色を色モードに応じて返す。 */
+function nodeColors(node: NoteNode, mode: GraphColorMode): { fill: string; border: string } {
+  const kind = kindOf(node);
+  if (mode === "context" && kind !== "external") {
+    const ctx = node.noteContexts?.[0];
+    if (!ctx) return { fill: UNCAT_FILL, border: UNCAT_BORDER };
+    const h = noteContextHue(ctx);
+    // ContextBadge の基準色 hsl(h 45% 45%) より明度を上げる（ノードは面で塗るため）
+    return { fill: `hsl(${h} 50% 62%)`, border: `hsl(${h} 50% 42%)` };
+  }
+  return { fill: kindFill(kind), border: kindBorder(kind) };
 }
 
 const KIND_SHAPE: Record<GraphKind, string> = {
@@ -173,6 +227,17 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
   },
   { selector: "node.faded", style: { opacity: 0.12 } },
   {
+    // 検索ヒット: 琥珀色の太枠 + フルラベル表示。faded より優先されるよう後段に置く
+    selector: "node.search-hit",
+    style: {
+      "border-width": 4,
+      "border-color": "#d99a2b",
+      label: "data(fullLabel)" as any,
+      "font-weight": "bold" as any,
+      "z-index": 900,
+    },
+  },
+  {
     selector: "edge",
     style: {
       width: 1.6,
@@ -207,6 +272,24 @@ function truncate(s: string, max = 16): string {
   return [...s].length > max ? `${[...s].slice(0, max).join("")}…` : s;
 }
 
+/**
+ * 検索クエリでノードを強調する（クラス操作のみ・レイアウトは動かさない）。
+ * ヒット: search-hit（太枠 + フルラベル）、非ヒット: faded。ヒット同士のエッジは見せたまま残す。
+ * クエリが空なら全解除。戻り値はヒット件数。
+ */
+function applySearchHighlight(cy: cytoscape.Core, rawQuery: string): number {
+  const q = rawQuery.trim().toLowerCase();
+  cy.elements().removeClass("faded search-hit");
+  if (!q) return 0;
+  const hits = cy
+    .nodes()
+    .filter((n) => String(n.data("fullLabel") ?? "").toLowerCase().includes(q));
+  cy.elements().addClass("faded");
+  hits.removeClass("faded").addClass("search-hit");
+  hits.edgesWith(hits).removeClass("faded");
+  return hits.length;
+}
+
 // ── キャンバス（クロムなし。オーバーレイや Storybook から使う） ──
 
 export function GlobalGraphCanvas({
@@ -214,6 +297,11 @@ export function GlobalGraphCanvas({
   visibleLayers,
   hideReferences = false,
   hideIsolated = false,
+  colorMode = "kind",
+  contextFilter,
+  searchQuery = "",
+  searchJumpToken = 0,
+  onSearchHits,
   onNavigate,
   onOpenMedia,
   onOpenUrl,
@@ -224,6 +312,16 @@ export function GlobalGraphCanvas({
   visibleLayers: Set<LayerId>;
   hideReferences?: boolean;
   hideIsolated?: boolean;
+  /** ノード色の軸。kind=種類（既定）/ context=文脈タグ。形状は常に kind のまま。 */
+  colorMode?: GraphColorMode;
+  /** 文脈タグ絞り込み（小文字キー）。filterGlobalGraph にそのまま渡す。 */
+  contextFilter?: Set<string>;
+  /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
+  searchQuery?: string;
+  /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
+  searchJumpToken?: number;
+  /** 検索ヒット件数の通知（クエリ空なら 0）。 */
+  onSearchHits?: (count: number) => void;
   onNavigate?: (noteId: string) => void;
   onOpenMedia?: (fileId: string) => void;
   /** URL ソースノードをアプリ内で開く。未指定なら外部ブラウザ。 */
@@ -234,11 +332,19 @@ export function GlobalGraphCanvas({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  // mouseout ハンドラ（cy 構築時のクロージャ）から最新の検索クエリ・色モードを
+  // 参照するための ref。state を deps に入れて cy を作り直すと再レイアウトが走るため。
+  const searchRef = useRef(searchQuery);
+  searchRef.current = searchQuery;
+  const colorModeRef = useRef(colorMode);
+  colorModeRef.current = colorMode;
+  // Enter 巡回の現在位置（クエリが変わったら 0 に戻す）
+  const jumpIndexRef = useRef(0);
 
-  // 表示中の層・参照・孤立フィルタを適用
+  // 表示中の層・参照・文脈タグ・孤立フィルタを適用
   const { nodes: shownNodes, edges: shownEdges } = useMemo(
-    () => filterGlobalGraph(data, { visibleLayers, hideReferences, hideIsolated }),
-    [data, visibleLayers, hideReferences, hideIsolated],
+    () => filterGlobalGraph(data, { visibleLayers, hideReferences, hideIsolated, contextFilter }),
+    [data, visibleLayers, hideReferences, hideIsolated, contextFilter],
   );
 
   useEffect(() => {
@@ -255,13 +361,16 @@ export function GlobalGraphCanvas({
     for (const node of shownNodes) {
       const kind = kindOf(node);
       const full = `${nodeIcon(node)}${node.title}`;
+      // 色は構築時点のモードで塗る。モード切替時は色 effect が data を書き換える
+      // （cy を作り直さない＝レイアウトを保つ）。
+      const { fill, border } = nodeColors(node, colorModeRef.current);
       elements.push({
         data: {
           id: node.id,
           label: truncate(full),
           fullLabel: full,
-          color: kindFill(kind),
-          borderColor: kindBorder(kind),
+          color: fill,
+          borderColor: border,
           shape: KIND_SHAPE[kind],
           size: KIND_SIZE[kind],
           isWiki: !!node.isWiki,
@@ -331,6 +440,8 @@ export function GlobalGraphCanvas({
     });
     cy.on("mouseout", "node", () => {
       cy.elements().removeClass("faded hover hover-connected");
+      // 検索中なら hover で消えた強調・フェードを復元する
+      applySearchHighlight(cy, searchRef.current);
       containerRef.current!.style.cursor = "grab";
     });
 
@@ -370,6 +481,48 @@ export function GlobalGraphCanvas({
       cyRef.current = null;
     };
   }, [shownNodes, shownEdges, onNavigate, onOpenMedia, onOpenUrl, onOpenMemo]);
+
+  // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const byId = new Map(shownNodes.map((n) => [n.id, n]));
+    cy.batch(() => {
+      cy.nodes().forEach((cn) => {
+        const n = byId.get(cn.id());
+        if (!n) return;
+        const { fill, border } = nodeColors(n, colorMode);
+        cn.data("color", fill);
+        cn.data("borderColor", border);
+      });
+    });
+  }, [colorMode, shownNodes]);
+
+  // 検索: クラス操作のみ（destroy・再レイアウトなし）。
+  // メイン effect より後に宣言してあるので、cy 再構築直後にも再適用される。
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) {
+      onSearchHits?.(0);
+      return;
+    }
+    const hits = applySearchHighlight(cy, searchQuery);
+    jumpIndexRef.current = 0;
+    onSearchHits?.(hits);
+  }, [searchQuery, shownNodes, shownEdges, onSearchHits]);
+
+  // Enter で次のヒットへパン（ズームは保持、巡回する）
+  useEffect(() => {
+    if (!searchJumpToken) return;
+    const cy = cyRef.current;
+    if (!cy) return;
+    const hits = cy.nodes(".search-hit");
+    if (hits.length === 0) return;
+    const target = hits[jumpIndexRef.current % hits.length];
+    jumpIndexRef.current += 1;
+    cy.stop();
+    cy.animate({ center: { eles: target }, duration: 300, easing: "ease-in-out-sine" } as any);
+  }, [searchJumpToken]);
 
   return (
     <div
@@ -436,6 +589,83 @@ function Legend({ data }: { data: NoteGraphData }) {
           {label}
         </span>
       ))}
+    </div>
+  );
+}
+
+// 文脈タグ色モードの凡例 兼 絞り込みチップ。
+// タグ集計は全データ駆動（絞り込み後の shown 駆動だと、絞り込んだ瞬間に他のチップが
+// 消えて解除できなくなる）。選択が空 = 絞り込みなし（全表示）。チップクリックでトグル。
+// 見た目は ContextBadge（淡背景 + 濃文字）に合わせ、選択中は濃背景 + 白文字で反転。
+function ContextLegend({
+  data,
+  selected,
+  onToggle,
+}: {
+  data: NoteGraphData;
+  /** 選択中タグ（小文字キー）。 */
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  const t = useT();
+  const tags = useMemo(() => aggregateNoteContexts(data.nodes), [data]);
+  const uncategorized = useMemo(
+    () =>
+      data.nodes.filter((n) => !n.external && !(n.noteContexts && n.noteContexts.length > 0))
+        .length,
+    [data],
+  );
+  if (tags.length === 0) {
+    return (
+      <span className="text-[10px] text-muted-foreground">{t("globalGraph.noContexts")}</span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+      {tags.map(({ value, count }) => {
+        const key = value.toLowerCase();
+        const h = noteContextHue(value);
+        const on = selected.has(key);
+        return (
+          <button
+            key={key}
+            onClick={() => onToggle(key)}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium border transition-colors"
+            style={
+              on
+                ? {
+                    backgroundColor: `hsl(${h} 45% 45%)`,
+                    color: "#fff",
+                    borderColor: `hsl(${h} 45% 38%)`,
+                  }
+                : {
+                    backgroundColor: `hsl(${h} 45% 45% / 0.12)`,
+                    color: `hsl(${h} 45% 40%)`,
+                    borderColor: `hsl(${h} 45% 45% / 0.30)`,
+                  }
+            }
+          >
+            {value}
+            <span className="opacity-70">{count}</span>
+          </button>
+        );
+      })}
+      {uncategorized > 0 && (
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              background: UNCAT_FILL,
+              border: `2px solid ${UNCAT_BORDER}`,
+              display: "inline-block",
+            }}
+          />
+          {t("globalGraph.uncategorized")}
+          <span className="opacity-70">{uncategorized}</span>
+        </span>
+      )}
     </div>
   );
 }
@@ -510,17 +740,26 @@ export function GlobalGraphView({
   const [hideRefs, setHideRefs] = useState(false);
   const [showIsolated, setShowIsolated] = useState(false);
   const [visible, setVisible] = useState<Set<LayerId>>(new Set(ALL_LAYERS));
+  // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
+  const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
+  const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
+  // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
+  const [searchInput, setSearchInput] = useState("");
+  const [searchJumpToken, setSearchJumpToken] = useState(0);
+  const [searchHits, setSearchHits] = useState(0);
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
-  // 層・参照フィルタ適用後の「全ノード版」と「連結のみ版」を両方求め、
+  // 層・参照・文脈タグフィルタ適用後の「全ノード版」と「連結のみ版」を両方求め、
   // 表示用サブグラフ（shown）と隠れている孤立ノード数（isolatedCount）を導く。
   const { shown, isolatedCount } = useMemo(() => {
-    const withIsolated = filterGlobalGraph(data, { visibleLayers: visible, hideReferences: hideRefs, hideIsolated: false });
-    const connectedOnly = filterGlobalGraph(data, { visibleLayers: visible, hideReferences: hideRefs, hideIsolated: true });
+    const base = { visibleLayers: visible, hideReferences: hideRefs, contextFilter: selectedContexts };
+    const withIsolated = filterGlobalGraph(data, { ...base, hideIsolated: false });
+    const connectedOnly = filterGlobalGraph(data, { ...base, hideIsolated: true });
     return {
       shown: showIsolated ? withIsolated : connectedOnly,
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
-  }, [data, visible, hideRefs, showIsolated]);
+  }, [data, visible, hideRefs, showIsolated, selectedContexts]);
 
   // 各層のノード総数（孤立含む・フィルタ前）。チップの件数表示に使う。
   const layerCounts = useMemo(() => {
@@ -536,6 +775,20 @@ export function GlobalGraphView({
       else next.add(id);
       return next;
     });
+
+  const toggleContext = (key: string) =>
+    setSelectedContexts((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  // 種類モードに戻すと絞り込みチップが見えなくなるので、絞り込みも一緒に解除する
+  const changeColorMode = (m: GraphColorMode) => {
+    setColorMode(m);
+    if (m === "kind") setSelectedContexts(new Set());
+  };
 
   // Esc で閉じる
   useEffect(() => {
@@ -561,7 +814,55 @@ export function GlobalGraphView({
           {isolatedCount > 0 && <span className="opacity-70">({isolatedCount})</span>}
         </label>
         <LayerChips visible={visible} counts={layerCounts} onToggle={toggleLayer} />
+        {/* 色の軸切替（種類 ⇄ 文脈タグ） */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground">{t("globalGraph.colorBy")}</span>
+          <div className="flex rounded-md border border-border overflow-hidden">
+            {(["kind", "context"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => changeColorMode(m)}
+                className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  colorMode === m
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t(`globalGraph.colorMode.${m}` as any)}
+              </button>
+            ))}
+          </div>
+        </div>
         <span className="ml-auto flex items-center gap-3">
+          {/* 検索: ヒットを強調 + Enter でヒットへ順にパン（Esc でクリア） */}
+          <span className="relative">
+            <Search
+              size={12}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              {...compositionHandlers}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isImeKey(e)) {
+                  setSearchJumpToken((v) => v + 1);
+                } else if (e.key === "Escape" && searchInput) {
+                  // 検索中の Esc はクリアのみ（グラフ自体は閉じない）
+                  e.stopPropagation();
+                  setSearchInput("");
+                }
+              }}
+              placeholder={t("common.search")}
+              className="text-xs pl-7 pr-8 py-1 rounded border border-border bg-background text-foreground placeholder:text-muted-foreground/60 w-44 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+            {searchInput.trim() && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">
+                {searchHits}
+              </span>
+            )}
+          </span>
           <span className="text-[11px] text-muted-foreground">
             {shown.nodes.length} / {shown.edges.length}
           </span>
@@ -574,9 +875,13 @@ export function GlobalGraphView({
           </button>
         </span>
       </div>
-      {/* 凡例 */}
+      {/* 凡例（色モードに追従: 種類=kind/relation、文脈=タグチップ絞り込み） */}
       <div className="px-4 py-2 border-b border-border">
-        <Legend data={shown} />
+        {colorMode === "context" ? (
+          <ContextLegend data={data} selected={selectedContexts} onToggle={toggleContext} />
+        ) : (
+          <Legend data={shown} />
+        )}
       </div>
       {/* キャンバス */}
       <div className="flex-1 min-h-0">
@@ -590,6 +895,11 @@ export function GlobalGraphView({
             visibleLayers={visible}
             hideReferences={hideRefs}
             hideIsolated={!showIsolated}
+            colorMode={colorMode}
+            contextFilter={selectedContexts}
+            searchQuery={searchInput}
+            searchJumpToken={searchJumpToken}
+            onSearchHits={setSearchHits}
             onNavigate={onSelectNote}
             onOpenMedia={onOpenMedia}
             onOpenUrl={onOpenUrl}

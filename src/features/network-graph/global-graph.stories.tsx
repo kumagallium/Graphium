@@ -20,13 +20,13 @@ const NODES: NoteNode[] = [
   { id: "url:ext2", title: "arXiv:2401.xxxx", isCurrent: false, hop: 0, external: "url" },
   { id: "document:ext3", title: "実験プロトコル.docx", isCurrent: false, hop: 0, external: "document" },
   { id: "chat:ext4", title: "AI Chat", isCurrent: false, hop: 0, external: "chat" },
-  // ノート
-  { id: "n1", title: "アニール条件の検討", isCurrent: false, hop: 0 },
-  { id: "n2", title: "Cu系試料の作製", isCurrent: false, hop: 0 },
-  { id: "n3", title: "XRD測定メモ", isCurrent: false, hop: 0 },
-  { id: "n4", title: "ゼーベック係数の測定", isCurrent: false, hop: 0 },
+  // ノート（noteContexts は「文脈で色分け」モードと絞り込みチップで使う）
+  { id: "n1", title: "アニール条件の検討", isCurrent: false, hop: 0, noteContexts: ["実験A"] },
+  { id: "n2", title: "Cu系試料の作製", isCurrent: false, hop: 0, noteContexts: ["実験A", "実験B"] },
+  { id: "n3", title: "XRD測定メモ", isCurrent: false, hop: 0, noteContexts: ["実験A"] },
+  { id: "n4", title: "ゼーベック係数の測定", isCurrent: false, hop: 0, noteContexts: ["実験B"] },
   { id: "n5", title: "文献まとめ（A論文）", isCurrent: false, hop: 0 },
-  { id: "n6", title: "異常データの考察", isCurrent: false, hop: 0 },
+  { id: "n6", title: "異常データの考察", isCurrent: false, hop: 0, noteContexts: ["実験B"] },
   { id: "n7", title: "再現性チェック", isCurrent: false, hop: 0 },
   // Claim（主張）
   { id: "c1", title: "高温アニールで相純度が上がる", isCurrent: false, hop: 0, isWiki: true, wikiKind: "claim" },
@@ -125,6 +125,38 @@ export const CanvasForce: StoryObj = {
   render: () => (
     <div style={{ padding: 16 }}>
       <GlobalGraphCanvas data={SAMPLE} visibleLayers={new Set(ALL_LAYERS)} height={560} />
+    </div>
+  ),
+};
+
+// キャンバス単体（文脈タグ色モード）。色 = noteContexts 先頭タグの名前ハッシュ色、
+// タグ無しは淡いセージ、外部ソースは従来グレー。形状は kind のまま変わらない。
+export const CanvasContextColors: StoryObj = {
+  name: "キャンバス: 文脈タグ色",
+  render: () => (
+    <div style={{ padding: 16 }}>
+      <GlobalGraphCanvas
+        data={SAMPLE}
+        visibleLayers={new Set(ALL_LAYERS)}
+        colorMode="context"
+        height={560}
+      />
+    </div>
+  ),
+};
+
+// キャンバス単体（検索強調）。ヒット = 琥珀色の太枠 + フルラベル、他はフェード。
+// レイアウトは動かさない（クラス操作のみ）。
+export const CanvasSearch: StoryObj = {
+  name: "キャンバス: 検索強調",
+  render: () => (
+    <div style={{ padding: 16 }}>
+      <GlobalGraphCanvas
+        data={SAMPLE}
+        visibleLayers={new Set(ALL_LAYERS)}
+        searchQuery="測定"
+        height={560}
+      />
     </div>
   ),
 };

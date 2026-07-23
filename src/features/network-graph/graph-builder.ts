@@ -6,6 +6,7 @@ import type { MediaIndex, MediaType } from "../asset-browser/media-index";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { parseExternalSource, type ExternalSourceKind } from "./external-source";
 import { summarizeWikiGrowth, type WikiGrowthSummary } from "./growth-summary";
+import { normalizeNoteContexts } from "../note-context/context-tags";
 import { t } from "../../i18n";
 
 export type NoteNode = {
@@ -29,6 +30,10 @@ export type NoteNode = {
   /** wiki ノードの成長サマリ（Layer 1 の wiki_* 操作。hover のフルラベルに出す）。
    *  フル docs を持つ buildNoteGraph でのみ付与（index 駆動の buildGlobalGraph は不可）。 */
   growth?: WikiGrowthSummary;
+  /** ユーザーの文脈ラベル（NoteIndexEntry.noteContexts の正規化済みコピー）。
+   *  全ノードグラフの「文脈で色分け」モードと文脈絞り込みに使う。
+   *  index 駆動の buildGlobalGraph でのみ付与（2ホップグラフでは未設定）。 */
+  noteContexts?: string[];
 };
 
 /** エッジが表す関係種別（全ノードグラフで線種・色を分けるために使う）。
@@ -480,6 +485,7 @@ export function buildGlobalGraph(
       hop: 0, // 全ノードグラフではホップ概念を使わない（kind で色分けする）
       isWiki,
       wikiKind: isWiki ? e.wikiKind : undefined,
+      noteContexts: normalizeNoteContexts(e.noteContexts),
     });
   }
   for (const [id, kind] of externalIds) {
