@@ -85,6 +85,92 @@ const EDGES: NoteEdge[] = [
 
 const SAMPLE: NoteGraphData = { nodes: NODES, edges: EDGES };
 
+// ── 大規模サンプル（クラスタリング検証用: ノート29・文脈4種・未分類・跨ぎノート） ──
+// 文脈モードはノート層のみを見るので、ここはノートだけで構成する。
+// 実験A(7) → 実験B(6) のハンドオフ、シミュレーション(5)・文献調査(4) の支援、
+// 未分類(6, うち3つは孤立)、実験A+B の跨ぎノート(1) を含む。
+
+function note(id: string, title: string, ctx?: string[]): NoteNode {
+  return { id, title, isCurrent: false, hop: 0, noteContexts: ctx };
+}
+
+const LARGE_NODES: NoteNode[] = [
+  // 実験A: Cu系焼結（手順の連鎖）
+  note("a1", "原料秤量メモ", ["実験A"]),
+  note("a2", "ボールミル混合条件", ["実験A"]),
+  note("a3", "焼結温度 900℃ の検討", ["実験A"]),
+  note("a4", "焼結温度 950℃ の検討", ["実験A"]),
+  note("a5", "XRD 相同定（焼結後）", ["実験A"]),
+  note("a6", "SEM 組織観察", ["実験A"]),
+  note("a7", "相対密度の測定", ["実験A"]),
+  // 実験B: 輸送特性測定
+  note("b1", "ゼーベック係数測定（室温）", ["実験B"]),
+  note("b2", "高温ゼーベック測定", ["実験B"]),
+  note("b3", "電気伝導度測定", ["実験B"]),
+  note("b4", "ホール測定メモ", ["実験B"]),
+  note("b5", "レーザーフラッシュ熱伝導率", ["実験B"]),
+  note("b6", "ZT 算出と考察", ["実験B"]),
+  // シミュレーション
+  note("s1", "VASP 構造最適化", ["シミュレーション"]),
+  note("s2", "バンド構造計算", ["シミュレーション"]),
+  note("s3", "フォノン分散計算", ["シミュレーション"]),
+  note("s4", "キャリア濃度依存性の計算", ["シミュレーション"]),
+  note("s5", "計算と実験の比較メモ", ["シミュレーション"]),
+  // 文献調査
+  note("r1", "Cu系熱電の先行研究整理", ["文献調査"]),
+  note("r2", "焼結手法のレビュー", ["文献調査"]),
+  note("r3", "バンド計算手法の調査", ["文献調査"]),
+  note("r4", "測定プロトコル文献メモ", ["文献調査"]),
+  // 跨ぎノート（実験A→実験B の受け渡し）
+  note("x1", "試料受け渡しリスト", ["実験A", "実験B"]),
+  // 未分類（u2〜u4 は孤立）
+  note("u1", "研究テーマの構想"),
+  note("u2", "学会発表の構成案"),
+  note("u3", "装置予約の覚え書き"),
+  note("u4", "ミーティング議事メモ"),
+  note("u5", "論文アウトライン"),
+  note("u6", "今後の実験計画"),
+];
+
+const LARGE_EDGES: NoteEdge[] = [
+  // 実験A 内の手順連鎖
+  { source: "a1", target: "a2", relation: "derived" },
+  { source: "a2", target: "a3", relation: "derived" },
+  { source: "a3", target: "a4", relation: "derived" },
+  { source: "a3", target: "a5", relation: "derived" },
+  { source: "a4", target: "a5", relation: "derived" },
+  { source: "a5", target: "a6", relation: "derived" },
+  { source: "a5", target: "a7", relation: "derived" },
+  // 実験B 内
+  { source: "b1", target: "b2", relation: "derived" },
+  { source: "b3", target: "b4", relation: "derived" },
+  { source: "b1", target: "b6", relation: "derived" },
+  { source: "b3", target: "b6", relation: "derived" },
+  { source: "b5", target: "b6", relation: "derived" },
+  // シミュレーション内
+  { source: "s1", target: "s2", relation: "derived" },
+  { source: "s1", target: "s3", relation: "derived" },
+  { source: "s2", target: "s4", relation: "derived" },
+  { source: "s4", target: "s5", relation: "derived" },
+  // クラスタ間: 実験A → 実験B（試料完成→測定、跨ぎノート経由も）
+  { source: "a7", target: "b1", relation: "derived" },
+  { source: "a4", target: "x1", relation: "derived" },
+  { source: "x1", target: "b1", relation: "derived" },
+  // クラスタ間: 計算⇄実験・文献の支援
+  { source: "b6", target: "s5", relation: "derived" },
+  { source: "s5", target: "a3", relation: "reference" },
+  { source: "r1", target: "u1", relation: "reference" },
+  { source: "r2", target: "a2", relation: "reference" },
+  { source: "r3", target: "s1", relation: "reference" },
+  { source: "r4", target: "b1", relation: "reference" },
+  // 構想・まとめ（未分類との接続）
+  { source: "u1", target: "a1", relation: "derived" },
+  { source: "b6", target: "u5", relation: "reference" },
+  { source: "b6", target: "u6", relation: "derived" },
+];
+
+const LARGE: NoteGraphData = { nodes: LARGE_NODES, edges: LARGE_EDGES };
+
 const ALL_LAYERS = new Set(["source", "note", "crystal", "synth"] as const);
 
 const meta: Meta = {
@@ -168,6 +254,46 @@ export const CanvasContextCluster: StoryObj = {
       />
     </div>
   ),
+};
+
+// 大規模データでのクラスタリング検証。「文脈で寄せる」をトグルで ON/OFF して
+// 素の force レイアウトとの差を見比べられる。ノート29・文脈4種・跨ぎ1・孤立3。
+export const CanvasContextClusterLarge: StoryObj = {
+  name: "キャンバス: 文脈クラスター（大規模）",
+  render: () => {
+    function Demo() {
+      const [cluster, setCluster] = useState(true);
+      return (
+        <div style={{ padding: 16 }}>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              marginBottom: 8,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={cluster}
+              onChange={(e) => setCluster(e.target.checked)}
+            />
+            文脈で寄せる
+          </label>
+          <GlobalGraphCanvas
+            data={LARGE}
+            visibleLayers={new Set(["note"] as const)}
+            colorMode="context"
+            clusterByContext={cluster}
+            height={620}
+          />
+        </div>
+      );
+    }
+    return <Demo />;
+  },
 };
 
 // キャンバス単体（検索強調）。ヒット = 琥珀色の太枠 + フルラベル、他はフェード。
