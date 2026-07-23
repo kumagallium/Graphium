@@ -1946,13 +1946,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.displayName")}</label>
                         <Input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
                       </div>
-                      <div>
-                        <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.models.editApiKey")}</label>
-                        <Input type="password" value={editApiKey} onChange={(e) => setEditApiKey(e.target.value)} placeholder={t("settings.models.editApiKeyPlaceholder")} className="font-mono text-sm" />
-                      </div>
+                      {/* 接続先 → 認証の順（どこへ繋ぐかが先） */}
                       <div>
                         <label className="text-xs font-medium text-foreground mb-2 block">API Base URL</label>
                         <Input type="url" value={editApiBase} onChange={(e) => setEditApiBase(e.target.value)} placeholder={API_BASE_HINTS[m.provider] ?? ""} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.models.editApiKey")}</label>
+                        <Input type="password" value={editApiKey} onChange={(e) => setEditApiKey(e.target.value)} placeholder={t("settings.models.editApiKeyPlaceholder")} className="font-mono text-sm" />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-foreground mb-2 block">
@@ -2189,7 +2190,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   </>
                 ) : (
                   <>
-                    {/* 新規プロバイダーモード: プロバイダー + API キー */}
+                    {/* 新規プロバイダーモード: プロバイダー → エンドポイント → API キー */}
                     <div>
                       <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.provider")}</label>
                       <div className="relative">
@@ -2222,39 +2223,53 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     </div>
 
                     {addProvider === "claude-subscription" ? (
-                      // サブスク経由は API キー不要。セットアップ案内を出す。
-                      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-                        {t("settings.addModel.claudeSubHint")}
-                      </div>
+                      <>
+                        {/* サブスク経由は API キー不要。セットアップ案内が主役で、
+                            CLI パス（自動検出の脱出ハッチ）はその後ろに置く。 */}
+                        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
+                          {t("settings.addModel.claudeSubHint")}
+                        </div>
+                        {/* addApiBase を claude CLI の絶対パス（任意）として流用する */}
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-2 block">
+                            {t("settings.addModel.claudeCliPath")}
+                          </label>
+                          <Input
+                            type="text"
+                            value={addApiBase}
+                            onChange={(e) => setAddApiBase(e.target.value)}
+                            placeholder={API_BASE_HINTS[addProvider] ?? ""}
+                          />
+                        </div>
+                      </>
                     ) : (
-                      <div>
-                        <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.apiKey")}</label>
-                        <Input
-                          type="password"
-                          value={addApiKey}
-                          onChange={(e) => setAddApiKey(e.target.value)}
-                          placeholder="sk-..."
-                          className="font-mono text-sm"
-                        />
-                      </div>
+                      <>
+                        {/* 接続先 → 認証の順（どこへ繋ぐかが先）。
+                            API Base URL は openai-compatible では必須、他は任意。 */}
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-2 block">
+                            API Base URL
+                            {addProvider === "openai-compatible" && <span className="text-red-500 ml-1">*</span>}
+                          </label>
+                          <Input
+                            type="text"
+                            value={addApiBase}
+                            onChange={(e) => setAddApiBase(e.target.value)}
+                            placeholder={API_BASE_HINTS[addProvider] ?? ""}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-2 block">{t("settings.addModel.apiKey")}</label>
+                          <Input
+                            type="password"
+                            value={addApiKey}
+                            onChange={(e) => setAddApiKey(e.target.value)}
+                            placeholder="sk-..."
+                            className="font-mono text-sm"
+                          />
+                        </div>
+                      </>
                     )}
-
-                    {/* API Base URL（openai-compatible は必須、他は任意）。
-                        claude-subscription では claude CLI の絶対パス（任意）として流用する。 */}
-                    <div>
-                      <label className="text-xs font-medium text-foreground mb-2 block">
-                        {addProvider === "claude-subscription"
-                          ? t("settings.addModel.claudeCliPath")
-                          : "API Base URL"}
-                        {addProvider === "openai-compatible" && <span className="text-red-500 ml-1">*</span>}
-                      </label>
-                      <Input
-                        type="text"
-                        value={addApiBase}
-                        onChange={(e) => setAddApiBase(e.target.value)}
-                        placeholder={API_BASE_HINTS[addProvider] ?? ""}
-                      />
-                    </div>
 
                     {addProvider !== "claude-subscription" && (
                       <Button
