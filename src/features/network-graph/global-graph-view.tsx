@@ -67,6 +67,11 @@ const ALL_LAYERS: LayerId[] = ["source", "note", "crystal"];
  * contextFilter: 文脈タグ（noteContexts）の小文字キー集合。空/未指定なら絞り込まない。
  *   選択タグを持つノートに加え「タグを持たない隣接ノード」（素材・知見・未分類）も残す —
  *   実験 A に絞ったときにその素材や生まれた知見は一緒に見え、別タグの実験 B は消える。
+ *
+ * hideUncategorized: 未分類（タグを持てるのにタグ無しの通常ノート）を消す。
+ *   external / wiki は「文脈を持たせられない」層であって未分類とは別物なので対象外
+ *   （ContextLegend の未分類カウントと同じ定義）。contextFilter の「タグ無し隣接を
+ *   残す」ルールより優先される（明示的に消すと言っているため）。
  */
 export function filterGlobalGraph(
   data: NoteGraphData,
@@ -75,9 +80,16 @@ export function filterGlobalGraph(
     hideReferences?: boolean;
     hideIsolated?: boolean;
     contextFilter?: Set<string>;
+    hideUncategorized?: boolean;
   },
 ): NoteGraphData {
-  const { visibleLayers, hideReferences = false, hideIsolated = false, contextFilter } = opts;
+  const {
+    visibleLayers,
+    hideReferences = false,
+    hideIsolated = false,
+    contextFilter,
+    hideUncategorized = false,
+  } = opts;
   const visibleIds = new Set(
     data.nodes.filter((n) => visibleLayers.has(KIND_LAYER[kindOf(n)])).map((n) => n.id),
   );
@@ -103,6 +115,13 @@ export function filterGlobalGraph(
       // タグを持たない隣接（素材・知見・未分類）は残し、別タグのノートは消す
       return (n.noteContexts ?? []).length === 0;
     });
+    const kept = new Set(nodes.map((n) => n.id));
+    edges = edges.filter((e) => kept.has(e.source) && kept.has(e.target));
+  }
+  if (hideUncategorized) {
+    nodes = nodes.filter(
+      (n) => n.external || n.isWiki || (n.noteContexts && n.noteContexts.length > 0),
+    );
     const kept = new Set(nodes.map((n) => n.id));
     edges = edges.filter((e) => kept.has(e.source) && kept.has(e.target));
   }
@@ -315,6 +334,7 @@ export function GlobalGraphCanvas({
   hideIsolated = false,
   colorMode = "kind",
   contextFilter,
+  hideUncategorized = false,
   clusterByContext = false,
   searchQuery = "",
   searchJumpToken = 0,
@@ -333,6 +353,8 @@ export function GlobalGraphCanvas({
   colorMode?: GraphColorMode;
   /** 文脈タグ絞り込み（小文字キー）。filterGlobalGraph にそのまま渡す。 */
   contextFilter?: Set<string>;
+  /** 未分類（タグ無しの通常ノート）を隠す。filterGlobalGraph にそのまま渡す。 */
+  hideUncategorized?: boolean;
   /** 同じ文脈タグのノードを不可視エッジで引き寄せ、クラスターとして固まらせる。 */
   clusterByContext?: boolean;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
@@ -360,10 +382,17 @@ export function GlobalGraphCanvas({
   // Enter 巡回の現在位置（クエリが変わったら 0 に戻す）
   const jumpIndexRef = useRef(0);
 
-  // 表示中の層・参照・文脈タグ・孤立フィルタを適用
+  // 表示中の層・参照・文脈タグ・未分類・孤立フィルタを適用
   const { nodes: shownNodes, edges: shownEdges } = useMemo(
-    () => filterGlobalGraph(data, { visibleLayers, hideReferences, hideIsolated, contextFilter }),
-    [data, visibleLayers, hideReferences, hideIsolated, contextFilter],
+    () =>
+      filterGlobalGraph(data, {
+        visibleLayers,
+        hideReferences,
+        hideIsolated,
+        contextFilter,
+        hideUncategorized,
+      }),
+    [data, visibleLayers, hideReferences, hideIsolated, contextFilter, hideUncategorized],
   );
 
   useEffect(() => {
@@ -673,6 +702,8 @@ function ContextLegend({
   edgeData,
   selected,
   onToggle,
+  hideUncategorized,
+  onToggleUncategorized,
 }: {
   data: NoteGraphData;
   /** エッジ凡例用の表示中サブグラフ（タグ集計の data とは駆動元が違う）。 */
@@ -680,6 +711,9 @@ function ContextLegend({
   /** 選択中タグ（小文字キー）。 */
   selected: Set<string>;
   onToggle: (key: string) => void;
+  /** 未分類（タグ無しの通常ノート）を隠しているか。凡例の未分類チップがトグルになる。 */
+  hideUncategorized: boolean;
+  onToggleUncategorized: () => void;
 }) {
   const t = useT();
   const tags = useMemo(() => aggregateNoteContexts(data.nodes), [data]);
@@ -732,7 +766,15 @@ function ContextLegend({
         );
       })}
       {uncategorized > 0 && (
-        <span className="flex items-center gap-1 text-muted-foreground">
+        // タグチップと同じ操作体系: クリックで未分類の表示/非表示をトグル。
+        // 非表示中は薄く + 打ち消し線で「消してある」ことを示す。
+        <button
+          onClick={onToggleUncategorized}
+          title={t("globalGraph.toggleUncategorizedHint")}
+          className={`flex items-center gap-1 text-muted-foreground transition-opacity ${
+            hideUncategorized ? "opacity-40 line-through" : ""
+          }`}
+        >
           <span
             style={{
               width: 10,
@@ -745,7 +787,7 @@ function ContextLegend({
           />
           {t("globalGraph.uncategorized")}
           <span className="opacity-70">{uncategorized}</span>
-        </span>
+        </button>
       )}
       {edgeData.edges.length > 0 && <span className="w-px h-3 bg-border mx-1" />}
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
@@ -830,6 +872,8 @@ export function GlobalGraphView({
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
   // 同じ文脈タグのノードを引き寄せてクラスターにする（レイアウト再実行を伴う）
   const [clusterByContext, setClusterByContext] = useState(false);
+  // 未分類（タグ無しの通常ノート）を隠す。凡例の未分類チップでトグル
+  const [hideUncategorized, setHideUncategorized] = useState(false);
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
@@ -839,14 +883,19 @@ export function GlobalGraphView({
   // 層・参照・文脈タグフィルタ適用後の「全ノード版」と「連結のみ版」を両方求め、
   // 表示用サブグラフ（shown）と隠れている孤立ノード数（isolatedCount）を導く。
   const { shown, isolatedCount } = useMemo(() => {
-    const base = { visibleLayers: visible, hideReferences: hideRefs, contextFilter: selectedContexts };
+    const base = {
+      visibleLayers: visible,
+      hideReferences: hideRefs,
+      contextFilter: selectedContexts,
+      hideUncategorized,
+    };
     const withIsolated = filterGlobalGraph(data, { ...base, hideIsolated: false });
     const connectedOnly = filterGlobalGraph(data, { ...base, hideIsolated: true });
     return {
       shown: showIsolated ? withIsolated : connectedOnly,
       isolatedCount: withIsolated.nodes.length - connectedOnly.nodes.length,
     };
-  }, [data, visible, hideRefs, showIsolated, selectedContexts]);
+  }, [data, visible, hideRefs, showIsolated, selectedContexts, hideUncategorized]);
 
   // 各層のノード総数（孤立含む・フィルタ前）。チップの件数表示に使う。
   const layerCounts = useMemo(() => {
@@ -881,6 +930,7 @@ export function GlobalGraphView({
     if (m === "kind") {
       setSelectedContexts(new Set());
       setClusterByContext(false);
+      setHideUncategorized(false);
       setVisible(new Set(ALL_LAYERS));
     } else {
       setVisible(new Set<LayerId>(["note"]));
@@ -986,6 +1036,8 @@ export function GlobalGraphView({
             edgeData={shown}
             selected={selectedContexts}
             onToggle={toggleContext}
+            hideUncategorized={hideUncategorized}
+            onToggleUncategorized={() => setHideUncategorized((v) => !v)}
           />
         ) : (
           <Legend data={shown} />
@@ -1005,6 +1057,7 @@ export function GlobalGraphView({
             hideIsolated={!showIsolated}
             colorMode={colorMode}
             contextFilter={selectedContexts}
+            hideUncategorized={hideUncategorized}
             clusterByContext={clusterByContext}
             searchQuery={searchInput}
             searchJumpToken={searchJumpToken}

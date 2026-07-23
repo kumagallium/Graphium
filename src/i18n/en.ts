@@ -1482,6 +1482,7 @@ export const en: Record<string, string> = {
   "globalGraph.clusterByContext": "Group by context",
   "globalGraph.clusterByContextHint": "Pull notes with the same context together into clusters",
   "globalGraph.uncategorized": "Uncategorized",
+  "globalGraph.toggleUncategorizedHint": "Click to show/hide uncategorized notes",
   "globalGraph.noContexts": "No notes with context labels yet",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
