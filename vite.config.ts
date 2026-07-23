@@ -91,6 +91,12 @@ const isVercel = process.env.VERCEL === "1";
 
 export default defineConfig({
   base: (isTauri || isVercel) ? "/" : "/Graphium/",
+  optimizeDeps: {
+    // rtf.js の EMFJS は UMD バンドルのため、dev で素通しすると ESM として
+    // 実行されて export が取れない（this=undefined で TypeError）。esbuild の
+    // CJS→ESM 変換を通すために明示 include する（docx-import の EMF 変換で使用）。
+    include: ["rtf.js/dist/EMFJS.bundle.js"],
+  },
   build: {
     rollupOptions: {
       // Multi-page: root `/` serves the landing page, `/app/` serves the editor.

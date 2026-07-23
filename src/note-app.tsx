@@ -6147,6 +6147,34 @@ export function NoteApp() {
         throw new Error(tStatic("asset.docxUnsupportedImages"));
       }
 
+      // 再抽出で重複を増やさない: この docx 由来（derivedFromAssets）の既存抽出
+      // 画像のうち、ノートで未使用のものは置き換え対象として削除する。
+      // 使用中（usedIn あり）はリンク切れ防止のため残す（soft-delete と同じ思想）。
+      // 新しい抽出が成功（files > 0）してから消すことで、失敗時に旧画像まで
+      // 失う事故を避けている。
+      const prevDerived = (fm.mediaIndex?.media ?? []).filter(
+        (m) => m.type === "image" && m.derivedFromAssets?.includes(entry.fileId),
+      );
+      let replaced = 0;
+      let keptInUse = 0;
+      for (const old of prevDerived) {
+        if ((old.usedIn?.length ?? 0) > 0) {
+          keptInUse++;
+          continue;
+        }
+        try {
+          await fm.handleDeleteMedia(old);
+          replaced++;
+        } catch (err) {
+          console.warn("[note-app] 旧抽出画像の削除失敗:", err);
+        }
+      }
+      if (replaced > 0 || keptInUse > 0) {
+        console.info(
+          `[note-app] Word 再抽出: 旧画像 ${replaced} 件を置き換え、使用中 ${keptInUse} 件は保持`,
+        );
+      }
+
       let extracted = 0;
       for (let i = 0; i < files.length; i++) {
         onProgress(i, files.length);

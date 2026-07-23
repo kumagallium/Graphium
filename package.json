@@ -87,9 +87,11 @@
     "react-markdown": "^10.1.0",
     "react-pdf": "^10.4.1",
     "remark-gfm": "^4.0.1",
+    "rtf.js": "3.0.9",
     "shadcn": "^4.0.8",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
+    "utif2": "4.1.0",
     "uuidv7": "^1.2.1",
     "zod": "^4.3.6"
   },
