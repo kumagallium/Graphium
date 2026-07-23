@@ -1613,6 +1613,10 @@ export const en: Record<string, string> = {
   "memo.citedCount": "· {count} citation(s)",
   "memo.delete": "Delete memo",
   "memo.composerPlaceholder": "Write a memo… ⏎ to save, Shift+⏎ for newline",
+  // ブロック紐付きメモ
+  "memo.addToBlock": "📝 Add memo",
+  "memo.showLinkedBlock": "Click to show the linked block",
+  "memo.linkedBlock": "Linked block",
 
   // インデックステーブル
   "indexTable.colName": "Name",

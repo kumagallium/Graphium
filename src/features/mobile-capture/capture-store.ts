@@ -67,10 +67,19 @@ export type MemoSourceAsset = {
  *
  * `sourceAsset` と排他ではなく、両方のフィルタ経路を許す。素材経由 / ノート経由
  * のどちらでも CaptureIndex に流れ込み、メモ一覧では横断的に見える。
+ *
+ * ブロック紐付け（optional）:
+ * - blockId: ブロックメニュー「メモ」から作成された場合の紐付け先ブロック。
+ *   ノート単位（fileId のみ）より一段強いアンカー。ブロックが後から削除された
+ *   場合はノート単位の出典として degrade する（フィルタは fileId のみで判定）。
+ * - blockText: 作成時点のブロックテキスト抜粋（表示用スナップショット兼、
+ *   ブロック消失時の復旧手がかり。InlineHighlight.text と同じ発想）。
  */
 export type MemoSourceNote = {
   fileId: string;
   title?: string;
+  blockId?: string;
+  blockText?: string;
 };
 
 /** 付箋キャプチャ1件 */

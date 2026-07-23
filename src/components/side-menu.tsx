@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useBlockAlignmentStoreOptional, type BlockAlignment } from "../features/block-alignment";
 import { SideMenuExtension } from "@blocknote/core/extensions";
+import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
@@ -48,6 +49,17 @@ export function setOpenLinkDropdownFn(
   fn: typeof openLinkDropdownFn,
 ) {
   openLinkDropdownFn = fn;
+}
+
+// ブロック紐付きメモ作成用のグローバルコールバック
+// （openLinkDropdownFn と同じ流儀。note-app.tsx がダイアログ表示を担当する）
+let openBlockMemoFn: ((params: {
+  blockId: string;
+  blockText: string;
+}) => void) | null = null;
+
+export function setOpenBlockMemoFn(fn: typeof openBlockMemoFn) {
+  openBlockMemoFn = fn;
 }
 
 // 見出しブロックの配下ブロックを収集する（スコープ選択）
@@ -140,6 +152,35 @@ function DeriveNoteMenuItem() {
       }}
     >
       {t("editor.derive")}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+// DragHandle メニュー内: ブロック紐付きメモ作成
+// このブロックを出典（sourceNote.blockId）にしたメモの入力ダイアログを開く。
+// コールバック未登録の文脈（Storybook 等）では項目自体を出さない。
+function AddMemoMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block || !openBlockMemoFn) return null;
+
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => {
+        // メニュー表示中の block は content が古い可能性があるため、
+        // クリック時点の最新ブロックから表示ラベルを取り直す
+        const latest = editor.getBlock(block.id) ?? block;
+        openBlockMemoFn?.({ blockId: block.id, blockText: resolveMemoBlockLabel(latest) });
+      }}
+    >
+      {t("memo.addToBlock")}
     </Components.Generic.Menu.Item>
   );
 }
@@ -592,6 +633,7 @@ export function NoteSideMenu() {
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <AlignmentMenuItems />
         <BlockLabelMenuItems />
+        <AddMemoMenuItem />
         <DeriveNoteMenuItem />
         <AiAssistantMenuItem />
       </DragHandleButton>

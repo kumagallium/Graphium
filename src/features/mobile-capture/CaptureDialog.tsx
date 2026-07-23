@@ -4,7 +4,7 @@
 //   - "centered":  デスクトップ向け。バックドロップ + 中央カード（軽量モーダル）
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Send } from "lucide-react";
+import { X, Send, Pilcrow } from "lucide-react";
 import { useT } from "../../i18n";
 
 export type CaptureDialogVariant = "fullscreen" | "centered";
@@ -14,11 +14,17 @@ export function CaptureDialog({
   onClose,
   submitting,
   variant = "fullscreen",
+  contextLabel,
 }: {
   onSubmit: (text: string) => Promise<void>;
   onClose: () => void;
   submitting: boolean;
   variant?: CaptureDialogVariant;
+  /**
+   * 紐付け先コンテキストの表示（optional）。
+   * ブロック紐付きメモの場合に「どのブロックへのメモか」の抜粋を出す。
+   */
+  contextLabel?: string;
 }) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -80,6 +86,13 @@ export function CaptureDialog({
             </button>
           </div>
 
+          {contextLabel && (
+            <div className="flex items-center gap-1.5 px-4 pt-2.5 text-xs text-muted-foreground">
+              <Pilcrow size={12} className="shrink-0" />
+              <span className="truncate">{contextLabel}</span>
+            </div>
+          )}
+
           <div className="px-4 py-3">
             <textarea
               ref={textareaRef}
@@ -134,6 +147,14 @@ export function CaptureDialog({
           <Send size={18} />
         </button>
       </div>
+
+      {/* 紐付け先コンテキスト（ブロック紐付きメモの場合のみ） */}
+      {contextLabel && (
+        <div className="flex items-center gap-1.5 px-4 pt-2.5 text-xs text-muted-foreground">
+          <Pilcrow size={12} className="shrink-0" />
+          <span className="truncate">{contextLabel}</span>
+        </div>
+      )}
 
       {/* テキストエリア */}
       <div className="flex-1 px-4 py-3">
