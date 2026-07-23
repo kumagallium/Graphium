@@ -1488,248 +1488,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           </div>
         )}
 
-        {/* ── AI タブ：利用設定 ── */}
-        {tab === "ai" && (
-          <div className="space-y-4">
-            {/* モデル選択 */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.model")}
-              </label>
-              <div className="relative">
-                <select
-                  value={model}
-                  onChange={(e) => { setModel(e.target.value); setSaved(false); }}
-                  disabled={modelsLoading || models.length === 0}
-                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
-                  </option>
-                  {models.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
-            </div>
-
-            {/* Embedding モデル選択 */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
-                Embedding Model
-              </label>
-              <div className="relative">
-                <select
-                  value={embeddingModel}
-                  onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
-                  disabled={modelsLoading || models.length === 0}
-                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {models.length === 0 ? "No models" : "Same as chat model"}
-                  </option>
-                  {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              </div>
-              {/* 接続テストボタンと結果表示 */}
-              <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={handleTestEmbedding}
-                  disabled={embTestState.status === "running" || (models.length === 0)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {embTestState.status === "running"
-                    ? t("settings.embeddingModel.testing")
-                    : t("settings.embeddingModel.test")}
-                </button>
-                {embTestState.status === "success" && (
-                  <span className="text-xs text-emerald-700 dark:text-emerald-400">
-                    ✓ {embTestState.dimensions
-                      ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
-                      : t("settings.embeddingModel.testSuccessNoDim")}
-                  </span>
-                )}
-                {embTestState.status === "error" && (
-                  <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
-                    ⚠ {embTestState.message ?? "Unknown error"}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Embedding requires OpenAI or OpenAI-compatible provider. Leave empty to use text-match fallback.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("settings.embeddingModel.note")}
-              </p>
-            </div>
-
-            {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.chatSynthesisModel")}
-              </label>
-              <div className="relative">
-                <select
-                  value={chatSynthesisModel}
-                  onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
-                  disabled={modelsLoading || models.length === 0}
-                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
-                  </option>
-                  {models.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("settings.chatSynthesisModelHelp")}
-              </p>
-            </div>
-
-            {/* 自動 world-grounding（opt-in / 既定 OFF）。
-                既存の "user-triggered only" を覆すので明示トグル。 */}
-            <div className="pt-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
-                    setSaved(false);
-                  }}
-                  role="switch"
-                  aria-checked={experimental.autoGrounding}
-                  aria-label={t("settings.autoGrounding.title")}
-                  className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                  style={{ backgroundColor: experimental.autoGrounding ? "#4B7A52" : "#d5e0d7" }}
-                >
-                  <span
-                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                    style={{ transform: experimental.autoGrounding ? "translateX(15px)" : "translateX(1px)" }}
-                  />
-                </button>
-                <label className="text-sm font-medium text-foreground">
-                  {t("settings.autoGrounding.title")}
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("settings.autoGrounding.help")}
-              </p>
-            </div>
-
-            {/* 世界照合専用モデル（任意）。空ならチャット・洞察モデル → default にフォールバック。
-                手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
-                {t("settings.groundingModel")}
-              </label>
-              <div className="relative">
-                <select
-                  value={groundingModelStored}
-                  onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
-                  disabled={modelsLoading || models.length === 0}
-                  className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
-                  </option>
-                  {models.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {t("settings.groundingModelHelp")}
-              </p>
-            </div>
-
-          </div>
-        )}
-
         {/* ── Storage タブ ── */}
         {tab === "storage" && (
           <div className="space-y-4">
-            {/* AuthorIdentity（team-shared-storage Phase 0） */}
-            <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">
-                {t("settings.identity.title")}
-              </label>
-              <p className="text-xs text-muted-foreground mb-2">
-                {t("settings.identity.help")}
-              </p>
-              <div className="space-y-2">
-                <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">
-                    {t("settings.identity.name")}
-                  </div>
-                  <Input
-                    type="text"
-                    value={authorName}
-                    onChange={(e) => {
-                      setAuthorName(e.target.value);
-                      setIdentitySaved(false);
-                      setIdentityError(null);
-                    }}
-                    placeholder={t("settings.identity.namePlaceholder")}
-                    autoComplete="name"
-                  />
-                </div>
-                <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">
-                    {t("settings.identity.email")}
-                  </div>
-                  <Input
-                    type="email"
-                    value={authorEmail}
-                    onChange={(e) => {
-                      setAuthorEmail(e.target.value);
-                      setIdentitySaved(false);
-                      setIdentityError(null);
-                    }}
-                    placeholder={t("settings.identity.emailPlaceholder")}
-                    autoComplete="email"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={handleSaveIdentity}
-                    disabled={!authorName.trim() || !authorEmail.trim()}
-                  >
-                    {t("settings.identity.save")}
-                  </Button>
-                  {identitySaved && (
-                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                      <CheckCircle size={12} className="text-green-600" />
-                      {t("settings.identity.saved")}
-                    </span>
-                  )}
-                </div>
-                {identityError && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
-                    <AlertCircle size={12} /> {identityError}
-                  </p>
-                )}
-              </div>
-            </div>
-
             {/* サーバーストレージ（Docker / セルフホスト Web のみ） */}
             {!isTauri() && serverCaps?.serverStorage && (
               <div>
@@ -1851,6 +1612,71 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 )}
               </div>
             )}
+
+            {/* AuthorIdentity（team-shared-storage Phase 0）。
+                共有ノート・PROV 来歴の author 情報なので、共有ストレージの直前に置く。 */}
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">
+                {t("settings.identity.title")}
+              </label>
+              <p className="text-xs text-muted-foreground mb-2">
+                {t("settings.identity.help")}
+              </p>
+              <div className="space-y-2">
+                <div>
+                  <div className="text-[11px] text-muted-foreground mb-1">
+                    {t("settings.identity.name")}
+                  </div>
+                  <Input
+                    type="text"
+                    value={authorName}
+                    onChange={(e) => {
+                      setAuthorName(e.target.value);
+                      setIdentitySaved(false);
+                      setIdentityError(null);
+                    }}
+                    placeholder={t("settings.identity.namePlaceholder")}
+                    autoComplete="name"
+                  />
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground mb-1">
+                    {t("settings.identity.email")}
+                  </div>
+                  <Input
+                    type="email"
+                    value={authorEmail}
+                    onChange={(e) => {
+                      setAuthorEmail(e.target.value);
+                      setIdentitySaved(false);
+                      setIdentityError(null);
+                    }}
+                    placeholder={t("settings.identity.emailPlaceholder")}
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveIdentity}
+                    disabled={!authorName.trim() || !authorEmail.trim()}
+                  >
+                    {t("settings.identity.save")}
+                  </Button>
+                  {identitySaved && (
+                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                      <CheckCircle size={12} className="text-green-600" />
+                      {t("settings.identity.saved")}
+                    </span>
+                  )}
+                </div>
+                {identityError && (
+                  <p className="text-xs text-red-500 flex items-center gap-1">
+                    <AlertCircle size={12} /> {identityError}
+                  </p>
+                )}
+              </div>
+            </div>
 
             {/* Shared storage（team-shared-storage Phase 1c、Tauri 専用） */}
             {isTauri() ? (
@@ -2051,9 +1877,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           </div>
         )}
 
-        {/* ── AI タブ：モデル管理 ── */}
+        {/* ── AI タブ ──
+         *  流れ: モデル登録 → 役割への割り当て → 世界照合 → MCP サーバー。
+         *  初回セットアップの順（登録が先、割り当てが後）に上から並べる。 */}
         {tab === "ai" && (
-          <div className="space-y-5 mt-6 pt-6 border-t border-border">
+          <div className="space-y-5">
             {/* AI バックエンド未接続時はアップグレード CTA を表示 */}
             {!healthLoading && !health && (
               <AiUpgradeNotice variant="card" />
@@ -2527,8 +2355,189 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             )}
 
+            {/* モデルの割り当て — 登録したモデルを役割ごとに割り当てる */}
+            <div className="border-t border-border pt-5">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
+              <div className="space-y-4">
+                {/* デフォルトモデル */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.model")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={model}
+                      onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {modelsLoading ? t("settings.modelLoading") : models.length === 0 ? t("settings.modelNone") : t("settings.modelDefault", { name: defaultModel })}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}{m.name === defaultModel ? ` (${t("settings.modelDefaultLabel")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">{t("settings.modelHelp")}</p>
+                </div>
+
+                {/* Chat & Synthesis モデル選択（対話と統合用 — default より上のモデルを当てる場面用） */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.chatSynthesisModel")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={chatSynthesisModel}
+                      onChange={(e) => { setChatSynthesisModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.chatSynthesisModelSameAsDefault")}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.chatSynthesisModelHelp")}
+                  </p>
+                </div>
+
+                {/* Embedding モデル選択 */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.embeddingModel.label")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={embeddingModel}
+                      onChange={(e) => { setEmbeddingModel(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.embeddingModel.noneFallback")}
+                      </option>
+                      {models.filter((m) => m.provider === "openai" || m.provider === "openai-compatible").map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  {/* 接続テストボタンと結果表示 */}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestEmbedding}
+                      disabled={embTestState.status === "running" || (models.length === 0)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-background text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {embTestState.status === "running"
+                        ? t("settings.embeddingModel.testing")
+                        : t("settings.embeddingModel.test")}
+                    </button>
+                    {embTestState.status === "success" && (
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">
+                        ✓ {embTestState.dimensions
+                          ? t("settings.embeddingModel.testSuccess", { dimensions: String(embTestState.dimensions) })
+                          : t("settings.embeddingModel.testSuccessNoDim")}
+                      </span>
+                    )}
+                    {embTestState.status === "error" && (
+                      <span className="text-xs text-amber-700 dark:text-amber-400 break-all">
+                        ⚠ {embTestState.message ?? "Unknown error"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.embeddingModel.help")}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("settings.embeddingModel.note")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 世界照合 — 自動照合トグルと専用モデル */}
+            <div className="border-t border-border pt-5">
+              <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
+              <div className="space-y-4">
+                {/* 自動 world-grounding（opt-in / 既定 OFF）。
+                    既存の "user-triggered only" を覆すので明示トグル。 */}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExperimental({ ...experimental, autoGrounding: !experimental.autoGrounding });
+                        setSaved(false);
+                      }}
+                      role="switch"
+                      aria-checked={experimental.autoGrounding}
+                      aria-label={t("settings.autoGrounding.title")}
+                      className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
+                      style={{ backgroundColor: experimental.autoGrounding ? "#4B7A52" : "#d5e0d7" }}
+                    >
+                      <span
+                        className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                        style={{ transform: experimental.autoGrounding ? "translateX(15px)" : "translateX(1px)" }}
+                      />
+                    </button>
+                    <label className="text-sm font-medium text-foreground">
+                      {t("settings.autoGrounding.title")}
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.autoGrounding.help")}
+                  </p>
+                </div>
+
+                {/* 世界照合専用モデル（任意）。空ならチャット・洞察モデル → default にフォールバック。
+                    手動「世界照合」ボタンと自動照合の両方がこのモデルを使う。 */}
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-2 block">
+                    {t("settings.groundingModel")}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={groundingModelStored}
+                      onChange={(e) => { setGroundingModelStored(e.target.value); setSaved(false); }}
+                      disabled={modelsLoading || models.length === 0}
+                      className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {models.length === 0 ? t("settings.modelNone") : t("settings.groundingModelSameAsDefault")}
+                      </option>
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t("settings.groundingModelHelp")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
-            <div>
+            <div className="border-t border-border pt-5">
               <div className="flex items-center gap-1.5 mb-2">
                 <Plug size={14} className="text-muted-foreground" />
                 <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
@@ -3717,9 +3726,10 @@ function GroundingKbTab() {
         </div>
       )}
 
+      {/* KB 自体が空のときとフィルタで 0 件のときを区別する（フィルタが原因と誤読させない） */}
       {kb && !loading && filtered.length === 0 && (
         <div className="text-xs text-muted-foreground py-4">
-          {t("settings.grounding.empty")}
+          {t(kb.entries.length === 0 ? "settings.grounding.emptyKb" : "settings.grounding.empty")}
         </div>
       )}
 
