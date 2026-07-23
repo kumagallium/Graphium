@@ -628,7 +628,7 @@ export const ja: Record<string, string> = {
   "settings.addModel.selectProviderPlaceholder": "— プロバイダーを選択 —",
   // ── MCP サーバー（直接接続） ──
   "settings.mcp.title": "MCP サーバー",
-  "settings.mcp.help": "Graphium が直接つなぐ MCP サーバーを追加します（レジストリ不要）。「ローカル」はコマンドを Graphium が起動・管理します（Claude Desktop と同じ方式）。デスクトップアプリかセルフホストのバックエンドが必要です。「リモート」は起動済みサーバーに URL で接続します。",
+  "settings.mcp.help": "Graphium が直接つなぐ MCP サーバーを追加します（レジストリ不要）。「ローカル」はコマンドを Graphium が起動・管理します（Claude Desktop と同じ方式）。デスクトップアプリかセルフホストのバックエンドが必要です。「リモート」は起動済みサーバーに URL で接続します。ヒント: 検索系サーバー（例: Tavily）を追加すると、どのモデルでも「外部参照」が Web 検索を使えるようになります。",
   "settings.mcp.empty": "MCP サーバーはまだ追加されていません。",
   "settings.mcp.add": "MCP サーバーを追加",
   "settings.mcp.mode.paste": "JSON を貼る",
@@ -1429,6 +1429,9 @@ export const ja: Record<string, string> = {
   "composer.scope.externalHint": "Web 検索で外部の情報源を取り込んで裏づける（調査向け）",
   "composer.scope.internalHint": "引用したもの＋蓄積した知識を横断検索してつなぐ（着想・構成向け）",
   "composer.scope.notesHint": "このノートで引用したものだけに絞る（横断検索しない・執筆や引用の正確さ向け）",
+  // 外部参照を選んだのに Web 検索手段が無い構成への警告（WebSearchMissingHint）
+  "composer.scope.webSearchMissing": "Web 検索の手段が未設定です。外部参照は Web を見ずに回答します。検索 MCP サーバー（例: Tavily）か Claude サブスクモデルを追加すると有効になります。",
+  "composer.scope.webSearchMissingCta": "設定を開く",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
   "chat.sources.fromNotes": "📓 ノート内の知識",
   "chat.sources.fromWeb": "🌐 Web の出典",

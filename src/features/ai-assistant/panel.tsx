@@ -16,6 +16,8 @@ import { ensureSidecar, getSidecarState, subscribeSidecarState } from "../../lib
 import { AiBackendDiagnostic } from "./AiBackendDiagnostic";
 import { useT } from "../../i18n";
 import { GroundingScopeChip } from "../composer/GroundingScopeChip";
+import { WebSearchMissingHint } from "../composer/WebSearchMissingHint";
+import { useWebSearchAvailability } from "../composer/use-web-search-availability";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
 import type { ChatMessage, ScopeChat } from "../../lib/document-types";
 import type { GraphiumIndex } from "../navigation/index-file";
@@ -129,6 +131,8 @@ export function AiAssistantPanel({
   const [attachedNotes, setAttachedNotes] = useState<AttachedNote[]>([]);
   // grounding スコープ（外部参照/内部参照/ノート内参照）。Composer と共通のチップで切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
+  // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す
+  const webSearch = useWebSearchAvailability(scope === "external");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionCursorPos, setMentionCursorPos] = useState(0);
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
@@ -620,6 +624,11 @@ export function AiAssistantPanel({
                 <GroundingScopeChip value={scope} onChange={setScope} />
               </span>
             </div>
+            {scope === "external" && webSearch === "missing" && (
+              <div className="mt-1.5">
+                <WebSearchMissingHint />
+              </div>
+            )}
           </div>
         </>
       )}

@@ -22,6 +22,8 @@ import { useT } from "@/i18n";
 import type { ComposerMode, ComposerSubmission, DiscoveryCard } from "./types";
 import { DEFAULT_GROUNDING_SCOPE, type GroundingScope } from "../../lib/grounding-scope";
 import { GroundingScopeChip } from "./GroundingScopeChip";
+import { WebSearchMissingHint } from "./WebSearchMissingHint";
+import { useWebSearchAvailability } from "./use-web-search-availability";
 import type { GraphiumIndex } from "../navigation/index-file";
 import { searchNotes, type SearchHit } from "./search";
 import { CORE_VERBS, AUX_VERBS, buildVerbPrompt, type VerbDef } from "./verbs";
@@ -78,6 +80,8 @@ export function Composer(props: ComposerProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   // grounding スコープ（外部参照/内部参照/ノート内参照）。AI 送信時に何を根拠として渡すかを切り替える。
   const [scope, setScope] = useState<GroundingScope>(DEFAULT_GROUNDING_SCOPE);
+  // 外部参照を選んだのに Web 検索手段（サブスクモデル/検索 MCP）が無い構成なら警告を出す
+  const webSearch = useWebSearchAvailability(scope === "external");
 
   // 検索結果（純関数なので useMemo で十分）
   const hits = useMemo(() => {
@@ -336,6 +340,13 @@ export function Composer(props: ComposerProps) {
             <GroundingScopeChip value={scope} onChange={setScope} />
           </span>
         </div>
+
+        {/* 外部参照選択時、Web 検索手段が無い構成への警告（設定への導線つき） */}
+        {scope === "external" && webSearch === "missing" && (
+          <div style={{ padding: "0 16px 10px" }}>
+            <WebSearchMissingHint />
+          </div>
+        )}
 
         {/* 結果リスト（onNoteSelect 未配線のときは出さない）
             cards だけの場合（空入力 + カードのみ）は別ブロックで描画するためここはスキップ */}
