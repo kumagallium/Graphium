@@ -1479,6 +1479,8 @@ export const en: Record<string, string> = {
   "globalGraph.colorBy": "Color:",
   "globalGraph.colorMode.kind": "Type",
   "globalGraph.colorMode.context": "Context",
+  "globalGraph.clusterByContext": "Group by context",
+  "globalGraph.clusterByContextHint": "Pull notes with the same context together into clusters",
   "globalGraph.uncategorized": "Uncategorized",
   "globalGraph.noContexts": "No notes with context labels yet",
 

@@ -145,6 +145,23 @@ export const CanvasContextColors: StoryObj = {
   ),
 };
 
+// キャンバス単体（文脈クラスター）。同じ noteContexts のノードを不可視エッジで
+// 引き寄せ、クラスターとして固まらせる。色も文脈モードにして塊が見えるように。
+export const CanvasContextCluster: StoryObj = {
+  name: "キャンバス: 文脈クラスター",
+  render: () => (
+    <div style={{ padding: 16 }}>
+      <GlobalGraphCanvas
+        data={SAMPLE}
+        visibleLayers={new Set(ALL_LAYERS)}
+        colorMode="context"
+        clusterByContext
+        height={560}
+      />
+    </div>
+  ),
+};
+
 // キャンバス単体（検索強調）。ヒット = 琥珀色の太枠 + フルラベル、他はフェード。
 // レイアウトは動かさない（クラス操作のみ）。
 export const CanvasSearch: StoryObj = {

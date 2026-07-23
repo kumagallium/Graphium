@@ -1478,6 +1478,8 @@ export const ja: Record<string, string> = {
   "globalGraph.colorBy": "色:",
   "globalGraph.colorMode.kind": "種類",
   "globalGraph.colorMode.context": "文脈",
+  "globalGraph.clusterByContext": "文脈で寄せる",
+  "globalGraph.clusterByContextHint": "同じ文脈のノートを近くに集めてクラスターにする",
   "globalGraph.uncategorized": "未分類",
   "globalGraph.noContexts": "文脈ラベルの付いたノートがまだありません",
 

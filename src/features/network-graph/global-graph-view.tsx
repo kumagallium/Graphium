@@ -10,7 +10,7 @@
 // 配色は knowledge-colors.ts と 2 ホップグラフ（view.tsx）に合わせている。
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import cytoscape from "cytoscape";
 import { ensureCytoscapePlugins } from "../../lib/cytoscape-setup";
 import { knowledgeKindColor, knowledgeKindBorder } from "./knowledge-colors";
@@ -141,13 +141,15 @@ function kindBorder(kind: GraphKind): string {
 // 種類の情報は形状（ellipse/round-rect/diamond）で残るので、色の軸だけ差し替わる。
 // 外部ソースは文脈を持たないので従来のグレーのまま（形も round-rect で区別が付く）。
 
-/** 文脈タグ未付与ノートの色。ノート青・外部グレーのどちらとも紛れない淡いセージ。 */
-const UNCAT_FILL = "#b9c2b9";
-const UNCAT_BORDER = "#8f998f";
+/** 文脈タグ未付与ノートの色。design.md の 2 ホップ色（間接・背景的の意味論）に合わせる。 */
+const UNCAT_FILL = "#b8c9be";
+const UNCAT_BORDER = "#9cb5a4";
 
 export type GraphColorMode = "kind" | "context";
 
 /** ノードの塗り・境界色を色モードに応じて返す。
+ *  彩度 40% / 明度 56% は design.md ラベル色パレット（S 10-51% / L 39-60% の
+ *  「落ち着いた彩度の自然色」）の中心に合わせた値。高彩度化しないこと。
  *  注意: cytoscape のカラーパーサはモダン CSS の空白区切り hsl(h s% l%) を解釈できず
  *  黙ってデフォルト色（グレー）に落ちる。必ずカンマ区切りで渡すこと
  *  （React DOM に渡す ContextBadge / ContextLegend は空白区切りでも動くが、別系統）。 */
@@ -157,8 +159,7 @@ function nodeColors(node: NoteNode, mode: GraphColorMode): { fill: string; borde
     const ctx = node.noteContexts?.[0];
     if (!ctx) return { fill: UNCAT_FILL, border: UNCAT_BORDER };
     const h = noteContextHue(ctx);
-    // ContextBadge の基準色 hsl(h 45% 45%) より明度を上げる（ノードは面で塗るため）
-    return { fill: `hsl(${h}, 50%, 62%)`, border: `hsl(${h}, 50%, 42%)` };
+    return { fill: `hsl(${h}, 40%, 56%)`, border: `hsl(${h}, 40%, 44%)` };
   }
   return { fill: kindFill(kind), border: kindBorder(kind) };
 }
@@ -259,6 +260,12 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
   },
   { selector: "edge.hover-connected", style: { width: 2.6, opacity: 1, "z-index": 10 } },
   { selector: "edge.faded", style: { opacity: 0.06 } },
+  {
+    // 「文脈で寄せる」用の不可視エッジ。描画・操作はさせず fcose の引力計算にだけ効かせる
+    // （display:none だとレイアウト対象から外れるので opacity 0 で隠す）。
+    selector: "edge.cluster-edge",
+    style: { opacity: 0, events: "no" as any },
+  },
 ];
 
 function nodeIcon(n: NoteNode): string {
@@ -302,6 +309,7 @@ export function GlobalGraphCanvas({
   hideIsolated = false,
   colorMode = "kind",
   contextFilter,
+  clusterByContext = false,
   searchQuery = "",
   searchJumpToken = 0,
   onSearchHits,
@@ -319,6 +327,8 @@ export function GlobalGraphCanvas({
   colorMode?: GraphColorMode;
   /** 文脈タグ絞り込み（小文字キー）。filterGlobalGraph にそのまま渡す。 */
   contextFilter?: Set<string>;
+  /** 同じ文脈タグのノードを不可視エッジで引き寄せ、クラスターとして固まらせる。 */
+  clusterByContext?: boolean;
   /** タイトル部分一致でヒットを強調する検索クエリ。クラス操作のみでレイアウトは動かさない。 */
   searchQuery?: string;
   /** インクリメントされるたびに次の検索ヒットへパンする（Enter 連打で巡回）。 */
@@ -394,6 +404,36 @@ export function GlobalGraphCanvas({
         },
       });
     }
+    if (clusterByContext) {
+      // 「文脈で寄せる」: タグごとにスター型（先頭ノードをハブ）の不可視エッジを張り、
+      // 同じ文脈のノードが fcose の引力で固まるようにする。完全グラフは O(n²) で
+      // レイアウトが硬直するのでスター型に留める。複数タグのノートは複数クラスタに
+      // 引かれる（跨ぎノートがクラスタ間に位置する＝妥当な挙動）。
+      const byTag = new Map<string, string[]>();
+      for (const node of shownNodes) {
+        for (const c of node.noteContexts ?? []) {
+          const key = c.toLowerCase();
+          const list = byTag.get(key);
+          if (list) list.push(node.id);
+          else byTag.set(key, [node.id]);
+        }
+      }
+      for (const [key, ids] of byTag) {
+        if (ids.length < 2) continue;
+        const hub = ids[0];
+        for (let i = 1; i < ids.length; i++) {
+          elements.push({
+            data: {
+              id: `cluster:${key}:${i}`,
+              source: hub,
+              target: ids[i],
+              virtual: true,
+            },
+            classes: "cluster-edge",
+          });
+        }
+      }
+    }
 
     if (cyRef.current) cyRef.current.destroy();
 
@@ -422,8 +462,9 @@ export function GlobalGraphCanvas({
       randomize: true,
       quality: "default",
       nodeRepulsion: 9000,
-      idealEdgeLength: 110,
-      edgeElasticity: 0.4,
+      // クラスター用の不可視エッジは短く・強めに（同じ文脈が引き合って固まる）
+      idealEdgeLength: (edge: any) => (edge.data("virtual") ? 45 : 110),
+      edgeElasticity: (edge: any) => (edge.data("virtual") ? 0.9 : 0.4),
       gravity: 0.3,
       nodeSeparation: 120,
       padding: 50,
@@ -483,7 +524,7 @@ export function GlobalGraphCanvas({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [shownNodes, shownEdges, onNavigate, onOpenMedia, onOpenUrl, onOpenMemo]);
+  }, [shownNodes, shownEdges, clusterByContext, onNavigate, onOpenMedia, onOpenUrl, onOpenMemo]);
 
   // 色モード切替: cy を作り直さず data 書き換えのみ（レイアウト・ズームを保つ）
   useEffect(() => {
@@ -537,16 +578,45 @@ export function GlobalGraphCanvas({
 
 // ── 凡例・トグル・層チップ・列ヘッダ ──
 
+// エッジ（relation）凡例。線の意味（派生/素材利用/参照）は色モードに依存しない共通概念
+// なので、種類凡例（Legend）と文脈凡例（ContextLegend）の両方から使う。
+// 表示中サブグラフに実在する relation だけ出す（画面と凡例が常に一致）。
+function RelationLegendItems({ data }: { data: NoteGraphData }) {
+  const t = useT();
+  const presentRels = useMemo(
+    () => new Set(data.edges.map((e) => e.relation ?? "derived")),
+    [data],
+  );
+  const relItems = ([
+    { rel: "derived", label: t("globalGraph.relation.derived"), dashed: false },
+    { rel: "used", label: t("globalGraph.relation.used"), dashed: false },
+    { rel: "reference", label: t("globalGraph.relation.reference"), dashed: true },
+  ] as { rel: EdgeRelation; label: string; dashed: boolean }[]).filter((i) => presentRels.has(i.rel));
+  return (
+    <>
+      {relItems.map(({ rel, label, dashed }) => (
+        <span key={rel} className="flex items-center gap-1">
+          <span
+            style={{
+              width: 16,
+              height: 0,
+              borderTop: `2px ${dashed ? "dashed" : "solid"} ${REL_COLOR[rel]}`,
+              display: "inline-block",
+            }}
+          />
+          {label}
+        </span>
+      ))}
+    </>
+  );
+}
+
 // 凡例は「今画面に出ているサブグラフ」駆動: 実際に描画中の kind / relation だけ出す。
 // 孤立や層フィルタで synthesis(発想) 等が 1 つも見えなければ凡例にも出さない＝
 // 画面と凡例が常に一致する。撤退済み kind の常設表示で混乱させないための作り。
 function Legend({ data }: { data: NoteGraphData }) {
   const t = useT();
   const presentKinds = useMemo(() => new Set(data.nodes.map(kindOf)), [data]);
-  const presentRels = useMemo(
-    () => new Set(data.edges.map((e) => e.relation ?? "derived")),
-    [data],
-  );
   const kindItems = ([
     { kind: "external", label: t("globalGraph.kind.external") },
     { kind: "note", label: t("globalGraph.kind.note") },
@@ -555,11 +625,6 @@ function Legend({ data }: { data: NoteGraphData }) {
     { kind: "summary", label: t("knowledge.kind.summary") },
     { kind: "synthesis", label: t("knowledge.kind.synthesis") },
   ] as { kind: GraphKind; label: string }[]).filter((i) => presentKinds.has(i.kind));
-  const relItems = ([
-    { rel: "derived", label: t("globalGraph.relation.derived"), dashed: false },
-    { rel: "used", label: t("globalGraph.relation.used"), dashed: false },
-    { rel: "reference", label: t("globalGraph.relation.reference"), dashed: true },
-  ] as { rel: EdgeRelation; label: string; dashed: boolean }[]).filter((i) => presentRels.has(i.rel));
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
       {kindItems.map(({ kind, label }) => (
@@ -578,20 +643,8 @@ function Legend({ data }: { data: NoteGraphData }) {
           {label}
         </span>
       ))}
-      {kindItems.length > 0 && relItems.length > 0 && <span className="w-px h-3 bg-border" />}
-      {relItems.map(({ rel, label, dashed }) => (
-        <span key={rel} className="flex items-center gap-1">
-          <span
-            style={{
-              width: 16,
-              height: 0,
-              borderTop: `2px ${dashed ? "dashed" : "solid"} ${REL_COLOR[rel]}`,
-              display: "inline-block",
-            }}
-          />
-          {label}
-        </span>
-      ))}
+      {kindItems.length > 0 && data.edges.length > 0 && <span className="w-px h-3 bg-border" />}
+      <RelationLegendItems data={data} />
     </div>
   );
 }
@@ -600,12 +653,16 @@ function Legend({ data }: { data: NoteGraphData }) {
 // タグ集計は全データ駆動（絞り込み後の shown 駆動だと、絞り込んだ瞬間に他のチップが
 // 消えて解除できなくなる）。選択が空 = 絞り込みなし（全表示）。チップクリックでトグル。
 // 見た目は ContextBadge（淡背景 + 濃文字）に合わせ、選択中は濃背景 + 白文字で反転。
+// エッジ凡例（edgeData=表示中サブグラフ駆動）は共通概念なのでこちらのモードでも出す。
 function ContextLegend({
   data,
+  edgeData,
   selected,
   onToggle,
 }: {
   data: NoteGraphData;
+  /** エッジ凡例用の表示中サブグラフ（タグ集計の data とは駆動元が違う）。 */
+  edgeData: NoteGraphData;
   /** 選択中タグ（小文字キー）。 */
   selected: Set<string>;
   onToggle: (key: string) => void;
@@ -620,7 +677,11 @@ function ContextLegend({
   );
   if (tags.length === 0) {
     return (
-      <span className="text-[10px] text-muted-foreground">{t("globalGraph.noContexts")}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <span>{t("globalGraph.noContexts")}</span>
+        {edgeData.edges.length > 0 && <span className="w-px h-3 bg-border" />}
+        <RelationLegendItems data={edgeData} />
+      </div>
     );
   }
   return (
@@ -669,6 +730,10 @@ function ContextLegend({
           <span className="opacity-70">{uncategorized}</span>
         </span>
       )}
+      {edgeData.edges.length > 0 && <span className="w-px h-3 bg-border mx-1" />}
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+        <RelationLegendItems data={edgeData} />
+      </span>
     </div>
   );
 }
@@ -736,7 +801,7 @@ export function GlobalGraphView({
   onOpenUrl?: (url: string) => void;
   /** memo: ソースノードをメモギャラリーの該当詳細で開く。未指定なら表示のみ。 */
   onOpenMemo?: (captureId: string) => void;
-  /** ヘッダーの × / Esc。全体グラフ表示を閉じてエディタに戻る。 */
+  /** Esc で全体グラフ表示を閉じてエディタに戻る（通常の画面切替は左ナビから行う）。 */
   onClose: () => void;
 }) {
   const t = useT();
@@ -746,6 +811,8 @@ export function GlobalGraphView({
   // 色の軸（kind=種類 / context=文脈タグ）と、文脈タグ絞り込み（小文字キー）
   const [colorMode, setColorMode] = useState<GraphColorMode>("kind");
   const [selectedContexts, setSelectedContexts] = useState<Set<string>>(new Set());
+  // 同じ文脈タグのノードを引き寄せてクラスターにする（レイアウト再実行を伴う）
+  const [clusterByContext, setClusterByContext] = useState(false);
   // 検索（ヒット強調 + Enter 巡回。レイアウトは動かさない）
   const [searchInput, setSearchInput] = useState("");
   const [searchJumpToken, setSearchJumpToken] = useState(0);
@@ -836,6 +903,17 @@ export function GlobalGraphView({
             ))}
           </div>
         </div>
+        <label
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+          title={t("globalGraph.clusterByContextHint")}
+        >
+          <input
+            type="checkbox"
+            checked={clusterByContext}
+            onChange={(e) => setClusterByContext(e.target.checked)}
+          />
+          {t("globalGraph.clusterByContext")}
+        </label>
         <span className="ml-auto flex items-center gap-3">
           {/* 検索: ヒットを強調 + Enter でヒットへ順にパン（Esc でクリア） */}
           <span className="relative">
@@ -869,19 +947,17 @@ export function GlobalGraphView({
           <span className="text-[11px] text-muted-foreground">
             {shown.nodes.length} / {shown.edges.length}
           </span>
-          <button
-            onClick={onClose}
-            title={t("common.close")}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X size={16} />
-          </button>
         </span>
       </div>
-      {/* 凡例（色モードに追従: 種類=kind/relation、文脈=タグチップ絞り込み） */}
+      {/* 凡例（色モードに追従: ノード凡例だけ切替、エッジ凡例は共通で常時表示） */}
       <div className="px-4 py-2 border-b border-border">
         {colorMode === "context" ? (
-          <ContextLegend data={data} selected={selectedContexts} onToggle={toggleContext} />
+          <ContextLegend
+            data={data}
+            edgeData={shown}
+            selected={selectedContexts}
+            onToggle={toggleContext}
+          />
         ) : (
           <Legend data={shown} />
         )}
@@ -900,6 +976,7 @@ export function GlobalGraphView({
             hideIsolated={!showIsolated}
             colorMode={colorMode}
             contextFilter={selectedContexts}
+            clusterByContext={clusterByContext}
             searchQuery={searchInput}
             searchJumpToken={searchJumpToken}
             onSearchHits={setSearchHits}
