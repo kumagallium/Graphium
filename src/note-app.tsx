@@ -2399,7 +2399,10 @@ function NoteEditorInner({
           }
         }
 
-        const selectedModel = getSelectedModel();
+        // チャット送信は「チャット・洞察モデル」設定を使う（未設定ならデフォルトモデルにフォールバック）。
+        // getSelectedModel() はデフォルトモデルを返すため、設定 UI の「AIチャットで使われます」の
+        // 約束と食い違っていた（#316 で chatSynthesis を追加した際にこの経路の結線が漏れていた）。
+        const selectedModel = getChatSynthesisModelName();
         const disabledTools = getDisabledTools();
         // Wiki Retriever: 関連する Wiki コンテキスト（横断検索）を取得。
         // ノート内参照（notes）では横断検索を抑制し、@引用したものだけに絞る。
@@ -2585,7 +2588,8 @@ function NoteEditorInner({
   // Composer 用の軽量 AI 呼び出し。Chat パネルには入らず、結果文字列だけを返す。
   // systemHint を与えるとプロンプトに前置する（Insert PROV で手順化を促す等）。
   const runComposerAgent = useCallback(async (prompt: string, systemHint?: string): Promise<string> => {
-    const selectedModel = getSelectedModel();
+    // Composer の Ask もチャット・洞察モデルを使う（未設定ならデフォルトモデルにフォールバック）。
+    const selectedModel = getChatSynthesisModelName();
     const disabledTools = getDisabledTools();
     const message = systemHint ? `${systemHint}\n\n${prompt}` : prompt;
     const response = await runAgent({

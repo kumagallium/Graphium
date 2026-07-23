@@ -28,7 +28,7 @@ import { AiAssistantPanel, type AttachedNote } from "../ai-assistant/panel";
 import { useAiAssistant } from "../ai-assistant/store";
 import { assembleCitedAssetContext } from "../ai-assistant/cited-document-context";
 import { runAgent } from "../ai-assistant/api";
-import { isAgentConfigured, getSelectedModel } from "../settings";
+import { isAgentConfigured, getChatSynthesisModelName } from "../settings";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { getLocale } from "../../i18n";
 import { localizeAiError } from "../../lib/ai-error";
@@ -156,7 +156,8 @@ export function MaterialFullView({
               "---",
             ].join("\n")
           : question;
-        const selectedModel = getSelectedModel();
+        // 素材ビューのチャットもチャット・洞察モデルを使う（未設定ならデフォルトモデルにフォールバック）。
+        const selectedModel = getChatSynthesisModelName();
         const response = await runAgent({
           message,
           language: getLocale(),
