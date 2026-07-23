@@ -96,7 +96,13 @@ function emfXform(
 }
 
 /** EMR_EXTCREATEFONTINDIRECTW（LOGFONT 最小形） */
-function emfCreateFont(ihFont: number, height: number, face: string, charSet = 0): RecordBytes {
+function emfCreateFont(
+  ihFont: number,
+  height: number,
+  face: string,
+  charSet = 0,
+  escapement = 0,
+): RecordBytes {
   const size = 104 + 260; // 実ファイルは LOGFONTEXDV まで含み大きいが、パーサーは先頭しか読まない
   const b = new Uint8Array(size);
   const dv = new DataView(b.buffer);
@@ -104,6 +110,7 @@ function emfCreateFont(ihFont: number, height: number, face: string, charSet = 0
   dv.setUint32(4, size, true);
   dv.setUint32(8, ihFont, true);
   dv.setInt32(12, height, true);
+  dv.setInt32(20, escapement, true); // lfEscapement
   dv.setInt32(28, 400, true); // weight
   dv.setUint8(35, charSet); // lfCharSet
   for (let i = 0; i < Math.min(face.length, 31); i++) {
@@ -350,6 +357,19 @@ describe("extractTextRuns", () => {
     const runs = extractTextRuns(emf);
     expect(runs).toHaveLength(1);
     expect(runs[0].text).toBe("θα");
+  });
+
+  it("lfEscapement（縦書き軸タイトル等の回転角）を取り出す", () => {
+    const emf = buildEmf(
+      emfHeader(),
+      emfCreateFont(4, -217, "Arial", 0, 900), // Excel Y 軸タイトルの 90° 回転
+      emfSelectObject(4),
+      emfTextOutW(678, 2748, "Energy (eV)"),
+      emfEof(),
+    );
+    const runs = extractTextRuns(emf);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].escapement).toBe(900);
   });
 
   it("ストックオブジェクト SELECTOBJECT でフォント追跡が壊れない", () => {

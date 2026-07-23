@@ -205,6 +205,8 @@ export type EmfTextRun = {
   color: string;
   /** GDI の TA_* フラグ */
   align: number;
+  /** LOGFONT.lfEscapement: テキスト回転角（1/10 度、反時計回り）。縦書き軸タイトルは 900 */
+  escapement: number;
 };
 
 /**
@@ -249,7 +251,14 @@ function symbolToUnicode(text: string): string {
  * 状態復元までは追わない簡易版。軸ラベル用途には十分）。
  */
 export function extractTextRuns(buf: ArrayBuffer): EmfTextRun[] {
-  type FontDef = { height: number; face: string; italic: boolean; weight: number; symbol: boolean };
+  type FontDef = {
+    height: number;
+    face: string;
+    italic: boolean;
+    weight: number;
+    symbol: boolean;
+    escapement: number;
+  };
   const fonts = new Map<number, FontDef>();
   let curFont: FontDef | null = null;
   let curColor = "#000000";
@@ -260,6 +269,7 @@ export function extractTextRuns(buf: ArrayBuffer): EmfTextRun[] {
     if (iType === EMR.EXTCREATEFONTINDIRECTW && size >= 104) {
       const ih = dv.getUint32(off + 8, true);
       const height = dv.getInt32(off + 12, true);
+      const escapement = dv.getInt32(off + 20, true);
       const weight = dv.getInt32(off + 28, true);
       const italic = dv.getUint8(off + 32) !== 0;
       const charSet = dv.getUint8(off + 35); // SYMBOL_CHARSET = 2
@@ -270,7 +280,7 @@ export function extractTextRuns(buf: ArrayBuffer): EmfTextRun[] {
         if (c === 0) break;
         face += String.fromCharCode(c);
       }
-      fonts.set(ih, { height, face, italic, weight, symbol: charSet === 2 });
+      fonts.set(ih, { height, face, italic, weight, symbol: charSet === 2, escapement });
     } else if (iType === EMR.SELECTOBJECT) {
       const ih = dv.getUint32(off + 8, true);
       const f = fonts.get(ih);
@@ -318,6 +328,7 @@ export function extractTextRuns(buf: ArrayBuffer): EmfTextRun[] {
         weight: curFont?.weight ?? 400,
         color: curColor,
         align: curAlign,
+        escapement: curFont?.escapement ?? 0,
       });
     }
   });
@@ -417,6 +428,11 @@ export async function renderVectorEmfToSvg(buf: ArrayBuffer): Promise<string | n
       if (run.weight >= 600) t.setAttribute("font-weight", "bold");
       // TA_BASELINE(24) 以外（TOP 基準等）は em 高さ分だけベースラインを下げる
       if ((run.align & 24) !== 24) t.setAttribute("dominant-baseline", "hanging");
+      // lfEscapement: 1/10 度・反時計回り（Y 軸タイトルの縦書きは 900）。
+      // SVG の rotate は時計回りなので符号を反転して基点回りに回す。
+      if (run.escapement !== 0) {
+        t.setAttribute("transform", `rotate(${-run.escapement / 10} ${run.x} ${run.y})`);
+      }
       t.textContent = run.text;
       layer.appendChild(t);
       textCount++;
