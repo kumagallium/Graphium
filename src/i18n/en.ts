@@ -633,7 +633,7 @@ export const en: Record<string, string> = {
   "settings.addModel.selectProviderPlaceholder": "— choose a provider —",
   // ── MCP servers (direct) ──
   "settings.mcp.title": "MCP Servers",
-  "settings.mcp.help": "Add MCP servers Graphium connects to directly — no registry required. \"Local\" servers are launched and managed by Graphium (like Claude Desktop); this requires the desktop app or a self-hosted backend. \"Remote\" connects to an already-running server by URL.",
+  "settings.mcp.help": "Add MCP servers Graphium connects to directly — no registry required. \"Local\" servers are launched and managed by Graphium (like Claude Desktop); this requires the desktop app or a self-hosted backend. \"Remote\" connects to an already-running server by URL. Tip: a web-search server (e.g. Tavily) lets External grounding search the live web on any model.",
   "settings.mcp.empty": "No MCP servers added yet.",
   "settings.mcp.add": "Add MCP server",
   "settings.mcp.mode.paste": "Paste JSON",
@@ -1436,6 +1436,9 @@ export const en: Record<string, string> = {
   "composer.scope.externalHint": "Search the web and ground the answer in external sources — for investigating something new",
   "composer.scope.internalHint": "Everything you cited, plus a cross-search of your accumulated knowledge — for ideation",
   "composer.scope.notesHint": "Only what this note cites, without a cross-search — for accurate writing and citations",
+  // 外部参照を選んだのに Web 検索手段が無い構成への警告（WebSearchMissingHint）
+  "composer.scope.webSearchMissing": "No web search is set up — External will answer without live web results. Add a search MCP server (e.g. Tavily) or a Claude subscription model.",
+  "composer.scope.webSearchMissingCta": "Open settings",
   // チャット回答のソース見出し（外部 web / 内部ノートを区別）
   "chat.sources.fromNotes": "📓 From your notes",
   "chat.sources.fromWeb": "🌐 Web sources",

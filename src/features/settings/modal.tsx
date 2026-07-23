@@ -2630,7 +2630,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         value={mcpJson}
                         onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError(""); }}
                         rows={8}
-                        placeholder={'{\n  "mcpServers": {\n    "zotlink": {\n      "command": "/opt/homebrew/bin/zotlink",\n      "args": [],\n      "env": { "ZOTLINK_ZOTERO_ROOT": "/Users/you/Zotero" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
+                        placeholder={'{\n  "mcpServers": {\n    "tavily": {\n      "command": "npx",\n      "args": ["-y", "tavily-mcp"],\n      "env": { "TAVILY_API_KEY": "tvly-…" }\n    },\n    "my-api": {\n      "url": "https://example.com/mcp",\n      "type": "http"\n    }\n  }\n}'}
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                       />
                       {mcpJsonError && (
