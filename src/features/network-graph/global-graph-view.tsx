@@ -465,19 +465,21 @@ export function GlobalGraphCanvas({
     containerRef.current.style.cursor = "grab";
 
     // 「文脈で寄せる」時はクラスター内を固めるだけでなく、クラスター**間**を離す:
-    // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジの理想長を伸ばして
-    // クラスターを繋ぐ腕を長くし、反発を強め・中心重力を弱めて塊同士を引き離す。
+    // 仮想エッジ（短い理想長・強い弾性）が塊を作り、実エッジは理想長を大きく伸ばし
+    // 弾性も落として「緩い腕」にする。反発を強め・中心重力をほぼ切って塊同士を
+    // 引き離す。値は Storybook「文脈クラスター（大規模）」で見た目調整したもの。
     const lay = cy.layout({
       name: "fcose",
       animate: true,
       animationDuration: 700,
       randomize: true,
       quality: "default",
-      nodeRepulsion: clusterByContext ? 20000 : 9000,
+      nodeRepulsion: clusterByContext ? 30000 : 9000,
       idealEdgeLength: (edge: any) =>
-        edge.data("virtual") ? 40 : clusterByContext ? 230 : 110,
-      edgeElasticity: (edge: any) => (edge.data("virtual") ? 0.9 : 0.4),
-      gravity: clusterByContext ? 0.1 : 0.3,
+        edge.data("virtual") ? 35 : clusterByContext ? 300 : 110,
+      edgeElasticity: (edge: any) =>
+        edge.data("virtual") ? 0.9 : clusterByContext ? 0.2 : 0.4,
+      gravity: clusterByContext ? 0.06 : 0.3,
       nodeSeparation: 120,
       padding: 50,
     } as any);
