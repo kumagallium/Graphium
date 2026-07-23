@@ -148,6 +148,10 @@ export function MaterialActionsMenu({
     || (!!onExtractDocxImages && isDocxEntry);
   // 原本ダウンロード: URL ブックマーク以外（バイト実体があるもの）が対象
   const canDownload = entry.type !== "url";
+  // AI 系アクション（Knowledge 化 / PROV ノート化 / 翻訳）が 1 つでも出ているか。
+  // AI モデル未登録でコールバックが渡されないと全て消えるので、後続グループの
+  // 区切り線は「前に項目があるときだけ」出す（先頭に線だけ残るのを防ぐ）。
+  const hasAiActions = canIngest || canCreateProv || canTranslate;
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -257,7 +261,7 @@ export function MaterialActionsMenu({
           )}
           {canExtract && (
             <>
-              <div className="my-1 border-t border-border" />
+              {hasAiActions && <div className="my-1 border-t border-border" />}
               <button
                 className={itemClass}
                 disabled={extracting}
@@ -271,7 +275,7 @@ export function MaterialActionsMenu({
           )}
           {canDownload && (
             <>
-              <div className="my-1 border-t border-border" />
+              {(hasAiActions || canExtract) && <div className="my-1 border-t border-border" />}
               <button
                 className={itemClass}
                 disabled={downloading}
@@ -283,7 +287,7 @@ export function MaterialActionsMenu({
               </button>
             </>
           )}
-          <div className="my-1 border-t border-border" />
+          {(hasAiActions || canExtract || canDownload) && <div className="my-1 border-t border-border" />}
           <button
             className={itemClass}
             disabled={!!shareDisabledReason || shareBusy}
