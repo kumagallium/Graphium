@@ -117,6 +117,19 @@ describe("buildGlobalGraph — インデックス起点の全ノードグラフ"
     expect(g.edges).toHaveLength(1);
     expect(g.edges[0].relation).toBe("derived"); // 優先度の高い derived が残る
   });
+
+  it("noteContexts を正規化してノードに載せる（文脈タグ色モード用）", () => {
+    const g = buildGlobalGraph(
+      index([
+        entry({ noteId: "n1", noteContexts: ["  eureco ", "Eureco", ""] }),
+        entry({ noteId: "n2" }),
+      ]),
+    );
+    // trim + 小文字比較の重複除去（初出の形を保持）
+    expect(g.nodes.find((n) => n.id === "n1")?.noteContexts).toEqual(["eureco"]);
+    // 未付与は undefined のまま（「未分類」扱い）
+    expect(g.nodes.find((n) => n.id === "n2")?.noteContexts).toBeUndefined();
+  });
 });
 
 describe("filterGlobalGraph — 層・参照・孤立フィルタ", () => {
@@ -152,5 +165,61 @@ describe("filterGlobalGraph — 層・参照・孤立フィルタ", () => {
   it("層フィルタで crystal を外すと claim ノードが消える", () => {
     const r = filterGlobalGraph(data, { visibleLayers: new Set(["source", "note", "synth"] as const), hideIsolated: false });
     expect(r.nodes.find((n) => n.id === "c")).toBeUndefined();
+  });
+});
+
+describe("filterGlobalGraph — 文脈タグ絞り込み（contextFilter）", () => {
+  // 実験A: expA1 — expA2 が連結、expB1（別タグ）と helper（タグ無し）が expA1 に隣接。
+  // claim1（タグ無し知見）は expA2 から派生。far はどこにも繋がらないタグ無しノート。
+  const data = buildGlobalGraph(
+    index([
+      entry({ noteId: "expA1", noteContexts: ["実験A"], outgoingLinks: [{ targetNoteId: "expA2", layer: "prov" }] }),
+      entry({ noteId: "expA2", noteContexts: ["実験a"] }), // 表記ゆれ（大小文字）は小文字キーで一致
+      entry({ noteId: "expB1", noteContexts: ["実験B"], outgoingLinks: [{ targetNoteId: "expA1", layer: "prov" }] }),
+      entry({ noteId: "helper", outgoingLinks: [{ targetNoteId: "expA1", layer: "prov" }] }),
+      entry({ noteId: "far" }),
+      entry({ noteId: "claim1", source: "ai", wikiKind: "claim", derivedFromNotes: ["expA2"] }),
+    ]),
+  );
+  const all = new Set(["source", "note", "crystal", "synth"] as const);
+
+  it("選択タグのノート＋タグを持たない隣接が残り、別タグの隣接と非隣接は消える", () => {
+    const r = filterGlobalGraph(data, {
+      visibleLayers: all,
+      hideIsolated: false,
+      contextFilter: new Set(["実験a"]),
+    });
+    const ids = r.nodes.map((n) => n.id).sort();
+    // タグ一致（表記ゆれ込み）: expA1, expA2 / タグ無し隣接: helper（ノート）, claim1（知見）
+    expect(ids).toEqual(["claim1", "expA1", "expA2", "helper"]);
+    // 別タグの隣接 expB1 と、繋がっていない far は消える
+    expect(ids).not.toContain("expB1");
+    expect(ids).not.toContain("far");
+    // エッジは残ったノード間のみ
+    for (const e of r.edges) {
+      expect(ids).toContain(e.source);
+      expect(ids).toContain(e.target);
+    }
+  });
+
+  it("contextFilter が空集合なら絞り込まない", () => {
+    const r = filterGlobalGraph(data, {
+      visibleLayers: all,
+      hideIsolated: false,
+      contextFilter: new Set(),
+    });
+    expect(r.nodes).toHaveLength(data.nodes.length);
+  });
+
+  it("複数タグ選択は OR（どちらかのタグを持てば残る）", () => {
+    const r = filterGlobalGraph(data, {
+      visibleLayers: all,
+      hideIsolated: false,
+      contextFilter: new Set(["実験a", "実験b"]),
+    });
+    const ids = r.nodes.map((n) => n.id);
+    expect(ids).toContain("expA1");
+    expect(ids).toContain("expB1");
+    expect(ids).not.toContain("far"); // 非隣接のタグ無しは選択がある限り消えたまま
   });
 });

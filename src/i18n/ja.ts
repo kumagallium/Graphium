@@ -1475,6 +1475,13 @@ export const ja: Record<string, string> = {
   "globalGraph.layer.note": "ノート",
   "globalGraph.layer.crystal": "結晶",
   "globalGraph.empty": "まだノートがありません",
+  "globalGraph.colorBy": "色:",
+  "globalGraph.colorMode.kind": "種類",
+  "globalGraph.colorMode.context": "文脈",
+  "globalGraph.clusterByContext": "文脈で寄せる",
+  "globalGraph.clusterByContextHint": "同じ文脈のノートを近くに集めてクラスターにする",
+  "globalGraph.uncategorized": "未分類",
+  "globalGraph.noContexts": "文脈ラベルの付いたノートがまだありません",
 
   // ハードコード日本語の i18n 移行（fix/i18n-hardcoded-japanese）
   // ノート一覧: インポート・一括 Knowledge 化
