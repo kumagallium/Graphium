@@ -1,7 +1,8 @@
 // NoteMemosSection のストーリー
 // ノート編集画面 右パネル「Memos」タブの中身。
-// ブロック紐付きメモ（sourceNote.blockId + blockText）はテキスト抜粋チップを表示し、
-// クリックで該当ブロックへスクロールする（Storybook では対象ブロックが無いため no-op）。
+// ブロック紐付きメモ（sourceNote.blockId + blockText）は ¶ テキスト抜粋チップを表示し、
+// カードクリックで該当ブロックのハイライト + スクロールを親に依頼する
+// （Storybook では対象ブロックが無いため console.log のみ。選択スタイルは確認できる）。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { NoteMemosSection } from "./NoteMemosSection";
@@ -72,6 +73,8 @@ function PanelFrame({ children }: { children: React.ReactNode }) {
 }
 
 // ── ノート単位 + ブロック紐付きの混在（標準表示） ─────────────
+// ブロック紐付きメモのカードをクリックすると選択スタイル（青背景 + 左ボーダー）
+// が付き、onHighlightBlock に blockId が渡る（再クリックで解除）。
 export const Mixed: Story = {
   name: "混在（ノート単位 + ブロック紐付き）",
   render: () => (
@@ -82,22 +85,9 @@ export const Mixed: Story = {
         captureIndex={captureIndex}
         onDeleteMemo={(id) => console.log("[NoteMemosSection] delete:", id)}
         onCreateMemo={async (text) => console.log("[NoteMemosSection] create:", text)}
-      />
-    </PanelFrame>
-  ),
-};
-
-// ── インジケータ経由で開いた状態（対象ブロックのメモをハイライト） ──
-export const FocusedByIndicator: Story = {
-  name: "インジケータ経由（block-claim をフォーカス）",
-  render: () => (
-    <PanelFrame>
-      <NoteMemosSection
-        noteFileId={NOTE_FILE_ID}
-        noteTitle="実験ノート 7/23"
-        captureIndex={captureIndex}
-        focusBlockId="block-claim"
-        onDeleteMemo={(id) => console.log("[NoteMemosSection] delete:", id)}
+        onHighlightBlock={(blockId) =>
+          console.log("[NoteMemosSection] highlight:", blockId)
+        }
       />
     </PanelFrame>
   ),

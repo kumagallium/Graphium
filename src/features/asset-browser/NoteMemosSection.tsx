@@ -11,11 +11,15 @@
 // すべて構造化された sourceNote を持つ前提。
 //
 // ブロック紐付きメモ（sourceNote.blockId あり）は、紐付け先ブロックの
-// テキスト抜粋チップを表示し、クリックで該当ブロックへスクロールする。
-// ブロックが既に削除されている場合、チップは表示するがジャンプは no-op
-// （メモ自体はノート単位の出典として生き続ける）。
+// テキスト抜粋チップ（¶）を表示する。カードのクリックで該当ブロックを
+// ハイライト + スクロール表示する（履歴タブの差分ハイライトと同じ
+// highlightBlockIds 機構を親から借りる。再クリックで解除）。
+// エディタ側に常時バッジは出さない — PROV ラベルと右端の場所を奪い合う
+// ため、対応関係は「メモ → ブロック」の方向でだけ見せる。
+// ブロックが既に削除されている場合、チップは表示するがハイライトは
+// 当たらない（メモ自体はノート単位の出典として生き続ける）。
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trash2, FileText, Pilcrow } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "../mobile-capture";
 import { formatDateTime } from "../../lib/format-datetime";
@@ -37,10 +41,11 @@ export type NoteMemosSectionProps = {
    */
   onCreateMemo?: (text: string) => void | Promise<void>;
   /**
-   * ブロックインジケータ経由で開かれた場合の対象ブロック ID（オプション）。
-   * 一致するメモをハイライトし、先頭の一致メモへスクロールする。
+   * ブロック紐付きメモの選択で該当ブロックをハイライトする（オプション）。
+   * blockId でハイライト、null で解除。親（NoteEditorInner）が履歴タブの
+   * 差分表示と同じ highlightBlockIds 機構で描画する。
    */
-  focusBlockId?: string | null;
+  onHighlightBlock?: (blockId: string | null) => void;
 };
 
 /**
@@ -61,17 +66,13 @@ export function filterMemosByNote(
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-/** 紐付け先ブロックへスクロールして一時ハイライトする（prov-indicator と同じ挙動） */
+/** 紐付け先ブロックへスクロールする（ハイライトは親の highlightBlockIds が担う） */
 function scrollToBlock(blockId: string) {
   const el = document.querySelector(
     `[data-id="${blockId}"][data-node-type="blockOuter"]`
   ) as HTMLElement | null;
   if (!el) return;
   el.scrollIntoView({ behavior: "smooth", block: "center" });
-  el.style.outline = "2px solid #d97706";
-  setTimeout(() => {
-    el.style.outline = "";
-  }, 1500);
 }
 
 export function NoteMemosSection({
@@ -80,7 +81,7 @@ export function NoteMemosSection({
   captureIndex,
   onDeleteMemo,
   onCreateMemo,
-  focusBlockId,
+  onHighlightBlock,
 }: NoteMemosSectionProps) {
   const t = useT();
   const memos = useMemo(
@@ -88,17 +89,41 @@ export function NoteMemosSection({
     [captureIndex, noteFileId],
   );
 
-  // インジケータ経由で開かれたとき、対象ブロックの先頭メモへスクロールする
-  const focusedRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!focusBlockId) return;
-    const timer = setTimeout(() => {
-      focusedRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [focusBlockId, memos.length]);
+  // 選択中メモ（そのブロックをエディタ側でハイライト表示中）
+  const [selectedMemoId, setSelectedMemoId] = useState<string | null>(null);
+  // onHighlightBlock は毎レンダリング変わりうるため ref 経由で最新を参照する
+  const onHighlightBlockRef = useRef(onHighlightBlock);
+  onHighlightBlockRef.current = onHighlightBlock;
 
-  let firstFocusedAssigned = false;
+  // アンマウント時（タブ切替・パネル閉）にハイライトを解除する
+  useEffect(() => {
+    return () => {
+      onHighlightBlockRef.current?.(null);
+    };
+  }, []);
+
+  // 選択中メモが一覧から消えたら（削除・アーカイブ）ハイライトも解除する
+  useEffect(() => {
+    if (!selectedMemoId) return;
+    if (!memos.some((m) => m.id === selectedMemoId)) {
+      setSelectedMemoId(null);
+      onHighlightBlockRef.current?.(null);
+    }
+  }, [memos, selectedMemoId]);
+
+  const handleSelect = (memo: CaptureEntry) => {
+    const blockId = memo.sourceNote?.blockId;
+    if (!blockId || !onHighlightBlock) return;
+    if (selectedMemoId === memo.id) {
+      // 再クリックで解除
+      setSelectedMemoId(null);
+      onHighlightBlock(null);
+      return;
+    }
+    setSelectedMemoId(memo.id);
+    onHighlightBlock(blockId);
+    scrollToBlock(blockId);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -127,21 +152,25 @@ export function NoteMemosSection({
       ) : (
         memos.map((memo) => {
           const blockId = memo.sourceNote?.blockId;
-          const isFocused = Boolean(focusBlockId && blockId === focusBlockId);
-          // 一致する先頭メモだけにスクロール用 ref を付ける
-          const takeRef = isFocused && !firstFocusedAssigned;
-          if (takeRef) firstFocusedAssigned = true;
+          const selectable = Boolean(blockId && onHighlightBlock);
+          const isSelected = selectedMemoId === memo.id;
           return (
             <div
               key={memo.id}
-              ref={takeRef ? focusedRef : undefined}
+              onClick={selectable ? () => handleSelect(memo) : undefined}
+              title={selectable ? t("memo.showLinkedBlock") : undefined}
               style={{
-                padding: "10px 12px",
+                padding: "10px 12px 10px 10px",
+                // エディタ側のブロックハイライト（青系）と同じ色で対応関係を示す
+                borderLeft: isSelected
+                  ? "2px solid rgba(59, 130, 246, 0.5)"
+                  : "2px solid transparent",
                 borderBottom: "1px solid var(--color-border-subtle)",
                 fontSize: 12,
                 lineHeight: 1.55,
                 color: "var(--color-foreground)",
-                backgroundColor: isFocused ? "#d9770614" : undefined,
+                backgroundColor: isSelected ? "rgba(59, 130, 246, 0.08)" : undefined,
+                cursor: selectable ? "pointer" : undefined,
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -151,10 +180,7 @@ export function NoteMemosSection({
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {blockId && (
-                    <button
-                      type="button"
-                      onClick={() => scrollToBlock(blockId)}
-                      title={t("memo.jumpToBlock")}
+                    <span
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -164,12 +190,9 @@ export function NoteMemosSection({
                         padding: "1px 6px",
                         border: "1px solid var(--color-border-subtle)",
                         borderRadius: 9999,
-                        background: "transparent",
                         color: "var(--color-text-tertiary)",
                         fontSize: 10,
-                        cursor: "pointer",
                       }}
-                      className="hover:text-foreground transition-colors"
                     >
                       <Pilcrow size={9} style={{ flexShrink: 0 }} />
                       <span
@@ -181,7 +204,7 @@ export function NoteMemosSection({
                       >
                         {memo.sourceNote?.blockText || t("memo.linkedBlock")}
                       </span>
-                    </button>
+                    </span>
                   )}
                   <p style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                     {memo.text}
@@ -202,7 +225,11 @@ export function NoteMemosSection({
                 {onDeleteMemo && (
                   <button
                     type="button"
-                    onClick={() => onDeleteMemo(memo.id)}
+                    onClick={(e) => {
+                      // カードのブロック選択と混線しないよう伝播を止める
+                      e.stopPropagation();
+                      onDeleteMemo(memo.id);
+                    }}
                     title={t("memo.delete")}
                     aria-label={t("memo.delete")}
                     style={{

@@ -169,7 +169,7 @@ import { ingestUrlToProv, ingestPdfToProv, ingestDocxToProv, buildProvNoteDocume
 import { translatePdfToNote, translateUrlToNote, fetchReaderArticle, isSameLanguage } from "./features/pdf-translate/translate-service";
 import { SkillListView, SkillBanner, SkillDialog, buildSkillDocument, extractSkillPrompt, buildSkillPromptSection, pickActiveSkills } from "./features/skill";
 import type { WikiKind } from "./lib/document-types";
-import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, MemoIndicatorLayer, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
+import { MobileCaptureView, MemoGalleryView, MemoPickerModal, getMemoSlashMenuItem, setMemoPickerCallback, CaptureDialog, buildMemoInsertBlock, getTrashedCaptures, getArchivedCaptures } from "./features/mobile-capture";
 import { TemplatePickerModal, getTemplateSlashMenuItem, setTemplatePickerCallback, getAllTemplates } from "./features/template";
 import {
   CitePickerModal,
@@ -1196,8 +1196,6 @@ function NoteEditorInner({
   // ブロックメニュー「メモ」から開くブロック紐付きメモ入力（null = 閉）
   const [blockMemoTarget, setBlockMemoTarget] = useState<{ blockId: string; blockText: string } | null>(null);
   const [blockMemoSubmitting, setBlockMemoSubmitting] = useState(false);
-  // メモインジケータ経由で Memos タブを開いたときのフォーカス対象ブロック
-  const [memoPanelFocusBlockId, setMemoPanelFocusBlockId] = useState<string | null>(null);
   // アイコンレールのトグル: 同じタブクリックで閉じる
   const toggleRightTab = useCallback((tab: "graph" | "prov" | "chat" | "history" | "source" | "memos") => {
     setRightTab((prev) => prev === tab ? null : tab);
@@ -3500,10 +3498,6 @@ function NoteEditorInner({
     return () => { setOpenBlockMemoFn(null); };
   }, [onCreateNoteMemo]);
 
-  // Memos タブ以外に切り替わったらインジケータ由来のフォーカスを解除する
-  useEffect(() => {
-    if (rightTab !== "memos") setMemoPanelFocusBlockId(null);
-  }, [rightTab]);
 
   // ── エディタ内 video/audio の Blob URL 差し替え ──
   // lh3.googleusercontent.com の CDN URL は画像専用。
@@ -3733,17 +3727,6 @@ function NoteEditorInner({
       <ProvIndicatorHoverHint hidden={!isDesktop && rightTab !== null} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
-      {/* ブロック紐付きメモの付箋バッジ（クリックで Memos タブを開く） */}
-      <MemoIndicatorLayer
-        noteFileId={fileId ?? null}
-        captureIndex={captureIndexProp ?? null}
-        hidden={!isDesktop && rightTab !== null}
-        bottomInset={isDesktop ? 0 : 56}
-        onOpenMemos={(blockId) => {
-          setMemoPanelFocusBlockId(blockId);
-          setRightTab("memos");
-        }}
-      />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
       {blockMemoTarget && onCreateNoteMemo && (
         <CaptureDialog
@@ -4560,7 +4543,10 @@ function NoteEditorInner({
                   captureIndex={captureIndexProp ?? null}
                   onCreateMemo={onCreateNoteMemo}
                   onDeleteMemo={onDeleteNoteMemo}
-                  focusBlockId={memoPanelFocusBlockId}
+                  // メモ選択 → 該当ブロックを履歴差分と同じ機構でハイライト
+                  onHighlightBlock={(blockId) =>
+                    setHighlightBlockIds(blockId ? [blockId] : [])
+                  }
                 />
               )}
             </div>

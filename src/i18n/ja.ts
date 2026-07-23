@@ -1607,8 +1607,7 @@ export const ja: Record<string, string> = {
   "memo.composerPlaceholder": "メモを書く… ⏎ で保存・Shift+⏎ で改行",
   // ブロック紐付きメモ
   "memo.addToBlock": "📝 メモを追加",
-  "memo.indicatorTooltip": "このブロックのメモを表示",
-  "memo.jumpToBlock": "該当ブロックへ移動",
+  "memo.showLinkedBlock": "クリックで該当ブロックを表示",
   "memo.linkedBlock": "紐付け先ブロック",
 
   // インデックステーブル

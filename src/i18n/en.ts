@@ -1608,8 +1608,7 @@ export const en: Record<string, string> = {
   "memo.composerPlaceholder": "Write a memo… ⏎ to save, Shift+⏎ for newline",
   // ブロック紐付きメモ
   "memo.addToBlock": "📝 Add memo",
-  "memo.indicatorTooltip": "Show memos for this block",
-  "memo.jumpToBlock": "Jump to the linked block",
+  "memo.showLinkedBlock": "Click to show the linked block",
   "memo.linkedBlock": "Linked block",
 
   // インデックステーブル
