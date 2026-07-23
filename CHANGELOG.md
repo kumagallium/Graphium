@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.20.0](https://github.com/kumagallium/Graphium/compare/v0.19.2...v0.20.0) - 2026-07-23
+
+- feat(global-graph): toggle to hide uncategorized notes in context mode by @kumagallium in https://github.com/kumagallium/Graphium/pull/589
+- Hide AI UI entirely while no model is registered by @kumagallium in https://github.com/kumagallium/Graphium/pull/591
+
 ## [v0.19.2](https://github.com/kumagallium/Graphium/compare/v0.19.1...v0.19.2) - 2026-07-23
 
 - feat(docx-import): convert EMF/TIFF images instead of skipping them by @kumagallium in https://github.com/kumagallium/Graphium/pull/585
