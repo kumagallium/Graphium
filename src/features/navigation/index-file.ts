@@ -88,7 +88,14 @@ import { normalizeNoteContexts } from "../note-context/context-tags";
 //      のまま「未分類」として読める（後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v20 インデックスが v21 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 21;
+// v22: ocrText フィールド追加（画像 OCR ブロック）。
+//      imageOcr ブロックの props.ocrText（端末内 Tesseract.js で抽出した画像内テキスト）を
+//      集約し、ノート横断のテキスト検索（searchNotes）の対象に含める。
+//      画像しか無いノートも中身の文字で引けるようにする。既存エントリは ocrText=undefined
+//      のまま読める（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v21 インデックスが v22 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 22;
 
 export type GraphiumIndex = {
   version: number;
@@ -223,6 +230,8 @@ export type NoteIndexEntry = {
    * 0-3 件想定なので配列をそのまま mirror する（軽量）。
    */
   relatedAtoms?: AtomRelation[];
+  /** OCR 画像ブロックから抽出したテキスト（横断検索用・改行区切り） */
+  ocrText?: string;
 };
 
 // ── Drive API ──
@@ -343,15 +352,21 @@ export function buildIndexEntry(
   const labels: NoteIndexEntry["labels"] = [];
   const outgoingLinks: NoteIndexEntry["outgoingLinks"] = [];
   const inlineLabels: NonNullable<NoteIndexEntry["inlineLabels"]> = [];
+  const ocrTexts: string[] = [];
 
   if (page) {
-    // 見出しを収集
+    // 見出し・OCR テキストを収集
     for (const block of page.blocks || []) {
       if (block.type === "heading" && (block.props?.level === 2 || block.props?.level === 3)) {
         const text = extractInlineText(block.content);
         if (text) {
           headings.push({ blockId: block.id, text, level: block.props.level });
         }
+      }
+      // OCR 画像ブロックの抽出テキスト（画像をテキスト検索可能にする）
+      if (block.type === "imageOcr" && block.props?.ocrText) {
+        const txt = String(block.props.ocrText).trim();
+        if (txt) ocrTexts.push(txt);
       }
     }
 
@@ -489,6 +504,7 @@ export function buildIndexEntry(
       doc.wikiMeta?.relatedAtoms && doc.wikiMeta.relatedAtoms.length > 0
         ? doc.wikiMeta.relatedAtoms
         : undefined,
+    ocrText: ocrTexts.length ? ocrTexts.join("\n") : undefined,
   };
 }
 

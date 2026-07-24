@@ -214,10 +214,14 @@ export function NoteListView({
   const filtered = useMemo(() => {
     let result = entries;
 
-    // テキスト検索
+    // テキスト検索（タイトル + OCR 画像テキスト）
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      result = result.filter((e) => e.title.toLowerCase().includes(q));
+      result = result.filter(
+        (e) =>
+          e.title.toLowerCase().includes(q) ||
+          (e.ocrText?.toLowerCase().includes(q) ?? false)
+      );
     }
 
     // ラベルフィルタ（AND） — 列ヘッダから絞り込み

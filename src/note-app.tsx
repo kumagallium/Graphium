@@ -11,6 +11,7 @@ import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
+import { imageOcrSlashItem } from "./blocks/image-ocr";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -4126,7 +4127,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, imageOcrSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
