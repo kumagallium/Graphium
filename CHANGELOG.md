@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.20.2](https://github.com/kumagallium/Graphium/compare/v0.20.1...v0.20.2) - 2026-07-24
+
+- fix(assets): resolve media index on an empty vault so the gallery stops loading by @kumagallium in https://github.com/kumagallium/Graphium/pull/594
+
 ## [v0.20.1](https://github.com/kumagallium/Graphium/compare/v0.20.0...v0.20.1) - 2026-07-23
 
 - fix(chat): use chat/synthesis model instead of default model by @kumagallium in https://github.com/kumagallium/Graphium/pull/592
