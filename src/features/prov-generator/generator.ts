@@ -990,6 +990,61 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
+  // ── imageOcr ブロック → 画像 / OCR / 抽出テキストの来歴 ──
+  // ラベル非依存。OCR 済み画像ブロックを PROV グラフに接続する:
+  //   画像(Entity) ──used──▶ OCR(Activity) ──wasGeneratedBy──▶ 抽出テキスト(結果Entity)
+  // エンジン・言語・信頼度は OCR Activity の params（属性ダイヤ）として埋め込む。
+  for (const block of flatBlocks) {
+    if (block.type !== "imageOcr") continue;
+    const p = block.props ?? {};
+    const url: string = typeof p.url === "string" ? p.url : "";
+    if (!url) continue; // 画像未挿入のブロックはスキップ
+
+    const imageId = `image_${block.id}`;
+    const ocrActivityId = `activity_ocr_${block.id}`;
+
+    // 画像 = 来歴の source（Entity）
+    nodes.push({
+      "@id": imageId,
+      "@type": "prov:Entity",
+      label: (typeof p.name === "string" && p.name) || "image",
+      blockId: block.id,
+    });
+
+    // OCR = Activity。エンジン・言語・信頼度を属性（params→ダイヤ）に埋め込む
+    const ocrParams: Record<string, string> = { engine: "Tesseract.js" };
+    if (typeof p.ocrLang === "string" && p.ocrLang) ocrParams.lang = p.ocrLang;
+    if (typeof p.ocrConfidence === "number" && p.ocrConfidence > 0) {
+      ocrParams.confidence = String(p.ocrConfidence);
+    }
+    nodes.push({
+      "@id": ocrActivityId,
+      "@type": "prov:Activity",
+      label: "OCR",
+      blockId: block.id,
+      params: ocrParams,
+    });
+    relations.push({ "@type": "prov:used", from: ocrActivityId, to: imageId });
+
+    // 抽出テキスト = OCR が生成した派生 Entity（テキストがあるときのみ）
+    const ocrText: string =
+      typeof p.ocrText === "string" ? p.ocrText.trim() : "";
+    if (ocrText) {
+      const textId = `result_ocr_${block.id}`;
+      nodes.push({
+        "@id": textId,
+        "@type": "prov:Entity",
+        label: truncateOcrLabel(ocrText, 48),
+        blockId: block.id,
+      });
+      relations.push({
+        "@type": "prov:wasGeneratedBy",
+        from: textId,
+        to: ocrActivityId,
+      });
+    }
+  }
+
   // ── informed_by → 前手順の結果を経由してリンク + Entity unification ──
   //
   // PROV-DM の wasInformedBy(B, A) は ∃E. wasGeneratedBy(E, A) ∧ used(B, E) を意味する。
@@ -1236,6 +1291,12 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
 }
 
 /** ブロックのテキスト内容を取得 */
+/** OCR 抽出テキストをグラフ表示用に1行化・切り詰め */
+function truncateOcrLabel(text: string, max: number): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine;
+}
+
 function getBlockText(block: any): string {
   if (block.content) {
     if (Array.isArray(block.content)) {

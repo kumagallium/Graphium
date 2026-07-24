@@ -92,8 +92,10 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `pdf-viewer`). Inline content (entity / agent
-  highlights) lives under `src/features/inline-label/`.
+  `callout`, `example-hello`, `image-ocr`, `pdf-viewer`). Inline content
+  (entity / agent highlights) lives under `src/features/inline-label/`.
+  New blocks register once in `src/blocks/registry.ts` so both the main
+  editor and the SidePeek pick them up (and neither strips them on save).
 - Editor configuration is composed in `src/note-app.tsx`.
 
 ### 3.2 Provenance layer (PROV-DM)
@@ -150,6 +152,16 @@ the execution Entity to the plan Entity, expressing that the actual
 outcome was derived from the planned intent. The shared Step Activity
 that both Entities are `prov:used` by acts as the implicit activity of
 the PROV-DM derivation’s full form.
+
+Beyond labelled blocks, the generator also scans for `imageOcr` blocks
+**by type, with no label required**. Each OCR'd image is projected as
+image `prov:Entity` → OCR `prov:Activity` (`prov:used`) → extracted-text
+`prov:Entity` (`prov:wasGeneratedBy`), with the Tesseract.js engine,
+language and confidence attached as `graphium:*` attributes on the
+Activity. This is the one world-provenance source that needs no user
+tagging — see [DATA_MODEL.md §2.3](./DATA_MODEL.md). The `image_` /
+`activity_ocr_` / `result_ocr_` id prefixes reuse the existing node-subtype
+colouring, so the view renders them without change.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 

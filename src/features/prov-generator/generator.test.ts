@@ -2302,3 +2302,87 @@ describe("informed_by + inline_output（synthetic placeholder の抑制）", () 
     expect(merged[0]["@id"]).toBe("inline_output_ent_prev_out");
   });
 });
+
+// ──────────────────────────────────
+// Phase 2: 画像 OCR ブロック（imageOcr）の PROV マッピング
+// ──────────────────────────────────
+
+describe("画像 OCR ブロック（imageOcr）", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ocrBlock = (over: Record<string, any> = {}) => ({
+    id: "ocr-1",
+    type: "imageOcr",
+    props: {
+      url: "blob:https://example/abc",
+      name: "receipt.png",
+      ocrText: "PROVNOTE OCR 12345",
+      ocrStatus: "done",
+      ocrConfidence: 94,
+      ocrLang: "jpn+eng",
+      ...over,
+    },
+    content: undefined,
+    children: [],
+  });
+
+  it("ラベルが無くても 画像Entity・OCR Activity・抽出テキストEntity を生成する", () => {
+    const doc = generateProvDocument({ blocks: [ocrBlock()], labels: new Map(), links: [] });
+    const g = doc["@graph"];
+    expect(g.find((n) => n["@id"] === "image_ocr-1")?.["@type"]).toBe("prov:Entity");
+    expect(g.find((n) => n["@id"] === "activity_ocr_ocr-1")?.["@type"]).toBe("prov:Activity");
+    expect(g.find((n) => n["@id"] === "result_ocr_ocr-1")?.["@type"]).toBe("prov:Entity");
+  });
+
+  it("画像 Entity は name をラベルにする", () => {
+    const doc = generateProvDocument({ blocks: [ocrBlock()], labels: new Map(), links: [] });
+    expect(doc["@graph"].find((n) => n["@id"] === "image_ocr-1")?.["rdfs:label"]).toBe("receipt.png");
+  });
+
+  it("OCR が画像を used し、抽出テキストが OCR で wasGeneratedBy される", () => {
+    const doc = generateProvDocument({ blocks: [ocrBlock()], labels: new Map(), links: [] });
+    const rels = extractRelations(doc);
+    expect(rels).toContainEqual({ "@type": "prov:used", from: "activity_ocr_ocr-1", to: "image_ocr-1" });
+    expect(rels).toContainEqual({ "@type": "prov:wasGeneratedBy", from: "result_ocr_ocr-1", to: "activity_ocr_ocr-1" });
+  });
+
+  it("エンジン・言語・信頼度が OCR Activity の属性として埋め込まれる", () => {
+    const doc = generateProvDocument({ blocks: [ocrBlock()], labels: new Map(), links: [] });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const act = doc["@graph"].find((n) => n["@id"] === "activity_ocr_ocr-1") as any;
+    expect(act["graphium:engine"]).toBe("Tesseract.js");
+    expect(act["graphium:lang"]).toBe("jpn+eng");
+    expect(act["graphium:confidence"]).toBe("94");
+  });
+
+  it("抽出テキストが空なら テキストEntity を生成しない（画像・OCR は残す）", () => {
+    const doc = generateProvDocument({
+      blocks: [ocrBlock({ ocrText: "", ocrStatus: "idle", ocrConfidence: 0 })],
+      labels: new Map(),
+      links: [],
+    });
+    const g = doc["@graph"];
+    expect(g.some((n) => n["@id"] === "image_ocr-1")).toBe(true);
+    expect(g.some((n) => n["@id"] === "activity_ocr_ocr-1")).toBe(true);
+    expect(g.some((n) => n["@id"] === "result_ocr_ocr-1")).toBe(false);
+    // 信頼度 0 は属性化しない
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const act = g.find((n) => n["@id"] === "activity_ocr_ocr-1") as any;
+    expect(act["graphium:confidence"]).toBeUndefined();
+  });
+
+  it("画像 URL が無いブロックはグラフに現れない", () => {
+    const doc = generateProvDocument({ blocks: [ocrBlock({ url: "" })], labels: new Map(), links: [] });
+    expect(doc["@graph"]).toHaveLength(0);
+  });
+
+  it("長い抽出テキストはラベルが切り詰められる", () => {
+    const doc = generateProvDocument({
+      blocks: [ocrBlock({ ocrText: "あ".repeat(100) })],
+      labels: new Map(),
+      links: [],
+    });
+    const txt = doc["@graph"].find((n) => n["@id"] === "result_ocr_ocr-1");
+    expect(txt!["rdfs:label"].length).toBeLessThanOrEqual(49); // 48 + "…"
+    expect(txt!["rdfs:label"].endsWith("…")).toBe(true);
+  });
+});

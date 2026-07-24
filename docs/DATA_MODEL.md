@@ -276,6 +276,28 @@ materials/tools/parameters within it. The `graphium:phase` attribute
 preserves the planned-vs-executed distinction without misusing that
 class.
 
+#### Image OCR blocks
+
+An `imageOcr` block (an on-device Tesseract.js image-to-text block; see
+[ARCHITECTURE.md §3.2](./ARCHITECTURE.md)) is projected into the graph
+**without any label** — the generator scans for the block type directly,
+so OCR provenance appears even in notes that carry no `#` block labels or
+inline highlights:
+
+- The **image** becomes a `prov:Entity` (`@id` `image_<blockId>`), labelled
+  with the file name.
+- The **OCR pass** becomes a `prov:Activity` (`@id` `activity_ocr_<blockId>`)
+  that `prov:used` the image. Engine, language and confidence ride along as
+  `graphium:engine` / `graphium:lang` / `graphium:confidence` attributes
+  (confidence is dropped when 0).
+- The **extracted text**, when non-empty, becomes a derived `prov:Entity`
+  (`@id` `result_ocr_<blockId>`) that is `prov:wasGeneratedBy` the OCR
+  Activity, labelled with the text collapsed to one line and truncated.
+
+A block with no image (empty `url`) contributes nothing. The `image_` /
+`activity_ocr_` / `result_ocr_` id prefixes line up with the view's existing
+`getNodeSubtype`, so the three nodes are colour-coded with no view change.
+
 ### 2.4 Document provenance (edit log)
 
 `documentProvenance` is a separate concern from the PROV-DM graph above.
@@ -1044,12 +1066,18 @@ type NoteIndexEntry = {
   //   column-header filter. Orthogonal to PROV labels and to `theme`.
   //   Absent → undefined (treated as "uncategorised").
   noteContexts?: string[];
+
+  // v22: concatenated text extracted on-device from image OCR (`imageOcr`)
+  //   blocks, newline-joined. Lets a note that only holds a scanned image be
+  //   found by the words inside it (searchNotes includes this field).
+  //   Absent → undefined (no OCR block, or none produced text).
+  ocrText?: string;
 };
 ```
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **20**.
+Defined in `src/features/navigation/index-file.ts`. Currently **22**.
 Bumping rules:
 
 | Version | Change |
@@ -1071,6 +1099,7 @@ Bumping rules:
 | **19** | Withdrew Phase ε. Removed `"meta-atom"` from `WikiKind` and the `derivedFromAtoms` mirror. LLM-driven axis invention proved unreliable (outputs collapsed to the source domain even at Anthropic Opus). Existing meta-atom JSON files on disk are tolerated by `ensureIndex` — their wiki kind falls outside the new enum and the index entry is rebuilt as a regular note-less placeholder until the user trashes it. The replacement is a human-provided theme threaded through the Synthesizer, landing in a follow-up PR. |
 | **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
 | **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
+| **22** | Added `ocrText` mirror on `NoteIndexEntry` — the concatenated, newline-joined text extracted on-device from image OCR (`imageOcr`) blocks. Collected in `buildIndexEntry` and included in `searchNotes`, so a note holding only a scanned image is findable by the words inside it. Legacy notes keep `ocrText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the
