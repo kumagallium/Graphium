@@ -48,5 +48,5 @@ export function useProvGeneration(
     provTimerRef.current = setTimeout(generateProv, 500);
   }, [generateProv]);
 
-  return { provDoc, generateProv, triggerRegeneration };
+  return { provDoc, triggerRegeneration };
 }

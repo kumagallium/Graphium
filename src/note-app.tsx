@@ -2080,7 +2080,7 @@ function NoteEditorInner({
   }, [pendingMemoInsert, markDirty, onMemoInserted]);
 
   // ── PROV 生成 ──
-  const { provDoc, generateProv, triggerRegeneration } = useProvGeneration(
+  const { provDoc, triggerRegeneration } = useProvGeneration(
     editorRef,
     labelStore.labels,
     linkStore.links,
@@ -4461,15 +4461,6 @@ function NoteEditorInner({
                   : rightTab === "memos" ? t("panel.memos")
                   : t("panel.source")}
               </span>
-              {rightTab === "prov" && (
-                <button
-                  onClick={generateProv}
-                  title={t("panel.generateManual")}
-                  className="px-2.5 py-0.5 text-xs font-semibold rounded border border-primary bg-primary/5 text-primary cursor-pointer hover:bg-primary/10 transition-colors ml-auto"
-                >
-                  {t("panel.generate")}
-                </button>
-              )}
               {rightTab === "history" && fileId && initialDoc?.source !== "ai" && initialDoc?.source !== "skill" && (
                 <button
                   onClick={handleTakeSnapshot}
