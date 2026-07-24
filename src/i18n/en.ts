@@ -195,8 +195,6 @@ export const en: Record<string, string> = {
 
   // ── 右パネルタブ ──
   "panel.prov": "Steps",
-  "panel.generate": "Generate",
-  "panel.generateManual": "Regenerate manually",
   "panel.history": "History",
   "panel.links": "Links",
   "panel.graph.neighbors": "Neighbors",
