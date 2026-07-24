@@ -6,6 +6,8 @@
 //   1. activeFileId が set なら必ず saveFile（createFile に倒すと新 id で複製）
 //   2. refreshFiles は一覧取得失敗時に files を空にしない（空に見えると
 //      直後のオートセーブが新規作成分岐へ落ちて複製事故になる）
+//   3. 空の保管庫でも mediaIndex は null のまま放置されない（null は素材
+//      ギャラリーでは「読み込み中」として描画されるので、DL 直後に固まる）
 //
 // テスト環境メモ: プロジェクト既定の vitest 環境は node なので、
 // 先頭の @vitest-environment ディレクティブで per-file に jsdom を指定する。
@@ -64,6 +66,7 @@ function mockDoc(title: string, overrides: Partial<GraphiumDocument> = {}): Grap
  * - files: ノート本体（Map<id, StoredFile>）
  * - appData: note-index / media-index 等の内部メタデータ
  * - calls: saveFile / createFile の呼び出し履歴（不変条件の検証に使う）
+ * - mediaFiles: アップロード済み素材（listMediaFiles が返す。既定は空）
  * - failListFiles: listFiles の transient 失敗をシミュレートするフラグ
  * Wiki / Skill のオプショナルメソッドは意図的に未実装
  * （use-file-manager 側はオプショナル扱いなので安全にスキップされる）。
@@ -83,6 +86,7 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
     createFile: [] as string[],
   };
   const flags = { failListFiles: false };
+  const mediaFiles: { id: string; name: string; mimeType: string; createdTime: string }[] = [];
   let idCounter = 0;
 
   const provider = {
@@ -140,7 +144,7 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
     // これが無いと ensureMediaIndex が Drive API（authedFetch）へフォールバックする。
     // local / server-fs 等の実プロバイダは全て実装しているので、実装済みとして扱う。
     async listMediaFiles(): Promise<{ id: string; name: string; mimeType: string; createdTime: string }[]> {
-      return [];
+      return mediaFiles.map((m) => ({ ...m }));
     },
     async authedFetch(): Promise<never> {
       // readAppData / writeAppData を実装しているので、index 系がここへ
@@ -158,7 +162,7 @@ function createMockProvider(seed: Record<string, GraphiumDocument> = {}) {
     clearCache() {},
   } as unknown as StorageProvider;
 
-  return { provider, files, appData, calls, flags };
+  return { provider, files, appData, calls, flags, mediaFiles };
 }
 
 function setupProvider(seed: Record<string, GraphiumDocument> = {}) {
@@ -322,6 +326,47 @@ describe("useFileManager: refreshFiles は list 失敗時に files を空にし�
     });
     await waitFor(() => {
       expect(result.current.files).toHaveLength(2);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 不変条件 3: 空の保管庫でも mediaIndex は確定する
+// ---------------------------------------------------------------------------
+
+describe("useFileManager: 空状態でも mediaIndex が確定する（素材ギャラリー固着 再発防止）", () => {
+  it("ノート 0 件・素材 0 件でも mediaIndex が空インデックスとして確定する", async () => {
+    // 実バグ: 完全構築の effect が files.length === 0 で早期 return していたため、
+    // DL 直後（ノートも media-index ファイルも無い）は mediaIndex が null のまま
+    // 残り、AssetGalleryView が「読み込み中」を出し続けていた。
+    setupProvider();
+    const { result } = await renderFileManager();
+
+    await waitFor(() => {
+      expect(result.current.mediaIndex).not.toBeNull();
+    });
+    expect(result.current.mediaIndex?.media).toEqual([]);
+  });
+
+  it("ノートが 1 件も無くてもアップロード済み素材が mediaIndex に載る", async () => {
+    // 素材はノートと独立にアップロードできるので、ノート 0 件でも走査は必要。
+    const mock = setupProvider();
+    mock.mediaFiles.push({
+      id: "media-1",
+      name: "sample.png",
+      mimeType: "image/png",
+      createdTime: "2026-01-01T00:00:00Z",
+    });
+    const { result } = await renderFileManager();
+
+    await waitFor(() => {
+      expect(result.current.mediaIndex?.media).toHaveLength(1);
+    });
+    expect(result.current.mediaIndex?.media[0]).toMatchObject({
+      fileId: "media-1",
+      name: "sample.png",
+      type: "image",
+      usedIn: [],
     });
   });
 });
