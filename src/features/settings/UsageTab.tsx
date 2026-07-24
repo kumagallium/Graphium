@@ -454,7 +454,7 @@ export function UsageTab() {
   const maxBucketTokens = Math.max(1, ...buckets.map((b) => b.totalTokens));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* ヘッダー */}
       <div className="flex items-start justify-between gap-3">
         <div>
