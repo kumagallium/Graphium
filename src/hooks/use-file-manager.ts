@@ -686,22 +686,34 @@ export function useFileManager(authenticated: boolean) {
   }, [authenticated]);
 
   // メディアインデックスの完全構築（ノートインデックス構築後に実行、先行読み込みを上書き）
+  //
+  // ノート 0 件でもスキップしないこと。mediaIndex が null のままだと素材ギャラリーは
+  // 「読み込み中」で固まる（DL 直後の空状態）。素材はノートと独立にアップロードできる
+  // ので、ノートが無くても uploadFiles を走査して空インデックスまで作り切る。
+  // noteIndex が入るのは filesLoading = false になった後なので、取得途中に空で走る心配はない。
   useEffect(() => {
-    if (!authenticated || !noteIndex || files.length === 0) return;
+    if (!authenticated || !noteIndex) return;
     let cancelled = false;
     (async () => {
-      // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つため、
-      // PDF アセットの usedIn を埋めるには Wiki も走査対象に含める必要がある。
-      const idx = await ensureMediaIndex(
-        files,
-        docCacheRef.current,
-        loadFile,
-        wikiFiles,
-        storage().loadWikiFile ? loadWikiFile : undefined,
-      );
-      if (!cancelled) {
-        mediaIndexRef.current = idx;
-        setMediaIndex(idx);
+      try {
+        // Wiki ノートは PDF を document-level (`wikiMeta.derivedFromNotes`) に持つため、
+        // PDF アセットの usedIn を埋めるには Wiki も走査対象に含める必要がある。
+        const idx = await ensureMediaIndex(
+          files,
+          docCacheRef.current,
+          loadFile,
+          wikiFiles,
+          storage().loadWikiFile ? loadWikiFile : undefined,
+        );
+        if (!cancelled) {
+          mediaIndexRef.current = idx;
+          setMediaIndex(idx);
+        }
+      } catch (err) {
+        console.error("メディアインデックスの構築に失敗:", err);
+        // 失敗しても null のままにしない — UI が「読み込み中」から抜けられなくなる。
+        // ref は更新せず、後続のアップロード等で再構築できる余地を残す。
+        if (!cancelled && !mediaIndexRef.current) setMediaIndex(createEmptyIndex());
       }
     })();
     return () => { cancelled = true; };
