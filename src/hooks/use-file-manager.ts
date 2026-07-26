@@ -1584,7 +1584,10 @@ export function useFileManager(authenticated: boolean) {
   const handleUploadAsset = useCallback(
     async (
       file: File,
-      options?: { derivedFromAssets?: string[] },
+      options?: {
+        derivedFromAssets?: string[];
+        capture?: import("../features/mobile-capture/inbox/types").CaptureMeta;
+      },
     ): Promise<{ url: string; fileId: string; entry: MediaIndexEntry }> => {
       const result = await uploadMediaFileWithMeta(file);
       const entry: MediaIndexEntry = {
@@ -1599,6 +1602,7 @@ export function useFileManager(authenticated: boolean) {
         ...(options?.derivedFromAssets && options.derivedFromAssets.length > 0
           ? { derivedFromAssets: options.derivedFromAssets }
           : {}),
+        ...(options?.capture ? { capture: options.capture } : {}),
       };
       const current = mediaIndexRef.current ?? createEmptyIndex();
       const updated = addMediaEntry(current, entry);
