@@ -37,6 +37,7 @@ import { customBlockEntries, KNOWN_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
 import { stepSlashItem } from "../../blocks/step";
+import { useStepPhaseBands } from "../../blocks/step/use-step-phase-bands";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -278,6 +279,12 @@ function SidePeekInner({
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
+  // step のモード帯（計画/結果）を DOM に反映する（メインエディタと同じ扱い）
+  useStepPhaseBands(
+    () => editorRef.current?.document,
+    labelStore.labels,
+    [sidePeekEditor],
+  );
   // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);

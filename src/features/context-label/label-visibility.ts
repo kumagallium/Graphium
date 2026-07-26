@@ -31,6 +31,24 @@ export function isHeadingBlock(blockId: string): boolean {
 }
 
 /**
+ * 指定 blockId のブロックが step コンテナの中にあるかを DOM から判定する。
+ * step の中では、計画/結果を「モード帯」として本文ブロックに付けられる
+ * （帯の開始マーカー = plan / result ラベル。次の区切りまでがその帯）。
+ */
+export function isInsideStepBlock(blockId: string): boolean {
+  if (typeof document === "undefined") return false;
+  const wrapper =
+    document.querySelector(`[data-id="${blockId}"]`) ??
+    document.querySelector(`[data-prov-label-anchor="${blockId}"]`)?.closest("[data-id]");
+  if (!wrapper) return false;
+  // 自分自身が step の場合は「中」ではない
+  if (wrapper.querySelector(':scope > .bn-block > .react-renderer.node-step')) return false;
+  return !!wrapper.parentElement?.closest(
+    '.bn-block:has(> .react-renderer.node-step)',
+  );
+}
+
+/**
  * 指定 blockId のブロックがテーブルかを DOM から判定する。
  * BlockNote のテーブルブロックはラッパー内に <table> を描画する。
  */
@@ -61,7 +79,14 @@ export function getVisibleCoreLabels(
 ): CoreLabel[] {
   const heading = isHeadingBlock(blockId);
   const table = !heading && isTableBlock(blockId);
-  const allowedScopes = heading ? new Set(["section", "phase"]) : new Set<string>();
+  // step の中の本文ブロックには phase（計画/結果）だけ付けられる。
+  // これがモード帯の開始マーカーになる（section = 工程は step 自体が担うので出さない）。
+  const insideStep = !heading && isInsideStepBlock(blockId);
+  const allowedScopes = heading
+    ? new Set(["section", "phase"])
+    : insideStep
+      ? new Set(["phase"])
+      : new Set<string>();
   return CORE_LABELS.filter((label) => {
     if (allowedScopes.has(LABEL_SCOPE[label])) return true;
     // テーブルは構造テーブルとして entity 系ラベルをブロックラベルで付与できる

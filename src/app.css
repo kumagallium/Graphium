@@ -550,3 +550,22 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   padding: 4px 12px 10px 12px;
   margin: 8px 0;
 }
+
+/* step のモード帯（計画 / 結果）
+   計画・結果は step を入れ子にする「箱」ではなく、step 直下の子の並びに
+   被せる「帯」として表す（階層を増やさない）。帯は plan / result ラベルの
+   付いた子から次の区切りまで続き、既定は結果（＝マーク不要）。
+
+   step コンテナ自体は塗りを持たない（枠線だけ）ので、この帯の塗りが
+   面として競合せず読める。data-step-phase は use-step-phase-bands が付ける。 */
+.bn-editor [data-step-phase="plan"] {
+  background: var(--color-info-bg);
+  box-shadow: -8px 0 0 0 var(--color-info-bg), 8px 0 0 0 var(--color-info-bg);
+}
+/* 帯の上端・下端だけ角を丸めて、ひとつながりの帯に見せる */
+.bn-editor [data-step-phase="plan"]:not([data-step-phase] + [data-step-phase="plan"]) {
+  border-radius: 6px 6px 0 0;
+}
+.bn-editor [data-step-phase="plan"]:not(:has(+ [data-step-phase="plan"])) {
+  border-radius: 0 0 6px 6px;
+}
