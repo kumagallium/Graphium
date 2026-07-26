@@ -1546,7 +1546,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   {t("settings.saveDir.help")}
                 </p>
                 {graphiumRoot ? (
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1.5">
+                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs text-muted-foreground">
@@ -1926,7 +1926,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
                         {t("settings.models.useClaudeSubscription")}
                       </button>
-                      <p className="text-xs text-muted-foreground mt-1.5">{t("settings.models.useClaudeSubscriptionHint")}</p>
+                      <p className="text-xs text-muted-foreground mt-2">{t("settings.models.useClaudeSubscriptionHint")}</p>
                       {subscriptionError && <p className="text-xs text-destructive mt-1">{subscriptionError}</p>}
                     </div>
                   )}
@@ -1938,7 +1938,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   </button>
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {models.map((m) => editingId === m.id ? (
                     <div key={m.id} className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
                       <div>
@@ -2005,7 +2005,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           </div>
                         </div>
                         {editSuggestedRate && (
-                          <div className="flex items-center justify-between gap-2 mt-1.5">
+                          <div className="flex items-center justify-between gap-2 mt-2">
                             <span className="text-xs text-muted-foreground">
                               {t("settings.models.rate.knownNote")}
                             </span>
@@ -2042,7 +2042,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         {/* サブスクは認証が CLI 側にあり Graphium から制御できないため、
                             どのアカウントで推論されるか+切替手順をここで見える化する */}
                         {m.provider === "claude-subscription" && (
-                          <div className="mt-1 space-y-0.5">
+                          <div className="mt-1 space-y-1">
                             <p className="text-xs text-foreground/80">
                               {claudeTokenFromEnv
                                 ? t("settings.models.subscriptionAccountEnvToken")
@@ -2557,7 +2557,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
 
               {mcpServers.length > 0 ? (
-                <div className="space-y-1.5 mb-2">
+                <div className="space-y-2 mb-2">
                   {mcpServers.map((s) => {
                     const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
                     const badge = s.type === "stdio" ? "local" : s.transport;
@@ -2925,7 +2925,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <div className="flex items-start gap-1.5 text-red-600 dark:text-red-400">
                         <AlertCircle size={12} className="mt-0.5 shrink-0" />
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium mb-0.5">{t("settings.health.restartFailed")}</div>
+                          <div className="font-medium mb-1">{t("settings.health.restartFailed")}</div>
                           <div className="text-foreground/80 break-words">{sidecarError}</div>
                           {sidecarLog.length > 0 && (
                             <button
@@ -2936,7 +2936,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             </button>
                           )}
                           {showSidecarLog && sidecarLog.length > 0 && (
-                            <pre className="mt-1.5 text-xs bg-background/50 rounded p-1.5 overflow-auto max-h-32 font-mono whitespace-pre-wrap">{sidecarLog.join("\n")}</pre>
+                            <pre className="mt-2 text-xs bg-background/50 rounded p-1.5 overflow-auto max-h-32 font-mono whitespace-pre-wrap">{sidecarLog.join("\n")}</pre>
                           )}
                         </div>
                       </div>
@@ -3368,7 +3368,7 @@ function MaintenanceTab({
 
       {/* 進捗表示 */}
       {bulkProgress && (
-        <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1.5">
+        <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium">
               {bulkProgress.done} / {bulkProgress.total}
@@ -3528,7 +3528,7 @@ function DiscoveryCard({
                   <summary className="cursor-pointer select-none">
                     members ({progress.clusterMemberTitles.length})
                   </summary>
-                  <ul className="mt-1 ml-2 list-disc list-inside space-y-0.5 max-h-40 overflow-y-auto">
+                  <ul className="mt-1 ml-2 list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
                     {progress.clusterMemberTitles.map((title, idx) => (
                       <li key={`${idx}-${title}`} className="break-words">{title}</li>
                     ))}

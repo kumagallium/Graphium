@@ -747,7 +747,7 @@ export function UsageTab() {
                       </span>
                     </button>
                     {isExpanded && hasMultipleModels && (
-                      <div className="ml-[26px] mt-0.5 mb-1 space-y-0.5">
+                      <div className="ml-[26px] mt-0.5 mb-1 space-y-1">
                         {models.map((m) => {
                           const modelPct = tokens > 0 ? (m.tokens / tokens) * 100 : 0;
                           return (
