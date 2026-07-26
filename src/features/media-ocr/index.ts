@@ -12,3 +12,4 @@ export {
 } from "./store";
 export { runOcrForImage, resolveMediaUrl } from "./run-ocr";
 export { collectOcrText, OCR_CAPABLE_BLOCK_TYPES } from "./collect";
+export { ImageOcrToolbarButton } from "./ImageOcrToolbarButton";

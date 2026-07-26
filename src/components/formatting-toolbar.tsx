@@ -18,6 +18,7 @@ import {
   makeMediaEntityId,
   type MediaInlineLabelType,
 } from "../features/inline-label/media-store";
+import { useMediaOcrStoreOptional, ImageOcrToolbarButton } from "../features/media-ocr";
 
 type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
 
@@ -114,9 +115,15 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   const editor = useBlockNoteEditor<any, any, any>();
   const aiAssistant = useAiAssistant();
   const mediaStore = useMediaInlineLabelStoreOptional();
+  const ocrStore = useMediaOcrStoreOptional();
   const provLabelsEnabled = useProvLabelsEnabled();
   const t = useT();
   const mediaSel = getSelectedMediaBlock(editor);
+  // 画像を選んだときだけ OCR ボタンを出す。URL 未設定（アップロード前）は対象外。
+  const selectedImageUrl =
+    mediaSel?.blockType === "image"
+      ? (editor.getBlock?.(mediaSel.blockId)?.props?.url as string | undefined)
+      : undefined;
 
   const handleAiClick = async () => {
     const selectedText = window.getSelection()?.toString()?.trim();
@@ -205,6 +212,15 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
           </button>
         );
       })}
+      {/* 画像から文字を読む / 読んだ文字を見る。画像をクリックすれば必ず目に入るので、
+          ドラッグハンドルのメニューより見つけやすい主導線になる。 */}
+      {ocrStore && mediaSel?.blockType === "image" && selectedImageUrl && (
+        <ImageOcrToolbarButton
+          key={mediaSel.blockId}
+          blockId={mediaSel.blockId}
+          imageUrl={selectedImageUrl}
+        />
+      )}
       {aiAssistant.aiAvailable && (
         <button
           onClick={handleAiClick}

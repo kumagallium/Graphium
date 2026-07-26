@@ -1679,5 +1679,6 @@ export const ja: Record<string, string> = {
   "ocr.running": "文字を認識中…",
   "ocr.done": "テキスト抽出済み",
   "ocr.chars": "{count} 文字",
+  "ocr.copy": "コピー",
   "ocr.matchBadge": "画像テキスト",
 };

@@ -253,7 +253,9 @@ export function MaterialMetadataSection({
           </MetaRow>
           {ocrText && (
             <MetaRow label="Text in image">
-              <span className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-40 overflow-auto block">
+              {/* 全文を出す。高さを絞るとスクロールバーが自動で隠れる環境で
+                  「途中で切れている」ように見えるため、パネル側のスクロールに任せる。 */}
+              <span className="text-xs text-muted-foreground whitespace-pre-wrap break-words block">
                 {ocrText}
               </span>
             </MetaRow>
