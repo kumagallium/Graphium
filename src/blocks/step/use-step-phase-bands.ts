@@ -16,16 +16,22 @@
 //   decoration で解いている。将来 step 側でも装飾が増えるならそちらへ寄せる。）
 
 import { useEffect } from "react";
+import { getDisplayLabelName } from "../../i18n";
 
 type Phase = "plan" | "result";
 
 const STYLE_ELEMENT_ID = "graphium-step-phase-bands";
 
-/** step の子を順に見て、モード帯の phase を子孫まで割り当てる */
+/**
+ * step の子を順に見て、モード帯の phase を子孫まで割り当てる。
+ * heads にはマーカーが付いたブロック（＝帯の先頭）を入れる。step ごとに
+ * 帯が立つので、先頭は 1 つとは限らない。
+ */
 function computeBands(
   blocks: any[],
   labels: Map<string, string>,
   out: Map<string, Phase>,
+  heads: Set<string>,
 ): void {
   for (const block of blocks) {
     if (!block || typeof block !== "object") continue;
@@ -38,28 +44,64 @@ function computeBands(
       for (const child of block.children) {
         if (!child || typeof child !== "object") continue;
         const label = child.id ? labels.get(child.id) : undefined;
-        if (label === "plan" || label === "result") current = label;
+        if (label === "plan" || label === "result") {
+          current = label;
+          if (label === "plan" && child.id) heads.add(child.id);
+        }
         // 内側の step は自前の帯を持つので、外側の帯を持ち込まない
         if (current && child.type !== "step") assign(child, current);
       }
     }
-    if (Array.isArray(block.children)) computeBands(block.children, labels, out);
+    if (Array.isArray(block.children)) computeBands(block.children, labels, out, heads);
   }
 }
 
-/** 帯の見た目。色は app.css のトークンを参照する（ハードコード色は使わない） */
-function buildCss(bands: Map<string, Phase>): string {
+/**
+ * 帯の見た目。色は app.css のトークンを参照する（ハードコード色は使わない）。
+ * 塗りだけだと何の帯か読めないので、帯の先頭に「計画」チップを出す。
+ * 結果は既定なので何も出さない（マークしないことが「実施した」の意味）。
+ */
+function buildCss(
+  bands: Map<string, Phase>,
+  heads: Set<string>,
+  chipLabel: string,
+): string {
   const planIds = [...bands.entries()]
     .filter(([, phase]) => phase === "plan")
     .map(([id]) => id);
   if (planIds.length === 0) return "";
-  const selector = planIds
-    .map((id) => `.bn-editor [data-id="${CSS.escape(id)}"][data-node-type="blockOuter"]`)
-    .join(",\n");
-  return `${selector} {
+  const sel = (id: string) =>
+    `.bn-editor [data-id="${CSS.escape(id)}"][data-node-type="blockOuter"]`;
+  const tint = `${planIds.map(sel).join(",\n")} {
   background: var(--color-info-bg);
   box-shadow: -8px 0 0 0 var(--color-info-bg), 8px 0 0 0 var(--color-info-bg);
 }`;
+  // 帯の先頭（＝マーカーが付いたブロック）にだけチップを出す
+  const headIds = planIds.filter((id) => heads.has(id));
+  if (headIds.length === 0) return tint;
+  const chip = `${headIds.map(sel).join(",\n")} {
+  position: relative;
+  padding-top: 20px;
+}
+${headIds.map((id) => `${sel(id)}::before`).join(",\n")} {
+  content: "${chipLabel.replace(/"/g, '\\"')}";
+  position: absolute;
+  top: 2px;
+  left: 0;
+  height: 16px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--color-info);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}`;
+  return `${tint}\n${chip}`;
 }
 
 /**
@@ -80,10 +122,11 @@ export function useStepPhaseBands(
       const blocks = getDocument();
       if (!blocks) return;
       const bands = new Map<string, Phase>();
-      computeBands(blocks, labels, bands);
+      const heads = new Set<string>();
+      computeBands(blocks, labels, bands, heads);
 
       let styleEl = document.getElementById(STYLE_ELEMENT_ID) as HTMLStyleElement | null;
-      const css = buildCss(bands);
+      const css = buildCss(bands, heads, getDisplayLabelName("plan"));
       if (!css) {
         styleEl?.remove();
         return;

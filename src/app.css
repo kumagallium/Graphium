@@ -551,6 +551,15 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   margin: 8px 0;
 }
 
+/* ステップ名は「カードのヘッダー」として読ませる。
+   太字だけだと下の子本文と地続きに見えて、どこまでが名前か分かりにくい。 */
+.bn-editor .bn-block-content[data-content-type="step"] {
+  background: var(--color-muted);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+}
+
 /* step のモード帯（計画 / 結果）の塗りは、ここではなく
    blocks/step/use-step-phase-bands.ts が動的な <style> で当てる。
    ProseMirror は管理下のブロック要素から未知の属性・クラスを描き直しのたびに
