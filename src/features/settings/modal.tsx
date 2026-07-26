@@ -1297,7 +1297,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       >
         {/* ── Display タブ ── */}
         {tab === "display" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* 言語 */}
             <div>
               <label className="text-xs font-semibold text-foreground mb-2 block">
@@ -1490,7 +1490,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
         {/* ── Storage タブ ── */}
         {tab === "storage" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* サーバーストレージ（Docker / セルフホスト Web のみ） */}
             {!isTauri() && serverCaps?.serverStorage && (
               <div>
@@ -1881,7 +1881,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
          *  流れ: モデル登録 → 役割への割り当て → 世界照合 → MCP サーバー。
          *  初回セットアップの順（登録が先、割り当てが後）に上から並べる。 */}
         {tab === "ai" && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* AI バックエンド未接続時はアップグレード CTA を表示 */}
             {!healthLoading && !health && (
               <AiUpgradeNotice variant="card" />
@@ -2371,7 +2371,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             )}
 
             {/* モデルの割り当て — 登録したモデルを役割ごとに割り当てる */}
-            <div className="border-t border-border pt-5">
+            <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
               <div className="space-y-4">
                 {/* デフォルトモデル */}
@@ -2487,7 +2487,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             </div>
 
             {/* 世界照合 — 自動照合トグルと専用モデル */}
-            <div className="border-t border-border pt-5">
+            <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
               <div className="space-y-4">
                 {/* 自動 world-grounding（opt-in / 既定 OFF）。
@@ -2552,7 +2552,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             </div>
 
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
-            <div className="border-t border-border pt-5">
+            <div className="border-t border-border pt-6">
               <div className="flex items-center gap-1.5 mb-2">
                 <Plug size={14} className="text-muted-foreground" />
                 <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
@@ -2883,7 +2883,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
         {/* ── Maintenance タブ ── */}
         {tab === "maintenance" && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* 接続状態パネル */}
             <div className="rounded-lg border border-border p-3">
               <h3 className="text-xs font-semibold text-foreground mb-2">{t("settings.health.title")}</h3>
@@ -3170,7 +3170,7 @@ function MaintenanceTab({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Atom 候補の発見（atomLayer 有効時のみ表示）。
           全 Concept をまたぐ共通抽象を auto-loop で discover する。 */}
       {atomLayerEnabled && onRunAtomizeDiscovery && (
@@ -3668,7 +3668,7 @@ function GroundingKbTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="text-xs text-muted-foreground">
         {t("settings.grounding.intro")}
       </div>
@@ -3905,7 +3905,7 @@ function AboutTab() {
   const tauri = isTauri();
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* アプリ情報パネル */}
       <div className="rounded-lg border border-border p-4">
         <div className="flex items-center gap-2 mb-3">
