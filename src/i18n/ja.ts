@@ -375,6 +375,8 @@ export const ja: Record<string, string> = {
   "slash.templateSub": "計画または実験のテンプレートを挿入",
   "slash.callout": "コールアウト",
   "slash.calloutSub": "アイコン付きの注記ボックスを挿入",
+  "slash.step": "ステップ",
+  "slash.stepSub": "手順のまとまり。中に本文・表・画像を入れられる",
   "callout.variant.note": "ノート",
   "callout.variant.info": "情報",
   "callout.variant.success": "成功",

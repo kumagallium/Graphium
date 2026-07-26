@@ -87,6 +87,8 @@ type IndicatorInfo = {
   top: number;
   left: number;
   label: string | undefined;
+  /** ブロック型（step コンテナはラベル無しでも工程として扱うため必要） */
+  blockType: string | undefined;
   outgoing: BlockLink[];
   incoming: BlockLink[];
 };
@@ -183,17 +185,28 @@ export function ProvIndicatorLayer({
       if (rect.height === 0) return;
 
       const label = getLabel(blockId);
+      const blockType = content?.getAttribute("data-content-type") ?? undefined;
       const outgoing = getOutgoing(blockId);
       const incoming = getIncoming(blockId);
 
-      // ラベルもリンクもないブロックはスキップ
-      if (!label && outgoing.length === 0 && incoming.length === 0) return;
+      // ラベルもリンクもないブロックはスキップ。
+      // ただし step はブロック型そのものが工程（Activity）なので、
+      // ラベルが無くても前手順リンクの導線を出す。
+      if (
+        !label &&
+        blockType !== "step" &&
+        outgoing.length === 0 &&
+        incoming.length === 0
+      ) {
+        return;
+      }
 
       next.push({
         blockId,
         top: rect.top + rect.height / 2,
         left: indicatorLeft,
         label,
+        blockType,
         outgoing,
         incoming,
       });
@@ -248,7 +261,7 @@ export function ProvIndicatorLayer({
 
   return createPortal(
     <>
-      {indicators.map(({ blockId, top, left, label, outgoing, incoming }) => {
+      {indicators.map(({ blockId, top, left, label, blockType, outgoing, incoming }) => {
         const isActive = activeBlockId === blockId;
         const color = label ? getLabelColor(label) : undefined;
 
@@ -289,6 +302,7 @@ export function ProvIndicatorLayer({
                 top={top + 14}
                 left={left}
                 label={label}
+                blockType={blockType}
                 outgoing={outgoing}
                 incoming={incoming}
                 onClose={() => setActiveBlockId(null)}
@@ -316,6 +330,7 @@ function ProvPanel({
   top,
   left,
   label,
+  blockType,
   outgoing,
   incoming,
   onClose,
@@ -326,6 +341,7 @@ function ProvPanel({
   top: number;
   left: number;
   label: string | undefined;
+  blockType: string | undefined;
   outgoing: BlockLink[];
   incoming: BlockLink[];
   onClose: () => void;
@@ -538,8 +554,8 @@ function ProvPanel({
           </>
         )}
 
-        {/* ── 前手順リンク追加（procedure ラベルのみ） ── */}
-        {label === "procedure" && <>
+        {/* ── 前手順リンク追加（procedure ラベル or step コンテナ） ── */}
+        {(label === "procedure" || blockType === "step") && <>
         <DropdownDivider />
         <DropdownSectionHeader className="text-[#5b8fb9]">
           {t("labelUi.prevStepLink")}
@@ -553,7 +569,11 @@ function ProvPanel({
               .forEach((el) => {
                 const bid = el.getAttribute("data-id");
                 if (!bid || bid === blockId) return;
-                if (labelMap.get(bid) !== "procedure") return;
+                // 手順は「procedure ラベル付き見出し」と「step コンテナ」の 2 通り
+                const isStep = !!el.querySelector(
+                  '.bn-block-content[data-content-type="step"]',
+                );
+                if (labelMap.get(bid) !== "procedure" && !isStep) return;
                 const heading = el.querySelector("h1, h2, h3");
                 const text = heading?.textContent
                   || el.querySelector("[data-content-type]")?.textContent

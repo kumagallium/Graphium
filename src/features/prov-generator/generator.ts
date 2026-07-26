@@ -184,6 +184,29 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   const flatBlocks = flattenBlocks(blocks);
 
+  // ── Step 0: step コンテナの containment 解決 ──
+  // 「手順」は 2 通りの書き方がある:
+  //   (旧) 見出し + procedure ラベル → 見出しのスコープ範囲が Activity の境界
+  //   (新) step コンテナブロック     → 子孫（親子関係）が Activity の境界
+  // どちらも「内側にある Entity はその Activity のもの」という同じ不変量を表す。
+  // ここでは後者を先に解決し、blockId → その Activity を引ける表を作る。
+  //
+  // step はラベルを持たない（labels は context-label 由来）ので、ラベル経由の
+  // Activity 判定（coreToProvRole）には乗らない。Activity ノードは別途 emit する。
+  const stepOwner = new Map<string, string>();
+  const stepBlocks: any[] = [];
+  const collectSteps = (list: any[], inherited: string | null) => {
+    for (const b of list) {
+      if (!b || typeof b !== "object") continue;
+      // 入れ子の step は内側が勝つ（＝最も近い祖先 step に束縛される）
+      const owner = b.type === "step" ? `activity_${b.id}` : inherited;
+      if (b.type === "step") stepBlocks.push(b);
+      if (owner && b.id) stepOwner.set(b.id, owner);
+      if (Array.isArray(b.children)) collectSteps(b.children, owner);
+    }
+  };
+  collectSteps(blocks, null);
+
   // ── Step 1: ラベルパーサー ──
 
   type LabeledBlock = {
@@ -239,7 +262,12 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
   // ── Step 3: Activity ノード生成 ──
 
-  const activities = labeledBlocks.filter((lb) => lb.provRole === "prov:Activity");
+  // step の中にある procedure 見出しからは Activity を作らない。
+  // step が既に Activity 境界なので、二重に作ると同じ内容が 2 つの Activity に
+  // 束縛されてしまう（containment を優先する）。
+  const activities = labeledBlocks.filter(
+    (lb) => lb.provRole === "prov:Activity" && !stepOwner.has(lb.block.id),
+  );
 
   for (const act of activities) {
     const blockId = act.block.id;
@@ -250,6 +278,17 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       "@type": "prov:Activity",
       label: actLabel,
       blockId,
+    });
+  }
+
+  // step コンテナ → Activity。ラベルを持たないので上のループとは別に emit する。
+  // タイトルは block の content（inline content）にあるので、見出しと同じ経路で読める。
+  for (const step of stepBlocks) {
+    nodes.push({
+      "@id": `activity_${step.id}`,
+      "@type": "prov:Activity",
+      label: deriveActivityName(getBlockText(step)),
+      blockId: step.id,
     });
   }
 
@@ -264,7 +303,10 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   const scopeStack: { level: number; activityId: string }[] = [];
   const phaseStack: { level: number; phase: Phase }[] = [];
   for (const block of flatBlocks) {
-    if (block.type === "heading") {
+    // step の内側にある見出しは、外側の見出しスコープを操作しない。
+    // step が Activity 境界なので、中の見出しは単なる小見出しとして扱う
+    // （ここで pop/push させると step を跨いでスコープが壊れる）。
+    if (block.type === "heading" && !stepOwner.has(block.id)) {
       const level = block.props?.level ?? 2;
       const label = labels.get(block.id);
       const normalized = label ? normalizeLabel(label) : null;
@@ -285,9 +327,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
         phaseStack.push({ level, phase: normalized });
       }
     }
-    const currentActivityId = scopeStack.length > 0
-      ? scopeStack[scopeStack.length - 1].activityId
-      : null;
+    // step の子孫は containment で束縛する（見出しスコープより優先）。
+    // step 外のブロックは従来どおり見出しスコープに従う。
+    const currentActivityId =
+      stepOwner.get(block.id) ??
+      (scopeStack.length > 0 ? scopeStack[scopeStack.length - 1].activityId : null);
     if (currentActivityId) {
       blockToActivityId.set(block.id, currentActivityId);
     }
@@ -582,8 +626,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       }
     }
 
-    // 見出しブロックでコンテキストをリセット（新しいセクションの開始）
-    if (block.type === "heading" && !rawLabel) {
+    // 見出し / step コンテナでコンテキストをリセット（新しいセクションの開始）
+    // step も工程の境界なので、直前の [材料] 文脈が step の中の画像に漏れないようにする。
+    if ((block.type === "heading" || block.type === "step") && !rawLabel) {
       currentEntityLabel = null;
     }
 
@@ -1305,6 +1350,14 @@ function findParentLabeledNodeId(
 ): string | null {
   const parentId = findParentBlockId(blocks, blockId);
   if (!parentId) return null;
+
+  // step コンテナは工程の境界なので、そこで探索を打ち切る（procedure と同じ扱い）。
+  // 素通りさせると step 直下の [属性] が step の外側にある material Entity に
+  // 紐づいてしまう。
+  const parentBlock = blocks
+    .map((b: any) => findBlockById(b, parentId))
+    .find((b: any) => b);
+  if (parentBlock?.type === "step") return null;
 
   const parentLabel = labels.get(parentId);
   if (!parentLabel) {

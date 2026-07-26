@@ -33,9 +33,10 @@ import {
   removeNoteContext,
   normalizeNoteContexts,
 } from "../note-context/context-tags";
-import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
+import { customBlockEntries, KNOWN_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
+import { stepSlashItem } from "../../blocks/step";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -232,18 +233,11 @@ function SidePeekSideMenu() {
   );
 }
 
-// 既知のブロック型（未登録ブロック除去用）
-// メインエディタ（note-app.tsx）と揃える。カスタムブロックは
-// src/blocks/registry.ts の CUSTOM_BLOCK_TYPES から自動で取り込む。
+// 既知のブロック型（未登録ブロック除去用）は src/blocks/registry.ts の
+// KNOWN_BLOCK_TYPES に集約している（メインエディタと同じ集合を必ず使う）。
 // 取りこぼすと、Peek を開いた瞬間に保存済みカスタムブロックが除去された
-// まま auto-save されてデータが壊れる。
-const KNOWN_BLOCK_TYPES = new Set([
-  "paragraph", "heading", "bulletListItem", "numberedListItem",
-  "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "quote",
-  ...CUSTOM_BLOCK_TYPES,
-]);
-
+// まま auto-save されてデータが壊れる。children を持つブロック（step）では
+// 親が落ちると子孫ごと消えるため、損失はさらに大きい。
 function sanitizeBlocks(blocks: any[]): any[] {
   return blocks
     .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
@@ -1610,6 +1604,7 @@ function SidePeekInner({
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
                   calloutSlashItem,
+                  stepSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}

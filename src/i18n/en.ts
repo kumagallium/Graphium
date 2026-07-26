@@ -375,6 +375,8 @@ export const en: Record<string, string> = {
   "slash.templateSub": "Insert a plan or experiment template",
   "slash.callout": "Callout",
   "slash.calloutSub": "Insert a note box with an icon",
+  "slash.step": "Step",
+  "slash.stepSub": "A step that holds text, tables and images inside",
   "callout.variant.note": "Note",
   "callout.variant.info": "Info",
   "callout.variant.success": "Success",

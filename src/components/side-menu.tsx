@@ -62,13 +62,20 @@ export function setOpenBlockMemoFn(fn: typeof openBlockMemoFn) {
   openBlockMemoFn = fn;
 }
 
-// 見出しブロックの配下ブロックを収集する（スコープ選択）
-// 同じレベル以上の見出しが出てきたら終了
-export function collectHeadingScope(doc: any[], headingBlock: any): any[] {
-  const level = headingBlock.props?.level ?? 1;
+// ブロックの「配下」を収集する（スコープ選択）
+// - 見出し: 同じレベル以上の見出しが出てきたら終了（後続の兄弟が範囲）
+// - step コンテナ: 子ブロックがそのまま範囲（containment）
+// どちらも「このまとまりの中身」を返す、という意味では同じ。
+export function collectBlockScope(doc: any[], block: any): any[] {
+  // step は範囲が親子関係で決まるので、文書中の位置を探す必要がない
+  if (block?.type === "step") {
+    return [block, ...(Array.isArray(block.children) ? block.children : [])];
+  }
+
+  const level = block.props?.level ?? 1;
   const blocks = Array.isArray(doc) ? doc : [];
-  const idx = blocks.findIndex((b: any) => b.id === headingBlock.id);
-  if (idx < 0) return [headingBlock];
+  const idx = blocks.findIndex((b: any) => b.id === block.id);
+  if (idx < 0) return [block];
 
   const scope = [blocks[idx]];
   for (let i = idx + 1; i < blocks.length; i++) {
@@ -202,12 +209,11 @@ function AiAssistantMenuItem() {
     <Components.Generic.Menu.Item
       className="bn-menu-item"
       onClick={async () => {
-        let targetBlocks: any[];
-        if (block.type === "heading") {
-          targetBlocks = collectHeadingScope(editor.document, block);
-        } else {
-          targetBlocks = [block];
-        }
+        // 見出し・step は「まとまり」なので配下ごと AI に渡す
+        const targetBlocks: any[] =
+          block.type === "heading" || block.type === "step"
+            ? collectBlockScope(editor.document, block)
+            : [block];
         const markdown = await editor.blocksToMarkdownLossy(targetBlocks);
         aiAssistant.openChat({
           sourceBlockIds: targetBlocks.map((b: any) => b.id),

@@ -527,3 +527,26 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: #fb923c; /* orange-400 */
   color: #1a2e1d;
 }
+
+/* ── Step コンテナブロック ──────────────────────────────
+   「手順（Activity）」を children を持つコンテナブロックとして第一級化した
+   step ブロックの体裁。設計は docs/internal/step-container-block-design-2026-07.md。
+
+   実 DOM 構造:
+     .bn-block[data-node-type="blockContainer"]
+       > .react-renderer.node-step > .bn-block-content[data-content-type="step"]  ← タイトル
+       > .bn-block-group                                                          ← 子ブロック
+   タイトルと子をまとめて括るには blockContainer 側を選ぶ必要があるため
+   :has(> .react-renderer.node-step) を使う（直下に .bn-block-content は来ない）。
+
+   体裁は「静かな全周枠」: 枠線で "箱（コンテナ）" と分かるようにしつつ、
+   地色（塗り）は使わない。塗りは後段の「計画/結果のモード帯」が使う視覚語彙なので、
+   土台が塗りを持つと帯を載せたときに面が三層に重なって読みにくくなる。
+   線は重なっても競合しないが、面は競合する、という判断。 */
+.bn-editor .bn-block:has(> .react-renderer.node-step) {
+  border: 1px solid var(--color-border-subtle);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 8px;
+  padding: 4px 12px 10px 12px;
+  margin: 8px 0;
+}

@@ -10,7 +10,8 @@ import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
-import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
+import { stepSlashItem } from "./blocks/step";
+import { customBlockEntries, KNOWN_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -220,7 +221,7 @@ import { useCapture } from "./hooks/use-capture";
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
 import { FileSidebar } from "./components/FileSidebar";
-import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
+import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -823,13 +824,8 @@ function NoteEditor(props: NoteEditorProps) {
 
 // BlockNote スキーマに存在しないブロック型を再帰的に除去する
 // 保存済みノートに未登録ブロック（sampleScope 等）が含まれる場合のクラッシュ防止
-// カスタムブロックは src/blocks/registry.ts の CUSTOM_BLOCK_TYPES から自動で取り込む。
-const KNOWN_BLOCK_TYPES = new Set([
-  "paragraph", "heading", "bulletListItem", "numberedListItem",
-  "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "quote",
-  ...CUSTOM_BLOCK_TYPES,
-]);
+// 既知の型は src/blocks/registry.ts の KNOWN_BLOCK_TYPES に集約している
+// （標準ブロック＋カスタムブロック登録から自動導出）。
 
 // インラインコンテンツから未知の型を除去（mention 等）
 const KNOWN_INLINE_TYPES = new Set(["text", "link"]);
@@ -2949,10 +2945,31 @@ function NoteEditorInner({
   );
 
   // 挿入されたブロック配列に対して、抽出済みラベルを path 経由で実 ID に解決して
-  // labelStore に適用し、連続する procedure 見出しを informed_by で自動連結する。
+  // labelStore に適用し、連続する手順を informed_by で自動連結する。
+  // 手順は「見出し + procedure ラベル」と「step コンテナ」の 2 通りがあり、
+  // step はラベルを持たないので inserted のツリーから直接拾う。
   // handleInsertToScope と handleReplaceBlocks の双方から使う。
   const applyExtractedLabels = useCallback(
     (inserted: any[], extracted: { path: number[]; label: string }[]) => {
+      // 同じ親を持つ step 同士を文書順に連結する。
+      // 入れ子の step（親→子）は「含む」関係であって「前手順」ではないので繋がない。
+      const chainSiblingSteps = (list: any[]) => {
+        const stepIds: string[] = [];
+        for (const b of list) {
+          if (b?.type === "step" && b.id) stepIds.push(b.id);
+          if (b?.children?.length) chainSiblingSteps(b.children);
+        }
+        for (let i = 1; i < stepIds.length; i++) {
+          linkStore.addLink({
+            sourceBlockId: stepIds[i],
+            targetBlockId: stepIds[i - 1],
+            type: "informed_by",
+            createdBy: "ai",
+          });
+        }
+      };
+      setTimeout(() => chainSiblingSteps(inserted), 0);
+
       if (extracted.length === 0) return;
       const resolveByPath = (path: number[]): any | null => {
         let nodes: any[] = inserted as any[];
@@ -3056,12 +3073,14 @@ function NoteEditorInner({
       }
       const targetBlock = editor.getBlock(targetBlockId);
       if (!targetBlock) return;
-      if (targetBlock.type === "heading") {
+      // 見出し・step は「まとまり」なので、その配下の末尾に挿入する
+      // （step の場合は最後の子の後ろ＝step の中に入る）
+      if (targetBlock.type === "heading" || targetBlock.type === "step") {
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
         const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
         const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
-        const scope = collectHeadingScope(editor.document, targetBlock);
+        const scope = collectBlockScope(editor.document, targetBlock);
         const insertAfterBlock = scope[scope.length - 1];
         const inserted = editor.insertBlocks(linked, insertAfterBlock, "after");
         applyExtractedLabels(inserted as any[], labels);
@@ -3105,9 +3124,16 @@ function NoteEditorInner({
       if (!firstBlock) return;
 
       let inserted: any[] = [];
-      if (firstBlock.type === "heading") {
+      if (firstBlock.type === "step") {
+        // step コンテナ: 子ブロックを丸ごと置換（step 自体とタイトルは残す）。
+        // 見出しと違い範囲は親子関係なので、"after" 挿入だと step の外に出てしまう。
+        const scope = collectBlockScope(editor.document, firstBlock);
+        removeBlockMetadata(scope.slice(1).map((b) => b.id));
+        const updated = editor.updateBlock(firstBlock, { children: newBlocks } as any);
+        inserted = ((updated as any)?.children ?? []) as any[];
+      } else if (firstBlock.type === "heading") {
         // 見出しスコープ: 見出し配下のブロックを置換（見出し自体は残す）
-        const scope = collectHeadingScope(editor.document, firstBlock);
+        const scope = collectBlockScope(editor.document, firstBlock);
         // 見出し以外のスコープブロックを削除
         const scopeIds = scope.slice(1).map((b) => b.id);
         removeBlockMetadata(scopeIds);
@@ -3719,8 +3745,9 @@ function NoteEditorInner({
     const blockId = aiAssistant.sourceBlockIds[0];
     const block = editorRef.current.getBlock(blockId);
     if (!block) return [blockId];
-    if (block.type === "heading") {
-      const scope = collectHeadingScope(editorRef.current.document, block);
+    // 見出し・step は「まとまり」なので配下ごとスコープにする
+    if (block.type === "heading" || block.type === "step") {
+      const scope = collectBlockScope(editorRef.current.document, block);
       return scope.map((b: any) => b.id);
     }
     return [blockId];
@@ -4126,7 +4153,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
