@@ -149,6 +149,7 @@ export const ja: Record<string, string> = {
   "editor.blockLabel.tableHint": "各行が 1 Entity に展開",
   "editor.blockLabel.mediaHint": "ブロック全体 = 1 Entity",
   "editor.blockLabel.headingHint": "手順 / フェーズの境界",
+  "editor.blockLabel.stepPhaseHint": "ここから次の区切りまでが計画 / 結果",
   "editor.align": "配置",
   "editor.align.left": "左揃え",
   "editor.align.center": "中央揃え",

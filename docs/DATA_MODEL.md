@@ -201,8 +201,8 @@ PROV-DM information attaches to blocks in four places:
 
 | Carrier | What it labels | Field |
 |---|---|---|
-| **`step` block type** | The block itself is a PROV *Activity*. Its children are the Activity's contents, and its title is the Activity label. Carries no label — the block type says it. | `page.blocks[]` (`type: "step"`) |
-| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. Inside a `step`, a body block may carry a *Phase* label to open a mode band. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). | `page.labels[blockId]` |
+| **`step` block type** | The block itself is a PROV *Activity*. Its children are the Activity's contents, and its title is the Activity label. Carries no label — the block type says it. This is the only way to author a procedure. | `page.blocks[]` (`type: "step"`) |
+| **Block label** | Inside a `step`, a body block may carry a *Phase* label (`plan` / `result`) to open a mode band. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). Applied from the drag-handle menu; `#` offers only free-form tags. Headings in older notes may still carry `procedure` / `plan` / `result` — those keep rendering and generating the same graph, and can be changed or removed, but are not offered for new content. | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
 

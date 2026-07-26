@@ -80,13 +80,10 @@ export function getVisibleCoreLabels(
   const heading = isHeadingBlock(blockId);
   const table = !heading && isTableBlock(blockId);
   // step の中の本文ブロックには phase（計画/結果）だけ付けられる。
-  // これがモード帯の開始マーカーになる（section = 工程は step 自体が担うので出さない）。
+  // これがモード帯の開始マーカーになる（工程そのものは step ブロックが表すので
+  // section は出さない）。見出しに工程ラベルを新しく付ける導線はもう無い。
   const insideStep = !heading && isInsideStepBlock(blockId);
-  const allowedScopes = heading
-    ? new Set(["section", "phase"])
-    : insideStep
-      ? new Set(["phase"])
-      : new Set<string>();
+  const allowedScopes = insideStep ? new Set(["phase"]) : new Set<string>();
   return CORE_LABELS.filter((label) => {
     if (allowedScopes.has(LABEL_SCOPE[label])) return true;
     // テーブルは構造テーブルとして entity 系ラベルをブロックラベルで付与できる

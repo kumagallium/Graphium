@@ -32,6 +32,7 @@ import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
+import { isInsideStepBlock } from "../features/context-label/label-visibility";
 import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
@@ -250,21 +251,36 @@ const BLOCK_LABEL_COLORS: Record<string, string> = {
 
 // entity-subtype 系（テーブル / メディアのブロック全体に付与）
 const ENTITY_BLOCK_LABELS: CoreLabel[] = ["material", "tool", "attribute", "output"];
-// 見出しブロックの section / phase 系
-const HEADING_BLOCK_LABELS: CoreLabel[] = ["procedure", "plan", "result"];
+// 工程の中の「計画 / 結果」= モード帯のマーカー
+const PHASE_BLOCK_LABELS: CoreLabel[] = ["plan", "result"];
+// 旧方式（見出し + ラベル）で工程を書いていたノート向け。新規付与の導線は無い。
+const LEGACY_HEADING_LABELS: CoreLabel[] = ["procedure", "plan", "result"];
 
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
 
-/** ブロック種別 → 付与可能なラベルとヒント。null なら「ラベル」セクションを出さない。 */
+/**
+ * ブロック種別 → 付与可能なラベルとヒント。null なら「ラベル」セクションを出さない。
+ *
+ * 工程は step ブロックが表すようになったので、見出しに工程ラベルを新しく
+ * 付ける導線は無い。ただし旧方式で書かれたノートを直せなくなると困るので、
+ * 既にラベルが付いている見出しでは従来のメニューを出す（変更・解除のため）。
+ */
 function resolveBlockLabelSpec(
   blockType: string,
+  opts: { insideStep: boolean; hasLegacyLabel: boolean },
 ): { labels: CoreLabel[]; hintKey: string } | null {
-  if (blockType === "heading")
-    return { labels: HEADING_BLOCK_LABELS, hintKey: "editor.blockLabel.headingHint" };
+  if (blockType === "heading") {
+    return opts.hasLegacyLabel
+      ? { labels: LEGACY_HEADING_LABELS, hintKey: "editor.blockLabel.headingHint" }
+      : null;
+  }
   if (blockType === "table")
     return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.tableHint" };
   if (MEDIA_BLOCK_TYPES.has(blockType))
     return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.mediaHint" };
+  // step の中の本文ブロック: ここから計画 / 結果のモード帯を始める
+  if (opts.insideStep && blockType !== "step")
+    return { labels: PHASE_BLOCK_LABELS, hintKey: "editor.blockLabel.stepPhaseHint" };
   return null;
 }
 
@@ -284,14 +300,20 @@ function BlockLabelMenuItems() {
   // 来歴ラベル機能がオフなら「ラベル ▸」サブメニューを出さない。
   if (!provLabelsEnabled) return null;
   const blockType = block.type as string;
-  const spec = resolveBlockLabelSpec(blockType);
-  if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる
-
   const isMedia = MEDIA_BLOCK_TYPES.has(blockType);
   // メディアは mediaInlineLabels、それ以外（見出し / テーブル）は labels[] を参照
   const currentLabel = isMedia
     ? mediaStore?.getLabel(block.id)?.label
     : labelStore.getLabel(block.id);
+
+  const spec = resolveBlockLabelSpec(blockType, {
+    insideStep: isInsideStepBlock(block.id),
+    hasLegacyLabel:
+      currentLabel === "procedure" ||
+      currentLabel === "plan" ||
+      currentLabel === "result",
+  });
+  if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる
 
   const applyLabel = (label: CoreLabel) => {
     const active = currentLabel === label;

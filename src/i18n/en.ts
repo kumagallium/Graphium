@@ -149,6 +149,7 @@ export const en: Record<string, string> = {
   "editor.blockLabel.tableHint": "Each row → one Entity",
   "editor.blockLabel.mediaHint": "Whole block = one Entity",
   "editor.blockLabel.headingHint": "Step / phase boundary",
+  "editor.blockLabel.stepPhaseHint": "Runs from here to the next marker",
   "editor.align": "Align",
   "editor.align.left": "Align left",
   "editor.align.center": "Align center",

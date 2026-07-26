@@ -190,16 +190,15 @@ describe("getHeadingLabelRole (Phase B)", () => {
 describe("filterSuggestionsForBlock (Phase B)", () => {
   const allSuggestions = buildSuggestionList();
 
-  it("見出しブロックでは section / phase ラベルのみ表示", () => {
+  // 工程は step ブロックが表すようになったので、見出しに工程ラベルを付ける
+  // 導線は `#` から外した。二通りの作り方が並ぶのを避けるため。
+  it("見出しブロックでも PROV ラベルは出さない（free のみ）", () => {
     const filtered = filterSuggestionsForBlock(allSuggestions, "heading");
-    const coreLabels = filtered.filter((s) => s.group === "core").map((s) => s.label);
-    expect(coreLabels).toContain("procedure");
-    expect(coreLabels).toContain("plan");
-    expect(coreLabels).toContain("result");
-    expect(coreLabels).not.toContain("material");
-    expect(coreLabels).not.toContain("tool");
-    expect(coreLabels).not.toContain("attribute");
-    expect(coreLabels).not.toContain("output");
+    const coreLabels = filtered.filter((s) => s.group === "core");
+    expect(coreLabels).toHaveLength(0);
+
+    const freeLabels = filtered.filter((s) => s.group === "free");
+    expect(freeLabels.length).toBeGreaterThan(0);
   });
 
   it("本文ブロック（paragraph / bulletListItem）では inline 系も section / phase も出さない、free のみ", () => {
@@ -218,33 +217,22 @@ describe("filterSuggestionsForBlock (Phase B)", () => {
   });
 });
 
-// step コンテナの中では、本文ブロックにも計画/結果（phase）を付けられる。
-// これがモード帯の開始マーカーになる。工程そのものは step ブロックが表すので
-// section（procedure）は出さない。
-describe("filterSuggestionsForBlock — step コンテナ内", () => {
+// PROV ラベルは `#` から完全に外した。工程は step ブロック、その中の計画/結果は
+// ドラッグハンドルのメニューという 2 箇所に集約し、同じものの作り方が
+// 複数並ばないようにする。
+describe("filterSuggestionsForBlock — PROV ラベルは # から出さない", () => {
   const allSuggestions = buildSuggestionList();
 
-  it("step 内の本文ブロックでは phase ラベルだけ出す", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph", true);
-    const coreLabels = filtered.filter((s) => s.group === "core").map((s) => s.label);
-    expect(coreLabels).toContain("plan");
-    expect(coreLabels).toContain("result");
-    // 工程は step ブロック自体が表すので procedure は出さない
-    expect(coreLabels).not.toContain("procedure");
-    // inline 系はハイライト経路のまま
-    expect(coreLabels).not.toContain("material");
-    expect(coreLabels).not.toContain("output");
+  it("どのブロック種別でも core ラベルは出さない", () => {
+    for (const type of ["heading", "paragraph", "bulletListItem", "table", "step", undefined]) {
+      const filtered = filterSuggestionsForBlock(allSuggestions, type);
+      const coreLabels = filtered.filter((s) => s.group === "core");
+      expect(coreLabels).toHaveLength(0);
+    }
   });
 
-  it("step ブロック自身には phase を出さない（帯は子に付ける）", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, "step", true);
-    const coreLabels = filtered.filter((s) => s.group === "core");
-    expect(coreLabels).toHaveLength(0);
-  });
-
-  it("step の外の本文ブロックは従来どおり free のみ", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph", false);
-    const coreLabels = filtered.filter((s) => s.group === "core");
-    expect(coreLabels).toHaveLength(0);
+  it("free ラベル（PROV に乗らないタグ）は従来どおり出す", () => {
+    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph");
+    expect(filtered.filter((s) => s.group === "free").length).toBeGreaterThan(0);
   });
 });

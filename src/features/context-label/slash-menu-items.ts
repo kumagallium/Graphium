@@ -76,40 +76,16 @@ function createLabelSlashItem(
   };
 }
 
-/** スラッシュメニューに追加するラベルアイテム一覧を構築（ロケール変更に対応） */
+/**
+ * スラッシュメニューに追加するラベルアイテム一覧を構築（ロケール変更に対応）
+ *
+ * 工程（手順）と、その中の計画 / 結果はここに無い。工程は step ブロックが表し、
+ * 計画 / 結果は step の中の本文ブロックに付けるモード帯のマーカーで、どちらも
+ * ドラッグハンドルのメニューから操作する。ここに残すと「ラベル付き見出し」と
+ * 「step ブロック」の二通りの作り方が並んでしまう。
+ */
 export function buildLabelSlashMenuItems(): LabelSlashItem[] {
   return [
-    createLabelSlashItem(getDisplayLabelName("procedure"), "procedure", "heading", [
-      "手順",
-      "てじゅん",
-      "ステップ",
-      "操作",
-      "step",
-      "procedure",
-      "process",
-      "method",
-      "protocol",
-    ]),
-    createLabelSlashItem(getDisplayLabelName("plan"), "plan", "heading", [
-      "計画",
-      "けいかく",
-      "予定",
-      "プラン",
-      "plan",
-      "planning",
-      "intent",
-      "hypothesis",
-    ]),
-    createLabelSlashItem(getDisplayLabelName("result"), "result", "heading", [
-      "結果",
-      "けっか",
-      "実施",
-      "じっし",
-      "result",
-      "results",
-      "execution",
-      "observation",
-    ]),
     createLabelSlashItem(getDisplayLabelName("material"), "material", "bulletListItem", [
       "使用",
       "しよう",

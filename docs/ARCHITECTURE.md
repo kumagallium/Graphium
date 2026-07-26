@@ -120,15 +120,20 @@ meant. There is no shared abstraction between them today.
 
 Labels come in two passes that operate on the same blocks:
 
-0. **The `step` container block.** A procedure is normally written as a
-   `step` block, whose children are its content. The block *is* the
-   PROV-DM *Activity* — it carries no label, and its title comes from the
-   block's own inline content. This is the preferred way to write a
-   procedure; the labelled heading below remains supported for notes
-   written before `step` existed.
-1. **Block-level (`#` context labels).** Tags a heading block as `[Step]`
+0. **The `step` container block.** A procedure is written as a `step` block,
+   whose children are its content. The block *is* the PROV-DM *Activity* —
+   it carries no label, and its title comes from the block's own inline
+   content. This is the only way to author a procedure: labelled headings
+   are no longer offered anywhere in the UI, because two ways to make the
+   same thing collided in the slash menu. Notes written before `step`
+   existed keep their labels, still render, and still generate the same
+   graph; their labels can be changed or removed from the drag handle.
+1. **Block-level (context labels).** Tags a heading block as `[Step]`
    (PROV-DM *Activity*; internal key `procedure`) or as a phase
-   `[Plan]` / `[Result]` (internal keys `plan` / `result`). A **table
+   `[Plan]` / `[Result]` (internal keys `plan` / `result`). New PROV labels
+   are applied from the drag-handle menu, not from `#`, which now offers
+   only free-form tags. Inside a `step`, a body block may carry a phase
+   label to open a mode band. A **table
    block** may instead be tagged `[Input]` / `[Tool]` / `[Output]` to mark
    it as a *structured table* (header row = attribute keys, each data row =
    one Entity), or `[Parameter]` to mark it as a *parameter table* (header
