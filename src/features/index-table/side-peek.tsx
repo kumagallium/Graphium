@@ -1618,7 +1618,6 @@ function SidePeekInner({
                 excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
-                onHashtagSelect={(blockId, label) => labelStoreRef.current.setLabel(blockId, label)}
                 // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
                 // 挿入後はピーク内に留まり、青い @テキストをクリックすると（note-app の
                 // document クリックハンドラが .bn-editor を拾うため）サイドピークで開く。

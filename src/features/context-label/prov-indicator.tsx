@@ -11,10 +11,6 @@ import { createPortal } from "react-dom";
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { deriveActivityName } from "./activity-name";
 import { useLinkStore } from "../block-link/store";
-import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
-import {
-  FREE_LABEL_EXAMPLES,
-} from "./labels";
 import { getVisibleCoreLabels } from "./label-visibility";
 import {
   LINK_TYPE_CONFIG,
@@ -23,8 +19,6 @@ import {
 } from "../block-link/link-types";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
-import { Button } from "@ui/button";
-import { Input } from "@ui/form-field";
 import { useT, getDisplayLabel } from "../../i18n";
 import { t as tStatic } from "../../i18n";
 import {
@@ -356,9 +350,6 @@ function ProvPanel({
   const [headingCandidates, setHeadingCandidates] = useState<
     { blockId: string; text: string }[]
   >([]);
-  const [freeInput, setFreeInput] = useState("");
-  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
-  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // パネル位置の調整（画面端対応）
   const adjustedTop = Math.min(top, window.innerHeight - 400);
@@ -437,61 +428,11 @@ function ProvPanel({
               );
             })}
 
-            {/* フリーラベル例 */}
-            <DropdownDivider />
-            <DropdownSectionHeader>{t("labelUi.freeLabels")}</DropdownSectionHeader>
-            {FREE_LABEL_EXAMPLES.slice(0, 4).map((l) => {
-              const active = label === l;
-              return (
-                <MenuItem
-                  key={l}
-                  active={active}
-                  onClick={() => {
-                    onLabelChange(active ? null : l);
-                    setShowLabelPicker(false);
-                  }}
-                  className="text-muted-foreground"
-                >
-                  {getDisplayLabel(l)}
-                </MenuItem>
-              );
-            })}
-
-            {/* カスタム入力 */}
-            <DropdownDivider />
-            <div className="px-2.5 py-1.5">
-              <DropdownSectionHeader>{t("labelUi.custom")}</DropdownSectionHeader>
-              <div className="flex gap-1 mt-0.5">
-                <Input
-                  value={freeInput}
-                  onChange={(e) => setFreeInput(e.target.value)}
-                  {...compositionHandlers}
-                  onKeyDown={(e) => {
-                    // IME 変換確定の Enter では確定しない（WKWebView の
-                    // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
-                    if (e.key === "Enter" && !isImeKey(e) && freeInput.trim()) {
-                      onLabelChange(freeInput.trim());
-                      setShowLabelPicker(false);
-                    }
-                    if (e.key === "Escape") setShowLabelPicker(false);
-                  }}
-                  placeholder={t("labelUi.placeholder")}
-                  className="text-xs py-1 px-1.5"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (freeInput.trim()) {
-                      onLabelChange(freeInput.trim());
-                      setShowLabelPicker(false);
-                    }
-                  }}
-                  className="text-xs shrink-0"
-                >
-                  {t("common.add")}
-                </Button>
-              </div>
-            </div>
+            {/* PROV に乗らない自由タグ（フリーラベル）は廃止した。
+                ブロックに付けられるのは PROV ラベルだけにして、
+                「何のためのラベルか」を一つに絞る。
+                既存ノートに付いている自由タグはデータとして残り、下の
+                「ラベルを外す」で解除できる。 */}
 
             {/* ラベル削除 */}
             {label && (

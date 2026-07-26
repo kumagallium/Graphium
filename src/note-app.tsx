@@ -4173,7 +4173,6 @@ function NoteEditorInner({
                 if (fid) return p.getMediaBlobUrl(fid);
                 return url;
               }}
-              onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
               getMentionSuggestions={(query) => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
                 const sel = window.getSelection();

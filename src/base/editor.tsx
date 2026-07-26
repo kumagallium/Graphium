@@ -44,7 +44,6 @@ import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
-import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
 import { useProvLabelsEnabled } from "@features/context-label/store";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
@@ -84,8 +83,6 @@ type SandboxEditorProps = {
   uploadFile?: (file: File) => Promise<string>;
   /** 保存された URL を表示用 URL に変換する（local-media:// → blob: 等） */
   resolveFileUrl?: (url: string) => Promise<string>;
-  /** # ラベルオートコンプリートで選択されたときのコールバック */
-  onHashtagSelect?: (blockId: string, label: string) => void;
   /** @ 参照リンクで選択されたときのコールバック */
   onMentionSelect?: (sourceBlockId: string, suggestion: import("@features/block-link/mention-menu").ReferenceSuggestion) => void;
   /** @ 参照リンクの候補を取得する関数（外部から注入）。query は @ の後に入力中の文字列 */
@@ -107,7 +104,6 @@ export function SandboxEditor({
   onChange,
   uploadFile,
   resolveFileUrl,
-  onHashtagSelect,
   onMentionSelect,
   getMentionSuggestions,
   editable = true,
@@ -216,41 +212,10 @@ export function SandboxEditor({
     };
   }, [hasExtraSlash, allSlashItems]);
 
-  // # ラベルオートコンプリート
-  const labelSuggestions = useMemo(() => buildSuggestionList(), []);
-  const getHashtagItems = useCallback(
-    async (query: string) => {
-      // クエリが空のときはコアラベル + フリーラベルだけ。
-      // alias は v2 以前の旧ブラケット入力を救うための裏導線なので、
-      // 何かタイプされてマッチした時にだけ姿を現す方がメニューが整理される。
-      const trimmed = query.trim();
-      const visible = trimmed.length === 0
-        ? labelSuggestions.filter((s) => s.group !== "alias")
-        : labelSuggestions;
-      // `#` から付けられるのは free ラベルだけ（PROV ラベルは工程 = step ブロックと
-      // ドラッグハンドルのメニューに集約した）。
-      const currentBlock = (editor as any).getTextCursorPosition?.()?.block;
-      const scoped = filterSuggestionsForBlock(visible, currentBlock?.type);
-      const items = scoped.map((s) => ({
-        title: s.displayName,
-        group: tStatic(
-          s.group === "core"
-            ? "labelUi.coreLabels"
-            : s.group === "alias"
-              ? "labelUi.aliasLabels"
-              : "labelUi.freeLabels",
-        ),
-        onItemClick: () => {
-          const block = (editor as any).getTextCursorPosition?.()?.block;
-          if (block && onHashtagSelect) {
-            onHashtagSelect(block.id, s.label);
-          }
-        },
-      }));
-      return _filterSuggestionItems(items as any, trimmed) as any;
-    },
-    [editor, labelSuggestions, onHashtagSelect],
-  );
+  // `#` のラベルオートコンプリートは廃止した。
+  // 工程は step ブロック、テーブル / メディアのラベルはドラッグハンドルのメニューに
+  // 集約し、PROV に乗らない自由タグも畳んだので、`#` から付けるものが無くなった。
+  // 既存ノートに付いているラベルはデータとして残り、表示・PROV 生成・解除は従来どおり。
 
   // @ 参照リンクオートコンプリート
   const getMentionItems = useCallback(
@@ -315,13 +280,6 @@ export function SandboxEditor({
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={getSlashItems as any}
-          {...({} as any)}
-        />
-      )}
-      {onHashtagSelect && provLabelsEnabled && (
-        <SuggestionMenuController
-          triggerCharacter="#"
-          getItems={getHashtagItems as any}
           {...({} as any)}
         />
       )}
