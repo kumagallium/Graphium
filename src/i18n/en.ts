@@ -1680,6 +1680,7 @@ export const en: Record<string, string> = {
   "ocr.running": "Reading text…",
   "ocr.done": "Text extracted",
   "ocr.chars": "{count} chars",
+  "ocr.noText": "No text found in the image",
   "ocr.copy": "Copy",
   "ocr.matchBadge": "image text",
 };

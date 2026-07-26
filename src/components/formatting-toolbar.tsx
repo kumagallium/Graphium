@@ -225,7 +225,8 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
         <button
           onClick={handleAiClick}
           title={t("editor.askAi")}
-          className="bn-button inline-flex items-center justify-center rounded hover:bg-violet-100 text-violet-500 transition-colors"
+          // サイズ・角丸は BlockNote 標準ボタン（36px 角・rounded-md）に合わせる
+          className="bn-button inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-violet-100 text-violet-500 transition-colors"
           data-test="aiButton"
         >
           <Bot size={18} />

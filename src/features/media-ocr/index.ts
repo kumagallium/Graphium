@@ -13,3 +13,5 @@ export {
 export { runOcrForImage, resolveMediaUrl } from "./run-ocr";
 export { collectOcrText, OCR_CAPABLE_BLOCK_TYPES } from "./collect";
 export { ImageOcrToolbarButton } from "./ImageOcrToolbarButton";
+export { OcrToast, type OcrToastState } from "./OcrToast";
+export { useAutoImageOcr } from "./use-auto-ocr";

@@ -22,7 +22,12 @@ import {
   MediaInlineLabelProvider,
   useMediaInlineLabelStore,
 } from "./features/inline-label/media-store";
-import { MediaOcrProvider, useMediaOcrStore } from "./features/media-ocr";
+import {
+  MediaOcrProvider,
+  useMediaOcrStore,
+  useAutoImageOcr,
+  OcrToast,
+} from "./features/media-ocr";
 import {
   BlockAlignmentProvider,
   useBlockAlignmentStore,
@@ -1005,6 +1010,9 @@ function NoteEditorInner({
   const mediaInlineLabelStore = useMediaInlineLabelStore();
   const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
+  // 貼られた画像の自動 OCR。handleContentChange から呼ぶが、その useCallback は
+  // hook より前に定義されるため ref 経由で最新の scan を渡す。
+  const autoOcrRef = useRef<(() => void) | null>(null);
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   // チャット実行（chat-run-manager）用のノート識別子。doc キャッシュ・saveNoteDoc と
@@ -3697,9 +3705,16 @@ function NoteEditorInner({
     markDirty();
     labelAutoRef.current?.();
     triggerRegeneration();
+    // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
+    autoOcrRef.current?.();
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
   }, [markDirty, triggerRegeneration]);
+
+  // 貼られた画像の自動 OCR。ノートを開いた時点の既存画像は対象外で、
+  // このノートを開いている間に新しく入った画像だけを読む。
+  const autoOcr = useAutoImageOcr({ editorRef, noteKey: fileId ?? "new" });
+  autoOcrRef.current = autoOcr.scan;
 
   // 初期コンテンツ
   const initialContent = useMemo(() => {
@@ -4133,6 +4148,8 @@ function NoteEditorInner({
             )}
             {/* table / audio / file の配置揃えを CSS で適用（サイドストア駆動） */}
             <AlignmentStyleLayer />
+            {/* 自動 OCR の進行トースト（右下ピル） */}
+            <OcrToast state={autoOcr.toast} />
             <SandboxEditor
               key={fileId || "new"}
               editable={!archived && !trashed}

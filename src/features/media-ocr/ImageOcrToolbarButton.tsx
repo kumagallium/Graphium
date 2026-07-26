@@ -85,8 +85,10 @@ export function ImageOcrToolbarButton({ blockId, imageUrl }: Props) {
         onClick={toggle}
         title={label}
         disabled={running}
+        // サイズ・角丸は同じツールバーに並ぶ BlockNote 標準ボタン（36px 角・rounded-md）に合わせる。
+        // padding 無しだとアイコン幅（18px）のままになり、隣のボタンと詰まって見える。
         className={[
-          "bn-button inline-flex items-center justify-center rounded transition-colors",
+          "bn-button inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors",
           charCount > 0
             ? "text-[#4B7A52] hover:bg-[rgba(75,122,82,0.12)]"
             : "text-muted-foreground hover:bg-black/5",
