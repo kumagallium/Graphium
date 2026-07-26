@@ -66,49 +66,9 @@ function EditorProviders({ children }: { children: ReactNode }) {
   );
 }
 
-// step コンテナの体裁（採用案D「静かな全周枠」）は app.css にベイク済み。
-// ここではモード帯（§4.4）の見え方モックだけを足す。
-//
-// DOM: .bn-block > .react-renderer.node-step > .bn-block-content[data-content-type=step]
-//      .bn-block > .bn-block-group > .bn-block-outer（子ブロック）
-const CONTAINER_STYLES = `
-/* ── モード帯（計画）のモック ──
-   実装では use-step-phase-bands が同じ塗りを動的 CSS で当てる。
-   ここでは「最初の 2 子が計画帯」と決め打ちして見え方だけ確かめる。 */
-.gx-band .bn-block:has(> .react-renderer.node-step) > .bn-block-group > .bn-block-outer:nth-child(-n+2) {
-  background: var(--color-info-bg, #f0f9ff);
-  box-shadow: -8px 0 0 0 var(--color-info-bg, #f0f9ff), 8px 0 0 0 var(--color-info-bg, #f0f9ff);
-}
-
-/* 帯の先頭に「計画」と出す（何の帯か読み取れるように）。
-   本文に重ならないよう、上に余白を作ってそこへ絶対配置する。 */
-.gx-band-chip .bn-block:has(> .react-renderer.node-step) > .bn-block-group > .bn-block-outer:nth-child(1) {
-  position: relative;
-  padding-top: 20px;
-}
-.gx-band-chip .bn-block:has(> .react-renderer.node-step) > .bn-block-group > .bn-block-outer:nth-child(1)::before {
-  content: "計画";
-  position: absolute;
-  top: 2px;
-  left: 0;
-  height: 16px;
-  box-sizing: border-box;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--color-info, #5b8fb9);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-`;
-function ContainerStyles() {
-  return <style dangerouslySetInnerHTML={{ __html: CONTAINER_STYLES }} />;
-}
+// step コンテナの体裁（静かな全周枠 + ヘッダー地色）は app.css にベイク済み。
+// モード帯（計画/結果）は検討の上で撤回した — 予定と実際の比較はノート単位の
+// 分離（partOfPlanNoteId）の粒度で行う。
 
 // ネットワーク非依存のプレースホルダ画像（小さな SVG data URL）
 const IMG_DATA_URL =
@@ -282,52 +242,28 @@ const meta: Meta = {
 export default meta;
 
 // 基本: children（段落・テーブル・画像・コード）を持つ step
-// 体裁は app.css の「静かな全周枠」がそのまま当たる
+// 体裁は app.css の「静かな全周枠 + ヘッダー地色」がそのまま当たる
 export const WithChildren: StoryObj = {
   name: "children（段落/テーブル/画像/コード）",
   render: () => (
     <Safe>
-      <ContainerStyles />
       <StepDemo variantClass="" />
     </Safe>
   ),
 };
 
-// ステップが連続するノート（実運用に近い見え方）
+// ステップが連続するノート（実運用に近い見え方）。
+// ヘッダー右の「前手順」ボタンで informed_by を張れる（張ると青いチップになる）。
 export const MultiStep: StoryObj = {
-  name: "連続するステップ",
+  name: "連続するステップ（前手順リンク付き）",
   render: () => (
     <Safe>
-      <ContainerStyles />
+      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+        各ステップのヘッダー右「前手順」から他のステップへの informed_by を
+        張れる。張ると「← ステップ名」のチップになり、もう一度選ぶと外れる。
+      </div>
       <StepDemo variantClass="" content={multiStepContent()} />
     </Safe>
   ),
 };
 
-// モード帯（計画）を載せた場合。枠線の土台と帯の塗りが競合しないことを確認する。
-export const WithModeBand: StoryObj = {
-  name: "モード帯（計画）を載せた場合",
-  render: () => (
-    <Safe>
-      <ContainerStyles />
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-        各ステップの最初の 2 ブロックを「計画帯」として塗ったモック（§4.4）。
-      </div>
-      <StepDemo variantClass="gx-band" content={multiStepContent()} />
-    </Safe>
-  ),
-};
-
-// 計画帯にチップを出した状態（実装では use-step-phase-bands が動的 CSS で当てる）
-export const BandWithChip: StoryObj = {
-  name: "計画帯＋「計画」チップ",
-  render: () => (
-    <Safe>
-      <ContainerStyles />
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-        ヘッダー地色のステップ名・青い計画帯（先頭にチップ）・無地の結果、の 3 つが分かれて見えるか。
-      </div>
-      <StepDemo variantClass="gx-band gx-band-chip" content={multiStepContent()} />
-    </Safe>
-  ),
-};

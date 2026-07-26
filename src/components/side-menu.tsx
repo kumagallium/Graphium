@@ -32,7 +32,6 @@ import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
-import { isInsideStepBlock } from "../features/context-label/label-visibility";
 import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
@@ -251,8 +250,6 @@ const BLOCK_LABEL_COLORS: Record<string, string> = {
 
 // entity-subtype 系（テーブル / メディアのブロック全体に付与）
 const ENTITY_BLOCK_LABELS: CoreLabel[] = ["material", "tool", "attribute", "output"];
-// 工程の中の「計画 / 結果」= モード帯のマーカー
-const PHASE_BLOCK_LABELS: CoreLabel[] = ["plan", "result"];
 // 旧方式（見出し + ラベル）で工程を書いていたノート向け。新規付与の導線は無い。
 const LEGACY_HEADING_LABELS: CoreLabel[] = ["procedure", "plan", "result"];
 
@@ -267,7 +264,7 @@ const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
  */
 function resolveBlockLabelSpec(
   blockType: string,
-  opts: { insideStep: boolean; hasLegacyLabel: boolean },
+  opts: { hasLegacyLabel: boolean },
 ): { labels: CoreLabel[]; hintKey: string } | null {
   if (blockType === "heading") {
     return opts.hasLegacyLabel
@@ -278,9 +275,6 @@ function resolveBlockLabelSpec(
     return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.tableHint" };
   if (MEDIA_BLOCK_TYPES.has(blockType))
     return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.mediaHint" };
-  // step の中の本文ブロック: ここから計画 / 結果のモード帯を始める
-  if (opts.insideStep && blockType !== "step")
-    return { labels: PHASE_BLOCK_LABELS, hintKey: "editor.blockLabel.stepPhaseHint" };
   return null;
 }
 
@@ -307,7 +301,6 @@ function BlockLabelMenuItems() {
     : labelStore.getLabel(block.id);
 
   const spec = resolveBlockLabelSpec(blockType, {
-    insideStep: isInsideStepBlock(block.id),
     hasLegacyLabel:
       currentLabel === "procedure" ||
       currentLabel === "plan" ||

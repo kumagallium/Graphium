@@ -193,12 +193,12 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   //
   // step はラベルを持たない（labels は context-label 由来）ので、ラベル経由の
   // Activity 判定（coreToProvRole）には乗らない。Activity ノードは別途 emit する。
+  // step の中に計画/結果（phase）の概念は持ち込まない。予定と実際の区別が
+  // 効くのは「プロトコル 1 本 × 実施 N 回」を比較するときで、それはノート単位の
+  // 分離（partOfPlanNoteId）が既に担う。step 内の帯として持たせる案は検討の上で
+  // 撤回した（消費者のいないメタデータと引き換えに、書くたびの判断を増やすため）。
   const stepOwner = new Map<string, string>();
   const stepBlocks: any[] = [];
-  // step 内の「モード帯」。計画（plan）ラベルの付いた子から、次の区切り
-  // （result ラベル / step の終わり）までが計画モード。既定は実施（＝タグ無し）。
-  // 帯であってコンテナではないので、子は step 直下のまま（階層は増えない）。
-  const stepPhase = new Map<string, "plan" | "result">();
   const collectSteps = (list: any[], inherited: string | null) => {
     for (const b of list) {
       if (!b || typeof b !== "object") continue;
@@ -206,28 +206,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       const owner = b.type === "step" ? `activity_${b.id}` : inherited;
       if (b.type === "step") stepBlocks.push(b);
       if (owner && b.id) stepOwner.set(b.id, owner);
-      if (Array.isArray(b.children)) {
-        if (b.type === "step") markStepPhases(b.children);
-        collectSteps(b.children, owner);
-      }
-    }
-  };
-  // step の子を順に見て、モード帯を子孫へ伝播させる
-  const markStepPhases = (children: any[]) => {
-    let current: "plan" | "result" | undefined;
-    const assign = (b: any, phase: "plan" | "result") => {
-      if (b?.id) stepPhase.set(b.id, phase);
-      if (Array.isArray(b?.children)) for (const c of b.children) assign(c, phase);
-    };
-    for (const child of children) {
-      if (!child || typeof child !== "object") continue;
-      const raw = child.id ? labels.get(child.id) : undefined;
-      const normalized = raw ? normalizeLabel(raw) : null;
-      if (normalized === "plan" || normalized === "result") {
-        current = normalized;
-      }
-      // 内側の step は自前の帯を持つので、外側の帯を持ち込まない
-      if (current && child.type !== "step") assign(child, current);
+      if (Array.isArray(b.children)) collectSteps(b.children, owner);
     }
   };
   collectSteps(blocks, null);
@@ -360,10 +339,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     if (currentActivityId) {
       blockToActivityId.set(block.id, currentActivityId);
     }
-    // step 内はモード帯が phase を決める（見出し由来の phase より優先）
-    const currentPhase =
-      stepPhase.get(block.id) ??
-      (phaseStack.length > 0 ? phaseStack[phaseStack.length - 1].phase : undefined);
+    const currentPhase = phaseStack.length > 0
+      ? phaseStack[phaseStack.length - 1].phase
+      : undefined;
     if (currentPhase) {
       blockToPhase.set(block.id, currentPhase);
     }

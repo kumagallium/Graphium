@@ -242,12 +242,12 @@ describe("step を跨ぐ工程の連鎖", () => {
   });
 });
 
-// ── モード帯（計画 / 結果） ──
-// 計画・結果は step を入れ子にする「箱」ではなく、step 直下の子の並びに被せる「帯」。
-// 帯は plan / result ラベルの付いた子から次の区切りまで続き、既定は結果（マーク不要）。
-// 計画帯の材料は "予定" として記録され、実施の材料とは別 Entity（_plan）に分かれる。
-describe("step 内のモード帯（計画/結果）", () => {
-  it("計画帯の材料は _plan Entity として実施と区別される", () => {
+// ── step の中に phase（計画/結果）の概念は無い ──
+// 「step 内のモード帯」は一度実装したうえで撤回した。予定と実際の区別が効くのは
+// プロトコル 1 本 × 実施 N 回の比較で、それはノート単位の分離（partOfPlanNoteId）が担う。
+// step の子に plan / result ラベルが残っていても（撤回前に付けた等）、生成には影響しない。
+describe("step 内の phase ラベルは無視される（帯は撤回済み）", () => {
+  it("step の子に plan ラベルがあっても _plan Entity は作られない", () => {
     const doc = gen(
       [
         step("s1", "反応 A", [
@@ -256,71 +256,25 @@ describe("step 内のモード帯（計画/結果）", () => {
       ],
       new Map([["p-plan", "plan"]]),
     );
-    const planEnt = doc["@graph"].find(
-      (n: any) => n["@id"] === "inline_material_ent_nacl_plan",
-    );
-    expect(planEnt).toBeDefined();
-    expect((planEnt as any)["graphium:phase"]).toBe("plan");
-  });
-
-  it("帯は次の区切り（result）まで続き、そこから先は実施になる", () => {
-    const doc = gen(
-      [
-        step("s1", "反応 A", [
-          para("p-plan", [styled("予定", { inlineMaterial: "ent_a" })]),
-          para("p-plan2", [styled("予定2", { inlineMaterial: "ent_b" })]),
-          para("p-result", [styled("実測", { inlineMaterial: "ent_c" })]),
-        ]),
-      ],
-      new Map([
-        ["p-plan", "plan"],
-        ["p-result", "result"],
-      ]),
-    );
-    // 帯の中（マーカー自身と次のブロック）は plan
-    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_a_plan")).toBeDefined();
-    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_b_plan")).toBeDefined();
-    // 区切り以降は実施（_plan が付かない）
-    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_c")).toBeDefined();
-    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_c_plan")).toBeUndefined();
-  });
-
-  it("マークが無ければ既定で実施（結果）として扱う", () => {
-    const doc = gen([
-      step("s1", "反応 A", [para("p1", [styled("NaCl", { inlineMaterial: "ent_nacl" })])]),
-    ]);
+    // 通常の実施 Entity として扱われる
     expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_nacl")).toBeDefined();
     expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_nacl_plan")).toBeUndefined();
+    // step への束縛は通常どおり
+    expect(usedIds(doc, "activity_s1")).toContain("inline_material_ent_nacl");
   });
 
-  it("同じ材料が計画と実施の両方にあると wasDerivedFrom で結ばれる（予定と実際のズレ）", () => {
+  it("見出し + procedure の旧ノートでは [Plan] 見出しの phase が従来どおり効く（後方互換）", () => {
     const doc = gen(
       [
-        step("s1", "反応 A", [
-          para("p-plan", [styled("NaCl", { inlineMaterial: "ent_nacl" })]),
-          para("p-real", [styled("NaCl", { inlineMaterial: "ent_nacl" })]),
-        ]),
+        { id: "h-proc", type: "heading", props: { level: 2 }, content: [styled("工程")], children: [] },
+        { id: "h-plan", type: "heading", props: { level: 3 }, content: [styled("計画")], children: [] },
+        para("p1", [styled("NaCl", { inlineMaterial: "ent_nacl" })]),
       ],
       new Map([
-        ["p-plan", "plan"],
-        ["p-real", "result"],
+        ["h-proc", "procedure"],
+        ["h-plan", "plan"],
       ]),
     );
-    const exec = doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_nacl");
-    const derived = (exec as any)?.["prov:wasDerivedFrom"];
-    const ids = Array.isArray(derived) ? derived.map((d: any) => d["@id"]) : [derived?.["@id"]];
-    expect(ids).toContain("inline_material_ent_nacl_plan");
-  });
-
-  it("帯は step の外へは漏れない", () => {
-    const doc = gen(
-      [
-        step("s1", "反応 A", [para("p-plan", [styled("予定", { inlineMaterial: "ent_a" })])]),
-        para("p-outside", [styled("外", { inlineMaterial: "ent_out" })]),
-      ],
-      new Map([["p-plan", "plan"]]),
-    );
-    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_out")).toBeDefined();
-    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_out_plan")).toBeUndefined();
+    expect(doc["@graph"].find((n: any) => n["@id"] === "inline_material_ent_nacl_plan")).toBeDefined();
   });
 });

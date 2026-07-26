@@ -11,7 +11,6 @@ import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { stepSlashItem } from "./blocks/step";
-import { useStepPhaseBands } from "./blocks/step/use-step-phase-bands";
 import { customBlockEntries, KNOWN_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
@@ -1027,13 +1026,6 @@ function NoteEditorInner({
   // どのエディタから呼ばれたかを記憶する。SidePeek からも同じ slash
   // items を使うため、選択結果を呼び出し元のエディタに挿入する必要がある。
   const pickerEditorRef = useRef<any>(null);
-  // step のモード帯（計画/結果）を DOM に反映する
-  // （ラベル変更・エディタ差し替えで塗り直す）
-  useStepPhaseBands(
-    () => editorRef.current?.document,
-    labelStore.labels,
-    [mainEditor],
-  );
   // このノートを派生元として参照する wiki エントリ（Knowledge 化済み判定用）
   const knowledgeMap = useMemo(() => buildKnowledgeMap(noteIndex ?? null), [noteIndex]);
   const wikiEntriesForCurrentNote: NoteIndexEntry[] = fileId ? (knowledgeMap.get(fileId) ?? []) : [];

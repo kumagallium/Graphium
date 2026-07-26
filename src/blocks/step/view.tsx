@@ -8,29 +8,69 @@
 //   並べ替え・出し入れは標準のドラッグハンドルに委ねる。
 // - 枠線とヘッダー地色は app.css（.bn-block:has(> .react-renderer.node-step)）にある。
 //
-// ヘッダーの「計画」トグルについて:
-//   計画 / 結果は step の子に付けるラベルで表す（モード帯）。当初はドラッグハンドルの
-//   「ラベル ▸」から付ける想定だったが、step の中の子はハンドルへマウスを寄せる途中で
-//   ホバー対象が step に切り替わってしまい、子のメニューに到達できないと実測で分かった
-//   （step の外の段落では起きない。コンテナにネストしたブロック固有の挙動）。
-//   そのためカード自身にトグルを置く。
+// ヘッダーの「前手順」ボタンについて:
+//   工程の連なり（informed_by）は、以前は左端の PROV インジケータからしか張れなかった。
+//   カード自身に導線を置くのは、工程の順序が step の第一級の性質だから。
+//   なお step の子ブロックのドラッグハンドルメニューは使えない — ハンドルへマウスを
+//   寄せる途中でホバー対象が step 自身に切り替わってしまう（実測）。カード上の
+//   コントロールはその制約も回避する。
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { defaultProps } from "@blocknote/core";
-import { ListChecks } from "lucide-react";
-import { useLabelStore } from "../../features/context-label";
-import { getDisplayLabelName } from "../../i18n";
+import { useEffect, useRef, useState } from "react";
+import { Check, Link2, ListChecks } from "lucide-react";
+import { useLinkStore } from "../../features/block-link/store";
+import { deriveActivityName } from "../../features/context-label/activity-name";
+import { t } from "../../i18n";
 
-/** step の子のうち、計画マーカーが付いているものを返す */
-function findPlanMarker(
-  step: any,
-  labels: Map<string, string>,
-): string | null {
-  const children = Array.isArray(step?.children) ? step.children : [];
-  for (const child of children) {
-    if (child?.id && labels.get(child.id) === "plan") return child.id;
-  }
-  return null;
+/** inline content からプレーンテキストを取り出す */
+function inlineText(block: any): string {
+  if (!Array.isArray(block?.content)) return "";
+  return block.content
+    .map((c: any) => (c?.type === "text" ? c.text : ""))
+    .join("");
+}
+
+export type StepLinkCandidate = { blockId: string; title: string };
+
+/**
+ * 前手順の候補（step ブロック）を文書順に集める。
+ * タイトルは Activity 名と同じ流儀（連番プレフィックスを除く）で整える。
+ *
+ * 自分自身に加えて、自分の子孫（内部工程）と祖先（自分を包む工程）も除外する。
+ * 親子関係は containment として既に PROV に乗っており、そこへ informed_by を
+ * 重ねると「含む」と「先行する」が同じ 2 つの工程に両立してしまう。
+ */
+export function collectStepPredecessorCandidates(
+  doc: any[],
+  selfId: string,
+): StepLinkCandidate[] {
+  const out: StepLinkCandidate[] = [];
+  // 戻り値: このサブツリーに自分がいたか（いたら呼び出し元の step は祖先）
+  const walk = (list: any[]): boolean => {
+    let containsSelf = false;
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      if (b.id === selfId) {
+        containsSelf = true;
+        continue; // 自分の子孫には入らない
+      }
+      let entry: StepLinkCandidate | null = null;
+      if (b.type === "step" && b.id) {
+        const title = deriveActivityName(inlineText(b)).trim();
+        entry = { blockId: b.id, title: title || b.id.slice(0, 8) };
+        out.push(entry);
+      }
+      if (Array.isArray(b.children) && walk(b.children)) {
+        containsSelf = true;
+        // 自分を含むサブツリーの根 = 祖先 step。候補から外す
+        if (entry) out.splice(out.indexOf(entry), 1);
+      }
+    }
+    return containsSelf;
+  };
+  walk(doc);
+  return out;
 }
 
 export const StepBlock = createReactBlockSpec(
@@ -46,63 +86,57 @@ export const StepBlock = createReactBlockSpec(
   },
   {
     render: (props) => {
-      const labelStore = useLabelStore();
-      // props.block は children の変化に追随しないことがあるので、常に編集中の
-      // 実体から読む（トグルの見た目と挙動がずれるのを避ける）。
-      const readStep = () =>
-        (props.editor as any).getBlock?.(props.block.id) ?? props.block;
-      const planActive = findPlanMarker(readStep(), labelStore.labels) !== null;
+      const linkStore = useLinkStore();
+      const [pickerOpen, setPickerOpen] = useState(false);
+      // 循環でリンクを拒否されたとき、無反応に見えないよう理由を出す
+      const [cycleWarn, setCycleWarn] = useState(false);
+      const rootRef = useRef<HTMLDivElement>(null);
 
-      // 計画帯の開始・解除。帯は「マーカーが付いた子から次の区切りまで」なので、
-      // 開始するときは step の先頭に空のブロックを 1 つ作ってそこに印を付ける。
-      const togglePlan = () => {
-        const editor = props.editor as any;
-        const step = readStep();
-        const markerId = findPlanMarker(step, labelStore.labels);
-        if (markerId) {
-          labelStore.setLabel(markerId, null);
-          return;
-        }
-        const focus = (id: string) => {
-          setTimeout(() => {
-            try {
-              editor.setTextCursorPosition(id, "end");
-              editor.focus();
-            } catch {
-              /* no-op */
-            }
-          }, 0);
+      // 外側クリックでピッカーを閉じる（callout の variant ピッカーと同じ流儀）
+      useEffect(() => {
+        if (!pickerOpen) return;
+        const onDown = (e: MouseEvent) => {
+          if (!rootRef.current?.contains(e.target as Node)) setPickerOpen(false);
         };
+        document.addEventListener("mousedown", onDown);
+        return () => document.removeEventListener("mousedown", onDown);
+      }, [pickerOpen]);
 
-        const first = step.children?.[0];
-        if (first?.id) {
-          const inserted = editor.insertBlocks([{ type: "paragraph" }], first.id, "before");
-          const newId = inserted?.[0]?.id;
-          if (!newId) return;
-          labelStore.setLabel(newId, "plan");
-          // 帯は次の区切りまで続くので、そのままだと既に書いてある記録まで
-          // 計画に飲み込まれる。元の先頭を結果マーカーにして帯をそこで閉じる。
-          if (!labelStore.getLabel(first.id)) {
-            labelStore.setLabel(first.id, "result");
-          }
-          focus(newId);
+      // この step の前手順（outgoing informed_by）。複数可（合流する工程）。
+      const prevLinks = linkStore
+        .getOutgoing(props.block.id)
+        .filter((l) => l.type === "informed_by");
+
+      const doc: any[] = (props.editor as any).document ?? [];
+      const candidates = collectStepPredecessorCandidates(doc, props.block.id);
+      const titleOf = (blockId: string) =>
+        candidates.find((c) => c.blockId === blockId)?.title ?? blockId.slice(0, 8);
+
+      const toggleCandidate = (blockId: string) => {
+        const existing = prevLinks.find((l) => l.targetBlockId === blockId);
+        if (existing) {
+          linkStore.removeLink(existing.id);
+          setCycleWarn(false);
           return;
         }
-        // まだ子がいない step: 子を 1 つ作ってから印を付ける
-        editor.updateBlock(props.block, { children: [{ type: "paragraph" }] });
-        setTimeout(() => {
-          const child = editor.getBlock(props.block.id)?.children?.[0];
-          if (child?.id) {
-            labelStore.setLabel(child.id, "plan");
-            focus(child.id);
-          }
-        }, 0);
+        const result = linkStore.addLink({
+          sourceBlockId: props.block.id,
+          targetBlockId: blockId,
+          type: "informed_by",
+          createdBy: "human",
+        });
+        // 循環（A←B かつ B←A 等）は store が拒否する。チェックが付かない理由を示す
+        setCycleWarn(result.error === "cycle_detected");
       };
 
-      const planLabel = getDisplayLabelName("plan");
+      const linked = prevLinks.length > 0;
+      const chipText = linked
+        ? `← ${titleOf(prevLinks[0].targetBlockId)}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
+        : t("step.prevLink");
 
       return (
         <div
+          ref={rootRef}
           data-test="step-block"
           style={{
             display: "flex",
@@ -129,34 +163,137 @@ export const StepBlock = createReactBlockSpec(
             ref={props.contentRef}
             style={{ flex: 1, minWidth: 0, lineHeight: "1.6" }}
           />
-          {/* 計画帯のトグル。結果は既定なのでボタンを置かない
-              （マークしないことが「やった記録」の意味） */}
-          <button
-            type="button"
+          {/* 前手順リンク（編集不可）。informed_by を張る・外す */}
+          <div
             contentEditable={false}
-            onClick={togglePlan}
-            title={planLabel}
-            aria-pressed={planActive}
-            data-test="step-plan-toggle"
-            style={{
-              flex: "0 0 auto",
-              marginTop: 1,
-              padding: "0 8px",
-              height: 20,
-              borderRadius: 10,
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 700,
-              lineHeight: "18px",
-              border: `1px solid ${planActive ? "var(--color-info)" : "var(--color-border)"}`,
-              background: planActive ? "var(--color-info)" : "transparent",
-              color: planActive ? "#fff" : "var(--color-text-tertiary)",
-            }}
+            style={{ position: "relative", flex: "0 0 auto" }}
           >
-            {planLabel}
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPickerOpen((v) => !v);
+                setCycleWarn(false);
+              }}
+              title={t("labelUi.prevStepLink")}
+              aria-expanded={pickerOpen}
+              data-test="step-prev-link"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                marginTop: 1,
+                padding: "0 8px",
+                height: 20,
+                maxWidth: 180,
+                borderRadius: 10,
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                lineHeight: "18px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                border: `1px solid ${linked ? "var(--color-label-activity)" : "var(--color-border)"}`,
+                background: linked ? "var(--color-label-activity-bg)" : "transparent",
+                color: linked ? "var(--color-label-activity)" : "var(--color-text-tertiary)",
+              }}
+            >
+              <Link2 size={11} strokeWidth={2.2} style={{ flex: "0 0 auto" }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {chipText}
+              </span>
+            </button>
+            {pickerOpen && (
+              <div role="menu" style={pickerStyles.menu}>
+                <div style={pickerStyles.header}>{t("labelUi.prevStepLink")}</div>
+                {candidates.length === 0 && (
+                  <div style={pickerStyles.empty}>{t("step.noOtherSteps")}</div>
+                )}
+                {cycleWarn && (
+                  <div style={{ ...pickerStyles.empty, color: "var(--color-error)" }}>
+                    {t("step.cycleBlocked")}
+                  </div>
+                )}
+                {candidates.map((c) => {
+                  const active = prevLinks.some((l) => l.targetBlockId === c.blockId);
+                  return (
+                    <button
+                      key={c.blockId}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={active}
+                      onClick={() => toggleCandidate(c.blockId)}
+                      style={{
+                        ...pickerStyles.item,
+                        background: active
+                          ? "var(--color-label-activity-bg)"
+                          : "transparent",
+                        color: active
+                          ? "var(--color-label-activity)"
+                          : "var(--color-foreground)",
+                      }}
+                    >
+                      <span style={pickerStyles.itemLabel}>{c.title}</span>
+                      {active && <Check size={13} strokeWidth={2.4} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       );
     },
   }
 );
+
+const pickerStyles: Record<string, React.CSSProperties> = {
+  menu: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    right: 0,
+    zIndex: 20,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: 6,
+    minWidth: 180,
+    maxWidth: 260,
+    borderRadius: 8,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "var(--shadow-2)",
+  },
+  header: {
+    padding: "2px 8px 4px",
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.03em",
+    color: "var(--color-text-tertiary)",
+  },
+  empty: {
+    padding: "4px 8px 6px",
+    fontSize: 12,
+    fontWeight: 400,
+    color: "var(--color-text-tertiary)",
+  },
+  item: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: "5px 8px",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+    textAlign: "left",
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1.4,
+  },
+  itemLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+};

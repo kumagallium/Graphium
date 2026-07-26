@@ -37,7 +37,6 @@ import { customBlockEntries, KNOWN_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
 import { stepSlashItem } from "../../blocks/step";
-import { useStepPhaseBands } from "../../blocks/step/use-step-phase-bands";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -279,12 +278,6 @@ function SidePeekInner({
   const { promptNoteName, dialog: newNoteNameDialog } = useNewNoteNamePrompt();
   // picker callbacks をエディタ単位で登録するため、editor 実体を state にも持つ
   const [sidePeekEditor, setSidePeekEditor] = useState<any>(null);
-  // step のモード帯（計画/結果）を DOM に反映する（メインエディタと同じ扱い）
-  useStepPhaseBands(
-    () => editorRef.current?.document,
-    labelStore.labels,
-    [sidePeekEditor],
-  );
   // スラッシュメニューのピッカー状態（main editor とは独立に SidePeek 側で持つ）
   const [pickerMediaType, setPickerMediaType] = useState<MediaType | null>(null);
   const [memoPickerOpen, setMemoPickerOpen] = useState(false);
@@ -1104,6 +1097,26 @@ function SidePeekInner({
       handleChange();
     }
   }, [blockAlignmentStore.alignments, handleChange]);
+
+  // リンク / ラベル変更時にもオートセーブをトリガー（editor.onChange を通らないため）。
+  // step カードの前手順リンクや ProvPanel のラベル変更はエディタ本文を変えない。
+  // メインエディタは note-app.tsx の同型 watcher が拾うが、SidePeek は独自の
+  // Provider を持つ（閉じるとアンマウントで消える）ため、ここで拾わないと
+  // ピークで張ったリンクが本文を触らずに閉じた場合に無言で失われる。
+  const prevLinksRef = useRef(linkStore.links);
+  useEffect(() => {
+    if (prevLinksRef.current !== linkStore.links) {
+      prevLinksRef.current = linkStore.links;
+      handleChange();
+    }
+  }, [linkStore.links, handleChange]);
+  const prevLabelsRef = useRef(labelStore.labels);
+  useEffect(() => {
+    if (prevLabelsRef.current !== labelStore.labels) {
+      prevLabelsRef.current = labelStore.labels;
+      handleChange();
+    }
+  }, [labelStore.labels, handleChange]);
 
   // Cmd+S / Ctrl+S
   useEffect(() => {

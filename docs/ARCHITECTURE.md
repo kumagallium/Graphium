@@ -96,7 +96,10 @@ talks to LLM and embedding backends.
   agent highlights) lives under `src/features/inline-label/`.
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
-  heading. Nesting and reordering use BlockNote's own drag handle.
+  heading. Nesting and reordering use BlockNote's own drag handle. The card's
+  header carries a predecessor control that sets `informed_by` links between
+  steps — ordering is a first-class property of a procedure, so it lives on
+  the card rather than in a side panel.
 - Every custom block must be registered in `src/blocks/registry.ts`. The
   registry derives `KNOWN_BLOCK_TYPES`, and blocks outside that set are
   stripped on load and then auto-saved — an unregistered block is data loss,
@@ -128,13 +131,13 @@ Labels come in two passes that operate on the same blocks:
    same thing collided in the slash menu. Notes written before `step`
    existed keep their labels, still render, and still generate the same
    graph; their labels can be changed or removed from the drag handle.
-1. **Block-level (context labels).** Tags a heading block as `[Step]`
-   (PROV-DM *Activity*; internal key `procedure`) or as a phase
-   `[Plan]` / `[Result]` (internal keys `plan` / `result`). New PROV labels
-   are applied from the drag-handle menu, not from `#`, which now offers
-   only free-form tags. Inside a `step`, a body block may carry a phase
-   label to open a mode band. A **table
-   block** may instead be tagged `[Input]` / `[Tool]` / `[Output]` to mark
+1. **Block-level (context labels).** In older notes, a heading may carry
+   `[Step]` (PROV-DM *Activity*; internal key `procedure`) or a phase
+   `[Plan]` / `[Result]` (internal keys `plan` / `result`) — kept working,
+   no longer offered for new content. The `#` affordance is gone entirely
+   (free-form tags went with it). Today the only block labels applied from
+   the drag-handle menu are on tables and media: a **table
+   block** may be tagged `[Input]` / `[Tool]` / `[Output]` to mark
    it as a *structured table* (header row = attribute keys, each data row =
    one Entity), or `[Parameter]` to mark it as a *parameter table* (header
    row = keys, first data row = values) whose `key=value` pairs are merged
@@ -166,12 +169,12 @@ to which Activity:
 The two never overlap: headings inside a step are ordinary subheadings and
 create no Activity of their own, which keeps a block from being bound twice.
 
-Inside a Step (Activity), `[Plan]` / `[Result]` mark a *phase* and do **not**
-create separate Activities. In a `step` they act as a band: a labelled child
-starts the band, which runs to the next marker or the end of the step, and
-unmarked content is execution. With headings they switch phase over the
-range they scope. Either way they only change the *phase context* of the
-Entities they cover. Each Entity gets a `graphium:phase`
+Legacy `[Plan]` / `[Result]` phase headings do **not** create separate
+Activities — they switch phase over the range they scope. Blocks inside a
+`step` never carry a phase (a step-internal "mode band" was built and then
+withdrawn: plan-vs-actual comparison pays off across runs of a protocol,
+which note-level splitting via `partOfPlanNoteId` already covers). Where
+legacy phases are present, each Entity gets a `graphium:phase`
 attribute (`"plan"` or `"execution"`); plan-phase Entities are emitted
 as separate nodes with an `_plan` suffix so they coexist with their
 execution counterparts. When the same `(label, entityId)` pair appears

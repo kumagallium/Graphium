@@ -202,7 +202,7 @@ PROV-DM information attaches to blocks in four places:
 | Carrier | What it labels | Field |
 |---|---|---|
 | **`step` block type** | The block itself is a PROV *Activity*. Its children are the Activity's contents, and its title is the Activity label. Carries no label — the block type says it. This is the only way to author a procedure. | `page.blocks[]` (`type: "step"`) |
-| **Block label** | Inside a `step`, a body block may carry a *Phase* label (`plan` / `result`) to open a mode band. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). Applied from the drag-handle menu; `#` offers only free-form tags. Headings in older notes may still carry `procedure` / `plan` / `result` — those keep rendering and generating the same graph, and can be changed or removed, but are not offered for new content. | `page.labels[blockId]` |
+| **Block label** | On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). Applied from the drag-handle menu. The `#` affordance is gone entirely. Labels in older notes — `procedure` / `plan` / `result` on headings, and free-form tags — keep rendering and generating the same graph, and can be changed or removed, but are not offered for new content. | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
 
@@ -258,19 +258,20 @@ containment is inferred, never stated by the user:
 Headings inside a step are ordinary subheadings and produce no Activity,
 so a block is never bound to two Activities at once.
 
-#### Plan / Execution phase
+#### Plan / Execution phase (legacy)
 
-`[Plan]` and `[Result]` live *inside* a Step. They do not create new
-Activities — the surrounding Step Activity remains the sole Activity for
-both phases. Instead, they switch a *phase context*:
+`[Plan]` and `[Result]` are heading labels found in notes written before
+the `step` block existed; there is no UI to author new ones. Blocks inside
+a `step` never carry a phase — a marked plan pays off only when one
+protocol is compared across several runs, and that granularity is already
+served by note-level plan/execution splitting (`partOfPlanNoteId`, §2).
+Where legacy phase headings are present, the generator still honors them:
 
-- In a `step`, a labelled body block opens a **mode band** that runs to the
-  next marker or the end of the step. Unmarked content is execution, so
-  recording what happened needs no marking at all. The band covers a run of
-  children without nesting them, keeping the tree two levels deep.
-- With headings, the phase applies over the range the heading scopes.
+- They do not create new Activities — the surrounding Step Activity
+  remains the sole Activity for both phases. They only switch a *phase
+  context* over the range the heading scopes.
 - Each Entity node carries a `graphium:phase` property — `"plan"` for
-  Entities under a `[Plan]` marker, `"execution"` otherwise.
+  Entities under a `[Plan]` heading, `"execution"` otherwise.
 - Plan-phase Entities are emitted with an `_plan` suffix in their
   `@id` so they coexist as distinct nodes alongside their execution
   counterparts (e.g. `inline_material_ent_nacl_plan` vs

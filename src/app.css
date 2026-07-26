@@ -540,9 +540,9 @@ body[data-prov-labels-off="true"] [data-inline-label] {
    :has(> .react-renderer.node-step) を使う（直下に .bn-block-content は来ない）。
 
    体裁は「静かな全周枠」: 枠線で "箱（コンテナ）" と分かるようにしつつ、
-   地色（塗り）は使わない。塗りは後段の「計画/結果のモード帯」が使う視覚語彙なので、
-   土台が塗りを持つと帯を載せたときに面が三層に重なって読みにくくなる。
-   線は重なっても競合しないが、面は競合する、という判断。 */
+   本体には地色（塗り）を使わない。中に入るテーブル・画像・コードは自前の面を
+   持つので、土台まで面にすると重なって読みにくくなる。塗りはヘッダー
+   （ステップ名）だけに使い、線＝構造・面＝ヘッダーの役割分担を保つ。 */
 .bn-editor .bn-block:has(> .react-renderer.node-step) {
   border: 1px solid var(--color-border-subtle);
   border-left: 3px solid var(--color-primary);
@@ -560,8 +560,3 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   margin-bottom: 4px;
 }
 
-/* step のモード帯（計画 / 結果）の塗りは、ここではなく
-   blocks/step/use-step-phase-bands.ts が動的な <style> で当てる。
-   ProseMirror は管理下のブロック要素から未知の属性・クラスを描き直しのたびに
-   落とすので、ブロック ID を狙う CSS ルールを差し替える方式にしている。
-   色は同じくトークン（--color-info-bg）を参照する。 */
