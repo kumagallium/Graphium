@@ -349,7 +349,7 @@ function ProvPanel({
   const adjustedLeft = Math.min(left, window.innerWidth - 260);
 
   const linkCount = outgoing.length + incoming.length;
-  const color = label ? getLabelColor(label) : "#9ca3af";
+  const color = label ? getLabelColor(label) : "var(--color-text-tertiary)";
 
   const scrollToBlock = (targetId: string) => {
     const el = document.querySelector(

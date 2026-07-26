@@ -110,7 +110,7 @@ export function PrevStepLinkDropdown({
         left: anchorRect.left + window.scrollX,
         zIndex: 9999,
         background: "#fff",
-        border: "1px solid #e5e7eb",
+        border: "1px solid var(--color-border)",
         borderRadius: 8,
         boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
         padding: "6px 0",
@@ -119,7 +119,7 @@ export function PrevStepLinkDropdown({
         overflowY: "auto",
       }}
     >
-      <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.05em" }}>
+      <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary)", letterSpacing: "0.05em" }}>
         {t("blockLink.prevStepHeader")}
       </div>
       <div style={{ padding: "2px 10px 6px" }}>
@@ -146,7 +146,7 @@ export function PrevStepLinkDropdown({
       </div>
 
       {filtered.length === 0 && (
-        <div style={{ padding: "8px 12px", fontSize: 12, color: "#9ca3af" }}>
+        <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--color-text-tertiary)" }}>
           {t("blockLink.noMatches")}
         </div>
       )}
@@ -169,12 +169,12 @@ export function PrevStepLinkDropdown({
               background: isLinked ? "#f3f4f6" : "none",
               border: "none",
               cursor: isLinked ? "default" : "pointer",
-              color: isLinked ? "#9ca3af" : "#374151",
+              color: isLinked ? "var(--color-text-tertiary)" : "var(--color-foreground)",
             }}
           >
             <span style={{
               fontSize: 10,
-              color: "#9ca3af",
+              color: "var(--color-text-tertiary)",
               fontWeight: 700,
               minWidth: 20,
             }}>
@@ -245,7 +245,7 @@ export function AddLinkDropdown({
         left: anchorRect.left + window.scrollX,
         zIndex: 9999,
         background: "#fff",
-        border: "1px solid #e5e7eb",
+        border: "1px solid var(--color-border)",
         borderRadius: 8,
         boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
         padding: "6px 0",
@@ -256,7 +256,7 @@ export function AddLinkDropdown({
     >
       {!selectedType ? (
         <>
-          <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af" }}>
+          <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary)" }}>
             {t("blockLink.chooseLinkType")}
           </div>
           {(Object.entries(LINK_TYPE_CONFIG) as [LinkType, typeof LINK_TYPE_CONFIG[LinkType]][]).map(
@@ -275,7 +275,7 @@ export function AddLinkDropdown({
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "#374151",
+                  color: "var(--color-foreground)",
                 }}
               >
                 <span style={{
@@ -283,7 +283,7 @@ export function AddLinkDropdown({
                   background: conf.color, flexShrink: 0,
                 }} />
                 {conf.label}
-                <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto" }}>
+                <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginLeft: "auto" }}>
                   {conf.provDM}
                 </span>
               </button>
@@ -292,7 +292,7 @@ export function AddLinkDropdown({
         </>
       ) : (
         <>
-          <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "#9ca3af" }}>
+          <div style={{ padding: "4px 10px 6px", fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary)" }}>
             {t("blockLink.chooseTargetFor", { label: LINK_TYPE_CONFIG[selectedType].label })}
           </div>
           <button
@@ -312,10 +312,10 @@ export function AddLinkDropdown({
                 display: "flex", alignItems: "center", gap: 6,
                 width: "100%", textAlign: "left", padding: "5px 12px",
                 fontSize: 13, background: "none", border: "none",
-                cursor: "pointer", color: "#374151",
+                cursor: "pointer", color: "var(--color-foreground)",
               }}
             >
-              <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, minWidth: 20 }}>
+              <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 700, minWidth: 20 }}>
                 H{c.level}
               </span>
               {c.text || t("blockLink.emptyHeading")}

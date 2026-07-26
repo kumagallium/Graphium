@@ -26,7 +26,7 @@ const mockCandidates = [
 // ── 共通ドロップダウンスタイル ──
 const dropdownStyle: React.CSSProperties = {
   background: "#fff",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-border)",
   borderRadius: 8,
   boxShadow: "0 4px 20px rgba(0,0,0,0.14)",
   padding: "6px 0",
@@ -39,7 +39,7 @@ const sectionStyle: React.CSSProperties = {
   padding: "4px 10px 6px",
   fontSize: 10,
   fontWeight: 700,
-  color: "#9ca3af",
+  color: "var(--color-text-tertiary)",
   letterSpacing: "0.05em",
 };
 const menuItemStyle: React.CSSProperties = {
@@ -53,7 +53,7 @@ const menuItemStyle: React.CSSProperties = {
   background: "none",
   border: "none",
   cursor: "pointer",
-  color: "#374151",
+  color: "var(--color-foreground)",
 };
 
 const meta: Meta = { title: "Organisms/LinkDropdown", parameters: { layout: "padded" } };
@@ -96,11 +96,11 @@ export const PrevStepLink: StoryObj = {
                   style={{
                     ...menuItemStyle,
                     background: isSelected ? "#eaf1f5" : isLinked ? "#f3f4f6" : "none",
-                    color: isLinked ? "#9ca3af" : "#374151",
+                    color: isLinked ? "var(--color-text-tertiary)" : "var(--color-foreground)",
                     cursor: isLinked ? "default" : "pointer",
                   }}
                 >
-                  <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, minWidth: 20 }}>H{c.level}</span>
+                  <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 700, minWidth: 20 }}>H{c.level}</span>
                   <span style={{ flex: 1 }}>{c.text}</span>
                   {isLinked && <span style={{ fontSize: 10 }}>リンク済</span>}
                   {isSelected && <span style={{ fontSize: 10, color: "#5b8fb9" }}>✓</span>}
@@ -129,7 +129,7 @@ export const LinkTypeSelect: StoryObj = {
           <button key={type} style={menuItemStyle}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: conf.color, flexShrink: 0 }} />
             {conf.label}
-            <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto" }}>{conf.provDM}</span>
+            <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginLeft: "auto" }}>{conf.provDM}</span>
           </button>
         ))}
       </div>
@@ -154,7 +154,7 @@ export const TargetSelect: StoryObj = {
         </button>
         {mockCandidates.map((c) => (
           <button key={c.blockId} style={menuItemStyle}>
-            <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, minWidth: 20 }}>H{c.level}</span>
+            <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 700, minWidth: 20 }}>H{c.level}</span>
             {c.text}
           </button>
         ))}
@@ -185,7 +185,7 @@ export const FullFlow: StoryObj = {
                   <button key={type} onClick={() => { setSelectedType(type); setSelectedTarget(null); }} style={menuItemStyle}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: conf.color, flexShrink: 0 }} />
                     {conf.label}
-                    <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto" }}>{conf.provDM}</span>
+                    <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginLeft: "auto" }}>{conf.provDM}</span>
                   </button>
                 ))}
               </>
@@ -204,7 +204,7 @@ export const FullFlow: StoryObj = {
                       background: selectedTarget === c.blockId ? "#eaf1f5" : "none",
                     }}
                   >
-                    <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 700, minWidth: 20 }}>H{c.level}</span>
+                    <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 700, minWidth: 20 }}>H{c.level}</span>
                     {c.text}
                     {selectedTarget === c.blockId && <span style={{ fontSize: 10, color: "#5b8fb9", marginLeft: "auto" }}>✓</span>}
                   </button>

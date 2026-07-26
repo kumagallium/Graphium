@@ -436,7 +436,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
   if (!doc) {
     return (
       <div style={panelStyle}>
-        <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>
+        <div style={{ padding: 16, color: "var(--color-text-tertiary)", fontSize: 13 }}>
           {t("provPanel.noLabelsMessage")}
         </div>
       </div>
@@ -464,7 +464,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
       <LegendDot color={THEME.parameter.bg} shape="square" label={getDisplayLabelName("attribute")} />
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-        <span style={{ color: "#9ca3af" }}>
+        <span style={{ color: "var(--color-text-tertiary)" }}>
           {t("provPanel.graphStats", { nodes: String(doc["@graph"].length + attrCount), relations: String(relations.length + attrCount) })}
         </span>
         <button

@@ -50,7 +50,7 @@ function TabBar({
         alignItems: "center",
         gap: 2,
         padding: "6px 12px 0",
-        borderBottom: "1px solid #e5e7eb",
+        borderBottom: "1px solid var(--color-border)",
         background: "#f9fafb",
         flexWrap: "wrap",
       }}
@@ -68,7 +68,7 @@ function TabBar({
               borderRadius: "6px 6px 0 0",
               border: "1px solid",
               borderBottom: isActive ? "1px solid #fff" : "1px solid transparent",
-              borderColor: isActive ? "#e5e7eb" : "transparent",
+              borderColor: isActive ? "var(--color-border)" : "transparent",
               background: isActive ? "#fff" : "transparent",
               cursor: "pointer",
               fontSize: 12,
@@ -119,14 +119,14 @@ function TabBar({
                   cursor: "pointer",
                   padding: "0 2px",
                   fontSize: 11,
-                  color: "#9ca3af",
+                  color: "var(--color-text-tertiary)",
                   lineHeight: 1,
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.color = "#c26356";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.color = "#9ca3af";
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-tertiary)";
                 }}
               >
                 ×
@@ -147,14 +147,14 @@ function TabBar({
           background: "none",
           cursor: "pointer",
           fontSize: 16,
-          color: "#9ca3af",
+          color: "var(--color-text-tertiary)",
           lineHeight: 1,
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLButtonElement).style.color = "#4B7A52";
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.color = "#9ca3af";
+          (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-tertiary)";
         }}
       >
         +

@@ -447,7 +447,7 @@ function SharedEntryDetail({
 
   return (
     <div className="fixed inset-0 z-40 flex items-stretch justify-end bg-black/30">
-      <div className="w-full max-w-2xl bg-background border-l border-border shadow-xl flex flex-col">
+      <div className="w-full max-w-2xl bg-background border-l border-border shadow-lg flex flex-col">
         {/* ヘッダー */}
         <div className="px-5 py-3 border-b border-border flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
