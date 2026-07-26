@@ -1643,6 +1643,12 @@ export const ja: Record<string, string> = {
   "settings.ai.modelNotFound": "モデルが見つかりません",
   "settings.maintenance.currentSetting": "(現在の設定)",
   "settings.maintenance.reembedHelp": "AI チャットの引用検索（Retriever）が動かないときに使う。全 Wiki の埋め込みを作り直して IndexedDB に保存する。",
+  "settings.maintenance.reembedTitle": "全 Wiki の埋め込みを作り直す",
+  "settings.maintenance.reembedProgress": "埋め込み中… {done} / {total}",
+  "settings.maintenance.reembedDone": "完了。{done} / {total} 件の Wiki を埋め込みました。",
+  "settings.maintenance.reembedConfirm": "全 {count} 件の Wiki の埋め込みを作り直しますか？ 時間がかかり、埋め込み API のトークンを消費します。",
+  "settings.maintenance.reembedRunning": "作り直し中…",
+  "settings.maintenance.reembedRun": "{count} 件の Wiki を作り直す",
   "settings.health.exitDetail": "（プロセスは既に {info} で終了）",
   "settings.health.timeoutError": "ヘルスチェックがタイムアウトしました（10 秒以内に応答なし）{detail}",
 

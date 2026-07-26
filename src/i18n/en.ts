@@ -1644,6 +1644,12 @@ export const en: Record<string, string> = {
   "settings.ai.modelNotFound": "Model not found",
   "settings.maintenance.currentSetting": "(current setting)",
   "settings.maintenance.reembedHelp": "Use this when the AI chat citation search (Retriever) stops working. Rebuilds the embeddings for all Wikis and stores them in IndexedDB.",
+  "settings.maintenance.reembedTitle": "Re-embed all Wikis",
+  "settings.maintenance.reembedProgress": "Embedding… {done} / {total}",
+  "settings.maintenance.reembedDone": "Done. {done} / {total} wikis embedded.",
+  "settings.maintenance.reembedConfirm": "Re-embed all {count} wikis? This may take a while and consumes embedding API tokens.",
+  "settings.maintenance.reembedRunning": "Re-embedding…",
+  "settings.maintenance.reembedRun": "Re-embed {count} wiki(s)",
   "settings.health.exitDetail": " (the process already exited: {info})",
   "settings.health.timeoutError": "Health check timed out (no response within 10 seconds){detail}",
 

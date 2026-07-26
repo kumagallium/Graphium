@@ -1300,9 +1300,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
           <div className="space-y-6">
             {/* 言語 */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
+              <h3 className="text-xs font-semibold text-foreground mb-2 block">
                 {t("settings.language")}
-              </label>
+              </h3>
               <div className="flex gap-2">
                 {(["en", "ja"] as Locale[]).map((loc) => (
                   <button
@@ -1322,13 +1322,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
+              <h3 className="text-xs font-semibold text-foreground mb-2 block">
                 {t("settings.font")}
-              </label>
+              </h3>
               <div className="space-y-2">
                 {/* ラテン文字用 */}
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">{t("settings.fontLatin")}</div>
+                  <div className="text-xs text-muted-foreground mb-1">{t("settings.fontLatin")}</div>
                   <div className="relative">
                     <select
                       value={latinFont}
@@ -1369,7 +1369,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
                 {/* 日本語用 */}
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">{t("settings.fontJp")}</div>
+                  <div className="text-xs text-muted-foreground mb-1">{t("settings.fontJp")}</div>
                   <div className="relative">
                     <select
                       value={jpFont}
@@ -1439,9 +1439,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             <div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Tag size={14} className="text-muted-foreground" />
-                <label className="text-xs font-semibold text-foreground">
+                <h3 className="text-xs font-semibold text-foreground">
                   {t("settings.labels.title")}
-                </label>
+                </h3>
               </div>
               <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
 
@@ -1449,7 +1449,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 {CORE_LABELS.map((label) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-28 shrink-0">
-                      <span className="text-[10px] text-muted-foreground font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         {CORE_LABEL_PROV[label]}
                       </span>
                     </div>
@@ -1496,9 +1496,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.serverStorage.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("settings.serverStorage.help")}
@@ -1539,9 +1539,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.saveDir.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("settings.saveDir.help")}
@@ -1550,7 +1550,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                           {t("settings.saveDir.currentLabel")}
                         </div>
                         <div className="text-xs font-mono text-foreground break-all">
@@ -1574,7 +1574,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     {graphiumRoot.isCustom && (
                       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
                         <div className="min-w-0 flex-1">
-                          <div className="text-[10px] text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             {t("settings.saveDir.defaultLabel")}
                           </div>
                           <div className="text-xs font-mono text-muted-foreground break-all">
@@ -1616,15 +1616,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             {/* AuthorIdentity（team-shared-storage Phase 0）。
                 共有ノート・PROV 来歴の author 情報なので、共有ストレージの直前に置く。 */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">
+              <h3 className="text-xs font-semibold text-foreground mb-1 block">
                 {t("settings.identity.title")}
-              </label>
+              </h3>
               <p className="text-xs text-muted-foreground mb-2">
                 {t("settings.identity.help")}
               </p>
               <div className="space-y-2">
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">
+                  <div className="text-xs text-muted-foreground mb-1">
                     {t("settings.identity.name")}
                   </div>
                   <Input
@@ -1640,7 +1640,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   />
                 </div>
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">
+                  <div className="text-xs text-muted-foreground mb-1">
                     {t("settings.identity.email")}
                   </div>
                   <Input
@@ -1683,9 +1683,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.shared.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("settings.shared.help")}
@@ -1693,7 +1693,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
                 {/* Shared root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     {t("settings.shared.rootLabel")}
                   </div>
                   {sharedRoot ? (
@@ -1749,7 +1749,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
                 {/* Blob root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     {t("settings.shared.blobRootLabel")}
                   </div>
                   {blobRoot ? (
@@ -1811,9 +1811,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.shared.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {t("settings.shared.desktopOnly")}
@@ -1825,9 +1825,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             <div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Download size={14} className="text-muted-foreground" />
-                <label className="text-xs font-semibold text-foreground">
+                <h3 className="text-xs font-semibold text-foreground">
                   {t("settings.export.title")}
-                </label>
+                </h3>
               </div>
               <p className="text-xs text-muted-foreground mb-2">
                 {t("settings.export.help")}
@@ -1927,8 +1927,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
                         {t("settings.models.useClaudeSubscription")}
                       </button>
-                      <p className="text-[11px] text-muted-foreground mt-1.5">{t("settings.models.useClaudeSubscriptionHint")}</p>
-                      {subscriptionError && <p className="text-[11px] text-destructive mt-1">{subscriptionError}</p>}
+                      <p className="text-xs text-muted-foreground mt-1.5">{t("settings.models.useClaudeSubscriptionHint")}</p>
+                      {subscriptionError && <p className="text-xs text-destructive mt-1">{subscriptionError}</p>}
                     </div>
                   )}
                   <button
@@ -2007,7 +2007,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </div>
                         {editSuggestedRate && (
                           <div className="flex items-center justify-between gap-2 mt-1.5">
-                            <span className="text-[11px] text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               {t("settings.models.rate.knownNote")}
                             </span>
                             <button
@@ -2018,7 +2018,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                                 // 内蔵テーブルは USD ベース。
                                 setEditRateCurrency("usd");
                               }}
-                              className="text-[11px] text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                              className="text-xs text-primary hover:text-primary/80 font-medium whitespace-nowrap"
                             >
                               {t("settings.models.rate.useKnown", {
                                 input: `$${editSuggestedRate.input}`,
@@ -2044,7 +2044,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             どのアカウントで推論されるか+切替手順をここで見える化する */}
                         {m.provider === "claude-subscription" && (
                           <div className="mt-1 space-y-0.5">
-                            <p className="text-[11px] text-foreground/80">
+                            <p className="text-xs text-foreground/80">
                               {claudeTokenFromEnv
                                 ? t("settings.models.subscriptionAccountEnvToken")
                                 : claudeCliAccount
@@ -2055,7 +2055,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                                     })
                                   : t("settings.models.subscriptionAccountUnknown")}
                             </p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {t("settings.models.subscriptionSwitchHint")}
                             </p>
                           </div>
@@ -2582,7 +2582,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           <span className="font-medium">{s.name}</span>
                           <span className="text-muted-foreground"> — {detail}</span>
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
                         <button
                           onClick={() => handleEditMcpServer(s)}
                           aria-label={t("settings.mcp.edit")}
@@ -2614,7 +2614,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         <button
                           key={m}
                           onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
-                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                          className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
                             mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
@@ -2634,11 +2634,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                       />
                       {mcpJsonError && (
-                        <p className="text-[11px] text-red-500">
+                        <p className="text-xs text-red-500">
                           {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
                         </p>
                       )}
-                      <p className="text-[11px] text-muted-foreground">{t("settings.mcp.jsonHelp")}</p>
+                      <p className="text-xs text-muted-foreground">{t("settings.mcp.jsonHelp")}</p>
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={handleImportMcpJson}
@@ -2661,7 +2661,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       {savedRegistries.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {savedRegistries.map((reg) => (
-                            <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px]">
+                            <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
                               <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
                                 {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
                               </button>
@@ -2674,7 +2674,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       )}
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
                           <Input
                             type="url"
                             value={mcpBrowseUrl}
@@ -2683,7 +2683,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           />
                         </div>
                         <div className="w-32">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
                           <Input
                             type="password"
                             value={mcpBrowseKey}
@@ -2702,11 +2702,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
                       {/* 候補一覧 */}
                       {mcpCandidates === "loading" ? (
-                        <p className="text-[11px] text-muted-foreground">{t("settings.tools.loading")}</p>
+                        <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
                       ) : mcpCandidates === "error" ? (
-                        <p className="text-[11px] text-red-500">{t("settings.mcp.registryError")}</p>
+                        <p className="text-xs text-red-500">{t("settings.mcp.registryError")}</p>
                       ) : mcpCandidates && mcpCandidates.length === 0 ? (
-                        <p className="text-[11px] text-muted-foreground">{t("settings.tools.empty")}</p>
+                        <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
                       ) : mcpCandidates ? (
                         <div className="space-y-1 max-h-48 overflow-y-auto">
                           {mcpCandidates.map((tool) => {
@@ -2715,11 +2715,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                               <div key={tool.name} className="flex items-center gap-2 text-xs">
                                 <span className="min-w-0 flex-1 truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
                                 {added ? (
-                                  <span className="shrink-0 text-[11px] text-muted-foreground">{t("settings.mcp.added")}</span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.added")}</span>
                                 ) : (
                                   <button
                                     onClick={() => handleAddCandidate(tool)}
-                                    className="shrink-0 flex items-center gap-0.5 text-[11px] text-primary hover:opacity-80"
+                                    className="shrink-0 flex items-center gap-0.5 text-xs text-primary hover:opacity-80"
                                   >
                                     <Plus size={12} /> {t("settings.mcp.save")}
                                   </button>
@@ -2744,7 +2744,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <button
                         key={ty}
                         onClick={() => setMcpType(ty)}
-                        className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                        className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
                           mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -2757,7 +2757,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <>
                       <div className="flex gap-2">
                         <div className="w-32">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
                           <Input
                             type="text"
                             value={mcpCommand}
@@ -2766,7 +2766,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           />
                         </div>
                         <div className="flex-1">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
                           <Input
                             type="text"
                             value={mcpName}
@@ -2776,7 +2776,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </div>
                       </div>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
                         <textarea
                           value={mcpArgs}
                           onChange={(e) => setMcpArgs(e.target.value)}
@@ -2786,7 +2786,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
                         <textarea
                           value={mcpEnv}
                           onChange={(e) => setMcpEnv(e.target.value)}
@@ -2799,7 +2799,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   ) : (
                     <>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
                         <Input
                           type="url"
                           value={mcpUrl}
@@ -2809,7 +2809,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
                           <Input
                             type="text"
                             value={mcpName}
@@ -2818,7 +2818,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           />
                         </div>
                         <div className="w-40">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
                           <div className="relative">
                             <select
                               value={mcpTransport}
@@ -2833,7 +2833,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </div>
                       </div>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
                         <Input
                           type="password"
                           value={mcpApiKey}
@@ -2933,13 +2933,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           {sidecarLog.length > 0 && (
                             <button
                               onClick={() => setShowSidecarLog((v) => !v)}
-                              className="mt-1 text-[11px] text-muted-foreground hover:text-foreground underline"
+                              className="mt-1 text-xs text-muted-foreground hover:text-foreground underline"
                             >
                               {showSidecarLog ? t("settings.health.hideLog") : t("settings.health.showLog")}
                             </button>
                           )}
                           {showSidecarLog && sidecarLog.length > 0 && (
-                            <pre className="mt-1.5 text-[10px] bg-background/50 rounded p-1.5 overflow-auto max-h-32 font-mono whitespace-pre-wrap">{sidecarLog.join("\n")}</pre>
+                            <pre className="mt-1.5 text-xs bg-background/50 rounded p-1.5 overflow-auto max-h-32 font-mono whitespace-pre-wrap">{sidecarLog.join("\n")}</pre>
                           )}
                         </div>
                       </div>
@@ -3014,7 +3014,7 @@ type DiscoveryRunState = {
 };
 
 type MaintenanceTabProps = {
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string>) => string;
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
   onRunAtomizeDiscovery?: DiscoveryHandler;
@@ -3196,25 +3196,31 @@ function MaintenanceTab({
       {onReembedAllWikis && wikiSummaries.length > 0 && (
         <div className="rounded-lg border border-border p-3 space-y-3">
           <div>
-            <div className="text-xs font-semibold text-foreground mb-1">
-              Re-embed all Wikis
-            </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <h3 className="text-xs font-semibold text-foreground mb-1">
+              {t("settings.maintenance.reembedTitle")}
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {t("settings.maintenance.reembedHelp")}
             </p>
           </div>
           {reembedProgress && reembedRunning && (
-            <div className="text-[11px] text-muted-foreground">
-              Embedding... {reembedProgress.done} / {reembedProgress.total}
+            <div className="text-xs text-muted-foreground">
+              {t("settings.maintenance.reembedProgress", {
+                done: String(reembedProgress.done),
+                total: String(reembedProgress.total),
+              })}
             </div>
           )}
           {reembedProgress && !reembedRunning && !reembedError && (
-            <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
-              Done. {reembedProgress.done} / {reembedProgress.total} wikis embedded.
+            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+              {t("settings.maintenance.reembedDone", {
+                done: String(reembedProgress.done),
+                total: String(reembedProgress.total),
+              })}
             </div>
           )}
           {reembedError && (
-            <div className="text-[11px] text-red-600 dark:text-red-400">
+            <div className="text-xs text-red-600 dark:text-red-400">
               {reembedError}
             </div>
           )}
@@ -3224,14 +3230,15 @@ function MaintenanceTab({
             onClick={async () => {
               const total = wikiSummaries.length;
               const confirmed = window.confirm(
-                `Re-embed all ${total} wikis? This may take a while and consumes embedding API tokens.`,
+                t("settings.maintenance.reembedConfirm", { count: String(total) }),
               );
               if (!confirmed) return;
               setReembedRunning(true);
               setReembedError(null);
               setReembedProgress({ done: 0, total });
               try {
-                await onReembedAllWikis((done, t) => setReembedProgress({ done, total: t }));
+                // 第 2 引数を t と名付けると i18n の t を隠してしまうため total で受ける
+                await onReembedAllWikis((done, tot) => setReembedProgress({ done, total: tot }));
               } catch (e) {
                 setReembedError(e instanceof Error ? e.message : String(e));
               } finally {
@@ -3240,9 +3247,9 @@ function MaintenanceTab({
             }}
           >
             {reembedRunning ? (
-              <><Loader2 size={12} className="animate-spin mr-1.5" />Re-embedding...</>
+              <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.reembedRunning")}</>
             ) : (
-              `Re-embed ${wikiSummaries.length} wiki${wikiSummaries.length === 1 ? "" : "s"}`
+              t("settings.maintenance.reembedRun", { count: String(wikiSummaries.length) })
             )}
           </Button>
         </div>
@@ -3251,19 +3258,19 @@ function MaintenanceTab({
       {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
       <div className="rounded-lg border border-border p-3 space-y-4">
         <div>
-          <div className="text-xs font-semibold text-foreground mb-1">
+          <h3 className="text-xs font-semibold text-foreground mb-1">
             {t("settings.maintenance.regenAll.title")}
-          </div>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
+          </h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {t("settings.maintenance.regenAll.help")}
           </p>
         </div>
 
       {/* kind フィルタ */}
       <div>
-        <label className="text-xs font-semibold text-foreground mb-2 block">
+        <h3 className="text-xs font-semibold text-foreground mb-2 block">
           {t("settings.maintenance.kindFilter")}
-        </label>
+        </h3>
         <div className="flex gap-2 flex-wrap">
           {KINDS.map((k) => {
             const count = wikiSummaries.filter((w) => w.kind === k).length;
@@ -3291,9 +3298,9 @@ function MaintenanceTab({
       <div className="space-y-3">
         {/* Concept / Summary（Ingest モデル） */}
         <div>
-          <label className="text-xs font-semibold text-foreground mb-2 block">
+          <h3 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}
-          </label>
+          </h3>
           <div className="relative">
             <select
               value={effectiveDefaultModel}
@@ -3319,9 +3326,9 @@ function MaintenanceTab({
 
         {/* Synthesis / Atom（どちらも Chat & Synthesis モデルを使用）*/}
         <div>
-          <label className="text-xs font-semibold text-foreground mb-2 block">
+          <h3 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.synthesisAtomModel")}
-          </label>
+          </h3>
           <div className="relative">
             <select
               value={effectiveSynthesisModel}
@@ -3387,7 +3394,7 @@ function MaintenanceTab({
             />
           </div>
           {bulkProgress.current && bulkRunning && (
-            <div className="text-[11px] text-muted-foreground truncate">
+            <div className="text-xs text-muted-foreground truncate">
               {t("settings.maintenance.current")}: {bulkProgress.current}
               {bulkProgress.currentModel && (
                 <span className="ml-2 opacity-70">— {bulkProgress.currentModel}</span>
@@ -3395,12 +3402,12 @@ function MaintenanceTab({
             </div>
           )}
           {cancelling && bulkRunning && (
-            <div className="text-[11px] text-amber-600">
+            <div className="text-xs text-amber-600">
               {t("settings.maintenance.cancellingHint")}
             </div>
           )}
           {!bulkRunning && bulkProgress.done > 0 && (
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               {t("settings.maintenance.done")}
             </div>
           )}
@@ -3415,7 +3422,7 @@ function MaintenanceTab({
           </div>
           <ul className="space-y-1 max-h-40 overflow-y-auto">
             {bulkProgress.failedItems.map((f) => (
-              <li key={f.id} className="text-[11px]">
+              <li key={f.id} className="text-xs">
                 <span className="text-foreground">{f.title}</span>
                 {f.error && (
                   <span className="text-muted-foreground ml-2">— {f.error}</span>
@@ -3491,10 +3498,10 @@ function DiscoveryCard({
   return (
     <div className="rounded-lg border border-border p-3 space-y-3">
       <div>
-        <div className="text-xs font-semibold text-foreground mb-1">
+        <h3 className="text-xs font-semibold text-foreground mb-1">
           {t(titleKey)}
-        </div>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
+        </h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">
           {t(helpKey).replace("{count}", String(inputCount))}
         </p>
       </div>
@@ -3515,12 +3522,12 @@ function DiscoveryCard({
                 </span>
               </div>
               {progress.clusterLabel && (
-                <div className="ml-4 text-[11px] opacity-80 break-words">
+                <div className="ml-4 text-xs opacity-80 break-words">
                   cluster: 「{progress.clusterLabel}」{progress.clusterSize ? ` (${progress.clusterSize})` : ""}
                 </div>
               )}
               {progress.clusterMemberTitles && progress.clusterMemberTitles.length > 0 && (
-                <details className="ml-4 text-[11px] opacity-70">
+                <details className="ml-4 text-xs opacity-70">
                   <summary className="cursor-pointer select-none">
                     members ({progress.clusterMemberTitles.length})
                   </summary>
@@ -3705,7 +3712,7 @@ function GroundingKbTab() {
           <button
             key={v}
             onClick={() => setVerdictFilter(v)}
-            className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+            className={`px-2 py-1 text-xs rounded border transition-colors ${
               verdictFilter === v
                 ? "border-primary text-primary bg-primary/10"
                 : "border-border text-muted-foreground hover:text-foreground"
@@ -3754,9 +3761,9 @@ function GroundingKbTab() {
         ))}
       </div>
 
-      <div className="text-[11px] text-muted-foreground border-t border-border pt-3">
+      <div className="text-xs text-muted-foreground border-t border-border pt-3">
         {t("settings.grounding.editHint")}{" "}
-        <code className="text-[10px] bg-muted px-1 rounded">
+        <code className="text-xs bg-muted px-1 rounded">
           public/grounding-kb/seed.v1.json
         </code>
       </div>
@@ -3783,16 +3790,16 @@ function KbEntryRow({
     <div className="rounded border border-border p-2 text-xs">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <span
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
             palette[entry.verdict]
           }`}
         >
           <Globe2 size={9} />
           {t(`wikiBanner.worldVerdict.${entry.verdict}` as any)}
         </span>
-        <code className="text-[10px] text-muted-foreground">{entry.id}</code>
+        <code className="text-xs text-muted-foreground">{entry.id}</code>
         <span
-          className={`text-[10px] px-1 py-0.5 rounded ${
+          className={`text-xs px-1 py-0.5 rounded ${
             seed
               ? "bg-muted text-muted-foreground"
               : "bg-blue-500/10 text-blue-600"
@@ -3831,18 +3838,18 @@ function KbEntryRow({
       <div className="text-foreground mb-1">{entry.claim}</div>
       <div className="text-muted-foreground mb-1">{entry.rationale}</div>
       <div className="flex items-start gap-1 flex-wrap">
-        <span className="text-[10px] text-muted-foreground">keywords:</span>
+        <span className="text-xs text-muted-foreground">keywords:</span>
         {entry.keywords.map((k, i) => (
-          <code key={k + i} className="text-[10px] bg-muted px-1 rounded">
+          <code key={k + i} className="text-xs bg-muted px-1 rounded">
             {k}
           </code>
         ))}
       </div>
       {entry.sources && entry.sources.length > 0 && (
         <div className="flex items-start gap-1 flex-wrap mt-1">
-          <span className="text-[10px] text-muted-foreground">sources:</span>
+          <span className="text-xs text-muted-foreground">sources:</span>
           {entry.sources.map((s, i) => (
-            <span key={i} className="text-[10px]">
+            <span key={i} className="text-xs">
               {s.url ? (
                 <a
                   href={s.url}

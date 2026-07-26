@@ -459,7 +459,7 @@ export function UsageTab() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-xs font-semibold text-foreground">{t("settings.usage.title")}</h3>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             {t("settings.usage.description")}
           </p>
         </div>
@@ -504,14 +504,14 @@ export function UsageTab() {
 
       {/* 再計算の確認説明 */}
       {recalcState === "confirm" && (
-        <p className="text-[11px] text-muted-foreground -mt-1">
+        <p className="text-xs text-muted-foreground -mt-1">
           {t("settings.usage.recalculate.hint")}
         </p>
       )}
 
       {/* 再計算の結果 */}
       {recalcResult && (
-        <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-2 text-[11px] text-emerald-800 dark:text-emerald-200">
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs text-emerald-800 dark:text-emerald-200">
           {t("settings.usage.recalculate.done", {
             recalculated: String(recalcResult.recalculated),
             skipped: String(recalcResult.skipped),
@@ -564,7 +564,7 @@ export function UsageTab() {
         </div>
 
         {/* 換算レート inline 編集。USD↔JPY 換算が発生する時だけ意味がある。 */}
-        <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           {t("settings.usage.usdJpyRateLabel")}
           <input
             type="number"
@@ -590,13 +590,13 @@ export function UsageTab() {
       {/* 合計 */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] text-muted-foreground">{t("settings.usage.totalTokens")}</div>
+          <div className="text-xs text-muted-foreground">{t("settings.usage.totalTokens")}</div>
           <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
             {formatTokens(grandTotalTokens)}
           </div>
         </div>
         <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] text-muted-foreground">{t("settings.usage.totalCost")}</div>
+          <div className="text-xs text-muted-foreground">{t("settings.usage.totalCost")}</div>
           <div className="text-lg font-semibold text-foreground tabular-nums mt-0.5">
             {formatCost(grandTotalCost, displayCurrency)}
           </div>
@@ -620,7 +620,7 @@ export function UsageTab() {
       ) : (
         <>
           <div>
-            <div className="text-[11px] text-muted-foreground mb-2">
+            <div className="text-xs text-muted-foreground mb-2">
               {t("settings.usage.chartTitle")}
             </div>
             <div className="flex items-stretch gap-1 h-32 border-b border-border">
@@ -669,7 +669,7 @@ export function UsageTab() {
                 return (
                   <div
                     key={b.key}
-                    className="flex-1 text-center text-[10px] text-muted-foreground tabular-nums whitespace-nowrap"
+                    className="flex-1 text-center text-xs text-muted-foreground tabular-nums whitespace-nowrap"
                   >
                     {show ? b.label : ""}
                   </div>
@@ -680,7 +680,7 @@ export function UsageTab() {
 
           {/* feature 別内訳（クリックでモデル別の内訳を展開） */}
           <div>
-            <div className="text-[11px] text-muted-foreground mb-2">
+            <div className="text-xs text-muted-foreground mb-2">
               {t("settings.usage.breakdown")}
             </div>
             <div className="space-y-1">
@@ -726,12 +726,12 @@ export function UsageTab() {
                       <span className="flex-1 min-w-0 text-left">
                         <span className="text-foreground font-mono">{f}</span>
                         {singleModel && (
-                          <span className="ml-2 text-[10px] text-muted-foreground font-mono truncate">
+                          <span className="ml-2 text-xs text-muted-foreground font-mono truncate">
                             {singleModel.modelId}
                           </span>
                         )}
                         {hasMultipleModels && (
-                          <span className="ml-2 text-[10px] text-muted-foreground">
+                          <span className="ml-2 text-xs text-muted-foreground">
                             {t("settings.usage.modelsCount", { count: String(models.length) })}
                           </span>
                         )}
@@ -753,7 +753,7 @@ export function UsageTab() {
                           return (
                             <div
                               key={m.modelId}
-                              className="flex items-center gap-2 text-[11px] text-muted-foreground py-0.5"
+                              className="flex items-center gap-2 text-xs text-muted-foreground py-0.5"
                             >
                               <span className="flex-1 truncate font-mono text-left">
                                 {m.modelId}
