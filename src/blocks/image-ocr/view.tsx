@@ -8,8 +8,9 @@
 // クロスオリジンで fetch できないことがあるため、通信不要・CORS 回避の File 経路を使う。
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "../../i18n";
+import { getActiveProvider } from "../../lib/storage/registry";
 import {
   recognizeImage,
   DEFAULT_OCR_LANG,
@@ -44,6 +45,12 @@ function ImageOcrView({ block, editor }: any) {
   const editable = editor.isEditable !== false;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // 表示用 URL。保存済み画像はプロバイダ内部スキーム（local-media:// 等）で
+  // 保存されており、<img src> でも fetch でも直接は読めない。標準のメディア
+  // ブロックは SandboxEditor の resolveFileUrl を通って解決されるが、カスタム
+  // ブロックはその経路を通らないため、pdf-viewer と同じく provider 経由で
+  // blob URL に解決する（未解決だと画像が出ず、再スキャンも fetch に失敗する）。
+  const [displayUrl, setDisplayUrl] = useState("");
   const [progress, setProgress] = useState(0);
   const [showText, setShowText] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -56,6 +63,32 @@ function ImageOcrView({ block, editor }: any) {
     },
     [editor, block.id],
   );
+
+  useEffect(() => {
+    const url = props.url;
+    if (!url) {
+      setDisplayUrl("");
+      return;
+    }
+    const fileId = getActiveProvider().extractFileId(url);
+    if (!fileId) {
+      // データ URL / blob URL / 通常の http URL はそのまま表示できる
+      setDisplayUrl(url);
+      return;
+    }
+    let cancelled = false;
+    getActiveProvider()
+      .getMediaBlobUrl(fileId)
+      .then((blob) => {
+        if (!cancelled) setDisplayUrl(blob);
+      })
+      .catch(() => {
+        if (!cancelled) setDisplayUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.url]);
 
   const runOcr = useCallback(
     async (source: File | string, langs: string) => {
@@ -178,7 +211,7 @@ function ImageOcrView({ block, editor }: any) {
   return (
     <div style={S.card}>
       {/* eslint-disable-next-line jsx-a11y/alt-text */}
-      <img src={props.url} alt={props.name || "image"} style={S.img} />
+      {displayUrl && <img src={displayUrl} alt={props.name || "image"} style={S.img} />}
 
       <div style={S.footer}>
         {/* 状態表示 */}
@@ -234,7 +267,7 @@ function ImageOcrView({ block, editor }: any) {
               type="button"
               style={S.smallButton}
               disabled={props.ocrStatus === "running"}
-              onClick={() => void runOcr(props.url, props.ocrLang || DEFAULT_OCR_LANG)}
+              onClick={() => void runOcr(displayUrl || props.url, props.ocrLang || DEFAULT_OCR_LANG)}
               title={t("ocr.rerun")}
             >
               {t("ocr.rerun")}
