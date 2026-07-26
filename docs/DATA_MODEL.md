@@ -197,11 +197,12 @@ type GraphiumPage = {
 
 ### 2.3 PROV-DM label model
 
-PROV-DM information attaches to blocks in three places:
+PROV-DM information attaches to blocks in four places:
 
 | Carrier | What it labels | Field |
 |---|---|---|
-| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). | `page.labels[blockId]` |
+| **`step` block type** | The block itself is a PROV *Activity*. Its children are the Activity's contents, and its title is the Activity label. Carries no label — the block type says it. | `page.blocks[]` (`type: "step"`) |
+| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. Inside a `step`, a body block may carry a *Phase* label to open a mode band. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
 
@@ -245,19 +246,31 @@ same referent share an `entityId` so the PROV generator emits one
 *Entity* node.
 
 The generator (`src/features/prov-generator/`) consumes both label
-sources and the heading structure to produce the PROV-DM graph. Heading
-levels feed a `scopeStack` that infers Activity containment without
-requiring the user to nest blocks.
+sources and the block structure to produce the PROV-DM graph. Activity
+containment is inferred, never stated by the user:
+
+- Blocks inside a `step` belong to that step's Activity. Containment is
+  the parent–child relation itself, so moving a block in or out with the
+  drag handle rebinds it. Nested steps bind to the innermost one.
+- Blocks outside any step fall back to heading levels, which feed a
+  `scopeStack` that infers containment from document structure.
+
+Headings inside a step are ordinary subheadings and produce no Activity,
+so a block is never bound to two Activities at once.
 
 #### Plan / Execution phase
 
-`[Plan]` and `[Result]` headings live *inside* a Step. They do not
-create new Activities — the surrounding `[Step]` Activity remains the
-sole Activity for both phases. Instead, they switch a *phase context*
-over the inline Entities under them:
+`[Plan]` and `[Result]` live *inside* a Step. They do not create new
+Activities — the surrounding Step Activity remains the sole Activity for
+both phases. Instead, they switch a *phase context*:
 
+- In a `step`, a labelled body block opens a **mode band** that runs to the
+  next marker or the end of the step. Unmarked content is execution, so
+  recording what happened needs no marking at all. The band covers a run of
+  children without nesting them, keeping the tree two levels deep.
+- With headings, the phase applies over the range the heading scopes.
 - Each Entity node carries a `graphium:phase` property — `"plan"` for
-  Entities under a `[Plan]` heading, `"execution"` otherwise.
+  Entities under a `[Plan]` marker, `"execution"` otherwise.
 - Plan-phase Entities are emitted with an `_plan` suffix in their
   `@id` so they coexist as distinct nodes alongside their execution
   counterparts (e.g. `inline_material_ent_nacl_plan` vs
@@ -978,6 +991,7 @@ type NoteIndexEntry = {
   createdAt: string;
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
+  steps?: { blockId: string; text: string }[];   // step container titles (v22)
   labels:   { blockId: string; label: string; preview: string }[];
   outgoingLinks: {
     targetNoteId: string;
@@ -1049,7 +1063,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **20**.
+Defined in `src/features/navigation/index-file.ts`. Currently **22**.
 Bumping rules:
 
 | Version | Change |
@@ -1071,6 +1085,7 @@ Bumping rules:
 | **19** | Withdrew Phase ε. Removed `"meta-atom"` from `WikiKind` and the `derivedFromAtoms` mirror. LLM-driven axis invention proved unreliable (outputs collapsed to the source domain even at Anthropic Opus). Existing meta-atom JSON files on disk are tolerated by `ensureIndex` — their wiki kind falls outside the new enum and the index entry is rebuilt as a regular note-less placeholder until the user trashes it. The replacement is a human-provided theme threaded through the Synthesizer, landing in a follow-up PR. |
 | **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
 | **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
+| **22** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

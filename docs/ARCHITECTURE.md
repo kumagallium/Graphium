@@ -92,8 +92,15 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `pdf-viewer`). Inline content (entity / agent
-  highlights) lives under `src/features/inline-label/`.
+  `callout`, `example-hello`, `pdf-viewer`, `step`). Inline content (entity /
+  agent highlights) lives under `src/features/inline-label/`.
+- `step` is the one container block: it holds child blocks, and a procedure is
+  written by putting its content inside a step rather than by labelling a
+  heading. Nesting and reordering use BlockNote's own drag handle.
+- Every custom block must be registered in `src/blocks/registry.ts`. The
+  registry derives `KNOWN_BLOCK_TYPES`, and blocks outside that set are
+  stripped on load and then auto-saved — an unregistered block is data loss,
+  and a container takes its children with it.
 - Editor configuration is composed in `src/note-app.tsx`.
 
 ### 3.2 Provenance layer (PROV-DM)
@@ -113,6 +120,12 @@ meant. There is no shared abstraction between them today.
 
 Labels come in two passes that operate on the same blocks:
 
+0. **The `step` container block.** A procedure is normally written as a
+   `step` block, whose children are its content. The block *is* the
+   PROV-DM *Activity* — it carries no label, and its title comes from the
+   block's own inline content. This is the preferred way to write a
+   procedure; the labelled heading below remains supported for notes
+   written before `step` existed.
 1. **Block-level (`#` context labels).** Tags a heading block as `[Step]`
    (PROV-DM *Activity*; internal key `procedure`) or as a phase
    `[Plan]` / `[Result]` (internal keys `plan` / `result`). A **table
@@ -135,13 +148,25 @@ The two passes are independent: a note can have only block-level labels,
 only inline labels, both, or neither. The PROV generator merges both
 sources when building the graph.
 
-The generator (`src/features/prov-generator/generator.ts`) uses a
-`scopeStack` that infers *Activity* containment from heading structure,
-so users do not have to nest blocks manually.
+The generator (`src/features/prov-generator/generator.ts`) resolves
+*Activity* containment two ways, so users never state which Entity belongs
+to which Activity:
 
-Inside a Step (Activity), `[Plan]` / `[Result]` phase headings do **not**
-create separate Activities — they only switch a *phase context* over the
-inline Entities they contain. Each Entity gets a `graphium:phase`
+- **`step` containers.** A pre-pass walks the block tree and binds every
+  descendant of a `step` to that step's Activity. The innermost enclosing
+  step wins, so nested steps behave as expected.
+- **Headings.** A `scopeStack` infers containment from heading structure
+  for blocks that are not inside any step.
+
+The two never overlap: headings inside a step are ordinary subheadings and
+create no Activity of their own, which keeps a block from being bound twice.
+
+Inside a Step (Activity), `[Plan]` / `[Result]` mark a *phase* and do **not**
+create separate Activities. In a `step` they act as a band: a labelled child
+starts the band, which runs to the next marker or the end of the step, and
+unmarked content is execution. With headings they switch phase over the
+range they scope. Either way they only change the *phase context* of the
+Entities they cover. Each Entity gets a `graphium:phase`
 attribute (`"plan"` or `"execution"`); plan-phase Entities are emitted
 as separate nodes with an `_plan` suffix so they coexist with their
 execution counterparts. When the same `(label, entityId)` pair appears
