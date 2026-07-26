@@ -1280,6 +1280,112 @@ fn validate_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ── Mobile capture inbox (受信箱) ─────────────────────────────────────
+// モバイルで撮影したメディアを同期フォルダ(iCloud/Dropbox/Syncthing 等)の
+// <inbox-root>/Inbox/ に置き、デスクトップが列挙 → 読み込み → 取り込み後に
+// <inbox-root>/Inbox/_imported/ へ退避する。認証・dedup・provenance はアプリ層
+// (TS)に委ね、ここは素朴な FS 操作に徹する(shared_* と同じ方針)。
+
+const INBOX_SUBDIR: &str = "Inbox";
+const INBOX_IMPORTED_SUBDIR: &str = "_imported";
+
+/// inbox 内のファイルパスを安全に解決する(パストラバーサル防止)。
+/// Inbox 直下のファイルのみ許可し、区切り文字や親参照を含む name は拒否する。
+fn inbox_file_path(root: &str, name: &str) -> Result<PathBuf, String> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+        return Err(format!("Invalid inbox file name: {name}"));
+    }
+    Ok(PathBuf::from(root).join(INBOX_SUBDIR).join(name))
+}
+
+/// 受信箱の 1 アイテム。TS 側 `CaptureRef` と 1:1 対応する（camelCase で送る）。
+/// 受信箱 UI が件数だけでなくサイズ・日時も出すため、名前だけでなくメタも返す。
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxItem {
+    /// Inbox/ 直下のファイル名（パス区切りを含まない）。
+    pub name: String,
+    /// バイトサイズ。
+    pub bytes: u64,
+    /// 最終更新日時(RFC3339)。取得できない FS では None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
+}
+
+/// <inbox-root>/Inbox/ 直下の未取り込みファイルを列挙する。
+/// サブディレクトリ(_imported 等)と隠しファイル(. 始まり)は除外。
+#[tauri::command]
+fn inbox_list(root: String) -> Result<Vec<InboxItem>, String> {
+    // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
+    validate_root(&root)?;
+    let base = PathBuf::from(&root).join(INBOX_SUBDIR);
+    if !base.exists() {
+        return Ok(vec![]);
+    }
+    let mut out: Vec<InboxItem> = Vec::new();
+    for entry in fs::read_dir(&base).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        // _imported/ 等のサブフォルダは対象外(素のメディアファイルのみ拾う)
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        // .DS_Store 等の隠しファイルは無視
+        if name.starts_with('.') {
+            continue;
+        }
+        // メタが取れないファイル(権限・競合削除)は列挙自体を落とさず既定値に倒す。
+        let meta = fs::metadata(&path).ok();
+        let bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let modified_at = meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .map(|t| humantime::format_rfc3339(t).to_string());
+        out.push(InboxItem {
+            name: name.to_string(),
+            bytes,
+            modified_at,
+        });
+    }
+    // 新しいものが上（受信箱は「最近届いたもの」から見る）。日時不明は末尾に沈める。
+    out.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    Ok(out)
+}
+
+/// <inbox-root>/Inbox/<name> を読み、base64 で返す(shared_blob_read と同じ転送方式)。
+#[tauri::command]
+fn inbox_read(root: String, name: String) -> Result<String, String> {
+    // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
+    validate_root(&root)?;
+    let path = inbox_file_path(&root, &name)?;
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+/// 取り込み済みファイルを <inbox-root>/Inbox/_imported/<name> へ退避する。
+/// 冪等な重複排除は TS 側の sourceHash(sha256)で担保するため、ここでは単純に move する。
+#[tauri::command]
+fn inbox_mark_imported(root: String, name: String) -> Result<(), String> {
+    // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
+    validate_root(&root)?;
+    let src = inbox_file_path(&root, &name)?;
+    let imported_dir = PathBuf::from(&root)
+        .join(INBOX_SUBDIR)
+        .join(INBOX_IMPORTED_SUBDIR);
+    fs::create_dir_all(&imported_dir).map_err(|e| e.to_string())?;
+    let dst = imported_dir.join(&name);
+    // rename が跨device 等で失敗する場合に備え copy + remove にフォールバック
+    if fs::rename(&src, &dst).is_err() {
+        fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+        fs::remove_file(&src).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// "sha256:<64 hex>" のチェック。
 fn validate_hash(hash: &str) -> Result<(), String> {
     let prefix = "sha256:";
@@ -1596,6 +1702,9 @@ pub fn run() {
             shared_blob_write,
             shared_blob_exists,
             shared_blob_delete,
+            inbox_list,
+            inbox_read,
+            inbox_mark_imported,
             shutdown_ack,
             kill_pid,
             save_bytes_with_dialog,
