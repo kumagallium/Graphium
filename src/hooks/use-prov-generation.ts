@@ -9,6 +9,7 @@ import {
 import type { BlockLink } from "../features/block-link/link-types";
 import type { DocumentProvenance } from "../features/document-provenance/types";
 import type { MediaLabelEntry } from "../features/inline-label/media-store";
+import type { MediaOcrEntry } from "../lib/document-types";
 
 export function useProvGeneration(
   editorRef: React.RefObject<any>,
@@ -16,6 +17,7 @@ export function useProvGeneration(
   links: BlockLink[],
   documentProvenance?: DocumentProvenance | null,
   mediaInlineLabels?: Map<string, MediaLabelEntry>,
+  mediaOcr?: Map<string, MediaOcrEntry>,
 ) {
   const [provDoc, setProvDoc] = useState<ProvDocument | null>(null);
   const provTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,9 +31,10 @@ export function useProvGeneration(
       links,
       documentProvenance: documentProvenance ?? undefined,
       mediaInlineLabels,
+      mediaOcr,
     });
     setProvDoc(doc);
-  }, [editorRef, labels, links, documentProvenance, mediaInlineLabels]);
+  }, [editorRef, labels, links, documentProvenance, mediaInlineLabels, mediaOcr]);
 
   // ラベル・リンク変更時に自動再生成
   useEffect(() => {

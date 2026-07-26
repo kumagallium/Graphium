@@ -8,6 +8,7 @@ import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
 import { formatDateTime } from "../../lib/format-datetime";
+import { getActiveProvider } from "../../lib/storage/registry";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -68,6 +69,39 @@ export function MaterialMetadataSection({
   const collapsible = variant === "collapsible";
   const [open, setOpen] = useState(defaultOpen);
   const derivedCount = entry.derivedFromAssets?.length ?? 0;
+
+  // 画像から読み取ったテキスト（端末内 OCR）。
+  // 実体は「その画像を貼っているノート」の page.mediaOcr にあるため、
+  // 使用先ノートを順に見て最初に見つかったものを出す。
+  const [ocrText, setOcrText] = useState<string | null>(null);
+  const usedIn = entry.usedIn;
+  const isImage = entry.type === "image";
+  useEffect(() => {
+    if (!isImage || usedIn.length === 0) {
+      setOcrText(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      for (const u of usedIn) {
+        if (!u.noteId || !u.blockId) continue;
+        try {
+          const doc = await getActiveProvider().loadFile(u.noteId);
+          const text = doc?.pages?.[0]?.mediaOcr?.[u.blockId]?.text?.trim();
+          if (text) {
+            if (!cancelled) setOcrText(text);
+            return;
+          }
+        } catch {
+          // 読めないノート（削除済み等）は飛ばす
+        }
+      }
+      if (!cancelled) setOcrText(null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isImage, usedIn]);
 
   // Name 編集
   const [editing, setEditing] = useState(false);
@@ -217,6 +251,15 @@ export function MaterialMetadataSection({
               </div>
             )}
           </MetaRow>
+          {ocrText && (
+            <MetaRow label="Text in image">
+              {/* 全文を出す。高さを絞るとスクロールバーが自動で隠れる環境で
+                  「途中で切れている」ように見えるため、パネル側のスクロールに任せる。 */}
+              <span className="text-xs text-muted-foreground whitespace-pre-wrap break-words block">
+                {ocrText}
+              </span>
+            </MetaRow>
+          )}
           {derivedCount > 0 && (
             <MetaRow label={`Derived from (${derivedCount})`}>
               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">

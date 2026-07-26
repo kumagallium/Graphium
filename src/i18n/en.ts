@@ -1680,4 +1680,13 @@ export const en: Record<string, string> = {
   "composer.discovery.promptClarify": "Surface the contradictions and repetition in this Wiki and give me hints for rewriting.",
   "composer.discovery.promptTellMeAbout": "Tell me more about \"{title}\".",
   "composer.citationSource": "Source",
+
+  // ── 画像 OCR（端末内 Tesseract.js。標準の画像ブロックに対して実行する） ──
+  "ocr.readText": "Read text from image",
+  "ocr.running": "Reading text…",
+  "ocr.done": "Text extracted",
+  "ocr.chars": "{count} chars",
+  "ocr.noText": "No text found in the image",
+  "ocr.copy": "Copy",
+  "ocr.matchBadge": "image text",
 };

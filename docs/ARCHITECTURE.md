@@ -92,8 +92,15 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `pdf-viewer`). Inline content (entity / agent
-  highlights) lives under `src/features/inline-label/`.
+  `callout`, `example-hello`, `pdf-viewer`). Inline content
+  (entity / agent highlights) lives under `src/features/inline-label/`.
+  New blocks register once in `src/blocks/registry.ts` so both the main
+  editor and the SidePeek pick them up (and neither strips them on save).
+- Features that annotate a *standard* block do not add a block type. They
+  keep a side store keyed by block id (`mediaInlineLabels`, `blockAlignments`,
+  `mediaOcr`), because extending BlockNote's own image / file blocks is
+  far-reaching — and because the user should not have to choose a special
+  block up front to get the behaviour later.
 - Editor configuration is composed in `src/note-app.tsx`.
 
 ### 3.2 Provenance layer (PROV-DM)
@@ -150,6 +157,26 @@ the execution Entity to the plan Entity, expressing that the actual
 outcome was derived from the planned intent. The shared Step Activity
 that both Entities are `prov:used` by acts as the implicit activity of
 the PROV-DM derivation’s full form.
+
+Beyond labelled blocks, the generator also picks up **images whose text has
+been read on-device**, with no label required. The user triggers this from
+the image block's drag-handle menu ("Read text from image"); Tesseract.js
+runs entirely in the browser (only the wasm and language data come from a
+CDN — the image itself is never uploaded) and the result is stored in
+`page.mediaOcr[blockId]`. Each such image is projected as image
+`prov:Entity` → OCR `prov:Activity` (`prov:used`) → extracted-text
+`prov:Entity` (`prov:wasGeneratedBy`), with engine, language and confidence
+attached as `graphium:*` attributes on the Activity. If the image already
+carries an inline label, that Entity is reused instead of emitting a second
+node for the same picture. This is the one world-provenance source that
+needs no user tagging — see [DATA_MODEL.md §2.3](./DATA_MODEL.md). The
+`image_` / `activity_ocr_` / `result_ocr_` id prefixes reuse the existing
+node-subtype colouring, so the view renders them without change.
+
+The extracted text is also mirrored into the note index (`ocrText`), so a
+note holding only a screenshot can be found by the words inside it; the note
+list marks such a hit with an "image text" badge, and the asset gallery shows
+the text on the image's detail panel.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 

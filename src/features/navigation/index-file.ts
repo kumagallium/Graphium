@@ -17,6 +17,7 @@ import type {
 import { getActiveProvider } from "../../lib/storage/registry";
 import { normalizeLabel } from "../context-label/labels";
 import { normalizeNoteContexts } from "../note-context/context-tags";
+import { collectOcrText } from "../media-ocr/collect";
 
 // ── 型定義 ──
 
@@ -88,7 +89,14 @@ import { normalizeNoteContexts } from "../note-context/context-tags";
 //      のまま「未分類」として読める（後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v20 インデックスが v21 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 21;
+// v22: ocrText フィールド追加（画像 OCR）。
+//      page.mediaOcr（標準 image ブロックに対して端末内 Tesseract.js で抽出した
+//      テキストのサイドストア）を集約し、ノート横断のテキスト検索（searchNotes）の
+//      対象に含める。画像しか無いノートも中身の文字で引けるようにする。
+//      既存エントリは ocrText=undefined のまま読める（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v21 インデックスが v22 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 22;
 
 export type GraphiumIndex = {
   version: number;
@@ -223,6 +231,8 @@ export type NoteIndexEntry = {
    * 0-3 件想定なので配列をそのまま mirror する（軽量）。
    */
   relatedAtoms?: AtomRelation[];
+  /** OCR 画像ブロックから抽出したテキスト（横断検索用・改行区切り） */
+  ocrText?: string;
 };
 
 // ── Drive API ──
@@ -489,6 +499,8 @@ export function buildIndexEntry(
       doc.wikiMeta?.relatedAtoms && doc.wikiMeta.relatedAtoms.length > 0
         ? doc.wikiMeta.relatedAtoms
         : undefined,
+    // 画像 OCR テキスト（page.mediaOcr サイドストア。画像を中身の文字で引けるようにする）
+    ocrText: collectOcrText(page?.mediaOcr),
   };
 }
 

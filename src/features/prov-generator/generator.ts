@@ -12,6 +12,7 @@ import type { BlockLink } from "../block-link/link-types";
 import { isProvLink } from "../block-link/link-types";
 import { createWarning, type ProvWarning } from "./errors";
 import { buildDocumentProvenanceBundle, type DocumentProvenanceBundle } from "../document-provenance/prov-output";
+import { OCR_CAPABLE_BLOCK_TYPES } from "../media-ocr/collect";
 import { t } from "../../i18n";
 
 // ── PROV-JSON-LD の型定義（Phase 3: 埋め込み形式） ──
@@ -97,6 +98,11 @@ type GeneratorInput = {
    * 設計メモ §8.6 に従い blockId → {label, entityId} のサイドストアで保存される。
    */
   mediaInlineLabels?: Map<string, { label: CoreLabel; entityId: string }>;
+  /**
+   * 画像ブロックの OCR 結果（page.mediaOcr サイドストア）。
+   * ラベル非依存で PROV に接続するため、blockId → 抽出結果で渡す。
+   */
+  mediaOcr?: Map<string, import("../../lib/document-types").MediaOcrEntry>;
 };
 
 // ── テーブル構造化パーサー ──
@@ -990,6 +996,70 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
   }
 
+  // ── 画像 OCR → 画像 / OCR / 抽出テキストの来歴 ──
+  // ラベル非依存。文字を読み取り済みの画像ブロックを PROV グラフに接続する:
+  //   画像(Entity) ──used──▶ OCR(Activity) ──wasGeneratedBy──▶ 抽出テキスト(結果Entity)
+  // エンジン・言語・信頼度は OCR Activity の params（属性ダイヤ）として埋め込む。
+  const mediaOcr = input.mediaOcr;
+  if (mediaOcr && mediaOcr.size > 0) {
+    for (const block of flatBlocks) {
+      if (!OCR_CAPABLE_BLOCK_TYPES.has(block.type)) continue;
+      const ocr = mediaOcr.get(block.id);
+      if (!ocr) continue; // 未 OCR の画像は載せない
+      const ocrText = ocr.text?.trim();
+      if (!ocrText) continue; // 文字が取れなかった画像も載せない
+
+      const p = block.props ?? {};
+      const url: string = typeof p.url === "string" ? p.url : "";
+      if (!url) continue;
+
+      // 同じ画像が既にインラインラベルで Entity 化されていれば、その Entity を
+      // OCR の入力として再利用する（1 枚の画像が 2 ノードに割れるのを防ぐ）
+      const labeled = nodes.find(
+        (n) => n.blockId === block.id && n["@id"].startsWith("inline_"),
+      );
+      const imageId = labeled?.["@id"] ?? `image_${block.id}`;
+      if (!labeled) {
+        nodes.push({
+          "@id": imageId,
+          "@type": "prov:Entity",
+          label: (typeof p.name === "string" && p.name) || "image",
+          blockId: block.id,
+          mediaType: "image",
+          mediaUrl: url,
+        });
+      }
+
+      // OCR = Activity。エンジン・言語・信頼度を属性（params→ダイヤ）に埋め込む
+      const ocrActivityId = `activity_ocr_${block.id}`;
+      const ocrParams: Record<string, string> = { engine: "Tesseract.js" };
+      if (ocr.lang) ocrParams.lang = ocr.lang;
+      if (ocr.confidence > 0) ocrParams.confidence = String(ocr.confidence);
+      nodes.push({
+        "@id": ocrActivityId,
+        "@type": "prov:Activity",
+        label: "OCR",
+        blockId: block.id,
+        params: ocrParams,
+      });
+      relations.push({ "@type": "prov:used", from: ocrActivityId, to: imageId });
+
+      // 抽出テキスト = OCR が生成した派生 Entity
+      const textId = `result_ocr_${block.id}`;
+      nodes.push({
+        "@id": textId,
+        "@type": "prov:Entity",
+        label: truncateOcrLabel(ocrText, 48),
+        blockId: block.id,
+      });
+      relations.push({
+        "@type": "prov:wasGeneratedBy",
+        from: textId,
+        to: ocrActivityId,
+      });
+    }
+  }
+
   // ── informed_by → 前手順の結果を経由してリンク + Entity unification ──
   //
   // PROV-DM の wasInformedBy(B, A) は ∃E. wasGeneratedBy(E, A) ∧ used(B, E) を意味する。
@@ -1236,6 +1306,12 @@ function coreToProvRole(label: CoreLabel, block: any): string | null {
 }
 
 /** ブロックのテキスト内容を取得 */
+/** OCR 抽出テキストをグラフ表示用に1行化・切り詰め */
+function truncateOcrLabel(text: string, max: number): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine;
+}
+
 function getBlockText(block: any): string {
   if (block.content) {
     if (Array.isArray(block.content)) {

@@ -527,3 +527,9 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: #fb923c; /* orange-400 */
   color: #1a2e1d;
 }
+/* OCR 画像ブロックの進捗スピナー */
+@keyframes provnote-ocr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
