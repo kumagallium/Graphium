@@ -1352,6 +1352,40 @@ export const en: Record<string, string> = {
   "memo.bulkDeleteConfirmMessageNoRef": "Delete {count} selected memos. This cannot be undone.",
   "memo.dragToRangeSelect": "Drag or shift-click to select a range",
 
+  // ── Mobile (inbox / staging area) ──
+  // A separate layer from the material library: files sitting in the sync folder
+  // <root>/Inbox/ that have **not been imported yet**. Importing moves them into the
+  // material library (images/video/audio/...), so they leave this list.
+  "mobile.title": "Mobile",
+  "mobile.pendingCount": "{count} pending",
+  // Folder connection
+  "mobile.connectFolder": "Connect sync folder",
+  "mobile.changeFolder": "Change sync folder",
+  "mobile.connectHint": "Connect a sync folder and whatever you capture on your phone shows up here.",
+  // Import
+  "mobile.importSelected": "Import selected ({count})",
+  "mobile.importAll": "Import all",
+  "mobile.importing": "Importing...",
+  "mobile.refresh": "Refresh",
+  "mobile.importResult": "Mobile import",
+  "mobile.importSummary": "Imported {imported} · skipped {skipped} · failed {failed}",
+  // List
+  "mobile.selectAll": "Select all",
+  "mobile.deselectAll": "Clear selection",
+  "mobile.colPreview": "Preview",
+  "mobile.colName": "Name",
+  "mobile.colSize": "Size",
+  "mobile.colModified": "Modified",
+  // Preview side peek (look before you decide what to keep)
+  "mobile.openPreview": "Open preview",
+  "mobile.previewLoading": "Loading preview...",
+  "mobile.previewFailed": "Could not read this file: {error}",
+  "mobile.importThis": "Import this file",
+  // Empty / error states
+  "mobile.emptyInbox": "Nothing new",
+  "mobile.emptyInboxHint": "Files dropped into the Inbox folder from your phone will appear here.",
+  "mobile.scanFailed": "Could not read the inbox: {error}",
+
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "Exporting...",

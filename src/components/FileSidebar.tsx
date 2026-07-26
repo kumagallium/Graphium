@@ -50,6 +50,12 @@ export type FileSidebarProps = {
   onShowMemos?: () => void;
   /** メモセクションがアクティブか */
   memosActive?: boolean;
+  /** モバイル受信箱の未処理件数（<root>/Inbox/ にある未取り込みファイルの数） */
+  mobileCount?: number;
+  /** モバイル受信箱クリック時。未指定なら見出しごと非表示（web モード） */
+  onShowMobile?: () => void;
+  /** モバイル受信箱ビューがアクティブか */
+  mobileActive?: boolean;
   /** Wiki カテゴリ別カウント */
   wikiCounts?: { summary: number; claim: number; atom: number; synthesis: number };
   /**
@@ -142,6 +148,9 @@ export function FileSidebar({
   memoCount = 0,
   onShowMemos,
   memosActive = false,
+  mobileCount = 0,
+  onShowMobile,
+  mobileActive = false,
   wikiCounts,
   // Atom レイヤは default で表示する（design revision 2026-05-27）。
   // 旧 showAtomLayer prop は互換のため受け取るが、内部では未使用。
@@ -320,11 +329,13 @@ export function FileSidebar({
           )}
         </button>
 
-        {/* ②' メモ（見出し風リンク） — ノートと同列 */}
+        {/* ②' メモ（見出し風リンク） — ノートと同列。
+            この節の最後の見出しが mb-1.5 でナレッジ節との間隔を作る。モバイル（受信箱）は
+            web では出ないので、その場合はメモがこの節の最後になり mb-1.5 を引き受ける。 */}
         {onShowMemos && (
           <button
             onClick={onShowMemos}
-            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 ${onShowMobile ? "" : "mb-1.5"} text-xs font-semibold transition-colors ${
               memosActive
                 ? "text-primary"
                 : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
@@ -336,6 +347,30 @@ export function FileSidebar({
             <span className="flex-1 text-left">{t("memo.title")}</span>
             {memoCount > 0 && (
               <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{memoCount}</span>
+            )}
+          </button>
+        )}
+
+        {/* ②'' モバイル（見出し風リンク） — メモと対の独立見出し。
+            同期フォルダ <root>/Inbox/ の受信箱（未取り込みファイル）ビューへ遷移する。
+            件数は「未処理件数」= これから捌く数。取り込むと素材になり、ここからは消える。
+            受信箱は Tauri 専用なので、web では onShowMobile が渡らず見出しごと消える。
+            mb-1.5 でナレッジ節との間隔を確保する（この見出しが節の最後）。 */}
+        {onShowMobile && (
+          <button
+            onClick={onShowMobile}
+            className={`w-full flex items-center gap-1 px-4 pt-2 pb-1 mb-1.5 text-xs font-semibold transition-colors ${
+              mobileActive
+                ? "text-primary"
+                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+            }`}
+          >
+            <span className="shrink-0 -ml-0.5" aria-hidden>
+              <ArrowRight size={12} />
+            </span>
+            <span className="flex-1 text-left">{t("mobile.title")}</span>
+            {mobileCount > 0 && (
+              <span className="text-xs text-muted-foreground/70 font-normal tabular-nums">{mobileCount}</span>
             )}
           </button>
         )}

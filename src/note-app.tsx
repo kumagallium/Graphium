@@ -125,7 +125,11 @@ import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
-import { getSharedRoot, getBlobRoot } from "./lib/storage/shared";
+import { getSharedRoot, getBlobRoot, pickInboxRoot } from "./lib/storage/shared";
+// モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
+// inbox を再export しないため、inbox サブバレルから直接 import する。
+import { getInboxRoot, setInboxRoot, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
+import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
   forkSharedNote,
@@ -4790,6 +4794,40 @@ export function NoteApp() {
     try { localStorage.setItem("graphium-sidebar-collapsed", desktopSidebarCollapsed ? "1" : "0"); } catch {}
   }, [desktopSidebarCollapsed]);
   const [showMemos, setShowMemos] = useState(false);
+  // モバイル受信箱ビュー（同期フォルダ <root>/Inbox/ の「まだ取り込んでいない」ファイル一覧）。
+  // 取り込むと素材ライブラリへ振り分けられ、この一覧からは消える（_imported/ 退避）。
+  const [showMobile, setShowMobile] = useState(false);
+  // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
+  // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
+  const [inboxRoot, setInboxRootState] = useState<string | null>(() => getInboxRoot());
+  // サイドバー「モバイル」の未処理件数バッジ。取り込み済み素材の数ではなく、
+  // 受信箱に残っている未取り込みファイルの数（= これから捌く数）。
+  const [inboxPendingCount, setInboxPendingCount] = useState(0);
+  // 受信箱の読み取り面。desktop(Tauri) かつ接続済みのときだけ実体を持つ。
+  const inboxSource = useMemo(
+    () => (isTauri() && inboxRoot ? new FolderInbox(inboxRoot) : null),
+    [inboxRoot],
+  );
+  // 起動時（および接続フォルダ変更時）に未処理件数を数える。
+  // 「受信箱ビューを開いたとき」「取り込み後」は InboxView の scan → onPendingCount が
+  // 更新するので、ここでは重ねて数えない（IPC の二重呼びを避ける）。
+  // 失敗は 0 扱いで握りつぶす（起動を妨げない）。
+  useEffect(() => {
+    if (!inboxSource) {
+      setInboxPendingCount(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const pending = await inboxSource.listPending();
+        if (!cancelled) setInboxPendingCount(pending.length);
+      } catch {
+        if (!cancelled) setInboxPendingCount(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [inboxSource]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -5046,7 +5084,7 @@ export function NoteApp() {
   }, [fmGetCachedDocStable, fmReindexNoteFromDocStable, listSidePeekNoteId, assetSidePeekNoteId]);
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
-  // activeLabel → showNoteList → showMemos → activeWikiView → activeWikiKind →
+  // activeLabel → showNoteList → showMemos → showMobile → activeWikiView → activeWikiKind →
   // showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
   // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
   // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
@@ -5059,6 +5097,7 @@ export function NoteApp() {
     fm.setActiveLabel(null);
     fm.setActiveWikiKind(null);
     setShowMemos(false);
+    setShowMobile(false);
     setShowTrash(false);
     setShowSharedLibrary(false);
     setShowGlobalGraph(false);
@@ -5390,6 +5429,8 @@ export function NoteApp() {
     setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
+    // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない（サイドバーにも出さない）。
+    setShowMobile: (show: boolean) => setShowMobile(show && isTauri()),
     setShowSharedLibrary: (show: boolean) => setShowSharedLibrary(show),
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
@@ -6201,6 +6242,90 @@ export function NoteApp() {
   // エディタ参照（メディアリネーム時のブロック同期用）
   const noteEditorRef = useRef<any>(null);
 
+  // ── モバイル受信箱: 接続と取り込み ────────────────────────────────
+  // 同期フォルダ（<root>/Inbox/ の親）を選ぶ。選択したら localStorage に永続化し、
+  // inboxRoot state も更新する → inboxSource が差し替わり、受信箱が即座に再スキャンされる。
+  // desktop 専用（Tauri）。
+  const handlePickInboxRoot = useCallback(async (): Promise<string | null> => {
+    if (!isTauri()) return null;
+    try {
+      const picked = await pickInboxRoot(getInboxRoot() ?? undefined);
+      if (picked) {
+        setInboxRoot(picked);
+        setInboxRootState(picked);
+      }
+      return picked;
+    } catch (e) {
+      console.error("[inbox] folder pick failed", e);
+      return null;
+    }
+  }, []);
+
+  // 受信箱の未取り込みメディアを active MediaProvider に取り込む。
+  // refs を渡すと選択取り込み、省略すると全部取り込み（受信箱ビューの 2 ボタンに対応）。
+  // 取り込んだものは _imported/ へ退避されるので、再スキャンで一覧から消える。
+  //
+  // dedup は 2 段構え:
+  //   - run 間: media-index の capture.checksum 集合をスナップショットとして seed する
+  //   - run 内: 同じ Set を「これから取り込む checksum」で成長させ、同一 run 内の
+  //             同一内容の二重取込を弾く（importer が isAlreadyImported を各件呼ぶ直前に判定）
+  // importer は success を個別通知しないため、「未取り込み → これから取り込む」の
+  // タイミング（isAlreadyImported が false を返す瞬間）で Set に add する。
+  const handleImportFromInbox = useCallback(async (refs?: CaptureRef[]) => {
+    if (!isTauri()) return;
+    // root 未設定ならフォルダ選択を促す。選ばれなければ何もしない。
+    let root = getInboxRoot();
+    if (!root) {
+      root = await handlePickInboxRoot();
+      if (!root) return;
+    }
+    // dedup 用チェックサム集合（run 間スナップショット + run 内成長）。
+    const seen = new Set<string>();
+    for (const m of fm.mediaIndex?.media ?? []) {
+      if (m.capture?.checksum) seen.add(m.capture.checksum);
+    }
+    const isAlreadyImported = (checksum: string): boolean => {
+      if (seen.has(checksum)) return true;
+      // 未取り込み → importer はこの直後に取り込む。後続の同一内容を二重取込しないよう記録する。
+      seen.add(checksum);
+      return false;
+    };
+    const pushResultToast = (
+      status: "success" | "error",
+      result: string,
+    ) => {
+      // ingestToast を流用（AI ガードと同じ単一アイテム置換パターン。固定 id で連続実行でも 1 件）。
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== "inbox-import"),
+          { id: "inbox-import", status, noteTitle: tStatic("mobile.importResult"), result },
+        ],
+      }));
+    };
+    try {
+      const res = await runInboxImport({
+        transport: new FolderInbox(root),
+        uploadAsset: fm.handleUploadAsset,
+        isAlreadyImported,
+        // 未指定なら全件（「全部取り込み」）。
+        ...(refs ? { only: refs } : {}),
+      });
+      await fm.refreshMediaIndex();
+      const failed = res.failed.length;
+      pushResultToast(
+        failed > 0 ? "error" : "success",
+        tStatic("mobile.importSummary", {
+          imported: String(res.imported.length),
+          skipped: String(res.skipped.length),
+          failed: String(failed),
+        }),
+      );
+    } catch (e) {
+      console.error("[inbox] import failed", e);
+      pushResultToast("error", e instanceof Error ? e.message : String(e));
+    }
+  }, [fm.mediaIndex, fm.handleUploadAsset, fm.refreshMediaIndex, handlePickInboxRoot]);
+
   // メディアリネーム（ブロック props.name 同期付き）
   const handleRenameMediaWithBlockSync = useCallback(async (entry: MediaIndexEntry, newName: string) => {
     await fm.handleRenameMedia(entry, newName);
@@ -6862,6 +6987,14 @@ export function NoteApp() {
     memoCount: capture.captureIndex?.captures.length ?? 0,
     onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
+    // モバイル（受信箱）: **未処理**件数。取り込み済み素材の数ではない。
+    // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）ので、
+    // onShowMobile を渡さない＝サイドバーの「モバイル」自体が web では出ない。
+    mobileCount: inboxPendingCount,
+    onShowMobile: isTauri()
+      ? () => { closeAllViews(); setShowMobile(true); setSidebarOpen(false); router.navigate({ view: "mobile" }); }
+      : undefined,
+    mobileActive: showMobile,
     wikiCounts: (() => {
       // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
       // 表示用カウントは wikiFiles をベースに数える必要がある。
@@ -7676,6 +7809,18 @@ export function NoteApp() {
                 enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
+          />
+        ) : showMobile ? (
+          // モバイル受信箱: 同期フォルダ <root>/Inbox/ の **まだ取り込んでいない** ファイル一覧。
+          // 素材ライブラリ（AssetGalleryView / MediaIndexEntry）とは表示対象の型が違うので
+          // 流用せず別コンポーネント。取り込むと素材へ振り分けられ、ここからは消える。
+          <InboxView
+            rootConfigured={inboxRoot != null}
+            source={inboxSource}
+            onPickRoot={async () => { await handlePickInboxRoot(); }}
+            onImport={handleImportFromInbox}
+            onPendingCount={setInboxPendingCount}
+            onBack={() => setShowMobile(false)}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView

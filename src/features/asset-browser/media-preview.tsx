@@ -26,6 +26,12 @@ function BlobMediaPlayer({
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    // blob: / data: は「すでに実体を指している URL」。プロバイダ解決を挟まずそのまま
+    // 再生する（ResolvedImage / PdfViewer と同じ扱い）。モバイル受信箱の未取り込み
+    // ファイルのプレビュー（transient エントリ）がここを通る。
+    // media index に載る素材の url は local-media:// / file-media:// / media-server:// /
+    // http(s) のいずれかなので、既存素材の解決経路は一切変わらない。
+    if (/^(blob|data):/i.test(entry.url)) { setBlobUrl(entry.url); return; }
     const fileId = getActiveProvider().extractFileId(entry.url);
     if (!fileId) { setError(true); return; }
 

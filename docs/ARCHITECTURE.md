@@ -725,6 +725,22 @@ The same `src/` tree is built three different ways.
   server must never be reachable from other machines on the network. The
   Docker image sets `GRAPHIUM_BIND_HOST=0.0.0.0` instead, because inside a
   container the exposure boundary is the container port mapping.
+- **Mobile capture inbox.** Media shot on a phone reaches the desktop
+  through a folder the user already syncs (iCloud Drive, Dropbox,
+  Syncthing — Graphium itself never talks to those services, which is what
+  keeps the path OAuth-free). The phone drops raw files into
+  `<inbox-root>/Inbox/`; three Tauri commands enumerate that directory
+  (`inbox_list`, returning name/size/mtime), read one file as base64
+  (`inbox_read`), and move an imported file aside into
+  `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`). All three
+  reject an empty root and any name containing a path separator or `..`,
+  so the reachable surface is exactly one flat directory. The inbox is a
+  staging area rather than a category: importing hands the bytes to the
+  active storage provider, so the file becomes an ordinary asset in the
+  media library and leaves the inbox. Imports are idempotent — the content
+  SHA-256 is matched against captures already in the media index — and the
+  origin survives as an optional `capture` record on the media entry. The
+  web build has no filesystem to enumerate, so the inbox is desktop-only.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
@@ -905,6 +921,7 @@ people most often need to find.
 | Export (PROV-JSON-LD, PDF, DOCX import) | `src/features/prov-export/`, `src/features/pdf-export/`, `src/features/docx-import/` |
 | Onboarding flow | `src/features/onboarding/` |
 | URL-to-PROV / PDF-to-PROV ingestion | `src/features/url-to-prov/`, `src/server/services/prov-ingester.ts` |
+| Mobile capture inbox (phone → desktop media) | `src/features/mobile-capture/inbox/` |
 | Material-science benchmark harness | `tests/benchmark/material-science/` |
 | Release notes UI | `src/features/release-notes/` |
 | Tauri integration | `src-tauri/src/lib.rs`, `src/lib/menu-events.ts` |

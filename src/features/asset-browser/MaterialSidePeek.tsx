@@ -141,6 +141,19 @@ export type MaterialSidePeekProps = {
    * inline=false（デフォルト）: 画面右端から portal で fixed 表示
    */
   inline?: boolean;
+  /**
+   * 本体 viewer の差し替え（optional）。渡すと MediaPreview の代わりにこれを描画する。
+   * モバイル受信箱プレビューのように「バイト列がまだストレージプロバイダに無い」
+   * transient エントリで、読み込み中スピナー・読み込み失敗を出すための口。
+   * 未指定なら従来どおり MediaPreview を描画する（既存の素材ピークは無変更）。
+   */
+  previewOverride?: React.ReactNode;
+  /**
+   * viewer の下に差し込む追加セクション（optional）。素材ピーク本来の構成には無い
+   * 付加情報（受信箱プレビューのファイル情報 +「取り込み」ボタン等）を置く。
+   * 未指定なら何も描画しない。
+   */
+  footer?: React.ReactNode;
 };
 
 export function MaterialSidePeek({
@@ -164,6 +177,8 @@ export function MaterialSidePeek({
   onSaveSelectionAsMemo,
   onSaveImageAsAsset,
   inline = false,
+  previewOverride,
+  footer,
 }: MaterialSidePeekProps) {
   const t = useT();
   // ドラッグリサイズ（デスクトップのみ）。ノートのサイドピークと幅設定を共有する。
@@ -255,12 +270,17 @@ export function MaterialSidePeek({
           minHeight: 0,
         }}
       >
-        <MediaPreview
-          entry={entry}
-          onSaveSelectionAsMemo={onSaveSelectionAsMemo}
-          onSaveImageAsAsset={onSaveImageAsAsset}
-        />
+        {previewOverride ?? (
+          <MediaPreview
+            entry={entry}
+            onSaveSelectionAsMemo={onSaveSelectionAsMemo}
+            onSaveImageAsAsset={onSaveImageAsAsset}
+          />
+        )}
       </div>
+
+      {/* 呼び出し側の追加セクション（受信箱プレビューのファイル情報 + 取り込みボタン等） */}
+      {footer}
 
       {/* Metadata は SidePeek では非表示（面積圧迫のため）— Full view の右パネルから確認 */}
 

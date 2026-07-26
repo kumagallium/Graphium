@@ -1351,6 +1351,39 @@ export const ja: Record<string, string> = {
   "memo.bulkDeleteConfirmMessageNoRef": "選択した {count} 件のメモを削除します。この操作は元に戻せません。",
   "memo.dragToRangeSelect": "ドラッグまたは Shift+クリックで範囲選択",
 
+  // ── モバイル（受信箱 / 一時置き場） ──
+  // 素材ライブラリとは別レイヤー: 同期フォルダ <root>/Inbox/ にある **まだ取り込んでいない**
+  // ファイルの一覧。取り込むと素材（画像/動画/音声…）へ振り分けられ、ここからは消える。
+  "mobile.title": "モバイル",
+  "mobile.pendingCount": "未処理 {count} 件",
+  // フォルダ接続
+  "mobile.connectFolder": "同期フォルダを接続",
+  "mobile.changeFolder": "同期フォルダを変更",
+  "mobile.connectHint": "同期フォルダを接続すると、モバイルで撮影したメディアがここに届きます。",
+  // 取り込み
+  "mobile.importSelected": "選択したものを取り込み ({count})",
+  "mobile.importAll": "全部取り込み",
+  "mobile.importing": "取り込み中...",
+  "mobile.refresh": "更新",
+  "mobile.importResult": "モバイル取り込み",
+  "mobile.importSummary": "取り込み {imported}・スキップ {skipped}・失敗 {failed}",
+  // 一覧
+  "mobile.selectAll": "すべて選択",
+  "mobile.deselectAll": "選択解除",
+  "mobile.colPreview": "プレビュー",
+  "mobile.colName": "名前",
+  "mobile.colSize": "サイズ",
+  "mobile.colModified": "更新日時",
+  // プレビュー（サイドピーク）— 取り込む前に中身を見て取捨選択する
+  "mobile.openPreview": "プレビューを開く",
+  "mobile.previewLoading": "プレビューを読み込み中...",
+  "mobile.previewFailed": "このファイルを読み込めませんでした: {error}",
+  "mobile.importThis": "この項目を取り込み",
+  // 空状態・エラー
+  "mobile.emptyInbox": "新しいものはありません",
+  "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
+  "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
+
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "エクスポート中...",
