@@ -53,6 +53,7 @@ import { imeConfirmEnterGuardExtension } from "./ime-confirm-enter-guard";
 import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
+import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { t as tStatic } from "../i18n";
 
 type SandboxEditorProps = {
@@ -148,6 +149,9 @@ export function SandboxEditor({
       preserveChildIndentOnBackspaceExtension,
       documentSearchExtension,
       openLinkInSidePeekExtension,
+      // step タイトルで「1. 」等がリスト等へのブロック変換を起こし、カードが
+      // 消えるのを防ぐ（step-title-autoformat-guard.ts 参照）
+      stepTitleAutoformatGuardExtension,
     ],
   });
 
