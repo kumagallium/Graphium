@@ -1419,8 +1419,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   role="switch"
                   aria-checked={enableProvLabels}
                   aria-label={t("settings.provLabels.title")}
-                  className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                  style={{ backgroundColor: enableProvLabels ? "#4B7A52" : "#d5e0d7" }}
+                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${enableProvLabels ? "bg-primary" : "bg-input"}`}
                 >
                   <span
                     className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
@@ -2503,8 +2502,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       role="switch"
                       aria-checked={experimental.autoGrounding}
                       aria-label={t("settings.autoGrounding.title")}
-                      className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                      style={{ backgroundColor: experimental.autoGrounding ? "#4B7A52" : "#d5e0d7" }}
+                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${experimental.autoGrounding ? "bg-primary" : "bg-input"}`}
                     >
                       <span
                         className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
@@ -2570,8 +2568,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           role="switch"
                           aria-checked={s.enabled}
                           aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                          className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                          style={{ backgroundColor: s.enabled ? "#4B7A52" : "#d5e0d7" }}
+                          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
                         >
                           <span
                             className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
