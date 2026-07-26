@@ -17,6 +17,7 @@
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { defaultProps } from "@blocknote/core";
+import { TextSelection } from "prosemirror-state";
 import { useEffect, useRef, useState } from "react";
 import { Check, Link2, ListChecks, Plus } from "lucide-react";
 import { useLinkStore } from "../../features/block-link/store";
@@ -32,6 +33,69 @@ function inlineText(block: any): string {
 }
 
 export type StepLinkCandidate = { blockId: string; title: string };
+
+/** 文書中の全 step を文書順に列挙する（除外なし。連番・タイトル解決用） */
+export function collectAllSteps(doc: any[]): StepLinkCandidate[] {
+  const out: StepLinkCandidate[] = [];
+  const walk = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "step" && b.id) {
+        const title = deriveActivityName(inlineText(b)).trim();
+        out.push({ blockId: b.id, title: title || b.id.slice(0, 8) });
+      }
+      if (Array.isArray(b.children)) walk(b.children);
+    }
+  };
+  walk(doc);
+  return out;
+}
+
+/**
+ * 新しい step のデフォルトタイトル（「ステップ N」）。
+ * 空タイトルのままだと Activity 名が空になり、右パネルのグラフにノードが
+ * 立たない。実テキストを入れておけば作った瞬間からグラフに現れる。
+ */
+export function buildDefaultStepTitle(doc: any[]): string {
+  return t("step.defaultTitle", { n: String(collectAllSteps(doc).length + 1) });
+}
+
+/**
+ * step のタイトル全体を選択してフォーカスする（リネーム UX）。
+ * デフォルトタイトルはそのまま打てば置き換わる。選択に失敗したら末尾カーソル。
+ */
+export function selectStepTitle(editor: any, blockId: string): void {
+  setTimeout(() => {
+    try {
+      const view = editor.prosemirrorView;
+      let found: { pos: number; node: any } | null = null;
+      view.state.doc.descendants((node: any, pos: number) => {
+        if (found) return false;
+        if (node.attrs?.id === blockId) {
+          found = { pos, node };
+          return false;
+        }
+        return true;
+      });
+      if (!found) return;
+      // blockContainer(+1) > step content(+1) → inline の先頭
+      const content = (found as { pos: number; node: any }).node.firstChild;
+      const from = (found as { pos: number; node: any }).pos + 2;
+      const to = from + (content?.content?.size ?? 0);
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
+      );
+      view.focus();
+    } catch {
+      try {
+        editor.setTextCursorPosition(blockId, "end");
+        editor.focus();
+      } catch {
+        /* no-op */
+      }
+    }
+  }, 0);
+}
 
 /**
  * 前手順の候補（step ブロック）を文書順に集める。
@@ -88,29 +152,39 @@ export const StepBlock = createReactBlockSpec(
     render: (props) => {
       const linkStore = useLinkStore();
       const [pickerOpen, setPickerOpen] = useState(false);
+      // 後続（次ステップ）側のピッカー
+      const [nextOpen, setNextOpen] = useState(false);
       // 循環でリンクを拒否されたとき、無反応に見えないよう理由を出す
       const [cycleWarn, setCycleWarn] = useState(false);
       const rootRef = useRef<HTMLDivElement>(null);
 
       // 外側クリックでピッカーを閉じる（callout の variant ピッカーと同じ流儀）
       useEffect(() => {
-        if (!pickerOpen) return;
+        if (!pickerOpen && !nextOpen) return;
         const onDown = (e: MouseEvent) => {
-          if (!rootRef.current?.contains(e.target as Node)) setPickerOpen(false);
+          if (!rootRef.current?.contains(e.target as Node)) {
+            setPickerOpen(false);
+            setNextOpen(false);
+          }
         };
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
-      }, [pickerOpen]);
+      }, [pickerOpen, nextOpen]);
 
-      // この step の前手順（outgoing informed_by）。複数可（合流する工程）。
+      // この step の前手順（outgoing informed_by）と後続（incoming informed_by）。
+      // どちらも複数可（合流・分岐する工程）。
       const prevLinks = linkStore
         .getOutgoing(props.block.id)
+        .filter((l) => l.type === "informed_by");
+      const nextLinks = linkStore
+        .getIncoming(props.block.id)
         .filter((l) => l.type === "informed_by");
 
       const doc: any[] = (props.editor as any).document ?? [];
       const candidates = collectStepPredecessorCandidates(doc, props.block.id);
+      const allSteps = collectAllSteps(doc);
       const titleOf = (blockId: string) =>
-        candidates.find((c) => c.blockId === blockId)?.title ?? blockId.slice(0, 8);
+        allSteps.find((c) => c.blockId === blockId)?.title ?? blockId.slice(0, 8);
 
       const toggleCandidate = (blockId: string) => {
         const existing = prevLinks.find((l) => l.targetBlockId === blockId);
@@ -134,13 +208,49 @@ export const StepBlock = createReactBlockSpec(
         ? `← ${titleOf(prevLinks[0].targetBlockId)}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
         : t("step.prevLink");
 
+      // 後続側の候補: 前手順候補と同じ除外規則（自分・祖先・子孫を除く）に、
+      // 既にリンク済みだが候補外の後続（旧 UI で張られた等）を足して外せるようにする
+      const nextRows: StepLinkCandidate[] = [
+        ...candidates,
+        ...nextLinks
+          .filter((l) => !candidates.some((c) => c.blockId === l.sourceBlockId))
+          .map((l) => ({ blockId: l.sourceBlockId, title: titleOf(l.sourceBlockId) })),
+      ];
+
+      const toggleNext = (blockId: string) => {
+        const existing = nextLinks.find((l) => l.sourceBlockId === blockId);
+        if (existing) {
+          linkStore.removeLink(existing.id);
+          setCycleWarn(false);
+          return;
+        }
+        // 後続リンク = 相手の前手順を自分にする（source が相手・target が自分）
+        const result = linkStore.addLink({
+          sourceBlockId: blockId,
+          targetBlockId: props.block.id,
+          type: "informed_by",
+          createdBy: "human",
+        });
+        setCycleWarn(result.error === "cycle_detected");
+      };
+
       // 次ステップ: この step の直後に新しい step を作り、前手順を自分に張った
       // 状態で渡す。工程は連なって書かれるものなので、次を作るたびに
       // 「挿入 → タイトル → 前手順を選ぶ」を繰り返させない。
+      // タイトルは「ステップ N」を実テキストで入れて全選択で渡す
+      // （空タイトルだとグラフにノードが立たない。打てばそのまま置き換わる）。
       const createNextStep = () => {
         const editor = props.editor as any;
         const inserted = editor.insertBlocks(
-          [{ type: "step", children: [{ type: "paragraph" }] }],
+          [
+            {
+              type: "step",
+              content: [
+                { type: "text", text: buildDefaultStepTitle(doc), styles: {} },
+              ],
+              children: [{ type: "paragraph" }],
+            },
+          ],
           props.block.id,
           "after",
         );
@@ -152,14 +262,8 @@ export const StepBlock = createReactBlockSpec(
           type: "informed_by",
           createdBy: "human",
         });
-        setTimeout(() => {
-          try {
-            editor.setTextCursorPosition(newId, "end");
-            editor.focus();
-          } catch {
-            /* no-op */
-          }
-        }, 0);
+        setNextOpen(false);
+        selectStepTitle(editor, newId);
       };
 
       return (
@@ -200,6 +304,7 @@ export const StepBlock = createReactBlockSpec(
               type="button"
               onClick={() => {
                 setPickerOpen((v) => !v);
+                setNextOpen(false);
                 setCycleWarn(false);
               }}
               title={t("labelUi.prevStepLink")}
@@ -269,35 +374,114 @@ export const StepBlock = createReactBlockSpec(
               </div>
             )}
           </div>
-          {/* 次ステップ（編集不可）。直後に新しい step を作り、前手順を自分にして渡す */}
-          <button
-            type="button"
+          {/* 次ステップ（編集不可）。
+              後続なし → クリックで新規作成（前手順を自分にして渡す）。
+              後続あり → 「タイトル →」チップ。クリックでピッカー（付け外し + 新規作成）。 */}
+          <div
             contentEditable={false}
-            onClick={createNextStep}
-            title={t("step.nextStep")}
-            data-test="step-next"
-            style={{
-              flex: "0 0 auto",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 3,
-              marginTop: 1,
-              padding: "0 8px",
-              height: 20,
-              borderRadius: 10,
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
-              lineHeight: "18px",
-              whiteSpace: "nowrap",
-              border: "1px solid var(--color-border)",
-              background: "transparent",
-              color: "var(--color-text-tertiary)",
-            }}
+            style={{ position: "relative", flex: "0 0 auto" }}
           >
-            <Plus size={11} strokeWidth={2.4} style={{ flex: "0 0 auto" }} />
-            {t("step.nextStep")}
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (nextLinks.length === 0) {
+                  createNextStep();
+                  return;
+                }
+                setNextOpen((v) => !v);
+                setPickerOpen(false);
+                setCycleWarn(false);
+              }}
+              title={t("step.nextStep")}
+              aria-expanded={nextOpen}
+              data-test="step-next"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                marginTop: 1,
+                padding: "0 8px",
+                height: 20,
+                maxWidth: 180,
+                borderRadius: 10,
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                lineHeight: "18px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                border: `1px solid ${nextLinks.length > 0 ? "var(--color-label-activity)" : "var(--color-border)"}`,
+                background:
+                  nextLinks.length > 0 ? "var(--color-label-activity-bg)" : "transparent",
+                color:
+                  nextLinks.length > 0
+                    ? "var(--color-label-activity)"
+                    : "var(--color-text-tertiary)",
+              }}
+            >
+              {nextLinks.length === 0 && (
+                <Plus size={11} strokeWidth={2.4} style={{ flex: "0 0 auto" }} />
+              )}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {nextLinks.length > 0
+                  ? `${titleOf(nextLinks[0].sourceBlockId)}${nextLinks.length > 1 ? ` +${nextLinks.length - 1}` : ""} →`
+                  : t("step.nextStep")}
+              </span>
+            </button>
+            {nextOpen && (
+              <div role="menu" style={pickerStyles.menu}>
+                <div style={pickerStyles.header}>{t("step.nextStep")}</div>
+                {cycleWarn && (
+                  <div style={{ ...pickerStyles.empty, color: "var(--color-error)" }}>
+                    {t("step.cycleBlocked")}
+                  </div>
+                )}
+                {/* 新規作成（前手順を自分にした step を直後に作る） */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={createNextStep}
+                  style={{ ...pickerStyles.item, color: "var(--color-primary)" }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <Plus size={12} strokeWidth={2.4} />
+                    {t("step.createNext")}
+                  </span>
+                </button>
+                {nextRows.map((c) => {
+                  const active = nextLinks.some((l) => l.sourceBlockId === c.blockId);
+                  return (
+                    <button
+                      key={c.blockId}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={active}
+                      onClick={() => toggleNext(c.blockId)}
+                      style={{
+                        ...pickerStyles.item,
+                        background: active
+                          ? "var(--color-label-activity-bg)"
+                          : "transparent",
+                        color: active
+                          ? "var(--color-label-activity)"
+                          : "var(--color-foreground)",
+                      }}
+                    >
+                      <span style={pickerStyles.itemLabel}>{c.title}</span>
+                      {active && <Check size={13} strokeWidth={2.4} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       );
     },

@@ -1,4 +1,4 @@
-import { StepBlock } from "./view";
+import { StepBlock, buildDefaultStepTitle, selectStepTitle } from "./view";
 import type { CustomBlockEntry } from "../../base/schema";
 import { t } from "../../i18n";
 
@@ -19,9 +19,18 @@ export const stepSlashItem = {
   group: t("slash.advancedGroup"),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
-    // 空の子を 1 つ持たせて、タイトルを書いたあとすぐ中身を書き始められるようにする
+    // タイトルは「ステップ N」を実テキストで入れる（空だとグラフにノードが
+    // 立たない）。空の子を 1 つ持たせて、すぐ中身を書き始められるようにする
     const inserted = editor.insertBlocks(
-      [{ type: "step", children: [{ type: "paragraph" }] }],
+      [
+        {
+          type: "step",
+          content: [
+            { type: "text", text: buildDefaultStepTitle(editor.document ?? []), styles: {} },
+          ],
+          children: [{ type: "paragraph" }],
+        },
+      ],
       currentBlock,
       "after",
     );
@@ -38,16 +47,9 @@ export const stepSlashItem = {
       editor.removeBlocks([currentBlock]);
     }
 
-    // 挿入した step のタイトル行にフォーカス
+    // 挿入した step のタイトルを全選択で渡す（打てばそのまま置き換わる）
     if (inserted?.[0]) {
-      setTimeout(() => {
-        try {
-          editor.setTextCursorPosition(inserted[0].id, "end");
-          editor.focus();
-        } catch {
-          /* no-op */
-        }
-      }, 0);
+      selectStepTitle(editor, inserted[0].id);
     }
   },
   aliases: ["step", "procedure", "ステップ", "手順", "工程", "てじゅん"],

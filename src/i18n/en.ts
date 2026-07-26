@@ -381,6 +381,8 @@ export const en: Record<string, string> = {
   "step.noOtherSteps": "No other steps to link",
   "step.cycleBlocked": "Blocked: this would create a cycle",
   "step.nextStep": "Next step",
+  "step.createNext": "Create new",
+  "step.defaultTitle": "Step {n}",
   "callout.variant.note": "Note",
   "callout.variant.info": "Info",
   "callout.variant.success": "Success",

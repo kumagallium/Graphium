@@ -381,6 +381,8 @@ export const ja: Record<string, string> = {
   "step.noOtherSteps": "リンクできる他のステップがありません",
   "step.cycleBlocked": "循環になるためリンクできません",
   "step.nextStep": "次ステップ",
+  "step.createNext": "新しく作る",
+  "step.defaultTitle": "ステップ {n}",
   "callout.variant.note": "ノート",
   "callout.variant.info": "情報",
   "callout.variant.success": "成功",
