@@ -380,6 +380,7 @@ export const ja: Record<string, string> = {
   "step.prevLink": "前手順",
   "step.noOtherSteps": "リンクできる他のステップがありません",
   "step.cycleBlocked": "循環になるためリンクできません",
+  "step.nextStep": "次ステップ",
   "callout.variant.note": "ノート",
   "callout.variant.info": "情報",
   "callout.variant.success": "成功",

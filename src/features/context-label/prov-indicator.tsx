@@ -184,14 +184,9 @@ export function ProvIndicatorLayer({
       const incoming = getIncoming(blockId);
 
       // ラベルもリンクもないブロックはスキップ。
-      // ただし step はブロック型そのものが工程（Activity）なので、
-      // ラベルが無くても前手順リンクの導線を出す。
-      if (
-        !label &&
-        blockType !== "step" &&
-        outgoing.length === 0 &&
-        incoming.length === 0
-      ) {
+      // step も同様（前手順の導線はカード自身のヘッダーが持つ。
+      // ここに出すとラベル未定義のバッジが「#」として右余白に浮いてしまう）。
+      if (!label && outgoing.length === 0 && incoming.length === 0) {
         return;
       }
 

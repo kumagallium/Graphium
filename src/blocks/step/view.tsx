@@ -18,7 +18,7 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { defaultProps } from "@blocknote/core";
 import { useEffect, useRef, useState } from "react";
-import { Check, Link2, ListChecks } from "lucide-react";
+import { Check, Link2, ListChecks, Plus } from "lucide-react";
 import { useLinkStore } from "../../features/block-link/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
 import { t } from "../../i18n";
@@ -134,6 +134,34 @@ export const StepBlock = createReactBlockSpec(
         ? `← ${titleOf(prevLinks[0].targetBlockId)}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
         : t("step.prevLink");
 
+      // 次ステップ: この step の直後に新しい step を作り、前手順を自分に張った
+      // 状態で渡す。工程は連なって書かれるものなので、次を作るたびに
+      // 「挿入 → タイトル → 前手順を選ぶ」を繰り返させない。
+      const createNextStep = () => {
+        const editor = props.editor as any;
+        const inserted = editor.insertBlocks(
+          [{ type: "step", children: [{ type: "paragraph" }] }],
+          props.block.id,
+          "after",
+        );
+        const newId = inserted?.[0]?.id;
+        if (!newId) return;
+        linkStore.addLink({
+          sourceBlockId: newId,
+          targetBlockId: props.block.id,
+          type: "informed_by",
+          createdBy: "human",
+        });
+        setTimeout(() => {
+          try {
+            editor.setTextCursorPosition(newId, "end");
+            editor.focus();
+          } catch {
+            /* no-op */
+          }
+        }, 0);
+      };
+
       return (
         <div
           ref={rootRef}
@@ -241,6 +269,35 @@ export const StepBlock = createReactBlockSpec(
               </div>
             )}
           </div>
+          {/* 次ステップ（編集不可）。直後に新しい step を作り、前手順を自分にして渡す */}
+          <button
+            type="button"
+            contentEditable={false}
+            onClick={createNextStep}
+            title={t("step.nextStep")}
+            data-test="step-next"
+            style={{
+              flex: "0 0 auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              marginTop: 1,
+              padding: "0 8px",
+              height: 20,
+              borderRadius: 10,
+              cursor: "pointer",
+              fontSize: 11,
+              fontWeight: 600,
+              lineHeight: "18px",
+              whiteSpace: "nowrap",
+              border: "1px solid var(--color-border)",
+              background: "transparent",
+              color: "var(--color-text-tertiary)",
+            }}
+          >
+            <Plus size={11} strokeWidth={2.4} style={{ flex: "0 0 auto" }} />
+            {t("step.nextStep")}
+          </button>
         </div>
       );
     },

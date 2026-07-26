@@ -380,6 +380,7 @@ export const en: Record<string, string> = {
   "step.prevLink": "Prev step",
   "step.noOtherSteps": "No other steps to link",
   "step.cycleBlocked": "Blocked: this would create a cycle",
+  "step.nextStep": "Next step",
   "callout.variant.note": "Note",
   "callout.variant.info": "Info",
   "callout.variant.success": "Success",

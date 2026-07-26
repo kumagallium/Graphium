@@ -18,7 +18,6 @@ import {
 } from "@blocknote/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  FREE_LABEL_EXAMPLES,
   classifyLabel,
   getHeadingLabelRole,
   STRUCTURAL_LABELS,
@@ -27,11 +26,8 @@ import { getVisibleCoreLabels, isHeadingBlock } from "./label-visibility";
 // label-attributes は将来のステータス機能で再利用
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { useT, getDisplayLabel } from "../../i18n";
-import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
-import { Button } from "@ui/button";
-import { Input } from "@ui/form-field";
 
 // ──────────────────────────────────
 // 色定義
@@ -87,9 +83,7 @@ export function LabelDropdownPortal() {
   const provLabelsEnabled = useProvLabelsEnabled();
   const { labels, openBlockId, setLabel, closeDropdown } = useLabelStore();
   const [pos, setPos] = useState({ top: 0, left: 0 });
-  const [freeInput, setFreeInput] = useState("");
   // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
-  const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const [prevStepMode, setPrevStepMode] = useState(false);
   const [headingCandidates, setHeadingCandidates] = useState<{ blockId: string; text: string; level: number }[]>([]);
 
@@ -129,7 +123,6 @@ export function LabelDropdownPortal() {
     if (left < 4) left = 4;
 
     setPos({ top, left });
-    setFreeInput("");
     setPrevStepMode(false);
   }, [openBlockId]);
 
@@ -233,59 +226,9 @@ export function LabelDropdownPortal() {
           </div>
         )}
 
-        {/* フリーラベル例（上にコアラベル or 前ステップリンク UI がある時だけ divider） */}
-        {(visibleCoreLabels.length > 0 || (currentLabel === "procedure" && isHeadingBlock(openBlockId))) && (
-          <DropdownDivider />
-        )}
-        <DropdownSectionHeader>{t("labelUi.freeLabels")}</DropdownSectionHeader>
-        {FREE_LABEL_EXAMPLES.slice(0, 4).map((label) => {
-          const active = currentLabel === label;
-          return (
-            <MenuItem
-              key={label}
-              active={active}
-              onClick={() => select(active ? null : label)}
-              className="text-muted-foreground"
-            >
-              {getDisplayLabel(label)}
-            </MenuItem>
-          );
-        })}
-
-        {/* カスタム入力 */}
-        <DropdownDivider />
-        <div className="px-2.5 py-1.5">
-          <DropdownSectionHeader>{t("labelUi.custom")}</DropdownSectionHeader>
-          <div className="flex gap-1 mt-0.5">
-            <Input
-              autoFocus
-              value={freeInput}
-              onChange={(e) => setFreeInput(e.target.value)}
-              {...compositionHandlers}
-              onKeyDown={(e) => {
-                // IME 変換確定の Enter では確定しない（WKWebView の
-                // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
-                if (e.key === "Enter" && !isImeKey(e) && freeInput.trim()) {
-                  select(freeInput.trim());
-                }
-                if (e.key === "Escape") closeDropdown();
-              }}
-              placeholder={t("labelUi.placeholder")}
-              className="text-xs py-1 px-1.5"
-            />
-            <Button
-              size="sm"
-              onClick={() => {
-                if (freeInput.trim()) {
-                  select(freeInput.trim());
-                }
-              }}
-              className="text-xs shrink-0"
-            >
-              {t("common.add")}
-            </Button>
-          </div>
-        </div>
+        {/* フリーラベル（PROV に乗らない自由タグ）とカスタム入力は廃止した。
+            ブロックに付けられるのは PROV ラベルだけ。既存の自由タグは
+            currentLabel 経由でバッジ表示され、下の「ラベルを外す」で解除できる。 */}
 
         {/* ラベル削除 */}
         {currentLabel && (
@@ -347,7 +290,10 @@ export function LabelSideMenuButton() {
     );
   }
 
-  // ラベル未設定: # ボタン
+  // ラベル未設定: # ボタン。
+  // 新規にブロックラベルを付けられるのは構造テーブルだけになった
+  // （工程は step ブロック、フリーラベルは廃止）ので、それ以外には出さない。
+  if (block.type !== "table") return null;
   return (
     <button
       onClick={() => openDropdown(block.id)}
