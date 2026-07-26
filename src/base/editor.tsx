@@ -45,6 +45,7 @@ import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
 import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "@features/context-label/hashtag-menu";
+import { isInsideStepBlock } from "@features/context-label/label-visibility";
 import { useProvLabelsEnabled } from "@features/context-label/store";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
@@ -229,9 +230,13 @@ export function SandboxEditor({
         : labelSuggestions;
       // Phase B (2026-04-29): 現在ブロックの種類でラベル候補を絞る。
       //   見出しブロック → section / phase ラベル（procedure / plan / result）
+      //   step 内の本文ブロック → phase ラベル（計画/結果のモード帯マーカー）
       //   本文ブロック → free ラベルのみ（inline 系はハイライト経路で付与する）
       const currentBlock = (editor as any).getTextCursorPosition?.()?.block;
-      const scoped = filterSuggestionsForBlock(visible, currentBlock?.type);
+      const insideStep = currentBlock?.id
+        ? isInsideStepBlock(currentBlock.id)
+        : false;
+      const scoped = filterSuggestionsForBlock(visible, currentBlock?.type, insideStep);
       const items = scoped.map((s) => ({
         title: s.displayName,
         group: tStatic(

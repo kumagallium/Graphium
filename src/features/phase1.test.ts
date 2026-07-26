@@ -217,3 +217,34 @@ describe("filterSuggestionsForBlock (Phase B)", () => {
     expect(coreLabels).toHaveLength(0);
   });
 });
+
+// step コンテナの中では、本文ブロックにも計画/結果（phase）を付けられる。
+// これがモード帯の開始マーカーになる。工程そのものは step ブロックが表すので
+// section（procedure）は出さない。
+describe("filterSuggestionsForBlock — step コンテナ内", () => {
+  const allSuggestions = buildSuggestionList();
+
+  it("step 内の本文ブロックでは phase ラベルだけ出す", () => {
+    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph", true);
+    const coreLabels = filtered.filter((s) => s.group === "core").map((s) => s.label);
+    expect(coreLabels).toContain("plan");
+    expect(coreLabels).toContain("result");
+    // 工程は step ブロック自体が表すので procedure は出さない
+    expect(coreLabels).not.toContain("procedure");
+    // inline 系はハイライト経路のまま
+    expect(coreLabels).not.toContain("material");
+    expect(coreLabels).not.toContain("output");
+  });
+
+  it("step ブロック自身には phase を出さない（帯は子に付ける）", () => {
+    const filtered = filterSuggestionsForBlock(allSuggestions, "step", true);
+    const coreLabels = filtered.filter((s) => s.group === "core");
+    expect(coreLabels).toHaveLength(0);
+  });
+
+  it("step の外の本文ブロックは従来どおり free のみ", () => {
+    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph", false);
+    const coreLabels = filtered.filter((s) => s.group === "core");
+    expect(coreLabels).toHaveLength(0);
+  });
+});

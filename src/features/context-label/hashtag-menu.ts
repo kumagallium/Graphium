@@ -73,12 +73,20 @@ export function buildSuggestionList(): LabelSuggestion[] {
 /**
  * BlockNote のブロックタイプから、許可される LabelScope セットを返す。
  * - 見出しブロック（heading）: section / phase スコープのラベルが付与可能
+ * - step の中の本文ブロック: phase のみ（計画/結果のモード帯の開始マーカー）。
+ *   工程そのものは step ブロックが表すので section は出さない。
  * - それ以外（paragraph, bulletListItem, etc.）: free ラベルのみ付与可能
  *   （inline 系ラベルはハイライト経路で付ける、Phase C 以降）
  */
-export function getAllowedScopesForBlock(blockType: string | undefined): Set<LabelScope> {
+export function getAllowedScopesForBlock(
+  blockType: string | undefined,
+  insideStep = false,
+): Set<LabelScope> {
   if (blockType === "heading") {
     return new Set<LabelScope>(["section", "phase"]);
+  }
+  if (insideStep && blockType !== "step") {
+    return new Set<LabelScope>(["phase"]);
   }
   // 本文ブロックでは inline 系ラベルを `#` 経由で付与しない（ハイライトに移行）
   return new Set<LabelScope>();
@@ -93,8 +101,9 @@ export function getAllowedScopesForBlock(blockType: string | undefined): Set<Lab
 export function filterSuggestionsForBlock(
   suggestions: LabelSuggestion[],
   blockType: string | undefined,
+  insideStep = false,
 ): LabelSuggestion[] {
-  const allowedScopes = getAllowedScopesForBlock(blockType);
+  const allowedScopes = getAllowedScopesForBlock(blockType, insideStep);
 
   return suggestions.filter((s) => {
     // free ラベルは常に表示（PROV に乗らないラベル、ユーザー定義）
