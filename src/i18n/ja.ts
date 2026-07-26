@@ -1674,25 +1674,10 @@ export const ja: Record<string, string> = {
   "composer.discovery.promptTellMeAbout": "「{title}」について教えてください。",
   "composer.citationSource": "引用元",
 
-  // ── OCR 画像ブロック ──
-  "ocr.slashTitle": "画像 + OCR",
-  "ocr.slashSubtext": "画像を挿入して文字を抽出（端末内で処理）",
-  "ocr.slashGroup": "メディア",
-  "ocr.selectImage": "画像を選択",
-  "ocr.dropHint": "またはここにドロップ — 文字は端末内で抽出されます",
+  // ── 画像 OCR（端末内 Tesseract.js。標準の画像ブロックに対して実行する） ──
+  "ocr.readText": "画像から文字を読む",
   "ocr.running": "文字を認識中…",
   "ocr.done": "テキスト抽出済み",
-  "ocr.noText": "文字を検出できませんでした",
-  "ocr.notRun": "未スキャン",
-  "ocr.error": "OCR に失敗しました",
-  "ocr.showText": "抽出テキスト",
-  "ocr.hideText": "テキストを隠す",
-  "ocr.copy": "コピー",
-  "ocr.copied": "コピーしました",
-  "ocr.rerun": "再スキャン",
-  "ocr.rerunHint": "再スキャンは画像の再取得が必要で、リモート画像は CORS 制限で失敗することがあります。挿入時に保存されたテキストは検索対象のまま残ります。",
-  "ocr.confidence": "信頼度 {value}%",
   "ocr.chars": "{count} 文字",
-  "ocr.lang": "OCR 言語",
   "ocr.matchBadge": "画像テキスト",
 };

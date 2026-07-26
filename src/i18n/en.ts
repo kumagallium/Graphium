@@ -1675,25 +1675,10 @@ export const en: Record<string, string> = {
   "composer.discovery.promptTellMeAbout": "Tell me more about \"{title}\".",
   "composer.citationSource": "Source",
 
-  // ── OCR 画像ブロック ──
-  "ocr.slashTitle": "Image + OCR",
-  "ocr.slashSubtext": "Insert an image and extract its text (on-device)",
-  "ocr.slashGroup": "Media",
-  "ocr.selectImage": "Select an image",
-  "ocr.dropHint": "or drop it here — text is extracted on your device",
+  // ── 画像 OCR（端末内 Tesseract.js。標準の画像ブロックに対して実行する） ──
+  "ocr.readText": "Read text from image",
   "ocr.running": "Reading text…",
   "ocr.done": "Text extracted",
-  "ocr.noText": "No text detected",
-  "ocr.notRun": "Not scanned yet",
-  "ocr.error": "OCR failed",
-  "ocr.showText": "Extracted text",
-  "ocr.hideText": "Hide text",
-  "ocr.copy": "Copy",
-  "ocr.copied": "Copied",
-  "ocr.rerun": "Re-scan",
-  "ocr.rerunHint": "Re-scanning re-fetches the image and may fail for remote images (CORS). The text saved when the image was inserted stays searchable.",
-  "ocr.confidence": "confidence {value}%",
   "ocr.chars": "{count} chars",
-  "ocr.lang": "OCR language",
   "ocr.matchBadge": "image text",
 };

@@ -3,7 +3,9 @@ import { buildIndexEntry, type GraphiumIndex } from "./index-file";
 import { IndexFileNoteListSource } from "./note-list-source";
 import type { GraphiumDocument } from "../../lib/document-types";
 
-// OCR 画像ブロックを含む最小ドキュメントを組み立てる
+// 画像ブロック + mediaOcr サイドストアを持つ最小ドキュメントを組み立てる。
+// OCR テキストはブロック props ではなくページの mediaOcr に入るため、
+// 貼り方（/image・ペースト・ドラッグ&ドロップ）を問わず同じ形になる。
 function makeDoc(ocrText: string, title = "実験ノート"): GraphiumDocument {
   return {
     version: 2,
@@ -16,57 +18,60 @@ function makeDoc(ocrText: string, title = "実験ノート"): GraphiumDocument {
         title,
         blocks: [
           { id: "h1", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "手順" }], children: [] },
-          {
-            id: "img1",
-            type: "imageOcr",
-            props: {
-              url: "https://lh3.googleusercontent.com/d/xxx=s0",
-              name: "scan.png",
-              ocrText,
-              ocrStatus: "done",
-              ocrConfidence: 88,
-              ocrLang: "jpn+eng",
-            },
-            children: [],
-          },
+          { id: "img1", type: "image", props: { url: "local-media://abc", name: "scan.png" }, children: [] },
         ],
         labels: {},
         provLinks: [],
         knowledgeLinks: [],
+        mediaOcr: ocrText
+          ? {
+              img1: {
+                text: ocrText,
+                confidence: 88,
+                lang: "jpn+eng",
+                extractedAt: "2026-07-02T00:00:00.000Z",
+              },
+            }
+          : undefined,
       },
     ],
   };
 }
 
 describe("OCR 画像テキストの索引化", () => {
-  it("buildIndexEntry が imageOcr ブロックの ocrText を回収する", () => {
+  it("buildIndexEntry が mediaOcr の抽出テキストを回収する", () => {
     const doc = makeDoc("焼結温度 800℃ で 2 時間 保持");
     const entry = buildIndexEntry("note-1", doc);
     expect(entry.ocrText).toBe("焼結温度 800℃ で 2 時間 保持");
   });
 
-  it("複数の imageOcr ブロックは改行区切りで連結される", () => {
+  it("複数の画像エントリは改行区切りで連結される", () => {
     const doc = makeDoc("最初の画像テキスト");
     doc.pages[0].blocks.push({
       id: "img2",
-      type: "imageOcr",
-      props: { url: "u", name: "b.png", ocrText: "二枚目の画像テキスト", ocrStatus: "done", ocrConfidence: 70, ocrLang: "jpn" },
+      type: "image",
+      props: { url: "local-media://def", name: "b.png" },
       children: [],
     });
+    doc.pages[0].mediaOcr!.img2 = {
+      text: "二枚目の画像テキスト",
+      confidence: 70,
+      lang: "jpn",
+      extractedAt: "2026-07-02T00:00:00.000Z",
+    };
     const entry = buildIndexEntry("note-1", doc);
     expect(entry.ocrText).toBe("最初の画像テキスト\n二枚目の画像テキスト");
   });
 
-  it("ocrText が空の imageOcr ブロックは索引に含めない", () => {
-    const doc = makeDoc("");
+  it("抽出テキストが空のエントリは索引に含めない", () => {
+    const doc = makeDoc("ダミー");
+    doc.pages[0].mediaOcr!.img1.text = "   ";
     const entry = buildIndexEntry("note-1", doc);
     expect(entry.ocrText).toBeUndefined();
   });
 
-  it("imageOcr ブロックが無いノートは ocrText 未設定（後方互換）", () => {
-    const doc = makeDoc("dummy");
-    // imageOcr を除去
-    doc.pages[0].blocks = doc.pages[0].blocks.filter((b: any) => b.type !== "imageOcr");
+  it("OCR していないノートは ocrText 未設定（後方互換）", () => {
+    const doc = makeDoc("");
     const entry = buildIndexEntry("note-1", doc);
     expect(entry.ocrText).toBeUndefined();
   });

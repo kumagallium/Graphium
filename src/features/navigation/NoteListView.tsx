@@ -2,7 +2,7 @@
 // 全ノートをテーブル形式で表示し、ソート・フィルタ・検索・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Filter, Archive } from "lucide-react";
+import { BookOpen, Download, Filter, Archive, Image as ImageIcon } from "lucide-react";
 import { Dropdown } from "@/ui/dropdown";
 import { MenuItem } from "@/ui/menu-item";
 import { FilterPopup, type FilterOption } from "@/ui/filter-popup";
@@ -342,6 +342,21 @@ export function NoteListView({
   );
 
   // ドラッグ範囲選択（チェックボックス列）
+  // 検索語がタイトルではなく画像内テキスト（OCR）にヒットした行。
+  // 「なぜこのノートが出てきたのか」が分からないと検索結果が不気味になるため、
+  // その行にだけ「画像テキスト」の印を出す。
+  const ocrMatchedIds = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const matched = new Set<string>();
+    if (!q) return matched;
+    for (const e of entries) {
+      if (!e.title.toLowerCase().includes(q) && e.ocrText?.toLowerCase().includes(q)) {
+        matched.add(e.noteId);
+      }
+    }
+    return matched;
+  }, [entries, searchQuery]);
+
   const orderedIds = useMemo(() => filtered.map((e) => e.noteId), [filtered]);
   const range = useRangeSelect(orderedIds, selectedIds, setSelectedIds);
 
@@ -831,6 +846,15 @@ export function NoteListView({
                     <span className="text-foreground hover:text-primary transition-colors">
                       {entry.title}
                     </span>
+                    {ocrMatchedIds.has(entry.noteId) && (
+                      <span
+                        className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground align-middle"
+                        title={entry.ocrText}
+                      >
+                        <ImageIcon size={10} />
+                        {t("ocr.matchBadge")}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 px-2 text-center">
                     {entry.outgoingLinkCount > 0 && (

@@ -11,7 +11,6 @@ import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
 import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
-import { imageOcrSlashItem } from "./blocks/image-ocr";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -23,6 +22,7 @@ import {
   MediaInlineLabelProvider,
   useMediaInlineLabelStore,
 } from "./features/inline-label/media-store";
+import { MediaOcrProvider, useMediaOcrStore } from "./features/media-ocr";
 import {
   BlockAlignmentProvider,
   useBlockAlignmentStore,
@@ -807,6 +807,7 @@ function NoteEditor(props: NoteEditorProps) {
       <LinkStoreProvider>
         <IndexTableStoreProvider>
         <MediaInlineLabelProvider>
+        <MediaOcrProvider>
         <BlockAlignmentProvider>
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
@@ -814,6 +815,7 @@ function NoteEditor(props: NoteEditorProps) {
           <NoteEditorInner {...props} />
         </AiAssistantProvider>
         </BlockAlignmentProvider>
+        </MediaOcrProvider>
         </MediaInlineLabelProvider>
         </IndexTableStoreProvider>
       </LinkStoreProvider>
@@ -1001,6 +1003,7 @@ function NoteEditorInner({
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
   const mediaInlineLabelStore = useMediaInlineLabelStore();
+  const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
@@ -1874,6 +1877,9 @@ function NoteEditorInner({
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
       Object.keys(mediaInlineLabelsSnapshot).length > 0;
+    // 画像 OCR テキスト（端末内 Tesseract.js。標準 image ブロックの注釈層）
+    const mediaOcrSnapshot = mediaOcrStore.getSnapshot();
+    const hasMediaOcr = Object.keys(mediaOcrSnapshot).length > 0;
     let doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
@@ -1889,6 +1895,7 @@ function NoteEditorInner({
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
+          mediaOcr: hasMediaOcr ? mediaOcrSnapshot : undefined,
           blockAlignments,
         },
       ],
@@ -1940,7 +1947,7 @@ function NoteEditorInner({
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
-  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
 
   // sharedRef は initialDoc から初期化し、Share 成功時に即時更新する。
   // initialDoc は親が新しい doc に差し替えない限り変わらないため、ローカル state で持つ。
@@ -2087,6 +2094,7 @@ function NoteEditorInner({
     linkStore.links,
     initialDoc?.documentProvenance,
     mediaInlineLabelStore.labels,
+    mediaOcrStore.entries,
   );
 
   // ノート切り替え時に自動オープンフラグをリセット（次のノートで再度 1 度だけ発火する）
@@ -2163,22 +2171,25 @@ function NoteEditorInner({
   const prevTablesRef = useRef(indexTableStore.tables);
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
+  const prevMediaOcrRef = useRef(mediaOcrStore.entries);
   useEffect(() => {
     if (
       prevLabelsRef.current !== labelStore.labels ||
       prevLinksRef.current !== linkStore.links ||
       prevTablesRef.current !== indexTableStore.tables ||
       prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
-      prevAlignmentsRef.current !== blockAlignmentStore.alignments
+      prevAlignmentsRef.current !== blockAlignmentStore.alignments ||
+      prevMediaOcrRef.current !== mediaOcrStore.entries
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
       prevTablesRef.current = indexTableStore.tables;
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
+      prevMediaOcrRef.current = mediaOcrStore.entries;
       markDirty();
     }
-  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, markDirty]);
+  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -3174,6 +3185,7 @@ function NoteEditorInner({
       if (page.mediaInlineLabels) {
         mediaInlineLabelStore.restoreSnapshot(page.mediaInlineLabels);
       }
+      mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
@@ -4127,7 +4139,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, imageOcrSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
