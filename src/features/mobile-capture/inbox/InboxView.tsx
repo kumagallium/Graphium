@@ -23,6 +23,7 @@ import {
 import { useT } from "../../../i18n";
 import { useIsDesktop } from "../../../hooks/use-media-query";
 import { formatDateTime } from "../../../lib/format-datetime";
+import { formatBytes } from "../../../lib/format-bytes";
 import { MaterialSidePeek } from "../../asset-browser/MaterialSidePeek";
 import { mimeFromExtension, kindFromMime } from "./mime";
 import { buildInboxPeekEntry } from "./preview";
@@ -42,20 +43,6 @@ export type InboxSource = {
  * プレビューは体感を壊す（動画・RAW 等）。超えたものはアイコン表示に倒す。
  */
 const THUMBNAIL_MAX_BYTES = 20 * 1024 * 1024;
-
-/** バイト数を人が読める単位に。1024 進、小数 1 桁（KB 未満は B のまま）。 */
-function formatBytes(bytes: number | undefined): string {
-  if (bytes == null || !Number.isFinite(bytes)) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let v = bytes / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(1)} ${units[i]}`;
-}
 
 /** 拡張子から推定した種別。mime 不明なら "other"。 */
 function refKind(ref: CaptureRef): "image" | "video" | "audio" | "pdf" | "other" {
