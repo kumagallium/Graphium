@@ -321,7 +321,12 @@ function buildBlockIndex(blocks: any[]): Map<string, any> {
 // ──────────────────────────────────────────────
 
 /**
- * 「procedure ラベル付き見出し」を step ブロックに変換する。
+ * 「procedure ラベル付き見出し」を step ブロックに変換する（共有・冪等）。
+ *
+ * v6 マイグレーションの中核だが、AI 生成側（URL/PDF Ingester・チャットの
+ * ラベル付き挿入・テンプレート）も旧記法で組み立ててからこれを通すことで、
+ * 生成物が常に step ブロックになる。プロンプトやパーサは旧語彙のまま
+ * 変えなくてよい。
  *
  * - スコープ = 見出しの後ろから、同レベル以上の次の見出しの手前まで
  *   （generator の scopeStack / collectBlockScope と同じ境界規則）。
@@ -329,77 +334,86 @@ function buildBlockIndex(blocks: any[]): Map<string, any> {
  * - step の id は見出しの id を引き継ぐ。activity_<id>・informed_by リンク・
  *   メモのアンカー等、ブロック id への参照はすべてそのまま生きる。
  * - 下位レベルの procedure 見出しがスコープ内にあれば、再帰的に入れ子の
- *   step へ変換される（generator の入れ子 Activity と同じ構造）。
- * - plan / result ラベルは除去する（step 内モード帯の撤回により意味を
- *   失った legacy。見出し自体は通常の見出しとして残る）。
+ *   step へ変換される。
+ * - plan / result ラベルは除去する（帯撤回済みの legacy）。
+ *
+ * labels は破壊的に更新される（消費したエントリを削除）。
  */
+export function convertProcedureHeadingsToSteps(
+  blocks: any[],
+  labels: Record<string, string>,
+): any[] {
+  const normalizedOf = (blockId: string): string | null => {
+    const raw = labels[blockId];
+    return raw ? normalizeLabel(raw) : null;
+  };
+
+  const convertList = (list: any[]): any[] => {
+    const result: any[] = [];
+    let i = 0;
+    while (i < list.length) {
+      const b = list[i];
+      if (!b || typeof b !== "object") {
+        i++;
+        continue;
+      }
+      const isHeading = b.type === "heading";
+      const label = b.id ? normalizedOf(b.id) : null;
+
+      if (isHeading && label === "procedure") {
+        const level = b.props?.level ?? 2;
+        // スコープ終端: 同レベル以上の次の見出し
+        let j = i + 1;
+        while (
+          j < list.length &&
+          !(
+            list[j]?.type === "heading" &&
+            (list[j].props?.level ?? 1) <= level
+          )
+        ) {
+          j++;
+        }
+        const scope = list.slice(i + 1, j);
+        const children = convertList(scope);
+        // 見出しが（通常は無いが）children を持っていたら末尾に残す
+        if (Array.isArray(b.children) && b.children.length > 0) {
+          children.push(...convertList(b.children));
+        }
+        result.push({
+          id: b.id,
+          type: "step",
+          props: {
+            textAlignment: b.props?.textAlignment ?? "left",
+            variant: "step",
+          },
+          content: b.content ?? [],
+          children,
+        });
+        delete labels[b.id];
+        i = j;
+        continue;
+      }
+
+      // phase（plan / result）ラベルは除去（帯撤回済みの legacy）
+      if (b.id && (label === "plan" || label === "result")) {
+        delete labels[b.id];
+      }
+      if (Array.isArray(b.children) && b.children.length > 0) {
+        b.children = convertList(b.children);
+      }
+      result.push(b);
+      i++;
+    }
+    return result;
+  };
+
+  return convertList(blocks);
+}
+
+/** v5 → v6: 各ページに convertProcedureHeadingsToSteps を適用する */
 function migrateProcedureHeadingsToStepsV6(doc: GraphiumDocument): void {
   for (const page of doc.pages ?? []) {
     const labels: Record<string, string> = (page as any).labels ?? {};
-    const normalizedOf = (blockId: string): string | null => {
-      const raw = labels[blockId];
-      return raw ? normalizeLabel(raw) : null;
-    };
-
-    const convertList = (blocks: any[]): any[] => {
-      const result: any[] = [];
-      let i = 0;
-      while (i < blocks.length) {
-        const b = blocks[i];
-        if (!b || typeof b !== "object") {
-          i++;
-          continue;
-        }
-        const isHeading = b.type === "heading";
-        const label = b.id ? normalizedOf(b.id) : null;
-
-        if (isHeading && label === "procedure") {
-          const level = b.props?.level ?? 2;
-          // スコープ終端: 同レベル以上の次の見出し
-          let j = i + 1;
-          while (
-            j < blocks.length &&
-            !(
-              blocks[j]?.type === "heading" &&
-              (blocks[j].props?.level ?? 1) <= level
-            )
-          ) {
-            j++;
-          }
-          const scope = blocks.slice(i + 1, j);
-          const children = convertList(scope);
-          // 見出しが（通常は無いが）children を持っていたら末尾に残す
-          if (Array.isArray(b.children) && b.children.length > 0) {
-            children.push(...convertList(b.children));
-          }
-          result.push({
-            id: b.id,
-            type: "step",
-            props: {
-              textAlignment: b.props?.textAlignment ?? "left",
-              variant: "step",
-            },
-            content: b.content ?? [],
-            children,
-          });
-          delete labels[b.id];
-          i = j;
-          continue;
-        }
-
-        // phase（plan / result）ラベルは除去（帯撤回済みの legacy）
-        if (b.id && (label === "plan" || label === "result")) {
-          delete labels[b.id];
-        }
-        if (Array.isArray(b.children) && b.children.length > 0) {
-          b.children = convertList(b.children);
-        }
-        result.push(b);
-        i++;
-      }
-      return result;
-    };
-
-    page.blocks = convertList(page.blocks ?? []);
+    page.blocks = convertProcedureHeadingsToSteps(page.blocks ?? [], labels);
   }
 }

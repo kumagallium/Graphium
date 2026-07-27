@@ -31,7 +31,6 @@ import {
 import { regenInlineEntitiesInBlocks } from "./features/inline-label/regen-on-paste";
 import {
   ProvIndicatorLayer,
-  ProvIndicatorHoverHint,
   BlockHoverHighlight,
   ScopeHighlight,
   setOnPrevStepLinkSelected,
@@ -107,7 +106,7 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
+import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
@@ -3058,7 +3057,12 @@ function NoteEditorInner({
         // ページ全体チャット: ドキュメント末尾に挿入
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
-        const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
+        const extractedRes = extractLabelMarkersFromBlocks(parsed);
+        // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
+        const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
+          extractedRes.blocks,
+          extractedRes.labels,
+        );
         const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
         const allBlocks = editor.document;
         const lastBlock = allBlocks[allBlocks.length - 1];
@@ -3078,7 +3082,12 @@ function NoteEditorInner({
       if (targetBlock.type === "heading" || targetBlock.type === "step") {
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
-        const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
+        const extractedRes = extractLabelMarkersFromBlocks(parsed);
+        // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
+        const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
+          extractedRes.blocks,
+          extractedRes.labels,
+        );
         const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
         const scope = collectBlockScope(editor.document, targetBlock);
         const insertAfterBlock = scope[scope.length - 1];
@@ -3114,8 +3123,10 @@ function NoteEditorInner({
 
       const parsedBlocks = editor.tryParseMarkdownToBlocks(markdown);
       if (parsedBlocks.length === 0) return;
+      const extractedRaw = extractLabelMarkersFromBlocks(parsedBlocks);
+      // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
       const { blocks: parsedNoLabels, labels: extractedLabels } =
-        extractLabelMarkersFromBlocks(parsedBlocks);
+        convertExtractedProcedureBlocksToSteps(extractedRaw.blocks, extractedRaw.labels);
       // `[Source: "title"]` を青い @title mention に変換し、reference 先 wikiId を集める。
       const { blocks: newBlocks, refs: sourceRefs } =
         linkifySourceMentions(parsedNoLabels, wikiTitleToNoteId);
@@ -3762,7 +3773,6 @@ function NoteEditorInner({
         bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <ProvIndicatorHoverHint hidden={!isDesktop && rightTab !== null} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}

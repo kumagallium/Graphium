@@ -9,6 +9,5 @@ export {
 } from "./ui";
 export {
   ProvIndicatorLayer,
-  ProvIndicatorHoverHint,
   setOnPrevStepLinkSelected,
 } from "./prov-indicator";

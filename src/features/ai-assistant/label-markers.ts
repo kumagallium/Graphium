@@ -16,6 +16,7 @@
 
 import type { CoreLabel } from "../context-label/labels";
 import { CORE_LABELS } from "../context-label/labels";
+import { convertProcedureHeadingsToSteps } from "../../lib/document-migration";
 
 const CORE_LABEL_SET = new Set<string>(CORE_LABELS);
 
@@ -421,4 +422,55 @@ Compare the [[m]]diffraction pattern[[/m]] against the [[t]]ICDD PDF database[[/
 
 Rules: block-level only at start of H2, at most one per block, types limited to \`procedure / plan / result\`. Inline spans must come in matching pairs, stay within one block, sit inside a procedure section, types limited to \`m / t / a / o\`.
 `;
+}
+
+/**
+ * 抽出結果（blocks + path ベースの labels）に step 変換を適用する。
+ *
+ * AI（チャット挿入・テンプレート・スコープ置換）は旧語彙の
+ * `[[label:procedure]]` 付き見出しを出すが、工程は step ブロックが正なので、
+ * エディタへ挿入する前にここで変換する。procedure はスコープごと step になり、
+ * plan / result は除去される（帯撤回済み）。それ以外のラベル（free 等）は
+ * 変換後のブロック位置を path で引き直して返す。
+ */
+export function convertExtractedProcedureBlocksToSteps(
+  blocks: any[],
+  labels: ExtractedLabel[],
+): { blocks: any[]; labels: ExtractedLabel[] } {
+  if (labels.length === 0) return { blocks, labels };
+
+  // path → block.id を解決して、id キーのラベル表を作る
+  const resolveByPath = (path: number[]): any | null => {
+    let nodes: any[] = blocks;
+    let node: any = null;
+    for (const idx of path) {
+      node = nodes?.[idx];
+      if (!node) return null;
+      nodes = node.children ?? [];
+    }
+    return node;
+  };
+  const labelRecord: Record<string, string> = {};
+  for (const { path, label } of labels) {
+    const b = resolveByPath(path);
+    if (b?.id) labelRecord[b.id] = label;
+  }
+
+  const converted = convertProcedureHeadingsToSteps(blocks, labelRecord);
+
+  // 残ったラベル（procedure/plan/result は消費済み）を新しい位置の path に引き直す
+  const remaining: ExtractedLabel[] = [];
+  const rewalk = (nodes: any[], parentPath: number[]) => {
+    nodes.forEach((node, idx) => {
+      const path = [...parentPath, idx];
+      const label = node?.id ? labelRecord[node.id] : undefined;
+      if (label) remaining.push({ path, label: label as CoreLabel });
+      if (Array.isArray(node?.children) && node.children.length > 0) {
+        rewalk(node.children, path);
+      }
+    });
+  };
+  rewalk(converted, []);
+
+  return { blocks: converted, labels: remaining };
 }

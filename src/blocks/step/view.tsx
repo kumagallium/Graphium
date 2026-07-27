@@ -327,29 +327,44 @@ export const StepBlock = createReactBlockSpec(
           data-test="step-block"
           style={{
             display: "flex",
+            // 幅が足りないときはチップ群が下の行へ落ちる（タイトルを潰さない）
+            flexWrap: "wrap",
             gap: 8,
             alignItems: "flex-start",
             fontWeight: 600,
             width: "100%",
           }}
         >
-          {/* ステップアイコン（編集不可） */}
-          <span
-            contentEditable={false}
+          {/* アイコン + ステップ名を 1 ユニットで折り返す（アイコンだけ孤立させない）。
+              minWidth を確保しないと、狭幅でチップに押されてタイトルが
+              1 文字ずつ縦に折り返す（実測）。足りなければチップ側が下の行へ wrap する */}
+          <div
             style={{
-              flex: "0 0 auto",
-              display: "inline-flex",
-              marginTop: 2,
-              color: "var(--color-primary)",
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-start",
+              flex: "1 1 auto",
+              minWidth: "12ch",
             }}
           >
-            <ListChecks size={18} strokeWidth={2} />
-          </span>
-          {/* ステップ名（インライン編集領域＝タイトルは content） */}
-          <div
-            ref={props.contentRef}
-            style={{ flex: 1, minWidth: 0, lineHeight: "1.6" }}
-          />
+            {/* ステップアイコン（編集不可） */}
+            <span
+              contentEditable={false}
+              style={{
+                flex: "0 0 auto",
+                display: "inline-flex",
+                marginTop: 2,
+                color: "var(--color-primary)",
+              }}
+            >
+              <ListChecks size={18} strokeWidth={2} />
+            </span>
+            {/* ステップ名（インライン編集領域＝タイトルは content） */}
+            <div
+              ref={props.contentRef}
+              style={{ flex: "1 1 auto", minWidth: 0, lineHeight: "1.6" }}
+            />
+          </div>
           {/* 前手順リンク（編集不可）。informed_by を張る・外す */}
           <div
             contentEditable={false}

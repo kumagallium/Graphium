@@ -87,7 +87,7 @@ import {
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
 import { LabelDropdownPortal } from "@features/context-label/ui";
-import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
+import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
 import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
@@ -1378,7 +1378,6 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
-            <ProvIndicatorHoverHint wrapperEl={wrapperEl} zIndex={101} />
             <LabelDropdownPortal />
             {/* 右ガター（80px）はラベル/リンクのインジケータを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、

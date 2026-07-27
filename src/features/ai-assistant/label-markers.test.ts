@@ -201,3 +201,56 @@ describe("extractLabelMarkersFromBlocks: インライン span (Phase E)", () => 
     expect(segs[1].text).toBe(" 添加");
   });
 });
+
+// ── convertExtractedProcedureBlocksToSteps ──
+import { convertExtractedProcedureBlocksToSteps } from "./label-markers";
+
+describe("convertExtractedProcedureBlocksToSteps", () => {
+  const heading = (id: string, level: number, text: string) => ({
+    id,
+    type: "heading",
+    props: { level },
+    content: [{ type: "text", text, styles: {} }],
+    children: [],
+  });
+  const para = (id: string, text: string) => ({
+    id,
+    type: "paragraph",
+    content: [{ type: "text", text, styles: {} }],
+    children: [],
+  });
+
+  it("procedure マーカー付き見出しがスコープごと step になる（AI 挿入前の変換）", () => {
+    const blocks = [heading("h1", 2, "合成"), para("p1", "撹拌"), heading("h2", 2, "精製"), para("p2", "ろ過")];
+    const { blocks: out, labels } = convertExtractedProcedureBlocksToSteps(blocks, [
+      { path: [0], label: "procedure" as any },
+      { path: [2], label: "procedure" as any },
+    ]);
+    expect(out.map((b: any) => [b.type, b.id])).toEqual([
+      ["step", "h1"],
+      ["step", "h2"],
+    ]);
+    expect(out[0].children.map((c: any) => c.id)).toEqual(["p1"]);
+    expect(out[1].children.map((c: any) => c.id)).toEqual(["p2"]);
+    // procedure は消費され、残ラベルは無し
+    expect(labels).toEqual([]);
+  });
+
+  it("plan / result マーカーは除去される（帯撤回済み）", () => {
+    const blocks = [heading("h1", 2, "工程"), heading("hp", 3, "計画"), para("p1", "予定")];
+    const { blocks: out, labels } = convertExtractedProcedureBlocksToSteps(blocks, [
+      { path: [0], label: "procedure" as any },
+      { path: [1], label: "plan" as any },
+    ]);
+    expect(out[0].type).toBe("step");
+    expect(out[0].children.map((c: any) => c.id)).toEqual(["hp", "p1"]);
+    expect(labels).toEqual([]);
+  });
+
+  it("マーカーが無ければ何も変えない", () => {
+    const blocks = [para("p1", "本文")];
+    const res = convertExtractedProcedureBlocksToSteps(blocks, []);
+    expect(res.blocks).toBe(blocks);
+    expect(res.labels).toEqual([]);
+  });
+});
