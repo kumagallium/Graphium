@@ -16,6 +16,8 @@
 //   URL=onAddUrlBookmark）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
 // - ヘッダーの接続状態チップは 接続済み / 未接続 / 未設定 を出し分ける
+// - ヘッダー右端の ⚙ は両フラグ状態で出て、設定モーダル（保存タブ）を開くイベント
+//   `graphium-open-settings` を飛ばす（設定は端末ごとなのでスマホ単体で到達できること)
 // - 実験フラグ OFF（既定）のとき: チップもキューも一切出ず、従来ホームのまま
 //   （撮ったファイルは onUploadMedia へ、下バーに撮影ボタン・メモ作成・URL 登録）
 //
@@ -348,6 +350,19 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.queryByText("Connected")).toBeNull();
   });
 
+  it("opens Settings (storage tab) from the header gear", () => {
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("graphium-open-settings", listener);
+    try {
+      renderView();
+      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      expect(events).toHaveLength(1);
+      expect(events[0].detail).toMatchObject({ tab: "storage" });
+    } finally {
+      window.removeEventListener("graphium-open-settings", listener);
+    }
+  });
 });
 
 describe("モバイル連携 実験フラグ OFF（既定）のゲート", () => {
@@ -404,6 +419,22 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
 
     await waitFor(() => expect(onCreateCapture).toHaveBeenCalledWith("kept locally"));
     expect(enqueueForSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps the header gear on the legacy home so Settings stays reachable from the phone", () => {
+    // フラグ OFF でも ⚙ から設定（保存タブ）に到達できる — ここでしか
+    // モバイル連携を ON にできない端末（スマホ単体）があるため
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("graphium-open-settings", listener);
+    try {
+      renderView();
+      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      expect(events).toHaveLength(1);
+      expect(events[0].detail).toMatchObject({ tab: "storage" });
+    } finally {
+      window.removeEventListener("graphium-open-settings", listener);
+    }
   });
 
   it("turning the flag ON at runtime reveals the inline queue without a reload", () => {

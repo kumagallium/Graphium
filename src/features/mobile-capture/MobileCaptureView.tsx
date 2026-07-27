@@ -10,9 +10,11 @@
 // （capture-file.ts）でキュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store
 // には保存しない）。タイムラインは過去分の閲覧用として残る。
 // フラグ OFF は従来のホームのまま一切変えない（既存ユーザーは無変化）。
+// ヘッダー右端の ⚙ は両フラグ状態で出す — 設定は端末ごと（localStorage）なので、
+// スマホ単体でフラグ切替・接続/切断・client_id 上書きに到達できる必要がある。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw } from "lucide-react";
+import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getFaviconUrl } from "../asset-browser/media-index";
@@ -608,6 +610,16 @@ export function MobileCaptureView({
               : t("memo.count", { count: String(filtered.length) })}
           </span>
           {connectionChip}
+          {/* 設定入口（両フラグ状態で出す）。設定は端末ごと（localStorage）なので、
+              スマホ単体でモバイル連携の ON/OFF・接続/切断・client_id に到達できる
+              必要がある。開き先は該当トグルのある保存（storage）タブ。 */}
+          <button
+            onClick={openStorageSettings}
+            aria-label={t("settings.title")}
+            className="p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
+          >
+            <SettingsIcon size={17} />
+          </button>
         </div>
       </div>
 
