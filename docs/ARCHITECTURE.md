@@ -762,13 +762,12 @@ The same `src/` tree is built three different ways.
   (Write / URL / Photo / Video / Voice / Library) enqueues straight into
   it and the pending list stays pinned to the top of the content — the
   Send action sits at the right edge of the queue's heading row, and the
-  header carries a connection chip plus a Settings entry (settings are
-  per-device, so the phone must be able to reach them on its own) — until
-  it drains; there is no separate send sheet. Written captures ride the
-  same rail: the bar's Write (memo) and URL buttons reuse the existing
-  input dialogs but serialize the result into a `.graphium.json` capture
-  file (named `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue
-  it next to the photos, instead of saving into this device's own stores —
+  header carries a connection chip — until it drains; there is no
+  separate send sheet. Written captures ride the same rail: the bar's
+  Write (memo) and URL buttons reuse the existing input dialogs but
+  serialize the result into a `.graphium.json` capture file (named
+  `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue it next to
+  the photos, instead of saving into this device's own stores —
   everything captured goes to the inbox. Queue rows show memo captures as
   a note icon with the first line of text and URL captures as a link icon
   with title and domain. The primary transport drains the queue serially to the
@@ -781,11 +780,28 @@ The same `src/` tree is built three different ways.
   falls back to Web Share: the same queued files are handed to the OS
   share sheet and the user saves them into the synced `Graphium/Inbox`
   folder by hand. Only when neither route exists does a capture drop
-  back to this device's own media library. The OAuth client ID resolves
-  from a per-device override (under Advanced in Settings → Storage)
-  first, then from the ID bundled with the build, so pushing works out
-  of the box; the override remains as the escape hatch for self-hosting
-  or a dead bundled ID.
+  back to this device's own media library.
+- **Phone side: opt-in and settings.** The phone never opens the full
+  settings modal and never sees the desktop-worded mobile-link toggle
+  (the experiment flag is per-device localStorage, so the desktop
+  toggle and the phone entry points stay independent). While the flag
+  is off, the classic home shows a small opt-in card on top of the
+  timeline; trying it opens a storage picker (Google Drive selectable,
+  OneDrive as a disabled coming-soon slot for P1.5, plus a small
+  share-sheet escape on capable devices) and a successful connect —
+  or picking the share escape — raises the flag, turning the home
+  queue-first in place. The same picker backs the queue's Connect
+  storage button, and the provider that actually connected is
+  remembered (`graphium-push-provider`) as the future branching point.
+  While the flag is on, a header gear opens a phone-only minimal
+  settings sheet: storage (status, connect/change, disconnect, and the
+  folded client-ID override), language, app version, and a small
+  leave-experiment action that only lowers the flag — queue, tokens
+  and overrides stay on the device. The OAuth client ID resolves from
+  that per-device override (also editable under Advanced in the
+  desktop's Settings → Storage) first, then from the ID bundled with
+  the build, so pushing works out of the box; the override remains as
+  the escape hatch for self-hosting or a dead bundled ID.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
