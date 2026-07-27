@@ -727,11 +727,10 @@ The same `src/` tree is built three different ways.
   container the exposure boundary is the container port mapping.
 - **Mobile capture inbox.** Media shot on a phone reaches the desktop
   through a folder the user already syncs (iCloud Drive, Dropbox,
-  Syncthing — Graphium itself never talks to those services, which is what
-  keeps the path OAuth-free). The phone drops raw files into
-  `<inbox-root>/Inbox/`; three Tauri commands enumerate that directory
-  (`inbox_list`, returning name/size/mtime), read one file as base64
-  (`inbox_read`), and move an imported file aside into
+  Syncthing — the desktop side of Graphium never talks to those services).
+  Files land in `<inbox-root>/Inbox/`; three Tauri commands enumerate that
+  directory (`inbox_list`, returning name/size/mtime), read one file as
+  base64 (`inbox_read`), and move an imported file aside into
   `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`). All three
   reject an empty root and any name containing a path separator or `..`,
   so the reachable surface is exactly one flat directory. The inbox is a
@@ -741,6 +740,26 @@ The same `src/` tree is built three different ways.
   SHA-256 is matched against captures already in the media index — and the
   origin survives as an optional `capture` record on the media entry. The
   web build has no filesystem to enumerate, so the inbox is desktop-only.
+- **Phone side: send queue.** The phone cannot write into the synced
+  folder itself (iOS has no File System Access API), so captures taken in
+  the mobile view enter a store-and-forward queue first
+  (`src/features/mobile-capture/inbox/push/`): each file is persisted
+  blob-and-all into IndexedDB the moment it is shot, renamed to
+  `graphium-<YYYYMMDD-HHmmss>-<seq>.<ext>` (MIME-first extension), and
+  survives auth expiry, upload failures and the PWA being killed. The
+  primary transport drains the queue serially to the user's own Google
+  Drive `Graphium/Inbox/` via OAuth (GIS token model, `drive.file` scope
+  only, no secret; ≤5 MB multipart, larger files resumable), from where
+  Google Drive for desktop syncs it into the folder inbox above. Because
+  SPA tokens expire after about an hour, a token failure aborts the drain
+  and leaves the remaining items queued for the next connect. Without a
+  configured OAuth client ID the queue falls back to Web Share: the same
+  queued files are handed to the OS share sheet and the user saves them
+  into the synced `Graphium/Inbox` folder by hand. Only when neither
+  route exists does a capture drop back to this device's own media
+  library. The OAuth client ID resolves from a per-device override in
+  Settings → Storage first, then from the ID bundled with the build
+  (none is bundled yet, so the override is currently required).
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
