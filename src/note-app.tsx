@@ -17,7 +17,6 @@ import {
   ProvLabelsEnabledProvider,
   useProvLabelsEnabled,
   useLabelStore,
-  LabelDropdownPortal,
 } from "./features/context-label";
 import {
   MediaInlineLabelProvider,
@@ -35,10 +34,6 @@ import {
   ScopeHighlight,
   setOnPrevStepLinkSelected,
 } from "./features/context-label/prov-indicator";
-import {
-  buildLabelSlashMenuItems,
-  setSlashMenuLabelCallback,
-} from "./features/context-label/slash-menu-items";
 import {
   IndexTableStoreProvider,
   useIndexTableStore,
@@ -1284,7 +1279,42 @@ function NoteEditorInner({
     const triggerBlock = templateTriggerBlockRef.current ?? editor.getTextCursorPosition()?.block;
     if (!triggerBlock) return;
 
-    const { blocks, labels, provLinks } = tmpl.build(tStatic);
+    const { blocks: rawBlocks, labels: rawLabels, provLinks } = tmpl.build(tStatic);
+
+    // テンプレートは旧語彙（procedure/plan/result ラベル付き見出し）で定義されている。
+    // 挿入前に step ブロックへ変換する（工程は step が正。ラベルのまま挿すと
+    // v6 済みドキュメントに旧形式が永久残留する）。
+    // 変換は block id ベースなので一時 id を振り、provLinks / focusPath は
+    // 変換前に id へ解決しておく（変換は id を保存するため、挿入後は id で引ける）。
+    const assignIds = (list: any[]) => {
+      for (const b of list ?? []) {
+        if (b && typeof b === "object") {
+          if (!b.id) b.id = crypto.randomUUID();
+          if (Array.isArray(b.children)) assignIds(b.children);
+        }
+      }
+    };
+    assignIds(rawBlocks);
+    const idAtPath = (path: number[]): string | null => {
+      let nodes: any[] = rawBlocks;
+      let node: any = null;
+      for (const idx of path) {
+        node = nodes?.[idx];
+        if (!node) return null;
+        nodes = node.children ?? [];
+      }
+      return node?.id ?? null;
+    };
+    const linkIds = (provLinks ?? []).map((l) => ({
+      sourceId: idAtPath(l.sourcePath),
+      targetId: idAtPath(l.targetPath),
+      type: l.type,
+    }));
+    const focusId = idAtPath(tmpl.focusPath);
+    const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
+      rawBlocks,
+      rawLabels as any,
+    );
 
     const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
 
@@ -1312,8 +1342,10 @@ function NoteEditorInner({
       return node;
     };
 
-    // ラベル付与・前手順リンク追加（次フレームに延期して、エディタの状態反映後に実行）
-    if (labels.length > 0 || (provLinks && provLinks.length > 0)) {
+    // ラベル付与・前手順リンク追加（次フレームに延期して、エディタの状態反映後に実行）。
+    // procedure/plan/result は変換で消費済み。リンクは変換前に解決した id で張る
+    // （テンプレの step1→step2 informed_by は、見出し id を引き継いだ step 間に張られる）。
+    if (labels.length > 0 || linkIds.length > 0) {
       setTimeout(() => {
         for (const { path, label } of labels) {
           const block = resolveByPath(path);
@@ -1321,13 +1353,11 @@ function NoteEditorInner({
             labelStore.setLabel(block.id, label);
           }
         }
-        for (const link of provLinks ?? []) {
-          const source = resolveByPath(link.sourcePath);
-          const target = resolveByPath(link.targetPath);
-          if (source?.id && target?.id) {
+        for (const link of linkIds) {
+          if (link.sourceId && link.targetId) {
             linkStore.addLink({
-              sourceBlockId: source.id,
-              targetBlockId: target.id,
+              sourceBlockId: link.sourceId,
+              targetBlockId: link.targetId,
               type: link.type,
               createdBy: "human",
             });
@@ -1336,10 +1366,13 @@ function NoteEditorInner({
       }, 0);
     }
 
-    // フォーカスブロックにカーソルを移動
-    const focusBlock = resolveByPath(tmpl.focusPath);
-    if (focusBlock) {
-      editor.setTextCursorPosition(focusBlock, "end");
+    // フォーカスブロックにカーソルを移動（id は変換を跨いで保存される）
+    if (focusId) {
+      try {
+        editor.setTextCursorPosition(focusId, "end");
+      } catch {
+        /* no-op */
+      }
     }
 
     templateTriggerBlockRef.current = null;
@@ -3369,14 +3402,6 @@ function NoteEditorInner({
     return () => { setOnPrevStepLinkSelected(null); };
   }, [linkStore]);
 
-  // スラッシュメニューからのラベル設定コールバック
-  useEffect(() => {
-    setSlashMenuLabelCallback((blockId: string, label: string) => {
-      labelStore.setLabel(blockId, label);
-    });
-    return () => { setSlashMenuLabelCallback(null); };
-  }, [labelStore]);
-
   // インデックステーブル用のグローバルコールバック登録
   useEffect(() => {
     setIndexTableCallbacks({
@@ -3795,7 +3820,6 @@ function NoteEditorInner({
           }}
         />
       )}
-      <LabelDropdownPortal />
       {/* URL ペーストスタイル選択メニュー */}
       {pastedUrl && (
         <UrlPasteMenu
@@ -4163,7 +4187,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

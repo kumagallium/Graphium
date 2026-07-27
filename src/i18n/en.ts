@@ -259,16 +259,9 @@ export const en: Record<string, string> = {
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "Core labels (PROV-DM)",
-  "labelUi.aliasLabels": "Aliases",
-  "labelUi.freeLabels": "Free labels (examples)",
-  "labelUi.custom": "Custom",
   "labelUi.removeLabel": "Remove label",
-  "labelUi.placeholder": "[label name]",
   "labelUi.prevStepLink": "Prior step link (wasInformedBy)",
   "labelUi.selectPrevStep": "Select prior step to link",
-  "labelUi.selectHeading": "Select target heading",
-  "labelUi.insertLabeledBlock": "Insert block with {label} label",
-  "labelUi.provLabel": "PROV label",
   "labelUi.noLabel": "No label",
 
   // ── PROV インジケーター ──
@@ -359,7 +352,6 @@ export const en: Record<string, string> = {
   "derive.sourceNote": "Source note",
 
   // ── スラッシュメニュー ──
-  "slashMenu.group": "PROV labels",
 
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "Advanced",
@@ -445,10 +437,6 @@ export const en: Record<string, string> = {
   "common.clickToNavigate": "Click to navigate",
 
   // ── ラベル UI 追加 ──
-  "labelUi.emptyHeading": "(empty heading)",
-  "labelUi.goBack": "← Back",
-  "labelUi.clickToChange": "{label} — Click to change",
-  "labelUi.addLabel": "Add label",
 
   // ── Knowledge 状態チップ ──
   "knowledge.addToKnowledge": "Add to Knowledge",
@@ -1368,8 +1356,6 @@ export const en: Record<string, string> = {
   "markdown.export": "Markdown",
 
   // ── 来歴ラベル機能のオン/オフ ──
-  "settings.provLabels.title": "Provenance labels",
-  "settings.provLabels.help": "The provenance labeling feature (labeling steps, materials, and tools for PROV tracking) is fairly specialized. When off, all label controls and displays are hidden and notes behave like a plain editor. Your existing labels are kept and reappear if you turn it back on.",
 
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "Provenance label names",
@@ -1409,8 +1395,6 @@ export const en: Record<string, string> = {
   "onboarding.guide.lead": "Start writing, or try one of these:",
   "onboarding.chip.cmdk.label": "Ask AI",
   "onboarding.chip.cmdk.desc": "Ask AI about your note, or insert its answer",
-  "onboarding.chip.hash.label": "Label",
-  "onboarding.chip.hash.desc": "Type # at the start of a line to tag it",
   "onboarding.chip.at.label": "Link a note",
   "onboarding.chip.at.desc": "Type @ inline to reference another note",
   "onboarding.chip.slash.label": "Slash menu",

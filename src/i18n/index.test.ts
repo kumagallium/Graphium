@@ -32,10 +32,8 @@ describe("t()", () => {
   });
 
   it("パラメータ置換 ({param} 形式) が正しく動作する", () => {
-    // {label} プレースホルダーを持つキー
-    expect(t("labelUi.insertLabeledBlock", { label: "Procedure" })).toBe(
-      "Insert block with Procedure label",
-    );
+    // {n} プレースホルダーを持つキー
+    expect(t("step.defaultTitle", { n: "3" })).toBe("Step 3");
     // {count} プレースホルダー
     expect(t("linkBadge.linkCount", { count: "5" })).toBe("5 links");
     // 複数パラメータ

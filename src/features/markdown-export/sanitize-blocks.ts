@@ -143,6 +143,18 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
       });
       continue;
     }
+    if (b.type === "step") {
+      // step コンテナ → Markdown では H2 見出し + 中身（カードの枠は捨てる）。
+      // 移行前の「procedure ラベル付き H2 + スコープ」と同じ体裁で出力し、
+      // 工程の階層が外部でも読めるようにする。
+      out.push({
+        type: "heading",
+        props: { level: 2 },
+        content: sanitizeInlines(b.content, knownStyles),
+        children,
+      });
+      continue;
+    }
     if (typeof b.type !== "string" || !knownBlockTypes.has(b.type)) {
       // 未知ブロック（将来のカスタムブロック等）→ プレーンテキストで残す
       const text = extractInlineText(b.content);

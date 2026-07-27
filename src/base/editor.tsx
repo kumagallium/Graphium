@@ -44,7 +44,6 @@ import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
 import type { SlashMenuItem } from "./slash-menu-types";
 import type { SideMenuProps, FormattingToolbarProps } from "@blocknote/react";
-import { useProvLabelsEnabled } from "@features/context-label/store";
 import { MentionSuggestionMenu } from "./mention-suggestion-menu";
 import { BlockSelectionManager } from "@features/block-selection";
 import { InlineAnchorController } from "../features/inline-label/inline-anchor-controller";
@@ -54,7 +53,6 @@ import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
-import { t as tStatic } from "../i18n";
 
 type SandboxEditorProps = {
   blocks?: CustomBlockEntry[];
@@ -109,7 +107,6 @@ export function SandboxEditor({
   getMentionSuggestions,
   editable = true,
 }: SandboxEditorProps) {
-  const provLabelsEnabled = useProvLabelsEnabled();
   const customSpecs = Object.fromEntries(
     blocks.map((b) => [b.type, typeof b.spec === "function" ? b.spec() : b.spec])
   );

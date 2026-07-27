@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isProvLink, PROV_LINK_TYPES } from "./block-link/link-types";
-import { buildSuggestionList, getDisplayName, filterSuggestionsForBlock } from "./context-label/hashtag-menu";
-import { normalizeLabel, classifyLabel, ALIAS_MAP, getHeadingLabelRole } from "./context-label/labels";
+import { normalizeLabel, classifyLabel, getHeadingLabelRole } from "./context-label/labels";
 import { generateProvDocument, extractRelations } from "./prov-generator/generator";
 
 // ──────────────────────────────────
@@ -92,48 +91,6 @@ describe("attribute の PROV 名変更", () => {
 });
 
 // ──────────────────────────────────
-// 1.1 # オートコンプリート
-// ──────────────────────────────────
-describe("# オートコンプリート候補", () => {
-  it("候補リストにコアラベルが含まれる", () => {
-    const suggestions = buildSuggestionList();
-    const coreItems = suggestions.filter((s) => s.group === "core");
-    expect(coreItems).toHaveLength(7);
-    expect(coreItems.map((s) => s.label)).toContain("procedure");
-    expect(coreItems.map((s) => s.label)).toContain("plan");
-    expect(coreItems.map((s) => s.label)).toContain("result");
-    expect(coreItems.map((s) => s.label)).toContain("material");
-    expect(coreItems.map((s) => s.label)).toContain("tool");
-    expect(coreItems.map((s) => s.label)).toContain("attribute");
-    expect(coreItems.map((s) => s.label)).toContain("output");
-  });
-
-  it("候補リストにエイリアスが含まれる", () => {
-    const suggestions = buildSuggestionList();
-    const aliasItems = suggestions.filter((s) => s.group === "alias");
-    expect(aliasItems.length).toBeGreaterThan(0);
-    const equipAlias = aliasItems.find((s) => s.query === "装置");
-    expect(equipAlias?.label).toBe("tool");
-  });
-
-  it("候補リストにフリーラベルが含まれる", () => {
-    const suggestions = buildSuggestionList();
-    const freeItems = suggestions.filter((s) => s.group === "free");
-    expect(freeItems.length).toBeGreaterThan(0);
-  });
-
-  it("getDisplayName は内部キーを表示名に変換する（i18n 経由）", () => {
-    // i18n 経由: テスト環境ではデフォルト英語
-    expect(getDisplayName("procedure")).toBe("Step");
-    expect(getDisplayName("material")).toBe("Input");
-    // 旧ブラケット表記も normalize 経由で解決できる
-    expect(getDisplayName("[手順]")).toBe("Step");
-    // カスタムラベルは i18n マッピングがないのでそのまま返る
-    expect(getDisplayName("custom-free")).toBe("custom-free");
-  });
-});
-
-// ──────────────────────────────────
 // ラベルの追加エイリアス
 // ──────────────────────────────────
 describe("ラベルエイリアス拡張", () => {
@@ -184,55 +141,5 @@ describe("getHeadingLabelRole (Phase B)", () => {
   });
 });
 
-// ──────────────────────────────────
-// Phase B: ハッシュタグメニューの context filter
-// ──────────────────────────────────
-describe("filterSuggestionsForBlock (Phase B)", () => {
-  const allSuggestions = buildSuggestionList();
-
-  // 工程は step ブロックが表すようになったので、見出しに工程ラベルを付ける
-  // 導線は `#` から外した。二通りの作り方が並ぶのを避けるため。
-  it("見出しブロックでも PROV ラベルは出さない（free のみ）", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, "heading");
-    const coreLabels = filtered.filter((s) => s.group === "core");
-    expect(coreLabels).toHaveLength(0);
-
-    const freeLabels = filtered.filter((s) => s.group === "free");
-    expect(freeLabels.length).toBeGreaterThan(0);
-  });
-
-  it("本文ブロック（paragraph / bulletListItem）では inline 系も section / phase も出さない、free のみ", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph");
-    const coreLabels = filtered.filter((s) => s.group === "core");
-    expect(coreLabels).toHaveLength(0);
-
-    const freeLabels = filtered.filter((s) => s.group === "free");
-    expect(freeLabels.length).toBeGreaterThan(0);
-  });
-
-  it("undefined ブロックタイプも本文扱い（free のみ）", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, undefined);
-    const coreLabels = filtered.filter((s) => s.group === "core");
-    expect(coreLabels).toHaveLength(0);
-  });
-});
-
-// PROV ラベルは `#` から完全に外した。工程は step ブロック、その中の計画/結果は
-// ドラッグハンドルのメニューという 2 箇所に集約し、同じものの作り方が
-// 複数並ばないようにする。
-describe("filterSuggestionsForBlock — PROV ラベルは # から出さない", () => {
-  const allSuggestions = buildSuggestionList();
-
-  it("どのブロック種別でも core ラベルは出さない", () => {
-    for (const type of ["heading", "paragraph", "bulletListItem", "table", "step", undefined]) {
-      const filtered = filterSuggestionsForBlock(allSuggestions, type);
-      const coreLabels = filtered.filter((s) => s.group === "core");
-      expect(coreLabels).toHaveLength(0);
-    }
-  });
-
-  it("free ラベル（PROV に乗らないタグ）は従来どおり出す", () => {
-    const filtered = filterSuggestionsForBlock(allSuggestions, "paragraph");
-    expect(filtered.filter((s) => s.group === "free").length).toBeGreaterThan(0);
-  });
-});
+// `#` サジェスト（hashtag-menu）は撤去済み。工程は step ブロック、素材系ラベルは
+// ドラッグハンドルのメニュー（step 内のみ）に集約したため、関連テストも削除した。

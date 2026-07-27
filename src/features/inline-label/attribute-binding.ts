@@ -160,8 +160,11 @@ export function collectEntitiesWithContext(
       if (isHeadingBlock(b)) {
         updateHeadingStack(b);
       }
-      // procedure ラベルが付いた "block" を踏むとスコープを更新
-      if (b?.id && labels?.get(b.id) === "procedure") {
+      // step コンテナ、または（legacy）procedure ラベル付きブロックでスコープ更新。
+      // 入れ子 step は最内が勝つ（後勝ち上書き = generator の stepOwner と同じ意味論）
+      if (b?.type === "step" && b.id) {
+        currentScopeId = b.id;
+      } else if (b?.id && labels?.get(b.id) === "procedure") {
         currentScopeId = b.id;
       }
       if (b?.id && Array.isArray(b.content)) {
@@ -215,7 +218,9 @@ export function getBlockScope(
         headingStack.length = lv - 1;
         headingStack[lv - 1] = headingTextOf(b);
       }
-      if (b?.id && labels?.get(b.id) === "procedure") {
+      if (b?.type === "step" && b.id) {
+        currentScopeId = b.id;
+      } else if (b?.id && labels?.get(b.id) === "procedure") {
         currentScopeId = b.id;
       }
       if (b?.id === blockId) {

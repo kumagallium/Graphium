@@ -1,7 +1,7 @@
 // Notion 風サイドピーク
 // 画面右側からスライドインし、リンク先ノートを編集可能な BlockNote で表示する
 // 背景ページは操作可能（薄暗くならない）
-// ラベル機能（ProvIndicatorLayer + LabelDropdownPortal + #オートコンプリート）対応
+// ラベル機能（ProvIndicatorLayer）対応
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -86,9 +86,7 @@ import {
 } from "@features/block-link/mention-menu";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
-import { LabelDropdownPortal } from "@features/context-label/ui";
 import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
-import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
 import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
@@ -1378,7 +1376,6 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
-            <LabelDropdownPortal />
             {/* 右ガター（80px）はラベル/リンクのインジケータを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
                 ラベルもリンクも無いときは左右対称（24px）にする。 */}
@@ -1619,7 +1616,6 @@ function SidePeekInner({
                 // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
                 // SidePeek のエディタに挿入される。
                 extraSlashMenuItems={[
-                  ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
                   calloutSlashItem,

@@ -1,10 +1,8 @@
 // ──────────────────────────────────────────────
 // ブロック種別ごとに「ブロックラベルとして選べるコアラベル」を決める
 //
-// ラベルの付与 UI は 2 箇所ある:
-//   - LabelDropdownPortal（ui.tsx）
-//   - ProvPanel のラベル変更（バッジ → 変更、prov-indicator.tsx）
-// 両者で同じフィルタを使うため、判定ロジックをここに一元化する。
+// ラベルの付与 UI は ProvPanel のラベル変更（バッジ → 変更、prov-indicator.tsx）
+// のみ。判定ロジックをここに一元化する。
 //
 // ルール:
 //   - section / phase（procedure / plan / result）の新規付与は無い。

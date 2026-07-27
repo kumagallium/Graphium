@@ -210,7 +210,7 @@ PROV-DM information attaches to blocks in four places:
 **Structured tables.** A table is a block whose cells are atomic values,
 so inline highlights do not apply inside cells (the formatting toolbar
 hides the entity-label buttons there). Instead the **whole table** may
-carry a `material` / `tool` / `output` block label via the `#` affordance.
+carry a `material` / `tool` / `output` block label via the drag-handle menu.
 The PROV generator then expands it: the **header row supplies attribute
 keys**, and **each data row becomes one Entity** — the first column is the
 Entity name, the remaining columns become its attributes (`key=value`). A

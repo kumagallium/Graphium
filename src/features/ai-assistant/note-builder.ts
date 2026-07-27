@@ -2,7 +2,7 @@
 
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { AgentRunResponse } from "./api";
-import { extractLabelMarkersFromBlocks } from "./label-markers";
+import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./label-markers";
 import { t } from "../../i18n";
 
 type BuildParams = {
@@ -59,11 +59,15 @@ export function buildAiDerivedDocument(params: BuildParams): GraphiumDocument {
   // マークダウンを BlockNote ブロックに変換
   const parsedBlocks = parseMarkdown(combinedMarkdown);
 
-  // [[label:xxx]] マーカーを剥がして labels マップを組み立てる。
-  // path → block.id の解決は parseMarkdown 後の blocks ツリーをたどる。
-  const { blocks, labels: extracted } = extractLabelMarkersFromBlocks(parsedBlocks);
+  // [[label:xxx]] マーカーを剥がし、procedure 見出しを step ブロックへ変換する
+  // （工程は step が正。旧語彙のまま保存すると、生成直後に開いたノートが
+  //   旧形式で表示される — 読込マイグレーションは次回ロードまで走らない）。
+  const extractedRaw = extractLabelMarkersFromBlocks(parsedBlocks);
+  const { blocks, labels: remaining } = convertExtractedProcedureBlocksToSteps(
+    extractedRaw.blocks,
+    extractedRaw.labels,
+  );
   const labelsMap: Record<string, string> = {};
-  const procedureHeadingIds: string[] = [];
   const resolveByPath = (path: number[]): any | null => {
     let nodes: any[] = blocks as any[];
     let node: any = null;
@@ -74,19 +78,24 @@ export function buildAiDerivedDocument(params: BuildParams): GraphiumDocument {
     }
     return node;
   };
-  for (const { path, label } of extracted) {
+  for (const { path, label } of remaining) {
     const block = resolveByPath(path);
-    if (!block?.id) continue;
-    labelsMap[block.id] = label;
-    if (label === "procedure" && block.type === "heading" && (block.props?.level ?? 0) >= 2) {
-      procedureHeadingIds.push(block.id);
-    }
+    if (block?.id) labelsMap[block.id] = label;
   }
-  // 連続 procedure 見出しを informed_by で連結（onInsertToScope と同じ意図）
-  const provLinks = procedureHeadingIds.slice(1).map((id, i) => ({
+  // 兄弟 step を文書順に informed_by で連結（applyExtractedLabels と同じ意図。
+  // 入れ子 step は「含む」関係なので繋がない）
+  const stepIds: string[] = [];
+  const collectSiblingSteps = (list: any[]) => {
+    for (const b of list ?? []) {
+      if (b?.type === "step" && b.id) stepIds.push(b.id);
+      if (Array.isArray(b?.children)) collectSiblingSteps(b.children);
+    }
+  };
+  collectSiblingSteps(blocks);
+  const provLinks = stepIds.slice(1).map((id, i) => ({
     id: crypto.randomUUID(),
     sourceBlockId: id,
-    targetBlockId: procedureHeadingIds[i],
+    targetBlockId: stepIds[i],
     type: "informed_by" as const,
     layer: "prov" as const,
     createdBy: "ai" as const,
