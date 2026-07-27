@@ -1376,14 +1376,16 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
-            {/* 右ガター（80px）はラベル/リンクのインジケータを置く場所。
+            {/* 右ガター（80px）はラベルバッジを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
-                ラベルもリンクも無いときは左右対称（24px）にする。 */}
+                ラベルが無いときは左右対称（24px）にする。
+                条件はブロックラベルのみ — リンクはバッジを描画しない
+                （prov-indicator.tsx は label 無しを return null する）ので、
+                リンクを条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。 */}
             <div
               style={{
                 padding: "16px 24px",
-                paddingRight:
-                  labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
+                paddingRight: labelStore.labels.size > 0 ? 80 : 24,
               }}
             >
               {/* 手動で残した版（snapshot:）の状態表示。エディタは read-only。 */}

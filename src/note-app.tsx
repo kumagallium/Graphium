@@ -4084,10 +4084,12 @@ function NoteEditorInner({
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
           {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
-              SidePeek と同じ「基本 24px・右はインジケータ（ラベル/リンクのバッジ）が
-              ある時だけ 80px」に揃える。ドラッグハンドル分の余白は .bn-editor 自体の
-              padding-inline 54px が既に持っている。 */}
-          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+              SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
+              条件はブロックラベルのみ — リンクはバッジを描画しない
+              （prov-indicator.tsx は label 無しを return null する）ので、リンクを
+              条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
+              ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
+          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
 
             <textarea
               value={title}
