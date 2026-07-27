@@ -4,6 +4,7 @@
 // - client_id は「自前上書き → 同梱デフォルト」の順で解決する。同梱デフォルトが
 //   ある現在のビルドでは、上書き無し = 同梱 ID、上書きの解除 = 同梱 ID に戻る
 // - フォルダキャッシュは壊れた JSON / 形の違う JSON を無害に null 扱いする
+// - 選択プロバイダは未保存・不正値を google-drive に倒す（v1 の唯一の実体）
 
 import { describe, it, expect, beforeEach } from "vitest";
 import {
@@ -11,8 +12,10 @@ import {
   getDriveFolderCache,
   getGoogleClientId,
   getGoogleClientIdOverride,
+  getPushProvider,
   setDriveFolderCache,
   setGoogleClientIdOverride,
+  setPushProvider,
 } from "./config";
 
 beforeEach(() => {
@@ -63,5 +66,22 @@ describe("Drive フォルダ ID キャッシュ", () => {
     expect(getDriveFolderCache()).toBeNull();
     localStorage.setItem("graphium-push-drive-folders", JSON.stringify({ rootId: 1 }));
     expect(getDriveFolderCache()).toBeNull();
+  });
+});
+
+describe("選択プロバイダの永続", () => {
+  it("defaults to google-drive while nothing is stored (v1 sole provider)", () => {
+    expect(getPushProvider()).toBe("google-drive");
+  });
+
+  it("stores the picked provider and reads it back", () => {
+    setPushProvider("google-drive");
+    expect(localStorage.getItem("graphium-push-provider")).toBe("google-drive");
+    expect(getPushProvider()).toBe("google-drive");
+  });
+
+  it("falls back to google-drive for unknown stored values (whitelist)", () => {
+    localStorage.setItem("graphium-push-provider", "dropbox");
+    expect(getPushProvider()).toBe("google-drive");
   });
 });

@@ -20,7 +20,9 @@ export {
   DEFAULT_GOOGLE_PUSH_CLIENT_ID,
   getGoogleClientId,
   getGoogleClientIdOverride,
+  getPushProvider,
   setGoogleClientIdOverride,
+  setPushProvider,
   type DriveInboxFolderCache,
 } from "./config";
 

@@ -5,13 +5,18 @@
 //   同梱 ID の割当枯渇時の逃げ道でもある。
 // - Drive フォルダ ID キャッシュ: Graphium/Inbox の find-or-create 結果を保存し、
 //   毎回のフォルダ解決クエリを省く。404/権限エラー時は drive-pusher 側が破棄する。
+// - 選択プロバイダ: ストレージ選択画面（StoragePickerSheet）でユーザーが選んだ
+//   push プロバイダ。現状は google-drive 一択だが、P1.5 の OneDrive 追加時に
+//   「どの pusher を組み立てるか」の分岐点になる（未保存は google-drive 扱い）。
 //
 // 既存 inbox/config.ts（getInboxRoot/setInboxRoot）と同じ try/catch ガード形。
 
 import { emitPushStatusChanged } from "../push-events";
+import type { PusherKind } from "./types";
 
 const CLIENT_ID_OVERRIDE_KEY = "graphium-push-google-client-id";
 const FOLDER_CACHE_KEY = "graphium-push-drive-folders";
+const PROVIDER_KEY = "graphium-push-provider";
 
 /**
  * 同梱の Google OAuth client_id（GIS token model / popup 型、secret なし）。
@@ -59,6 +64,33 @@ export function getGoogleClientId(): string | null {
   if (override && override.trim() !== "") return override.trim();
   if (DEFAULT_GOOGLE_PUSH_CLIENT_ID !== "") return DEFAULT_GOOGLE_PUSH_CLIENT_ID;
   return null;
+}
+
+/**
+ * 選択済みの push プロバイダを読む。未保存・不正値は google-drive（v1 の唯一の実体）。
+ * 保存値の検証はホワイトリスト方式 — 将来 "onedrive" を足すときにここへ追記する。
+ */
+export function getPushProvider(): PusherKind {
+  try {
+    const raw = localStorage.getItem(PROVIDER_KEY);
+    if (raw === "google-drive") return raw;
+    return "google-drive";
+  } catch {
+    return "google-drive";
+  }
+}
+
+/**
+ * ストレージ選択画面で選ばれたプロバイダを保存する。接続成功時に UI 側が呼ぶ
+ * （選んだだけで未接続のものは保存しない — 実際に使えた経路だけを覚える）。
+ */
+export function setPushProvider(kind: PusherKind): void {
+  try {
+    localStorage.setItem(PROVIDER_KEY, kind);
+  } catch {
+    // localStorage 不可の環境では黙って無視（getInboxRoot と同じ非致命的挙動）
+  }
+  emitPushStatusChanged();
 }
 
 /** Graphium/Inbox の Drive フォルダ ID キャッシュ。 */
