@@ -63,7 +63,7 @@ const baseProps: SendQueueSectionProps = {
   canWebShare: false,
   webShareError: null,
   onSend: noop,
-  onConnect: noop,
+  onOpenStoragePicker: noop,
   onRemoveItem: noop,
   onRetryFailed: noop,
   onWebShare: noop,
@@ -195,7 +195,8 @@ export const WithFailedItems: Story = {
   },
 };
 
-/** 未接続（client ID は設定済み）。キューセクション内の接続ボタンが主アクション。 */
+/** 未接続（client ID は設定済み）。主アクションは [ストレージに接続] —
+    タップでストレージ選択（StoragePickerSheet）が開く。 */
 export const Disconnected: Story = {
   args: { ...baseProps, connected: false },
 };

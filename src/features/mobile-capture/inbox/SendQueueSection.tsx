@@ -15,10 +15,12 @@
 // - キュー行: メディアは正規化名 + サムネ、メモ / URL 捕獲はアイコン + 中身プレビュー
 //   （メモ = 本文先頭、URL = タイトル + ドメイン）。
 // - リスト下の主アクションはモード別:
-//   接続済み = なし（送信は見出し行の定位置）/ 未接続 = Google Drive に接続 /
-//   未設定 = 案内 + 設定導線 + 共有シートフォールバック（canWebShare 時）。
-//   onConnect / onWebShare は **click から同期的に呼ぶ**（navigator.share と GIS の
-//   user activation 契約。use-push-queue 側の注記どおり await を挟まない）。
+//   接続済み = なし（送信は見出し行の定位置）/ 未接続 = [ストレージに接続] →
+//   ストレージ選択（StoragePickerSheet。Google/OneDrive/共有シートの選択と connect の
+//   ジェスチャ契約はピッカー側が担う — ここはシートを開くだけ）/
+//   未設定 = 案内 + 設定導線（最小設定シートの client_id 上書き）+ 共有シート
+//   フォールバック（canWebShare 時）。onWebShare は **click から同期的に呼ぶ**
+//   （navigator.share の user activation 契約。await を挟まない）。
 // - サムネイル: 画像だけ loadItemBlob で IndexedDB の Blob を読み object URL を作る。
 //   行の unmount（削除・送信完了・ビュー離脱）で必ず URL.revokeObjectURL する。
 //   動画・音声・その他は種別アイコン（デスクトップ InboxView と同じ判断）。
@@ -79,8 +81,8 @@ export type SendQueueSectionProps = {
   webShareError?: string | null;
   /** 手動送信（接続済みモード・見出し行の定位置ボタン）。 */
   onSend: () => void;
-  /** Google Drive へ接続。**click から同期的に呼ばれる**。 */
-  onConnect: () => void;
+  /** ストレージ選択（StoragePickerSheet）を開く。connect の実体はピッカー側。 */
+  onOpenStoragePicker: () => void;
   onRemoveItem: (id: string) => void;
   onRetryFailed: () => void;
   /** 共有シートで送る。**click から同期的に呼ばれる**。 */
@@ -294,7 +296,7 @@ export function SendQueueSection({
   canWebShare,
   webShareError,
   onSend,
-  onConnect,
+  onOpenStoragePicker,
   onRemoveItem,
   onRetryFailed,
   onWebShare,
@@ -378,28 +380,25 @@ export function SendQueueSection({
         </p>
       )}
 
-      {/* リスト下の主アクション（接続済みモードは見出し行の [送信] が担うので無し） */}
+      {/* リスト下の主アクション（接続済みモードは見出し行の [送信] が担うので無し）。
+          未接続時はストレージ選択（Google / OneDrive / 共有シート）を開く —
+          プロバイダの説明・選択・接続はピッカー側の責務 */}
       {configured ? (
         !connected && (
-          <>
-            <button
-              onClick={onConnect}
-              disabled={connecting}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
-            >
-              {connecting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  {t("mobile.send.connecting")}
-                </>
-              ) : (
-                t("mobile.send.connectGoogle")
-              )}
-            </button>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {t("mobile.send.helpDrive")}
-            </p>
-          </>
+          <button
+            onClick={onOpenStoragePicker}
+            disabled={connecting}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
+          >
+            {connecting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                {t("mobile.send.connecting")}
+              </>
+            ) : (
+              t("mobile.send.connectStorage")
+            )}
+          </button>
         )
       ) : (
         <>

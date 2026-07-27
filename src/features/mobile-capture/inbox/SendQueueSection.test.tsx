@@ -8,7 +8,8 @@
 // - [送信 (n)] は見出し行の右端が定位置（リストより前 = 上に出る）。
 //   接続済みモードのみ。draining 中は無効 + 送信中表示
 // - モードでリスト下の主アクションが切り替わる: 接続済み=なし（見出しの送信）/
-//   未接続=接続 / 未設定=案内+設定導線（+ canWebShare なら共有シート）
+//   未接続=[ストレージに接続]（ストレージ選択ピッカーを開く。connect の実体は
+//   ピッカー側）/ 未設定=案内+設定導線（+ canWebShare なら共有シート）
 // - 送信中アイテムは進捗（%）が出て、削除ボタンが無効になる
 // - failed があるときだけ再試行導線が出る
 // - 画像アイテムは loadItemBlob で object URL サムネイルを作り、unmount で revoke する
@@ -65,7 +66,7 @@ const baseProps: SendQueueSectionProps = {
   canWebShare: false,
   webShareError: null,
   onSend: () => {},
-  onConnect: () => {},
+  onOpenStoragePicker: () => {},
   onRemoveItem: () => {},
   onRetryFailed: () => {},
   onWebShare: () => {},
@@ -145,15 +146,19 @@ describe("SendQueueSection", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it("offers Connect when configured but not connected, and calls it from the click", () => {
-    const onConnect = vi.fn();
-    renderSection({ connected: false, onConnect, items: [item("a", "graphium-a.jpg")] });
+  it("offers the storage picker entry when configured but not connected", () => {
+    const onOpenStoragePicker = vi.fn();
+    renderSection({
+      connected: false,
+      onOpenStoragePicker,
+      items: [item("a", "graphium-a.jpg")],
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect Google Drive" }));
-    expect(onConnect).toHaveBeenCalledTimes(1);
+    // 主ボタンはプロバイダ名でなく「ストレージに接続」— タップでピッカーを開く
+    // （Google/OneDrive/共有シートの選択と connect のジェスチャ契約はピッカー側）
+    fireEvent.click(screen.getByRole("button", { name: "Connect storage" }));
+    expect(onOpenStoragePicker).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
-    // 接続の意味（どこへ送られるか）はこのモードで添える
-    expect(screen.getByText(/Graphium\/Inbox/)).toBeTruthy();
   });
 
   it("falls back to the share sheet when no client ID is configured", () => {

@@ -227,9 +227,11 @@ export function usePushQueue(enabled = true): PushQueueUi {
 
   // Web Share フォールバック用の事前復元。
   // ジェスチャ内で IndexedDB を await すると iOS で user activation を失うため、
-  // 未設定モードの間はキューが変わるたびに File を復元してリファレンスに保持する。
+  // 送信経路が生きていない間（未設定、または未接続 — ストレージ選択ピッカーが
+  // 共有シートの逃げ道を出す状態）はキューが変わるたびに File を復元して
+  // リファレンスに保持する。接続済みになったら破棄する（共有導線が消えるため）。
   useEffect(() => {
-    if (!canWebShare || configured || !ready) {
+    if (!canWebShare || !ready || (configured && connected)) {
       webShareFilesRef.current = [];
       return;
     }
@@ -243,7 +245,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
     return () => {
       stale = true;
     };
-  }, [canWebShare, configured, ready, snapshot, loadModule]);
+  }, [canWebShare, configured, connected, ready, snapshot, loadModule]);
 
   const enqueueForSend = useCallback(
     async (files: File[]): Promise<boolean> => {
