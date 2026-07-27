@@ -11,6 +11,12 @@
 // 設計 §13.5 の share-to-inbox（Web Share 経路）は未着地なので、正規化の実体は
 // この push/ に置く。Web Share 経路を実装するときはここから import して共用する。
 
+import {
+  GRAPHIUM_CAPTURE_EXTENSION,
+  captureKindFromName,
+  isGraphiumCaptureName,
+} from "../capture-file";
+
 // MIME → 正規拡張子。inbox/mime.ts の EXT_TO_MIME と対で保守する
 //（iPhone カメラ/ボイスメモ由来の heic / mov / m4a / caf を含む）。
 const MIME_TO_EXT: Record<string, string> = {
@@ -65,6 +71,11 @@ export function formatCaptureTimestamp(when: Date): string {
 /**
  * 正規化した Inbox ファイル名 `graphium-<YYYYMMDD-HHmmss>-<連番>.<ext>` を作る。
  * seq は 1 始まり・2 桁ゼロ詰め（100 以上はそのまま）。
+ *
+ * Graphium ネイティブ捕獲ファイル（メモ / URL の JSON。capture-file.ts）は
+ * 専用形 `graphium-<YYYYMMDD-HHmmss>-<連番>-<kind>.graphium.json` にする —
+ * kind を名前に残すことで、受信側が中身を読む前にアイコンを出せ、
+ * `.graphium.json` の専用拡張子が汎用 `.json` との誤爆を防ぐ。
  */
 export function normalizeCaptureName(opts: {
   mime: string;
@@ -72,8 +83,12 @@ export function normalizeCaptureName(opts: {
   when: Date;
   seq: number;
 }): string {
-  const ext = extensionForCapture(opts.mime, opts.originalName);
   const stamp = formatCaptureTimestamp(opts.when);
   const seq = String(opts.seq).padStart(2, "0");
+  if (isGraphiumCaptureName(opts.originalName)) {
+    const kind = captureKindFromName(opts.originalName) ?? "capture";
+    return `graphium-${stamp}-${seq}-${kind}${GRAPHIUM_CAPTURE_EXTENSION}`;
+  }
+  const ext = extensionForCapture(opts.mime, opts.originalName);
   return `graphium-${stamp}-${seq}.${ext}`;
 }

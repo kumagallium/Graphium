@@ -63,4 +63,38 @@ describe("normalizeCaptureName", () => {
       normalizeCaptureName({ mime: "image/png", originalName: "x.png", when, seq: 123 }),
     ).toBe("graphium-20260726-143005-123.png");
   });
+
+  it("keeps the kind and the dedicated extension for graphium capture files", () => {
+    // メモ / URL 捕獲（capture-file.ts）は kind を名前に残す専用形。
+    // 受信側は名前だけでアイコンを出せ、.graphium.json が汎用 .json との誤爆を防ぐ。
+    const when = new Date(2026, 6, 27, 15, 30, 0);
+    expect(
+      normalizeCaptureName({
+        mime: "application/vnd.graphium.capture+json",
+        originalName: "memo.graphium.json",
+        when,
+        seq: 1,
+      }),
+    ).toBe("graphium-20260727-153000-01-memo.graphium.json");
+    expect(
+      normalizeCaptureName({
+        mime: "application/vnd.graphium.capture+json",
+        originalName: "url.graphium.json",
+        when,
+        seq: 2,
+      }),
+    ).toBe("graphium-20260727-153000-02-url.graphium.json");
+  });
+
+  it("falls back to a generic capture kind when the original name has none", () => {
+    const when = new Date(2026, 6, 27, 15, 30, 0);
+    expect(
+      normalizeCaptureName({
+        mime: "application/vnd.graphium.capture+json",
+        originalName: "weird.graphium.json",
+        when,
+        seq: 1,
+      }),
+    ).toBe("graphium-20260727-153000-01-capture.graphium.json");
+  });
 });

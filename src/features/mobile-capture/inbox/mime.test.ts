@@ -22,6 +22,14 @@ describe("mimeFromExtension", () => {
     expect(mimeFromExtension("trailingdot.")).toBeNull();
     expect(mimeFromExtension("archive.xyz")).toBeNull();
   });
+
+  it("recognizes the compound .graphium.json capture extension, but not plain .json", () => {
+    expect(mimeFromExtension("graphium-20260727-153000-01-memo.graphium.json")).toBe(
+      "application/vnd.graphium.capture+json",
+    );
+    // 無関係な JSON は乗っ取らない（判定は importer 側でも拡張子 + 形状の両方）
+    expect(mimeFromExtension("settings.json")).toBeNull();
+  });
 });
 
 describe("kindFromMime", () => {

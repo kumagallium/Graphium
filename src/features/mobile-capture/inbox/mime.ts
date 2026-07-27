@@ -4,6 +4,7 @@
 // マジックバイト sniff(materialize-blobs の sniffMimeType)にフォールバックする。
 // iPhone のカメラ/ボイスメモ由来(heic / mov / m4a / caf)を含める。
 
+import { GRAPHIUM_CAPTURE_MIME, isGraphiumCaptureName } from "./capture-file";
 import type { CaptureKind } from "./types";
 
 const EXT_TO_MIME: Record<string, string> = {
@@ -31,6 +32,10 @@ const EXT_TO_MIME: Record<string, string> = {
 
 /** ファイル名の拡張子から MIME を返す。未知/拡張子なしは null。 */
 export function mimeFromExtension(filename: string): string | null {
+  // Graphium ネイティブ捕獲ファイル（メモ / URL の JSON）は複合拡張子
+  // `.graphium.json` なので、単一拡張子の表より先にフルネームで判定する。
+  // 汎用の `.json` はここに載せない（無関係な JSON を乗っ取らない）。
+  if (isGraphiumCaptureName(filename)) return GRAPHIUM_CAPTURE_MIME;
   const dot = filename.lastIndexOf(".");
   if (dot < 0 || dot === filename.length - 1) return null;
   const ext = filename.slice(dot + 1).toLowerCase();
