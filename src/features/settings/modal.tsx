@@ -1391,9 +1391,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         })}
       </div>
 
-      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。 */}
+      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。
+          min-w はスマホ幅（<640px）では外す — 460px 固定だと 390px 端末で横に
+          はみ出し、ストレージタブのモバイル連携トグルなどが操作できなくなる。
+          本文は全タブとも流体レイアウトなので、min-w が無くても崩れない。 */}
       <ModalBody
-        className="w-full min-w-[460px] max-w-3xl"
+        className="w-full sm:min-w-[460px] max-w-3xl"
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
