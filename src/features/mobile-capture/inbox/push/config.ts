@@ -8,6 +8,8 @@
 //
 // 既存 inbox/config.ts（getInboxRoot/setInboxRoot）と同じ try/catch ガード形。
 
+import { emitPushStatusChanged } from "../push-events";
+
 const CLIENT_ID_OVERRIDE_KEY = "graphium-push-google-client-id";
 const FOLDER_CACHE_KEY = "graphium-push-drive-folders";
 
@@ -44,6 +46,8 @@ export function setGoogleClientIdOverride(clientId: string | null): void {
   } catch {
     // localStorage 不可の環境では黙って無視（getInboxRoot と同じ非致命的挙動）
   }
+  // 設定モーダルで変えた configured をモバイルホームの送信キューが読み直せるように
+  emitPushStatusChanged();
 }
 
 /**

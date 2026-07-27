@@ -7,23 +7,32 @@
 //   enqueueForSend は false を返す（呼び出し側は従来のローカル保存へ落ちる）
 // - enabled が true に切り替わったら、その場でロード → 購読 → ready=true になる
 //   （リロード不要の反映）
+// - getItemFile はキューの Blob をサムネイル用に復元する（OFF 中は null）
+// - PUSH_STATUS_EVENT（設定モーダルでの client_id 変更・接続・切断）で
+//   configured/connected を読み直す（ホームのチップ・キュー表示の鮮度）
 //
 // push モジュールはモック（実 IndexedDB / gsi には触れない）。
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import { usePushQueue } from "./use-push-queue";
+import { PUSH_STATUS_EVENT } from "./push-events";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// 動的 import の発生自体を観測したいので、モジュールファクトリの呼び出しを数える
-const pushModuleLoads = vi.fn();
+// 動的 import の発生自体を観測したいので、モジュールファクトリの呼び出しを数える。
+// pusher の状態はテストから動かせるよう可変の knob にする。
+const h = vi.hoisted(() => ({
+  pushModuleLoads: vi.fn(),
+  pusherConfigured: { value: false },
+  getPushQueueFiles: vi.fn(async (_ids?: string[]) => [] as Array<{ id: string; file: File }>),
+}));
 
 vi.mock("./push", () => {
-  pushModuleLoads();
+  h.pushModuleLoads();
   return {
     GoogleDrivePusher: class {
-      isConfigured() { return false; }
+      isConfigured() { return h.pusherConfigured.value; }
       isConnected() { return false; }
       prepare() { return Promise.resolve(); }
     },
@@ -32,8 +41,8 @@ vi.mock("./push", () => {
       return () => {};
     },
     enqueuePushFiles: vi.fn(async () => {}),
-    drainPushQueue: vi.fn(async () => ({ sent: 0, failed: 0 })),
-    getPushQueueFiles: vi.fn(async () => []),
+    drainPushQueue: vi.fn(async () => ({ pushed: [], failed: [], deferred: [], aborted: null })),
+    getPushQueueFiles: h.getPushQueueFiles,
     removePushQueueItem: vi.fn(async () => {}),
     retryFailedPushItems: vi.fn(async () => {}),
   };
@@ -41,6 +50,7 @@ vi.mock("./push", () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.pusherConfigured.value = false;
 });
 
 afterEach(cleanup);
@@ -51,7 +61,7 @@ describe("usePushQueue の enabled ゲート", () => {
 
     // マウント後もモジュールはロードされない（購読も自動 drain も起きない）
     await act(async () => { await Promise.resolve(); });
-    expect(pushModuleLoads).not.toHaveBeenCalled();
+    expect(h.pushModuleLoads).not.toHaveBeenCalled();
     expect(result.current.ready).toBe(false);
     expect(result.current.items).toEqual([]);
 
@@ -60,7 +70,11 @@ describe("usePushQueue の enabled ゲート", () => {
     await act(async () => {
       await expect(result.current.enqueueForSend([file])).resolves.toBe(false);
     });
-    expect(pushModuleLoads).not.toHaveBeenCalled();
+    // getItemFile もモジュールに触れず null（サムネイル無し）
+    await act(async () => {
+      await expect(result.current.getItemFile("x")).resolves.toBeNull();
+    });
+    expect(h.pushModuleLoads).not.toHaveBeenCalled();
   });
 
   it("boots up in place when enabled flips to true (no reload required)", async () => {
@@ -71,6 +85,36 @@ describe("usePushQueue の enabled ゲート", () => {
 
     rerender({ on: true });
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(pushModuleLoads).toHaveBeenCalledTimes(1);
+    expect(h.pushModuleLoads).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usePushQueue のサムネイル復元と状態イベント", () => {
+  it("getItemFile restores the queued blob as a File for that id", async () => {
+    const file = new File([new Uint8Array([1, 2]) as BlobPart], "graphium-a.jpg", {
+      type: "image/jpeg",
+    });
+    h.getPushQueueFiles.mockResolvedValueOnce([{ id: "a", file }]);
+
+    const { result } = renderHook(() => usePushQueue(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => {
+      await expect(result.current.getItemFile("a")).resolves.toBe(file);
+    });
+    expect(h.getPushQueueFiles).toHaveBeenCalledWith(["a"]);
+  });
+
+  it("re-reads configured/connected when the push status event fires", async () => {
+    const { result } = renderHook(() => usePushQueue(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.configured).toBe(false);
+
+    // 設定モーダルで client_id が保存された相当（config.ts が emit する）
+    h.pusherConfigured.value = true;
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PUSH_STATUS_EVENT));
+    });
+    await waitFor(() => expect(result.current.configured).toBe(true));
   });
 });

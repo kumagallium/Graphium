@@ -12,6 +12,7 @@
 // バックオフ待ち（deferred）のアイテムはタイマーでは追わず、次の自然なトリガに任せる。
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PUSH_STATUS_EVENT } from "./push-events";
 import { canShareFilesToInbox, shareFilesToInbox, type ShareToInboxOutcome } from "./share-to-inbox";
 import type {
   InboxPusher,
@@ -68,6 +69,11 @@ export type PushQueueUi = {
    * 復元がまだ（直後に撮った等）なら null を返す。
    */
   shareViaWebShare: () => Promise<ShareToInboxOutcome | null>;
+  /**
+   * キューアイテム 1 件を File として復元する（ホームのキュー一覧の画像サムネイル用）。
+   * 見つからない・フラグ OFF・IndexedDB 不可は null（呼び出し側はアイコン表示に倒す）。
+   */
+  getItemFile: (id: string) => Promise<File | null>;
   /** configured/connected を localStorage から読み直す（設定画面から戻った時など）。 */
   refreshStatus: () => void;
 };
@@ -204,6 +210,21 @@ export function usePushQueue(enabled = true): PushQueueUi {
     };
   }, [enabled, refreshStatus, maybeDrain]);
 
+  // 設定モーダル側での client_id 変更・接続・切断を反映する（push-events 経由）。
+  // ホームのキューは常時見えているので「シートを開き直したら読み直す」という
+  // かつての契機が無い — 変更点イベントが唯一の同期手段。設定画面で接続が生きたら
+  // 残キューをその場で流す（離散イベント起点なので、snapshot 購読から drain を
+  // 起動しない不変条件には抵触しない）。
+  useEffect(() => {
+    if (!enabled) return;
+    const onStatusChanged = () => {
+      refreshStatus();
+      maybeDrain();
+    };
+    window.addEventListener(PUSH_STATUS_EVENT, onStatusChanged);
+    return () => window.removeEventListener(PUSH_STATUS_EVENT, onStatusChanged);
+  }, [enabled, refreshStatus, maybeDrain]);
+
   // Web Share フォールバック用の事前復元。
   // ジェスチャ内で IndexedDB を await すると iOS で user activation を失うため、
   // 未設定モードの間はキューが変わるたびに File を復元してリファレンスに保持する。
@@ -292,6 +313,21 @@ export function usePushQueue(enabled = true): PushQueueUi {
       });
   }, [loadModule, maybeDrain]);
 
+  const getItemFile = useCallback(
+    async (id: string): Promise<File | null> => {
+      if (!enabled) return null;
+      try {
+        const mod = await loadModule();
+        const files = await mod.getPushQueueFiles([id]);
+        return files[0]?.file ?? null;
+      } catch {
+        // IndexedDB 不可・並行削除などはサムネイル無しに倒す（非致命的）
+        return null;
+      }
+    },
+    [enabled, loadModule],
+  );
+
   const shareViaWebShare = useCallback((): Promise<ShareToInboxOutcome | null> => {
     const staged = webShareFilesRef.current;
     if (staged.length === 0) return Promise.resolve(null);
@@ -326,6 +362,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
     removeItem,
     retryFailed,
     shareViaWebShare,
+    getItemFile,
     refreshStatus,
   };
 }

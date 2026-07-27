@@ -16,6 +16,7 @@
 // 旧実装（4608875~1:src/lib/google-auth.ts）の GIS 部分を下敷きにしたが、
 // PKCE/デスクトップ分岐・サイレントリフレッシュは持ち込まない（push 専用に最小化）。
 
+import { emitPushStatusChanged } from "../push-events";
 import { PushAuthError, PushConfigError } from "./types";
 
 const GSI_SRC = "https://accounts.google.com/gsi/client";
@@ -93,6 +94,10 @@ function saveStoredToken(token: StoredToken | null): void {
   } catch {
     // localStorage 不可でも致命的にしない（セッション内はポップアップで都度取得できる）
   }
+  // 接続・切断・失効破棄を（設定モーダル/ホームの）他の購読面に伝える。
+  // ループ安全: 受け手の refreshStatus → getValidAccessToken は、失効分を一度
+  // 破棄した後は null 早期 return になり、ここへ再帰しない。
+  emitPushStatusChanged();
 }
 
 /** gsi スクリプトを動的ロードする（冪等）。 */
