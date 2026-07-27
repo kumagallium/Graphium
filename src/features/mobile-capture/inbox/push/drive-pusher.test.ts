@@ -2,7 +2,9 @@
 // GoogleDrivePusher のテスト。google-auth と fetch はモック。
 //
 // 対象の不変条件:
-// - client_id 未設定なら isConfigured()=false（UI が設定案内を出す前提）
+// - 同梱 client_id があるので上書き無しでも isConfigured()=true。client_id が
+//   まったく解決しないビルド（同梱を外した場合）では isConfigured()=false で
+//   prepare が PushConfigError を投げる（UI が設定案内を出す前提）
 // - フォルダ解決は Graphium → Inbox の find-or-create で、結果をキャッシュして
 //   2 回目以降はフォルダクエリを打たない
 // - ≤閾値は multipart、超えたら resumable に振り分ける
@@ -23,7 +25,12 @@ const authMock = vi.hoisted(() => ({
 vi.mock("./google-auth", () => authMock);
 
 import { GoogleDrivePusher } from "./drive-pusher";
-import { getDriveFolderCache, setDriveFolderCache, setGoogleClientIdOverride } from "./config";
+import {
+  DEFAULT_GOOGLE_PUSH_CLIENT_ID,
+  getDriveFolderCache,
+  setDriveFolderCache,
+  setGoogleClientIdOverride,
+} from "./config";
 
 type FetchCall = { url: string; init: RequestInit | undefined };
 
@@ -67,12 +74,15 @@ afterEach(() => {
 });
 
 describe("設定と接続状態", () => {
-  it("isConfigured is false without a client id (bundled default is a placeholder)", () => {
+  it("isConfigured is true out of the box (bundled client id ships with the build)", async () => {
     const pusher = new GoogleDrivePusher();
-    expect(pusher.isConfigured()).toBe(false);
+    expect(pusher.isConfigured()).toBe(true);
+    // prepare は同梱 ID をそのまま auth 層へ渡す
+    await pusher.prepare();
+    expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith(DEFAULT_GOOGLE_PUSH_CLIENT_ID);
   });
 
-  it("isConfigured becomes true with a localStorage override, and prepare passes it through", async () => {
+  it("isConfigured stays true with a localStorage override, and prepare passes the override through", async () => {
     setGoogleClientIdOverride("my-id");
     const pusher = new GoogleDrivePusher();
     expect(pusher.isConfigured()).toBe(true);
@@ -80,10 +90,24 @@ describe("設定と接続状態", () => {
     expect(authMock.prepareGoogleAuth).toHaveBeenCalledWith("my-id");
   });
 
-  it("prepare rejects with a config error when unconfigured", async () => {
-    const pusher = new GoogleDrivePusher();
-    await expect(pusher.prepare()).rejects.toMatchObject({ name: "PushConfigError" });
-    expect(authMock.prepareGoogleAuth).not.toHaveBeenCalled();
+  it("prepare rejects with a config error when no client id resolves (build without a bundled id)", async () => {
+    // 同梱 ID を外したビルドを模す: config だけ差し替えて drive-pusher を再ロードする。
+    // ./google-auth の vi.mock はモジュール ID に紐づくので再ロード後も有効。
+    vi.resetModules();
+    vi.doMock("./config", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./config")>();
+      return { ...actual, getGoogleClientId: () => null };
+    });
+    try {
+      const { GoogleDrivePusher: PusherWithoutId } = await import("./drive-pusher");
+      const pusher = new PusherWithoutId();
+      expect(pusher.isConfigured()).toBe(false);
+      await expect(pusher.prepare()).rejects.toMatchObject({ name: "PushConfigError" });
+      expect(authMock.prepareGoogleAuth).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("./config");
+      vi.resetModules();
+    }
   });
 
   it("isConnected mirrors token validity and push fails fast without a token", async () => {

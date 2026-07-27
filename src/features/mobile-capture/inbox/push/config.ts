@@ -1,7 +1,6 @@
 // push（モバイル → Google Drive の Graphium/Inbox 直接アップロード）の設定。
 //
 // - Google OAuth client_id: 同梱デフォルト + localStorage の自前上書き（一級機能）。
-//   同梱デフォルトは現状プレースホルダ（空文字）— Cloud Console で発行後に埋める。
 //   上書きは「自分の client_id で使いたい」ユーザー向けで、セルフホストや
 //   同梱 ID の割当枯渇時の逃げ道でもある。
 // - Drive フォルダ ID キャッシュ: Graphium/Inbox の find-or-create 結果を保存し、
@@ -14,9 +13,16 @@ const FOLDER_CACHE_KEY = "graphium-push-drive-folders";
 
 /**
  * 同梱の Google OAuth client_id（GIS token model / popup 型、secret なし）。
- * プレースホルダ空文字 = 未同梱。発行され次第ここに埋める。
+ * 旧 Google Drive 連携（google-auth.ts, 2025 撤去）で使っていた Web クライアントを
+ * 再利用する — public リポジトリの履歴に既に載っている ID で、Cloud Console の
+ * 設定（承認済みオリジン）もそのまま生きている前提。空文字にすると「未同梱」となり、
+ * ユーザーの自前 client_id（上書き）だけが使われる。
+ *
+ * 型注釈は string のまま（リテラル型に狭めない）: 「未同梱ビルド」を表す
+ * `!== ""` 比較が、同梱時に TS2367（重なりの無い比較）にならないようにするため。
  */
-export const DEFAULT_GOOGLE_PUSH_CLIENT_ID = "";
+export const DEFAULT_GOOGLE_PUSH_CLIENT_ID: string =
+  "743366655410-p5k3us8jof0ni4tintbkliq6dqhan13d.apps.googleusercontent.com";
 
 /** localStorage に保存された自前 client_id（未設定なら null）。 */
 export function getGoogleClientIdOverride(): string | null {

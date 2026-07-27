@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 // push 設定（client_id の解決とフォルダ ID キャッシュ）のテスト。
 // 対象の不変条件:
-// - client_id は「自前上書き → 同梱デフォルト」の順で解決し、どちらも空なら null
-//   （= isConfigured()=false で UI が設定案内を出せる）
-// - 上書きの解除（null/空文字）でデフォルトに戻る
+// - client_id は「自前上書き → 同梱デフォルト」の順で解決する。同梱デフォルトが
+//   ある現在のビルドでは、上書き無し = 同梱 ID、上書きの解除 = 同梱 ID に戻る
 // - フォルダキャッシュは壊れた JSON / 形の違う JSON を無害に null 扱いする
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -21,11 +20,11 @@ beforeEach(() => {
 });
 
 describe("client_id の解決", () => {
-  it("returns null while the bundled default is a placeholder and no override is set", () => {
-    // 同梱デフォルトは発行待ちのプレースホルダ（空文字）である前提のテスト。
-    // 発行後にデフォルトを埋めたらこのテストは書き換えること。
-    expect(DEFAULT_GOOGLE_PUSH_CLIENT_ID).toBe("");
-    expect(getGoogleClientId()).toBeNull();
+  it("falls back to the bundled default when no override is set", () => {
+    // 同梱デフォルトは旧 Google Drive 連携から引き継いだ Web クライアント ID。
+    // 形だけ検証して、解決結果がそのままデフォルトになることを確認する。
+    expect(DEFAULT_GOOGLE_PUSH_CLIENT_ID).toMatch(/\.apps\.googleusercontent\.com$/);
+    expect(getGoogleClientId()).toBe(DEFAULT_GOOGLE_PUSH_CLIENT_ID);
   });
 
   it("uses the localStorage override as a first-class source", () => {
@@ -34,11 +33,11 @@ describe("client_id の解決", () => {
     expect(getGoogleClientId()).toBe("my-client-id.apps.googleusercontent.com");
   });
 
-  it("clears the override with null or an empty string", () => {
+  it("clears the override with null or an empty string, returning to the default", () => {
     setGoogleClientIdOverride("some-id");
     setGoogleClientIdOverride(null);
     expect(getGoogleClientIdOverride()).toBeNull();
-    expect(getGoogleClientId()).toBeNull();
+    expect(getGoogleClientId()).toBe(DEFAULT_GOOGLE_PUSH_CLIENT_ID);
 
     setGoogleClientIdOverride("some-id");
     setGoogleClientIdOverride("   ");
