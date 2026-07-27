@@ -20,6 +20,7 @@ import {
   clearPushQueue,
   drainPushQueue,
   enqueuePushFiles,
+  getPushQueueFiles,
   getPushQueueSnapshot,
   removePushQueueItem,
   retryFailedPushItems,
@@ -315,5 +316,37 @@ describe("状態購読と操作", () => {
     await clearPushQueue();
     snapshot = await getPushQueueSnapshot();
     expect(snapshot.items).toHaveLength(0);
+  });
+});
+
+describe("getPushQueueFiles", () => {
+  it("restores queued blobs as Files under their normalized names (Web Share fallback)", async () => {
+    const metas = await enqueuePushFiles([
+      new File(["hello"], "image.jpg", { type: "image/jpeg" }),
+      new File(["clip!"], "video.bin", { type: "video/quicktime" }),
+    ]);
+
+    const restored = await getPushQueueFiles();
+
+    expect(restored.map((r) => r.id)).toEqual(metas.map((m) => m.id));
+    // 一覧（snapshot）に見せた名前・MIME のまま共有シートへ渡せる
+    expect(restored[0].file.name).toBe(metas[0].name);
+    expect(restored[0].file.type).toBe("image/jpeg");
+    expect(await restored[0].file.text()).toBe("hello");
+    expect(restored[1].file.name).toBe(metas[1].name);
+    expect(await restored[1].file.text()).toBe("clip!");
+  });
+
+  it("restores only the requested ids, keeping enqueue order", async () => {
+    const metas = await enqueuePushFiles([
+      new File(["a"], "a.jpg", { type: "image/jpeg" }),
+      new File(["b"], "b.jpg", { type: "image/jpeg" }),
+      new File(["c"], "c.jpg", { type: "image/jpeg" }),
+    ]);
+
+    // 逆順で要求しても enqueue 順で返る（共有シートには撮った順で渡す）
+    const restored = await getPushQueueFiles([metas[2].id, metas[0].id]);
+
+    expect(restored.map((r) => r.id)).toEqual([metas[0].id, metas[2].id]);
   });
 });

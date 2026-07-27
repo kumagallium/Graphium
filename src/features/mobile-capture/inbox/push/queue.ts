@@ -256,6 +256,27 @@ export async function enqueuePushFiles(files: File[]): Promise<PushQueueItemMeta
   return records.map(toMeta);
 }
 
+/**
+ * キューのアイテムを File として復元する（enqueue 順）。ids を渡すとその id のみ。
+ * 名前・MIME は enqueue 時に正規化済みのものをそのまま使う。
+ *
+ * 用途: Web Share フォールバック（Google 未設定環境）。UI は snapshot（メタのみ）で
+ * 一覧を描き、共有シートへ渡す直前だけこの API で Blob ごと復元する。共有が成功したら
+ * 返り値の id で removePushQueueItem すること（共有シートに渡った時点で手離れ）。
+ */
+export async function getPushQueueFiles(
+  ids?: string[],
+): Promise<Array<{ id: string; file: File }>> {
+  const records = (await getAllRecords()).sort(sortByEnqueuedAt);
+  const wanted = ids ? new Set(ids) : null;
+  return records
+    .filter((record) => (wanted ? wanted.has(record.id) : true))
+    .map((record) => ({
+      id: record.id,
+      file: new File([record.blob], record.name, { type: record.mime }),
+    }));
+}
+
 /** アイテムを 1 件取り下げる（UI の削除操作用）。 */
 export async function removePushQueueItem(id: string): Promise<void> {
   await deleteRecord(id);

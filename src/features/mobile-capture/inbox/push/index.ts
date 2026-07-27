@@ -36,6 +36,7 @@ export {
   clearPushQueue,
   drainPushQueue,
   enqueuePushFiles,
+  getPushQueueFiles,
   getPushQueueSnapshot,
   removePushQueueItem,
   retryFailedPushItems,
