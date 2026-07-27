@@ -747,19 +747,24 @@ The same `src/` tree is built three different ways.
   blob-and-all into IndexedDB the moment it is shot, renamed to
   `graphium-<YYYYMMDD-HHmmss>-<seq>.<ext>` (MIME-first extension), and
   survives auth expiry, upload failures and the PWA being killed. The
-  primary transport drains the queue serially to the user's own Google
-  Drive `Graphium/Inbox/` via OAuth (GIS token model, `drive.file` scope
-  only, no secret; ≤5 MB multipart, larger files resumable), from where
-  Google Drive for desktop syncs it into the folder inbox above. Because
-  SPA tokens expire after about an hour, a token failure aborts the drain
-  and leaves the remaining items queued for the next connect. Without a
-  configured OAuth client ID the queue falls back to Web Share: the same
-  queued files are handed to the OS share sheet and the user saves them
-  into the synced `Graphium/Inbox` folder by hand. Only when neither
-  route exists does a capture drop back to this device's own media
-  library. The OAuth client ID resolves from a per-device override in
-  Settings → Storage first, then from the ID bundled with the build
-  (none is bundled yet, so the override is currently required).
+  mobile home is built around this queue: the capture buttons enqueue
+  straight into it and the pending list stays visible inline (with a
+  connection chip in the header) until it drains — there is no separate
+  send sheet. The primary transport drains the queue serially to the
+  user's own Google Drive `Graphium/Inbox/` via OAuth (GIS token model,
+  `drive.file` scope only, no secret; ≤5 MB multipart, larger files
+  resumable), from where Google Drive for desktop syncs it into the
+  folder inbox above. Because SPA tokens expire after about an hour, a
+  token failure aborts the drain and leaves the remaining items queued
+  for the next connect. Without a configured OAuth client ID the queue
+  falls back to Web Share: the same queued files are handed to the OS
+  share sheet and the user saves them into the synced `Graphium/Inbox`
+  folder by hand. Only when neither route exists does a capture drop
+  back to this device's own media library. The OAuth client ID resolves
+  from a per-device override (under Advanced in Settings → Storage)
+  first, then from the ID bundled with the build, so pushing works out
+  of the box; the override remains as the escape hatch for self-hosting
+  or a dead bundled ID.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
