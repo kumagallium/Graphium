@@ -260,3 +260,101 @@ describe("SendQueueSection", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:thumb-1");
   });
 });
+
+describe("SendQueueSection — memo / URL 捕獲", () => {
+  const memoItem = item("m", "graphium-20260727-153000-01-memo.graphium.json", {
+    mime: "application/vnd.graphium.capture+json",
+    bytes: 120,
+  });
+  const urlItem = item("u", "graphium-20260727-153000-02-url.graphium.json", {
+    mime: "application/vnd.graphium.capture+json",
+    bytes: 180,
+  });
+  const payloads: Record<string, unknown> = {
+    m: {
+      graphium: 1,
+      kind: "memo",
+      createdAt: "2026-07-27T06:30:00.000Z",
+      text: "queued thought\nsecond line",
+    },
+    u: {
+      graphium: 1,
+      kind: "url",
+      createdAt: "2026-07-27T06:31:00.000Z",
+      url: "https://example.com/read",
+      title: "Example Read",
+    },
+  };
+  const loadCaptureBlob = (id: string): Promise<Blob | null> =>
+    Promise.resolve(
+      payloads[id]
+        ? new Blob([JSON.stringify(payloads[id])], {
+            type: "application/vnd.graphium.capture+json",
+          })
+        : null,
+    );
+
+  it("shows the compose buttons only when their callbacks are provided", () => {
+    const onComposeMemo = vi.fn();
+    const onAddUrl = vi.fn();
+    const { unmount } = renderSection({ onComposeMemo, onAddUrl });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    expect(onComposeMemo).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "URL" }));
+    expect(onAddUrl).toHaveBeenCalledTimes(1);
+    // 撮影ピッカーはそのまま同じ行に並ぶ
+    expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
+    unmount();
+
+    // 渡さなければ出ない（従来の 4 ボタン行のまま）
+    renderSection({});
+    expect(screen.queryByRole("button", { name: "Write" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "URL" })).toBeNull();
+  });
+
+  it("keeps compose buttons available even when the media capture row is hidden", () => {
+    // ローカル保存もキュー経路も無い環境でも [書く][URL] は退避経路（親のフォールバック）を持つ
+    const onComposeMemo = vi.fn();
+    renderSection({ showCaptureRow: false, onComposeMemo, onAddUrl: vi.fn() });
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
+  });
+
+  it("renders a memo row as icon + first-line preview instead of the file name", async () => {
+    renderSection({ items: [memoItem], loadItemBlob: loadCaptureBlob });
+
+    // ペイロード読込後は本文先頭がプレビューとして出る（ファイル名は出さない）
+    await waitFor(() => expect(screen.getByText("queued thought")).toBeTruthy());
+    expect(screen.queryByText(memoItem.name)).toBeNull();
+    // 種別ラベル（メモ）+ 状態
+    expect(screen.getByText("Memo")).toBeTruthy();
+    expect(screen.getByText("Waiting")).toBeTruthy();
+  });
+
+  it("renders a url row as title + domain", async () => {
+    renderSection({ items: [urlItem], loadItemBlob: loadCaptureBlob });
+
+    await waitFor(() => expect(screen.getByText("Example Read")).toBeTruthy());
+    expect(screen.getByText("example.com")).toBeTruthy();
+    expect(screen.queryByText(urlItem.name)).toBeNull();
+  });
+
+  it("mixes capture rows with media rows in the same list and keeps the send count", async () => {
+    renderSection({
+      items: [item("a", "graphium-20260727-153000-03.jpg"), memoItem, urlItem],
+      loadItemBlob: loadCaptureBlob,
+    });
+
+    expect(screen.getByText("graphium-20260727-153000-03.jpg")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("queued thought")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Example Read")).toBeTruthy());
+    expect(screen.getByRole("button", { name: /Send \(3\)/ })).toBeTruthy();
+  });
+
+  it("falls back to the file name when the payload cannot be read", () => {
+    // loadItemBlob 無し（読めない環境）→ 名前表示のまま（何も壊れない）
+    renderSection({ items: [memoItem] });
+    expect(screen.getByText(memoItem.name)).toBeTruthy();
+  });
+});

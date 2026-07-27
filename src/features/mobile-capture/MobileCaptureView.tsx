@@ -2,9 +2,12 @@
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
 //
 // モバイル連携（実験フラグ）ON のときは、ホーム自体を「送信キュー前提」に組み替える:
-// ヘッダーに接続状態チップ、直下に撮影ボタン行 + 未送信キュー（SendQueueSection）、
-// その下に従来のメモ検索・タイムラインが 1 スクロールで続く。かつての
-// SendToInboxSheet（ボトムシート）と下バーの 📷🎥🎙 は廃止 — 撮影ボタン行に昇格した。
+// ヘッダーに接続状態チップ、直下に捕獲ボタン行（[書く][URL] + 撮影）+ 未送信キュー
+// （SendQueueSection）、その下に従来のメモ検索・タイムラインが 1 スクロールで続く。
+// かつての SendToInboxSheet（ボトムシート）と下バー（📷🎥🎙・メモ作成・URL 登録）は
+// 廃止 — 捕獲ボタン行に昇格した。メモ・URL もネイティブ JSON（capture-file.ts）で
+// キュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store には保存しない）。
+// タイムラインは過去分の閲覧用として残る。
 // フラグ OFF は従来のホームのまま一切変えない（既存ユーザーは無変化）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +23,7 @@ import { CaptureDialog } from "./CaptureDialog";
 import { SendQueueSection } from "./inbox/SendQueueSection";
 import { usePushQueue } from "./inbox/use-push-queue";
 import { useMobileInboxFlag } from "./inbox/experimental";
+import { buildMemoCaptureFile, buildUrlCaptureFile } from "./inbox/capture-file";
 
 // ── 統合タイムラインアイテム ──
 
@@ -420,13 +424,50 @@ export function MobileCaptureView({
     });
   }, [timeline, searchQuery]);
 
-  // テキストメモ送信
+  // テキストメモ送信。
+  // キュー前提ホーム（フラグ ON）ではメモも捕獲物 — ローカルの capture-store でなく
+  // ネイティブ JSON（capture-file.ts）で送信キューへ積む。デスクトップの取り込みで
+  // 本物のメモとして着地する。キュー経路が使えない環境だけ従来のローカル保存に退避する
+  //（データを落とさない）。フラグ OFF は従来どおり。
+  const enqueueForSend = push.enqueueForSend;
   const handleSubmit = useCallback(
     async (text: string) => {
+      if (mobileInboxEnabled) {
+        const queued = await enqueueForSend([buildMemoCaptureFile(text)]);
+        if (queued) {
+          setShowCaptureDialog(false);
+          return;
+        }
+      }
       await onCreateCapture(text);
       setShowCaptureDialog(false);
     },
-    [onCreateCapture]
+    [mobileInboxEnabled, enqueueForSend, onCreateCapture]
+  );
+
+  // URL ブックマーク登録。フラグ ON では UrlBookmarkModal の入力（タイトル・説明・
+  // OGP はモバイル側で取得済み）をネイティブ JSON に写してキューへ。デスクトップは
+  // 再取得せず、このメタのまま URL 素材を作る。キュー不可時は従来のローカル登録へ退避。
+  const handleRegisterBookmark = useCallback(
+    (entry: MediaIndexEntry) => {
+      if (mobileInboxEnabled) {
+        void enqueueForSend([
+          buildUrlCaptureFile({
+            url: entry.url,
+            title: entry.name,
+            description: entry.urlMeta?.description,
+            ogImage: entry.urlMeta?.ogImage,
+          }),
+        ]).then((queued) => {
+          if (!queued) onAddUrlBookmark?.(entry);
+        });
+        setShowBookmarkModal(false);
+        return;
+      }
+      onAddUrlBookmark?.(entry);
+      setShowBookmarkModal(false);
+    },
+    [mobileInboxEnabled, enqueueForSend, onAddUrlBookmark]
   );
 
   // 削除
@@ -445,7 +486,6 @@ export function MobileCaptureView({
   // アイテムがその場でキュー一覧に出現する。enqueue はジェスチャ非依存なので await
   // してよい。実験フラグ OFF、またはキュー経路が使えない環境（Google 未設定 かつ
   // Web Share 不可、または IndexedDB 不可）は従来のローカル保存に落とす。
-  const enqueueForSend = push.enqueueForSend;
   const handleCapturedFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
@@ -598,9 +638,11 @@ export function MobileCaptureView({
           </div>
         )}
 
-        {/* キュー前提ホーム: 撮影ボタン行 + 未送信キュー。キューは IndexedDB 永続なので
-            画面を離れても消えない。空のときはブロックごと畳まれ、送信済みは自然に消える。
-            その下に従来のメモ検索・タイムラインが 1 スクロールで続く */}
+        {/* キュー前提ホーム: 捕獲ボタン行（[書く][URL] + 撮影）+ 未送信キュー。
+            メモ・URL も捕獲物としてキューへ行く（下バーの作成導線はこの行に昇格した）。
+            キューは IndexedDB 永続なので画面を離れても消えない。空のときはブロックごと
+            畳まれ、送信済みは自然に消える。その下に従来のメモ検索・タイムラインが
+            1 スクロールで続く */}
         {mobileInboxEnabled && (
           <div className="mb-3">
             <SendQueueSection
@@ -617,6 +659,12 @@ export function MobileCaptureView({
               showCaptureRow={showMediaButtons}
               captureDisabled={mediaDisabled}
               onAddFiles={(files) => { void handleCapturedFiles(files); }}
+              onComposeMemo={() => setShowCaptureDialog(true)}
+              onAddUrl={
+                pushRouteAvailable || onAddUrlBookmark
+                  ? () => setShowBookmarkModal(true)
+                  : undefined
+              }
               onSend={push.drainNow}
               onConnect={push.connectAndDrain}
               onRemoveItem={push.removeItem}
@@ -674,7 +722,10 @@ export function MobileCaptureView({
         )}
       </div>
 
-      {/* クイックキャプチャバー */}
+      {/* クイックキャプチャバー（従来ホームのみ）。キュー前提ホームでは
+          メモ作成・URL 登録も捕獲ボタン行（SendQueueSection の [書く][URL]）に昇格し、
+          出力先は送信キューになる — 下バーごと畳む（捕獲物は全部 Inbox へ） */}
+      {!mobileInboxEnabled && (
       <div className="border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {uploading && (
           <p className="text-xs text-muted-foreground text-center mb-2">
@@ -761,6 +812,7 @@ export function MobileCaptureView({
           )}
         </div>
       </div>
+      )}
 
       {/* 付箋入力ダイアログ */}
       {showCaptureDialog && (
@@ -787,13 +839,11 @@ export function MobileCaptureView({
         />
       )}
 
-      {/* URL ブックマーク登録モーダル */}
-      {showBookmarkModal && onAddUrlBookmark && (
+      {/* URL ブックマーク登録モーダル。入力・メタ取得 UI は従来のまま流用し、
+          フラグ ON のときだけ登録先が送信キュー（ネイティブ JSON）に切り替わる */}
+      {showBookmarkModal && (mobileInboxEnabled || onAddUrlBookmark) && (
         <UrlBookmarkModal
-          onRegister={(entry) => {
-            onAddUrlBookmark(entry);
-            setShowBookmarkModal(false);
-          }}
+          onRegister={handleRegisterBookmark}
           onClose={() => setShowBookmarkModal(false)}
         />
       )}

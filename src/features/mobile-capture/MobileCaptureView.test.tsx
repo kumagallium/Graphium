@@ -2,17 +2,20 @@
 // モバイルキャプチャビュー（キュー前提ホーム）の配線テスト。
 //
 // 対象の不変条件:
-// - モバイル連携の実験フラグ ON のとき: ホームに撮影ボタン行 + 未送信キューが
-//   インラインで出る。撮ったファイルは enqueueForSend に渡り、シートは開かない
-//   （SendToInboxSheet 自体が存在しない。この端末には保存しない — 完全置き換え）
-// - キューが空のときはキューブロックが畳まれ、撮影ボタン行だけが残る
-// - メモ作成・タイムラインはキューの下にそのまま共存する（1 スクロール・機能後退なし）
+// - モバイル連携の実験フラグ ON のとき: ホームに捕獲ボタン行（[書く][URL] + 撮影）+
+//   未送信キューがインラインで出る。撮ったファイルは enqueueForSend に渡り、シートは
+//   開かない（SendToInboxSheet 自体が存在しない。この端末には保存しない — 完全置き換え）
+// - メモ・URL も捕獲物としてキュー行き（ネイティブ JSON）。ローカルの capture-store /
+//   media-index には保存しない。下バー（メモ作成・URL 登録）は捕獲ボタン行に昇格して畳む
+// - キューが空のときはキューブロックが畳まれ、捕獲ボタン行だけが残る
+// - タイムライン（過去分の閲覧）はキューの下にそのまま共存する（1 スクロール）
 // - enqueueForSend が false（Google 未設定かつ Web Share 不可、IndexedDB 不可）の
-//   ときだけ従来の onUploadMedia（ローカル保存）に落ちる
+//   ときだけ従来のローカル保存（メディア=onUploadMedia / メモ=onCreateCapture /
+//   URL=onAddUrlBookmark）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
 // - ヘッダーの接続状態チップは 接続済み / 未接続 / 未設定 を出し分ける
 // - 実験フラグ OFF（既定）のとき: チップもキューも一切出ず、従来ホームのまま
-//   （撮ったファイルは onUploadMedia へ、下バーに撮影ボタン）
+//   （撮ったファイルは onUploadMedia へ、下バーに撮影ボタン・メモ作成・URL 登録）
 //
 // usePushQueue はモック（キュー・認可の実物は hook 側の責務）。
 
@@ -20,9 +23,20 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { MobileCaptureView } from "./MobileCaptureView";
 import { setMobileInboxEnabled } from "./inbox/experimental";
+import { parseGraphiumCaptureFile } from "./inbox/capture-file";
 import { LocaleProvider } from "../../i18n";
 import type { PushQueueUi } from "./inbox/use-push-queue";
 import type { PushQueueItemMeta } from "./inbox/push";
+
+// UrlBookmarkModal の fetchUrlMetadata は実ネットワークに出る（jsdom でも global fetch が
+// 生きている）ため、メタ取得だけ差し替える。それ以外の media-index API は実物を使う。
+vi.mock("../asset-browser/media-index", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../asset-browser/media-index")>();
+  return {
+    ...mod,
+    fetchUrlMetadata: vi.fn(async () => ({ title: "Example Read", domain: "example.com" })),
+  };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -177,8 +191,69 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(
       queueName.compareDocumentPosition(memoCard) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 下バーのメモ作成ボタンも健在
-    expect(screen.getByRole("button", { name: /New Memo/ })).toBeTruthy();
+    // メモ作成は下バーから捕獲ボタン行の [書く] に昇格した（下バーは畳む）
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /New Memo/ })).toBeNull();
+  });
+
+  it("routes a composed memo into the queue as native JSON (not the local capture store)", async () => {
+    const enqueueForSend = vi.fn<(files: File[]) => Promise<boolean>>(async () => true);
+    const onCreateCapture = vi.fn(async () => {});
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
+    renderView({ onCreateCapture });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    const textarea = await screen.findByPlaceholderText(/Write your memo here/);
+    fireEvent.change(textarea, { target: { value: "queued thought" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => expect(enqueueForSend).toHaveBeenCalledTimes(1));
+    const file = enqueueForSend.mock.calls[0][0][0];
+    expect(file.name).toBe("memo.graphium.json");
+    const payload = parseGraphiumCaptureFile(file.name, await file.text());
+    expect(payload).toMatchObject({ kind: "memo", text: "queued thought" });
+    // ローカルの capture-store には保存しない（捕獲物は全部 Inbox へ）
+    expect(onCreateCapture).not.toHaveBeenCalled();
+    // ダイアログは閉じる
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/Write your memo here/)).toBeNull(),
+    );
+  });
+
+  it("falls back to the local capture store for memos when the queue route is unavailable", async () => {
+    const enqueueForSend = vi.fn(async () => false);
+    const onCreateCapture = vi.fn(async () => {});
+    usePushQueueMock.mockReturnValue(
+      pushUi({ configured: false, canWebShare: false, enqueueForSend }),
+    );
+    renderView({ onCreateCapture, onUploadMedia: async () => "file-id" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    const textarea = await screen.findByPlaceholderText(/Write your memo here/);
+    fireEvent.change(textarea, { target: { value: "kept locally" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => expect(onCreateCapture).toHaveBeenCalledWith("kept locally"));
+  });
+
+  it("routes a registered URL into the queue as native JSON with its metadata", async () => {
+    const enqueueForSend = vi.fn<(files: File[]) => Promise<boolean>>(async () => true);
+    const onAddUrlBookmark = vi.fn();
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
+    renderView({ onAddUrlBookmark });
+
+    fireEvent.click(screen.getByRole("button", { name: "URL" }));
+    const input = await screen.findByPlaceholderText("https://example.com/article");
+    fireEvent.change(input, { target: { value: "https://example.com/read" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+
+    await waitFor(() => expect(enqueueForSend).toHaveBeenCalledTimes(1));
+    const file = enqueueForSend.mock.calls[0][0][0];
+    expect(file.name).toBe("url.graphium.json");
+    const payload = parseGraphiumCaptureFile(file.name, await file.text());
+    expect(payload).toMatchObject({ kind: "url", url: "https://example.com/read" });
+    // ローカルの media-index には登録しない
+    expect(onAddUrlBookmark).not.toHaveBeenCalled();
   });
 
   it("falls back to local save only when the queue route is unavailable", async () => {
@@ -299,6 +374,23 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
   it("hides capture buttons without onUploadMedia (no silent dead-end route)", () => {
     renderView({ onUploadMedia: undefined });
     expect(document.querySelector('input[accept="image/*"]')).toBeNull();
+  });
+
+  it("keeps the legacy memo path: the bottom-bar New Memo saves locally, never the queue", async () => {
+    const enqueueForSend = vi.fn(async () => true);
+    const onCreateCapture = vi.fn(async () => {});
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
+    renderView({ onCreateCapture });
+
+    // 下バーのメモ作成はそのまま（[書く] 捕獲ボタンは無い）
+    expect(screen.queryByRole("button", { name: "Write" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /New Memo/ }));
+    const textarea = await screen.findByPlaceholderText(/Write your memo here/);
+    fireEvent.change(textarea, { target: { value: "kept locally" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => expect(onCreateCapture).toHaveBeenCalledWith("kept locally"));
+    expect(enqueueForSend).not.toHaveBeenCalled();
   });
 
   it("turning the flag ON at runtime reveals the inline queue without a reload", () => {

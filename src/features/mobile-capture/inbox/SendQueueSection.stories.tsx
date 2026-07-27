@@ -114,6 +114,56 @@ export const ConnectedWithQueue: Story = {
   args: { ...baseProps },
 };
 
+// ── メモ / URL 捕獲（ネイティブ JSON）が混在するキュー ──
+// [書く][URL] が捕獲ボタン行に並び（onComposeMemo / onAddUrl 指定時のみ）、
+// キューには写真とメモ（📝 + 本文先頭）・URL（🔗 + タイトル + ドメイン）が同列に並ぶ。
+// プレビューは loadItemBlob が返す JSON をその場でパースして出す（実機と同じ経路）。
+
+const captureJsonBlobs: Record<string, unknown> = {
+  m: {
+    graphium: 1,
+    kind: "memo",
+    createdAt: "2026-07-27T10:21:00.000Z",
+    text: "会議で出た仮説: 素材の粒度は「1 スクリーンで読み切れる」が上限\n細かすぎると逆に参照されない",
+  },
+  u: {
+    graphium: 1,
+    kind: "url",
+    createdAt: "2026-07-27T10:22:00.000Z",
+    url: "https://example.com/papers/idea-capture",
+    title: "The Science of Idea Capture",
+  },
+};
+
+const mixedLoadItemBlob = (id: string): Promise<Blob | null> => {
+  const json = captureJsonBlobs[id];
+  if (json) {
+    return Promise.resolve(
+      new Blob([JSON.stringify(json)], { type: "application/vnd.graphium.capture+json" }),
+    );
+  }
+  return fakeLoadItemBlob(id);
+};
+
+/** 写真 + メモ + URL が混在するキュー。[書く][URL] も捕獲ボタン行に出る。 */
+export const MixedWithMemoAndUrl: Story = {
+  args: {
+    ...baseProps,
+    items: [
+      item("a", "graphium-20260727-102030-01.jpg", 412_300),
+      item("m", "graphium-20260727-102100-01-memo.graphium.json", 180, {
+        mime: "application/vnd.graphium.capture+json",
+      }),
+      item("u", "graphium-20260727-102200-01-url.graphium.json", 240, {
+        mime: "application/vnd.graphium.capture+json",
+      }),
+    ],
+    loadItemBlob: mixedLoadItemBlob,
+    onComposeMemo: noop,
+    onAddUrl: noop,
+  },
+};
+
 /** 接続済みで 2 件目を送信中（進捗バー + パーセント表示）。 */
 export const Uploading: Story = {
   args: {
