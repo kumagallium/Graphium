@@ -15,6 +15,9 @@ import {
   Volume2,
   FileText,
   Paperclip,
+  StickyNote,
+  Link as LinkIcon,
+  ExternalLink,
   FolderInput,
   FolderCog,
   RefreshCw,
@@ -25,7 +28,14 @@ import { useIsDesktop } from "../../../hooks/use-media-query";
 import { formatDateTime } from "../../../lib/format-datetime";
 import { formatBytes } from "../../../lib/format-bytes";
 import { MaterialSidePeek } from "../../asset-browser/MaterialSidePeek";
+import { extractDomain } from "../../asset-browser/media-index";
 import { mimeFromExtension, kindFromMime } from "./mime";
+import {
+  captureFilePreview,
+  captureKindFromName,
+  parseGraphiumCaptureFile,
+  type GraphiumCapturePayload,
+} from "./capture-file";
 import { buildInboxPeekEntry } from "./preview";
 import type { CaptureRef } from "./types";
 
@@ -44,8 +54,12 @@ export type InboxSource = {
  */
 const THUMBNAIL_MAX_BYTES = 20 * 1024 * 1024;
 
-/** 拡張子から推定した種別。mime 不明なら "other"。 */
-function refKind(ref: CaptureRef): "image" | "video" | "audio" | "pdf" | "other" {
+/** 拡張子から推定した種別。メモ / URL 捕獲（.graphium.json）は専用種別、mime 不明なら "other"。 */
+function refKind(
+  ref: CaptureRef,
+): "image" | "video" | "audio" | "pdf" | "memo" | "url" | "other" {
+  const captureKind = captureKindFromName(ref.name);
+  if (captureKind) return captureKind;
   const mime = mimeFromExtension(ref.name);
   if (!mime) return "other";
   if (mime === "application/pdf") return "pdf";
@@ -62,9 +76,79 @@ function KindIcon({ kind, size = 16 }: { kind: ReturnType<typeof refKind>; size?
       return <Volume2 size={size} className="text-muted-foreground" />;
     case "pdf":
       return <FileText size={size} className="text-muted-foreground" />;
+    case "memo":
+      return <StickyNote size={size} className="text-muted-foreground" />;
+    case "url":
+      return <LinkIcon size={size} className="text-muted-foreground" />;
     default:
       return <Paperclip size={size} className="text-muted-foreground" />;
   }
+}
+
+/**
+ * メモ / URL 捕獲アイテムの中身（JSON）を読んでパースする。捕獲ファイルは小さいので
+ * 画像サムネイルのような可視判定は掛けず、行が出た時点で読む。
+ * 読めない・形状不正は null（ファイル名表示にフォールバック — 取り込み時も
+ * importer が同じ判定で「その他」素材に落とすので、見た目と挙動が一致する）。
+ */
+function useCaptureRefPayload(
+  entryRef: CaptureRef | null,
+  source: InboxSource | null,
+): GraphiumCapturePayload | null {
+  const [payload, setPayload] = useState<GraphiumCapturePayload | null>(null);
+  const name = entryRef?.name ?? null;
+  const isCapture = name != null && captureKindFromName(name) != null;
+
+  useEffect(() => {
+    if (!isCapture || !source || !name) {
+      setPayload(null);
+      return;
+    }
+    let cancelled = false;
+    void source
+      .readBlob({ name })
+      .then((blob) => blob.text())
+      .then((text) => {
+        if (cancelled) return;
+        setPayload(parseGraphiumCaptureFile(name, text));
+      })
+      .catch(() => {
+        // プレビューが出ないだけ。名前表示にフォールバックする。
+      });
+    return () => {
+      cancelled = true;
+      setPayload(null);
+    };
+  }, [isCapture, source, name]);
+
+  return payload;
+}
+
+/**
+ * 名前セルの中身。メモ / URL 捕獲はプレビュー（メモ = 本文先頭、URL = タイトル + ドメイン）を
+ * 主表示にし、正規化ファイル名は下に小さく残す（どのファイルかは追える）。
+ * それ以外は従来どおりファイル名のみ。
+ */
+function InboxNameCell({
+  entryRef,
+  source,
+}: {
+  entryRef: CaptureRef;
+  source: InboxSource;
+}) {
+  const payload = useCaptureRefPayload(entryRef, source);
+  if (!payload) return <>{entryRef.name}</>;
+  const detail =
+    payload.kind === "url" ? extractDomain(payload.url) : null;
+  return (
+    <span className="flex flex-col min-w-0">
+      <span className="truncate">{captureFilePreview(payload)}</span>
+      <span className="truncate text-[10px] text-muted-foreground">
+        {detail ? `${detail} · ` : ""}
+        {entryRef.name}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -333,6 +417,9 @@ export function InboxView({
     [items, previewName],
   );
   const preview = useInboxPreviewBlob(source, previewRef);
+  // メモ / URL 捕獲アイテムはピーク本体をテキスト表示に差し替える（最小限のプレビュー）。
+  // パース不能なら既定（"other" のファイル情報表示）に落ちる — importer の判定と同じ倒し方。
+  const previewCapturePayload = useCaptureRefPayload(previewRef, source);
   const previewEntry = useMemo(
     () => (previewRef ? buildInboxPeekEntry(previewRef, preview.url ?? "") : null),
     [previewRef, preview.url],
@@ -344,6 +431,34 @@ export function InboxView({
       <p className="text-sm text-destructive max-w-md text-center break-all">
         {t("mobile.previewFailed", { error: preview.error })}
       </p>
+    ) : previewCapturePayload ? (
+      previewCapturePayload.kind === "memo" ? (
+        <div className="max-w-md w-full max-h-full overflow-y-auto px-4 py-2">
+          <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+            {previewCapturePayload.text}
+          </p>
+        </div>
+      ) : (
+        <div className="max-w-md w-full px-4 py-2 flex flex-col gap-1.5">
+          <p className="text-sm font-medium text-foreground break-words">
+            {previewCapturePayload.title ?? extractDomain(previewCapturePayload.url)}
+          </p>
+          <a
+            href={previewCapturePayload.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary break-all inline-flex items-start gap-1 hover:underline"
+          >
+            <ExternalLink size={12} className="shrink-0 mt-0.5" />
+            {previewCapturePayload.url}
+          </a>
+          {previewCapturePayload.description && (
+            <p className="text-xs text-muted-foreground break-words">
+              {previewCapturePayload.description}
+            </p>
+          )}
+        </div>
+      )
     ) : !preview.url ? (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 size={16} className="animate-spin" />
@@ -533,7 +648,7 @@ export function InboxView({
                           title={ref.name}
                           className="text-foreground truncate block w-full text-left hover:text-primary transition-colors"
                         >
-                          {ref.name}
+                          <InboxNameCell entryRef={ref} source={source} />
                         </button>
                       </td>
                       <td className="py-2 px-3 align-middle text-right text-muted-foreground tabular-nums whitespace-nowrap">

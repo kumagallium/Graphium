@@ -3,7 +3,19 @@
 // materializeSharedBlobs（fork 取り込み）と同じ「依存注入で uploadMedia を受ける」パターンで、
 // hook や provider の具体には依存しない（テスト容易・vault 分裂しない）。
 // 設計: docs/internal/mobile-capture-transport-design-2026-07.md §5/§9
+//
+// P2（メモ / URL のネイティブ捕獲）: `.graphium.json` のアイテムは `handlers` に
+// 注入された kind 別ハンドラへ振り分ける（メモ → capture-store、URL → media-index の
+// URL 素材）。判定は **拡張子 + JSON 形状の両方**（capture-file.ts）で、形状不正・
+// 未知バージョン・ハンドラ未注入のときは従来どおり素材として取り込む — データを落とさない。
+// importer 自体は着地先を知らない（依存注入）ので、他の呼び出し元は handlers を
+// 渡さなければ従来挙動のまま。
 
+import { parseGraphiumCaptureFile, isGraphiumCaptureName } from "./capture-file";
+import type {
+  GraphiumMemoCapturePayload,
+  GraphiumUrlCapturePayload,
+} from "./capture-file";
 import type { CaptureMeta, CaptureRef, InboxTransport } from "./types";
 
 /**
@@ -14,6 +26,27 @@ export type UploadCapturedAsset = (
   file: File,
   options: { capture: CaptureMeta },
 ) => Promise<{ fileId: string }>;
+
+/** kind 別ハンドラに渡す文脈（配送メタと Inbox 上のファイル名）。 */
+export type CapturePayloadContext = { meta: CaptureMeta; name: string };
+
+/**
+ * Graphium ネイティブ捕獲ファイル（メモ / URL）の kind 別着地ハンドラ。
+ * - memo: デスクトップのメモ（capture-store）として作成する。**保存失敗は throw する**こと
+ *   （importer が failed に数え、markImported しないので Inbox に残り、再試行できる）。
+ * - url: URL ブックマーク素材（media-index の url エントリ）として作成する。
+ * 返す fileId は結果レポート用（memo はメモ ID、url はブックマークの fileId）。
+ */
+export type InboxCapturePayloadHandlers = {
+  memo?: (
+    payload: GraphiumMemoCapturePayload,
+    ctx: CapturePayloadContext,
+  ) => Promise<{ fileId: string }>;
+  url?: (
+    payload: GraphiumUrlCapturePayload,
+    ctx: CapturePayloadContext,
+  ) => Promise<{ fileId: string }>;
+};
 
 export type InboxImportOptions = {
   /** 配送面（v1 は FolderInbox）。 */
@@ -35,10 +68,18 @@ export type InboxImportOptions = {
    * 「いま実在するもの」との積集合を取る。
    */
   only?: CaptureRef[];
+  /** メモ / URL 捕獲ファイルの着地ハンドラ（未指定なら素材として取り込む従来挙動）。 */
+  handlers?: InboxCapturePayloadHandlers;
 };
 
 export type InboxImportResult = {
-  imported: { name: string; fileId: string; checksum: string }[];
+  imported: {
+    name: string;
+    fileId: string;
+    checksum: string;
+    /** メモ / URL 捕獲として振り分けた場合のみ付く（素材は undefined）。 */
+    kind?: "memo" | "url";
+  }[];
   skipped: { name: string; checksum: string; reason: "duplicate" }[];
   failed: { name: string; error: string }[];
 };
@@ -46,7 +87,8 @@ export type InboxImportResult = {
 /**
  * Inbox の未取り込みメディアを順に active MediaProvider へ取り込む。
  *
- * 各アイテム: fetch → checksum で dedup → File 構築 → uploadAsset(capture) → markImported。
+ * 各アイテム: fetch → checksum で dedup → (捕獲 JSON なら kind ハンドラ / それ以外は
+ * File 構築 → uploadAsset(capture)) → markImported。
  * - 冪等: checksum 一致（取り込み済み）は upload せず _imported/ へ退避だけして skip。
  *   取り込み後は _imported/ に移動するので、次回以降は列挙されない（二重取込しない）。
  * - 堅牢性: 1 件の失敗が全体を止めないよう、失敗は failed に積んで続行する。
@@ -56,7 +98,7 @@ export type InboxImportResult = {
 export async function runInboxImport(
   opts: InboxImportOptions,
 ): Promise<InboxImportResult> {
-  const { transport, uploadAsset, isAlreadyImported, only } = opts;
+  const { transport, uploadAsset, isAlreadyImported, only, handlers } = opts;
   const result: InboxImportResult = { imported: [], skipped: [], failed: [] };
 
   const listed = await transport.listPending();
@@ -73,6 +115,25 @@ export async function runInboxImport(
         await transport.markImported(ref);
         result.skipped.push({ name: ref.name, checksum, reason: "duplicate" });
         continue;
+      }
+
+      // メモ / URL 捕獲ファイル → kind 別ハンドラへ（拡張子 + JSON 形状の両方で判定）。
+      // パース不能・未知バージョン・ハンドラ未注入は下の素材取り込みへフォールスルー。
+      if (handlers && isGraphiumCaptureName(ref.name)) {
+        const payload = parseGraphiumCaptureFile(ref.name, await bundle.blob.text());
+        const ctx: CapturePayloadContext = { meta: bundle.meta, name: ref.name };
+        if (payload?.kind === "memo" && handlers.memo) {
+          const { fileId } = await handlers.memo(payload, ctx);
+          await transport.markImported(ref);
+          result.imported.push({ name: ref.name, fileId, checksum, kind: "memo" });
+          continue;
+        }
+        if (payload?.kind === "url" && handlers.url) {
+          const { fileId } = await handlers.url(payload, ctx);
+          await transport.markImported(ref);
+          result.imported.push({ name: ref.name, fileId, checksum, kind: "url" });
+          continue;
+        }
       }
 
       const file = new File([bundle.blob], ref.name, { type: bundle.meta.mime });

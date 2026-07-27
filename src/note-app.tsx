@@ -198,6 +198,8 @@ import {
   DEFAULT_MEDIA_SLASH_TITLES,
   UrlPasteMenu,
   extractDomain,
+  generateUrlBookmarkId,
+  getFaviconUrl,
   buildUrlPeekEntry,
   buildMemoPeekEntry,
   isHttpUrl,
@@ -6320,6 +6322,43 @@ export function NoteApp() {
         isAlreadyImported,
         // 未指定なら全件（「全部取り込み」）。
         ...(refs ? { only: refs } : {}),
+        // メモ / URL のネイティブ捕獲（.graphium.json）を本物の実体に振り分ける。
+        // importer は着地先を知らない（依存注入）— ここが唯一の配線点。
+        handlers: {
+          // メモ → デスクトップのメモ（capture-store）。書いた時刻を createdAt に引き継ぐ。
+          // 保存失敗は handleImportCapture が throw → importer が failed に数え、
+          // Inbox に残る（再試行可能）。
+          memo: async (payload) => {
+            const id = await capture.handleImportCapture(payload.text, payload.createdAt);
+            return { fileId: id };
+          },
+          // URL → URL ブックマーク素材（media-index の url エントリ）。メタは
+          // モバイル側で取得済みのものをそのまま使い、デスクトップでは再取得しない。
+          // handleAddUrlBookmark が URL 重複を吸収（既存ならエントリを増やさない）。
+          // capture: meta を付けて出自と checksum を残す（run 間の冪等 dedup が
+          // media-index の checksum 集合で効くようになる）。
+          url: async (payload, { meta }) => {
+            const domain = extractDomain(payload.url);
+            const fileId = generateUrlBookmarkId();
+            fm.handleAddUrlBookmark({
+              fileId,
+              name: payload.title?.trim() || domain,
+              type: "url",
+              mimeType: "text/x-uri",
+              url: payload.url,
+              thumbnailUrl: getFaviconUrl(domain),
+              uploadedAt: payload.createdAt,
+              usedIn: [],
+              urlMeta: {
+                domain,
+                ...(payload.description ? { description: payload.description } : {}),
+                ...(payload.ogImage ? { ogImage: payload.ogImage } : {}),
+              },
+              capture: meta,
+            });
+            return { fileId };
+          },
+        },
       });
       await fm.refreshMediaIndex();
       const failed = res.failed.length;
@@ -6335,7 +6374,7 @@ export function NoteApp() {
       console.error("[inbox] import failed", e);
       pushResultToast("error", e instanceof Error ? e.message : String(e));
     }
-  }, [fm.mediaIndex, fm.handleUploadAsset, fm.refreshMediaIndex, handlePickInboxRoot]);
+  }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot]);
 
   // メディアリネーム（ブロック props.name 同期付き）
   const handleRenameMediaWithBlockSync = useCallback(async (entry: MediaIndexEntry, newName: string) => {

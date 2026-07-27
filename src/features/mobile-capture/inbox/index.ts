@@ -15,7 +15,26 @@ export type {
   UploadCapturedAsset,
   InboxImportOptions,
   InboxImportResult,
+  InboxCapturePayloadHandlers,
+  CapturePayloadContext,
 } from "./importer";
+export {
+  GRAPHIUM_CAPTURE_EXTENSION,
+  GRAPHIUM_CAPTURE_FILE_VERSION,
+  GRAPHIUM_CAPTURE_MIME,
+  buildMemoCaptureFile,
+  buildUrlCaptureFile,
+  captureFilePreview,
+  captureKindFromName,
+  isGraphiumCaptureName,
+  parseGraphiumCaptureFile,
+} from "./capture-file";
+export type {
+  GraphiumCaptureKind,
+  GraphiumCapturePayload,
+  GraphiumMemoCapturePayload,
+  GraphiumUrlCapturePayload,
+} from "./capture-file";
 export type {
   CaptureKind,
   CaptureMeta,
