@@ -1415,7 +1415,7 @@ export const en: Record<string, string> = {
   "mobile.send.helpDrive": "Files upload to Google Drive → Graphium/Inbox; your desktop imports them from the synced folder.",
   "mobile.send.notConfigured": "Google Drive isn't set up yet. Add a client ID in Settings — or hand the files to the share sheet below.",
   "mobile.send.openSettings": "Open Settings",
-  "mobile.send.addPhoto": "Camera",
+  "mobile.send.addPhoto": "Photo",
   "mobile.send.addVideo": "Video",
   "mobile.send.addAudio": "Voice",
   "mobile.send.addLibrary": "Library",
