@@ -2,7 +2,7 @@
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw } from "lucide-react";
+import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw, Send } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getFaviconUrl } from "../asset-browser/media-index";
@@ -11,6 +11,8 @@ import { UrlBookmarkModal } from "../asset-browser/UrlBookmarkModal";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
+import { SendToInboxSheet } from "./inbox/SendToInboxSheet";
+import { usePushQueue } from "./inbox/use-push-queue";
 
 // ── 統合タイムラインアイテム ──
 
@@ -312,6 +314,9 @@ export function MobileCaptureView({
 }) {
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  // 送信キューシート（撮ったファイルをクラウド Inbox へ送る導線）
+  const [showSendSheet, setShowSendSheet] = useState(false);
+  const [webShareError, setWebShareError] = useState<string | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [mediaPreviewEntry, setMediaPreviewEntry] = useState<MediaIndexEntry | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -325,6 +330,19 @@ export function MobileCaptureView({
   const touchStartY = useRef(0);
   const pulling = useRef(false);
   const t = useT();
+
+  // 送信キュー（撮る → 即キュー永続化 → Google Drive の Graphium/Inbox へ直列送信。
+  // Google 未設定なら Web Share フォールバック）。push/ は hook 内で動的 import される。
+  const push = usePushQueue();
+  // 撮ったものをキュー経路へ送れる環境か。false のときだけ従来のローカル保存に落ちる
+  //（ユーザー決定: ローカル保存は「Google 未設定 かつ Web Share 不可」のみの退路）。
+  const pushRouteAvailable = push.ready && (push.configured || push.canWebShare);
+
+  // シートを開いた時に configured/connected を読み直す（設定画面から戻った直後など）
+  const refreshPushStatus = push.refreshStatus;
+  useEffect(() => {
+    if (showSendSheet) refreshPushStatus();
+  }, [showSendSheet, refreshPushStatus]);
 
   const PULL_THRESHOLD = 60;
 
@@ -412,25 +430,41 @@ export function MobileCaptureView({
     [onDeleteCapture]
   );
 
-  // メディアアップロード共通
+  // メディアキャプチャ共通。
+  // 撮ったものはこの端末に保存せず**送信キュー**へ直行させる（完全置き換え。
+  // この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
+  // enqueue はジェスチャ非依存なので await してよい。キュー経路が使えない環境
+  //（Google 未設定 かつ Web Share 不可、または IndexedDB 不可）だけ従来の
+  // ローカル保存に落とす。
+  const enqueueForSend = push.enqueueForSend;
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !onUploadMedia) return;
+      const files = Array.from(e.target.files ?? []);
+      // 同じものをもう一度撮り直し / 選び直しできるように毎回リセットする
+      e.target.value = "";
+      if (files.length === 0) return;
+      const queued = await enqueueForSend(files);
+      if (queued) {
+        setWebShareError(null);
+        setShowSendSheet(true);
+        return;
+      }
+      if (!onUploadMedia) return;
       setUploading(true);
       try {
-        await onUploadMedia(file);
+        await onUploadMedia(files[0]);
       } catch (err) {
         console.error("メディアアップロードに失敗:", err);
       } finally {
         setUploading(false);
-        e.target.value = "";
       }
     },
-    [onUploadMedia]
+    [enqueueForSend, onUploadMedia]
   );
 
-  const mediaDisabled = !onUploadMedia || uploading;
+  // キュー経路が使える環境では、ローカル保存ハンドラが無くても撮れる
+  const showMediaButtons = pushRouteAvailable || !!onUploadMedia;
+  const mediaDisabled = !pushRouteAvailable && (!onUploadMedia || uploading);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
@@ -442,11 +476,30 @@ export function MobileCaptureView({
             Graphium
           </h1>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {loading
-            ? t("common.loading")
-            : t("memo.count", { count: String(filtered.length) })}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {loading
+              ? t("common.loading")
+              : t("memo.count", { count: String(filtered.length) })}
+          </span>
+          {/* 送信キューの入口。キュー経路が使える環境か、送り残しがある時に出す
+              （未送信アイテムは前回セッションの残りでも見えないと困る） */}
+          {(pushRouteAvailable || push.items.length > 0) && (
+            <button
+              onClick={() => { setWebShareError(null); setShowSendSheet(true); }}
+              title={t("mobile.send.queueEntry")}
+              aria-label={t("mobile.send.queueEntry")}
+              className="relative p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
+            >
+              <Send size={18} />
+              {push.items.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] leading-4 text-center tabular-nums">
+                  {push.items.length}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 検索バー */}
@@ -562,8 +615,9 @@ export function MobileCaptureView({
             </button>
           )}
 
-          {/* メディアキャプチャボタン */}
-          {onUploadMedia && (
+          {/* メディアキャプチャボタン。撮ったものは送信キューへ直行し、キュー経路が
+              使えない環境でだけ従来どおりこの端末の素材ライブラリに保存する */}
+          {showMediaButtons && (
             <>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -660,6 +714,45 @@ export function MobileCaptureView({
         <MobileMediaPreviewModal
           entry={mediaPreviewEntry}
           onClose={() => setMediaPreviewEntry(null)}
+        />
+      )}
+
+      {/* 送信キューシート。キューは IndexedDB 永続なので閉じても消えない */}
+      {showSendSheet && (
+        <SendToInboxSheet
+          items={push.items}
+          draining={push.draining}
+          activeId={push.activeId}
+          progress={push.progress}
+          configured={push.configured}
+          connected={push.connected}
+          connecting={push.connecting}
+          connectError={push.connectError}
+          canWebShare={push.canWebShare}
+          webShareError={webShareError}
+          onAddFiles={(files) => { void push.enqueueForSend(files); }}
+          onSend={push.drainNow}
+          onConnect={push.connectAndDrain}
+          onRemoveItem={push.removeItem}
+          onRetryFailed={push.retryFailed}
+          onWebShare={() => {
+            setWebShareError(null);
+            // shareViaWebShare は同期的に navigator.share へ到達する（await を挟まない）
+            void push.shareViaWebShare().then((outcome) => {
+              // cancelled（シートを閉じただけ）は何も出さない。エラー詳細は
+              // 例外 message と同じく英語の技術文字列のまま {error} 枠に入れる
+              if (outcome?.status === "failed") setWebShareError(outcome.error);
+              if (outcome?.status === "unsupported") setWebShareError("files not shareable on this device");
+            });
+          }}
+          onOpenSettings={() => {
+            setShowSendSheet(false);
+            // note-app の共通イベントで設定モーダル（保存タブ）を開く
+            window.dispatchEvent(
+              new CustomEvent("graphium-open-settings", { detail: { tab: "storage" } }),
+            );
+          }}
+          onClose={() => setShowSendSheet(false)}
         />
       )}
     </div>

@@ -1384,6 +1384,33 @@ export const ja: Record<string, string> = {
   "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
   "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
 
+  // ── モバイル送信キュー（スマホ → クラウド Inbox） ──
+  // 撮ったものはまずこの端末のキューに永続化され、Google Drive の Graphium/Inbox へ
+  // アップロードされる。デスクトップは同期フォルダからそれを取り込む。
+  "mobile.send.title": "送信キュー",
+  "mobile.send.queueEntry": "送信キューを開く",
+  "mobile.send.empty": "キューは空です。下で撮ると、まずここに並びます。",
+  "mobile.send.helpDrive": "ファイルは Google Drive の Graphium/Inbox にアップロードされ、デスクトップが同期フォルダから取り込みます。",
+  "mobile.send.notConfigured": "Google Drive が未設定です。設定でクライアント ID を登録するか、下の共有シートで送ってください。",
+  "mobile.send.openSettings": "設定を開く",
+  "mobile.send.addPhoto": "カメラ",
+  "mobile.send.addVideo": "ビデオ",
+  "mobile.send.addAudio": "音声",
+  "mobile.send.addLibrary": "ライブラリ",
+  "mobile.send.statusWaiting": "待機中",
+  "mobile.send.statusSending": "送信中... {percent}%",
+  "mobile.send.statusFailed": "失敗",
+  "mobile.send.retryFailed": "失敗した {count} 件を再試行",
+  "mobile.send.remove": "キューから削除",
+  "mobile.send.action": "送信 ({count})",
+  "mobile.send.sending": "送信中...",
+  "mobile.send.connectGoogle": "Google Drive に接続",
+  "mobile.send.connecting": "接続中...",
+  "mobile.send.connectFailed": "接続できませんでした: {error}",
+  "mobile.send.webShare": "共有シートで送る ({count})",
+  "mobile.send.webShareHint": "共有シートで「ファイルに保存」を選び、同期している Graphium/Inbox フォルダを保存先にしてください。",
+  "mobile.send.webShareFailed": "共有できませんでした: {error}",
+
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "エクスポート中...",

@@ -1386,6 +1386,33 @@ export const en: Record<string, string> = {
   "mobile.emptyInboxHint": "Files dropped into the Inbox folder from your phone will appear here.",
   "mobile.scanFailed": "Could not read the inbox: {error}",
 
+  // ── Mobile send queue (phone → cloud Inbox) ──
+  // Captures land here first (persisted on this device), then upload to
+  // Google Drive → Graphium/Inbox, where the desktop picks them up.
+  "mobile.send.title": "Send queue",
+  "mobile.send.queueEntry": "Open send queue",
+  "mobile.send.empty": "Nothing queued. Capture below and it lines up here first.",
+  "mobile.send.helpDrive": "Files upload to Google Drive → Graphium/Inbox; your desktop imports them from the synced folder.",
+  "mobile.send.notConfigured": "Google Drive isn't set up yet. Add a client ID in Settings — or hand the files to the share sheet below.",
+  "mobile.send.openSettings": "Open Settings",
+  "mobile.send.addPhoto": "Camera",
+  "mobile.send.addVideo": "Video",
+  "mobile.send.addAudio": "Voice",
+  "mobile.send.addLibrary": "Library",
+  "mobile.send.statusWaiting": "Waiting",
+  "mobile.send.statusSending": "Sending... {percent}%",
+  "mobile.send.statusFailed": "Failed",
+  "mobile.send.retryFailed": "Retry failed ({count})",
+  "mobile.send.remove": "Remove from queue",
+  "mobile.send.action": "Send ({count})",
+  "mobile.send.sending": "Sending...",
+  "mobile.send.connectGoogle": "Connect Google Drive",
+  "mobile.send.connecting": "Connecting...",
+  "mobile.send.connectFailed": "Could not connect: {error}",
+  "mobile.send.webShare": "Send via share sheet ({count})",
+  "mobile.send.webShareHint": "In the share sheet choose “Save to Files” and pick your synced Graphium/Inbox folder.",
+  "mobile.send.webShareFailed": "Could not share: {error}",
+
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
   "pdf.exporting": "Exporting...",
