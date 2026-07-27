@@ -1,0 +1,15 @@
+# pnpm 10+ 用の設定ファイル（pnpm 10 は package.json の "pnpm" フィールドを読まない）。
+# CI (pnpm/action-setup) は pnpm 9 固定で、9 は package.json 側を読むため、
+# overrides は package.json と両方に同内容で置いている。片方を変えたら必ず揃えること。
+
+# IME ネスト箇条書き複製バグの修正 pin（prosemirror-view 1.41.7 の Safari ガード起因）
+overrides:
+  prosemirror-view: 1.42.0
+  prosemirror-model: 1.25.9
+
+# pnpm 10 は依存パッケージの postinstall を既定でブロックする。
+# ここに挙げたものだけ許可（pnpm 9 での全スクリプト実行と同じ結果になる組）。
+onlyBuiltDependencies:
+  - core-js
+  - esbuild
+  - msw
