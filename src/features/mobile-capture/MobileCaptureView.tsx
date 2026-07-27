@@ -1,8 +1,14 @@
 // モバイル専用クイックキャプチャビュー
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
+//
+// モバイル連携（実験フラグ）ON のときは、ホーム自体を「送信キュー前提」に組み替える:
+// ヘッダーに接続状態チップ、直下に撮影ボタン行 + 未送信キュー（SendQueueSection）、
+// その下に従来のメモ検索・タイムラインが 1 スクロールで続く。かつての
+// SendToInboxSheet（ボトムシート）と下バーの 📷🎥🎙 は廃止 — 撮影ボタン行に昇格した。
+// フラグ OFF は従来のホームのまま一切変えない（既存ユーザーは無変化）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw, Send } from "lucide-react";
+import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getFaviconUrl } from "../asset-browser/media-index";
@@ -11,7 +17,7 @@ import { UrlBookmarkModal } from "../asset-browser/UrlBookmarkModal";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
-import { SendToInboxSheet } from "./inbox/SendToInboxSheet";
+import { SendQueueSection } from "./inbox/SendQueueSection";
 import { usePushQueue } from "./inbox/use-push-queue";
 import { useMobileInboxFlag } from "./inbox/experimental";
 
@@ -315,8 +321,6 @@ export function MobileCaptureView({
 }) {
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
-  // 送信キューシート（撮ったファイルをクラウド Inbox へ送る導線）
-  const [showSendSheet, setShowSendSheet] = useState(false);
   const [webShareError, setWebShareError] = useState<string | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [mediaPreviewEntry, setMediaPreviewEntry] = useState<MediaIndexEntry | null>(null);
@@ -339,18 +343,14 @@ export function MobileCaptureView({
   // 送信キュー（撮る → 即キュー永続化 → Google Drive の Graphium/Inbox へ直列送信。
   // Google 未設定なら Web Share フォールバック）。push/ は hook 内で動的 import される。
   // フラグ OFF の間は hook 自体が不活性（ロードも自動 drain もしない）。
+  // 設定モーダルでの client_id 変更・接続・切断は push-events 経由で hook が読み直す
+  // ので、常時見えているチップ・キューが古い状態のまま残ることはない。
   const push = usePushQueue(mobileInboxEnabled);
   // 撮ったものをキュー経路へ送れる環境か。false のときだけ従来のローカル保存に落ちる
   //（ユーザー決定: ローカル保存は「実験フラグ OFF」または「Google 未設定 かつ
   //  Web Share 不可」のみの退路）。
   const pushRouteAvailable =
     mobileInboxEnabled && push.ready && (push.configured || push.canWebShare);
-
-  // シートを開いた時に configured/connected を読み直す（設定画面から戻った直後など）
-  const refreshPushStatus = push.refreshStatus;
-  useEffect(() => {
-    if (showSendSheet) refreshPushStatus();
-  }, [showSendSheet, refreshPushStatus]);
 
   const PULL_THRESHOLD = 60;
 
@@ -441,21 +441,18 @@ export function MobileCaptureView({
   // メディアキャプチャ共通。
   // モバイル連携 ON では、撮ったものはこの端末に保存せず**送信キュー**へ直行させる
   //（完全置き換え。この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
-  // enqueue はジェスチャ非依存なので await してよい。実験フラグ OFF、またはキュー経路が
-  // 使えない環境（Google 未設定 かつ Web Share 不可、または IndexedDB 不可）は従来の
-  // ローカル保存に落とす。
+  // キューはホームに常時見えているので、enqueue 後に開くものは何もない —
+  // アイテムがその場でキュー一覧に出現する。enqueue はジェスチャ非依存なので await
+  // してよい。実験フラグ OFF、またはキュー経路が使えない環境（Google 未設定 かつ
+  // Web Share 不可、または IndexedDB 不可）は従来のローカル保存に落とす。
   const enqueueForSend = push.enqueueForSend;
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []);
-      // 同じものをもう一度撮り直し / 選び直しできるように毎回リセットする
-      e.target.value = "";
+  const handleCapturedFiles = useCallback(
+    async (files: File[]) => {
       if (files.length === 0) return;
       // フラグ OFF はキューに触れず即ローカル保存（hook 側の enabled ガードと二重の防波堤）
       const queued = mobileInboxEnabled ? await enqueueForSend(files) : false;
       if (queued) {
         setWebShareError(null);
-        setShowSendSheet(true);
         return;
       }
       if (!onUploadMedia) return;
@@ -471,9 +468,86 @@ export function MobileCaptureView({
     [mobileInboxEnabled, enqueueForSend, onUploadMedia]
   );
 
+  // 従来ホーム（フラグ OFF）の下バー入力用。ON ではセクション側の入力が
+  // handleCapturedFiles を直接受ける。
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      // 同じものをもう一度撮り直し / 選び直しできるように毎回リセットする
+      e.target.value = "";
+      void handleCapturedFiles(files);
+    },
+    [handleCapturedFiles]
+  );
+
+  // 共有シートフォールバック（未設定モード）。shareViaWebShare は同期的に
+  // navigator.share へ到達する必要がある（await を挟まない — user activation 契約）
+  const shareViaWebShare = push.shareViaWebShare;
+  const handleWebShare = useCallback(() => {
+    setWebShareError(null);
+    void shareViaWebShare().then((outcome) => {
+      // cancelled（共有シートを閉じただけ）は何も出さない。エラー詳細は
+      // 例外 message と同じく英語の技術文字列のまま {error} 枠に入れる
+      if (outcome?.status === "failed") setWebShareError(outcome.error);
+      if (outcome?.status === "unsupported") setWebShareError("files not shareable on this device");
+    });
+  }, [shareViaWebShare]);
+
+  // note-app の共通イベントで設定モーダル（保存タブ）を開く
+  const openStorageSettings = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("graphium-open-settings", { detail: { tab: "storage" } }),
+    );
+  }, []);
+
   // キュー経路が使える環境では、ローカル保存ハンドラが無くても撮れる
   const showMediaButtons = pushRouteAvailable || !!onUploadMedia;
   const mediaDisabled = !pushRouteAvailable && (!onUploadMedia || uploading);
+
+  // 検索入力（従来ホームでは固定バー、キュー前提ホームではスクロール内に置く）
+  const searchInput = (
+    <div className="relative">
+      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder={t("memo.searchPlaceholder")}
+        className="w-full text-xs pl-8 pr-8 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+      />
+      {searchQuery && (
+        <button
+          onClick={() => setSearchQuery("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+
+  // 接続状態チップ（キュー前提ホームのヘッダー）。表示だけ — 接続操作はキュー側の
+  // ボタンが担う（connect はジェスチャ内同期呼び出しの契約があるため導線を一本化）。
+  // push モジュールのロード前は暫定値しか無いので出さない（誤表示より一瞬の不在）。
+  const pushConnected = push.configured && push.connected;
+  const connectionChip = mobileInboxEnabled && push.ready && (
+    <span
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] whitespace-nowrap ${
+        pushConnected
+          ? "border-green-600/30 bg-green-500/10 text-green-700 dark:text-green-400"
+          : "border-border bg-muted/50 text-muted-foreground"
+      }`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${pushConnected ? "bg-green-500" : "bg-muted-foreground/50"}`}
+      />
+      {!push.configured
+        ? t("mobile.send.chipNotConfigured")
+        : push.connected
+          ? t("settings.mobilePush.statusConnected")
+          : t("settings.mobilePush.statusDisconnected")}
+    </span>
+  );
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
@@ -491,48 +565,14 @@ export function MobileCaptureView({
               ? t("common.loading")
               : t("memo.count", { count: String(filtered.length) })}
           </span>
-          {/* 送信キューの入口。実験フラグ ON のうえで、キュー経路が使える環境か
-              送り残しがある時に出す（未送信アイテムは前回セッションの残りでも
-              見えないと困る）。フラグ OFF では入口ごと出さない */}
-          {mobileInboxEnabled && (pushRouteAvailable || push.items.length > 0) && (
-            <button
-              onClick={() => { setWebShareError(null); setShowSendSheet(true); }}
-              title={t("mobile.send.queueEntry")}
-              aria-label={t("mobile.send.queueEntry")}
-              className="relative p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
-            >
-              <Send size={18} />
-              {push.items.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] leading-4 text-center tabular-nums">
-                  {push.items.length}
-                </span>
-              )}
-            </button>
-          )}
+          {connectionChip}
         </div>
       </div>
 
-      {/* 検索バー */}
-      {timeline.length > 0 && (
+      {/* 検索バー（従来ホームのみ固定位置。キュー前提ホームではスクロール内に出す） */}
+      {!mobileInboxEnabled && timeline.length > 0 && (
         <div className="px-3 py-2 border-b border-border">
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("memo.searchPlaceholder")}
-              className="w-full text-xs pl-8 pr-8 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
+          {searchInput}
         </div>
       )}
 
@@ -557,6 +597,44 @@ export function MobileCaptureView({
             />
           </div>
         )}
+
+        {/* キュー前提ホーム: 撮影ボタン行 + 未送信キュー。キューは IndexedDB 永続なので
+            画面を離れても消えない。空のときはブロックごと畳まれ、送信済みは自然に消える。
+            その下に従来のメモ検索・タイムラインが 1 スクロールで続く */}
+        {mobileInboxEnabled && (
+          <div className="mb-3">
+            <SendQueueSection
+              items={push.items}
+              draining={push.draining}
+              activeId={push.activeId}
+              progress={push.progress}
+              configured={push.configured}
+              connected={push.connected}
+              connecting={push.connecting}
+              connectError={push.connectError}
+              canWebShare={push.canWebShare}
+              webShareError={webShareError}
+              showCaptureRow={showMediaButtons}
+              captureDisabled={mediaDisabled}
+              onAddFiles={(files) => { void handleCapturedFiles(files); }}
+              onSend={push.drainNow}
+              onConnect={push.connectAndDrain}
+              onRemoveItem={push.removeItem}
+              onRetryFailed={push.retryFailed}
+              onWebShare={handleWebShare}
+              onOpenSettings={openStorageSettings}
+              loadItemBlob={push.getItemFile}
+            />
+          </div>
+        )}
+
+        {/* 検索（キュー前提ホームではキューの下・タイムラインの上） */}
+        {mobileInboxEnabled && timeline.length > 0 && (
+          <div className="mb-3">
+            {searchInput}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">
@@ -625,9 +703,10 @@ export function MobileCaptureView({
             </button>
           )}
 
-          {/* メディアキャプチャボタン。撮ったものは送信キューへ直行し、キュー経路が
-              使えない環境でだけ従来どおりこの端末の素材ライブラリに保存する */}
-          {showMediaButtons && (
+          {/* メディアキャプチャボタン（従来ホームのみ）。キュー前提ホームでは
+              撮影ボタン行（SendQueueSection）に昇格したので下バーには置かない。
+              下バーはタイムライン側の導線（メモ作成・リンク）として残る */}
+          {!mobileInboxEnabled && showMediaButtons && (
             <>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -724,46 +803,6 @@ export function MobileCaptureView({
         <MobileMediaPreviewModal
           entry={mediaPreviewEntry}
           onClose={() => setMediaPreviewEntry(null)}
-        />
-      )}
-
-      {/* 送信キューシート。キューは IndexedDB 永続なので閉じても消えない。
-          実験フラグ OFF に切り替わったら開いたままのシートも畳む */}
-      {mobileInboxEnabled && showSendSheet && (
-        <SendToInboxSheet
-          items={push.items}
-          draining={push.draining}
-          activeId={push.activeId}
-          progress={push.progress}
-          configured={push.configured}
-          connected={push.connected}
-          connecting={push.connecting}
-          connectError={push.connectError}
-          canWebShare={push.canWebShare}
-          webShareError={webShareError}
-          onAddFiles={(files) => { void push.enqueueForSend(files); }}
-          onSend={push.drainNow}
-          onConnect={push.connectAndDrain}
-          onRemoveItem={push.removeItem}
-          onRetryFailed={push.retryFailed}
-          onWebShare={() => {
-            setWebShareError(null);
-            // shareViaWebShare は同期的に navigator.share へ到達する（await を挟まない）
-            void push.shareViaWebShare().then((outcome) => {
-              // cancelled（シートを閉じただけ）は何も出さない。エラー詳細は
-              // 例外 message と同じく英語の技術文字列のまま {error} 枠に入れる
-              if (outcome?.status === "failed") setWebShareError(outcome.error);
-              if (outcome?.status === "unsupported") setWebShareError("files not shareable on this device");
-            });
-          }}
-          onOpenSettings={() => {
-            setShowSendSheet(false);
-            // note-app の共通イベントで設定モーダル（保存タブ）を開く
-            window.dispatchEvent(
-              new CustomEvent("graphium-open-settings", { detail: { tab: "storage" } }),
-            );
-          }}
-          onClose={() => setShowSendSheet(false)}
         />
       )}
     </div>

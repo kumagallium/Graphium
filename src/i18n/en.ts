@@ -1409,9 +1409,10 @@ export const en: Record<string, string> = {
   // ── Mobile send queue (phone → cloud Inbox) ──
   // Captures land here first (persisted on this device), then upload to
   // Google Drive → Graphium/Inbox, where the desktop picks them up.
+  // The queue lives inline on the mobile home (no sheet); the header shows a
+  // connection chip and the queue block collapses while empty.
   "mobile.send.title": "Send queue",
-  "mobile.send.queueEntry": "Open send queue",
-  "mobile.send.empty": "Nothing queued. Capture below and it lines up here first.",
+  "mobile.send.chipNotConfigured": "Not set up",
   "mobile.send.helpDrive": "Files upload to Google Drive → Graphium/Inbox; your desktop imports them from the synced folder.",
   "mobile.send.notConfigured": "Google Drive isn't set up yet. Add a client ID in Settings — or hand the files to the share sheet below.",
   "mobile.send.openSettings": "Open Settings",

@@ -1407,9 +1407,10 @@ export const ja: Record<string, string> = {
   // ── モバイル送信キュー（スマホ → クラウド Inbox） ──
   // 撮ったものはまずこの端末のキューに永続化され、Google Drive の Graphium/Inbox へ
   // アップロードされる。デスクトップは同期フォルダからそれを取り込む。
+  // キューはモバイルホームにインライン常設（シートは無い）。ヘッダーに接続チップ、
+  // キューが空のときはブロックごと畳まれる。
   "mobile.send.title": "送信キュー",
-  "mobile.send.queueEntry": "送信キューを開く",
-  "mobile.send.empty": "キューは空です。下で撮ると、まずここに並びます。",
+  "mobile.send.chipNotConfigured": "未設定",
   "mobile.send.helpDrive": "ファイルは Google Drive の Graphium/Inbox にアップロードされ、デスクトップが同期フォルダから取り込みます。",
   "mobile.send.notConfigured": "Google Drive が未設定です。設定でクライアント ID を登録するか、下の共有シートで送ってください。",
   "mobile.send.openSettings": "設定を開く",
