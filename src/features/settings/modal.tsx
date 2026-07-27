@@ -1420,7 +1420,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
 
               <div className="space-y-2">
-                {CORE_LABELS.map((label) => (
+                {/* plan / result は概念ごと撤廃済み（工程は step ブロック）なので
+                    表示名カスタマイズからも外す。procedure(ステップ) はチップ・
+                    グラフ凡例・# 検索で表示名が生きているため残す。 */}
+                {CORE_LABELS.filter((l) => l !== "plan" && l !== "result").map((label) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-28 shrink-0">
                       <span className="text-[10px] text-muted-foreground font-mono">

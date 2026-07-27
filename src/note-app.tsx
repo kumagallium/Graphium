@@ -4083,7 +4083,12 @@ function NoteEditorInner({
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
-          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 100 : 16, paddingRight: isDesktop ? 100 : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+          {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
+              SidePeek と同じ「基本 24px・右はインジケータ（ラベル/リンクのバッジ）が
+              ある時だけ 80px」に揃える。ドラッグハンドル分の余白は .bn-editor 自体の
+              padding-inline 54px が既に持っている。 */}
+          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+
             <textarea
               value={title}
               onChange={handleTitleChange}
@@ -4636,7 +4641,9 @@ function NoteEditorInner({
             // 見せられるようにするため。Web 版では従来通り非表示。
             { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable ? agentConfigured : isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
+            // 旧: labels.size でゲートしていたが、v6 以降の工程は step ブロックで
+            // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && (provDoc?.["@graph"]?.length ?? 0) > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },

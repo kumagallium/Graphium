@@ -547,7 +547,12 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   border: 1px solid var(--color-border-subtle);
   border-left: 3px solid var(--color-primary);
   border-radius: 8px;
-  padding: 4px 12px 10px 12px;
+  /* padding-right は 10px 未満に保つこと（8px）。
+     BlockNote のサイドメニューはネスト解決のために「ブロック右端 − 10px」を
+     再プローブする（core/src/extensions/SideMenu/SideMenu.ts getBlockFromMousePos）。
+     右 padding がそれ以上あるとプローブがカード自身に当たり、step 内の子ブロックの
+     ドラッグハンドルが常に step 本体に化ける。 */
+  padding: 4px 8px 10px 12px;
   margin: 8px 0;
 }
 
