@@ -740,6 +740,17 @@ The same `src/` tree is built three different ways.
   SHA-256 is matched against captures already in the media index — and the
   origin survives as an optional `capture` record on the media entry. The
   web build has no filesystem to enumerate, so the inbox is desktop-only.
+  Besides media, the inbox understands Graphium's own capture files:
+  versioned JSON documents with the dedicated `.graphium.json` extension
+  (`{"graphium": 1, "kind": "memo" | "url", ...}`) that the phone writes
+  for memos and URL bookmarks. The importer recognizes them by extension
+  *and* payload shape — never by extension alone, so a user-placed plain
+  `.json` is not hijacked — and lands them as real entities through
+  injected handlers: a memo becomes an entry in the capture store (its
+  phone-side `createdAt` preserved), a URL becomes a URL-bookmark entry in
+  the media index carrying the metadata the phone already fetched. A
+  malformed or newer-versioned capture file falls through to the ordinary
+  asset import, so no data is ever dropped.
 - **Phone side: send queue.** The phone cannot write into the synced
   folder itself (iOS has no File System Access API), so captures taken in
   the mobile view enter a store-and-forward queue first
@@ -750,7 +761,14 @@ The same `src/` tree is built three different ways.
   mobile home is built around this queue: the capture buttons enqueue
   straight into it and the pending list stays visible inline (with a
   connection chip in the header) until it drains — there is no separate
-  send sheet. The primary transport drains the queue serially to the
+  send sheet. Written captures ride the same rail: the capture row also
+  offers Write (memo) and URL buttons that reuse the existing input
+  dialogs but serialize the result into a `.graphium.json` capture file
+  (named `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue it
+  next to the photos, instead of saving into this device's own stores —
+  everything captured goes to the inbox. Queue rows show memo captures as
+  a note icon with the first line of text and URL captures as a link icon
+  with title and domain. The primary transport drains the queue serially to the
   user's own Google Drive `Graphium/Inbox/` via OAuth (GIS token model,
   `drive.file` scope only, no secret; ≤5 MB multipart, larger files
   resumable), from where Google Drive for desktop syncs it into the
