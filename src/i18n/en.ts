@@ -1326,7 +1326,7 @@ export const en: Record<string, string> = {
   "memo.title": "Memos",
   "memo.count": "{count} items",
   "memo.empty": "No memos yet. Tap the button below to create one.",
-  "memo.emptyQueueHome": "No past captures yet. Start with the capture buttons above.",
+  "memo.emptyQueueHome": "No past captures yet. Start with the capture buttons below.",
   "memo.new": "New Memo",
   "memo.creating": "Creating...",
   "memo.placeholder": "Write your memo here...",

@@ -2,12 +2,13 @@
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
 //
 // モバイル連携（実験フラグ）ON のときは、ホーム自体を「送信キュー前提」に組み替える:
-// ヘッダーに接続状態チップ、直下に捕獲ボタン行（[書く][URL] + 撮影）+ 未送信キュー
-// （SendQueueSection）、その下に従来のメモ検索・タイムラインが 1 スクロールで続く。
-// かつての SendToInboxSheet（ボトムシート）と下バー（📷🎥🎙・メモ作成・URL 登録）は
-// 廃止 — 捕獲ボタン行に昇格した。メモ・URL もネイティブ JSON（capture-file.ts）で
-// キュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store には保存しない）。
-// タイムラインは過去分の閲覧用として残る。
+// ヘッダーに接続状態チップ、コンテンツ最上部（ヘッダー直下）に未送信キュー
+// （SendQueueSection。[送信 (n)] は見出し行右端の定位置。空なら畳む）、その下に
+// 従来のメモ検索・タイムラインが 1 スクロールで続く。捕獲ボタンは従来ホームと同じ
+// 画面下固定バー（MobileCaptureBar: [書く][URL][写真][動画][音声][ライブラリ]）。
+// かつての SendToInboxSheet（ボトムシート）は廃止。メモ・URL もネイティブ JSON
+// （capture-file.ts）でキュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store
+// には保存しない）。タイムラインは過去分の閲覧用として残る。
 // フラグ OFF は従来のホームのまま一切変えない（既存ユーザーは無変化）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +21,7 @@ import { UrlBookmarkModal } from "../asset-browser/UrlBookmarkModal";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
+import { MobileCaptureBar } from "./MobileCaptureBar";
 import { SendQueueSection } from "./inbox/SendQueueSection";
 import { usePushQueue } from "./inbox/use-push-queue";
 import { useMobileInboxFlag } from "./inbox/experimental";
@@ -638,12 +640,13 @@ export function MobileCaptureView({
           </div>
         )}
 
-        {/* キュー前提ホーム: 捕獲ボタン行（[書く][URL] + 撮影）+ 未送信キュー。
-            メモ・URL も捕獲物としてキューへ行く（下バーの作成導線はこの行に昇格した）。
-            キューは IndexedDB 永続なので画面を離れても消えない。空のときはブロックごと
-            畳まれ、送信済みは自然に消える。その下に従来のメモ検索・タイムラインが
+        {/* キュー前提ホーム: 未送信キューはコンテンツ最上部（ヘッダー直下）。
+            [送信 (n)] は見出し行右端の定位置、未接続時はセクション内の接続ボタンが
+            主アクション。捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar）。
+            キューは IndexedDB 永続なので画面を離れても消えない。空のときはセクション
+            ごと畳まれ、送信済みは自然に消える。その下に従来のメモ検索・タイムラインが
             1 スクロールで続く */}
-        {mobileInboxEnabled && (
+        {mobileInboxEnabled && push.items.length > 0 && (
           <div className="mb-3">
             <SendQueueSection
               items={push.items}
@@ -656,15 +659,6 @@ export function MobileCaptureView({
               connectError={push.connectError}
               canWebShare={push.canWebShare}
               webShareError={webShareError}
-              showCaptureRow={showMediaButtons}
-              captureDisabled={mediaDisabled}
-              onAddFiles={(files) => { void handleCapturedFiles(files); }}
-              onComposeMemo={() => setShowCaptureDialog(true)}
-              onAddUrl={
-                pushRouteAvailable || onAddUrlBookmark
-                  ? () => setShowBookmarkModal(true)
-                  : undefined
-              }
               onSend={push.drainNow}
               onConnect={push.connectAndDrain}
               onRemoveItem={push.removeItem}
@@ -693,8 +687,8 @@ export function MobileCaptureView({
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {/* キュー前提ホームでは作成ボタンが上の捕獲行に移っているので文言を変える
-                  （「下のボタン」は従来ホームの下バーを指す） */}
+              {/* どちらも下バーを指すが、キュー前提ホームは捕獲バー（行き先は
+                  送信キュー）なので文言を分ける */}
               {searchQuery.trim()
                 ? t("nav.noMatchingNotes")
                 : t(mobileInboxEnabled ? "memo.emptyQueueHome" : "memo.empty")}
@@ -726,10 +720,22 @@ export function MobileCaptureView({
         )}
       </div>
 
-      {/* クイックキャプチャバー（従来ホームのみ）。キュー前提ホームでは
-          メモ作成・URL 登録も捕獲ボタン行（SendQueueSection の [書く][URL]）に昇格し、
-          出力先は送信キューになる — 下バーごと畳む（捕獲物は全部 Inbox へ） */}
-      {!mobileInboxEnabled && (
+      {/* 画面下固定バー。キュー前提ホーム（フラグ ON）は捕獲バー
+          （[書く][URL][写真][動画][音声][ライブラリ] → 出力先は送信キュー）、
+          従来ホーム（フラグ OFF）はメモ作成 + 🔗 + 📷🎥🎙 のまま（既存ユーザーは無変化） */}
+      {mobileInboxEnabled ? (
+        <MobileCaptureBar
+          onComposeMemo={() => setShowCaptureDialog(true)}
+          onAddUrl={
+            pushRouteAvailable || onAddUrlBookmark
+              ? () => setShowBookmarkModal(true)
+              : undefined
+          }
+          showMediaButtons={showMediaButtons}
+          mediaDisabled={mediaDisabled}
+          onAddFiles={(files) => { void handleCapturedFiles(files); }}
+        />
+      ) : (
       <div className="border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {uploading && (
           <p className="text-xs text-muted-foreground text-center mb-2">
@@ -758,10 +764,8 @@ export function MobileCaptureView({
             </button>
           )}
 
-          {/* メディアキャプチャボタン（従来ホームのみ）。キュー前提ホームでは
-              撮影ボタン行（SendQueueSection）に昇格したので下バーには置かない。
-              下バーはタイムライン側の導線（メモ作成・リンク）として残る */}
-          {!mobileInboxEnabled && showMediaButtons && (
+          {/* メディアキャプチャボタン（保存経路があるときだけ） */}
+          {showMediaButtons && (
             <>
               <button
                 onClick={() => fileInputRef.current?.click()}

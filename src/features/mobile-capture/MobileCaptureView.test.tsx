@@ -2,12 +2,14 @@
 // モバイルキャプチャビュー（キュー前提ホーム）の配線テスト。
 //
 // 対象の不変条件:
-// - モバイル連携の実験フラグ ON のとき: ホームに捕獲ボタン行（[書く][URL] + 撮影）+
-//   未送信キューがインラインで出る。撮ったファイルは enqueueForSend に渡り、シートは
-//   開かない（SendToInboxSheet 自体が存在しない。この端末には保存しない — 完全置き換え）
+// - モバイル連携の実験フラグ ON のとき: 未送信キューがコンテンツ最上部にインラインで
+//   出る（[送信 (n)] は見出し行右端の定位置）。捕獲ボタンは画面下固定の捕獲バー
+//   （[書く][URL][写真][動画][音声][ライブラリ]）— キューより後（下）に出る。
+//   撮ったファイルは enqueueForSend に渡り、シートは開かない（SendToInboxSheet 自体が
+//   存在しない。この端末には保存しない — 完全置き換え）
 // - メモ・URL も捕獲物としてキュー行き（ネイティブ JSON）。ローカルの capture-store /
-//   media-index には保存しない。下バー（メモ作成・URL 登録）は捕獲ボタン行に昇格して畳む
-// - キューが空のときはキューブロックが畳まれ、捕獲ボタン行だけが残る
+//   media-index には保存しない
+// - キューが空のときはキューセクションごと畳まれ、下の捕獲バーだけが残る
 // - タイムライン（過去分の閲覧）はキューの下にそのまま共存する（1 スクロール）
 // - enqueueForSend が false（Google 未設定かつ Web Share 不可、IndexedDB 不可）の
 //   ときだけ従来のローカル保存（メディア=onUploadMedia / メモ=onCreateCapture /
@@ -124,7 +126,7 @@ const jpeg = () =>
   new File([new Uint8Array([1, 2, 3]) as BlobPart], "image.jpg", { type: "image/jpeg" });
 
 describe("キュー前提ホーム（実験フラグ ON）", () => {
-  it("shows the capture row and the inline queue with its send action", () => {
+  it("shows the inline queue on top and the capture bar fixed at the bottom", () => {
     usePushQueueMock.mockReturnValue(
       pushUi({
         items: [
@@ -135,13 +137,20 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     );
     renderView();
 
-    // 撮影ボタン行（写真/動画/音声/ライブラリから）
+    // 捕獲バー（書く/URL/写真/動画/音声/ライブラリ）と撮影入力
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
     expect(document.querySelector('input[accept="image/*"]')).toBeTruthy();
-    // キューがホームにインラインで出る（クリック不要）
+    // キューがホームにインラインで出る（クリック不要）。送信は見出し行の定位置
     expect(screen.getByText("Send queue")).toBeTruthy();
     expect(screen.getByText("graphium-20260727-102030-01.jpg")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Send \(2\)/ })).toBeTruthy();
+    // 並び: キュー（コンテンツ最上部）→ … → 捕獲バー（画面下）
+    const queueName = screen.getByText("graphium-20260727-102030-01.jpg");
+    const photoButton = screen.getByRole("button", { name: "Photo" });
+    expect(
+      queueName.compareDocumentPosition(photoButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("routes captured media into the push queue without opening anything", async () => {
@@ -161,13 +170,14 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.queryByTestId("send-queue-block")).toBeNull();
   });
 
-  it("collapses the queue block while empty, keeping the capture row", () => {
+  it("collapses the queue section while empty, keeping the bottom capture bar", () => {
     renderView();
 
     expect(screen.queryByTestId("send-queue-block")).toBeNull();
     expect(screen.queryByText("Send queue")).toBeNull();
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
-    // 撮影ボタン行は残る
+    // 捕獲バーは残る
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
   });
 
@@ -191,7 +201,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(
       queueName.compareDocumentPosition(memoCard) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // メモ作成は下バーから捕獲ボタン行の [書く] に昇格した（下バーは畳む）
+    // メモ作成は捕獲バーの [書く]（従来のメモ作成ボタンは無い）
     expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /New Memo/ })).toBeNull();
   });
@@ -277,7 +287,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(document.querySelector('input[accept="audio/*"]')).toBeTruthy();
   });
 
-  it("hides the capture row when neither the queue route nor local save exists, but still lists leftovers", () => {
+  it("hides the media capture buttons when neither the queue route nor local save exists, but still lists leftovers", () => {
     usePushQueueMock.mockReturnValue(
       pushUi({
         configured: false,
@@ -287,8 +297,10 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     );
     renderView({ onUploadMedia: undefined });
 
-    // 撮影ボタン行は出ない（袋小路の経路を作らない）
+    // 捕獲バーの撮影ボタンは出ない（袋小路の経路を作らない）。[書く] は退路があるので残る
     expect(document.querySelector('input[accept="image/*"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     // 前回セッションの送り残しは見え、未設定の案内が付く
     expect(screen.getByText("graphium-20260727-102030-01.jpg")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
@@ -335,6 +347,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.queryByText("Not set up")).toBeNull();
     expect(screen.queryByText("Connected")).toBeNull();
   });
+
 });
 
 describe("モバイル連携 実験フラグ OFF（既定）のゲート", () => {

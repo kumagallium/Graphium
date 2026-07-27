@@ -1,22 +1,21 @@
 // モバイルホームの送信キューセクション（かつての SendToInboxSheet の置き換え）。
 //
-// ホーム自体が送信キューになった: 撮影ボタン行と未送信キューが常にインラインで
-// 見え、「シートを開く」という操作は存在しない。ここは **usePushQueue の
+// ホーム自体が送信キューになった: 未送信キューがコンテンツ最上部（ヘッダー直下）に
+// 常にインラインで見え、「シートを開く」という操作は存在しない。捕獲ボタンは画面下
+// 固定の捕獲バー（MobileCaptureBar）が担い、ここはキュー表示専任。**usePushQueue の
 // スナップショットを props で受け取るだけのプレゼンテーション層** で、キュー操作・
 // 認可・drain は use-push-queue.ts が担う（props 駆動なので Storybook で全状態を
 // 再現できる）。
 //
 // 表示ルール:
-// - 捕獲ボタン行: [書く][URL]（onComposeMemo / onAddUrl が渡されたとき）+
-//   撮影ピッカー（写真/動画/音声/ライブラリから。showCaptureRow の間）。
-//   撮る → onAddFiles → キューに出現（この端末には保存しない）。メモ / URL も
-//   親がキューへ積む（capture-file.ts の JSON）— 捕獲物は全部 Inbox へ。
+// - キューが空のときはセクションごと畳む（null）— 送信済みはキューから消えるので、
+//   送り終えるとホームはタイムラインだけに戻る。
+// - 見出し行: タイトル + 件数（左）/ [送信 (n)]（右端・接続済みモードのみ）。
+//   送信ボタンはリストが伸びても位置が動かない定位置（見出し行の右端）に置く。
 // - キュー行: メディアは正規化名 + サムネ、メモ / URL 捕獲はアイコン + 中身プレビュー
 //   （メモ = 本文先頭、URL = タイトル + ドメイン）。
-// - キューブロック: アイテムがあるときだけ出す。空のときは丸ごと畳む —
-//   送信済みはキューから消えるので、送り終えるとセクションは撮影行だけに戻る。
-// - 主アクションはモード別:
-//   接続済み = 送信 (n) / 未接続 = Google Drive に接続 /
+// - リスト下の主アクションはモード別:
+//   接続済み = なし（送信は見出し行の定位置）/ 未接続 = Google Drive に接続 /
 //   未設定 = 案内 + 設定導線 + 共有シートフォールバック（canWebShare 時）。
 //   onConnect / onWebShare は **click から同期的に呼ぶ**（navigator.share と GIS の
 //   user activation 契約。use-push-queue 側の注記どおり await を挟まない）。
@@ -24,16 +23,12 @@
 //   行の unmount（削除・送信完了・ビュー離脱）で必ず URL.revokeObjectURL する。
 //   動画・音声・その他は種別アイコン（デスクトップ InboxView と同じ判断）。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Camera,
   Video,
-  Mic,
-  Images,
   Image as ImageIcon,
   Volume2,
   Paperclip,
-  PenLine,
   Link as LinkIcon,
   StickyNote,
   Send,
@@ -82,20 +77,7 @@ export type SendQueueSectionProps = {
   canWebShare: boolean;
   /** Web Share の失敗表示（cancelled は渡さないこと）。 */
   webShareError?: string | null;
-  /** 撮影ボタン行を出すか（キュー経路もローカル保存も無い環境では隠す）。 */
-  showCaptureRow: boolean;
-  /** 撮影ボタンの一時無効化（ローカル保存フォールバックのアップロード中など）。 */
-  captureDisabled?: boolean;
-  /** 撮影・選択したファイルをキューへ（経路が無ければ親がローカル保存に落とす）。 */
-  onAddFiles: (files: File[]) => void;
-  /**
-   * [書く]（メモ捕獲）ボタン。渡されたときだけ捕獲ボタン行の先頭に出す。
-   * メモもキュー行き（「捕獲物は全部 Inbox へ」）— 入力 UI は親（CaptureDialog）の責務。
-   */
-  onComposeMemo?: () => void;
-  /** [URL] 捕獲ボタン。渡されたときだけ出す（入力 UI は親の UrlBookmarkModal）。 */
-  onAddUrl?: () => void;
-  /** 手動送信（接続済みモード）。 */
+  /** 手動送信（接続済みモード・見出し行の定位置ボタン）。 */
   onSend: () => void;
   /** Google Drive へ接続。**click から同期的に呼ばれる**。 */
   onConnect: () => void;
@@ -311,11 +293,6 @@ export function SendQueueSection({
   connectError,
   canWebShare,
   webShareError,
-  showCaptureRow,
-  captureDisabled,
-  onAddFiles,
-  onComposeMemo,
-  onAddUrl,
   onSend,
   onConnect,
   onRemoveItem,
@@ -325,231 +302,133 @@ export function SendQueueSection({
   loadItemBlob,
 }: SendQueueSectionProps) {
   const t = useT();
-  const photoRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLInputElement>(null);
-  const audioRef = useRef<HTMLInputElement>(null);
-  const libraryRef = useRef<HTMLInputElement>(null);
 
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const failedCount = items.filter((i) => i.status === "failed").length;
 
-  const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []);
-    // 同じファイルをもう一度撮り直し / 選び直しできるように毎回リセットする
-    e.target.value = "";
-    if (picked.length > 0) onAddFiles(picked);
-  };
-
-  // 捕獲ボタン: [書く][URL]（渡されたときだけ）+ 撮影ピッカー（showCaptureRow の間）。
-  // メモ・URL も撮影と同じ「捕獲 → キュー」の並びに置く（捕獲物は全部 Inbox へ）。
-  const captureButtons: {
-    key: string;
-    icon: React.ReactNode;
-    label: string;
-    onClick: () => void;
-    disabled?: boolean;
-  }[] = [
-    ...(onComposeMemo
-      ? [{ key: "memo", icon: <PenLine size={18} />, label: t("mobile.send.addMemo"), onClick: onComposeMemo }]
-      : []),
-    ...(onAddUrl
-      ? [{ key: "url", icon: <LinkIcon size={18} />, label: t("mobile.send.addUrl"), onClick: onAddUrl }]
-      : []),
-    ...(showCaptureRow
-      ? [
-          { key: "photo", icon: <Camera size={18} />, label: t("mobile.send.addPhoto"), onClick: () => photoRef.current?.click(), disabled: captureDisabled },
-          { key: "video", icon: <Video size={18} />, label: t("mobile.send.addVideo"), onClick: () => videoRef.current?.click(), disabled: captureDisabled },
-          { key: "audio", icon: <Mic size={18} />, label: t("mobile.send.addAudio"), onClick: () => audioRef.current?.click(), disabled: captureDisabled },
-          { key: "library", icon: <Images size={18} />, label: t("mobile.send.addLibrary"), onClick: () => libraryRef.current?.click(), disabled: captureDisabled },
-        ]
-      : []),
-  ];
-  // Tailwind の purge 対策で列数はクラス名を列挙して選ぶ。6 個 = 3 列 2 段（ラベルが
-  // 潰れない）/ 4 個 = 従来の 1 段 / 2 個 = [書く][URL] だけの退避構成。
-  const captureGridCols =
-    captureButtons.length >= 5 ? "grid-cols-3" : captureButtons.length === 2 ? "grid-cols-2" : "grid-cols-4";
+  // 空のときはセクションごと畳む（送信済みは queue から消える）。
+  // 捕獲の入口は画面下の MobileCaptureBar が常時担うので、ここに残すものは無い。
+  if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* 捕獲ボタン行。書く / URL / 撮る = 即キューへ（シートは開かない — もう存在しない） */}
-      {captureButtons.length > 0 && (
-        <div className={`grid ${captureGridCols} gap-2`}>
-          {captureButtons.map((p) => (
-            <button
-              key={p.key}
-              onClick={p.onClick}
-              disabled={p.disabled}
-              className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border border-border text-muted-foreground active:bg-muted transition-colors disabled:opacity-50"
-            >
-              {p.icon}
-              <span className="text-[10px] leading-none text-foreground">{p.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 未送信キュー。空のときは丸ごと畳む（送信済みは queue から消える）。
+    <div className="flex flex-col gap-2" data-testid="send-queue-block">
+      {/* 見出し行。[送信 (n)] はこの行の右端が定位置 — リストが伸びても動かない。
           名前は enqueue 時に正規化済み（送り先でもこの名前になる） */}
-      {items.length > 0 && (
-        <div className="flex flex-col gap-2" data-testid="send-queue-block">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-foreground">{t("mobile.send.title")}</h2>
-            <span className="text-[10px] text-muted-foreground tabular-nums">
-              {t("mobile.pendingCount", { count: String(items.length) })}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            {items.map((item) => (
-              <QueueRow
-                key={item.id}
-                item={item}
-                isActive={item.id === activeId}
-                percent={itemPercent(item, progress)}
-                onRemove={() => onRemoveItem(item.id)}
-                loadItemBlob={loadItemBlob}
-              />
-            ))}
-          </div>
-
-          {/* 再試行（failed があるときだけ） */}
-          {failedCount > 0 && (
-            <button
-              onClick={onRetryFailed}
-              className="self-start flex items-center gap-1.5 text-xs text-primary active:opacity-70 transition-opacity"
-            >
-              <RotateCcw size={13} />
-              {t("mobile.send.retryFailed", { count: String(failedCount) })}
-            </button>
-          )}
-
-          {/* エラー表示 */}
-          {connectError && (
-            <p className="text-xs text-destructive leading-relaxed">
-              {t("mobile.send.connectFailed", { error: connectError })}
-            </p>
-          )}
-          {webShareError && (
-            <p className="text-xs text-destructive leading-relaxed">
-              {t("mobile.send.webShareFailed", { error: webShareError })}
-            </p>
-          )}
-
-          {/* 主アクション（モード別） */}
-          {configured ? (
-            connected ? (
-              <button
-                onClick={onSend}
-                disabled={pendingCount === 0 || draining}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
-              >
-                {draining ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    {t("mobile.send.sending")}
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} />
-                    {t("mobile.send.action", { count: String(pendingCount) })}
-                  </>
-                )}
-              </button>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h2 className="text-xs font-semibold text-foreground">{t("mobile.send.title")}</h2>
+          <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+            {t("mobile.pendingCount", { count: String(items.length) })}
+          </span>
+        </div>
+        {configured && connected && (
+          <button
+            onClick={onSend}
+            disabled={pendingCount === 0 || draining}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium active:opacity-80 transition-opacity disabled:opacity-50"
+          >
+            {draining ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                {t("mobile.send.sending")}
+              </>
             ) : (
               <>
-                <button
-                  onClick={onConnect}
-                  disabled={connecting}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
-                >
-                  {connecting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      {t("mobile.send.connecting")}
-                    </>
-                  ) : (
-                    t("mobile.send.connectGoogle")
-                  )}
-                </button>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t("mobile.send.helpDrive")}
-                </p>
+                <Send size={13} />
+                {t("mobile.send.action", { count: String(pendingCount) })}
               </>
-            )
-          ) : (
-            <>
-              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex flex-col gap-2">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t("mobile.send.notConfigured")}
-                </p>
-                <button
-                  onClick={onOpenSettings}
-                  className="self-start flex items-center gap-1.5 text-xs text-primary active:opacity-70 transition-opacity"
-                >
-                  <SettingsIcon size={13} />
-                  {t("mobile.send.openSettings")}
-                </button>
-              </div>
-              {canWebShare && (
-                <>
-                  <button
-                    onClick={onWebShare}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity"
-                  >
-                    <ShareIcon size={16} />
-                    {t("mobile.send.webShare", { count: String(items.length) })}
-                  </button>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {t("mobile.send.webShareHint")}
-                  </p>
-                </>
-              )}
-            </>
-          )}
-        </div>
+            )}
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        {items.map((item) => (
+          <QueueRow
+            key={item.id}
+            item={item}
+            isActive={item.id === activeId}
+            percent={itemPercent(item, progress)}
+            onRemove={() => onRemoveItem(item.id)}
+            loadItemBlob={loadItemBlob}
+          />
+        ))}
+      </div>
+
+      {/* 再試行（failed があるときだけ） */}
+      {failedCount > 0 && (
+        <button
+          onClick={onRetryFailed}
+          className="self-start flex items-center gap-1.5 text-xs text-primary active:opacity-70 transition-opacity"
+        >
+          <RotateCcw size={13} />
+          {t("mobile.send.retryFailed", { count: String(failedCount) })}
+        </button>
       )}
 
-      {/* 撮影 / 選択の入力。accept は image/* のまま置く（iOS はこれで HEIC を JPEG に
-          変換して渡す。accept に image/heic を含めると逆に HEIC のまま来る）。 */}
-      {showCaptureRow && (
+      {/* エラー表示 */}
+      {connectError && (
+        <p className="text-xs text-destructive leading-relaxed">
+          {t("mobile.send.connectFailed", { error: connectError })}
+        </p>
+      )}
+      {webShareError && (
+        <p className="text-xs text-destructive leading-relaxed">
+          {t("mobile.send.webShareFailed", { error: webShareError })}
+        </p>
+      )}
+
+      {/* リスト下の主アクション（接続済みモードは見出し行の [送信] が担うので無し） */}
+      {configured ? (
+        !connected && (
+          <>
+            <button
+              onClick={onConnect}
+              disabled={connecting}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity disabled:opacity-50"
+            >
+              {connecting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  {t("mobile.send.connecting")}
+                </>
+              ) : (
+                t("mobile.send.connectGoogle")
+              )}
+            </button>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("mobile.send.helpDrive")}
+            </p>
+          </>
+        )
+      ) : (
         <>
-          <input
-            ref={photoRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            data-testid="send-queue-photo"
-            onChange={addFiles}
-          />
-          <input
-            ref={videoRef}
-            type="file"
-            accept="video/*"
-            capture="environment"
-            className="hidden"
-            data-testid="send-queue-video"
-            onChange={addFiles}
-          />
-          <input
-            ref={audioRef}
-            type="file"
-            accept="audio/*"
-            capture="environment"
-            className="hidden"
-            data-testid="send-queue-audio"
-            onChange={addFiles}
-          />
-          {/* フォトライブラリからは複数選択。撮影用の capture は付けない */}
-          <input
-            ref={libraryRef}
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            className="hidden"
-            data-testid="send-queue-library"
-            onChange={addFiles}
-          />
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("mobile.send.notConfigured")}
+            </p>
+            <button
+              onClick={onOpenSettings}
+              className="self-start flex items-center gap-1.5 text-xs text-primary active:opacity-70 transition-opacity"
+            >
+              <SettingsIcon size={13} />
+              {t("mobile.send.openSettings")}
+            </button>
+          </div>
+          {canWebShare && (
+            <>
+              <button
+                onClick={onWebShare}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity"
+              >
+                <ShareIcon size={16} />
+                {t("mobile.send.webShare", { count: String(items.length) })}
+              </button>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {t("mobile.send.webShareHint")}
+              </p>
+            </>
+          )}
         </>
       )}
     </div>

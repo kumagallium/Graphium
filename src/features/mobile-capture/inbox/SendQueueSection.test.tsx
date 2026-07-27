@@ -3,13 +3,14 @@
 //
 // 対象の不変条件:
 // - キューのアイテムは enqueue 時の正規化名 + サイズ + 状態で一覧に出る
-// - キューが空のときはブロックごと畳む（撮影ボタン行だけが残る）
-// - モードで主アクションが切り替わる: 接続済み=送信 / 未接続=接続 /
-//   未設定=案内+設定導線（+ canWebShare なら共有シート）
+// - キューが空のときはセクションごと畳む（null。捕獲の入口は画面下の
+//   MobileCaptureBar が担うので、ここには何も残らない）
+// - [送信 (n)] は見出し行の右端が定位置（リストより前 = 上に出る）。
+//   接続済みモードのみ。draining 中は無効 + 送信中表示
+// - モードでリスト下の主アクションが切り替わる: 接続済み=なし（見出しの送信）/
+//   未接続=接続 / 未設定=案内+設定導線（+ canWebShare なら共有シート）
 // - 送信中アイテムは進捗（%）が出て、削除ボタンが無効になる
 // - failed があるときだけ再試行導線が出る
-// - 撮影ボタン行のピッカーは選んだファイルを onAddFiles に渡す（キューへの
-//   積み込みは親の責務）。showCaptureRow=false では行ごと消える
 // - 画像アイテムは loadItemBlob で object URL サムネイルを作り、unmount で revoke する
 //
 // 文言は LocaleProvider の既定（jsdom の navigator.language → en）で照合する。
@@ -63,8 +64,6 @@ const baseProps: SendQueueSectionProps = {
   connectError: null,
   canWebShare: false,
   webShareError: null,
-  showCaptureRow: true,
-  onAddFiles: () => {},
   onSend: () => {},
   onConnect: () => {},
   onRemoveItem: () => {},
@@ -97,30 +96,29 @@ describe("SendQueueSection", () => {
     expect(screen.getByText("graphium-20260727-102030-02.mov")).toBeTruthy();
     expect(screen.getByText("400.0 KB")).toBeTruthy();
     expect(screen.getAllByText("Waiting")).toHaveLength(2);
-    // 接続済みモードの主アクション（pending 2 件）
+    // 接続済みモードの送信ボタン（pending 2 件）
     expect(screen.getByRole("button", { name: /Send \(2\)/ })).toBeTruthy();
   });
 
-  it("collapses the queue block entirely while empty, keeping the capture row", () => {
-    renderSection({ items: [] });
+  it("renders nothing at all while the queue is empty", () => {
+    const { container } = renderSection({ items: [] });
 
-    expect(screen.queryByTestId("send-queue-block")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
-    // 撮影ボタン行は残る（撮ればここに並ぶ）
-    expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
-    expect(screen.getByTestId("send-queue-photo")).toBeTruthy();
+    expect(container.querySelector("[data-testid=send-queue-block]")).toBeNull();
+    // 捕獲の入口は MobileCaptureBar 側にあるので、空キューでは何も出さない
+    expect(container.firstElementChild).toBeNull();
   });
 
-  it("hides the capture row when showCaptureRow is false but still lists leftovers", () => {
+  it("anchors the send button in the heading row, above the list", () => {
     renderSection({
-      showCaptureRow: false,
-      items: [item("a", "graphium-a.jpg")],
+      items: [item("a", "graphium-a.jpg"), item("b", "graphium-b.jpg")],
     });
 
-    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
-    expect(screen.queryByTestId("send-queue-photo")).toBeNull();
-    // 前回セッションの送り残しは見える（保全）
-    expect(screen.getByText("graphium-a.jpg")).toBeTruthy();
+    const send = screen.getByRole("button", { name: /Send \(2\)/ });
+    const firstRow = screen.getByText("graphium-a.jpg");
+    // 見出し行（送信ボタン）はリストより前 = リストが伸びても位置が動かない
+    expect(
+      send.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("shows upload progress on the active item and locks its remove button", () => {
@@ -134,9 +132,12 @@ describe("SendQueueSection", () => {
     expect(screen.getByText("Sending... 50%")).toBeTruthy();
     const remove = screen.getByRole("button", { name: "Remove from queue" });
     expect((remove as HTMLButtonElement).disabled).toBe(true);
+    // 見出し行の送信ボタンは送信中表示 + 無効
+    const send = screen.getByRole("button", { name: /Sending/ });
+    expect((send as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("fires onSend from the manual send button", () => {
+  it("fires onSend from the heading send button", () => {
     const onSend = vi.fn();
     renderSection({ items: [item("a", "graphium-a.jpg")], onSend });
 
@@ -171,7 +172,8 @@ describe("SendQueueSection", () => {
     expect(screen.getByText(/isn't set up yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
-    // 主アクションは共有シート
+    // 主アクションは共有シート（見出しの送信ボタンは出ない）
+    expect(screen.queryByRole("button", { name: /Send \(1\)/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Send via share sheet \(1\)/ }));
     expect(onWebShare).toHaveBeenCalledTimes(1);
   });
@@ -207,22 +209,6 @@ describe("SendQueueSection", () => {
     expect(onRetryFailed).toHaveBeenCalledTimes(1);
     // failed は送信対象から外れているので Send のカウントは pending のみ
     expect(screen.getByRole("button", { name: /Send \(1\)/ })).toBeTruthy();
-  });
-
-  it("hands picked files to onAddFiles and resets the input", () => {
-    const onAddFiles = vi.fn();
-    renderSection({ onAddFiles });
-
-    const input = screen.getByTestId("send-queue-library") as HTMLInputElement;
-    const files = [
-      new File([new Uint8Array([1]) as BlobPart], "image.jpg", { type: "image/jpeg" }),
-      new File([new Uint8Array([2]) as BlobPart], "clip.mov", { type: "video/quicktime" }),
-    ];
-    fireEvent.change(input, { target: { files } });
-
-    expect(onAddFiles).toHaveBeenCalledTimes(1);
-    expect(onAddFiles.mock.calls[0][0]).toHaveLength(2);
-    expect(input.value).toBe("");
   });
 
   it("surfaces connect errors", () => {
@@ -293,33 +279,6 @@ describe("SendQueueSection — memo / URL 捕獲", () => {
           })
         : null,
     );
-
-  it("shows the compose buttons only when their callbacks are provided", () => {
-    const onComposeMemo = vi.fn();
-    const onAddUrl = vi.fn();
-    const { unmount } = renderSection({ onComposeMemo, onAddUrl });
-
-    fireEvent.click(screen.getByRole("button", { name: "Write" }));
-    expect(onComposeMemo).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "URL" }));
-    expect(onAddUrl).toHaveBeenCalledTimes(1);
-    // 撮影ピッカーはそのまま同じ行に並ぶ
-    expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
-    unmount();
-
-    // 渡さなければ出ない（従来の 4 ボタン行のまま）
-    renderSection({});
-    expect(screen.queryByRole("button", { name: "Write" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "URL" })).toBeNull();
-  });
-
-  it("keeps compose buttons available even when the media capture row is hidden", () => {
-    // ローカル保存もキュー経路も無い環境でも [書く][URL] は退避経路（親のフォールバック）を持つ
-    const onComposeMemo = vi.fn();
-    renderSection({ showCaptureRow: false, onComposeMemo, onAddUrl: vi.fn() });
-    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
-  });
 
   it("renders a memo row as icon + first-line preview instead of the file name", async () => {
     renderSection({ items: [memoItem], loadItemBlob: loadCaptureBlob });
