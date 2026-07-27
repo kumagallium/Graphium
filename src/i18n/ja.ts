@@ -1325,6 +1325,7 @@ export const ja: Record<string, string> = {
   "memo.title": "メモ",
   "memo.count": "{count} 件",
   "memo.empty": "まだメモがありません。下のボタンをタップして作成しましょう。",
+  "memo.emptyQueueHome": "過去の記録はまだありません。上の捕獲ボタンから始めましょう。",
   "memo.new": "メモを作成",
   "memo.creating": "作成中...",
   "memo.placeholder": "メモを入力...",

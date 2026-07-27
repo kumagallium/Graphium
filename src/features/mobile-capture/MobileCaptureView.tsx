@@ -693,7 +693,11 @@ export function MobileCaptureView({
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {searchQuery.trim() ? t("nav.noMatchingNotes") : t("memo.empty")}
+              {/* キュー前提ホームでは作成ボタンが上の捕獲行に移っているので文言を変える
+                  （「下のボタン」は従来ホームの下バーを指す） */}
+              {searchQuery.trim()
+                ? t("nav.noMatchingNotes")
+                : t(mobileInboxEnabled ? "memo.emptyQueueHome" : "memo.empty")}
             </p>
           </div>
         ) : (
