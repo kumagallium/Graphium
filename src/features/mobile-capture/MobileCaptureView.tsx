@@ -13,6 +13,7 @@ import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
 import { SendToInboxSheet } from "./inbox/SendToInboxSheet";
 import { usePushQueue } from "./inbox/use-push-queue";
+import { useMobileInboxFlag } from "./inbox/experimental";
 
 // ── 統合タイムラインアイテム ──
 
@@ -331,12 +332,19 @@ export function MobileCaptureView({
   const pulling = useRef(false);
   const t = useT();
 
+  // モバイル連携（実験フラグ・既定 OFF）。OFF の間は送信キュー経路を丸ごと隠し、
+  // 撮ったものは従来どおりこの端末の素材ライブラリに保存する。設定のトグルで
+  // 切り替わるとイベント経由でここも即時に再レンダリングされる（リロード不要）。
+  const mobileInboxEnabled = useMobileInboxFlag();
   // 送信キュー（撮る → 即キュー永続化 → Google Drive の Graphium/Inbox へ直列送信。
   // Google 未設定なら Web Share フォールバック）。push/ は hook 内で動的 import される。
-  const push = usePushQueue();
+  // フラグ OFF の間は hook 自体が不活性（ロードも自動 drain もしない）。
+  const push = usePushQueue(mobileInboxEnabled);
   // 撮ったものをキュー経路へ送れる環境か。false のときだけ従来のローカル保存に落ちる
-  //（ユーザー決定: ローカル保存は「Google 未設定 かつ Web Share 不可」のみの退路）。
-  const pushRouteAvailable = push.ready && (push.configured || push.canWebShare);
+  //（ユーザー決定: ローカル保存は「実験フラグ OFF」または「Google 未設定 かつ
+  //  Web Share 不可」のみの退路）。
+  const pushRouteAvailable =
+    mobileInboxEnabled && push.ready && (push.configured || push.canWebShare);
 
   // シートを開いた時に configured/connected を読み直す（設定画面から戻った直後など）
   const refreshPushStatus = push.refreshStatus;
@@ -431,10 +439,10 @@ export function MobileCaptureView({
   );
 
   // メディアキャプチャ共通。
-  // 撮ったものはこの端末に保存せず**送信キュー**へ直行させる（完全置き換え。
-  // この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
-  // enqueue はジェスチャ非依存なので await してよい。キュー経路が使えない環境
-  //（Google 未設定 かつ Web Share 不可、または IndexedDB 不可）だけ従来の
+  // モバイル連携 ON では、撮ったものはこの端末に保存せず**送信キュー**へ直行させる
+  //（完全置き換え。この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
+  // enqueue はジェスチャ非依存なので await してよい。実験フラグ OFF、またはキュー経路が
+  // 使えない環境（Google 未設定 かつ Web Share 不可、または IndexedDB 不可）は従来の
   // ローカル保存に落とす。
   const enqueueForSend = push.enqueueForSend;
   const handleFileChange = useCallback(
@@ -443,7 +451,8 @@ export function MobileCaptureView({
       // 同じものをもう一度撮り直し / 選び直しできるように毎回リセットする
       e.target.value = "";
       if (files.length === 0) return;
-      const queued = await enqueueForSend(files);
+      // フラグ OFF はキューに触れず即ローカル保存（hook 側の enabled ガードと二重の防波堤）
+      const queued = mobileInboxEnabled ? await enqueueForSend(files) : false;
       if (queued) {
         setWebShareError(null);
         setShowSendSheet(true);
@@ -459,7 +468,7 @@ export function MobileCaptureView({
         setUploading(false);
       }
     },
-    [enqueueForSend, onUploadMedia]
+    [mobileInboxEnabled, enqueueForSend, onUploadMedia]
   );
 
   // キュー経路が使える環境では、ローカル保存ハンドラが無くても撮れる
@@ -482,9 +491,10 @@ export function MobileCaptureView({
               ? t("common.loading")
               : t("memo.count", { count: String(filtered.length) })}
           </span>
-          {/* 送信キューの入口。キュー経路が使える環境か、送り残しがある時に出す
-              （未送信アイテムは前回セッションの残りでも見えないと困る） */}
-          {(pushRouteAvailable || push.items.length > 0) && (
+          {/* 送信キューの入口。実験フラグ ON のうえで、キュー経路が使える環境か
+              送り残しがある時に出す（未送信アイテムは前回セッションの残りでも
+              見えないと困る）。フラグ OFF では入口ごと出さない */}
+          {mobileInboxEnabled && (pushRouteAvailable || push.items.length > 0) && (
             <button
               onClick={() => { setWebShareError(null); setShowSendSheet(true); }}
               title={t("mobile.send.queueEntry")}
@@ -717,8 +727,9 @@ export function MobileCaptureView({
         />
       )}
 
-      {/* 送信キューシート。キューは IndexedDB 永続なので閉じても消えない */}
-      {showSendSheet && (
+      {/* 送信キューシート。キューは IndexedDB 永続なので閉じても消えない。
+          実験フラグ OFF に切り替わったら開いたままのシートも畳む */}
+      {mobileInboxEnabled && showSendSheet && (
         <SendToInboxSheet
           items={push.items}
           draining={push.draining}

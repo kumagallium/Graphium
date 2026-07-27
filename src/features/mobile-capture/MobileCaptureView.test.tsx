@@ -2,18 +2,22 @@
 // モバイルキャプチャビューの送信キュー配線テスト。
 //
 // 対象の不変条件:
-// - 下バーの 📷🎥🎙 で撮ったファイルは enqueueForSend に渡り、成功したら
-//   送信キューシートが開く（この端末には保存しない — 完全置き換え）
+// - モバイル連携の実験フラグ ON のとき: 下バーの 📷🎥🎙 で撮ったファイルは
+//   enqueueForSend に渡り、成功したら送信キューシートが開く
+//   （この端末には保存しない — 完全置き換え）
 // - enqueueForSend が false（Google 未設定かつ Web Share 不可、IndexedDB 不可）の
 //   ときだけ従来の onUploadMedia（ローカル保存）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
 // - ヘッダーの送信キュー入口は、経路が使える or 送り残しがあるときに出る
+// - 実験フラグ OFF（既定）のとき: キュー経路が使える環境設定でも入口は一切出ず、
+//   撮ったファイルは従来どおり onUploadMedia（ローカル保存）へ行く
 //
 // usePushQueue はモック（キュー・認可の実物は hook 側の責務）。
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { MobileCaptureView } from "./MobileCaptureView";
+import { setMobileInboxEnabled } from "./inbox/experimental";
 import { LocaleProvider } from "../../i18n";
 import type { PushQueueUi } from "./inbox/use-push-queue";
 
@@ -60,6 +64,9 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
 
 beforeEach(() => {
   usePushQueueMock.mockReturnValue(pushUi());
+  // 既存の配線テストはすべて「モバイル連携 ON」前提（フラグ自体の既定は OFF）
+  localStorage.clear();
+  setMobileInboxEnabled(true);
 });
 
 function renderView(props: Partial<Parameters<typeof MobileCaptureView>[0]> = {}) {
@@ -160,5 +167,61 @@ describe("MobileCaptureView 送信キュー配線", () => {
     usePushQueueMock.mockReturnValue(pushUi({ configured: false, canWebShare: false }));
     renderView();
     expect(screen.queryByRole("button", { name: "Open send queue" })).toBeNull();
+  });
+});
+
+describe("モバイル連携 実験フラグ OFF（既定）のゲート", () => {
+  beforeEach(() => {
+    // beforeEach で ON にした分を戻す = 出荷時の既定状態
+    setMobileInboxEnabled(false);
+  });
+
+  it("keeps the legacy local-save path: captures go to onUploadMedia, not the queue", async () => {
+    const enqueueForSend = vi.fn(async () => true);
+    const onUploadMedia = vi.fn(async () => "file-id");
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
+    renderView({ onUploadMedia });
+
+    capture("image/*", [jpeg()]);
+
+    await waitFor(() => expect(onUploadMedia).toHaveBeenCalledTimes(1));
+    expect(enqueueForSend).not.toHaveBeenCalled();
+    expect(screen.queryByText("Send queue")).toBeNull();
+  });
+
+  it("hides the header queue entry even when the queue route looks available", () => {
+    usePushQueueMock.mockReturnValue(
+      pushUi({
+        items: [
+          {
+            id: "a",
+            name: "graphium-20260727-102030-01.jpg",
+            mime: "image/jpeg",
+            bytes: 1,
+            enqueuedAt: "2026-07-27T10:20:30.000Z",
+            status: "pending",
+            attempts: 0,
+          },
+        ],
+      }),
+    );
+    renderView();
+    expect(screen.queryByRole("button", { name: "Open send queue" })).toBeNull();
+  });
+
+  it("hides capture buttons without onUploadMedia (no silent dead-end route)", () => {
+    renderView({ onUploadMedia: undefined });
+    expect(document.querySelector('input[accept="image/*"]')).toBeNull();
+  });
+
+  it("turning the flag ON at runtime reveals the queue entry without a reload", () => {
+    renderView();
+    expect(screen.queryByRole("button", { name: "Open send queue" })).toBeNull();
+    // 設定モーダルのトグル相当。setMobileInboxEnabled が CustomEvent を飛ばし、
+    // useMobileInboxFlag がその場で再レンダリングする（リロード不要の反映）
+    act(() => {
+      setMobileInboxEnabled(true);
+    });
+    expect(screen.getByRole("button", { name: "Open send queue" })).toBeTruthy();
   });
 });

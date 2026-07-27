@@ -558,6 +558,10 @@ export const ja: Record<string, string> = {
   "settings.shared.note": "設定はローカルに保存されます。削除すると _meta/ に tombstone が残ります。",
   "settings.shared.desktopOnly": "共有ストレージは現在デスクトップ版のみ対応です。ブラウザ版ではローカルフォルダの読み書きができません。",
   "settings.shared.identityRequired": "接続テストの前に、上の「あなたの identity」で名前とメールを登録してください。",
+  // ── モバイル連携（実験フラグ・既定 OFF） ──
+  "settings.mobileInboxFlag.title": "モバイル連携",
+  "settings.mobileInboxFlag.badge": "実験的機能",
+  "settings.mobileInboxFlag.help": "スマホで撮ったメモや写真をデスクトップの受信箱へ送る機能を試します。オンにすると、スマホの送信キューとデスクトップの「モバイル」受信箱・モバイル送信設定が表示されます（再読み込み不要）。",
   // ── モバイル送信（Google Drive push） ──
   "settings.mobilePush.title": "モバイル送信（Google Drive）",
   "settings.mobilePush.help": "スマホで撮ったファイルを Google Drive の Graphium/Inbox に直接アップロードし、デスクトップは同期フォルダから取り込みます。この設定は端末ごとに保存されるため、撮影に使うスマホ側で接続してください。",

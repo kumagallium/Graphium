@@ -23,7 +23,10 @@ import type {
 type PushModule = typeof import("./push");
 
 export type PushQueueUi = {
-  /** push モジュールのロードが済んだか。false の間は configured/connected は暫定値。 */
+  /**
+   * push モジュールのロードが済んだか。false の間は configured/connected は暫定値。
+   * enabled=false（実験フラグ OFF）の間は false のまま。
+   */
   ready: boolean;
   /** client_id が解決できるか（同梱 or 自前上書き）。 */
   configured: boolean;
@@ -69,7 +72,14 @@ export type PushQueueUi = {
   refreshStatus: () => void;
 };
 
-export function usePushQueue(): PushQueueUi {
+/**
+ * @param enabled モバイル連携 実験フラグ（既定 true）。false の間はこのフックを
+ *   完全に不活性にする — push モジュールのロード・キュー購読・自動 drain を行わず、
+ *   enqueueForSend は false を返して呼び出し側を従来のローカル保存へ落とす。
+ *   フラグが ON に切り替わると（useMobileInboxFlag 経由の再レンダリングで）
+ *   その場でロードから立ち上がる。
+ */
+export function usePushQueue(enabled = true): PushQueueUi {
   const moduleRef = useRef<Promise<PushModule> | null>(null);
   const pusherRef = useRef<InboxPusher | null>(null);
   const snapshotRef = useRef<PushQueueSnapshot | null>(null);
@@ -144,8 +154,16 @@ export function usePushQueue(): PushQueueUi {
     [loadModule],
   );
 
-  // マウント時: モジュールロード → 状態初期化 → 購読 → 残キューがあれば drain
+  // マウント時: モジュールロード → 状態初期化 → 購読 → 残キューがあれば drain。
+  // 実験フラグ OFF の間は何もロードしない（前回セッションの残キューも触らない —
+  // OFF の裏で勝手に送信が走るのを防ぐ）。ON へ切り替わったらここから立ち上がる。
   useEffect(() => {
+    if (!enabled) {
+      setReady(false);
+      snapshotRef.current = null;
+      setSnapshot(null);
+      return;
+    }
     let unsubscribe: (() => void) | null = null;
     let cancelled = false;
     void loadModule()
@@ -167,10 +185,11 @@ export function usePushQueue(): PushQueueUi {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [loadModule, refreshStatus, maybeDrain]);
+  }, [enabled, loadModule, refreshStatus, maybeDrain]);
 
   // フォアグラウンド復帰 / オンライン復帰で drain（トークン失効の検知も兼ねる）
   useEffect(() => {
+    if (!enabled) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       refreshStatus();
@@ -183,7 +202,7 @@ export function usePushQueue(): PushQueueUi {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
     };
-  }, [refreshStatus, maybeDrain]);
+  }, [enabled, refreshStatus, maybeDrain]);
 
   // Web Share フォールバック用の事前復元。
   // ジェスチャ内で IndexedDB を await すると iOS で user activation を失うため、
@@ -207,6 +226,8 @@ export function usePushQueue(): PushQueueUi {
 
   const enqueueForSend = useCallback(
     async (files: File[]): Promise<boolean> => {
+      // フラグ OFF は常にローカル保存へフォールバック（キューにもモジュールにも触らない）
+      if (!enabled) return false;
       if (files.length === 0) return false;
       const mod = await loadModule();
       const pusher = pusherRef.current;
@@ -224,7 +245,7 @@ export function usePushQueue(): PushQueueUi {
       maybeDrain();
       return true;
     },
-    [canWebShare, loadModule, maybeDrain],
+    [enabled, canWebShare, loadModule, maybeDrain],
   );
 
   const drainNow = useCallback(() => maybeDrain({ force: true }), [maybeDrain]);

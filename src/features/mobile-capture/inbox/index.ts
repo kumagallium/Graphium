@@ -1,5 +1,11 @@
 // モバイルキャプチャ Inbox（受信箱）の public API。
 export { getInboxRoot, setInboxRoot } from "./config";
+export {
+  isMobileInboxEnabled,
+  setMobileInboxEnabled,
+  useMobileInboxFlag,
+  MOBILE_INBOX_FLAG_EVENT,
+} from "./experimental";
 export { mimeFromExtension, kindFromMime } from "./mime";
 export { FolderInbox } from "./transport";
 export { runInboxImport } from "./importer";

@@ -558,6 +558,10 @@ export const en: Record<string, string> = {
   "settings.shared.note": "Settings stored locally. Tombstone records remain in _meta/ after deletion.",
   "settings.shared.desktopOnly": "Shared storage is currently desktop-only. The browser version cannot read or write to local folders.",
   "settings.shared.identityRequired": "Register your name and email above (Your identity) before testing the connection.",
+  // ── Mobile sync (experimental flag, default OFF) ──
+  "settings.mobileInboxFlag.title": "Mobile sync",
+  "settings.mobileInboxFlag.badge": "Experimental",
+  "settings.mobileInboxFlag.help": "Try sending captures from your phone to the desktop inbox. Turning this on reveals the phone-side send queue plus the desktop Mobile inbox and upload settings (no reload needed).",
   // ── Mobile upload (Google Drive push) ──
   "settings.mobilePush.title": "Mobile upload (Google Drive)",
   "settings.mobilePush.help": "Your phone uploads captures straight to Google Drive → Graphium/Inbox; the desktop imports them from the synced folder. This setting is stored per device — connect on the phone you capture with.",

@@ -79,6 +79,9 @@ import {
 // モバイル送信（Google Drive push）は動的 import で引く（gsi を起動時バンドルに
 // 入れない — push/index.ts の注記どおり）。ここは type import のみ。
 import type { InboxPusher } from "../mobile-capture/inbox/push";
+// モバイル連携の実験フラグ（既定 OFF）。トグル自体は常時表示し、ON のときだけ
+// モバイル送信セクションを見せる。切替はイベント経由でリロード無しに全入口へ届く。
+import { setMobileInboxEnabled, useMobileInboxFlag } from "../mobile-capture/inbox/experimental";
 
 type MobilePushModule = typeof import("../mobile-capture/inbox/push");
 
@@ -293,6 +296,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [sharedTestRunning, setSharedTestRunning] = useState(false);
   const [blobTestRunning, setBlobTestRunning] = useState(false);
 
+  // モバイル連携の実験フラグ（既定 OFF）。ON のときだけ下のモバイル送信セクションを出す。
+  const mobileInboxFlagOn = useMobileInboxFlag();
   // モバイル送信（Google Drive push）— ストレージタブ。
   // 設定は localStorage（端末ごと）なので、スマホ側でも同じ client ID を入れる必要がある。
   const [pushMod, setPushMod] = useState<MobilePushModule | null>(null);
@@ -655,11 +660,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     }, 600);
   }, [serverToken]);
 
-  // ── モバイル送信（Google Drive push）── ストレージタブを開いた時に動的ロード。
+  // ── モバイル送信（Google Drive push）── 実験フラグ ON でストレージタブを開いた時に
+  // 動的ロード（フラグ OFF ではセクションごと出さないのでロードもしない）。
   // prepare をここで済ませておくと、接続ボタンの click から同期的に connect() を
   // 呼べる（InboxPusher の契約 — ジェスチャ内で await を挟むと iOS がブロックする）。
   useEffect(() => {
-    if (!isOpen || tab !== "storage" || pushMod) return;
+    if (!isOpen || tab !== "storage" || !mobileInboxFlagOn || pushMod) return;
     let cancelled = false;
     void import("../mobile-capture/inbox/push")
       .then((mod) => {
@@ -681,7 +687,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     return () => {
       cancelled = true;
     };
-  }, [isOpen, tab, pushMod]);
+  }, [isOpen, tab, mobileInboxFlagOn, pushMod]);
 
   const handleSavePushClientId = useCallback(() => {
     if (!pushMod) return;
@@ -1914,9 +1920,45 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             )}
 
-            {/* モバイル送信（Google Drive push）。デスクトップにも出す —
-                機能を知る場所はデスクトップ、実際に接続するのは撮影する端末。
-                設定は端末ごと（localStorage）なので help でその旨を明示する */}
+            {/* モバイル連携（実験的機能）トグル — 常時表示。
+                スマホで撮ってデスクトップの受信箱に送る機能一式（送信キュー・受信箱・
+                サイドバー「モバイル」・下のモバイル送信セクション）をまとめて ON/OFF する。
+                既定 OFF。切替は localStorage 直書き + CustomEvent なので、保存ボタンや
+                リロードを待たずその場で全入口に反映される。 */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Smartphone size={14} className="text-muted-foreground shrink-0" />
+                  <h3 className="text-xs font-semibold text-foreground">
+                    {t("settings.mobileInboxFlag.title")}
+                  </h3>
+                  <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                    {t("settings.mobileInboxFlag.badge")}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileInboxEnabled(!mobileInboxFlagOn)}
+                  role="switch"
+                  aria-checked={mobileInboxFlagOn}
+                  aria-label={t("settings.mobileInboxFlag.title")}
+                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${mobileInboxFlagOn ? "bg-primary" : "bg-input"}`}
+                >
+                  <span
+                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{ transform: mobileInboxFlagOn ? "translateX(15px)" : "translateX(1px)" }}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.mobileInboxFlag.help")}
+              </p>
+            </div>
+
+            {/* モバイル送信（Google Drive push）— 実験フラグ ON のときだけ表示。
+                デスクトップにも出す — 機能を知る場所はデスクトップ、実際に接続するのは
+                撮影する端末。設定は端末ごと（localStorage）なので help でその旨を明示する */}
+            {mobileInboxFlagOn && (
             <div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Smartphone size={14} className="text-muted-foreground" />
@@ -2031,6 +2073,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
               </div>
             </div>
+            )}
 
             {/* エクスポート / バックアップ */}
             <div>
