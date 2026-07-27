@@ -23,6 +23,7 @@ import {
   STRUCTURAL_LABELS,
 } from "./labels";
 import { getVisibleCoreLabels, isHeadingBlock } from "./label-visibility";
+import { isBlockInsideStep } from "../../blocks/step/view";
 // label-attributes は将来のステータス機能で再利用
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { useT, getDisplayLabel } from "../../i18n";
@@ -291,9 +292,10 @@ export function LabelSideMenuButton() {
   }
 
   // ラベル未設定: # ボタン。
-  // 新規にブロックラベルを付けられるのは構造テーブルだけになった
-  // （工程は step ブロック、フリーラベルは廃止）ので、それ以外には出さない。
+  // 新規にブロックラベルを付けられるのは「step の中の構造テーブル」だけ
+  // （工程は step ブロック、フリーラベルは廃止、工程外の Entity は束縛先が無い）。
   if (block.type !== "table") return null;
+  if (!isBlockInsideStep((editor as any).document ?? [], block.id)) return null;
   return (
     <button
       onClick={() => openDropdown(block.id)}

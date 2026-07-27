@@ -7,11 +7,13 @@ import {
   getFormattingToolbarItems,
   useBlockNoteEditor,
 } from "@blocknote/react";
+import { useEffect, useState } from "react";
 import { Bot } from "lucide-react";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { FormattingToolbarProps } from "@blocknote/react";
 import { LABEL_TO_STYLE } from "../features/inline-label/styles";
+import { isBlockInsideStep, isSelectionInsideStep } from "../blocks/step/view";
 import { useProvLabelsEnabled } from "../features/context-label";
 import {
   useMediaInlineLabelStoreOptional,
@@ -116,6 +118,17 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   const mediaStore = useMediaInlineLabelStoreOptional();
   const provLabelsEnabled = useProvLabelsEnabled();
   const t = useT();
+  // ツールバーは開いたまま選択だけが変わっても再レンダーされないことがある
+  // （同一ブロック内で選択し直した場合など）。step 内判定・アクティブスタイルは
+  // 選択に依存するので、selection の更新で再評価させる。
+  const [, forceSelectionTick] = useState(0);
+  useEffect(() => {
+    const tiptap = (editor as any)?._tiptapEditor;
+    if (!tiptap?.on) return;
+    const bump = () => forceSelectionTick((x: number) => x + 1);
+    tiptap.on("selectionUpdate", bump);
+    return () => tiptap.off?.("selectionUpdate", bump);
+  }, [editor]);
   const mediaSel = getSelectedMediaBlock(editor);
 
   const handleAiClick = async () => {
@@ -174,11 +187,21 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   // テーブルセル内ではインラインラベルボタンを出さない（構造解釈に一本化）。
   // メディアブロック選択時は別経路（サイドストア）なので対象外。
   const hideInlineLabels = !mediaSel && isSelectionInTableCell(editor);
+  // ハイライトは step の中でだけ付けられる（工程の外の Entity は束縛先が無い）。
+  // 既にラベルが付いている選択では、外せるようにボタンを残す。
+  const insideStep = mediaSel
+    ? isBlockInsideStep((editor as any).document ?? [], mediaSel.blockId)
+    : isSelectionInsideStep(editor);
+  const hasExistingLabel = mediaSel
+    ? Boolean(mediaCurrent?.label)
+    : INLINE_LABEL_ORDER.some((l) => Boolean(activeStyles[LABEL_TO_STYLE[l]]));
+  const showInlineLabels =
+    !hideInlineLabels && provLabelsEnabled && (insideStep || hasExistingLabel);
 
   return (
     <FormattingToolbar {...props}>
       {getFormattingToolbarItems(props.blockTypeSelectItems)}
-      {!hideInlineLabels && provLabelsEnabled && INLINE_LABEL_ORDER.map((label) => {
+      {showInlineLabels && INLINE_LABEL_ORDER.map((label) => {
         const isActive = mediaSel
           ? mediaCurrent?.label === label
           : Boolean(activeStyles[LABEL_TO_STYLE[label]]);

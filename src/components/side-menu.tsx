@@ -32,6 +32,7 @@ import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
+import { isBlockInsideStep } from "../blocks/step/view";
 import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
@@ -307,6 +308,12 @@ function BlockLabelMenuItems() {
       currentLabel === "result",
   });
   if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる
+
+  // テーブル / メディアのラベルも step の中でだけ新規付与できる
+  // （工程の外の Entity は束縛先の Activity が無い）。既存ラベルは外せるよう残す。
+  if (!currentLabel && !isBlockInsideStep((editor as any).document ?? [], block.id)) {
+    return null;
+  }
 
   const applyLabel = (label: CoreLabel) => {
     const active = currentLabel === label;

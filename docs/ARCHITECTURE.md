@@ -126,17 +126,15 @@ Labels come in two passes that operate on the same blocks:
 0. **The `step` container block.** A procedure is written as a `step` block,
    whose children are its content. The block *is* the PROV-DM *Activity* —
    it carries no label, and its title comes from the block's own inline
-   content. This is the only way to author a procedure: labelled headings
-   are no longer offered anywhere in the UI, because two ways to make the
-   same thing collided in the slash menu. Notes written before `step`
-   existed keep their labels, still render, and still generate the same
-   graph; their labels can be changed or removed from the drag handle.
-1. **Block-level (context labels).** In older notes, a heading may carry
-   `[Step]` (PROV-DM *Activity*; internal key `procedure`) or a phase
-   `[Plan]` / `[Result]` (internal keys `plan` / `result`) — kept working,
-   no longer offered for new content. The `#` affordance is gone entirely
-   (free-form tags went with it). Today the only block labels applied from
-   the drag-handle menu are on tables and media: a **table
+   content. This is the only way a procedure exists: notes written with the
+   old heading-plus-label style are converted to `step` blocks on load by
+   the v6 document migration (DATA_MODEL §2.1), preserving block ids so the
+   generated graph is unchanged.
+1. **Block-level (context labels).** The only block labels are entity
+   markers on tables and media, applied from the drag-handle menu and
+   offered **only inside a step** (an entity outside any step would have no
+   Activity to bind to). The `#` affordance is gone entirely (free-form
+   tags went with it; existing tags remain inert data). A **table
    block** may be tagged `[Input]` / `[Tool]` / `[Output]` to mark
    it as a *structured table* (header row = attribute keys, each data row =
    one Entity), or `[Parameter]` to mark it as a *parameter table* (header
@@ -145,7 +143,9 @@ Labels come in two passes that operate on the same blocks:
    Implemented in `src/features/context-label/`.
 2. **Inline labels.** Highlights spans inside block text as `[Input]` /
    `[Tool]` / `[Parameter]` / `[Output]` (internal keys `material` /
-   `tool` / `attribute` / `output`). The first three feed PROV-DM
+   `tool` / `attribute` / `output`). Offered **only inside a step**, for
+   the same reason as block labels; existing highlights elsewhere stay
+   visible and removable. The first three feed PROV-DM
    *Entity* nodes (with `material` / `tool` subtypes); `[Parameter]`
    becomes a *Property* on the parent Activity or Entity. Inline labels do
    not apply inside table cells (cells are atomic values — use a
@@ -169,20 +169,12 @@ to which Activity:
 The two never overlap: headings inside a step are ordinary subheadings and
 create no Activity of their own, which keeps a block from being bound twice.
 
-Legacy `[Plan]` / `[Result]` phase headings do **not** create separate
-Activities — they switch phase over the range they scope. Blocks inside a
-`step` never carry a phase (a step-internal "mode band" was built and then
-withdrawn: plan-vs-actual comparison pays off across runs of a protocol,
-which note-level splitting via `partOfPlanNoteId` already covers). Where
-legacy phases are present, each Entity gets a `graphium:phase`
-attribute (`"plan"` or `"execution"`); plan-phase Entities are emitted
-as separate nodes with an `_plan` suffix so they coexist with their
-execution counterparts. When the same `(label, entityId)` pair appears
-in both phases, the generator emits a `prov:wasDerivedFrom` edge from
-the execution Entity to the plan Entity, expressing that the actual
-outcome was derived from the planned intent. The shared Step Activity
-that both Entities are `prov:used` by acts as the implicit activity of
-the PROV-DM derivation’s full form.
+`[Plan]` / `[Result]` phases were withdrawn (plan-vs-actual comparison
+pays off across runs of a protocol, which note-level splitting via
+`partOfPlanNoteId` covers), and the v6 migration strips any remaining
+phase labels on load — so loaded documents never carry a phase and new
+graphs contain no `graphium:phase` metadata. See DATA_MODEL §2.3 for the
+historical semantics that pre-v6 exports may still contain.
 
 #### Wiki Knowledge Layer in the PROV-JSON-LD export
 

@@ -12,12 +12,18 @@
 //   4 → 5: block-level inline-type ラベル（material/tool/attribute/output）を
 //          BlockNote のインライン style（inlineMaterial 等）に変換。
 //          LabelStore は heading 用ラベル（procedure/plan/result/free.*）に純化。
+//   5 → 6: 「procedure ラベル付き見出し + スコープ範囲」を step コンテナブロックに変換。
+//          工程が第一級のブロックになったため、ラベルで工程を表す旧記法を畳む。
+//          見出しの id を step がそのまま引き継ぐので、activity_<id>・informed_by
+//          リンク・メモ等のブロック参照はすべて生き残り、PROV グラフは変換前後で
+//          同一になる（例外: 帯の撤回で意味を失った plan / result ラベルは除去し、
+//          該当ノートの _plan Entity は生成されなくなる）。
 // ──────────────────────────────────────────────
 
 import type { GraphiumDocument } from "./document-types";
 import { normalizeLabel, classifyLabel } from "../features/context-label/labels";
 
-export const LATEST_DOCUMENT_VERSION = 5;
+export const LATEST_DOCUMENT_VERSION = 6;
 
 const INLINE_TYPE_LABELS = new Set(["material", "tool", "attribute", "output"]);
 
@@ -44,6 +50,12 @@ export function migrateToLatest(doc: GraphiumDocument): GraphiumDocument {
   if ((doc.version ?? 1) < 5) {
     migrateInlineLabelsToHighlightsV5(doc);
     doc.version = 5;
+  }
+
+  // v5 → v6: procedure 見出し + スコープを step コンテナに変換
+  if ((doc.version ?? 1) < 6) {
+    migrateProcedureHeadingsToStepsV6(doc);
+    doc.version = 6;
   }
 
   // wikiMeta.kind: "concept" → "claim" のリネーム（提案 v4 で命名を見直したため）
@@ -303,3 +315,91 @@ function buildBlockIndex(blocks: any[]): Map<string, any> {
   return index;
 }
 
+
+// ──────────────────────────────────────────────
+// v5 → v6: procedure 見出し + スコープ → step コンテナ
+// ──────────────────────────────────────────────
+
+/**
+ * 「procedure ラベル付き見出し」を step ブロックに変換する。
+ *
+ * - スコープ = 見出しの後ろから、同レベル以上の次の見出しの手前まで
+ *   （generator の scopeStack / collectBlockScope と同じ境界規則）。
+ *   その範囲のブロックが step の children になる。
+ * - step の id は見出しの id を引き継ぐ。activity_<id>・informed_by リンク・
+ *   メモのアンカー等、ブロック id への参照はすべてそのまま生きる。
+ * - 下位レベルの procedure 見出しがスコープ内にあれば、再帰的に入れ子の
+ *   step へ変換される（generator の入れ子 Activity と同じ構造）。
+ * - plan / result ラベルは除去する（step 内モード帯の撤回により意味を
+ *   失った legacy。見出し自体は通常の見出しとして残る）。
+ */
+function migrateProcedureHeadingsToStepsV6(doc: GraphiumDocument): void {
+  for (const page of doc.pages ?? []) {
+    const labels: Record<string, string> = (page as any).labels ?? {};
+    const normalizedOf = (blockId: string): string | null => {
+      const raw = labels[blockId];
+      return raw ? normalizeLabel(raw) : null;
+    };
+
+    const convertList = (blocks: any[]): any[] => {
+      const result: any[] = [];
+      let i = 0;
+      while (i < blocks.length) {
+        const b = blocks[i];
+        if (!b || typeof b !== "object") {
+          i++;
+          continue;
+        }
+        const isHeading = b.type === "heading";
+        const label = b.id ? normalizedOf(b.id) : null;
+
+        if (isHeading && label === "procedure") {
+          const level = b.props?.level ?? 2;
+          // スコープ終端: 同レベル以上の次の見出し
+          let j = i + 1;
+          while (
+            j < blocks.length &&
+            !(
+              blocks[j]?.type === "heading" &&
+              (blocks[j].props?.level ?? 1) <= level
+            )
+          ) {
+            j++;
+          }
+          const scope = blocks.slice(i + 1, j);
+          const children = convertList(scope);
+          // 見出しが（通常は無いが）children を持っていたら末尾に残す
+          if (Array.isArray(b.children) && b.children.length > 0) {
+            children.push(...convertList(b.children));
+          }
+          result.push({
+            id: b.id,
+            type: "step",
+            props: {
+              textAlignment: b.props?.textAlignment ?? "left",
+              variant: "step",
+            },
+            content: b.content ?? [],
+            children,
+          });
+          delete labels[b.id];
+          i = j;
+          continue;
+        }
+
+        // phase（plan / result）ラベルは除去（帯撤回済みの legacy）
+        if (b.id && (label === "plan" || label === "result")) {
+          delete labels[b.id];
+        }
+        if (Array.isArray(b.children) && b.children.length > 0) {
+          b.children = convertList(b.children);
+        }
+        result.push(b);
+        i++;
+      }
+      return result;
+    };
+
+    page.blocks = convertList(page.blocks ?? []);
+  }
+}

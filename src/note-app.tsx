@@ -111,7 +111,7 @@ import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-mar
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot } from "./features/version-snapshots/snapshot-store";
@@ -4680,32 +4680,9 @@ export function NoteApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
-  // 来歴ラベル機能（手順の PROV 化）の有効/無効。
-  // 未確定（初回）は OFF で描画を開始し、起動時にインデックスから「既にラベルを使っているか」を
-  // 判定して確定する（既存ユーザー=ON / 新規=OFF）。以降は settings の値を尊重する。
-  const [provLabelsEnabled, setProvLabelsEnabled] = useState<boolean>(
-    () => loadSettings().enableProvLabels ?? false,
-  );
-  // 起動時に一度だけ、未確定なら既存ラベルの有無から enableProvLabels を確定する。
-  useEffect(() => {
-    if (typeof loadSettings().enableProvLabels === "boolean") return; // 確定済み
-    let cancelled = false;
-    void (async () => {
-      try {
-        const idx = await readIndexFile();
-        const hasLabels = !!idx?.notes.some(
-          (n) => (n.labels?.length ?? 0) > 0 || (n.inlineLabels?.length ?? 0) > 0,
-        );
-        if (cancelled) return;
-        setProvLabelsEnabled(resolveProvLabelsDefault(hasLabels));
-      } catch {
-        // 判定に失敗しても既定 OFF のまま（新規ユーザー想定）
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
+  // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
+  const provLabelsEnabled = true;
   // inline ハイライト装飾（BlockNote style の直書き色）を CSS で消すため body 属性を同期する。
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -8347,8 +8324,6 @@ export function NoteApp() {
           setSettingsInitialTab(undefined);
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
-          // 設定モーダルで来歴ラベル機能のトグルを変えた場合に即時反映する。
-          setProvLabelsEnabled(loadSettings().enableProvLabels ?? false);
         }}
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}

@@ -148,6 +148,7 @@ load time.
 | **3** | Label values normalized from Japanese brackets (`[材料]`) to internal keys (`material`). |
 | **4** | Internal key `result` (Output Entity) renamed to `output`. Phase labels `plan` / `result` introduced. |
 | **5** | Inline-type labels (`material`, `tool`, `attribute`, `output`) moved from block-level labels to inline highlights. `LabelStore` is heading-only (`procedure` / `plan` / `result` / `free.*`), with **table blocks** as the one entity-label exception — see §2.3 (structured tables). |
+| **6** | Procedures become `step` blocks. Each `procedure`-labelled heading is converted into a `step` block that **keeps the heading's id** and takes the heading's scope (following blocks up to the next same-or-higher heading, recursively for nested procedures) as its children — so `activity_<id>`, `informed_by` links and block anchors all survive and the generated graph is unchanged. `plan` / `result` labels are stripped (phase was withdrawn; pre-v6 graphs may contain `_plan` nodes that no longer regenerate). Free-form tags are left as inert data. |
 
 Loaders accept any prior version and migrate forward. Saving always
 writes the latest version.
@@ -202,7 +203,7 @@ PROV-DM information attaches to blocks in four places:
 | Carrier | What it labels | Field |
 |---|---|---|
 | **`step` block type** | The block itself is a PROV *Activity*. Its children are the Activity's contents, and its title is the Activity label. Carries no label — the block type says it. This is the only way to author a procedure. | `page.blocks[]` (`type: "step"`) |
-| **Block label** | On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). Applied from the drag-handle menu. The `#` affordance is gone entirely. Labels in older notes — `procedure` / `plan` / `result` on headings, and free-form tags — keep rendering and generating the same graph, and can be changed or removed, but are not offered for new content. | `page.labels[blockId]` |
+| **Block label** | On **table blocks** *inside a step*: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). Applied from the drag-handle menu. The `#` affordance is gone entirely. Legacy heading labels no longer survive loading: the v6 migration converts `procedure` headings into `step` blocks and strips `plan` / `result` (§2.1). Free-form tags in older notes remain as inert data and can be removed. | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
 
@@ -258,37 +259,19 @@ containment is inferred, never stated by the user:
 Headings inside a step are ordinary subheadings and produce no Activity,
 so a block is never bound to two Activities at once.
 
-#### Plan / Execution phase (legacy)
+#### Plan / Execution phase (removed)
 
-`[Plan]` and `[Result]` are heading labels found in notes written before
-the `step` block existed; there is no UI to author new ones. Blocks inside
-a `step` never carry a phase — a marked plan pays off only when one
-protocol is compared across several runs, and that granularity is already
-served by note-level plan/execution splitting (`partOfPlanNoteId`, §2).
-Where legacy phase headings are present, the generator still honors them:
-
-- They do not create new Activities — the surrounding Step Activity
-  remains the sole Activity for both phases. They only switch a *phase
-  context* over the range the heading scopes.
-- Each Entity node carries a `graphium:phase` property — `"plan"` for
-  Entities under a `[Plan]` heading, `"execution"` otherwise.
-- Plan-phase Entities are emitted with an `_plan` suffix in their
-  `@id` so they coexist as distinct nodes alongside their execution
-  counterparts (e.g. `inline_material_ent_nacl_plan` vs
-  `inline_material_ent_nacl`).
-- When the same `(label, entityId)` pair appears in both phases, the
-  generator emits a `prov:wasDerivedFrom` edge from the execution
-  Entity to the plan Entity, expressing that the actual outcome was
-  derived from the planned intent. The Step Activity that both
-  Entities are `prov:used` by serves as the implicit activity of the
-  PROV-DM derivation's full form.
-
-The `prov:Plan` class itself is intentionally *not* applied to
-individual plan-phase Entities; in PROV-DM `prov:Plan` denotes the
-plan document an agent follows as a whole, not the individual
-materials/tools/parameters within it. The `graphium:phase` attribute
-preserves the planned-vs-executed distinction without misusing that
-class.
+`[Plan]` / `[Result]` phase labels were withdrawn: a marked plan pays off
+only when one protocol is compared across several runs, and that
+granularity is served by note-level plan/execution splitting
+(`partOfPlanNoteId`, §2). The v6 migration strips any remaining phase
+labels on load (§2.1), so loaded documents never carry a phase and newly
+generated graphs never contain `graphium:phase` metadata or `_plan`
+entity nodes. Graphs exported before v6 may still contain them; their
+historical semantics were: `graphium:phase` marked an Entity as
+`"plan"` or `"execution"`, plan Entities carried an `_plan` id suffix,
+and a matching plan/execution pair was joined by `prov:wasDerivedFrom`
+from the executed Entity to the planned one.
 
 ### 2.4 Document provenance (edit log)
 

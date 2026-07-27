@@ -702,7 +702,7 @@ export type ScopeChat = {
 //   5: block-level inline-type ラベル（material/tool/attribute/output）をインラインハイライト
 //      （Highlight 配列）に移行。LabelStore は heading 用（procedure/plan/result/free*）に純化。
 export type GraphiumDocument = {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   title: string;
   pages: GraphiumPage[];
   /** ノート間リンク（派生先ノートへの参照） */

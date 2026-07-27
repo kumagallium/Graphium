@@ -34,6 +34,61 @@ function inlineText(block: any): string {
 
 export type StepLinkCandidate = { blockId: string; title: string };
 
+/**
+ * 選択位置が step の中にあるか（ProseMirror の祖先を辿る）。
+ * ハイライト（材料/ツール等）の付与 UI は step の中でだけ出す —
+ * 工程の外の Entity は束縛先の Activity が無く宙に浮くだけなので、
+ * 「ステップを使う人にだけ現れる」構造的な段階的開示にする。
+ */
+export function isSelectionInsideStep(editor: any): boolean {
+  try {
+    const $from =
+      editor.prosemirrorState?.selection?.$from ??
+      editor.prosemirrorView?.state?.selection?.$from;
+    if (!$from) return false;
+    for (let d = $from.depth; d > 0; d--) {
+      const node = $from.node(d);
+      // step のタイトル内: 祖先に step content ノードそのものがいる
+      if (node?.type?.name === "step") return true;
+      // step の子ブロック内: PM ツリーでは子は step ノードの中ではなく
+      // blockContainer（先頭子が step content）の blockGroup 側にいる。
+      // そのため「firstChild が step の blockContainer」を祖先に持つかで判定する。
+      if (
+        node?.type?.name === "blockContainer" &&
+        node.firstChild?.type?.name === "step"
+      ) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** 指定ブロックが step の子孫か（ブロックツリーを辿る。テーブル/メディアのラベル導線用） */
+export function isBlockInsideStep(doc: any[], blockId: string): boolean {
+  let inside = false;
+  const walk = (list: any[], inStep: boolean): boolean => {
+    for (const b of list ?? []) {
+      if (!b || typeof b !== "object") continue;
+      if (b.id === blockId) {
+        inside = inStep;
+        return true;
+      }
+      if (
+        Array.isArray(b.children) &&
+        walk(b.children, inStep || b.type === "step")
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+  walk(doc, false);
+  return inside;
+}
+
 /** 文書中の全 step を文書順に列挙する（除外なし。連番・タイトル解決用） */
 export function collectAllSteps(doc: any[]): StepLinkCandidate[] {
   const out: StepLinkCandidate[] = [];
