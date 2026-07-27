@@ -776,20 +776,21 @@ The same `src/` tree is built three different ways.
   resumable), from where Google Drive for desktop syncs it into the
   folder inbox above. Because SPA tokens expire after about an hour, a
   token failure aborts the drain and leaves the remaining items queued
-  for the next connect. Without a configured OAuth client ID the queue
-  falls back to Web Share: the same queued files are handed to the OS
-  share sheet and the user saves them into the synced `Graphium/Inbox`
-  folder by hand. Only when neither route exists does a capture drop
-  back to this device's own media library.
+  for the next connect. Without a configured OAuth client ID (or
+  without IndexedDB) a capture drops back to this device's own media
+  library. Avoiding OAuth altogether needs no Graphium code: the OS
+  share sheet can save a capture into the synced `Graphium/Inbox`
+  folder by hand (Photos → share → the Files/Drive app → the synced
+  folder, the same on iOS and Android), and the desktop inbox imports
+  those files exactly the same way.
 - **Phone side: opt-in and settings.** The phone never opens the full
   settings modal and never sees the desktop-worded mobile-link toggle
   (the experiment flag is per-device localStorage, so the desktop
   toggle and the phone entry points stay independent). While the flag
   is off, the classic home shows a small opt-in card on top of the
   timeline; trying it opens a storage picker (Google Drive selectable,
-  OneDrive as a disabled coming-soon slot for P1.5, plus a small
-  share-sheet escape on capable devices) and a successful connect —
-  or picking the share escape — raises the flag, turning the home
+  OneDrive as a disabled coming-soon slot for P1.5) and a successful
+  connect raises the flag, turning the home
   queue-first in place. The same picker backs the queue's Connect
   storage button, and the provider that actually connected is
   remembered (`graphium-push-provider`) as the future branching point.
