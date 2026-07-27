@@ -758,14 +758,17 @@ The same `src/` tree is built three different ways.
   blob-and-all into IndexedDB the moment it is shot, renamed to
   `graphium-<YYYYMMDD-HHmmss>-<seq>.<ext>` (MIME-first extension), and
   survives auth expiry, upload failures and the PWA being killed. The
-  mobile home is built around this queue: the capture buttons enqueue
-  straight into it and the pending list stays visible inline (with a
-  connection chip in the header) until it drains — there is no separate
-  send sheet. Written captures ride the same rail: the capture row also
-  offers Write (memo) and URL buttons that reuse the existing input
-  dialogs but serialize the result into a `.graphium.json` capture file
-  (named `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue it
-  next to the photos, instead of saving into this device's own stores —
+  mobile home is built around this queue: a fixed bottom capture bar
+  (Write / URL / Photo / Video / Voice / Library) enqueues straight into
+  it and the pending list stays pinned to the top of the content — the
+  Send action sits at the right edge of the queue's heading row, and the
+  header carries a connection chip plus a Settings entry (settings are
+  per-device, so the phone must be able to reach them on its own) — until
+  it drains; there is no separate send sheet. Written captures ride the
+  same rail: the bar's Write (memo) and URL buttons reuse the existing
+  input dialogs but serialize the result into a `.graphium.json` capture
+  file (named `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue
+  it next to the photos, instead of saving into this device's own stores —
   everything captured goes to the inbox. Queue rows show memo captures as
   a note icon with the first line of text and URL captures as a link icon
   with title and domain. The primary transport drains the queue serially to the
