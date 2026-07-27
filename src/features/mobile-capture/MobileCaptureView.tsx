@@ -9,9 +9,16 @@
 // かつての SendToInboxSheet（ボトムシート）は廃止。メモ・URL もネイティブ JSON
 // （capture-file.ts）でキュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store
 // には保存しない）。タイムラインは過去分の閲覧用として残る。
-// フラグ OFF は従来のホームのまま一切変えない（既存ユーザーは無変化）。
-// ヘッダー右端の ⚙ は両フラグ状態で出す — 設定は端末ごと（localStorage）なので、
-// スマホ単体でフラグ切替・接続/切断・client_id 上書きに到達できる必要がある。
+//
+// スマホにフル設定モーダルは出さない（「モバイル連携」トグルはデスクトップ語彙）:
+// - フラグ OFF（従来ホーム）: タイムライン上部に実験オプトインカード（MobileOptInCard）。
+//   [試す] → ストレージ選択（StoragePickerSheet）→ 接続成功でフラグが立ち、ホームが
+//   キュー前提に切り替わる。⚙ は出さない（実験外のスマホに設定概念を持ち込まない）。
+// - フラグ ON（キュー前提ホーム）: ヘッダー右端の ⚙ はスマホ専用の最小設定シート
+//   （MobileSettingsSheet: ストレージ / 言語 / アプリ情報 / この実験をやめる）を開く。
+//   未接続時の主ボタン（キューセクション内）もストレージ選択を開く。
+// 設定は端末ごと（localStorage）なので、スマホ単体で 接続/切断・client_id 上書き・
+// 実験離脱まで完結する。デスクトップの設定モーダル（トグル含む）はそのまま。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw, Settings as SettingsIcon } from "lucide-react";
@@ -24,9 +31,14 @@ import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
 import { MobileCaptureBar } from "./MobileCaptureBar";
+import { MobileOptInCard } from "./MobileOptInCard";
+import { MobileSettingsSheet } from "./MobileSettingsSheet";
+import { StoragePickerSheet } from "./StoragePickerSheet";
 import { SendQueueSection } from "./inbox/SendQueueSection";
 import { usePushQueue } from "./inbox/use-push-queue";
-import { useMobileInboxFlag } from "./inbox/experimental";
+import { usePushSettings } from "./inbox/use-push-settings";
+import { setMobileInboxEnabled, useMobileInboxFlag } from "./inbox/experimental";
+import { canShareFilesToInbox } from "./inbox/share-to-inbox";
 import { buildMemoCaptureFile, buildUrlCaptureFile } from "./inbox/capture-file";
 
 // ── 統合タイムラインアイテム ──
@@ -524,8 +536,8 @@ export function MobileCaptureView({
     [handleCapturedFiles]
   );
 
-  // 共有シートフォールバック（未設定モード）。shareViaWebShare は同期的に
-  // navigator.share へ到達する必要がある（await を挟まない — user activation 契約）
+  // 共有シートフォールバック（送信経路が生きていないモード）。shareViaWebShare は
+  // 同期的に navigator.share へ到達する必要がある（await を挟まない — user activation 契約）
   const shareViaWebShare = push.shareViaWebShare;
   const handleWebShare = useCallback(() => {
     setWebShareError(null);
@@ -537,11 +549,69 @@ export function MobileCaptureView({
     });
   }, [shareViaWebShare]);
 
-  // note-app の共通イベントで設定モーダル（保存タブ）を開く
-  const openStorageSettings = useCallback(() => {
-    window.dispatchEvent(
-      new CustomEvent("graphium-open-settings", { detail: { tab: "storage" } }),
-    );
+  // ── ストレージ選択（StoragePickerSheet）と最小設定シート（MobileSettingsSheet） ──
+  // フル設定モーダル（graphium-open-settings）はスマホホームからはもう開かない。
+  const [showStoragePicker, setShowStoragePicker] = useState(false);
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  // キュー前提ホーム側の接続（push.connectAndDrain）をピッカーから要求した印。
+  // 成功（connected への遷移）でピッカーを閉じるための状態 — 「開いた時点で既に
+  // 接続済み」（設定シートの [変更] 経由）と区別するため、要求の有無で追う。
+  const [pickerConnectRequested, setPickerConnectRequested] = useState(false);
+  // 共有可否（オプトインフロー用のスタンドアロン判定。ON 側は push.canWebShare を使う）
+  const [standaloneCanShare] = useState(() => canShareFilesToInbox());
+
+  // オプトインフロー（フラグ OFF）の接続と、最小設定シートのストレージ操作の実体。
+  // ピッカー/シートが開いている間だけ push モジュールを引く。
+  const pushSettings = usePushSettings(showStoragePicker || showSettingsSheet, {
+    // オプトインの接続成功 = 実験入り。フラグが立つと useMobileInboxFlag 経由で
+    // ホームがその場でキュー前提に切り替わる（リロード不要）
+    onConnected: useCallback(() => {
+      setMobileInboxEnabled(true);
+      setShowStoragePicker(false);
+    }, []),
+  });
+
+  // ピッカーの Google 選択。**click から同期的に connect へ到達させる**（GIS 契約）。
+  // フラグ ON はキュー配線（connectAndDrain: 接続成功 → 残キューを即送信）、
+  // OFF はスタンドアロン接続（成功 → フラグを立ててホームをキュー化）。
+  const handlePickGoogle = useCallback(() => {
+    if (mobileInboxEnabled) {
+      setPickerConnectRequested(true);
+      push.connectAndDrain();
+    } else {
+      pushSettings.connectGoogle();
+    }
+  }, [mobileInboxEnabled, push.connectAndDrain, pushSettings.connectGoogle]);
+
+  // フラグ ON 側の接続成功でピッカーを閉じる（+ 実際に使えた経路を記録）。
+  // OFF 側は onConnected コールバックが同じ役目を担う。
+  useEffect(() => {
+    if (!showStoragePicker || !pickerConnectRequested) return;
+    if (push.connected && !push.connecting) {
+      setShowStoragePicker(false);
+      setPickerConnectRequested(false);
+      // プロバイダ永続はジェスチャ外なので動的 import でよい（起動時バンドル境界の維持）
+      void import("./inbox/push")
+        .then((mod) => mod.setPushProvider("google-drive"))
+        .catch(() => {});
+    }
+  }, [showStoragePicker, pickerConnectRequested, push.connected, push.connecting]);
+
+  // ピッカーの共有シート選択。ON はキューの中身を実際に共有（同期呼び出し契約）、
+  // OFF は「OAuth 無しで実験に入る」の意味 — フラグだけ立てて閉じる（キューはまだ空。
+  // 以後の送信はキューセクション → ピッカー → 共有シートで行う）
+  const handlePickWebShare = useCallback(() => {
+    if (mobileInboxEnabled) {
+      handleWebShare();
+    } else {
+      setMobileInboxEnabled(true);
+    }
+    setShowStoragePicker(false);
+  }, [mobileInboxEnabled, handleWebShare]);
+
+  const closeStoragePicker = useCallback(() => {
+    setShowStoragePicker(false);
+    setPickerConnectRequested(false);
   }, []);
 
   // キュー経路が使える環境では、ローカル保存ハンドラが無くても撮れる
@@ -570,8 +640,9 @@ export function MobileCaptureView({
     </div>
   );
 
-  // 接続状態チップ（キュー前提ホームのヘッダー）。表示だけ — 接続操作はキュー側の
-  // ボタンが担う（connect はジェスチャ内同期呼び出しの契約があるため導線を一本化）。
+  // 接続状態チップ（キュー前提ホームのヘッダー）。表示だけ — 接続操作はストレージ
+  // 選択ピッカー（キューの未接続時主ボタン / 最小設定シートの [接続/変更] から開く）
+  // が担う（connect はジェスチャ内同期呼び出しの契約があるため導線を一本化）。
   // push モジュールのロード前は暫定値しか無いので出さない（誤表示より一瞬の不在）。
   const pushConnected = push.configured && push.connected;
   const connectionChip = mobileInboxEnabled && push.ready && (
@@ -610,16 +681,19 @@ export function MobileCaptureView({
               : t("memo.count", { count: String(filtered.length) })}
           </span>
           {connectionChip}
-          {/* 設定入口（両フラグ状態で出す）。設定は端末ごと（localStorage）なので、
-              スマホ単体でモバイル連携の ON/OFF・接続/切断・client_id に到達できる
-              必要がある。開き先は該当トグルのある保存（storage）タブ。 */}
-          <button
-            onClick={openStorageSettings}
-            aria-label={t("settings.title")}
-            className="p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
-          >
-            <SettingsIcon size={17} />
-          </button>
+          {/* 設定入口はキュー前提ホーム（フラグ ON）のみ。開き先はスマホ専用の
+              最小設定シート（ストレージ・言語・アプリ情報・実験離脱）— フル設定
+              モーダルはスマホホームからは開かない。フラグ OFF の従来ホームに ⚙ は
+              無い（実験に入る入口はタイムライン上部のオプトインカード）。 */}
+          {mobileInboxEnabled && (
+            <button
+              onClick={() => setShowSettingsSheet(true)}
+              aria-label={t("settings.title")}
+              className="p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
+            >
+              <SettingsIcon size={17} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -652,6 +726,16 @@ export function MobileCaptureView({
           </div>
         )}
 
+        {/* 従来ホーム（フラグ OFF）: タイムライン上部に実験オプトインカード。
+            [試す] → ストレージ選択 → 接続成功でホームがキュー前提に切り替わる。
+            × は付けない（OFF 中は最小設定シートも無く、消すと再表示の入口が
+            無くなる — カード側コメント参照） */}
+        {!mobileInboxEnabled && (
+          <div className="mb-3">
+            <MobileOptInCard onTry={() => setShowStoragePicker(true)} />
+          </div>
+        )}
+
         {/* キュー前提ホーム: 未送信キューはコンテンツ最上部（ヘッダー直下）。
             [送信 (n)] は見出し行右端の定位置、未接続時はセクション内の接続ボタンが
             主アクション。捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar）。
@@ -672,11 +756,11 @@ export function MobileCaptureView({
               canWebShare={push.canWebShare}
               webShareError={webShareError}
               onSend={push.drainNow}
-              onConnect={push.connectAndDrain}
+              onOpenStoragePicker={() => setShowStoragePicker(true)}
               onRemoveItem={push.removeItem}
               onRetryFailed={push.retryFailed}
               onWebShare={handleWebShare}
-              onOpenSettings={openStorageSettings}
+              onOpenSettings={() => setShowSettingsSheet(true)}
               loadItemBlob={push.getItemFile}
             />
           </div>
@@ -873,6 +957,53 @@ export function MobileCaptureView({
         <MobileMediaPreviewModal
           entry={mediaPreviewEntry}
           onClose={() => setMediaPreviewEntry(null)}
+        />
+      )}
+
+      {/* スマホ専用の最小設定シート（⚙ の行き先。フラグ ON のときだけ存在する）。
+          ストレージの実体（状態・切断・client_id）は usePushSettings が担う */}
+      {showSettingsSheet && mobileInboxEnabled && (
+        <MobileSettingsSheet
+          ready={pushSettings.ready}
+          configured={pushSettings.configured}
+          connected={pushSettings.connected}
+          hasBundledId={pushSettings.hasBundledId}
+          clientIdOverride={pushSettings.clientIdOverride}
+          onSaveClientId={pushSettings.saveClientId}
+          onClearClientId={pushSettings.clearClientId}
+          onDisconnect={pushSettings.disconnect}
+          onOpenStoragePicker={() => setShowStoragePicker(true)}
+          onLeaveExperiment={() => {
+            // フラグを下ろすだけ（キュー・接続・client_id はこの端末に残る）。
+            // 従来ホームに戻り、再入口はオプトインカードが担う
+            setMobileInboxEnabled(false);
+            setShowSettingsSheet(false);
+          }}
+          onClose={() => setShowSettingsSheet(false)}
+        />
+      )}
+
+      {/* ストレージ選択（最小設定シートの上にも重なる z-[60]）。
+          Google の接続はフラグ状態で配線が変わる（handlePickGoogle 参照）。
+          共有シートの逃げ道は、ON では「キューの中身を今すぐ共有」、OFF では
+          「OAuth 無しで実験に入る」— ON かつキューが空なら出さない（共有する物が無い） */}
+      {showStoragePicker && (
+        <StoragePickerSheet
+          googleReady={
+            mobileInboxEnabled
+              ? push.ready && push.configured
+              : pushSettings.ready && pushSettings.configured
+          }
+          connecting={mobileInboxEnabled ? push.connecting : pushSettings.connecting}
+          connectError={mobileInboxEnabled ? push.connectError : pushSettings.connectError}
+          canWebShare={
+            mobileInboxEnabled
+              ? push.canWebShare && push.items.length > 0
+              : standaloneCanShare
+          }
+          onSelectGoogle={handlePickGoogle}
+          onSelectWebShare={handlePickWebShare}
+          onClose={closeStoragePicker}
         />
       )}
     </div>

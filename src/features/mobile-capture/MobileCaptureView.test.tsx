@@ -16,20 +16,24 @@
 //   URL=onAddUrlBookmark）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
 // - ヘッダーの接続状態チップは 接続済み / 未接続 / 未設定 を出し分ける
-// - ヘッダー右端の ⚙ は両フラグ状態で出て、設定モーダル（保存タブ）を開くイベント
-//   `graphium-open-settings` を飛ばす（設定は端末ごとなのでスマホ単体で到達できること)
-// - 実験フラグ OFF（既定）のとき: チップもキューも一切出ず、従来ホームのまま
-//   （撮ったファイルは onUploadMedia へ、下バーに撮影ボタン・メモ作成・URL 登録）
+// - スマホにフル設定モーダルは出さない: フラグ ON のヘッダー ⚙ は最小設定シート
+//   （MobileSettingsSheet）を開き、`graphium-open-settings` は飛ばさない。
+//   未接続時の主ボタンはストレージ選択（StoragePickerSheet）を開き、Google 行が
+//   接続の実体（ON=connectAndDrain / OFF=usePushSettings.connectGoogle）につながる
+// - 実験フラグ OFF（既定）のとき: チップもキューも ⚙ も出ず、従来ホーム +
+//   タイムライン上部の実験オプトインカードだけ（撮ったファイルは onUploadMedia へ）。
+//   [試す] → ピッカー → 接続成功（onConnected）でフラグが立ち、ホームがキュー化する
 //
-// usePushQueue はモック（キュー・認可の実物は hook 側の責務）。
+// usePushQueue / usePushSettings はモック（キュー・認可の実物は hook 側の責務）。
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import { MobileCaptureView } from "./MobileCaptureView";
-import { setMobileInboxEnabled } from "./inbox/experimental";
+import { isMobileInboxEnabled, setMobileInboxEnabled } from "./inbox/experimental";
 import { parseGraphiumCaptureFile } from "./inbox/capture-file";
 import { LocaleProvider } from "../../i18n";
 import type { PushQueueUi } from "./inbox/use-push-queue";
+import type { PushSettingsUi } from "./inbox/use-push-settings";
 import type { PushQueueItemMeta } from "./inbox/push";
 
 // UrlBookmarkModal の fetchUrlMetadata は実ネットワークに出る（jsdom でも global fetch が
@@ -49,6 +53,26 @@ const usePushQueueMock = vi.fn<() => PushQueueUi>();
 vi.mock("./inbox/use-push-queue", () => ({
   usePushQueue: () => usePushQueueMock(),
 }));
+
+// スタンドアロン push 設定（オプトイン接続・最小設定シート）もモック。
+// onConnected（接続成功でフラグを立てる親のコールバック）を捕まえて、
+// テストから「接続成功」を同期シミュレートできるようにする。
+const usePushSettingsMock = vi.fn<() => PushSettingsUi>();
+let lastOnConnected: (() => void) | undefined;
+
+vi.mock("./inbox/use-push-settings", () => ({
+  usePushSettings: (_active: boolean, opts?: { onConnected?: () => void }) => {
+    lastOnConnected = opts?.onConnected;
+    return usePushSettingsMock();
+  },
+}));
+
+// 共有シートの環境プローブ（navigator.canShare）は jsdom に無いので使える扱いに固定。
+// OFF のピッカーに出る「共有シートで送る」（OAuth 回避の逃げ道）の検証用。
+vi.mock("./inbox/share-to-inbox", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("./inbox/share-to-inbox")>();
+  return { ...mod, canShareFilesToInbox: () => true };
+});
 
 // MediaPreview（→ PdfViewer → react-pdf）の import 連鎖対策。react-pdf は import
 // しただけで pdfjs が DOMMatrix を触り jsdom では落ちる（InboxView.test.tsx と同じ）。
@@ -96,15 +120,34 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
   };
 }
 
+function pushSettingsUi(overrides: Partial<PushSettingsUi> = {}): PushSettingsUi {
+  return {
+    ready: true,
+    configured: true,
+    connected: false,
+    hasBundledId: true,
+    clientIdOverride: "",
+    connecting: false,
+    connectError: null,
+    connectGoogle: vi.fn(),
+    disconnect: vi.fn(),
+    saveClientId: vi.fn(),
+    clearClientId: vi.fn(),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   usePushQueueMock.mockReturnValue(pushUi());
+  usePushSettingsMock.mockReturnValue(pushSettingsUi());
+  lastOnConnected = undefined;
   // 既存の配線テストはすべて「モバイル連携 ON」前提（フラグ自体の既定は OFF）
   localStorage.clear();
   setMobileInboxEnabled(true);
 });
 
-function renderView(props: Partial<Parameters<typeof MobileCaptureView>[0]> = {}) {
-  return render(
+function buildView(props: Partial<Parameters<typeof MobileCaptureView>[0]> = {}) {
+  return (
     <LocaleProvider>
       <MobileCaptureView
         captureIndex={{ version: 1, updatedAt: "2026-07-27T00:00:00.000Z", captures: [] }}
@@ -113,8 +156,12 @@ function renderView(props: Partial<Parameters<typeof MobileCaptureView>[0]> = {}
         creating={false}
         {...props}
       />
-    </LocaleProvider>,
+    </LocaleProvider>
   );
+}
+
+function renderView(props: Partial<Parameters<typeof MobileCaptureView>[0]> = {}) {
+  return render(buildView(props));
 }
 
 function capture(acceptAttr: string, files: File[]) {
@@ -308,7 +355,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
   });
 
-  it("branches the primary action by connection state (connect wiring)", () => {
+  it("opens the storage picker from the queue's connect button and wires Google to connectAndDrain", () => {
     const connectAndDrain = vi.fn();
     usePushQueueMock.mockReturnValue(
       pushUi({
@@ -319,10 +366,33 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     );
     renderView();
 
-    const connect = screen.getByRole("button", { name: "Connect Google Drive" });
-    fireEvent.click(connect);
+    // 未接続時の主ボタンはプロバイダ直結でなくストレージ選択を開く
+    fireEvent.click(screen.getByRole("button", { name: "Connect storage" }));
+    expect(screen.getByTestId("storage-picker-sheet")).toBeTruthy();
+    // OneDrive は「準備中」枠で無効（P1.5 で活性化）
+    const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
+    expect((oneDrive as HTMLButtonElement).disabled).toBe(true);
+    // Google 行の click がキュー配線の connectAndDrain へ（同期契約は hook 側）
+    fireEvent.click(screen.getByRole("button", { name: /Google Drive/ }));
     expect(connectAndDrain).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
+  });
+
+  it("closes the picker once the queue-side connect succeeds", () => {
+    const items = [queueItem("a", "graphium-a.jpg")];
+    usePushQueueMock.mockReturnValue(pushUi({ connected: false, items }));
+    const view = renderView();
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect storage" }));
+    fireEvent.click(screen.getByRole("button", { name: /Google Drive/ }));
+    expect(screen.getByTestId("storage-picker-sheet")).toBeTruthy();
+
+    // connect 成功（connected へ遷移）で自動クローズ。
+    // 「開いた時点で既に接続済み」（設定シートの [変更] 経由）では閉じない —
+    // 接続要求をしたときだけ閉じる遷移検知
+    usePushQueueMock.mockReturnValue(pushUi({ connected: true, items }));
+    view.rerender(buildView());
+    expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
   });
 
   it("shows the header connection chip per state: connected / disconnected / not set up", () => {
@@ -350,18 +420,40 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.queryByText("Connected")).toBeNull();
   });
 
-  it("opens Settings (storage tab) from the header gear", () => {
+  it("opens the minimal settings sheet from the header gear (never the full settings modal)", () => {
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
     window.addEventListener("graphium-open-settings", listener);
     try {
       renderView();
       fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-      expect(events).toHaveLength(1);
-      expect(events[0].detail).toMatchObject({ tab: "storage" });
+      // スマホ専用の最小設定シート（ストレージ / 言語 / アプリ情報 / 実験離脱）
+      expect(screen.getByTestId("mobile-settings-sheet")).toBeTruthy();
+      expect(screen.getByText("Leave this experiment")).toBeTruthy();
+      expect(screen.getByText("Language")).toBeTruthy();
+      // フル設定モーダルを開くイベントは飛ばさない
+      expect(events).toHaveLength(0);
     } finally {
       window.removeEventListener("graphium-open-settings", listener);
     }
+  });
+
+  it("wires disconnect in the sheet and returns to the legacy home via leave-experiment", () => {
+    const disconnect = vi.fn();
+    usePushSettingsMock.mockReturnValue(pushSettingsUi({ connected: true, disconnect }));
+    renderView();
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(disconnect).toHaveBeenCalledTimes(1);
+
+    // 「この実験をやめる」= フラグを下ろすだけ（キュー・接続はこの端末に残る）。
+    // シートが閉じ、従来ホーム（New Memo の下バー + オプトインカード）へ戻る
+    fireEvent.click(screen.getByRole("button", { name: "Leave this experiment" }));
+    expect(isMobileInboxEnabled()).toBe(false);
+    expect(screen.queryByTestId("mobile-settings-sheet")).toBeNull();
+    expect(screen.getByRole("button", { name: /New Memo/ })).toBeTruthy();
+    expect(screen.getByTestId("mobile-optin-card")).toBeTruthy();
   });
 });
 
@@ -421,20 +513,64 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
     expect(enqueueForSend).not.toHaveBeenCalled();
   });
 
-  it("keeps the header gear on the legacy home so Settings stays reachable from the phone", () => {
-    // フラグ OFF でも ⚙ から設定（保存タブ）に到達できる — ここでしか
-    // モバイル連携を ON にできない端末（スマホ単体）があるため
-    const events: CustomEvent[] = [];
-    const listener = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener("graphium-open-settings", listener);
-    try {
-      renderView();
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-      expect(events).toHaveLength(1);
-      expect(events[0].detail).toMatchObject({ tab: "storage" });
-    } finally {
-      window.removeEventListener("graphium-open-settings", listener);
-    }
+  it("hides the header gear on the legacy home (no settings concept outside the experiment)", () => {
+    // 従来ホームに ⚙ は無い — 「モバイル連携」トグルというデスクトップ語彙を
+    // スマホに持ち込まない。実験に入る入口はタイムライン上部のオプトインカード
+    renderView({ onUploadMedia: async () => "file-id" });
+    expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
+    expect(screen.getByTestId("mobile-optin-card")).toBeTruthy();
+  });
+
+  it("opens the storage picker from the opt-in card's Try it", () => {
+    renderView({ onUploadMedia: async () => "file-id" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Try it" }));
+    const sheet = screen.getByTestId("storage-picker-sheet");
+    expect(sheet).toBeTruthy();
+    // Google は利用可 / OneDrive は準備中バッジ + 無効 / 下部に共有シートの逃げ道
+    const google = screen.getByRole("button", { name: /Google Drive/ });
+    expect((google as HTMLButtonElement).disabled).toBe(false);
+    const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
+    expect((oneDrive as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Coming soon")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send via the share sheet" })).toBeTruthy();
+    // この時点ではまだ実験に入っていない
+    expect(isMobileInboxEnabled()).toBe(false);
+  });
+
+  it("joins the experiment when the opt-in Google connect succeeds (home queue-izes in place)", () => {
+    // connectGoogle 成功 = 親の onConnected が呼ばれる（フラグ ON + ピッカーを閉じる）
+    const connectGoogle = vi.fn(() => {
+      lastOnConnected?.();
+    });
+    usePushSettingsMock.mockReturnValue(pushSettingsUi({ connectGoogle }));
+    usePushQueueMock.mockReturnValue(
+      pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
+    );
+    renderView({ onUploadMedia: async () => "file-id" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Try it" }));
+    fireEvent.click(screen.getByRole("button", { name: /Google Drive/ }));
+    expect(connectGoogle).toHaveBeenCalledTimes(1);
+
+    // フラグが立ち、その場でキュー前提ホームに切り替わる（リロード不要）
+    expect(isMobileInboxEnabled()).toBe(true);
+    expect(screen.getByText("Send queue")).toBeTruthy();
+    expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
+    expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
+  });
+
+  it("joins the experiment via the share-sheet escape (no OAuth)", () => {
+    renderView({ onUploadMedia: async () => "file-id" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Try it" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send via the share sheet" }));
+
+    // フラグだけ立てて閉じる（キューはまだ空 → セクションは畳まれ、捕獲バーが出る）
+    expect(isMobileInboxEnabled()).toBe(true);
+    expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
+    expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
   });
 
   it("turning the flag ON at runtime reveals the inline queue without a reload", () => {
