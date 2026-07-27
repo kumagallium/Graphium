@@ -38,7 +38,6 @@ import { SendQueueSection } from "./inbox/SendQueueSection";
 import { usePushQueue } from "./inbox/use-push-queue";
 import { usePushSettings } from "./inbox/use-push-settings";
 import { setMobileInboxEnabled, useMobileInboxFlag } from "./inbox/experimental";
-import { canShareFilesToInbox } from "./inbox/share-to-inbox";
 import { buildMemoCaptureFile, buildUrlCaptureFile } from "./inbox/capture-file";
 
 // ── 統合タイムラインアイテム ──
@@ -341,7 +340,6 @@ export function MobileCaptureView({
 }) {
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
-  const [webShareError, setWebShareError] = useState<string | null>(null);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [mediaPreviewEntry, setMediaPreviewEntry] = useState<MediaIndexEntry | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -360,17 +358,15 @@ export function MobileCaptureView({
   // 撮ったものは従来どおりこの端末の素材ライブラリに保存する。設定のトグルで
   // 切り替わるとイベント経由でここも即時に再レンダリングされる（リロード不要）。
   const mobileInboxEnabled = useMobileInboxFlag();
-  // 送信キュー（撮る → 即キュー永続化 → Google Drive の Graphium/Inbox へ直列送信。
-  // Google 未設定なら Web Share フォールバック）。push/ は hook 内で動的 import される。
+  // 送信キュー（撮る → 即キュー永続化 → Google Drive の Graphium/Inbox へ直列送信）。
+  // push/ は hook 内で動的 import される。
   // フラグ OFF の間は hook 自体が不活性（ロードも自動 drain もしない）。
   // 設定モーダルでの client_id 変更・接続・切断は push-events 経由で hook が読み直す
   // ので、常時見えているチップ・キューが古い状態のまま残ることはない。
   const push = usePushQueue(mobileInboxEnabled);
   // 撮ったものをキュー経路へ送れる環境か。false のときだけ従来のローカル保存に落ちる
-  //（ユーザー決定: ローカル保存は「実験フラグ OFF」または「Google 未設定 かつ
-  //  Web Share 不可」のみの退路）。
-  const pushRouteAvailable =
-    mobileInboxEnabled && push.ready && (push.configured || push.canWebShare);
+  //（ユーザー決定: ローカル保存は「実験フラグ OFF」または「Google 未設定」のみの退路）。
+  const pushRouteAvailable = mobileInboxEnabled && push.ready && push.configured;
 
   const PULL_THRESHOLD = 60;
 
@@ -500,17 +496,14 @@ export function MobileCaptureView({
   //（完全置き換え。この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
   // キューはホームに常時見えているので、enqueue 後に開くものは何もない —
   // アイテムがその場でキュー一覧に出現する。enqueue はジェスチャ非依存なので await
-  // してよい。実験フラグ OFF、またはキュー経路が使えない環境（Google 未設定 かつ
-  // Web Share 不可、または IndexedDB 不可）は従来のローカル保存に落とす。
+  // してよい。実験フラグ OFF、またはキュー経路が使えない環境（Google 未設定、
+  // または IndexedDB 不可）は従来のローカル保存に落とす。
   const handleCapturedFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
       // フラグ OFF はキューに触れず即ローカル保存（hook 側の enabled ガードと二重の防波堤）
       const queued = mobileInboxEnabled ? await enqueueForSend(files) : false;
-      if (queued) {
-        setWebShareError(null);
-        return;
-      }
+      if (queued) return;
       if (!onUploadMedia) return;
       setUploading(true);
       try {
@@ -536,19 +529,6 @@ export function MobileCaptureView({
     [handleCapturedFiles]
   );
 
-  // 共有シートフォールバック（送信経路が生きていないモード）。shareViaWebShare は
-  // 同期的に navigator.share へ到達する必要がある（await を挟まない — user activation 契約）
-  const shareViaWebShare = push.shareViaWebShare;
-  const handleWebShare = useCallback(() => {
-    setWebShareError(null);
-    void shareViaWebShare().then((outcome) => {
-      // cancelled（共有シートを閉じただけ）は何も出さない。エラー詳細は
-      // 例外 message と同じく英語の技術文字列のまま {error} 枠に入れる
-      if (outcome?.status === "failed") setWebShareError(outcome.error);
-      if (outcome?.status === "unsupported") setWebShareError("files not shareable on this device");
-    });
-  }, [shareViaWebShare]);
-
   // ── ストレージ選択（StoragePickerSheet）と最小設定シート（MobileSettingsSheet） ──
   // フル設定モーダル（graphium-open-settings）はスマホホームからはもう開かない。
   const [showStoragePicker, setShowStoragePicker] = useState(false);
@@ -557,8 +537,6 @@ export function MobileCaptureView({
   // 成功（connected への遷移）でピッカーを閉じるための状態 — 「開いた時点で既に
   // 接続済み」（設定シートの [変更] 経由）と区別するため、要求の有無で追う。
   const [pickerConnectRequested, setPickerConnectRequested] = useState(false);
-  // 共有可否（オプトインフロー用のスタンドアロン判定。ON 側は push.canWebShare を使う）
-  const [standaloneCanShare] = useState(() => canShareFilesToInbox());
 
   // オプトインフロー（フラグ OFF）の接続と、最小設定シートのストレージ操作の実体。
   // ピッカー/シートが開いている間だけ push モジュールを引く。
@@ -596,18 +574,6 @@ export function MobileCaptureView({
         .catch(() => {});
     }
   }, [showStoragePicker, pickerConnectRequested, push.connected, push.connecting]);
-
-  // ピッカーの共有シート選択。ON はキューの中身を実際に共有（同期呼び出し契約）、
-  // OFF は「OAuth 無しで実験に入る」の意味 — フラグだけ立てて閉じる（キューはまだ空。
-  // 以後の送信はキューセクション → ピッカー → 共有シートで行う）
-  const handlePickWebShare = useCallback(() => {
-    if (mobileInboxEnabled) {
-      handleWebShare();
-    } else {
-      setMobileInboxEnabled(true);
-    }
-    setShowStoragePicker(false);
-  }, [mobileInboxEnabled, handleWebShare]);
 
   const closeStoragePicker = useCallback(() => {
     setShowStoragePicker(false);
@@ -753,13 +719,10 @@ export function MobileCaptureView({
               connected={push.connected}
               connecting={push.connecting}
               connectError={push.connectError}
-              canWebShare={push.canWebShare}
-              webShareError={webShareError}
               onSend={push.drainNow}
               onOpenStoragePicker={() => setShowStoragePicker(true)}
               onRemoveItem={push.removeItem}
               onRetryFailed={push.retryFailed}
-              onWebShare={handleWebShare}
               onOpenSettings={() => setShowSettingsSheet(true)}
               loadItemBlob={push.getItemFile}
             />
@@ -984,9 +947,7 @@ export function MobileCaptureView({
       )}
 
       {/* ストレージ選択（最小設定シートの上にも重なる z-[60]）。
-          Google の接続はフラグ状態で配線が変わる（handlePickGoogle 参照）。
-          共有シートの逃げ道は、ON では「キューの中身を今すぐ共有」、OFF では
-          「OAuth 無しで実験に入る」— ON かつキューが空なら出さない（共有する物が無い） */}
+          Google の接続はフラグ状態で配線が変わる（handlePickGoogle 参照） */}
       {showStoragePicker && (
         <StoragePickerSheet
           googleReady={
@@ -996,13 +957,7 @@ export function MobileCaptureView({
           }
           connecting={mobileInboxEnabled ? push.connecting : pushSettings.connecting}
           connectError={mobileInboxEnabled ? push.connectError : pushSettings.connectError}
-          canWebShare={
-            mobileInboxEnabled
-              ? push.canWebShare && push.items.length > 0
-              : standaloneCanShare
-          }
           onSelectGoogle={handlePickGoogle}
-          onSelectWebShare={handlePickWebShare}
           onClose={closeStoragePicker}
         />
       )}

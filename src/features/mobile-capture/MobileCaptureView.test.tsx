@@ -11,8 +11,8 @@
 //   media-index には保存しない
 // - キューが空のときはキューセクションごと畳まれ、下の捕獲バーだけが残る
 // - タイムライン（過去分の閲覧）はキューの下にそのまま共存する（1 スクロール）
-// - enqueueForSend が false（Google 未設定かつ Web Share 不可、IndexedDB 不可）の
-//   ときだけ従来のローカル保存（メディア=onUploadMedia / メモ=onCreateCapture /
+// - enqueueForSend が false（Google 未設定、IndexedDB 不可）のときだけ
+//   従来のローカル保存（メディア=onUploadMedia / メモ=onCreateCapture /
 //   URL=onAddUrlBookmark）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
 // - ヘッダーの接続状態チップは 接続済み / 未接続 / 未設定 を出し分ける
@@ -67,13 +67,6 @@ vi.mock("./inbox/use-push-settings", () => ({
   },
 }));
 
-// 共有シートの環境プローブ（navigator.canShare）は jsdom に無いので使える扱いに固定。
-// OFF のピッカーに出る「共有シートで送る」（OAuth 回避の逃げ道）の検証用。
-vi.mock("./inbox/share-to-inbox", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("./inbox/share-to-inbox")>();
-  return { ...mod, canShareFilesToInbox: () => true };
-});
-
 // MediaPreview（→ PdfViewer → react-pdf）の import 連鎖対策。react-pdf は import
 // しただけで pdfjs が DOMMatrix を触り jsdom では落ちる（InboxView.test.tsx と同じ）。
 vi.mock("react-pdf", () => ({
@@ -103,7 +96,6 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     connected: true,
     connecting: false,
     connectError: null,
-    canWebShare: false,
     items: [],
     draining: false,
     activeId: null,
@@ -113,7 +105,6 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     connectAndDrain: vi.fn(),
     removeItem: vi.fn(),
     retryFailed: vi.fn(),
-    shareViaWebShare: vi.fn(async () => null),
     getItemFile: vi.fn(async () => null),
     refreshStatus: vi.fn(),
     ...overrides,
@@ -282,9 +273,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
   it("falls back to the local capture store for memos when the queue route is unavailable", async () => {
     const enqueueForSend = vi.fn(async () => false);
     const onCreateCapture = vi.fn(async () => {});
-    usePushQueueMock.mockReturnValue(
-      pushUi({ configured: false, canWebShare: false, enqueueForSend }),
-    );
+    usePushQueueMock.mockReturnValue(pushUi({ configured: false, enqueueForSend }));
     renderView({ onCreateCapture, onUploadMedia: async () => "file-id" });
 
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
@@ -318,9 +307,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
   it("falls back to local save only when the queue route is unavailable", async () => {
     const enqueueForSend = vi.fn(async () => false);
     const onUploadMedia = vi.fn(async () => "file-id");
-    usePushQueueMock.mockReturnValue(
-      pushUi({ configured: false, canWebShare: false, enqueueForSend }),
-    );
+    usePushQueueMock.mockReturnValue(pushUi({ configured: false, enqueueForSend }));
     renderView({ onUploadMedia });
 
     capture("image/*", [jpeg()]);
@@ -340,7 +327,6 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     usePushQueueMock.mockReturnValue(
       pushUi({
         configured: false,
-        canWebShare: false,
         items: [queueItem("a", "graphium-20260727-102030-01.jpg")],
       }),
     );
@@ -527,13 +513,13 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
     fireEvent.click(screen.getByRole("button", { name: "Try it" }));
     const sheet = screen.getByTestId("storage-picker-sheet");
     expect(sheet).toBeTruthy();
-    // Google は利用可 / OneDrive は準備中バッジ + 無効 / 下部に共有シートの逃げ道
+    // Google は利用可 / OneDrive は準備中バッジ + 無効。共有シート行は無い
     const google = screen.getByRole("button", { name: /Google Drive/ });
     expect((google as HTMLButtonElement).disabled).toBe(false);
     const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
     expect((oneDrive as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("Coming soon")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Send via the share sheet" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /share sheet/i })).toBeNull();
     // この時点ではまだ実験に入っていない
     expect(isMobileInboxEnabled()).toBe(false);
   });
@@ -557,19 +543,6 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
     expect(isMobileInboxEnabled()).toBe(true);
     expect(screen.getByText("Send queue")).toBeTruthy();
     expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
-    expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
-  });
-
-  it("joins the experiment via the share-sheet escape (no OAuth)", () => {
-    renderView({ onUploadMedia: async () => "file-id" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Try it" }));
-    fireEvent.click(screen.getByRole("button", { name: "Send via the share sheet" }));
-
-    // フラグだけ立てて閉じる（キューはまだ空 → セクションは畳まれ、捕獲バーが出る）
-    expect(isMobileInboxEnabled()).toBe(true);
-    expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
-    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
   });
 

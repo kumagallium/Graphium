@@ -1,16 +1,19 @@
 // ストレージ選択ボトムシート（スマホの「ストレージに接続」の行き先）。
 //
 // 接続 CTA は「どこへ送るか」を選ぶ画面に一本化する: Google Drive（利用可）/
-// OneDrive（準備中・P1.5 で活性化する枠）/ 下部に小さく共有シート（OAuth 回避の
-// 逃げ道、canWebShare のときのみ）。開く入口は 3 つ — 従来ホームのオプトインカード
-// [試す]・キュー前提ホームの未接続時主ボタン・最小設定シートの [接続/変更]。
+// OneDrive（準備中・P1.5 で活性化する枠）。ピッカーに並ぶのは**接続するストレージ**
+// だけ — 送り方のバリエーション（かつての共有シート行）は概念が混ざるので置かない。
+// OAuth を使いたくない場合は OS の共有シートから同期フォルダへ手動保存すればよく、
+// それは Graphium のコード無しで成立する（docs/ARCHITECTURE.md §4.2）。
+// 開く入口は 3 つ — 従来ホームのオプトインカード [試す]・キュー前提ホームの
+// 未接続時主ボタン・最小設定シートの [接続/変更]。
 //
 // **props 駆動のプレゼンテーション層**: 接続の実体（pusher / usePushQueue /
 // usePushSettings）は親が握り、ここは選択肢と進行状態を出すだけ（Storybook で
 // 全状態を再現できる）。
 //
-// ジェスチャ契約: onSelectGoogle / onSelectWebShare は **click から同期的に呼ぶ**
-// （GIS の requestAccessToken と navigator.share の user activation 契約。
+// ジェスチャ契約: onSelectGoogle は **click から同期的に呼ぶ**
+// （GIS の requestAccessToken の user activation 契約。
 // ハンドラ内で await を挟んではいけない — 親側の実装規約も同じ）。
 // Google 行は準備完了（googleReady）まで無効化する — connect() は prepare 済みで
 // ないと PushConfigError になるため、押せる時点で必ず同期接続できる状態にしておく。
@@ -19,7 +22,7 @@
 // 開いたとき、ピッカーが手前に出て、閉じるとシートに戻る。
 
 import { useEffect } from "react";
-import { Cloud, Loader2, ChevronRight, Share as ShareIcon, AlertCircle } from "lucide-react";
+import { Cloud, Loader2, ChevronRight, AlertCircle } from "lucide-react";
 import { useT } from "../../i18n";
 
 export type StoragePickerSheetProps = {
@@ -29,12 +32,8 @@ export type StoragePickerSheetProps = {
   connecting: boolean;
   /** 直近の接続エラー（ポップアップを閉じた・権限拒否など）。 */
   connectError?: string | null;
-  /** 「共有シートで送る」を出すか（環境プローブ + 親の文脈判断）。 */
-  canWebShare: boolean;
   /** Google Drive を選択。**click から同期的に呼ばれる**。 */
   onSelectGoogle: () => void;
-  /** 共有シートで送る。**click から同期的に呼ばれる**。 */
-  onSelectWebShare: () => void;
   onClose: () => void;
 };
 
@@ -42,9 +41,7 @@ export function StoragePickerSheet({
   googleReady,
   connecting,
   connectError,
-  canWebShare,
   onSelectGoogle,
-  onSelectWebShare,
   onClose,
 }: StoragePickerSheetProps) {
   const t = useT();
@@ -127,22 +124,6 @@ export function StoragePickerSheet({
                 {t("mobile.send.connectFailed", { error: connectError })}
               </span>
             </p>
-          )}
-
-          {/* OAuth 回避の逃げ道（canWebShare のときのみ・控えめに） */}
-          {canWebShare && (
-            <div className="pt-2 border-t border-border">
-              <button
-                onClick={onSelectWebShare}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground active:opacity-70 transition-colors"
-              >
-                <ShareIcon size={13} />
-                {t("mobile.storagePicker.webShare")}
-              </button>
-              <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
-                {t("mobile.send.webShareHint")}
-              </p>
-            </div>
           )}
         </div>
       </div>

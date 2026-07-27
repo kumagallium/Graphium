@@ -9,7 +9,7 @@
 //   接続済みモードのみ。draining 中は無効 + 送信中表示
 // - モードでリスト下の主アクションが切り替わる: 接続済み=なし（見出しの送信）/
 //   未接続=[ストレージに接続]（ストレージ選択ピッカーを開く。connect の実体は
-//   ピッカー側）/ 未設定=案内+設定導線（+ canWebShare なら共有シート）
+//   ピッカー側）/ 未設定=案内+設定導線のみ
 // - 送信中アイテムは進捗（%）が出て、削除ボタンが無効になる
 // - failed があるときだけ再試行導線が出る
 // - 画像アイテムは loadItemBlob で object URL サムネイルを作り、unmount で revoke する
@@ -63,13 +63,10 @@ const baseProps: SendQueueSectionProps = {
   connected: true,
   connecting: false,
   connectError: null,
-  canWebShare: false,
-  webShareError: null,
   onSend: () => {},
   onOpenStoragePicker: () => {},
   onRemoveItem: () => {},
   onRetryFailed: () => {},
-  onWebShare: () => {},
   onOpenSettings: () => {},
 };
 
@@ -161,38 +158,22 @@ describe("SendQueueSection", () => {
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
   });
 
-  it("falls back to the share sheet when no client ID is configured", () => {
-    const onWebShare = vi.fn();
+  it("points to Settings as the only action when no client ID is configured", () => {
     const onOpenSettings = vi.fn();
     renderSection({
       configured: false,
       connected: false,
-      canWebShare: true,
-      onWebShare,
       onOpenSettings,
       items: [item("a", "graphium-a.jpg")],
     });
 
-    // 未設定の案内 + 設定導線
+    // 未設定の案内 + 設定導線のみ（かつての共有シートフォールバックは撤去済み）
     expect(screen.getByText(/isn't set up yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
-    // 主アクションは共有シート（見出しの送信ボタンは出ない）
+    // 見出しの送信ボタンも共有シートボタンも出ない
     expect(screen.queryByRole("button", { name: /Send \(1\)/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Send via share sheet \(1\)/ }));
-    expect(onWebShare).toHaveBeenCalledTimes(1);
-  });
-
-  it("points to Settings as the only action when neither Drive nor Web Share is available", () => {
-    renderSection({
-      configured: false,
-      connected: false,
-      canWebShare: false,
-      items: [item("a", "graphium-a.jpg")],
-    });
-
-    expect(screen.queryByRole("button", { name: /share sheet/ })).toBeNull();
-    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /share sheet/i })).toBeNull();
   });
 
   it("shows the retry affordance only when something has failed", () => {

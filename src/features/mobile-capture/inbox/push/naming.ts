@@ -8,8 +8,6 @@
 //
 // 注意: 同名衝突は致命ではない（Drive は同名ファイルを許容し、デスクトップの
 // 取り込みは checksum で重複排除する）ので、秒単位のタイムスタンプ + 連番で足りる。
-// 設計 §13.5 の share-to-inbox（Web Share 経路）は未着地なので、正規化の実体は
-// この push/ に置く。Web Share 経路を実装するときはここから import して共用する。
 
 import {
   GRAPHIUM_CAPTURE_EXTENSION,

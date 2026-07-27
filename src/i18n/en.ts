@@ -1416,7 +1416,7 @@ export const en: Record<string, string> = {
   // connection chip and the queue block collapses while empty.
   "mobile.send.title": "Send queue",
   "mobile.send.chipNotConfigured": "Not set up",
-  "mobile.send.notConfigured": "Google Drive isn't set up yet. Add a client ID in Settings — or hand the files to the share sheet below.",
+  "mobile.send.notConfigured": "Google Drive isn't set up yet. Open Settings and add a client ID under Advanced.",
   "mobile.send.openSettings": "Open Settings",
   "mobile.send.addMemo": "Write",
   "mobile.send.addUrl": "URL",
@@ -1435,9 +1435,6 @@ export const en: Record<string, string> = {
   "mobile.send.connectStorage": "Connect storage",
   "mobile.send.connecting": "Connecting...",
   "mobile.send.connectFailed": "Could not connect: {error}",
-  "mobile.send.webShare": "Send via share sheet ({count})",
-  "mobile.send.webShareHint": "In the share sheet choose “Save to Files” and pick your synced Graphium/Inbox folder.",
-  "mobile.send.webShareFailed": "Could not share: {error}",
 
   // ── Experiment opt-in card (legacy mobile home) ──
   "mobile.optIn.title": "Send captures to your desktop",
@@ -1449,7 +1446,6 @@ export const en: Record<string, string> = {
   "mobile.storagePicker.help": "Your captures reach the desktop through the storage you pick here.",
   "mobile.storagePicker.googleHelp": "Connect with your Google account",
   "mobile.storagePicker.comingSoon": "Coming soon",
-  "mobile.storagePicker.webShare": "Send via the share sheet",
 
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "Storage",

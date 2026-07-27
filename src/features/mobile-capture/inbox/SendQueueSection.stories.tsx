@@ -1,7 +1,7 @@
 // ホームの送信キューセクションのストーリー。
 //
 // セクションは props 駆動のプレゼンテーション層なので、キュー・認可の実物なしで
-// 全状態（接続済み+キュー / 送信中 / 失敗 / 未接続 / 未設定フォールバック / 空）を
+// 全状態（接続済み+キュー / 送信中 / 失敗 / 未接続 / 未設定 / 空）を
 // 再現できる。ホームでの見え方に合わせ、モバイル幅の枠にキュー（最上部）→
 // タイムラインのプレースホルダ → 画面下固定の捕獲バー（MobileCaptureBar 実物）を
 // 敷いて「キューは上・捕獲は下バー・送信は見出し行右端」の並びを見る。
@@ -60,13 +60,10 @@ const baseProps: SendQueueSectionProps = {
   connected: true,
   connecting: false,
   connectError: null,
-  canWebShare: false,
-  webShareError: null,
   onSend: noop,
   onOpenStoragePicker: noop,
   onRemoveItem: noop,
   onRetryFailed: noop,
-  onWebShare: noop,
   onOpenSettings: noop,
   loadItemBlob: fakeLoadItemBlob,
 };
@@ -108,8 +105,8 @@ const meta: Meta<typeof SectionHost> = {
           "見え（かつてのボトムシートの置き換え）、[送信 (n)] は見出し行右端の定位置に出る。" +
           "捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar: 書く/URL/写真/動画/音声/ライブラリ）。" +
           "ファイルは端末内キュー（IndexedDB）に永続化され、Google Drive の Graphium/Inbox へ" +
-          "直列アップロードされる。未設定環境では OS の共有シートで同期フォルダに置く" +
-          "フォールバックを出す。キューが空のときはセクションごと畳まれ、捕獲バーだけが残る。",
+          "直列アップロードされる。未設定環境では案内と設定導線だけを出す。" +
+          "キューが空のときはセクションごと畳まれ、捕獲バーだけが残る。",
       },
     },
   },
@@ -210,24 +207,13 @@ export const ConnectFailed: Story = {
   },
 };
 
-/** 未設定（client ID なし）+ Web Share フォールバック。設定への導線も出す。 */
-export const NotConfiguredFallback: Story = {
+/** 未設定（client ID なし）。撮影はローカル保存に落ちるので、キューに残るのは
+    前回の送り残しだけ。案内 + 設定導線（詳細設定の client_id 上書き）のみ。 */
+export const NotConfigured: Story = {
   args: {
     ...baseProps,
     configured: false,
     connected: false,
-    canWebShare: true,
-  },
-};
-
-/** 未設定で Web Share も使えない環境（撮影はローカル保存に落ちるので、
-    キューに残るのは前回の送り残しだけ）。設定導線のみ。 */
-export const NotConfiguredNoShare: Story = {
-  args: {
-    ...baseProps,
-    configured: false,
-    connected: false,
-    canWebShare: false,
     items: [baseItems[0]],
   },
 };

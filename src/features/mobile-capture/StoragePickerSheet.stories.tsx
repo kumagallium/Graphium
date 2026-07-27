@@ -1,7 +1,7 @@
 // ストレージ選択ボトムシートのストーリー。
 //
 // props 駆動のプレゼンテーション層なので、接続の実物（gsi / pusher）なしで全状態
-// （既定 / 準備中 / 接続中 / 失敗 / 共有シート逃げ道あり）を再現できる。
+// （既定 / 準備中 / 接続中 / 失敗）を再現できる。
 // transform を持つラッパは fixed の containing block になるため、fixed inset-0 の
 // シートを 390px のスマホ枠内に閉じ込めて見せる（Storybook 専用のトリック）。
 
@@ -15,9 +15,7 @@ const baseProps: StoragePickerSheetProps = {
   googleReady: true,
   connecting: false,
   connectError: null,
-  canWebShare: false,
   onSelectGoogle: noop,
-  onSelectWebShare: noop,
   onClose: noop,
 };
 
@@ -51,10 +49,10 @@ const meta: Meta<typeof SheetHost> = {
       description: {
         component:
           "スマホの「ストレージに接続」の行き先となるストレージ選択シート。Google Drive（利用可）/ " +
-          "OneDrive（準備中・P1.5 で活性化する枠）を並べ、canWebShare の環境では下部に共有シートの" +
-          "逃げ道（OAuth 回避）を小さく出す。開く入口は 3 つ — 従来ホームのオプトインカード [試す]・" +
-          "キュー前提ホームの未接続時主ボタン・最小設定シートの [接続/変更]。onSelectGoogle / " +
-          "onSelectWebShare は click から同期的に呼ばれる（GIS / navigator.share の user activation 契約）。",
+          "OneDrive（準備中・P1.5 で活性化する枠）を並べる。並ぶのは接続するストレージだけ — " +
+          "送り方のバリエーションは置かない。開く入口は 3 つ — 従来ホームのオプトインカード [試す]・" +
+          "キュー前提ホームの未接続時主ボタン・最小設定シートの [接続/変更]。onSelectGoogle は " +
+          "click から同期的に呼ばれる（GIS の user activation 契約）。",
       },
     },
   },
@@ -63,14 +61,9 @@ export default meta;
 
 type Story = StoryObj<typeof SheetHost>;
 
-/** 既定: Google 利用可 / OneDrive 準備中。共有シート無しの環境。 */
+/** 既定: Google 利用可 / OneDrive 準備中。 */
 export const Default: Story = {
   args: { ...baseProps },
-};
-
-/** 共有シートが使える環境（iOS Safari 等）。下部に OAuth 回避の逃げ道が出る。 */
-export const WithShareSheetEscape: Story = {
-  args: { ...baseProps, canWebShare: true },
 };
 
 /** push モジュールの準備中（prepare 未完了）。Google 行は押せない。 */
@@ -85,5 +78,5 @@ export const Connecting: Story = {
 
 /** 接続失敗（ポップアップを閉じた・権限拒否など）。 */
 export const ConnectFailed: Story = {
-  args: { ...baseProps, connectError: "Popup closed by user", canWebShare: true },
+  args: { ...baseProps, connectError: "Popup closed by user" },
 };

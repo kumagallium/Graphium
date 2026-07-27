@@ -1414,7 +1414,7 @@ export const ja: Record<string, string> = {
   // キューが空のときはブロックごと畳まれる。
   "mobile.send.title": "送信キュー",
   "mobile.send.chipNotConfigured": "未設定",
-  "mobile.send.notConfigured": "Google Drive が未設定です。設定でクライアント ID を登録するか、下の共有シートで送ってください。",
+  "mobile.send.notConfigured": "Google Drive が未設定です。設定を開き、詳細設定でクライアント ID を登録してください。",
   "mobile.send.openSettings": "設定を開く",
   "mobile.send.addMemo": "書く",
   "mobile.send.addUrl": "URL",
@@ -1433,9 +1433,6 @@ export const ja: Record<string, string> = {
   "mobile.send.connectStorage": "ストレージに接続",
   "mobile.send.connecting": "接続中...",
   "mobile.send.connectFailed": "接続できませんでした: {error}",
-  "mobile.send.webShare": "共有シートで送る ({count})",
-  "mobile.send.webShareHint": "共有シートで「ファイルに保存」を選び、同期している Graphium/Inbox フォルダを保存先にしてください。",
-  "mobile.send.webShareFailed": "共有できませんでした: {error}",
 
   // ── 実験オプトインカード（従来ホーム） ──
   "mobile.optIn.title": "撮ってデスクトップへ送る",
@@ -1447,7 +1444,6 @@ export const ja: Record<string, string> = {
   "mobile.storagePicker.help": "撮ったものは、ここで選んだストレージ経由でデスクトップに届きます。",
   "mobile.storagePicker.googleHelp": "Google アカウントで接続します",
   "mobile.storagePicker.comingSoon": "準備中",
-  "mobile.storagePicker.webShare": "共有シートで送る",
 
   // ── モバイル最小設定シート ──
   "mobile.settings.storage": "ストレージ",

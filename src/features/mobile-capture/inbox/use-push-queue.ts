@@ -13,7 +13,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PUSH_STATUS_EVENT } from "./push-events";
-import { canShareFilesToInbox, shareFilesToInbox, type ShareToInboxOutcome } from "./share-to-inbox";
 import type {
   InboxPusher,
   PushProgress,
@@ -37,8 +36,6 @@ export type PushQueueUi = {
   connecting: boolean;
   /** 直近の接続エラー（表示用）。 */
   connectError: string | null;
-  /** Web Share フォールバックが使える環境か。 */
-  canWebShare: boolean;
   /** キューのアイテム（enqueue 順）。 */
   items: PushQueueItemMeta[];
   draining: boolean;
@@ -47,7 +44,7 @@ export type PushQueueUi = {
   progress: Record<string, PushProgress>;
   /**
    * 撮影ファイルをキューへ積む。キュー経路が使えない環境
-   * （Google 未設定かつ Web Share 不可、または IndexedDB 不可）では false を返し、
+   * （Google 未設定、または IndexedDB 不可）では false を返し、
    * 呼び出し側が従来のローカル保存へフォールバックする。
    */
   enqueueForSend: (files: File[]) => Promise<boolean>;
@@ -62,13 +59,6 @@ export type PushQueueUi = {
   removeItem: (id: string) => void;
   /** failed を pending に戻し、接続が生きていれば再送する。 */
   retryFailed: () => void;
-  /**
-   * キューの中身を OS 共有シートで送る（Google 未設定環境のフォールバック）。
-   * **click ハンドラから同期的に呼ぶこと**。事前復元済みの File を最初の await より
-   * 前に navigator.share へ渡す。成功したら該当アイテムをキューから消す。
-   * 復元がまだ（直後に撮った等）なら null を返す。
-   */
-  shareViaWebShare: () => Promise<ShareToInboxOutcome | null>;
   /**
    * キューアイテム 1 件を File として復元する（ホームのキュー一覧の画像サムネイル用）。
    * 見つからない・フラグ OFF・IndexedDB 不可は null（呼び出し側はアイコン表示に倒す）。
@@ -89,8 +79,6 @@ export function usePushQueue(enabled = true): PushQueueUi {
   const moduleRef = useRef<Promise<PushModule> | null>(null);
   const pusherRef = useRef<InboxPusher | null>(null);
   const snapshotRef = useRef<PushQueueSnapshot | null>(null);
-  /** Web Share フォールバック用に事前復元した File（未設定モードのみ維持）。 */
-  const webShareFilesRef = useRef<Array<{ id: string; file: File }>>([]);
 
   const [ready, setReady] = useState(false);
   const [configured, setConfigured] = useState(false);
@@ -99,8 +87,6 @@ export function usePushQueue(enabled = true): PushQueueUi {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<PushQueueSnapshot | null>(null);
   const [progress, setProgress] = useState<Record<string, PushProgress>>({});
-  // 共有可否はマウント時に一度だけ判定（UA でなく canShare の実プローブ）
-  const [canWebShare] = useState(() => canShareFilesToInbox());
 
   /** push モジュールを一度だけロードする（gsi はここでは読まれない — prepare 時のみ）。 */
   const loadModule = useCallback((): Promise<PushModule> => {
@@ -225,28 +211,6 @@ export function usePushQueue(enabled = true): PushQueueUi {
     return () => window.removeEventListener(PUSH_STATUS_EVENT, onStatusChanged);
   }, [enabled, refreshStatus, maybeDrain]);
 
-  // Web Share フォールバック用の事前復元。
-  // ジェスチャ内で IndexedDB を await すると iOS で user activation を失うため、
-  // 送信経路が生きていない間（未設定、または未接続 — ストレージ選択ピッカーが
-  // 共有シートの逃げ道を出す状態）はキューが変わるたびに File を復元して
-  // リファレンスに保持する。接続済みになったら破棄する（共有導線が消えるため）。
-  useEffect(() => {
-    if (!canWebShare || !ready || (configured && connected)) {
-      webShareFilesRef.current = [];
-      return;
-    }
-    let stale = false;
-    void loadModule()
-      .then((mod) => mod.getPushQueueFiles())
-      .then((files) => {
-        if (!stale) webShareFilesRef.current = files;
-      })
-      .catch(() => {});
-    return () => {
-      stale = true;
-    };
-  }, [canWebShare, configured, connected, ready, snapshot, loadModule]);
-
   const enqueueForSend = useCallback(
     async (files: File[]): Promise<boolean> => {
       // フラグ OFF は常にローカル保存へフォールバック（キューにもモジュールにも触らない）
@@ -257,7 +221,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
       if (!pusher) return false;
       const isConfigured = pusher.isConfigured();
       setConfigured(isConfigured);
-      if (!isConfigured && !canWebShare) return false; // ローカル保存へフォールバック
+      if (!isConfigured) return false; // ローカル保存へフォールバック
       try {
         await mod.enqueuePushFiles(files);
       } catch (err) {
@@ -268,7 +232,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
       maybeDrain();
       return true;
     },
-    [enabled, canWebShare, loadModule, maybeDrain],
+    [enabled, loadModule, maybeDrain],
   );
 
   const drainNow = useCallback(() => maybeDrain({ force: true }), [maybeDrain]);
@@ -330,30 +294,12 @@ export function usePushQueue(enabled = true): PushQueueUi {
     [enabled, loadModule],
   );
 
-  const shareViaWebShare = useCallback((): Promise<ShareToInboxOutcome | null> => {
-    const staged = webShareFilesRef.current;
-    if (staged.length === 0) return Promise.resolve(null);
-    // 最初の await より前に share を開始する（user activation を保つ）
-    const sharePromise = shareFilesToInbox(staged.map((s) => s.file));
-    return sharePromise.then(async (outcome) => {
-      if (outcome.status === "shared") {
-        // 共有シートに渡った時点で手離れ — キューから消す
-        const mod = await loadModule();
-        for (const s of staged) {
-          await mod.removePushQueueItem(s.id);
-        }
-      }
-      return outcome;
-    });
-  }, [loadModule]);
-
   return {
     ready,
     configured,
     connected,
     connecting,
     connectError,
-    canWebShare,
     items: snapshot?.items ?? [],
     draining: snapshot?.draining ?? false,
     activeId: snapshot?.activeId ?? null,
@@ -363,7 +309,6 @@ export function usePushQueue(enabled = true): PushQueueUi {
     connectAndDrain,
     removeItem,
     retryFailed,
-    shareViaWebShare,
     getItemFile,
     refreshStatus,
   };

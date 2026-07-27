@@ -16,11 +16,9 @@
 //   （メモ = 本文先頭、URL = タイトル + ドメイン）。
 // - リスト下の主アクションはモード別:
 //   接続済み = なし（送信は見出し行の定位置）/ 未接続 = [ストレージに接続] →
-//   ストレージ選択（StoragePickerSheet。Google/OneDrive/共有シートの選択と connect の
-//   ジェスチャ契約はピッカー側が担う — ここはシートを開くだけ）/
-//   未設定 = 案内 + 設定導線（最小設定シートの client_id 上書き）+ 共有シート
-//   フォールバック（canWebShare 時）。onWebShare は **click から同期的に呼ぶ**
-//   （navigator.share の user activation 契約。await を挟まない）。
+//   ストレージ選択（StoragePickerSheet。プロバイダ選択と connect のジェスチャ契約は
+//   ピッカー側が担う — ここはシートを開くだけ）/
+//   未設定 = 案内 + 設定導線（最小設定シートの client_id 上書き）のみ。
 // - サムネイル: 画像だけ loadItemBlob で IndexedDB の Blob を読み object URL を作る。
 //   行の unmount（削除・送信完了・ビュー離脱）で必ず URL.revokeObjectURL する。
 //   動画・音声・その他は種別アイコン（デスクトップ InboxView と同じ判断）。
@@ -38,7 +36,6 @@ import {
   Loader2,
   AlertCircle,
   Settings as SettingsIcon,
-  Share as ShareIcon,
   RotateCcw,
 } from "lucide-react";
 import { useT } from "../../../i18n";
@@ -75,18 +72,12 @@ export type SendQueueSectionProps = {
   connected: boolean;
   connecting: boolean;
   connectError?: string | null;
-  /** Web Share フォールバックが使えるか（未設定モードでのみ使う）。 */
-  canWebShare: boolean;
-  /** Web Share の失敗表示（cancelled は渡さないこと）。 */
-  webShareError?: string | null;
   /** 手動送信（接続済みモード・見出し行の定位置ボタン）。 */
   onSend: () => void;
   /** ストレージ選択（StoragePickerSheet）を開く。connect の実体はピッカー側。 */
   onOpenStoragePicker: () => void;
   onRemoveItem: (id: string) => void;
   onRetryFailed: () => void;
-  /** 共有シートで送る。**click から同期的に呼ばれる**。 */
-  onWebShare: () => void;
   onOpenSettings: () => void;
   /** キューアイテムの Blob を読む（画像サムネイル用）。省略時はアイコン表示。 */
   loadItemBlob?: (id: string) => Promise<Blob | null>;
@@ -293,13 +284,10 @@ export function SendQueueSection({
   connected,
   connecting,
   connectError,
-  canWebShare,
-  webShareError,
   onSend,
   onOpenStoragePicker,
   onRemoveItem,
   onRetryFailed,
-  onWebShare,
   onOpenSettings,
   loadItemBlob,
 }: SendQueueSectionProps) {
@@ -374,15 +362,10 @@ export function SendQueueSection({
           {t("mobile.send.connectFailed", { error: connectError })}
         </p>
       )}
-      {webShareError && (
-        <p className="text-xs text-destructive leading-relaxed">
-          {t("mobile.send.webShareFailed", { error: webShareError })}
-        </p>
-      )}
 
       {/* リスト下の主アクション（接続済みモードは見出し行の [送信] が担うので無し）。
-          未接続時はストレージ選択（Google / OneDrive / 共有シート）を開く —
-          プロバイダの説明・選択・接続はピッカー側の責務 */}
+          未接続時はストレージ選択を開く — プロバイダの説明・選択・接続はピッカー側の
+          責務。未設定（client_id 無し）は案内 + 設定導線のみ */}
       {configured ? (
         !connected && (
           <button
@@ -401,34 +384,18 @@ export function SendQueueSection({
           </button>
         )
       ) : (
-        <>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {t("mobile.send.notConfigured")}
-            </p>
-            <button
-              onClick={onOpenSettings}
-              className="self-start flex items-center gap-1.5 text-xs text-primary active:opacity-70 transition-opacity"
-            >
-              <SettingsIcon size={13} />
-              {t("mobile.send.openSettings")}
-            </button>
-          </div>
-          {canWebShare && (
-            <>
-              <button
-                onClick={onWebShare}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm active:opacity-80 transition-opacity"
-              >
-                <ShareIcon size={16} />
-                {t("mobile.send.webShare", { count: String(items.length) })}
-              </button>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {t("mobile.send.webShareHint")}
-              </p>
-            </>
-          )}
-        </>
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex flex-col gap-2">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {t("mobile.send.notConfigured")}
+          </p>
+          <button
+            onClick={onOpenSettings}
+            className="self-start flex items-center gap-1.5 text-xs text-primary active:opacity-70 transition-opacity"
+          >
+            <SettingsIcon size={13} />
+            {t("mobile.send.openSettings")}
+          </button>
+        </div>
       )}
     </div>
   );

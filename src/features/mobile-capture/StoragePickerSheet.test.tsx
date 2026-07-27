@@ -6,7 +6,7 @@
 //   押せる時点で必ずジェスチャ内同期接続できる）。click は onSelectGoogle を
 //   **同期的に** 呼ぶ（ハンドラ内に await を挟まない契約の入口）
 // - OneDrive 行は常に無効 + 「準備中」バッジ（P1.5 で活性化する枠）
-// - 「共有シートで送る」は canWebShare のときだけ出て、click で onSelectWebShare
+// - 並ぶのは接続するストレージだけ（かつての共有シート行は撤去済み — 出ない）
 // - connecting 中は Google 行が無効（スピナー）/ connectError は文言に出る
 // - 背景タップ・✕ で onClose
 //
@@ -25,9 +25,7 @@ const baseProps: StoragePickerSheetProps = {
   googleReady: true,
   connecting: false,
   connectError: null,
-  canWebShare: false,
   onSelectGoogle: () => {},
-  onSelectWebShare: () => {},
   onClose: () => {},
 };
 
@@ -68,15 +66,11 @@ describe("StoragePickerSheet", () => {
     expect(screen.getByText("Coming soon")).toBeTruthy();
   });
 
-  it("shows the share-sheet escape only when canWebShare, and wires its click", () => {
-    const first = renderSheet({ canWebShare: false });
-    expect(screen.queryByRole("button", { name: "Send via the share sheet" })).toBeNull();
-    first.unmount();
-
-    const onSelectWebShare = vi.fn();
-    renderSheet({ canWebShare: true, onSelectWebShare });
-    fireEvent.click(screen.getByRole("button", { name: "Send via the share sheet" }));
-    expect(onSelectWebShare).toHaveBeenCalledTimes(1);
+  it("lists only connectable storage (the old share-sheet row is gone)", () => {
+    renderSheet();
+    // ピッカーはストレージ選択専用 — 共有シート行は存在しない
+    expect(screen.queryByRole("button", { name: /share sheet/i })).toBeNull();
+    expect(screen.queryByText(/share sheet/i)).toBeNull();
   });
 
   it("locks the rows while connecting and surfaces connect errors", () => {
