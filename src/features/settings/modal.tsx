@@ -18,6 +18,7 @@ import {
   FolderOpen,
   Info,
   Download,
+  Smartphone,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -75,6 +76,11 @@ import {
   testBlobConnection,
   type ConnectionTestResult,
 } from "../../lib/storage/shared";
+// モバイル送信（Google Drive push）は動的 import で引く（gsi を起動時バンドルに
+// 入れない — push/index.ts の注記どおり）。ここは type import のみ。
+import type { InboxPusher } from "../mobile-capture/inbox/push";
+
+type MobilePushModule = typeof import("../mobile-capture/inbox/push");
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -286,6 +292,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
   const [sharedTestRunning, setSharedTestRunning] = useState(false);
   const [blobTestRunning, setBlobTestRunning] = useState(false);
+
+  // モバイル送信（Google Drive push）— ストレージタブ。
+  // 設定は localStorage（端末ごと）なので、スマホ側でも同じ client ID を入れる必要がある。
+  const [pushMod, setPushMod] = useState<MobilePushModule | null>(null);
+  const pushPusherRef = useRef<InboxPusher | null>(null);
+  const [pushConfigured, setPushConfigured] = useState(false);
+  const [pushConnected, setPushConnected] = useState(false);
+  const [pushConnecting, setPushConnecting] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushClientIdInput, setPushClientIdInput] = useState("");
+  const [pushClientIdSaved, setPushClientIdSaved] = useState(false);
+  const [pushHasBundledId, setPushHasBundledId] = useState(false);
 
   // エクスポート / バックアップ（ストレージタブ）
   const [exportBusy, setExportBusy] = useState<"markdown" | "backup" | null>(null);
@@ -636,6 +654,82 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       window.location.reload();
     }, 600);
   }, [serverToken]);
+
+  // ── モバイル送信（Google Drive push）── ストレージタブを開いた時に動的ロード。
+  // prepare をここで済ませておくと、接続ボタンの click から同期的に connect() を
+  // 呼べる（InboxPusher の契約 — ジェスチャ内で await を挟むと iOS がブロックする）。
+  useEffect(() => {
+    if (!isOpen || tab !== "storage" || pushMod) return;
+    let cancelled = false;
+    void import("../mobile-capture/inbox/push")
+      .then((mod) => {
+        if (cancelled) return;
+        if (!pushPusherRef.current) pushPusherRef.current = new mod.GoogleDrivePusher();
+        const pusher = pushPusherRef.current;
+        setPushMod(mod);
+        setPushConfigured(pusher.isConfigured());
+        setPushConnected(pusher.isConnected());
+        setPushHasBundledId(mod.DEFAULT_GOOGLE_PUSH_CLIENT_ID !== "");
+        setPushClientIdInput(mod.getGoogleClientIdOverride() ?? "");
+        if (pusher.isConfigured()) {
+          void pusher.prepare().catch(() => {}); // 未設定・オフライン等は接続時に再表面化する
+        }
+      })
+      .catch((err) => {
+        setPushError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tab, pushMod]);
+
+  const handleSavePushClientId = useCallback(() => {
+    if (!pushMod) return;
+    pushMod.setGoogleClientIdOverride(pushClientIdInput);
+    setPushClientIdSaved(true);
+    setPushError(null);
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    setPushConfigured(pusher.isConfigured());
+    // client_id が変わったら token client を作り直す（prepare は client_id 差し替えに追従する）
+    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
+  }, [pushMod, pushClientIdInput]);
+
+  const handleClearPushClientId = useCallback(() => {
+    if (!pushMod) return;
+    pushMod.setGoogleClientIdOverride(null);
+    setPushClientIdInput("");
+    setPushClientIdSaved(false);
+    setPushError(null);
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    setPushConfigured(pusher.isConfigured());
+    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
+  }, [pushMod]);
+
+  const handlePushConnect = useCallback(() => {
+    const pusher = pushPusherRef.current;
+    if (!pusher || pushConnecting) return;
+    setPushConnecting(true);
+    setPushError(null);
+    // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
+    // ここより前に await を置かないこと（ポップアップがブロックされる）。
+    pusher
+      .connect()
+      .then(() => setPushConnected(true))
+      .catch((err) => {
+        setPushConnected(pusher.isConnected());
+        setPushError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPushConnecting(false));
+  }, [pushConnecting]);
+
+  const handlePushDisconnect = useCallback(() => {
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    pusher.disconnect();
+    setPushConnected(false);
+  }, []);
 
   // ── エクスポート / バックアップ（ストレージタブ） ──
   // アクティブな StorageProvider から全ノートを読み出して zip を組み立てる。
@@ -1819,6 +1913,124 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </p>
               </div>
             )}
+
+            {/* モバイル送信（Google Drive push）。デスクトップにも出す —
+                機能を知る場所はデスクトップ、実際に接続するのは撮影する端末。
+                設定は端末ごと（localStorage）なので help でその旨を明示する */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Smartphone size={14} className="text-muted-foreground" />
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("settings.mobilePush.title")}
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                {t("settings.mobilePush.help")}
+              </p>
+              <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+                {/* 接続状態 */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    {!pushConfigured ? (
+                      <>
+                        <AlertCircle size={12} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {t("settings.mobilePush.statusNotConfigured")}
+                        </span>
+                      </>
+                    ) : pushConnected ? (
+                      <>
+                        <CheckCircle size={12} className="text-green-600" />
+                        <span className="text-foreground">
+                          {t("settings.mobilePush.statusConnected")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle size={12} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {t("settings.mobilePush.statusDisconnected")}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {pushConfigured && (
+                    pushConnected ? (
+                      <Button size="sm" variant="ghost" onClick={handlePushDisconnect}>
+                        {t("settings.mobilePush.disconnect")}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={handlePushConnect} disabled={pushConnecting || !pushMod}>
+                        {pushConnecting ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          t("settings.mobilePush.connect")
+                        )}
+                      </Button>
+                    )
+                  )}
+                </div>
+                {pushError && (
+                  <p className="text-xs text-red-500 flex items-start gap-1">
+                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                    <span className="break-all">
+                      {t("settings.mobilePush.connectFailed", { error: pushError })}
+                    </span>
+                  </p>
+                )}
+
+                {/* 自前 client ID（一級機能: セルフホスト・同梱 ID 枯渇時の逃げ道でもある） */}
+                <div className="pt-1 border-t border-border space-y-1.5">
+                  <div className="text-xs text-muted-foreground">
+                    {t("settings.mobilePush.clientIdLabel")}
+                  </div>
+                  <Input
+                    type="text"
+                    value={pushClientIdInput}
+                    onChange={(e) => {
+                      setPushClientIdInput(e.target.value);
+                      setPushClientIdSaved(false);
+                    }}
+                    placeholder={t("settings.mobilePush.clientIdPlaceholder")}
+                    autoComplete="off"
+                    disabled={!pushMod}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSavePushClientId}
+                      disabled={!pushMod || pushClientIdInput.trim() === ""}
+                    >
+                      {t("settings.mobilePush.save")}
+                    </Button>
+                    {pushClientIdInput.trim() !== "" && (
+                      <button
+                        onClick={handleClearPushClientId}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                      >
+                        <RotateCcw size={12} />
+                        {t("settings.mobilePush.clear")}
+                      </button>
+                    )}
+                    {pushClientIdSaved && (
+                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                        <CheckCircle size={12} className="text-green-600" />
+                        {t("settings.mobilePush.saved")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t("settings.mobilePush.clientIdHelp")}
+                  </p>
+                  {!pushHasBundledId && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                      <Info size={12} className="mt-0.5 shrink-0" />
+                      <span>{t("settings.mobilePush.noDefaultNote")}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* エクスポート / バックアップ */}
             <div>
