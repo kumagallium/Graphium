@@ -571,6 +571,8 @@ export const en: Record<string, string> = {
   "settings.mobilePush.connect": "Connect",
   "settings.mobilePush.disconnect": "Disconnect",
   "settings.mobilePush.connectFailed": "Could not connect: {error}",
+  "settings.mobilePush.advanced": "Advanced",
+  "settings.mobilePush.advancedHelp": "Normally you only sign in with your own Google account — nothing to configure here. A custom client ID is a fallback for self-hosting, or in case the bundled ID ever stops working.",
   "settings.mobilePush.clientIdLabel": "Google OAuth client ID",
   "settings.mobilePush.clientIdPlaceholder": "xxxxxxxx.apps.googleusercontent.com",
   "settings.mobilePush.clientIdHelp": "Create an OAuth client (Web application) in Google Cloud Console and paste its client ID. No secret is needed; access is limited to files the app creates (drive.file).",

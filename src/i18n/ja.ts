@@ -571,6 +571,8 @@ export const ja: Record<string, string> = {
   "settings.mobilePush.connect": "接続",
   "settings.mobilePush.disconnect": "切断",
   "settings.mobilePush.connectFailed": "接続できませんでした: {error}",
+  "settings.mobilePush.advanced": "詳細設定",
+  "settings.mobilePush.advancedHelp": "ふだんは自分の Google アカウントにログインするだけで使えます（設定は不要）。クライアント ID の上書きは、セルフホストや同梱 ID が使えなくなったときの保険です。",
   "settings.mobilePush.clientIdLabel": "Google OAuth クライアント ID",
   "settings.mobilePush.clientIdPlaceholder": "xxxxxxxx.apps.googleusercontent.com",
   "settings.mobilePush.clientIdHelp": "Google Cloud Console で OAuth クライアント（ウェブ アプリケーション）を作成し、そのクライアント ID を貼り付けてください。secret は不要で、アクセスはこのアプリが作ったファイルに限られます（drive.file）。",

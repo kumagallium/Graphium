@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -2021,56 +2022,70 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   </p>
                 )}
 
-                {/* 自前 client ID（一級機能: セルフホスト・同梱 ID 枯渇時の逃げ道でもある） */}
-                <div className="pt-1 border-t border-border space-y-1.5">
-                  <div className="text-xs text-muted-foreground">
-                    {t("settings.mobilePush.clientIdLabel")}
-                  </div>
-                  <Input
-                    type="text"
-                    value={pushClientIdInput}
-                    onChange={(e) => {
-                      setPushClientIdInput(e.target.value);
-                      setPushClientIdSaved(false);
-                    }}
-                    placeholder={t("settings.mobilePush.clientIdPlaceholder")}
-                    autoComplete="off"
-                    disabled={!pushMod}
-                  />
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleSavePushClientId}
-                      disabled={!pushMod || pushClientIdInput.trim() === ""}
-                    >
-                      {t("settings.mobilePush.save")}
-                    </Button>
-                    {pushClientIdInput.trim() !== "" && (
-                      <button
-                        onClick={handleClearPushClientId}
-                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                      >
-                        <RotateCcw size={12} />
-                        {t("settings.mobilePush.clear")}
-                      </button>
-                    )}
-                    {pushClientIdSaved && (
-                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                        <CheckCircle size={12} className="text-green-600" />
-                        {t("settings.mobilePush.saved")}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("settings.mobilePush.clientIdHelp")}
+                {/* 同梱 ID の無いビルドでは自前 client ID が必須なので、注記は
+                    折りたたみの外（常時見える位置）に出す */}
+                {!pushHasBundledId && (
+                  <p className="pt-1 border-t border-border text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                    <Info size={12} className="mt-0.5 shrink-0" />
+                    <span>{t("settings.mobilePush.noDefaultNote")}</span>
                   </p>
-                  {!pushHasBundledId && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
-                      <Info size={12} className="mt-0.5 shrink-0" />
-                      <span>{t("settings.mobilePush.noDefaultNote")}</span>
+                )}
+
+                {/* 自前 client ID の上書きは「詳細設定」に畳む（既定は閉じる）。
+                    既定の体験は同梱 ID で「接続」するだけ — 上書きはセルフホストや
+                    同梱 ID 枯渇時の保険で、一般ユーザーには見せない */}
+                <details className={`group ${pushHasBundledId ? "pt-1 border-t border-border" : ""}`}>
+                  <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
+                    {t("settings.mobilePush.advanced")}
+                  </summary>
+                  <div className="mt-1.5 space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.advancedHelp")}
                     </p>
-                  )}
-                </div>
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.clientIdLabel")}
+                    </div>
+                    <Input
+                      type="text"
+                      value={pushClientIdInput}
+                      onChange={(e) => {
+                        setPushClientIdInput(e.target.value);
+                        setPushClientIdSaved(false);
+                      }}
+                      placeholder={t("settings.mobilePush.clientIdPlaceholder")}
+                      autoComplete="off"
+                      disabled={!pushMod}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleSavePushClientId}
+                        disabled={!pushMod || pushClientIdInput.trim() === ""}
+                      >
+                        {t("settings.mobilePush.save")}
+                      </Button>
+                      {pushClientIdInput.trim() !== "" && (
+                        <button
+                          onClick={handleClearPushClientId}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.mobilePush.clear")}
+                        </button>
+                      )}
+                      {pushClientIdSaved && (
+                        <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                          <CheckCircle size={12} className="text-green-600" />
+                          {t("settings.mobilePush.saved")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.clientIdHelp")}
+                    </p>
+                  </div>
+                </details>
               </div>
             </div>
             )}
