@@ -13,6 +13,11 @@ import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { FormattingToolbarProps } from "@blocknote/react";
 import { LABEL_TO_STYLE } from "../features/inline-label/styles";
+import {
+  isSelectionInTableCell,
+  toggleInlineLabelForSelection,
+  getInlineLabelShortcutHint,
+} from "../features/inline-label/shortcuts";
 import { isBlockInsideStep, isSelectionInsideStep } from "../blocks/step/view";
 import { useProvLabelsEnabled } from "../features/context-label";
 import {
@@ -32,44 +37,8 @@ const INLINE_LABEL_COLOR_CLASS: Record<InlineLabelKey, string> = {
   output: "text-[#c26356] hover:bg-[rgba(194,99,86,0.12)]",
 };
 
-/** ランダムな entityId を生成（テキスト inline 用） */
-function makeEntityId(label: InlineLabelKey): string {
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `ent_${label}_${rand}`;
-}
 
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
-
-// BlockNote のテーブル構造を構成する ProseMirror ノード名。
-// セル内の選択ではこれらが祖先チェーンに必ず現れる。
-const TABLE_NODE_NAMES = new Set([
-  "table",
-  "tableRow",
-  "tableCell",
-  "tableHeader",
-  "tableParagraph",
-]);
-
-/**
- * 現在の選択がテーブルセル内にあるかを判定する。
- *
- * テーブルは「列見出し=属性キー / 行=Entity」の構造として PROV に変換される
- * （parseStructuredTable + ブロックラベル経路）。1 セル = 1 つの atomic な値で
- * あり、セル内にインラインラベルを付けても下流（PROV 生成・attribute 紐付け）は
- * テーブル構造を走査しないため黙って捨てられる（サイレント故障）。
- * そこでセル内ではインラインラベル UI を出さず、構造解釈に一本化する。
- */
-function isSelectionInTableCell(editor: any): boolean {
-  const tiptap = editor?._tiptapEditor;
-  if (!tiptap) return false;
-  const $from = tiptap.state?.selection?.$from;
-  if (!$from) return false;
-  for (let depth = $from.depth; depth >= 0; depth--) {
-    const name = $from.node(depth)?.type?.name;
-    if (name && TABLE_NODE_NAMES.has(name)) return true;
-  }
-  return false;
-}
 
 /**
  * tiptap の現在の選択がメディアブロックの NodeSelection なら
@@ -144,26 +113,10 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
     });
   };
 
-  /** テキスト選択時のラベルトグル（ProseMirror mark を付け外し） */
+  /** テキスト選択時のラベルトグル（ショートカットと共通の経路） */
   const handleTextLabelClick = (label: InlineLabelKey) => {
-    const styleKey = LABEL_TO_STYLE[label];
-    const selection = editor.getSelection();
-    if (selection?.blocks && selection.blocks.length > 1) {
-      console.warn("[Graphium] inline label cannot span multiple blocks");
-      return;
-    }
-    // テーブルセル内ではインラインラベルを付けない（構造解釈に一本化）。
-    // UI ボタンは非表示にしているが、念のため二重で防ぐ。
-    if (isSelectionInTableCell(editor)) {
-      console.warn("[Graphium] inline label is not supported inside table cells");
-      return;
-    }
-    const activeStyles = editor.getActiveStyles?.() ?? {};
-    const isActive = Boolean(activeStyles[styleKey]);
-    if (isActive) {
-      editor.removeStyles({ [styleKey]: activeStyles[styleKey] } as any);
-    } else {
-      editor.addStyles({ [styleKey]: makeEntityId(label) } as any);
+    if (!toggleInlineLabelForSelection(editor, label)) {
+      console.warn("[Graphium] inline label not applicable to this selection");
     }
   };
 
@@ -216,7 +169,7 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
           <button
             key={label}
             onClick={onClick}
-            title={getDisplayLabelName(label)}
+            title={`${getDisplayLabelName(label)} (${getInlineLabelShortcutHint(label)})`}
             className={[
               "bn-button inline-flex items-center justify-center rounded transition-colors px-1.5 text-[11px] font-semibold",
               INLINE_LABEL_COLOR_CLASS[label],

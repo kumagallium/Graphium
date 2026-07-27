@@ -53,6 +53,7 @@ import { imeCompositionHealExtension } from "./ime-composition-heal";
 import { documentSearchExtension } from "@/features/document-search/search-plugin";
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
+import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
 
 type SandboxEditorProps = {
   blocks?: CustomBlockEntry[];
@@ -156,6 +157,22 @@ export function SandboxEditor({
   useEffect(() => {
     onEditorReady?.(editor);
   }, [editor, onEditorReady]);
+
+  // インラインラベルのキーボードショートカット（⌘⇧I/E/P/O）。
+  // メイン・SidePeek どちらのエディタでも効くよう SandboxEditor で束ねる。
+  // capture でブラウザ既定（Win の DevTools 等）より先に処理する。
+  useEffect(() => {
+    const dom: HTMLElement | undefined = (editor as any)?._tiptapEditor?.view?.dom;
+    if (!dom) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (handleInlineLabelShortcut(editor, e)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    dom.addEventListener("keydown", onKeyDown, true);
+    return () => dom.removeEventListener("keydown", onKeyDown, true);
+  }, [editor]);
 
   // カスタムSideMenuを渡した場合: デフォルトを無効にして手動レンダリング
   const usesCustomSideMenu = sideMenu !== undefined && sideMenu !== false;

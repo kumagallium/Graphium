@@ -217,6 +217,13 @@ export function FileSidebar({
           ensure(il.label).add(`inline::${il.text}`);
         }
       }
+      // step コンテナも「ステップ」ラベルとして一覧に出す。
+      // ハイライトラベルだけ並んで工程が並ばないと、同じ来歴系の入口なのに
+      // 片方しか辿れない非対称になる（v6 で procedure block ラベルは
+      // step ブロックに変換され labels には現れない）。
+      for (const s of note.steps ?? []) {
+        ensure("procedure").add(`step::${s.text}`);
+      }
     }
     const counts = new Map<string, number>();
     for (const [label, keys] of keySets) {
