@@ -1414,7 +1414,6 @@ export const ja: Record<string, string> = {
   // キューが空のときはブロックごと畳まれる。
   "mobile.send.title": "送信キュー",
   "mobile.send.chipNotConfigured": "未設定",
-  "mobile.send.helpDrive": "ファイルは Google Drive の Graphium/Inbox にアップロードされ、デスクトップが同期フォルダから取り込みます。",
   "mobile.send.notConfigured": "Google Drive が未設定です。設定でクライアント ID を登録するか、下の共有シートで送ってください。",
   "mobile.send.openSettings": "設定を開く",
   "mobile.send.addMemo": "書く",
@@ -1431,12 +1430,30 @@ export const ja: Record<string, string> = {
   "mobile.send.remove": "キューから削除",
   "mobile.send.action": "送信 ({count})",
   "mobile.send.sending": "送信中...",
-  "mobile.send.connectGoogle": "Google Drive に接続",
+  "mobile.send.connectStorage": "ストレージに接続",
   "mobile.send.connecting": "接続中...",
   "mobile.send.connectFailed": "接続できませんでした: {error}",
   "mobile.send.webShare": "共有シートで送る ({count})",
   "mobile.send.webShareHint": "共有シートで「ファイルに保存」を選び、同期している Graphium/Inbox フォルダを保存先にしてください。",
   "mobile.send.webShareFailed": "共有できませんでした: {error}",
+
+  // ── 実験オプトインカード（従来ホーム） ──
+  "mobile.optIn.title": "撮ってデスクトップへ送る",
+  "mobile.optIn.body": "スマホで撮ったメモ・写真・URL を、デスクトップの Graphium 受信箱へ送れます。",
+  "mobile.optIn.try": "試す",
+
+  // ── ストレージ選択（StoragePickerSheet） ──
+  "mobile.storagePicker.title": "ストレージを選ぶ",
+  "mobile.storagePicker.help": "撮ったものは、ここで選んだストレージ経由でデスクトップに届きます。",
+  "mobile.storagePicker.googleHelp": "Google アカウントで接続します",
+  "mobile.storagePicker.comingSoon": "準備中",
+  "mobile.storagePicker.webShare": "共有シートで送る",
+
+  // ── モバイル最小設定シート ──
+  "mobile.settings.storage": "ストレージ",
+  "mobile.settings.changeStorage": "変更",
+  "mobile.settings.leaveExperiment": "この実験をやめる",
+  "mobile.settings.leaveExperimentHint": "従来のホームに戻ります。送信キューと接続はこの端末に保持されます。",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
