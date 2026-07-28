@@ -11,10 +11,12 @@
 //   media-index には保存しない
 // - キューが空のときはキューセクションごと畳まれ、下の捕獲バーだけが残る
 // - タイムライン（過去分の閲覧）はキューの下にそのまま共存する（1 スクロール）
-// - enqueueForSend が false（Google 未設定、IndexedDB 不可）のときだけ
-//   従来のローカル保存（メディア=onUploadMedia / メモ=onCreateCapture /
-//   URL=onAddUrlBookmark）に落ちる
+// - client_id 未設定でも捕獲物はキューに積まれる（キューはこの端末の IndexedDB で
+//   動く。未設定の案内は送信段階 = SendQueueSection が出す）。enqueueForSend が
+//   false（IndexedDB 不可 = キュー自体が使えない）のときだけ従来のローカル保存
+//   （メディア=onUploadMedia / メモ=onCreateCapture / URL=onAddUrlBookmark）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
+//   （configured ではゲートしない — 設計 doc §13.9）
 // - ヘッダーの接続状態チップは 接続済み / 未接続 / 未設定 を出し分ける
 // - スマホにフル設定モーダルは出さない: フラグ ON のヘッダー ⚙ は最小設定シート
 //   （MobileSettingsSheet）を開き、`graphium-open-settings` は飛ばさない。
@@ -270,10 +272,12 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     );
   });
 
-  it("falls back to the local capture store for memos when the queue route is unavailable", async () => {
+  it("falls back to the local capture store for memos when the queue itself is unusable", async () => {
+    // enqueue false = IndexedDB 不可（キュー自体が使えない）。client_id 未設定は
+    // もう false にならない（未設定でも積まれる — 下の configured:false テスト参照）
     const enqueueForSend = vi.fn(async () => false);
     const onCreateCapture = vi.fn(async () => {});
-    usePushQueueMock.mockReturnValue(pushUi({ configured: false, enqueueForSend }));
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
     renderView({ onCreateCapture, onUploadMedia: async () => "file-id" });
 
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
@@ -304,10 +308,11 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(onAddUrlBookmark).not.toHaveBeenCalled();
   });
 
-  it("falls back to local save only when the queue route is unavailable", async () => {
+  it("falls back to local save only when the queue itself is unusable", async () => {
+    // enqueue false = IndexedDB 不可の非常口（データを落とさない）
     const enqueueForSend = vi.fn(async () => false);
     const onUploadMedia = vi.fn(async () => "file-id");
-    usePushQueueMock.mockReturnValue(pushUi({ configured: false, enqueueForSend }));
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
     renderView({ onUploadMedia });
 
     capture("image/*", [jpeg()]);
@@ -323,7 +328,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(document.querySelector('input[accept="audio/*"]')).toBeTruthy();
   });
 
-  it("hides the media capture buttons when neither the queue route nor local save exists, but still lists leftovers", () => {
+  it("keeps the capture buttons when no client_id is configured — captures go to the queue, guidance at send time", () => {
     usePushQueueMock.mockReturnValue(
       pushUi({
         configured: false,
@@ -332,13 +337,26 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     );
     renderView({ onUploadMedia: undefined });
 
-    // 捕獲バーの撮影ボタンは出ない（袋小路の経路を作らない）。[書く] は退路があるので残る
-    expect(document.querySelector('input[accept="image/*"]')).toBeNull();
-    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
+    // 未設定でも撮影ボタンは出る — キューはこの端末の IndexedDB で動くので撮った物は
+    // キューに積まれ、袋小路（この端末のローカル保存）には落ちない（設計 doc §13.9）
+    expect(document.querySelector('input[accept="image/*"]')).toBeTruthy();
     expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
-    // 前回セッションの送り残しは見え、未設定の案内が付く
+    // 送り残し・積んだ物は見え、未設定の案内 + 設定導線は送信段階（キュー側）が出す
     expect(screen.getByText("graphium-20260727-102030-01.jpg")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
+  });
+
+  it("hides the media capture buttons only while the queue module is not ready and no local save exists", () => {
+    // push モジュールのロード前（ready=false）だけは経路の実在が未確定なので、
+    // onUploadMedia も無ければ撮影ボタンを出さない（一瞬の過渡状態）
+    usePushQueueMock.mockReturnValue(pushUi({ ready: false, configured: false }));
+    renderView({ onUploadMedia: undefined });
+
+    expect(document.querySelector('input[accept="image/*"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
+    // [書く] は退路（ローカル capture-store）があるので残る
+    expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
   });
 
   it("opens the storage picker from the queue's connect button and wires Google to connectAndDrain", () => {

@@ -364,9 +364,12 @@ export function MobileCaptureView({
   // 設定モーダルでの client_id 変更・接続・切断は push-events 経由で hook が読み直す
   // ので、常時見えているチップ・キューが古い状態のまま残ることはない。
   const push = usePushQueue(mobileInboxEnabled);
-  // 撮ったものをキュー経路へ送れる環境か。false のときだけ従来のローカル保存に落ちる
-  //（ユーザー決定: ローカル保存は「実験フラグ OFF」または「Google 未設定」のみの退路）。
-  const pushRouteAvailable = mobileInboxEnabled && push.ready && push.configured;
+  // 撮ったものをキュー経路へ送れる環境か。キューはこの端末の IndexedDB で動くので
+  // client_id 未設定でも積める（未設定の案内は送信キュー側が出す）— configured では
+  // ゲートしない。false のときだけ従来のローカル保存に落ちる（ユーザー決定:
+  // ローカル保存は「実験フラグ OFF」のみの退路。あとは enqueue 失敗 = IndexedDB
+  // 不可の非常口だけ。モバイル単独利用者はいない前提 — 設計 doc §13.9）。
+  const pushRouteAvailable = mobileInboxEnabled && push.ready;
 
   const PULL_THRESHOLD = 60;
 
@@ -439,7 +442,8 @@ export function MobileCaptureView({
   // テキストメモ送信。
   // キュー前提ホーム（フラグ ON）ではメモも捕獲物 — ローカルの capture-store でなく
   // ネイティブ JSON（capture-file.ts）で送信キューへ積む。デスクトップの取り込みで
-  // 本物のメモとして着地する。キュー経路が使えない環境だけ従来のローカル保存に退避する
+  // 本物のメモとして着地する。client_id 未設定でも積む（案内は送信キュー側）。
+  // キュー自体が使えない環境（IndexedDB 不可）だけ従来のローカル保存に退避する
   //（データを落とさない）。フラグ OFF は従来どおり。
   const enqueueForSend = push.enqueueForSend;
   const handleSubmit = useCallback(
@@ -496,8 +500,9 @@ export function MobileCaptureView({
   //（完全置き換え。この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
   // キューはホームに常時見えているので、enqueue 後に開くものは何もない —
   // アイテムがその場でキュー一覧に出現する。enqueue はジェスチャ非依存なので await
-  // してよい。実験フラグ OFF、またはキュー経路が使えない環境（Google 未設定、
-  // または IndexedDB 不可）は従来のローカル保存に落とす。
+  // してよい。client_id 未設定でもキューに積まれる（未設定の案内は送信キュー側）。
+  // 従来のローカル保存に落ちるのは実験フラグ OFF と、キュー自体が使えない環境
+  //（IndexedDB 不可）だけ。
   const handleCapturedFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;

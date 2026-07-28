@@ -7,6 +7,9 @@
 //   enqueueForSend は false を返す（呼び出し側は従来のローカル保存へ落ちる）
 // - enabled が true に切り替わったら、その場でロード → 購読 → ready=true になる
 //   （リロード不要の反映）
+// - client_id 未設定でも enqueue は成功する（キューはローカル IndexedDB。
+//   未設定の案内は送信段階が出し、ローカル保存には退避しない）。false は
+//   キュー自体が使えない（IndexedDB 不可）ときだけ
 // - getItemFile はキューの Blob をサムネイル用に復元する（OFF 中は null）
 // - PUSH_STATUS_EVENT（設定モーダルでの client_id 変更・接続・切断）で
 //   configured/connected を読み直す（ホームのチップ・キュー表示の鮮度）
@@ -26,6 +29,7 @@ const h = vi.hoisted(() => ({
   pushModuleLoads: vi.fn(),
   pusherConfigured: { value: false },
   getPushQueueFiles: vi.fn(async (_ids?: string[]) => [] as Array<{ id: string; file: File }>),
+  enqueuePushFiles: vi.fn(async (_files?: File[]) => {}),
 }));
 
 vi.mock("./push", () => {
@@ -40,7 +44,7 @@ vi.mock("./push", () => {
       cb({ items: [], draining: false, activeId: null });
       return () => {};
     },
-    enqueuePushFiles: vi.fn(async () => {}),
+    enqueuePushFiles: h.enqueuePushFiles,
     drainPushQueue: vi.fn(async () => ({ pushed: [], failed: [], deferred: [], aborted: null })),
     getPushQueueFiles: h.getPushQueueFiles,
     removePushQueueItem: vi.fn(async () => {}),
@@ -86,6 +90,36 @@ describe("usePushQueue の enabled ゲート", () => {
     rerender({ on: true });
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(h.pushModuleLoads).toHaveBeenCalledTimes(1);
+  });
+});
+
+// doctrine: モバイル単独利用者はいない — フラグ ON の捕獲物はこの端末に退避させない。
+// キューはローカル IndexedDB で動くので、client_id 未設定でも enqueue は成功し、
+// 未設定の案内は送信段階（SendQueueSection）が出す。false（→ 呼び出し側の
+// ローカル保存フォールバック）に落ちるのはキュー自体が使えないときだけ。
+describe("usePushQueue の enqueue と client_id 設定の分離", () => {
+  it("enqueues even when no client_id is configured (guidance happens at send time)", async () => {
+    h.pusherConfigured.value = false;
+    const { result } = renderHook(() => usePushQueue(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.configured).toBe(false);
+
+    const file = new File([new Uint8Array([1]) as BlobPart], "a.jpg", { type: "image/jpeg" });
+    await act(async () => {
+      await expect(result.current.enqueueForSend([file])).resolves.toBe(true);
+    });
+    expect(h.enqueuePushFiles).toHaveBeenCalledWith([file]);
+  });
+
+  it("returns false only when the queue itself is unusable (IndexedDB failure)", async () => {
+    h.enqueuePushFiles.mockRejectedValueOnce(new Error("indexeddb unavailable"));
+    const { result } = renderHook(() => usePushQueue(true));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    const file = new File([new Uint8Array([1]) as BlobPart], "a.jpg", { type: "image/jpeg" });
+    await act(async () => {
+      await expect(result.current.enqueueForSend([file])).resolves.toBe(false);
+    });
   });
 });
 

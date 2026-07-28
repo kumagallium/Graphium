@@ -43,9 +43,10 @@ export type PushQueueUi = {
   /** アイテム別のアップロード進捗。 */
   progress: Record<string, PushProgress>;
   /**
-   * 撮影ファイルをキューへ積む。キュー経路が使えない環境
-   * （Google 未設定、または IndexedDB 不可）では false を返し、
-   * 呼び出し側が従来のローカル保存へフォールバックする。
+   * 撮影ファイルをキューへ積む。キューはこの端末の IndexedDB で動くので、
+   * client_id 未設定でも積める（未設定の案内は送信段階 = SendQueueSection が出す）。
+   * false を返すのは実験フラグ OFF と IndexedDB 不可（キュー自体が使えない）のみで、
+   * そのときだけ呼び出し側が従来のローカル保存へフォールバックする。
    */
   enqueueForSend: (files: File[]) => Promise<boolean>;
   /** 明示の「送信」。接続が生きていればキューを直列送信する。 */
@@ -219,13 +220,17 @@ export function usePushQueue(enabled = true): PushQueueUi {
       const mod = await loadModule();
       const pusher = pusherRef.current;
       if (!pusher) return false;
-      const isConfigured = pusher.isConfigured();
-      setConfigured(isConfigured);
-      if (!isConfigured) return false; // ローカル保存へフォールバック
+      // client_id 未設定でも enqueue は許可する — キューはこの端末の IndexedDB で
+      // 動き、未設定の案内は送信段階（SendQueueSection の「未設定です → 設定」）が
+      // 担う。ここで弾いてローカル保存に落とすと、捕獲物がデスクトップへ渡る橋の
+      // ない袋小路（この端末のライブラリ）に入る — モバイル単独利用者はいない前提
+      // （設計 doc §13.9）に反する。configured は表示用に読み直すだけ。
+      setConfigured(pusher.isConfigured());
       try {
         await mod.enqueuePushFiles(files);
       } catch (err) {
-        // IndexedDB 不可（プライベートモード等）→ ローカル保存へフォールバック
+        // IndexedDB 不可（プライベートモード等）= キュー自体が使えない環境の
+        // 非常口。データを落とさないため、ここだけはローカル保存へフォールバック。
         console.warn("push enqueue failed:", err instanceof Error ? err.message : err);
         return false;
       }
