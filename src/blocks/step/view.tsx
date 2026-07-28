@@ -66,6 +66,28 @@ export function isSelectionInsideStep(editor: any): boolean {
   }
 }
 
+/**
+ * 選択が step の「タイトル行」内にあるか。
+ * タイトルは Activity の名前（rdfs:label）であって工程の中身ではないので、
+ * インラインラベル（ハイライト）の付与対象から外すために使う。
+ * isSelectionInsideStep はタイトルも本文も true になるため、
+ * 本文限定の判定は `isSelectionInsideStep && !isSelectionInStepTitle` で行う。
+ */
+export function isSelectionInStepTitle(editor: any): boolean {
+  try {
+    const $from =
+      editor.prosemirrorState?.selection?.$from ??
+      editor.prosemirrorView?.state?.selection?.$from;
+    if (!$from) return false;
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d)?.type?.name === "step") return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /** 指定ブロックが step の子孫か（ブロックツリーを辿る。テーブル/メディアのラベル導線用） */
 export function isBlockInsideStep(doc: any[], blockId: string): boolean {
   let inside = false;

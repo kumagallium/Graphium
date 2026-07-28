@@ -19,7 +19,7 @@ import {
   getInlineLabelShortcutHint,
   getInlineLabelShortcutKeys,
 } from "../features/inline-label/shortcuts";
-import { isBlockInsideStep, isSelectionInsideStep } from "../blocks/step/view";
+import { isBlockInsideStep, isSelectionInsideStep, isSelectionInStepTitle } from "../blocks/step/view";
 import { useProvLabelsEnabled } from "../features/context-label";
 import {
   useMediaInlineLabelStoreOptional,
@@ -141,11 +141,12 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   // テーブルセル内ではインラインラベルボタンを出さない（構造解釈に一本化）。
   // メディアブロック選択時は別経路（サイドストア）なので対象外。
   const hideInlineLabels = !mediaSel && isSelectionInTableCell(editor);
-  // ハイライトは step の中でだけ付けられる（工程の外の Entity は束縛先が無い）。
+  // ハイライトは step の「本文」でだけ付けられる（工程の外の Entity は束縛先が無い。
+  // タイトルは Activity の名前なので対象外）。
   // 既にラベルが付いている選択では、外せるようにボタンを残す。
   const insideStep = mediaSel
     ? isBlockInsideStep((editor as any).document ?? [], mediaSel.blockId)
-    : isSelectionInsideStep(editor);
+    : isSelectionInsideStep(editor) && !isSelectionInStepTitle(editor);
   const hasExistingLabel = mediaSel
     ? Boolean(mediaCurrent?.label)
     : INLINE_LABEL_ORDER.some((l) => Boolean(activeStyles[LABEL_TO_STYLE[l]]));

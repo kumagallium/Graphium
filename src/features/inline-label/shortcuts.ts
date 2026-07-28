@@ -6,7 +6,7 @@
 // ⌘⇧ 付きにする。T はブラウザ予約（タブ復元）で奪えないので ツール は E(quipment)。
 
 import { LABEL_TO_STYLE } from "./styles";
-import { isSelectionInsideStep } from "../../blocks/step/view";
+import { isSelectionInsideStep, isSelectionInStepTitle } from "../../blocks/step/view";
 
 export type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
 
@@ -136,6 +136,10 @@ export function handleInlineLabelShortcut(editor: any, e: KeyboardEvent): boolea
   const hasExistingLabel = Object.values(LABEL_TO_STYLE).some((k) =>
     Boolean(activeStyles[k]),
   );
-  if (!isSelectionInsideStep(editor) && !hasExistingLabel) return false;
+  // step の「本文」限定（タイトルは Activity の名前なので対象外）。
+  // 既にラベルが付いている選択は場所を問わず解除できる。
+  const insideStepBody =
+    isSelectionInsideStep(editor) && !isSelectionInStepTitle(editor);
+  if (!insideStepBody && !hasExistingLabel) return false;
   return toggleInlineLabelForSelection(editor, label);
 }
