@@ -21,17 +21,19 @@ function makeCaptureBundle(json: unknown, checksum: string): CaptureBundle {
 
 function fakeTransport(bundles: Record<string, CaptureBundle>) {
   const markImported = vi.fn(async (_ref: CaptureRef) => {});
+  const discard = vi.fn(async (_ref: CaptureRef) => {});
   const transport: InboxTransport = {
     listPending: async () => Object.keys(bundles).map((name) => ({ name })),
     fetch: async (ref) => bundles[ref.name],
     markImported,
+    discard,
   };
-  return { transport, markImported };
+  return { transport, markImported, discard };
 }
 
 describe("runInboxImport", () => {
   it("imports each pending item, preserving the original file name", async () => {
-    const { transport, markImported } = fakeTransport({
+    const { transport, markImported, discard } = fakeTransport({
       "IMG_1.jpg": makeBundle("image/jpeg", "sha256:aaa"),
       "IMG_2.jpg": makeBundle("image/jpeg", "sha256:bbb"),
     });
@@ -57,8 +59,9 @@ describe("runInboxImport", () => {
       capture: expect.objectContaining({ checksum: "sha256:aaa", mime: "image/jpeg" }),
     });
 
-    // 取り込んだものは _imported/ へ退避
-    expect(markImported).toHaveBeenCalledTimes(2);
+    // 取り込んだものは既定で Inbox から削除（_imported/ へは退避しない）
+    expect(discard).toHaveBeenCalledTimes(2);
+    expect(markImported).not.toHaveBeenCalled();
     expect(res.imported[0]).toEqual({
       name: "IMG_1.jpg",
       fileId: "id-IMG_1.jpg",
@@ -67,7 +70,7 @@ describe("runInboxImport", () => {
   });
 
   it("skips already-imported items (dedup by checksum) without uploading", async () => {
-    const { transport, markImported } = fakeTransport({
+    const { transport, markImported, discard } = fakeTransport({
       "dup.jpg": makeBundle("image/jpeg", "sha256:known"),
     });
     const uploadAsset = vi.fn(async () => ({ fileId: "x" }));
@@ -83,12 +86,40 @@ describe("runInboxImport", () => {
     expect(res.skipped).toEqual([
       { name: "dup.jpg", checksum: "sha256:known", reason: "duplicate" },
     ]);
-    // skip でも inbox からは退避する（次回列挙で再ヒットしないように）
+    // skip でも inbox からは消す（次回列挙で再ヒットしないように。既定は削除）
+    expect(discard).toHaveBeenCalledWith({ name: "dup.jpg" });
+    expect(markImported).not.toHaveBeenCalled();
+  });
+
+  it("archives into _imported/ instead of deleting when disposal is 'archive'", async () => {
+    const { transport, markImported, discard } = fakeTransport({
+      "IMG_1.jpg": makeBundle("image/jpeg", "sha256:aaa"),
+      "dup.jpg": makeBundle("image/jpeg", "sha256:known"),
+    });
+    const uploadAsset = vi.fn(
+      async (file: File, _options: { capture: CaptureMeta }) => ({
+        fileId: `id-${file.name}`,
+      }),
+    );
+
+    const res = await runInboxImport({
+      transport,
+      uploadAsset,
+      disposal: "archive",
+      isAlreadyImported: (c) => c === "sha256:known",
+    });
+
+    // 成功も duplicate skip も同じ後処理に従う: _imported/ へ退避、削除はしない
+    expect(res.imported.map((i) => i.name)).toEqual(["IMG_1.jpg"]);
+    expect(res.skipped.map((s) => s.name)).toEqual(["dup.jpg"]);
+    expect(markImported).toHaveBeenCalledTimes(2);
+    expect(markImported).toHaveBeenCalledWith({ name: "IMG_1.jpg" });
     expect(markImported).toHaveBeenCalledWith({ name: "dup.jpg" });
+    expect(discard).not.toHaveBeenCalled();
   });
 
   it("imports only the selected refs when `only` is given", async () => {
-    const { transport, markImported } = fakeTransport({
+    const { transport, discard } = fakeTransport({
       "IMG_1.jpg": makeBundle("image/jpeg", "sha256:aaa"),
       "IMG_2.jpg": makeBundle("image/jpeg", "sha256:bbb"),
       "IMG_3.jpg": makeBundle("image/jpeg", "sha256:ccc"),
@@ -107,9 +138,9 @@ describe("runInboxImport", () => {
 
     expect(res.imported.map((i) => i.name)).toEqual(["IMG_2.jpg"]);
     expect(uploadAsset).toHaveBeenCalledTimes(1);
-    // 選ばれなかったものは _imported/ へ動かさない（受信箱に残す）
-    expect(markImported).toHaveBeenCalledTimes(1);
-    expect(markImported).toHaveBeenCalledWith({ name: "IMG_2.jpg" });
+    // 選ばれなかったものは後処理しない（受信箱に残す）
+    expect(discard).toHaveBeenCalledTimes(1);
+    expect(discard).toHaveBeenCalledWith({ name: "IMG_2.jpg" });
   });
 
   it("ignores selected refs that no longer exist in the inbox", async () => {
@@ -148,6 +179,7 @@ describe("runInboxImport", () => {
 
   it("collects failures and continues importing the rest", async () => {
     const markImported = vi.fn(async (_ref: CaptureRef) => {});
+    const discard = vi.fn(async (_ref: CaptureRef) => {});
     const good = makeBundle("image/jpeg", "sha256:ok");
     const transport: InboxTransport = {
       listPending: async () => [{ name: "bad.jpg" }, { name: "good.jpg" }],
@@ -156,6 +188,7 @@ describe("runInboxImport", () => {
         return good;
       },
       markImported,
+      discard,
     };
     const uploadAsset = vi.fn(
       async (file: File, _options: { capture: CaptureMeta }) => ({
@@ -168,9 +201,26 @@ describe("runInboxImport", () => {
     expect(res.failed).toEqual([{ name: "bad.jpg", error: "read failed" }]);
     expect(res.imported).toHaveLength(1);
     expect(res.imported[0].name).toBe("good.jpg");
-    // 失敗は退避しない・成功のみ退避
-    expect(markImported).toHaveBeenCalledTimes(1);
-    expect(markImported).toHaveBeenCalledWith({ name: "good.jpg" });
+    // 失敗は Inbox に残す（削除も退避もしない）・成功のみ後処理（既定は削除）
+    expect(discard).toHaveBeenCalledTimes(1);
+    expect(discard).toHaveBeenCalledWith({ name: "good.jpg" });
+    expect(markImported).not.toHaveBeenCalled();
+  });
+
+  it("leaves the file in the inbox when the upload itself fails (retryable)", async () => {
+    const { transport, markImported, discard } = fakeTransport({
+      "IMG_1.jpg": makeBundle("image/jpeg", "sha256:aaa"),
+    });
+    const uploadAsset = vi.fn(async () => {
+      throw new Error("provider write failed");
+    });
+
+    const res = await runInboxImport({ transport, uploadAsset });
+
+    expect(res.failed).toEqual([{ name: "IMG_1.jpg", error: "provider write failed" }]);
+    // 着地していないものを Inbox から消してはいけない（データを落とさない）
+    expect(discard).not.toHaveBeenCalled();
+    expect(markImported).not.toHaveBeenCalled();
   });
 });
 
@@ -192,7 +242,7 @@ describe("runInboxImport — graphium capture routing (memo / url)", () => {
   };
 
   it("routes memo/url capture files to their injected handlers, not uploadAsset", async () => {
-    const { transport, markImported } = fakeTransport({
+    const { transport, discard } = fakeTransport({
       [memoName]: makeCaptureBundle(memoJson, "sha256:memo"),
       [urlName]: makeCaptureBundle(urlJson, "sha256:url"),
       "IMG_1.jpg": makeBundle("image/jpeg", "sha256:img"),
@@ -220,8 +270,8 @@ describe("runInboxImport — graphium capture routing (memo / url)", () => {
     // メディアは従来どおり uploadAsset（捕獲ファイルは uploadAsset に流れない）
     expect(uploadAsset).toHaveBeenCalledTimes(1);
     expect(uploadAsset.mock.calls[0][0].name).toBe("IMG_1.jpg");
-    // 3 件とも取り込み済み扱いで退避し、結果に kind が付く
-    expect(markImported).toHaveBeenCalledTimes(3);
+    // 3 件とも取り込み済み扱いで後処理（既定は削除）し、結果に kind が付く
+    expect(discard).toHaveBeenCalledTimes(3);
     expect(res.imported).toEqual(
       expect.arrayContaining([
         { name: memoName, fileId: "cap_123", checksum: "sha256:memo", kind: "memo" },
@@ -296,7 +346,7 @@ describe("runInboxImport — graphium capture routing (memo / url)", () => {
   });
 
   it("counts a throwing handler as failed and leaves the file in the inbox for retry", async () => {
-    const { transport, markImported } = fakeTransport({
+    const { transport, markImported, discard } = fakeTransport({
       [memoName]: makeCaptureBundle(memoJson, "sha256:memo"),
     });
     const uploadAsset = vi.fn(async () => ({ fileId: "x" }));
@@ -308,12 +358,13 @@ describe("runInboxImport — graphium capture routing (memo / url)", () => {
 
     expect(res.failed).toEqual([{ name: memoName, error: "capture index save failed" }]);
     expect(res.imported).toHaveLength(0);
-    // 失敗は退避しない — 次回の取り込みで再試行できる（データを落とさない）
+    // 失敗は削除も退避もしない — 次回の取り込みで再試行できる（データを落とさない）
+    expect(discard).not.toHaveBeenCalled();
     expect(markImported).not.toHaveBeenCalled();
   });
 
   it("dedups capture files by checksum like any other item", async () => {
-    const { transport, markImported } = fakeTransport({
+    const { transport, discard } = fakeTransport({
       [memoName]: makeCaptureBundle(memoJson, "sha256:known"),
     });
     const uploadAsset = vi.fn(async () => ({ fileId: "x" }));
@@ -330,6 +381,6 @@ describe("runInboxImport — graphium capture routing (memo / url)", () => {
     expect(res.skipped).toEqual([
       { name: memoName, checksum: "sha256:known", reason: "duplicate" },
     ]);
-    expect(markImported).toHaveBeenCalledTimes(1);
+    expect(discard).toHaveBeenCalledTimes(1);
   });
 });

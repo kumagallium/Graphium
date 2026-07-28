@@ -83,4 +83,14 @@ describe("FolderInbox", () => {
       name: "photo.jpg",
     });
   });
+
+  it("discard invokes inbox_discard with root and name (default post-import disposal)", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const inbox = new FolderInbox("/sync/root");
+    await inbox.discard({ name: "photo.jpg" });
+    expect(invokeMock).toHaveBeenCalledWith("inbox_discard", {
+      root: "/sync/root",
+      name: "photo.jpg",
+    });
+  });
 });

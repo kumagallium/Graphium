@@ -1,5 +1,10 @@
 // モバイルキャプチャ Inbox（受信箱）の public API。
-export { getInboxRoot, setInboxRoot } from "./config";
+export {
+  getInboxRoot,
+  setInboxRoot,
+  getInboxKeepArchive,
+  setInboxKeepArchive,
+} from "./config";
 export {
   isMobileInboxEnabled,
   setMobileInboxEnabled,

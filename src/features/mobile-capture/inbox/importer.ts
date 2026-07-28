@@ -70,6 +70,15 @@ export type InboxImportOptions = {
   only?: CaptureRef[];
   /** メモ / URL 捕獲ファイルの着地ハンドラ（未指定なら素材として取り込む従来挙動）。 */
   handlers?: InboxCapturePayloadHandlers;
+  /**
+   * 取り込み成功（duplicate skip 含む）後の Inbox 側ファイルの後処理。
+   * - "delete"（**既定**）: Inbox から削除する。中身は取り込み時点でデスクトップ vault に
+   *   着地済みなので、消えるのは冗長コピーのみ（同期フォルダ = クラウドに処理済みの
+   *   控えを溜め続けない）。冪等性は checksum dedup と「Inbox から消えること」が担う。
+   * - "archive": _imported/ へ退避する（処理済みの控えを残したい人向けのオプトイン）。
+   * 失敗したアイテムはどちらの設定でも Inbox に残る（再試行できる）。
+   */
+  disposal?: "delete" | "archive";
 };
 
 export type InboxImportResult = {
@@ -88,10 +97,12 @@ export type InboxImportResult = {
  * Inbox の未取り込みメディアを順に active MediaProvider へ取り込む。
  *
  * 各アイテム: fetch → checksum で dedup → (捕獲 JSON なら kind ハンドラ / それ以外は
- * File 構築 → uploadAsset(capture)) → markImported。
- * - 冪等: checksum 一致（取り込み済み）は upload せず _imported/ へ退避だけして skip。
- *   取り込み後は _imported/ に移動するので、次回以降は列挙されない（二重取込しない）。
+ * File 構築 → uploadAsset(capture)) → 後処理（disposal: 既定は Inbox から削除、
+ * "archive" なら _imported/ へ退避）。
+ * - 冪等: checksum 一致（取り込み済み）は upload せず後処理だけして skip。
+ *   成功・skip とも Inbox から消えるので、次回以降は列挙されない（二重取込しない）。
  * - 堅牢性: 1 件の失敗が全体を止めないよう、失敗は failed に積んで続行する。
+ *   失敗は後処理せず Inbox に残す（再試行できる）。
  * - File 名は元のファイル名（ref.name）を保持する（mime は File.type に入れる）。
  * - `only` を渡すと、その名前の分だけを取り込む（受信箱の選択取り込み）。未指定は全件。
  */
@@ -100,6 +111,9 @@ export async function runInboxImport(
 ): Promise<InboxImportResult> {
   const { transport, uploadAsset, isAlreadyImported, only, handlers } = opts;
   const result: InboxImportResult = { imported: [], skipped: [], failed: [] };
+  // 取り込み成功後の Inbox 側ファイルの後処理。既定は削除（冗長コピーを残さない）。
+  const dispose = (ref: CaptureRef): Promise<void> =>
+    opts.disposal === "archive" ? transport.markImported(ref) : transport.discard(ref);
 
   const listed = await transport.listPending();
   // only 指定時は「いま実在するもの」と選択の積集合。未指定なら全件（従来挙動）。
@@ -111,8 +125,8 @@ export async function runInboxImport(
       const { checksum } = bundle.meta;
 
       if (isAlreadyImported?.(checksum)) {
-        // 既取り込み: upload せず inbox からは退避して skip
-        await transport.markImported(ref);
+        // 既取り込み: upload せず後処理（既定は削除）だけして skip
+        await dispose(ref);
         result.skipped.push({ name: ref.name, checksum, reason: "duplicate" });
         continue;
       }
@@ -124,13 +138,13 @@ export async function runInboxImport(
         const ctx: CapturePayloadContext = { meta: bundle.meta, name: ref.name };
         if (payload?.kind === "memo" && handlers.memo) {
           const { fileId } = await handlers.memo(payload, ctx);
-          await transport.markImported(ref);
+          await dispose(ref);
           result.imported.push({ name: ref.name, fileId, checksum, kind: "memo" });
           continue;
         }
         if (payload?.kind === "url" && handlers.url) {
           const { fileId } = await handlers.url(payload, ctx);
-          await transport.markImported(ref);
+          await dispose(ref);
           result.imported.push({ name: ref.name, fileId, checksum, kind: "url" });
           continue;
         }
@@ -138,7 +152,7 @@ export async function runInboxImport(
 
       const file = new File([bundle.blob], ref.name, { type: bundle.meta.mime });
       const { fileId } = await uploadAsset(file, { capture: bundle.meta });
-      await transport.markImported(ref);
+      await dispose(ref);
       result.imported.push({ name: ref.name, fileId, checksum });
     } catch (e) {
       result.failed.push({

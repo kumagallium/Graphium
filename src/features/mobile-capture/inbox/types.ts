@@ -3,7 +3,8 @@
 //
 // 非同期インボックス型のメディア連携。モバイルが同期フォルダ(iCloud/Dropbox/
 // Syncthing 等)の <inbox-root>/Inbox/ に素のメディアを置き、デスクトップ(Tauri)が
-// 列挙 → 読み込み → active MediaProvider へ取り込み → _imported/ へ退避する。
+// 列挙 → 読み込み → active MediaProvider へ取り込み → Inbox 側は既定で削除
+// （keep-archive 設定時は _imported/ へ退避）する。
 //
 // 注意: 同ディレクトリ階層の capture-store.ts が持つ CaptureEntry/CaptureIndex は
 // 「メモ(モバイルキャプチャビュー)」の別レイヤーで、本ファイルの CaptureMeta とは無関係。
@@ -79,6 +80,14 @@ export interface InboxTransport {
   listPending(): Promise<CaptureRef[]>;
   /** アイテムの本体 + メタを読む。 */
   fetch(ref: CaptureRef): Promise<CaptureBundle>;
-  /** 取り込み済みアイテムを _imported/ へ退避する。 */
+  /**
+   * 取り込み済みアイテムを _imported/ へ退避する（アーカイブを残す設定のときの後処理）。
+   * 既定の後処理は discard（削除）— importer の disposal オプション参照。
+   */
   markImported(ref: CaptureRef): Promise<void>;
+  /**
+   * 取り込み済みアイテムを Inbox から削除する（既定の後処理）。
+   * 中身は取り込み時点で vault に着地済みなので、消えるのは冗長コピーのみ。
+   */
+  discard(ref: CaptureRef): Promise<void>;
 }
