@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.22.0](https://github.com/kumagallium/Graphium/compare/v0.21.0...v0.22.0) - 2026-07-28
+
+- [chore] Add Storybook stories for the image OCR toast and toolbar button by @kumagallium in https://github.com/kumagallium/Graphium/pull/605
+- Mobile capture inbox: import phone media from a synced folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/604
+- fix(ui): move cool-grey hex and shadow-xl onto the scene tokens by @kumagallium in https://github.com/kumagallium/Graphium/pull/607
+- Mobile send queue: push phone captures to the desktop inbox via the user's cloud storage by @kumagallium in https://github.com/kumagallium/Graphium/pull/609
+
 ## [v0.21.0](https://github.com/kumagallium/Graphium/compare/v0.20.2...v0.21.0) - 2026-07-26
 
 - chore(ui): remove redundant Generate button from Steps panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/596
