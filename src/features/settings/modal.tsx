@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -18,6 +19,7 @@ import {
   FolderOpen,
   Info,
   Download,
+  Smartphone,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -75,6 +77,14 @@ import {
   testBlobConnection,
   type ConnectionTestResult,
 } from "../../lib/storage/shared";
+// モバイル送信（Google Drive push）は動的 import で引く（gsi を起動時バンドルに
+// 入れない — push/index.ts の注記どおり）。ここは type import のみ。
+import type { InboxPusher } from "../mobile-capture/inbox/push";
+// モバイル連携の実験フラグ（既定 OFF）。トグル自体は常時表示し、ON のときだけ
+// モバイル送信セクションを見せる。切替はイベント経由でリロード無しに全入口へ届く。
+import { setMobileInboxEnabled, useMobileInboxFlag } from "../mobile-capture/inbox/experimental";
+
+type MobilePushModule = typeof import("../mobile-capture/inbox/push");
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -285,6 +295,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
   const [sharedTestRunning, setSharedTestRunning] = useState(false);
   const [blobTestRunning, setBlobTestRunning] = useState(false);
+
+  // モバイル連携の実験フラグ（既定 OFF）。ON のときだけ下のモバイル送信セクションを出す。
+  const mobileInboxFlagOn = useMobileInboxFlag();
+  // モバイル送信（Google Drive push）— ストレージタブ。
+  // 設定は localStorage（端末ごと）なので、スマホ側でも同じ client ID を入れる必要がある。
+  const [pushMod, setPushMod] = useState<MobilePushModule | null>(null);
+  const pushPusherRef = useRef<InboxPusher | null>(null);
+  const [pushConfigured, setPushConfigured] = useState(false);
+  const [pushConnected, setPushConnected] = useState(false);
+  const [pushConnecting, setPushConnecting] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushClientIdInput, setPushClientIdInput] = useState("");
+  const [pushClientIdSaved, setPushClientIdSaved] = useState(false);
+  const [pushHasBundledId, setPushHasBundledId] = useState(false);
 
   // エクスポート / バックアップ（ストレージタブ）
   const [exportBusy, setExportBusy] = useState<"markdown" | "backup" | null>(null);
@@ -634,6 +658,83 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       window.location.reload();
     }, 600);
   }, [serverToken]);
+
+  // ── モバイル送信（Google Drive push）── 実験フラグ ON でストレージタブを開いた時に
+  // 動的ロード（フラグ OFF ではセクションごと出さないのでロードもしない）。
+  // prepare をここで済ませておくと、接続ボタンの click から同期的に connect() を
+  // 呼べる（InboxPusher の契約 — ジェスチャ内で await を挟むと iOS がブロックする）。
+  useEffect(() => {
+    if (!isOpen || tab !== "storage" || !mobileInboxFlagOn || pushMod) return;
+    let cancelled = false;
+    void import("../mobile-capture/inbox/push")
+      .then((mod) => {
+        if (cancelled) return;
+        if (!pushPusherRef.current) pushPusherRef.current = new mod.GoogleDrivePusher();
+        const pusher = pushPusherRef.current;
+        setPushMod(mod);
+        setPushConfigured(pusher.isConfigured());
+        setPushConnected(pusher.isConnected());
+        setPushHasBundledId(mod.DEFAULT_GOOGLE_PUSH_CLIENT_ID !== "");
+        setPushClientIdInput(mod.getGoogleClientIdOverride() ?? "");
+        if (pusher.isConfigured()) {
+          void pusher.prepare().catch(() => {}); // 未設定・オフライン等は接続時に再表面化する
+        }
+      })
+      .catch((err) => {
+        setPushError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tab, mobileInboxFlagOn, pushMod]);
+
+  const handleSavePushClientId = useCallback(() => {
+    if (!pushMod) return;
+    pushMod.setGoogleClientIdOverride(pushClientIdInput);
+    setPushClientIdSaved(true);
+    setPushError(null);
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    setPushConfigured(pusher.isConfigured());
+    // client_id が変わったら token client を作り直す（prepare は client_id 差し替えに追従する）
+    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
+  }, [pushMod, pushClientIdInput]);
+
+  const handleClearPushClientId = useCallback(() => {
+    if (!pushMod) return;
+    pushMod.setGoogleClientIdOverride(null);
+    setPushClientIdInput("");
+    setPushClientIdSaved(false);
+    setPushError(null);
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    setPushConfigured(pusher.isConfigured());
+    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
+  }, [pushMod]);
+
+  const handlePushConnect = useCallback(() => {
+    const pusher = pushPusherRef.current;
+    if (!pusher || pushConnecting) return;
+    setPushConnecting(true);
+    setPushError(null);
+    // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
+    // ここより前に await を置かないこと（ポップアップがブロックされる）。
+    pusher
+      .connect()
+      .then(() => setPushConnected(true))
+      .catch((err) => {
+        setPushConnected(pusher.isConnected());
+        setPushError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPushConnecting(false));
+  }, [pushConnecting]);
+
+  const handlePushDisconnect = useCallback(() => {
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    pusher.disconnect();
+    setPushConnected(false);
+  }, []);
 
   // ── エクスポート / バックアップ（ストレージタブ） ──
   // アクティブな StorageProvider から全ノートを読み出して zip を組み立てる。
@@ -1287,19 +1388,22 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         })}
       </div>
 
-      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。 */}
+      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。
+          min-w はスマホ幅（<640px）では外す — 460px 固定だと 390px 端末で横に
+          はみ出し、ストレージタブのモバイル連携トグルなどが操作できなくなる。
+          本文は全タブとも流体レイアウトなので、min-w が無くても崩れない。 */}
       <ModalBody
-        className="w-full min-w-[460px] max-w-3xl"
+        className="w-full sm:min-w-[460px] max-w-3xl"
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
         {tab === "display" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* 言語 */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
+              <h3 className="text-xs font-semibold text-foreground mb-2 block">
                 {t("settings.language")}
-              </label>
+              </h3>
               <div className="flex gap-2">
                 {(["en", "ja"] as Locale[]).map((loc) => (
                   <button
@@ -1319,13 +1423,13 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
             {/* 読みやすさ（フォント） — ラテン用と日本語用を独立に設定 */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-2 block">
+              <h3 className="text-xs font-semibold text-foreground mb-2 block">
                 {t("settings.font")}
-              </label>
+              </h3>
               <div className="space-y-2">
                 {/* ラテン文字用 */}
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">{t("settings.fontLatin")}</div>
+                  <div className="text-xs text-muted-foreground mb-1">{t("settings.fontLatin")}</div>
                   <div className="relative">
                     <select
                       value={latinFont}
@@ -1366,7 +1470,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </div>
                 {/* 日本語用 */}
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">{t("settings.fontJp")}</div>
+                  <div className="text-xs text-muted-foreground mb-1">{t("settings.fontJp")}</div>
                   <div className="relative">
                     <select
                       value={jpFont}
@@ -1413,9 +1517,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             <div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Tag size={14} className="text-muted-foreground" />
-                <label className="text-xs font-semibold text-foreground">
+                <h3 className="text-xs font-semibold text-foreground">
                   {t("settings.labels.title")}
-                </label>
+                </h3>
               </div>
               <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
 
@@ -1426,7 +1530,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 {CORE_LABELS.filter((l) => l !== "plan" && l !== "result").map((label) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-28 shrink-0">
-                      <span className="text-[10px] text-muted-foreground font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         {CORE_LABEL_PROV[label]}
                       </span>
                     </div>
@@ -1466,15 +1570,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
         {/* ── Storage タブ ── */}
         {tab === "storage" && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* サーバーストレージ（Docker / セルフホスト Web のみ） */}
             {!isTauri() && serverCaps?.serverStorage && (
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.serverStorage.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("settings.serverStorage.help")}
@@ -1515,18 +1619,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.saveDir.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("settings.saveDir.help")}
                 </p>
                 {graphiumRoot ? (
-                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1.5">
+                  <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="text-xs text-muted-foreground">
                           {t("settings.saveDir.currentLabel")}
                         </div>
                         <div className="text-xs font-mono text-foreground break-all">
@@ -1550,7 +1654,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     {graphiumRoot.isCustom && (
                       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
                         <div className="min-w-0 flex-1">
-                          <div className="text-[10px] text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             {t("settings.saveDir.defaultLabel")}
                           </div>
                           <div className="text-xs font-mono text-muted-foreground break-all">
@@ -1592,15 +1696,15 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             {/* AuthorIdentity（team-shared-storage Phase 0）。
                 共有ノート・PROV 来歴の author 情報なので、共有ストレージの直前に置く。 */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">
+              <h3 className="text-xs font-semibold text-foreground mb-1 block">
                 {t("settings.identity.title")}
-              </label>
+              </h3>
               <p className="text-xs text-muted-foreground mb-2">
                 {t("settings.identity.help")}
               </p>
               <div className="space-y-2">
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">
+                  <div className="text-xs text-muted-foreground mb-1">
                     {t("settings.identity.name")}
                   </div>
                   <Input
@@ -1616,7 +1720,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   />
                 </div>
                 <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">
+                  <div className="text-xs text-muted-foreground mb-1">
                     {t("settings.identity.email")}
                   </div>
                   <Input
@@ -1659,9 +1763,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.shared.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-2">
                   {t("settings.shared.help")}
@@ -1669,7 +1773,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
                 {/* Shared root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     {t("settings.shared.rootLabel")}
                   </div>
                   {sharedRoot ? (
@@ -1725,7 +1829,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
                 {/* Blob root */}
                 <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mt-2">
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     {t("settings.shared.blobRootLabel")}
                   </div>
                   {blobRoot ? (
@@ -1787,9 +1891,9 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <FolderOpen size={14} className="text-muted-foreground" />
-                  <label className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground">
                     {t("settings.shared.title")}
-                  </label>
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {t("settings.shared.desktopOnly")}
@@ -1797,13 +1901,182 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </div>
             )}
 
+            {/* モバイル連携（実験的機能）トグル — 常時表示。
+                スマホで撮ってデスクトップの受信箱に送る機能一式（送信キュー・受信箱・
+                サイドバー「モバイル」・下のモバイル送信セクション）をまとめて ON/OFF する。
+                既定 OFF。切替は localStorage 直書き + CustomEvent なので、保存ボタンや
+                リロードを待たずその場で全入口に反映される。 */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Smartphone size={14} className="text-muted-foreground shrink-0" />
+                  <h3 className="text-xs font-semibold text-foreground">
+                    {t("settings.mobileInboxFlag.title")}
+                  </h3>
+                  <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                    {t("settings.mobileInboxFlag.badge")}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileInboxEnabled(!mobileInboxFlagOn)}
+                  role="switch"
+                  aria-checked={mobileInboxFlagOn}
+                  aria-label={t("settings.mobileInboxFlag.title")}
+                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${mobileInboxFlagOn ? "bg-primary" : "bg-input"}`}
+                >
+                  <span
+                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{ transform: mobileInboxFlagOn ? "translateX(15px)" : "translateX(1px)" }}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.mobileInboxFlag.help")}
+              </p>
+            </div>
+
+            {/* モバイル送信（Google Drive push）— 実験フラグ ON のときだけ表示。
+                デスクトップにも出す — 機能を知る場所はデスクトップ、実際に接続するのは
+                撮影する端末。設定は端末ごと（localStorage）なので help でその旨を明示する */}
+            {mobileInboxFlagOn && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Smartphone size={14} className="text-muted-foreground" />
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("settings.mobilePush.title")}
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                {t("settings.mobilePush.help")}
+              </p>
+              <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+                {/* 接続状態 */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    {!pushConfigured ? (
+                      <>
+                        <AlertCircle size={12} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {t("settings.mobilePush.statusNotConfigured")}
+                        </span>
+                      </>
+                    ) : pushConnected ? (
+                      <>
+                        <CheckCircle size={12} className="text-green-600" />
+                        <span className="text-foreground">
+                          {t("settings.mobilePush.statusConnected")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle size={12} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {t("settings.mobilePush.statusDisconnected")}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {pushConfigured && (
+                    pushConnected ? (
+                      <Button size="sm" variant="ghost" onClick={handlePushDisconnect}>
+                        {t("settings.mobilePush.disconnect")}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={handlePushConnect} disabled={pushConnecting || !pushMod}>
+                        {pushConnecting ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          t("settings.mobilePush.connect")
+                        )}
+                      </Button>
+                    )
+                  )}
+                </div>
+                {pushError && (
+                  <p className="text-xs text-red-500 flex items-start gap-1">
+                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                    <span className="break-all">
+                      {t("settings.mobilePush.connectFailed", { error: pushError })}
+                    </span>
+                  </p>
+                )}
+
+                {/* 同梱 ID の無いビルドでは自前 client ID が必須なので、注記は
+                    折りたたみの外（常時見える位置）に出す */}
+                {!pushHasBundledId && (
+                  <p className="pt-1 border-t border-border text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                    <Info size={12} className="mt-0.5 shrink-0" />
+                    <span>{t("settings.mobilePush.noDefaultNote")}</span>
+                  </p>
+                )}
+
+                {/* 自前 client ID の上書きは「詳細設定」に畳む（既定は閉じる）。
+                    既定の体験は同梱 ID で「接続」するだけ — 上書きはセルフホストや
+                    同梱 ID 枯渇時の保険で、一般ユーザーには見せない */}
+                <details className={`group ${pushHasBundledId ? "pt-1 border-t border-border" : ""}`}>
+                  <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
+                    {t("settings.mobilePush.advanced")}
+                  </summary>
+                  <div className="mt-1.5 space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.advancedHelp")}
+                    </p>
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.clientIdLabel")}
+                    </div>
+                    <Input
+                      type="text"
+                      value={pushClientIdInput}
+                      onChange={(e) => {
+                        setPushClientIdInput(e.target.value);
+                        setPushClientIdSaved(false);
+                      }}
+                      placeholder={t("settings.mobilePush.clientIdPlaceholder")}
+                      autoComplete="off"
+                      disabled={!pushMod}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleSavePushClientId}
+                        disabled={!pushMod || pushClientIdInput.trim() === ""}
+                      >
+                        {t("settings.mobilePush.save")}
+                      </Button>
+                      {pushClientIdInput.trim() !== "" && (
+                        <button
+                          onClick={handleClearPushClientId}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.mobilePush.clear")}
+                        </button>
+                      )}
+                      {pushClientIdSaved && (
+                        <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                          <CheckCircle size={12} className="text-green-600" />
+                          {t("settings.mobilePush.saved")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.clientIdHelp")}
+                    </p>
+                  </div>
+                </details>
+              </div>
+            </div>
+            )}
+
             {/* エクスポート / バックアップ */}
             <div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Download size={14} className="text-muted-foreground" />
-                <label className="text-xs font-semibold text-foreground">
+                <h3 className="text-xs font-semibold text-foreground">
                   {t("settings.export.title")}
-                </label>
+                </h3>
               </div>
               <p className="text-xs text-muted-foreground mb-2">
                 {t("settings.export.help")}
@@ -1857,7 +2130,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
          *  流れ: モデル登録 → 役割への割り当て → 世界照合 → MCP サーバー。
          *  初回セットアップの順（登録が先、割り当てが後）に上から並べる。 */}
         {tab === "ai" && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* AI バックエンド未接続時はアップグレード CTA を表示 */}
             {!healthLoading && !health && (
               <AiUpgradeNotice variant="card" />
@@ -1903,8 +2176,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         {registeringSubscription && <Loader2 size={12} className="animate-spin" />}
                         {t("settings.models.useClaudeSubscription")}
                       </button>
-                      <p className="text-[11px] text-muted-foreground mt-1.5">{t("settings.models.useClaudeSubscriptionHint")}</p>
-                      {subscriptionError && <p className="text-[11px] text-destructive mt-1">{subscriptionError}</p>}
+                      <p className="text-xs text-muted-foreground mt-2">{t("settings.models.useClaudeSubscriptionHint")}</p>
+                      {subscriptionError && <p className="text-xs text-destructive mt-1">{subscriptionError}</p>}
                     </div>
                   )}
                   <button
@@ -1915,7 +2188,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   </button>
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {models.map((m) => editingId === m.id ? (
                     <div key={m.id} className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
                       <div>
@@ -1982,8 +2255,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           </div>
                         </div>
                         {editSuggestedRate && (
-                          <div className="flex items-center justify-between gap-2 mt-1.5">
-                            <span className="text-[11px] text-muted-foreground">
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <span className="text-xs text-muted-foreground">
                               {t("settings.models.rate.knownNote")}
                             </span>
                             <button
@@ -1994,7 +2267,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                                 // 内蔵テーブルは USD ベース。
                                 setEditRateCurrency("usd");
                               }}
-                              className="text-[11px] text-primary hover:text-primary/80 font-medium whitespace-nowrap"
+                              className="text-xs text-primary hover:text-primary/80 font-medium whitespace-nowrap"
                             >
                               {t("settings.models.rate.useKnown", {
                                 input: `$${editSuggestedRate.input}`,
@@ -2019,8 +2292,8 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         {/* サブスクは認証が CLI 側にあり Graphium から制御できないため、
                             どのアカウントで推論されるか+切替手順をここで見える化する */}
                         {m.provider === "claude-subscription" && (
-                          <div className="mt-1 space-y-0.5">
-                            <p className="text-[11px] text-foreground/80">
+                          <div className="mt-1 space-y-1">
+                            <p className="text-xs text-foreground/80">
                               {claudeTokenFromEnv
                                 ? t("settings.models.subscriptionAccountEnvToken")
                                 : claudeCliAccount
@@ -2031,7 +2304,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                                     })
                                   : t("settings.models.subscriptionAccountUnknown")}
                             </p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {t("settings.models.subscriptionSwitchHint")}
                             </p>
                           </div>
@@ -2347,7 +2620,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             )}
 
             {/* モデルの割り当て — 登録したモデルを役割ごとに割り当てる */}
-            <div className="border-t border-border pt-5">
+            <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionAssign")}</h3>
               <div className="space-y-4">
                 {/* デフォルトモデル */}
@@ -2463,7 +2736,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             </div>
 
             {/* 世界照合 — 自動照合トグルと専用モデル */}
-            <div className="border-t border-border pt-5">
+            <div className="border-t border-border pt-6">
               <h3 className="text-xs font-semibold text-foreground mb-3">{t("settings.ai.sectionGrounding")}</h3>
               <div className="space-y-4">
                 {/* 自動 world-grounding（opt-in / 既定 OFF）。
@@ -2479,8 +2752,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       role="switch"
                       aria-checked={experimental.autoGrounding}
                       aria-label={t("settings.autoGrounding.title")}
-                      className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                      style={{ backgroundColor: experimental.autoGrounding ? "#4B7A52" : "#d5e0d7" }}
+                      className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${experimental.autoGrounding ? "bg-primary" : "bg-input"}`}
                     >
                       <span
                         className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
@@ -2528,14 +2800,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
             </div>
 
             {/* 手動 MCP サーバー（Crucible 非依存の主接続経路） */}
-            <div className="border-t border-border pt-5">
+            <div className="border-t border-border pt-6">
               <div className="flex items-center gap-1.5 mb-2">
                 <Plug size={14} className="text-muted-foreground" />
                 <h3 className="text-xs font-semibold text-foreground">{t("settings.mcp.title")}</h3>
               </div>
 
               {mcpServers.length > 0 ? (
-                <div className="space-y-1.5 mb-2">
+                <div className="space-y-2 mb-2">
                   {mcpServers.map((s) => {
                     const detail = s.type === "stdio" ? `${s.command} ${s.args.join(" ")}`.trim() : s.url;
                     const badge = s.type === "stdio" ? "local" : s.transport;
@@ -2546,8 +2818,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           role="switch"
                           aria-checked={s.enabled}
                           aria-label={s.enabled ? t("settings.mcp.disable") : t("settings.mcp.enable")}
-                          className="shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px]"
-                          style={{ backgroundColor: s.enabled ? "#4B7A52" : "#d5e0d7" }}
+                          className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${s.enabled ? "bg-primary" : "bg-input"}`}
                         >
                           <span
                             className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
@@ -2558,7 +2829,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           <span className="font-medium">{s.name}</span>
                           <span className="text-muted-foreground"> — {detail}</span>
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{badge}</span>
                         <button
                           onClick={() => handleEditMcpServer(s)}
                           aria-label={t("settings.mcp.edit")}
@@ -2590,7 +2861,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         <button
                           key={m}
                           onClick={() => { setMcpAddMode(m); setMcpJsonError(""); }}
-                          className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                          className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
                             mcpAddMode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
@@ -2610,11 +2881,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none font-mono"
                       />
                       {mcpJsonError && (
-                        <p className="text-[11px] text-red-500">
+                        <p className="text-xs text-red-500">
                           {t(mcpJsonError === "invalid-json" ? "settings.mcp.jsonError.invalid" : "settings.mcp.jsonError.empty")}
                         </p>
                       )}
-                      <p className="text-[11px] text-muted-foreground">{t("settings.mcp.jsonHelp")}</p>
+                      <p className="text-xs text-muted-foreground">{t("settings.mcp.jsonHelp")}</p>
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={handleImportMcpJson}
@@ -2637,7 +2908,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       {savedRegistries.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {savedRegistries.map((reg) => (
-                            <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px]">
+                            <span key={reg.id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
                               <button onClick={() => handleSelectSavedRegistry(reg)} className="max-w-[160px] truncate hover:text-primary">
                                 {(() => { try { return new URL(reg.url).host; } catch { return reg.url; } })()}
                               </button>
@@ -2650,7 +2921,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       )}
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryUrl")}</label>
                           <Input
                             type="url"
                             value={mcpBrowseUrl}
@@ -2659,7 +2930,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           />
                         </div>
                         <div className="w-32">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.registryKey")}</label>
                           <Input
                             type="password"
                             value={mcpBrowseKey}
@@ -2678,11 +2949,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
                       {/* 候補一覧 */}
                       {mcpCandidates === "loading" ? (
-                        <p className="text-[11px] text-muted-foreground">{t("settings.tools.loading")}</p>
+                        <p className="text-xs text-muted-foreground">{t("settings.tools.loading")}</p>
                       ) : mcpCandidates === "error" ? (
-                        <p className="text-[11px] text-red-500">{t("settings.mcp.registryError")}</p>
+                        <p className="text-xs text-red-500">{t("settings.mcp.registryError")}</p>
                       ) : mcpCandidates && mcpCandidates.length === 0 ? (
-                        <p className="text-[11px] text-muted-foreground">{t("settings.tools.empty")}</p>
+                        <p className="text-xs text-muted-foreground">{t("settings.tools.empty")}</p>
                       ) : mcpCandidates ? (
                         <div className="space-y-1 max-h-48 overflow-y-auto">
                           {mcpCandidates.map((tool) => {
@@ -2691,11 +2962,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                               <div key={tool.name} className="flex items-center gap-2 text-xs">
                                 <span className="min-w-0 flex-1 truncate">{tool.icon ? `${tool.icon} ` : ""}{tool.display_name || tool.name}</span>
                                 {added ? (
-                                  <span className="shrink-0 text-[11px] text-muted-foreground">{t("settings.mcp.added")}</span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">{t("settings.mcp.added")}</span>
                                 ) : (
                                   <button
                                     onClick={() => handleAddCandidate(tool)}
-                                    className="shrink-0 flex items-center gap-0.5 text-[11px] text-primary hover:opacity-80"
+                                    className="shrink-0 flex items-center gap-0.5 text-xs text-primary hover:opacity-80"
                                   >
                                     <Plus size={12} /> {t("settings.mcp.save")}
                                   </button>
@@ -2720,7 +2991,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <button
                         key={ty}
                         onClick={() => setMcpType(ty)}
-                        className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                        className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
                           mcpType === ty ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -2733,7 +3004,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                     <>
                       <div className="flex gap-2">
                         <div className="w-32">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.command")}</label>
                           <Input
                             type="text"
                             value={mcpCommand}
@@ -2742,7 +3013,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           />
                         </div>
                         <div className="flex-1">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
                           <Input
                             type="text"
                             value={mcpName}
@@ -2752,7 +3023,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </div>
                       </div>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.args")}</label>
                         <textarea
                           value={mcpArgs}
                           onChange={(e) => setMcpArgs(e.target.value)}
@@ -2762,7 +3033,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.env")}</label>
                         <textarea
                           value={mcpEnv}
                           onChange={(e) => setMcpEnv(e.target.value)}
@@ -2775,7 +3046,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   ) : (
                     <>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.url")}</label>
                         <Input
                           type="url"
                           value={mcpUrl}
@@ -2785,7 +3056,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.name")}</label>
                           <Input
                             type="text"
                             value={mcpName}
@@ -2794,7 +3065,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                           />
                         </div>
                         <div className="w-40">
-                          <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.transport")}</label>
                           <div className="relative">
                             <select
                               value={mcpTransport}
@@ -2809,7 +3080,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                         </div>
                       </div>
                       <div>
-                        <label className="text-[11px] text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{t("settings.mcp.apiKey")}</label>
                         <Input
                           type="password"
                           value={mcpApiKey}
@@ -2859,7 +3130,7 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
         {/* ── Maintenance タブ ── */}
         {tab === "maintenance" && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* 接続状態パネル */}
             <div className="rounded-lg border border-border p-3">
               <h3 className="text-xs font-semibold text-foreground mb-2">{t("settings.health.title")}</h3>
@@ -2904,18 +3175,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       <div className="flex items-start gap-1.5 text-red-600 dark:text-red-400">
                         <AlertCircle size={12} className="mt-0.5 shrink-0" />
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium mb-0.5">{t("settings.health.restartFailed")}</div>
+                          <div className="font-medium mb-1">{t("settings.health.restartFailed")}</div>
                           <div className="text-foreground/80 break-words">{sidecarError}</div>
                           {sidecarLog.length > 0 && (
                             <button
                               onClick={() => setShowSidecarLog((v) => !v)}
-                              className="mt-1 text-[11px] text-muted-foreground hover:text-foreground underline"
+                              className="mt-1 text-xs text-muted-foreground hover:text-foreground underline"
                             >
                               {showSidecarLog ? t("settings.health.hideLog") : t("settings.health.showLog")}
                             </button>
                           )}
                           {showSidecarLog && sidecarLog.length > 0 && (
-                            <pre className="mt-1.5 text-[10px] bg-background/50 rounded p-1.5 overflow-auto max-h-32 font-mono whitespace-pre-wrap">{sidecarLog.join("\n")}</pre>
+                            <pre className="mt-2 text-xs bg-background/50 rounded p-1.5 overflow-auto max-h-32 font-mono whitespace-pre-wrap">{sidecarLog.join("\n")}</pre>
                           )}
                         </div>
                       </div>
@@ -2990,7 +3261,7 @@ type DiscoveryRunState = {
 };
 
 type MaintenanceTabProps = {
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string>) => string;
   wikiSummaries: WikiSummaryForSettings[];
   onRegenerateWiki?: RegenerateWikiHandler;
   onRunAtomizeDiscovery?: DiscoveryHandler;
@@ -3146,7 +3417,7 @@ function MaintenanceTab({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Atom 候補の発見（atomLayer 有効時のみ表示）。
           全 Concept をまたぐ共通抽象を auto-loop で discover する。 */}
       {atomLayerEnabled && onRunAtomizeDiscovery && (
@@ -3172,25 +3443,31 @@ function MaintenanceTab({
       {onReembedAllWikis && wikiSummaries.length > 0 && (
         <div className="rounded-lg border border-border p-3 space-y-3">
           <div>
-            <div className="text-xs font-semibold text-foreground mb-1">
-              Re-embed all Wikis
-            </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <h3 className="text-xs font-semibold text-foreground mb-1">
+              {t("settings.maintenance.reembedTitle")}
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {t("settings.maintenance.reembedHelp")}
             </p>
           </div>
           {reembedProgress && reembedRunning && (
-            <div className="text-[11px] text-muted-foreground">
-              Embedding... {reembedProgress.done} / {reembedProgress.total}
+            <div className="text-xs text-muted-foreground">
+              {t("settings.maintenance.reembedProgress", {
+                done: String(reembedProgress.done),
+                total: String(reembedProgress.total),
+              })}
             </div>
           )}
           {reembedProgress && !reembedRunning && !reembedError && (
-            <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
-              Done. {reembedProgress.done} / {reembedProgress.total} wikis embedded.
+            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+              {t("settings.maintenance.reembedDone", {
+                done: String(reembedProgress.done),
+                total: String(reembedProgress.total),
+              })}
             </div>
           )}
           {reembedError && (
-            <div className="text-[11px] text-red-600 dark:text-red-400">
+            <div className="text-xs text-red-600 dark:text-red-400">
               {reembedError}
             </div>
           )}
@@ -3200,14 +3477,15 @@ function MaintenanceTab({
             onClick={async () => {
               const total = wikiSummaries.length;
               const confirmed = window.confirm(
-                `Re-embed all ${total} wikis? This may take a while and consumes embedding API tokens.`,
+                t("settings.maintenance.reembedConfirm", { count: String(total) }),
               );
               if (!confirmed) return;
               setReembedRunning(true);
               setReembedError(null);
               setReembedProgress({ done: 0, total });
               try {
-                await onReembedAllWikis((done, t) => setReembedProgress({ done, total: t }));
+                // 第 2 引数を t と名付けると i18n の t を隠してしまうため total で受ける
+                await onReembedAllWikis((done, tot) => setReembedProgress({ done, total: tot }));
               } catch (e) {
                 setReembedError(e instanceof Error ? e.message : String(e));
               } finally {
@@ -3216,9 +3494,9 @@ function MaintenanceTab({
             }}
           >
             {reembedRunning ? (
-              <><Loader2 size={12} className="animate-spin mr-1.5" />Re-embedding...</>
+              <><Loader2 size={12} className="animate-spin mr-1.5" />{t("settings.maintenance.reembedRunning")}</>
             ) : (
-              `Re-embed ${wikiSummaries.length} wiki${wikiSummaries.length === 1 ? "" : "s"}`
+              t("settings.maintenance.reembedRun", { count: String(wikiSummaries.length) })
             )}
           </Button>
         </div>
@@ -3227,19 +3505,19 @@ function MaintenanceTab({
       {/* Wiki 一括 Regenerate（Atomize と視覚的に揃えるためカード化） */}
       <div className="rounded-lg border border-border p-3 space-y-4">
         <div>
-          <div className="text-xs font-semibold text-foreground mb-1">
+          <h3 className="text-xs font-semibold text-foreground mb-1">
             {t("settings.maintenance.regenAll.title")}
-          </div>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
+          </h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {t("settings.maintenance.regenAll.help")}
           </p>
         </div>
 
       {/* kind フィルタ */}
       <div>
-        <label className="text-xs font-semibold text-foreground mb-2 block">
+        <h3 className="text-xs font-semibold text-foreground mb-2 block">
           {t("settings.maintenance.kindFilter")}
-        </label>
+        </h3>
         <div className="flex gap-2 flex-wrap">
           {KINDS.map((k) => {
             const count = wikiSummaries.filter((w) => w.kind === k).length;
@@ -3267,9 +3545,9 @@ function MaintenanceTab({
       <div className="space-y-3">
         {/* Concept / Summary（Ingest モデル） */}
         <div>
-          <label className="text-xs font-semibold text-foreground mb-2 block">
+          <h3 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.conceptSummaryModel")}
-          </label>
+          </h3>
           <div className="relative">
             <select
               value={effectiveDefaultModel}
@@ -3295,9 +3573,9 @@ function MaintenanceTab({
 
         {/* Synthesis / Atom（どちらも Chat & Synthesis モデルを使用）*/}
         <div>
-          <label className="text-xs font-semibold text-foreground mb-2 block">
+          <h3 className="text-xs font-semibold text-foreground mb-2 block">
             {t("settings.maintenance.synthesisAtomModel")}
-          </label>
+          </h3>
           <div className="relative">
             <select
               value={effectiveSynthesisModel}
@@ -3340,7 +3618,7 @@ function MaintenanceTab({
 
       {/* 進捗表示 */}
       {bulkProgress && (
-        <div className="rounded-md border border-border bg-background px-3 py-2 space-y-1.5">
+        <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium">
               {bulkProgress.done} / {bulkProgress.total}
@@ -3363,7 +3641,7 @@ function MaintenanceTab({
             />
           </div>
           {bulkProgress.current && bulkRunning && (
-            <div className="text-[11px] text-muted-foreground truncate">
+            <div className="text-xs text-muted-foreground truncate">
               {t("settings.maintenance.current")}: {bulkProgress.current}
               {bulkProgress.currentModel && (
                 <span className="ml-2 opacity-70">— {bulkProgress.currentModel}</span>
@@ -3371,12 +3649,12 @@ function MaintenanceTab({
             </div>
           )}
           {cancelling && bulkRunning && (
-            <div className="text-[11px] text-amber-600">
+            <div className="text-xs text-amber-600">
               {t("settings.maintenance.cancellingHint")}
             </div>
           )}
           {!bulkRunning && bulkProgress.done > 0 && (
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               {t("settings.maintenance.done")}
             </div>
           )}
@@ -3391,7 +3669,7 @@ function MaintenanceTab({
           </div>
           <ul className="space-y-1 max-h-40 overflow-y-auto">
             {bulkProgress.failedItems.map((f) => (
-              <li key={f.id} className="text-[11px]">
+              <li key={f.id} className="text-xs">
                 <span className="text-foreground">{f.title}</span>
                 {f.error && (
                   <span className="text-muted-foreground ml-2">— {f.error}</span>
@@ -3467,10 +3745,10 @@ function DiscoveryCard({
   return (
     <div className="rounded-lg border border-border p-3 space-y-3">
       <div>
-        <div className="text-xs font-semibold text-foreground mb-1">
+        <h3 className="text-xs font-semibold text-foreground mb-1">
           {t(titleKey)}
-        </div>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
+        </h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">
           {t(helpKey).replace("{count}", String(inputCount))}
         </p>
       </div>
@@ -3491,16 +3769,16 @@ function DiscoveryCard({
                 </span>
               </div>
               {progress.clusterLabel && (
-                <div className="ml-4 text-[11px] opacity-80 break-words">
+                <div className="ml-4 text-xs opacity-80 break-words">
                   cluster: 「{progress.clusterLabel}」{progress.clusterSize ? ` (${progress.clusterSize})` : ""}
                 </div>
               )}
               {progress.clusterMemberTitles && progress.clusterMemberTitles.length > 0 && (
-                <details className="ml-4 text-[11px] opacity-70">
+                <details className="ml-4 text-xs opacity-70">
                   <summary className="cursor-pointer select-none">
                     members ({progress.clusterMemberTitles.length})
                   </summary>
-                  <ul className="mt-1 ml-2 list-disc list-inside space-y-0.5 max-h-40 overflow-y-auto">
+                  <ul className="mt-1 ml-2 list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
                     {progress.clusterMemberTitles.map((title, idx) => (
                       <li key={`${idx}-${title}`} className="break-words">{title}</li>
                     ))}
@@ -3644,7 +3922,7 @@ function GroundingKbTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="text-xs text-muted-foreground">
         {t("settings.grounding.intro")}
       </div>
@@ -3681,7 +3959,7 @@ function GroundingKbTab() {
           <button
             key={v}
             onClick={() => setVerdictFilter(v)}
-            className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+            className={`px-2 py-1 text-xs rounded border transition-colors ${
               verdictFilter === v
                 ? "border-primary text-primary bg-primary/10"
                 : "border-border text-muted-foreground hover:text-foreground"
@@ -3730,9 +4008,9 @@ function GroundingKbTab() {
         ))}
       </div>
 
-      <div className="text-[11px] text-muted-foreground border-t border-border pt-3">
+      <div className="text-xs text-muted-foreground border-t border-border pt-3">
         {t("settings.grounding.editHint")}{" "}
-        <code className="text-[10px] bg-muted px-1 rounded">
+        <code className="text-xs bg-muted px-1 rounded">
           public/grounding-kb/seed.v1.json
         </code>
       </div>
@@ -3759,16 +4037,16 @@ function KbEntryRow({
     <div className="rounded border border-border p-2 text-xs">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <span
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
             palette[entry.verdict]
           }`}
         >
           <Globe2 size={9} />
           {t(`wikiBanner.worldVerdict.${entry.verdict}` as any)}
         </span>
-        <code className="text-[10px] text-muted-foreground">{entry.id}</code>
+        <code className="text-xs text-muted-foreground">{entry.id}</code>
         <span
-          className={`text-[10px] px-1 py-0.5 rounded ${
+          className={`text-xs px-1 py-0.5 rounded ${
             seed
               ? "bg-muted text-muted-foreground"
               : "bg-blue-500/10 text-blue-600"
@@ -3807,18 +4085,18 @@ function KbEntryRow({
       <div className="text-foreground mb-1">{entry.claim}</div>
       <div className="text-muted-foreground mb-1">{entry.rationale}</div>
       <div className="flex items-start gap-1 flex-wrap">
-        <span className="text-[10px] text-muted-foreground">keywords:</span>
+        <span className="text-xs text-muted-foreground">keywords:</span>
         {entry.keywords.map((k, i) => (
-          <code key={k + i} className="text-[10px] bg-muted px-1 rounded">
+          <code key={k + i} className="text-xs bg-muted px-1 rounded">
             {k}
           </code>
         ))}
       </div>
       {entry.sources && entry.sources.length > 0 && (
         <div className="flex items-start gap-1 flex-wrap mt-1">
-          <span className="text-[10px] text-muted-foreground">sources:</span>
+          <span className="text-xs text-muted-foreground">sources:</span>
           {entry.sources.map((s, i) => (
-            <span key={i} className="text-[10px]">
+            <span key={i} className="text-xs">
               {s.url ? (
                 <a
                   href={s.url}
@@ -3881,7 +4159,7 @@ function AboutTab() {
   const tauri = isTauri();
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* アプリ情報パネル */}
       <div className="rounded-lg border border-border p-4">
         <div className="flex items-center gap-2 mb-3">

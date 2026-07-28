@@ -161,7 +161,23 @@ export type MediaIndexEntry = {
    * 温存するため、note-index のような明示的な引き継ぎ処理は不要。
    */
   archivedAt?: string;
+  /**
+   * モバイル受信箱（同期フォルダ <root>/Inbox/）から取り込んだときの来歴メタ(optional)。
+   * 取り込み済み素材は「もはやモバイルのものではない」= 一覧上は普通の素材として扱うが、
+   * どこから来たかという来歴は残す（PROV 思想）。既存素材は持たない（後方互換）。
+   * 設計: docs/internal/mobile-capture-transport-design-2026-07.md §7
+   */
+  capture?: import("../mobile-capture/inbox/types").CaptureMeta;
 };
+
+/**
+ * この素材が受信箱経由で取り込まれたものか（capture 来歴メタを持つか）。
+ * 一覧の絞り込みには使わない（振り分け後は普通の素材）。詳細表示など
+ * 「出自を知りたい」場面のための単一述語。
+ */
+export function isMobileCapture(entry: MediaIndexEntry): boolean {
+  return entry.capture != null;
+}
 
 /** メディアインデックスのスキーマバージョン。
  *  - 1: 初期版（block 由来の usedIn のみ集計）

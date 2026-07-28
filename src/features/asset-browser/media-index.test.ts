@@ -10,6 +10,7 @@ import {
   syncUsedIn,
   ensureMediaIndex,
   buildUrlPeekEntry,
+  isMobileCapture,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
@@ -504,5 +505,39 @@ describe("buildUrlPeekEntry", () => {
     const result = buildUrlPeekEntry(url, null);
     expect(result.type).toBe("url");
     expect(result.url).toBe(url);
+  });
+});
+
+// 受信箱から取り込まれた素材か（来歴 capture メタの有無）。取り込み後の素材は
+// 通常の素材として扱うので一覧では区別しないが、来歴は残る（詳細表示・PROV 用）。
+describe("isMobileCapture", () => {
+  const base: MediaIndexEntry = {
+    fileId: "f1",
+    name: "a.jpg",
+    type: "image",
+    mimeType: "image/jpeg",
+    url: "local-media://f1",
+    thumbnailUrl: "local-media://f1",
+    uploadedAt: "2026-07-24T00:00:00.000Z",
+    usedIn: [],
+  };
+
+  it("capture メタを持つ素材だけ true を返す", () => {
+    const withCapture: MediaIndexEntry = {
+      ...base,
+      capture: { id: "sha256:abc", checksum: "sha256:abc", mime: "image/jpeg", bytes: 123 },
+    };
+    expect(isMobileCapture(withCapture)).toBe(true);
+    expect(isMobileCapture(base)).toBe(false);
+  });
+
+  it("述語でフィルタすると capture 素材（画像/動画混在）だけが残る", () => {
+    const media: MediaIndexEntry[] = [
+      base, // capture なし → 除外
+      { ...base, fileId: "f2", capture: { id: "sha256:2", checksum: "sha256:2", mime: "image/png", bytes: 1 } },
+      { ...base, fileId: "f3", type: "video", capture: { id: "sha256:3", checksum: "sha256:3", mime: "video/mp4", bytes: 2 } },
+    ];
+    const picked = media.filter(isMobileCapture).map((m) => m.fileId);
+    expect(picked).toEqual(["f2", "f3"]);
   });
 });

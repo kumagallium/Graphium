@@ -106,7 +106,7 @@ export function WelcomeDialog() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="max-w-md w-[calc(100%-2rem)] bg-background border border-border rounded-xl shadow-xl p-6 space-y-4">
+      <div className="max-w-md w-[calc(100%-2rem)] bg-background border border-border rounded-xl shadow-lg p-6 space-y-4">
         {mode.kind === "welcome" && (
           <>
             <div className="flex flex-col items-center gap-3">

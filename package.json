@@ -1,7 +1,7 @@
 {
   "name": "graphium",
   "private": true,
-  "version": "0.20.1",
+  "version": "0.21.0",
   "description": "Block-based note editor with PROV-DM provenance tracking — built on BlockNote.js",
   "type": "module",
   "license": "Apache-2.0",
@@ -91,6 +91,7 @@
     "shadcn": "^4.0.8",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
+    "tesseract.js": "^7.0.0",
     "utif2": "4.1.0",
     "uuidv7": "^1.2.1",
     "zod": "^4.3.6"
@@ -116,6 +117,7 @@
     "concurrently": "^9.2.1",
     "dependency-cruiser": "^17.4.3",
     "esbuild": "^0.28.0",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "playwright": "^1.58.2",
     "storybook": "^10.3.1",

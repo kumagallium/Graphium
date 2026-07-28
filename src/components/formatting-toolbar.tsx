@@ -26,6 +26,7 @@ import {
   makeMediaEntityId,
   type MediaInlineLabelType,
 } from "../features/inline-label/media-store";
+import { useMediaOcrStoreOptional, ImageOcrToolbarButton } from "../features/media-ocr";
 
 type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
 
@@ -86,6 +87,7 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   const editor = useBlockNoteEditor<any, any, any>();
   const aiAssistant = useAiAssistant();
   const mediaStore = useMediaInlineLabelStoreOptional();
+  const ocrStore = useMediaOcrStoreOptional();
   const provLabelsEnabled = useProvLabelsEnabled();
   const t = useT();
   // ツールバーは開いたまま選択だけが変わっても再レンダーされないことがある
@@ -100,6 +102,11 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
     return () => tiptap.off?.("selectionUpdate", bump);
   }, [editor]);
   const mediaSel = getSelectedMediaBlock(editor);
+  // 画像を選んだときだけ OCR ボタンを出す。URL 未設定（アップロード前）は対象外。
+  const selectedImageUrl =
+    mediaSel?.blockType === "image"
+      ? (editor.getBlock?.(mediaSel.blockId)?.props?.url as string | undefined)
+      : undefined;
 
   const handleAiClick = async () => {
     const selectedText = window.getSelection()?.toString()?.trim();
@@ -160,11 +167,21 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
           gap: inherit で BlockNote 側のアイテム間隔をそのまま引き継ぐ。 */}
       <div className="flex items-center" style={{ gap: "inherit" }}>
         {getFormattingToolbarItems(props.blockTypeSelectItems)}
+        {/* 画像から文字を読む / 読んだ文字を見る。画像をクリックすれば必ず目に入るので、
+            ドラッグハンドルのメニューより見つけやすい主導線になる。 */}
+        {ocrStore && mediaSel?.blockType === "image" && selectedImageUrl && (
+          <ImageOcrToolbarButton
+            key={mediaSel.blockId}
+            blockId={mediaSel.blockId}
+            imageUrl={selectedImageUrl}
+          />
+        )}
         {aiAssistant.aiAvailable && (
           <button
             onClick={handleAiClick}
             title={t("editor.askAi")}
-            className="bn-button inline-flex items-center justify-center rounded hover:bg-violet-100 text-violet-500 transition-colors"
+            // サイズ・角丸は BlockNote 標準ボタン（36px 角・rounded-md）に合わせる
+            className="bn-button inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-violet-100 text-violet-500 transition-colors"
             data-test="aiButton"
           >
             <Bot size={18} />

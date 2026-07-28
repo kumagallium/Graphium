@@ -303,7 +303,7 @@ export function ReleaseNotesPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="bg-background border border-border rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div className="bg-background border border-border rounded-xl shadow-lg w-full max-w-lg max-h-[80vh] flex flex-col">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-foreground">
             Release Notes

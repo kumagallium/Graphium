@@ -30,7 +30,7 @@ export {
   getBlobRoot,
   setBlobRoot,
 } from "./config";
-export { pickSharedRoot, pickBlobRoot } from "./picker";
+export { pickSharedRoot, pickBlobRoot, pickInboxRoot } from "./picker";
 export {
   testSharedConnection,
   testBlobConnection,

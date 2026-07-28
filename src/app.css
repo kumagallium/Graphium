@@ -577,3 +577,9 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   margin-bottom: 4px;
 }
 
+/* OCR 画像ブロックの進捗スピナー */
+@keyframes provnote-ocr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

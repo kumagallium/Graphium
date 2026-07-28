@@ -180,6 +180,15 @@ type GraphiumPage = {
   // ── reference table feature ─────────────────────────
   indexTables?: Record<string, Record<string, string>>;  // tableBlockId → (sampleName → noteId)
 
+  // ── on-device image OCR ─────────────────────────────
+  mediaOcr?: Record<string, MediaOcrEntry>;
+                                     // blockId → text read out of an image with
+                                     // Tesseract.js, entirely on the user's device.
+                                     // An annotation layer over the *standard* image
+                                     // block (same approach as mediaInlineLabels), so
+                                     // any image can be read later regardless of how it
+                                     // was inserted — no dedicated block to paste into.
+
   // ── block alignment ─────────────────────────────────
   blockAlignments?: Record<string, "left" | "center" | "right">;
                                      // blockId → alignment, for blocks WITHOUT a
@@ -272,6 +281,31 @@ historical semantics were: `graphium:phase` marked an Entity as
 `"plan"` or `"execution"`, plan Entities carried an `_plan` id suffix,
 and a matching plan/execution pair was joined by `prov:wasDerivedFrom`
 from the executed Entity to the planned one.
+
+#### Image OCR
+
+An image whose text has been read on-device (Tesseract.js; the result
+lives in `page.mediaOcr[blockId]` — see
+[ARCHITECTURE.md §3.2](./ARCHITECTURE.md)) is projected into the graph
+**without any label** — the generator scans image blocks that carry an
+OCR entry, so OCR provenance appears even in notes that have no `#` block
+labels or inline highlights:
+
+- The **image** becomes a `prov:Entity` (`@id` `image_<blockId>`), labelled
+  with the file name.
+- The **OCR pass** becomes a `prov:Activity` (`@id` `activity_ocr_<blockId>`)
+  that `prov:used` the image. Engine, language and confidence ride along as
+  `graphium:engine` / `graphium:lang` / `graphium:confidence` attributes
+  (confidence is dropped when 0).
+- The **extracted text**, when non-empty, becomes a derived `prov:Entity`
+  (`@id` `result_ocr_<blockId>`) that is `prov:wasGeneratedBy` the OCR
+  Activity, labelled with the text collapsed to one line and truncated.
+
+Images that have not been read contribute nothing. If the same image is
+*also* carrying an inline label, the OCR Activity reuses that Entity rather
+than emitting a second node for the same picture. The `image_` /
+`activity_ocr_` / `result_ocr_` id prefixes line up with the view's existing
+`getNodeSubtype`, so the three nodes are colour-coded with no view change.
 
 ### 2.4 Document provenance (edit log)
 
@@ -975,7 +1009,7 @@ type NoteIndexEntry = {
   createdAt: string;
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
-  steps?: { blockId: string; text: string }[];   // step container titles (v22)
+  steps?: { blockId: string; text: string }[];   // step container titles (v23)
   labels:   { blockId: string; label: string; preview: string }[];
   outgoingLinks: {
     targetNoteId: string;
@@ -1042,6 +1076,13 @@ type NoteIndexEntry = {
   //   column-header filter. Orthogonal to PROV labels and to `theme`.
   //   Absent → undefined (treated as "uncategorised").
   noteContexts?: string[];
+
+  // v22: concatenated text read on-device out of the note's images
+  //   (collected from page.mediaOcr), newline-joined. Lets a note that only
+  //   holds a scanned image be found by the words inside it (searchNotes
+  //   includes this field).
+  //   Absent → undefined (no image read yet, or none produced text).
+  ocrText?: string;
 };
 ```
 
@@ -1069,7 +1110,8 @@ Bumping rules:
 | **19** | Withdrew Phase ε. Removed `"meta-atom"` from `WikiKind` and the `derivedFromAtoms` mirror. LLM-driven axis invention proved unreliable (outputs collapsed to the source domain even at Anthropic Opus). Existing meta-atom JSON files on disk are tolerated by `ensureIndex` — their wiki kind falls outside the new enum and the index entry is rebuilt as a regular note-less placeholder until the user trashes it. The replacement is a human-provided theme threaded through the Synthesizer, landing in a follow-up PR. |
 | **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
 | **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
-| **22** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
+| **22** | Added `ocrText` mirror on `NoteIndexEntry` — the concatenated, newline-joined text read on-device out of the note's images, collected from `page.mediaOcr` in `buildIndexEntry` and included in `searchNotes`, so a note holding only a scanned image is findable by the words inside it. Legacy notes keep `ocrText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. |
+| **23** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

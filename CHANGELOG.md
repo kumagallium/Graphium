@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.22.0](https://github.com/kumagallium/Graphium/compare/v0.21.0...v0.22.0) - 2026-07-28
+
+- [chore] Add Storybook stories for the image OCR toast and toolbar button by @kumagallium in https://github.com/kumagallium/Graphium/pull/605
+- Mobile capture inbox: import phone media from a synced folder by @kumagallium in https://github.com/kumagallium/Graphium/pull/604
+- fix(ui): move cool-grey hex and shadow-xl onto the scene tokens by @kumagallium in https://github.com/kumagallium/Graphium/pull/607
+- Mobile send queue: push phone captures to the desktop inbox via the user's cloud storage by @kumagallium in https://github.com/kumagallium/Graphium/pull/609
+
+## [v0.21.0](https://github.com/kumagallium/Graphium/compare/v0.20.2...v0.21.0) - 2026-07-26
+
+- chore(ui): remove redundant Generate button from Steps panel by @kumagallium in https://github.com/kumagallium/Graphium/pull/596
+- fix(settings): unify section spacing to 24px across all tabs by @kumagallium in https://github.com/kumagallium/Graphium/pull/599
+- fix(settings): align typography, heading semantics and i18n with the design guideline by @kumagallium in https://github.com/kumagallium/Graphium/pull/600
+- fix(settings): route toggle colors through theme tokens instead of hardcoded hex by @kumagallium in https://github.com/kumagallium/Graphium/pull/602
+- [feat] On-device image OCR on the standard image block by @kumagallium in https://github.com/kumagallium/Graphium/pull/598
+- fix(settings): put block spacing on the 8pt grid and make the Storybook story render the real modal by @kumagallium in https://github.com/kumagallium/Graphium/pull/603
+
 ## [v0.20.2](https://github.com/kumagallium/Graphium/compare/v0.20.1...v0.20.2) - 2026-07-24
 
 - fix(assets): resolve media index on an empty vault so the gallery stops loading by @kumagallium in https://github.com/kumagallium/Graphium/pull/594

@@ -96,6 +96,30 @@ export function useCapture(authenticated: boolean) {
     }
   }, []);
 
+  // モバイル受信箱からのメモ取り込み（インポート）。
+  // handleCreateCapture と違い:
+  // - createdAt にモバイルで書いた時刻を引き継ぐ（捕獲時刻の来歴を保つ。
+  //   CaptureEntry の既存フィールドに値を渡すだけで、データ形式は変えない）
+  // - 保存失敗は **throw する**（importer が failed に数え、Inbox のファイルを
+  //   _imported/ へ動かさないので、次回の取り込みで再試行できる — データを落とさない）
+  // 作成したメモの id を返す（取り込み結果レポート用）。
+  const handleImportCapture = useCallback(
+    async (text: string, createdAt?: string): Promise<string> => {
+      const current = indexRef.current ?? createEmptyCaptureIndex();
+      const entry: CaptureEntry = {
+        id: generateCaptureId(),
+        text,
+        createdAt: createdAt ?? new Date().toISOString(),
+      };
+      const updated = addCapture(current, entry);
+      indexRef.current = updated;
+      setCaptureIndex(updated);
+      await saveCaptureIndex(updated);
+      return entry.id;
+    },
+    [],
+  );
+
   // 付箋のミューテーションを適用する共通処理（読み込み→変換→state 反映→永続化）
   const applyCaptureMutation = useCallback(
     async (mutate: (index: CaptureIndex) => CaptureIndex, errLabel: string) => {
@@ -216,6 +240,7 @@ export function useCapture(authenticated: boolean) {
     captureLoading: loading,
     capturing,
     handleCreateCapture,
+    handleImportCapture,
     handleDeleteCapture,
     handlePermanentDeleteCapture,
     handleArchiveCapture,

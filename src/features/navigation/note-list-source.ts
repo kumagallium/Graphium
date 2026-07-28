@@ -21,6 +21,8 @@ export type NoteListEntry = {
   knowledgeCount: number;
   /** 主要な派生 wiki エントリ ID（一覧の Knowledge アイコンからのジャンプ先） */
   primaryKnowledgeWikiId?: string;
+  /** OCR 画像ブロックから抽出したテキスト（一覧のテキスト検索対象） */
+  ocrText?: string;
 };
 
 export interface NoteListSource {
@@ -80,6 +82,7 @@ export class IndexFileNoteListSource implements NoteListSource {
         model: n.model,
         knowledgeCount: wikiEntries.length,
         primaryKnowledgeWikiId: wikiEntries[0]?.noteId,
+        ocrText: n.ocrText,
       };
     });
   }
@@ -91,7 +94,7 @@ export class IndexFileNoteListSource implements NoteListSource {
     );
   }
 
-  // タイトル + 見出し + step タイトルで検索
+  // タイトル + 見出し + step タイトル + OCR 画像テキストで検索
   searchNotes(query: string): NoteIndexEntry[] {
     const q = query.toLowerCase();
     return this.index.notes.filter(
@@ -99,7 +102,8 @@ export class IndexFileNoteListSource implements NoteListSource {
         n.title.toLowerCase().includes(q) ||
         [...n.headings, ...(n.steps ?? [])].some((h) =>
           h.text.toLowerCase().includes(q),
-        )
+        ) ||
+        (n.ocrText?.toLowerCase().includes(q) ?? false)
     );
   }
 }

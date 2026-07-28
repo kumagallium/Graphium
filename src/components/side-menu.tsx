@@ -1,7 +1,7 @@
 // サイドメニュー関連コンポーネント
 // NoteSideMenu, DeriveNoteMenuItem, AiAssistantMenuItem
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   AddBlockButton,
   DragHandleButton,
@@ -38,6 +38,11 @@ import {
   makeMediaEntityId,
   type MediaInlineLabelType,
 } from "../features/inline-label/media-store";
+import {
+  useMediaOcrStoreOptional,
+  runOcrForImage,
+  OCR_CAPABLE_BLOCK_TYPES,
+} from "../features/media-ocr";
 
 // 派生ノート作成用のグローバルコールバック
 let openLinkDropdownFn: ((params: {
@@ -649,6 +654,63 @@ export function TurnIntoMenuItems() {
   );
 }
 
+// ──────────────────────────────────────────────
+// DragHandle メニュー内: 画像から文字を読む（端末内 OCR, LLM 不使用）
+//
+// 専用ブロックを設けず標準の image ブロックに対して実行する。貼り方
+// （/image・ペースト・ドラッグ&ドロップ・素材ギャラリー）を問わずどの画像でも
+// 後から読めるようにするため。結果は mediaOcr サイドストアに入り、ノート横断検索・
+// PROV グラフ・素材ギャラリーから参照される。
+// ──────────────────────────────────────────────
+function ReadImageTextMenuItem() {
+  const Components = useComponentsContext()!;
+  const editor = useBlockNoteEditor<any, any, any>();
+  const t = useT();
+  const ocrStore = useMediaOcrStoreOptional();
+  const [running, setRunning] = useState(false);
+  const block = useExtensionState(SideMenuExtension, {
+    editor,
+    selector: (state) => state?.block,
+  });
+
+  if (!block || !ocrStore) return null;
+  if (!OCR_CAPABLE_BLOCK_TYPES.has(block.type as string)) return null;
+  const url = block.props?.url as string | undefined;
+  if (!url) return null; // 画像未設定のプレースホルダには出さない
+
+  const existing = ocrStore.getEntry(block.id);
+  const charCount = existing?.text ? existing.text.replace(/\s/g, "").length : 0;
+
+  const run = async () => {
+    if (running) return;
+    setRunning(true);
+    try {
+      const entry = await runOcrForImage(url);
+      // 文字が取れなかった画像はエントリを残さない（検索ノイズを避ける）
+      ocrStore.setEntry(block.id, entry.text ? entry : null);
+    } catch (e) {
+      console.warn("OCR に失敗:", e);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const label = running
+    ? t("ocr.running")
+    : charCount > 0
+      ? `${t("ocr.done")}（${t("ocr.chars", { count: String(charCount) })}）`
+      : t("ocr.readText");
+
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => void run()}
+    >
+      {label}
+    </Components.Generic.Menu.Item>
+  );
+}
+
 export function NoteSideMenu() {
   const t = useT();
   useFixDropdownPosition();
@@ -661,6 +723,7 @@ export function NoteSideMenu() {
         <BlockColorsItem>{t("common.color")}</BlockColorsItem>
         <AlignmentMenuItems />
         <BlockLabelMenuItems />
+        <ReadImageTextMenuItem />
         <AddMemoMenuItem />
         <DeriveNoteMenuItem />
         <AiAssistantMenuItem />

@@ -17,6 +17,7 @@ export type AppRoute =
   | { view: "assets"; mediaType: MediaType }
   | { view: "labels"; label: string }
   | { view: "memos" }
+  | { view: "mobile" }
   | { view: "shared-library" }
   | { view: "home" }; // デフォルト（何も開いていない状態）
 
@@ -33,6 +34,7 @@ function routeToHash(route: AppRoute): string {
     case "assets": return `#assets/${route.mediaType}`;
     case "labels": return `#labels/${encodeURIComponent(route.label)}`;
     case "memos": return "#memos";
+    case "mobile": return "#mobile";
     case "shared-library": return "#shared-library";
     case "home": return "";
   }
@@ -78,6 +80,8 @@ function parseHash(hash: string): AppRoute {
       break;
     case "memos":
       return { view: "memos" };
+    case "mobile":
+      return { view: "mobile" };
     case "shared-library":
       return { view: "shared-library" };
   }
@@ -95,6 +99,7 @@ export type RouteActions = {
   setActiveAssetType: (type: MediaType | null) => void;
   setActiveLabel: (label: string | null) => void;
   setShowMemos: (show: boolean) => void;
+  setShowMobile: (show: boolean) => void;
   setShowSharedLibrary?: (show: boolean) => void;
   clearViews: () => void;
 };
@@ -160,6 +165,10 @@ export function useHashRouter(actions: RouteActions, ready: boolean = true) {
       case "memos":
         actions.clearViews();
         actions.setShowMemos(true);
+        break;
+      case "mobile":
+        actions.clearViews();
+        actions.setShowMobile(true);
         break;
       case "shared-library":
         actions.clearViews();

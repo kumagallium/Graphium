@@ -865,6 +865,16 @@ export type GraphiumPage = {
    * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
    */
   blockAlignments?: Record<string, "left" | "center" | "right">;
+  /**
+   * 画像ブロックから端末内 OCR で読み取ったテキスト（2026-07 で導入）。
+   *
+   * 標準の image ブロックは content="none" かつスキーマ拡張の影響範囲が大きいため、
+   * mediaInlineLabels と同じ「独立アノテーション層」方式（blockId → 値）で保存する。
+   * これにより、貼り方（/image・ペースト・ドラッグ&ドロップ・素材ギャラリー）を問わず
+   * どの画像でも後から文字を読めて、専用ブロックに貼り直す必要がない。
+   * optional なので、未設定の既存ノートはマイグレーション不要で読み込める。
+   */
+  mediaOcr?: Record<string, MediaOcrEntry>;
   derivedFromPageId?: string;
   derivedFromBlockId?: string;
 };
@@ -879,6 +889,21 @@ export type GraphiumPage = {
 export type MediaInlineLabel = {
   label: "material" | "tool" | "attribute" | "output";
   entityId: string;
+};
+
+/**
+ * 画像ブロックの OCR 結果（端末内 Tesseract.js で抽出）。
+ *
+ * - text: 抽出したテキスト本体。ノート横断検索の対象になる（index-file.ts が回収）
+ * - confidence: Tesseract の信頼度（0-100）
+ * - lang: 認識に使った言語（"jpn+eng" 等）
+ * - extractedAt: 抽出日時（ISO 文字列）。画像を差し替えたときの古さ判断に使う
+ */
+export type MediaOcrEntry = {
+  text: string;
+  confidence: number;
+  lang: string;
+  extractedAt: string;
 };
 
 /**

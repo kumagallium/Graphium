@@ -23,6 +23,12 @@ import {
   useMediaInlineLabelStore,
 } from "./features/inline-label/media-store";
 import {
+  MediaOcrProvider,
+  useMediaOcrStore,
+  useAutoImageOcr,
+  OcrToast,
+} from "./features/media-ocr";
+import {
   BlockAlignmentProvider,
   useBlockAlignmentStore,
   AlignmentStyleLayer,
@@ -114,7 +120,11 @@ import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
 import { recordRevision, detectActivityType } from "./features/document-provenance/tracker";
 import { loadAuthorIdentity } from "./features/identity";
-import { getSharedRoot, getBlobRoot } from "./lib/storage/shared";
+import { getSharedRoot, getBlobRoot, pickInboxRoot } from "./lib/storage/shared";
+// モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
+// inbox を再export しないため、inbox サブバレルから直接 import する。
+import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, runInboxImport, FolderInbox, InboxView, useMobileInboxFlag } from "./features/mobile-capture/inbox";
+import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
   forkSharedNote,
@@ -183,6 +193,8 @@ import {
   DEFAULT_MEDIA_SLASH_TITLES,
   UrlPasteMenu,
   extractDomain,
+  generateUrlBookmarkId,
+  getFaviconUrl,
   buildUrlPeekEntry,
   buildMemoPeekEntry,
   isHttpUrl,
@@ -801,6 +813,7 @@ function NoteEditor(props: NoteEditorProps) {
       <LinkStoreProvider>
         <IndexTableStoreProvider>
         <MediaInlineLabelProvider>
+        <MediaOcrProvider>
         <BlockAlignmentProvider>
         {/* モデル未登録（agentConfigured=false）ならエディタ内 AI ボタン群
             （フォーマッティングツールバー / ドラッグメニュー / 選択ツールバーの Bot）も隠す */}
@@ -808,6 +821,7 @@ function NoteEditor(props: NoteEditorProps) {
           <NoteEditorInner {...props} />
         </AiAssistantProvider>
         </BlockAlignmentProvider>
+        </MediaOcrProvider>
         </MediaInlineLabelProvider>
         </IndexTableStoreProvider>
       </LinkStoreProvider>
@@ -990,7 +1004,11 @@ function NoteEditorInner({
   const { removeBlockMetadata } = useBlockLifecycle();
   const indexTableStore = useIndexTableStore();
   const mediaInlineLabelStore = useMediaInlineLabelStore();
+  const mediaOcrStore = useMediaOcrStore();
   const blockAlignmentStore = useBlockAlignmentStore();
+  // 貼られた画像の自動 OCR。handleContentChange から呼ぶが、その useCallback は
+  // hook より前に定義されるため ref 経由で最新の scan を渡す。
+  const autoOcrRef = useRef<(() => void) | null>(null);
   const aiAssistant = useAiAssistant();
   const isDesktop = useIsDesktop();
   // チャット実行（chat-run-manager）用のノート識別子。doc キャッシュ・saveNoteDoc と
@@ -1901,6 +1919,9 @@ function NoteEditorInner({
     const mediaInlineLabelsSnapshot = mediaInlineLabelStore.getSnapshot();
     const hasMediaInlineLabels =
       Object.keys(mediaInlineLabelsSnapshot).length > 0;
+    // 画像 OCR テキスト（端末内 Tesseract.js。標準 image ブロックの注釈層）
+    const mediaOcrSnapshot = mediaOcrStore.getSnapshot();
+    const hasMediaOcr = Object.keys(mediaOcrSnapshot).length > 0;
     let doc: GraphiumDocument = {
       version: LATEST_DOCUMENT_VERSION,
       title,
@@ -1916,6 +1937,7 @@ function NoteEditorInner({
           mediaInlineLabels: hasMediaInlineLabels
             ? mediaInlineLabelsSnapshot
             : undefined,
+          mediaOcr: hasMediaOcr ? mediaOcrSnapshot : undefined,
           blockAlignments,
         },
       ],
@@ -1967,7 +1989,7 @@ function NoteEditorInner({
     prevPageRef.current = structuredClone(doc.pages[0]);
 
     return doc;
-  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
+  }, [title, labelStore, linkStore, indexTableStore, mediaInlineLabelStore, mediaOcrStore, blockAlignmentStore, aiAssistant, initialDoc, currentProvenance]);
 
   // sharedRef は initialDoc から初期化し、Share 成功時に即時更新する。
   // initialDoc は親が新しい doc に差し替えない限り変わらないため、ローカル state で持つ。
@@ -2114,6 +2136,7 @@ function NoteEditorInner({
     linkStore.links,
     initialDoc?.documentProvenance,
     mediaInlineLabelStore.labels,
+    mediaOcrStore.entries,
   );
 
   // ノート切り替え時に自動オープンフラグをリセット（次のノートで再度 1 度だけ発火する）
@@ -2190,22 +2213,25 @@ function NoteEditorInner({
   const prevTablesRef = useRef(indexTableStore.tables);
   const prevMediaLabelsRef = useRef(mediaInlineLabelStore.labels);
   const prevAlignmentsRef = useRef(blockAlignmentStore.alignments);
+  const prevMediaOcrRef = useRef(mediaOcrStore.entries);
   useEffect(() => {
     if (
       prevLabelsRef.current !== labelStore.labels ||
       prevLinksRef.current !== linkStore.links ||
       prevTablesRef.current !== indexTableStore.tables ||
       prevMediaLabelsRef.current !== mediaInlineLabelStore.labels ||
-      prevAlignmentsRef.current !== blockAlignmentStore.alignments
+      prevAlignmentsRef.current !== blockAlignmentStore.alignments ||
+      prevMediaOcrRef.current !== mediaOcrStore.entries
     ) {
       prevLabelsRef.current = labelStore.labels;
       prevLinksRef.current = linkStore.links;
       prevTablesRef.current = indexTableStore.tables;
       prevMediaLabelsRef.current = mediaInlineLabelStore.labels;
       prevAlignmentsRef.current = blockAlignmentStore.alignments;
+      prevMediaOcrRef.current = mediaOcrStore.entries;
       markDirty();
     }
-  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, markDirty]);
+  }, [labelStore.labels, linkStore.links, indexTableStore.tables, mediaInlineLabelStore.labels, blockAlignmentStore.alignments, mediaOcrStore.entries, markDirty]);
 
   // AI チャットパネル用ハンドラー（継続対話）
   const handleAiChatSubmit = useCallback(
@@ -3243,6 +3269,7 @@ function NoteEditorInner({
       if (page.mediaInlineLabels) {
         mediaInlineLabelStore.restoreSnapshot(page.mediaInlineLabels);
       }
+      mediaOcrStore.restoreSnapshot(page.mediaOcr);
       blockAlignmentStore.restoreSnapshot(page.blockAlignments);
       if (page.indexTables) {
         indexTableStore.restore(page.indexTables);
@@ -3746,9 +3773,16 @@ function NoteEditorInner({
     markDirty();
     labelAutoRef.current?.();
     triggerRegeneration();
+    // 貼られたばかりの画像があれば、その場で文字を読み取る（進行はトーストで見せる）
+    autoOcrRef.current?.();
     // 空ノート予示を隠す（本文に 1 度でも変化があれば以降は非表示）
     setHasBeenEdited(true);
   }, [markDirty, triggerRegeneration]);
+
+  // 貼られた画像の自動 OCR。ノートを開いた時点の既存画像は対象外で、
+  // このノートを開いている間に新しく入った画像だけを読む。
+  const autoOcr = useAutoImageOcr({ editorRef, noteKey: fileId ?? "new" });
+  autoOcrRef.current = autoOcr.scan;
 
   // 初期コンテンツ
   const initialContent = useMemo(() => {
@@ -4188,6 +4222,8 @@ function NoteEditorInner({
             )}
             {/* table / audio / file の配置揃えを CSS で適用（サイドストア駆動） */}
             <AlignmentStyleLayer />
+            {/* 自動 OCR の進行トースト（右下ピル） */}
+            <OcrToast state={autoOcr.toast} />
             <SandboxEditor
               key={fileId || "new"}
               editable={!archived && !trashed}
@@ -4806,6 +4842,58 @@ export function NoteApp() {
     try { localStorage.setItem("graphium-sidebar-collapsed", desktopSidebarCollapsed ? "1" : "0"); } catch {}
   }, [desktopSidebarCollapsed]);
   const [showMemos, setShowMemos] = useState(false);
+  // モバイル連携（実験フラグ・既定 OFF）。OFF の間はデスクトップ側の入口
+  //（サイドバー「モバイル」見出し・#mobile ルート・設定のモバイル送信セクション）を
+  // すべて隠す。設定のトグル変更はイベント経由でリロード無しにここへ反映される。
+  const mobileInboxEnabled = useMobileInboxFlag();
+  // モバイル受信箱ビュー（同期フォルダ <root>/Inbox/ の「まだ取り込んでいない」ファイル一覧）。
+  // 取り込むと素材ライブラリへ振り分けられ、この一覧からは消える（_imported/ 退避）。
+  const [showMobile, setShowMobile] = useState(false);
+  // フラグを OFF に切り替えた瞬間に、開きっぱなしの受信箱ビューも畳む
+  //（入口だけ消してビューが残ると戻る手段がなくなる）。
+  useEffect(() => {
+    if (!mobileInboxEnabled) setShowMobile(false);
+  }, [mobileInboxEnabled]);
+  // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
+  // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
+  const [inboxRoot, setInboxRootState] = useState<string | null>(() => getInboxRoot());
+  // 取り込み後に処理済みファイルを _imported/ に残すか（既定 false = Inbox から削除）。
+  // 表示用の state。取り込み実行時は localStorage を直接読むので、ここが古くても
+  // 実挙動には影響しない（handleImportFromInbox 参照）。
+  const [inboxKeepArchive, setInboxKeepArchiveState] = useState<boolean>(() => getInboxKeepArchive());
+  const handleInboxKeepArchiveChange = useCallback((keep: boolean) => {
+    setInboxKeepArchive(keep);
+    setInboxKeepArchiveState(keep);
+  }, []);
+  // サイドバー「モバイル」の未処理件数バッジ。取り込み済み素材の数ではなく、
+  // 受信箱に残っている未取り込みファイルの数（= これから捌く数）。
+  const [inboxPendingCount, setInboxPendingCount] = useState(0);
+  // 受信箱の読み取り面。実験フラグ ON かつ desktop(Tauri) かつ接続済みのときだけ
+  // 実体を持つ（フラグ OFF では起動時のフォルダスキャンも走らせない）。
+  const inboxSource = useMemo(
+    () => (mobileInboxEnabled && isTauri() && inboxRoot ? new FolderInbox(inboxRoot) : null),
+    [mobileInboxEnabled, inboxRoot],
+  );
+  // 起動時（および接続フォルダ変更時）に未処理件数を数える。
+  // 「受信箱ビューを開いたとき」「取り込み後」は InboxView の scan → onPendingCount が
+  // 更新するので、ここでは重ねて数えない（IPC の二重呼びを避ける）。
+  // 失敗は 0 扱いで握りつぶす（起動を妨げない）。
+  useEffect(() => {
+    if (!inboxSource) {
+      setInboxPendingCount(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const pending = await inboxSource.listPending();
+        if (!cancelled) setInboxPendingCount(pending.length);
+      } catch {
+        if (!cancelled) setInboxPendingCount(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [inboxSource]);
   const [showTrash, setShowTrash] = useState(false);
   const [showSharedLibrary, setShowSharedLibrary] = useState(false);
   // 全ノードグラフ（全画面オーバーレイ）。開いている間だけ index からグラフを構築する。
@@ -5062,7 +5150,7 @@ export function NoteApp() {
   }, [fmGetCachedDocStable, fmReindexNoteFromDocStable, listSidePeekNoteId, assetSidePeekNoteId]);
   // メインコンテンツ領域に排他表示される「オーバーレイ／リストビュー」を一括で畳む。
   // これらは note-app レベルの巨大な ternary（showGlobalGraph → activeAssetType →
-  // activeLabel → showNoteList → showMemos → activeWikiView → activeWikiKind →
+  // activeLabel → showNoteList → showMemos → showMobile → activeWikiView → activeWikiKind →
   // showSharedLibrary → showTrash → showSkillList → 本文エディタ）で本文より
   // 優先表示される。ビュー切替・SidePeek 最大化など「本文へ遷移する経路」は
   // これらを **全て** 畳まないと、別のビューが残って表示される（例: スキル一覧を
@@ -5075,6 +5163,7 @@ export function NoteApp() {
     fm.setActiveLabel(null);
     fm.setActiveWikiKind(null);
     setShowMemos(false);
+    setShowMobile(false);
     setShowTrash(false);
     setShowSharedLibrary(false);
     setShowGlobalGraph(false);
@@ -5406,11 +5495,14 @@ export function NoteApp() {
     setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
+    // 受信箱は Tauri 専用 かつ 実験フラグ ON のときだけ。web や フラグ OFF で
+    // #mobile を直接叩かれても開かない（サイドバーにも出さない）。
+    setShowMobile: (show: boolean) => setShowMobile(show && isTauri() && mobileInboxEnabled),
     setShowSharedLibrary: (show: boolean) => setShowSharedLibrary(show),
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
     clearViews: closeAllViews,
-  }), [fm, closeAllViews]);
+  }), [fm, closeAllViews, mobileInboxEnabled]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
   // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
@@ -6217,6 +6309,133 @@ export function NoteApp() {
   // エディタ参照（メディアリネーム時のブロック同期用）
   const noteEditorRef = useRef<any>(null);
 
+  // ── モバイル受信箱: 接続と取り込み ────────────────────────────────
+  // 同期フォルダ（<root>/Inbox/ の親）を選ぶ。選択したら localStorage に永続化し、
+  // inboxRoot state も更新する → inboxSource が差し替わり、受信箱が即座に再スキャンされる。
+  // desktop 専用（Tauri）。
+  const handlePickInboxRoot = useCallback(async (): Promise<string | null> => {
+    if (!isTauri()) return null;
+    try {
+      const picked = await pickInboxRoot(getInboxRoot() ?? undefined);
+      if (picked) {
+        setInboxRoot(picked);
+        setInboxRootState(picked);
+      }
+      return picked;
+    } catch (e) {
+      console.error("[inbox] folder pick failed", e);
+      return null;
+    }
+  }, []);
+
+  // 受信箱の未取り込みメディアを active MediaProvider に取り込む。
+  // refs を渡すと選択取り込み、省略すると全部取り込み（受信箱ビューの 2 ボタンに対応）。
+  // 取り込んだものは既定で Inbox から削除（keep-archive 設定時は _imported/ へ退避）
+  // されるので、再スキャンで一覧から消える。
+  //
+  // dedup は 2 段構え:
+  //   - run 間: media-index の capture.checksum 集合をスナップショットとして seed する
+  //   - run 内: 同じ Set を「これから取り込む checksum」で成長させ、同一 run 内の
+  //             同一内容の二重取込を弾く（importer が isAlreadyImported を各件呼ぶ直前に判定）
+  // importer は success を個別通知しないため、「未取り込み → これから取り込む」の
+  // タイミング（isAlreadyImported が false を返す瞬間）で Set に add する。
+  const handleImportFromInbox = useCallback(async (refs?: CaptureRef[]) => {
+    if (!isTauri()) return;
+    // root 未設定ならフォルダ選択を促す。選ばれなければ何もしない。
+    let root = getInboxRoot();
+    if (!root) {
+      root = await handlePickInboxRoot();
+      if (!root) return;
+    }
+    // dedup 用チェックサム集合（run 間スナップショット + run 内成長）。
+    const seen = new Set<string>();
+    for (const m of fm.mediaIndex?.media ?? []) {
+      if (m.capture?.checksum) seen.add(m.capture.checksum);
+    }
+    const isAlreadyImported = (checksum: string): boolean => {
+      if (seen.has(checksum)) return true;
+      // 未取り込み → importer はこの直後に取り込む。後続の同一内容を二重取込しないよう記録する。
+      seen.add(checksum);
+      return false;
+    };
+    const pushResultToast = (
+      status: "success" | "error",
+      result: string,
+    ) => {
+      // ingestToast を流用（AI ガードと同じ単一アイテム置換パターン。固定 id で連続実行でも 1 件）。
+      setIngestToast((prev) => ({
+        items: [
+          ...(prev?.items ?? []).filter((i) => i.id !== "inbox-import"),
+          { id: "inbox-import", status, noteTitle: tStatic("mobile.importResult"), result },
+        ],
+      }));
+    };
+    try {
+      const res = await runInboxImport({
+        transport: new FolderInbox(root),
+        uploadAsset: fm.handleUploadAsset,
+        isAlreadyImported,
+        // 取り込み成功後の Inbox 側ファイルの後処理。既定は削除（中身は vault に
+        // 着地済みなので冗長コピーを同期フォルダ = クラウドに残さない）。
+        // 受信箱のフォルダ設定トグルで「処理済みを _imported/ に残す」を選んだ人だけ
+        // アーカイブ。実行時に localStorage を直接読む（表示 state の鮮度に依存しない）。
+        disposal: getInboxKeepArchive() ? "archive" : "delete",
+        // 未指定なら全件（「全部取り込み」）。
+        ...(refs ? { only: refs } : {}),
+        // メモ / URL のネイティブ捕獲（.graphium.json）を本物の実体に振り分ける。
+        // importer は着地先を知らない（依存注入）— ここが唯一の配線点。
+        handlers: {
+          // メモ → デスクトップのメモ（capture-store）。書いた時刻を createdAt に引き継ぐ。
+          // 保存失敗は handleImportCapture が throw → importer が failed に数え、
+          // Inbox に残る（再試行可能）。
+          memo: async (payload) => {
+            const id = await capture.handleImportCapture(payload.text, payload.createdAt);
+            return { fileId: id };
+          },
+          // URL → URL ブックマーク素材（media-index の url エントリ）。メタは
+          // モバイル側で取得済みのものをそのまま使い、デスクトップでは再取得しない。
+          // handleAddUrlBookmark が URL 重複を吸収（既存ならエントリを増やさない）。
+          // capture: meta を付けて出自と checksum を残す（run 間の冪等 dedup が
+          // media-index の checksum 集合で効くようになる）。
+          url: async (payload, { meta }) => {
+            const domain = extractDomain(payload.url);
+            const fileId = generateUrlBookmarkId();
+            fm.handleAddUrlBookmark({
+              fileId,
+              name: payload.title?.trim() || domain,
+              type: "url",
+              mimeType: "text/x-uri",
+              url: payload.url,
+              thumbnailUrl: getFaviconUrl(domain),
+              uploadedAt: payload.createdAt,
+              usedIn: [],
+              urlMeta: {
+                domain,
+                ...(payload.description ? { description: payload.description } : {}),
+                ...(payload.ogImage ? { ogImage: payload.ogImage } : {}),
+              },
+              capture: meta,
+            });
+            return { fileId };
+          },
+        },
+      });
+      await fm.refreshMediaIndex();
+      const failed = res.failed.length;
+      pushResultToast(
+        failed > 0 ? "error" : "success",
+        tStatic("mobile.importSummary", {
+          imported: String(res.imported.length),
+          skipped: String(res.skipped.length),
+          failed: String(failed),
+        }),
+      );
+    } catch (e) {
+      console.error("[inbox] import failed", e);
+      pushResultToast("error", e instanceof Error ? e.message : String(e));
+    }
+  }, [fm.mediaIndex, fm.handleUploadAsset, fm.handleAddUrlBookmark, fm.refreshMediaIndex, capture.handleImportCapture, handlePickInboxRoot]);
+
   // メディアリネーム（ブロック props.name 同期付き）
   const handleRenameMediaWithBlockSync = useCallback(async (entry: MediaIndexEntry, newName: string) => {
     await fm.handleRenameMedia(entry, newName);
@@ -6878,6 +7097,15 @@ export function NoteApp() {
     memoCount: capture.captureIndex?.captures.length ?? 0,
     onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
+    // モバイル（受信箱）: **未処理**件数。取り込み済み素材の数ではない。
+    // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）かつ
+    // モバイル連携の実験フラグ ON のときだけ。どちらかを満たさなければ
+    // onShowMobile を渡さない＝サイドバーの「モバイル」見出し自体が出ない。
+    mobileCount: inboxPendingCount,
+    onShowMobile: mobileInboxEnabled && isTauri()
+      ? () => { closeAllViews(); setShowMobile(true); setSidebarOpen(false); router.navigate({ view: "mobile" }); }
+      : undefined,
+    mobileActive: showMobile,
     wikiCounts: (() => {
       // fm.wikiFiles は trash / archive を除外済み。wikiMetas には全 wiki が残っているため、
       // 表示用カウントは wikiFiles をベースに数える必要がある。
@@ -7692,6 +7920,20 @@ export function NoteApp() {
                 enqueueIngest(`memo:${id}`, doc.title, doc);
               }
             } : undefined}
+          />
+        ) : showMobile ? (
+          // モバイル受信箱: 同期フォルダ <root>/Inbox/ の **まだ取り込んでいない** ファイル一覧。
+          // 素材ライブラリ（AssetGalleryView / MediaIndexEntry）とは表示対象の型が違うので
+          // 流用せず別コンポーネント。取り込むと素材へ振り分けられ、ここからは消える。
+          <InboxView
+            rootConfigured={inboxRoot != null}
+            source={inboxSource}
+            onPickRoot={async () => { await handlePickInboxRoot(); }}
+            keepArchive={inboxKeepArchive}
+            onKeepArchiveChange={handleInboxKeepArchiveChange}
+            onImport={handleImportFromInbox}
+            onPendingCount={setInboxPendingCount}
+            onBack={() => setShowMobile(false)}
           />
         ) : activeWikiView === "log" ? (
           <WikiLogView

@@ -45,7 +45,7 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-md mx-4">
+      <div className="bg-background border border-border rounded-lg shadow-lg w-full max-w-md mx-4">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">{isEdit ? "Edit Skill" : "New Skill"}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">

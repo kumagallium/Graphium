@@ -554,6 +554,28 @@ export const en: Record<string, string> = {
   "settings.shared.note": "Settings stored locally. Tombstone records remain in _meta/ after deletion.",
   "settings.shared.desktopOnly": "Shared storage is currently desktop-only. The browser version cannot read or write to local folders.",
   "settings.shared.identityRequired": "Register your name and email above (Your identity) before testing the connection.",
+  // ── Mobile sync (experimental flag, default OFF) ──
+  "settings.mobileInboxFlag.title": "Mobile sync",
+  "settings.mobileInboxFlag.badge": "Experimental",
+  "settings.mobileInboxFlag.help": "Try sending captures from your phone to the desktop inbox. Turning this on reveals the phone-side send queue plus the desktop Mobile inbox and upload settings (no reload needed).",
+  // ── Mobile upload (Google Drive push) ──
+  "settings.mobilePush.title": "Mobile upload (Google Drive)",
+  "settings.mobilePush.help": "Your phone uploads captures straight to Google Drive → Graphium/Inbox; the desktop imports them from the synced folder. This setting is stored per device — connect on the phone you capture with.",
+  "settings.mobilePush.statusNotConfigured": "Not set up (client ID required)",
+  "settings.mobilePush.statusDisconnected": "Not connected",
+  "settings.mobilePush.statusConnected": "Connected",
+  "settings.mobilePush.connect": "Connect",
+  "settings.mobilePush.disconnect": "Disconnect",
+  "settings.mobilePush.connectFailed": "Could not connect: {error}",
+  "settings.mobilePush.advanced": "Advanced",
+  "settings.mobilePush.advancedHelp": "Normally you only sign in with your own Google account — nothing to configure here. A custom client ID is a fallback for self-hosting, or in case the bundled ID ever stops working.",
+  "settings.mobilePush.clientIdLabel": "Google OAuth client ID",
+  "settings.mobilePush.clientIdPlaceholder": "xxxxxxxx.apps.googleusercontent.com",
+  "settings.mobilePush.clientIdHelp": "Create an OAuth client (Web application) in Google Cloud Console and paste its client ID. No secret is needed; access is limited to files the app creates (drive.file).",
+  "settings.mobilePush.noDefaultNote": "This build ships without a bundled client ID, so your own client ID is required for now.",
+  "settings.mobilePush.save": "Save",
+  "settings.mobilePush.saved": "Saved",
+  "settings.mobilePush.clear": "Reset",
   // ── Server storage (Docker / self-host Web) ──
   "settings.serverStorage.title": "Server storage",
   "settings.serverStorage.help": "Notes are saved on this server's filesystem and shared across every browser that visits the same URL.",
@@ -1300,6 +1322,7 @@ export const en: Record<string, string> = {
   "memo.title": "Memos",
   "memo.count": "{count} items",
   "memo.empty": "No memos yet. Tap the button below to create one.",
+  "memo.emptyQueueHome": "No past captures yet. Start with the capture buttons below.",
   "memo.new": "New Memo",
   "memo.creating": "Creating...",
   "memo.placeholder": "Write your memo here...",
@@ -1347,6 +1370,89 @@ export const en: Record<string, string> = {
   "memo.bulkDeleteConfirmMessage": "Delete {count} selected memos. {refCount} of them have already been inserted into notes. Those note bodies will not be affected.",
   "memo.bulkDeleteConfirmMessageNoRef": "Delete {count} selected memos. This cannot be undone.",
   "memo.dragToRangeSelect": "Drag or shift-click to select a range",
+
+  // ── Mobile (inbox / staging area) ──
+  // A separate layer from the material library: files sitting in the sync folder
+  // <root>/Inbox/ that have **not been imported yet**. Importing moves them into the
+  // material library (images/video/audio/...), so they leave this list.
+  "mobile.title": "Mobile",
+  "mobile.pendingCount": "{count} pending",
+  // Folder connection / folder settings menu
+  "mobile.connectFolder": "Connect sync folder",
+  "mobile.changeFolder": "Change sync folder",
+  "mobile.connectHint": "Connect a sync folder and whatever you capture on your phone shows up here.",
+  "mobile.folderSettings": "Sync folder settings",
+  // Post-import disposal: the default deletes the inbox-side file (no processed
+  // copies pile up in the cloud); opting in archives into _imported/ instead.
+  "mobile.keepArchive": "Keep processed files in _imported/",
+  "mobile.keepArchiveHint": "When off (default), files are deleted from the inbox after a successful import. Their content is already in your library.",
+  // Import
+  "mobile.importSelected": "Import selected ({count})",
+  "mobile.importAll": "Import all",
+  "mobile.importing": "Importing...",
+  "mobile.refresh": "Refresh",
+  "mobile.importResult": "Mobile import",
+  "mobile.importSummary": "Imported {imported} · skipped {skipped} · failed {failed}",
+  // List
+  "mobile.selectAll": "Select all",
+  "mobile.deselectAll": "Clear selection",
+  "mobile.colPreview": "Preview",
+  "mobile.colName": "Name",
+  "mobile.colSize": "Size",
+  "mobile.colModified": "Modified",
+  // Preview side peek (look before you decide what to keep)
+  "mobile.openPreview": "Open preview",
+  "mobile.previewLoading": "Loading preview...",
+  "mobile.previewFailed": "Could not read this file: {error}",
+  "mobile.importThis": "Import this file",
+  // Empty / error states
+  "mobile.emptyInbox": "Nothing new",
+  "mobile.emptyInboxHint": "Files dropped into the Inbox folder from your phone will appear here.",
+  "mobile.scanFailed": "Could not read the inbox: {error}",
+
+  // ── Mobile send queue (phone → cloud Inbox) ──
+  // Captures land here first (persisted on this device), then upload to
+  // Google Drive → Graphium/Inbox, where the desktop picks them up.
+  // The queue lives inline on the mobile home (no sheet); the header shows a
+  // connection chip and the queue block collapses while empty.
+  "mobile.send.title": "Send queue",
+  "mobile.send.chipNotConfigured": "Not set up",
+  "mobile.send.notConfigured": "Google Drive isn't set up yet. Open Settings and add a client ID under Advanced.",
+  "mobile.send.openSettings": "Open Settings",
+  "mobile.send.addMemo": "Write",
+  "mobile.send.addUrl": "URL",
+  "mobile.send.addPhoto": "Photo",
+  "mobile.send.addVideo": "Video",
+  "mobile.send.addAudio": "Voice",
+  "mobile.send.addLibrary": "Library",
+  "mobile.send.kindMemo": "Memo",
+  "mobile.send.statusWaiting": "Waiting",
+  "mobile.send.statusSending": "Sending... {percent}%",
+  "mobile.send.statusFailed": "Failed",
+  "mobile.send.retryFailed": "Retry failed ({count})",
+  "mobile.send.remove": "Remove from queue",
+  "mobile.send.action": "Send ({count})",
+  "mobile.send.sending": "Sending...",
+  "mobile.send.connectStorage": "Connect storage",
+  "mobile.send.connecting": "Connecting...",
+  "mobile.send.connectFailed": "Could not connect: {error}",
+
+  // ── Experiment opt-in card (legacy mobile home) ──
+  "mobile.optIn.title": "Send captures to your desktop",
+  "mobile.optIn.body": "Queue memos, photos, and URLs on your phone and they land in the Graphium inbox on your desktop.",
+  "mobile.optIn.try": "Try it",
+
+  // ── Storage picker (StoragePickerSheet) ──
+  "mobile.storagePicker.title": "Choose storage",
+  "mobile.storagePicker.help": "Your captures reach the desktop through the storage you pick here.",
+  "mobile.storagePicker.googleHelp": "Connect with your Google account",
+  "mobile.storagePicker.comingSoon": "Coming soon",
+
+  // ── Mobile minimal settings sheet ──
+  "mobile.settings.storage": "Storage",
+  "mobile.settings.changeStorage": "Change",
+  "mobile.settings.leaveExperiment": "Leave this experiment",
+  "mobile.settings.leaveExperimentHint": "Returns to the classic home. Your send queue and connection stay on this device.",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
@@ -1636,6 +1742,12 @@ export const en: Record<string, string> = {
   "settings.ai.modelNotFound": "Model not found",
   "settings.maintenance.currentSetting": "(current setting)",
   "settings.maintenance.reembedHelp": "Use this when the AI chat citation search (Retriever) stops working. Rebuilds the embeddings for all Wikis and stores them in IndexedDB.",
+  "settings.maintenance.reembedTitle": "Re-embed all Wikis",
+  "settings.maintenance.reembedProgress": "Embedding… {done} / {total}",
+  "settings.maintenance.reembedDone": "Done. {done} / {total} wikis embedded.",
+  "settings.maintenance.reembedConfirm": "Re-embed all {count} wikis? This may take a while and consumes embedding API tokens.",
+  "settings.maintenance.reembedRunning": "Re-embedding…",
+  "settings.maintenance.reembedRun": "Re-embed {count} wiki(s)",
   "settings.health.exitDetail": " (the process already exited: {info})",
   "settings.health.timeoutError": "Health check timed out (no response within 10 seconds){detail}",
 
@@ -1666,4 +1778,13 @@ export const en: Record<string, string> = {
   "composer.discovery.promptClarify": "Surface the contradictions and repetition in this Wiki and give me hints for rewriting.",
   "composer.discovery.promptTellMeAbout": "Tell me more about \"{title}\".",
   "composer.citationSource": "Source",
+
+  // ── 画像 OCR（端末内 Tesseract.js。標準の画像ブロックに対して実行する） ──
+  "ocr.readText": "Read text from image",
+  "ocr.running": "Reading text…",
+  "ocr.done": "Text extracted",
+  "ocr.chars": "{count} chars",
+  "ocr.noText": "No text found in the image",
+  "ocr.copy": "Copy",
+  "ocr.matchBadge": "image text",
 };
