@@ -43,8 +43,9 @@ function Modal({ open, onClose, children }: ModalProps) {
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
-      {/* コンテンツ */}
-      <div className="relative bg-background border border-border rounded-xl shadow-lg max-h-[85dvh] overflow-y-auto">
+      {/* コンテンツ。max-w はモバイル幅でビューポートからはみ出さないための最終防衛線
+       *  （中身が固定幅を持つモーダルでも、左右 1rem の余白を残して収める）。 */}
+      <div className="relative bg-background border border-border rounded-xl shadow-lg max-h-[85dvh] max-w-[calc(100dvw-2rem)] overflow-y-auto">
         {children}
       </div>
     </div>,
