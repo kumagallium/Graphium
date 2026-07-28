@@ -1,8 +1,27 @@
 // モバイル専用クイックキャプチャビュー
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
+//
+// モバイル連携（実験フラグ）ON のときは、ホーム自体を「送信キュー前提」に組み替える:
+// ヘッダーに接続状態チップ、コンテンツ最上部（ヘッダー直下）に未送信キュー
+// （SendQueueSection。[送信 (n)] は見出し行右端の定位置。空なら畳む）、その下に
+// 従来のメモ検索・タイムラインが 1 スクロールで続く。捕獲ボタンは従来ホームと同じ
+// 画面下固定バー（MobileCaptureBar: [書く][URL][写真][動画][音声][ライブラリ]）。
+// かつての SendToInboxSheet（ボトムシート）は廃止。メモ・URL もネイティブ JSON
+// （capture-file.ts）でキュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store
+// には保存しない）。タイムラインは過去分の閲覧用として残る。
+//
+// スマホにフル設定モーダルは出さない（「モバイル連携」トグルはデスクトップ語彙）:
+// - フラグ OFF（従来ホーム）: タイムライン上部に実験オプトインカード（MobileOptInCard）。
+//   [試す] → ストレージ選択（StoragePickerSheet）→ 接続成功でフラグが立ち、ホームが
+//   キュー前提に切り替わる。⚙ は出さない（実験外のスマホに設定概念を持ち込まない）。
+// - フラグ ON（キュー前提ホーム）: ヘッダー右端の ⚙ はスマホ専用の最小設定シート
+//   （MobileSettingsSheet: ストレージ / 言語 / アプリ情報 / この実験をやめる）を開く。
+//   未接続時の主ボタン（キューセクション内）もストレージ選択を開く。
+// 設定は端末ごと（localStorage）なので、スマホ単体で 接続/切断・client_id 上書き・
+// 実験離脱まで完結する。デスクトップの設定モーダル（トグル含む）はそのまま。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw } from "lucide-react";
+import { StickyNote, Plus, Trash2, Camera, Video, Mic, Image, Volume2, Search, X, Link, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import type { CaptureIndex, CaptureEntry } from "./capture-store";
 import type { MediaIndex, MediaIndexEntry } from "../asset-browser/media-index";
 import { getFaviconUrl } from "../asset-browser/media-index";
@@ -11,6 +30,15 @@ import { UrlBookmarkModal } from "../asset-browser/UrlBookmarkModal";
 import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
+import { MobileCaptureBar } from "./MobileCaptureBar";
+import { MobileOptInCard } from "./MobileOptInCard";
+import { MobileSettingsSheet } from "./MobileSettingsSheet";
+import { StoragePickerSheet } from "./StoragePickerSheet";
+import { SendQueueSection } from "./inbox/SendQueueSection";
+import { usePushQueue } from "./inbox/use-push-queue";
+import { usePushSettings } from "./inbox/use-push-settings";
+import { setMobileInboxEnabled, useMobileInboxFlag } from "./inbox/experimental";
+import { buildMemoCaptureFile, buildUrlCaptureFile } from "./inbox/capture-file";
 
 // ── 統合タイムラインアイテム ──
 
@@ -326,6 +354,23 @@ export function MobileCaptureView({
   const pulling = useRef(false);
   const t = useT();
 
+  // モバイル連携（実験フラグ・既定 OFF）。OFF の間は送信キュー経路を丸ごと隠し、
+  // 撮ったものは従来どおりこの端末の素材ライブラリに保存する。設定のトグルで
+  // 切り替わるとイベント経由でここも即時に再レンダリングされる（リロード不要）。
+  const mobileInboxEnabled = useMobileInboxFlag();
+  // 送信キュー（撮る → 即キュー永続化 → Google Drive の Graphium/Inbox へ直列送信）。
+  // push/ は hook 内で動的 import される。
+  // フラグ OFF の間は hook 自体が不活性（ロードも自動 drain もしない）。
+  // 設定モーダルでの client_id 変更・接続・切断は push-events 経由で hook が読み直す
+  // ので、常時見えているチップ・キューが古い状態のまま残ることはない。
+  const push = usePushQueue(mobileInboxEnabled);
+  // 撮ったものをキュー経路へ送れる環境か。キューはこの端末の IndexedDB で動くので
+  // client_id 未設定でも積める（未設定の案内は送信キュー側が出す）— configured では
+  // ゲートしない。false のときだけ従来のローカル保存に落ちる（ユーザー決定:
+  // ローカル保存は「実験フラグ OFF」のみの退路。あとは enqueue 失敗 = IndexedDB
+  // 不可の非常口だけ。モバイル単独利用者はいない前提 — 設計 doc §13.9）。
+  const pushRouteAvailable = mobileInboxEnabled && push.ready;
+
   const PULL_THRESHOLD = 60;
 
   // Pull-to-Refresh ハンドラ
@@ -394,13 +439,51 @@ export function MobileCaptureView({
     });
   }, [timeline, searchQuery]);
 
-  // テキストメモ送信
+  // テキストメモ送信。
+  // キュー前提ホーム（フラグ ON）ではメモも捕獲物 — ローカルの capture-store でなく
+  // ネイティブ JSON（capture-file.ts）で送信キューへ積む。デスクトップの取り込みで
+  // 本物のメモとして着地する。client_id 未設定でも積む（案内は送信キュー側）。
+  // キュー自体が使えない環境（IndexedDB 不可）だけ従来のローカル保存に退避する
+  //（データを落とさない）。フラグ OFF は従来どおり。
+  const enqueueForSend = push.enqueueForSend;
   const handleSubmit = useCallback(
     async (text: string) => {
+      if (mobileInboxEnabled) {
+        const queued = await enqueueForSend([buildMemoCaptureFile(text)]);
+        if (queued) {
+          setShowCaptureDialog(false);
+          return;
+        }
+      }
       await onCreateCapture(text);
       setShowCaptureDialog(false);
     },
-    [onCreateCapture]
+    [mobileInboxEnabled, enqueueForSend, onCreateCapture]
+  );
+
+  // URL ブックマーク登録。フラグ ON では UrlBookmarkModal の入力（タイトル・説明・
+  // OGP はモバイル側で取得済み）をネイティブ JSON に写してキューへ。デスクトップは
+  // 再取得せず、このメタのまま URL 素材を作る。キュー不可時は従来のローカル登録へ退避。
+  const handleRegisterBookmark = useCallback(
+    (entry: MediaIndexEntry) => {
+      if (mobileInboxEnabled) {
+        void enqueueForSend([
+          buildUrlCaptureFile({
+            url: entry.url,
+            title: entry.name,
+            description: entry.urlMeta?.description,
+            ogImage: entry.urlMeta?.ogImage,
+          }),
+        ]).then((queued) => {
+          if (!queued) onAddUrlBookmark?.(entry);
+        });
+        setShowBookmarkModal(false);
+        return;
+      }
+      onAddUrlBookmark?.(entry);
+      setShowBookmarkModal(false);
+    },
+    [mobileInboxEnabled, enqueueForSend, onAddUrlBookmark]
   );
 
   // 削除
@@ -412,25 +495,145 @@ export function MobileCaptureView({
     [onDeleteCapture]
   );
 
-  // メディアアップロード共通
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !onUploadMedia) return;
+  // メディアキャプチャ共通。
+  // モバイル連携 ON では、撮ったものはこの端末に保存せず**送信キュー**へ直行させる
+  //（完全置き換え。この端末のライブラリに貯めてもデスクトップへ渡る橋がなく袋小路のため）。
+  // キューはホームに常時見えているので、enqueue 後に開くものは何もない —
+  // アイテムがその場でキュー一覧に出現する。enqueue はジェスチャ非依存なので await
+  // してよい。client_id 未設定でもキューに積まれる（未設定の案内は送信キュー側）。
+  // 従来のローカル保存に落ちるのは実験フラグ OFF と、キュー自体が使えない環境
+  //（IndexedDB 不可）だけ。
+  const handleCapturedFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      // フラグ OFF はキューに触れず即ローカル保存（hook 側の enabled ガードと二重の防波堤）
+      const queued = mobileInboxEnabled ? await enqueueForSend(files) : false;
+      if (queued) return;
+      if (!onUploadMedia) return;
       setUploading(true);
       try {
-        await onUploadMedia(file);
+        await onUploadMedia(files[0]);
       } catch (err) {
         console.error("メディアアップロードに失敗:", err);
       } finally {
         setUploading(false);
-        e.target.value = "";
       }
     },
-    [onUploadMedia]
+    [mobileInboxEnabled, enqueueForSend, onUploadMedia]
   );
 
-  const mediaDisabled = !onUploadMedia || uploading;
+  // 従来ホーム（フラグ OFF）の下バー入力用。ON ではセクション側の入力が
+  // handleCapturedFiles を直接受ける。
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      // 同じものをもう一度撮り直し / 選び直しできるように毎回リセットする
+      e.target.value = "";
+      void handleCapturedFiles(files);
+    },
+    [handleCapturedFiles]
+  );
+
+  // ── ストレージ選択（StoragePickerSheet）と最小設定シート（MobileSettingsSheet） ──
+  // フル設定モーダル（graphium-open-settings）はスマホホームからはもう開かない。
+  const [showStoragePicker, setShowStoragePicker] = useState(false);
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  // キュー前提ホーム側の接続（push.connectAndDrain）をピッカーから要求した印。
+  // 成功（connected への遷移）でピッカーを閉じるための状態 — 「開いた時点で既に
+  // 接続済み」（設定シートの [変更] 経由）と区別するため、要求の有無で追う。
+  const [pickerConnectRequested, setPickerConnectRequested] = useState(false);
+
+  // オプトインフロー（フラグ OFF）の接続と、最小設定シートのストレージ操作の実体。
+  // ピッカー/シートが開いている間だけ push モジュールを引く。
+  const pushSettings = usePushSettings(showStoragePicker || showSettingsSheet, {
+    // オプトインの接続成功 = 実験入り。フラグが立つと useMobileInboxFlag 経由で
+    // ホームがその場でキュー前提に切り替わる（リロード不要）
+    onConnected: useCallback(() => {
+      setMobileInboxEnabled(true);
+      setShowStoragePicker(false);
+    }, []),
+  });
+
+  // ピッカーの Google 選択。**click から同期的に connect へ到達させる**（GIS 契約）。
+  // フラグ ON はキュー配線（connectAndDrain: 接続成功 → 残キューを即送信）、
+  // OFF はスタンドアロン接続（成功 → フラグを立ててホームをキュー化）。
+  const handlePickGoogle = useCallback(() => {
+    if (mobileInboxEnabled) {
+      setPickerConnectRequested(true);
+      push.connectAndDrain();
+    } else {
+      pushSettings.connectGoogle();
+    }
+  }, [mobileInboxEnabled, push.connectAndDrain, pushSettings.connectGoogle]);
+
+  // フラグ ON 側の接続成功でピッカーを閉じる（+ 実際に使えた経路を記録）。
+  // OFF 側は onConnected コールバックが同じ役目を担う。
+  useEffect(() => {
+    if (!showStoragePicker || !pickerConnectRequested) return;
+    if (push.connected && !push.connecting) {
+      setShowStoragePicker(false);
+      setPickerConnectRequested(false);
+      // プロバイダ永続はジェスチャ外なので動的 import でよい（起動時バンドル境界の維持）
+      void import("./inbox/push")
+        .then((mod) => mod.setPushProvider("google-drive"))
+        .catch(() => {});
+    }
+  }, [showStoragePicker, pickerConnectRequested, push.connected, push.connecting]);
+
+  const closeStoragePicker = useCallback(() => {
+    setShowStoragePicker(false);
+    setPickerConnectRequested(false);
+  }, []);
+
+  // キュー経路が使える環境では、ローカル保存ハンドラが無くても撮れる
+  const showMediaButtons = pushRouteAvailable || !!onUploadMedia;
+  const mediaDisabled = !pushRouteAvailable && (!onUploadMedia || uploading);
+
+  // 検索入力（従来ホームでは固定バー、キュー前提ホームではスクロール内に置く）
+  const searchInput = (
+    <div className="relative">
+      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder={t("memo.searchPlaceholder")}
+        className="w-full text-xs pl-8 pr-8 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+      />
+      {searchQuery && (
+        <button
+          onClick={() => setSearchQuery("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+
+  // 接続状態チップ（キュー前提ホームのヘッダー）。表示だけ — 接続操作はストレージ
+  // 選択ピッカー（キューの未接続時主ボタン / 最小設定シートの [接続/変更] から開く）
+  // が担う（connect はジェスチャ内同期呼び出しの契約があるため導線を一本化）。
+  // push モジュールのロード前は暫定値しか無いので出さない（誤表示より一瞬の不在）。
+  const pushConnected = push.configured && push.connected;
+  const connectionChip = mobileInboxEnabled && push.ready && (
+    <span
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] whitespace-nowrap ${
+        pushConnected
+          ? "border-green-600/30 bg-green-500/10 text-green-700 dark:text-green-400"
+          : "border-border bg-muted/50 text-muted-foreground"
+      }`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${pushConnected ? "bg-green-500" : "bg-muted-foreground/50"}`}
+      />
+      {!push.configured
+        ? t("mobile.send.chipNotConfigured")
+        : push.connected
+          ? t("settings.mobilePush.statusConnected")
+          : t("settings.mobilePush.statusDisconnected")}
+    </span>
+  );
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
@@ -442,34 +645,33 @@ export function MobileCaptureView({
             Graphium
           </h1>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {loading
-            ? t("common.loading")
-            : t("memo.count", { count: String(filtered.length) })}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {loading
+              ? t("common.loading")
+              : t("memo.count", { count: String(filtered.length) })}
+          </span>
+          {connectionChip}
+          {/* 設定入口はキュー前提ホーム（フラグ ON）のみ。開き先はスマホ専用の
+              最小設定シート（ストレージ・言語・アプリ情報・実験離脱）— フル設定
+              モーダルはスマホホームからは開かない。フラグ OFF の従来ホームに ⚙ は
+              無い（実験に入る入口はタイムライン上部のオプトインカード）。 */}
+          {mobileInboxEnabled && (
+            <button
+              onClick={() => setShowSettingsSheet(true)}
+              aria-label={t("settings.title")}
+              className="p-1.5 -mr-1.5 rounded-md text-muted-foreground active:bg-muted transition-colors"
+            >
+              <SettingsIcon size={17} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* 検索バー */}
-      {timeline.length > 0 && (
+      {/* 検索バー（従来ホームのみ固定位置。キュー前提ホームではスクロール内に出す） */}
+      {!mobileInboxEnabled && timeline.length > 0 && (
         <div className="px-3 py-2 border-b border-border">
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("memo.searchPlaceholder")}
-              className="w-full text-xs pl-8 pr-8 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
+          {searchInput}
         </div>
       )}
 
@@ -494,6 +696,51 @@ export function MobileCaptureView({
             />
           </div>
         )}
+
+        {/* 従来ホーム（フラグ OFF）: タイムライン上部に実験オプトインカード。
+            [試す] → ストレージ選択 → 接続成功でホームがキュー前提に切り替わる。
+            × は付けない（OFF 中は最小設定シートも無く、消すと再表示の入口が
+            無くなる — カード側コメント参照） */}
+        {!mobileInboxEnabled && (
+          <div className="mb-3">
+            <MobileOptInCard onTry={() => setShowStoragePicker(true)} />
+          </div>
+        )}
+
+        {/* キュー前提ホーム: 未送信キューはコンテンツ最上部（ヘッダー直下）。
+            [送信 (n)] は見出し行右端の定位置、未接続時はセクション内の接続ボタンが
+            主アクション。捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar）。
+            キューは IndexedDB 永続なので画面を離れても消えない。空のときはセクション
+            ごと畳まれ、送信済みは自然に消える。その下に従来のメモ検索・タイムラインが
+            1 スクロールで続く */}
+        {mobileInboxEnabled && push.items.length > 0 && (
+          <div className="mb-3">
+            <SendQueueSection
+              items={push.items}
+              draining={push.draining}
+              activeId={push.activeId}
+              progress={push.progress}
+              configured={push.configured}
+              connected={push.connected}
+              connecting={push.connecting}
+              connectError={push.connectError}
+              onSend={push.drainNow}
+              onOpenStoragePicker={() => setShowStoragePicker(true)}
+              onRemoveItem={push.removeItem}
+              onRetryFailed={push.retryFailed}
+              onOpenSettings={() => setShowSettingsSheet(true)}
+              loadItemBlob={push.getItemFile}
+            />
+          </div>
+        )}
+
+        {/* 検索（キュー前提ホームではキューの下・タイムラインの上） */}
+        {mobileInboxEnabled && timeline.length > 0 && (
+          <div className="mb-3">
+            {searchInput}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">
@@ -504,7 +751,11 @@ export function MobileCaptureView({
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {searchQuery.trim() ? t("nav.noMatchingNotes") : t("memo.empty")}
+              {/* どちらも下バーを指すが、キュー前提ホームは捕獲バー（行き先は
+                  送信キュー）なので文言を分ける */}
+              {searchQuery.trim()
+                ? t("nav.noMatchingNotes")
+                : t(mobileInboxEnabled ? "memo.emptyQueueHome" : "memo.empty")}
             </p>
           </div>
         ) : (
@@ -533,7 +784,22 @@ export function MobileCaptureView({
         )}
       </div>
 
-      {/* クイックキャプチャバー */}
+      {/* 画面下固定バー。キュー前提ホーム（フラグ ON）は捕獲バー
+          （[書く][URL][写真][動画][音声][ライブラリ] → 出力先は送信キュー）、
+          従来ホーム（フラグ OFF）はメモ作成 + 🔗 + 📷🎥🎙 のまま（既存ユーザーは無変化） */}
+      {mobileInboxEnabled ? (
+        <MobileCaptureBar
+          onComposeMemo={() => setShowCaptureDialog(true)}
+          onAddUrl={
+            pushRouteAvailable || onAddUrlBookmark
+              ? () => setShowBookmarkModal(true)
+              : undefined
+          }
+          showMediaButtons={showMediaButtons}
+          mediaDisabled={mediaDisabled}
+          onAddFiles={(files) => { void handleCapturedFiles(files); }}
+        />
+      ) : (
       <div className="border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {uploading && (
           <p className="text-xs text-muted-foreground text-center mb-2">
@@ -562,8 +828,8 @@ export function MobileCaptureView({
             </button>
           )}
 
-          {/* メディアキャプチャボタン */}
-          {onUploadMedia && (
+          {/* メディアキャプチャボタン（保存経路があるときだけ） */}
+          {showMediaButtons && (
             <>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -618,6 +884,7 @@ export function MobileCaptureView({
           )}
         </div>
       </div>
+      )}
 
       {/* 付箋入力ダイアログ */}
       {showCaptureDialog && (
@@ -644,13 +911,11 @@ export function MobileCaptureView({
         />
       )}
 
-      {/* URL ブックマーク登録モーダル */}
-      {showBookmarkModal && onAddUrlBookmark && (
+      {/* URL ブックマーク登録モーダル。入力・メタ取得 UI は従来のまま流用し、
+          フラグ ON のときだけ登録先が送信キュー（ネイティブ JSON）に切り替わる */}
+      {showBookmarkModal && (mobileInboxEnabled || onAddUrlBookmark) && (
         <UrlBookmarkModal
-          onRegister={(entry) => {
-            onAddUrlBookmark(entry);
-            setShowBookmarkModal(false);
-          }}
+          onRegister={handleRegisterBookmark}
           onClose={() => setShowBookmarkModal(false)}
         />
       )}
@@ -660,6 +925,45 @@ export function MobileCaptureView({
         <MobileMediaPreviewModal
           entry={mediaPreviewEntry}
           onClose={() => setMediaPreviewEntry(null)}
+        />
+      )}
+
+      {/* スマホ専用の最小設定シート（⚙ の行き先。フラグ ON のときだけ存在する）。
+          ストレージの実体（状態・切断・client_id）は usePushSettings が担う */}
+      {showSettingsSheet && mobileInboxEnabled && (
+        <MobileSettingsSheet
+          ready={pushSettings.ready}
+          configured={pushSettings.configured}
+          connected={pushSettings.connected}
+          hasBundledId={pushSettings.hasBundledId}
+          clientIdOverride={pushSettings.clientIdOverride}
+          onSaveClientId={pushSettings.saveClientId}
+          onClearClientId={pushSettings.clearClientId}
+          onDisconnect={pushSettings.disconnect}
+          onOpenStoragePicker={() => setShowStoragePicker(true)}
+          onLeaveExperiment={() => {
+            // フラグを下ろすだけ（キュー・接続・client_id はこの端末に残る）。
+            // 従来ホームに戻り、再入口はオプトインカードが担う
+            setMobileInboxEnabled(false);
+            setShowSettingsSheet(false);
+          }}
+          onClose={() => setShowSettingsSheet(false)}
+        />
+      )}
+
+      {/* ストレージ選択（最小設定シートの上にも重なる z-[60]）。
+          Google の接続はフラグ状態で配線が変わる（handlePickGoogle 参照） */}
+      {showStoragePicker && (
+        <StoragePickerSheet
+          googleReady={
+            mobileInboxEnabled
+              ? push.ready && push.configured
+              : pushSettings.ready && pushSettings.configured
+          }
+          connecting={mobileInboxEnabled ? push.connecting : pushSettings.connecting}
+          connectError={mobileInboxEnabled ? push.connectError : pushSettings.connectError}
+          onSelectGoogle={handlePickGoogle}
+          onClose={closeStoragePicker}
         />
       )}
     </div>

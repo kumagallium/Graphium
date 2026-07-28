@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -18,6 +19,7 @@ import {
   FolderOpen,
   Info,
   Download,
+  Smartphone,
 } from "lucide-react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "@ui/modal";
 import { Button } from "@ui/button";
@@ -75,6 +77,14 @@ import {
   testBlobConnection,
   type ConnectionTestResult,
 } from "../../lib/storage/shared";
+// モバイル送信（Google Drive push）は動的 import で引く（gsi を起動時バンドルに
+// 入れない — push/index.ts の注記どおり）。ここは type import のみ。
+import type { InboxPusher } from "../mobile-capture/inbox/push";
+// モバイル連携の実験フラグ（既定 OFF）。トグル自体は常時表示し、ON のときだけ
+// モバイル送信セクションを見せる。切替はイベント経由でリロード無しに全入口へ届く。
+import { setMobileInboxEnabled, useMobileInboxFlag } from "../mobile-capture/inbox/experimental";
+
+type MobilePushModule = typeof import("../mobile-capture/inbox/push");
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -286,6 +296,20 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [blobTestResult, setBlobTestResult] = useState<ConnectionTestResult | null>(null);
   const [sharedTestRunning, setSharedTestRunning] = useState(false);
   const [blobTestRunning, setBlobTestRunning] = useState(false);
+
+  // モバイル連携の実験フラグ（既定 OFF）。ON のときだけ下のモバイル送信セクションを出す。
+  const mobileInboxFlagOn = useMobileInboxFlag();
+  // モバイル送信（Google Drive push）— ストレージタブ。
+  // 設定は localStorage（端末ごと）なので、スマホ側でも同じ client ID を入れる必要がある。
+  const [pushMod, setPushMod] = useState<MobilePushModule | null>(null);
+  const pushPusherRef = useRef<InboxPusher | null>(null);
+  const [pushConfigured, setPushConfigured] = useState(false);
+  const [pushConnected, setPushConnected] = useState(false);
+  const [pushConnecting, setPushConnecting] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushClientIdInput, setPushClientIdInput] = useState("");
+  const [pushClientIdSaved, setPushClientIdSaved] = useState(false);
+  const [pushHasBundledId, setPushHasBundledId] = useState(false);
 
   // エクスポート / バックアップ（ストレージタブ）
   const [exportBusy, setExportBusy] = useState<"markdown" | "backup" | null>(null);
@@ -636,6 +660,83 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       window.location.reload();
     }, 600);
   }, [serverToken]);
+
+  // ── モバイル送信（Google Drive push）── 実験フラグ ON でストレージタブを開いた時に
+  // 動的ロード（フラグ OFF ではセクションごと出さないのでロードもしない）。
+  // prepare をここで済ませておくと、接続ボタンの click から同期的に connect() を
+  // 呼べる（InboxPusher の契約 — ジェスチャ内で await を挟むと iOS がブロックする）。
+  useEffect(() => {
+    if (!isOpen || tab !== "storage" || !mobileInboxFlagOn || pushMod) return;
+    let cancelled = false;
+    void import("../mobile-capture/inbox/push")
+      .then((mod) => {
+        if (cancelled) return;
+        if (!pushPusherRef.current) pushPusherRef.current = new mod.GoogleDrivePusher();
+        const pusher = pushPusherRef.current;
+        setPushMod(mod);
+        setPushConfigured(pusher.isConfigured());
+        setPushConnected(pusher.isConnected());
+        setPushHasBundledId(mod.DEFAULT_GOOGLE_PUSH_CLIENT_ID !== "");
+        setPushClientIdInput(mod.getGoogleClientIdOverride() ?? "");
+        if (pusher.isConfigured()) {
+          void pusher.prepare().catch(() => {}); // 未設定・オフライン等は接続時に再表面化する
+        }
+      })
+      .catch((err) => {
+        setPushError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tab, mobileInboxFlagOn, pushMod]);
+
+  const handleSavePushClientId = useCallback(() => {
+    if (!pushMod) return;
+    pushMod.setGoogleClientIdOverride(pushClientIdInput);
+    setPushClientIdSaved(true);
+    setPushError(null);
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    setPushConfigured(pusher.isConfigured());
+    // client_id が変わったら token client を作り直す（prepare は client_id 差し替えに追従する）
+    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
+  }, [pushMod, pushClientIdInput]);
+
+  const handleClearPushClientId = useCallback(() => {
+    if (!pushMod) return;
+    pushMod.setGoogleClientIdOverride(null);
+    setPushClientIdInput("");
+    setPushClientIdSaved(false);
+    setPushError(null);
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    setPushConfigured(pusher.isConfigured());
+    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
+  }, [pushMod]);
+
+  const handlePushConnect = useCallback(() => {
+    const pusher = pushPusherRef.current;
+    if (!pusher || pushConnecting) return;
+    setPushConnecting(true);
+    setPushError(null);
+    // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
+    // ここより前に await を置かないこと（ポップアップがブロックされる）。
+    pusher
+      .connect()
+      .then(() => setPushConnected(true))
+      .catch((err) => {
+        setPushConnected(pusher.isConnected());
+        setPushError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPushConnecting(false));
+  }, [pushConnecting]);
+
+  const handlePushDisconnect = useCallback(() => {
+    const pusher = pushPusherRef.current;
+    if (!pusher) return;
+    pusher.disconnect();
+    setPushConnected(false);
+  }, []);
 
   // ── エクスポート / バックアップ（ストレージタブ） ──
   // アクティブな StorageProvider から全ノートを読み出して zip を組み立てる。
@@ -1290,9 +1391,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
         })}
       </div>
 
-      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。 */}
+      {/* 全タブで max-w-3xl 統一。タブ列・本文・フッターの右端を揃えるため。
+          min-w はスマホ幅（<640px）では外す — 460px 固定だと 390px 端末で横に
+          はみ出し、ストレージタブのモバイル連携トグルなどが操作できなくなる。
+          本文は全タブとも流体レイアウトなので、min-w が無くても崩れない。 */}
       <ModalBody
-        className="w-full min-w-[460px] max-w-3xl"
+        className="w-full sm:min-w-[460px] max-w-3xl"
         onKeyDown={handleKeyDown}
       >
         {/* ── Display タブ ── */}
@@ -1818,6 +1922,175 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                   {t("settings.shared.desktopOnly")}
                 </p>
               </div>
+            )}
+
+            {/* モバイル連携（実験的機能）トグル — 常時表示。
+                スマホで撮ってデスクトップの受信箱に送る機能一式（送信キュー・受信箱・
+                サイドバー「モバイル」・下のモバイル送信セクション）をまとめて ON/OFF する。
+                既定 OFF。切替は localStorage 直書き + CustomEvent なので、保存ボタンや
+                リロードを待たずその場で全入口に反映される。 */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Smartphone size={14} className="text-muted-foreground shrink-0" />
+                  <h3 className="text-xs font-semibold text-foreground">
+                    {t("settings.mobileInboxFlag.title")}
+                  </h3>
+                  <span className="shrink-0 text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                    {t("settings.mobileInboxFlag.badge")}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileInboxEnabled(!mobileInboxFlagOn)}
+                  role="switch"
+                  aria-checked={mobileInboxFlagOn}
+                  aria-label={t("settings.mobileInboxFlag.title")}
+                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${mobileInboxFlagOn ? "bg-primary" : "bg-input"}`}
+                >
+                  <span
+                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{ transform: mobileInboxFlagOn ? "translateX(15px)" : "translateX(1px)" }}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.mobileInboxFlag.help")}
+              </p>
+            </div>
+
+            {/* モバイル送信（Google Drive push）— 実験フラグ ON のときだけ表示。
+                デスクトップにも出す — 機能を知る場所はデスクトップ、実際に接続するのは
+                撮影する端末。設定は端末ごと（localStorage）なので help でその旨を明示する */}
+            {mobileInboxFlagOn && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Smartphone size={14} className="text-muted-foreground" />
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("settings.mobilePush.title")}
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                {t("settings.mobilePush.help")}
+              </p>
+              <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
+                {/* 接続状態 */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    {!pushConfigured ? (
+                      <>
+                        <AlertCircle size={12} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {t("settings.mobilePush.statusNotConfigured")}
+                        </span>
+                      </>
+                    ) : pushConnected ? (
+                      <>
+                        <CheckCircle size={12} className="text-green-600" />
+                        <span className="text-foreground">
+                          {t("settings.mobilePush.statusConnected")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle size={12} className="text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {t("settings.mobilePush.statusDisconnected")}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {pushConfigured && (
+                    pushConnected ? (
+                      <Button size="sm" variant="ghost" onClick={handlePushDisconnect}>
+                        {t("settings.mobilePush.disconnect")}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={handlePushConnect} disabled={pushConnecting || !pushMod}>
+                        {pushConnecting ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          t("settings.mobilePush.connect")
+                        )}
+                      </Button>
+                    )
+                  )}
+                </div>
+                {pushError && (
+                  <p className="text-xs text-red-500 flex items-start gap-1">
+                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                    <span className="break-all">
+                      {t("settings.mobilePush.connectFailed", { error: pushError })}
+                    </span>
+                  </p>
+                )}
+
+                {/* 同梱 ID の無いビルドでは自前 client ID が必須なので、注記は
+                    折りたたみの外（常時見える位置）に出す */}
+                {!pushHasBundledId && (
+                  <p className="pt-1 border-t border-border text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                    <Info size={12} className="mt-0.5 shrink-0" />
+                    <span>{t("settings.mobilePush.noDefaultNote")}</span>
+                  </p>
+                )}
+
+                {/* 自前 client ID の上書きは「詳細設定」に畳む（既定は閉じる）。
+                    既定の体験は同梱 ID で「接続」するだけ — 上書きはセルフホストや
+                    同梱 ID 枯渇時の保険で、一般ユーザーには見せない */}
+                <details className={`group ${pushHasBundledId ? "pt-1 border-t border-border" : ""}`}>
+                  <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
+                    {t("settings.mobilePush.advanced")}
+                  </summary>
+                  <div className="mt-1.5 space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.advancedHelp")}
+                    </p>
+                    <div className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.clientIdLabel")}
+                    </div>
+                    <Input
+                      type="text"
+                      value={pushClientIdInput}
+                      onChange={(e) => {
+                        setPushClientIdInput(e.target.value);
+                        setPushClientIdSaved(false);
+                      }}
+                      placeholder={t("settings.mobilePush.clientIdPlaceholder")}
+                      autoComplete="off"
+                      disabled={!pushMod}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleSavePushClientId}
+                        disabled={!pushMod || pushClientIdInput.trim() === ""}
+                      >
+                        {t("settings.mobilePush.save")}
+                      </Button>
+                      {pushClientIdInput.trim() !== "" && (
+                        <button
+                          onClick={handleClearPushClientId}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                        >
+                          <RotateCcw size={12} />
+                          {t("settings.mobilePush.clear")}
+                        </button>
+                      )}
+                      {pushClientIdSaved && (
+                        <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                          <CheckCircle size={12} className="text-green-600" />
+                          {t("settings.mobilePush.saved")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.mobilePush.clientIdHelp")}
+                    </p>
+                  </div>
+                </details>
+              </div>
+            </div>
             )}
 
             {/* エクスポート / バックアップ */}

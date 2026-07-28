@@ -130,6 +130,11 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
           {
+            // モバイル送信の切断（トークン revoke）。認可系は絶対にキャッシュしない
+            urlPattern: /^https:\/\/oauth2\.googleapis\.com\//,
+            handler: "NetworkOnly",
+          },
+          {
             urlPattern: /^https:\/\/lh3\.googleusercontent\.com\//,
             handler: "CacheFirst",
             options: {

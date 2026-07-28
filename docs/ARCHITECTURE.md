@@ -727,20 +727,93 @@ The same `src/` tree is built three different ways.
   container the exposure boundary is the container port mapping.
 - **Mobile capture inbox.** Media shot on a phone reaches the desktop
   through a folder the user already syncs (iCloud Drive, Dropbox,
-  Syncthing — Graphium itself never talks to those services, which is what
-  keeps the path OAuth-free). The phone drops raw files into
-  `<inbox-root>/Inbox/`; three Tauri commands enumerate that directory
-  (`inbox_list`, returning name/size/mtime), read one file as base64
-  (`inbox_read`), and move an imported file aside into
-  `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`). All three
-  reject an empty root and any name containing a path separator or `..`,
-  so the reachable surface is exactly one flat directory. The inbox is a
-  staging area rather than a category: importing hands the bytes to the
-  active storage provider, so the file becomes an ordinary asset in the
-  media library and leaves the inbox. Imports are idempotent — the content
-  SHA-256 is matched against captures already in the media index — and the
-  origin survives as an optional `capture` record on the media entry. The
-  web build has no filesystem to enumerate, so the inbox is desktop-only.
+  Syncthing — the desktop side of Graphium never talks to those services).
+  Files land in `<inbox-root>/Inbox/`; four Tauri commands enumerate that
+  directory (`inbox_list`, returning name/size/mtime), read one file as
+  base64 (`inbox_read`), delete an imported file (`inbox_discard`) or move
+  it aside into `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`).
+  All four reject an empty root and any name containing a path separator
+  or `..`, so the reachable surface is exactly one flat directory. The
+  inbox is a staging area rather than a category: importing hands the
+  bytes to the active storage provider, so the file becomes an ordinary
+  asset in the media library and leaves the inbox. After a successful
+  import the inbox-side file is **deleted by default** — the content
+  already landed in the vault, so only a redundant copy is removed and no
+  processed files pile up in the synced cloud folder; a toggle in the
+  inbox's folder settings keeps processed files in `_imported/` instead.
+  Failed items are always left in the inbox for retry. Imports are
+  idempotent — the content SHA-256 is matched against captures already in
+  the media index — and the origin survives as an optional `capture`
+  record on the media entry. The web build has no filesystem to
+  enumerate, so the inbox is desktop-only.
+  Besides media, the inbox understands Graphium's own capture files:
+  versioned JSON documents with the dedicated `.graphium.json` extension
+  (`{"graphium": 1, "kind": "memo" | "url", ...}`) that the phone writes
+  for memos and URL bookmarks. The importer recognizes them by extension
+  *and* payload shape — never by extension alone, so a user-placed plain
+  `.json` is not hijacked — and lands them as real entities through
+  injected handlers: a memo becomes an entry in the capture store (its
+  phone-side `createdAt` preserved), a URL becomes a URL-bookmark entry in
+  the media index carrying the metadata the phone already fetched. A
+  malformed or newer-versioned capture file falls through to the ordinary
+  asset import, so no data is ever dropped.
+- **Phone side: send queue.** The phone cannot write into the synced
+  folder itself (iOS has no File System Access API), so captures taken in
+  the mobile view enter a store-and-forward queue first
+  (`src/features/mobile-capture/inbox/push/`): each file is persisted
+  blob-and-all into IndexedDB the moment it is shot, renamed to
+  `graphium-<YYYYMMDD-HHmmss>-<seq>.<ext>` (MIME-first extension), and
+  survives auth expiry, upload failures and the PWA being killed. The
+  mobile home is built around this queue: a fixed bottom capture bar
+  (Write / URL / Photo / Video / Voice / Library) enqueues straight into
+  it and the pending list stays pinned to the top of the content — the
+  Send action sits at the right edge of the queue's heading row, and the
+  header carries a connection chip — until it drains; there is no
+  separate send sheet. Written captures ride the same rail: the bar's
+  Write (memo) and URL buttons reuse the existing input dialogs but
+  serialize the result into a `.graphium.json` capture file (named
+  `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue it next to
+  the photos, instead of saving into this device's own stores —
+  everything captured goes to the inbox. Queue rows show memo captures as
+  a note icon with the first line of text and URL captures as a link icon
+  with title and domain. The primary transport drains the queue serially to the
+  user's own Google Drive `Graphium/Inbox/` via OAuth (GIS token model,
+  `drive.file` scope only, no secret; ≤5 MB multipart, larger files
+  resumable), from where Google Drive for desktop syncs it into the
+  folder inbox above. Everything sent this way — media, memos, URL
+  captures — is stored as ordinary files in the user's own cloud storage;
+  transfers use TLS, but there is no end-to-end encryption. Because SPA
+  tokens expire after about an hour, a token failure aborts the drain and
+  leaves the remaining items queued for the next connect. Captures
+  enqueue regardless of OAuth setup — the queue itself lives in this
+  device's IndexedDB — and when no client ID resolves the queue shows
+  setup guidance at send time; only when IndexedDB itself is unavailable
+  does a capture drop back to this device's own media library. Avoiding
+  OAuth altogether needs no Graphium code: the OS
+  share sheet can save a capture into the synced `Graphium/Inbox`
+  folder by hand (Photos → share → the Files/Drive app → the synced
+  folder, the same on iOS and Android), and the desktop inbox imports
+  those files exactly the same way.
+- **Phone side: opt-in and settings.** The phone never opens the full
+  settings modal and never sees the desktop-worded mobile-link toggle
+  (the experiment flag is per-device localStorage, so the desktop
+  toggle and the phone entry points stay independent). While the flag
+  is off, the classic home shows a small opt-in card on top of the
+  timeline; trying it opens a storage picker (Google Drive selectable,
+  OneDrive as a disabled coming-soon slot for P1.5) and a successful
+  connect raises the flag, turning the home
+  queue-first in place. The same picker backs the queue's Connect
+  storage button, and the provider that actually connected is
+  remembered (`graphium-push-provider`) as the future branching point.
+  While the flag is on, a header gear opens a phone-only minimal
+  settings sheet: storage (status, connect/change, disconnect, and the
+  folded client-ID override), language, app version, and a small
+  leave-experiment action that only lowers the flag — queue, tokens
+  and overrides stay on the device. The OAuth client ID resolves from
+  that per-device override (also editable under Advanced in the
+  desktop's Settings → Storage) first, then from the ID bundled with
+  the build, so pushing works out of the box; the override remains as
+  the escape hatch for self-hosting or a dead bundled ID.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 

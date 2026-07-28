@@ -1,6 +1,7 @@
 // FolderInbox — InboxTransport の唯一の実体（Phase 0）。
-// 同期フォルダ <root>/Inbox/ を Rust FS コマンド経由で列挙・読み込み・退避する。
-// 設計: docs/internal/mobile-capture-transport-design-2026-07.md §5
+// 同期フォルダ <root>/Inbox/ を Rust FS コマンド経由で列挙・読み込み・後処理
+// （削除 / _imported/ への退避）する。
+// 設計: docs/internal/mobile-capture-transport-design-2026-07.md §5 / §13.9
 
 import { invoke } from "@tauri-apps/api/core";
 import { computeBlobHash } from "../../../lib/storage/shared/hash";
@@ -19,7 +20,7 @@ function base64ToUint8(b64: string): Uint8Array {
 
 /**
  * 同期フォルダ(iCloud/Dropbox/Syncthing 等)の <root>/Inbox/ を配送面に借りる InboxTransport。
- * Tauri 環境専用（Rust の inbox_list / inbox_read / inbox_mark_imported を呼ぶ）。
+ * Tauri 環境専用（Rust の inbox_list / inbox_read / inbox_mark_imported / inbox_discard を呼ぶ）。
  */
 export class FolderInbox implements InboxTransport {
   constructor(private readonly root: string) {
@@ -72,6 +73,13 @@ export class FolderInbox implements InboxTransport {
 
   async markImported(ref: CaptureRef): Promise<void> {
     await invoke<void>("inbox_mark_imported", {
+      root: this.root,
+      name: ref.name,
+    });
+  }
+
+  async discard(ref: CaptureRef): Promise<void> {
+    await invoke<void>("inbox_discard", {
       root: this.root,
       name: ref.name,
     });

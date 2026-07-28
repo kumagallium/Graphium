@@ -117,6 +117,7 @@
     "concurrently": "^9.2.1",
     "dependency-cruiser": "^17.4.3",
     "esbuild": "^0.28.0",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "playwright": "^1.58.2",
     "storybook": "^10.3.1",

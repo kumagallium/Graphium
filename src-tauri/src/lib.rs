@@ -1283,7 +1283,8 @@ fn validate_id(id: &str) -> Result<(), String> {
 // ── Mobile capture inbox (受信箱) ─────────────────────────────────────
 // モバイルで撮影したメディアを同期フォルダ(iCloud/Dropbox/Syncthing 等)の
 // <inbox-root>/Inbox/ に置き、デスクトップが列挙 → 読み込み → 取り込み後に
-// <inbox-root>/Inbox/_imported/ へ退避する。認証・dedup・provenance はアプリ層
+// 既定で削除(inbox_discard)、keep-archive 設定時は <inbox-root>/Inbox/_imported/
+// へ退避(inbox_mark_imported)する。認証・dedup・provenance はアプリ層
 // (TS)に委ね、ここは素朴な FS 操作に徹する(shared_* と同じ方針)。
 
 const INBOX_SUBDIR: &str = "Inbox";
@@ -1368,6 +1369,7 @@ fn inbox_read(root: String, name: String) -> Result<String, String> {
 
 /// 取り込み済みファイルを <inbox-root>/Inbox/_imported/<name> へ退避する。
 /// 冪等な重複排除は TS 側の sourceHash(sha256)で担保するため、ここでは単純に move する。
+/// 「処理済みの控えを残す」設定のときだけ使う — 既定の後処理は inbox_discard(削除)。
 #[tauri::command]
 fn inbox_mark_imported(root: String, name: String) -> Result<(), String> {
     // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
@@ -1384,6 +1386,19 @@ fn inbox_mark_imported(root: String, name: String) -> Result<(), String> {
         fs::remove_file(&src).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// 取り込み済みファイルを <inbox-root>/Inbox/ から削除する（既定の後処理）。
+/// 取り込み成功時点で中身はデスクトップ vault に着地済みなので、消えるのは冗長コピー
+/// のみ（同期フォルダ = クラウドに撮影物の控えが溜まり続けない）。二重取込防止は
+/// TS 側の checksum dedup と「Inbox から消えること」自体が担う。
+#[tauri::command]
+fn inbox_discard(root: String, name: String) -> Result<(), String> {
+    // 多層防御: 空/空白の root を早期に弾く（shared_* と同じ非空ガード）。
+    validate_root(&root)?;
+    // inbox_file_path が区切り文字・親参照を拒否するので、消せるのは Inbox/ 直下のみ。
+    let path = inbox_file_path(&root, &name)?;
+    fs::remove_file(&path).map_err(|e| e.to_string())
 }
 
 /// "sha256:<64 hex>" のチェック。
@@ -1705,6 +1720,7 @@ pub fn run() {
             inbox_list,
             inbox_read,
             inbox_mark_imported,
+            inbox_discard,
             shutdown_ack,
             kill_pid,
             save_bytes_with_dialog,

@@ -75,13 +75,20 @@ function renderView(
   source: InboxSource | null,
   onImport: (refs?: CaptureRef[]) => Promise<void> = vi.fn(async (_refs?: CaptureRef[]) => {}),
   rootConfigured = true,
+  opts: {
+    keepArchive?: boolean;
+    onKeepArchiveChange?: (keep: boolean) => void;
+    onPickRoot?: () => void;
+  } = {},
 ) {
   render(
     <LocaleProvider>
       <InboxView
         rootConfigured={rootConfigured}
         source={source}
-        onPickRoot={vi.fn()}
+        onPickRoot={opts.onPickRoot ?? vi.fn()}
+        keepArchive={opts.keepArchive ?? false}
+        onKeepArchiveChange={opts.onKeepArchiveChange ?? vi.fn()}
         onImport={onImport}
         onBack={vi.fn()}
       />
@@ -135,6 +142,50 @@ describe("InboxView", () => {
   it("shows the connect CTA instead of a list when no folder is connected", () => {
     renderView(null, vi.fn(async (_refs?: CaptureRef[]) => {}), false);
     expect(screen.getAllByText("Connect sync folder").length).toBeGreaterThan(0);
+  });
+});
+
+// フォルダ設定メニュー（ヘッダーの FolderCog）: フォルダ変更 + 取り込み後の後処理トグル。
+describe("InboxView folder settings menu (post-import disposal)", () => {
+  it("toggles keep-archive from the folder settings menu (default off = delete)", async () => {
+    const { source } = makeSource([ITEMS]);
+    const onKeepArchiveChange = vi.fn();
+    renderView(source, undefined, true, { onKeepArchiveChange });
+    await waitFor(() => expect(screen.getByText("IMG_1.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync folder settings" }));
+    const toggle = screen.getByLabelText(/Keep processed files in _imported\//) as HTMLInputElement;
+    // 既定はオフ = 取り込み成功後に Inbox 側ファイルを削除
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+    expect(onKeepArchiveChange).toHaveBeenCalledWith(true);
+  });
+
+  it("shows the toggle as on when keepArchive is set, and reports turning it off", async () => {
+    const { source } = makeSource([ITEMS]);
+    const onKeepArchiveChange = vi.fn();
+    renderView(source, undefined, true, { keepArchive: true, onKeepArchiveChange });
+    await waitFor(() => expect(screen.getByText("IMG_1.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync folder settings" }));
+    const toggle = screen.getByLabelText(/Keep processed files in _imported\//) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    fireEvent.click(toggle);
+    expect(onKeepArchiveChange).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the change-folder action inside the menu", async () => {
+    const { source } = makeSource([ITEMS]);
+    const onPickRoot = vi.fn();
+    renderView(source, undefined, true, { onPickRoot });
+    await waitFor(() => expect(screen.getByText("IMG_1.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync folder settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change sync folder" }));
+
+    expect(onPickRoot).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -249,5 +300,84 @@ describe("InboxView preview side peek", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Import this file" })).toBeNull(),
     );
+  });
+});
+
+// メモ / URL のネイティブ捕獲ファイル（.graphium.json）の行表示とピーク。
+describe("InboxView graphium capture items (memo / url)", () => {
+  const MEMO_NAME = "graphium-20260727-153000-01-memo.graphium.json";
+  const URL_NAME = "graphium-20260727-153000-02-url.graphium.json";
+  const CAPTURE_ITEMS: CaptureRef[] = [
+    { name: MEMO_NAME, bytes: 120, modifiedAt: "2026-07-27T06:30:00Z" },
+    { name: URL_NAME, bytes: 180, modifiedAt: "2026-07-27T06:31:00Z" },
+    { name: "REC_1.mov", bytes: 4096, modifiedAt: "2026-07-27T06:32:00Z" },
+  ];
+  const JSON_BY_NAME: Record<string, unknown> = {
+    [MEMO_NAME]: {
+      graphium: 1,
+      kind: "memo",
+      createdAt: "2026-07-27T06:30:00.000Z",
+      text: "queued thought\nsecond line",
+    },
+    [URL_NAME]: {
+      graphium: 1,
+      kind: "url",
+      createdAt: "2026-07-27T06:31:00.000Z",
+      url: "https://example.com/read",
+      title: "Example Read",
+      description: "What it says",
+    },
+  };
+
+  function makeCaptureSource() {
+    const listPending = vi.fn(async () => CAPTURE_ITEMS);
+    const readBlob = vi.fn(async (ref: CaptureRef) => {
+      const json = JSON_BY_NAME[ref.name];
+      return json
+        ? new Blob([JSON.stringify(json)], { type: "application/vnd.graphium.capture+json" })
+        : new Blob([new Uint8Array([1]) as BlobPart], { type: "video/quicktime" });
+    });
+    return { source: { listPending, readBlob } satisfies InboxSource, readBlob };
+  }
+
+  it("lists capture files with a content preview while keeping the file name traceable", async () => {
+    const { source } = makeCaptureSource();
+    renderView(source);
+
+    // メモ = 本文先頭、URL = タイトル + ドメインがプレビューとして出る
+    await waitFor(() => expect(screen.getByText("queued thought")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Example Read")).toBeTruthy());
+    expect(screen.getByText(/example\.com ·/)).toBeTruthy();
+    // 正規化ファイル名も（小さく）残る — どのファイルかは追える
+    expect(screen.getByText(new RegExp(MEMO_NAME))).toBeTruthy();
+    // メディア行は従来どおり名前のみ
+    expect(screen.getByText("REC_1.mov")).toBeTruthy();
+  });
+
+  it("peeks a memo capture as plain text (minimal preview)", async () => {
+    const { source } = makeCaptureSource();
+    renderView(source);
+    await waitFor(() => expect(screen.getByText("queued thought")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("queued thought"));
+
+    // ピーク本体にメモ全文（改行込み）が出る
+    await waitFor(() =>
+      expect(screen.getByText(/queued thought\s+second line/)).toBeTruthy(),
+    );
+    expect(screen.getByRole("button", { name: "Import this file" })).toBeTruthy();
+  });
+
+  it("peeks a url capture as title + link + description", async () => {
+    const { source } = makeCaptureSource();
+    renderView(source);
+    await waitFor(() => expect(screen.getByText("Example Read")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Example Read"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /https:\/\/example\.com\/read/ })).toBeTruthy(),
+    );
+    expect(screen.getByText("What it says")).toBeTruthy();
   });
 });

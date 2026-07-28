@@ -558,6 +558,28 @@ export const ja: Record<string, string> = {
   "settings.shared.note": "設定はローカルに保存されます。削除すると _meta/ に tombstone が残ります。",
   "settings.shared.desktopOnly": "共有ストレージは現在デスクトップ版のみ対応です。ブラウザ版ではローカルフォルダの読み書きができません。",
   "settings.shared.identityRequired": "接続テストの前に、上の「あなたの identity」で名前とメールを登録してください。",
+  // ── モバイル連携（実験フラグ・既定 OFF） ──
+  "settings.mobileInboxFlag.title": "モバイル連携",
+  "settings.mobileInboxFlag.badge": "実験的機能",
+  "settings.mobileInboxFlag.help": "スマホで撮ったメモや写真をデスクトップの受信箱へ送る機能を試します。オンにすると、スマホの送信キューとデスクトップの「モバイル」受信箱・モバイル送信設定が表示されます（再読み込み不要）。",
+  // ── モバイル送信（Google Drive push） ──
+  "settings.mobilePush.title": "モバイル送信（Google Drive）",
+  "settings.mobilePush.help": "スマホで撮ったファイルを Google Drive の Graphium/Inbox に直接アップロードし、デスクトップは同期フォルダから取り込みます。この設定は端末ごとに保存されるため、撮影に使うスマホ側で接続してください。",
+  "settings.mobilePush.statusNotConfigured": "未設定（クライアント ID が必要です）",
+  "settings.mobilePush.statusDisconnected": "未接続",
+  "settings.mobilePush.statusConnected": "接続済み",
+  "settings.mobilePush.connect": "接続",
+  "settings.mobilePush.disconnect": "切断",
+  "settings.mobilePush.connectFailed": "接続できませんでした: {error}",
+  "settings.mobilePush.advanced": "詳細設定",
+  "settings.mobilePush.advancedHelp": "ふだんは自分の Google アカウントにログインするだけで使えます（設定は不要）。クライアント ID の上書きは、セルフホストや同梱 ID が使えなくなったときの保険です。",
+  "settings.mobilePush.clientIdLabel": "Google OAuth クライアント ID",
+  "settings.mobilePush.clientIdPlaceholder": "xxxxxxxx.apps.googleusercontent.com",
+  "settings.mobilePush.clientIdHelp": "Google Cloud Console で OAuth クライアント（ウェブ アプリケーション）を作成し、そのクライアント ID を貼り付けてください。secret は不要で、アクセスはこのアプリが作ったファイルに限られます（drive.file）。",
+  "settings.mobilePush.noDefaultNote": "このビルドには同梱のクライアント ID がないため、現在は自前のクライアント ID が必要です。",
+  "settings.mobilePush.save": "保存",
+  "settings.mobilePush.saved": "保存しました",
+  "settings.mobilePush.clear": "解除",
   // ── サーバーストレージ（Docker / セルフホスト Web） ──
   "settings.serverStorage.title": "サーバーストレージ",
   "settings.serverStorage.help": "ノートはこのサーバーのファイルシステムに保存され、同じ URL にアクセスする全てのブラウザで共有されます。",
@@ -1303,6 +1325,7 @@ export const ja: Record<string, string> = {
   "memo.title": "メモ",
   "memo.count": "{count} 件",
   "memo.empty": "まだメモがありません。下のボタンをタップして作成しましょう。",
+  "memo.emptyQueueHome": "過去の記録はまだありません。下の捕獲ボタンから始めましょう。",
   "memo.new": "メモを作成",
   "memo.creating": "作成中...",
   "memo.placeholder": "メモを入力...",
@@ -1356,10 +1379,15 @@ export const ja: Record<string, string> = {
   // ファイルの一覧。取り込むと素材（画像/動画/音声…）へ振り分けられ、ここからは消える。
   "mobile.title": "モバイル",
   "mobile.pendingCount": "未処理 {count} 件",
-  // フォルダ接続
+  // フォルダ接続・フォルダ設定メニュー
   "mobile.connectFolder": "同期フォルダを接続",
   "mobile.changeFolder": "同期フォルダを変更",
   "mobile.connectHint": "同期フォルダを接続すると、モバイルで撮影したメディアがここに届きます。",
+  "mobile.folderSettings": "同期フォルダの設定",
+  // 取り込み後の後処理: 既定は Inbox 側ファイルを削除（クラウドに控えを溜めない）。
+  // 残したい人だけ _imported/ へのアーカイブに切り替える。
+  "mobile.keepArchive": "処理済みファイルを _imported/ に残す",
+  "mobile.keepArchiveHint": "オフ（既定）では、取り込みに成功したファイルを受信箱から削除します。中身は素材として取り込み済みです。",
   // 取り込み
   "mobile.importSelected": "選択したものを取り込み ({count})",
   "mobile.importAll": "全部取り込み",
@@ -1383,6 +1411,50 @@ export const ja: Record<string, string> = {
   "mobile.emptyInbox": "新しいものはありません",
   "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
   "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
+
+  // ── モバイル送信キュー（スマホ → クラウド Inbox） ──
+  // 撮ったものはまずこの端末のキューに永続化され、Google Drive の Graphium/Inbox へ
+  // アップロードされる。デスクトップは同期フォルダからそれを取り込む。
+  // キューはモバイルホームにインライン常設（シートは無い）。ヘッダーに接続チップ、
+  // キューが空のときはブロックごと畳まれる。
+  "mobile.send.title": "送信キュー",
+  "mobile.send.chipNotConfigured": "未設定",
+  "mobile.send.notConfigured": "Google Drive が未設定です。設定を開き、詳細設定でクライアント ID を登録してください。",
+  "mobile.send.openSettings": "設定を開く",
+  "mobile.send.addMemo": "書く",
+  "mobile.send.addUrl": "URL",
+  "mobile.send.addPhoto": "写真",
+  "mobile.send.addVideo": "動画",
+  "mobile.send.addAudio": "音声",
+  "mobile.send.addLibrary": "ライブラリ",
+  "mobile.send.kindMemo": "メモ",
+  "mobile.send.statusWaiting": "待機中",
+  "mobile.send.statusSending": "送信中... {percent}%",
+  "mobile.send.statusFailed": "失敗",
+  "mobile.send.retryFailed": "失敗した {count} 件を再試行",
+  "mobile.send.remove": "キューから削除",
+  "mobile.send.action": "送信 ({count})",
+  "mobile.send.sending": "送信中...",
+  "mobile.send.connectStorage": "ストレージに接続",
+  "mobile.send.connecting": "接続中...",
+  "mobile.send.connectFailed": "接続できませんでした: {error}",
+
+  // ── 実験オプトインカード（従来ホーム） ──
+  "mobile.optIn.title": "撮ってデスクトップへ送る",
+  "mobile.optIn.body": "スマホで撮ったメモ・写真・URL を、デスクトップの Graphium 受信箱へ送れます。",
+  "mobile.optIn.try": "試す",
+
+  // ── ストレージ選択（StoragePickerSheet） ──
+  "mobile.storagePicker.title": "ストレージを選ぶ",
+  "mobile.storagePicker.help": "撮ったものは、ここで選んだストレージ経由でデスクトップに届きます。",
+  "mobile.storagePicker.googleHelp": "Google アカウントで接続します",
+  "mobile.storagePicker.comingSoon": "準備中",
+
+  // ── モバイル最小設定シート ──
+  "mobile.settings.storage": "ストレージ",
+  "mobile.settings.changeStorage": "変更",
+  "mobile.settings.leaveExperiment": "この実験をやめる",
+  "mobile.settings.leaveExperimentHint": "従来のホームに戻ります。送信キューと接続はこの端末に保持されます。",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",
