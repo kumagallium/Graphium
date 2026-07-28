@@ -728,18 +728,24 @@ The same `src/` tree is built three different ways.
 - **Mobile capture inbox.** Media shot on a phone reaches the desktop
   through a folder the user already syncs (iCloud Drive, Dropbox,
   Syncthing — the desktop side of Graphium never talks to those services).
-  Files land in `<inbox-root>/Inbox/`; three Tauri commands enumerate that
+  Files land in `<inbox-root>/Inbox/`; four Tauri commands enumerate that
   directory (`inbox_list`, returning name/size/mtime), read one file as
-  base64 (`inbox_read`), and move an imported file aside into
-  `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`). All three
-  reject an empty root and any name containing a path separator or `..`,
-  so the reachable surface is exactly one flat directory. The inbox is a
-  staging area rather than a category: importing hands the bytes to the
-  active storage provider, so the file becomes an ordinary asset in the
-  media library and leaves the inbox. Imports are idempotent — the content
-  SHA-256 is matched against captures already in the media index — and the
-  origin survives as an optional `capture` record on the media entry. The
-  web build has no filesystem to enumerate, so the inbox is desktop-only.
+  base64 (`inbox_read`), delete an imported file (`inbox_discard`) or move
+  it aside into `<inbox-root>/Inbox/_imported/` (`inbox_mark_imported`).
+  All four reject an empty root and any name containing a path separator
+  or `..`, so the reachable surface is exactly one flat directory. The
+  inbox is a staging area rather than a category: importing hands the
+  bytes to the active storage provider, so the file becomes an ordinary
+  asset in the media library and leaves the inbox. After a successful
+  import the inbox-side file is **deleted by default** — the content
+  already landed in the vault, so only a redundant copy is removed and no
+  processed files pile up in the synced cloud folder; a toggle in the
+  inbox's folder settings keeps processed files in `_imported/` instead.
+  Failed items are always left in the inbox for retry. Imports are
+  idempotent — the content SHA-256 is matched against captures already in
+  the media index — and the origin survives as an optional `capture`
+  record on the media entry. The web build has no filesystem to
+  enumerate, so the inbox is desktop-only.
   Besides media, the inbox understands Graphium's own capture files:
   versioned JSON documents with the dedicated `.graphium.json` extension
   (`{"graphium": 1, "kind": "memo" | "url", ...}`) that the phone writes
@@ -774,11 +780,16 @@ The same `src/` tree is built three different ways.
   user's own Google Drive `Graphium/Inbox/` via OAuth (GIS token model,
   `drive.file` scope only, no secret; ≤5 MB multipart, larger files
   resumable), from where Google Drive for desktop syncs it into the
-  folder inbox above. Because SPA tokens expire after about an hour, a
-  token failure aborts the drain and leaves the remaining items queued
-  for the next connect. Without a configured OAuth client ID (or
-  without IndexedDB) a capture drops back to this device's own media
-  library. Avoiding OAuth altogether needs no Graphium code: the OS
+  folder inbox above. Everything sent this way — media, memos, URL
+  captures — is stored as ordinary files in the user's own cloud storage;
+  transfers use TLS, but there is no end-to-end encryption. Because SPA
+  tokens expire after about an hour, a token failure aborts the drain and
+  leaves the remaining items queued for the next connect. Captures
+  enqueue regardless of OAuth setup — the queue itself lives in this
+  device's IndexedDB — and when no client ID resolves the queue shows
+  setup guidance at send time; only when IndexedDB itself is unavailable
+  does a capture drop back to this device's own media library. Avoiding
+  OAuth altogether needs no Graphium code: the OS
   share sheet can save a capture into the synced `Graphium/Inbox`
   folder by hand (Photos → share → the Files/Drive app → the synced
   folder, the same on iOS and Android), and the desktop inbox imports
