@@ -494,3 +494,70 @@ describe("ensureIndex の archivedAt / deletedAt 保持", () => {
     expect(entry?.archivedAt).toBe("2026-04-01T00:00:00Z");
   });
 });
+
+// ── step コンテナ（手順ブロック）の収集 ──
+// 見出し + procedure に代わる新しい手順の書き方。headings は level:2|3 型なので
+// step は入れられず、専用の steps フィールドに集める。
+describe("step コンテナの収集", () => {
+  const docWithSteps = (blocks: any[]): GraphiumDocument =>
+    mockDoc({
+      pages: [
+        {
+          id: "page-1",
+          title: "Main",
+          blocks,
+          labels: {},
+          provLinks: [],
+          knowledgeLinks: [],
+        },
+      ],
+    } as Partial<GraphiumDocument>);
+
+  const step = (id: string, title: string, children: any[] = []) => ({
+    id,
+    type: "step",
+    content: [{ type: "text", text: title }],
+    children,
+  });
+
+  it("step のタイトルを steps に集める", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWithSteps([step("s1", "前処理"), step("s2", "反応 A")]),
+    );
+    expect(entry.steps).toEqual([
+      { blockId: "s1", text: "前処理" },
+      { blockId: "s2", text: "反応 A" },
+    ]);
+  });
+
+  it("step を含まないノートでは steps は undefined（既存インデックスと同じ形）", () => {
+    const entry = buildIndexEntry("file-1", mockDoc());
+    expect(entry.steps).toBeUndefined();
+  });
+
+  it("入れ子の step も文書順に集める", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWithSteps([step("outer", "外側", [step("inner", "内側")])]),
+    );
+    expect(entry.steps?.map((s) => s.blockId)).toEqual(["outer", "inner"]);
+  });
+
+  it("step の中に置いた見出しも headings に残る（outline から消えない）", () => {
+    const entry = buildIndexEntry(
+      "file-1",
+      docWithSteps([
+        step("s1", "反応 A", [
+          { id: "h-in", type: "heading", props: { level: 3 }, content: [{ type: "text", text: "条件" }] },
+        ]),
+      ]),
+    );
+    expect(entry.headings).toEqual([{ blockId: "h-in", text: "条件", level: 3 }]);
+  });
+
+  it("step は headings には入らない（型が違う）", () => {
+    const entry = buildIndexEntry("file-1", docWithSteps([step("s1", "前処理")]));
+    expect(entry.headings).toEqual([]);
+  });
+});

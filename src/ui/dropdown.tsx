@@ -1,6 +1,6 @@
 // Crucible デザインシステム — Dropdown コンポーネント
 // position:fixed ポータルで表示するフローティングパネル。
-// 既存の LabelDropdownPortal, ProvPanel, LinkDetailPanel の共通パターンを抽出。
+// 既存の ProvPanel, LinkDetailPanel の共通パターンを抽出。
 
 import { forwardRef, type HTMLAttributes, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";

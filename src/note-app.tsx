@@ -10,13 +10,13 @@ import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
-import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "./blocks/registry";
+import { stepSlashItem } from "./blocks/step";
+import { customBlockEntries, KNOWN_BLOCK_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
   useProvLabelsEnabled,
   useLabelStore,
-  LabelDropdownPortal,
 } from "./features/context-label";
 import {
   MediaInlineLabelProvider,
@@ -36,15 +36,10 @@ import {
 import { regenInlineEntitiesInBlocks } from "./features/inline-label/regen-on-paste";
 import {
   ProvIndicatorLayer,
-  ProvIndicatorHoverHint,
   BlockHoverHighlight,
   ScopeHighlight,
   setOnPrevStepLinkSelected,
 } from "./features/context-label/prov-indicator";
-import {
-  buildLabelSlashMenuItems,
-  setSlashMenuLabelCallback,
-} from "./features/context-label/slash-menu-items";
 import {
   IndexTableStoreProvider,
   useIndexTableStore,
@@ -112,11 +107,11 @@ import {
 } from "./features/ai-assistant/chat-run-manager";
 import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
-import { extractLabelMarkersFromBlocks } from "./features/ai-assistant/label-markers";
+import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
 import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
-import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, resolveProvLabelsDefault, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
+import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
 import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot } from "./features/version-snapshots/snapshot-store";
@@ -232,7 +227,7 @@ import { useCapture } from "./hooks/use-capture";
 // components
 import { WelcomeDialog } from "./components/WelcomeDialog";
 import { FileSidebar } from "./components/FileSidebar";
-import { NoteSideMenu, collectHeadingScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
+import { NoteSideMenu, collectBlockScope, setOpenLinkDropdownFn, setOpenBlockMemoFn } from "./components/side-menu";
 import { NoteFormattingToolbar } from "./components/formatting-toolbar";
 import { SourceDocPanel, extractBlockTitle } from "./components/SourceDocPanel";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -837,13 +832,8 @@ function NoteEditor(props: NoteEditorProps) {
 
 // BlockNote スキーマに存在しないブロック型を再帰的に除去する
 // 保存済みノートに未登録ブロック（sampleScope 等）が含まれる場合のクラッシュ防止
-// カスタムブロックは src/blocks/registry.ts の CUSTOM_BLOCK_TYPES から自動で取り込む。
-const KNOWN_BLOCK_TYPES = new Set([
-  "paragraph", "heading", "bulletListItem", "numberedListItem",
-  "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "quote",
-  ...CUSTOM_BLOCK_TYPES,
-]);
+// 既知の型は src/blocks/registry.ts の KNOWN_BLOCK_TYPES に集約している
+// （標準ブロック＋カスタムブロック登録から自動導出）。
 
 // インラインコンテンツから未知の型を除去（mention 等）
 const KNOWN_INLINE_TYPES = new Set(["text", "link"]);
@@ -1307,7 +1297,42 @@ function NoteEditorInner({
     const triggerBlock = templateTriggerBlockRef.current ?? editor.getTextCursorPosition()?.block;
     if (!triggerBlock) return;
 
-    const { blocks, labels, provLinks } = tmpl.build(tStatic);
+    const { blocks: rawBlocks, labels: rawLabels, provLinks } = tmpl.build(tStatic);
+
+    // テンプレートは旧語彙（procedure/plan/result ラベル付き見出し）で定義されている。
+    // 挿入前に step ブロックへ変換する（工程は step が正。ラベルのまま挿すと
+    // v6 済みドキュメントに旧形式が永久残留する）。
+    // 変換は block id ベースなので一時 id を振り、provLinks / focusPath は
+    // 変換前に id へ解決しておく（変換は id を保存するため、挿入後は id で引ける）。
+    const assignIds = (list: any[]) => {
+      for (const b of list ?? []) {
+        if (b && typeof b === "object") {
+          if (!b.id) b.id = crypto.randomUUID();
+          if (Array.isArray(b.children)) assignIds(b.children);
+        }
+      }
+    };
+    assignIds(rawBlocks);
+    const idAtPath = (path: number[]): string | null => {
+      let nodes: any[] = rawBlocks;
+      let node: any = null;
+      for (const idx of path) {
+        node = nodes?.[idx];
+        if (!node) return null;
+        nodes = node.children ?? [];
+      }
+      return node?.id ?? null;
+    };
+    const linkIds = (provLinks ?? []).map((l) => ({
+      sourceId: idAtPath(l.sourcePath),
+      targetId: idAtPath(l.targetPath),
+      type: l.type,
+    }));
+    const focusId = idAtPath(tmpl.focusPath);
+    const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
+      rawBlocks,
+      rawLabels as any,
+    );
 
     const inserted = editor.insertBlocks(blocks, triggerBlock, "after");
 
@@ -1335,8 +1360,10 @@ function NoteEditorInner({
       return node;
     };
 
-    // ラベル付与・前手順リンク追加（次フレームに延期して、エディタの状態反映後に実行）
-    if (labels.length > 0 || (provLinks && provLinks.length > 0)) {
+    // ラベル付与・前手順リンク追加（次フレームに延期して、エディタの状態反映後に実行）。
+    // procedure/plan/result は変換で消費済み。リンクは変換前に解決した id で張る
+    // （テンプレの step1→step2 informed_by は、見出し id を引き継いだ step 間に張られる）。
+    if (labels.length > 0 || linkIds.length > 0) {
       setTimeout(() => {
         for (const { path, label } of labels) {
           const block = resolveByPath(path);
@@ -1344,13 +1371,11 @@ function NoteEditorInner({
             labelStore.setLabel(block.id, label);
           }
         }
-        for (const link of provLinks ?? []) {
-          const source = resolveByPath(link.sourcePath);
-          const target = resolveByPath(link.targetPath);
-          if (source?.id && target?.id) {
+        for (const link of linkIds) {
+          if (link.sourceId && link.targetId) {
             linkStore.addLink({
-              sourceBlockId: source.id,
-              targetBlockId: target.id,
+              sourceBlockId: link.sourceId,
+              targetBlockId: link.targetId,
               type: link.type,
               createdBy: "human",
             });
@@ -1359,10 +1384,13 @@ function NoteEditorInner({
       }, 0);
     }
 
-    // フォーカスブロックにカーソルを移動
-    const focusBlock = resolveByPath(tmpl.focusPath);
-    if (focusBlock) {
-      editor.setTextCursorPosition(focusBlock, "end");
+    // フォーカスブロックにカーソルを移動（id は変換を跨いで保存される）
+    if (focusId) {
+      try {
+        editor.setTextCursorPosition(focusId, "end");
+      } catch {
+        /* no-op */
+      }
     }
 
     templateTriggerBlockRef.current = null;
@@ -2975,10 +3003,31 @@ function NoteEditorInner({
   );
 
   // 挿入されたブロック配列に対して、抽出済みラベルを path 経由で実 ID に解決して
-  // labelStore に適用し、連続する procedure 見出しを informed_by で自動連結する。
+  // labelStore に適用し、連続する手順を informed_by で自動連結する。
+  // 手順は「見出し + procedure ラベル」と「step コンテナ」の 2 通りがあり、
+  // step はラベルを持たないので inserted のツリーから直接拾う。
   // handleInsertToScope と handleReplaceBlocks の双方から使う。
   const applyExtractedLabels = useCallback(
     (inserted: any[], extracted: { path: number[]; label: string }[]) => {
+      // 同じ親を持つ step 同士を文書順に連結する。
+      // 入れ子の step（親→子）は「含む」関係であって「前手順」ではないので繋がない。
+      const chainSiblingSteps = (list: any[]) => {
+        const stepIds: string[] = [];
+        for (const b of list) {
+          if (b?.type === "step" && b.id) stepIds.push(b.id);
+          if (b?.children?.length) chainSiblingSteps(b.children);
+        }
+        for (let i = 1; i < stepIds.length; i++) {
+          linkStore.addLink({
+            sourceBlockId: stepIds[i],
+            targetBlockId: stepIds[i - 1],
+            type: "informed_by",
+            createdBy: "ai",
+          });
+        }
+      };
+      setTimeout(() => chainSiblingSteps(inserted), 0);
+
       if (extracted.length === 0) return;
       const resolveByPath = (path: number[]): any | null => {
         let nodes: any[] = inserted as any[];
@@ -3067,7 +3116,12 @@ function NoteEditorInner({
         // ページ全体チャット: ドキュメント末尾に挿入
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
-        const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
+        const extractedRes = extractLabelMarkersFromBlocks(parsed);
+        // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
+        const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
+          extractedRes.blocks,
+          extractedRes.labels,
+        );
         const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
         const allBlocks = editor.document;
         const lastBlock = allBlocks[allBlocks.length - 1];
@@ -3082,12 +3136,19 @@ function NoteEditorInner({
       }
       const targetBlock = editor.getBlock(targetBlockId);
       if (!targetBlock) return;
-      if (targetBlock.type === "heading") {
+      // 見出し・step は「まとまり」なので、その配下の末尾に挿入する
+      // （step の場合は最後の子の後ろ＝step の中に入る）
+      if (targetBlock.type === "heading" || targetBlock.type === "step") {
         const parsed = editor.tryParseMarkdownToBlocks(markdown);
         if (parsed.length === 0) return;
-        const { blocks, labels } = extractLabelMarkersFromBlocks(parsed);
+        const extractedRes = extractLabelMarkersFromBlocks(parsed);
+        // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
+        const { blocks, labels } = convertExtractedProcedureBlocksToSteps(
+          extractedRes.blocks,
+          extractedRes.labels,
+        );
         const { blocks: linked, refs } = linkifySourceMentions(blocks, wikiTitleToNoteId);
-        const scope = collectHeadingScope(editor.document, targetBlock);
+        const scope = collectBlockScope(editor.document, targetBlock);
         const insertAfterBlock = scope[scope.length - 1];
         const inserted = editor.insertBlocks(linked, insertAfterBlock, "after");
         applyExtractedLabels(inserted as any[], labels);
@@ -3121,8 +3182,10 @@ function NoteEditorInner({
 
       const parsedBlocks = editor.tryParseMarkdownToBlocks(markdown);
       if (parsedBlocks.length === 0) return;
+      const extractedRaw = extractLabelMarkersFromBlocks(parsedBlocks);
+      // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
       const { blocks: parsedNoLabels, labels: extractedLabels } =
-        extractLabelMarkersFromBlocks(parsedBlocks);
+        convertExtractedProcedureBlocksToSteps(extractedRaw.blocks, extractedRaw.labels);
       // `[Source: "title"]` を青い @title mention に変換し、reference 先 wikiId を集める。
       const { blocks: newBlocks, refs: sourceRefs } =
         linkifySourceMentions(parsedNoLabels, wikiTitleToNoteId);
@@ -3131,9 +3194,16 @@ function NoteEditorInner({
       if (!firstBlock) return;
 
       let inserted: any[] = [];
-      if (firstBlock.type === "heading") {
+      if (firstBlock.type === "step") {
+        // step コンテナ: 子ブロックを丸ごと置換（step 自体とタイトルは残す）。
+        // 見出しと違い範囲は親子関係なので、"after" 挿入だと step の外に出てしまう。
+        const scope = collectBlockScope(editor.document, firstBlock);
+        removeBlockMetadata(scope.slice(1).map((b) => b.id));
+        const updated = editor.updateBlock(firstBlock, { children: newBlocks } as any);
+        inserted = ((updated as any)?.children ?? []) as any[];
+      } else if (firstBlock.type === "heading") {
         // 見出しスコープ: 見出し配下のブロックを置換（見出し自体は残す）
-        const scope = collectHeadingScope(editor.document, firstBlock);
+        const scope = collectBlockScope(editor.document, firstBlock);
         // 見出し以外のスコープブロックを削除
         const scopeIds = scope.slice(1).map((b) => b.id);
         removeBlockMetadata(scopeIds);
@@ -3358,14 +3428,6 @@ function NoteEditorInner({
     });
     return () => { setOnPrevStepLinkSelected(null); };
   }, [linkStore]);
-
-  // スラッシュメニューからのラベル設定コールバック
-  useEffect(() => {
-    setSlashMenuLabelCallback((blockId: string, label: string) => {
-      labelStore.setLabel(blockId, label);
-    });
-    return () => { setSlashMenuLabelCallback(null); };
-  }, [labelStore]);
 
   // インデックステーブル用のグローバルコールバック登録
   useEffect(() => {
@@ -3753,8 +3815,9 @@ function NoteEditorInner({
     const blockId = aiAssistant.sourceBlockIds[0];
     const block = editorRef.current.getBlock(blockId);
     if (!block) return [blockId];
-    if (block.type === "heading") {
-      const scope = collectHeadingScope(editorRef.current.document, block);
+    // 見出し・step は「まとまり」なので配下ごとスコープにする
+    if (block.type === "heading" || block.type === "step") {
+      const scope = collectBlockScope(editorRef.current.document, block);
       return scope.map((b: any) => b.id);
     }
     return [blockId];
@@ -3769,7 +3832,6 @@ function NoteEditorInner({
         bottomInset={isDesktop ? 0 : 56}
       />
       <IndexTableIconLayer editorRef={editorRef} />
-      <ProvIndicatorHoverHint hidden={!isDesktop && rightTab !== null} />
       <BlockHoverHighlight />
       <ScopeHighlight blockIds={chatScopeBlockIds} />
       {/* ブロックメニュー「メモ」からのブロック紐付きメモ入力 */}
@@ -3792,7 +3854,6 @@ function NoteEditorInner({
           }}
         />
       )}
-      <LabelDropdownPortal />
       {/* URL ペーストスタイル選択メニュー */}
       {pastedUrl && (
         <UrlPasteMenu
@@ -4056,7 +4117,14 @@ function NoteEditorInner({
       <div className="flex h-full w-full overflow-hidden">
         {/* 左: エディタ */}
         <div data-label-wrapper className="flex-1 min-w-0 overflow-auto relative">
-          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 100 : 16, paddingRight: isDesktop ? 100 : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+          {/* 左右の枠: 旧ブロックラベル UI 用に 100px 取っていた名残を撤去し、
+              SidePeek と同じ「基本 24px・右はラベルバッジがある時だけ 80px」に揃える。
+              条件はブロックラベルのみ — リンクはバッジを描画しない
+              （prov-indicator.tsx は label 無しを return null する）ので、リンクを
+              条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。
+              ドラッグハンドル分の余白は .bn-editor 自体の padding-inline 54px が持つ。 */}
+          <div style={{ padding: "16px 0", paddingLeft: isDesktop ? 24 : 16, paddingRight: isDesktop ? (labelStore.labels.size > 0 ? 80 : 24) : 16, paddingBottom: isDesktop ? 16 : 72 }}>
+
             <textarea
               value={title}
               onChange={handleTitleChange}
@@ -4162,7 +4230,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []), indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -4174,7 +4242,6 @@ function NoteEditorInner({
                 if (fid) return p.getMediaBlobUrl(fid);
                 return url;
               }}
-              onHashtagSelect={(blockId, label) => labelStore.setLabel(blockId, label)}
               getMentionSuggestions={(query) => {
                 mentionContextRef.current = { tableBlockId: null, rowIndex: -1 };
                 const sel = window.getSelection();
@@ -4612,7 +4679,9 @@ function NoteEditorInner({
             // 見せられるようにするため。Web 版では従来通り非表示。
             { tab: "chat" as const, icon: <Bot size={18} />, label: t("panel.chat"), show: aiAvailable ? agentConfigured : isTauri() },
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && labelStore.labels.size > 0 },
+            // 旧: labels.size でゲートしていたが、v6 以降の工程は step ブロックで
+            // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && (provDoc?.["@graph"]?.length ?? 0) > 0 },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
@@ -4690,32 +4759,9 @@ export function NoteApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(() => isAgentConfigured());
   const [experimentalFlags, setExperimentalFlags] = useState<ExperimentalSettings>(() => loadSettings().experimental);
-  // 来歴ラベル機能（手順の PROV 化）の有効/無効。
-  // 未確定（初回）は OFF で描画を開始し、起動時にインデックスから「既にラベルを使っているか」を
-  // 判定して確定する（既存ユーザー=ON / 新規=OFF）。以降は settings の値を尊重する。
-  const [provLabelsEnabled, setProvLabelsEnabled] = useState<boolean>(
-    () => loadSettings().enableProvLabels ?? false,
-  );
-  // 起動時に一度だけ、未確定なら既存ラベルの有無から enableProvLabels を確定する。
-  useEffect(() => {
-    if (typeof loadSettings().enableProvLabels === "boolean") return; // 確定済み
-    let cancelled = false;
-    void (async () => {
-      try {
-        const idx = await readIndexFile();
-        const hasLabels = !!idx?.notes.some(
-          (n) => (n.labels?.length ?? 0) > 0 || (n.inlineLabels?.length ?? 0) > 0,
-        );
-        if (cancelled) return;
-        setProvLabelsEnabled(resolveProvLabelsDefault(hasLabels));
-      } catch {
-        // 判定に失敗しても既定 OFF のまま（新規ユーザー想定）
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // 来歴ラベル機能は常時有効。付与 UI が step の中に構造的に畳まれた
+  // （ステップを使う人にだけ現れる）ため、設定トグルでの段階的開示は撤去した。
+  const provLabelsEnabled = true;
   // inline ハイライト装飾（BlockNote style の直書き色）を CSS で消すため body 属性を同期する。
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -8563,8 +8609,6 @@ export function NoteApp() {
           setSettingsInitialTab(undefined);
           void checkAiReadiness();
           setExperimentalFlags(loadSettings().experimental);
-          // 設定モーダルで来歴ラベル機能のトグルを変えた場合に即時反映する。
-          setProvLabelsEnabled(loadSettings().enableProvLabels ?? false);
         }}
         wikiSummaries={wikiSummariesForSettings}
         onRegenerateWiki={(wikiId, options) => regenerateWikiById(wikiId, { model: options?.model, openAfter: false })}

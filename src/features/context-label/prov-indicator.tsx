@@ -11,10 +11,6 @@ import { createPortal } from "react-dom";
 import { useLabelStore, useProvLabelsEnabled } from "./store";
 import { deriveActivityName } from "./activity-name";
 import { useLinkStore } from "../block-link/store";
-import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
-import {
-  FREE_LABEL_EXAMPLES,
-} from "./labels";
 import { getVisibleCoreLabels } from "./label-visibility";
 import {
   LINK_TYPE_CONFIG,
@@ -23,8 +19,6 @@ import {
 } from "../block-link/link-types";
 import { Dropdown, DropdownSectionHeader, DropdownDivider } from "@ui/dropdown";
 import { MenuItem } from "@ui/menu-item";
-import { Button } from "@ui/button";
-import { Input } from "@ui/form-field";
 import { useT, getDisplayLabel } from "../../i18n";
 import { t as tStatic } from "../../i18n";
 import {
@@ -87,6 +81,8 @@ type IndicatorInfo = {
   top: number;
   left: number;
   label: string | undefined;
+  /** ブロック型（step コンテナはラベル無しでも工程として扱うため必要） */
+  blockType: string | undefined;
   outgoing: BlockLink[];
   incoming: BlockLink[];
 };
@@ -183,17 +179,23 @@ export function ProvIndicatorLayer({
       if (rect.height === 0) return;
 
       const label = getLabel(blockId);
+      const blockType = content?.getAttribute("data-content-type") ?? undefined;
       const outgoing = getOutgoing(blockId);
       const incoming = getIncoming(blockId);
 
-      // ラベルもリンクもないブロックはスキップ
-      if (!label && outgoing.length === 0 && incoming.length === 0) return;
+      // ラベルもリンクもないブロックはスキップ。
+      // step も同様（前手順の導線はカード自身のヘッダーが持つ。
+      // ここに出すとラベル未定義のバッジが「#」として右余白に浮いてしまう）。
+      if (!label && outgoing.length === 0 && incoming.length === 0) {
+        return;
+      }
 
       next.push({
         blockId,
         top: rect.top + rect.height / 2,
         left: indicatorLeft,
         label,
+        blockType,
         outgoing,
         incoming,
       });
@@ -248,7 +250,7 @@ export function ProvIndicatorLayer({
 
   return createPortal(
     <>
-      {indicators.map(({ blockId, top, left, label, outgoing, incoming }) => {
+      {indicators.map(({ blockId, top, left, label, blockType, outgoing, incoming }) => {
         const isActive = activeBlockId === blockId;
         const color = label ? getLabelColor(label) : undefined;
 
@@ -289,6 +291,7 @@ export function ProvIndicatorLayer({
                 top={top + 14}
                 left={left}
                 label={label}
+                blockType={blockType}
                 outgoing={outgoing}
                 incoming={incoming}
                 onClose={() => setActiveBlockId(null)}
@@ -316,6 +319,7 @@ function ProvPanel({
   top,
   left,
   label,
+  blockType,
   outgoing,
   incoming,
   onClose,
@@ -326,6 +330,7 @@ function ProvPanel({
   top: number;
   left: number;
   label: string | undefined;
+  blockType: string | undefined;
   outgoing: BlockLink[];
   incoming: BlockLink[];
   onClose: () => void;
@@ -340,9 +345,6 @@ function ProvPanel({
   const [headingCandidates, setHeadingCandidates] = useState<
     { blockId: string; text: string }[]
   >([]);
-  const [freeInput, setFreeInput] = useState("");
-  // IME 確定 Enter 判定（WebKit のイベント順対応。lib/ime-enter.ts 参照）
-  const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   // パネル位置の調整（画面端対応）
   const adjustedTop = Math.min(top, window.innerHeight - 400);
@@ -421,61 +423,11 @@ function ProvPanel({
               );
             })}
 
-            {/* フリーラベル例 */}
-            <DropdownDivider />
-            <DropdownSectionHeader>{t("labelUi.freeLabels")}</DropdownSectionHeader>
-            {FREE_LABEL_EXAMPLES.slice(0, 4).map((l) => {
-              const active = label === l;
-              return (
-                <MenuItem
-                  key={l}
-                  active={active}
-                  onClick={() => {
-                    onLabelChange(active ? null : l);
-                    setShowLabelPicker(false);
-                  }}
-                  className="text-muted-foreground"
-                >
-                  {getDisplayLabel(l)}
-                </MenuItem>
-              );
-            })}
-
-            {/* カスタム入力 */}
-            <DropdownDivider />
-            <div className="px-2.5 py-1.5">
-              <DropdownSectionHeader>{t("labelUi.custom")}</DropdownSectionHeader>
-              <div className="flex gap-1 mt-0.5">
-                <Input
-                  value={freeInput}
-                  onChange={(e) => setFreeInput(e.target.value)}
-                  {...compositionHandlers}
-                  onKeyDown={(e) => {
-                    // IME 変換確定の Enter では確定しない（WKWebView の
-                    // compositionend → keydown(13) 順対応。lib/ime-enter.ts 参照）
-                    if (e.key === "Enter" && !isImeKey(e) && freeInput.trim()) {
-                      onLabelChange(freeInput.trim());
-                      setShowLabelPicker(false);
-                    }
-                    if (e.key === "Escape") setShowLabelPicker(false);
-                  }}
-                  placeholder={t("labelUi.placeholder")}
-                  className="text-xs py-1 px-1.5"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (freeInput.trim()) {
-                      onLabelChange(freeInput.trim());
-                      setShowLabelPicker(false);
-                    }
-                  }}
-                  className="text-xs shrink-0"
-                >
-                  {t("common.add")}
-                </Button>
-              </div>
-            </div>
+            {/* PROV に乗らない自由タグ（フリーラベル）は廃止した。
+                ブロックに付けられるのは PROV ラベルだけにして、
+                「何のためのラベルか」を一つに絞る。
+                既存ノートに付いている自由タグはデータとして残り、下の
+                「ラベルを外す」で解除できる。 */}
 
             {/* ラベル削除 */}
             {label && (
@@ -538,8 +490,8 @@ function ProvPanel({
           </>
         )}
 
-        {/* ── 前手順リンク追加（procedure ラベルのみ） ── */}
-        {label === "procedure" && <>
+        {/* ── 前手順リンク追加（procedure ラベル or step コンテナ） ── */}
+        {(label === "procedure" || blockType === "step") && <>
         <DropdownDivider />
         <DropdownSectionHeader className="text-[#5b8fb9]">
           {t("labelUi.prevStepLink")}
@@ -553,7 +505,11 @@ function ProvPanel({
               .forEach((el) => {
                 const bid = el.getAttribute("data-id");
                 if (!bid || bid === blockId) return;
-                if (labelMap.get(bid) !== "procedure") return;
+                // 手順は「procedure ラベル付き見出し」と「step コンテナ」の 2 通り
+                const isStep = !!el.querySelector(
+                  '.bn-block-content[data-content-type="step"]',
+                );
+                if (labelMap.get(bid) !== "procedure" && !isStep) return;
                 const heading = el.querySelector("h1, h2, h3");
                 const text = heading?.textContent
                   || el.querySelector("[data-content-type]")?.textContent
@@ -665,152 +621,6 @@ function LinkRow({
         ×
       </button>
     </div>
-  );
-}
-
-// ──────────────────────────────────
-// ホバーで「#」を表示するレイヤー
-// ラベルもリンクもないブロックにホバーすると右端に表示
-// ──────────────────────────────────
-export function ProvIndicatorHoverHint({ wrapperEl, zIndex, hidden = false }: { wrapperEl?: HTMLElement | null; zIndex?: number; hidden?: boolean } = {}) {
-  const provLabelsEnabled = useProvLabelsEnabled();
-  const { labels, openDropdown } = useLabelStore();
-  const { links } = useLinkStore();
-  const [hoverBlock, setHoverBlock] = useState<{
-    blockId: string;
-    top: number;
-    left: number;
-  } | null>(null);
-  // # ボタンにマウスが乗っている間は hoverBlock を維持する
-  const hintHoveredRef = useRef(false);
-
-  useEffect(() => {
-    // wrapper 内の mousemove でマウス Y 座標から最も近いブロックを判定
-    // パディング領域にマウスがあっても対応するブロックの # が表示される
-    const handleMouseMove = (e: MouseEvent) => {
-      // # ボタンにマウスが乗っている間は更新しない
-      if (hintHoveredRef.current) return;
-      const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
-      if (!wrapper) return;
-
-      const blockOuters = wrapper.querySelectorAll(
-        '[data-node-type="blockOuter"]'
-      );
-
-      let matched: HTMLElement | null = null;
-      let matchedDist = Infinity;
-
-      blockOuters.forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        const centerY = rect.top + rect.height / 2;
-        const dist = Math.abs(e.clientY - centerY);
-        if (e.clientY >= rect.top && e.clientY <= rect.bottom && dist < matchedDist) {
-          matchedDist = dist;
-          matched = el as HTMLElement;
-        }
-      });
-
-      if (!matched) {
-        setHoverBlock(null);
-        return;
-      }
-
-      const matchedEl = matched as HTMLElement;
-      const blockId = matchedEl.getAttribute("data-id");
-      if (!blockId) return;
-
-      // 既にラベルまたはリンクがあるブロックはスキップ
-      if (labels.has(blockId)) {
-        setHoverBlock(null);
-        return;
-      }
-      const hasLink = links.some(
-        (l) => l.sourceBlockId === blockId || l.targetBlockId === blockId
-      );
-      if (hasLink) {
-        setHoverBlock(null);
-        return;
-      }
-
-      const wrapperRect = wrapper.getBoundingClientRect();
-      const content = matchedEl.querySelector(".bn-block-content") as HTMLElement | null;
-      const rect = content ? content.getBoundingClientRect() : matchedEl.getBoundingClientRect();
-
-      setHoverBlock({
-        blockId,
-        top: rect.top + rect.height / 2,
-        left: wrapperRect.right - 8,
-      });
-    };
-
-    const handleMouseLeave = () => {
-      if (hintHoveredRef.current) return;
-      setHoverBlock(null);
-    };
-
-    const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
-    if (!wrapper) return;
-    wrapper.addEventListener("mousemove", handleMouseMove as EventListener);
-    wrapper.addEventListener("mouseleave", handleMouseLeave as EventListener);
-    return () => {
-      wrapper.removeEventListener("mousemove", handleMouseMove as EventListener);
-      wrapper.removeEventListener("mouseleave", handleMouseLeave as EventListener);
-    };
-  }, [labels, links, wrapperEl]);
-
-  // スクロール/リサイズ中も「#」ボタンが対象ブロックに追従するよう座標を再計算する。
-  // （fixed 配置のため、購読しないとスクロールでボタン位置がズレる）
-  useEffect(() => {
-    const blockId = hoverBlock?.blockId;
-    if (!blockId) return;
-    const update = () => {
-      const wrapper = wrapperEl || document.querySelector("[data-label-wrapper]");
-      if (!wrapper) return;
-      const targetOuter = document.querySelector(
-        `[data-id="${blockId}"][data-node-type="blockOuter"]`
-      ) as HTMLElement | null;
-      if (!targetOuter) return;
-      const wrapperRect = wrapper.getBoundingClientRect();
-      const content = targetOuter.querySelector(".bn-block-content") as HTMLElement | null;
-      const r = content ? content.getBoundingClientRect() : targetOuter.getBoundingClientRect();
-      setHoverBlock((prev) =>
-        prev && prev.blockId === blockId
-          ? { blockId, top: r.top + r.height / 2, left: wrapperRect.right - 8 }
-          : prev
-      );
-    };
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-    };
-  }, [hoverBlock?.blockId, wrapperEl]);
-
-  // 来歴ラベル機能がオフなら # 付与ヒントを出さない。
-  if (!provLabelsEnabled || hidden || !hoverBlock) return null;
-
-  // # ボタンのみ描画する。ブロックのホバー背景は BlockHoverHighlight が
-  // 全ブロック共通で描くため、ここでは重ねて描かない（重ねるとスクロール中に
-  // 二枚が分離して二重に見える原因になる）。
-  return createPortal(
-    <button
-      onClick={() => openDropdown(hoverBlock.blockId)}
-      onMouseEnter={() => { hintHoveredRef.current = true; }}
-      onMouseLeave={() => { hintHoveredRef.current = false; setHoverBlock(null); }}
-      data-prov-label-anchor={hoverBlock.blockId}
-      data-prov-hover-hint="true"
-      className="fixed inline-flex items-center justify-center w-5 h-5 rounded-lg border border-dashed border-border bg-transparent cursor-pointer text-muted-foreground text-xs opacity-50 pointer-events-auto hover:border-primary hover:text-primary hover:opacity-100 transition-colors duration-200"
-      style={{
-        zIndex: zIndex ? zIndex + 5 : 9996,
-        top: hoverBlock.top,
-        right: window.innerWidth - hoverBlock.left,
-        transform: "translateY(-50%)",
-      }}
-    >
-      #
-    </button>,
-    document.body
   );
 }
 

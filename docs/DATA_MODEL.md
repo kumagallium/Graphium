@@ -148,6 +148,7 @@ load time.
 | **3** | Label values normalized from Japanese brackets (`[材料]`) to internal keys (`material`). |
 | **4** | Internal key `result` (Output Entity) renamed to `output`. Phase labels `plan` / `result` introduced. |
 | **5** | Inline-type labels (`material`, `tool`, `attribute`, `output`) moved from block-level labels to inline highlights. `LabelStore` is heading-only (`procedure` / `plan` / `result` / `free.*`), with **table blocks** as the one entity-label exception — see §2.3 (structured tables). |
+| **6** | Procedures become `step` blocks. Each `procedure`-labelled heading is converted into a `step` block that **keeps the heading's id** and takes the heading's scope (following blocks up to the next same-or-higher heading, recursively for nested procedures) as its children — so `activity_<id>`, `informed_by` links and block anchors all survive and the generated graph is unchanged. `plan` / `result` labels are stripped (phase was withdrawn; pre-v6 graphs may contain `_plan` nodes that no longer regenerate). Free-form tags are left as inert data. |
 
 Loaders accept any prior version and migrate forward. Saving always
 writes the latest version.
@@ -206,18 +207,19 @@ type GraphiumPage = {
 
 ### 2.3 PROV-DM label model
 
-PROV-DM information attaches to blocks in three places:
+PROV-DM information attaches to blocks in four places:
 
 | Carrier | What it labels | Field |
 |---|---|---|
-| **Block label (`#`)** | On headings: the role of the block in a process — PROV *Activity* (step) or *Phase* grouping. On **table blocks**: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). | `page.labels[blockId]` |
+| **`step` block type** | The block itself is a PROV *Activity*. Its children are the Activity's contents, and its title is the Activity label. Carries no label — the block type says it. This is the only way to author a procedure. | `page.blocks[]` (`type: "step"`) |
+| **Block label** | On **table blocks** *inside a step*: a `material` / `tool` / `output` *structured-table* marker, or `attribute` for a *parameter table* (see below). Applied from the drag-handle menu. The `#` affordance is gone entirely. Legacy heading labels no longer survive loading: the v6 migration converts `procedure` headings into `step` blocks and strips `plan` / `result` (§2.1). Free-form tags in older notes remain as inert data and can be removed. | `page.labels[blockId]` |
 | **Inline highlight** | Spans of text inside a block as PROV *Entity* (with `material` / `tool` / `output` subtypes) or as a *Property* (`attribute`) on the parent. | `page.highlights[]` |
 | **Media inline label** | Same as above but for non-text blocks (image / video / audio / pdf / file) where BlockNote inline styles do not apply. | `page.mediaInlineLabels[blockId]` |
 
 **Structured tables.** A table is a block whose cells are atomic values,
 so inline highlights do not apply inside cells (the formatting toolbar
 hides the entity-label buttons there). Instead the **whole table** may
-carry a `material` / `tool` / `output` block label via the `#` affordance.
+carry a `material` / `tool` / `output` block label via the drag-handle menu.
 The PROV generator then expands it: the **header row supplies attribute
 keys**, and **each data row becomes one Entity** — the first column is the
 Entity name, the remaining columns become its attributes (`key=value`). A
@@ -254,36 +256,31 @@ same referent share an `entityId` so the PROV generator emits one
 *Entity* node.
 
 The generator (`src/features/prov-generator/`) consumes both label
-sources and the heading structure to produce the PROV-DM graph. Heading
-levels feed a `scopeStack` that infers Activity containment without
-requiring the user to nest blocks.
+sources and the block structure to produce the PROV-DM graph. Activity
+containment is inferred, never stated by the user:
 
-#### Plan / Execution phase
+- Blocks inside a `step` belong to that step's Activity. Containment is
+  the parent–child relation itself, so moving a block in or out with the
+  drag handle rebinds it. Nested steps bind to the innermost one.
+- Blocks outside any step fall back to heading levels, which feed a
+  `scopeStack` that infers containment from document structure.
 
-`[Plan]` and `[Result]` headings live *inside* a Step. They do not
-create new Activities — the surrounding `[Step]` Activity remains the
-sole Activity for both phases. Instead, they switch a *phase context*
-over the inline Entities under them:
+Headings inside a step are ordinary subheadings and produce no Activity,
+so a block is never bound to two Activities at once.
 
-- Each Entity node carries a `graphium:phase` property — `"plan"` for
-  Entities under a `[Plan]` heading, `"execution"` otherwise.
-- Plan-phase Entities are emitted with an `_plan` suffix in their
-  `@id` so they coexist as distinct nodes alongside their execution
-  counterparts (e.g. `inline_material_ent_nacl_plan` vs
-  `inline_material_ent_nacl`).
-- When the same `(label, entityId)` pair appears in both phases, the
-  generator emits a `prov:wasDerivedFrom` edge from the execution
-  Entity to the plan Entity, expressing that the actual outcome was
-  derived from the planned intent. The Step Activity that both
-  Entities are `prov:used` by serves as the implicit activity of the
-  PROV-DM derivation's full form.
+#### Plan / Execution phase (removed)
 
-The `prov:Plan` class itself is intentionally *not* applied to
-individual plan-phase Entities; in PROV-DM `prov:Plan` denotes the
-plan document an agent follows as a whole, not the individual
-materials/tools/parameters within it. The `graphium:phase` attribute
-preserves the planned-vs-executed distinction without misusing that
-class.
+`[Plan]` / `[Result]` phase labels were withdrawn: a marked plan pays off
+only when one protocol is compared across several runs, and that
+granularity is served by note-level plan/execution splitting
+(`partOfPlanNoteId`, §2). The v6 migration strips any remaining phase
+labels on load (§2.1), so loaded documents never carry a phase and newly
+generated graphs never contain `graphium:phase` metadata or `_plan`
+entity nodes. Graphs exported before v6 may still contain them; their
+historical semantics were: `graphium:phase` marked an Entity as
+`"plan"` or `"execution"`, plan Entities carried an `_plan` id suffix,
+and a matching plan/execution pair was joined by `prov:wasDerivedFrom`
+from the executed Entity to the planned one.
 
 #### Image OCR
 
@@ -1012,6 +1009,7 @@ type NoteIndexEntry = {
   createdAt: string;
 
   headings: { blockId: string; text: string; level: 2 | 3 }[];
+  steps?: { blockId: string; text: string }[];   // step container titles (v23)
   labels:   { blockId: string; label: string; preview: string }[];
   outgoingLinks: {
     targetNoteId: string;
@@ -1113,6 +1111,7 @@ Bumping rules:
 | **20** | Added `theme` mirror on `NoteIndexEntry` for `synthesis` docs (theme-driven Synthesizer, 2026-05-23). `wikiMeta.theme` is a free-form lens string (e.g. "home cooking") that the user supplies when triggering Synthesis Discovery; the prompt re-casts the connection in that theme's vocabulary. Stays orthogonal to `synthesisMode`. Legacy syntheses keep `theme: undefined` and `ensureIndex` rebuilds without losing them. |
 | **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
 | **22** | Added `ocrText` mirror on `NoteIndexEntry` — the concatenated, newline-joined text read on-device out of the note's images, collected from `page.mediaOcr` in `buildIndexEntry` and included in `searchNotes`, so a note holding only a scanned image is findable by the words inside it. Legacy notes keep `ocrText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. |
+| **23** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

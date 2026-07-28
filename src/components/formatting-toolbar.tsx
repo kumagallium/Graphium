@@ -7,11 +7,19 @@ import {
   getFormattingToolbarItems,
   useBlockNoteEditor,
 } from "@blocknote/react";
+import { useEffect, useState } from "react";
 import { Bot } from "lucide-react";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import type { FormattingToolbarProps } from "@blocknote/react";
 import { LABEL_TO_STYLE } from "../features/inline-label/styles";
+import {
+  isSelectionInTableCell,
+  toggleInlineLabelForSelection,
+  getInlineLabelShortcutHint,
+  getInlineLabelShortcutKeys,
+} from "../features/inline-label/shortcuts";
+import { isBlockInsideStep, isSelectionInsideStep, isSelectionInStepTitle } from "../blocks/step/view";
 import { useProvLabelsEnabled } from "../features/context-label";
 import {
   useMediaInlineLabelStoreOptional,
@@ -31,44 +39,8 @@ const INLINE_LABEL_COLOR_CLASS: Record<InlineLabelKey, string> = {
   output: "text-[#c26356] hover:bg-[rgba(194,99,86,0.12)]",
 };
 
-/** ランダムな entityId を生成（テキスト inline 用） */
-function makeEntityId(label: InlineLabelKey): string {
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `ent_${label}_${rand}`;
-}
 
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
-
-// BlockNote のテーブル構造を構成する ProseMirror ノード名。
-// セル内の選択ではこれらが祖先チェーンに必ず現れる。
-const TABLE_NODE_NAMES = new Set([
-  "table",
-  "tableRow",
-  "tableCell",
-  "tableHeader",
-  "tableParagraph",
-]);
-
-/**
- * 現在の選択がテーブルセル内にあるかを判定する。
- *
- * テーブルは「列見出し=属性キー / 行=Entity」の構造として PROV に変換される
- * （parseStructuredTable + ブロックラベル経路）。1 セル = 1 つの atomic な値で
- * あり、セル内にインラインラベルを付けても下流（PROV 生成・attribute 紐付け）は
- * テーブル構造を走査しないため黙って捨てられる（サイレント故障）。
- * そこでセル内ではインラインラベル UI を出さず、構造解釈に一本化する。
- */
-function isSelectionInTableCell(editor: any): boolean {
-  const tiptap = editor?._tiptapEditor;
-  if (!tiptap) return false;
-  const $from = tiptap.state?.selection?.$from;
-  if (!$from) return false;
-  for (let depth = $from.depth; depth >= 0; depth--) {
-    const name = $from.node(depth)?.type?.name;
-    if (name && TABLE_NODE_NAMES.has(name)) return true;
-  }
-  return false;
-}
 
 /**
  * tiptap の現在の選択がメディアブロックの NodeSelection なら
@@ -118,6 +90,17 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   const ocrStore = useMediaOcrStoreOptional();
   const provLabelsEnabled = useProvLabelsEnabled();
   const t = useT();
+  // ツールバーは開いたまま選択だけが変わっても再レンダーされないことがある
+  // （同一ブロック内で選択し直した場合など）。step 内判定・アクティブスタイルは
+  // 選択に依存するので、selection の更新で再評価させる。
+  const [, forceSelectionTick] = useState(0);
+  useEffect(() => {
+    const tiptap = (editor as any)?._tiptapEditor;
+    if (!tiptap?.on) return;
+    const bump = () => forceSelectionTick((x: number) => x + 1);
+    tiptap.on("selectionUpdate", bump);
+    return () => tiptap.off?.("selectionUpdate", bump);
+  }, [editor]);
   const mediaSel = getSelectedMediaBlock(editor);
   // 画像を選んだときだけ OCR ボタンを出す。URL 未設定（アップロード前）は対象外。
   const selectedImageUrl =
@@ -138,26 +121,10 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
     });
   };
 
-  /** テキスト選択時のラベルトグル（ProseMirror mark を付け外し） */
+  /** テキスト選択時のラベルトグル（ショートカットと共通の経路） */
   const handleTextLabelClick = (label: InlineLabelKey) => {
-    const styleKey = LABEL_TO_STYLE[label];
-    const selection = editor.getSelection();
-    if (selection?.blocks && selection.blocks.length > 1) {
-      console.warn("[Graphium] inline label cannot span multiple blocks");
-      return;
-    }
-    // テーブルセル内ではインラインラベルを付けない（構造解釈に一本化）。
-    // UI ボタンは非表示にしているが、念のため二重で防ぐ。
-    if (isSelectionInTableCell(editor)) {
-      console.warn("[Graphium] inline label is not supported inside table cells");
-      return;
-    }
-    const activeStyles = editor.getActiveStyles?.() ?? {};
-    const isActive = Boolean(activeStyles[styleKey]);
-    if (isActive) {
-      editor.removeStyles({ [styleKey]: activeStyles[styleKey] } as any);
-    } else {
-      editor.addStyles({ [styleKey]: makeEntityId(label) } as any);
+    if (!toggleInlineLabelForSelection(editor, label)) {
+      console.warn("[Graphium] inline label not applicable to this selection");
     }
   };
 
@@ -181,56 +148,97 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   // テーブルセル内ではインラインラベルボタンを出さない（構造解釈に一本化）。
   // メディアブロック選択時は別経路（サイドストア）なので対象外。
   const hideInlineLabels = !mediaSel && isSelectionInTableCell(editor);
+  // ハイライトは step の「本文」でだけ付けられる（工程の外の Entity は束縛先が無い。
+  // タイトルは Activity の名前なので対象外）。
+  // 既にラベルが付いている選択では、外せるようにボタンを残す。
+  const insideStep = mediaSel
+    ? isBlockInsideStep((editor as any).document ?? [], mediaSel.blockId)
+    : isSelectionInsideStep(editor) && !isSelectionInStepTitle(editor);
+  const hasExistingLabel = mediaSel
+    ? Boolean(mediaCurrent?.label)
+    : INLINE_LABEL_ORDER.some((l) => Boolean(activeStyles[LABEL_TO_STYLE[l]]));
+  const showInlineLabels =
+    !hideInlineLabels && provLabelsEnabled && (insideStep || hasExistingLabel);
 
   return (
     <FormattingToolbar {...props}>
-      {getFormattingToolbarItems(props.blockTypeSelectItems)}
-      {!hideInlineLabels && provLabelsEnabled && INLINE_LABEL_ORDER.map((label) => {
-        const isActive = mediaSel
-          ? mediaCurrent?.label === label
-          : Boolean(activeStyles[LABEL_TO_STYLE[label]]);
-        const onClick = () => {
-          if (mediaSel) {
-            handleMediaLabelClick(label as MediaInlineLabelType, mediaSel.blockId);
-          } else {
-            handleTextLabelClick(label);
-          }
-        };
-        return (
+      {/* ラベルバー（2 行目）があるときは app.css で flex-direction: column に
+          切り替わるため、標準アイテム + AI ボタンを 1 行目としてまとめる。
+          gap: inherit で BlockNote 側のアイテム間隔をそのまま引き継ぐ。 */}
+      <div className="flex items-center" style={{ gap: "inherit" }}>
+        {getFormattingToolbarItems(props.blockTypeSelectItems)}
+        {/* 画像から文字を読む / 読んだ文字を見る。画像をクリックすれば必ず目に入るので、
+            ドラッグハンドルのメニューより見つけやすい主導線になる。 */}
+        {ocrStore && mediaSel?.blockType === "image" && selectedImageUrl && (
+          <ImageOcrToolbarButton
+            key={mediaSel.blockId}
+            blockId={mediaSel.blockId}
+            imageUrl={selectedImageUrl}
+          />
+        )}
+        {aiAssistant.aiAvailable && (
           <button
-            key={label}
-            onClick={onClick}
-            title={getDisplayLabelName(label)}
-            className={[
-              "bn-button inline-flex items-center justify-center rounded transition-colors px-1.5 text-[11px] font-semibold",
-              INLINE_LABEL_COLOR_CLASS[label],
-              isActive ? "bg-black/5 ring-1 ring-current/30" : "",
-            ].join(" ")}
-            data-test={`inlineLabel-${label}`}
+            onClick={handleAiClick}
+            title={t("editor.askAi")}
+            // サイズ・角丸は BlockNote 標準ボタン（36px 角・rounded-md）に合わせる
+            className="bn-button inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-violet-100 text-violet-500 transition-colors"
+            data-test="aiButton"
           >
-            {getDisplayLabelName(label)}
+            <Bot size={18} />
           </button>
-        );
-      })}
-      {/* 画像から文字を読む / 読んだ文字を見る。画像をクリックすれば必ず目に入るので、
-          ドラッグハンドルのメニューより見つけやすい主導線になる。 */}
-      {ocrStore && mediaSel?.blockType === "image" && selectedImageUrl && (
-        <ImageOcrToolbarButton
-          key={mediaSel.blockId}
-          blockId={mediaSel.blockId}
-          imageUrl={selectedImageUrl}
-        />
-      )}
-      {aiAssistant.aiAvailable && (
-        <button
-          onClick={handleAiClick}
-          title={t("editor.askAi")}
-          // サイズ・角丸は BlockNote 標準ボタン（36px 角・rounded-md）に合わせる
-          className="bn-button inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-violet-100 text-violet-500 transition-colors"
-          data-test="aiButton"
+        )}
+      </div>
+      {/* ラベルバー: ボタン自体を 2 行目に置き、ショートカットキーをボタン内に
+          キーキャップで埋め込む。1 行目に埋め込む案は幅が +220px 膨らみ
+          1280px 級の画面ではみ出したが、専用行なら幅に余裕がある。
+          説明行を分けるより「押すものの中にキーが書いてある」方が結び付きも強い。
+          キーキャップはモバイル（キーボードが無い）とメディア選択
+          （ショートカット対象外）では出さない。 */}
+      {showInlineLabels && (
+        <div
+          className="flex items-center gap-1 self-stretch border-t border-foreground/10 pt-1"
+          data-test="inlineLabelRow"
         >
-          <Bot size={18} />
-        </button>
+          {INLINE_LABEL_ORDER.map((label) => {
+            const isActive = mediaSel
+              ? mediaCurrent?.label === label
+              : Boolean(activeStyles[LABEL_TO_STYLE[label]]);
+            const onClick = () => {
+              if (mediaSel) {
+                handleMediaLabelClick(label as MediaInlineLabelType, mediaSel.blockId);
+              } else {
+                handleTextLabelClick(label);
+              }
+            };
+            return (
+              <button
+                key={label}
+                onClick={onClick}
+                title={`${getDisplayLabelName(label)} (${getInlineLabelShortcutHint(label)})`}
+                className={[
+                  "bn-button inline-flex items-center justify-center rounded transition-colors px-1.5 py-0.5 text-[11px] font-semibold",
+                  INLINE_LABEL_COLOR_CLASS[label],
+                  isActive ? "bg-black/5 ring-1 ring-current/30" : "",
+                ].join(" ")}
+                data-test={`inlineLabel-${label}`}
+              >
+                {getDisplayLabelName(label)}
+                {!mediaSel && (
+                  <span className="ml-1.5 hidden md:inline-flex items-center gap-0.5 font-normal">
+                    {getInlineLabelShortcutKeys(label).map((k) => (
+                      <kbd
+                        key={k}
+                        className="inline-flex min-w-[13px] justify-center rounded border border-foreground/15 bg-foreground/5 px-0.5 py-px text-[9px] leading-none text-foreground/60"
+                      >
+                        {k}
+                      </kbd>
+                    ))}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       )}
     </FormattingToolbar>
   );

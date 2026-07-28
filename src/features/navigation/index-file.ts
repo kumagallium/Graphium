@@ -94,9 +94,14 @@ import { collectOcrText } from "../media-ocr/collect";
 //      テキストのサイドストア）を集約し、ノート横断のテキスト検索（searchNotes）の
 //      対象に含める。画像しか無いノートも中身の文字で引けるようにする。
 //      既存エントリは ocrText=undefined のまま読める（後方互換）。
-//      bump を必ず実地確認する: Graphium 起動時に v21 インデックスが v22 として
+// v23: step コンテナ（手順ブロック）のタイトルを steps として収集。
+//      見出し + procedure ラベルに代わる新しい手順の書き方で、children を持つ
+//      ブロックとして工程を表す。headings は level:2|3 型で step を入れられないため
+//      別フィールドにした。step を使わない旧ノートは steps=undefined のまま読める
+//      （後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v22 インデックスが v23 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 22;
+export const INDEX_SCHEMA_VERSION = 23;
 
 export type GraphiumIndex = {
   version: number;
@@ -113,6 +118,15 @@ export type NoteIndexEntry = {
     blockId: string;
     text: string;
     level: 2 | 3;
+  }[];
+  /**
+   * step コンテナ（手順ブロック）のタイトル一覧。
+   * 見出しと違いレベルを持たない（工程は並びであって階層ではない）ため
+   * headings とは別フィールドにする。step を使わないノートでは undefined。
+   */
+  steps?: {
+    blockId: string;
+    text: string;
   }[];
   labels: {
     blockId: string;
@@ -350,20 +364,41 @@ export function buildIndexEntry(
 ): NoteIndexEntry {
   const page = doc.pages[0];
   const headings: NoteIndexEntry["headings"] = [];
+  const steps: NonNullable<NoteIndexEntry["steps"]> = [];
   const labels: NoteIndexEntry["labels"] = [];
   const outgoingLinks: NoteIndexEntry["outgoingLinks"] = [];
   const inlineLabels: NonNullable<NoteIndexEntry["inlineLabels"]> = [];
 
   if (page) {
-    // 見出しを収集
-    for (const block of page.blocks || []) {
-      if (block.type === "heading" && (block.props?.level === 2 || block.props?.level === 3)) {
-        const text = extractInlineText(block.content);
-        if (text) {
-          headings.push({ blockId: block.id, text, level: block.props.level });
+    // 見出しと step コンテナを文書順に収集する。
+    // 見出しは従来どおりトップレベルのみを対象にするが、step の中に置かれた
+    // 見出しは outline から消えてしまうので step の内側だけは再帰して拾う
+    // （step は新ブロック型なので、既存ノートの収集結果は変わらない）。
+    const collectOutline = (blocks: any[], insideStep: boolean) => {
+      for (const block of blocks || []) {
+        if (block?.type === "step") {
+          const text = extractInlineText(block.content);
+          if (text) steps.push({ blockId: block.id, text });
+          // step の子（入れ子の step・中の見出し）も拾う
+          if (block.children?.length) collectOutline(block.children, true);
+          continue;
+        }
+        if (
+          block?.type === "heading" &&
+          (block.props?.level === 2 || block.props?.level === 3)
+        ) {
+          const text = extractInlineText(block.content);
+          if (text) {
+            headings.push({ blockId: block.id, text, level: block.props.level });
+          }
+        }
+        // step の内側だけ、さらに下も辿る（トップレベルの従来挙動は変えない）
+        if (insideStep && block?.children?.length) {
+          collectOutline(block.children, true);
         }
       }
-    }
+    };
+    collectOutline(page.blocks || [], false);
 
     // インラインハイライトを集計（Phase D-3-α）
     // BlockNote の inline style として保存されている material/tool/attribute/output を
@@ -466,6 +501,8 @@ export function buildIndexEntry(
     modifiedAt: file?.modifiedTime ?? doc.modifiedAt,
     createdAt: file?.createdTime ?? doc.createdAt,
     headings,
+    // step を使わないノートでは undefined のまま（既存インデックスと同じ形）
+    steps: steps.length ? steps : undefined,
     labels,
     outgoingLinks,
     source: doc.source,

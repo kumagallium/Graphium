@@ -9,7 +9,6 @@
 // 呼び出し側で `visible={false}` を渡す。
 
 import { useT } from "@/i18n";
-import { useProvLabelsEnabled } from "@features/context-label/store";
 
 type EmptyNoteGuideProps = {
   visible: boolean;
@@ -37,12 +36,8 @@ const chips: Chip[] = [
     descI18nKey: "onboarding.chip.cmdk.desc",
     action: "composer",
   },
-  {
-    key: "hash",
-    display: "#",
-    labelI18nKey: "onboarding.chip.hash.label",
-    descI18nKey: "onboarding.chip.hash.desc",
-  },
+  // `#` のラベル入力は廃止した（工程は step ブロック、テーブル / メディアの
+  // ラベルはドラッグハンドルのメニューに集約）。予示するものが無いのでチップも出さない。
   {
     key: "at",
     display: "@",
@@ -59,15 +54,11 @@ const chips: Chip[] = [
 
 export function EmptyNoteGuide({ visible, onOpenComposer, aiEnabled = true }: EmptyNoteGuideProps) {
   const t = useT();
-  const provLabelsEnabled = useProvLabelsEnabled();
 
   if (!visible) return null;
 
-  // 来歴ラベル機能がオフなら # ラベルのチップは予示しない（# を打っても何も出ないため）。
-  // AI が使えない（モデル未登録等）なら ⌘K チップも予示しない（押しても Composer を開けないため）。
-  const visibleChips = chips.filter(
-    (c) => (provLabelsEnabled || c.key !== "hash") && (aiEnabled || c.key !== "cmdk"),
-  );
+  // AI が使えない（モデル未登録等）なら ⌘K チップは予示しない（押しても Composer を開けないため）。
+  const visibleChips = chips.filter((c) => aiEnabled || c.key !== "cmdk");
 
   const handleClick = (action?: Chip["action"]) => {
     if (action === "composer") onOpenComposer?.();

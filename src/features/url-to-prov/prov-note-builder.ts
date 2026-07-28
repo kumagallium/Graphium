@@ -8,7 +8,10 @@
 // （LLM が依存判定をサボっても最低限手順が繋がる保険）
 
 import type { GraphiumDocument } from "../../lib/document-types";
-import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
+import {
+  LATEST_DOCUMENT_VERSION,
+  convertProcedureHeadingsToSteps,
+} from "../../lib/document-migration";
 import { normalizeLabel, CORE_LABELS, type CoreLabel } from "../context-label/labels";
 
 // Phase E (2026-04-30): material/tool/attribute/output は block-level ラベルから
@@ -113,6 +116,11 @@ export function buildProvNoteDocument(params: BuildProvNoteParams): GraphiumDocu
 
   const provLinks = buildProvLinks(procedures, dependencies);
 
+  // 組み立ては旧語彙（procedure ラベル付き見出し）のまま行い、最後に step へ変換する。
+  // 見出し id を step が引き継ぐので、上で組んだ provLinks（informed_by）は
+  // そのまま step 間のリンクとして機能する。
+  const steppedBlocks = convertProcedureHeadingsToSteps(noteBlocks, labels);
+
   return {
     version: LATEST_DOCUMENT_VERSION,
     title: params.title,
@@ -120,7 +128,7 @@ export function buildProvNoteDocument(params: BuildProvNoteParams): GraphiumDocu
       {
         id: "main",
         title: params.title,
-        blocks: noteBlocks,
+        blocks: steppedBlocks,
         labels,
         provLinks,
         knowledgeLinks: [],

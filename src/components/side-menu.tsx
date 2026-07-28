@@ -32,6 +32,7 @@ import { resolveMemoBlockLabel } from "../features/mobile-capture/block-label";
 import { useAiAssistant } from "../features/ai-assistant";
 import { useT, getDisplayLabelName } from "../i18n";
 import { useLabelStore, useProvLabelsEnabled, type CoreLabel } from "../features/context-label";
+import { isBlockInsideStep } from "../blocks/step/view";
 import {
   useMediaInlineLabelStoreOptional,
   makeMediaEntityId,
@@ -67,13 +68,20 @@ export function setOpenBlockMemoFn(fn: typeof openBlockMemoFn) {
   openBlockMemoFn = fn;
 }
 
-// 見出しブロックの配下ブロックを収集する（スコープ選択）
-// 同じレベル以上の見出しが出てきたら終了
-export function collectHeadingScope(doc: any[], headingBlock: any): any[] {
-  const level = headingBlock.props?.level ?? 1;
+// ブロックの「配下」を収集する（スコープ選択）
+// - 見出し: 同じレベル以上の見出しが出てきたら終了（後続の兄弟が範囲）
+// - step コンテナ: 子ブロックがそのまま範囲（containment）
+// どちらも「このまとまりの中身」を返す、という意味では同じ。
+export function collectBlockScope(doc: any[], block: any): any[] {
+  // step は範囲が親子関係で決まるので、文書中の位置を探す必要がない
+  if (block?.type === "step") {
+    return [block, ...(Array.isArray(block.children) ? block.children : [])];
+  }
+
+  const level = block.props?.level ?? 1;
   const blocks = Array.isArray(doc) ? doc : [];
-  const idx = blocks.findIndex((b: any) => b.id === headingBlock.id);
-  if (idx < 0) return [headingBlock];
+  const idx = blocks.findIndex((b: any) => b.id === block.id);
+  if (idx < 0) return [block];
 
   const scope = [blocks[idx]];
   for (let i = idx + 1; i < blocks.length; i++) {
@@ -207,12 +215,11 @@ function AiAssistantMenuItem() {
     <Components.Generic.Menu.Item
       className="bn-menu-item"
       onClick={async () => {
-        let targetBlocks: any[];
-        if (block.type === "heading") {
-          targetBlocks = collectHeadingScope(editor.document, block);
-        } else {
-          targetBlocks = [block];
-        }
+        // 見出し・step は「まとまり」なので配下ごと AI に渡す
+        const targetBlocks: any[] =
+          block.type === "heading" || block.type === "step"
+            ? collectBlockScope(editor.document, block)
+            : [block];
         const markdown = await editor.blocksToMarkdownLossy(targetBlocks);
         aiAssistant.openChat({
           sourceBlockIds: targetBlocks.map((b: any) => b.id),
@@ -249,17 +256,27 @@ const BLOCK_LABEL_COLORS: Record<string, string> = {
 
 // entity-subtype 系（テーブル / メディアのブロック全体に付与）
 const ENTITY_BLOCK_LABELS: CoreLabel[] = ["material", "tool", "attribute", "output"];
-// 見出しブロックの section / phase 系
-const HEADING_BLOCK_LABELS: CoreLabel[] = ["procedure", "plan", "result"];
+// 旧方式（見出し + ラベル）で工程を書いていたノート向け。新規付与の導線は無い。
+const LEGACY_HEADING_LABELS: CoreLabel[] = ["procedure", "plan", "result"];
 
 const MEDIA_BLOCK_TYPES = new Set(["image", "video", "audio", "file", "pdf"]);
 
-/** ブロック種別 → 付与可能なラベルとヒント。null なら「ラベル」セクションを出さない。 */
+/**
+ * ブロック種別 → 付与可能なラベルとヒント。null なら「ラベル」セクションを出さない。
+ *
+ * 工程は step ブロックが表すようになったので、見出しに工程ラベルを新しく
+ * 付ける導線は無い。ただし旧方式で書かれたノートを直せなくなると困るので、
+ * 既にラベルが付いている見出しでは従来のメニューを出す（変更・解除のため）。
+ */
 function resolveBlockLabelSpec(
   blockType: string,
+  opts: { hasLegacyLabel: boolean },
 ): { labels: CoreLabel[]; hintKey: string } | null {
-  if (blockType === "heading")
-    return { labels: HEADING_BLOCK_LABELS, hintKey: "editor.blockLabel.headingHint" };
+  if (blockType === "heading") {
+    return opts.hasLegacyLabel
+      ? { labels: LEGACY_HEADING_LABELS, hintKey: "editor.blockLabel.headingHint" }
+      : null;
+  }
   if (blockType === "table")
     return { labels: ENTITY_BLOCK_LABELS, hintKey: "editor.blockLabel.tableHint" };
   if (MEDIA_BLOCK_TYPES.has(blockType))
@@ -283,14 +300,25 @@ function BlockLabelMenuItems() {
   // 来歴ラベル機能がオフなら「ラベル ▸」サブメニューを出さない。
   if (!provLabelsEnabled) return null;
   const blockType = block.type as string;
-  const spec = resolveBlockLabelSpec(blockType);
-  if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる
-
   const isMedia = MEDIA_BLOCK_TYPES.has(blockType);
   // メディアは mediaInlineLabels、それ以外（見出し / テーブル）は labels[] を参照
   const currentLabel = isMedia
     ? mediaStore?.getLabel(block.id)?.label
     : labelStore.getLabel(block.id);
+
+  const spec = resolveBlockLabelSpec(blockType, {
+    hasLegacyLabel:
+      currentLabel === "procedure" ||
+      currentLabel === "plan" ||
+      currentLabel === "result",
+  });
+  if (!spec) return null; // 段落・リスト等はテキスト選択（浮上ツールバー）経路に任せる
+
+  // テーブル / メディアのラベルも step の中でだけ新規付与できる
+  // （工程の外の Entity は束縛先の Activity が無い）。既存ラベルは外せるよう残す。
+  if (!currentLabel && !isBlockInsideStep((editor as any).document ?? [], block.id)) {
+    return null;
+  }
 
   const applyLabel = (label: CoreLabel) => {
     const active = currentLabel === label;

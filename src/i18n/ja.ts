@@ -259,16 +259,9 @@ export const ja: Record<string, string> = {
 
   // ── ラベル UI ──
   "labelUi.coreLabels": "コアラベル（PROV-DM）",
-  "labelUi.aliasLabels": "エイリアス",
-  "labelUi.freeLabels": "フリーラベル（例）",
-  "labelUi.custom": "カスタム",
   "labelUi.removeLabel": "ラベルを外す",
-  "labelUi.placeholder": "[ラベル名]",
   "labelUi.prevStepLink": "前ステップリンク（wasInformedBy）",
   "labelUi.selectPrevStep": "前のステップを選択してリンク",
-  "labelUi.selectHeading": "リンク先の見出しを選択",
-  "labelUi.insertLabeledBlock": "{label} ラベル付きブロックを挿入",
-  "labelUi.provLabel": "PROV ラベル",
   "labelUi.noLabel": "ラベルなし",
 
   // ── PROV インジケーター ──
@@ -359,7 +352,6 @@ export const ja: Record<string, string> = {
   "derive.sourceNote": "派生元ノート",
 
   // ── スラッシュメニュー ──
-  "slashMenu.group": "PROV ラベル",
 
   // ── スラッシュメニュー（カスタムブロック） ──
   "slash.advancedGroup": "高度なブロック",
@@ -375,6 +367,14 @@ export const ja: Record<string, string> = {
   "slash.templateSub": "計画または実験のテンプレートを挿入",
   "slash.callout": "コールアウト",
   "slash.calloutSub": "アイコン付きの注記ボックスを挿入",
+  "slash.step": "ステップ",
+  "slash.stepSub": "手順のまとまり。中に本文・表・画像を入れられる",
+  "step.prevLink": "前手順",
+  "step.noOtherSteps": "リンクできる他のステップがありません",
+  "step.cycleBlocked": "循環になるためリンクできません",
+  "step.nextStep": "次ステップ",
+  "step.createNext": "新しく作る",
+  "step.defaultTitle": "ステップ {n}",
   "callout.variant.note": "ノート",
   "callout.variant.info": "情報",
   "callout.variant.success": "成功",
@@ -437,10 +437,6 @@ export const ja: Record<string, string> = {
   "common.clickToNavigate": "クリックで移動",
 
   // ── ラベル UI 追加 ──
-  "labelUi.emptyHeading": "(空の見出し)",
-  "labelUi.goBack": "← 戻る",
-  "labelUi.clickToChange": "{label} — クリックで変更",
-  "labelUi.addLabel": "ラベルを付ける",
 
   // ── Knowledge 状態チップ ──
   "knowledge.addToKnowledge": "Knowledge に追加",
@@ -1464,8 +1460,6 @@ export const ja: Record<string, string> = {
   "markdown.export": "Markdown",
 
   // ── 来歴ラベル機能のオン/オフ ──
-  "settings.provLabels.title": "来歴ラベル機能",
-  "settings.provLabels.help": "手順・材料・ツールに来歴（PROV）ラベルを付ける機能です。かなり専門的な機能なので、不要ならオフにできます。オフにするとラベルの付与・表示がすべて隠れ、ふつうのノートとして使えます。付けたラベルのデータは保持され、再びオンにすれば元に戻ります。",
 
   // ── ラベルカスタマイズ ──
   "settings.labels.title": "来歴ラベルの表記",
@@ -1505,8 +1499,6 @@ export const ja: Record<string, string> = {
   "onboarding.guide.lead": "まずは普通に書いてみてください。以下でも始められます:",
   "onboarding.chip.cmdk.label": "AI に頼む",
   "onboarding.chip.cmdk.desc": "AI に質問して、答えをノートに挿入",
-  "onboarding.chip.hash.label": "ラベル",
-  "onboarding.chip.hash.desc": "行頭で # を打つとそのブロックにラベル",
   "onboarding.chip.at.label": "ノートを繋ぐ",
   "onboarding.chip.at.desc": "文中で @ を打つと他のノートを参照",
   "onboarding.chip.slash.label": "スラッシュメニュー",

@@ -65,6 +65,10 @@ export class IndexFileNoteListSource implements NoteListSource {
       if (n.inlineLabels) {
         for (const il of n.inlineLabels) labelSet.add(il.label);
       }
+      // step コンテナを持つノートは「Step」チップ / フィルタの対象にする。
+      // v6 で procedure ラベルは step ブロックへ変換されたため、labels には現れない
+      const hasSteps = (n.steps?.length ?? 0) > 0;
+      if (hasSteps) labelSet.add("procedure");
       return {
         noteId: n.noteId,
         title: n.title,
@@ -90,13 +94,15 @@ export class IndexFileNoteListSource implements NoteListSource {
     );
   }
 
-  // タイトル + 見出し + OCR 画像テキストで検索
+  // タイトル + 見出し + step タイトル + OCR 画像テキストで検索
   searchNotes(query: string): NoteIndexEntry[] {
     const q = query.toLowerCase();
     return this.index.notes.filter(
       (n) =>
         n.title.toLowerCase().includes(q) ||
-        n.headings.some((h) => h.text.toLowerCase().includes(q)) ||
+        [...n.headings, ...(n.steps ?? [])].some((h) =>
+          h.text.toLowerCase().includes(q),
+        ) ||
         (n.ocrText?.toLowerCase().includes(q) ?? false)
     );
   }

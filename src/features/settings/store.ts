@@ -654,35 +654,23 @@ export function isSynthesisEnabled(): boolean {
 }
 
 /**
- * 来歴ラベル機能（手順の PROV 化のためのラベルづけ）が有効かどうか（同期・即時判定用）。
- * 未確定（undefined）のときは false を返す（新規ユーザー既定 OFF）。
- * リアクティブに使いたい箇所は NoteApp の provLabelsEnabled state /
- * useProvLabelsEnabled() Context を使うこと。これはコンポーネント外からの即時判定用。
+ * 来歴ラベル機能は常時有効。
+ * かつては設定トグル（enableProvLabels）で丸ごと隠せたが、付与 UI が
+ * step ブロックの中に構造的に畳まれた（ステップを使う人にだけ現れる）ため、
+ * 設定での段階的開示は撤去した。保存済みの enableProvLabels は無視される。
  */
 export function isProvLabelsEnabled(): boolean {
-  return loadSettings().enableProvLabels ?? false;
+  return true;
 }
 
-/**
- * 起動時に一度だけ、既にラベルを使っているか（= 既存ユーザーか）を
- * インデックスから判定して enableProvLabels を確定・永続化する。
- * 既に明示設定済み（boolean）なら確定値をそのまま返し、何も書き込まない。
- *
- * @param indexHasLabels ノートインデックスにブロックラベル / インラインラベルが
- *   1 件でも存在するか。true = 既存ユーザー（ON 確定）、false = 新規（OFF 確定）。
- * @returns 確定後の有効値。
- */
-export function resolveProvLabelsDefault(indexHasLabels: boolean): boolean {
-  const s = loadSettings();
-  if (typeof s.enableProvLabels === "boolean") return s.enableProvLabels;
-  const resolved = indexHasLabels;
-  saveSettings({ ...s, enableProvLabels: resolved });
-  return resolved;
+/** @deprecated 常時有効になったため何もしない（互換のため残置） */
+export function resolveProvLabelsDefault(_indexHasLabels: boolean): boolean {
+  return true;
 }
 
-/** 来歴ラベル機能の有効/無効を明示的に設定して永続化する（設定 UI のトグル用）。 */
-export function setProvLabelsEnabled(enabled: boolean): void {
-  saveSettings({ ...loadSettings(), enableProvLabels: enabled });
+/** @deprecated 常時有効になったため何もしない（互換のため残置） */
+export function setProvLabelsEnabled(_enabled: boolean): void {
+  /* no-op */
 }
 
 /** 選択中のラテン用フォントを取得する（空文字 = デフォルト） */

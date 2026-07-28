@@ -366,6 +366,18 @@
   opacity: 1 !important;
 }
 
+/* ラベルバー（formatting-toolbar.tsx の inlineLabelRow）がある時は 2 段組にする。
+   flex-wrap + basis-full だと、フローティングメニューの max-content 幅計算に
+   2 行目の中身まで 1 行分として足されて横に伸びるため、column に切り替える
+   （column なら幅 = 最も広い行の自然幅に縮む）。
+   calc(100vw - 24px) は小さい画面での画面外はみ出し防止。 */
+.bn-formatting-toolbar:has([data-test="inlineLabelRow"]) {
+  flex-direction: column;
+  align-items: stretch;
+  row-gap: 3px;
+  max-width: calc(100vw - 24px);
+}
+
 [data-floating-ui-portal] {
   z-index: 10001 !important;
 }
@@ -527,6 +539,44 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: #fb923c; /* orange-400 */
   color: #1a2e1d;
 }
+
+/* ── Step コンテナブロック ──────────────────────────────
+   「手順（Activity）」を children を持つコンテナブロックとして第一級化した
+   step ブロックの体裁。設計は docs/internal/step-container-block-design-2026-07.md。
+
+   実 DOM 構造:
+     .bn-block[data-node-type="blockContainer"]
+       > .react-renderer.node-step > .bn-block-content[data-content-type="step"]  ← タイトル
+       > .bn-block-group                                                          ← 子ブロック
+   タイトルと子をまとめて括るには blockContainer 側を選ぶ必要があるため
+   :has(> .react-renderer.node-step) を使う（直下に .bn-block-content は来ない）。
+
+   体裁は「静かな全周枠」: 枠線で "箱（コンテナ）" と分かるようにしつつ、
+   本体には地色（塗り）を使わない。中に入るテーブル・画像・コードは自前の面を
+   持つので、土台まで面にすると重なって読みにくくなる。塗りはヘッダー
+   （ステップ名）だけに使い、線＝構造・面＝ヘッダーの役割分担を保つ。 */
+.bn-editor .bn-block:has(> .react-renderer.node-step) {
+  border: 1px solid var(--color-border-subtle);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 8px;
+  /* padding-right は 10px 未満に保つこと（8px）。
+     BlockNote のサイドメニューはネスト解決のために「ブロック右端 − 10px」を
+     再プローブする（core/src/extensions/SideMenu/SideMenu.ts getBlockFromMousePos）。
+     右 padding がそれ以上あるとプローブがカード自身に当たり、step 内の子ブロックの
+     ドラッグハンドルが常に step 本体に化ける。 */
+  padding: 4px 8px 10px 12px;
+  margin: 8px 0;
+}
+
+/* ステップ名は「カードのヘッダー」として読ませる。
+   太字だけだと下の子本文と地続きに見えて、どこまでが名前か分かりにくい。 */
+.bn-editor .bn-block-content[data-content-type="step"] {
+  background: var(--color-muted);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+}
+
 /* OCR 画像ブロックの進捗スピナー */
 @keyframes provnote-ocr-spin {
   to {

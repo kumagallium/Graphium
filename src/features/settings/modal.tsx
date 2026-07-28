@@ -261,7 +261,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
   const [jpFont, setJpFont] = useState<JpFont>("");
   const [experimental, setExperimental] = useState<ExperimentalSettings>({ atomLayer: false, synthesis: false, autoGrounding: false });
   // 来歴ラベル機能（手順の PROV 化のためのラベルづけ）の有効/無効
-  const [enableProvLabels, setEnableProvLabels] = useState<boolean>(false);
 
   // サーバーデータ
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -522,7 +521,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     setLatinFont(settings.latinFont ?? "");
     setJpFont(settings.jpFont ?? "");
     setExperimental(settings.experimental ?? { atomLayer: false, synthesis: false, autoGrounding: false });
-    setEnableProvLabels(settings.enableProvLabels ?? false);
     setSaved(false);
     setShowAddForm(false);
     setDeleteConfirm(null);
@@ -1131,12 +1129,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
       latinFont,
       jpFont,
       experimental,
-      enableProvLabels,
     });
     applyFontMode(latinFont, jpFont);
     setSaved(true);
     setTimeout(() => onClose(), 600);
-  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, experimental, enableProvLabels, onClose]);
+  }, [model, embeddingModel, chatSynthesisModel, groundingModelStored, disabledTools, registryUrl, mcpServers, savedRegistries, customLabels, latinFont, jpFont, experimental, onClose]);
 
   // ── MCP 供給源（stdio / remote / registry）の操作 ──
   const resetMcpForm = useCallback(() => {
@@ -1512,33 +1509,11 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <p className="text-xs text-muted-foreground mt-2">{t("settings.fontHelp")}</p>
             </div>
 
-            {/* 来歴ラベル機能そのもののオン/オフ。手順の PROV 化はかなり専門的な機能なので、
-                不要なユーザーは丸ごと隠せる。OFF でラベルの付与・表示 UI が全て消える
-                （データは保持され、再度 ON にすれば復帰する）。 */}
-            <div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setEnableProvLabels(!enableProvLabels); setSaved(false); }}
-                  role="switch"
-                  aria-checked={enableProvLabels}
-                  aria-label={t("settings.provLabels.title")}
-                  className={`shrink-0 inline-flex items-center rounded-full border border-border transition-colors w-8 h-[18px] ${enableProvLabels ? "bg-primary" : "bg-input"}`}
-                >
-                  <span
-                    className="block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200"
-                    style={{ transform: enableProvLabels ? "translateX(15px)" : "translateX(1px)" }}
-                  />
-                </button>
-                <label className="text-sm font-medium text-foreground">
-                  {t("settings.provLabels.title")}
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">{t("settings.provLabels.help")}</p>
-            </div>
+            {/* 来歴ラベル機能のオン/オフトグルは撤去した。付与 UI が step の中に
+                構造的に畳まれた（ステップを使う人にだけ現れる）ため、設定での
+                段階的開示は不要になった。 */}
 
-            {/* 来歴ラベルの表記 — PROV コアラベルの表示名カスタマイズ（機能 ON のときのみ） */}
-            {enableProvLabels && (
+            {/* 来歴ラベルの表記 — PROV コアラベルの表示名カスタマイズ */}
             <div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Tag size={14} className="text-muted-foreground" />
@@ -1549,7 +1524,10 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <p className="text-xs text-muted-foreground mb-3">{t("settings.labels.help")}</p>
 
               <div className="space-y-2">
-                {CORE_LABELS.map((label) => (
+                {/* plan / result は概念ごと撤廃済み（工程は step ブロック）なので
+                    表示名カスタマイズからも外す。procedure(ステップ) はチップ・
+                    グラフ凡例・# 検索で表示名が生きているため残す。 */}
+                {CORE_LABELS.filter((l) => l !== "plan" && l !== "result").map((label) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-28 shrink-0">
                       <span className="text-xs text-muted-foreground font-mono">
@@ -1587,7 +1565,6 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                 </button>
               )}
             </div>
-            )}
           </div>
         )}
 

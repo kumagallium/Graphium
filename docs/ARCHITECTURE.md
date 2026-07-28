@@ -92,10 +92,19 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `pdf-viewer`). Inline content
-  (entity / agent highlights) lives under `src/features/inline-label/`.
-  New blocks register once in `src/blocks/registry.ts` so both the main
-  editor and the SidePeek pick them up (and neither strips them on save).
+  `callout`, `example-hello`, `pdf-viewer`, `step`). Inline content (entity /
+  agent highlights) lives under `src/features/inline-label/`.
+- `step` is the one container block: it holds child blocks, and a procedure is
+  written by putting its content inside a step rather than by labelling a
+  heading. Nesting and reordering use BlockNote's own drag handle. The card's
+  header carries a predecessor control that sets `informed_by` links between
+  steps — ordering is a first-class property of a procedure, so it lives on
+  the card rather than in a side panel.
+- Every custom block must be registered in `src/blocks/registry.ts` so both
+  the main editor and the SidePeek pick it up. The registry derives
+  `KNOWN_BLOCK_TYPES`, and blocks outside that set are stripped on load and
+  then auto-saved — an unregistered block is data loss, and a container takes
+  its children with it.
 - Features that annotate a *standard* block do not add a block type. They
   keep a side store keyed by block id (`mediaInlineLabels`, `blockAlignments`,
   `mediaOcr`), because extending BlockNote's own image / file blocks is
@@ -120,10 +129,19 @@ meant. There is no shared abstraction between them today.
 
 Labels come in two passes that operate on the same blocks:
 
-1. **Block-level (`#` context labels).** Tags a heading block as `[Step]`
-   (PROV-DM *Activity*; internal key `procedure`) or as a phase
-   `[Plan]` / `[Result]` (internal keys `plan` / `result`). A **table
-   block** may instead be tagged `[Input]` / `[Tool]` / `[Output]` to mark
+0. **The `step` container block.** A procedure is written as a `step` block,
+   whose children are its content. The block *is* the PROV-DM *Activity* —
+   it carries no label, and its title comes from the block's own inline
+   content. This is the only way a procedure exists: notes written with the
+   old heading-plus-label style are converted to `step` blocks on load by
+   the v6 document migration (DATA_MODEL §2.1), preserving block ids so the
+   generated graph is unchanged.
+1. **Block-level (context labels).** The only block labels are entity
+   markers on tables and media, applied from the drag-handle menu and
+   offered **only inside a step** (an entity outside any step would have no
+   Activity to bind to). The `#` affordance is gone entirely (free-form
+   tags went with it; existing tags remain inert data). A **table
+   block** may be tagged `[Input]` / `[Tool]` / `[Output]` to mark
    it as a *structured table* (header row = attribute keys, each data row =
    one Entity), or `[Parameter]` to mark it as a *parameter table* (header
    row = keys, first data row = values) whose `key=value` pairs are merged
@@ -131,7 +149,9 @@ Labels come in two passes that operate on the same blocks:
    Implemented in `src/features/context-label/`.
 2. **Inline labels.** Highlights spans inside block text as `[Input]` /
    `[Tool]` / `[Parameter]` / `[Output]` (internal keys `material` /
-   `tool` / `attribute` / `output`). The first three feed PROV-DM
+   `tool` / `attribute` / `output`). Offered **only inside a step**, for
+   the same reason as block labels; existing highlights elsewhere stay
+   visible and removable. The first three feed PROV-DM
    *Entity* nodes (with `material` / `tool` subtypes); `[Parameter]`
    becomes a *Property* on the parent Activity or Entity. Inline labels do
    not apply inside table cells (cells are atomic values — use a
@@ -142,21 +162,25 @@ The two passes are independent: a note can have only block-level labels,
 only inline labels, both, or neither. The PROV generator merges both
 sources when building the graph.
 
-The generator (`src/features/prov-generator/generator.ts`) uses a
-`scopeStack` that infers *Activity* containment from heading structure,
-so users do not have to nest blocks manually.
+The generator (`src/features/prov-generator/generator.ts`) resolves
+*Activity* containment two ways, so users never state which Entity belongs
+to which Activity:
 
-Inside a Step (Activity), `[Plan]` / `[Result]` phase headings do **not**
-create separate Activities — they only switch a *phase context* over the
-inline Entities they contain. Each Entity gets a `graphium:phase`
-attribute (`"plan"` or `"execution"`); plan-phase Entities are emitted
-as separate nodes with an `_plan` suffix so they coexist with their
-execution counterparts. When the same `(label, entityId)` pair appears
-in both phases, the generator emits a `prov:wasDerivedFrom` edge from
-the execution Entity to the plan Entity, expressing that the actual
-outcome was derived from the planned intent. The shared Step Activity
-that both Entities are `prov:used` by acts as the implicit activity of
-the PROV-DM derivation’s full form.
+- **`step` containers.** A pre-pass walks the block tree and binds every
+  descendant of a `step` to that step's Activity. The innermost enclosing
+  step wins, so nested steps behave as expected.
+- **Headings.** A `scopeStack` infers containment from heading structure
+  for blocks that are not inside any step.
+
+The two never overlap: headings inside a step are ordinary subheadings and
+create no Activity of their own, which keeps a block from being bound twice.
+
+`[Plan]` / `[Result]` phases were withdrawn (plan-vs-actual comparison
+pays off across runs of a protocol, which note-level splitting via
+`partOfPlanNoteId` covers), and the v6 migration strips any remaining
+phase labels on load — so loaded documents never carry a phase and new
+graphs contain no `graphium:phase` metadata. See DATA_MODEL §2.3 for the
+historical semantics that pre-v6 exports may still contain.
 
 Beyond labelled blocks, the generator also picks up **images whose text has
 been read on-device**, with no label required. The user triggers this from
@@ -974,7 +998,7 @@ people most often need to find.
 | Want to change | Look in |
 |---|---|
 | Block types or editor behavior | `src/blocks/`, `src/note-app.tsx` |
-| Slash menu / inline `@`-link / `#`-label UI | `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
+| Slash menu / inline `@`-link / label UI | `src/features/block-link/`, `src/features/context-label/`, `src/features/inline-label/` |
 | PROV-DM graph generation | `src/features/prov-generator/` |
 | Per-note edit history | `src/features/document-provenance/` |
 | AI chat & note derivation | `src/features/ai-assistant/` |

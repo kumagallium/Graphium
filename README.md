@@ -303,19 +303,20 @@ Graphium implements a **two-layer provenance model**, both conforming to the [W3
 
 Labels attach to content in two independent passes that compose into one PROV-DM graph:
 
-#### Block-level — the skeleton
+#### Step blocks — the skeleton
 
-A heading block can be tagged via the `#` menu:
-
-| UI label | Internal key | PROV-DM type | Description |
-|----------|--------------|--------------|-------------|
-| `[Step]` | `procedure` | `prov:Activity` | A step in a process. H2 boundaries also create implicit Activities via the heading `scopeStack`. |
-| `[Plan]` | `plan` | grouping | Phase: planning portion of a process. |
-| `[Result]` | `result` | grouping | Phase: result portion of a process. |
+A procedure is written as a `step` container block (insert with `/step`).
+The block itself is the `prov:Activity`: its title is the activity name,
+its children are the activity's contents, and every entity highlighted
+inside is bound to it by containment — no separate tagging needed. The
+card's header carries the chain: a "prev step" chip sets `informed_by`
+to an earlier step, and "next step" creates a new step with that link
+already in place. Notes written with the older heading-plus-label style
+are converted to step blocks automatically on load.
 
 #### Inline highlights — the detail
 
-Spans inside a block can be highlighted as one of:
+Spans inside a step can be highlighted as one of:
 
 | UI label | Internal key | PROV-DM mapping |
 |----------|--------------|-----------------|

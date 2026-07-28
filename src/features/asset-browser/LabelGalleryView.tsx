@@ -346,6 +346,21 @@ export function LabelGalleryView({
           });
         }
       }
+      // 「ステップ」ギャラリーには step コンテナを列挙する
+      // （v6 で procedure block ラベルは step ブロックに変換済み。
+      //   preview = ステップタイトルなので、同名工程はノート横断で 1 行に集約される）
+      if (label === "procedure") {
+        for (const s of note.steps ?? []) {
+          result.push({
+            noteId: note.noteId,
+            noteTitle: note.title,
+            blockId: s.blockId,
+            label: "procedure",
+            preview: s.text,
+            modifiedAt: note.modifiedAt,
+          });
+        }
+      }
     }
     return result;
   }, [noteIndex, label]);

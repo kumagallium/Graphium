@@ -1,7 +1,7 @@
 // Notion 風サイドピーク
 // 画面右側からスライドインし、リンク先ノートを編集可能な BlockNote で表示する
 // 背景ページは操作可能（薄暗くならない）
-// ラベル機能（ProvIndicatorLayer + LabelDropdownPortal + #オートコンプリート）対応
+// ラベル機能（ProvIndicatorLayer）対応
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -33,9 +33,10 @@ import {
   removeNoteContext,
   normalizeNoteContexts,
 } from "../note-context/context-tags";
-import { customBlockEntries, CUSTOM_BLOCK_TYPES } from "../../blocks/registry";
+import { customBlockEntries, KNOWN_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
+import { stepSlashItem } from "../../blocks/step";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -85,9 +86,7 @@ import {
 } from "@features/block-link/mention-menu";
 import { useNewNoteNamePrompt } from "@features/block-link/new-note-name-dialog";
 import { buildMentionPatterns, rewriteMentionRunsForBlock } from "@features/block-link/mention-rename";
-import { LabelDropdownPortal } from "@features/context-label/ui";
-import { ProvIndicatorLayer, BlockHoverHighlight, ProvIndicatorHoverHint } from "@features/context-label/prov-indicator";
-import { buildLabelSlashMenuItems } from "@features/context-label/slash-menu-items";
+import { ProvIndicatorLayer, BlockHoverHighlight } from "@features/context-label/prov-indicator";
 import { isProvLabelsEnabled } from "@features/settings";
 import { setupLabelAutoAssign } from "@features/context-label/label-auto";
 import { KnowledgeStatusChip } from "@features/wiki/KnowledgeStatusChip";
@@ -232,18 +231,11 @@ function SidePeekSideMenu() {
   );
 }
 
-// 既知のブロック型（未登録ブロック除去用）
-// メインエディタ（note-app.tsx）と揃える。カスタムブロックは
-// src/blocks/registry.ts の CUSTOM_BLOCK_TYPES から自動で取り込む。
+// 既知のブロック型（未登録ブロック除去用）は src/blocks/registry.ts の
+// KNOWN_BLOCK_TYPES に集約している（メインエディタと同じ集合を必ず使う）。
 // 取りこぼすと、Peek を開いた瞬間に保存済みカスタムブロックが除去された
-// まま auto-save されてデータが壊れる。
-const KNOWN_BLOCK_TYPES = new Set([
-  "paragraph", "heading", "bulletListItem", "numberedListItem",
-  "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "quote",
-  ...CUSTOM_BLOCK_TYPES,
-]);
-
+// まま auto-save されてデータが壊れる。children を持つブロック（step）では
+// 親が落ちると子孫ごと消えるため、損失はさらに大きい。
 function sanitizeBlocks(blocks: any[]): any[] {
   return blocks
     .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
@@ -1104,6 +1096,26 @@ function SidePeekInner({
     }
   }, [blockAlignmentStore.alignments, handleChange]);
 
+  // リンク / ラベル変更時にもオートセーブをトリガー（editor.onChange を通らないため）。
+  // step カードの前手順リンクや ProvPanel のラベル変更はエディタ本文を変えない。
+  // メインエディタは note-app.tsx の同型 watcher が拾うが、SidePeek は独自の
+  // Provider を持つ（閉じるとアンマウントで消える）ため、ここで拾わないと
+  // ピークで張ったリンクが本文を触らずに閉じた場合に無言で失われる。
+  const prevLinksRef = useRef(linkStore.links);
+  useEffect(() => {
+    if (prevLinksRef.current !== linkStore.links) {
+      prevLinksRef.current = linkStore.links;
+      handleChange();
+    }
+  }, [linkStore.links, handleChange]);
+  const prevLabelsRef = useRef(labelStore.labels);
+  useEffect(() => {
+    if (prevLabelsRef.current !== labelStore.labels) {
+      prevLabelsRef.current = labelStore.labels;
+      handleChange();
+    }
+  }, [labelStore.labels, handleChange]);
+
   // Cmd+S / Ctrl+S
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1364,16 +1376,16 @@ function SidePeekInner({
           <>
             <ProvIndicatorLayer wrapperEl={wrapperEl} />
             <BlockHoverHighlight wrapperEl={wrapperEl} zIndex={101} />
-            <ProvIndicatorHoverHint wrapperEl={wrapperEl} zIndex={101} />
-            <LabelDropdownPortal />
-            {/* 右ガター（80px）はラベル/リンクのインジケータを置く場所。
+            {/* 右ガター（80px）はラベルバッジを置く場所。
                 何も付いていないノートでは左右非対称な余白が「歪み」に見えるため、
-                ラベルもリンクも無いときは左右対称（24px）にする。 */}
+                ラベルが無いときは左右対称（24px）にする。
+                条件はブロックラベルのみ — リンクはバッジを描画しない
+                （prov-indicator.tsx は label 無しを return null する）ので、
+                リンクを条件に入れるとステップを繋いだ瞬間に本文幅が跳ねる。 */}
             <div
               style={{
                 padding: "16px 24px",
-                paddingRight:
-                  labelStore.labels.size > 0 || linkStore.links.length > 0 ? 80 : 24,
+                paddingRight: labelStore.labels.size > 0 ? 80 : 24,
               }}
             >
               {/* 手動で残した版（snapshot:）の状態表示。エディタは read-only。 */}
@@ -1606,17 +1618,16 @@ function SidePeekInner({
                 // ピッカーに渡すよう改修済みなので、SidePeek で開いた場合は
                 // SidePeek のエディタに挿入される。
                 extraSlashMenuItems={[
-                  ...(provLabelsEnabled ? buildLabelSlashMenuItems() : []),
                   ...getMediaSlashMenuItems(),
                   bookmarkSlashItem,
                   calloutSlashItem,
+                  stepSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}
                 excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
                 onEditorReady={handleEditorReady}
                 onChange={handleChange}
-                onHashtagSelect={(blockId, label) => labelStoreRef.current.setLabel(blockId, label)}
                 // `@` 参照: 他ノートの参照 + 「新規ノートを作成」。メインエディタと同じく
                 // 挿入後はピーク内に留まり、青い @テキストをクリックすると（note-app の
                 // document クリックハンドラが .bn-editor を拾うため）サイドピークで開く。

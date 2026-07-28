@@ -1,13 +1,12 @@
 // ──────────────────────────────────────────────
 // ブロック種別ごとに「ブロックラベルとして選べるコアラベル」を決める
 //
-// ラベルの付与 UI は 2 箇所ある:
-//   - LabelDropdownPortal（# 追加フロー、ui.tsx）
-//   - ProvPanel のラベル変更（バッジ → 変更、prov-indicator.tsx）
-// 両者で同じフィルタを使うため、判定ロジックをここに一元化する。
+// ラベルの付与 UI は ProvPanel のラベル変更（バッジ → 変更、prov-indicator.tsx）
+// のみ。判定ロジックをここに一元化する。
 //
-// ルール（schema v5 以降）:
-//   - 見出し: section / phase（procedure / plan / result）
+// ルール:
+//   - section / phase（procedure / plan / result）の新規付与は無い。
+//     工程は step ブロックが表し、計画/結果は撤回した（旧ノートのみ legacy）。
 //   - テーブル: material / tool / output（構造テーブルとして列=属性キー・行=Entity に展開）
 //             + attribute（パラメータテーブルとして列=key・値を手順/親 Entity の params に展開）
 //   - その他の本文ブロック: コアラベルなし（entity 系はインラインハイライト経路で付与）
@@ -61,7 +60,9 @@ export function getVisibleCoreLabels(
 ): CoreLabel[] {
   const heading = isHeadingBlock(blockId);
   const table = !heading && isTableBlock(blockId);
-  const allowedScopes = heading ? new Set(["section", "phase"]) : new Set<string>();
+  // section / phase をここから新規に付ける導線は無い（工程は step ブロックが表す。
+  // 計画/結果の帯は検討の上で撤回した）。既存ラベルは currentLabel 経由で外せる。
+  const allowedScopes = new Set<string>();
   return CORE_LABELS.filter((label) => {
     if (allowedScopes.has(LABEL_SCOPE[label])) return true;
     // テーブルは構造テーブルとして entity 系ラベルをブロックラベルで付与できる

@@ -122,10 +122,15 @@ export function searchNotes(
     const reasons: SearchReason[] = [];
     const titleLower = entry.title.toLowerCase();
 
-    // ラベルフィルタ — 1 つでもマッチしないトークンがあれば除外
+    // ラベルフィルタ — 1 つでもマッチしないトークンがあれば除外。
+    // step コンテナを持つノートは procedure ラベル相当として扱う
+    // （v6 で procedure ラベルは step ブロックへ変換され labels から消えたため）
     if (parsed.labelTokens.length > 0) {
-      const ok = parsed.labelTokens.every((tok) =>
-        entry.labels.some((l) => labelMatchesToken(l.label, tok)),
+      const hasSteps = (entry.steps?.length ?? 0) > 0;
+      const ok = parsed.labelTokens.every(
+        (tok) =>
+          entry.labels.some((l) => labelMatchesToken(l.label, tok)) ||
+          (hasSteps && labelMatchesToken("procedure", tok)),
       );
       if (!ok) continue;
       score += 30;
@@ -159,9 +164,9 @@ export function searchNotes(
           reasons.push("title-contains");
         }
       } else {
-        // 見出しヒット
-        const headingHit = entry.headings.some((h) =>
-          h.text.toLowerCase().includes(textLower),
+        // 見出し / step タイトルヒット
+        const headingHit = [...entry.headings, ...(entry.steps ?? [])].some(
+          (h) => h.text.toLowerCase().includes(textLower),
         );
         if (headingHit) {
           score += 25;

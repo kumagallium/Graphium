@@ -63,7 +63,11 @@ describe("migrateToLatest", () => {
     expect(blocks[3].content[0].styles.inlineOutput).toBe("ent_b_out");
   });
 
-  it("v4 → v5: heading 系ラベル（procedure/plan/result/free.*）は labels に残る", () => {
+  it("v4 → v6 通し: heading 系ラベルは v6 で step 化 / 除去され、free.* だけ残る", () => {
+    // v5 時点では procedure/plan/result は labels に残る仕様だったが、
+    // v6 で procedure 見出しは step ブロックに変換され、plan/result は
+    // （帯撤回により）除去される。migrateToLatest は常に最新まで通すので、
+    // 通し結果の不変条件をここで固定する。
     const doc = baseDoc(4, {
       id: "p1",
       title: "p1",
@@ -83,13 +87,14 @@ describe("migrateToLatest", () => {
       knowledgeLinks: [],
     });
     migrateToLatest(doc);
-    expect(doc.pages[0].labels).toEqual({
-      h1: "procedure",
-      h_plan: "plan",
-      h_result: "result",
-      p_free: "free.purpose",
-    });
-    expect(doc.pages[0].blocks[0].content[0].styles).toEqual({});
+    // free ラベルだけが残る
+    expect(doc.pages[0].labels).toEqual({ p_free: "free.purpose" });
+    // h1 は同 id の step になり、旧スコープ（plan/result 見出し + 段落）を children に持つ
+    const step = doc.pages[0].blocks[0];
+    expect(step.type).toBe("step");
+    expect(step.id).toBe("h1");
+    expect(step.children.map((c: any) => c.id)).toEqual(["h_plan", "h_result", "p_free"]);
+    expect(step.content[0].styles).toEqual({});
   });
 
   it("v4 → v5: 既存 styles を破壊せずマージする（bold 等は残る）", () => {
@@ -437,5 +442,158 @@ describe("migrateToLatest: 未知の inline style を strip する", () => {
     const linkContent = (doc.pages[0].blocks[0].content as any)[0].content[0];
     expect(linkContent.styles.inlineProcedure).toBeUndefined();
     expect(linkContent.styles.italic).toBe(true);
+  });
+});
+
+// ── v5 → v6: procedure 見出し + スコープ → step コンテナ ──
+import { generateProvDocument } from "../features/prov-generator/generator";
+
+describe("migrateProcedureHeadingsToSteps (v5→v6)", () => {
+  const styled = (text: string, styles: Record<string, string> = {}) => ({
+    type: "text",
+    text,
+    styles,
+  });
+  const heading = (id: string, level: number, text: string) => ({
+    id,
+    type: "heading",
+    props: { level },
+    content: [styled(text)],
+    children: [],
+  });
+  const para = (id: string, content: any[]) => ({
+    id,
+    type: "paragraph",
+    content,
+    children: [],
+  });
+  const v5doc = (blocks: any[], labels: Record<string, string>): any => ({
+    version: 5,
+    title: "t",
+    pages: [{ id: "p1", title: "Main", blocks, labels, provLinks: [], knowledgeLinks: [] }],
+    createdAt: "2026-01-01T00:00:00Z",
+    modifiedAt: "2026-01-01T00:00:00Z",
+    source: "human",
+  });
+
+  it("procedure 見出しが同じ id の step になり、スコープが children に入る", () => {
+    const doc = v5doc(
+      [
+        heading("h1", 2, "1. 前処理"),
+        para("p1", [styled("洗浄した")]),
+        para("p2", [styled("乾燥した")]),
+        heading("h2", 2, "2. 反応"),
+        para("p3", [styled("撹拌した")]),
+        para("tail", [styled("まとめ（工程の外）")]),
+      ],
+      { h1: "procedure", h2: "procedure" },
+    );
+    // 注: h2 のスコープは同レベル見出しが無いので末尾まで（tail も含む）
+    const out = migrateToLatest(doc);
+    expect(out.version).toBe(6);
+    const blocks = out.pages[0].blocks;
+    expect(blocks.map((b: any) => [b.type, b.id])).toEqual([
+      ["step", "h1"],
+      ["step", "h2"],
+    ]);
+    expect(blocks[0].children.map((c: any) => c.id)).toEqual(["p1", "p2"]);
+    expect(blocks[1].children.map((c: any) => c.id)).toEqual(["p3", "tail"]);
+    // タイトル content は見出しの content を引き継ぐ
+    expect(blocks[0].content[0].text).toBe("1. 前処理");
+    // procedure ラベルは消える
+    expect(out.pages[0].labels).toEqual({});
+  });
+
+  it("下位レベルの procedure は入れ子 step になる", () => {
+    const doc = v5doc(
+      [
+        heading("outer", 2, "外側"),
+        para("p1", [styled("a")]),
+        heading("inner", 3, "内側"),
+        para("p2", [styled("b")]),
+      ],
+      { outer: "procedure", inner: "procedure" },
+    );
+    const blocks = migrateToLatest(doc).pages[0].blocks;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].id).toBe("outer");
+    expect(blocks[0].children.map((c: any) => c.id)).toEqual(["p1", "inner"]);
+    expect(blocks[0].children[1].type).toBe("step");
+    expect(blocks[0].children[1].children.map((c: any) => c.id)).toEqual(["p2"]);
+  });
+
+  it("plan / result ラベルは除去され、見出しは通常見出しとして step 内に残る", () => {
+    const doc = v5doc(
+      [
+        heading("h1", 2, "工程"),
+        heading("hp", 3, "計画"),
+        para("p1", [styled("予定")]),
+      ],
+      { h1: "procedure", hp: "plan" },
+    );
+    const out = migrateToLatest(doc);
+    const step = out.pages[0].blocks[0];
+    expect(step.children.map((c: any) => [c.type, c.id])).toEqual([
+      ["heading", "hp"],
+      ["paragraph", "p1"],
+    ]);
+    expect(out.pages[0].labels).toEqual({});
+  });
+
+  it("procedure の無いノートは構造が変わらない（v6 に上がるだけ）", () => {
+    const doc = v5doc(
+      [heading("h1", 2, "ただの見出し"), para("p1", [styled("本文")])],
+      {},
+    );
+    const out = migrateToLatest(doc);
+    expect(out.version).toBe(6);
+    expect(out.pages[0].blocks.map((b: any) => [b.type, b.id])).toEqual([
+      ["heading", "h1"],
+      ["paragraph", "p1"],
+    ]);
+  });
+
+  it("グラフ等価性: 変換前（見出し+ラベル）と変換後（step）で同一の PROV が出る", () => {
+    const mkBlocks = () => [
+      heading("h1", 2, "1. 合成"),
+      para("p1", [styled("NaCl", { inlineMaterial: "ent_nacl" }), styled(" を投入")]),
+      para("p2", [styled("中間体Y", { inlineOutput: "ent_y" })]),
+      heading("h2", 2, "2. 精製"),
+      para("p3", [styled("カラム", { inlineTool: "ent_col" })]),
+    ];
+    // 変換前: 旧方式のまま generator にかける
+    const before = generateProvDocument({
+      blocks: mkBlocks(),
+      labels: new Map([
+        ["h1", "procedure"],
+        ["h2", "procedure"],
+      ]),
+      links: [],
+    } as any);
+    // 変換後: migrate してから、残ったラベル（空）で generator にかける
+    const migrated = migrateToLatest(v5doc(mkBlocks(), { h1: "procedure", h2: "procedure" }));
+    const after = generateProvDocument({
+      blocks: migrated.pages[0].blocks,
+      labels: new Map(Object.entries(migrated.pages[0].labels ?? {})),
+      links: [],
+    } as any);
+
+    const key = (doc: any) => ({
+      activities: doc["@graph"]
+        .filter((n: any) => n["@type"] === "prov:Activity")
+        .map((n: any) => [n["@id"], n["rdfs:label"]])
+        .sort(),
+      used: doc["@graph"]
+        .filter((n: any) => n["@type"] === "prov:Activity")
+        .flatMap((n: any) =>
+          ((n["prov:used"] ?? []) as any[]).map((u: any) => [n["@id"], u["@id"]]),
+        )
+        .sort(),
+      generated: doc["@graph"]
+        .filter((n: any) => n["prov:wasGeneratedBy"])
+        .map((n: any) => n["@id"])
+        .sort(),
+    });
+    expect(key(after)).toEqual(key(before));
   });
 });

@@ -1,7 +1,7 @@
-// collectHeadingScope() のユニットテスト
+// collectBlockScope() のユニットテスト
 
 import { describe, it, expect } from "vitest";
-import { collectHeadingScope } from "./side-menu";
+import { collectBlockScope } from "./side-menu";
 
 // テスト用ヘルパー: ブロックを簡易生成する
 function makeHeading(id: string, level: number, text = "") {
@@ -21,7 +21,7 @@ function makeParagraph(id: string, text = "") {
   };
 }
 
-describe("collectHeadingScope", () => {
+describe("collectBlockScope", () => {
   // 見出しブロック + 次の同レベル見出しまでの全ブロックを返す
   it("見出し以降、次の同レベル見出しまでのブロックを返す", () => {
     const doc = [
@@ -32,7 +32,7 @@ describe("collectHeadingScope", () => {
       makeParagraph("p3", "段落3"),
     ];
 
-    const result = collectHeadingScope(doc, doc[0]);
+    const result = collectBlockScope(doc, doc[0]);
     expect(result).toHaveLength(3);
     expect(result[0].id).toBe("h1");
     expect(result[1].id).toBe("p1");
@@ -48,7 +48,7 @@ describe("collectHeadingScope", () => {
       makeParagraph("p2", "内容B"),
     ];
 
-    const result = collectHeadingScope(doc, doc[0]);
+    const result = collectBlockScope(doc, doc[0]);
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe("h3");
     expect(result[1].id).toBe("p1");
@@ -64,7 +64,7 @@ describe("collectHeadingScope", () => {
       makeHeading("h2-next", 2, "次セクション"),
     ];
 
-    const result = collectHeadingScope(doc, doc[0]);
+    const result = collectBlockScope(doc, doc[0]);
     expect(result).toHaveLength(4);
     expect(result.map((b: any) => b.id)).toEqual(["h2", "p1", "h3", "p2"]);
   });
@@ -77,7 +77,7 @@ describe("collectHeadingScope", () => {
       makeHeading("h2", 2, "末尾セクション"),
     ];
 
-    const result = collectHeadingScope(doc, doc[2]);
+    const result = collectBlockScope(doc, doc[2]);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("h2");
   });
@@ -91,7 +91,7 @@ describe("collectHeadingScope", () => {
       makeParagraph("p3", "段落3"),
     ];
 
-    const result = collectHeadingScope(doc, doc[0]);
+    const result = collectBlockScope(doc, doc[0]);
     expect(result).toHaveLength(4);
   });
 
@@ -103,7 +103,7 @@ describe("collectHeadingScope", () => {
     ];
     const orphanBlock = makeHeading("not-in-doc", 2, "孤立した見出し");
 
-    const result = collectHeadingScope(doc, orphanBlock);
+    const result = collectBlockScope(doc, orphanBlock);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("not-in-doc");
   });
@@ -111,7 +111,7 @@ describe("collectHeadingScope", () => {
   // 空の doc 配列を渡した場合
   it("空のドキュメントでは [headingBlock] を返す", () => {
     const heading = makeHeading("h1", 2, "見出し");
-    const result = collectHeadingScope([], heading);
+    const result = collectBlockScope([], heading);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("h1");
   });

@@ -2,6 +2,16 @@ import { describe, it, expect } from "vitest";
 import { buildProvNoteDocument } from "./prov-note-builder";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 
+// 変換後はブロックが step の children に入るため、テキストで再帰検索する
+const findByText = (blocks: any[], text: string): any => {
+  for (const b of blocks ?? []) {
+    if (b?.content?.[0]?.text === text) return b;
+    const hit = findByText(b?.children, text);
+    if (hit) return hit;
+  }
+  return null;
+};
+
 describe("buildProvNoteDocument", () => {
   const baseParams = {
     title: "Tomato Pasta",
@@ -38,7 +48,7 @@ describe("buildProvNoteDocument", () => {
     expect(hasLink).toBe(true);
   });
 
-  it("Phase E: procedure は block-level labels、material は inline highlight になる", () => {
+  it("Phase E: procedure は step ブロックになり、material は inline highlight になる", () => {
     const doc = buildProvNoteDocument({
       ...baseParams,
       blocks: [
@@ -48,10 +58,14 @@ describe("buildProvNoteDocument", () => {
       ],
     });
     const page = doc.pages[0];
-    expect(page.blocks).toHaveLength(4); // source header + 3 blocks
-    const [, heading, material, para] = page.blocks;
-    // procedure は block-level label として残る（H2 = Activity）
-    expect(page.labels[heading.id]).toBe("procedure");
+    // source header + step（スコープの 2 ブロックは step の children に入る）
+    expect(page.blocks).toHaveLength(2);
+    const [, step] = page.blocks;
+    expect(step.type).toBe("step");
+    expect(step.content[0].text).toBe("Slice");
+    const [material, para] = step.children;
+    // procedure ラベルは step 化で消費される（labels には残らない）
+    expect(page.labels[step.id]).toBeUndefined();
     // material は inline highlight として content に書き戻される (block-level label には登録されない)
     expect(page.labels[material.id]).toBeUndefined();
     expect(material.content[0].styles.inlineMaterial).toMatch(/^ent_material_/);
@@ -75,7 +89,8 @@ describe("buildProvNoteDocument", () => {
       ],
     });
     const page = doc.pages[0];
-    const material = page.blocks[2];
+    // step の children に入る
+    const material = page.blocks[1].children[0];
     expect(material.type).toBe("bulletListItem");
     expect(material.content[0].styles.inlineMaterial).toMatch(/^ent_material_/);
     expect(material.children).toHaveLength(2);
@@ -96,9 +111,7 @@ describe("buildProvNoteDocument", () => {
         { text: "egg", role: "materials", blockType: "bulletListItem" },
       ],
     });
-    const material = doc.pages[0].blocks.find(
-      (b: any) => b.content[0].text === "egg",
-    );
+    const material = findByText(doc.pages[0].blocks, "egg");
     expect(material.content[0].styles.inlineMaterial).toMatch(/^ent_material_/);
   });
 
@@ -130,7 +143,8 @@ describe("buildProvNoteDocument", () => {
       ],
     });
     const page = doc.pages[0];
-    const para = page.blocks[2];
+    // step の children に入る
+    const para = page.blocks[1].children[0];
     expect(para.type).toBe("paragraph");
     expect(para.content).toHaveLength(5);
     expect(para.content[0]).toEqual({ type: "text", text: "Warm ", styles: {} });
@@ -163,13 +177,14 @@ describe("buildProvNoteDocument", () => {
       ],
     });
     const page = doc.pages[0];
-    const headings = page.blocks.filter((b: any) => b.type === "heading");
+    // 変換で step になるが id は見出しを引き継ぐので、リンクは step 間に張られる
+    const steps = page.blocks.filter((b: any) => b.type === "step");
     // saute-garlic → slice-garlic の informed_by が span derivedFrom 由来で張られる
     const links = page.provLinks;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({
-      sourceBlockId: headings[1].id,
-      targetBlockId: headings[0].id,
+      sourceBlockId: steps[1].id,
+      targetBlockId: steps[0].id,
       type: "informed_by",
     });
   });
@@ -239,19 +254,19 @@ describe("buildProvNoteDocument", () => {
       ],
     });
     const page = doc.pages[0];
-    const headings = page.blocks.filter((b: any) => b.type === "heading");
+    const steps = page.blocks.filter((b: any) => b.type === "step");
     const links = page.provLinks;
     expect(links).toHaveLength(2);
     expect(links[0]).toMatchObject({
-      sourceBlockId: headings[1].id,
-      targetBlockId: headings[0].id,
+      sourceBlockId: steps[1].id,
+      targetBlockId: steps[0].id,
       type: "informed_by",
       layer: "prov",
       createdBy: "ai",
     });
     expect(links[1]).toMatchObject({
-      sourceBlockId: headings[2].id,
-      targetBlockId: headings[1].id,
+      sourceBlockId: steps[2].id,
+      targetBlockId: steps[1].id,
       type: "informed_by",
     });
   });
@@ -287,10 +302,10 @@ describe("buildProvNoteDocument", () => {
         "sear-bamboo": "Sear bamboo",
         "plate": "Plate",
       };
-      const heading = page.blocks.find(
-        (b: any) => b.type === "heading" && b.content[0].text === textMap[stepId],
+      const step = page.blocks.find(
+        (b: any) => b.type === "step" && b.content[0].text === textMap[stepId],
       );
-      return heading.id;
+      return step.id;
     };
 
     const links = page.provLinks;
@@ -338,9 +353,9 @@ describe("buildProvNoteDocument", () => {
     const page = doc.pages[0];
 
     // スコープ外の 3 つのブロックには label / inline style どちらも付かない
-    const pantryBamboo = page.blocks.find((b: any) => b.content[0].text === "pantry bamboo");
-    const pantryGarlic = page.blocks.find((b: any) => b.content[0].text === "pantry garlic");
-    const oldPan = page.blocks.find((b: any) => b.content[0].text === "old frying pan");
+    const pantryBamboo = findByText(page.blocks, "pantry bamboo");
+    const pantryGarlic = findByText(page.blocks, "pantry garlic");
+    const oldPan = findByText(page.blocks, "old frying pan");
     expect(page.labels[pantryBamboo.id]).toBeUndefined();
     expect(pantryBamboo.content[0].styles).toEqual({});
     expect(page.labels[pantryGarlic.id]).toBeUndefined();
@@ -348,9 +363,13 @@ describe("buildProvNoteDocument", () => {
     expect(page.labels[oldPan.id]).toBeUndefined();
     expect(oldPan.content[0].styles).toEqual({});
 
-    // スコープ内の material は inline highlight 化される
-    const scopedMaterial = page.blocks.find((b: any) => b.content[0].text === "bamboo shoots");
+    // スコープ内の material は inline highlight 化され、step の children に入る
+    const scopedMaterial = findByText(page.blocks, "bamboo shoots");
     expect(scopedMaterial.content[0].styles.inlineMaterial).toMatch(/^ent_material_/);
+    const sliceStep = page.blocks.find(
+      (b: any) => b.type === "step" && b.content[0].text === "Slice bamboo",
+    );
+    expect(sliceStep.children.some((c: any) => c.id === scopedMaterial.id)).toBe(true);
 
     // テキストはそのまま残る（ブロック自体は削除しない）
     expect(pantryBamboo).toBeDefined();

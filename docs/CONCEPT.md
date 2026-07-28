@@ -58,7 +58,7 @@ not seen them together in one tool.
 |---|---|
 | **Provenance, by standard** | Block-level labels (`[Step]`, `[Plan]`, `[Result]`) map to PROV-DM *Activities*; inline highlights (`[Input]`, `[Tool]`, `[Parameter]`, `[Output]`) map to *Entities* and *Properties*; *Agents* come in from authorship metadata. The result is a graph a machine can verify, not just a search index. |
 | **A wiki the AI keeps for you** | Graphium ingests your notes into an editable Knowledge layer — *Claims*, *Insights*, *Ideas*. Future AI conversations read from this layer, so their claims cite your notes, not their training data. |
-| **A block editor for thinking-in-progress** | A [BlockNote.js](https://www.blocknotejs.org/)-based editor tuned for messy-now, structured-later: free writing, `@`-linking between notes, `#`-labeling when you are ready. |
+| **A block editor for thinking-in-progress** | A [BlockNote.js](https://www.blocknotejs.org/)-based editor tuned for messy-now, structured-later: free writing, `@`-linking between notes, step blocks and highlights when you are ready. |
 
 > Surface conveniences that sit on top of these pillars (mobile capture, sync,
 > team sharing) are on the roadmap and are paused or partial today. This
@@ -244,13 +244,13 @@ they come in two layers you can adopt independently.**
 | Level | What you do | What you get |
 |---|---|---|
 | **Just notes** | Write and link with `@` | A linked notebook on your filesystem |
-| **Block-level structure** | Tag heading blocks as `[Step]` (or as a phase: `[Plan]` / `[Result]`) | The skeleton of a provenance graph — what happened, in what order |
-| **Inline detail** | Highlight spans inside a block as `[Input]` / `[Tool]` / `[Parameter]` / `[Output]` | A full provenance graph — what was used, with what conditions, what came out |
+| **Block-level structure** | Put a procedure inside a `step` block (`/step`) | The skeleton of a provenance graph — what happened, in what order |
+| **Inline detail** | Inside a step, highlight spans as `[Input]` / `[Tool]` / `[Parameter]` / `[Output]` | A full provenance graph — what was used, with what conditions, what came out |
 
-The block-level layer (`#`) and the inline layer are two passes over the
-same content, not a single all-or-nothing label. You can write a note with
-no labels at all, give it a step structure later, and add inline detail
-only on the parts that matter.
+The step layer and the inline layer are two passes over the same content,
+not a single all-or-nothing markup. You can write a note with no structure
+at all, wrap parts of it into steps later, and add inline detail only on
+the parts that matter.
 
 I resist the temptation to make any of it mandatory. The gradient *is* the
 design. I expect most people to live in the middle — marking the
