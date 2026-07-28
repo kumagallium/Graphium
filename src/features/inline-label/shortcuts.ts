@@ -94,6 +94,17 @@ export function getInlineLabelShortcutHint(label: InlineLabelKey): string {
 }
 
 /**
+ * キーキャップ表示用のキー配列。
+ * mac はキーごとに分離（⌘ ⇧ I）— まとめると ⇧ が埋もれて「⌘I で効かない」と
+ * 誤解される（サイドバーの ⌘⇧M と同じ教訓）。Windows は記号キーが無いので
+ * 1 キャップに畳む。
+ */
+export function getInlineLabelShortcutKeys(label: InlineLabelKey): string[] {
+  const ch = LABEL_TO_KEY_CHAR[label];
+  return isMacLike() ? ["⌘", "⇧", ch] : [`Ctrl+Shift+${ch}`];
+}
+
+/**
  * keydown からのインラインラベルトグル。処理したら true（呼び出し側で preventDefault）。
  *
  * ガード:

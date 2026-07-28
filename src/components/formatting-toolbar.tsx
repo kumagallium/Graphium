@@ -17,6 +17,7 @@ import {
   isSelectionInTableCell,
   toggleInlineLabelForSelection,
   getInlineLabelShortcutHint,
+  getInlineLabelShortcutKeys,
 } from "../features/inline-label/shortcuts";
 import { isBlockInsideStep, isSelectionInsideStep } from "../blocks/step/view";
 import { useProvLabelsEnabled } from "../features/context-label";
@@ -190,6 +191,33 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
         >
           <Bot size={18} />
         </button>
+      )}
+      {/* ショートカットの発見可能性: tooltip は hover しないと気づけないので、
+          ツールバー 2 行目にヒント行を出す（app.css で flex-wrap を許可、
+          basis-full で折り返し）。ボタン内キーキャップ案は幅が +220px 膨らみ
+          1280px 級の画面で右端からはみ出したため、行を分ける方式にした。
+          テキスト選択時のみ（メディアはショートカット対象外）。モバイルは非表示。 */}
+      {showInlineLabels && !mediaSel && (
+        <div
+          className="hidden md:flex basis-full items-center gap-2.5 px-1 pt-0.5 select-none"
+          data-test="inlineLabelShortcutHints"
+        >
+          {INLINE_LABEL_ORDER.map((label) => (
+            <span key={label} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="inline-flex items-center gap-0.5">
+                {getInlineLabelShortcutKeys(label).map((k) => (
+                  <kbd
+                    key={k}
+                    className="inline-flex min-w-[13px] justify-center rounded border border-foreground/15 bg-foreground/5 px-0.5 py-px text-[9px] leading-none text-foreground/60"
+                  >
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+              {getDisplayLabelName(label)}
+            </span>
+          ))}
+        </div>
       )}
     </FormattingToolbar>
   );

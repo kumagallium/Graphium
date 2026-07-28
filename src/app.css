@@ -366,6 +366,17 @@
   opacity: 1 !important;
 }
 
+/* ショートカットのヒント行（formatting-toolbar.tsx の basis-full 子）がある時だけ
+   折り返しを許可する。フローティングメニューは max-content で幅が決まるため、
+   何もしないと basis-full 子の中身まで 1 行分として幅に足され横に伸びる。
+   ボタン行の自然幅（≈850px）より少し上でキャップして、ヒントを 2 行目に落とす。
+   calc(100vw - 24px) は小さい画面での画面外はみ出し防止。 */
+.bn-formatting-toolbar:has([data-test="inlineLabelShortcutHints"]) {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  max-width: min(880px, calc(100vw - 24px));
+}
+
 [data-floating-ui-portal] {
   z-index: 10001 !important;
 }
