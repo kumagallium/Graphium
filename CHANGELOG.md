@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.23.0](https://github.com/kumagallium/Graphium/compare/v0.22.0...v0.23.0) - 2026-07-28
+
+- feat: step container block for procedures by @kumagallium in https://github.com/kumagallium/Graphium/pull/601
+
 ## [v0.22.0](https://github.com/kumagallium/Graphium/compare/v0.21.0...v0.22.0) - 2026-07-28
 
 - [chore] Add Storybook stories for the image OCR toast and toolbar button by @kumagallium in https://github.com/kumagallium/Graphium/pull/605
