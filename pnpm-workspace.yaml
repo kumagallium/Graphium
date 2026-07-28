@@ -2,6 +2,12 @@
 # CI (pnpm/action-setup) は pnpm 9 固定で、9 は package.json 側を読むため、
 # overrides は package.json と両方に同内容で置いている。片方を変えたら必ず揃えること。
 
+# packages は pnpm 9 のための必須フィールド。9 はこのファイルを「ワークスペース定義」
+# として読み、packages が無いと `ERROR packages field missing or empty` で
+# 全コマンドが落ちる（CI が実際に落ちた）。ルート単一パッケージとして宣言する。
+packages:
+  - "."
+
 # IME ネスト箇条書き複製バグの修正 pin（prosemirror-view 1.41.7 の Safari ガード起因）
 overrides:
   prosemirror-view: 1.42.0
