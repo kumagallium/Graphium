@@ -5,6 +5,7 @@
 // （.graphium.json）がメディアと混在する受信箱** を見る: 捕獲行はアイコン
 // （📝 / 🔗）+ 中身プレビューで並び、行クリックのピークはテキスト表示になる。
 
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { InboxView, type InboxSource } from "./InboxView";
 import type { CaptureRef } from "./types";
@@ -77,13 +78,25 @@ const fakeSource: InboxSource = {
   },
 };
 
-function InboxHost({ source }: { source: InboxSource | null }) {
+function InboxHost({
+  source,
+  initialKeepArchive = false,
+}: {
+  source: InboxSource | null;
+  /** フォルダ設定メニューの「処理済みを _imported/ に残す」の初期値（既定オフ = 削除）。 */
+  initialKeepArchive?: boolean;
+}) {
+  // 実アプリでは localStorage（graphium-inbox-keep-archive）に永続化される。
+  // ストーリーではトグルの見た目と切り替わりだけを見る。
+  const [keepArchive, setKeepArchive] = useState(initialKeepArchive);
   return (
     <div className="w-[960px] h-[560px] bg-background border border-border flex overflow-hidden">
       <InboxView
         rootConfigured={source != null}
         source={source}
         onPickRoot={() => {}}
+        keepArchive={keepArchive}
+        onKeepArchiveChange={setKeepArchive}
         onImport={async () => {}}
         onBack={() => {}}
       />
@@ -119,4 +132,14 @@ export const MixedWithCaptures: Story = {
 /** 未接続（接続 CTA）。 */
 export const NotConnected: Story = {
   args: { source: null },
+};
+
+/**
+ * フォルダ設定メニュー（ヘッダーの FolderCog）。フォルダ変更と「処理済みファイルを
+ * _imported/ に残す」トグルを 1 つの入口に集約。既定はオフ = 取り込み成功後に
+ * Inbox 側ファイルを削除する（クラウドの同期フォルダに控えを溜めない）。
+ * メニューはクリックで開く（このストーリーで FolderCog を押して確認する）。
+ */
+export const FolderSettingsMenu: Story = {
+  args: { source: fakeSource, initialKeepArchive: false },
 };

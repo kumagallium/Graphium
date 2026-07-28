@@ -1379,10 +1379,15 @@ export const ja: Record<string, string> = {
   // ファイルの一覧。取り込むと素材（画像/動画/音声…）へ振り分けられ、ここからは消える。
   "mobile.title": "モバイル",
   "mobile.pendingCount": "未処理 {count} 件",
-  // フォルダ接続
+  // フォルダ接続・フォルダ設定メニュー
   "mobile.connectFolder": "同期フォルダを接続",
   "mobile.changeFolder": "同期フォルダを変更",
   "mobile.connectHint": "同期フォルダを接続すると、モバイルで撮影したメディアがここに届きます。",
+  "mobile.folderSettings": "同期フォルダの設定",
+  // 取り込み後の後処理: 既定は Inbox 側ファイルを削除（クラウドに控えを溜めない）。
+  // 残したい人だけ _imported/ へのアーカイブに切り替える。
+  "mobile.keepArchive": "処理済みファイルを _imported/ に残す",
+  "mobile.keepArchiveHint": "オフ（既定）では、取り込みに成功したファイルを受信箱から削除します。中身は素材として取り込み済みです。",
   // 取り込み
   "mobile.importSelected": "選択したものを取り込み ({count})",
   "mobile.importAll": "全部取り込み",

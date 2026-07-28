@@ -128,7 +128,7 @@ import { loadAuthorIdentity } from "./features/identity";
 import { getSharedRoot, getBlobRoot, pickInboxRoot } from "./lib/storage/shared";
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
-import { getInboxRoot, setInboxRoot, runInboxImport, FolderInbox, InboxView, useMobileInboxFlag } from "./features/mobile-capture/inbox";
+import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, runInboxImport, FolderInbox, InboxView, useMobileInboxFlag } from "./features/mobile-capture/inbox";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
@@ -4811,6 +4811,14 @@ export function NoteApp() {
   // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
   // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
   const [inboxRoot, setInboxRootState] = useState<string | null>(() => getInboxRoot());
+  // 取り込み後に処理済みファイルを _imported/ に残すか（既定 false = Inbox から削除）。
+  // 表示用の state。取り込み実行時は localStorage を直接読むので、ここが古くても
+  // 実挙動には影響しない（handleImportFromInbox 参照）。
+  const [inboxKeepArchive, setInboxKeepArchiveState] = useState<boolean>(() => getInboxKeepArchive());
+  const handleInboxKeepArchiveChange = useCallback((keep: boolean) => {
+    setInboxKeepArchive(keep);
+    setInboxKeepArchiveState(keep);
+  }, []);
   // サイドバー「モバイル」の未処理件数バッジ。取り込み済み素材の数ではなく、
   // 受信箱に残っている未取り込みファイルの数（= これから捌く数）。
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
@@ -6276,7 +6284,8 @@ export function NoteApp() {
 
   // 受信箱の未取り込みメディアを active MediaProvider に取り込む。
   // refs を渡すと選択取り込み、省略すると全部取り込み（受信箱ビューの 2 ボタンに対応）。
-  // 取り込んだものは _imported/ へ退避されるので、再スキャンで一覧から消える。
+  // 取り込んだものは既定で Inbox から削除（keep-archive 設定時は _imported/ へ退避）
+  // されるので、再スキャンで一覧から消える。
   //
   // dedup は 2 段構え:
   //   - run 間: media-index の capture.checksum 集合をスナップショットとして seed する
@@ -6320,6 +6329,11 @@ export function NoteApp() {
         transport: new FolderInbox(root),
         uploadAsset: fm.handleUploadAsset,
         isAlreadyImported,
+        // 取り込み成功後の Inbox 側ファイルの後処理。既定は削除（中身は vault に
+        // 着地済みなので冗長コピーを同期フォルダ = クラウドに残さない）。
+        // 受信箱のフォルダ設定トグルで「処理済みを _imported/ に残す」を選んだ人だけ
+        // アーカイブ。実行時に localStorage を直接読む（表示 state の鮮度に依存しない）。
+        disposal: getInboxKeepArchive() ? "archive" : "delete",
         // 未指定なら全件（「全部取り込み」）。
         ...(refs ? { only: refs } : {}),
         // メモ / URL のネイティブ捕獲（.graphium.json）を本物の実体に振り分ける。
@@ -7869,6 +7883,8 @@ export function NoteApp() {
             rootConfigured={inboxRoot != null}
             source={inboxSource}
             onPickRoot={async () => { await handlePickInboxRoot(); }}
+            keepArchive={inboxKeepArchive}
+            onKeepArchiveChange={handleInboxKeepArchiveChange}
             onImport={handleImportFromInbox}
             onPendingCount={setInboxPendingCount}
             onBack={() => setShowMobile(false)}

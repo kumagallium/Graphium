@@ -1381,10 +1381,15 @@ export const en: Record<string, string> = {
   // material library (images/video/audio/...), so they leave this list.
   "mobile.title": "Mobile",
   "mobile.pendingCount": "{count} pending",
-  // Folder connection
+  // Folder connection / folder settings menu
   "mobile.connectFolder": "Connect sync folder",
   "mobile.changeFolder": "Change sync folder",
   "mobile.connectHint": "Connect a sync folder and whatever you capture on your phone shows up here.",
+  "mobile.folderSettings": "Sync folder settings",
+  // Post-import disposal: the default deletes the inbox-side file (no processed
+  // copies pile up in the cloud); opting in archives into _imported/ instead.
+  "mobile.keepArchive": "Keep processed files in _imported/",
+  "mobile.keepArchiveHint": "When off (default), files are deleted from the inbox after a successful import. Their content is already in your library.",
   // Import
   "mobile.importSelected": "Import selected ({count})",
   "mobile.importAll": "Import all",

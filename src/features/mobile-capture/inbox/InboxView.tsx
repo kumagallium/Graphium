@@ -3,7 +3,8 @@
 // AssetGalleryView とは別物として作る。あちらは「取り込み済み素材」= MediaIndexEntry
 // の一覧だが、ここに並ぶのは **まだ Graphium に入っていない FS 上のファイル**（CaptureRef）
 // で、型も出自も違う。取り込むと素材ライブラリ（画像/動画/音声…）へ振り分けられ、
-// Inbox/_imported/ へ退避されるので、この一覧からは自然に消える。
+// Inbox 側のファイルは既定で削除（keep-archive 設定時は _imported/ へ退避）されるので、
+// この一覧からは自然に消える。
 //
 // 受信箱 = 一時置き場。フォルダを接続した瞬間に中身が見え（取り込み操作は不要）、
 // 取り込んだものは「もはやモバイルのものではない」＝普通の素材として扱う。
@@ -296,6 +297,13 @@ export type InboxViewProps = {
   /** 同期フォルダを選択/変更する。 */
   onPickRoot: () => void | Promise<void>;
   /**
+   * 取り込み後に処理済みファイルを _imported/ に残すか（既定 false = Inbox から削除）。
+   * 値の永続化（localStorage）は呼び出し側が担う — ビューはフォルダ設定メニューの
+   * トグル表示と onKeepArchiveChange の発火だけを受け持つ。
+   */
+  keepArchive: boolean;
+  onKeepArchiveChange: (keep: boolean) => void;
+  /**
    * 取り込みを実行する。refs を渡すと選択取り込み、省略すると全件取り込み。
    * 完了後にビュー側で再スキャンするので、呼び出し側は media index の更新と
    * 結果トーストに専念してよい。
@@ -314,6 +322,8 @@ export function InboxView({
   rootConfigured,
   source,
   onPickRoot,
+  keepArchive,
+  onKeepArchiveChange,
   onImport,
   onPendingCount,
   onBack,
@@ -331,6 +341,21 @@ export function InboxView({
   const [previewName, setPreviewName] = useState<string | null>(null);
   // 非同期の再スキャンが古い結果で新しい結果を上書きしないための世代カウンタ。
   const scanSeq = useRef(0);
+  // 連携フォルダ設定メニュー（ヘッダーの FolderCog）。フォルダの接続/変更と、
+  // 取り込み後の後処理トグル（処理済みを _imported/ に残す）を 1 つの入口に集約する。
+  // 外側クリックで閉じるのは MaterialActionsMenu と同じ pattern。
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!folderMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (folderMenuRef.current && !folderMenuRef.current.contains(e.target as Node)) {
+        setFolderMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [folderMenuOpen]);
 
   const scan = useCallback(async () => {
     if (!source) {
@@ -351,7 +376,7 @@ export function InboxView({
       // 消えたファイルの選択は落とす（同期フォルダは外から書き換わる）。
       const names = new Set(listed.map((r) => r.name));
       setSelected((prev) => new Set([...prev].filter((n) => names.has(n))));
-      // 実体が消えた（取り込み済み → _imported/ へ移動、外部から削除）ものの
+      // 実体が消えた（取り込み済み → 削除/_imported/ へ退避、外部から削除）ものの
       // プレビューは閉じる。blob URL は useInboxPreviewBlob のクリーンアップで revoke。
       setPreviewName((prev) => (prev != null && names.has(prev) ? prev : null));
     } catch (e) {
@@ -393,7 +418,8 @@ export function InboxView({
     );
   }, [items]);
 
-  // 取り込み → 再スキャン。取り込んだものは _imported/ へ移動済みなので一覧から消える。
+  // 取り込み → 再スキャン。取り込んだものは Inbox から消えている（既定は削除、
+  // keep-archive 設定時は _imported/ へ移動）ので一覧から消える。
   const runImport = useCallback(
     async (refs?: CaptureRef[]) => {
       if (importing) return;
@@ -515,14 +541,45 @@ export function InboxView({
             {t("mobile.pendingCount", { count: String(items.length) })}
           </span>
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => { void onPickRoot(); }}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              title={rootConfigured ? t("mobile.changeFolder") : t("mobile.connectFolder")}
-              aria-label={rootConfigured ? t("mobile.changeFolder") : t("mobile.connectFolder")}
-            >
-              <FolderCog size={14} />
-            </button>
+            {/* 連携フォルダ設定メニュー: フォルダの接続/変更 + 取り込み後の後処理トグル。
+                既定は取り込み成功後に Inbox 側ファイルを削除（クラウドの同期フォルダに
+                処理済みの控えを溜めない）。残したい人だけトグルでアーカイブに切り替える */}
+            <div ref={folderMenuRef} className="relative">
+              <button
+                onClick={() => setFolderMenuOpen((v) => !v)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title={t("mobile.folderSettings")}
+                aria-label={t("mobile.folderSettings")}
+              >
+                <FolderCog size={14} />
+              </button>
+              {folderMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-72 bg-popover border border-border rounded-lg shadow-md py-1 z-50">
+                  <button
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors"
+                    onClick={() => { setFolderMenuOpen(false); void onPickRoot(); }}
+                  >
+                    <FolderCog size={14} />
+                    {rootConfigured ? t("mobile.changeFolder") : t("mobile.connectFolder")}
+                  </button>
+                  <div className="my-1 border-t border-border" />
+                  <label className="flex items-start gap-2.5 px-3 py-1.5 text-xs text-foreground rounded hover:bg-muted transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={keepArchive}
+                      onChange={(e) => onKeepArchiveChange(e.target.checked)}
+                      className="mt-0.5 cursor-pointer"
+                    />
+                    <span className="flex flex-col gap-0.5 min-w-0">
+                      <span>{t("mobile.keepArchive")}</span>
+                      <span className="text-[10px] leading-relaxed text-muted-foreground">
+                        {t("mobile.keepArchiveHint")}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => { void scan(); }}
               disabled={!source || loading}

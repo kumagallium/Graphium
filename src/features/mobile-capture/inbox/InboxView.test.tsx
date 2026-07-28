@@ -75,13 +75,20 @@ function renderView(
   source: InboxSource | null,
   onImport: (refs?: CaptureRef[]) => Promise<void> = vi.fn(async (_refs?: CaptureRef[]) => {}),
   rootConfigured = true,
+  opts: {
+    keepArchive?: boolean;
+    onKeepArchiveChange?: (keep: boolean) => void;
+    onPickRoot?: () => void;
+  } = {},
 ) {
   render(
     <LocaleProvider>
       <InboxView
         rootConfigured={rootConfigured}
         source={source}
-        onPickRoot={vi.fn()}
+        onPickRoot={opts.onPickRoot ?? vi.fn()}
+        keepArchive={opts.keepArchive ?? false}
+        onKeepArchiveChange={opts.onKeepArchiveChange ?? vi.fn()}
         onImport={onImport}
         onBack={vi.fn()}
       />
@@ -135,6 +142,50 @@ describe("InboxView", () => {
   it("shows the connect CTA instead of a list when no folder is connected", () => {
     renderView(null, vi.fn(async (_refs?: CaptureRef[]) => {}), false);
     expect(screen.getAllByText("Connect sync folder").length).toBeGreaterThan(0);
+  });
+});
+
+// フォルダ設定メニュー（ヘッダーの FolderCog）: フォルダ変更 + 取り込み後の後処理トグル。
+describe("InboxView folder settings menu (post-import disposal)", () => {
+  it("toggles keep-archive from the folder settings menu (default off = delete)", async () => {
+    const { source } = makeSource([ITEMS]);
+    const onKeepArchiveChange = vi.fn();
+    renderView(source, undefined, true, { onKeepArchiveChange });
+    await waitFor(() => expect(screen.getByText("IMG_1.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync folder settings" }));
+    const toggle = screen.getByLabelText(/Keep processed files in _imported\//) as HTMLInputElement;
+    // 既定はオフ = 取り込み成功後に Inbox 側ファイルを削除
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+    expect(onKeepArchiveChange).toHaveBeenCalledWith(true);
+  });
+
+  it("shows the toggle as on when keepArchive is set, and reports turning it off", async () => {
+    const { source } = makeSource([ITEMS]);
+    const onKeepArchiveChange = vi.fn();
+    renderView(source, undefined, true, { keepArchive: true, onKeepArchiveChange });
+    await waitFor(() => expect(screen.getByText("IMG_1.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync folder settings" }));
+    const toggle = screen.getByLabelText(/Keep processed files in _imported\//) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    fireEvent.click(toggle);
+    expect(onKeepArchiveChange).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the change-folder action inside the menu", async () => {
+    const { source } = makeSource([ITEMS]);
+    const onPickRoot = vi.fn();
+    renderView(source, undefined, true, { onPickRoot });
+    await waitFor(() => expect(screen.getByText("IMG_1.jpg")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync folder settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change sync folder" }));
+
+    expect(onPickRoot).toHaveBeenCalledTimes(1);
   });
 });
 
