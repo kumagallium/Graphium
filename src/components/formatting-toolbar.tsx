@@ -155,33 +155,8 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
   return (
     <FormattingToolbar {...props}>
       {getFormattingToolbarItems(props.blockTypeSelectItems)}
-      {showInlineLabels && INLINE_LABEL_ORDER.map((label) => {
-        const isActive = mediaSel
-          ? mediaCurrent?.label === label
-          : Boolean(activeStyles[LABEL_TO_STYLE[label]]);
-        const onClick = () => {
-          if (mediaSel) {
-            handleMediaLabelClick(label as MediaInlineLabelType, mediaSel.blockId);
-          } else {
-            handleTextLabelClick(label);
-          }
-        };
-        return (
-          <button
-            key={label}
-            onClick={onClick}
-            title={`${getDisplayLabelName(label)} (${getInlineLabelShortcutHint(label)})`}
-            className={[
-              "bn-button inline-flex items-center justify-center rounded transition-colors px-1.5 text-[11px] font-semibold",
-              INLINE_LABEL_COLOR_CLASS[label],
-              isActive ? "bg-black/5 ring-1 ring-current/30" : "",
-            ].join(" ")}
-            data-test={`inlineLabel-${label}`}
-          >
-            {getDisplayLabelName(label)}
-          </button>
-        );
-      })}
+      {/* AI ボタンはラベル群より左（リンクの右）。ラベルは ml-auto で右端に寄せ、
+          2 行目のショートカット説明も右寄せにして、ラベルの真下に説明が来るようにする */}
       {aiAssistant.aiAvailable && (
         <button
           onClick={handleAiClick}
@@ -192,14 +167,46 @@ export function NoteFormattingToolbar(props: FormattingToolbarProps) {
           <Bot size={18} />
         </button>
       )}
+      {showInlineLabels && (
+        <div className="ml-auto flex items-center gap-1">
+          {INLINE_LABEL_ORDER.map((label) => {
+            const isActive = mediaSel
+              ? mediaCurrent?.label === label
+              : Boolean(activeStyles[LABEL_TO_STYLE[label]]);
+            const onClick = () => {
+              if (mediaSel) {
+                handleMediaLabelClick(label as MediaInlineLabelType, mediaSel.blockId);
+              } else {
+                handleTextLabelClick(label);
+              }
+            };
+            return (
+              <button
+                key={label}
+                onClick={onClick}
+                title={`${getDisplayLabelName(label)} (${getInlineLabelShortcutHint(label)})`}
+                className={[
+                  "bn-button inline-flex items-center justify-center rounded transition-colors px-1.5 text-[11px] font-semibold",
+                  INLINE_LABEL_COLOR_CLASS[label],
+                  isActive ? "bg-black/5 ring-1 ring-current/30" : "",
+                ].join(" ")}
+                data-test={`inlineLabel-${label}`}
+              >
+                {getDisplayLabelName(label)}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {/* ショートカットの発見可能性: tooltip は hover しないと気づけないので、
           ツールバー 2 行目にヒント行を出す（app.css で flex-wrap を許可、
           basis-full で折り返し）。ボタン内キーキャップ案は幅が +220px 膨らみ
           1280px 級の画面で右端からはみ出したため、行を分ける方式にした。
+          ラベルボタンが右端にあるので、説明も justify-end で真下に揃える。
           テキスト選択時のみ（メディアはショートカット対象外）。モバイルは非表示。 */}
       {showInlineLabels && !mediaSel && (
         <div
-          className="hidden md:flex basis-full items-center gap-2.5 px-1 pt-0.5 select-none"
+          className="hidden md:flex basis-full items-center justify-end gap-2.5 px-1 pt-0.5 select-none"
           data-test="inlineLabelShortcutHints"
         >
           {INLINE_LABEL_ORDER.map((label) => (
