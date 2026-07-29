@@ -12,7 +12,7 @@
 //   - Asset graph は full mode の **デフォルトで開く**（利用可能なら）
 //   - Metadata は右パネルのタブとして提供（Graph と相互排他）
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Network, Info, StickyNote, Bot } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n";
@@ -25,7 +25,9 @@ import { MaterialMetadataSection } from "./material-metadata-section";
 import { AssetMemosSection } from "./AssetMemosSection";
 import type { CaptureIndex } from "../mobile-capture";
 import { AiAssistantPanel, type AttachedNote } from "../ai-assistant/panel";
-import { useAiAssistant } from "../ai-assistant/store";
+import { useAiAssistant, upsertChat } from "../ai-assistant/store";
+import { loadAssetChats, saveAssetChats } from "./asset-chat-store";
+import type { ScopeChat } from "../../lib/document-types";
 import { assembleCitedAssetContext } from "../ai-assistant/cited-document-context";
 import { runAgent } from "../ai-assistant/api";
 import { isAgentConfigured, getChatSynthesisModelName } from "../settings";
@@ -106,6 +108,7 @@ export function MaterialFullView({
 }: MaterialFullViewProps) {
   const t = useT();
   const aiAssistant = useAiAssistant();
+  const { restoreChats, getCurrentChat, chats: assistantChats } = aiAssistant;
   const graphAvailable = shouldShowAssetGraph(entry, mediaIndex);
 
   // 素材をチャットに添付する参照（AiAssistantPanel の pendingAttachment 経由で自動添付）。
@@ -174,6 +177,66 @@ export function MaterialFullView({
       }
     },
     [entry, captureIndex, aiAssistant, t],
+  );
+
+  // ── 素材チャット履歴の永続化 ──
+  //
+  // ノートと違って明示的な「保存」操作が無いビューなので、ストアの変化そのものを
+  // 保存トリガーにする（送信・分岐・編集&再実行のどの経路でも取りこぼさない）。
+  // 素材を切り替えると AiAssistantProvider ごと作り直される（AssetGalleryView が
+  // fileId を key にしている）ため、この 3 つの effect は 1 素材の中で完結する。
+
+  // 読み込みが終わるまでは書き出さない（空の初期状態で既存履歴を潰さないため）
+  const [chatsLoaded, setChatsLoaded] = useState(false);
+  // debounce 待ちの内容。閉じる瞬間に取りこぼさないよう unmount 時に書き切る
+  const pendingChatsRef = useRef<ScopeChat[] | null>(null);
+  // 保存先。key による作り直しが外れても前の素材のファイルへ書かないための保険
+  const fileIdRef = useRef(entry.fileId);
+  fileIdRef.current = entry.fileId;
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAssetChats(getActiveProvider(), entry.fileId)
+      .then((loaded) => {
+        if (cancelled) return;
+        if (loaded.length > 0) restoreChats(loaded);
+        setChatsLoaded(true);
+      })
+      .catch((err) => {
+        console.warn("素材チャット履歴の読み込み失敗:", err);
+        // 読めなくても以降の会話は保存できるようにする
+        if (!cancelled) setChatsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.fileId, restoreChats]);
+
+  useEffect(() => {
+    if (!chatsLoaded) return;
+    // 表示中の会話（messages）はまだ chats に退避されていないので合流させる
+    const next = upsertChat(assistantChats, getCurrentChat());
+    if (next.length === 0) return;
+    pendingChatsRef.current = next;
+    const timer = setTimeout(() => {
+      pendingChatsRef.current = null;
+      saveAssetChats(getActiveProvider(), fileIdRef.current, next).catch((err) =>
+        console.warn("素材チャット履歴の保存失敗:", err),
+      );
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [chatsLoaded, assistantChats, getCurrentChat]);
+
+  useEffect(
+    () => () => {
+      const pending = pendingChatsRef.current;
+      if (!pending) return;
+      pendingChatsRef.current = null;
+      saveAssetChats(getActiveProvider(), fileIdRef.current, pending).catch((err) =>
+        console.warn("素材チャット履歴の保存失敗:", err),
+      );
+    },
+    [],
   );
 
   // デフォルト rightTab: Graph が使えるなら graph、ダメなら metadata
