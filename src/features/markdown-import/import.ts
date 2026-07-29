@@ -7,6 +7,7 @@
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import type { GraphiumDocument } from "../../lib/document-types";
 import type { BlockLink } from "../block-link/link-types";
+import { parseMarkdownToBlocksWithMath } from "../math/markdown-math";
 
 export type MarkdownImportOptions = {
   /** vault 内の他ファイル取得用。フォルダ一括時に画像解決で使う */
@@ -75,7 +76,9 @@ export async function importMarkdownToGraphiumDoc(
     styleSpecs: defaultStyleSpecs,
   });
   const editor = BlockNoteEditor.create({ schema });
-  const blocks = editor.tryParseMarkdownToBlocks(withSentinels);
+  // 数式（$$ ... $$ / \( ... \)）は素の tryParse では壊れるので数式対応版を通す。
+  // wikilink のセンチネル（{{GWLINK_n}}）とはプレフィックスが違うので干渉しない。
+  const blocks = parseMarkdownToBlocksWithMath(editor, withSentinels);
 
   // BlockNote の HTMLToBlocks は detached document 上で `imageElement.src` を読むため、
   // `media-server://` のような独自スキームは解決時に消えて空 URL になる。出現順で

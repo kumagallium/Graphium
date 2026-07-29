@@ -92,8 +92,17 @@ talks to LLM and embedding backends.
 - BlockNote.js gives Graphium its block model, slash menu, and rich-text
   rendering.
 - Custom blocks live under `src/blocks/` (today: `bookmark`,
-  `callout`, `example-hello`, `pdf-viewer`, `step`). Inline content (entity /
-  agent highlights) lives under `src/features/inline-label/`.
+  `callout`, `example-hello`, `math`, `pdf-viewer`, `step`). Inline content (entity /
+  agent highlights) lives under `src/features/inline-label/`; inline math lives
+  under `src/features/inline-math/`.
+- `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX;
+  clicking the block swaps the rendering for a textarea over the raw LaTeX.
+  `inlineMath` is the same idea as a custom inline content spec, for formulas
+  that sit inside a sentence. Conversion to and from Markdown (`$ … $`,
+  `$$ … $$`) is centralized in `src/features/math/markdown-math.ts` — every
+  Markdown → block path goes through `parseMarkdownToBlocksWithMath`, because
+  BlockNote's own parser destroys LaTeX delimiters and eats `^` / `_` as
+  emphasis markers.
 - `step` is the one container block: it holds child blocks, and a procedure is
   written by putting its content inside a step rather than by labelling a
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
@@ -348,16 +357,19 @@ straight document translation.
 | Extract text | `src/features/wiki/pdf-text-extractor.ts` (`extractPdfPages`) | Client-side pdfjs extraction, returned **per page** (the unit of translation and figure placement) |
 | Extract figures | `src/features/asset-browser/pdf-image-extractor.ts` (`extractEmbeddedPdfImages`) | Pulls embedded raster images grouped by page number, skipping decorative fragments (arrows, rules — by on-page display area) and information-free solid-color patches (panel backgrounds — by content); uploaded as media derived from the source PDF |
 | Glossary | `POST /api/translate/glossary` | One pass over a text sample extracts key domain terms + target-language translations, so parallel page translations stay consistent |
-| Translate | `src/server/services/translate.ts` + `POST /api/translate` | Per-page prompt (glossary injected): reconstruct structure from the flattened text, translate prose into the target language, keep math / code / citations / references verbatim, output Markdown |
-| Build | `src/features/pdf-translate/translate-service.ts` | Per page: Markdown → BlockNote blocks (`tryParseMarkdownToBlocks`) followed by that page's figure blocks; assembles a `GraphiumDocument` linked to the source PDF |
+| Translate | `src/server/services/translate.ts` + `POST /api/translate` | Per-page prompt (glossary injected): reconstruct structure from the flattened text, translate prose into the target language, keep math / code / citations / references verbatim — formulas are written as LaTeX in `$ … $` / `$$ … $$`, never `\[ … \]` — output Markdown |
+| Build | `src/features/pdf-translate/translate-service.ts` | Per page: Markdown → BlockNote blocks (`parseMarkdownToBlocksWithMath`, so formulas land in `math` / `inlineMath` instead of collapsing into raw LaTeX text) followed by that page's figure blocks; assembles a `GraphiumDocument` linked to the source PDF |
 
 Pages are translated **in parallel** (bounded concurrency) and reassembled
 in page order; each page's extracted figures are inserted right after its
 translated text. The note is saved via the normal
 `handleCreateNoteFromDocument` path (recorded as an AI derivation). Known
-limits: math-heavy / multi-column papers degrade because pdfjs flattens
-their layout; figure placement is page-granular (end of each page, not at
-the exact caption); and very long PDFs are truncated at a character cap.
+limits: multi-column papers degrade because pdfjs flattens their layout, and
+that same flattening means a formula reaches the model as one line of broken
+text — it is rebuilt as LaTeX from context, so complex layouts (stacked
+fractions, large matrices) can come back approximated; figure placement is
+page-granular (end of each page, not at the exact caption); and very long PDFs
+are truncated at a character cap.
 
 ### 3.3 Knowledge layer
 

@@ -11,12 +11,14 @@ import { pdfViewerBlock } from "./pdf-viewer";
 import { bookmarkBlock } from "./bookmark";
 import { calloutBlock } from "./callout";
 import { stepBlock } from "./step";
+import { mathBlock } from "./math";
 
 export const customBlockEntries: CustomBlockEntry[] = [
   pdfViewerBlock,
   bookmarkBlock,
   calloutBlock,
   stepBlock,
+  mathBlock,
 ];
 
 export const CUSTOM_BLOCK_TYPES: ReadonlySet<string> = new Set(
@@ -38,4 +40,19 @@ const DEFAULT_BLOCK_TYPES = [
 export const KNOWN_BLOCK_TYPES: ReadonlySet<string> = new Set([
   ...DEFAULT_BLOCK_TYPES,
   ...CUSTOM_BLOCK_TYPES,
+]);
+
+// カスタムインラインコンテンツ（本文の途中に埋まる独自要素）の型。
+// ブロックと同じ理由でここに集約する: note-app.tsx の sanitizeInlineContent が
+// この集合に無い inline を除去して自動保存するため、登録漏れは即データ損失になる
+// （実際に inlineMath を足したとき、ここに無いせいで本文から数式だけが消えた）。
+export const CUSTOM_INLINE_TYPES: ReadonlySet<string> = new Set([
+  "inlineMath",
+]);
+
+// 保存済みノートを読み込むときに「知っているインライン型」の集合。
+export const KNOWN_INLINE_TYPES: ReadonlySet<string> = new Set([
+  "text",
+  "link",
+  ...CUSTOM_INLINE_TYPES,
 ]);

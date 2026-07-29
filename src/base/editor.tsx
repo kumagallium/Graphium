@@ -9,7 +9,7 @@ import {
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
+import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs, defaultStyleSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { codeBlockOptions } from "@blocknote/code-block";
 
 /**
@@ -39,6 +39,7 @@ const lightCodeBlock = createCodeBlockSpec({
   },
 });
 import { inlineLabelStyleSpecs } from "@features/inline-label/styles";
+import { inlineMathSpecs } from "@features/inline-math/spec";
 import { filterSuggestionItems as _filterSuggestionItems } from "@blocknote/core/extensions";
 import { FC, useCallback, useEffect, useMemo } from "react";
 import type { CustomBlockEntry } from "./schema";
@@ -118,6 +119,13 @@ export function SandboxEditor({
       ...defaultBlockSpecs,
       codeBlock: lightCodeBlock,
       ...customSpecs,
+    } as any,
+    // インライン数式（$...$）を本文中の要素として持てるようにする。
+    // 未登録のまま保存済みノートを開くと BlockNote が未知 inline で throw するため、
+    // エディタを作る全経路でこの spec を混ぜること。
+    inlineContentSpecs: {
+      ...defaultInlineContentSpecs,
+      ...inlineMathSpecs,
     } as any,
     styleSpecs: {
       ...defaultStyleSpecs,

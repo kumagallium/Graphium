@@ -22,6 +22,8 @@ import {
   customBlockEntries,
   CUSTOM_BLOCK_TYPES,
   KNOWN_BLOCK_TYPES,
+  CUSTOM_INLINE_TYPES,
+  KNOWN_INLINE_TYPES,
 } from "./registry";
 
 describe("block registry", () => {
@@ -64,6 +66,29 @@ describe("block registry", () => {
   it("登録エントリに重複した type が無い", () => {
     const types = customBlockEntries.map((b) => b.type);
     expect(new Set(types).size).toBe(types.length);
+  });
+});
+
+describe("inline registry", () => {
+  it("カスタムインライン型が KNOWN_INLINE_TYPES に入る（除去されない）", () => {
+    // ここが落ちたら、そのインライン要素は本文から静かに消えて自動保存される
+    for (const type of CUSTOM_INLINE_TYPES) {
+      expect(KNOWN_INLINE_TYPES.has(type)).toBe(true);
+    }
+  });
+
+  it("インライン数式が登録されている", () => {
+    // 実際にここが漏れていて、取り込んだ論文の本文から数式だけが消えた
+    expect(KNOWN_INLINE_TYPES.has("inlineMath")).toBe(true);
+  });
+
+  it("標準のインライン型（text / link）を含む", () => {
+    expect(KNOWN_INLINE_TYPES.has("text")).toBe(true);
+    expect(KNOWN_INLINE_TYPES.has("link")).toBe(true);
+  });
+
+  it("未知のインライン型は含まない（除去対象のまま）", () => {
+    expect(KNOWN_INLINE_TYPES.has("mention")).toBe(false);
   });
 });
 

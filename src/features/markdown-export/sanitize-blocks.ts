@@ -7,6 +7,10 @@
 //
 // 方針: Markdown は元々 lossy なエクスポートなので、視覚情報（ハイライト色や
 // callout の枠）は捨て、テキストとリンクだけを確実に残す。
+// ただし数式は「見た目」ではなく内容なので、$$ ... $$ / $ ... $ の LaTeX 表記に
+// 戻して残す（他の Markdown ツールでもそのまま数式として読める形）。
+
+import { mathBlockToMarkdown, inlineMathToMarkdown } from "../math/markdown-math";
 
 /** BlockNote の inline content（text / link / その他）1 要素 */
 type InlineItem = Record<string, any>;
@@ -50,6 +54,10 @@ function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): In
         href: typeof item.href === "string" ? item.href : "",
         content: sanitizeInlines(item.content, knownStyles),
       });
+    } else if (item.type === "inlineMath") {
+      // インライン数式 → Markdown の $ ... $ 表記に戻す
+      const md = inlineMathToMarkdown(String(item.props?.latex ?? ""));
+      if (md) out.push({ type: "text", text: md, styles: {} });
     } else if (typeof item.text === "string") {
       // 未知の inline type（将来の mention 等）はテキストとして残す
       out.push({ type: "text", text: item.text, styles: {} });
@@ -65,7 +73,8 @@ export function extractInlineText(content: unknown): string {
   let text = "";
   for (const item of content) {
     if (!item || typeof item !== "object") continue;
-    if (typeof (item as any).text === "string") text += (item as any).text;
+    if ((item as any).type === "inlineMath") text += inlineMathToMarkdown(String((item as any).props?.latex ?? ""));
+    else if (typeof (item as any).text === "string") text += (item as any).text;
     else if (Array.isArray((item as any).content)) text += extractInlineText((item as any).content);
   }
   return text;
@@ -139,6 +148,17 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
         type: "paragraph",
         props: {},
         content: sanitizeInlines(b.content, knownStyles),
+        children,
+      });
+      continue;
+    }
+    if (b.type === "math") {
+      // 数式ブロック → $$ ... $$ の段落（LaTeX ソースをそのまま残す）
+      const md = mathBlockToMarkdown(String(b.props?.latex ?? ""));
+      out.push({
+        type: "paragraph",
+        props: {},
+        content: md ? [{ type: "text", text: md, styles: {} }] : [],
         children,
       });
       continue;
