@@ -113,6 +113,10 @@ function tesseractAssetsPlugin(): Plugin {
   };
   return {
     name: "copy-tesseract-assets",
+    // dev サーバーの初期化より前に置く必要がある。buildStart だけだと、
+    // public/tesseract が無い状態（clone / worktree 直後）の初回起動では
+    // コピーが publicDir の配信対象に入らず、その回だけ OCR が動かない。
+    configResolved: copy,
     buildStart: copy,
   };
 }
