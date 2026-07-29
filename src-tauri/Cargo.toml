@@ -27,5 +27,10 @@ humantime = "2"
 base64 = "0.22"
 trash = "5"
 
+# ウィンドウのサイズ・位置の記憶はデスクトップ専用プラグイン。
+# モバイルターゲットではビルド対象から外す（lib.rs 側も #[cfg(desktop)] で囲む）。
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-window-state = "2"
+
 [dev-dependencies]
 tempfile = "3"

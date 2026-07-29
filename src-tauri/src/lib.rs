@@ -1729,6 +1729,15 @@ pub fn run() {
         ])
         .manage(NativeSidecarState::default())
         .setup(|app| {
+            // ウィンドウのサイズ・位置を前回終了時の状態に復元する（デスクトップのみ）。
+            // Windows の既定表示スケールは 150% なので、1920x1080 の実機でも Web 側から
+            // 見える論理解像度は 1280x720 しかない。tauri.conf の初期サイズはそこに収まる
+            // 値にしてあるが、広い画面のユーザーが毎回ウィンドウを広げ直す羽目にならない
+            // よう、調整後のサイズを次回起動に引き継ぐ。
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_window_state::Builder::default().build())?;
+
             // 旧形式（拡張子なし）メディアの拡張子付与マイグレーション。
             // フロントエンドのロード前に同期実行するので、読み込みとの競合はない。
             migrate_media_extensions();

@@ -718,6 +718,12 @@ The same `src/` tree is built three different ways.
 
 - Entry: `src-tauri/src/lib.rs` boots a webview that loads the same `src/`
   bundle
+- The window opens at 1200×700 logical pixels, centered, and remembers its
+  size and position between launches (`tauri-plugin-window-state`, desktop
+  only). The initial height is deliberately conservative: Windows ships
+  with 150% display scaling by default, so a 1920×1080 laptop exposes only
+  1280×720 logical pixels to the webview — a taller default window would
+  open with its bottom edge below the screen.
 - Storage: `filesystem` provider, default path `~/Documents/Graphium/`
 - Tauri commands (`list_note_files`, etc.) are defined in `lib.rs` and
   matched by TypeScript wrappers
