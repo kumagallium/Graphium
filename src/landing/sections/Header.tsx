@@ -15,6 +15,7 @@ export function Header() {
           <a href="#screens">{t("nav.screens")}</a>
           <a href="#start">{t("nav.start")}</a>
           <a href="#faq">{t("nav.faq")}</a>
+          <a href="/Graphium/manual/">{t("nav.manual")}</a>
           <a
             href="https://github.com/kumagallium/Graphium"
             target="_blank"

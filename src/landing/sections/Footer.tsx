@@ -39,6 +39,7 @@ export function Footer() {
           >
             {t("footer.releases")}
           </a>
+          <a href="/Graphium/manual/">{t("footer.manual")}</a>
         </div>
       </div>
     </footer>

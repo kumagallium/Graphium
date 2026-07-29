@@ -64,3 +64,6 @@ storybook-static/
 
 # Tesseract.js が実行時に取得する学習データ（リポジトリには含めない）
 *.traineddata
+
+# VitePress (user manual) build cache
+manual/.vitepress/cache/

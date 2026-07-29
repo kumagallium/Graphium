@@ -15,6 +15,7 @@ export const en = {
   "nav.screens": "Screens",
   "nav.faq": "FAQ",
   "nav.start": "Get started",
+  "nav.manual": "Manual",
 
   // Hero
   "hero.eyebrow": "Graphium · An inspiration notebook for the AI era",
@@ -121,6 +122,7 @@ export const en = {
   "footer.repo": "GitHub",
   "footer.blog": "Blog",
   "footer.releases": "Releases",
+  "footer.manual": "Manual",
   "footer.langToggle": "日本語",
 } as const;
 
@@ -129,6 +131,7 @@ export const ja: Record<keyof typeof en, string> = {
   "nav.screens": "画面",
   "nav.faq": "FAQ",
   "nav.start": "はじめる",
+  "nav.manual": "マニュアル",
 
   "hero.eyebrow": "Graphium · AI 時代のひらめきノート",
   "hero.title": "書けば書くほど、点と点が繋がる「ひらめきノート」",
@@ -226,6 +229,7 @@ export const ja: Record<keyof typeof en, string> = {
   "footer.repo": "GitHub",
   "footer.blog": "ブログ",
   "footer.releases": "Releases",
+  "footer.manual": "マニュアル",
   "footer.langToggle": "English",
 };
 
