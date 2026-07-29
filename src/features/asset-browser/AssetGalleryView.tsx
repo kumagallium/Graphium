@@ -957,8 +957,11 @@ export function AssetGalleryView({
   if (detailEntry && detailFullMode) {
     // 素材全画面ビューの AI チャットタブ用に、素材ビュー専用の AiAssistantProvider で
     // ラップする。ノート編集の Provider（ノートごとに分離）とは独立した会話ストアになる。
+    // 会話は素材ごとに appdata へ保存される（asset-chat-store）ので、素材が変わったら
+    // fileId を key にストアごと作り直す（前の素材の会話が次の素材のファイルへ
+    // 書き込まれるのを防ぐ。ノート切替でサイドピークを remount するのと同じ理由）。
     return (
-      <AiAssistantProvider aiAvailable={aiAvailable}>
+      <AiAssistantProvider key={detailEntry.fileId} aiAvailable={aiAvailable}>
       <MaterialFullView
         entry={detailEntry}
         onClose={() => {

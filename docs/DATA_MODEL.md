@@ -414,6 +414,17 @@ type ScopeChat = {
 Chats are anchored to a scope (a heading, block, or page) so they can be
 re-attached to the same context after edits.
 
+Where a chat is stored depends on where it was started. A chat opened
+from a note lives in that note's `chats` field (§1). A chat opened from
+the **material full view**'s "Ask AI" panel has no note to belong to, so
+it is stored per material under the `asset-chats:<fileId>` app-data key
+(§6.1), as the same `ScopeChat[]` shape with `scopeType: "page"` and an
+empty `scopeBlockId`. Notes persist their chats as part of saving the
+note; the material view has no explicit save action, so it writes on a
+short debounce whenever the conversation changes and flushes once more
+when the view closes. Deleting the last chat writes `null`, the same
+logical delete used for snapshots.
+
 A chat can be **forked**: the messages up to a chosen point are copied
 into a new `ScopeChat` (new `id`, `forkedFrom` pointing at the parent)
 while the original chat is preserved unchanged. Editing a past user
@@ -1182,7 +1193,8 @@ Defined in `src/lib/storage/types.ts`. The methods cluster into:
 - **Metadata** — `getUserEmail`, `getRevisionId?`.
 - **App data** (optional) — `readAppData`, `writeAppData`. Used by the
   index file, manual version snapshots (`snapshot-index:<noteId>` /
-  `snapshot:<snapshotId>`, see §2.4), and other internal metadata.
+  `snapshot:<snapshotId>`, see §2.4), material-scoped AI chats
+  (`asset-chats:<fileId>`, see §2.5), and other internal metadata.
 - **Knowledge / Skill CRUD** (optional) — separate listings for Knowledge and
   Skill documents so backends can store them in dedicated namespaces.
 
@@ -1234,7 +1246,8 @@ Graphium/
 ├── media-text/
 │   └── <fileId>.txt          # persisted URL source text (B-persist)
 └── appdata/
-    └── note-index.json        # the GraphiumIndex
+    ├── note-index.json             # the GraphiumIndex
+    └── asset-chats:<fileId>.json   # AI chats started from a material (§2.5)
 ```
 
 Media binaries keep their original file extension (derived from the
