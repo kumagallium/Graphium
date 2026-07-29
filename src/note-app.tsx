@@ -209,6 +209,7 @@ import {
   type AssetDisplayMode,
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
+import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
@@ -7475,6 +7476,10 @@ export function NoteApp() {
                     }
                     // 3) チャンク分割して並列翻訳 → 1 ノート化
                     const result = await translateUrlToNote(article, getLocale(), url, {
+                      // 代表画像は取り込み時に一度だけ保存する（本文にリモート URL を残さない）。
+                      // 元 URL 素材からの派生として登録し、アセットグラフで辿れるようにする
+                      //  —— PDF 経路の抽出図と対称。
+                      uploadImage: (file) => fm.handleUploadMedia(file, { derivedFromAssets: [entry.fileId] }),
                       onPhase: (label) => {
                         setIngestToast((prev) => ({ items: (prev?.items ?? []).map((i: IngestToastItem) => i.id === jobId ? { ...i, status: "generating" as const, detail: label } : i) }));
                       },
@@ -7603,23 +7608,7 @@ export function NoteApp() {
               // —— PDF 埋め込み画像抽出と対称。
               const toastId = `save-image:${Date.now()}`;
               try {
-                const proxied = `${apiBase()}/url/image-proxy?url=${encodeURIComponent(imageUrl)}`;
-                const res = await fetch(proxied);
-                if (!res.ok) throw new Error(`image-proxy ${res.status}`);
-                const blob = await res.blob();
-                if (!blob.type.startsWith("image/")) throw new Error("not an image");
-                // ファイル名: URL のベース名 + MIME 由来の拡張子（取れなければ image.<ext>）
-                const ext =
-                  (blob.type.split("/")[1] || "img").split("+")[0].replace(/[^a-z0-9]/gi, "").slice(0, 5) || "img";
-                let base = "image";
-                try {
-                  const path = new URL(imageUrl).pathname;
-                  const last = path.substring(path.lastIndexOf("/") + 1).replace(/\.[a-z0-9]+$/i, "");
-                  if (last) base = decodeURIComponent(last).replace(/[^\w.\- ]/g, "").slice(0, 40) || "image";
-                } catch {
-                  /* URL 解析失敗時は既定名を使う */
-                }
-                const file = new File([blob], `${base}.${ext}`, { type: blob.type });
+                const file = await fetchRemoteImageAsFile(imageUrl);
                 await fm.handleUploadMedia(file, {
                   derivedFromAssets: sourceEntry.fileId ? [sourceEntry.fileId] : [],
                 });

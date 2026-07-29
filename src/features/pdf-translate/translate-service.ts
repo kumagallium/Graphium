@@ -27,6 +27,7 @@ import { aiErrorFromResponse } from "../../lib/ai-error";
 import { getDefaultLLMModel, getSelectedModel } from "../settings/store";
 import { extractPdfPages } from "../wiki/pdf-text-extractor";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "../asset-browser/pdf-image-extractor";
+import { saveRemoteImageAsMedia } from "../asset-browser/remote-image";
 import { imageBlock, imageOrder, insertImagesAtCaptions } from "./figure-placement";
 import { t } from "../../i18n";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -382,7 +383,9 @@ export async function translatePdfToNote(
 // ───────────────────────────── URL 全文翻訳 ─────────────────────────────
 // PDF と違い URL はページ概念が無いため、Reader Mode 本文（段落区切りを保った
 // プレーンテキスト）を段落境界でチャンク化してから並列翻訳する。図の埋め込み抽出は
-// 行わず、Reader が拾った代表画像（leadImage）だけ先頭に置く。
+// 行わず、Reader が拾った代表画像（leadImage）だけ先頭に置く。代表画像は取り込み時に
+// 一度だけ取得してローカルメディアに保存し、本文にはローカル URL を書く（PDF 経路と
+// 同じく、永続コンテンツにリモート URL を残さない）。
 
 // 1 チャンクあたりの目安文字数。PDF の 1 ページ相当（数千字）に揃え、リクエストサイズ
 // と並列度のバランスを取る。長すぎる単一段落はそのまま 1 チャンクにする。
@@ -438,15 +441,20 @@ export type TranslateUrlResult = {
  * @param article  fetchReaderArticle で取得済みの Reader 本文
  * @param language 目的言語コード（UI ロケール: "ja" / "en" など）
  * @param url      出典 URL（sourceUrl / プロヴェナンスの sessionId に使う）
- * @param opts     進捗・フェーズ表示コールバック
+ * @param opts     画像アップロード経路・進捗・フェーズ表示コールバック
  */
 export async function translateUrlToNote(
   article: ReaderArticleClient,
   language: string,
   url: string,
-  opts: { onProgress?: TranslateProgress; onPhase?: (label: string) => void } = {},
+  opts: {
+    /** 代表画像の保存経路。未指定なら代表画像は差し込まない（リモート URL は書かない） */
+    uploadImage?: (file: File) => Promise<string>;
+    onProgress?: TranslateProgress;
+    onPhase?: (label: string) => void;
+  } = {},
 ): Promise<TranslateUrlResult> {
-  const { onProgress, onPhase } = opts;
+  const { uploadImage, onProgress, onPhase } = opts;
 
   const text = article.textContent.trim();
   if (text.length < 1) {
@@ -454,6 +462,16 @@ export async function translateUrlToNote(
   }
 
   const chunks = chunkTextByParagraph(text, URL_CHUNK_CHARS);
+
+  // 代表画像はここで一度だけ取得してローカルメディアに保存する（PDF の図抽出に相当）。
+  // article.leadImage は配信元の http(s) URL なので、そのままブロックに書くと
+  // ノートを開くたび・PDF 書き出しのたびに配信元へ取りに行くことになる。
+  // 失敗したらリモート URL へフォールバックせず、画像ごと諦める。
+  let leadImage: { url: string; name: string } | null = null;
+  if (article.leadImage && uploadImage) {
+    onPhase?.("Saving lead image...");
+    leadImage = await saveRemoteImageAsMedia(article.leadImage, uploadImage);
+  }
 
   let inputTokens = 0;
   let outputTokens = 0;
@@ -494,9 +512,10 @@ export async function translateUrlToNote(
 
   const fallbackTitle = article.title || url;
   const noteBlocks: any[] = [buildSourceHeaderBlock(fallbackTitle)];
-  // Reader が拾った代表画像があれば本文の先頭に置く（PDF の図差し込みに相当する最小版）
-  if (article.leadImage) {
-    noteBlocks.push(imageBlock(article.leadImage, article.title || "image"));
+  // 保存できた代表画像があれば本文の先頭に置く（PDF の図差し込みに相当する最小版）。
+  // name は保存したメディア名に揃える（リネーム時にブロック props.name も追従する）。
+  if (leadImage) {
+    noteBlocks.push(imageBlock(leadImage.url, leadImage.name));
   }
   noteBlocks.push(...bodyBlocks);
 
