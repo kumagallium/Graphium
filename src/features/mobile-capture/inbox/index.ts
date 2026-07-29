@@ -4,7 +4,12 @@ export {
   setInboxRoot,
   getInboxKeepArchive,
   setInboxKeepArchive,
+  useInboxConfig,
+  INBOX_CONFIG_EVENT,
 } from "./config";
+export { getMobileAppUrl, GRAPHIUM_PUBLIC_APP_URL } from "./app-url";
+export { MobileConnectQrCard } from "./MobileConnectQrCard";
+export type { MobileConnectQrCardProps } from "./MobileConnectQrCard";
 export {
   isMobileInboxEnabled,
   setMobileInboxEnabled,

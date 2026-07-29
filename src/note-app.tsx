@@ -123,7 +123,7 @@ import { loadAuthorIdentity } from "./features/identity";
 import { getSharedRoot, getBlobRoot, pickInboxRoot } from "./lib/storage/shared";
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
-import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, runInboxImport, FolderInbox, InboxView, useMobileInboxFlag } from "./features/mobile-capture/inbox";
+import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView, useMobileInboxFlag } from "./features/mobile-capture/inbox";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
@@ -4856,14 +4856,15 @@ export function NoteApp() {
   }, [mobileInboxEnabled]);
   // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
   // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
-  const [inboxRoot, setInboxRootState] = useState<string | null>(() => getInboxRoot());
-  // 取り込み後に処理済みファイルを _imported/ に残すか（既定 false = Inbox から削除）。
-  // 表示用の state。取り込み実行時は localStorage を直接読むので、ここが古くても
-  // 実挙動には影響しない（handleImportFromInbox 参照）。
-  const [inboxKeepArchive, setInboxKeepArchiveState] = useState<boolean>(() => getInboxKeepArchive());
+  //
+  // 入口は 2 つ — 設定 › ストレージ（正典）と、この受信箱ビューのフォルダ設定メニュー
+  // （その場の近道）。useInboxConfig が setter の CustomEvent を購読するので、
+  // どちらで変えても両方がリロード無しで追従する（自前 state は持たない）。
+  // keep-archive も同じ源。取り込み実行時は localStorage を直接読むので、
+  // 表示が古くても実挙動には影響しない（handleImportFromInbox 参照）。
+  const { root: inboxRoot, keepArchive: inboxKeepArchive } = useInboxConfig();
   const handleInboxKeepArchiveChange = useCallback((keep: boolean) => {
     setInboxKeepArchive(keep);
-    setInboxKeepArchiveState(keep);
   }, []);
   // サイドバー「モバイル」の未処理件数バッジ。取り込み済み素材の数ではなく、
   // 受信箱に残っている未取り込みファイルの数（= これから捌く数）。
@@ -6311,16 +6312,14 @@ export function NoteApp() {
 
   // ── モバイル受信箱: 接続と取り込み ────────────────────────────────
   // 同期フォルダ（<root>/Inbox/ の親）を選ぶ。選択したら localStorage に永続化し、
-  // inboxRoot state も更新する → inboxSource が差し替わり、受信箱が即座に再スキャンされる。
+  // setInboxRoot の CustomEvent 経由で useInboxConfig が更新される → inboxSource が
+  // 差し替わり、受信箱が即座に再スキャンされる（設定モーダル側の表示も同時に追従）。
   // desktop 専用（Tauri）。
   const handlePickInboxRoot = useCallback(async (): Promise<string | null> => {
     if (!isTauri()) return null;
     try {
       const picked = await pickInboxRoot(getInboxRoot() ?? undefined);
-      if (picked) {
-        setInboxRoot(picked);
-        setInboxRootState(picked);
-      }
+      if (picked) setInboxRoot(picked);
       return picked;
     } catch (e) {
       console.error("[inbox] folder pick failed", e);

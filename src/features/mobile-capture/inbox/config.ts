@@ -8,9 +8,26 @@
 //
 // 疎結合: hook / provider の具体には依存せず単独で読める。
 // shared/config.ts の getSharedRoot/setSharedRoot と同じ try/catch ガード形。
+//
+// 同じ設定に入口が 2 つある（設定 › ストレージ = 正典 / 受信箱ビューのフォルダ設定
+// メニュー = その場の近道）。どちらで変えても両方に反映させるため、setter は
+// experimental.ts と同じ形で CustomEvent を流し、useInboxConfig で購読する。
+
+import { useEffect, useState } from "react";
 
 const INBOX_ROOT_KEY = "graphium-inbox-root";
 const INBOX_KEEP_ARCHIVE_KEY = "graphium-inbox-keep-archive";
+
+/** inbox 設定変更の同一タブ内通知（storage イベントは他タブにしか飛ばないため自前で流す）。 */
+export const INBOX_CONFIG_EVENT = "graphium-inbox-config-changed";
+
+function notifyInboxConfigChanged(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(INBOX_CONFIG_EVENT));
+  } catch {
+    // window 不在（テスト等）は無視
+  }
+}
 
 /** Inbox 同期フォルダのルートパス（未設定なら null）。 */
 export function getInboxRoot(): string | null {
@@ -32,6 +49,7 @@ export function setInboxRoot(path: string | null): void {
   } catch {
     // localStorage 不可の環境では黙って無視（getInboxRoot と同じ非致命的挙動）
   }
+  notifyInboxConfigChanged();
 }
 
 /**
@@ -58,4 +76,28 @@ export function setInboxKeepArchive(keep: boolean): void {
   } catch {
     // localStorage 不可の環境では黙って無視（getInboxRoot と同じ非致命的挙動）
   }
+  notifyInboxConfigChanged();
+}
+
+/**
+ * inbox 設定（root / keep-archive）を反応的に読む hook。
+ * 設定モーダルと受信箱ビューのどちらで変えても、もう片方がリロード無しで追従する。
+ * 別タブの変更（storage イベント）にも追従する。
+ */
+export function useInboxConfig(): { root: string | null; keepArchive: boolean } {
+  const [state, setState] = useState(() => ({
+    root: getInboxRoot(),
+    keepArchive: getInboxKeepArchive(),
+  }));
+  useEffect(() => {
+    const handler = () =>
+      setState({ root: getInboxRoot(), keepArchive: getInboxKeepArchive() });
+    window.addEventListener(INBOX_CONFIG_EVENT, handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener(INBOX_CONFIG_EVENT, handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, []);
+  return state;
 }

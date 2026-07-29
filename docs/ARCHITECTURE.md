@@ -834,10 +834,29 @@ The same `src/` tree is built three different ways.
   folded client-ID override), language, app version, and a small
   leave-experiment action that only lowers the flag — queue, tokens
   and overrides stay on the device. The OAuth client ID resolves from
-  that per-device override (also editable under Advanced in the
-  desktop's Settings → Storage) first, then from the ID bundled with
-  the build, so pushing works out of the box; the override remains as
-  the escape hatch for self-hosting or a dead bundled ID.
+  that per-device override first, then from the ID bundled with the
+  build, so pushing works out of the box; the override remains as the
+  escape hatch for self-hosting or a dead bundled ID.
+- **Connecting storage is phone-only; the desktop only receives.** The
+  OAuth token and the client-ID override both live in per-device
+  `localStorage`, so connecting on the desktop would grant the desktop
+  an upload token the phone never sees — and the desktop never uploads.
+  On top of that, Google Identity Services authorizes through
+  `window.open`, which the Tauri WebView cannot open at all. The desktop
+  therefore offers no connect, disconnect or client-ID control. Its
+  Settings → Storage → Mobile upload section carries exactly the
+  desktop's own half of the job: the inbox root picker (same shape as
+  the shared-folder pickers) and the "keep processed files in
+  `_imported/`" toggle, plus a locally rendered QR code (`qrcode.react`,
+  inline SVG — no network) that opens Graphium on the phone, where the
+  storage connection is actually made. Both settings live in the same
+  `localStorage` keys the inbox view's folder menu writes; the setters
+  broadcast a `graphium-inbox-config-changed` event so either entry point
+  reflects a change made in the other without a reload. The QR target is
+  the serving origin plus `BASE_URL + app/` in the web build (so a
+  self-hosted LAN deployment encodes an address the phone can reach) and
+  the public app URL in the desktop build, whose `tauri://` origin is not
+  reachable from anywhere else.
 - Shipped targets: macOS Apple Silicon (`aarch64-apple-darwin`) and
   Windows x64 (`x86_64-pc-windows-msvc`). Other targets are unverified.
 
