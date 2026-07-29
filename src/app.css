@@ -423,6 +423,16 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   background-color: var(--color-background) !important;
 }
 
+/* ブロック選択枠 — BlockNote 既定の高彩度ブルー（rgb(100,160,255) の 4px）を
+   ブランドグリーンに置き換える。
+   本文ブロックの選択枠は既に --color-primary 系だが、この 1 ルールだけ BlockNote の
+   既定が残っていて、テキストを持たないブロック（数式・ブックマーク・PDF ビューア）を
+   選ぶと画面に青が出る。design.md の「高彩度の既定色を避け自然色で統一」に合わせる。 */
+.bn-block-content.ProseMirror-selectednode > *,
+.ProseMirror-selectednode > .bn-block-content > * {
+  outline: color-mix(in oklab, var(--color-primary) 55%, transparent) solid 3px;
+}
+
 /* BlockNote 本文 — タイプスケール base (16px) を採用、行間は読み物用に 1.7
    UI 部分（sidebar 等）の text-base が 1.6 なのに対し、エディタ本文は読み心地優先で広めに取る */
 .bn-editor {
