@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.24.0](https://github.com/kumagallium/Graphium/compare/v0.23.0...v0.24.0) - 2026-07-29
+## [v0.23.1](https://github.com/kumagallium/Graphium/compare/v0.23.0...v0.23.1) - 2026-07-29
 
 - Mobile upload settings: connect on the phone, receive on the desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/611
 - URL translate: save the article lead image locally instead of hotlinking it by @kumagallium in https://github.com/kumagallium/Graphium/pull/614
