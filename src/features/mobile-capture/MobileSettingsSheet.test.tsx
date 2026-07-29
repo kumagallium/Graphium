@@ -8,7 +8,7 @@
 // - 詳細（client_id 上書き）は畳まれた保険: 保存/解除が onSaveClientId/onClearClientId
 // - 言語: 設定モーダルと同じ setLocale（切替が UI にその場で反映される）
 // - アプリ情報: バージョンを getAppVersion から出す（PWA は package.json）
-// - この実験をやめる: onLeaveExperiment + 「キューと接続は保持」の説明を添える
+// - 実験離脱の導線は無い（モバイル捕獲は正式機能なので降りる先が無い）
 //
 // 文言は LocaleProvider の既定（jsdom の navigator.language → en）で照合する。
 
@@ -35,7 +35,6 @@ const baseProps: MobileSettingsSheetProps = {
   onClearClientId: () => {},
   onDisconnect: () => {},
   onOpenStoragePicker: () => {},
-  onLeaveExperiment: () => {},
   onClose: () => {},
 };
 
@@ -95,10 +94,10 @@ describe("MobileSettingsSheet", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "日本語" }));
     // シート自身の文言が即座に日本語へ（localStorage graphium_locale にも永続）
-    expect(screen.getByText("この実験をやめる")).toBeTruthy();
+    expect(screen.getByText("アプリ情報")).toBeTruthy();
     expect(localStorage.getItem("graphium_locale")).toBe("ja");
     fireEvent.click(screen.getByRole("button", { name: "English" }));
-    expect(screen.getByText("Leave this experiment")).toBeTruthy();
+    expect(screen.getByText("About this app")).toBeTruthy();
   });
 
   it("shows the app version from the shared updater path", async () => {
@@ -108,12 +107,11 @@ describe("MobileSettingsSheet", () => {
     expect(screen.getByText("Graphium")).toBeTruthy();
   });
 
-  it("offers leave-experiment with the keep-your-data note", () => {
-    const onLeaveExperiment = vi.fn();
-    renderSheet({ onLeaveExperiment });
+  // 実験フラグ撤去後の回帰防止: 降りる先が無いので離脱導線を復活させない
+  it("has no leave-experiment escape hatch (mobile capture is a shipped feature)", () => {
+    renderSheet();
 
-    expect(screen.getByText(/queue and connection stay on this device/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Leave this experiment" }));
-    expect(onLeaveExperiment).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Leave this experiment/)).toBeNull();
+    expect(screen.queryByText(/queue and connection stay on this device/)).toBeNull();
   });
 });

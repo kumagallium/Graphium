@@ -1,6 +1,6 @@
-// スマホ専用の最小設定シート（キュー前提ホームの ⚙ の行き先）。
+// スマホ専用の最小設定シート（捕獲履歴ホームの ⚙ の行き先）。
 //
-// スマホにはフル設定モーダルを出さない（デスクトップ語彙の「モバイル連携」トグルや
+// スマホにはフル設定モーダルを出さない（デスクトップ語彙の受信フォルダ設定や
 // 保存タブ一式はスマホでは概念過多）。ここに置くのはスマホで実際に触るものだけ:
 //   1. ストレージ — 接続状態・[接続/変更]（→ StoragePickerSheet）・[切断]・
 //      詳細（client_id 上書き。セルフホスト/同梱 ID 枯渇時の保険なので畳んでおく）
@@ -8,14 +8,10 @@
 //      保存先は localStorage "graphium_locale"）
 //   3. アプリ情報 — バージョン（About タブと同じ getAppVersion()。PWA では
 //      package.json の version）
-//   4. この実験をやめる — 実験フラグを下ろして従来ホームへ戻る（小さく。
-//      キュー・接続・client_id はこの端末に残る — フラグはただの表示ゲート）
 //
 // **props 駆動のプレゼンテーション層**: push の実体（configured/connected の読み直し、
 // disconnect、client_id 保存）は親の usePushSettings が握る。言語とバージョンだけは
 // 軽量な既存基盤（i18n / lib/updater）を直接使う — push/ の動的 import 境界とは無関係。
-// このシートはフラグ ON のときだけ出す（OFF の従来ホームに ⚙ は無い —
-// 実験に入る入口はオプトインカードが担う）。
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -46,8 +42,6 @@ export type MobileSettingsSheetProps = {
   onDisconnect: () => void;
   /** ストレージ選択（StoragePickerSheet）を開く。ピッカーはこのシートの上に重なる。 */
   onOpenStoragePicker: () => void;
-  /** 実験をやめる（フラグ OFF → 従来ホーム。キュー・接続は保持）。 */
-  onLeaveExperiment: () => void;
   onClose: () => void;
 };
 
@@ -61,7 +55,6 @@ export function MobileSettingsSheet({
   onClearClientId,
   onDisconnect,
   onOpenStoragePicker,
-  onLeaveExperiment,
   onClose,
 }: MobileSettingsSheetProps) {
   const { locale, setLocale, t } = useLocale();
@@ -283,19 +276,6 @@ export function MobileSettingsSheet({
                 <span className="font-mono text-foreground">{version || "—"}</span>
               </div>
             </div>
-          </div>
-
-          {/* ── この実験をやめる（小さく・破壊的でないことを明示） ── */}
-          <div className="pt-1 border-t border-border">
-            <button
-              onClick={onLeaveExperiment}
-              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-            >
-              {t("mobile.settings.leaveExperiment")}
-            </button>
-            <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
-              {t("mobile.settings.leaveExperimentHint")}
-            </p>
           </div>
         </div>
       </div>

@@ -2,15 +2,16 @@
 // モバイルキャプチャビュー（捕獲の時系列ホーム）の配線テスト。
 //
 // 対象の不変条件:
-// - モバイル連携の実験フラグ ON のとき: 捕獲履歴の統合リストがコンテンツ最上部に
-//   インラインで出る（[送信 (n)] は見出し行右端の定位置）。捕獲ボタンは画面下固定の
-//   捕獲バー（[書く][URL][写真][動画][音声][ライブラリ]）— リストより後（下）に出る。
+// - 捕獲履歴の統合リストがコンテンツ最上部にインラインで出る（[送信 (n)] は見出し行
+//   右端の定位置）。捕獲ボタンは画面下固定の捕獲バー
+//   （[書く][URL][写真][動画][音声][ライブラリ]）— リストより後（下）に出る。
 //   撮ったファイルは enqueueForSend に渡り、シートは開かない（SendToInboxSheet 自体が
 //   存在しない。この端末には保存しない — 完全置き換え）
 // - メモ・URL も捕獲物として履歴行き（ネイティブ JSON）。ローカルの capture-store /
 //   media-index には保存しない
 // - 統合リストは捕獲履歴（送信済みを含む）と、この端末に残る過去のメモ・素材を
-//   時刻で混ぜて新しい順に出す。2 カラムのカードグリッドは従来ホーム専用
+//   時刻で混ぜて新しい順に出す。**過去にローカル保存した分もここに出る**ので、
+//   従来ホーム（2 カラムのカードグリッド）を撤去してもデータは見えなくならない
 // - 検索欄は統合リスト全体（履歴 + ローカル項目）に掛かる
 // - 履歴もローカル項目も無いときだけ空状態になり、下の捕獲バーだけが残る
 // - client_id 未設定でも捕獲物は履歴に積まれる（履歴はこの端末の IndexedDB で
@@ -20,20 +21,18 @@
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
 //   （configured ではゲートしない — 設計 doc §13.9）
 // - ヘッダーの接続状態チップは 接続済み / 未接続 / 未設定 を出し分ける
-// - スマホにフル設定モーダルは出さない: フラグ ON のヘッダー ⚙ は最小設定シート
+// - スマホにフル設定モーダルは出さない: ヘッダー ⚙ は最小設定シート
 //   （MobileSettingsSheet）を開き、`graphium-open-settings` は飛ばさない。
 //   未接続時の主ボタンはストレージ選択（StoragePickerSheet）を開き、Google 行が
-//   接続の実体（ON=connectAndDrain / OFF=usePushSettings.connectGoogle）につながる
-// - 実験フラグ OFF（既定）のとき: チップもキューも ⚙ も出ず、従来ホーム +
-//   タイムライン上部の実験オプトインカードだけ（撮ったファイルは onUploadMedia へ）。
-//   [試す] → ピッカー → 接続成功（onConnected）でフラグが立ち、ホームがキュー化する
+//   接続の実体（connectAndDrain）につながる
+// - 実験フラグ撤去後の回帰防止: オプトインカード・従来の 2 カラムグリッド・
+//   従来の [New Memo] 下バー・実験離脱ボタンはもう存在しない（常に捕獲履歴ホーム）
 //
 // usePushQueue / usePushSettings はモック（キュー・認可の実物は hook 側の責務）。
 
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { MobileCaptureView } from "./MobileCaptureView";
-import { isMobileInboxEnabled, setMobileInboxEnabled } from "./inbox/experimental";
 import { parseGraphiumCaptureFile } from "./inbox/capture-file";
 import { LocaleProvider } from "../../i18n";
 import type { PushQueueUi } from "./inbox/use-push-queue";
@@ -58,17 +57,11 @@ vi.mock("./inbox/use-push-queue", () => ({
   usePushQueue: () => usePushQueueMock(),
 }));
 
-// スタンドアロン push 設定（オプトイン接続・最小設定シート）もモック。
-// onConnected（接続成功でフラグを立てる親のコールバック）を捕まえて、
-// テストから「接続成功」を同期シミュレートできるようにする。
+// 最小設定シートのストレージ操作（状態・切断・client_id）もモック。
 const usePushSettingsMock = vi.fn<() => PushSettingsUi>();
-let lastOnConnected: (() => void) | undefined;
 
 vi.mock("./inbox/use-push-settings", () => ({
-  usePushSettings: (_active: boolean, opts?: { onConnected?: () => void }) => {
-    lastOnConnected = opts?.onConnected;
-    return usePushSettingsMock();
-  },
+  usePushSettings: (_active: boolean) => usePushSettingsMock(),
 }));
 
 // MediaPreview（→ PdfViewer → react-pdf）の import 連鎖対策。react-pdf は import
@@ -125,7 +118,6 @@ function pushSettingsUi(overrides: Partial<PushSettingsUi> = {}): PushSettingsUi
     clientIdOverride: "",
     connecting: false,
     connectError: null,
-    connectGoogle: vi.fn(),
     disconnect: vi.fn(),
     saveClientId: vi.fn(),
     clearClientId: vi.fn(),
@@ -136,10 +128,7 @@ function pushSettingsUi(overrides: Partial<PushSettingsUi> = {}): PushSettingsUi
 beforeEach(() => {
   usePushQueueMock.mockReturnValue(pushUi());
   usePushSettingsMock.mockReturnValue(pushSettingsUi());
-  lastOnConnected = undefined;
-  // 既存の配線テストはすべて「モバイル連携 ON」前提（フラグ自体の既定は OFF）
   localStorage.clear();
-  setMobileInboxEnabled(true);
 });
 
 function buildView(props: Partial<Parameters<typeof MobileCaptureView>[0]> = {}) {
@@ -170,7 +159,7 @@ function capture(acceptAttr: string, files: File[]) {
 const jpeg = () =>
   new File([new Uint8Array([1, 2, 3]) as BlobPart], "image.jpg", { type: "image/jpeg" });
 
-describe("キュー前提ホーム（実験フラグ ON）", () => {
+describe("捕獲履歴ホーム", () => {
   it("shows the inline queue on top and the capture bar fixed at the bottom", () => {
     usePushQueueMock.mockReturnValue(
       pushUi({
@@ -275,7 +264,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.getByText("timeline memo")).toBeTruthy();
     expect(screen.getByText("whiteboard.jpg")).toBeTruthy();
     expect(screen.getByText("Sent")).toBeTruthy();
-    // 2 カラムのカードグリッドは従来ホーム専用（時系列ホームでは使わない）
+    // 2 カラムのカードグリッド（撤去した従来ホーム）は復活しない
     expect(document.querySelector(".grid-cols-2")).toBeNull();
     // メモ作成は捕獲バーの [書く]（従来のメモ作成ボタンは無い）
     expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
@@ -522,10 +511,11 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     try {
       renderView();
       fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-      // スマホ専用の最小設定シート（ストレージ / 言語 / アプリ情報 / 実験離脱）
+      // スマホ専用の最小設定シート（ストレージ / 言語 / アプリ情報）
       expect(screen.getByTestId("mobile-settings-sheet")).toBeTruthy();
-      expect(screen.getByText("Leave this experiment")).toBeTruthy();
       expect(screen.getByText("Language")).toBeTruthy();
+      // 実験離脱の導線はもう無い（降りる先の従来ホームが存在しない）
+      expect(screen.queryByText("Leave this experiment")).toBeNull();
       // フル設定モーダルを開くイベントは飛ばさない
       expect(events).toHaveLength(0);
     } finally {
@@ -533,7 +523,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     }
   });
 
-  it("wires disconnect in the sheet and returns to the legacy home via leave-experiment", () => {
+  it("wires disconnect in the sheet", () => {
     const disconnect = vi.fn();
     usePushSettingsMock.mockReturnValue(pushSettingsUi({ connected: true, disconnect }));
     renderView();
@@ -541,154 +531,127 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
     expect(disconnect).toHaveBeenCalledTimes(1);
-
-    // 「この実験をやめる」= フラグを下ろすだけ（キュー・接続はこの端末に残る）。
-    // シートが閉じ、従来ホーム（New Memo の下バー + オプトインカード）へ戻る
-    fireEvent.click(screen.getByRole("button", { name: "Leave this experiment" }));
-    expect(isMobileInboxEnabled()).toBe(false);
-    expect(screen.queryByTestId("mobile-settings-sheet")).toBeNull();
-    expect(screen.getByRole("button", { name: /New Memo/ })).toBeTruthy();
-    expect(screen.getByTestId("mobile-optin-card")).toBeTruthy();
+    // シートは開いたまま（切断してもホームの作りは変わらない）
+    expect(screen.getByTestId("mobile-settings-sheet")).toBeTruthy();
   });
 });
 
-describe("モバイル連携 実験フラグ OFF（既定）のゲート", () => {
-  beforeEach(() => {
-    // beforeEach で ON にした分を戻す = 出荷時の既定状態
-    setMobileInboxEnabled(false);
-  });
-
-  it("keeps the legacy local-save path: captures go to onUploadMedia, not the queue", async () => {
-    const enqueueForSend = vi.fn(async () => true);
-    const onUploadMedia = vi.fn(async () => "file-id");
-    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
-    renderView({ onUploadMedia });
-
-    capture("image/*", [jpeg()]);
-
-    await waitFor(() => expect(onUploadMedia).toHaveBeenCalledTimes(1));
-    expect(enqueueForSend).not.toHaveBeenCalled();
-    expect(screen.queryByText("Captures")).toBeNull();
-  });
-
-  it("shows neither the queue section nor the chip even when the route looks available", () => {
+// 実験フラグ撤去（捕獲履歴ホームへの昇格）の回帰防止。
+// かつてフラグ OFF の「従来ホーム」が担っていた 4 つのこと — メモ作成 / URL 登録 /
+// 撮影 / タイムライン閲覧 — が、フラグ無しの捕獲履歴ホーム 1 本で全部できること、
+// そして撤去した UI（オプトインカード・2 カラムグリッド・[New Memo] 下バー）が
+// 復活していないことを固定する。
+describe("実験フラグ撤去後の昇格（唯一のモバイル体験）", () => {
+  it("starts on the capture-history home with no opt-in card and no legacy grid", () => {
     usePushQueueMock.mockReturnValue(
       pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
     );
+    // localStorage は空 = 「これまでフラグ OFF だった既存ユーザー」の初回起動相当
     renderView({ onUploadMedia: async () => "file-id" });
 
-    // キューブロック・見出し・チップのいずれも出ない（従来ホームのまま）
-    expect(screen.queryByTestId("capture-history-block")).toBeNull();
-    expect(screen.queryByText("Captures")).toBeNull();
-    expect(screen.queryByText("Connected")).toBeNull();
-    // 撮影ボタンは従来どおり下バー（撮影行の「Photo」ラベルは無い）
-    expect(document.querySelector('input[accept="image/*"]')).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Photo" })).toBeNull();
+    // 最初から捕獲履歴 + 捕獲バー
+    expect(screen.getByTestId("capture-history-block")).toBeTruthy();
+    expect(screen.getByText("Captures")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Send \(1\)/ })).toBeTruthy();
+    expect(screen.getByText("Connected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
+
+    // 撤去した従来ホームの部品は出ない
+    expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
+    expect(screen.queryByText("Try it")).toBeNull();
+    expect(document.querySelector(".grid-cols-2")).toBeNull();
+    expect(screen.queryByRole("button", { name: /New Memo/ })).toBeNull();
   });
 
-  it("hides capture buttons without onUploadMedia (no silent dead-end route)", () => {
-    renderView({ onUploadMedia: undefined });
-    expect(document.querySelector('input[accept="image/*"]')).toBeNull();
+  it("keeps every legacy-home capability on the capture bar (memo / URL / photo / video / audio)", () => {
+    renderView({ onUploadMedia: async () => "file-id", onAddUrlBookmark: () => {} });
+
+    // 従来ホームの下バー（メモ + 🔗 + 📷🎥🎙）に対応する捕獲バーのボタン。
+    // ライブラリ（既存ファイル選択）は従来ホームには無かった純増分。
+    for (const name of ["Write", "URL", "Photo", "Video", "Voice", "Library"]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+    // 撮影入力（accept + capture）も従来ホームと同じ 3 種が揃う
+    for (const accept of ["image/*", "video/*", "audio/*"]) {
+      expect(document.querySelector(`input[accept="${accept}"]`)).toBeTruthy();
+    }
   });
 
-  it("keeps the legacy two-column card timeline (no merged history list)", () => {
-    usePushQueueMock.mockReturnValue(
-      pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
-    );
+  it("still shows this device's older memos and assets — the merged list carries them", () => {
+    // 撤去の前提条件: 従来ホームのグリッドが見せていた過去の捕獲物が
+    // localItems として履歴リストに出る（= 古いデータが見えなくならない）
+    usePushQueueMock.mockReturnValue(pushUi({ items: [] }));
     renderView({
-      onUploadMedia: async () => "file-id",
       captureIndex: {
         version: 1,
         updatedAt: "2026-07-27T00:00:00.000Z",
         captures: [
-          { id: "m1", text: "timeline memo", createdAt: "2026-07-27T09:00:00.000Z" },
+          { id: "m1", text: "memo from the legacy home", createdAt: "2026-07-20T09:00:00.000Z" },
+        ],
+      },
+      mediaIndex: {
+        version: 4,
+        updatedAt: "2026-07-27T00:00:00.000Z",
+        media: [
+          {
+            fileId: "f1",
+            name: "legacy-whiteboard.jpg",
+            type: "image",
+            mimeType: "image/jpeg",
+            url: "https://example.com/f1",
+            thumbnailUrl: "https://example.com/f1-thumb",
+            uploadedAt: "2026-07-19T12:00:00.000Z",
+            usedIn: [],
+          },
         ],
       },
     });
 
-    // 従来ホームは 2 カラムのカードグリッドのまま（統合リストの行は 1 つも無い）
-    expect(document.querySelector(".grid-cols-2")).toBeTruthy();
-    expect(document.querySelectorAll("[data-testid=capture-history-row]")).toHaveLength(0);
-    expect(screen.getByText("timeline memo")).toBeTruthy();
-    expect(screen.queryByText("graphium-20260727-102030-01.jpg")).toBeNull();
+    expect(screen.getByText("memo from the legacy home")).toBeTruthy();
+    expect(screen.getByText("legacy-whiteboard.jpg")).toBeTruthy();
+    // 履歴が空でも過去のローカル項目があるなら空状態にしない
+    expect(screen.queryByText(/No past captures yet/)).toBeNull();
+    const states = Array.from(
+      document.querySelectorAll("[data-testid=capture-history-row]"),
+    ).map((row) => row.getAttribute("data-status"));
+    expect(states).toEqual(["local", "local"]);
   });
 
-  it("keeps the legacy memo path: the bottom-bar New Memo saves locally, never the queue", async () => {
+  it("opens the legacy memo/asset detail from a merged-list row (edit + delete still reachable)", async () => {
+    const onDeleteCapture = vi.fn(async () => {});
+    usePushQueueMock.mockReturnValue(pushUi({ items: [] }));
+    renderView({
+      onDeleteCapture,
+      onEditCapture: () => {},
+      captureIndex: {
+        version: 1,
+        updatedAt: "2026-07-27T00:00:00.000Z",
+        captures: [
+          { id: "m1", text: "memo from the legacy home", createdAt: "2026-07-20T09:00:00.000Z" },
+        ],
+      },
+    });
+
+    fireEvent.click(screen.getByText("memo from the legacy home"));
+    // 従来ホームのカードタップと同じ詳細モーダル（編集導線 + 削除）
+    expect(await screen.findByText(/Click to edit/i)).toBeTruthy();
+    const del = screen
+      .getAllByRole("button")
+      .find((b) => b.querySelector('svg[class*="trash"]'));
+    expect(del).toBeTruthy();
+    fireEvent.click(del!);
+    expect(onDeleteCapture).toHaveBeenCalledWith("m1");
+  });
+
+  it("works on the web build too: sending is not gated on Tauri", async () => {
+    // モバイルからの送信は web/desktop どちらでも使える（受信箱だけが Tauri 専用）。
+    // このビューは isTauri() を一切見ないので、__TAURI__ 不在でも捕獲経路は生きる
+    expect((window as unknown as Record<string, unknown>).__TAURI__).toBeUndefined();
     const enqueueForSend = vi.fn(async () => true);
-    const onCreateCapture = vi.fn(async () => {});
     usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
-    renderView({ onCreateCapture });
+    renderView({ onUploadMedia: undefined });
 
-    // 下バーのメモ作成はそのまま（[書く] 捕獲ボタンは無い）
-    expect(screen.queryByRole("button", { name: "Write" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /New Memo/ }));
-    const textarea = await screen.findByPlaceholderText(/Write your memo here/);
-    fireEvent.change(textarea, { target: { value: "kept locally" } });
-    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
-
-    await waitFor(() => expect(onCreateCapture).toHaveBeenCalledWith("kept locally"));
-    expect(enqueueForSend).not.toHaveBeenCalled();
-  });
-
-  it("hides the header gear on the legacy home (no settings concept outside the experiment)", () => {
-    // 従来ホームに ⚙ は無い — 「モバイル連携」トグルというデスクトップ語彙を
-    // スマホに持ち込まない。実験に入る入口はタイムライン上部のオプトインカード
-    renderView({ onUploadMedia: async () => "file-id" });
-    expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
-    expect(screen.getByTestId("mobile-optin-card")).toBeTruthy();
-  });
-
-  it("opens the storage picker from the opt-in card's Try it", () => {
-    renderView({ onUploadMedia: async () => "file-id" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Try it" }));
-    const sheet = screen.getByTestId("storage-picker-sheet");
-    expect(sheet).toBeTruthy();
-    // Google は利用可 / OneDrive は準備中バッジ + 無効。共有シート行は無い
-    const google = screen.getByRole("button", { name: /Google Drive/ });
-    expect((google as HTMLButtonElement).disabled).toBe(false);
-    const oneDrive = screen.getByRole("button", { name: /OneDrive/ });
-    expect((oneDrive as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Coming soon")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /share sheet/i })).toBeNull();
-    // この時点ではまだ実験に入っていない
-    expect(isMobileInboxEnabled()).toBe(false);
-  });
-
-  it("joins the experiment when the opt-in Google connect succeeds (home queue-izes in place)", () => {
-    // connectGoogle 成功 = 親の onConnected が呼ばれる（フラグ ON + ピッカーを閉じる）
-    const connectGoogle = vi.fn(() => {
-      lastOnConnected?.();
-    });
-    usePushSettingsMock.mockReturnValue(pushSettingsUi({ connectGoogle }));
-    usePushQueueMock.mockReturnValue(
-      pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
-    );
-    renderView({ onUploadMedia: async () => "file-id" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Try it" }));
-    fireEvent.click(screen.getByRole("button", { name: /Google Drive/ }));
-    expect(connectGoogle).toHaveBeenCalledTimes(1);
-
-    // フラグが立ち、その場でキュー前提ホームに切り替わる（リロード不要）
-    expect(isMobileInboxEnabled()).toBe(true);
-    expect(screen.getByText("Captures")).toBeTruthy();
-    expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
-    expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
-  });
-
-  it("turning the flag ON at runtime reveals the inline queue without a reload", () => {
-    usePushQueueMock.mockReturnValue(
-      pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
-    );
-    renderView();
-    expect(screen.queryByText("Captures")).toBeNull();
-    // 設定モーダルのトグル相当。setMobileInboxEnabled が CustomEvent を飛ばし、
-    // useMobileInboxFlag がその場で再レンダリングする（リロード不要の反映）
-    act(() => {
-      setMobileInboxEnabled(true);
-    });
-    expect(screen.getByText("Captures")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Send \(1\)/ })).toBeTruthy();
+    capture("image/*", [jpeg()]);
+    await waitFor(() => expect(enqueueForSend).toHaveBeenCalledTimes(1));
   });
 });
