@@ -11,6 +11,7 @@ import {
   ensureMediaIndex,
   buildUrlPeekEntry,
   isMobileCapture,
+  persistOcrTextPatch,
   DOC_REF_BLOCK_ID,
   CURRENT_MEDIA_INDEX_VERSION,
   type MediaIndex,
@@ -539,5 +540,87 @@ describe("isMobileCapture", () => {
     ];
     const picked = media.filter(isMobileCapture).map((m) => m.fileId);
     expect(picked).toEqual(["f2", "f3"]);
+  });
+});
+
+// ──────────────────────────────────
+// persistOcrTextPatch — 素材ギャラリーから読んだ OCR テキストの書き戻し
+// ──────────────────────────────────
+
+describe("persistOcrTextPatch", () => {
+  const image = (over: Partial<MediaIndexEntry> = {}): MediaIndexEntry => ({
+    fileId: "img-1",
+    name: "scan.png",
+    type: "image",
+    mimeType: "image/png",
+    url: "media-server://img-1",
+    thumbnailUrl: "",
+    uploadedAt: "2026-01-01T00:00:00.000Z",
+    usedIn: [],
+    ...over,
+  });
+
+  const setup = (existing: MediaIndex | null) => {
+    const writeAppData = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(getActiveProvider).mockReturnValue({
+      readAppData: vi.fn().mockResolvedValue(existing),
+      writeAppData,
+    } as any);
+    return writeAppData;
+  };
+
+  const indexOf = (...media: MediaIndexEntry[]): MediaIndex => ({
+    version: CURRENT_MEDIA_INDEX_VERSION,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    media,
+  });
+
+  /** writeAppData に渡された MediaIndex を取り出す */
+  const written = (writeAppData: ReturnType<typeof vi.fn>): MediaIndex =>
+    writeAppData.mock.calls[0][1] as MediaIndex;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("ノートに使われていない画像にもテキストを保存できる", async () => {
+    const writeAppData = setup(indexOf(image()));
+    await persistOcrTextPatch("img-1", "焼結温度 800℃");
+    expect(writeAppData).toHaveBeenCalledTimes(1);
+    expect(written(writeAppData).media[0].ocrText).toBe("焼結温度 800℃");
+  });
+
+  it("前後の空白は落として保存する", async () => {
+    const writeAppData = setup(indexOf(image()));
+    await persistOcrTextPatch("img-1", "  SEM XRD  ");
+    expect(written(writeAppData).media[0].ocrText).toBe("SEM XRD");
+  });
+
+  it("同じテキストなら書き込まない（無駄な保存とイベントを避ける）", async () => {
+    const writeAppData = setup(indexOf(image({ ocrText: "同じ" })));
+    await persistOcrTextPatch("img-1", "同じ");
+    expect(writeAppData).not.toHaveBeenCalled();
+  });
+
+  it("文字が取れなかったら既存のテキストを消す", async () => {
+    const writeAppData = setup(indexOf(image({ ocrText: "古い結果" })));
+    await persistOcrTextPatch("img-1", "   ");
+    expect(written(writeAppData).media[0]).not.toHaveProperty("ocrText");
+  });
+
+  it("他の素材には触らない", async () => {
+    const writeAppData = setup(
+      indexOf(image(), image({ fileId: "img-2", ocrText: "そのまま" })),
+    );
+    await persistOcrTextPatch("img-1", "新規");
+    const media = written(writeAppData).media;
+    expect(media.find((m) => m.fileId === "img-1")?.ocrText).toBe("新規");
+    expect(media.find((m) => m.fileId === "img-2")?.ocrText).toBe("そのまま");
+  });
+
+  it("インデックスが無ければ何もしない", async () => {
+    const writeAppData = setup(null);
+    await persistOcrTextPatch("img-1", "テキスト");
+    expect(writeAppData).not.toHaveBeenCalled();
   });
 });

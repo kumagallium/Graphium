@@ -51,6 +51,72 @@ function pdfjsAssetsPlugin(): Plugin {
   };
 }
 
+// tesseract.js（画像 OCR）の実体ディレクトリを解決する（pnpm の symlink を辿る）。
+const tesseractDistDir = path.join(
+  path.dirname(createRequire(import.meta.url).resolve("tesseract.js/package.json")),
+  "dist",
+);
+const tesseractCoreDir = path.dirname(
+  createRequire(import.meta.url).resolve("tesseract.js-core/package.json"),
+);
+
+/**
+ * tesseract.js の worker / wasm コア / 学習データを public/tesseract/ にコピーする。
+ *
+ * tesseract.js は既定でこれらを jsdelivr から読む（worker を blob で作り、その中で
+ * `importScripts("https://cdn.jsdelivr.net/...")` する）。デスクトップ（Tauri）の CSP は
+ * `script-src 'self'` なので、この外部スクリプト読み込みがブロックされ OCR が起動しない。
+ * 同一オリジンに置けば CSP を緩めずに通り、ついでにオフラインでも動く
+ * （画像は元から端末外に出ないが、初回だけネットが要る状態も解消される）。
+ *
+ * コアは wasm を内包した `*.wasm.js` 単体で動くため `.wasm` は運ばない。SIMD 版を既定にし、
+ * 非対応環境用に無印も置く（worker が実行時に選ぶ）。学習データは軽量な `4.0.0_best_int`
+ * （eng 2.9MB / jpn 2.0MB）を使う。既定の `4.0.0`（best）は計 25MB で配布物には重すぎる。
+ * 出力先 public/tesseract/ は src/lib/ocr.ts の各パス指定と対応。
+ */
+function tesseractAssetsPlugin(): Plugin {
+  const copy = () => {
+    const dest = path.resolve(__dirname, "public/tesseract");
+    mkdirSync(dest, { recursive: true });
+
+    const workerFrom = path.join(tesseractDistDir, "worker.min.js");
+    if (existsSync(workerFrom)) {
+      cpSync(workerFrom, path.join(dest, "worker.min.js"));
+    }
+
+    // wasm 内包の JS のみ運ぶ（`.wasm` 単体は使われない）。worker が実行時に
+    // relaxed SIMD → SIMD → 無印 の順で対応を見て選ぶため、3 種そろえる。
+    // relaxedsimd を落とすと今の Chromium 系で「script failed to load」になる（実測）。
+    for (const core of [
+      "tesseract-core-relaxedsimd-lstm.wasm.js",
+      "tesseract-core-simd-lstm.wasm.js",
+      "tesseract-core-lstm.wasm.js",
+    ]) {
+      const from = path.join(tesseractCoreDir, core);
+      if (existsSync(from)) cpSync(from, path.join(dest, core));
+    }
+
+    // 学習データ。langPath 配下の `{lang}.traineddata.gz` を worker が読む。
+    const langDest = path.join(dest, "lang");
+    mkdirSync(langDest, { recursive: true });
+    for (const lang of ["eng", "jpn"]) {
+      try {
+        const pkgDir = path.dirname(
+          createRequire(import.meta.url).resolve(`@tesseract.js-data/${lang}/package.json`),
+        );
+        const from = path.join(pkgDir, "4.0.0_best_int", `${lang}.traineddata.gz`);
+        if (existsSync(from)) cpSync(from, path.join(langDest, `${lang}.traineddata.gz`));
+      } catch {
+        // 学習データ未インストール時はスキップ（OCR は CDN フォールバックで動く）
+      }
+    }
+  };
+  return {
+    name: "copy-tesseract-assets",
+    buildStart: copy,
+  };
+}
+
 // mathlive の実体ディレクトリを解決する（pnpm の symlink を辿る）。
 // pdfjs-dist と違い mathlive は package.json を exports に出していないので、
 // エントリ（mathlive.min.js）を解決してその隣を見る。fonts はその直下にある。
@@ -141,6 +207,7 @@ export default defineConfig({
     releaseNotesPlugin(),
     pdfjsAssetsPlugin(),
     mathliveAssetsPlugin(),
+    tesseractAssetsPlugin(),
     tailwindcss(),
     react(),
     // PWA: スタンドアローン対応（ホーム画面追加時にオフラインでもアプリシェルを表示）
@@ -149,6 +216,9 @@ export default defineConfig({
       workbox: {
         // アプリシェル（HTML/JS/CSS/フォント）をキャッシュ
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // OCR のコアと学習データ（計 10MB 超）はアプリシェルではないので precache しない。
+        // `*.wasm.js` は上の js パターンに当たってしまうため明示的に除外する。
+        globIgnores: ["**/tesseract/**"],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB（BlockNote 等のバンドルが大きいため）
         // Google API や Drive API はキャッシュしない
         navigateFallback: null,
