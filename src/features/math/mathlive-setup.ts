@@ -8,6 +8,11 @@
 // 解決されない。vite.config.ts の mathliveAssetsPlugin が public/mathlive/fonts/ に
 // 配るので、そこを BASE_URL 経由で指す（Web の /Graphium/ と Tauri の / の双方で解決）。
 // 未設定だと数式の記号がすべて豆腐になる。
+//
+// 配色は mathlive-theme.css で app.css のトークンに寄せる。MathLive 本体と一緒に
+// 遅延ロードされるので、数式を編集しない限り読み込まれない。
+
+import "./mathlive-theme.css";
 
 let loadPromise: Promise<typeof import("mathlive")> | null = null;
 

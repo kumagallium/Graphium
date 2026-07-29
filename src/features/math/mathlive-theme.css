@@ -1,0 +1,80 @@
+/*
+ * MathLive を Graphium の配色に合わせる。
+ *
+ * MathLive の既定は青基調（--hue: 212）で、キャレットも選択色も仮想キーボードも
+ * 青で塗られる。design.md の「高彩度の既定色を避け、森・大地・空をイメージした
+ * 自然色で統一」に反するので、app.css のトークンで上書きする。
+ *
+ * ここでは実値（hex / oklch）を書かない。色を変えるときは app.css の scene tokens
+ * だけを触れば数式エディタも一緒に追従する。
+ */
+
+/* ── 数式フィールド本体 ───────────────────────────── */
+math-field {
+  /* MathLive が内部で導出する色の基調。212（青）→ 森の緑側へ寄せる。
+     個別に指定できる色は下で明示しているので、これは取りこぼしの受け皿。 */
+  --hue: 145;
+
+  --caret-color: var(--color-primary);
+  --selection-background-color: var(--forest-soft);
+  --selection-color: var(--color-foreground);
+  /* 括弧の対応など「この範囲」を示すハイライト */
+  --contains-highlight-background-color: var(--forest-soft);
+  --contains-highlight-color: var(--color-foreground);
+  /* 自動で補われる括弧 */
+  --smart-fence-color: var(--color-primary);
+  --smart-fence-opacity: 0.5;
+  --latex-color: var(--color-muted-foreground);
+
+  --placeholder-color: var(--color-text-tertiary);
+  --placeholder-opacity: 1;
+  /* 数式内の \text{} は本文と同じ書体で出す */
+  --text-font-family: inherit;
+
+  color: var(--color-foreground);
+  background: transparent;
+}
+
+/* フォーカスリングはアプリ側の枠（fieldShell）に任せ、二重の枠を出さない */
+math-field:focus,
+math-field:focus-within {
+  outline: none;
+}
+
+/* ── 仮想キーボード（body 直下のポータルに出る） ──────── */
+/* math-field の子ではないので、要素側に変数を置いても届かない */
+body .ML__keyboard {
+  --keyboard-background: var(--color-card);
+  --keyboard-border: var(--color-border);
+  --keyboard-accent-color: var(--color-primary);
+  --keyboard-horizontal-rule: var(--color-border-subtle);
+
+  --keyboard-toolbar-background: var(--color-surface);
+  --keyboard-toolbar-background-hover: var(--color-surface-hover);
+  --keyboard-toolbar-background-selected: var(--color-accent);
+  --keyboard-toolbar-text: var(--color-muted-foreground);
+  --keyboard-toolbar-text-active: var(--color-primary);
+
+  /* キーキャップ: 白地 + 淡いグリーングレーの枠（アプリのボタンと同じ質感） */
+  --keycap-background: var(--color-card);
+  --keycap-background-hover: var(--color-surface-hover);
+  --keycap-background-active: var(--color-accent);
+  --keycap-background-pressed: var(--color-accent);
+  --keycap-border: var(--color-border);
+  --keycap-border-bottom: var(--color-border);
+  --keycap-text: var(--color-foreground);
+  --keycap-shift-text: var(--color-primary);
+  --keycap-shift-color: var(--color-primary);
+
+  /* 主要キー（Enter 等）はブランドグリーンで塗る */
+  --keycap-primary-background: var(--color-primary);
+  --keycap-primary-background-hover: var(--forest-ink);
+  --keycap-primary-text: var(--color-primary-foreground);
+
+  /* 補助キー（記号カテゴリの切り替え等） */
+  --keycap-secondary-background: var(--color-muted);
+  --keycap-secondary-background-hover: var(--color-surface-hover);
+  --keycap-secondary-border: var(--color-border);
+  --keycap-secondary-border-bottom: var(--color-border);
+  --keycap-secondary-text: var(--color-foreground);
+}
