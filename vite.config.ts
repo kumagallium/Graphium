@@ -51,6 +51,37 @@ function pdfjsAssetsPlugin(): Plugin {
   };
 }
 
+// mathlive の実体ディレクトリを解決する（pnpm の symlink を辿る）。
+// pdfjs-dist と違い mathlive は package.json を exports に出していないので、
+// エントリ（mathlive.min.js）を解決してその隣を見る。fonts はその直下にある。
+const mathliveDir = path.dirname(
+  createRequire(import.meta.url).resolve("mathlive"),
+);
+
+/**
+ * MathLive のフォントを public/mathlive/fonts/ にコピーする Vite プラグイン。
+ *
+ * MathLive はフォントを CSS 経由ではなく実行時に `fontsDirectory` から読むため、
+ * バンドラが解決してくれない。未配置だと数式エディタの記号がすべて豆腐になる。
+ * pdfjs と同じ方針で、バージョン追従のため public/ にコミットせず node_modules
+ * からコピーする。配信 URL は src/features/math/mathlive-setup.ts と対応。
+ *
+ * 音（soundsDirectory）は使わないのでコピーしない。
+ */
+function mathliveAssetsPlugin(): Plugin {
+  const copy = () => {
+    const from = path.join(mathliveDir, "fonts");
+    if (!existsSync(from)) return;
+    const dest = path.resolve(__dirname, "public/mathlive/fonts");
+    mkdirSync(dest, { recursive: true });
+    cpSync(from, dest, { recursive: true });
+  };
+  return {
+    name: "copy-mathlive-assets",
+    buildStart: copy,
+  };
+}
+
 /**
  * dev/build 起動時に git log からリリースノート JSON を生成する Vite プラグイン。
  * public/release_notes.json に出力する（.gitignore 済み）。
@@ -109,6 +140,7 @@ export default defineConfig({
   plugins: [
     releaseNotesPlugin(),
     pdfjsAssetsPlugin(),
+    mathliveAssetsPlugin(),
     tailwindcss(),
     react(),
     // PWA: スタンドアローン対応（ホーム画面追加時にオフラインでもアプリシェルを表示）

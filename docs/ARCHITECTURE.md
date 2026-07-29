@@ -95,10 +95,17 @@ talks to LLM and embedding backends.
   `callout`, `example-hello`, `math`, `pdf-viewer`, `step`). Inline content (entity /
   agent highlights) lives under `src/features/inline-label/`; inline math lives
   under `src/features/inline-math/`.
-- `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX;
-  clicking the block swaps the rendering for a textarea over the raw LaTeX.
+- `math` holds a LaTeX source string in `props.latex` and renders it with KaTeX.
   `inlineMath` is the same idea as a custom inline content spec, for formulas
-  that sit inside a sentence. Conversion to and from Markdown (`$ … $`,
+  that sit inside a sentence. Clicking either one opens an editor: by default a
+  MathLive `<math-field>`, where typing `x/y` builds a fraction and a symbol
+  palette covers what you can't type — you do not need to know LaTeX to write a
+  formula. A toggle switches to editing the LaTeX source directly, and the
+  choice is remembered per device (`features/math/editor-mode.ts`). MathLive is
+  ~800KB and is only needed while editing, so it is dynamically imported on
+  first use (`features/math/mathlive-setup.ts`); its fonts are copied out of
+  `node_modules` into `public/mathlive/fonts/` by a Vite plugin, because
+  MathLive fetches them at runtime rather than through CSS. Conversion to and from Markdown (`$ … $`,
   `$$ … $$`) is centralized in `src/features/math/markdown-math.ts` — every
   Markdown → block path goes through `parseMarkdownToBlocksWithMath`, because
   BlockNote's own parser destroys LaTeX delimiters and eats `^` / `_` as
