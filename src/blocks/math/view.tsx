@@ -6,8 +6,9 @@
 //
 // 表示と編集を 1 ブロックで切り替える:
 //   - 通常は KaTeX の描画結果（中央寄せ）
-//   - クリックすると textarea で LaTeX を直接編集
-//   - Escape / 外側クリックで表示に戻る
+//   - クリックすると編集モード。既定は MathLive の視覚エディタで、`x/y` と打てば
+//     分数になる。LaTeX を知らなくても書けることを優先した既定値。
+//   - 「LaTeX」に切り替えるとソースを直接編集できる（選択は端末に記憶する）
 //
 // 配色は design.md のトークン（--color-*）のみを使い、ハードコード色は使わない。
 
@@ -15,6 +16,8 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Sigma } from "lucide-react";
 import { renderMath } from "../../features/math/render-katex";
+import { MathField } from "../../features/math/math-field";
+import { getMathEditorMode, setMathEditorMode, type MathEditorMode } from "../../features/math/editor-mode";
 // BlockNote の render は React ツリー外でも呼ばれ得るため Context 不要の t を使う
 import { t } from "../../i18n";
 
@@ -34,6 +37,7 @@ export const MathBlock = createReactBlockSpec(
       // 空のまま挿入された直後（スラッシュメニュー経由）はすぐ入力できる状態にする
       const [editing, setEditing] = useState(() => editable && latex.trim() === "");
       const [draft, setDraft] = useState(latex);
+      const [mode, setMode] = useState<MathEditorMode>(getMathEditorMode);
       const rootRef = useRef<HTMLDivElement>(null);
       const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,16 +46,16 @@ export const MathBlock = createReactBlockSpec(
         if (!editing) setDraft(latex);
       }, [latex, editing]);
 
-      // 編集開始時にフォーカスし、高さを内容に合わせる
+      // LaTeX ソース編集に切り替えたらフォーカスし、高さを内容に合わせる
       useLayoutEffect(() => {
-        if (!editing) return;
+        if (!editing || mode !== "latex") return;
         const el = textareaRef.current;
         if (!el) return;
         el.focus();
         el.selectionStart = el.selectionEnd = el.value.length;
         el.style.height = "auto";
         el.style.height = `${el.scrollHeight}px`;
-      }, [editing]);
+      }, [editing, mode]);
 
       const commit = (value: string) => {
         (props.editor as any).updateBlock(props.block, { props: { latex: value } });
@@ -62,11 +66,21 @@ export const MathBlock = createReactBlockSpec(
         setEditing(false);
       };
 
-      // 外側クリックで編集を終了する
+      const switchMode = (next: MathEditorMode) => {
+        setMathEditorMode(next);
+        setMode(next);
+      };
+
+      // 外側クリックで編集を終了する。
+      // 仮想キーボードは body 直下のポータルに出るのでブロックの外側判定に入る。
+      // ここで閉じるとキーボードから入力できないので除外する。
       useEffect(() => {
         if (!editing) return;
         const onDown = (e: MouseEvent) => {
-          if (!rootRef.current?.contains(e.target as Node)) stopEditing();
+          const target = e.target as Node | null;
+          if (rootRef.current?.contains(target)) return;
+          if (target instanceof Element && target.closest(".ML__keyboard")) return;
+          stopEditing();
         };
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
@@ -78,33 +92,57 @@ export const MathBlock = createReactBlockSpec(
         return (
           <div ref={rootRef} data-test="math-block" data-editing="true" contentEditable={false} style={styles.editorShell}>
             <div style={styles.editorHeader}>
-              <Sigma size={14} strokeWidth={2} />
-              <span>{t("math.editorLabel")}</span>
+              <span style={styles.editorTitle}>
+                <Sigma size={14} strokeWidth={2} />
+                {mode === "visual" ? t("math.editorLabel") : t("math.editorLabelLatex")}
+              </span>
+              {/* 記号パレットは math-field 内蔵のトグルから開く（自前に持つと二重になる） */}
+              <button
+                type="button"
+                onClick={() => switchMode(mode === "visual" ? "latex" : "visual")}
+                style={styles.modeButton}
+              >
+                {mode === "visual" ? t("math.switchToLatex") : t("math.switchToVisual")}
+              </button>
             </div>
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              placeholder={t("math.placeholder")}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                // 入力のたびに永続化する（保存漏れを作らない）
-                commit(e.target.value);
-                const el = e.target;
-                el.style.height = "auto";
-                el.style.height = `${el.scrollHeight}px`;
-              }}
-              // BlockNote 側にキーを渡すとブロック削除・改行挿入と競合するため止める
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  stopEditing();
-                }
-              }}
-              style={styles.textarea}
-            />
-            {/* 入力中もプレビューを出して、閉じる前に結果が分かるようにする */}
-            <MathPreview latex={draft} />
+
+            {mode === "visual" ? (
+              <div style={styles.fieldShell}>
+                <MathField
+                  value={draft}
+                  autoFocus
+                  onChange={(next) => { setDraft(next); commit(next); }}
+                  onCommit={stopEditing}
+                />
+              </div>
+            ) : (
+              <>
+                <textarea
+                  ref={textareaRef}
+                  value={draft}
+                  placeholder={t("math.placeholder")}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    // 入力のたびに永続化する（保存漏れを作らない）
+                    commit(e.target.value);
+                    const el = e.target;
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }}
+                  // BlockNote 側にキーを渡すとブロック削除・改行挿入と競合するため止める
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      stopEditing();
+                    }
+                  }}
+                  style={styles.textarea}
+                />
+                {/* ソース編集中は結果が見えないのでプレビューを添える */}
+                <MathPreview latex={draft} />
+              </>
+            )}
           </div>
         );
       }
@@ -137,7 +175,7 @@ export const MathBlock = createReactBlockSpec(
   }
 );
 
-/** 編集中プレビュー（描画できない間はエラー文言を出す） */
+/** LaTeX ソース編集中のプレビュー（描画できない間はエラー文言を出す） */
 function MathPreview({ latex }: { latex: string }) {
   const { html, error } = renderMath(latex, true);
   if (!latex.trim()) return null;
@@ -197,9 +235,32 @@ const styles: Record<string, React.CSSProperties> = {
   editorHeader: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    justifyContent: "space-between",
+    gap: 8,
     fontSize: 12,
     color: "var(--color-muted-foreground)",
+  },
+  editorTitle: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  modeButton: {
+    padding: "2px 8px",
+    fontSize: 11,
+    borderRadius: 6,
+    border: "1px solid var(--color-border)",
+    background: "var(--color-card)",
+    color: "var(--color-muted-foreground)",
+    cursor: "pointer",
+  },
+  fieldShell: {
+    padding: "6px 8px",
+    borderRadius: 6,
+    border: "1px solid var(--color-input)",
+    background: "var(--color-card)",
+    // 長い式は SidePeek のような狭い幅からはみ出すので、枠の中でスクロールさせる
+    overflowX: "auto",
   },
   textarea: {
     width: "100%",

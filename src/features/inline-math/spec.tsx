@@ -5,11 +5,14 @@
 // インライン要素としても数式を持てるようにする。
 //
 // BlockNote の custom inline content として実装する。値は props.latex に持ち、
-// クリックすると小さな入力欄（ポップオーバー）で編集できる。
+// クリックすると小さなポップオーバーで編集できる。入力方式はブロック数式と同じ
+// 設定（視覚エディタ / LaTeX ソース）に従う。
 
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { renderMath } from "../math/render-katex";
+import { MathField } from "../math/math-field";
+import { getMathEditorMode } from "../math/editor-mode";
 import { t } from "../../i18n";
 
 export const InlineMath = createReactInlineContentSpec(
@@ -28,6 +31,7 @@ export const InlineMath = createReactInlineContentSpec(
       // 空で挿入された直後（スラッシュメニュー経由）はすぐ入力できる状態にする
       const [editing, setEditing] = useState(() => editable && latex.trim() === "");
       const [draft, setDraft] = useState(latex);
+      const [mode] = useState(getMathEditorMode);
       const rootRef = useRef<HTMLSpanElement>(null);
       const inputRef = useRef<HTMLInputElement>(null);
 
@@ -36,8 +40,8 @@ export const InlineMath = createReactInlineContentSpec(
       }, [latex, editing]);
 
       useLayoutEffect(() => {
-        if (editing) inputRef.current?.focus();
-      }, [editing]);
+        if (editing && mode === "latex") inputRef.current?.focus();
+      }, [editing, mode]);
 
       const commit = (value: string) => {
         (props.updateInlineContent as any)({ type: "inlineMath", props: { latex: value } });
@@ -46,10 +50,12 @@ export const InlineMath = createReactInlineContentSpec(
       useEffect(() => {
         if (!editing) return;
         const onDown = (e: MouseEvent) => {
-          if (!rootRef.current?.contains(e.target as Node)) {
-            commit(draft);
-            setEditing(false);
-          }
+          const target = e.target as Node | null;
+          if (rootRef.current?.contains(target)) return;
+          // 仮想キーボードは body 直下に出るので、外側クリック扱いにしない
+          if (target instanceof Element && target.closest(".ML__keyboard")) return;
+          commit(draft);
+          setEditing(false);
         };
         document.addEventListener("mousedown", onDown);
         return () => document.removeEventListener("mousedown", onDown);
@@ -74,22 +80,35 @@ export const InlineMath = createReactInlineContentSpec(
           </span>
           {editing && (
             <span style={styles.popover}>
-              <input
-                ref={inputRef}
-                value={draft}
-                placeholder={t("math.placeholder")}
-                onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
-                // BlockNote 側にキーを渡すと本文編集と競合するため止める
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter" || e.key === "Escape") {
-                    e.preventDefault();
-                    commit(draft);
-                    setEditing(false);
-                  }
-                }}
-                style={styles.input}
-              />
+              {mode === "visual" ? (
+                // 記号パレットは math-field 内蔵のトグルから開く
+                <span style={styles.fieldShell}>
+                  <MathField
+                    value={draft}
+                    autoFocus
+                    inline
+                    onChange={(next) => { setDraft(next); commit(next); }}
+                    onCommit={() => { commit(draft); setEditing(false); }}
+                  />
+                </span>
+              ) : (
+                <input
+                  ref={inputRef}
+                  value={draft}
+                  placeholder={t("math.placeholder")}
+                  onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
+                  // BlockNote 側にキーを渡すと本文編集と競合するため止める
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      e.preventDefault();
+                      commit(draft);
+                      setEditing(false);
+                    }
+                  }}
+                  style={styles.input}
+                />
+              )}
             </span>
           )}
         </span>
@@ -130,6 +149,15 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--color-card)",
     border: "1px solid var(--color-border)",
     boxShadow: "0 4px 16px rgba(26,46,29,0.12)",
+  },
+  fieldShell: {
+    display: "block",
+    width: 240,
+    padding: "2px 6px",
+    borderRadius: 6,
+    border: "1px solid var(--color-input)",
+    background: "var(--color-card)",
+    overflowX: "auto",
   },
   input: {
     width: 220,
