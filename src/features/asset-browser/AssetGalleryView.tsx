@@ -2,13 +2,14 @@
 // メディアタイプ別にサムネイル一覧を表示、ノート紐付き・削除に対応
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2 } from "lucide-react";
+import { Image, Video, Volume2, FileText, Paperclip, Play, Link, ExternalLink, Plus, LayoutGrid, List as ListIcon, Bot, MoreHorizontal, Download, Images, Loader2, ScanText } from "lucide-react";
 import { useT } from "../../i18n";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { useRangeSelect } from "../../hooks/use-range-select";
 import { formatDateTime } from "../../lib/format-datetime";
 import type { MediaIndex, MediaIndexEntry, MediaType } from "./media-index";
-import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages } from "./media-index";
+import { getFaviconUrl, canExtractEmbeddedImages, hasExtractedImages, persistOcrTextPatch } from "./media-index";
+import { runOcrForImage } from "../media-ocr";
 import { MaterialSidePeek } from "./MaterialSidePeek";
 import { MaterialFullView } from "./MaterialFullView";
 import { AiAssistantProvider } from "../ai-assistant/store";
@@ -642,6 +643,8 @@ export function AssetGalleryView({
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [bulkExtracting, setBulkExtracting] = useState(false);
+  // 一括 OCR の進捗（何件目まで終わったか）。null なら実行していない。
+  const [bulkOcr, setBulkOcr] = useState<{ done: number; total: number } | null>(null);
 
   // ⋯ ハンバーガーメニュー（Documents タブ用）
   const [menuOpen, setMenuOpen] = useState(false);
@@ -710,7 +713,22 @@ export function AssetGalleryView({
       setUploading(true);
       try {
         for (const file of Array.from(files)) {
-          await onUploadMedia(file);
+          // onUploadMedia が返すのは保存先 URL（fileId ではない）。
+          // media-index は fileId で引くので、ここで URL から取り出す。
+          const url = await onUploadMedia(file);
+          if (!file.type.startsWith("image/")) continue;
+          const fileId = getActiveProvider().extractFileId(url);
+          if (!fileId) continue;
+          // 画像はその場で文字も読み取る。後から一括 OCR もできるが、
+          // 入れた時点で読めていれば検索にすぐ乗る。読み取りは手元の File から
+          // 直接行う（保存先 URL の解決を待たずに済む）。
+          try {
+            const result = await runOcrForImage(file);
+            await persistOcrTextPatch(fileId, result.text);
+          } catch (err) {
+            // 読めなくてもアップロード自体は成功しているので流す
+            console.warn("[asset-gallery] アップロード時の OCR に失敗:", file.name, err);
+          }
         }
       } catch (err) {
         console.error("メディアアップロード失敗:", err);
@@ -949,6 +967,33 @@ export function AssetGalleryView({
       setBulkExtracting(false);
     }
   }, [filtered, selectedIds, isBulkExtractTarget, onExtractPdfPages, onExtractDocxImages]);
+
+  // 一括 OCR（画像のみ）。選択した画像の文字を順に読み取り、素材側に保存する。
+  // 順次実行なのは media-index の書き戻しが競合しないようにするため（一括削除・
+  // 一括画像抽出と同じ理由）。OCR 自体も worker 1 つを直列で使う。
+  // 既に読み取り済みの画像も対象に含める（選んだものは読み直す、が素直な期待）。
+  const ocrableSelected = useMemo(
+    () => filtered.filter((e) => selectedIds.has(e.fileId) && e.type === "image"),
+    [filtered, selectedIds],
+  );
+  const handleBulkOcr = useCallback(async () => {
+    if (ocrableSelected.length === 0) return;
+    setBulkOcr({ done: 0, total: ocrableSelected.length });
+    try {
+      for (const [i, entry] of ocrableSelected.entries()) {
+        try {
+          const result = await runOcrForImage(entry.url);
+          await persistOcrTextPatch(entry.fileId, result.text);
+        } catch (err) {
+          console.error("[asset-gallery] OCR 失敗:", entry.name, err);
+        }
+        setBulkOcr({ done: i + 1, total: ocrableSelected.length });
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBulkOcr(null);
+    }
+  }, [ocrableSelected]);
 
   // タイプ別の表示名
   const typeLabel = t(`asset.type.${mediaType}`);
@@ -1245,6 +1290,22 @@ export function AssetGalleryView({
                 >
                   <Bot size={12} />
                   {t("asset.bulkCreateProvNote", { count: String(selectedIds.size) })}
+                </button>
+              )}
+              {ocrableSelected.length > 0 && (
+                <button
+                  onClick={() => void handleBulkOcr()}
+                  disabled={!!bulkOcr}
+                  className="px-3 py-1 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                  title={t("asset.bulkOcrTitle")}
+                >
+                  {bulkOcr ? <Loader2 size={12} className="animate-spin" /> : <ScanText size={12} />}
+                  {bulkOcr
+                    ? t("asset.bulkOcrRunning", {
+                        done: String(bulkOcr.done),
+                        total: String(bulkOcr.total),
+                      })
+                    : t("asset.bulkOcr", { count: String(ocrableSelected.length) })}
                 </button>
               )}
               {extractableSelectedCount > 0 && (onExtractPdfPages || onExtractDocxImages) && (
