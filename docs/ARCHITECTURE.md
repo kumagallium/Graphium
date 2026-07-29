@@ -837,25 +837,23 @@ The same `src/` tree is built three different ways.
   folder by hand (Photos → share → the Files/Drive app → the synced
   folder, the same on iOS and Android), and the desktop inbox imports
   those files exactly the same way.
-- **Phone side: opt-in and settings.** The phone never opens the full
-  settings modal and never sees the desktop-worded mobile-link toggle
-  (the experiment flag is per-device localStorage, so the desktop
-  toggle and the phone entry points stay independent). While the flag
-  is off, the classic home shows a small opt-in card on top of the
-  timeline; trying it opens a storage picker (Google Drive selectable,
-  OneDrive as a disabled coming-soon slot for P1.5) and a successful
-  connect raises the flag, turning the home
-  queue-first in place. The same picker backs the queue's Connect
-  storage button, and the provider that actually connected is
-  remembered (`graphium-push-provider`) as the future branching point.
-  While the flag is on, a header gear opens a phone-only minimal
-  settings sheet: storage (status, connect/change, disconnect, and the
-  folded client-ID override), language, app version, and a small
-  leave-experiment action that only lowers the flag — queue, tokens
-  and overrides stay on the device. The OAuth client ID resolves from
-  that per-device override first, then from the ID bundled with the
-  build, so pushing works out of the box; the override remains as the
-  escape hatch for self-hosting or a dead bundled ID.
+- **Phone side: settings.** The capture-history home above is the only
+  mobile experience — there is no opt-in step and no alternate home to
+  fall back to. The phone never opens the full settings modal (the
+  desktop's inbox-folder wording is meaningless there); instead a header
+  gear opens a phone-only minimal settings sheet: storage (status,
+  connect/change, disconnect, and the folded client-ID override),
+  language and app version. Connecting goes through a storage picker
+  (Google Drive selectable, OneDrive as a disabled coming-soon slot for
+  P1.5) reachable from that sheet and from the queue's own Connect
+  storage button; the provider that actually connected is remembered
+  (`graphium-push-provider`) as the future branching point. The OAuth
+  client ID resolves from the per-device override first, then from the ID
+  bundled with the build, so pushing works out of the box; the override
+  remains as the escape hatch for self-hosting or a dead bundled ID.
+  Sending is available on both the web and desktop builds — only the
+  receiving inbox is desktop-only, because only there is there a
+  filesystem to enumerate.
 - **Connecting storage is phone-only; the desktop only receives.** The
   OAuth token and the client-ID override both live in per-device
   `localStorage`, so connecting on the desktop would grant the desktop

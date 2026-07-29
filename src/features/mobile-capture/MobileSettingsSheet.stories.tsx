@@ -21,7 +21,6 @@ const baseProps: MobileSettingsSheetProps = {
   onClearClientId: noop,
   onDisconnect: noop,
   onOpenStoragePicker: noop,
-  onLeaveExperiment: noop,
   onClose: noop,
 };
 
@@ -53,11 +52,10 @@ const meta: Meta<typeof SheetHost> = {
     docs: {
       description: {
         component:
-          "キュー前提ホーム（実験フラグ ON）のヘッダー ⚙ から開く、スマホ専用の最小設定シート。" +
+          "捕獲履歴ホームのヘッダー ⚙ から開く、スマホ専用の最小設定シート。" +
           "フル設定モーダルはスマホホームからは開かない。中身はスマホで実際に触るものだけ — " +
           "ストレージ（状態 / 接続・変更 → StoragePickerSheet / 切断 / 畳んだ client_id 上書き）・" +
-          "言語（設定モーダルと同じ setLocale）・アプリ情報（バージョン）・" +
-          "「この実験をやめる」（フラグを下ろして従来ホームへ。キューと接続は端末に残る）。",
+          "言語（設定モーダルと同じ setLocale）・アプリ情報（バージョン）。",
       },
     },
   },

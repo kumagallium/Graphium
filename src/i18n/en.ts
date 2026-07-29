@@ -567,10 +567,6 @@ export const en: Record<string, string> = {
   "settings.shared.note": "Settings stored locally. Tombstone records remain in _meta/ after deletion.",
   "settings.shared.desktopOnly": "Shared storage is currently desktop-only. The browser version cannot read or write to local folders.",
   "settings.shared.identityRequired": "Register your name and email above (Your identity) before testing the connection.",
-  // ── Mobile sync (experimental flag, default OFF) ──
-  "settings.mobileInboxFlag.title": "Mobile sync",
-  "settings.mobileInboxFlag.badge": "Experimental",
-  "settings.mobileInboxFlag.help": "Try sending captures from your phone to the desktop inbox. Turning this on reveals the phone-side send queue plus the desktop Mobile inbox and its folder settings (no reload needed).",
   // ── Mobile upload (desktop = receiving side: sync folder + QR to open on the phone) ──
   "settings.mobilePush.title": "Mobile upload",
   "settings.mobilePush.help": "Your phone uploads captures to cloud storage; this desktop imports them from the synced folder.",
@@ -1343,10 +1339,8 @@ export const en: Record<string, string> = {
   // ── メモ ──
   "memo.title": "Memos",
   "memo.count": "{count} items",
-  "memo.empty": "No memos yet. Tap the button below to create one.",
   "memo.emptyQueueHome": "No past captures yet. Start with the capture buttons below.",
   "memo.new": "New Memo",
-  "memo.creating": "Creating...",
   "memo.placeholder": "Write your memo here...",
   "memo.saving": "Saving to Google Drive...",
   "memo.hint": "Tap the send button to save",
@@ -1463,11 +1457,6 @@ export const en: Record<string, string> = {
   "mobile.send.connecting": "Connecting...",
   "mobile.send.connectFailed": "Could not connect: {error}",
 
-  // ── Experiment opt-in card (legacy mobile home) ──
-  "mobile.optIn.title": "Send captures to your desktop",
-  "mobile.optIn.body": "Queue memos, photos, and URLs on your phone and they land in the Graphium inbox on your desktop.",
-  "mobile.optIn.try": "Try it",
-
   // ── Storage picker (StoragePickerSheet) ──
   "mobile.storagePicker.title": "Choose storage",
   "mobile.storagePicker.help": "Your captures reach the desktop through the storage you pick here.",
@@ -1477,8 +1466,6 @@ export const en: Record<string, string> = {
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "Storage",
   "mobile.settings.changeStorage": "Change",
-  "mobile.settings.leaveExperiment": "Leave this experiment",
-  "mobile.settings.leaveExperimentHint": "Returns to the classic home. Your send queue and connection stay on this device.",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

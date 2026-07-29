@@ -11,7 +11,7 @@
 //
 // 同じ設定に入口が 2 つある（設定 › ストレージ = 正典 / 受信箱ビューのフォルダ設定
 // メニュー = その場の近道）。どちらで変えても両方に反映させるため、setter は
-// experimental.ts と同じ形で CustomEvent を流し、useInboxConfig で購読する。
+// setter が CustomEvent を流し、useInboxConfig で購読する。
 
 import { useEffect, useState } from "react";
 

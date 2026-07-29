@@ -23,10 +23,7 @@ import type {
 type PushModule = typeof import("./push");
 
 export type PushQueueUi = {
-  /**
-   * push モジュールのロードが済んだか。false の間は configured/connected は暫定値。
-   * enabled=false（実験フラグ OFF）の間は false のまま。
-   */
+  /** push モジュールのロードが済んだか。false の間は configured/connected は暫定値。 */
   ready: boolean;
   /** client_id が解決できるか（同梱 or 自前上書き）。 */
   configured: boolean;
@@ -45,7 +42,7 @@ export type PushQueueUi = {
   /**
    * 撮影ファイルをキューへ積む。キューはこの端末の IndexedDB で動くので、
    * client_id 未設定でも積める（未設定の案内は送信段階 = CaptureHistorySection が出す）。
-   * false を返すのは実験フラグ OFF と IndexedDB 不可（キュー自体が使えない）のみで、
+   * false を返すのは IndexedDB 不可（キュー自体が使えない）のときだけで、
    * そのときだけ呼び出し側が従来のローカル保存へフォールバックする。
    */
   enqueueForSend: (files: File[]) => Promise<boolean>;
@@ -62,26 +59,19 @@ export type PushQueueUi = {
   retryFailed: () => void;
   /**
    * 未送信アイテム 1 件を File として復元する（メモ / URL 捕獲の中身プレビュー用）。
-   * 送信済み（blob 破棄済み）・フラグ OFF・IndexedDB 不可は null。
+   * 送信済み（blob 破棄済み）・IndexedDB 不可は null。
    */
   getItemFile: (id: string) => Promise<File | null>;
   /**
    * 履歴行のサムネイル画像を読む（enqueue 時に焼いた縮小 JPEG。未送信で未生成なら実体）。
-   * 送信済みで焼けていない・画像でない・フラグ OFF は null（呼び出し側はアイコン表示）。
+   * 送信済みで焼けていない・画像でない場合は null（呼び出し側はアイコン表示）。
    */
   getItemThumbnail: (id: string) => Promise<Blob | null>;
   /** configured/connected を localStorage から読み直す（設定画面から戻った時など）。 */
   refreshStatus: () => void;
 };
 
-/**
- * @param enabled モバイル連携 実験フラグ（既定 true）。false の間はこのフックを
- *   完全に不活性にする — push モジュールのロード・キュー購読・自動 drain を行わず、
- *   enqueueForSend は false を返して呼び出し側を従来のローカル保存へ落とす。
- *   フラグが ON に切り替わると（useMobileInboxFlag 経由の再レンダリングで）
- *   その場でロードから立ち上がる。
- */
-export function usePushQueue(enabled = true): PushQueueUi {
+export function usePushQueue(): PushQueueUi {
   const moduleRef = useRef<Promise<PushModule> | null>(null);
   const pusherRef = useRef<InboxPusher | null>(null);
   const snapshotRef = useRef<PushQueueSnapshot | null>(null);
@@ -153,15 +143,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
   );
 
   // マウント時: モジュールロード → 状態初期化 → 購読 → 残キューがあれば drain。
-  // 実験フラグ OFF の間は何もロードしない（前回セッションの残キューも触らない —
-  // OFF の裏で勝手に送信が走るのを防ぐ）。ON へ切り替わったらここから立ち上がる。
   useEffect(() => {
-    if (!enabled) {
-      setReady(false);
-      snapshotRef.current = null;
-      setSnapshot(null);
-      return;
-    }
     let unsubscribe: (() => void) | null = null;
     let cancelled = false;
     void loadModule()
@@ -183,11 +165,10 @@ export function usePushQueue(enabled = true): PushQueueUi {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [enabled, loadModule, refreshStatus, maybeDrain]);
+  }, [loadModule, refreshStatus, maybeDrain]);
 
   // フォアグラウンド復帰 / オンライン復帰で drain（トークン失効の検知も兼ねる）
   useEffect(() => {
-    if (!enabled) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       refreshStatus();
@@ -200,7 +181,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
     };
-  }, [enabled, refreshStatus, maybeDrain]);
+  }, [refreshStatus, maybeDrain]);
 
   // 設定モーダル側での client_id 変更・接続・切断を反映する（push-events 経由）。
   // ホームのキューは常時見えているので「シートを開き直したら読み直す」という
@@ -208,19 +189,16 @@ export function usePushQueue(enabled = true): PushQueueUi {
   // 残キューをその場で流す（離散イベント起点なので、snapshot 購読から drain を
   // 起動しない不変条件には抵触しない）。
   useEffect(() => {
-    if (!enabled) return;
     const onStatusChanged = () => {
       refreshStatus();
       maybeDrain();
     };
     window.addEventListener(PUSH_STATUS_EVENT, onStatusChanged);
     return () => window.removeEventListener(PUSH_STATUS_EVENT, onStatusChanged);
-  }, [enabled, refreshStatus, maybeDrain]);
+  }, [refreshStatus, maybeDrain]);
 
   const enqueueForSend = useCallback(
     async (files: File[]): Promise<boolean> => {
-      // フラグ OFF は常にローカル保存へフォールバック（キューにもモジュールにも触らない）
-      if (!enabled) return false;
       if (files.length === 0) return false;
       const mod = await loadModule();
       const pusher = pusherRef.current;
@@ -242,7 +220,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
       maybeDrain();
       return true;
     },
-    [enabled, loadModule, maybeDrain],
+    [loadModule, maybeDrain],
   );
 
   const drainNow = useCallback(() => maybeDrain({ force: true }), [maybeDrain]);
@@ -291,7 +269,6 @@ export function usePushQueue(enabled = true): PushQueueUi {
 
   const getItemFile = useCallback(
     async (id: string): Promise<File | null> => {
-      if (!enabled) return null;
       try {
         const mod = await loadModule();
         const files = await mod.getPushQueueFiles([id]);
@@ -301,12 +278,11 @@ export function usePushQueue(enabled = true): PushQueueUi {
         return null;
       }
     },
-    [enabled, loadModule],
+    [loadModule],
   );
 
   const getItemThumbnail = useCallback(
     async (id: string): Promise<Blob | null> => {
-      if (!enabled) return null;
       try {
         const mod = await loadModule();
         return await mod.getPushQueueThumbnail(id);
@@ -315,7 +291,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
         return null;
       }
     },
-    [enabled, loadModule],
+    [loadModule],
   );
 
   return {

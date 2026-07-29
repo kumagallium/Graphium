@@ -38,8 +38,6 @@ vi.mock("../../lib/storage/shared", async () => {
 beforeEach(() => {
   localStorage.clear();
   (window as unknown as Record<string, unknown>).__TAURI__ = {};
-  // 実験フラグ ON でないとモバイル送信セクションごと出ない
-  localStorage.setItem("graphium-experimental-mobile-inbox", "1");
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({

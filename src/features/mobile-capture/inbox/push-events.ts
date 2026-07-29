@@ -3,7 +3,7 @@
 // 設定モーダルとモバイルホームの送信キューは別コンポーネントツリーで、どちらも
 // localStorage（client_id 上書き・保存トークン）を直接読むだけの疎結合。片方での
 // 変更（client_id 保存・接続・切断・失効破棄）をもう片方が知る術がないため、
-// experimental.ts のフラグと同じ window イベント間接化で「変わった」事実だけを流し、
+// config.ts と同じ window イベント間接化で「変わった」事実だけを流し、
 // 受け手（use-push-queue）が localStorage を読み直す。
 //
 // **このモジュールは push/ の外に置く**: use-push-queue（起動時バンドル）が
