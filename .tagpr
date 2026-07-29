@@ -2,13 +2,16 @@
 # https://github.com/Songmu/tagpr
 
 [tagpr]
-# バージョニング対象ファイル（tauri.conf.json の version フィールド）
-versionFile = src-tauri/tauri.conf.json
+# バージョニング対象ファイル（tagpr が両方の version フィールドを直接書き換える）
+#
+# package.json も列挙するのが要。以前は command で tauri.conf.json から jq で
+# 同期していたが、command は「バージョン決定の直前」= versionFile 更新前に走るため、
+# 常に 1 リリース古い値を読んでいた（v0.23.0 のタグで package.json が 0.22.0）。
+# web/PWA の表示バージョンは package.json 由来（src/lib/updater.ts）なので実害があった。
+versionFile = src-tauri/tauri.conf.json,package.json
 # リリースブランチ
 releaseBranch = main
 # v プレフィックス付きタグ
 vPrefix = true
 # CHANGELOG を自動生成する
 changelog = true
-# バージョン更新時に package.json も同期する
-command = jq --arg v "$(jq -r .version src-tauri/tauri.conf.json)" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json && git add package.json
