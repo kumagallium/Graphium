@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Graphium
   text: User Manual
-  tagline: The AI-native notebook that keeps track of how your ideas came to be.
+  tagline: An inspiration notebook for the AI era — the more you write, the more the dots connect into insight.
   image:
     src: /logo.png
     alt: Graphium
@@ -19,36 +19,36 @@ hero:
 features:
   - icon: ✍️
     title: Just write
-    details: A fast block editor for notes, procedures, tables, media, and math. Labels are optional — a note with no labels is a perfectly good note.
+    details: Notes and quick memos in a fast block editor — tables, images, formulas. No account, no setup, and versions are kept as you go.
     link: /notes-and-editor
-  - icon: 🕸️
-    title: Provenance as you go
-    details: Mark steps, inputs, tools, parameters, and outputs, and Graphium draws the provenance graph of what you did — exportable as standard PROV.
-    link: /labels-and-provenance
-  - icon: 📚
-    title: Materials in one place
-    details: Bring in PDFs, web pages, documents, chats, and quick memos, then cite them from your notes with full lineage back to the source.
+  - icon: 📥
+    title: Put everything in
+    details: PDFs, web pages, Word files, images, audio — and captures straight from your phone. Toss it in now, organize it later.
     link: /materials-and-citations
+  - icon: 🔎
+    title: It stays reusable
+    details: Everything you put in can be found again — search spans notes and materials (even text inside images), and @-links tie notes, memos, and sources together.
+    link: /notes-and-editor
+  - icon: 🤖
+    title: AI beside you
+    details: Chat about the note you're writing and ask with ⌘K — answers draw on your own notes and cite them. Works with your AI subscription or API key.
+    link: /ai-setup
+  - icon: 🕸️
+    title: Provenance when you want it
+    details: Mark steps, inputs, tools, parameters, and outputs, and Graphium draws how you worked — exportable as standard PROV.
+    link: /labels-and-provenance
   - icon: 💡
     title: Knowledge that grows
-    details: Distill notes into claims and insights, generalize them into atoms and concepts, and watch your personal wiki grow with you.
+    details: Distill notes into summaries, claims, and insights that cite their sources — and check them against the outside world.
     link: /knowledge-layer
-  - icon: 🤖
-    title: AI where it helps
-    details: Chat with your notes, ask questions with Cmd+K, and check ideas against the outside world — with your own AI subscription or API key.
-    link: /ai-setup
-  - icon: 💻
-    title: Yours, everywhere
-    details: Use it in the browser, install the desktop app, or capture from your phone. Your notes are files you own — no account required.
-    link: /desktop-app
 ---
 
 ## How this manual is organized
 
-- **[Getting started](/getting-started)** — the five-minute path from a blank page to your first provenance graph.
-- **Core Features** — the editor, labels and the provenance graph, external materials, and the Knowledge layer.
-- **AI Features** — connecting a model, chatting with your notes, and grounding ideas against the world.
-- **Platforms** — the desktop app, mobile capture, and where your data lives.
+- **[Getting started](/getting-started)** — the everyday basics first, then the doors to the deeper layers.
+- **Everyday use** — the editor, outside materials, and capturing from your phone.
+- **Going further** — AI at your side, steps and the provenance graph, and the Knowledge layer.
+- **Platforms & data** — the desktop app and where your data lives.
 - **Reference** — every setting, every shortcut, and the release history.
 
 Each feature page notes the version it first appeared in, like this: <Badge type="tip" text="Added in v0.15.0 (2026-06-05)" />. The full list of changes lives in the [release history](/release-history).

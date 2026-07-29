@@ -1,6 +1,6 @@
 # Knowledge layer
 
-Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the four kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
+Notes are your working memory: dated, contextual, full of detail. The Knowledge layer is what Graphium distills out of them — a personal wiki of short, editable pages that each state one reusable point and cite the notes they came from. This page explains the three kinds of knowledge, how to add notes to it, and how to browse, maintain, and trust what the AI builds.
 
 ::: info Needs AI
 The Knowledge layer runs only with an AI backend — the [desktop app](/desktop-app) or a Docker self-host, with at least one model registered. See [AI setup](/ai-setup). In the browser preview the **Knowledge** section shows an upgrade notice instead.
@@ -12,24 +12,17 @@ A lab note answers "what happened on Tuesday". A knowledge page answers "what do
 
 Because knowledge is *derived*, regeneration is normal. When your notes change, the pages built from them can be rebuilt — knowledge follows your notes, not the other way around.
 
-## The four kinds
+## The three kinds
 
-Graphium's knowledge follows an hourglass: context-rich notes narrow into general statements, then widen again into new combinations — **notes → claims → insights → ideas**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md).
+Graphium's knowledge follows an hourglass: context-rich notes narrow into short general statements, which then connect back outward across your work — **notes → claims → insights**. The reasoning model behind this is documented in [Inference types in Graphium](https://github.com/kumagallium/Graphium/blob/main/docs/inference-types.md).
 
 | Kind | What it is |
 |---|---|
 | **Summaries** | A short AI summary of a single note |
 | **Claims** | A grounded assertion extracted from your notes |
 | **Insights** | A pattern that recurs across two or more claims |
-| **Ideas** | A new idea formed by combining claims and insights |
 
-Each kind carries a semantic type badge. Claims have a role (**Finding**, **Decision**, **Anomaly**, **Question**, **Setup**, **Interpretation**, **Issue**); insights have a pattern type (**Causal**, **Mechanistic**, **Conditional**, and so on); ideas have a reasoning mode.
-
-### Idea modes
-
-Every Idea is tagged with the kind of reasoning move it makes: **Deductive** (combination strategy), **Abductive** (best explanatory hypothesis), **Analogical** (structural mapping across domains), or **Dialectic** (opposite directions resolved by a higher frame). Click the mode badge on an Idea page to open the **Idea mode** explainer, which describes all four with examples.
-
-Induction is deliberately *not* an Idea mode — generalizing across similar claims is the Insights layer's job.
+Each kind carries a semantic type badge. Claims have a role (**Finding**, **Decision**, **Anomaly**, **Question**, **Setup**, **Interpretation**, **Issue**); insights have a pattern type (**Causal**, **Mechanistic**, **Conditional**, and so on).
 
 ## Adding a note to knowledge
 
@@ -52,7 +45,7 @@ Ingestion is always something you trigger — Graphium never turns notes into kn
 
 ## Browsing knowledge
 
-The sidebar has a **Knowledge** section (collapsed by default) listing **Summaries**, **Claims**, and **Insights** with counts. Ideas have no sidebar list — they surface through links, search, and the graph. Click a kind to open its list view, which offers:
+The sidebar has a **Knowledge** section (collapsed by default) listing **Summaries**, **Claims**, and **Insights** with counts. Click a kind to open its list view, which offers:
 
 - Columns: **Title**, **Type**, **Sources** (how many source notes), **Refs out** / **Refs in**, **Model**, **Created**, **Modified**, and **World** (latest [world-grounding](/ai-grounding) verdict)
 - Search, per-column type filters, sorting, and drag-to-range multi-select

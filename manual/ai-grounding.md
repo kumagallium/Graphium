@@ -10,13 +10,13 @@ World grounding is part of Graphium's AI features, so you need a backend (the de
 
 ## Checking a claim against the world <Badge type="tip" text="Added in v0.8.0 (2026-05-21)" />
 
-Open a knowledge item — **Claims**, **Insights**, or **Ideas** under **Knowledge** in the sidebar — and look at the banner above the text. Next to **Regenerate** there is a **Check world** button.
+Open a knowledge item — **Claims** or **Insights** under **Knowledge** in the sidebar — and look at the banner above the text. Next to **Regenerate** there is a **Check world** button.
 
 ![A claim open in the editor, with the Check world button and a verdict chip in the banner](/screenshots/world-grounding-verdict.png)
 
 Clicking it runs the check and stores the result on that knowledge item: a verdict, a rationale, and sources. A progress toast keeps you posted while it runs. **Summaries** cannot be grounded — they describe one of your notes rather than assert something about the world.
 
-You can also ground several items at once. In the Claims, Insights, or Ideas list, a **World** column shows the latest verdict for each row (sortable by verdict strength). Select rows with the checkboxes and click **Check world** with the selection count — running it again overwrites the previous verdict, so the same button doubles as a re-check.
+You can also ground several items at once. In the Claims or Insights list, a **World** column shows the latest verdict for each row (sortable by verdict strength). Select rows with the checkboxes and click **Check world** with the selection count — running it again overwrites the previous verdict, so the same button doubles as a re-check.
 
 ## Reading the verdict
 

@@ -35,27 +35,27 @@ export default defineConfig({
         ],
       },
       {
-        text: 'Core Features',
+        text: 'Everyday Use',
         items: [
           { text: 'Notes & editor', link: '/notes-and-editor' },
-          { text: 'Labels & provenance', link: '/labels-and-provenance' },
           { text: 'Materials & citations', link: '/materials-and-citations' },
-          { text: 'Knowledge layer', link: '/knowledge-layer' },
+          { text: 'Mobile capture', link: '/mobile' },
         ],
       },
       {
-        text: 'AI Features',
+        text: 'Going Further',
         items: [
           { text: 'Setting up AI', link: '/ai-setup' },
           { text: 'Chat & Ask (Cmd+K)', link: '/ai-chat-and-ask' },
+          { text: 'Labels & provenance', link: '/labels-and-provenance' },
+          { text: 'Knowledge layer', link: '/knowledge-layer' },
           { text: 'World grounding', link: '/ai-grounding' },
         ],
       },
       {
-        text: 'Platforms',
+        text: 'Platforms & Data',
         items: [
           { text: 'Desktop app', link: '/desktop-app' },
-          { text: 'Mobile capture', link: '/mobile' },
           { text: 'Storage & sync', link: '/storage-and-sync' },
         ],
       },

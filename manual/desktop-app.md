@@ -7,7 +7,7 @@ The desktop app is the full Graphium experience: your notes become real files on
 - **Notes as real files.** Every note is a plain JSON file in a folder you can see, back up, and sync. Nothing is locked inside a browser database.
 - **AI included.** The app bundles the AI backend and starts it automatically — the Knowledge layer, AI chat, and the Composer work out of the box once you [register a model](/ai-setup).
 - **Sharing.** Publishing notes to a team folder is desktop-only, because the browser cannot read or write local folders. See [Storage & sync](/storage-and-sync).
-- **Mobile receive.** Captures sent from your phone land in a desktop inbox (experimental). See [Mobile](/mobile).
+- **Mobile receive.** Captures sent from your phone land in a desktop inbox. See [Mobile](/mobile).
 - **Native menu and shortcuts.** A real menu bar with reliable keyboard shortcuts, plus automatic updates.
 
 ### Web vs. desktop at a glance
@@ -17,7 +17,7 @@ The desktop app is the full Graphium experience: your notes become real files on
 | Where notes live | Browser IndexedDB (can be evicted by the browser) | Plain JSON files in `Documents/Graphium` |
 | AI features | Not available — no backend | Included, starts with the app |
 | Sharing to a team folder | Not available | Yes |
-| Receiving mobile captures | Not available | Yes (experimental) |
+| Receiving mobile captures | Not available (sending works) | Yes |
 | Updates | Always latest on page reload | Automatic check at launch and every 24 hours |
 
 ## Downloads
@@ -51,7 +51,7 @@ On first launch, Graphium creates its data folder in your Documents folder — `
 |---|---|
 | `notes/` | Your notes, one JSON file each |
 | `media/` | Images, PDFs, audio, video, and other materials |
-| `wiki/` | Knowledge layer pages (summaries, claims, insights, ideas) |
+| `wiki/` | Knowledge layer pages (summaries, claims, insights) |
 | `skills/` | Your saved skill documents |
 | `appdata/` | The note index and other app state |
 

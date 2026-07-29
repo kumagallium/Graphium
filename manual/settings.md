@@ -32,8 +32,7 @@ Where your notes live and how they move between devices. Full details in [Storag
 | **Local save location** | Desktop only — change the folder where notes, media, and knowledge are stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
 | **Your identity** | Set your display name and email, used as the author on shared notes and provenance entries. |
 | **Shared storage** | Desktop only — pick a shared folder (lab NAS, synced folder) plus a blob folder for large binaries, with a **Test connection** round-trip check. |
-| **Mobile sync** <Badge type="warning" text="Experimental" /> | Toggle the experimental phone-to-desktop capture pipeline on or off; see [Mobile capture](/mobile). |
-| **Mobile upload** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> | Shown when Mobile sync is on — connect cloud storage on your phone (QR code) and pick the desktop inbox folder that receives captures. |
+| **Mobile upload** <Badge type="tip" text="Added in v0.23.1 (2026-07-29)" /> | The desktop half of phone capture: a QR code that opens Graphium on your phone (storage is connected there), the **Inbox folder** picker for the synced folder that receives captures, and the **Keep processed files in `_imported/`** option. See [Mobile capture](/mobile). |
 | **Export & backup** | Download all notes as Markdown files, or a raw-data JSON backup covering every note, knowledge, and skill document. |
 
 ::: warning
@@ -75,7 +74,7 @@ Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM call
 |---|---|
 | **Connection Status** | Shows the health of each backend component, with a **Restart backend** button on the desktop app. |
 | **Re-embed all Wikis** | Rebuilds the embeddings behind AI chat citation search — use it if citation lookup stops working. |
-| **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Claims** / **Summaries** / **Insights** / **Ideas**), an optional model override, cancel support, and **Retry failed only**. |
+| **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Claims** / **Summaries** / **Insights**), an optional model override, cancel support, and **Retry failed only**. |
 | **Discover Insights from Claims** | Scans all Claims at once and factors out shared insights that recur across two or more of them. |
 
 ## Usage
