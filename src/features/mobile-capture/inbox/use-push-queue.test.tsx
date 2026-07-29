@@ -98,7 +98,7 @@ describe("usePushQueue の enabled ゲート", () => {
 
 // doctrine: モバイル単独利用者はいない — フラグ ON の捕獲物はこの端末に退避させない。
 // キューはローカル IndexedDB で動くので、client_id 未設定でも enqueue は成功し、
-// 未設定の案内は送信段階（SendQueueSection）が出す。false（→ 呼び出し側の
+// 未設定の案内は送信段階（CaptureHistorySection）が出す。false（→ 呼び出し側の
 // ローカル保存フォールバック）に落ちるのはキュー自体が使えないときだけ。
 describe("usePushQueue の enqueue と client_id 設定の分離", () => {
   it("enqueues even when no client_id is configured (guidance happens at send time)", async () => {

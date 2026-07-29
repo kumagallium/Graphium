@@ -1427,11 +1427,14 @@ export const ja: Record<string, string> = {
   "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
   "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
 
-  // ── モバイル送信キュー（スマホ → クラウド Inbox） ──
-  // 撮ったものはまずこの端末のキューに永続化され、Google Drive の Graphium/Inbox へ
+  // ── モバイル捕獲履歴（スマホ → クラウド Inbox） ──
+  // 撮ったものはまずこの端末に永続化され、Google Drive の Graphium/Inbox へ
   // アップロードされる。デスクトップは同期フォルダからそれを取り込む。
-  // キューはモバイルホームにインライン常設（シートは無い）。ヘッダーに接続チップ、
-  // キューが空のときはブロックごと畳まれる。
+  // ホームは 1 本の時系列: 送信済みも消えず、待機中・この端末の過去のメモ / 素材と
+  // 混ざって新しい順に並ぶ。
+  "mobile.history.title": "捕獲履歴",
+  "mobile.history.unsent": "未送信 {count} 件",
+  "mobile.history.remove": "履歴から削除",
   "mobile.send.title": "送信キュー",
   "mobile.send.chipNotConfigured": "未設定",
   "mobile.send.notConfigured": "ストレージが未設定です。設定を開き、詳細設定でクライアント ID を登録してください。",
@@ -1446,6 +1449,7 @@ export const ja: Record<string, string> = {
   "mobile.send.statusWaiting": "待機中",
   "mobile.send.statusSending": "送信中... {percent}%",
   "mobile.send.statusFailed": "失敗",
+  "mobile.send.statusSent": "送信済み",
   "mobile.send.retryFailed": "失敗した {count} 件を再試行",
   "mobile.send.remove": "キューから削除",
   "mobile.send.action": "送信 ({count})",

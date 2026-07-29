@@ -44,7 +44,7 @@ export type PushQueueUi = {
   progress: Record<string, PushProgress>;
   /**
    * 撮影ファイルをキューへ積む。キューはこの端末の IndexedDB で動くので、
-   * client_id 未設定でも積める（未設定の案内は送信段階 = SendQueueSection が出す）。
+   * client_id 未設定でも積める（未設定の案内は送信段階 = CaptureHistorySection が出す）。
    * false を返すのは実験フラグ OFF と IndexedDB 不可（キュー自体が使えない）のみで、
    * そのときだけ呼び出し側が従来のローカル保存へフォールバックする。
    */
@@ -226,7 +226,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
       const pusher = pusherRef.current;
       if (!pusher) return false;
       // client_id 未設定でも enqueue は許可する — キューはこの端末の IndexedDB で
-      // 動き、未設定の案内は送信段階（SendQueueSection の「未設定です → 設定」）が
+      // 動き、未設定の案内は送信段階（CaptureHistorySection の「未設定です → 設定」）が
       // 担う。ここで弾いてローカル保存に落とすと、捕獲物がデスクトップへ渡る橋の
       // ない袋小路（この端末のライブラリ）に入る — モバイル単独利用者はいない前提
       // （設計 doc §13.9）に反する。configured は表示用に読み直すだけ。

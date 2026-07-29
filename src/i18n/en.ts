@@ -1429,11 +1429,14 @@ export const en: Record<string, string> = {
   "mobile.emptyInboxHint": "Files dropped into the Inbox folder from your phone will appear here.",
   "mobile.scanFailed": "Could not read the inbox: {error}",
 
-  // ── Mobile send queue (phone → cloud Inbox) ──
+  // ── Mobile capture history (phone → cloud Inbox) ──
   // Captures land here first (persisted on this device), then upload to
   // Google Drive → Graphium/Inbox, where the desktop picks them up.
-  // The queue lives inline on the mobile home (no sheet); the header shows a
-  // connection chip and the queue block collapses while empty.
+  // The home is one timeline: sent captures stay in the list next to the
+  // waiting ones and this device's older memos / assets, newest first.
+  "mobile.history.title": "Captures",
+  "mobile.history.unsent": "{count} unsent",
+  "mobile.history.remove": "Remove from history",
   "mobile.send.title": "Send queue",
   "mobile.send.chipNotConfigured": "Not set up",
   "mobile.send.notConfigured": "Storage isn't set up yet. Open Settings and add a client ID under Advanced.",
@@ -1448,6 +1451,7 @@ export const en: Record<string, string> = {
   "mobile.send.statusWaiting": "Waiting",
   "mobile.send.statusSending": "Sending... {percent}%",
   "mobile.send.statusFailed": "Failed",
+  "mobile.send.statusSent": "Sent",
   "mobile.send.retryFailed": "Retry failed ({count})",
   "mobile.send.remove": "Remove from queue",
   "mobile.send.action": "Send ({count})",
