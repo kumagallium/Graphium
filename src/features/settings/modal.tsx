@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Settings as SettingsIcon,
   ChevronDown,
-  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -73,18 +72,26 @@ import {
   setBlobRoot,
   pickSharedRoot,
   pickBlobRoot,
+  pickInboxRoot,
   testSharedConnection,
   testBlobConnection,
   type ConnectionTestResult,
 } from "../../lib/storage/shared";
-// モバイル送信（Google Drive push）は動的 import で引く（gsi を起動時バンドルに
-// 入れない — push/index.ts の注記どおり）。ここは type import のみ。
-import type { InboxPusher } from "../mobile-capture/inbox/push";
 // モバイル連携の実験フラグ（既定 OFF）。トグル自体は常時表示し、ON のときだけ
 // モバイル送信セクションを見せる。切替はイベント経由でリロード無しに全入口へ届く。
 import { setMobileInboxEnabled, useMobileInboxFlag } from "../mobile-capture/inbox/experimental";
-
-type MobilePushModule = typeof import("../mobile-capture/inbox/push");
+// デスクトップ側のモバイル送信 = 受け取り専用。受信フォルダ（<root>/Inbox/ の親）の
+// 指定と、スマホで開くための QR だけを持つ。OAuth 接続はスマホ側の仕事なのでここには無い
+// （トークンは端末ごとの localStorage で、デスクトップで接続してもスマホには効かない）。
+// inbox バレルは InboxView（受信箱ビュー一式）まで引き込むので、ここは個別 import。
+import {
+  getInboxKeepArchive,
+  setInboxKeepArchive,
+  setInboxRoot,
+  useInboxConfig,
+} from "../mobile-capture/inbox/config";
+import { getMobileAppUrl } from "../mobile-capture/inbox/app-url";
+import { MobileConnectQrCard } from "../mobile-capture/inbox/MobileConnectQrCard";
 
 // ── プロバイダー定義 ──
 const PROVIDERS = [
@@ -298,17 +305,14 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
 
   // モバイル連携の実験フラグ（既定 OFF）。ON のときだけ下のモバイル送信セクションを出す。
   const mobileInboxFlagOn = useMobileInboxFlag();
-  // モバイル送信（Google Drive push）— ストレージタブ。
-  // 設定は localStorage（端末ごと）なので、スマホ側でも同じ client ID を入れる必要がある。
-  const [pushMod, setPushMod] = useState<MobilePushModule | null>(null);
-  const pushPusherRef = useRef<InboxPusher | null>(null);
-  const [pushConfigured, setPushConfigured] = useState(false);
-  const [pushConnected, setPushConnected] = useState(false);
-  const [pushConnecting, setPushConnecting] = useState(false);
-  const [pushError, setPushError] = useState<string | null>(null);
-  const [pushClientIdInput, setPushClientIdInput] = useState("");
-  const [pushClientIdSaved, setPushClientIdSaved] = useState(false);
-  const [pushHasBundledId, setPushHasBundledId] = useState(false);
+  // モバイル送信（デスクトップ = 受け取り側）— ストレージタブ。
+  // 受信フォルダと「処理済みを _imported/ に残す」は受信箱ビューのフォルダ設定メニューと
+  // 同じ localStorage を読む。useInboxConfig が CustomEvent を購読するので、
+  // どちらで変えてももう片方に即反映される。
+  const { root: inboxRoot, keepArchive: inboxKeepArchive } = useInboxConfig();
+  const [inboxRootError, setInboxRootError] = useState<string | null>(null);
+  // スマホで開く URL（web は配信元から / Tauri は公開 URL）。QR の中身。
+  const mobileAppUrl = useMemo(() => getMobileAppUrl(), []);
 
   // エクスポート / バックアップ（ストレージタブ）
   const [exportBusy, setExportBusy] = useState<"markdown" | "backup" | null>(null);
@@ -659,81 +663,27 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
     }, 600);
   }, [serverToken]);
 
-  // ── モバイル送信（Google Drive push）── 実験フラグ ON でストレージタブを開いた時に
-  // 動的ロード（フラグ OFF ではセクションごと出さないのでロードもしない）。
-  // prepare をここで済ませておくと、接続ボタンの click から同期的に connect() を
-  // 呼べる（InboxPusher の契約 — ジェスチャ内で await を挟むと iOS がブロックする）。
-  useEffect(() => {
-    if (!isOpen || tab !== "storage" || !mobileInboxFlagOn || pushMod) return;
-    let cancelled = false;
-    void import("../mobile-capture/inbox/push")
-      .then((mod) => {
-        if (cancelled) return;
-        if (!pushPusherRef.current) pushPusherRef.current = new mod.GoogleDrivePusher();
-        const pusher = pushPusherRef.current;
-        setPushMod(mod);
-        setPushConfigured(pusher.isConfigured());
-        setPushConnected(pusher.isConnected());
-        setPushHasBundledId(mod.DEFAULT_GOOGLE_PUSH_CLIENT_ID !== "");
-        setPushClientIdInput(mod.getGoogleClientIdOverride() ?? "");
-        if (pusher.isConfigured()) {
-          void pusher.prepare().catch(() => {}); // 未設定・オフライン等は接続時に再表面化する
-        }
-      })
-      .catch((err) => {
-        setPushError(err instanceof Error ? err.message : String(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, tab, mobileInboxFlagOn, pushMod]);
+  // ── モバイル受信フォルダ ── 共有フォルダ（handlePickSharedRoot）と同じ作法。
+  // setInboxRoot / setInboxKeepArchive が CustomEvent を流すので、useInboxConfig を
+  // 使う受信箱ビュー側もリロード無しで追従する（state は持たない）。
+  const handlePickInboxRoot = useCallback(async () => {
+    setInboxRootError(null);
+    try {
+      const picked = await pickInboxRoot(inboxRoot ?? undefined);
+      if (!picked) return;
+      setInboxRoot(picked);
+    } catch (err) {
+      setInboxRootError(err instanceof Error ? err.message : String(err));
+    }
+  }, [inboxRoot]);
 
-  const handleSavePushClientId = useCallback(() => {
-    if (!pushMod) return;
-    pushMod.setGoogleClientIdOverride(pushClientIdInput);
-    setPushClientIdSaved(true);
-    setPushError(null);
-    const pusher = pushPusherRef.current;
-    if (!pusher) return;
-    setPushConfigured(pusher.isConfigured());
-    // client_id が変わったら token client を作り直す（prepare は client_id 差し替えに追従する）
-    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
-  }, [pushMod, pushClientIdInput]);
+  const handleClearInboxRoot = useCallback(() => {
+    setInboxRootError(null);
+    setInboxRoot(null);
+  }, []);
 
-  const handleClearPushClientId = useCallback(() => {
-    if (!pushMod) return;
-    pushMod.setGoogleClientIdOverride(null);
-    setPushClientIdInput("");
-    setPushClientIdSaved(false);
-    setPushError(null);
-    const pusher = pushPusherRef.current;
-    if (!pusher) return;
-    setPushConfigured(pusher.isConfigured());
-    if (pusher.isConfigured()) void pusher.prepare().catch(() => {});
-  }, [pushMod]);
-
-  const handlePushConnect = useCallback(() => {
-    const pusher = pushPusherRef.current;
-    if (!pusher || pushConnecting) return;
-    setPushConnecting(true);
-    setPushError(null);
-    // 契約: connect() はこの同期呼び出しの中でトークン要求まで到達する。
-    // ここより前に await を置かないこと（ポップアップがブロックされる）。
-    pusher
-      .connect()
-      .then(() => setPushConnected(true))
-      .catch((err) => {
-        setPushConnected(pusher.isConnected());
-        setPushError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => setPushConnecting(false));
-  }, [pushConnecting]);
-
-  const handlePushDisconnect = useCallback(() => {
-    const pusher = pushPusherRef.current;
-    if (!pusher) return;
-    pusher.disconnect();
-    setPushConnected(false);
+  const handleToggleInboxKeepArchive = useCallback(() => {
+    setInboxKeepArchive(!getInboxKeepArchive());
   }, []);
 
   // ── エクスポート / バックアップ（ストレージタブ） ──
@@ -1936,9 +1886,12 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               </p>
             </div>
 
-            {/* モバイル送信（Google Drive push）— 実験フラグ ON のときだけ表示。
-                デスクトップにも出す — 機能を知る場所はデスクトップ、実際に接続するのは
-                撮影する端末。設定は端末ごと（localStorage）なので help でその旨を明示する */}
+            {/* モバイル送信 — 実験フラグ ON のときだけ表示。
+                デスクトップの役割は**受け取り**（同期フォルダを読む）だけ。だから
+                ここにあるのは受信フォルダの指定と、スマホで開くための QR。
+                OAuth 接続はここに置かない: トークンは端末ごとの localStorage なので
+                デスクトップで接続してもスマホには効かず、しかも GIS の認可は
+                window.open を使うため Tauri の WebView では必ず失敗する。 */}
             {mobileInboxFlagOn && (
             <div>
               <div className="flex items-center gap-1.5 mb-1">
@@ -1950,123 +1903,70 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
               <p className="text-xs text-muted-foreground mb-2">
                 {t("settings.mobilePush.help")}
               </p>
-              <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2">
-                {/* 接続状態 */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs">
-                    {!pushConfigured ? (
-                      <>
-                        <AlertCircle size={12} className="text-muted-foreground" />
-                        <span className="text-muted-foreground">
-                          {t("settings.mobilePush.statusNotConfigured")}
-                        </span>
-                      </>
-                    ) : pushConnected ? (
-                      <>
-                        <CheckCircle size={12} className="text-green-600" />
-                        <span className="text-foreground">
-                          {t("settings.mobilePush.statusConnected")}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle size={12} className="text-muted-foreground" />
-                        <span className="text-muted-foreground">
-                          {t("settings.mobilePush.statusDisconnected")}
-                        </span>
-                      </>
+
+              {/* 受信フォルダ（<root>/Inbox/ の親）— 共有フォルダのピッカーと同じ様式。
+                  受信箱ビューのフォルダ設定メニューと同じ localStorage を読み書きする。
+                  Tauri 専用（web にはフォルダを列挙する手段が無い）。 */}
+              {isTauri() ? (
+                <div className="rounded-md border border-border bg-background px-3 py-2 space-y-2 mb-2">
+                  <div className="text-xs text-muted-foreground">
+                    {t("settings.mobilePush.inboxRootLabel")}
+                  </div>
+                  {inboxRoot ? (
+                    <div className="text-xs font-mono text-foreground break-all">{inboxRoot}</div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground italic">
+                      {t("settings.shared.notSet")}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button size="sm" variant="ghost" onClick={handlePickInboxRoot}>
+                      {inboxRoot ? t("settings.shared.change") : t("settings.shared.pick")}
+                    </Button>
+                    {inboxRoot && (
+                      <button
+                        onClick={handleClearInboxRoot}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                      >
+                        <RotateCcw size={12} />
+                        {t("settings.shared.clear")}
+                      </button>
                     )}
                   </div>
-                  {pushConfigured && (
-                    pushConnected ? (
-                      <Button size="sm" variant="ghost" onClick={handlePushDisconnect}>
-                        {t("settings.mobilePush.disconnect")}
-                      </Button>
-                    ) : (
-                      <Button size="sm" onClick={handlePushConnect} disabled={pushConnecting || !pushMod}>
-                        {pushConnecting ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          t("settings.mobilePush.connect")
-                        )}
-                      </Button>
-                    )
+                  {inboxRootError && (
+                    <p className="text-xs text-red-500 flex items-start gap-1">
+                      <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                      <span className="break-all">{inboxRootError}</span>
+                    </p>
                   )}
-                </div>
-                {pushError && (
-                  <p className="text-xs text-red-500 flex items-start gap-1">
-                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                    <span className="break-all">
-                      {t("settings.mobilePush.connectFailed", { error: pushError })}
-                    </span>
+                  <p className="text-xs text-muted-foreground">
+                    {t("settings.mobilePush.inboxRootHelp")}
                   </p>
-                )}
 
-                {/* 同梱 ID の無いビルドでは自前 client ID が必須なので、注記は
-                    折りたたみの外（常時見える位置）に出す */}
-                {!pushHasBundledId && (
-                  <p className="pt-1 border-t border-border text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
-                    <Info size={12} className="mt-0.5 shrink-0" />
-                    <span>{t("settings.mobilePush.noDefaultNote")}</span>
-                  </p>
-                )}
-
-                {/* 自前 client ID の上書きは「詳細設定」に畳む（既定は閉じる）。
-                    既定の体験は同梱 ID で「接続」するだけ — 上書きはセルフホストや
-                    同梱 ID 枯渇時の保険で、一般ユーザーには見せない */}
-                <details className={`group ${pushHasBundledId ? "pt-1 border-t border-border" : ""}`}>
-                  <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                    <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
-                    {t("settings.mobilePush.advanced")}
-                  </summary>
-                  <div className="mt-1.5 space-y-1.5">
-                    <p className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.advancedHelp")}
-                    </p>
-                    <div className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.clientIdLabel")}
-                    </div>
-                    <Input
-                      type="text"
-                      value={pushClientIdInput}
-                      onChange={(e) => {
-                        setPushClientIdInput(e.target.value);
-                        setPushClientIdSaved(false);
-                      }}
-                      placeholder={t("settings.mobilePush.clientIdPlaceholder")}
-                      autoComplete="off"
-                      disabled={!pushMod}
+                  {/* 取り込み後の後処理（受信箱ビューのフォルダ設定と同じ設定・同じ文言） */}
+                  <label className="pt-1 border-t border-border flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={inboxKeepArchive}
+                      onChange={handleToggleInboxKeepArchive}
+                      className="mt-0.5 accent-primary"
                     />
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={handleSavePushClientId}
-                        disabled={!pushMod || pushClientIdInput.trim() === ""}
-                      >
-                        {t("settings.mobilePush.save")}
-                      </Button>
-                      {pushClientIdInput.trim() !== "" && (
-                        <button
-                          onClick={handleClearPushClientId}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                        >
-                          <RotateCcw size={12} />
-                          {t("settings.mobilePush.clear")}
-                        </button>
-                      )}
-                      {pushClientIdSaved && (
-                        <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                          <CheckCircle size={12} className="text-green-600" />
-                          {t("settings.mobilePush.saved")}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {t("settings.mobilePush.clientIdHelp")}
-                    </p>
-                  </div>
-                </details>
-              </div>
+                    <span className="text-xs text-foreground">
+                      <span>{t("mobile.keepArchive")}</span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        {t("mobile.keepArchiveHint")}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mb-2">
+                  {t("settings.mobilePush.inboxRootDesktopOnly")}
+                </p>
+              )}
+
+              {/* 接続はスマホ側で — QR + URL（接続ボタンは意図的に置かない） */}
+              <MobileConnectQrCard url={mobileAppUrl} />
             </div>
             )}
 
