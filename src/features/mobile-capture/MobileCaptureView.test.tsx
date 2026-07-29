@@ -108,6 +108,7 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     removeItem: vi.fn(),
     retryFailed: vi.fn(),
     getItemFile: vi.fn(async () => null),
+    getItemThumbnail: vi.fn(async () => null),
     refreshStatus: vi.fn(),
     ...overrides,
   };

@@ -36,7 +36,7 @@ export type PushQueueUi = {
   connecting: boolean;
   /** 直近の接続エラー（表示用）。 */
   connectError: string | null;
-  /** キューのアイテム（enqueue 順）。 */
+  /** 捕獲履歴のアイテム（enqueue 順。**送信済みも含む** — 送っても消えない）。 */
   items: PushQueueItemMeta[];
   draining: boolean;
   activeId: string | null;
@@ -61,10 +61,15 @@ export type PushQueueUi = {
   /** failed を pending に戻し、接続が生きていれば再送する。 */
   retryFailed: () => void;
   /**
-   * キューアイテム 1 件を File として復元する（ホームのキュー一覧の画像サムネイル用）。
-   * 見つからない・フラグ OFF・IndexedDB 不可は null（呼び出し側はアイコン表示に倒す）。
+   * 未送信アイテム 1 件を File として復元する（メモ / URL 捕獲の中身プレビュー用）。
+   * 送信済み（blob 破棄済み）・フラグ OFF・IndexedDB 不可は null。
    */
   getItemFile: (id: string) => Promise<File | null>;
+  /**
+   * 履歴行のサムネイル画像を読む（enqueue 時に焼いた縮小 JPEG。未送信で未生成なら実体）。
+   * 送信済みで焼けていない・画像でない・フラグ OFF は null（呼び出し側はアイコン表示）。
+   */
+  getItemThumbnail: (id: string) => Promise<Blob | null>;
   /** configured/connected を localStorage から読み直す（設定画面から戻った時など）。 */
   refreshStatus: () => void;
 };
@@ -138,7 +143,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
         });
         if (result.aborted === "auth") setConnected(false);
         else setConnected(pusher.isConnected());
-        // 送れたアイテムはキューから消えるので進捗表示も畳む
+        // 送り終えたアイテムは「送信済み」の履歴行になるので進捗表示は畳む
         setProgress({});
       })().catch((err) => {
         console.error("push queue drain failed:", err instanceof Error ? err.message : err);
@@ -292,7 +297,21 @@ export function usePushQueue(enabled = true): PushQueueUi {
         const files = await mod.getPushQueueFiles([id]);
         return files[0]?.file ?? null;
       } catch {
-        // IndexedDB 不可・並行削除などはサムネイル無しに倒す（非致命的）
+        // IndexedDB 不可・並行削除などはプレビュー無しに倒す（非致命的）
+        return null;
+      }
+    },
+    [enabled, loadModule],
+  );
+
+  const getItemThumbnail = useCallback(
+    async (id: string): Promise<Blob | null> => {
+      if (!enabled) return null;
+      try {
+        const mod = await loadModule();
+        return await mod.getPushQueueThumbnail(id);
+      } catch {
+        // サムネが出ないだけ（履歴の行は種別アイコンで成立する）
         return null;
       }
     },
@@ -315,6 +334,7 @@ export function usePushQueue(enabled = true): PushQueueUi {
     removeItem,
     retryFailed,
     getItemFile,
+    getItemThumbnail,
     refreshStatus,
   };
 }

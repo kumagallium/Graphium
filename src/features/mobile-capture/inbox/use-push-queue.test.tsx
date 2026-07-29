@@ -10,7 +10,8 @@
 // - client_id 未設定でも enqueue は成功する（キューはローカル IndexedDB。
 //   未設定の案内は送信段階が出し、ローカル保存には退避しない）。false は
 //   キュー自体が使えない（IndexedDB 不可）ときだけ
-// - getItemFile はキューの Blob をサムネイル用に復元する（OFF 中は null）
+// - getItemFile は未送信の Blob を復元し、getItemThumbnail は履歴行のサムネイルを
+//   返す（送信済みで blob を捨てた後も出る）。どちらも OFF 中は null
 // - PUSH_STATUS_EVENT（設定モーダルでの client_id 変更・接続・切断）で
 //   configured/connected を読み直す（ホームのチップ・キュー表示の鮮度）
 //
@@ -29,6 +30,7 @@ const h = vi.hoisted(() => ({
   pushModuleLoads: vi.fn(),
   pusherConfigured: { value: false },
   getPushQueueFiles: vi.fn(async (_ids?: string[]) => [] as Array<{ id: string; file: File }>),
+  getPushQueueThumbnail: vi.fn(async (_id: string) => null as Blob | null),
   enqueuePushFiles: vi.fn(async (_files?: File[]) => {}),
 }));
 
@@ -47,6 +49,7 @@ vi.mock("./push", () => {
     enqueuePushFiles: h.enqueuePushFiles,
     drainPushQueue: vi.fn(async () => ({ pushed: [], failed: [], deferred: [], aborted: null })),
     getPushQueueFiles: h.getPushQueueFiles,
+    getPushQueueThumbnail: h.getPushQueueThumbnail,
     removePushQueueItem: vi.fn(async () => {}),
     retryFailedPushItems: vi.fn(async () => {}),
   };
@@ -137,6 +140,30 @@ describe("usePushQueue のサムネイル復元と状態イベント", () => {
       await expect(result.current.getItemFile("a")).resolves.toBe(file);
     });
     expect(h.getPushQueueFiles).toHaveBeenCalledWith(["a"]);
+  });
+
+  it("getItemThumbnail serves the stored thumbnail (and stays null while disabled)", async () => {
+    const thumb = new Blob([new Uint8Array([9]) as BlobPart], { type: "image/jpeg" });
+    h.getPushQueueThumbnail.mockResolvedValueOnce(thumb);
+
+    const { result, rerender } = renderHook(({ on }: { on: boolean }) => usePushQueue(on), {
+      initialProps: { on: true },
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    // 送信済みの行でもサムネは読める（blob は捨てられている）
+    await act(async () => {
+      await expect(result.current.getItemThumbnail("a")).resolves.toBe(thumb);
+    });
+    expect(h.getPushQueueThumbnail).toHaveBeenCalledWith("a");
+
+    // フラグ OFF ではモジュールに触れず null
+    h.getPushQueueThumbnail.mockClear();
+    rerender({ on: false });
+    await act(async () => {
+      await expect(result.current.getItemThumbnail("a")).resolves.toBeNull();
+    });
+    expect(h.getPushQueueThumbnail).not.toHaveBeenCalled();
   });
 
   it("re-reads configured/connected when the push status event fires", async () => {
