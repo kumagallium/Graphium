@@ -10,12 +10,6 @@ export {
 export { getMobileAppUrl, GRAPHIUM_PUBLIC_APP_URL } from "./app-url";
 export { MobileConnectQrCard } from "./MobileConnectQrCard";
 export type { MobileConnectQrCardProps } from "./MobileConnectQrCard";
-export {
-  isMobileInboxEnabled,
-  setMobileInboxEnabled,
-  useMobileInboxFlag,
-  MOBILE_INBOX_FLAG_EVENT,
-} from "./experimental";
 export { mimeFromExtension, kindFromMime } from "./mime";
 export { FolderInbox } from "./transport";
 export { runInboxImport } from "./importer";
