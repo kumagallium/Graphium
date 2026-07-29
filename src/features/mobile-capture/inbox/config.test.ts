@@ -5,13 +5,16 @@
 // - keep-archive は既定 false（= 取り込み成功後に Inbox 側ファイルを削除）
 // - ON は "1" で永続化、OFF はキーごと消える（既定に戻す = 痕跡を残さない）
 // - root は set/get の round-trip、空文字/null で解除
+// - setter は CustomEvent を流す（設定モーダルと受信箱ビューの 2 入口が同じ
+//   localStorage を触るため。片方の変更がもう片方に届かないとズレる）
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   getInboxRoot,
   setInboxRoot,
   getInboxKeepArchive,
   setInboxKeepArchive,
+  INBOX_CONFIG_EVENT,
 } from "./config";
 
 beforeEach(() => {
@@ -47,5 +50,19 @@ describe("inbox config — keep archive (post-import disposal)", () => {
     setInboxKeepArchive(false);
     expect(getInboxKeepArchive()).toBe(false);
     expect(localStorage.getItem("graphium-inbox-keep-archive")).toBeNull();
+  });
+});
+
+describe("inbox config — change notification", () => {
+  it("notifies both entry points (settings modal / inbox view) on every setter", () => {
+    const listener = vi.fn();
+    window.addEventListener(INBOX_CONFIG_EVENT, listener);
+    setInboxRoot("/sync/root");
+    expect(listener).toHaveBeenCalledTimes(1);
+    setInboxKeepArchive(true);
+    expect(listener).toHaveBeenCalledTimes(2);
+    setInboxRoot(null);
+    expect(listener).toHaveBeenCalledTimes(3);
+    window.removeEventListener(INBOX_CONFIG_EVENT, listener);
   });
 });
