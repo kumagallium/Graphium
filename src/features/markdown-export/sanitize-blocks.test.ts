@@ -157,6 +157,34 @@ describe("sanitizeBlocksForMarkdown", () => {
     expect(sanitizeBlocksForMarkdown(undefined, SCHEMA)).toEqual([]);
     expect(sanitizeBlocksForMarkdown(null, SCHEMA)).toEqual([]);
   });
+
+  it("math ブロックを $$ ... $$ の段落に落とす", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "math", props: { latex: "E = mc^2" }, children: [] }],
+      SCHEMA,
+    );
+    expect(result[0]).toMatchObject({ type: "paragraph" });
+    expect(result[0].content).toEqual([text("$$ E = mc^2 $$")]);
+  });
+
+  it("latex が空の math ブロックは空段落にする", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{ type: "math", props: { latex: "  " }, children: [] }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([]);
+  });
+
+  it("inlineMath を $ ... $ のテキストに戻す", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        type: "paragraph", props: {}, children: [],
+        content: [text("係数は "), { type: "inlineMath", props: { latex: "b = -0.126" } }, text(" である")],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([text("係数は "), text("$b = -0.126$"), text(" である")]);
+  });
 });
 
 describe("extractInlineText", () => {
@@ -168,6 +196,10 @@ describe("extractInlineText", () => {
     expect(
       extractInlineText([{ type: "link", href: "x", content: [text("label")] }]),
     ).toBe("label");
+  });
+
+  it("inlineMath は $ ... $ の表記で拾う", () => {
+    expect(extractInlineText([text("係数 "), { type: "inlineMath", props: { latex: "x^2" } }])).toBe("係数 $x^2$");
   });
 
   it("配列以外は空文字を返す", () => {

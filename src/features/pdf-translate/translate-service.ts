@@ -32,6 +32,7 @@ import { t } from "../../i18n";
 import type { GraphiumDocument } from "../../lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "../../lib/document-migration";
 import { chunkTextByParagraph, isSameLanguage } from "./url-chunk";
+import { parseMarkdownToBlocksWithMath } from "../math/markdown-math";
 
 // 言語判定は呼び出し側（note-app）でも使うので公開窓口をここに揃える
 export { isSameLanguage } from "./url-chunk";
@@ -185,14 +186,20 @@ function firstHeading(markdown: string): string | null {
   return m ? m[1].trim() : null;
 }
 
-/** Markdown → BlockNote ブロック配列（markdown-import と同じ ephemeral editor 方式） */
+/**
+ * Markdown → BlockNote ブロック配列（markdown-import と同じ ephemeral editor 方式）
+ *
+ * 論文には数式が含まれるので、素の tryParseMarkdownToBlocks ではなく数式対応版を通す。
+ * ephemeral editor は default スキーマ（math ブロックを知らない）だが、数式の復元は
+ * パース後のプレーン JSON に対して行うため問題ない。
+ */
 function markdownToBlocks(markdown: string): any[] {
   const schema = BlockNoteSchema.create({
     blockSpecs: defaultBlockSpecs,
     styleSpecs: defaultStyleSpecs,
   });
   const editor = BlockNoteEditor.create({ schema });
-  return editor.tryParseMarkdownToBlocks(markdown) as any[];
+  return parseMarkdownToBlocksWithMath(editor, markdown);
 }
 
 /** 出典表示用の先頭ブロック（PDF ファイル名のテキスト表示） */

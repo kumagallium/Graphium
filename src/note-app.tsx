@@ -10,8 +10,11 @@ import { SandboxEditor } from "./base/editor";
 import type { SlashMenuItem } from "./base/slash-menu-types";
 import { bookmarkSlashItem, setBookmarkPickerCallback, setBookmarkPeekCallback } from "./blocks/bookmark";
 import { calloutSlashItem } from "./blocks/callout";
+import { mathSlashItem } from "./blocks/math";
+import { inlineMathSlashItem } from "./features/inline-math/spec";
+import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
-import { customBlockEntries, KNOWN_BLOCK_TYPES } from "./blocks/registry";
+import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -836,7 +839,8 @@ function NoteEditor(props: NoteEditorProps) {
 // （標準ブロック＋カスタムブロック登録から自動導出）。
 
 // インラインコンテンツから未知の型を除去（mention 等）
-const KNOWN_INLINE_TYPES = new Set(["text", "link"]);
+// 既知の型は registry.ts の KNOWN_INLINE_TYPES に集約している
+// （ここに直接書き足すとブロック側と同じ「片方だけ取りこぼす」事故になる）。
 
 function sanitizeInlineContent(content: any): any {
   if (!content) return content;
@@ -2628,7 +2632,7 @@ function NoteEditorInner({
     if (!editor) return;
     const parsed = markdown.trim();
     if (!parsed) return;
-    const blocks = await editor.tryParseMarkdownToBlocks(parsed);
+    const blocks = parseMarkdownToBlocksWithMath(editor, parsed);
     if (blocks.length === 0) return;
     const allBlocks = editor.document;
     const lastBlock = allBlocks[allBlocks.length - 1];
@@ -2844,7 +2848,7 @@ function NoteEditorInner({
         },
         sourceNoteId: fileId,
         sourceBlockIds: aiAssistant.sourceBlockIds,
-        parseMarkdown: (md) => editorRef.current.tryParseMarkdownToBlocks(md),
+        parseMarkdown: (md) => parseMarkdownToBlocksWithMath(editorRef.current, md),
       });
       // Split View: 現在のドキュメントを派生元として保存
       const currentBlocks = editorRef.current.document;
@@ -3114,7 +3118,7 @@ function NoteEditorInner({
       const targetBlockId = aiAssistant.sourceBlockIds[0];
       if (!targetBlockId) {
         // ページ全体チャット: ドキュメント末尾に挿入
-        const parsed = editor.tryParseMarkdownToBlocks(markdown);
+        const parsed = parseMarkdownToBlocksWithMath(editor, markdown);
         if (parsed.length === 0) return;
         const extractedRes = extractLabelMarkersFromBlocks(parsed);
         // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
@@ -3139,7 +3143,7 @@ function NoteEditorInner({
       // 見出し・step は「まとまり」なので、その配下の末尾に挿入する
       // （step の場合は最後の子の後ろ＝step の中に入る）
       if (targetBlock.type === "heading" || targetBlock.type === "step") {
-        const parsed = editor.tryParseMarkdownToBlocks(markdown);
+        const parsed = parseMarkdownToBlocksWithMath(editor, markdown);
         if (parsed.length === 0) return;
         const extractedRes = extractLabelMarkersFromBlocks(parsed);
         // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
@@ -3180,7 +3184,7 @@ function NoteEditorInner({
       const blockIds = aiAssistant.sourceBlockIds;
       if (blockIds.length === 0) return;
 
-      const parsedBlocks = editor.tryParseMarkdownToBlocks(markdown);
+      const parsedBlocks = parseMarkdownToBlocksWithMath(editor, markdown);
       if (parsedBlocks.length === 0) return;
       const extractedRaw = extractLabelMarkersFromBlocks(parsedBlocks);
       // AI が旧語彙で出した procedure 見出しは挿入前に step へ変換する
@@ -4230,7 +4234,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

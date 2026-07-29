@@ -44,13 +44,14 @@ You receive RAW TEXT extracted from one part of a PDF (often a research paper). 
   - Body text → normal paragraphs separated by blank lines.
   - Lists → \`-\` or \`1.\`.
   - Tables → GitHub-flavored Markdown tables when the text is clearly tabular (translate the cell contents).
+  - Formulas → LaTeX wrapped in dollar delimiters. A standalone equation goes on its own line as \`$$ ... $$\`; math inside a sentence uses \`$ ... $\`. **Never use \`\\[ ... \\]\` or \`\\( ... \\)\`** — those delimiters get destroyed by the Markdown parser. Keep the equation number inside the formula (e.g. \`$$ \\log P = \\log A - bT \\tag{2} $$\`). Extraction often flattens formulas onto one line; rebuild them as LaTeX rather than leaving broken plain text.
 - **Translate prose into ${target}.** Keep the meaning faithful and natural.
 
 ## The ONLY things you keep verbatim (do NOT translate)
 
 This is a short, closed list. Everything NOT on this list must be translated.
 
-1. **Mathematical formulas, equations, and symbols** (e.g. \`E = mc^2\`, Greek letters in formulas).
+1. **Mathematical formulas, equations, and symbols** (e.g. \`E = mc^2\`, Greek letters in formulas) — keep the math itself untranslated, but write it as LaTeX in \`$ ... $\` / \`$$ ... $$\` as described above. Words that happen to sit inside a formula (\`\\text{Log}\`) stay as they are.
 2. **Code, commands, file paths, URLs, and DOIs.**
 3. **Inline citation markers only** — the bracketed/parenthetical reference tokens themselves, e.g. \`[12]\`, \`(Smith et al., 2020)\`. The surrounding sentence is still translated.
 4. **Entries inside the bibliography / reference list section** (the list of cited works at the end): keep each entry's title/authors/venue in its original language. This applies ONLY to the reference-list section, not to the body.

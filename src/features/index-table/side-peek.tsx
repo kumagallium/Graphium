@@ -36,6 +36,8 @@ import {
 import { customBlockEntries, KNOWN_BLOCK_TYPES } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
+import { mathSlashItem } from "../../blocks/math";
+import { inlineMathSlashItem } from "../inline-math/spec";
 import { stepSlashItem } from "../../blocks/step";
 import {
   getMediaSlashMenuItems,
@@ -1622,6 +1624,8 @@ function SidePeekInner({
                   bookmarkSlashItem,
                   calloutSlashItem,
                   stepSlashItem,
+                  mathSlashItem,
+                  inlineMathSlashItem,
                   getMemoSlashMenuItem(),
                   ...(noteIndex ? getCiteSlashMenuItems() : []),
                 ]}
