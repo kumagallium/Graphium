@@ -1,14 +1,17 @@
 // モバイル専用クイックキャプチャビュー
 // メモ + メディア（画像・動画・音声）を時系列カードで表示 + キャプチャバー
 //
-// モバイル連携（実験フラグ）ON のときは、ホーム自体を「送信キュー前提」に組み替える:
-// ヘッダーに接続状態チップ、コンテンツ最上部（ヘッダー直下）に未送信キュー
-// （SendQueueSection。[送信 (n)] は見出し行右端の定位置。空なら畳む）、その下に
-// 従来のメモ検索・タイムラインが 1 スクロールで続く。捕獲ボタンは従来ホームと同じ
-// 画面下固定バー（MobileCaptureBar: [書く][URL][写真][動画][音声][ライブラリ]）。
+// モバイル連携（実験フラグ）ON のときは、ホーム自体を「捕獲の時系列」に組み替える:
+// ヘッダーに接続状態チップ、コンテンツ最上部（ヘッダー直下）に検索欄と**捕獲履歴の
+// 統合リスト**（CaptureHistorySection）。統合リストは 2 つのデータ源 —
+// 捕獲履歴（IndexedDB。待機 / 送信中 / 送信済み / 失敗）と、この端末に残る過去の
+// メモ・素材（capture-store / media-index）— を時刻で混ぜて新しい順に並べる。
+// **送信済みも消えない**（送るほど画面が空になり、撮った手応えが残らなかったため）。
+// 捕獲ボタンは従来ホームと同じ画面下固定バー
+// （MobileCaptureBar: [書く][URL][写真][動画][音声][ライブラリ]）。
 // かつての SendToInboxSheet（ボトムシート）は廃止。メモ・URL もネイティブ JSON
-// （capture-file.ts）でキュー行き（捕獲物は全部 Inbox へ。ローカルの capture-store
-// には保存しない）。タイムラインは過去分の閲覧用として残る。
+// （capture-file.ts）で履歴行き（捕獲物は全部 Inbox へ。ローカルの capture-store
+// には保存しない）。2 カラムのカードグリッドは従来ホーム（フラグ OFF）専用。
 //
 // スマホにフル設定モーダルは出さない（「モバイル連携」トグルはデスクトップ語彙）:
 // - フラグ OFF（従来ホーム）: タイムライン上部に実験オプトインカード（MobileOptInCard）。
@@ -34,7 +37,7 @@ import { MobileCaptureBar } from "./MobileCaptureBar";
 import { MobileOptInCard } from "./MobileOptInCard";
 import { MobileSettingsSheet } from "./MobileSettingsSheet";
 import { StoragePickerSheet } from "./StoragePickerSheet";
-import { SendQueueSection } from "./inbox/SendQueueSection";
+import { CaptureHistorySection, type LocalCaptureItem } from "./inbox/CaptureHistorySection";
 import { usePushQueue } from "./inbox/use-push-queue";
 import { usePushSettings } from "./inbox/use-push-settings";
 import { setMobileInboxEnabled, useMobileInboxFlag } from "./inbox/experimental";
@@ -439,6 +442,72 @@ export function MobileCaptureView({
     });
   }, [timeline, searchQuery]);
 
+  // ── 統合リスト（フラグ ON）: 捕獲履歴 + 過去のローカル項目 ──
+  // 検索欄はリスト全体に掛ける。履歴側は行に出している文字（メモ / URL の
+  // プレビュー、メディアの正規化名）で引っ掛ける。
+  const filteredPushItems = useMemo(() => {
+    if (!mobileInboxEnabled) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return push.items;
+    return push.items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        (item.preview ?? "").toLowerCase().includes(q),
+    );
+  }, [mobileInboxEnabled, push.items, searchQuery]);
+
+  // 過去のローカル項目（メモ・素材）を統合リストの行データに落とす。
+  // 送信対象ではないので状態バッジは付かない（セクション側で区別して描く）。
+  const localCaptureItems = useMemo<LocalCaptureItem[]>(() => {
+    if (!mobileInboxEnabled) return [];
+    return filtered.map((item) => {
+      if (item.kind === "memo") {
+        const firstLine = item.entry.text
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line.length > 0);
+        return {
+          id: item.entry.id,
+          kind: "memo" as const,
+          title: firstLine ?? item.entry.text,
+          timestamp: item.entry.createdAt,
+        };
+      }
+      const entry = item.entry;
+      return {
+        id: entry.fileId,
+        kind:
+          entry.type === "video" || entry.type === "audio" || entry.type === "url"
+            ? entry.type
+            : ("image" as const),
+        title: entry.name,
+        detail: entry.type === "url" ? entry.urlMeta?.domain : undefined,
+        // URL はファビコンを引き伸ばすより種別アイコンの方が読みやすい
+        thumbnailUrl: entry.type === "image" ? entry.thumbnailUrl : undefined,
+        timestamp: entry.uploadedAt,
+      };
+    });
+  }, [mobileInboxEnabled, filtered]);
+
+  /** 統合リストの行数（フラグ ON）。ヘッダーの件数と空状態の判定に使う。 */
+  const historyCount = mobileInboxEnabled
+    ? filteredPushItems.length + localCaptureItems.length
+    : filtered.length;
+
+  // 統合リストのローカル行タップ → 従来と同じ詳細モーダル（削除もそこにある）
+  const handleOpenLocalItem = useCallback(
+    (item: LocalCaptureItem) => {
+      if (item.kind === "memo") {
+        const entry = captureIndex?.captures.find((capture) => capture.id === item.id);
+        if (entry) setDetailEntry(entry);
+        return;
+      }
+      const entry = mediaIndex?.media.find((media) => media.fileId === item.id);
+      if (entry) setMediaPreviewEntry(entry);
+    },
+    [captureIndex, mediaIndex],
+  );
+
   // テキストメモ送信。
   // キュー前提ホーム（フラグ ON）ではメモも捕獲物 — ローカルの capture-store でなく
   // ネイティブ JSON（capture-file.ts）で送信キューへ積む。デスクトップの取り込みで
@@ -649,7 +718,7 @@ export function MobileCaptureView({
           <span className="text-xs text-muted-foreground">
             {loading
               ? t("common.loading")
-              : t("memo.count", { count: String(filtered.length) })}
+              : t("memo.count", { count: String(historyCount) })}
           </span>
           {connectionChip}
           {/* 設定入口はキュー前提ホーム（フラグ ON）のみ。開き先はスマホ専用の
@@ -707,38 +776,38 @@ export function MobileCaptureView({
           </div>
         )}
 
-        {/* キュー前提ホーム: 未送信キューはコンテンツ最上部（ヘッダー直下）。
-            [送信 (n)] は見出し行右端の定位置、未接続時はセクション内の接続ボタンが
-            主アクション。捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar）。
-            キューは IndexedDB 永続なので画面を離れても消えない。空のときはセクション
-            ごと畳まれ、送信済みは自然に消える。その下に従来のメモ検索・タイムラインが
-            1 スクロールで続く */}
-        {mobileInboxEnabled && push.items.length > 0 && (
-          <div className="mb-3">
-            <SendQueueSection
-              items={push.items}
-              draining={push.draining}
-              activeId={push.activeId}
-              progress={push.progress}
-              configured={push.configured}
-              connected={push.connected}
-              connecting={push.connecting}
-              connectError={push.connectError}
-              onSend={push.drainNow}
-              onOpenStoragePicker={() => setShowStoragePicker(true)}
-              onRemoveItem={push.removeItem}
-              onRetryFailed={push.retryFailed}
-              onOpenSettings={() => setShowSettingsSheet(true)}
-              loadItemBlob={push.getItemFile}
-            />
-          </div>
-        )}
-
-        {/* 検索（キュー前提ホームではキューの下・タイムラインの上） */}
-        {mobileInboxEnabled && timeline.length > 0 && (
+        {/* 捕獲の時系列ホーム: 検索欄 → 統合リスト（コンテンツ最上部）。
+            統合リストは捕獲履歴（待機 / 送信中 / 送信済み / 失敗）と過去のローカル
+            項目を混ぜて新しい順に並べる。[送信 (n)] は見出し行右端の定位置、未接続 +
+            未送信ありのときだけセクション内の接続ボタンが主アクションになる。
+            捕獲の入口は画面下固定の捕獲バー（MobileCaptureBar）。履歴は IndexedDB
+            永続なので画面を離れても、送信し終えても消えない */}
+        {mobileInboxEnabled && (timeline.length > 0 || push.items.length > 0) && (
           <div className="mb-3">
             {searchInput}
           </div>
+        )}
+
+        {mobileInboxEnabled && (
+          <CaptureHistorySection
+            items={filteredPushItems}
+            localItems={localCaptureItems}
+            draining={push.draining}
+            activeId={push.activeId}
+            progress={push.progress}
+            configured={push.configured}
+            connected={push.connected}
+            connecting={push.connecting}
+            connectError={push.connectError}
+            onSend={push.drainNow}
+            onOpenStoragePicker={() => setShowStoragePicker(true)}
+            onRemoveItem={push.removeItem}
+            onRetryFailed={push.retryFailed}
+            onOpenSettings={() => setShowSettingsSheet(true)}
+            onOpenLocalItem={handleOpenLocalItem}
+            loadItemBlob={push.getItemFile}
+            loadThumbnail={push.getItemThumbnail}
+          />
         )}
 
         {loading ? (
@@ -747,18 +816,18 @@ export function MobileCaptureView({
               {t("common.loading")}
             </p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : historyCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <StickyNote size={32} className="text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              {/* どちらも下バーを指すが、キュー前提ホームは捕獲バー（行き先は
-                  送信キュー）なので文言を分ける */}
+              {/* どちらも下バーを指すが、時系列ホームは捕獲バー（行き先は
+                  Inbox）なので文言を分ける */}
               {searchQuery.trim()
                 ? t("nav.noMatchingNotes")
                 : t(mobileInboxEnabled ? "memo.emptyQueueHome" : "memo.empty")}
             </p>
           </div>
-        ) : (
+        ) : mobileInboxEnabled ? null : (
           <div className="grid grid-cols-2 gap-2.5">
             {filtered.map((item) =>
               item.kind === "memo" ? (

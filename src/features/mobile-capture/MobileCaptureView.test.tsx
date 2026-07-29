@@ -1,18 +1,20 @@
 // @vitest-environment jsdom
-// モバイルキャプチャビュー（キュー前提ホーム）の配線テスト。
+// モバイルキャプチャビュー（捕獲の時系列ホーム）の配線テスト。
 //
 // 対象の不変条件:
-// - モバイル連携の実験フラグ ON のとき: 未送信キューがコンテンツ最上部にインラインで
-//   出る（[送信 (n)] は見出し行右端の定位置）。捕獲ボタンは画面下固定の捕獲バー
-//   （[書く][URL][写真][動画][音声][ライブラリ]）— キューより後（下）に出る。
+// - モバイル連携の実験フラグ ON のとき: 捕獲履歴の統合リストがコンテンツ最上部に
+//   インラインで出る（[送信 (n)] は見出し行右端の定位置）。捕獲ボタンは画面下固定の
+//   捕獲バー（[書く][URL][写真][動画][音声][ライブラリ]）— リストより後（下）に出る。
 //   撮ったファイルは enqueueForSend に渡り、シートは開かない（SendToInboxSheet 自体が
 //   存在しない。この端末には保存しない — 完全置き換え）
-// - メモ・URL も捕獲物としてキュー行き（ネイティブ JSON）。ローカルの capture-store /
+// - メモ・URL も捕獲物として履歴行き（ネイティブ JSON）。ローカルの capture-store /
 //   media-index には保存しない
-// - キューが空のときはキューセクションごと畳まれ、下の捕獲バーだけが残る
-// - タイムライン（過去分の閲覧）はキューの下にそのまま共存する（1 スクロール）
-// - client_id 未設定でも捕獲物はキューに積まれる（キューはこの端末の IndexedDB で
-//   動く。未設定の案内は送信段階 = SendQueueSection が出す）。enqueueForSend が
+// - 統合リストは捕獲履歴（送信済みを含む）と、この端末に残る過去のメモ・素材を
+//   時刻で混ぜて新しい順に出す。2 カラムのカードグリッドは従来ホーム専用
+// - 検索欄は統合リスト全体（履歴 + ローカル項目）に掛かる
+// - 履歴もローカル項目も無いときだけ空状態になり、下の捕獲バーだけが残る
+// - client_id 未設定でも捕獲物は履歴に積まれる（履歴はこの端末の IndexedDB で
+//   動く。未設定の案内は送信段階 = CaptureHistorySection が出す）。enqueueForSend が
 //   false（IndexedDB 不可 = キュー自体が使えない）のときだけ従来のローカル保存
 //   （メディア=onUploadMedia / メモ=onCreateCapture / URL=onAddUrlBookmark）に落ちる
 // - キュー経路が使える環境では、onUploadMedia が無くても撮影ボタンが出る
@@ -108,6 +110,7 @@ function pushUi(overrides: Partial<PushQueueUi> = {}): PushQueueUi {
     removeItem: vi.fn(),
     retryFailed: vi.fn(),
     getItemFile: vi.fn(async () => null),
+    getItemThumbnail: vi.fn(async () => null),
     refreshStatus: vi.fn(),
     ...overrides,
   };
@@ -184,7 +187,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
     expect(document.querySelector('input[accept="image/*"]')).toBeTruthy();
     // キューがホームにインラインで出る（クリック不要）。送信は見出し行の定位置
-    expect(screen.getByText("Send queue")).toBeTruthy();
+    expect(screen.getByText("Captures")).toBeTruthy();
     expect(screen.getByText("graphium-20260727-102030-01.jpg")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Send \(2\)/ })).toBeTruthy();
     // 並び: キュー（コンテンツ最上部）→ … → 捕獲バー（画面下）
@@ -209,23 +212,33 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     // アイテムはキュー購読経由でインライン一覧に現れる（ここでは snapshot が
     // 空のままなのでキューブロックも出ない）
     expect(onUploadMedia).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("send-queue-block")).toBeNull();
+    expect(screen.queryByTestId("capture-history-block")).toBeNull();
   });
 
   it("collapses the queue section while empty, keeping the bottom capture bar", () => {
     renderView();
 
-    expect(screen.queryByTestId("send-queue-block")).toBeNull();
-    expect(screen.queryByText("Send queue")).toBeNull();
+    expect(screen.queryByTestId("capture-history-block")).toBeNull();
+    expect(screen.queryByText("Captures")).toBeNull();
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
     // 捕獲バーは残る
     expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Photo" })).toBeTruthy();
   });
 
-  it("keeps memo creation and the timeline below the queue (one scroll, no tabs)", () => {
+  it("merges the capture history and this device's older items into one timeline", () => {
     usePushQueueMock.mockReturnValue(
-      pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
+      pushUi({
+        items: [
+          queueItem("a", "graphium-20260727-102030-01.jpg"), // 07-27 10:20 待機
+          {
+            ...queueItem("s", "graphium-20260726-080000-01.jpg"),
+            enqueuedAt: "2026-07-26T08:00:00.000Z",
+            sentAt: "2026-07-26T08:00:20.000Z",
+            status: "sent",
+          },
+        ],
+      }),
     );
     renderView({
       captureIndex: {
@@ -235,17 +248,95 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
           { id: "m1", text: "timeline memo", createdAt: "2026-07-27T09:00:00.000Z" },
         ],
       },
+      mediaIndex: {
+        version: 4,
+        updatedAt: "2026-07-27T00:00:00.000Z",
+        media: [
+          {
+            fileId: "f1",
+            name: "whiteboard.jpg",
+            type: "image",
+            mimeType: "image/jpeg",
+            url: "https://example.com/f1",
+            thumbnailUrl: "https://example.com/f1-thumb",
+            uploadedAt: "2026-07-25T12:00:00.000Z",
+            usedIn: [],
+          },
+        ],
+      },
     });
 
-    const queueName = screen.getByText("graphium-20260727-102030-01.jpg");
-    const memoCard = screen.getByText("timeline memo");
-    // タイムラインのメモはキューの後（下）に出る
-    expect(
-      queueName.compareDocumentPosition(memoCard) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // 1 本のリストに時系列（新しい順）で混ざる: 待機(07-27 10:20) → メモ(07-27 09:00)
+    // → 送信済み(07-26) → 素材(07-25)。送信済みも消えない
+    const states = Array.from(
+      document.querySelectorAll("[data-testid=capture-history-row]"),
+    ).map((row) => row.getAttribute("data-status"));
+    expect(states).toEqual(["pending", "local", "sent", "local"]);
+    expect(screen.getByText("timeline memo")).toBeTruthy();
+    expect(screen.getByText("whiteboard.jpg")).toBeTruthy();
+    expect(screen.getByText("Sent")).toBeTruthy();
+    // 2 カラムのカードグリッドは従来ホーム専用（時系列ホームでは使わない）
+    expect(document.querySelector(".grid-cols-2")).toBeNull();
     // メモ作成は捕獲バーの [書く]（従来のメモ作成ボタンは無い）
     expect(screen.getByRole("button", { name: "Write" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /New Memo/ })).toBeNull();
+  });
+
+  it("filters the whole merged list from the search box", () => {
+    usePushQueueMock.mockReturnValue(
+      pushUi({
+        items: [
+          queueItem("a", "graphium-20260727-102030-01.jpg"),
+          {
+            ...queueItem("m", "graphium-20260727-102030-02-memo.graphium.json"),
+            mime: "application/vnd.graphium.capture+json",
+            preview: "hypothesis about grain size",
+          },
+        ],
+      }),
+    );
+    renderView({
+      captureIndex: {
+        version: 1,
+        updatedAt: "2026-07-27T00:00:00.000Z",
+        captures: [
+          { id: "m1", text: "timeline memo", createdAt: "2026-07-27T09:00:00.000Z" },
+          { id: "m2", text: "hypothesis notes", createdAt: "2026-07-27T08:00:00.000Z" },
+        ],
+      },
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Search/i), {
+      target: { value: "hypothesis" },
+    });
+
+    // 履歴側（preview 一致）とローカル側（本文一致）の両方が残る
+    expect(screen.getByText("hypothesis about grain size")).toBeTruthy();
+    expect(screen.getByText("hypothesis notes")).toBeTruthy();
+    expect(screen.queryByText("timeline memo")).toBeNull();
+    expect(screen.queryByText("graphium-20260727-102030-01.jpg")).toBeNull();
+  });
+
+  it("shows the empty state only when neither history nor local items remain", () => {
+    // 送信済みだけでも「空」にはしない（撮った手応えが残る）
+    usePushQueueMock.mockReturnValue(
+      pushUi({
+        items: [
+          {
+            ...queueItem("s", "graphium-20260726-080000-01.jpg"),
+            status: "sent",
+            sentAt: "2026-07-26T08:00:20.000Z",
+          },
+        ],
+      }),
+    );
+    const view = renderView();
+    expect(screen.queryByText(/No past captures yet/)).toBeNull();
+    view.unmount();
+
+    usePushQueueMock.mockReturnValue(pushUi({ items: [] }));
+    renderView();
+    expect(screen.getByText(/No past captures yet/)).toBeTruthy();
   });
 
   it("routes a composed memo into the queue as native JSON (not the local capture store)", async () => {
@@ -318,7 +409,7 @@ describe("キュー前提ホーム（実験フラグ ON）", () => {
     capture("image/*", [jpeg()]);
 
     await waitFor(() => expect(onUploadMedia).toHaveBeenCalledTimes(1));
-    expect(screen.queryByTestId("send-queue-block")).toBeNull();
+    expect(screen.queryByTestId("capture-history-block")).toBeNull();
   });
 
   it("shows capture buttons without onUploadMedia when the queue route works", () => {
@@ -477,7 +568,7 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
 
     await waitFor(() => expect(onUploadMedia).toHaveBeenCalledTimes(1));
     expect(enqueueForSend).not.toHaveBeenCalled();
-    expect(screen.queryByText("Send queue")).toBeNull();
+    expect(screen.queryByText("Captures")).toBeNull();
   });
 
   it("shows neither the queue section nor the chip even when the route looks available", () => {
@@ -487,8 +578,8 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
     renderView({ onUploadMedia: async () => "file-id" });
 
     // キューブロック・見出し・チップのいずれも出ない（従来ホームのまま）
-    expect(screen.queryByTestId("send-queue-block")).toBeNull();
-    expect(screen.queryByText("Send queue")).toBeNull();
+    expect(screen.queryByTestId("capture-history-block")).toBeNull();
+    expect(screen.queryByText("Captures")).toBeNull();
     expect(screen.queryByText("Connected")).toBeNull();
     // 撮影ボタンは従来どおり下バー（撮影行の「Photo」ラベルは無い）
     expect(document.querySelector('input[accept="image/*"]')).toBeTruthy();
@@ -498,6 +589,28 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
   it("hides capture buttons without onUploadMedia (no silent dead-end route)", () => {
     renderView({ onUploadMedia: undefined });
     expect(document.querySelector('input[accept="image/*"]')).toBeNull();
+  });
+
+  it("keeps the legacy two-column card timeline (no merged history list)", () => {
+    usePushQueueMock.mockReturnValue(
+      pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
+    );
+    renderView({
+      onUploadMedia: async () => "file-id",
+      captureIndex: {
+        version: 1,
+        updatedAt: "2026-07-27T00:00:00.000Z",
+        captures: [
+          { id: "m1", text: "timeline memo", createdAt: "2026-07-27T09:00:00.000Z" },
+        ],
+      },
+    });
+
+    // 従来ホームは 2 カラムのカードグリッドのまま（統合リストの行は 1 つも無い）
+    expect(document.querySelector(".grid-cols-2")).toBeTruthy();
+    expect(document.querySelectorAll("[data-testid=capture-history-row]")).toHaveLength(0);
+    expect(screen.getByText("timeline memo")).toBeTruthy();
+    expect(screen.queryByText("graphium-20260727-102030-01.jpg")).toBeNull();
   });
 
   it("keeps the legacy memo path: the bottom-bar New Memo saves locally, never the queue", async () => {
@@ -559,7 +672,7 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
 
     // フラグが立ち、その場でキュー前提ホームに切り替わる（リロード不要）
     expect(isMobileInboxEnabled()).toBe(true);
-    expect(screen.getByText("Send queue")).toBeTruthy();
+    expect(screen.getByText("Captures")).toBeTruthy();
     expect(screen.queryByTestId("storage-picker-sheet")).toBeNull();
     expect(screen.queryByTestId("mobile-optin-card")).toBeNull();
   });
@@ -569,13 +682,13 @@ describe("モバイル連携 実験フラグ OFF（既定）のゲート", () =>
       pushUi({ items: [queueItem("a", "graphium-20260727-102030-01.jpg")] }),
     );
     renderView();
-    expect(screen.queryByText("Send queue")).toBeNull();
+    expect(screen.queryByText("Captures")).toBeNull();
     // 設定モーダルのトグル相当。setMobileInboxEnabled が CustomEvent を飛ばし、
     // useMobileInboxFlag がその場で再レンダリングする（リロード不要の反映）
     act(() => {
       setMobileInboxEnabled(true);
     });
-    expect(screen.getByText("Send queue")).toBeTruthy();
+    expect(screen.getByText("Captures")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Send \(1\)/ })).toBeTruthy();
   });
 });

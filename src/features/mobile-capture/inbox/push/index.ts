@@ -35,11 +35,15 @@ export {
 } from "./naming";
 
 export {
+  HISTORY_MAX_AGE_MS,
+  HISTORY_MAX_SENT,
   clearPushQueue,
   drainPushQueue,
   enqueuePushFiles,
   getPushQueueFiles,
   getPushQueueSnapshot,
+  getPushQueueThumbnail,
+  prunePushQueueHistory,
   removePushQueueItem,
   retryFailedPushItems,
   subscribePushQueue,
@@ -48,3 +52,5 @@ export {
   type PushQueueItemStatus,
   type PushQueueSnapshot,
 } from "./queue";
+
+export { createCaptureThumbnail } from "./thumbnail";

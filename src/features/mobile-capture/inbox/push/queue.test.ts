@@ -1,32 +1,40 @@
-// 送信キュー（store-and-forward）のテスト。IndexedDB は fake-indexeddb。
+// 捕獲履歴（store-and-forward）のテスト。IndexedDB は fake-indexeddb。
 //
 // 環境は node（既定）を使う: fake-indexeddb は環境の structuredClone で値を
 // 複製するが、jsdom の Blob は Node の structuredClone が中身を運べない
 // （プレーンオブジェクト化して内容が消える）。node 環境なら Node ネイティブの
 // Blob/File が使われ、Blob の中身まで往復できる（実測済み）。DOM は不要。
 //
-// 対象の不変条件（最重要 = キューのアイテムを失わない）:
+// 対象の不変条件（最重要 = 捕獲物を失わない）:
 // - enqueue は名前を graphium-<日時>-<連番>.<ext> に正規化し、Blob ごと永続化する
 // - drain は enqueuedAt（同時なら連番名）順の直列。1 件の失敗は attempts++ して
 //   次のアイテムへ続行。リトライ上限で "failed" に落として drain 対象から外す
+// - **送信成功でレコードは消えない**（status="sent" + sentAt の履歴として残り、
+//   blob だけ捨てる）。サムネ・プレビューは残るので行の見た目は保たれる
+// - 保持ポリシー: sent は直近 100 件 / 30 日。pending・failed は刈らない
 // - PushAuthError（トークン失効）は drain 全体を中断し、残りは pending のまま
 //   attempts も消費しない — 再接続後にそのまま再送できる
 // - 失敗にはバックオフが付き、次回 drain では期限まで deferred 扱いになる
 // - 状態購読で draining/activeId/items が流れる
+// - v1（未送信キュー）の DB を v2（捕獲履歴）で開いても既存レコードが生き残る
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import {
+  HISTORY_MAX_SENT,
   clearPushQueue,
   drainPushQueue,
   enqueuePushFiles,
   getPushQueueFiles,
   getPushQueueSnapshot,
+  getPushQueueThumbnail,
+  prunePushQueueHistory,
   removePushQueueItem,
   retryFailedPushItems,
   subscribePushQueue,
 } from "./queue";
 import { formatCaptureTimestamp } from "./naming";
+import { buildMemoCaptureFile, buildUrlCaptureFile } from "../capture-file";
 import { PushAuthError, type InboxPusher, type PushOptions, type PushResult } from "./types";
 
 /** 常時接続のスタブプッシャー。push の実装だけ差し替える。 */
@@ -108,7 +116,7 @@ describe("enqueuePushFiles", () => {
 });
 
 describe("drainPushQueue", () => {
-  it("pushes serially in capture order and removes items on success", async () => {
+  it("pushes serially in capture order and keeps the items as sent history", async () => {
     await enqueuePushFiles([
       new File(["a"], "a.jpg", { type: "image/jpeg" }),
       new File(["b"], "b.jpg", { type: "image/jpeg" }),
@@ -132,7 +140,45 @@ describe("drainPushQueue", () => {
     expect(result.pushed).toHaveLength(3);
     expect(maxActive).toBe(1); // 直列（並行しない）
     expect(order.map((n) => n.slice(-6))).toEqual(["01.jpg", "02.jpg", "03.jpg"]);
-    expect((await getPushQueueSnapshot()).items).toHaveLength(0);
+    // 送っても消えない — 撮った 3 件が履歴として時系列に残る
+    const items = (await getPushQueueSnapshot()).items;
+    expect(items).toHaveLength(3);
+    expect(items.every((item) => item.status === "sent")).toBe(true);
+  });
+
+  it("keeps the record but drops the blob when a push succeeds", async () => {
+    const [meta] = await enqueuePushFiles([
+      new File(["hello"], "a.jpg", { type: "image/jpeg" }),
+    ]);
+
+    await drainPushQueue(stubPusher(okPush));
+
+    const [item] = (await getPushQueueSnapshot()).items;
+    expect(item.id).toBe(meta.id);
+    expect(item.status).toBe("sent");
+    expect(item.sentAt).toBeTruthy();
+    expect(item.name).toBe(meta.name);
+    expect(item.bytes).toBe(5); // 表示用のメタは残る
+    // 実体は捨てている（容量対策）— 復元 API からも消える
+    expect(await getPushQueueFiles([meta.id])).toHaveLength(0);
+    // 送信済みは二度と送らない
+    const again = await drainPushQueue(stubPusher(okPush));
+    expect(again.pushed).toHaveLength(0);
+  });
+
+  it("keeps the memo / URL preview after the blob is discarded", async () => {
+    await enqueuePushFiles([
+      buildMemoCaptureFile("queued thought\nsecond line"),
+      buildUrlCaptureFile({ url: "https://example.com/read", title: "Example Read" }),
+    ]);
+    await drainPushQueue(stubPusher(okPush));
+
+    const items = (await getPushQueueSnapshot()).items;
+    expect(items.map((i) => i.status)).toEqual(["sent", "sent"]);
+    // blob を捨てた後も行に出す文字が残る（ファイル名に落ちない）
+    expect(items[0].preview).toBe("queued thought");
+    expect(items[1].preview).toBe("Example Read");
+    expect(items[1].previewUrl).toBe("https://example.com/read");
   });
 
   it("continues with the remaining items when one fails, and records the attempt", async () => {
@@ -150,11 +196,12 @@ describe("drainPushQueue", () => {
     expect(result.failed).toHaveLength(1);
     expect(result.pushed).toHaveLength(1); // 失敗しても他は送られる
     const snapshot = await getPushQueueSnapshot();
-    expect(snapshot.items).toHaveLength(1);
-    expect(snapshot.items[0].status).toBe("pending");
-    expect(snapshot.items[0].attempts).toBe(1);
-    expect(snapshot.items[0].lastError).toBe("network hiccup");
-    expect(snapshot.items[0].nextAttemptAt).toBeGreaterThan(Date.now());
+    const unsent = snapshot.items.filter((item) => item.status !== "sent");
+    expect(unsent).toHaveLength(1);
+    expect(unsent[0].status).toBe("pending");
+    expect(unsent[0].attempts).toBe(1);
+    expect(unsent[0].lastError).toBe("network hiccup");
+    expect(unsent[0].nextAttemptAt).toBeGreaterThan(Date.now());
   });
 
   it("defers a failed item until its backoff expires", async () => {
@@ -236,8 +283,10 @@ describe("drainPushQueue", () => {
     expect(pusher.pushMock).toHaveBeenCalledTimes(2); // 3 件目には進まない
     // 残り 2 件は pending のまま、attempts も消費しない（認証切れはアイテムの責任ではない）
     const snapshot = await getPushQueueSnapshot();
-    expect(snapshot.items).toHaveLength(2);
-    for (const item of snapshot.items) {
+    const unsent = snapshot.items.filter((item) => item.status !== "sent");
+    expect(snapshot.items).toHaveLength(3); // 送れた 1 件は履歴として残る
+    expect(unsent).toHaveLength(2);
+    for (const item of unsent) {
       expect(item.status).toBe("pending");
       expect(item.attempts).toBe(0);
       expect(item.lastError).toBeUndefined();
@@ -298,7 +347,7 @@ describe("状態購読と操作", () => {
       expect(snapshots.some((s) => s.draining && s.activeId === meta.id)).toBe(true); // 送信中
       const last = snapshots[snapshots.length - 1];
       expect(last.draining).toBe(false);
-      expect(last.count).toBe(0); // 送信済みで空
+      expect(last.count).toBe(1); // 送信後も履歴として残る（画面から消えない）
     } finally {
       unsubscribe();
     }
@@ -348,5 +397,206 @@ describe("getPushQueueFiles", () => {
     const restored = await getPushQueueFiles([metas[2].id, metas[0].id]);
 
     expect(restored.map((r) => r.id)).toEqual([metas[0].id, metas[2].id]);
+  });
+});
+
+// ── サムネイル（送信後も履歴の行に絵を残す） ──
+// node 環境には canvas が無いので、createImageBitmap / OffscreenCanvas を最小の
+// フェイクで代用する（実装が「縮小して JPEG に焼く」経路を通ることだけ見る）。
+
+describe("履歴サムネイル", () => {
+  function stubCanvas(): { sizes: Array<[number, number]> } {
+    const sizes: Array<[number, number]> = [];
+    vi.stubGlobal("createImageBitmap", async () => ({
+      width: 1200,
+      height: 800,
+      close: () => {},
+    }));
+    vi.stubGlobal(
+      "OffscreenCanvas",
+      class {
+        constructor(
+          public width: number,
+          public height: number,
+        ) {
+          sizes.push([width, height]);
+        }
+        getContext() {
+          return { drawImage: () => {} };
+        }
+        async convertToBlob(opts: { type: string }) {
+          return new Blob(["jpeg-bytes"], { type: opts.type });
+        }
+      },
+    );
+    return { sizes };
+  }
+
+  it("stores a downscaled JPEG at enqueue and serves it after the blob is gone", async () => {
+    const { sizes } = stubCanvas();
+    const [meta] = await enqueuePushFiles([
+      new File(["original-bytes"], "photo.jpg", { type: "image/jpeg" }),
+    ]);
+    // 長辺 200px に縮小して焼く（1200x800 → 200x133）
+    expect(sizes).toEqual([[200, 133]]);
+
+    await drainPushQueue(stubPusher(okPush));
+
+    // 実体は捨てたのにサムネは残る = 送信済みの行にも絵が出る
+    expect(await getPushQueueFiles([meta.id])).toHaveLength(0);
+    const thumb = await getPushQueueThumbnail(meta.id);
+    expect(thumb?.type).toBe("image/jpeg");
+    expect(await thumb!.text()).toBe("jpeg-bytes");
+  });
+
+  it("falls back to the pending blob for images without a thumbnail, and null otherwise", async () => {
+    // canvas が無い環境（node のまま）ではサムネは焼かれない
+    const [image, audio] = await enqueuePushFiles([
+      new File(["raw"], "photo.jpg", { type: "image/jpeg" }),
+      new File(["snd"], "voice.m4a", { type: "audio/mp4" }),
+    ]);
+
+    expect(await (await getPushQueueThumbnail(image.id))!.text()).toBe("raw");
+    expect(await getPushQueueThumbnail(audio.id)).toBeNull();
+
+    // 送信後は実体が無いのでアイコン表示に倒れる（null）
+    await drainPushQueue(stubPusher(okPush));
+    expect(await getPushQueueThumbnail(image.id)).toBeNull();
+    expect(await getPushQueueThumbnail("missing-id")).toBeNull();
+  });
+});
+
+// ── 保持ポリシー（直近 100 件 / 30 日。未処理は消さない） ──
+
+describe("prunePushQueueHistory", () => {
+  it("keeps only the newest 100 sent items, dropping the oldest first", async () => {
+    const files = Array.from(
+      { length: HISTORY_MAX_SENT + 5 },
+      (_, i) => new File([`x${i}`], `p${i}.jpg`, { type: "image/jpeg" }),
+    );
+    const metas = await enqueuePushFiles(files);
+    await drainPushQueue(stubPusher(okPush)); // drain 後に自動で刈られる
+
+    const items = (await getPushQueueSnapshot()).items;
+    expect(items).toHaveLength(HISTORY_MAX_SENT);
+    // 消えたのは古い順（連番名の先頭 5 件）
+    const surviving = new Set(items.map((i) => i.id));
+    expect(metas.slice(0, 5).some((m) => surviving.has(m.id))).toBe(false);
+    expect(surviving.has(metas[metas.length - 1].id)).toBe(true);
+  });
+
+  it("drops sent items older than 30 days but never touches pending or failed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-01T09:00:00Z"));
+    const [old] = await enqueuePushFiles([new File(["a"], "a.jpg", { type: "image/jpeg" })]);
+    await drainPushQueue(stubPusher(okPush));
+
+    // 31 日後: 新しい捕獲物を送る + リトライ上限で failed に落ちるものを作る
+    let now = new Date("2026-07-02T09:00:00Z").getTime();
+    vi.setSystemTime(now);
+    const [fresh] = await enqueuePushFiles([new File(["b"], "b.jpg", { type: "image/jpeg" })]);
+    await drainPushQueue(stubPusher(okPush));
+    now += 60 * 1000; // 名前（秒単位のタイムスタンプ）を分けるため 1 分進める
+    vi.setSystemTime(now);
+    const [broken] = await enqueuePushFiles([new File(["c"], "c.jpg", { type: "image/jpeg" })]);
+    const failing = stubPusher(async () => {
+      throw new Error("nope");
+    });
+    for (let i = 0; i < 5; i += 1) {
+      await drainPushQueue(failing);
+      now += 10 * 60 * 1000;
+      vi.setSystemTime(now);
+    }
+    // まだ送っていない捕獲物（pending）
+    const [waiting] = await enqueuePushFiles([new File(["d"], "d.jpg", { type: "image/jpeg" })]);
+
+    // drain 後の自動 prune で 30 日超の送信済みだけが落ちている
+    const byId = new Map(
+      (await getPushQueueSnapshot()).items.map((item) => [item.id, item]),
+    );
+    expect(byId.has(old.id)).toBe(false);
+    expect(byId.get(fresh.id)?.status).toBe("sent");
+    expect(byId.get(broken.id)?.status).toBe("failed");
+    expect(byId.get(waiting.id)?.status).toBe("pending");
+
+    // さらに時間が経てば残りの送信済みも落ちるが、pending / failed は何日経っても残る
+    const removed = await prunePushQueueHistory({ now: Date.parse("2027-01-01T00:00:00Z") });
+
+    expect(removed).toBe(1);
+    const survivors = (await getPushQueueSnapshot()).items;
+    expect(survivors.map((item) => item.status).sort()).toEqual(["failed", "pending"]);
+  });
+});
+
+// ── v1 → v2 マイグレーション（既存端末の残キューを壊さない） ──
+
+describe("IndexedDB マイグレーション", () => {
+  /** 旧バージョン（v1 = 未送信キュー）の DB を直接作って 1 件書き込む。 */
+  function seedLegacyDb(record: Record<string, unknown>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open("graphium-push-queue", 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore("items", { keyPath: "id" });
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction("items", "readwrite");
+        tx.objectStore("items").put(record);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error);
+        };
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  it("preserves v1 pending / failed records when the store opens at v2", async () => {
+    await seedLegacyDb({
+      id: "legacy-1",
+      name: "graphium-20260701-101010-01.jpg",
+      mime: "image/jpeg",
+      bytes: 3,
+      blob: new Blob(["old"], { type: "image/jpeg" }),
+      enqueuedAt: "2026-07-01T10:10:10.000Z",
+      status: "pending",
+      attempts: 0,
+    });
+
+    // v2 で開く（onupgradeneeded 経由）
+    const snapshot = await getPushQueueSnapshot();
+
+    expect(snapshot.items).toHaveLength(1);
+    expect(snapshot.items[0].id).toBe("legacy-1");
+    expect(snapshot.items[0].status).toBe("pending"); // 未送信のまま温存
+    expect(snapshot.items[0].sentAt).toBeUndefined();
+    // 実体も生きていて、そのまま送れる
+    const restored = await getPushQueueFiles(["legacy-1"]);
+    expect(await restored[0].file.text()).toBe("old");
+    const result = await drainPushQueue(stubPusher(okPush));
+    expect(result.pushed).toHaveLength(1);
+    expect((await getPushQueueSnapshot()).items[0].status).toBe("sent");
+  });
+
+  it("normalizes an unknown legacy status instead of hiding the record", async () => {
+    await seedLegacyDb({
+      id: "legacy-2",
+      name: "graphium-20260701-101010-02.jpg",
+      mime: "image/jpeg",
+      bytes: 3,
+      blob: new Blob(["old"], { type: "image/jpeg" }),
+      enqueuedAt: "2026-07-01T10:10:10.000Z",
+      status: "uploading", // 旧実装が残しうる想定外の値
+      attempts: 1,
+    });
+
+    const snapshot = await getPushQueueSnapshot();
+
+    expect(snapshot.items).toHaveLength(1);
+    expect(snapshot.items[0].status).toBe("pending"); // 送り直せる状態に正す
   });
 });
