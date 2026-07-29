@@ -19,7 +19,7 @@ function RightPanelDemo() {
     storageKey: "storybook-resize-demo",
     min: 240,
     max: 640,
-    viewportReserve: 200,
+    containerReserve: 200,
   });
 
   return (
