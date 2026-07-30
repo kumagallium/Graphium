@@ -554,7 +554,7 @@ export const ja: Record<string, string> = {
   "settings.identity.error.email": "メールアドレスの形式が正しくありません（@ を含めてください）。",
   // ── Shared storage（team-shared-storage Phase 1c） ──
   "settings.shared.title": "共有ストレージ",
-  "settings.shared.help": "研究室の NAS や Dropbox 同期フォルダなどを指定して、ノート・文献・コンセプトをチームと共有できるようにします。Phase 1 では設定のみ。Share ボタンは後続リリースで追加します。",
+  "settings.shared.help": "研究室の NAS や Dropbox 同期フォルダなどを指定して、ノート・文献・コンセプトをチームと共有できるようにします。設定後は、ノートの ⋯ メニューから「チームと共有」を選ぶと公開され、共有されたものはサイドバーの「ライブラリ → 共有」に並びます。",
   "settings.shared.rootLabel": "共有フォルダ",
   "settings.shared.blobRootLabel": "Blob フォルダ（大容量バイナリ用）",
   "settings.shared.notSet": "未設定",
