@@ -14,10 +14,11 @@
       {
         "title": "Graphium",
         "url": "app/index.html",
-        "width": 1280,
-        "height": 800,
+        "width": 1200,
+        "height": 700,
         "minWidth": 800,
         "minHeight": 600,
+        "center": true,
         "resizable": true,
         "dragDropEnabled": false
       }
