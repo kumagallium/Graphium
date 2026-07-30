@@ -713,6 +713,10 @@ The same `src/` tree is built three different ways.
 - Storage: `local` provider (IndexedDB)
 - AI features: optional, point at any reachable server URL
 - Hosting: GitHub Pages today, Docker self-host for richer setups
+- The Pages artifact also carries the landing page (`/Graphium/`) and the
+  VitePress user manual (`/Graphium/manual/`, authored in `manual/`,
+  built by `pnpm manual:build` and copied into `dist/manual` by
+  `deploy.yml`)
 
 ### 4.2 Desktop (Tauri v2)
 

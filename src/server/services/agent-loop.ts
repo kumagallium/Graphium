@@ -85,7 +85,7 @@ export function describeAuthError(
   }
   return {
     message:
-      "The model API key is invalid or expired. Check the key in Settings → AI Setup.",
+      "The model API key is invalid or expired. Check the key in Settings → AI.",
     code: "INVALID_API_KEY",
   };
 }

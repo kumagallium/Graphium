@@ -152,7 +152,7 @@ export function MissingApiKeyBanner() {
 }
 
 /**
- * provider id を人間向け表示に変換する。Settings → AI Setup の `PROVIDERS`
+ * provider id を人間向け表示に変換する。Settings → AI の `PROVIDERS`
  * とそろえる。未知の値はそのまま返す（致命的でないので silent fallback）。
  */
 function providerDisplayName(provider: string): string {

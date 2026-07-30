@@ -17,13 +17,6 @@ export function GetStarted() {
       href: "https://github.com/kumagallium/Graphium/releases/latest",
       external: true,
     },
-    {
-      title: t("start.selfhost.title"),
-      body: t("start.selfhost.body"),
-      cta: t("start.selfhost.cta"),
-      href: "https://github.com/kumagallium/Graphium#option-3-run-with-docker--full-stack-ai--mcp-tools",
-      external: true,
-    },
   ];
 
   return (

@@ -1,7 +1,7 @@
 import { useI18n } from "../i18n";
 
 export function Footer() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   return (
     <footer className="lp-footer">
       <div className="lp-footer-inner">
@@ -38,6 +38,9 @@ export function Footer() {
             rel="noreferrer noopener"
           >
             {t("footer.releases")}
+          </a>
+          <a href={locale === "ja" ? "/Graphium/manual/ja/" : "/Graphium/manual/"}>
+            {t("footer.manual")}
           </a>
         </div>
       </div>

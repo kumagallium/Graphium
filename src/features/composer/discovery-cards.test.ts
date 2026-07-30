@@ -56,7 +56,7 @@ describe("buildDiscoveryCards", () => {
     expect(cards).toEqual([]);
   });
 
-  it("人間ノートを開いていれば「要約」ベースカードが先頭に来る（既に Knowledge 化済み）", () => {
+  it("人間ノートを開いていれば「要約」ベースカードが先頭に来る（既にナレッジ化済み）", () => {
     const idx: GraphiumIndex = {
       version: 7,
       updatedAt: NOW.toISOString(),
@@ -76,7 +76,7 @@ describe("buildDiscoveryCards", () => {
     expect(cards[0]?.action.kind).toBe("summarize-note");
   });
 
-  it("未 Knowledge 化の人間ノートを開いていれば「Knowledge に追加」が先頭に来る", () => {
+  it("未ナレッジ化の人間ノートを開いていれば「ナレッジに追加」が先頭に来る", () => {
     const idx: GraphiumIndex = {
       version: 7,
       updatedAt: NOW.toISOString(),
@@ -88,7 +88,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("このノートを Knowledge に追加");
+    expect(cards[0]?.title).toBe("このノートをナレッジに追加");
     expect(cards[0]?.action).toEqual({ kind: "custom", key: "ingest-current-note" });
     // 直後にベース要約カード
     expect(cards[1]?.action.kind).toBe("summarize-note");
@@ -106,7 +106,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("この Knowledge を整理する");
+    expect(cards[0]?.title).toBe("このナレッジを整理する");
   });
 
   it("直近 7 日の wikiLog からイベントごとに、wiki タイトル付きでカード化（lint と delete は無視）", () => {
@@ -209,7 +209,7 @@ describe("buildDiscoveryCards", () => {
       wikiLogEntries: [],
       now: NOW,
     });
-    expect(cards[0]?.title).toBe("この Knowledge を整理する");
+    expect(cards[0]?.title).toBe("このナレッジを整理する");
   });
 
   it("ベース + ログで枠が余るときは直近更新ノートで埋める（自ノートと AI/skill ノートは除外）", () => {
@@ -238,7 +238,7 @@ describe("buildDiscoveryCards", () => {
     expect(cards[2].title).toBe("「older human」について教えて");
   });
 
-  it("最大 4 枚まで切り詰める（既に Knowledge 化済みのノート）", () => {
+  it("最大 4 枚まで切り詰める（既にナレッジ化済みのノート）", () => {
     const recent = (offset: number) => new Date(NOW.getTime() - offset * 3600 * 1000).toISOString();
     const idx: GraphiumIndex = {
       version: 7,

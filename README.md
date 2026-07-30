@@ -131,7 +131,7 @@ The layer has four document kinds, each with a distinct role:
 
 Knowledge pages live in the same storage as your notes (IndexedDB on web, filesystem on Tauri / Docker) and are fully editable by hand. Every Knowledge edit is recorded as a PROV-DM revision so you can always see **when** a page was generated, **which agent** (human or AI) wrote it, and **from which source**.
 
-The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI Setup** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
+The Knowledge layer is **opt-in**: configure an LLM in **⚙ Settings → AI** to activate it. Without an LLM, Graphium works as a plain linked-note editor.
 
 ## Composer (⌘K)
 
@@ -203,14 +203,14 @@ docker compose up -d
 #### Set up your AI model
 
 1. Open **http://localhost:5174/Graphium/**
-2. Go to **⚙ Settings → AI Setup**, add your LLM model and API key
+2. Go to **⚙ Settings → AI**, add your LLM model and API key
 3. Start using the AI assistant
 
 > **Where your API key is stored:** macOS desktop keeps it in the Keychain; Windows/Linux desktop and the web/self-hosted build keep it in plaintext (`models.json` / browser `localStorage`). Prefer a scoped, spending-capped key. See [SECURITY.md](SECURITY.md#key-storage--threat-model).
 
 #### Add MCP tools (optional)
 
-Graphium connects to MCP servers directly — no registry required. Open **⚙ Settings → AI Setup → MCP Servers** and add a source. Everything lives in one list, where each entry can be toggled on/off, edited, or removed:
+Graphium connects to MCP servers directly — no registry required. Open **⚙ Settings → AI → MCP Servers** and add a source. Everything lives in one list, where each entry can be toggled on/off, edited, or removed:
 
 - **Local** — Graphium launches and manages the server for you, the same way Claude Desktop does. Enter a command and arguments (e.g. `npx` / `-y @modelcontextprotocol/server-filesystem ~/notes`) and Graphium spawns it over stdio; you never start or stop a process yourself. Requires the desktop app or a self-hosted backend (a browser can't launch local processes).
 - **Remote** — connect to an already-running server by its endpoint URL (e.g. `http://localhost:8100/sse`), optionally with an API key.
@@ -251,7 +251,7 @@ pnpm install
 pnpm dev --port 5174   # → http://localhost:5174/Graphium/
 ```
 
-Notes are saved to your browser's IndexedDB by default. AI features require the backend server — run `pnpm dev` which starts both the frontend and backend together. Go to **⚙ Settings → AI Setup** to add your LLM model.
+Notes are saved to your browser's IndexedDB by default. AI features require the backend server — run `pnpm dev` which starts both the frontend and backend together. Go to **⚙ Settings → AI** to add your LLM model.
 
 ## Features
 
@@ -377,7 +377,7 @@ For the layered breakdown, the Wiki pipeline trigger flow, distribution targets,
 
 ### MCP tools
 
-The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Manage them all in one list under **⚙ Settings → AI Setup → MCP Servers**. Add a **Local** server (launched by Graphium over stdio, the Claude Desktop model; needs the desktop app or a self-hosted backend) or a **Remote** one (reached by URL) — by pasting its README JSON, filling the form, or browsing a [Crucible Registry](https://github.com/kumagallium/Crucible) and picking servers from it. Crucible is just a discovery source, not a dependency.
+The AI assistant can call [MCP](https://modelcontextprotocol.io/) tools. Manage them all in one list under **⚙ Settings → AI → MCP Servers**. Add a **Local** server (launched by Graphium over stdio, the Claude Desktop model; needs the desktop app or a self-hosted backend) or a **Remote** one (reached by URL) — by pasting its README JSON, filling the form, or browsing a [Crucible Registry](https://github.com/kumagallium/Crucible) and picking servers from it. Crucible is just a discovery source, not a dependency.
 
 ## Beyond the editor
 

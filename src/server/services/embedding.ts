@@ -49,7 +49,7 @@ export async function generateEmbeddings(
     // code 付きで throw し、wiki /embed ルートの catch（errorBody）が JSON へ通す
     throw new CodedError(
       `Embedding requires an OpenAI or OpenAI-compatible provider (current: ${config.provider}). ` +
-      "Add an OpenAI-compatible model in Settings → AI Setup.",
+      "Add an OpenAI-compatible model in Settings → AI.",
       "EMBEDDING_MODEL_UNSUPPORTED",
     );
   }

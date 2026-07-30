@@ -15,6 +15,7 @@ export const en = {
   "nav.screens": "Screens",
   "nav.faq": "FAQ",
   "nav.start": "Get started",
+  "nav.manual": "Manual",
 
   // Hero
   "hero.eyebrow": "Graphium · An inspiration notebook for the AI era",
@@ -93,10 +94,6 @@ export const en = {
   "start.desktop.body":
     "Where Graphium comes into its own. With a Claude subscription, AI is one click away — no API key. macOS (Apple Silicon) and Windows.",
   "start.desktop.cta": "Download",
-  "start.selfhost.title": "Self-host with Docker",
-  "start.selfhost.body":
-    "Notes on your own server, reachable from any browser. AI backend included.",
-  "start.selfhost.cta": "Read the guide",
 
   // FAQ
   "faq.heading": "FAQ",
@@ -111,7 +108,7 @@ export const en = {
     "In spirit, yes. Insights play the role of permanent notes (one context-free claim per page, traceable to its sources), memos play fleeting notes, and the URLs and papers you ingest play literature notes. The citation note you weave from selected Insights is the structure note (MOC) — and that map doubles as the AI's reading scope. The difference: the AI drafts the candidates and you decide what stays, with every step traceable. The weaving of Insights into new Ideas stays yours.",
   "faq.data.q": "Where does my data live?",
   "faq.data.a":
-    "With you. Desktop notes are plain JSON files on your disk, the browser preview keeps them in your browser, and self-hosting keeps them on your server. Nothing is sent anywhere without your say.",
+    "With you. Desktop notes are plain JSON files on your disk, and the browser preview keeps them in your browser. Nothing is sent anywhere without your say.",
   "faq.free.q": "Is it free?",
   "faq.free.a":
     "Yes — Graphium is open source under Apache 2.0 and free to use. If you use the AI features, the only cost is your own Claude subscription or API key.",
@@ -121,6 +118,7 @@ export const en = {
   "footer.repo": "GitHub",
   "footer.blog": "Blog",
   "footer.releases": "Releases",
+  "footer.manual": "Manual",
   "footer.langToggle": "日本語",
 } as const;
 
@@ -129,6 +127,7 @@ export const ja: Record<keyof typeof en, string> = {
   "nav.screens": "画面",
   "nav.faq": "FAQ",
   "nav.start": "はじめる",
+  "nav.manual": "マニュアル",
 
   "hero.eyebrow": "Graphium · AI 時代のひらめきノート",
   "hero.title": "書けば書くほど、点と点が繋がる「ひらめきノート」",
@@ -200,10 +199,6 @@ export const ja: Record<keyof typeof en, string> = {
   "start.desktop.body":
     "Graphium の本領はこちらです。Claude のサブスクがあれば API キーなしの 1 クリックで AI が動き出します。macOS (Apple Silicon) / Windows 対応。",
   "start.desktop.cta": "ダウンロード",
-  "start.selfhost.title": "Docker でセルフホスト",
-  "start.selfhost.body":
-    "ノートは自分のサーバーに置き、どのブラウザからも同じノートに繋がります。AI バックエンド付き。",
-  "start.selfhost.cta": "ガイドを読む",
 
   "faq.heading": "よくある質問",
   "faq.ai.q": "AI は必須ですか?",
@@ -217,7 +212,7 @@ export const ja: Record<keyof typeof en, string> = {
     "考え方は Zettelkasten を受け継いでいます。「洞察」が permanent notes（1 ページ 1 主張・出どころまで辿れる）、「メモ」が fleeting notes（走り書き）、取り込んだ URL・論文が literature notes（文献ノート）に当たります。そして洞察を選んで編む引用ノートが structure notes（MOC）で、その「地図」はそのまま AI に渡す範囲としても働くのです。違いは、候補を AI が下書きし、残すかどうかをあなたが決めること。委ねた工程はすべて辿れて、発想へ編む工程はあなたの手に残してあります。",
   "faq.data.q": "データはどこに保存されますか?",
   "faq.data.a":
-    "あなたの手元です。デスクトップ版はローカルのプレーンな JSON ファイル、ブラウザ版はブラウザ内、セルフホスト版はあなたのサーバーに保存されます。断りなく外部へ送ることはありません。",
+    "あなたの手元です。デスクトップ版はローカルのプレーンな JSON ファイル、ブラウザ版はブラウザ内に保存されます。断りなく外部へ送ることはありません。",
   "faq.free.q": "無料ですか?",
   "faq.free.a":
     "はい。Apache 2.0 のオープンソースで、アプリは無料です。AI 機能を使うときにかかるのは、あなた自身の Claude サブスクや API キーの費用だけです。",
@@ -226,6 +221,7 @@ export const ja: Record<keyof typeof en, string> = {
   "footer.repo": "GitHub",
   "footer.blog": "ブログ",
   "footer.releases": "Releases",
+  "footer.manual": "マニュアル",
   "footer.langToggle": "English",
 };
 

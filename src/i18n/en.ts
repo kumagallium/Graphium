@@ -94,11 +94,10 @@ export const en: Record<string, string> = {
   "welcome.serverStorage": "Notes are saved on this server",
   "welcome.serverStorageHint": "Stored on this server's filesystem and shared across every browser that visits the same URL.",
 
-  // ── Desktop / Docker upgrade CTA (browser preview) ──
-  "upgrade.title": "AI features available in the desktop app / Docker",
-  "upgrade.body": "Knowledge Layer, AI chat, and related features run only with a backend. Install the desktop app or self-host with Docker. The browser version is a preview to try the editor — notes live in IndexedDB and can be evicted by the browser.",
+  // ── Desktop upgrade CTA (browser preview) ──
+  "upgrade.title": "AI features are available in the desktop app",
+  "upgrade.body": "Knowledge Layer, AI chat, and related features need the backend that ships inside the desktop app. The browser version is a preview to try the editor — notes live in IndexedDB and can be evicted by the browser.",
   "upgrade.desktopCta": "Get the desktop app",
-  "upgrade.dockerCta": "Run with Docker",
   "upgrade.inline": "Available in the desktop app",
   "upgrade.footer": "Enable AI",
 
@@ -291,15 +290,15 @@ export const en: Record<string, string> = {
   "settings.fontLexend": "Lexend (reading-speed optimized / NASA study)",
   "settings.fontZenKaku": "Zen Kaku Gothic New (relaxed body gothic)",
   "settings.fontBizUDP": "BIZ UDPGothic (Japanese UD gothic)",
-  "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI Setup to add a model.",
+  "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI to add a model.",
   "settings.aiSetupCta": "Set up AI",
 
   // ── AI エラー（サーバーの機械可読 code → 表示文言。src/lib/ai-error.ts が参照） ──
-  "aiError.noModelRegistered": "No AI model is registered. Add a model in Settings → AI Setup.",
+  "aiError.noModelRegistered": "No AI model is registered. Add a model in Settings → AI.",
   "aiError.subscriptionAuthExpired": "Claude subscription authentication has expired. Run `claude` in a terminal to log in again, then restart Graphium. To use a different account or team, run `/login` inside `claude` and pick it there.",
-  "aiError.invalidApiKey": "The model API key is invalid or expired. Check the key in Settings → AI Setup.",
+  "aiError.invalidApiKey": "The model API key is invalid or expired. Check the key in Settings → AI.",
   "aiError.apiKeyForbidden": "The API key does not have permission for this operation.",
-  "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI Setup.",
+  "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI.",
 
   // ── AI チャット ──
   "aiChat.title": "AI Chat",
@@ -591,13 +590,13 @@ export const en: Record<string, string> = {
   "settings.mobilePush.save": "Save",
   "settings.mobilePush.saved": "Saved",
   "settings.mobilePush.clear": "Reset",
-  // ── Server storage (Docker / self-host Web) ──
+  // ── Server storage (server-backed deployments) ──
   "settings.serverStorage.title": "Server storage",
   "settings.serverStorage.help": "Notes are saved on this server's filesystem and shared across every browser that visits the same URL.",
   "settings.serverStorage.tokenPlaceholder": "X-Graphium-Token value",
   "settings.serverStorage.save": "Save and reload",
   "settings.serverStorage.savedReloading": "Saved. Reloading…",
-  "settings.serverStorage.tokenHelp": "The server requires GRAPHIUM_AUTH_TOKEN. Enter the same value you set in docker-compose env.",
+  "settings.serverStorage.tokenHelp": "The server requires GRAPHIUM_AUTH_TOKEN. Enter the same value the server was started with.",
   "settings.serverStorage.noAuth": "This server is open without authentication (GRAPHIUM_AUTH_TOKEN is not set). Setting a token is recommended for any non-localhost deployment.",
   // ── エクスポート / バックアップ ──
   "settings.export.title": "Export & backup",
@@ -610,7 +609,7 @@ export const en: Record<string, string> = {
   // ── 接続状態 ──
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
-  "settings.health.unavailable": "Backend is not available. AI features require Docker or local development setup.",
+  "settings.health.unavailable": "Backend is not available. AI features require the desktop app.",
   "settings.health.restart": "Restart backend",
   "settings.health.restarting": "Restarting...",
   "settings.health.restartFailed": "Restart failed",
@@ -716,7 +715,7 @@ export const en: Record<string, string> = {
   "aiChat.stop": "Stop",
   "aiChat.sendHint": "Cmd+Enter to send",
   "aiChat.newChat": "+ New chat",
-  "aiChat.noBackend": "AI features require running Graphium with Docker or local development setup. They are not available on GitHub Pages.",
+  "aiChat.noBackend": "AI features require the desktop app. They are not available in the browser version.",
   "aiChat.noBackendTauri": "AI features need the bundled backend, but it could not start. Try restarting it, or copy the diagnostics below when reporting the issue.",
   "aiChat.restartBackend": "Restart backend",
   "aiChat.restarting": "Restarting…",
@@ -1330,10 +1329,10 @@ export const en: Record<string, string> = {
   // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
   "auth.missingKeyTitle": "Can't read the saved API key for {model}",
   "auth.missingKeyBody":
-    "Graphium temporarily lost track of the {provider} key you registered earlier. Open Settings → AI Setup and paste the same key again to recover.",
+    "Graphium temporarily lost track of the {provider} key you registered earlier. Open Settings → AI and paste the same key again to recover.",
   "auth.missingKeyBodyMultiple":
-    "Graphium can't read {count} saved API keys ({models}). Open Settings → AI Setup and paste the same keys again to recover.",
-  "auth.openSettings": "Open AI Setup",
+    "Graphium can't read {count} saved API keys ({models}). Open Settings → AI and paste the same keys again to recover.",
+  "auth.openSettings": "Open AI settings",
   "auth.dismiss": "Dismiss",
 
   // ── メモ ──
