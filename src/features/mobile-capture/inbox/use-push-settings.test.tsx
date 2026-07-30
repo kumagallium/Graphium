@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
-// スタンドアロン push 設定フック（最小設定シート・オプトイン接続用）のテスト。
+// スタンドアロン push 設定フック（最小設定シート用）のテスト。
 //
 // 対象の不変条件:
-// - active=false の間は push モジュールを動的 import しない（オプトインカードが
-//   出ているだけの従来ホームでは何も読まない）
+// - active=false の間は push モジュールを動的 import しない（ホームを見ているだけの
+//   ときは何も読まない）
 // - active になったらロード → configured/connected/client_id 上書きを読み、
 //   configured なら prepare を先回りする（connect のジェスチャ内同期契約の前提）
-// - connectGoogle 成功: connected=true + プロバイダ永続（graphium-push-provider）+
-//   onConnected（親がフラグを立てる）/ 失敗: connectError に載せ onConnected は呼ばない
+// - 接続そのものはここが担わない（usePushQueue.connectAndDrain 一本）
 // - disconnect は pusher.disconnect() に委譲して connected を落とす
 // - PUSH_STATUS_EVENT（他面での接続/切断/client_id 変更）で状態を読み直す
 //
@@ -82,38 +81,14 @@ describe("usePushSettings", () => {
     expect(h.prepare).toHaveBeenCalled();
   });
 
-  it("connectGoogle success: connected + provider persisted + onConnected", async () => {
-    const onConnected = vi.fn();
-    const { result } = renderHook(() => usePushSettings(true, { onConnected }));
+  // 接続導線は 1 本（usePushQueue.connectAndDrain）— 実験オプトイン専用だった
+  // スタンドアロン connect はフラグ撤去で用が無くなったので生やさない
+  it("exposes no connect of its own (connecting is the queue hook's job)", async () => {
+    const { result } = renderHook(() => usePushSettings(true));
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    await act(async () => {
-      result.current.connectGoogle();
-      await Promise.resolve();
-    });
-
-    await waitFor(() => expect(result.current.connected).toBe(true));
-    // 「実際に使えた」経路だけを記録する（P1.5 OneDrive の分岐点）
-    expect(h.setPushProvider).toHaveBeenCalledWith("google-drive");
-    expect(onConnected).toHaveBeenCalledTimes(1);
-    expect(result.current.connectError).toBeNull();
-  });
-
-  it("connectGoogle failure: surfaces the error and never calls onConnected", async () => {
-    h.connectImpl.mockImplementation(() => Promise.reject(new Error("Popup closed by user")));
-    const onConnected = vi.fn();
-    const { result } = renderHook(() => usePushSettings(true, { onConnected }));
-    await waitFor(() => expect(result.current.ready).toBe(true));
-
-    await act(async () => {
-      result.current.connectGoogle();
-      await Promise.resolve();
-    });
-
-    await waitFor(() => expect(result.current.connectError).toBe("Popup closed by user"));
-    expect(result.current.connected).toBe(false);
+    expect("connectGoogle" in result.current).toBe(false);
     expect(h.setPushProvider).not.toHaveBeenCalled();
-    expect(onConnected).not.toHaveBeenCalled();
   });
 
   it("disconnect delegates to the pusher and drops connected", async () => {

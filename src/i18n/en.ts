@@ -566,10 +566,6 @@ export const en: Record<string, string> = {
   "settings.shared.note": "Settings stored locally. Tombstone records remain in _meta/ after deletion.",
   "settings.shared.desktopOnly": "Shared storage is currently desktop-only. The browser version cannot read or write to local folders.",
   "settings.shared.identityRequired": "Register your name and email above (Your identity) before testing the connection.",
-  // ── Mobile sync (experimental flag, default OFF) ──
-  "settings.mobileInboxFlag.title": "Mobile sync",
-  "settings.mobileInboxFlag.badge": "Experimental",
-  "settings.mobileInboxFlag.help": "Try sending captures from your phone to the desktop inbox. Turning this on reveals the phone-side send queue plus the desktop Mobile inbox and its folder settings (no reload needed).",
   // ── Mobile upload (desktop = receiving side: sync folder + QR to open on the phone) ──
   "settings.mobilePush.title": "Mobile upload",
   "settings.mobilePush.help": "Your phone uploads captures to cloud storage; this desktop imports them from the synced folder.",
@@ -1260,6 +1256,9 @@ export const en: Record<string, string> = {
   "asset.bulkIngestTitle": "Add selected URLs/PDFs to Knowledge (regenerates existing entries)",
   "asset.bulkCreateProvNote": "Extract steps into notes from {count}",
   "asset.bulkCreateProvNoteTitle": "Extract steps from the selected URLs/PDFs into notes (AI)",
+  "asset.bulkOcr": "Read text from {count}",
+  "asset.bulkOcrRunning": "Reading text… {done}/{total}",
+  "asset.bulkOcrTitle": "Read the text out of the selected images on this device and store it on the asset, so it can also be found from note search.",
   "asset.bulkExtractImages": "Extract images from {count}",
   "asset.bulkExtractImagesTitle": "Pull embedded images from the selected PDFs / Word (.docx) files and register them as image assets (vector figures and tables are not supported).",
   "asset.createProvNote": "Extract steps into a note",
@@ -1339,10 +1338,8 @@ export const en: Record<string, string> = {
   // ── メモ ──
   "memo.title": "Memos",
   "memo.count": "{count} items",
-  "memo.empty": "No memos yet. Tap the button below to create one.",
   "memo.emptyQueueHome": "No past captures yet. Start with the capture buttons below.",
   "memo.new": "New Memo",
-  "memo.creating": "Creating...",
   "memo.placeholder": "Write your memo here...",
   "memo.saving": "Saving to Google Drive...",
   "memo.hint": "Tap the send button to save",
@@ -1428,11 +1425,14 @@ export const en: Record<string, string> = {
   "mobile.emptyInboxHint": "Files dropped into the Inbox folder from your phone will appear here.",
   "mobile.scanFailed": "Could not read the inbox: {error}",
 
-  // ── Mobile send queue (phone → cloud Inbox) ──
+  // ── Mobile capture history (phone → cloud Inbox) ──
   // Captures land here first (persisted on this device), then upload to
   // Google Drive → Graphium/Inbox, where the desktop picks them up.
-  // The queue lives inline on the mobile home (no sheet); the header shows a
-  // connection chip and the queue block collapses while empty.
+  // The home is one timeline: sent captures stay in the list next to the
+  // waiting ones and this device's older memos / assets, newest first.
+  "mobile.history.title": "Captures",
+  "mobile.history.unsent": "{count} unsent",
+  "mobile.history.remove": "Remove from history",
   "mobile.send.title": "Send queue",
   "mobile.send.chipNotConfigured": "Not set up",
   "mobile.send.notConfigured": "Storage isn't set up yet. Open Settings and add a client ID under Advanced.",
@@ -1447,6 +1447,7 @@ export const en: Record<string, string> = {
   "mobile.send.statusWaiting": "Waiting",
   "mobile.send.statusSending": "Sending... {percent}%",
   "mobile.send.statusFailed": "Failed",
+  "mobile.send.statusSent": "Sent",
   "mobile.send.retryFailed": "Retry failed ({count})",
   "mobile.send.remove": "Remove from queue",
   "mobile.send.action": "Send ({count})",
@@ -1454,11 +1455,6 @@ export const en: Record<string, string> = {
   "mobile.send.connectStorage": "Connect storage",
   "mobile.send.connecting": "Connecting...",
   "mobile.send.connectFailed": "Could not connect: {error}",
-
-  // ── Experiment opt-in card (legacy mobile home) ──
-  "mobile.optIn.title": "Send captures to your desktop",
-  "mobile.optIn.body": "Queue memos, photos, and URLs on your phone and they land in the Graphium inbox on your desktop.",
-  "mobile.optIn.try": "Try it",
 
   // ── Storage picker (StoragePickerSheet) ──
   "mobile.storagePicker.title": "Choose storage",
@@ -1469,8 +1465,6 @@ export const en: Record<string, string> = {
   // ── Mobile minimal settings sheet ──
   "mobile.settings.storage": "Storage",
   "mobile.settings.changeStorage": "Change",
-  "mobile.settings.leaveExperiment": "Leave this experiment",
-  "mobile.settings.leaveExperimentHint": "Returns to the classic home. Your send queue and connection stay on this device.",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

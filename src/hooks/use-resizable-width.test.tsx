@@ -13,17 +13,31 @@ import { useResizableWidth } from "./use-resizable-width";
 
 const KEY = "test-resizable-width";
 
-const OPTS = { storageKey: KEY, min: 320, max: 800, viewportReserve: 0 };
+const OPTS = { storageKey: KEY, min: 320, max: 800, containerReserve: 0 };
 
-/** パネル（親要素）幅つきの pointerdown イベント風オブジェクト */
-function downEvent(clientX: number, panelWidth: number): React.PointerEvent<HTMLElement> {
+/**
+ * パネル（親要素）幅つきの pointerdown イベント風オブジェクト。
+ * containerWidth を渡すと「パネルを収めているコンテナ」も生やす。
+ * 省略した場合は親コンテナが取れないケース（window.innerWidth への fallback）を模す。
+ */
+function downEvent(
+  clientX: number,
+  panelWidth: number,
+  containerWidth?: number,
+): React.PointerEvent<HTMLElement> {
   return {
     pointerType: "mouse",
     button: 0,
     clientX,
     pointerId: 1,
     currentTarget: {
-      parentElement: { getBoundingClientRect: () => ({ width: panelWidth }) },
+      parentElement: {
+        getBoundingClientRect: () => ({ width: panelWidth }),
+        parentElement:
+          containerWidth == null
+            ? null
+            : { getBoundingClientRect: () => ({ width: containerWidth }) },
+      },
       setPointerCapture: () => {},
     },
     preventDefault: () => {},
@@ -93,14 +107,33 @@ describe("useResizableWidth", () => {
     act(() => result.current.handleProps.onPointerUp(upEvent()));
   });
 
-  it("viewportReserve があると実効最大幅がビューポートで頭打ちになる", () => {
-    // jsdom の window.innerWidth は既定 1024
-    const { result } = renderHook(() =>
-      useResizableWidth({ ...OPTS, viewportReserve: 600 }),
-    );
+  it("containerReserve があると実効最大幅が親コンテナ幅で頭打ちになる", () => {
+    // コンテナ 1000px（サイドバーを除いたレイアウト領域を模す）
+    const { result } = renderHook(() => useResizableWidth({ ...OPTS, containerReserve: 600 }));
+    act(() => result.current.handleProps.onPointerDown(downEvent(500, 480, 1000)));
+    act(() => result.current.handleProps.onPointerMove(moveEvent(-1000)));
+    expect(result.current.width).toBe(1000 - 600); // max 800 より先にコンテナ制約
+    act(() => result.current.handleProps.onPointerUp(upEvent()));
+  });
+
+  it("ビューポートではなくコンテナ幅を基準にする（サイドバー分を二重に引かない）", () => {
+    // ビューポート 1280 / サイドバー 256 → コンテナ 1024。reserve 360 なら 664 まで許す。
+    // ビューポート基準で数えていた頃は 1280-360=920 まで許してしまい、
+    // 実際のエディタ領域は 1024-920=104px しか残らなかった。
+    Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
+    const { result } = renderHook(() => useResizableWidth({ ...OPTS, containerReserve: 360 }));
+    act(() => result.current.handleProps.onPointerDown(downEvent(900, 480, 1024)));
+    act(() => result.current.handleProps.onPointerMove(moveEvent(-2000)));
+    expect(result.current.width).toBe(664); // 1024 - 360
+    act(() => result.current.handleProps.onPointerUp(upEvent()));
+  });
+
+  it("親コンテナが取れなければ window.innerWidth に fallback する", () => {
+    Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true });
+    const { result } = renderHook(() => useResizableWidth({ ...OPTS, containerReserve: 600 }));
     act(() => result.current.handleProps.onPointerDown(downEvent(500, 480)));
     act(() => result.current.handleProps.onPointerMove(moveEvent(-1000)));
-    expect(result.current.width).toBe(1024 - 600); // max 800 より先に viewport 制約
+    expect(result.current.width).toBe(1024 - 600);
     act(() => result.current.handleProps.onPointerUp(upEvent()));
   });
 
@@ -120,15 +153,14 @@ describe("useResizableWidth", () => {
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
-  it("widthStyle は viewportReserve 付きだと CSS min() で上限を掛ける", () => {
+  it("widthStyle は containerReserve 付きだと CSS min() で上限を掛ける（100% 基準）", () => {
     localStorage.setItem(KEY, "600");
-    const { result } = renderHook(() =>
-      useResizableWidth({ ...OPTS, viewportReserve: 360 }),
-    );
-    expect(result.current.widthStyle).toBe("min(600px, calc(100vw - 360px))");
+    const { result } = renderHook(() => useResizableWidth({ ...OPTS, containerReserve: 360 }));
+    // 100vw ではなく 100%: inline 配置なら親コンテナ、overlay（fixed）ならビューポートが基準
+    expect(result.current.widthStyle).toBe("min(600px, calc(100% - 360px))");
   });
 
-  it("widthStyle は viewportReserve 無しだと px 単位のみ", () => {
+  it("widthStyle は containerReserve 無しだと px 単位のみ", () => {
     localStorage.setItem(KEY, "600");
     const { result } = renderHook(() => useResizableWidth(OPTS));
     expect(result.current.widthStyle).toBe("600px");

@@ -126,7 +126,7 @@ import { loadAuthorIdentity } from "./features/identity";
 import { getSharedRoot, getBlobRoot, pickInboxRoot } from "./lib/storage/shared";
 // モバイル受信箱（<root>/Inbox/ の未取り込みファイル）。top バレル(./features/mobile-capture)は
 // inbox を再export しないため、inbox サブバレルから直接 import する。
-import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView, useMobileInboxFlag } from "./features/mobile-capture/inbox";
+import { getInboxRoot, setInboxRoot, getInboxKeepArchive, setInboxKeepArchive, useInboxConfig, runInboxImport, FolderInbox, InboxView } from "./features/mobile-capture/inbox";
 import type { CaptureRef } from "./features/mobile-capture/inbox/types";
 import {
   shareNote,
@@ -4847,18 +4847,9 @@ export function NoteApp() {
     try { localStorage.setItem("graphium-sidebar-collapsed", desktopSidebarCollapsed ? "1" : "0"); } catch {}
   }, [desktopSidebarCollapsed]);
   const [showMemos, setShowMemos] = useState(false);
-  // モバイル連携（実験フラグ・既定 OFF）。OFF の間はデスクトップ側の入口
-  //（サイドバー「モバイル」見出し・#mobile ルート・設定のモバイル送信セクション）を
-  // すべて隠す。設定のトグル変更はイベント経由でリロード無しにここへ反映される。
-  const mobileInboxEnabled = useMobileInboxFlag();
   // モバイル受信箱ビュー（同期フォルダ <root>/Inbox/ の「まだ取り込んでいない」ファイル一覧）。
   // 取り込むと素材ライブラリへ振り分けられ、この一覧からは消える（_imported/ 退避）。
   const [showMobile, setShowMobile] = useState(false);
-  // フラグを OFF に切り替えた瞬間に、開きっぱなしの受信箱ビューも畳む
-  //（入口だけ消してビューが残ると戻る手段がなくなる）。
-  useEffect(() => {
-    if (!mobileInboxEnabled) setShowMobile(false);
-  }, [mobileInboxEnabled]);
   // Inbox 同期フォルダのルート（localStorage 由来）。null なら未接続。
   // これを源に FolderInbox を作るので、フォルダ変更で受信箱の読み取り面ごと差し替わる。
   //
@@ -4874,11 +4865,11 @@ export function NoteApp() {
   // サイドバー「モバイル」の未処理件数バッジ。取り込み済み素材の数ではなく、
   // 受信箱に残っている未取り込みファイルの数（= これから捌く数）。
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
-  // 受信箱の読み取り面。実験フラグ ON かつ desktop(Tauri) かつ接続済みのときだけ
-  // 実体を持つ（フラグ OFF では起動時のフォルダスキャンも走らせない）。
+  // 受信箱の読み取り面。desktop(Tauri) かつ受信フォルダ接続済みのときだけ実体を持つ
+  //（web には列挙する手段が無く、未接続では起動時のフォルダスキャンも走らせない）。
   const inboxSource = useMemo(
-    () => (mobileInboxEnabled && isTauri() && inboxRoot ? new FolderInbox(inboxRoot) : null),
-    [mobileInboxEnabled, inboxRoot],
+    () => (isTauri() && inboxRoot ? new FolderInbox(inboxRoot) : null),
+    [inboxRoot],
   );
   // 起動時（および接続フォルダ変更時）に未処理件数を数える。
   // 「受信箱ビューを開いたとき」「取り込み後」は InboxView の scan → onPendingCount が
@@ -5501,14 +5492,14 @@ export function NoteApp() {
     setActiveAssetType: (type: import("./features/asset-browser").MediaType | null) => fm.setActiveAssetType(type),
     setActiveLabel: (label: string | null) => fm.setActiveLabel(label),
     setShowMemos: (show: boolean) => setShowMemos(show),
-    // 受信箱は Tauri 専用 かつ 実験フラグ ON のときだけ。web や フラグ OFF で
-    // #mobile を直接叩かれても開かない（サイドバーにも出さない）。
-    setShowMobile: (show: boolean) => setShowMobile(show && isTauri() && mobileInboxEnabled),
+    // 受信箱は Tauri 専用。web で #mobile を直接叩かれても開かない
+    //（サイドバーにも出さない）。
+    setShowMobile: (show: boolean) => setShowMobile(show && isTauri()),
     setShowSharedLibrary: (show: boolean) => setShowSharedLibrary(show),
     // ルート適用時のオーバーレイ畳みも、サイドバー/最大化と同じ closeAllViews に集約する
     // （showSkillList / showTrash の畳み漏れを防ぐ。以前は個別列挙で漏れていた）。
     clearViews: closeAllViews,
-  }), [fm, closeAllViews, mobileInboxEnabled]);
+  }), [fm, closeAllViews]);
   const router = useHashRouter(routeActions, !fm.filesLoading);
 
   // memo:<captureId> ソース（wiki の派生元・グラフノード・References の @ラベル）を
@@ -7102,11 +7093,10 @@ export function NoteApp() {
     onShowMemos: () => { closeAllViews(); setShowMemos(true); setSidebarOpen(false); router.navigate({ view: "memos" }); },
     memosActive: showMemos,
     // モバイル（受信箱）: **未処理**件数。取り込み済み素材の数ではない。
-    // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）かつ
-    // モバイル連携の実験フラグ ON のときだけ。どちらかを満たさなければ
+    // 受信箱は Tauri 専用（web では FS を覗けず何も表示できない）— web では
     // onShowMobile を渡さない＝サイドバーの「モバイル」見出し自体が出ない。
     mobileCount: inboxPendingCount,
-    onShowMobile: mobileInboxEnabled && isTauri()
+    onShowMobile: isTauri()
       ? () => { closeAllViews(); setShowMobile(true); setSidebarOpen(false); router.navigate({ view: "mobile" }); }
       : undefined,
     mobileActive: showMobile,

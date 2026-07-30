@@ -140,6 +140,15 @@ export type MediaIndexEntry = {
   /** URL ブックマーク用メタデータ（type === "url" のとき） */
   urlMeta?: UrlMeta;
   /**
+   * 画像から端末内 OCR で読み取ったテキスト（type === "image" のとき）。
+   *
+   * ノートに貼った画像のテキストは、そのノートの `page.mediaOcr` に入る（ブロック単位の注釈）。
+   * こちらは素材そのものに紐づく写しで、**どのノートにも貼られていない画像**でも
+   * 素材ギャラリーから読み取って残せるようにするためのもの。
+   * optional なので既存インデックスはそのまま読める（バージョン据え置き）。
+   */
+  ocrText?: string;
+  /**
    * メモピーク用の本文（type === "memo" のとき）。
    * buildMemoPeekEntry が組む transient エントリ専用で、media-index には保存されない。
    */
@@ -373,6 +382,50 @@ export async function persistUrlMetaPatch(
     }
   } catch (err) {
     console.warn("urlMeta 書き戻し失敗:", err);
+  }
+}
+
+/**
+ * 画像の OCR テキストを media-index に書き戻す。
+ *
+ * 素材ギャラリーから読み取った結果の保存先。ノート経由の OCR は
+ * `page.mediaOcr`（ブロック単位）に入るので、そちらとは独立している。
+ */
+export async function persistOcrTextPatch(
+  fileId: string,
+  ocrText: string,
+): Promise<void> {
+  const index = await readMediaIndex();
+  if (!index) return;
+  const text = ocrText.trim();
+  let changed = false;
+  const nextMedia = index.media.map((m) => {
+    if (m.fileId !== fileId) return m;
+    // 同じ値なら書き込まない（無駄な保存とイベントを避ける）
+    if ((m.ocrText ?? "") === text) return m;
+    changed = true;
+    // 空文字は「読んだが文字が無かった」なのでキー自体を落とす
+    if (!text) {
+      const { ocrText: _omit, ...rest } = m;
+      return rest;
+    }
+    return { ...m, ocrText: text };
+  });
+  if (!changed) return;
+  const next: MediaIndex = {
+    ...index,
+    updatedAt: new Date().toISOString(),
+    media: nextMedia,
+  };
+  try {
+    await saveMediaIndex(next);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(MEDIA_INDEX_CHANGED_EVENT, { detail: { reason: "ocr-patch", fileId } }),
+      );
+    }
+  } catch (err) {
+    console.warn("OCR テキストの書き戻しに失敗:", err);
   }
 }
 

@@ -566,10 +566,6 @@ export const ja: Record<string, string> = {
   "settings.shared.note": "設定はローカルに保存されます。削除すると _meta/ に tombstone が残ります。",
   "settings.shared.desktopOnly": "共有ストレージは現在デスクトップ版のみ対応です。ブラウザ版ではローカルフォルダの読み書きができません。",
   "settings.shared.identityRequired": "接続テストの前に、上の「あなたの identity」で名前とメールを登録してください。",
-  // ── モバイル連携（実験フラグ・既定 OFF） ──
-  "settings.mobileInboxFlag.title": "モバイル連携",
-  "settings.mobileInboxFlag.badge": "実験的機能",
-  "settings.mobileInboxFlag.help": "スマホで撮ったメモや写真をデスクトップの受信箱へ送る機能を試します。オンにすると、スマホの送信キューとデスクトップの「モバイル」受信箱・受信フォルダ設定が表示されます（再読み込み不要）。",
   // ── モバイル送信（デスクトップ = 受け取り側: 受信フォルダ + スマホで開く QR） ──
   "settings.mobilePush.title": "モバイル送信",
   "settings.mobilePush.help": "スマホで撮ったものをクラウドストレージ経由でデスクトップに送ります。この端末は同期フォルダから取り込む側です。",
@@ -1260,6 +1256,9 @@ export const ja: Record<string, string> = {
   "asset.bulkIngestTitle": "選択した URL/PDF を Knowledge 化（既存は再生成）",
   "asset.bulkCreateProvNote": "{count} 件から手順を抽出してノート化",
   "asset.bulkCreateProvNoteTitle": "選択した URL/PDF の内容から手順を抽出してノート化（AI）",
+  "asset.bulkOcr": "{count} 件の文字を読む",
+  "asset.bulkOcrRunning": "文字を認識中… {done}/{total}",
+  "asset.bulkOcrTitle": "選択した画像から端末内で文字を読み取り、素材に保存します。ノートの検索でも引けるようになります。",
   "asset.bulkExtractImages": "{count} 件から画像を抽出",
   "asset.bulkExtractImagesTitle": "選択した PDF / Word (.docx) の埋め込み画像を取り出し、画像アセットとして登録します（ベクター figure や表は対象外）。",
   "asset.createProvNote": "手順を抽出してノート化",
@@ -1338,10 +1337,8 @@ export const ja: Record<string, string> = {
   // ── メモ ──
   "memo.title": "メモ",
   "memo.count": "{count} 件",
-  "memo.empty": "まだメモがありません。下のボタンをタップして作成しましょう。",
   "memo.emptyQueueHome": "過去の記録はまだありません。下の捕獲ボタンから始めましょう。",
   "memo.new": "メモを作成",
-  "memo.creating": "作成中...",
   "memo.placeholder": "メモを入力...",
   "memo.saving": "Google Drive に保存中...",
   "memo.hint": "送信ボタンをタップして保存",
@@ -1426,11 +1423,14 @@ export const ja: Record<string, string> = {
   "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
   "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
 
-  // ── モバイル送信キュー（スマホ → クラウド Inbox） ──
-  // 撮ったものはまずこの端末のキューに永続化され、Google Drive の Graphium/Inbox へ
+  // ── モバイル捕獲履歴（スマホ → クラウド Inbox） ──
+  // 撮ったものはまずこの端末に永続化され、Google Drive の Graphium/Inbox へ
   // アップロードされる。デスクトップは同期フォルダからそれを取り込む。
-  // キューはモバイルホームにインライン常設（シートは無い）。ヘッダーに接続チップ、
-  // キューが空のときはブロックごと畳まれる。
+  // ホームは 1 本の時系列: 送信済みも消えず、待機中・この端末の過去のメモ / 素材と
+  // 混ざって新しい順に並ぶ。
+  "mobile.history.title": "捕獲履歴",
+  "mobile.history.unsent": "未送信 {count} 件",
+  "mobile.history.remove": "履歴から削除",
   "mobile.send.title": "送信キュー",
   "mobile.send.chipNotConfigured": "未設定",
   "mobile.send.notConfigured": "ストレージが未設定です。設定を開き、詳細設定でクライアント ID を登録してください。",
@@ -1445,6 +1445,7 @@ export const ja: Record<string, string> = {
   "mobile.send.statusWaiting": "待機中",
   "mobile.send.statusSending": "送信中... {percent}%",
   "mobile.send.statusFailed": "失敗",
+  "mobile.send.statusSent": "送信済み",
   "mobile.send.retryFailed": "失敗した {count} 件を再試行",
   "mobile.send.remove": "キューから削除",
   "mobile.send.action": "送信 ({count})",
@@ -1452,11 +1453,6 @@ export const ja: Record<string, string> = {
   "mobile.send.connectStorage": "ストレージに接続",
   "mobile.send.connecting": "接続中...",
   "mobile.send.connectFailed": "接続できませんでした: {error}",
-
-  // ── 実験オプトインカード（従来ホーム） ──
-  "mobile.optIn.title": "撮ってデスクトップへ送る",
-  "mobile.optIn.body": "スマホで撮ったメモ・写真・URL を、デスクトップの Graphium 受信箱へ送れます。",
-  "mobile.optIn.try": "試す",
 
   // ── ストレージ選択（StoragePickerSheet） ──
   "mobile.storagePicker.title": "ストレージを選ぶ",
@@ -1467,8 +1463,6 @@ export const ja: Record<string, string> = {
   // ── モバイル最小設定シート ──
   "mobile.settings.storage": "ストレージ",
   "mobile.settings.changeStorage": "変更",
-  "mobile.settings.leaveExperiment": "この実験をやめる",
-  "mobile.settings.leaveExperimentHint": "従来のホームに戻ります。送信キューと接続はこの端末に保持されます。",
 
   // ── PDF エクスポート ──
   "pdf.export": "PDF",

@@ -30,14 +30,17 @@ export async function resolveMediaUrl(url: string): Promise<string> {
  * （wasm と言語データのみ CDN から取得する）。
  */
 export async function runOcrForImage(
-  url: string,
+  source: string | File | Blob,
   opts: { langs?: string; onProgress?: (p: OcrProgress) => void } = {},
 ): Promise<MediaOcrEntry> {
   const langs = opts.langs || DEFAULT_OCR_LANG;
-  const resolved = await resolveMediaUrl(url);
-  if (!resolved) throw new Error("画像 URL を解決できませんでした");
+  // File / Blob はそのまま渡す（アップロード直後など、手元に実体がある経路）。
+  // 文字列はプロバイダ内部スキームを解決してから渡す。
+  const input =
+    typeof source === "string" ? await resolveMediaUrl(source) : source;
+  if (!input) throw new Error("画像を解決できませんでした");
 
-  const { text, confidence } = await recognizeImage(resolved, {
+  const { text, confidence } = await recognizeImage(input, {
     langs,
     onProgress: opts.onProgress,
   });

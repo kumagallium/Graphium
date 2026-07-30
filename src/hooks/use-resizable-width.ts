@@ -14,12 +14,18 @@ export type ResizableWidthOptions = {
   /** 最大幅 px */
   max: number;
   /**
-   * ビューポートから反対側（メインコンテンツ側）に確保しておく幅 px。
-   * ドラッグ中の実効最大幅 = min(max, ビューポート幅 - viewportReserve)。
-   * widthStyle も CSS の min() で同じ上限を適用するため、
+   * 反対側（メインコンテンツ側）に確保しておく幅 px。
+   * ドラッグ中の実効最大幅 = min(max, パネルの親コンテナ幅 - containerReserve)。
+   * widthStyle も CSS の min() / 100% で同じ上限を適用するため、
    * 広い画面で保存した幅が狭いウィンドウでメインを潰すことはない。
+   *
+   * 基準はビューポートではなく「パネルの親コンテナ」であることに注意。
+   * inline 配置の SidePeek はサイドバーの隣に並ぶので、ビューポート基準だと
+   * サイドバー幅（256px）が二重に使われてメイン側が想定より細る。
+   * overlay 配置（position: fixed）では親コンテナ幅 ≒ ビューポート幅になり、
+   * サイドバーの上に被せる従来の挙動がそのまま保たれる。
    */
-  viewportReserve?: number;
+  containerReserve?: number;
 };
 
 /** ResizeHandle にそのままスプレッドするイベントハンドラ群 */
@@ -62,11 +68,13 @@ export function useResizableWidth({
   storageKey,
   min,
   max,
-  viewportReserve = 0,
+  containerReserve = 0,
 }: ResizableWidthOptions): ResizableWidth {
   const [width, setWidth] = useState<number | null>(() => loadStoredWidth(storageKey, min, max));
   const [isResizing, setIsResizing] = useState(false);
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startWidth: number; containerWidth: number } | null>(
+    null,
+  );
   const widthRef = useRef(width);
   widthRef.current = width;
 
@@ -89,14 +97,20 @@ export function useResizableWidth({
       // ハンドルはリサイズ対象パネルの直下に置く前提（親要素の実測幅を起点にする）
       const panel = (e.currentTarget as HTMLElement).parentElement;
       const startWidth = panel?.getBoundingClientRect().width ?? widthRef.current ?? min;
-      dragRef.current = { startX: e.clientX, startWidth };
+      // 実効最大幅の基準はパネルを収めているコンテナ。inline 配置ならサイドバーを
+      // 除いたレイアウト領域、overlay（fixed）ならほぼビューポート幅になるので、
+      // どちらの配置でも「反対側に残る幅」を実測どおりに評価できる。
+      const containerWidth =
+        panel?.parentElement?.getBoundingClientRect().width ??
+        (typeof window === "undefined" ? max + containerReserve : window.innerWidth);
+      dragRef.current = { startX: e.clientX, startWidth, containerWidth };
       // capture 中は pointermove/up がハンドル要素へ飛び続けるので window リスナー不要
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       setIsResizing(true);
       // ネイティブのテキスト選択開始を抑止
       e.preventDefault();
     },
-    [min],
+    [min, max, containerReserve],
   );
 
   const onPointerMove = useCallback(
@@ -105,11 +119,10 @@ export function useResizableWidth({
       if (!drag) return;
       // 右側パネル: 左へドラッグ（clientX 減少）で拡大
       const delta = drag.startX - e.clientX;
-      const viewport = typeof window === "undefined" ? max + viewportReserve : window.innerWidth;
-      const effectiveMax = Math.max(min, Math.min(max, viewport - viewportReserve));
+      const effectiveMax = Math.max(min, Math.min(max, drag.containerWidth - containerReserve));
       setWidth(clamp(Math.round(drag.startWidth + delta), min, effectiveMax));
     },
-    [min, max, viewportReserve],
+    [min, max, containerReserve],
   );
 
   const endDrag = useCallback(() => {
@@ -141,11 +154,14 @@ export function useResizableWidth({
     };
   }, [isResizing]);
 
+  // 100vw ではなく 100% を使う。inline 配置では親コンテナ（サイドバーを除いた
+  // レイアウト領域）が基準になり、overlay 配置（position: fixed）では包含ブロックが
+  // ビューポートになるので、1 つの式で両方の配置に正しい上限が掛かる。
   const widthStyle =
     width == null
       ? undefined
-      : viewportReserve > 0
-        ? `min(${width}px, calc(100vw - ${viewportReserve}px))`
+      : containerReserve > 0
+        ? `min(${width}px, calc(100% - ${containerReserve}px))`
         : `${width}px`;
 
   return {
@@ -170,14 +186,19 @@ export function useResizableWidth({
 export const SIDE_PEEK_WIDTH_STORAGE_KEY = "graphium-sidepeek-width";
 export const SIDE_PEEK_MIN_WIDTH = 320;
 export const SIDE_PEEK_MAX_WIDTH = 800;
-/** エディタ側に最低限残す幅 px。inline 表示はデスクトップ（768px〜）限定なので常に成立する */
-export const SIDE_PEEK_VIEWPORT_RESERVE = 360;
+/**
+ * エディタ側に最低限残す幅 px。inline 表示はデスクトップ（768px〜）限定なので常に成立する。
+ * 基準はパネルの親コンテナ幅なので、サイドバー（256px）はここに含めない。
+ * Windows の既定スケーリング 150% では 1080p でも論理幅が 1280px しかなく、
+ * ビューポート基準で数えるとエディタが 224px まで潰れていた。
+ */
+export const SIDE_PEEK_CONTAINER_RESERVE = 360;
 
 export function useSidePeekWidth(): ResizableWidth {
   return useResizableWidth({
     storageKey: SIDE_PEEK_WIDTH_STORAGE_KEY,
     min: SIDE_PEEK_MIN_WIDTH,
     max: SIDE_PEEK_MAX_WIDTH,
-    viewportReserve: SIDE_PEEK_VIEWPORT_RESERVE,
+    containerReserve: SIDE_PEEK_CONTAINER_RESERVE,
   });
 }

@@ -7,8 +7,10 @@ import { ChevronDown, ChevronRight, GitBranch } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import type { MediaIndexEntry, MediaType, MediaUsage } from "./media-index";
+import { persistOcrTextPatch } from "./media-index";
 import { formatDateTime } from "../../lib/format-datetime";
 import { getActiveProvider } from "../../lib/storage/registry";
+import { runOcrForImage } from "../media-ocr";
 
 const TYPE_HEX: Record<MediaType, string> = {
   image: "#5b8fb9",
@@ -70,14 +72,26 @@ export function MaterialMetadataSection({
   const [open, setOpen] = useState(defaultOpen);
   const derivedCount = entry.derivedFromAssets?.length ?? 0;
 
-  // 画像から読み取ったテキスト（端末内 OCR）。
-  // 実体は「その画像を貼っているノート」の page.mediaOcr にあるため、
-  // 使用先ノートを順に見て最初に見つかったものを出す。
+  // 画像から読み取ったテキスト（端末内 OCR）。取得元は 2 つある:
+  //   1. 素材自身（media-index の ocrText）— ここから読んだ結果。ノート未使用でも持てる
+  //   2. その画像を貼っているノートの page.mediaOcr — ノート側で読んだ結果
+  // 1 を優先し、無ければ 2 を探す。どちらも無ければ「読む」ボタンを出す。
   const [ocrText, setOcrText] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
   const usedIn = entry.usedIn;
   const isImage = entry.type === "image";
+  const indexOcrText = entry.ocrText?.trim() || null;
+
   useEffect(() => {
-    if (!isImage || usedIn.length === 0) {
+    if (!isImage) {
+      setOcrText(null);
+      return;
+    }
+    if (indexOcrText) {
+      setOcrText(indexOcrText);
+      return;
+    }
+    if (usedIn.length === 0) {
       setOcrText(null);
       return;
     }
@@ -101,7 +115,22 @@ export function MaterialMetadataSection({
     return () => {
       cancelled = true;
     };
-  }, [isImage, usedIn]);
+  }, [isImage, usedIn, indexOcrText]);
+
+  /** この素材の画像を読み取り、結果を media-index に残す（ノート未使用でも使える経路） */
+  const readImageText = useCallback(async () => {
+    if (reading) return;
+    setReading(true);
+    try {
+      const result = await runOcrForImage(entry.url);
+      setOcrText(result.text || null);
+      await persistOcrTextPatch(entry.fileId, result.text);
+    } catch (e) {
+      console.warn("素材の OCR に失敗:", e);
+    } finally {
+      setReading(false);
+    }
+  }, [reading, entry.url, entry.fileId]);
 
   // Name 編集
   const [editing, setEditing] = useState(false);
@@ -251,13 +280,32 @@ export function MaterialMetadataSection({
               </div>
             )}
           </MetaRow>
-          {ocrText && (
+          {isImage && (
             <MetaRow label="Text in image">
-              {/* 全文を出す。高さを絞るとスクロールバーが自動で隠れる環境で
-                  「途中で切れている」ように見えるため、パネル側のスクロールに任せる。 */}
-              <span className="text-xs text-muted-foreground whitespace-pre-wrap break-words block">
-                {ocrText}
-              </span>
+              {ocrText ? (
+                <>
+                  {/* 全文を出す。高さを絞るとスクロールバーが自動で隠れる環境で
+                      「途中で切れている」ように見えるため、パネル側のスクロールに任せる。 */}
+                  <span className="text-xs text-muted-foreground whitespace-pre-wrap break-words block">
+                    {ocrText}
+                  </span>
+                  <button
+                    onClick={() => void readImageText()}
+                    disabled={reading}
+                    className="mt-1 text-[11px] text-muted-foreground underline hover:text-foreground disabled:opacity-60"
+                  >
+                    {reading ? t("ocr.running") : t("ocr.readText")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => void readImageText()}
+                  disabled={reading}
+                  className="inline-flex items-center gap-1 text-xs text-primary underline hover:opacity-80 disabled:opacity-60"
+                >
+                  {reading ? t("ocr.running") : t("ocr.readText")}
+                </button>
+              )}
             </MetaRow>
           )}
           {derivedCount > 0 && (

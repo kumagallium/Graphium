@@ -36,6 +36,33 @@ async function loadCreateWorker() {
   return createWorker as typeof import("tesseract.js").createWorker;
 }
 
+/**
+ * worker / wasm コア / 学習データをアプリ同梱のものに向ける。
+ *
+ * tesseract.js の既定はいずれも jsdelivr で、worker を blob で作った中から
+ * `importScripts("https://cdn.jsdelivr.net/...")` を呼ぶ。デスクトップ（Tauri）の CSP は
+ * `script-src 'self'` なのでこれがブロックされ、OCR がまったく起動しない。
+ * 同一オリジンに置いた実体を指せば CSP を緩めずに動き、オフラインでも動くようになる。
+ * 実体は vite の copy-tesseract-assets プラグインが public/tesseract/ に配置する。
+ */
+function localAssetPaths(): {
+  workerPath: string;
+  corePath: string;
+  langPath: string;
+} {
+  // BASE_URL は "/Graphium/"（web）や "/"（Tauri / Vercel）。末尾スラッシュを保証する。
+  const base = import.meta.env.BASE_URL.endsWith("/")
+    ? import.meta.env.BASE_URL
+    : `${import.meta.env.BASE_URL}/`;
+  const root = new URL(`${base}tesseract/`, window.location.origin).href;
+  return {
+    workerPath: `${root}worker.min.js`,
+    // ディレクトリを渡すと worker が SIMD 対応を見てバリアントを選ぶ
+    corePath: root,
+    langPath: `${root}lang`,
+  };
+}
+
 async function getWorker(langs: string): Promise<Worker> {
   if (workerPromise && workerLangs === langs) return workerPromise;
 
@@ -50,6 +77,7 @@ async function getWorker(langs: string): Promise<Worker> {
   workerPromise = (async () => {
     const createWorker = await loadCreateWorker();
     return createWorker(langs, undefined, {
+      ...localAssetPaths(),
       logger: (m: LoggerMessage) => {
         activeProgress?.({ status: m.status, progress: m.progress ?? 0 });
       },

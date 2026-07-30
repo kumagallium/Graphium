@@ -1,24 +1,29 @@
 // @vitest-environment jsdom
-// ホームの送信キューセクション（props 駆動のプレゼンテーション層）のテスト。
+// ホームの捕獲履歴セクション（props 駆動のプレゼンテーション層）のテスト。
 //
 // 対象の不変条件:
-// - キューのアイテムは enqueue 時の正規化名 + サイズ + 状態で一覧に出る
-// - キューが空のときはセクションごと畳む（null。捕獲の入口は画面下の
+// - 捕獲履歴（送信対象）と過去のローカル項目を **1 本の時系列**（新しい順）に混ぜる
+// - 送信済み（sent）は消えずに残り、控えめな見た目 + 「送信済み」バッジになる。
+//   ローカル由来の行は状態バッジも削除ボタンも持たない（送信対象と混同しない）
+// - 履歴もローカル項目も無いときはセクションごと畳む（null。捕獲の入口は画面下の
 //   MobileCaptureBar が担うので、ここには何も残らない）
-// - [送信 (n)] は見出し行の右端が定位置（リストより前 = 上に出る）。
-//   接続済みモードのみ。draining 中は無効 + 送信中表示
-// - モードでリスト下の主アクションが切り替わる: 接続済み=なし（見出しの送信）/
-//   未接続=[ストレージに接続]（ストレージ選択ピッカーを開く。connect の実体は
-//   ピッカー側）/ 未設定=案内+設定導線のみ
+// - [送信 (n)] は見出し行の右端が定位置（リストより前 = 上に出る）。接続済み +
+//   **未送信があるときだけ**。draining 中は無効 + 送信中表示
+// - 接続 / 未設定の案内も未送信があるときだけ（送るものが無いのに接続を迫らない）
 // - 送信中アイテムは進捗（%）が出て、削除ボタンが無効になる
 // - failed があるときだけ再試行導線が出る
-// - 画像アイテムは loadItemBlob で object URL サムネイルを作り、unmount で revoke する
+// - 画像は loadThumbnail（送信済みでも残る縮小 JPEG）で object URL サムネイルを作り、
+//   unmount で revoke する。メモ / URL は実体が無くても preview で文字が残る
 //
 // 文言は LocaleProvider の既定（jsdom の navigator.language → en）で照合する。
 
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { SendQueueSection, type SendQueueSectionProps } from "./SendQueueSection";
+import {
+  CaptureHistorySection,
+  type CaptureHistorySectionProps,
+  type LocalCaptureItem,
+} from "./CaptureHistorySection";
 import { LocaleProvider } from "../../../i18n";
 import type { PushQueueItemMeta } from "./push";
 
@@ -54,8 +59,31 @@ function item(
   };
 }
 
-const baseProps: SendQueueSectionProps = {
+function sentItem(
+  id: string,
+  name: string,
+  overrides: Partial<PushQueueItemMeta> = {},
+): PushQueueItemMeta {
+  return item(id, name, {
+    status: "sent",
+    sentAt: "2026-07-27T10:21:00.000Z",
+    ...overrides,
+  });
+}
+
+function localItem(overrides: Partial<LocalCaptureItem> = {}): LocalCaptureItem {
+  return {
+    id: "local-1",
+    kind: "memo",
+    title: "older local memo",
+    timestamp: "2026-07-26T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+const baseProps: CaptureHistorySectionProps = {
   items: [],
+  localItems: [],
   draining: false,
   activeId: null,
   progress: {},
@@ -70,16 +98,23 @@ const baseProps: SendQueueSectionProps = {
   onOpenSettings: () => {},
 };
 
-function renderSection(overrides: Partial<SendQueueSectionProps> = {}) {
+function renderSection(overrides: Partial<CaptureHistorySectionProps> = {}) {
   return render(
     <LocaleProvider>
-      <SendQueueSection {...baseProps} {...overrides} />
+      <CaptureHistorySection {...baseProps} {...overrides} />
     </LocaleProvider>,
   );
 }
 
-describe("SendQueueSection", () => {
-  it("lists queue items under their normalized names with size and state", () => {
+/** 行の並び（DOM 順）を data-status 付きで読む。 */
+function rowStates(): string[] {
+  return Array.from(document.querySelectorAll("[data-testid=capture-history-row]")).map(
+    (row) => row.getAttribute("data-status") ?? "",
+  );
+}
+
+describe("CaptureHistorySection", () => {
+  it("lists capture items under their normalized names with size and state", () => {
     renderSection({
       items: [
         item("a", "graphium-20260727-102030-01.jpg"),
@@ -94,16 +129,64 @@ describe("SendQueueSection", () => {
     expect(screen.getByText("graphium-20260727-102030-02.mov")).toBeTruthy();
     expect(screen.getByText("400.0 KB")).toBeTruthy();
     expect(screen.getAllByText("Waiting")).toHaveLength(2);
-    // 接続済みモードの送信ボタン（pending 2 件）
+    // 接続済み + 未送信ありの送信ボタン
     expect(screen.getByRole("button", { name: /Send \(2\)/ })).toBeTruthy();
   });
 
-  it("renders nothing at all while the queue is empty", () => {
-    const { container } = renderSection({ items: [] });
+  it("renders nothing at all while there is no history and no local item", () => {
+    const { container } = renderSection({ items: [], localItems: [] });
 
-    expect(container.querySelector("[data-testid=send-queue-block]")).toBeNull();
-    // 捕獲の入口は MobileCaptureBar 側にあるので、空キューでは何も出さない
+    expect(container.querySelector("[data-testid=capture-history-block]")).toBeNull();
+    // 捕獲の入口は MobileCaptureBar 側にあるので、空の履歴では何も出さない
     expect(container.firstElementChild).toBeNull();
+  });
+
+  it("keeps sent captures in the list, quietly marked as sent", () => {
+    renderSection({ items: [sentItem("a", "graphium-20260727-102030-01.jpg")] });
+
+    // 送っても消えない（撮った手応えが残る）
+    expect(screen.getByText("graphium-20260727-102030-01.jpg")).toBeTruthy();
+    expect(screen.getByText("Sent")).toBeTruthy();
+    expect(rowStates()).toEqual(["sent"]);
+    // 送るものが無いので送信ボタンも接続導線も出さない
+    expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
+    // 履歴からの手動削除はできる
+    expect(screen.getByRole("button", { name: "Remove from history" })).toBeTruthy();
+  });
+
+  it("merges push history and local items into one newest-first timeline", () => {
+    renderSection({
+      items: [
+        item("new", "graphium-20260727-102030-01.jpg"), // 07-27 10:20
+        sentItem("old", "graphium-20260725-090000-01.jpg", {
+          enqueuedAt: "2026-07-25T09:00:00.000Z",
+          sentAt: "2026-07-25T09:00:30.000Z",
+        }),
+      ],
+      localItems: [
+        localItem({ id: "l1", title: "older local memo", timestamp: "2026-07-26T08:00:00.000Z" }),
+      ],
+    });
+
+    // 新しい順: pending(07-27) → local(07-26) → sent(07-25)
+    expect(rowStates()).toEqual(["pending", "local", "sent"]);
+    // ローカル行は状態バッジも削除ボタンも持たない（送信対象と混同させない）
+    const local = document.querySelector("[data-status=local]")!;
+    expect(local.querySelector("button")).toBeNull();
+    expect(local.textContent).toContain("older local memo");
+    expect(screen.getByText("1 unsent")).toBeTruthy();
+  });
+
+  it("opens a local row through onOpenLocalItem", () => {
+    const onOpenLocalItem = vi.fn();
+    renderSection({
+      localItems: [localItem({ id: "l1", kind: "image", title: "photo.jpg" })],
+      onOpenLocalItem,
+    });
+
+    fireEvent.click(screen.getByText("photo.jpg"));
+    expect(onOpenLocalItem).toHaveBeenCalledTimes(1);
+    expect(onOpenLocalItem.mock.calls[0][0]).toMatchObject({ id: "l1", kind: "image" });
   });
 
   it("anchors the send button in the heading row, above the list", () => {
@@ -112,7 +195,7 @@ describe("SendQueueSection", () => {
     });
 
     const send = screen.getByRole("button", { name: /Send \(2\)/ });
-    const firstRow = screen.getByText("graphium-a.jpg");
+    const firstRow = screen.getByText("graphium-b.jpg");
     // 見出し行（送信ボタン）はリストより前 = リストが伸びても位置が動かない
     expect(
       send.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -128,6 +211,7 @@ describe("SendQueueSection", () => {
     });
 
     expect(screen.getByText("Sending... 50%")).toBeTruthy();
+    expect(rowStates()).toEqual(["uploading"]);
     const remove = screen.getByRole("button", { name: "Remove from queue" });
     expect((remove as HTMLButtonElement).disabled).toBe(true);
     // 見出し行の送信ボタンは送信中表示 + 無効
@@ -156,6 +240,16 @@ describe("SendQueueSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect storage" }));
     expect(onOpenStoragePicker).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /Send \(/ })).toBeNull();
+  });
+
+  it("hides the connect and setup prompts once everything has been sent", () => {
+    // 送るものが無い履歴だけの状態で接続を迫らない
+    renderSection({ connected: false, items: [sentItem("a", "graphium-a.jpg")] });
+    expect(screen.queryByRole("button", { name: "Connect storage" })).toBeNull();
+
+    cleanup();
+    renderSection({ configured: false, connected: false, items: [sentItem("a", "graphium-a.jpg")] });
+    expect(screen.queryByText(/isn't set up yet/)).toBeNull();
   });
 
   it("points to Settings as the only action when no client ID is configured", () => {
@@ -195,6 +289,8 @@ describe("SendQueueSection", () => {
     expect(onRetryFailed).toHaveBeenCalledTimes(1);
     // failed は送信対象から外れているので Send のカウントは pending のみ
     expect(screen.getByRole("button", { name: /Send \(1\)/ })).toBeTruthy();
+    // 未送信の件数は待機 + 失敗
+    expect(screen.getByText("2 unsent")).toBeTruthy();
   });
 
   it("surfaces connect errors", () => {
@@ -206,34 +302,35 @@ describe("SendQueueSection", () => {
     expect(screen.getByText(/Popup closed by user/)).toBeTruthy();
   });
 
-  it("builds image thumbnails from the queued blob and revokes them on unmount", async () => {
-    const loadItemBlob = vi.fn(async () =>
+  it("builds image thumbnails from the stored thumbnail and revokes them on unmount", async () => {
+    const loadThumbnail = vi.fn(async () =>
       new Blob([new Uint8Array([1]) as BlobPart], { type: "image/jpeg" }),
     );
     const { container, unmount } = renderSection({
       items: [
-        item("a", "graphium-a.jpg"),
+        // 送信済み（実体は捨てられている）でもサムネは出る
+        sentItem("a", "graphium-a.jpg"),
         item("b", "graphium-b.m4a", { mime: "audio/mp4" }),
       ],
-      loadItemBlob,
+      loadThumbnail,
     });
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
-    // 画像だけが Blob を読む（音声は種別アイコンのまま）
-    expect(loadItemBlob).toHaveBeenCalledTimes(1);
-    expect(loadItemBlob).toHaveBeenCalledWith("a");
+    // 画像だけがサムネを読む（音声は種別アイコンのまま）
+    expect(loadThumbnail).toHaveBeenCalledTimes(1);
+    expect(loadThumbnail).toHaveBeenCalledWith("a");
     await waitFor(() => {
       const img = container.querySelector("img");
       expect(img?.getAttribute("src")).toBe("blob:thumb-1");
     });
 
-    // 行が消える（削除・送信完了・ビュー離脱）と必ず revoke される
+    // 行が消える（削除・ビュー離脱）と必ず revoke される
     unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:thumb-1");
   });
 });
 
-describe("SendQueueSection — memo / URL 捕獲", () => {
+describe("CaptureHistorySection — memo / URL 捕獲", () => {
   const memoItem = item("m", "graphium-20260727-153000-01-memo.graphium.json", {
     mime: "application/vnd.graphium.capture+json",
     bytes: 120,
@@ -285,6 +382,29 @@ describe("SendQueueSection — memo / URL 捕獲", () => {
     expect(screen.queryByText(urlItem.name)).toBeNull();
   });
 
+  it("keeps the memo / url preview after the blob is discarded (sent rows)", () => {
+    // 送信済み = 実体が読めない。enqueue 時にレコードへ写した preview で文字が残る
+    renderSection({
+      items: [
+        sentItem("m", memoItem.name, {
+          mime: memoItem.mime,
+          preview: "queued thought",
+        }),
+        sentItem("u", urlItem.name, {
+          mime: urlItem.mime,
+          preview: "Example Read",
+          previewUrl: "https://example.com/read",
+        }),
+      ],
+      loadItemBlob: async () => null,
+    });
+
+    expect(screen.getByText("queued thought")).toBeTruthy();
+    expect(screen.getByText("Example Read")).toBeTruthy();
+    expect(screen.getByText("example.com")).toBeTruthy();
+    expect(screen.queryByText(memoItem.name)).toBeNull();
+  });
+
   it("mixes capture rows with media rows in the same list and keeps the send count", async () => {
     renderSection({
       items: [item("a", "graphium-20260727-153000-03.jpg"), memoItem, urlItem],
@@ -297,8 +417,8 @@ describe("SendQueueSection — memo / URL 捕獲", () => {
     expect(screen.getByRole("button", { name: /Send \(3\)/ })).toBeTruthy();
   });
 
-  it("falls back to the file name when the payload cannot be read", () => {
-    // loadItemBlob 無し（読めない環境）→ 名前表示のまま（何も壊れない）
+  it("falls back to the file name when neither the payload nor a preview is available", () => {
+    // loadItemBlob 無し・preview 無し（旧レコード）→ 名前表示のまま（何も壊れない）
     renderSection({ items: [memoItem] });
     expect(screen.getByText(memoItem.name)).toBeTruthy();
   });

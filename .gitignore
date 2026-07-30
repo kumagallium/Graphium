@@ -12,6 +12,7 @@ public/release_notes.json
 public/pdfjs/
 # MathLive のフォント（node_modules からコピー、vite.config.ts 参照）
 public/mathlive/
+public/tesseract/
 
 # 各 bench スクリプトの一時出力（実行ごとに上書き）
 # baseline.json / 名前付き snapshot は別途 track する。
