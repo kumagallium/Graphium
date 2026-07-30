@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.26.0](https://github.com/kumagallium/Graphium/compare/v0.25.2...v0.26.0) - 2026-07-30
+
+- [fix] Record voice in the app instead of opening iOS's video recorder by @kumagallium in https://github.com/kumagallium/Graphium/pull/634
+
 ## [v0.25.2](https://github.com/kumagallium/Graphium/compare/v0.25.1...v0.25.2) - 2026-07-30
 
 - [fix] Return to the material list when the sidebar category is re-selected by @kumagallium in https://github.com/kumagallium/Graphium/pull/631
