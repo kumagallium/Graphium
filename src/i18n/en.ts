@@ -555,7 +555,7 @@ export const en: Record<string, string> = {
   "settings.identity.error.email": "Email looks invalid (must contain @).",
   // ── Shared storage (team-shared-storage Phase 1c) ──
   "settings.shared.title": "Shared storage",
-  "settings.shared.help": "Pick a folder (e.g. lab NAS, Dropbox-synced folder) to share notes, references, and concepts with your team. Phase 1: configuration only — Share buttons land in a later release.",
+  "settings.shared.help": "Pick a folder (e.g. lab NAS, Dropbox-synced folder) to share notes, references, and concepts with your team. Once it is set, open a note's ⋯ menu and choose Share with team; shared entries appear under Library → Shared in the sidebar.",
   "settings.shared.rootLabel": "Shared folder",
   "settings.shared.blobRootLabel": "Blob folder (large binaries)",
   "settings.shared.notSet": "Not configured",
