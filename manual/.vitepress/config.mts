@@ -45,9 +45,9 @@ export default defineConfig({
       {
         text: 'Going Further',
         items: [
+          { text: 'Labels & provenance', link: '/labels-and-provenance' },
           { text: 'Setting up AI', link: '/ai-setup' },
           { text: 'Chat & Ask (Cmd+K)', link: '/ai-chat-and-ask' },
-          { text: 'Labels & provenance', link: '/labels-and-provenance' },
           { text: 'Knowledge layer', link: '/knowledge-layer' },
           { text: 'World grounding', link: '/ai-grounding' },
         ],
