@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.24.0](https://github.com/kumagallium/Graphium/compare/v0.23.1...v0.24.0) - 2026-07-30
+
+- Render formulas as math blocks instead of raw LaTeX text by @kumagallium in https://github.com/kumagallium/Graphium/pull/615
+- Let people write formulas without knowing LaTeX (MathLive) by @kumagallium in https://github.com/kumagallium/Graphium/pull/616
+- Use the brand green for the block selection outline by @kumagallium in https://github.com/kumagallium/Graphium/pull/618
+- Persist AI chats started from the material view by @kumagallium in https://github.com/kumagallium/Graphium/pull/617
+- Keep sent captures on screen: turn the send queue into a capture history by @kumagallium in https://github.com/kumagallium/Graphium/pull/620
+- [fix] Make image OCR work in the desktop build by @kumagallium in https://github.com/kumagallium/Graphium/pull/621
+- [feat] Read images on upload, and in bulk from the asset list by @kumagallium in https://github.com/kumagallium/Graphium/pull/623
+- Promote mobile capture out of the experiment: remove the flag and the legacy home by @kumagallium in https://github.com/kumagallium/Graphium/pull/624
+- [fix] Fit the desktop window and side peek to Windows 150% display scaling by @kumagallium in https://github.com/kumagallium/Graphium/pull/625
+
 ## [v0.23.1](https://github.com/kumagallium/Graphium/compare/v0.23.0...v0.23.1) - 2026-07-29
 
 - Mobile upload settings: connect on the phone, receive on the desktop by @kumagallium in https://github.com/kumagallium/Graphium/pull/611
