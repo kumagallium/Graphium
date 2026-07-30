@@ -26,6 +26,7 @@
  "manual:dev": "vitepress dev manual --port 5199",
  "manual:build": "vitepress build manual",
  "manual:preview": "vitepress preview manual --port 5199",
+ "manual:check": "node scripts/check-manual.mjs",
     "test": "vitest",
     "test:e2e": "node e2e/save-smoke.mjs",
     "test:benchmark": "tsx --env-file .env tests/benchmark/material-science/runner.ts",

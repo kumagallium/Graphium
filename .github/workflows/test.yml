@@ -32,6 +32,12 @@ jobs:
       - name: Run tests
         run: pnpm test -- --run
 
+      # マニュアルが実態からズレていないか（バッジのバージョン実在・ロードマップの
+      # 遅れ・日英の食い違い・リンク/アンカー/図の実在）。リリース履歴は CHANGELOG を
+      # ビルド時に取り込むので対象外。
+      - name: Manual drift check
+        run: pnpm manual:check
+
       - name: Build check
         run: pnpm build
 
