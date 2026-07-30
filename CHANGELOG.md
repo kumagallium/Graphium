@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.25.0](https://github.com/kumagallium/Graphium/compare/v0.24.0...v0.25.0) - 2026-07-30
+
+- [fix] Point shared-storage settings help at the shipped Share flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/626
+- Add a comprehensive user manual (VitePress) at /Graphium/manual/ by @kumagallium in https://github.com/kumagallium/Graphium/pull/622
+
 ## [v0.24.0](https://github.com/kumagallium/Graphium/compare/v0.23.1...v0.24.0) - 2026-07-30
 
 - Render formulas as math blocks instead of raw LaTeX text by @kumagallium in https://github.com/kumagallium/Graphium/pull/615
