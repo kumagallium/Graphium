@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.25.1](https://github.com/kumagallium/Graphium/compare/v0.25.0...v0.25.1) - 2026-07-30
+
+- Apply the Graphium brand tokens to the manual theme by @kumagallium in https://github.com/kumagallium/Graphium/pull/628
+
 ## [v0.25.0](https://github.com/kumagallium/Graphium/compare/v0.24.0...v0.25.0) - 2026-07-30
 
 - [fix] Point shared-storage settings help at the shipped Share flow by @kumagallium in https://github.com/kumagallium/Graphium/pull/626
