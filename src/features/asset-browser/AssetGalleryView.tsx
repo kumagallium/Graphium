@@ -482,6 +482,15 @@ export type AssetGalleryViewProps = {
   focusFullMode?: boolean;
   onFocusConsumed?: () => void;
   /**
+   * 「一覧に戻せ」というシグナル。値が変わるたびに開きっぱなしの SidePeek / Full view を
+   * 畳んで一覧表示へ戻す。note-app の closeAllViews から渡される。
+   * 素材タイプの切替は mediaType 変化で畳めるが、**同じタイプを押し直した場合**は
+   * mediaType も変わらず再マウントもされないため、親から畳む手段がこれしかない
+   * （例: ドキュメントを Full view で開いた状態でサイドバーの「ドキュメント」を押す →
+   * 従来は無反応に見えていた）。
+   */
+  backToListSeq?: number;
+  /**
    * PDF text-layer の選択を新規メモとして保存する。
    * note-app から渡される。AssetGalleryView はノートを開かないため、
    * 引用は「メモに保存」の 1 ステップに揃えた（後でメモピッカーから任意のノートに引用できる）。
@@ -566,6 +575,7 @@ export function AssetGalleryView({
   focusFileId,
   focusFullMode,
   onFocusConsumed,
+  backToListSeq,
   onSaveSelectionAsMemo,
   onSaveImageAsAsset,
   captureIndex,
@@ -592,6 +602,20 @@ export function AssetGalleryView({
     // タブ切替時に Documents サブフィルタもリセット
     setDocFilter("all");
   }, [mediaType]);
+
+  // 親（note-app の closeAllViews）から「一覧に戻せ」と言われたら畳む。
+  // 同じ素材タイプを押し直したときは mediaType が変わらず上の effect が走らないため、
+  // seq の変化で検知する。これが無いと Full view のまま
+  // 「サイドバーの素材カテゴリを押しても無反応」になる。
+  // 初回マウント時も 1 度走るが detailEntry は null なので無害。
+  // focus 反映（下の effect）より前に置く: 素材ピークの最大化は
+  // closeAllViews() → setActiveAssetType() → setFocusedMaterial() の順で来るので、
+  // declaration 順で「畳んでから開く」を保証する。
+  useEffect(() => {
+    if (backToListSeq === undefined) return;
+    setDetailEntry(null);
+    setDetailFullMode(false);
+  }, [backToListSeq]);
 
   // 親から focusFileId が降ってきたら、その entry を SidePeek / Full view で開く。
   // ノートのグラフから画像ノードクリック → このアセットを Full view で表示、の経路。
