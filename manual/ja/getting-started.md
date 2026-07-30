@@ -16,11 +16,11 @@
 **+ ノート** を押してタイトルを付け、始める前に分かっていることを書きます。計画、分量、ふと浮かんだ勘。
 
 ```
-Bread dough trial #3
+パン生地の試作 #3
 
-Trying a longer ferment than trial #2.
-Bread flour 300 g / water 200 g / dry yeast 3 g / salt 5 g
-Hunch: the crumb was dense last time because the proof was too short.
+試作 #2 より長めに発酵させてみる。
+強力粉 300 g / 水 200 g / ドライイースト 3 g / 塩 5 g
+仮説: 前回クラムが詰まったのは、発酵が短すぎたせいかもしれない。
 ```
 
 ![最初のノート — タイトルと素のテキスト数行だけで十分](/screenshots/first-note.png)
@@ -55,7 +55,7 @@ Hunch: the crumb was dense last time because the proof was too short.
 
 ### ステップで進め方を見えるようにする <Badge type="tip" text="v0.23.0 (2026-07-28) で追加" />
 
-ノートが *やったこと* を書いたものなら、ステップは文章を辿れる記録に変えます。
+ノートが *やったこと* を書いたものなら、ステップはその文章を辿れる記録に変えます。
 
 1. `/` を打って **ステップ**（**高度なブロック** の中）を選びます。ステップブロックは本文・表・画像を入れられる容器です。`Mix` と名前を付けて、材料の行を中に移します。
 2. ステップのヘッダーで **次ステップ** → **新しく作る** を選び `Ferment`、続けて `Bake`。順序は Graphium がリンクします（**前手順** チップでつなぎ直せます。枝分かれは問題なく、循環だけが止められます）。

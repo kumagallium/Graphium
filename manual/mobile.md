@@ -28,7 +28,7 @@ Open [the app](https://kumagallium.github.io/Graphium/app/) in your phone's brow
 
 ![Writing a memo on the phone](/screenshots/mobile-memo-input.png)
 
-Everything you capture here is meant to travel to your desktop. Each capture joins the **Send queue** the moment it is taken — persisted on the phone, so nothing is lost if you close the browser or go offline. Pending items stay pinned at the top of the home with an unsent count, each row shows its status (**Waiting**, **Sending...**, **Sent**, **Failed** with a retry), and **Send** uploads the queue to your cloud storage (next section). A chip in the header shows whether storage is connected.
+Everything you capture here is meant to travel to your desktop. Each capture joins the **Send queue** the moment it is taken — persisted on the phone, so nothing is lost if you close the browser or go offline. Pending items stay pinned at the top of the home with an unsent count, each row shows its status (**Waiting**, **Sending...**, **Sent**, **Failed** with a retry), and **Send** uploads the queue to your cloud storage (next section). Sent captures stay in the list rather than vanishing, so you can see what already made it across; **Remove from history** clears a row you no longer need. A chip in the header shows whether storage is connected.
 
 ::: tip Install it like an app
 Graphium is an installable web app (PWA). Use your phone browser's "Add to Home Screen" and it launches full-screen, no browser chrome.
