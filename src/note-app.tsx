@@ -5154,6 +5154,10 @@ export function NoteApp() {
   // 開いた後にノートを最大化するとスキル一覧が出続けるバグ）。
   // 各ハンドラが個別に N-1 個クリアする方式は、ビューを 1 つ足すたびに消し忘れ、
   // 同種のバグを再発させてきた。ここに集約し「畳んでから自分のフラグだけ立てる」に統一する。
+  // 素材ギャラリー（AssetGalleryView）の「詳細ピーク／Full view」は上のフラグでは畳めない
+  // — コンポーネント内部の state だからだ。activeAssetType を同じ値で押し直すと
+  // 再マウントもされないため、closeAllViews からこのカウンタを上げて畳むよう伝える。
+  const [assetViewResetSeq, setAssetViewResetSeq] = useState(0);
   const closeAllViews = useCallback(() => {
     fm.setShowNoteList(false);
     fm.setActiveAssetType(null);
@@ -5166,6 +5170,9 @@ export function NoteApp() {
     setShowGlobalGraph(false);
     setShowSkillList(false);
     setActiveWikiView(null);
+    // 素材を Full view で開いたままサイドバーの同じ素材カテゴリを押すと
+    // 「一覧に戻れない（押しても無反応）」になるのを防ぐ。
+    setAssetViewResetSeq((n) => n + 1);
   }, [fm]);
   // 通常ノート ID → 派生 wiki エントリ配列の逆引きマップ（Knowledge 化済み判定用）
   const appKnowledgeMap = useMemo(() => buildKnowledgeMap(fm.noteIndex ?? null), [fm.noteIndex]);
@@ -7217,6 +7224,7 @@ export function NoteApp() {
             focusFileId={focusedMaterial?.fileId}
             focusFullMode={focusedMaterial?.fullMode}
             onFocusConsumed={() => setFocusedMaterial(null)}
+            backToListSeq={assetViewResetSeq}
             onBack={() => { setAssetSidePeekNoteId(null); fm.setActiveAssetType(null); }}
             onOpenNoteInSidePeek={(noteId) => {
               // 利用ノードクリック等：アセット画面を離れず、右に SidePeek で開く。
