@@ -6,7 +6,7 @@ Graphium has shipped small releases since March 2026. This page is the retrospec
 Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" /> next to the section that describes them. If your app is older than a badge, [update it](/desktop-app#updating) to get the feature.
 :::
 
-## 2026 Q1–Q2 · The foundation
+## 2026 Q1–Q2 · The editor, your own storage, exportable provenance
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -17,7 +17,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.5.0** | 2026-04-30 | [Inline labels](/labels-and-provenance#inline-labels) become first-class: highlight a span and mark it Input / Tool / Parameter / Output from the toolbar. macOS builds are signed and notarized. |
 | **v0.6.0** | 2026-05-05 | [Team-shared storage](/storage-and-sync#sharing-notes-with-your-team) — publish a note to a shared folder and fork what others shared. |
 
-## 2026 Q2 · Knowledge and grounding
+## 2026 Q2 · Reading sources, distilling and checking knowledge
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -29,7 +29,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.13.6** | 2026-06-04 | [MCP servers](/ai-setup#mcp-servers) connect directly, so the AI can call external tools — web search, your own APIs. |
 | **v0.14.0** | 2026-06-05 | [Translate a PDF or web page into a note](/materials-and-citations#turning-materials-into-notes-and-knowledge-ai), page by page, with figures placed back where they belong. |
 
-## 2026 Q2–Q3 · AI that cites its sources
+## 2026 Q2–Q3 · AI you can steer, check, and keep
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -42,7 +42,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.17.1** | 2026-07-06 | [Chats stay with the note and keep running](/ai-chat-and-ask#chats-stay-with-the-note-and-keep-running) — switch away mid-answer and it still lands in the right place. |
 | **v0.17.3** | 2026-07-13 | [Knowledge growth becomes provenance](/knowledge-layer#provenance-of-knowledge): every generation step is recorded as a PROV activity. |
 
-## 2026 Q3 · Everyday polish
+## 2026 Q3 · More ways in, more structure for what you did
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -52,12 +52,6 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.23.0** | 2026-07-28 | [Step blocks](/labels-and-provenance#step-blocks) — a real container for one action, with prev/next links that give the graph its order. |
 | **v0.23.1** | 2026-07-29 | [Capture on your phone, receive on your desktop](/mobile#sending-captures-to-your-desktop) through your own cloud storage. |
 
-## What's next
+## Requests welcome
 
-Graphium is a personal open-source project, so the roadmap ahead is a direction rather than a schedule. The current threads:
-
-- **Fewer concepts, not more.** The recurring lesson from the releases above is that removing a hidden threshold beats adding a feature. Expect simplification passes alongside new capability.
-- **Knowledge that stays trustworthy as it grows.** Deeper lineage for generated knowledge, and grounding that gets cheaper the more you use it.
-- **More platforms.** macOS (Apple Silicon) and Windows x64 are the verified desktop builds today; other targets are unverified.
-
-For what is actually in flight, watch the [releases](https://github.com/kumagallium/Graphium/releases) and the [issues](https://github.com/kumagallium/Graphium/issues) on GitHub.
+Graphium grows with the people who use it. If something you need is missing — or something already here gets in your way — please tell me: [@kumagallium on X](https://x.com/kumagallium), or open an [issue](https://github.com/kumagallium/Graphium/issues) on GitHub.
