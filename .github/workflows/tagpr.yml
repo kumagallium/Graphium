@@ -13,7 +13,10 @@ jobs:
   tagpr:
     runs-on: ubuntu-latest
     steps:
+      # ロードマップ nudge が前回タグ以降の履歴を読むので全履歴を取る。
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: Songmu/tagpr@v1
         id: tagpr
@@ -28,3 +31,60 @@ jobs:
         run: |
           echo "New tag: ${{ steps.tagpr.outputs.tag }}"
           gh workflow run "Tauri Desktop Build" -f release_tag="${{ steps.tagpr.outputs.tag }}"
+
+      # リリース PR に「この中にマニュアルの機能ロードマップへ載せる節目はあるか」を聞く。
+      # ロードマップは自動生成しない — 節目を選ぶ編集判断がページの価値なので、機械は材料を出すだけ。
+      #
+      # この job（push: main）の中に置いているのは、tagpr が GITHUB_TOKEN で push する結果
+      # リリース PR では pull_request イベントの workflow が起動しないため。実際 tagpr ブランチでは
+      # CI が 1 本も走らない。コメントを届ける経路はここしかない。
+      - name: Nudge the roadmap on the release PR
+        if: steps.tagpr.outputs.pull_request != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_JSON: ${{ steps.tagpr.outputs.pull_request }}
+          BASE_TAG: ${{ steps.tagpr.outputs.base_tag }}
+        run: |
+          pr=$(jq -r '.number // empty' <<<"$PR_JSON")
+          if [ -z "$pr" ]; then
+            echo "release PR number not found in tagpr output; skipping"
+            exit 0
+          fi
+
+          range="HEAD"
+          [ -n "$BASE_TAG" ] && range="$BASE_TAG..HEAD"
+          git log "$range" --no-merges --pretty=format:'%s' \
+            | grep -E '\(#[0-9]+\)$' \
+            | sed -E 's/^/- /' > /tmp/prs.txt || true
+
+          if [ ! -s /tmp/prs.txt ]; then
+            echo "no merged PRs since ${BASE_TAG:-the beginning}; skipping"
+            exit 0
+          fi
+
+          {
+            echo "<!-- roadmap-nudge -->"
+            echo "### マニュアルの機能ロードマップ"
+            echo
+            echo "${BASE_TAG:-最初} 以降にマージされた変更です。**「できること」が変わったものがあれば**、"
+            echo "\`manual/roadmap.md\` と \`manual/ja/roadmap.md\` に 1 行ずつ足してください"
+            echo "（該当する章に \`Added in vX.Y.Z\` バッジも）。無ければこのコメントは無視して構いません。"
+            echo
+            cat /tmp/prs.txt
+            echo
+            echo
+            echo "---"
+            echo "全変更の記録は CHANGELOG から自動で[リリース履歴](https://kumagallium.github.io/Graphium/manual/release-history)に載ります。ここで拾うのは節目だけです。ズレの検査は \`pnpm manual:check\`。"
+          } > /tmp/comment.md
+
+          # リリース PR は main に push するたび更新されるので、コメントは 1 本を書き換える
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" \
+            --jq '[.[] | select(.body | startswith("<!-- roadmap-nudge -->")) | .id] | first // empty')
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" \
+              -F body=@/tmp/comment.md > /dev/null
+            echo "updated comment $existing on PR #$pr"
+          else
+            gh pr comment "$pr" --body-file /tmp/comment.md --repo "$GITHUB_REPOSITORY"
+            echo "created comment on PR #$pr"
+          fi
