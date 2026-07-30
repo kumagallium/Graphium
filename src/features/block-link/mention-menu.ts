@@ -247,7 +247,7 @@ export function getNoteSuggestions(
         type: "note",
         id: wiki.noteId,
         label: formatWikiMentionLabel(wiki.wikiKind, wiki.title),
-        group: "AI Knowledge",
+        group: t("mention.groupKnowledge"),
       };
       suggestions.push(s);
       entries.push({ suggestion: s, title: wiki.title, modifiedAt: wiki.modifiedAt });

@@ -143,7 +143,7 @@ describe("buildDiscoveryCards", () => {
     ]);
     // hint で type を区別
     expect(cards.map((c) => c.hint)).toEqual([
-      "最近作られた Wiki",
+      "最近作られたナレッジ",
       "他ノートとの横断更新の提案",
       "別モデルでの再生成結果",
       "複数ノートを統合した Synthesis",
@@ -275,7 +275,7 @@ describe("promptForDiscoveryCard", () => {
     expect(promptForDiscoveryCard({ id: "x", title: "t", action: { kind: "summarize-note" } })).toContain("3 行");
     expect(promptForDiscoveryCard({ id: "x", title: "t", action: { kind: "continue-writing" } })).toContain("続き");
     expect(promptForDiscoveryCard({ id: "x", title: "t", action: { kind: "visualize-prov" } })).toContain("PROV");
-    expect(promptForDiscoveryCard({ id: "x", title: "t", action: { kind: "make-concept-wiki" } })).toContain("Concept");
+    expect(promptForDiscoveryCard({ id: "x", title: "t", action: { kind: "make-concept-wiki" } })).toContain("頻出キーワード");
   });
 
   it("custom action は key で分岐", () => {

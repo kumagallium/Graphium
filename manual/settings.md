@@ -72,7 +72,7 @@ Maintenance jobs for the [Knowledge layer](/knowledge-layer). These run LLM call
 | Group | What it does |
 |---|---|
 | **Connection Status** | Shows the health of each backend component, with a **Restart backend** button on the desktop app. |
-| **Re-embed all Wikis** | Rebuilds the embeddings behind AI chat citation search — use it if citation lookup stops working. |
+| **Re-embed all Knowledge** | Rebuilds the embeddings behind AI chat citation search — use it if citation lookup stops working. |
 | **Bulk regenerate Knowledge** | Rebuilds existing Knowledge pages after you change prompts or models, with **Target kinds** filters (**Claims** / **Summaries** / **Insights**), an optional model override, cancel support, and **Retry failed only**. |
 | **Discover Insights from Claims** | Scans all Claims at once and factors out shared insights that recur across two or more of them. |
 

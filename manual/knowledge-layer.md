@@ -86,7 +86,7 @@ The [Settings](/settings) → **Knowledge** tab holds corpus-wide maintenance:
 | Tool | When to use it |
 |---|---|
 | **Bulk regenerate Knowledge** | After changing models — rebuild pages by kind (**Target kinds**), with an optional **Model override (optional)**, progress display, cancel, and **Retry failed only** |
-| **Re-embed all Wikis** | When AI-chat citation search stops finding your knowledge — rebuilds the embeddings for every page |
+| **Re-embed all Knowledge** | When AI-chat citation search stops finding your knowledge — rebuilds the embeddings for every page |
 
 Both show a confirmation with the count first; regeneration issues LLM calls and consumes tokens.
 
