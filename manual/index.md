@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Graphium
   text: User Manual
-  tagline: An inspiration notebook for the AI era — the more you write, the more the dots connect into insight.
+  tagline: How to use Graphium — from your first note to materials, AI, and provenance.
   image:
     src: /logo.png
     alt: Graphium

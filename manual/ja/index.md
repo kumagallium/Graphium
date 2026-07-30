@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Graphium
   text: ユーザーマニュアル
-  tagline: AI 時代のひらめきノート — 書けば書くほど、点と点が繋がります。
+  tagline: Graphium の使い方 — 最初のノートから、素材・AI・来歴まで。
   image:
     src: /logo.png
     alt: Graphium
