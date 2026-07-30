@@ -6,7 +6,7 @@ Graphium has shipped small releases since March 2026. This page is the retrospec
 Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" /> next to the section that describes them. If your app is older than a badge, [update it](/desktop-app#updating) to get the feature.
 :::
 
-## 2026 Q1–Q2 · The editor, your own storage, exportable provenance
+## 2026 Q1–Q2 · Foundations: editor and provenance
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -17,7 +17,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.5.0** | 2026-04-30 | [Inline labels](/labels-and-provenance#inline-labels) become first-class: highlight a span and mark it Input / Tool / Parameter / Output from the toolbar. macOS builds are signed and notarized. |
 | **v0.6.0** | 2026-05-05 | [Team-shared storage](/storage-and-sync#sharing-notes-with-your-team) — publish a note to a shared folder and fork what others shared. |
 
-## 2026 Q2 · Reading sources, distilling and checking knowledge
+## 2026 Q2 · From sources to knowledge
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -29,7 +29,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.13.6** | 2026-06-04 | [MCP servers](/ai-setup#mcp-servers) connect directly, so the AI can call external tools — web search, your own APIs. |
 | **v0.14.0** | 2026-06-05 | [Translate a PDF or web page into a note](/materials-and-citations#turning-materials-into-notes-and-knowledge-ai), page by page, with figures placed back where they belong. |
 
-## 2026 Q2–Q3 · AI you can steer, check, and keep
+## 2026 Q2–Q3 · Steerable AI, traceable answers
 
 | Version | Date | Milestone |
 |---|---|---|
@@ -42,7 +42,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.17.1** | 2026-07-06 | [Chats stay with the note and keep running](/ai-chat-and-ask#chats-stay-with-the-note-and-keep-running) — switch away mid-answer and it still lands in the right place. |
 | **v0.17.3** | 2026-07-13 | [Knowledge growth becomes provenance](/knowledge-layer#provenance-of-knowledge): every generation step is recorded as a PROV activity. |
 
-## 2026 Q3 · More ways in, more structure for what you did
+## 2026 Q3 · More entry points, more structure
 
 | Version | Date | Milestone |
 |---|---|---|
