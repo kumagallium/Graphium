@@ -1456,6 +1456,22 @@ export const en: Record<string, string> = {
   "mobile.send.connecting": "Connecting...",
   "mobile.send.connectFailed": "Could not connect: {error}",
 
+  // ── Voice recording (AudioRecorderSheet) ──
+  "mobile.audio.title": "Record voice",
+  "mobile.audio.hintIdle": "Tap to start recording — up to 10 minutes.",
+  "mobile.audio.start": "Start recording",
+  "mobile.audio.stop": "Stop",
+  "mobile.audio.requesting": "Waiting for microphone access...",
+  "mobile.audio.recording": "Recording",
+  "mobile.audio.processing": "Finishing up...",
+  "mobile.audio.retake": "Record again",
+  "mobile.audio.capture": "Capture",
+  "mobile.audio.tryAgain": "Try again",
+  "mobile.audio.limitReached": "Stopped at the 10-minute limit.",
+  "mobile.audio.errorDenied": "Microphone access is blocked. Allow it for this site in your browser settings, then try again.",
+  "mobile.audio.errorNoDevice": "No microphone was found on this device.",
+  "mobile.audio.errorFailed": "Could not record. Please try again.",
+
   // ── Storage picker (StoragePickerSheet) ──
   "mobile.storagePicker.title": "Choose storage",
   "mobile.storagePicker.help": "Your captures reach the desktop through the storage you pick here.",

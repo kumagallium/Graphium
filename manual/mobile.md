@@ -24,7 +24,8 @@ Open [the app](https://kumagallium.github.io/Graphium/app/) in your phone's brow
 ![Mobile capture view with history and the capture bar](/screenshots/mobile-capture.png)
 
 - **Write** opens a text input for a memo; **URL** saves a link.
-- **Photo**, **Video**, and **Voice** open your phone's camera or microphone directly, so a lab bench or whiteboard is two taps away; **Library** picks from your photo roll.
+- **Photo** and **Video** open your phone's camera directly, so a lab bench or whiteboard is two taps away; **Library** picks from your photo roll.
+- **Voice** records inside Graphium: tap to start, tap again to stop, play it back, then **Capture** — or **Record again** if it did not come out. Recording stops on its own after ten minutes. The first tap asks your browser for microphone access; if you turned that down before, allow it for the site and try again.
 
 ![Writing a memo on the phone](/screenshots/mobile-memo-input.png)
 

@@ -12,6 +12,13 @@ describe("mimeFromExtension", () => {
     expect(mimeFromExtension("memo.caf")).toBe("audio/x-caf");
   });
 
+  it("reads in-app recordings as audio, not as the video container they share", () => {
+    // Chrome / Firefox の録音は WebM / Ogg で出るので、音声側は weba / oga に寄せる
+    expect(mimeFromExtension("voice-20260730-090503.weba")).toBe("audio/webm");
+    expect(mimeFromExtension("voice-20260730-090503.oga")).toBe("audio/ogg");
+    expect(kindFromMime(mimeFromExtension("voice-20260730-090503.weba")!)).toBe("audio");
+  });
+
   it("is case-insensitive on the extension (iPhone HEIC/MOV)", () => {
     expect(mimeFromExtension("IMG_0001.HEIC")).toBe("image/heic");
     expect(mimeFromExtension("VIDEO.MOV")).toBe("video/quicktime");

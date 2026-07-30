@@ -24,6 +24,11 @@ describe("extensionForCapture", () => {
     expect(extensionForCapture("Image/JPEG", "x")).toBe("jpg");
   });
 
+  it("keeps in-app recordings recognizable as audio (weba / oga, not webm / ogg)", () => {
+    expect(extensionForCapture("audio/webm;codecs=opus", "x")).toBe("weba");
+    expect(extensionForCapture("audio/ogg;codecs=opus", "x")).toBe("oga");
+  });
+
   it("falls back to the original extension for unknown MIME types", () => {
     expect(extensionForCapture("application/x-unknown", "notes.docx")).toBe("docx");
     expect(extensionForCapture("", "photo.HEIC")).toBe("heic");

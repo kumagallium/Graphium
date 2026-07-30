@@ -29,12 +29,16 @@ const MIME_TO_EXT: Record<string, string> = {
   "video/mp4": "mp4",
   "video/quicktime": "mov",
   "video/x-m4v": "m4v",
-  // 音声（iOS ボイスメモ = m4a / caf）
+  // 音声（iOS ボイスメモ = m4a / caf、アプリ内録音 = m4a / weba / oga）。
+  // webm / ogg は動画コンテナと拡張子を共有するので、音声側は `.weba` / `.oga`
+  // （MDN の音声用拡張子）に寄せる — 受信側は拡張子だけで音声だと判る。
   "audio/mp4": "m4a",
   "audio/mpeg": "mp3",
   "audio/wav": "wav",
   "audio/aac": "aac",
   "audio/x-caf": "caf",
+  "audio/webm": "weba",
+  "audio/ogg": "oga",
   // その他
   "application/pdf": "pdf",
 };

@@ -10,6 +10,11 @@
 // - 390px 幅で 6 個並ぶ前提: アイコン + 短ラベル（text-[10px]）の縦積みで潰れない。
 // - accept は image/* のまま置く（iOS はこれで HEIC を JPEG に変換して渡す。
 //   accept に image/heic を含めると逆に HEIC のまま来る）。
+// - [音声] だけはファイル選択でなくアプリ内録音（onRecordAudio → 親の
+//   AudioRecorderSheet）。`capture` 属性はカメラの向きしか表せず、iOS Safari は
+//   accept="audio/*" でもビデオ撮影 UI を開いてしまうため（audio-recorder.ts 冒頭）。
+//   録音できない環境（onRecordAudio 未指定）だけ、**capture を付けない**
+//   ファイル選択に落ちる。写真・動画の capture="environment" は正しい使い方なので残す。
 
 import { useRef } from "react";
 import { Camera, Video, Mic, Images, PenLine, Link as LinkIcon } from "lucide-react";
@@ -26,6 +31,12 @@ export type MobileCaptureBarProps = {
   mediaDisabled?: boolean;
   /** 撮影・選択したファイルの受け口（キュー行きかローカル保存かは親が決める）。 */
   onAddFiles: (files: File[]) => void;
+  /**
+   * [音声] をアプリ内録音で受ける（録音 UI は親の AudioRecorderSheet）。
+   * MediaRecorder / getUserMedia が使えない環境では親が渡さず、
+   * 従来のファイル選択（capture 属性なし）にフォールバックする。
+   */
+  onRecordAudio?: () => void;
 };
 
 /** ボタン数 → グリッド列数。Tailwind の purge 対策でクラス名を列挙して選ぶ。 */
@@ -44,6 +55,7 @@ export function MobileCaptureBar({
   showMediaButtons,
   mediaDisabled,
   onAddFiles,
+  onRecordAudio,
 }: MobileCaptureBarProps) {
   const t = useT();
   const photoRef = useRef<HTMLInputElement>(null);
@@ -73,7 +85,7 @@ export function MobileCaptureBar({
       ? [
           { key: "photo", icon: <Camera size={18} />, label: t("mobile.send.addPhoto"), onClick: () => photoRef.current?.click(), disabled: mediaDisabled },
           { key: "video", icon: <Video size={18} />, label: t("mobile.send.addVideo"), onClick: () => videoRef.current?.click(), disabled: mediaDisabled },
-          { key: "audio", icon: <Mic size={18} />, label: t("mobile.send.addAudio"), onClick: () => audioRef.current?.click(), disabled: mediaDisabled },
+          { key: "audio", icon: <Mic size={18} />, label: t("mobile.send.addAudio"), onClick: onRecordAudio ?? (() => audioRef.current?.click()), disabled: mediaDisabled },
           { key: "library", icon: <Images size={18} />, label: t("mobile.send.addLibrary"), onClick: () => libraryRef.current?.click(), disabled: mediaDisabled },
         ]
       : []),
@@ -117,15 +129,18 @@ export function MobileCaptureBar({
             data-testid="capture-bar-video"
             onChange={addFiles}
           />
-          <input
-            ref={audioRef}
-            type="file"
-            accept="audio/*"
-            capture="environment"
-            className="hidden"
-            data-testid="capture-bar-audio"
-            onChange={addFiles}
-          />
+          {/* 録音できない環境の退路。capture は付けない（付けると iOS が
+              ビデオ撮影 UI を開く）— 録音済みファイルを選んでもらう */}
+          {!onRecordAudio && (
+            <input
+              ref={audioRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              data-testid="capture-bar-audio"
+              onChange={addFiles}
+            />
+          )}
           {/* フォトライブラリからは複数選択。撮影用の capture は付けない */}
           <input
             ref={libraryRef}
