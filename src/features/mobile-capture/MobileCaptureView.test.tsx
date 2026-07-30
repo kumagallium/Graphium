@@ -37,6 +37,7 @@ import { parseGraphiumCaptureFile } from "./inbox/capture-file";
 import { LocaleProvider } from "../../i18n";
 import type { PushQueueUi } from "./inbox/use-push-queue";
 import type { PushSettingsUi } from "./inbox/use-push-settings";
+import type { AudioRecorderState } from "./use-audio-recorder";
 import type { PushQueueItemMeta } from "./inbox/push";
 
 // UrlBookmarkModal の fetchUrlMetadata は実ネットワークに出る（jsdom でも global fetch が
@@ -64,6 +65,28 @@ vi.mock("./inbox/use-push-settings", () => ({
   usePushSettings: (_active: boolean) => usePushSettingsMock(),
 }));
 
+// 録音の実体（MediaRecorder / getUserMedia）も hook 側の責務なのでモックする。
+// ここで見たいのは [音声] → 録音シート → 捕獲経路の配線だけ。
+const useAudioRecorderMock = vi.fn<() => AudioRecorderState>();
+
+vi.mock("./use-audio-recorder", () => ({
+  useAudioRecorder: () => useAudioRecorderMock(),
+}));
+
+function recorderUi(overrides: Partial<AudioRecorderState> = {}): AudioRecorderState {
+  return {
+    status: "idle",
+    elapsedMs: 0,
+    recorded: null,
+    errorKind: null,
+    limitReached: false,
+    start: vi.fn(),
+    stop: vi.fn(),
+    reset: vi.fn(),
+    ...overrides,
+  };
+}
+
 // MediaPreview（→ PdfViewer → react-pdf）の import 連鎖対策。react-pdf は import
 // しただけで pdfjs が DOMMatrix を触り jsdom では落ちる（InboxView.test.tsx と同じ）。
 vi.mock("react-pdf", () => ({
@@ -72,7 +95,22 @@ vi.mock("react-pdf", () => ({
   Page: () => null,
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // 録音できる環境を模したテストの後始末（jsdom には MediaRecorder も
+  // navigator.mediaDevices も無いのが素の状態）
+  Reflect.deleteProperty(navigator, "mediaDevices");
+  vi.unstubAllGlobals();
+});
+
+/** この端末でアプリ内録音ができる状態にする（[音声] が録音シートに向く）。 */
+function enableAudioRecording() {
+  vi.stubGlobal("MediaRecorder", function MediaRecorderStub() {} as unknown);
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia: vi.fn() },
+  });
+}
 
 function queueItem(id: string, name: string): PushQueueItemMeta {
   return {
@@ -128,6 +166,7 @@ function pushSettingsUi(overrides: Partial<PushSettingsUi> = {}): PushSettingsUi
 beforeEach(() => {
   usePushQueueMock.mockReturnValue(pushUi());
   usePushSettingsMock.mockReturnValue(pushSettingsUi());
+  useAudioRecorderMock.mockReturnValue(recorderUi());
   localStorage.clear();
 });
 
@@ -571,10 +610,42 @@ describe("実験フラグ撤去後の昇格（唯一のモバイル体験）", (
     for (const name of ["Write", "URL", "Photo", "Video", "Voice", "Library"]) {
       expect(screen.getByRole("button", { name })).toBeTruthy();
     }
-    // 撮影入力（accept + capture）も従来ホームと同じ 3 種が揃う
+    // 撮影入力も従来ホームと同じ 3 種が揃う（jsdom は録音できないので
+    // [音声] はファイル選択の退路。録れる環境では下のテストのとおり録音シートになる）
     for (const accept of ["image/*", "video/*", "audio/*"]) {
       expect(document.querySelector(`input[accept="${accept}"]`)).toBeTruthy();
     }
+  });
+
+  it("opens the in-app recorder for Voice on a device that can record", () => {
+    enableAudioRecording();
+    renderView({ onUploadMedia: async () => "file-id" });
+
+    // 録れる環境では OS のピッカーを開かない（iOS はそこでビデオ撮影 UI を出す）
+    expect(document.querySelector('input[accept="audio/*"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Voice" }));
+    expect(screen.getByTestId("audio-recorder-sheet")).toBeTruthy();
+  });
+
+  it("sends a finished recording down the same rail as a photo and closes the sheet", async () => {
+    const enqueueForSend = vi.fn(async () => true);
+    usePushQueueMock.mockReturnValue(pushUi({ enqueueForSend }));
+    const file = new File([new Uint8Array([1]) as BlobPart], "voice-20260730-090503.m4a", {
+      type: "audio/mp4",
+    });
+    useAudioRecorderMock.mockReturnValue(
+      recorderUi({ status: "recorded", elapsedMs: 12_000, recorded: { file, url: "blob:preview" } }),
+    );
+    enableAudioRecording();
+    renderView({ onUploadMedia: undefined });
+
+    fireEvent.click(screen.getByRole("button", { name: "Voice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+
+    await waitFor(() => expect(enqueueForSend).toHaveBeenCalledTimes(1));
+    expect(enqueueForSend).toHaveBeenCalledWith([file]);
+    // 捕獲したらシートは畳む（マイクを掴んだままにしない）
+    expect(screen.queryByTestId("audio-recorder-sheet")).toBeNull();
   });
 
   it("still shows this device's older memos and assets — the merged list carries them", () => {

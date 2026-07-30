@@ -20,12 +20,14 @@ const EXT_TO_MIME: Record<string, string> = {
   mp4: "video/mp4",
   mov: "video/quicktime",
   m4v: "video/x-m4v",
-  // 音声(iOS ボイスメモ = m4a / caf)
+  // 音声(iOS ボイスメモ = m4a / caf、アプリ内録音 = m4a / weba / oga)
   m4a: "audio/mp4",
   mp3: "audio/mpeg",
   wav: "audio/wav",
   aac: "audio/aac",
   caf: "audio/x-caf",
+  weba: "audio/webm",
+  oga: "audio/ogg",
   // その他
   pdf: "application/pdf",
 };

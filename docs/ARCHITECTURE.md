@@ -822,7 +822,15 @@ The same `src/` tree is built three different ways.
   it and the pending list stays pinned to the top of the content — the
   Send action sits at the right edge of the queue's heading row, and the
   header carries a connection chip — until it drains; there is no
-  separate send sheet. Written captures ride the same rail: the bar's
+  separate send sheet. Voice is the one capture button that does not hand
+  off to a file picker: it records in-app (`MediaRecorder` behind
+  `AudioRecorderSheet`, preferring `audio/mp4` so Safari can both record
+  and replay it, falling back to Opus in WebM/Ogg named `.weba` / `.oga`
+  so the extension alone still reads as audio). The HTML Media Capture
+  `capture` attribute can only express a camera facing mode, and iOS
+  Safari answers `accept="audio/*"` plus `capture` with the *video*
+  recorder — so a device without `MediaRecorder` falls back to a plain
+  file picker carrying no `capture` attribute at all. Written captures ride the same rail: the bar's
   Write (memo) and URL buttons reuse the existing input dialogs but
   serialize the result into a `.graphium.json` capture file (named
   `graphium-<stamp>-<seq>-<kind>.graphium.json`) and enqueue it next to

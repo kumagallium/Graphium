@@ -1454,6 +1454,22 @@ export const ja: Record<string, string> = {
   "mobile.send.connecting": "接続中...",
   "mobile.send.connectFailed": "接続できませんでした: {error}",
 
+  // ── 音声録音（AudioRecorderSheet） ──
+  "mobile.audio.title": "音声を録音",
+  "mobile.audio.hintIdle": "タップで録音を開始します（最長 10 分）。",
+  "mobile.audio.start": "録音を開始",
+  "mobile.audio.stop": "停止",
+  "mobile.audio.requesting": "マイクの使用許可を待っています...",
+  "mobile.audio.recording": "録音中",
+  "mobile.audio.processing": "書き出しています...",
+  "mobile.audio.retake": "録り直す",
+  "mobile.audio.capture": "捕獲する",
+  "mobile.audio.tryAgain": "もう一度",
+  "mobile.audio.limitReached": "10 分の上限に達したので停止しました。",
+  "mobile.audio.errorDenied": "マイクの使用が許可されていません。ブラウザの設定でこのサイトに許可してから、もう一度お試しください。",
+  "mobile.audio.errorNoDevice": "この端末でマイクが見つかりませんでした。",
+  "mobile.audio.errorFailed": "録音できませんでした。もう一度お試しください。",
+
   // ── ストレージ選択（StoragePickerSheet） ──
   "mobile.storagePicker.title": "ストレージを選ぶ",
   "mobile.storagePicker.help": "撮ったものは、ここで選んだストレージ経由でデスクトップに届きます。",

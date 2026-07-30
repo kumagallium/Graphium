@@ -49,8 +49,30 @@ describe("MobileCaptureBar", () => {
     // 撮影入力（iOS の HEIC→JPEG 変換を保つため accept は * のまま）
     expect(screen.getByTestId("capture-bar-photo").getAttribute("accept")).toBe("image/*");
     expect(screen.getByTestId("capture-bar-video")).toBeTruthy();
-    expect(screen.getByTestId("capture-bar-audio")).toBeTruthy();
     expect(screen.getByTestId("capture-bar-library")).toBeTruthy();
+    // capture はカメラの向きを指す属性なので写真・動画にだけ付く
+    expect(screen.getByTestId("capture-bar-photo").getAttribute("capture")).toBe("environment");
+    expect(screen.getByTestId("capture-bar-video").getAttribute("capture")).toBe("environment");
+  });
+
+  it("never puts capture on the audio picker — iOS opens the video recorder for it", () => {
+    // 録音できない環境の [音声] はファイル選択に落ちる。そこに capture を付けると
+    // iOS Safari がビデオ撮影 UI を開き、[音声] で動画が撮れてしまう
+    renderBar();
+
+    const audio = screen.getByTestId("capture-bar-audio");
+    expect(audio.getAttribute("accept")).toBe("audio/*");
+    expect(audio.hasAttribute("capture")).toBe(false);
+  });
+
+  it("routes Voice to in-app recording when the parent can record", () => {
+    const onRecordAudio = vi.fn();
+    renderBar({ onRecordAudio });
+
+    fireEvent.click(screen.getByRole("button", { name: "Voice" }));
+    expect(onRecordAudio).toHaveBeenCalledTimes(1);
+    // 録るなら OS のピッカーは出さない（退路の input も置かない）
+    expect(screen.queryByTestId("capture-bar-audio")).toBeNull();
   });
 
   it("keeps only the compose buttons when the media route is unavailable", () => {

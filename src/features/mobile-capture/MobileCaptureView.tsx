@@ -31,6 +31,8 @@ import { formatRelativeTime } from "../navigation/recent-notes-store";
 import { useT } from "../../i18n";
 import { CaptureDialog } from "./CaptureDialog";
 import { MobileCaptureBar } from "./MobileCaptureBar";
+import { AudioRecorderSheet } from "./AudioRecorderSheet";
+import { isAudioRecordingSupported } from "./audio-recorder";
 import { MobileSettingsSheet } from "./MobileSettingsSheet";
 import { StoragePickerSheet } from "./StoragePickerSheet";
 import { CaptureHistorySection, type LocalCaptureItem } from "./inbox/CaptureHistorySection";
@@ -238,6 +240,7 @@ export function MobileCaptureView({
 }) {
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [detailEntry, setDetailEntry] = useState<CaptureEntry | null>(null);
   const [mediaPreviewEntry, setMediaPreviewEntry] = useState<MediaIndexEntry | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -500,6 +503,11 @@ export function MobileCaptureView({
   const showMediaButtons = pushRouteAvailable || !!onUploadMedia;
   const mediaDisabled = !pushRouteAvailable && (!onUploadMedia || uploading);
 
+  // [音声] はアプリ内録音（AudioRecorderSheet）。MediaRecorder / getUserMedia が
+  // 無い環境（secure context でない配信・古いブラウザ）だけ、バー側の
+  // ファイル選択にフォールバックする。判定は端末固定なので 1 回でよい。
+  const audioRecordingSupported = useMemo(() => isAudioRecordingSupported(), []);
+
   // 検索入力（ヘッダー固定ではなくスクロール内 = 統合リストの直上に置く）
   const searchInput = (
     <div className="relative">
@@ -660,6 +668,9 @@ export function MobileCaptureView({
         showMediaButtons={showMediaButtons}
         mediaDisabled={mediaDisabled}
         onAddFiles={(files) => { void handleCapturedFiles(files); }}
+        onRecordAudio={
+          audioRecordingSupported ? () => setShowAudioRecorder(true) : undefined
+        }
       />
 
       {/* 付箋入力ダイアログ */}
@@ -701,6 +712,18 @@ export function MobileCaptureView({
         <MobileMediaPreviewModal
           entry={mediaPreviewEntry}
           onClose={() => setMediaPreviewEntry(null)}
+        />
+      )}
+
+      {/* 音声録音シート（[音声] の行き先）。録れたものは撮影と同じ経路
+          （handleCapturedFiles → 送信キュー）へ。閉じればマイクは解放される */}
+      {showAudioRecorder && (
+        <AudioRecorderSheet
+          onCapture={(file) => {
+            setShowAudioRecorder(false);
+            void handleCapturedFiles([file]);
+          }}
+          onClose={() => setShowAudioRecorder(false)}
         />
       )}
 
