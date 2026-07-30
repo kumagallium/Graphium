@@ -29,7 +29,7 @@ Get the latest installers from the [Releases page](https://github.com/kumagalliu
 | macOS (Apple Silicon — M1/M2/M3/M4) | `Graphium_x.x.x_aarch64.dmg` | Apple menu → About This Mac → "Apple M..." |
 | Windows (x64) | `Graphium_x.x.x_x64-setup.exe` (or the `.msi`) | Settings → System → About → System type "x64-based" |
 
-Linux and Intel Mac builds are not provided today. On those machines, use the [browser version](https://kumagallium.github.io/Graphium/app/) or self-host with Docker — bringing the desktop app to more platforms is on the roadmap.
+Linux and Intel Mac builds are not provided today. On those machines, use the [browser version](https://kumagallium.github.io/Graphium/app/) — bringing the desktop app to more platforms is on the roadmap.
 
 ### Install on macOS
 

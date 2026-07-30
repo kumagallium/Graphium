@@ -29,14 +29,14 @@ features:
     title: It stays reusable
     details: Everything you put in can be found again — search spans notes and materials (even text inside images), and @-links tie notes, memos, and sources together.
     link: /notes-and-editor
+  - icon: 🕸️
+    title: Provenance when you want it
+    details: Mark steps, inputs, tools, parameters, and outputs, and Graphium draws how you worked — exportable as standard PROV. No AI needed.
+    link: /labels-and-provenance
   - icon: 🤖
     title: AI beside you
     details: Chat about the note you're writing and ask with ⌘K — answers draw on your own notes and cite them. Works with your AI subscription or API key.
     link: /ai-setup
-  - icon: 🕸️
-    title: Provenance when you want it
-    details: Mark steps, inputs, tools, parameters, and outputs, and Graphium draws how you worked — exportable as standard PROV.
-    link: /labels-and-provenance
   - icon: 💡
     title: Knowledge that grows
     details: Distill notes into summaries, claims, and insights that cite their sources — and check them against the outside world.

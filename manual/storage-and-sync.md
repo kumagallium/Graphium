@@ -1,6 +1,6 @@
 # Storage & sync
 
-Graphium keeps your notes in storage that you own — a browser database, plain files on your disk, or your own server. There is no Graphium cloud and no account. This page explains where your data lives on each platform, how to move it, how archive and trash protect your links, how team sharing works, and how to back everything up.
+Graphium keeps your notes in storage that you own — a browser database or plain files on your disk. There is no Graphium cloud and no account. This page explains where your data lives on each platform, how to move it, how archive and trash protect your links, how team sharing works, and how to back everything up.
 
 ## Where your data lives
 
@@ -8,7 +8,6 @@ Graphium keeps your notes in storage that you own — a browser database, plain 
 |---|---|---|
 | Browser version | That browser's local database (IndexedDB) | Only that browser on that device |
 | Desktop app | Plain files in a `Graphium` folder inside your Documents folder (`~/Documents/Graphium/` on macOS) | Only that machine — or any machine, if you point it at a synced folder |
-| Docker / self-host | The server's filesystem (`/app/data` by default) | Any browser or device that opens the same URL |
 
 ### Browser version
 
@@ -21,12 +20,6 @@ If you clear this site's data in your browser (or use a private window), the not
 ### Desktop app
 
 The desktop app writes ordinary files you can see in your file manager. Inside the Graphium folder you'll find subfolders for `notes` (one JSON file per note), `media`, `wiki` (Knowledge pages), `skills`, and `appdata`. Because they are plain files, any backup or sync tool can handle them.
-
-### Docker / self-host
-
-When Graphium runs from your own server, notes are saved on the server's filesystem — open the same URL from any browser or device and you see the same notes. The frontend detects server storage automatically on first load.
-
-To protect a server that isn't on `localhost`, set the `GRAPHIUM_AUTH_TOKEN` environment variable on the server. Then open **Settings** → **Storage** → **Server storage** in each browser, paste the same value into the token field, and press **Save and reload**. Without a token, anyone who can reach the URL can read and write notes.
 
 ## Changing the storage folder <Badge type="tip" text="Added in v0.3.10 (2026-04-25)" />
 
@@ -64,7 +57,7 @@ Both live in the note's `⋯` menu: **Archive** and **Move to trash**. If other 
 
 To bring something back, open **Trash & Archive** at the bottom of the sidebar. The view has a **Trash** tab (with **Restore** and **Delete permanently**) and an **Archive** tab (with **Restore from archive** and **Send to trash**). A trashed or archived note opened directly also offers **Restore from trash** / **Restore from archive** in its `⋯` menu.
 
-**Delete permanently** is the only destructive step: on the desktop app the file is moved to your operating system's trash; on the browser and self-hosted versions it is deleted immediately and cannot be undone.
+**Delete permanently** is the only destructive step: on the desktop app the file is moved to your operating system's trash; in the browser version it is deleted immediately and cannot be undone.
 
 Media has the same protection: deleting a file from the [material library](/materials-and-citations) that notes or saved versions still reference offers **Archive (recommended)** instead, which hides it while keeping those references working.
 
@@ -119,6 +112,5 @@ Media files (images, PDFs) are not included in either ZIP — back those up sepa
 
 - **Browser version**: press **Download backup (JSON)** regularly. It is your only safety net against cleared site data, and re-download it after any big writing session.
 - **Desktop app**: your data is plain files in the Graphium folder (`~/Documents/Graphium/` unless you moved it). Any backup tool that copies that folder — including its `media` subfolder — captures everything. Pointing the save location at a synced folder gives you continuous off-machine copies for free.
-- **Docker / self-host**: back up the server's data directory (`/app/data` by default) with your usual server backup routine, and keep the storage token somewhere safe.
 
 A periodic **Download backup (JSON)** is cheap insurance on every platform — it captures notes, Knowledge, and skills in one file, independent of where the live data sits.

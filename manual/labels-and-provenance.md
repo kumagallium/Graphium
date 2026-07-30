@@ -1,17 +1,22 @@
 # Labels & provenance
 
-This is the heart of Graphium. By marking the inputs, tools, parameters, and outputs of your work as you write, you turn an ordinary note into a machine-readable record of *how* a result came to be — a provenance graph built on the W3C PROV-DM standard. This page covers the labels themselves, the graph they produce, the note's own edit history, version snapshots, derived notes, and the bigger graph views that connect notes together.
+This is the heart of Graphium. By splitting what you did into steps and marking the inputs, tools, parameters, and outputs inside them, you turn an ordinary note into a machine-readable record of *how* a result came to be — a provenance graph built on the W3C PROV-DM standard. This page covers step blocks, the labels, the graph they produce, standards export, derived notes, and the bigger graph views that connect notes together.
 
 The philosophy fits in two lines:
 
-- **Labels are always optional.** A note without a single label is a perfectly good note.
-- **The graph only shows what you chose to mark.** Nothing is inferred behind your back — every node traces back to a highlight you made.
+- **Steps and labels are always optional.** A note without a single one is a perfectly good note — see [Notes & editor](/notes-and-editor) for everyday writing.
+- **The graph only shows what you chose to mark.** Nothing is inferred behind your back — every node traces back to something you marked.
 
-## Where labels live: step blocks
+## Step blocks <Badge type="tip" text="Added in v0.23.0 (2026-07-28)" />
 
-Labels describe *what happened inside a procedure step*, so they live inside [step blocks](/notes-and-editor#the-step-block) <Badge type="tip" text="Added in v0.23.0 (2026-07-28)" />. A step block is a container you insert from the slash menu (**Step**, in the **Advanced** group). One step = one activity; the step's title is the activity's name.
+A step block is the editor's only container: it holds the text, tables, and images that belong to one action, and each step becomes an *Activity* in the graph. Insert one from the slash menu (**Step**, in the **Advanced** group). New steps are titled **Step 1**, **Step 2**, … automatically, and the title is the activity's name.
 
-Because a label needs a step to attach to, the labeling UI only appears while you are working inside a step. Outside of steps, Graphium stays a plain, quiet editor.
+![A step block with a Prev step chip in the header and a Next step chip at the bottom](/screenshots/step-block.png)
+
+- The **Prev step** chip in the header links this step to the one it follows. Loops are refused ("Blocked: this would create a cycle").
+- The **Next step** chip at the bottom jumps ahead: with no successor it creates one (**Create new**) pre-linked to the current step; with successors it opens a picker to link, unlink, or add.
+
+Chaining steps gives you the run order for free — that order becomes the arrows in the graph. Because a label needs a step to attach to, the labeling UI below only appears while your cursor is inside one. Outside of steps, Graphium stays a plain, quiet editor.
 
 ## Inline labels
 
@@ -90,22 +95,7 @@ The export is scoped to the current note. It includes the labeled steps and enti
 
 ## The note's own history
 
-Provenance has a second axis: not just "how was the result made," but "how was the *note* made." The **History** tab in the right panel records every save — what changed (blocks, labels) and who did it. Human edits carry the name and email from your author profile ([Settings](/settings) → **Storage**); AI edits carry an "AI" badge and the model that made them, with entry types like **Edit**, **Derive**, **AI Generate**, and **Template**.
-
-![The history panel with revisions and versions](/screenshots/history.png)
-
-### Version snapshots <Badge type="tip" text="Added in v0.18.0 (2026-07-15)" />
-
-Automatic history is fine-grained; sometimes you want to pin a moment on purpose — "the state we submitted." Press `⌘⇧S` (`Ctrl+Shift+S` on Windows/Linux; `⌘⌥S` works too, for keyboards where `⌘⇧S` is taken) or click **Save version** at the top of the **History** tab.
-
-Saved versions are listed in the same panel. Each one offers:
-
-| Action | What it does |
-|---|---|
-| **Open** | View the version side-by-side, marked **Read-only** |
-| **Fork from here** | Create a new note from this version, with lineage back to the original |
-| **Rename** | Give the version a meaningful name |
-| **Delete** | Remove the version (the note itself is untouched) |
+Provenance has a second axis: not just "how was the result made," but "how was the *note* made." Every save is recorded with who made it — you or an AI — and you can pin versions on purpose. That side of provenance is part of everyday writing, so it lives in [Notes & editor → History and versions](/notes-and-editor#history-and-versions).
 
 ## Derived notes
 

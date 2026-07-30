@@ -6,6 +6,8 @@ Ideas rarely arrive while you sit at your desk. Graphium treats your phone as a 
 
 The fastest capture doesn't need your phone at all. Press `⌘⇧M` (`Ctrl+Shift+M` on Windows/Linux) anywhere in Graphium to open a quick memo dialog, type your thought, and press `⌘Enter` to save. The memo lands in your memo collection without touching the note you were writing.
 
+![The quick memo dialog](/screenshots/quick-memo.png)
+
 Other ways in:
 
 | Entry point | Where |
@@ -39,6 +41,8 @@ Captures live in *that phone's* queue until they are sent — they do not reach 
 ## The memo gallery
 
 On the desktop, click **Memos** in the sidebar (the count next to it shows how many you have). Memos are shown as a wall of sticky-note cards; toggle between **Gallery** and **List** views, and search as you type.
+
+![The memo gallery as a wall of sticky-note cards](/screenshots/memo-gallery.png)
 
 Select several memos at once — drag across cards or shift-click — and act on the batch:
 
@@ -79,7 +83,7 @@ Mobile upload closes the loop: captures made on your phone travel through your o
 
 The pipeline, end to end:
 
-1. **Connect storage on the phone — once.** Tap the gear in the phone header (or the queue's **Connect storage** button). The **Choose storage** picker offers **Google Drive** (OneDrive is listed as **Coming soon**). You sign in with your own Google account; Graphium gets access only to files it creates (`drive.file` scope) and no secret is involved. The settings sheet behind the gear also shows the connection status, lets you **Change** or **Disconnect**, and holds a folded **Advanced** client-ID override that only self-hosters need.
+1. **Connect storage on the phone — once.** Tap the gear in the phone header (or the queue's **Connect storage** button). The **Choose storage** picker offers **Google Drive** (OneDrive is listed as **Coming soon**). You sign in with your own Google account; Graphium gets access only to files it creates (`drive.file` scope) and no secret is involved. The settings sheet behind the gear also shows the connection status, lets you **Change** or **Disconnect**, and holds a folded **Advanced** client-ID override that most people never touch.
 2. **Capture and send.** Tap **Send** on the queue and it drains into the `Graphium/Inbox` folder of your own Drive. Transfers use TLS, and the files sit as ordinary files in storage *you* control.
 3. **Sync the folder to your desktop.** Run your cloud client (for example Google Drive for desktop) so that folder exists on the desktop's disk.
 4. **Point Graphium at it.** In the desktop's [Settings → Storage](/settings), the **Mobile upload** section has the **Inbox folder** picker — choose the folder your cloud storage syncs to, and Graphium reads the `Inbox` subfolder inside it. The same section shows the QR code under **Connect on your phone** (with **Copy URL**) that opens Graphium on the phone in the first place.

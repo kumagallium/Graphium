@@ -5,7 +5,7 @@ Every preference in Graphium lives in one modal: click **Settings** at the botto
 ![Settings modal open on the AI tab](/screenshots/settings-ai-tab.png)
 
 ::: info Platform availability
-Some groups only appear on certain platforms: folder pickers, sharing, mobile inbox receiving, and update checks need [the desktop app](/desktop-app), while the server-storage token only appears on a self-hosted (Docker) deployment. Each table below notes these cases.
+Some groups only appear on certain platforms: folder pickers, sharing, mobile inbox receiving, and update checks need [the desktop app](/desktop-app). Each table below notes these cases.
 :::
 
 ## Display & Language
@@ -28,7 +28,6 @@ Where your notes live and how they move between devices. Full details in [Storag
 
 | Group | What it does |
 |---|---|
-| **Server storage** | Self-hosted (Docker) only — enter the auth token the server requires so this browser can read and write notes. |
 | **Local save location** | Desktop only — change the folder where notes, media, and knowledge are stored (point it at a Dropbox/Drive/OneDrive folder to sync without OAuth). |
 | **Your identity** | Set your display name and email, used as the author on shared notes and provenance entries. |
 | **Shared storage** | Desktop only — pick a shared folder (lab NAS, synced folder) plus a blob folder for large binaries, with a **Test connection** round-trip check. |
@@ -50,7 +49,7 @@ Everything AI-related, ordered as a setup flow: register models first, then assi
 | **World grounding** | Turn on **Auto-ground new knowledge** and optionally set a dedicated grounding model; see [World grounding](/ai-grounding). |
 | **MCP Servers** <Badge type="tip" text="Added in v0.13.6 (2026-06-04)" /> | Connect external tool servers directly — **Paste JSON** from a server's README, configure one by hand with **Manual**, or pull candidates **From registry**. |
 
-If no backend is reachable, this tab shows a notice instead: AI features require the desktop app or a self-hosted setup. MCP servers come in two types — **Local** (launched and managed by Graphium; desktop or self-hosted backend only) and **Remote** (connects to an already-running server by URL).
+In the browser version, where there is no backend, this tab shows an upgrade notice instead. MCP servers come in two types — **Local** (launched and managed by Graphium; desktop app only) and **Remote** (connects to an already-running server by URL).
 
 ::: tip
 Adding a web-search MCP server (e.g. Tavily) lets External grounding search the live web with any model — see [AI chat and Ask](/ai-chat-and-ask).
@@ -91,7 +90,7 @@ The **AI Usage** dashboard: token consumption per AI feature, so you always know
 | Currency | Display costs in USD or JPY with an editable **1 USD = ¥** exchange rate. |
 | **Recalculate cost** | Recomputes the last 90 days of cost with the current per-model pricing. |
 
-Subscription models are flagged separately — **Subscription (no per-token cost)** — since they don't bill per token. Usage tracking needs the desktop app or a self-hosted server.
+Subscription models are flagged separately — **Subscription (no per-token cost)** — since they don't bill per token. Usage tracking needs the desktop app.
 
 ## About
 

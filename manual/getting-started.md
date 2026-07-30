@@ -7,7 +7,7 @@ Ten minutes, one running example. By the end you'll have a real note, a memo cau
 No account, no sign-up. Pick whichever fits:
 
 - **Try it in your browser** — [kumagallium.github.io/Graphium/app](https://kumagallium.github.io/Graphium/app/). Notes live in this browser's storage, so treat it as a way to kick the tires.
-- **Desktop app or Docker** — for durable files on disk and the AI features. See [Desktop app](/desktop-app) and [Storage & sync](/storage-and-sync).
+- **Desktop app** — for durable files on disk and the AI features. See [Desktop app](/desktop-app) and [Storage & sync](/storage-and-sync).
 
 Everything in steps 2–5 works in the plain browser version.
 
@@ -47,7 +47,7 @@ Renaming a note updates every link to it, so nothing rots. Each link feeds the n
 
 Ready to rewrite the recipe for trial #4? Press `⌘⇧S` first (`⌘⌥S` if your system takes it). That pins the current state as a version in the **History** panel, where every save is already recorded — including who made it, you or an AI. Open a pinned version read-only any time, or **Fork from here** to branch a new note off a past state and explore in a different direction.
 
-Delete boldly, too: notes go to **Trash & Archive**, not oblivion.
+Delete boldly, too: notes go to **Trash & Archive**, not oblivion. The details are in [History and versions](/notes-and-editor#history-and-versions).
 
 ## Going further — three doors
 

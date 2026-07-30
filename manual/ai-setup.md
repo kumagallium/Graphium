@@ -4,18 +4,9 @@ AI in Graphium is optional — the app is a complete note editor without it. Unt
 
 ## Where AI runs
 
-AI features need a small local backend that talks to your model provider. Whether you have one depends on how you run Graphium:
+AI features need a small local backend that talks to your model provider, and that backend ships inside the [desktop app](/desktop-app) — it starts automatically, with nothing to install separately. The browser version is an editor preview with no backend, so its AI controls stay hidden and the AI tab shows an upgrade notice with a **Get the desktop app** button instead.
 
-| How you run Graphium | AI backend |
-|---|---|
-| [Desktop app](/desktop-app) | Yes — a backend ships inside the app and starts automatically |
-| Docker self-host (`docker compose up -d`) | Yes — bundled as a companion container |
-| Docker standalone (`docker-compose.standalone.yml`) | No — editor only |
-| Browser version on GitHub Pages | No — the hosted version is an editor preview |
-
-Without a backend, the AI tab in Settings shows **AI features available in the desktop app / Docker** with **Get the desktop app** and **Run with Docker** buttons, plus the notice "Backend is not available. AI features require Docker or local development setup."
-
-There is no Graphium cloud service in between: the backend runs on your machine and sends requests directly to the provider you configure.
+There is no Graphium cloud service in between: the backend runs on your own machine and sends requests directly to the provider you configure.
 
 ## The AI tab
 
@@ -57,7 +48,7 @@ When the subscription login expires, AI calls fail with a message like "Claude s
 
 ### Where your API keys live
 
-Keys never leave your machine except to reach the provider you registered. On the macOS desktop app they are stored in the macOS Keychain; the Windows desktop app and Docker/self-hosted setups store them in plain local files or browser storage. Prefer a scoped, spending-capped key — details in [SECURITY.md](https://github.com/kumagallium/Graphium/blob/main/SECURITY.md).
+Keys never leave your machine except to reach the provider you registered. On the macOS desktop app they are stored in the macOS Keychain; on Windows they live in a local file inside your Graphium data folder. Prefer a scoped, spending-capped key — details in [SECURITY.md](https://github.com/kumagallium/Graphium/blob/main/SECURITY.md).
 
 ### Per-model pricing
 
@@ -86,7 +77,7 @@ MCP (Model Context Protocol) is an open standard that lets the AI chat call exte
 | **Manual** | Fill the form yourself. **Local** servers take a **Command**, **Arguments (one per line)**, and **Environment (KEY=value, one per line)**; **Remote** servers take an **Endpoint URL**, a **Transport** (**SSE** or **Streamable HTTP**), and an optional **API key** |
 | **From registry** | Enter a **Registry URL** for a [Crucible Registry](https://github.com/kumagallium/Crucible), click **Fetch servers**, and add candidates from the list |
 
-**Local** servers are launched and managed by Graphium over stdio, the same way Claude Desktop does — you never start or stop a process yourself. This requires the desktop app or a self-hosted backend, since a browser can't launch local processes. **Remote** connects to an already-running server by URL.
+**Local** servers are launched and managed by Graphium over stdio, the same way Claude Desktop does — you never start or stop a process yourself. This requires the desktop app, since a browser can't launch local processes. **Remote** connects to an already-running server by URL.
 
 Every server in the list can be toggled on and off, edited, or removed. One practical tip from the app itself: adding a web-search server (e.g. Tavily) lets External grounding search the live web on any model.
 
@@ -99,7 +90,7 @@ The **Usage** tab in Settings shows **AI Usage**: token consumption per AI featu
 - Subscription models are marked **Subscription (no per-token cost)** — tokens are counted, but no cost is estimated.
 - Changed a model's pricing after the fact? **Recalculate cost** recomputes the last 90 days of events with the current per-model rates. Older monthly summaries are unaffected.
 
-Usage tracking runs on the backend, so it is available on the desktop app and self-hosted setups.
+Usage tracking runs on the backend, so it is part of the desktop app.
 
 ## Next steps
 
