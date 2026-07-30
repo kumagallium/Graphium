@@ -51,7 +51,7 @@ features:
 - **Platforms & data** — the desktop app and where your data lives.
 - **Reference** — every setting, every shortcut, and the release history.
 
-Each feature page notes the version it first appeared in, like this: <Badge type="tip" text="Added in v0.15.0 (2026-06-05)" />. The full list of changes lives in the [release history](/release-history).
+Each feature page notes the version it first appeared in, like this: <Badge type="tip" text="Added in v0.15.0 (2026-06-05)" />. For the story of how Graphium got here, see the [feature roadmap](/roadmap); for every change, the [release history](/release-history).
 
 ::: tip Looking for the concepts instead?
 This manual explains **how to use** Graphium. If you want the **why** — the thinking behind provenance-first notes — read [CONCEPT.md](https://github.com/kumagallium/Graphium/blob/main/docs/CONCEPT.md). For the internals, see [ARCHITECTURE.md](https://github.com/kumagallium/Graphium/blob/main/docs/ARCHITECTURE.md).

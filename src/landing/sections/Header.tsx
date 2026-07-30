@@ -15,7 +15,10 @@ export function Header() {
           <a href="#screens">{t("nav.screens")}</a>
           <a href="#start">{t("nav.start")}</a>
           <a href="#faq">{t("nav.faq")}</a>
-          <a href="/Graphium/manual/">{t("nav.manual")}</a>
+          {/* マニュアルは英語がルート、日本語は /ja/ 配下（VitePress の locales 設定） */}
+          <a href={locale === "ja" ? "/Graphium/manual/ja/" : "/Graphium/manual/"}>
+            {t("nav.manual")}
+          </a>
           <a
             href="https://github.com/kumagallium/Graphium"
             target="_blank"

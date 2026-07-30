@@ -94,11 +94,10 @@ export const en: Record<string, string> = {
   "welcome.serverStorage": "Notes are saved on this server",
   "welcome.serverStorageHint": "Stored on this server's filesystem and shared across every browser that visits the same URL.",
 
-  // ── Desktop / Docker upgrade CTA (browser preview) ──
-  "upgrade.title": "AI features available in the desktop app / Docker",
-  "upgrade.body": "Knowledge Layer, AI chat, and related features run only with a backend. Install the desktop app or self-host with Docker. The browser version is a preview to try the editor — notes live in IndexedDB and can be evicted by the browser.",
+  // ── Desktop upgrade CTA (browser preview) ──
+  "upgrade.title": "AI features are available in the desktop app",
+  "upgrade.body": "Knowledge Layer, AI chat, and related features need the backend that ships inside the desktop app. The browser version is a preview to try the editor — notes live in IndexedDB and can be evicted by the browser.",
   "upgrade.desktopCta": "Get the desktop app",
-  "upgrade.dockerCta": "Run with Docker",
   "upgrade.inline": "Available in the desktop app",
   "upgrade.footer": "Enable AI",
 
@@ -595,13 +594,13 @@ export const en: Record<string, string> = {
   "settings.mobilePush.save": "Save",
   "settings.mobilePush.saved": "Saved",
   "settings.mobilePush.clear": "Reset",
-  // ── Server storage (Docker / self-host Web) ──
+  // ── Server storage (server-backed deployments) ──
   "settings.serverStorage.title": "Server storage",
   "settings.serverStorage.help": "Notes are saved on this server's filesystem and shared across every browser that visits the same URL.",
   "settings.serverStorage.tokenPlaceholder": "X-Graphium-Token value",
   "settings.serverStorage.save": "Save and reload",
   "settings.serverStorage.savedReloading": "Saved. Reloading…",
-  "settings.serverStorage.tokenHelp": "The server requires GRAPHIUM_AUTH_TOKEN. Enter the same value you set in docker-compose env.",
+  "settings.serverStorage.tokenHelp": "The server requires GRAPHIUM_AUTH_TOKEN. Enter the same value the server was started with.",
   "settings.serverStorage.noAuth": "This server is open without authentication (GRAPHIUM_AUTH_TOKEN is not set). Setting a token is recommended for any non-localhost deployment.",
   // ── エクスポート / バックアップ ──
   "settings.export.title": "Export & backup",
@@ -614,7 +613,7 @@ export const en: Record<string, string> = {
   // ── 接続状態 ──
   "settings.health.title": "Connection Status",
   "settings.health.checking": "Checking...",
-  "settings.health.unavailable": "Backend is not available. AI features require Docker or local development setup.",
+  "settings.health.unavailable": "Backend is not available. AI features require the desktop app.",
   "settings.health.restart": "Restart backend",
   "settings.health.restarting": "Restarting...",
   "settings.health.restartFailed": "Restart failed",
@@ -720,7 +719,7 @@ export const en: Record<string, string> = {
   "aiChat.stop": "Stop",
   "aiChat.sendHint": "Cmd+Enter to send",
   "aiChat.newChat": "+ New chat",
-  "aiChat.noBackend": "AI features require running Graphium with Docker or local development setup. They are not available on GitHub Pages.",
+  "aiChat.noBackend": "AI features require the desktop app. They are not available in the browser version.",
   "aiChat.noBackendTauri": "AI features need the bundled backend, but it could not start. Try restarting it, or copy the diagnostics below when reporting the issue.",
   "aiChat.restartBackend": "Restart backend",
   "aiChat.restarting": "Restarting…",

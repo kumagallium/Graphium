@@ -2,7 +2,7 @@
 
 This page covers everything about writing in Graphium: creating notes, finding them again, the block editor — block types, the slash menu, math, media, templates, index tables, note links — and how saving, history, and versions work. Step blocks and the provenance graph they feed have their own page: [Labels & provenance](/labels-and-provenance).
 
-![The Graphium editor with the provenance panel open](/screenshots/editor-with-graph_en.png)
+![A plain Graphium note: headings, lists, a quote, and a table](/screenshots/editor-plain.png)
 
 ## Creating a note
 

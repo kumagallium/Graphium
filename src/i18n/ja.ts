@@ -94,11 +94,10 @@ export const ja: Record<string, string> = {
   "welcome.serverStorage": "このサーバーに保存されます",
   "welcome.serverStorageHint": "ノートはこのサーバーのファイルシステムに保存され、同じ URL に接続するすべてのブラウザ・端末で共有されます。",
 
-  // ── デスクトップ / Docker への導線（ブラウザ版でのアップグレード CTA） ──
-  "upgrade.title": "AI 機能はデスクトップ版 / Docker で利用可能",
-  "upgrade.body": "Knowledge Layer や AI チャットを使うには、デスクトップアプリをインストールするか、Docker でセルフホストしてください。ブラウザ版はエディタをお試しいただくためのプレビュー版です（ノートは IndexedDB に保存され、キャッシュ削除等で消える可能性があります）。",
+  // ── デスクトップ版への導線（ブラウザ版でのアップグレード CTA） ──
+  "upgrade.title": "AI 機能はデスクトップ版で利用できます",
+  "upgrade.body": "Knowledge Layer や AI チャットには、デスクトップアプリに同梱されているバックエンドが必要です。ブラウザ版はエディタをお試しいただくためのプレビュー版です（ノートは IndexedDB に保存され、キャッシュ削除等で消える可能性があります）。",
   "upgrade.desktopCta": "デスクトップ版を入手",
-  "upgrade.dockerCta": "Docker で起動",
   "upgrade.inline": "デスクトップ版で利用可能",
   "upgrade.footer": "AI を有効化",
 
@@ -595,13 +594,13 @@ export const ja: Record<string, string> = {
   "settings.mobilePush.save": "保存",
   "settings.mobilePush.saved": "保存しました",
   "settings.mobilePush.clear": "解除",
-  // ── サーバーストレージ（Docker / セルフホスト Web） ──
+  // ── サーバーストレージ（サーバー配置時） ──
   "settings.serverStorage.title": "サーバーストレージ",
   "settings.serverStorage.help": "ノートはこのサーバーのファイルシステムに保存され、同じ URL にアクセスする全てのブラウザで共有されます。",
   "settings.serverStorage.tokenPlaceholder": "X-Graphium-Token の値",
   "settings.serverStorage.save": "保存して再読込",
   "settings.serverStorage.savedReloading": "保存しました。再読み込みします…",
-  "settings.serverStorage.tokenHelp": "サーバーが GRAPHIUM_AUTH_TOKEN を要求しています。docker-compose の環境変数で設定したトークンと同じ値を入力してください。",
+  "settings.serverStorage.tokenHelp": "サーバーが GRAPHIUM_AUTH_TOKEN を要求しています。サーバー起動時に設定したトークンと同じ値を入力してください。",
   "settings.serverStorage.noAuth": "このサーバーは認証なしで利用できます（GRAPHIUM_AUTH_TOKEN が未設定）。本番運用ではトークンの設定を推奨します。",
   // ── エクスポート / バックアップ ──
   "settings.export.title": "エクスポート / バックアップ",
@@ -614,7 +613,7 @@ export const ja: Record<string, string> = {
   // ── 接続状態 ──
   "settings.health.title": "接続状態",
   "settings.health.checking": "確認中...",
-  "settings.health.unavailable": "バックエンドに接続できません。AI 機能は Docker またはローカル開発環境が必要です。",
+  "settings.health.unavailable": "バックエンドに接続できません。AI 機能にはデスクトップ版が必要です。",
   "settings.health.restart": "バックエンドを再起動",
   "settings.health.restarting": "再起動中...",
   "settings.health.restartFailed": "再起動に失敗しました",
@@ -720,7 +719,7 @@ export const ja: Record<string, string> = {
   "aiChat.stop": "停止",
   "aiChat.sendHint": "Cmd+Enter で送信",
   "aiChat.newChat": "+ 新しいチャット",
-  "aiChat.noBackend": "AI 機能を使うには Docker またはローカル開発環境で Graphium を起動してください。GitHub Pages では利用できません。",
+  "aiChat.noBackend": "AI 機能にはデスクトップ版が必要です。ブラウザ版では利用できません。",
   "aiChat.noBackendTauri": "AI 機能には同梱バックエンドが必要ですが、起動できませんでした。再起動を試すか、下の診断情報をコピーして報告してください。",
   "aiChat.restartBackend": "バックエンドを再起動",
   "aiChat.restarting": "再起動中…",

@@ -1,4 +1,4 @@
-// AI 機能が無効な環境（GH Pages 等のプレビュー版）でデスクトップ / Docker への導線を出すコンポーネント
+// AI 機能が無効な環境（GH Pages 等のプレビュー版）でデスクトップ版への導線を出すコンポーネント
 
 import { Sparkles, ExternalLink } from "lucide-react";
 import { useT } from "../i18n";
@@ -8,7 +8,6 @@ type Variant = "card" | "inline" | "footer";
 export function AiUpgradeNotice({ variant = "card" }: { variant?: Variant }) {
   const t = useT();
   const releasesUrl = "https://github.com/kumagallium/Graphium/releases/latest";
-  const dockerUrl = "https://github.com/kumagallium/Graphium#option-2-run-with-docker--editor-only";
 
   if (variant === "inline") {
     return (
@@ -48,15 +47,6 @@ export function AiUpgradeNotice({ variant = "card" }: { variant?: Variant }) {
           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
         >
           {t("upgrade.desktopCta")}
-          <ExternalLink size={11} />
-        </a>
-        <a
-          href={dockerUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border text-foreground text-xs hover:bg-accent transition-colors"
-        >
-          {t("upgrade.dockerCta")}
           <ExternalLink size={11} />
         </a>
       </div>
