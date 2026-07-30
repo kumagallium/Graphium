@@ -1,0 +1,171 @@
+/* Graphium ブランドを VitePress 既定テーマに適用する。
+ *
+ * 値の正は design.md（ブランドカラー #4B7A52 / 背景 #fafdf7 / 文字 #1a2e1d /
+ * 罫線 #d5e0d7）と、アプリ側 src/app.css の scene tokens。ここでは VitePress の
+ * CSS 変数に写すだけで、独自の配色は増やさない。
+ *
+ * フォントはアプリ・LP と同じ Inter / JetBrains Mono を manual/public/fonts/ から
+ * セルフホストする（外部リクエストなし）。
+ */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/Graphium/manual/fonts/inter.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/Graphium/manual/fonts/jetbrains-mono.woff2') format('woff2');
+}
+
+:root {
+  --vp-font-family-base: 'Inter', system-ui, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* ── ブランド（フォレストグリーン） ── */
+  --vp-c-brand-1: #4b7a52; /* リンク・アクセント（#fafdf7 上で 4.7:1） */
+  --vp-c-brand-2: #3d6844; /* ホバー */
+  --vp-c-brand-3: #4b7a52; /* 塗りボタン背景 */
+  --vp-c-brand-soft: #e8f0e8; /* バッジ・ハイライト背景 */
+
+  /* ── 面（paper 階層） ── */
+  --vp-c-bg: #fafdf7;
+  --vp-c-bg-alt: #f5f8f5;
+  --vp-c-bg-soft: #f0f5ef;
+  --vp-c-bg-elv: #ffffff;
+
+  /* ── 文字（ink 階層） ── */
+  --vp-c-text-1: #1a2e1d;
+  --vp-c-text-2: #4a6350;
+  --vp-c-text-3: #8fa394;
+
+  /* ── 罫線 ── */
+  --vp-c-divider: #d5e0d7;
+  --vp-c-border: #d5e0d7;
+  --vp-c-gutter: #dce5dd;
+
+  /* ── ニュートラル。Slate 系グレーを禁止しているので
+   *    design.md のグリーングレー（surface / border-subtle / text-tertiary）に置き換える。 ── */
+  --vp-c-default-1: #4a6350;
+  --vp-c-default-2: #8fa394;
+  --vp-c-default-3: #dce5dd;
+  --vp-c-default-soft: #f0f5ef;
+  --vp-c-gray-1: #4a6350;
+  --vp-c-gray-2: #8fa394;
+  --vp-c-gray-3: #dce5dd;
+  --vp-c-gray-soft: #f0f5ef;
+
+  /* ── セマンティック（design.md の 4 色） ── */
+  --vp-c-tip-1: #2d4a32;
+  --vp-c-tip-2: #4b7a52;
+  --vp-c-tip-3: #b8d4bb;
+  --vp-c-tip-soft: #edf5ee;
+
+  --vp-c-note-1: #0369a1;
+  --vp-c-note-2: #0284c7;
+  --vp-c-note-3: #bae6fd;
+  --vp-c-note-soft: #f0f9ff;
+
+  --vp-c-warning-1: #b45309;
+  --vp-c-warning-2: #d97706;
+  --vp-c-warning-3: #fde68a;
+  --vp-c-warning-soft: #fffbeb;
+
+  --vp-c-danger-1: #991b1b;
+  --vp-c-danger-2: #dc2626;
+  --vp-c-danger-3: #fecaca;
+  --vp-c-danger-soft: #fef2f2;
+
+  /* ── ボタン ── */
+  --vp-button-brand-bg: #4b7a52;
+  --vp-button-brand-border: #4b7a52;
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-hover-bg: #3d6844;
+  --vp-button-brand-hover-border: #3d6844;
+  --vp-button-brand-hover-text: #ffffff;
+  --vp-button-brand-active-bg: #2d4a32;
+  --vp-button-brand-active-border: #2d4a32;
+  --vp-button-alt-bg: #f0f5ef;
+  --vp-button-alt-border: #d5e0d7;
+  --vp-button-alt-text: #2d4a32;
+  --vp-button-alt-hover-bg: #e8f0e8;
+  --vp-button-alt-hover-border: #4b7a52;
+  --vp-button-alt-hover-text: #2d4a32;
+
+  /* ── ホーム hero（グラデーションを使わず単色に） ── */
+  --vp-home-hero-name-color: #4b7a52;
+  --vp-home-hero-image-background-image: none;
+  --vp-home-hero-image-filter: none;
+
+  /* ── コード ── */
+  --vp-code-bg: #f0f5ef;
+  --vp-code-color: #2d4a32;
+  --vp-code-block-bg: #f5f8f5;
+
+  /* ── 影（design.md の暖色 shadow に合わせる） ── */
+  --vp-shadow-1: 0 1px 2px rgba(30, 20, 10, 0.06);
+  --vp-shadow-2: 0 3px 8px rgba(30, 20, 10, 0.08);
+  --vp-shadow-3: 0 8px 24px rgba(30, 20, 10, 0.1);
+}
+
+/* ── ダーク。アプリ本体にダークテーマは無いので、同じ色相（150）の
+ *    ink / paper を反転させて導出した最小構成に留める。 ── */
+.dark {
+  --vp-c-bg: #131a14;
+  --vp-c-bg-alt: #182019;
+  --vp-c-bg-soft: #1d261e;
+  --vp-c-bg-elv: #1a221b;
+
+  --vp-c-text-1: #e8f0e8;
+  --vp-c-text-2: #b8c9be;
+  --vp-c-text-3: #8fa394;
+
+  --vp-c-divider: #2d3a2f;
+  --vp-c-border: #2d3a2f;
+  --vp-c-gutter: #222c23;
+
+  --vp-c-default-1: #b8c9be;
+  --vp-c-default-2: #8fa394;
+  --vp-c-default-3: #2d3a2f;
+  --vp-c-default-soft: #1d261e;
+  --vp-c-gray-1: #b8c9be;
+  --vp-c-gray-2: #8fa394;
+  --vp-c-gray-3: #2d3a2f;
+  --vp-c-gray-soft: #1d261e;
+
+  --vp-c-brand-1: #8ab894; /* 暗い面でのリンク（コントラスト確保のため明るく） */
+  --vp-c-brand-2: #a3c9ab;
+  --vp-c-brand-3: #4b7a52;
+  --vp-c-brand-soft: #22301f;
+
+  --vp-c-tip-1: #a3c9ab;
+  --vp-c-tip-soft: #1d2a1f;
+  --vp-c-note-1: #7dc4ea;
+  --vp-c-note-soft: #16242c;
+  --vp-c-warning-1: #e0b165;
+  --vp-c-warning-soft: #2a2216;
+  --vp-c-danger-1: #e89a9a;
+  --vp-c-danger-soft: #2a1a1a;
+
+  --vp-code-bg: #1d261e;
+  --vp-code-color: #cfe0d3;
+  --vp-code-block-bg: #10160f;
+
+  --vp-button-alt-bg: #1d261e;
+  --vp-button-alt-border: #2d3a2f;
+  --vp-button-alt-text: #e8f0e8;
+  --vp-button-alt-hover-bg: #22301f;
+  --vp-button-alt-hover-border: #4b7a52;
+}
+
+/* ── スクリーンショットは白背景の UI を写しているので、
+ *    紙面から浮かないように罫線と角丸を付ける（LP の画像扱いと同じ意図）。 ── */
+.vp-doc img[src*='/screenshots/'] {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
