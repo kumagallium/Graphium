@@ -290,15 +290,15 @@ export const en: Record<string, string> = {
   "settings.fontLexend": "Lexend (reading-speed optimized / NASA study)",
   "settings.fontZenKaku": "Zen Kaku Gothic New (relaxed body gothic)",
   "settings.fontBizUDP": "BIZ UDPGothic (Japanese UD gothic)",
-  "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI Setup to add a model.",
+  "settings.aiNotConfigured": "No AI models registered. Go to Settings → AI to add a model.",
   "settings.aiSetupCta": "Set up AI",
 
   // ── AI エラー（サーバーの機械可読 code → 表示文言。src/lib/ai-error.ts が参照） ──
-  "aiError.noModelRegistered": "No AI model is registered. Add a model in Settings → AI Setup.",
+  "aiError.noModelRegistered": "No AI model is registered. Add a model in Settings → AI.",
   "aiError.subscriptionAuthExpired": "Claude subscription authentication has expired. Run `claude` in a terminal to log in again, then restart Graphium. To use a different account or team, run `/login` inside `claude` and pick it there.",
-  "aiError.invalidApiKey": "The model API key is invalid or expired. Check the key in Settings → AI Setup.",
+  "aiError.invalidApiKey": "The model API key is invalid or expired. Check the key in Settings → AI.",
   "aiError.apiKeyForbidden": "The API key does not have permission for this operation.",
-  "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI Setup.",
+  "aiError.embeddingModelUnsupported": "Embedding requires an OpenAI-compatible model. Add one in Settings → AI.",
 
   // ── AI チャット ──
   "aiChat.title": "AI Chat",
@@ -1329,10 +1329,10 @@ export const en: Record<string, string> = {
   // ── API キー復旧通知（Keychain ダウングレード罠などの早期発見） ──
   "auth.missingKeyTitle": "Can't read the saved API key for {model}",
   "auth.missingKeyBody":
-    "Graphium temporarily lost track of the {provider} key you registered earlier. Open Settings → AI Setup and paste the same key again to recover.",
+    "Graphium temporarily lost track of the {provider} key you registered earlier. Open Settings → AI and paste the same key again to recover.",
   "auth.missingKeyBodyMultiple":
-    "Graphium can't read {count} saved API keys ({models}). Open Settings → AI Setup and paste the same keys again to recover.",
-  "auth.openSettings": "Open AI Setup",
+    "Graphium can't read {count} saved API keys ({models}). Open Settings → AI and paste the same keys again to recover.",
+  "auth.openSettings": "Open AI settings",
   "auth.dismiss": "Dismiss",
 
   // ── メモ ──

@@ -47,7 +47,7 @@ export function aiErrorCodeOf(err: unknown): AiErrorCode | undefined {
 /** モデル未登録（400）用の共通レスポンスボディ */
 export function noModelRegisteredBody(): { error: string; code: AiErrorCode } {
   return {
-    error: "No AI model is registered. Add a model in Settings → AI Setup.",
+    error: "No AI model is registered. Add a model in Settings → AI.",
     code: "NO_MODEL_REGISTERED",
   };
 }

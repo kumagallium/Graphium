@@ -15,7 +15,7 @@ describe("localizeAiError", () => {
   it("NO_MODEL_REGISTERED は i18n 文言（en）に変換される", () => {
     const err = new CodedError("No AI model is registered.", "NO_MODEL_REGISTERED");
     expect(localizeAiError(err)).toBe(
-      "No AI model is registered. Add a model in Settings → AI Setup.",
+      "No AI model is registered. Add a model in Settings → AI.",
     );
   });
 
@@ -63,7 +63,7 @@ describe("aiErrorFromResponse", () => {
     expect((err as Error & { code?: string }).code).toBe("NO_MODEL_REGISTERED");
     // localizeAiError と組み合わせて i18n 文言になること（統合の要）
     expect(localizeAiError(err)).toBe(
-      "No AI model is registered. Add a model in Settings → AI Setup.",
+      "No AI model is registered. Add a model in Settings → AI.",
     );
   });
 
