@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.25.2](https://github.com/kumagallium/Graphium/compare/v0.25.1...v0.25.2) - 2026-07-30
+
+- [fix] Return to the material list when the sidebar category is re-selected by @kumagallium in https://github.com/kumagallium/Graphium/pull/631
+- Stop the manual's roadmap and badges from going stale by @kumagallium in https://github.com/kumagallium/Graphium/pull/630
+- Move the roadmap nudge into the tagpr job so it actually fires by @kumagallium in https://github.com/kumagallium/Graphium/pull/633
+
 ## [v0.25.1](https://github.com/kumagallium/Graphium/compare/v0.25.0...v0.25.1) - 2026-07-30
 
 - Apply the Graphium brand tokens to the manual theme by @kumagallium in https://github.com/kumagallium/Graphium/pull/628
