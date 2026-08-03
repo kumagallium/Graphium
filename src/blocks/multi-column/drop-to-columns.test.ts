@@ -125,16 +125,34 @@ describe("applyColumnDrop — add-column（既存リストへの追加）", () =
     expect(out[0].children[0].children[0].id).toBe("a");
   });
 
-  it("カラム間の移動: 元カラムが空になったらリストごと解消される → null（PM 既定に委譲）", () => {
-    // 2 カラムの一方の唯一のブロックを、もう一方の隣に落とす
-    // → 除去+正規化でリスト自体が unwrap され、ref カラムが消えるので適用不能
+  it("列の入れ替え: 2 カラムの一方の唯一のブロックをもう一方の隣に落とせる", () => {
+    // 正規化は挿入の「後」なので、除去で空になった c1 が残っている間に
+    // 新カラムを挿し、その後の正規化で c1 だけが消える → [y | x] が成立する
     const blocks = [list("L", [col("c1", [p("x")]), col("c2", [p("y")])])];
     const out = applyColumnDrop(blocks, ["x"], {
       kind: "add-column",
       refColumnId: "c2",
       side: "right",
-    });
-    expect(out).toBeNull();
+    })!;
+    const L = out[0];
+    expect(L.type).toBe("columnList");
+    expect(L.children).toHaveLength(2);
+    expect(L.children[0].id).toBe("c2");
+    expect(L.children[0].children[0].id).toBe("y");
+    expect(L.children[1].children[0].id).toBe("x"); // 新カラム
+  });
+
+  it("列の入れ替え（左側）: 唯一のブロックをもう一方の左に落とすと順序が変わる", () => {
+    const blocks = [list("L", [col("c1", [p("x")]), col("c2", [p("y")])])];
+    const out = applyColumnDrop(blocks, ["x"], {
+      kind: "add-column",
+      refColumnId: "c2",
+      side: "left",
+    })!;
+    const L = out[0];
+    expect(L.children).toHaveLength(2);
+    expect(L.children[0].children[0].id).toBe("x");
+    expect(L.children[1].children[0].id).toBe("y");
   });
 
   it("3 カラムから 1 本抜いてもリストは維持され、隣に追加できる", () => {
