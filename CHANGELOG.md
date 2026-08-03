@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.26.1](https://github.com/kumagallium/Graphium/compare/v0.26.0...v0.26.1) - 2026-08-03
+
+- Finish the terminology sweep: Wiki, Claim, Atom, Skill by @kumagallium in https://github.com/kumagallium/Graphium/pull/635
+- [fix] Soften the Japanese wording for captures by @kumagallium in https://github.com/kumagallium/Graphium/pull/639
+- Put the Skill screen through i18n, and name what ingest actually makes by @kumagallium in https://github.com/kumagallium/Graphium/pull/638
+
 ## [v0.26.0](https://github.com/kumagallium/Graphium/compare/v0.25.2...v0.26.0) - 2026-07-30
 
 - [fix] Record voice in the app instead of opening iOS's video recorder by @kumagallium in https://github.com/kumagallium/Graphium/pull/634
