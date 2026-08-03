@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.27.0](https://github.com/kumagallium/Graphium/compare/v0.26.1...v0.27.0) - 2026-08-03
+
+- Multi-column layouts: place blocks side by side by @kumagallium in https://github.com/kumagallium/Graphium/pull/640
+- fix: stop projecting image OCR provenance into the procedure graph by @kumagallium in https://github.com/kumagallium/Graphium/pull/642
+- Create columns by drag and drop by @kumagallium in https://github.com/kumagallium/Graphium/pull/643
+
 ## [v0.26.1](https://github.com/kumagallium/Graphium/compare/v0.26.0...v0.26.1) - 2026-08-03
 
 - Finish the terminology sweep: Wiki, Claim, Atom, Skill by @kumagallium in https://github.com/kumagallium/Graphium/pull/635
