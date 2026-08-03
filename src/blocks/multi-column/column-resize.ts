@@ -64,14 +64,23 @@ type Hit = {
   rightPx: number;
 };
 
-/** 最前面要素が自エディタ内 or BlockNote サイドメニューなら true（遮蔽判定） */
+/** 最前面要素から見て、この座標でリサイズを始めてよいか（遮蔽判定 + 調停）。
+ *
+ * カラム内ブロックのサイドメニュー（+ / ⠿）は core の仕様で gap 上に浮かび、
+ * ホバー行ではハンドルボタン（24px）が gap（12px）を完全に覆う — 実測で
+ * elementFromPoint(gap 中央) はハンドルの SVG を返す。ここでリサイズが
+ * mousedown を横取りすると、カラム内ブロックの並べ替え・ブロックメニューが
+ * 使えなくなる（実機で報告あり）。そこで調停は「ボタンの上ではボタン優先、
+ * それ以外の gap はリサイズ」とする。リサイズはメニューが浮いていない行の
+ * gap（複数ブロックのカラムや高さの違うカラムでは大半）で引き続き掴める。
+ *
+ * それ以外の前面層（設定モーダル・overlay SidePeek 等）越しのヒットも弾く。 */
 function isPointReachable(view: EditorView, x: number, y: number): boolean {
   const el = document.elementFromPoint(x, y);
   if (!el) return false;
-  if (view.dom.contains(el)) return true;
-  // gap に被る BlockNote UI（サイドメニュー / ドラッグハンドル）は許容する。
-  // それ以外（設定モーダル・overlay SidePeek 等の前面層）越しのヒットは弾く
-  return !!el.closest(".bn-side-menu, .bn-drag-handle-menu");
+  // サイドメニュー / ドラッグハンドルメニューの上ではボタン操作を優先する
+  if (el.closest(".bn-side-menu, .bn-drag-handle-menu")) return false;
+  return view.dom.contains(el);
 }
 
 /** clientX/Y がこの view 内のカラム境界（gap 帯）にあるか座標で判定する */
