@@ -19,10 +19,34 @@ function loadJson(path: string): BenchRunOutput {
   return JSON.parse(readFileSync(path, "utf-8")) as BenchRunOutput;
 }
 
+function tryLoadJson(path: string): BenchRunOutput | null {
+  try {
+    return loadJson(path);
+  } catch {
+    return null;
+  }
+}
+
 function fetchBaselineFromBranch(branch: string): BenchRunOutput {
   // git show <branch>:bench/baseline.json でファイル取得
   const out = execSync(`git show ${branch}:bench/baseline.json`, { encoding: "utf-8" });
   return JSON.parse(out) as BenchRunOutput;
+}
+
+/** baseline が見つからないときに CI コメントへ出す説明（throw で落とさない）。
+ *  bench.yml は stdout を delta.md にリダイレクトして sticky comment に貼るため、
+ *  ここで exit 1 すると pnpm の ELIFECYCLE エラーがそのまま PR コメントになる
+ *  （#366 で baseline.json が撤去されて以来、実際にそうなっていた）。 */
+function renderMissingBaseline(detail: string): string {
+  return [
+    "# Bench delta",
+    "",
+    `比較できませんでした: ${detail}`,
+    "",
+    "delta 表を出すには、tracked の \`bench/baseline.json\` が必要です。",
+    "\`pnpm bench:run\`（baseline プロファイル）が \`bench/baseline.json\` を書くので、",
+    "内容を確認のうえコミットすると、以後の PR で main との差分が出ます。",
+  ].join("\n");
 }
 
 export type Delta = {
@@ -83,29 +107,44 @@ export function renderDeltaTable(left: BenchRunOutput, right: BenchRunOutput): s
 
 function main(): void {
   const arg = process.argv[2];
-  let left: BenchRunOutput;
-  let right: BenchRunOutput;
+  let left: BenchRunOutput | null;
+  let right: BenchRunOutput | null;
 
   const leftEnv = process.env.BENCH_LEFT;
   const rightEnv = process.env.BENCH_RIGHT;
   if (leftEnv && rightEnv) {
+    // 明示パス指定は従来どおり厳格（打ち間違いは早く気づきたい）
     left = loadJson(leftEnv);
     right = loadJson(rightEnv);
   } else if (arg) {
     // git ブランチ指定: 左 = <branch>:bench/baseline.json、右 = ローカル bench/baseline.json
+    // （CI では直前の bench:run が bench/baseline.json を dry-run 結果で上書きして
+    //   いるので、右 = この PR の実測、左 = 比較先ブランチの tracked baseline になる）
+    let branchBaseline: BenchRunOutput | null = null;
     try {
-      left = fetchBaselineFromBranch(arg);
+      branchBaseline = fetchBaselineFromBranch(arg);
     } catch (err) {
       console.error(`[bench] ${arg} の baseline.json 取り出しに失敗: ${(err as Error).message}`);
-      console.error(`        ローカル bench/baseline.json と bench/latest-baseline.json を比較します。`);
-      left = loadJson(join(BENCH_DIR, "baseline.json"));
-      right = loadJson(join(BENCH_DIR, "latest-baseline.json"));
-      console.log(renderDeltaTable(left, right));
+    }
+    const localBaseline = tryLoadJson(join(BENCH_DIR, "baseline.json"));
+    if (!branchBaseline || !localBaseline) {
+      const detail =
+        !branchBaseline && !localBaseline
+          ? `${arg} にも作業ツリーにも bench/baseline.json がありません`
+          : !branchBaseline
+            ? `${arg} に bench/baseline.json がありません（この PR がベースラインを初めて追加する場合、マージ後の PR から delta が出ます）`
+            : `作業ツリーに bench/baseline.json がありません（${arg} 側には存在します）`;
+      console.log(renderMissingBaseline(detail));
       return;
     }
-    right = loadJson(join(BENCH_DIR, "baseline.json"));
+    left = branchBaseline;
+    right = localBaseline;
   } else {
-    left = loadJson(join(BENCH_DIR, "baseline.json"));
+    left = tryLoadJson(join(BENCH_DIR, "baseline.json"));
+    if (!left) {
+      console.log(renderMissingBaseline("bench/baseline.json がありません"));
+      return;
+    }
     const latest = join(BENCH_DIR, "latest-baseline.json");
     right = existsSync(latest) ? loadJson(latest) : left;
   }
