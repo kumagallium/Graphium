@@ -284,28 +284,14 @@ from the executed Entity to the planned one.
 
 #### Image OCR
 
-An image whose text has been read on-device (Tesseract.js; the result
-lives in `page.mediaOcr[blockId]` — see
-[ARCHITECTURE.md §3.2](./ARCHITECTURE.md)) is projected into the graph
-**without any label** — the generator scans image blocks that carry an
-OCR entry, so OCR provenance appears even in notes that have no `#` block
-labels or inline highlights:
-
-- The **image** becomes a `prov:Entity` (`@id` `image_<blockId>`), labelled
-  with the file name.
-- The **OCR pass** becomes a `prov:Activity` (`@id` `activity_ocr_<blockId>`)
-  that `prov:used` the image. Engine, language and confidence ride along as
-  `graphium:engine` / `graphium:lang` / `graphium:confidence` attributes
-  (confidence is dropped when 0).
-- The **extracted text**, when non-empty, becomes a derived `prov:Entity`
-  (`@id` `result_ocr_<blockId>`) that is `prov:wasGeneratedBy` the OCR
-  Activity, labelled with the text collapsed to one line and truncated.
-
-Images that have not been read contribute nothing. If the same image is
-*also* carrying an inline label, the OCR Activity reuses that Entity rather
-than emitting a second node for the same picture. The `image_` /
-`activity_ocr_` / `result_ocr_` id prefixes line up with the view's existing
-`getNodeSubtype`, so the three nodes are colour-coded with no view change.
+On-device OCR results (Tesseract.js; stored in `page.mediaOcr[blockId]`,
+§1) are deliberately **not** projected into the PROV graph. The graph
+describes the procedure the user wrote; an automatic OCR pass is tooling
+provenance, not a step of that procedure, and an earlier release that did
+project image → OCR → extracted-text chains put distracting noise next to
+hand-labelled steps, so the projection was withdrawn. The extracted text
+still powers full-text search (`ocrText` in the note index, §5) and the
+asset gallery's detail panel.
 
 ### 2.4 Document provenance (edit log)
 

@@ -82,7 +82,7 @@ Three ways in:
 2. The same item lives in the block's drag-handle (⠿) menu.
 3. Images newly added while a note is open are read automatically, with a progress toast so nothing runs silently.
 
-Once extracted, the text works for you in several places: note search matches it (results show an **image text** badge), the image's entity in the provenance graph carries it, and you can view and **Copy** the raw text from the image toolbar.
+Once extracted, the text works for you in several places: note search matches it (results show an **image text** badge), and you can view and **Copy** the raw text from the image toolbar.
 
 ![Reading text from an image block](/screenshots/image-ocr.png)
 

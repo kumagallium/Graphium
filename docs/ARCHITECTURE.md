@@ -198,22 +198,19 @@ phase labels on load — so loaded documents never carry a phase and new
 graphs contain no `graphium:phase` metadata. See DATA_MODEL §2.3 for the
 historical semantics that pre-v6 exports may still contain.
 
-Beyond labelled blocks, the generator also picks up **images whose text has
-been read on-device**, with no label required. The user triggers this from
-the image block's drag-handle menu ("Read text from image"); Tesseract.js
-runs entirely in the browser (only the wasm and language data come from a
-CDN — the image itself is never uploaded) and the result is stored in
-`page.mediaOcr[blockId]`. Each such image is projected as image
-`prov:Entity` → OCR `prov:Activity` (`prov:used`) → extracted-text
-`prov:Entity` (`prov:wasGeneratedBy`), with engine, language and confidence
-attached as `graphium:*` attributes on the Activity. If the image already
-carries an inline label, that Entity is reused instead of emitting a second
-node for the same picture. This is the one world-provenance source that
-needs no user tagging — see [DATA_MODEL.md §2.3](./DATA_MODEL.md). The
-`image_` / `activity_ocr_` / `result_ocr_` id prefixes reuse the existing
-node-subtype colouring, so the view renders them without change.
+Beyond labelled blocks, images can have their text **read on-device**, with
+no label required. The user triggers this from the image block's
+drag-handle menu ("Read text from image"); Tesseract.js runs entirely in
+the browser (only the wasm and language data come from a CDN — the image
+itself is never uploaded) and the result is stored in
+`page.mediaOcr[blockId]`. OCR results are deliberately **not** projected
+into the procedure graph: the graph describes the procedure the user
+wrote, and an automatic OCR pass is tooling provenance, not a step of that
+procedure (an earlier release projected image → OCR → extracted-text
+chains into the graph; this was withdrawn as noise — see
+[DATA_MODEL.md §2.3](./DATA_MODEL.md)).
 
-The extracted text is also mirrored into the note index (`ocrText`), so a
+The extracted text is instead mirrored into the note index (`ocrText`), so a
 note holding only a screenshot can be found by the words inside it; the note
 list marks such a hit with an "image text" badge, and the asset gallery shows
 the text on the image's detail panel.
