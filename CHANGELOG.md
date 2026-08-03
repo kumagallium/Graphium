@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.27.1](https://github.com/kumagallium/Graphium/compare/v0.27.0...v0.27.1) - 2026-08-03
+
+- Bench delta bot: stop posting pnpm errors, restore the baseline by @kumagallium in https://github.com/kumagallium/Graphium/pull/644
+
 ## [v0.27.0](https://github.com/kumagallium/Graphium/compare/v0.26.1...v0.27.0) - 2026-08-03
 
 - Multi-column layouts: place blocks side by side by @kumagallium in https://github.com/kumagallium/Graphium/pull/640
