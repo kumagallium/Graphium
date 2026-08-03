@@ -26,6 +26,13 @@ export const columnPropSchema = {
   width: { default: 1 },
 } as const;
 
+// レイアウト定数 — app.css の .gph-column { min-width: min(220px, 100%) } と
+// .gph-column-list { gap: 12px } の値とペア。変えるときは両方を揃えること。
+// リサイズのピクセル下限クランプ（column-resize.ts）と wrap ゾーンの最小幅
+// 判定（drop-to-columns.ts）が参照する。
+export const COLUMN_MIN_WIDTH_PX = 220;
+export const COLUMN_GAP_PX = 12;
+
 export const ColumnListNode = Node.create({
   name: "columnList",
   group: "childContainer bnBlock blockGroupChild",

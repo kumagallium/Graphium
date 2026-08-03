@@ -20,6 +20,7 @@ import type { EditorView } from "prosemirror-view";
 import type { Slice } from "prosemirror-model";
 import { createExtension, getNodeById } from "@blocknote/core";
 import type { DropCursorOptions } from "@blocknote/core";
+import { COLUMN_MIN_WIDTH_PX, COLUMN_GAP_PX } from "./nodes";
 
 // DropCursorPosition / ComputeDropPositionContext はパッケージルートから
 // export されていないため、公開されている DropCursorOptions から型導出する
@@ -78,9 +79,8 @@ function draggedIdsFromView(view: EditorView): Set<string> {
 }
 
 /** カラム 2 本を横に並べるのに必要な最小幅。
- *  app.css の .gph-column の min-width: 220px と gap: 12px に対応する。
  *  これ未満の幅で wrap しても即座に縦積みになるだけなので、ゾーンを出さない */
-const MIN_WRAP_WIDTH = 220 * 2 + 12;
+const MIN_WRAP_WIDTH = COLUMN_MIN_WIDTH_PX * 2 + COLUMN_GAP_PX;
 
 /** columnList が折返し（縦積み）状態か: 隣接カラムのどこかが横に並んでいない */
 function isColumnListStacked(listEl: HTMLElement): boolean {

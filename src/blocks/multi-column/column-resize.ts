@@ -32,13 +32,12 @@ import { Extension as TiptapExtension } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { createExtension } from "@blocknote/core";
+import { COLUMN_MIN_WIDTH_PX } from "./nodes";
 
 const pluginKey = new PluginKey("columnResize");
 
 // 境界ヒット領域: gap（12px）の両側に少し余裕を持たせる
 const HIT_RADIUS = 6;
-// カラムの最小幅比率（flex-grow の下限）
-const MIN_WIDTH = 0.2;
 // body に付けるカーソル用クラス（app.css とペア）
 const BODY_CURSOR_CLASS = "gph-col-resize-cursor";
 // body に付けるドラッグ中クラス（テキスト選択の抑止。app.css とペア）
@@ -211,23 +210,24 @@ const tiptapExt = TiptapExtension.create({
               onDragUp();
               return;
             }
-            const dx = e.clientX - dragging.startX;
+            // ドラッグ量を「隣接 2 カラムが CSS の min-width（220px）を割らない」
+            // 範囲にピクセルでクランプする。grow の比率だけで下限を切ると、
+            // 縮む側が min-width の床に当たった瞬間に flexbox が余剰を残りの
+            // カラム全体へ比例配分し、触っていない 3 列目の幅まで動いてしまう
+            // （実機で報告あり）。ピクセルで止めれば床に当たらないので、
+            // 境界の両隣以外のカラムは 1px も動かない。
+            const rawDx = e.clientX - dragging.startX;
+            const maxShrinkLeft = Math.max(0, dragging.hit.leftPx - COLUMN_MIN_WIDTH_PX);
+            const maxShrinkRight = Math.max(0, dragging.hit.rightPx - COLUMN_MIN_WIDTH_PX);
+            const dx = Math.min(Math.max(rawDx, -maxShrinkLeft), maxShrinkRight);
             // ピクセル幅の増減を flex-grow 比率に換算する。
             // 2 カラム合計の grow / 合計 px = 単位 px あたりの grow
             const totalGrow = dragging.leftStart + dragging.rightStart;
             const totalPx = dragging.hit.leftPx + dragging.hit.rightPx;
             if (totalPx <= 0) return;
             const growPerPx = totalGrow / totalPx;
-            let newLeft = dragging.leftStart + dx * growPerPx;
-            let newRight = dragging.rightStart - dx * growPerPx;
-            if (newLeft < MIN_WIDTH) {
-              newRight -= MIN_WIDTH - newLeft;
-              newLeft = MIN_WIDTH;
-            }
-            if (newRight < MIN_WIDTH) {
-              newLeft -= MIN_WIDTH - newRight;
-              newRight = MIN_WIDTH;
-            }
+            const newLeft = dragging.leftStart + dx * growPerPx;
+            const newRight = dragging.rightStart - dx * growPerPx;
             dragging.current = { left: newLeft, right: newRight };
             dragging.moved = true;
             setPreview(newLeft, newRight);
