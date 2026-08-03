@@ -47,7 +47,7 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background border border-border rounded-lg shadow-lg w-full max-w-md mx-4">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold">{isEdit ? "Edit Skill" : "New Skill"}</h2>
+          <h2 className="text-sm font-semibold">{isEdit ? t("skill.editTitle") : t("skill.new")}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X size={16} />
           </button>
@@ -55,26 +55,26 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">
-              Title
+              {t("skill.titleLabel")}
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Literature Reviewer"
+              placeholder={t("skill.titlePlaceholder")}
               className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               autoFocus
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">
-              Description
+              {t("skill.descriptionLabel")}
             </label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this skill do? (one line)"
+              placeholder={t("skill.descriptionPlaceholder")}
               className="w-full px-3 py-2 text-sm rounded border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <p className="mt-1 text-[10px] text-muted-foreground">
@@ -116,14 +116,14 @@ export function SkillDialog({ mode, initial, onClose, onSubmit }: Props) {
               onClick={onClose}
               className="px-3 py-1.5 text-xs rounded border border-border hover:bg-muted transition-colors"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={!title.trim()}
               className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              {isEdit ? "Save" : "Create"}
+              {isEdit ? t("common.save") : t("common.create")}
             </button>
           </div>
         </form>

@@ -111,7 +111,7 @@ export function SkillListView({
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
         <Breadcrumb items={[
           { label: t("nav.home"), onClick: onBack },
-          { label: "Skill" },
+          { label: t("sidebar.skill") },
         ]} />
         <div className="flex items-center gap-2">
           <Wrench size={16} className="text-primary" />
@@ -123,7 +123,7 @@ export function SkillListView({
           className="flex items-center gap-1 px-2.5 py-1 text-xs rounded border border-border bg-background hover:bg-muted transition-colors"
         >
           <Plus size={12} />
-          <span>New Skill</span>
+          <span>{t("skill.new")}</span>
         </button>
         <div className="relative">
           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -131,7 +131,7 @@ export function SkillListView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search..."
+            placeholder={t("common.search")}
             className="pl-7 pr-3 py-1 text-xs rounded border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-48"
           />
         </div>
@@ -143,7 +143,7 @@ export function SkillListView({
           <div className="flex flex-col items-center justify-center h-32 text-xs text-muted-foreground gap-2">
             <Wrench size={24} className="opacity-30" />
             <span>
-              {searchQuery ? "No matching skills found" : "No skills yet. Create one to enhance AI Ingest."}
+              {searchQuery ? t("skill.noMatching") : t("skill.empty")}
             </span>
           </div>
         ) : (
@@ -176,7 +176,7 @@ export function SkillListView({
                       {entry.systemSkillId && (
                         <span title={t("skill.systemBadgeTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground">
                           <Lock size={9} />
-                          <span>System</span>
+                          <span>{t("skill.systemBadge")}</span>
                         </span>
                       )}
                       {entry.language && (
@@ -223,7 +223,7 @@ export function SkillListView({
                         onClick={(e) => handleDelete(e, entry.id)}
                         disabled={deletingId === entry.id}
                         className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1"
-                        title="Delete"
+                        title={t("common.delete")}
                       >
                         <Trash2 size={14} />
                       </button>
