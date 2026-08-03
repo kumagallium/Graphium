@@ -372,6 +372,8 @@ export const ja: Record<string, string> = {
   "slash.mathSub": "独立した行に数式を表示（LaTeX）",
   "slash.inlineMath": "インライン数式",
   "slash.inlineMathSub": "文中に数式を差し込む（LaTeX）",
+  "slash.columns": "カラム",
+  "slash.columnsSub": "ブロックを 2 列に横並びで配置",
   "math.placeholder": "数式を入力（LaTeX）",
   "math.inlinePlaceholder": "数式",
   "math.editorLabel": "数式",

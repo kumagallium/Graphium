@@ -55,10 +55,21 @@ export function setupLabelAutoAssign(
 
   /**
    * エディタの全ブロックをフラットに走査する
+   *
+   * マルチカラム（columnList / column）はレイアウト用ラッパーなので depth を
+   * 増やさず透過する。木の depth をそのまま使うと「ブロックをカラムに移動」が
+   * +2 のインデント増加に見え、下の「インデント変更 → [属性] 変換」が誤発火して
+   * [材料/ツール/結果] ラベルが勝手に [属性] に化けてしまう。
    */
   function flattenBlocks(blocks: any[], depth = 0): { block: any; depth: number }[] {
     const result: { block: any; depth: number }[] = [];
     for (const block of blocks) {
+      if (block.type === "columnList" || block.type === "column") {
+        if (block.children?.length) {
+          result.push(...flattenBlocks(block.children, depth));
+        }
+        continue;
+      }
       result.push({ block, depth });
       if (block.children?.length) {
         result.push(...flattenBlocks(block.children, depth + 1));

@@ -55,6 +55,7 @@ import { documentSearchExtension } from "@/features/document-search/search-plugi
 import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
+import { columnResizeExtension } from "../blocks/multi-column/column-resize";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
 
 type SandboxEditorProps = {
@@ -162,6 +163,8 @@ export function SandboxEditor({
       // step タイトルでの Enter を「カードの外に兄弟を作る」でなく
       // 「先頭の子ブロックへ入る」にする（step-title-enter.ts 参照）
       stepTitleEnterExtension,
+      // カラム境界ドラッグでの幅リサイズ（multi-column/column-resize.ts 参照）
+      columnResizeExtension,
     ],
   });
 

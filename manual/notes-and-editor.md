@@ -72,6 +72,7 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | **Template** | "Insert a plan or experiment template" |
 | **Callout** | "Insert a note box with an icon" |
 | **Step** | "A step that holds text, tables and images inside" — the container behind the provenance graph; see [Labels & provenance](/labels-and-provenance#step-blocks) |
+| **Columns** | "Place blocks side by side in two columns" — see [Columns](#columns) |
 | **Formula** | "Show a formula on its own line (LaTeX)" |
 | **Inline formula** | "Put a formula inside a sentence (LaTeX)" |
 
@@ -112,6 +113,16 @@ These cite notes from your [Knowledge layer](/knowledge-layer).
 Your last-used mode is remembered on this device. Formulas are stored as LaTeX and rendered with KaTeX, so they survive export as plain LaTeX math delimiters.
 
 ![The formula editor in visual mode, with a toggle to LaTeX](/screenshots/math-editor.png)
+
+## Columns
+
+**Columns** places blocks side by side — observations next to their discussion, a table next to the photo it describes. Insert one from the slash menu (`/columns`) and you get two columns, each holding any blocks you like: paragraphs, headings, tables, images, even steps.
+
+- **Resize** — drag the gap between two columns to change their widths.
+- **Move blocks in and out** — drag a block by its handle (⠿) into a column, or use Backspace / Delete at a column edge to merge content across the boundary.
+- **Narrow layouts stack** — when the note is too narrow to fit the columns side by side (the side peek, a phone), they stack vertically on their own. Nothing is hidden.
+
+Columns are layout only: search, the outline, AI chat, and Markdown export all read the content inside them just as if it were written top to bottom.
 
 ## Callout, bookmark, and PDF
 

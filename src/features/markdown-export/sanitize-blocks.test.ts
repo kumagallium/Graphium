@@ -175,6 +175,34 @@ describe("sanitizeBlocksForMarkdown", () => {
     expect(result[0].content).toEqual([]);
   });
 
+  it("columnList / column はラッパーを捨てて中身をカラム順に持ち上げる", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        id: "cl1",
+        type: "columnList",
+        children: [
+          {
+            id: "c1", type: "column", props: { width: 1 },
+            children: [{ type: "paragraph", content: [text("左カラム")], children: [] }],
+          },
+          {
+            id: "c2", type: "column", props: { width: 2 },
+            children: [
+              { type: "heading", props: { level: 2 }, content: [text("右見出し")], children: [] },
+              { type: "paragraph", content: [text("右本文")], children: [] },
+            ],
+          },
+        ],
+      }],
+      SCHEMA,
+    );
+    // ラッパー（columnList / column）は出力に残らず、空 paragraph も挟まらない
+    expect(result.map((b) => b.type)).toEqual(["paragraph", "heading", "paragraph"]);
+    expect(result[0].content).toEqual([text("左カラム")]);
+    expect(result[1].content).toEqual([text("右見出し")]);
+    expect(result[2].content).toEqual([text("右本文")]);
+  });
+
   it("inlineMath を $ ... $ のテキストに戻す", () => {
     const result = sanitizeBlocksForMarkdown(
       [{

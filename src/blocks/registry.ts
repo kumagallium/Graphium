@@ -12,6 +12,7 @@ import { bookmarkBlock } from "./bookmark";
 import { calloutBlock } from "./callout";
 import { stepBlock } from "./step";
 import { mathBlock } from "./math";
+import { columnListBlock, columnBlock } from "./multi-column";
 
 export const customBlockEntries: CustomBlockEntry[] = [
   pdfViewerBlock,
@@ -19,6 +20,10 @@ export const customBlockEntries: CustomBlockEntry[] = [
   calloutBlock,
   stepBlock,
   mathBlock,
+  // マルチカラムは columnList と column の 2 型セット。
+  // 片方でも欠けると sanitizeBlocks がカラムを children ごと消す。
+  columnListBlock,
+  columnBlock,
 ];
 
 export const CUSTOM_BLOCK_TYPES: ReadonlySet<string> = new Set(

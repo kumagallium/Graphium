@@ -972,7 +972,17 @@ function extractSectionsForEmbedding(
     currentContent = [];
   };
 
-  for (const block of page.blocks) {
+  // マルチカラム（columnList / column）はレイアウト用ラッパーなので透過して
+  // 文書順の flat 列として走査する。透過しないとカラム内の本文が embedding から
+  // 漏れ、Retriever・重複判定に不可視になる。
+  const flattenColumns = (blocks: any[]): any[] =>
+    (blocks ?? []).flatMap((block) =>
+      block.type === "columnList" || block.type === "column"
+        ? flattenColumns(block.children)
+        : [block],
+    );
+
+  for (const block of flattenColumns(page.blocks)) {
     if (block.type === "heading" && block.props?.level === 2) {
       flushSection();
       const headingText = extractInlineText(block.content);
@@ -2160,12 +2170,23 @@ export function extractBodyPreview(doc: GraphiumDocument, maxLen: number): strin
   const page = doc.pages[0];
   if (!page) return "";
   const lines: string[] = [];
-  for (const block of page.blocks) {
-    if (block.type === "heading") continue; // H1/H2/H3 はスキップ — タイトルや節見出しは preview に入れない
-    const t = extractInlineText(block.content);
-    if (t) lines.push(t);
-    if (lines.join(" ").length >= maxLen) break;
-  }
+  // マルチカラム（columnList / column）はレイアウト用ラッパーなので透過する。
+  // 透過しないと、手編集でカラム化した wiki の本文が preview から消え、
+  // Linter / Synthesizer / 一覧が「本文なし」として扱ってしまう。
+  const visit = (blocks: any[]): boolean => {
+    for (const block of blocks ?? []) {
+      if (block.type === "columnList" || block.type === "column") {
+        if (block.children?.length && !visit(block.children)) return false;
+        continue;
+      }
+      if (block.type === "heading") continue; // H1/H2/H3 はスキップ — タイトルや節見出しは preview に入れない
+      const t = extractInlineText(block.content);
+      if (t) lines.push(t);
+      if (lines.join(" ").length >= maxLen) return false;
+    }
+    return true;
+  };
+  visit(page.blocks);
   return lines.join(" ").slice(0, maxLen);
 }
 

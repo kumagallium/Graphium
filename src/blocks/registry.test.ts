@@ -47,6 +47,17 @@ describe("block registry", () => {
     expect(customBlockEntries.some((b) => b.type === "step")).toBe(true);
   });
 
+  it("マルチカラム（columnList / column）が両方登録されている", () => {
+    // columnList と column は 2 型セット。どちらか一方でも漏れると
+    // sanitizeBlocks がカラムを children ごと除去し、カラム内の
+    // 全ブロック（本文・表・画像）が道連れで消える。
+    for (const type of ["columnList", "column"]) {
+      expect(CUSTOM_BLOCK_TYPES.has(type)).toBe(true);
+      expect(KNOWN_BLOCK_TYPES.has(type)).toBe(true);
+      expect(customBlockEntries.some((b) => b.type === type)).toBe(true);
+    }
+  });
+
   it("既存のカスタムブロックも維持されている", () => {
     for (const type of ["callout", "bookmark", "pdf"]) {
       expect(KNOWN_BLOCK_TYPES.has(type)).toBe(true);

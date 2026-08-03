@@ -593,3 +593,54 @@ body[data-prov-labels-off="true"] [data-inline-label] {
     transform: rotate(360deg);
   }
 }
+
+/* ------------------------------------------------------------------
+   マルチカラムレイアウト（columnList / column）
+   ノード定義は src/blocks/multi-column/nodes.ts。
+
+   狭幅対応は flex-wrap + min-width で行う（JS 不要）。
+   viewport のメディアクエリでは不十分 — SidePeek はデスクトップでも
+   320〜480px 幅なので、コンテナ自身が狭いときに縦積みになる必要がある。
+   カラムの min-width を下回ると自動で折り返して縦一列になる。 */
+.gph-column-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.gph-column {
+  /* flex-grow はインライン style（width prop 由来）が上書きする。
+     basis 0 にすることで grow 比率がそのまま幅の比率になる。 */
+  flex: 1 1 0;
+  min-width: min(220px, 100%);
+  /* 長い単語・広いテーブルでカラムが押し広げられるのを防ぐ */
+  min-inline-size: 0;
+}
+
+/* カラム内のブロックが横幅いっぱいに広がりすぎるテーブル等を持つ場合、
+   カラム内でスクロールさせる（ページ全体を横に伸ばさない） */
+.gph-column .bn-block-content {
+  max-width: 100%;
+}
+
+/* リサイズ境界: ホバーで col-resize カーソル、ドラッグ中は選択を殺す
+   （ヒット判定とドラッグは multi-column/column-resize.ts の PM プラグイン） */
+.gph-col-resize-hover,
+.gph-col-resizing {
+  cursor: col-resize;
+}
+.gph-col-resizing,
+.gph-col-resizing * {
+  user-select: none;
+}
+
+/* columnList / column を NodeSelection したときの選択枠。
+   これらは .bn-block-content を持たないラッパーなので、上の
+   「ブロック選択枠」ルール（.bn-block-content 前提）が効かず、
+   BlockNote 既定の高彩度ブルーが露出する。同じブランドグリーンに揃える。 */
+.bn-editor .gph-column-list.ProseMirror-selectednode,
+.bn-editor .gph-column.ProseMirror-selectednode {
+  outline: color-mix(in oklab, var(--color-primary) 55%, transparent) solid 3px;
+  border-radius: 4px;
+}

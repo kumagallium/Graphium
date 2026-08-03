@@ -638,7 +638,16 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
 
     // 見出し / step コンテナでコンテキストをリセット（新しいセクションの開始）
     // step も工程の境界なので、直前の [材料] 文脈が step の中の画像に漏れないようにする。
-    if ((block.type === "heading" || block.type === "step") && !rawLabel) {
+    // カラム（columnList / column）も同様に境界として扱う — flat 走査では
+    // カラム 1 の末尾の直後にカラム 2 の先頭が並ぶため、リセットしないと
+    // カラム 1 の [材料] 文脈がカラム 2 の未ラベル画像に漏れる。
+    if (
+      (block.type === "heading" ||
+        block.type === "step" ||
+        block.type === "columnList" ||
+        block.type === "column") &&
+      !rawLabel
+    ) {
       currentEntityLabel = null;
     }
 

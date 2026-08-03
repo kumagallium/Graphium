@@ -14,6 +14,7 @@ import { mathSlashItem } from "./blocks/math";
 import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
+import { columnsSlashItem } from "./blocks/multi-column";
 import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES } from "./blocks/registry";
 import {
   LabelStoreProvider,
@@ -112,7 +113,7 @@ import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
-import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
+import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
@@ -2373,20 +2374,11 @@ function NoteEditorInner({
                     continue;
                   }
                 }
-                const page = doc.pages[0];
-                const blocks = page?.blocks ?? [];
-                // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）
-                const content = blocks
-                  .map((b: any) => {
-                    const prefix = b.type === "heading" ? "#".repeat(b.props?.level ?? 2) + " " : "";
-                    const c = b.content;
-                    if (!c) return "";
-                    if (typeof c === "string") return prefix + c;
-                    if (Array.isArray(c)) return prefix + c.map((x: any) => x.text ?? "").join("");
-                    return "";
-                  })
-                  .filter(Boolean)
-                  .join("\n");
+                // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）。
+                // children も再帰する共通ヘルパーに委ねる — トップレベルの
+                // content だけ見ると、本文が step・カラムの中にあるノートが
+                // 空扱いになり context から丸ごと落ちる。
+                const content = blocksToPlainText(doc);
                 if (content.trim()) {
                   noteContents.push(`## ${attached.title}\n${content.trim()}`);
                 }
@@ -4235,7 +4227,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}

@@ -39,6 +39,7 @@ import { calloutSlashItem } from "../../blocks/callout";
 import { mathSlashItem } from "../../blocks/math";
 import { inlineMathSlashItem } from "../inline-math/spec";
 import { stepSlashItem } from "../../blocks/step";
+import { columnsSlashItem } from "../../blocks/multi-column";
 import {
   getMediaSlashMenuItems,
   DEFAULT_MEDIA_SLASH_TITLES,
@@ -1624,6 +1625,7 @@ function SidePeekInner({
                   bookmarkSlashItem,
                   calloutSlashItem,
                   stepSlashItem,
+                  columnsSlashItem,
                   mathSlashItem,
                   inlineMathSlashItem,
                   getMemoSlashMenuItem(),
