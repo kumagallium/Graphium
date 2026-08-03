@@ -611,11 +611,13 @@ body[data-prov-labels-off="true"] [data-inline-label] {
 
 .gph-column {
   /* flex-grow はインライン style（width prop 由来）が上書きする。
-     basis 0 にすることで grow 比率がそのまま幅の比率になる。 */
+     basis 0 にすることで grow 比率がそのまま幅の比率になる。
+     min-width が縦積みの閾値: 2 本を 220px で並べられない幅になると
+     flex-wrap で折り返して縦一列になる。
+     ⚠️ min-inline-size: 0 を足さないこと — 横書きでは min-width と同じ
+     プロパティなので、この min-width を 0 に上書きして折り返しが死ぬ。 */
   flex: 1 1 0;
   min-width: min(220px, 100%);
-  /* 長い単語・広いテーブルでカラムが押し広げられるのを防ぐ */
-  min-inline-size: 0;
 }
 
 /* カラム内のブロックが横幅いっぱいに広がりすぎるテーブル等を持つ場合、
@@ -624,14 +626,16 @@ body[data-prov-labels-off="true"] [data-inline-label] {
   max-width: 100%;
 }
 
-/* リサイズ境界: ホバーで col-resize カーソル、ドラッグ中は選択を殺す
-   （ヒット判定とドラッグは multi-column/column-resize.ts の PM プラグイン） */
-.gph-col-resize-hover,
-.gph-col-resizing {
-  cursor: col-resize;
+/* リサイズ境界: ホバー/ドラッグ中は body クラスで全域に col-resize カーソルを
+   出す（カラム間の gap にはサイドメニューのポータルが被ることがあり、
+   要素単位の cursor では足りない）。ヒット判定とドラッグは
+   multi-column/column-resize.ts の document capture リスナー。 */
+body.gph-col-resize-cursor,
+body.gph-col-resize-cursor * {
+  cursor: col-resize !important;
 }
-.gph-col-resizing,
-.gph-col-resizing * {
+body.gph-col-resizing,
+body.gph-col-resizing * {
   user-select: none;
 }
 
