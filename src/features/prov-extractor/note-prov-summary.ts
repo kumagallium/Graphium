@@ -106,7 +106,6 @@ export function summarizeNoteProv(
         labels: toLabelsMap(page),
         links: collectPageLinks(page),
         mediaInlineLabels: toMediaInlineLabelsMap(page),
-        mediaOcr: page.mediaOcr ? new Map(Object.entries(page.mediaOcr)) : undefined,
       });
     } catch {
       // ページ単位で失敗しても、他のページの抽出は続行する

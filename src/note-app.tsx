@@ -2138,7 +2138,6 @@ function NoteEditorInner({
     linkStore.links,
     initialDoc?.documentProvenance,
     mediaInlineLabelStore.labels,
-    mediaOcrStore.entries,
   );
 
   // ノート切り替え時に自動オープンフラグをリセット（次のノートで再度 1 度だけ発火する）
