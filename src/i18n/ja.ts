@@ -1336,7 +1336,7 @@ export const ja: Record<string, string> = {
   // ── メモ ──
   "memo.title": "メモ",
   "memo.count": "{count} 件",
-  "memo.emptyQueueHome": "過去の記録はまだありません。下の捕獲ボタンから始めましょう。",
+  "memo.emptyQueueHome": "過去の記録はまだありません。下のボタンから始めましょう。",
   "memo.new": "メモを作成",
   "memo.placeholder": "メモを入力...",
   "memo.saving": "Google Drive に保存中...",
@@ -1422,12 +1422,12 @@ export const ja: Record<string, string> = {
   "mobile.emptyInboxHint": "モバイルから同期フォルダの Inbox に置いたファイルがここに並びます。",
   "mobile.scanFailed": "受信箱を読み込めませんでした: {error}",
 
-  // ── モバイル捕獲履歴（スマホ → クラウド Inbox） ──
+  // ── モバイルの記録履歴（スマホ → クラウド Inbox） ──
   // 撮ったものはまずこの端末に永続化され、Google Drive の Graphium/Inbox へ
   // アップロードされる。デスクトップは同期フォルダからそれを取り込む。
   // ホームは 1 本の時系列: 送信済みも消えず、待機中・この端末の過去のメモ / 素材と
   // 混ざって新しい順に並ぶ。
-  "mobile.history.title": "捕獲履歴",
+  "mobile.history.title": "これまでの記録",
   "mobile.history.unsent": "未送信 {count} 件",
   "mobile.history.remove": "履歴から削除",
   "mobile.send.title": "送信キュー",
@@ -1462,7 +1462,7 @@ export const ja: Record<string, string> = {
   "mobile.audio.recording": "録音中",
   "mobile.audio.processing": "書き出しています...",
   "mobile.audio.retake": "録り直す",
-  "mobile.audio.capture": "捕獲する",
+  "mobile.audio.capture": "これを使う",
   "mobile.audio.tryAgain": "もう一度",
   "mobile.audio.limitReached": "10 分の上限に達したので停止しました。",
   "mobile.audio.errorDenied": "マイクの使用が許可されていません。ブラウザの設定でこのサイトに許可してから、もう一度お試しください。",
