@@ -1,0 +1,305 @@
+// ドラッグ&ドロップでのカラム生成
+//
+// BlockNote のドラッグハンドルでブロックを掴み、別ブロックの左右端に落とすと
+// 2 カラムに、既存カラムの左右端・カラム間の gap に落とすと新しいカラムに
+// なる。core (MPL-2.0) の分担は:
+//   - DropCursor 拡張が縦カーソルの「描画」と computeDropPosition フックを提供
+//   - SideMenu の dragstart が blocknote/html + view.dragging(move) を設定
+//   - drop 時のトランザクションは core に存在しない → ここで handleDrop を実装
+//
+// 実装方針: ドロップの適用は純関数 applyColumnDrop によるページ JSON 変換
+// （ドラッグ元の除去 → カラム構造の正規化 → wrap / カラム追加）で行い、
+// editor.replaceBlocks 一発で置き換える。
+//   - 1 トランザクション = undo 1 回
+//   - ブロック id は JSON に載って保存されるので、PROV・ラベル・リンク・
+//     メモアンカーはすべて無傷（id ベースのサイドストアが生きる）
+//   - 純関数なのでユニットテストで網羅できる
+
+import { Plugin, PluginKey } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
+import type { Slice } from "prosemirror-model";
+import { createExtension, getNodeById } from "@blocknote/core";
+import type { DropCursorOptions } from "@blocknote/core";
+
+// DropCursorPosition / ComputeDropPositionContext はパッケージルートから
+// export されていないため、公開されている DropCursorOptions から型導出する
+type ComputeDropPosition = NonNullable<
+  NonNullable<DropCursorOptions["hooks"]>["computeDropPosition"]
+>;
+type ComputeDropPositionContext = Parameters<ComputeDropPosition>[0];
+type DropCursorPosition = NonNullable<ReturnType<ComputeDropPosition>>;
+
+const pluginKey = new PluginKey("dropToColumns");
+
+// ブロック左右端の「カラム化ゾーン」の幅。狭いブロックでは狭く、広い
+// ブロックでも大きくなりすぎないようにクランプする
+function edgeZoneWidth(rectWidth: number): number {
+  return Math.max(24, Math.min(80, rectWidth * 0.2));
+}
+
+export type ColumnDropZone =
+  | {
+      /** 通常ブロックの左右端 → そのブロックとドラッグ中ブロックを 2 カラム化 */
+      kind: "wrap";
+      targetId: string;
+      side: "left" | "right";
+      /** DropCursor 用: 対象ノード直前の PM 位置 */
+      cursorPos: number;
+    }
+  | {
+      /** カラムの左右端 / カラム間 gap → 隣に新しいカラムを追加 */
+      kind: "add-column";
+      refColumnId: string;
+      side: "left" | "right";
+      cursorPos: number;
+    };
+
+/** ドラッグ中ブロックの id 一覧を PM slice（blocknote/html 由来）から得る */
+function draggedIdsFromSlice(slice: Slice): string[] {
+  const ids: string[] = [];
+  let unsupported = false;
+  slice.content.forEach((node) => {
+    // カラム系ノード自体のドラッグは対象外（現状ドラッグハンドルでは掴めない）
+    if (node.type.name === "column" || node.type.name === "columnList") {
+      unsupported = true;
+      return;
+    }
+    const id = node.attrs?.id;
+    if (typeof id === "string" && id) ids.push(id);
+  });
+  return unsupported ? [] : ids;
+}
+
+/** view.dragging からドラッグ中 id を得る（dragover 中のカーソル抑制用） */
+function draggedIdsFromView(view: EditorView): Set<string> {
+  const dragging = (view as any).dragging;
+  if (!dragging?.slice) return new Set();
+  return new Set(draggedIdsFromSlice(dragging.slice));
+}
+
+/**
+ * ドロップ座標から「カラム化ゾーン」を判定する。
+ * ゾーン外・編集不可・ドラッグ中ブロック自身の上などは null。
+ */
+export function computeColumnDropZone(
+  view: EditorView,
+  event: { clientX: number; clientY: number; dataTransfer?: DataTransfer | null },
+): ColumnDropZone | null {
+  if (!view.editable) return null;
+  // 外部ファイルのドラッグは対象外（画像アップロード等の既存経路に委ねる）
+  if (event.dataTransfer?.files?.length) return null;
+
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  if (!el || !view.dom.contains(el)) return null;
+
+  const draggedIds = draggedIdsFromView(view);
+  const blockOuter = el.closest<HTMLElement>('[data-node-type="blockOuter"]');
+  const columnEl = el.closest<HTMLElement>('[data-node-type="column"]');
+
+  if (blockOuter) {
+    const rect = blockOuter.getBoundingClientRect();
+    const zone = edgeZoneWidth(rect.width);
+    const side =
+      event.clientX <= rect.left + zone
+        ? ("left" as const)
+        : event.clientX >= rect.right - zone
+          ? ("right" as const)
+          : null;
+    if (!side) return null;
+
+    if (columnEl) {
+      // カラム内のブロック端 → その「カラム」の隣に新しいカラムを足す
+      const refColumnId = columnEl.getAttribute("data-id");
+      if (!refColumnId) return null;
+      const posInfo = getNodeById(refColumnId, view.state.doc);
+      if (!posInfo) return null;
+      return { kind: "add-column", refColumnId, side, cursorPos: posInfo.posBeforeNode };
+    }
+
+    const targetId = blockOuter.getAttribute("data-id");
+    if (!targetId || draggedIds.has(targetId)) return null;
+    const posInfo = getNodeById(targetId, view.state.doc);
+    if (!posInfo) return null;
+    return { kind: "wrap", targetId, side, cursorPos: posInfo.posBeforeNode };
+  }
+
+  // ブロック外だが columnList の上（カラム間の gap）→ その境界にカラム追加
+  const listEl = el.closest<HTMLElement>('[data-node-type="columnList"]');
+  if (listEl) {
+    const columns = Array.from(
+      listEl.querySelectorAll<HTMLElement>(':scope > [data-node-type="column"]'),
+    );
+    for (let i = 0; i < columns.length - 1; i++) {
+      const leftRect = columns[i].getBoundingClientRect();
+      const rightRect = columns[i + 1].getBoundingClientRect();
+      if (rightRect.left < leftRect.right) continue; // 縦積み時は対象外
+      if (event.clientX >= leftRect.right && event.clientX <= rightRect.left) {
+        const refColumnId = columns[i].getAttribute("data-id");
+        if (!refColumnId) return null;
+        const posInfo = getNodeById(refColumnId, view.state.doc);
+        if (!posInfo) return null;
+        return { kind: "add-column", refColumnId, side: "right", cursorPos: posInfo.posBeforeNode };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * DropCursor の computeDropPosition フック。
+ * カラム化ゾーンでは縦カーソル（block-vertical-left/right）、それ以外は
+ * core の既定位置をそのまま使う。
+ */
+export function columnDropCursorPosition(
+  ctx: ComputeDropPositionContext,
+): DropCursorPosition | null {
+  const zone = computeColumnDropZone(ctx.view, ctx.event);
+  if (!zone) return ctx.defaultPosition;
+  return {
+    pos: zone.cursorPos,
+    orientation: zone.side === "left" ? "block-vertical-left" : "block-vertical-right",
+  };
+}
+
+// ── ここから純関数（ユニットテスト対象） ──────────────────────────────
+
+const isColumnType = (b: any) => b?.type === "column" || b?.type === "columnList";
+
+/**
+ * ドロップの適用をページ JSON の変換として行う。
+ *  1. draggedIds のブロックを（children ごと）ツリーから抜き取る
+ *  2. 空になったカラム・1 本以下になった columnList を正規化する
+ *  3. zone に従って挿入する（wrap = 対象と 2 カラム化 / add-column = 隣に追加）
+ * 適用できない場合（dragged が見つからない、対象が消えた等）は null を返し、
+ * 呼び出し側は PM の既定ドロップに委ねる。
+ */
+export function applyColumnDrop(
+  blocks: any[],
+  draggedIds: string[],
+  zone:
+    | { kind: "wrap"; targetId: string; side: "left" | "right" }
+    | { kind: "add-column"; refColumnId: string; side: "left" | "right" },
+): any[] | null {
+  const idSet = new Set(draggedIds);
+  const dragged: any[] = [];
+
+  // 1. 抜き取り（文書順） + 2. カラム正規化を 1 パスで行う
+  const extract = (bs: any[]): any[] => {
+    const out: any[] = [];
+    for (const b of bs ?? []) {
+      if (idSet.has(b.id)) {
+        dragged.push(b); // children ごと丸ごと移動（id も保存される）
+        continue;
+      }
+      const children = b.children?.length ? extract(b.children) : b.children;
+      if (b.type === "column") {
+        if (!children || children.length === 0) continue; // 空カラムは消す
+        out.push({ ...b, children });
+        continue;
+      }
+      if (b.type === "columnList") {
+        const cols = (children ?? []).filter((c: any) => c.type === "column");
+        if (cols.length >= 2) out.push({ ...b, children: cols });
+        else if (cols.length === 1) out.push(...(cols[0].children ?? []));
+        // 0 本なら columnList ごと消す
+        continue;
+      }
+      out.push({ ...b, children });
+    }
+    return out;
+  };
+
+  const removed = extract(blocks);
+  if (dragged.length === 0) return null;
+  // カラム系ノードそのものは移動対象にしない（スキーマ違反になる）
+  if (dragged.some(isColumnType)) return null;
+
+  // 3. 挿入
+  if (zone.kind === "wrap") {
+    let found = false;
+    const wrap = (bs: any[]): any[] =>
+      bs.map((b: any) => {
+        if (b.id === zone.targetId) {
+          // 対象がカラム系ならここでは扱わない（zone 判定側で除外済みのはず）
+          if (isColumnType(b)) return b;
+          found = true;
+          const draggedColumn = { type: "column", children: dragged };
+          const targetColumn = { type: "column", children: [b] };
+          return {
+            type: "columnList",
+            children:
+              zone.side === "left"
+                ? [draggedColumn, targetColumn]
+                : [targetColumn, draggedColumn],
+          };
+        }
+        // columnList の中（column の children）には wrap 対象は居ない
+        // （zone 判定で add-column になる）が、step 等のネストは辿る
+        if (!isColumnType(b) && b.children?.length) {
+          return { ...b, children: wrap(b.children) };
+        }
+        return b;
+      });
+    const result = wrap(removed);
+    return found ? result : null;
+  }
+
+  // add-column: refColumnId の隣に新しいカラムを挿し込む
+  {
+    let found = false;
+    const insert = (bs: any[]): any[] =>
+      bs.map((b: any) => {
+        if (b.type === "columnList" && b.children?.some((c: any) => c.id === zone.refColumnId)) {
+          found = true;
+          const newColumn = { type: "column", children: dragged };
+          const idx = b.children.findIndex((c: any) => c.id === zone.refColumnId);
+          const children = [...b.children];
+          children.splice(zone.side === "left" ? idx : idx + 1, 0, newColumn);
+          return { ...b, children };
+        }
+        if (b.children?.length) return { ...b, children: insert(b.children) };
+        return b;
+      });
+    const result = insert(removed);
+    // ref カラムが正規化で消えた場合（例: 2 カラムの一方の唯一のブロックを
+    // もう一方の端に落とした）は適用不能 → PM 既定に委ねる
+    return found ? result : null;
+  }
+}
+
+// ── 拡張本体 ─────────────────────────────────────────────────────────
+
+export const dropToColumnsExtension = createExtension(({ editor }) => ({
+  key: "dropToColumns",
+  prosemirrorPlugins: [
+    new Plugin({
+      key: pluginKey,
+      props: {
+        handleDrop(view, event, slice, _moved) {
+          const zone = computeColumnDropZone(view, event as DragEvent);
+          if (!zone) return false;
+
+          const ids = draggedIdsFromSlice(slice);
+          if (ids.length === 0) return false;
+          // 別エディタ発のドラッグ（このドキュメントに id が無い）は既定に委ねる
+          if (ids.some((id) => !editor.getBlock(id))) return false;
+
+          const next = applyColumnDrop(
+            editor.document as any[],
+            ids,
+            zone.kind === "wrap"
+              ? { kind: "wrap", targetId: zone.targetId, side: zone.side }
+              : { kind: "add-column", refColumnId: zone.refColumnId, side: zone.side },
+          );
+          if (!next) return false;
+
+          event.preventDefault();
+          // 1 回の置換 = 1 undo。id が保存されるため PROV・ラベル・リンク・
+          // メモアンカー等の id ベースのサイドストアはすべて無傷
+          editor.replaceBlocks(editor.document, next as any);
+          return true;
+        },
+      },
+    }),
+  ],
+}));

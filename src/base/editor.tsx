@@ -56,6 +56,7 @@ import { openLinkInSidePeekExtension } from "./open-link-in-side-peek";
 import { stepTitleAutoformatGuardExtension } from "../blocks/step/step-title-autoformat-guard";
 import { stepTitleEnterExtension } from "../blocks/step/step-title-enter";
 import { columnResizeExtension } from "../blocks/multi-column/column-resize";
+import { dropToColumnsExtension, columnDropCursorPosition } from "../blocks/multi-column/drop-to-columns";
 import { handleInlineLabelShortcut } from "@features/inline-label/shortcuts";
 
 type SandboxEditorProps = {
@@ -139,6 +140,9 @@ export function SandboxEditor({
     initialContent: initialContent?.length ? (initialContent as any) : undefined,
     uploadFile,
     resolveFileUrl,
+    // ブロック左右端へのドラッグで縦のドロップカーソルを出す
+    // （カラム化ゾーンの判定は multi-column/drop-to-columns.ts）
+    dropCursor: { hooks: { computeDropPosition: columnDropCursorPosition } },
     // Tab / Shift-Tab を常にインデント操作に振る。
     // デフォルトの "prefer-navigate-ui" は FormattingToolbar / FilePanel が
     // 開いている時に Tab/Shift-Tab を非処理にして UI 側にフォーカスを移すが、
@@ -165,6 +169,8 @@ export function SandboxEditor({
       stepTitleEnterExtension,
       // カラム境界ドラッグでの幅リサイズ（multi-column/column-resize.ts 参照）
       columnResizeExtension,
+      // ブロックの左右端へのドロップでカラム生成（multi-column/drop-to-columns.ts 参照）
+      dropToColumnsExtension(),
     ],
   });
 
