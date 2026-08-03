@@ -372,6 +372,8 @@ export const en: Record<string, string> = {
   "slash.mathSub": "Show a formula on its own line (LaTeX)",
   "slash.inlineMath": "Inline formula",
   "slash.inlineMathSub": "Put a formula inside a sentence (LaTeX)",
+  "slash.columns": "Columns",
+  "slash.columnsSub": "Place blocks side by side in two columns",
   "math.placeholder": "Enter a formula (LaTeX)",
   "math.inlinePlaceholder": "formula",
   "math.editorLabel": "Formula",

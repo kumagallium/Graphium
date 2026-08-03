@@ -175,6 +175,13 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
       });
       continue;
     }
+    if (b.type === "columnList" || b.type === "column") {
+      // マルチカラム → Markdown はレイアウトを持たないので、カラムの中身を
+      // カラム 1 → カラム 2 の順にそのまま持ち上げる（ラッパーは捨てる）。
+      // 未知ブロック fallback に落とすと空 paragraph が挟まって出力が汚れる。
+      out.push(...children);
+      continue;
+    }
     if (typeof b.type !== "string" || !knownBlockTypes.has(b.type)) {
       // 未知ブロック（将来のカスタムブロック等）→ プレーンテキストで残す
       const text = extractInlineText(b.content);

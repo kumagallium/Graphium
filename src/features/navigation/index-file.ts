@@ -101,7 +101,13 @@ import { collectOcrText } from "../media-ocr/collect";
 //      （後方互換）。
 //      bump を必ず実地確認する: Graphium 起動時に v22 インデックスが v23 として
 //      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
-export const INDEX_SCHEMA_VERSION = 23;
+// v24: マルチカラム（columnList / column）をアウトライン収集で透過する。
+//      カラムはレイアウト用のラッパーなので、カラムの中に置かれた見出し・step も
+//      「トップレベル相当」としてアウトライン・検索に載せる。カラムを使わない
+//      既存ノートの収集結果は変わらない（後方互換）。
+//      bump を必ず実地確認する: Graphium 起動時に v23 インデックスが v24 として
+//      再構築される（ensureIndex 内の version mismatch full rebuild 経路）。
+export const INDEX_SCHEMA_VERSION = 24;
 
 export type GraphiumIndex = {
   version: number;
@@ -381,6 +387,13 @@ export function buildIndexEntry(
           if (text) steps.push({ blockId: block.id, text });
           // step の子（入れ子の step・中の見出し）も拾う
           if (block.children?.length) collectOutline(block.children, true);
+          continue;
+        }
+        // マルチカラムはレイアウト用ラッパーなので透過する（v24）。
+        // カラム内の見出し・step は「トップレベル相当」として扱う
+        // （insideStep を引き継ぎ、カラム自体は outline に出さない）。
+        if (block?.type === "columnList" || block?.type === "column") {
+          if (block.children?.length) collectOutline(block.children, insideStep);
           continue;
         }
         if (

@@ -1099,7 +1099,7 @@ type NoteIndexEntry = {
 
 ### 5.1 `INDEX_SCHEMA_VERSION`
 
-Defined in `src/features/navigation/index-file.ts`. Currently **22**.
+Defined in `src/features/navigation/index-file.ts`. Currently **24**.
 Bumping rules:
 
 | Version | Change |
@@ -1123,6 +1123,7 @@ Bumping rules:
 | **21** | Added `noteContexts` mirror on `NoteIndexEntry` — user-assigned, note-level context labels (free-form categories the user attaches by hand, e.g. "eureco" / "philosophy"). Mirrored from `GraphiumDocument.noteContexts` (normalised: trimmed, empty-dropped, de-duped case-insensitively). Powers the note-list "Context" column display and column-header filter; orthogonal to PROV block labels and to the Synthesis-only `theme`. Legacy notes keep `noteContexts: undefined` (treated as "uncategorised") and `ensureIndex` rebuilds on the bump without touching note JSON. Intended to later scope AI context retrieval to a chosen context. |
 | **22** | Added `ocrText` mirror on `NoteIndexEntry` — the concatenated, newline-joined text read on-device out of the note's images, collected from `page.mediaOcr` in `buildIndexEntry` and included in `searchNotes`, so a note holding only a scanned image is findable by the words inside it. Legacy notes keep `ocrText: undefined` and `ensureIndex` rebuilds on the bump without touching note JSON. |
 | **23** | Added `steps` on `NoteIndexEntry` — the titles of `step` container blocks, collected in document order (including steps nested inside another step). `headings` is typed `level: 2 \| 3` and cannot carry a step, so steps get their own field. Headings written *inside* a step are still collected into `headings` so the outline does not lose them. Notes that use no step keep `steps: undefined`, and `ensureIndex` rebuilds on the bump without touching note JSON. |
+| **24** | Outline collection treats multi-column blocks (`columnList` / `column`) as transparent layout wrappers — headings and steps placed inside a column are collected as if they were top-level, so they appear in the outline and in search. No `NoteIndexEntry` field changed; the bump exists because the collection logic changed and column-using notes need a rebuild to be indexed correctly. Notes without columns produce identical entries. |
 
 When a stored index has a version below the current one, `ensureIndex`
 **rebuilds the entire index** by re-reading every note. This is the

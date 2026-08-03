@@ -57,6 +57,34 @@ describe("blocksToPlainText", () => {
     });
     expect(blocksToPlainText(doc)).toBe("## 見出し\n本文です");
   });
+
+  it("コンテナ（step / カラム）の children も再帰して拾う", () => {
+    // トップレベルの content だけ見ると、本文がカラム内にあるノートが
+    // 空文字になり「添付したのに中身が context に入らない」事故になる
+    const doc = makeDoc({
+      pages: [
+        makePage([
+          {
+            type: "columnList",
+            children: [
+              {
+                type: "column",
+                children: [{ type: "paragraph", content: [{ text: "左カラムの本文" }] }],
+              },
+              {
+                type: "column",
+                children: [
+                  { type: "heading", props: { level: 3 }, content: [{ text: "右見出し" }] },
+                  { type: "paragraph", content: [{ text: "右カラムの本文" }] },
+                ],
+              },
+            ],
+          },
+        ], "t"),
+      ],
+    });
+    expect(blocksToPlainText(doc)).toBe("左カラムの本文\n### 右見出し\n右カラムの本文");
+  });
 });
 
 describe("gatherDerivedMemos", () => {

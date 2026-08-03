@@ -24,6 +24,7 @@ import {
   KNOWN_BLOCK_TYPES,
   CUSTOM_INLINE_TYPES,
   KNOWN_INLINE_TYPES,
+  sanitizeBlocksForLoad,
 } from "./registry";
 
 describe("block registry", () => {
@@ -45,6 +46,17 @@ describe("block registry", () => {
     expect(CUSTOM_BLOCK_TYPES.has("step")).toBe(true);
     expect(KNOWN_BLOCK_TYPES.has("step")).toBe(true);
     expect(customBlockEntries.some((b) => b.type === "step")).toBe(true);
+  });
+
+  it("マルチカラム（columnList / column）が両方登録されている", () => {
+    // columnList と column は 2 型セット。どちらか一方でも漏れると
+    // sanitizeBlocks がカラムを children ごと除去し、カラム内の
+    // 全ブロック（本文・表・画像）が道連れで消える。
+    for (const type of ["columnList", "column"]) {
+      expect(CUSTOM_BLOCK_TYPES.has(type)).toBe(true);
+      expect(KNOWN_BLOCK_TYPES.has(type)).toBe(true);
+      expect(customBlockEntries.some((b) => b.type === type)).toBe(true);
+    }
   });
 
   it("既存のカスタムブロックも維持されている", () => {
@@ -96,14 +108,8 @@ describe("inline registry", () => {
 // ここでは同じ判定（KNOWN_BLOCK_TYPES による filter ＋ children 再帰）を再現し、
 // step とその子孫が保持されることを確認する。実関数と同じ集合を参照しているので、
 // 登録漏れが起きればこのテストも落ちる。
-function sanitizeLike(blocks: any[]): any[] {
-  return blocks
-    .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
-    .map((b) => ({
-      ...b,
-      children: b.children?.length ? sanitizeLike(b.children) : b.children,
-    }));
-}
+// 実物の読み込みサニタイザ（note-app / SidePeek が使うのと同じ実装）
+const sanitizeLike = (blocks: any[]) => sanitizeBlocksForLoad(blocks);
 
 describe("sanitize 相当の挙動（step のデータ保護）", () => {
   const stepWithChildren = {
@@ -153,5 +159,86 @@ describe("sanitize 相当の挙動（step のデータ保護）", () => {
     ]);
     expect(out[0].children[0].type).toBe("step");
     expect(out[0].children[0].children[0].type).toBe("paragraph");
+  });
+
+  it("未知のコンテナ型は children を持ち上げて温存する（道連れ削除しない）", () => {
+    const out = sanitizeLike([
+      {
+        id: "u1",
+        type: "futureContainer",
+        children: [{ id: "p", type: "paragraph", children: [] }],
+      },
+    ]);
+    expect(out.map((b: any) => b.type)).toEqual(["paragraph"]);
+  });
+});
+
+describe("sanitize のカラム構造修復（不正構造で BlockNoteEditor.create が throw しない形にする）", () => {
+  const para = (id: string) => ({ id, type: "paragraph", children: [] });
+
+  it("正常な 2 カラムはそのまま保持される", () => {
+    const out = sanitizeLike([
+      {
+        id: "cl",
+        type: "columnList",
+        children: [
+          { id: "c1", type: "column", children: [para("p1")] },
+          { id: "c2", type: "column", children: [para("p2")] },
+        ],
+      },
+    ]);
+    expect(out[0].type).toBe("columnList");
+    expect(out[0].children.map((c: any) => c.type)).toEqual(["column", "column"]);
+  });
+
+  it("唯一の子が未知型で空になったカラムは drop され、columnList が解消される", () => {
+    // column の content は blockContainer+（空を許さない）、columnList は
+    // column column+（2 本以上）。修復しないと initialContent で throw する
+    const out = sanitizeLike([
+      {
+        id: "cl",
+        type: "columnList",
+        children: [
+          { id: "c1", type: "column", children: [{ id: "u", type: "futureBlock", children: [] }] },
+          { id: "c2", type: "column", children: [para("p2")] },
+        ],
+      },
+    ]);
+    // c1 は空になり drop → 単一カラムの columnList は解消され中身が持ち上がる
+    expect(out.map((b: any) => b.type)).toEqual(["paragraph"]);
+    expect(out[0].id).toBe("p2");
+  });
+
+  it("カラムが全滅した columnList は丸ごと消える", () => {
+    const out = sanitizeLike([
+      {
+        id: "cl",
+        type: "columnList",
+        children: [
+          { id: "c1", type: "column", children: [{ id: "u1", type: "futureBlock", children: [] }] },
+          { id: "c2", type: "column", children: [{ id: "u2", type: "futureBlock", children: [] }] },
+        ],
+      },
+      para("after"),
+    ]);
+    expect(out.map((b: any) => b.type)).toEqual(["paragraph"]);
+    expect(out[0].id).toBe("after");
+  });
+
+  it("columnList 直下の column 以外の子は外に持ち上げる", () => {
+    const out = sanitizeLike([
+      {
+        id: "cl",
+        type: "columnList",
+        children: [
+          { id: "c1", type: "column", children: [para("p1")] },
+          { id: "c2", type: "column", children: [para("p2")] },
+          para("stray"),
+        ],
+      },
+    ]);
+    expect(out.map((b: any) => b.type)).toEqual(["columnList", "paragraph"]);
+    expect(out[0].children).toHaveLength(2);
+    expect(out[1].id).toBe("stray");
   });
 });

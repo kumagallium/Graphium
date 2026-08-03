@@ -50,21 +50,27 @@ export function docMediaFileId(doc: GraphiumDocument): string | undefined {
   return doc.sourcePdfFileId ?? doc.sourceDocumentFileId;
 }
 
-/** ノート本文（先頭ページのブロック）からプレーンテキストを抽出する */
+/** ノート本文（先頭ページのブロック）からプレーンテキストを抽出する
+ *
+ * children も再帰して拾う。コンテナブロック（step / columnList / column）は
+ * content を持たない（または content だけでは本文にならない）ので、
+ * トップレベルの content だけ見ると本文がカラム内にあるノートが空文字になり、
+ * 「添付したのに中身が context に入らない」事故になる。 */
 export function blocksToPlainText(doc: GraphiumDocument): string {
-  const blocks = doc.pages?.[0]?.blocks ?? [];
-  return blocks
-    .map((b: any) => {
+  const lines: string[] = [];
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
       const prefix = b.type === "heading" ? "#".repeat(b.props?.level ?? 2) + " " : "";
       const c = b.content;
-      if (!c) return "";
-      if (typeof c === "string") return prefix + c;
-      if (Array.isArray(c)) return prefix + c.map((x: any) => x.text ?? "").join("");
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+      let text = "";
+      if (typeof c === "string") text = c;
+      else if (Array.isArray(c)) text = c.map((x: any) => x.text ?? "").join("");
+      if (text) lines.push(prefix + text);
+      if (b.children?.length) visit(b.children);
+    }
+  };
+  visit(doc.pages?.[0]?.blocks ?? []);
+  return lines.join("\n").trim();
 }
 
 /**

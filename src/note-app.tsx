@@ -14,7 +14,8 @@ import { mathSlashItem } from "./blocks/math";
 import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
-import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES } from "./blocks/registry";
+import { columnsSlashItem } from "./blocks/multi-column";
+import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -112,7 +113,7 @@ import { upsertChat } from "./features/ai-assistant/store";
 import { saveNoteDoc } from "./features/note-save";
 import { extractLabelMarkersFromBlocks, convertExtractedProcedureBlocksToSteps } from "./features/ai-assistant/label-markers";
 import { splitSourceMentions, linkifySourceMentions } from "./features/ai-assistant/source-mentions";
-import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, type GroundingScope } from "./features/ai-assistant/cited-document-context";
+import { isDocumentNote, assembleCitedDocumentContext, assembleCitedAssetContext, gatherDerivedKnowledge, blocksToPlainText, type GroundingScope } from "./features/ai-assistant/cited-document-context";
 import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-scope";
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
@@ -860,14 +861,10 @@ function sanitizeInlineContent(content: any): any {
   return content;
 }
 
+// 未知ブロックの除去 + カラム構造の修復は registry の sanitizeBlocksForLoad に
+// 集約（SidePeek と共用）。メインエディタは inline content の検査も併せて行う。
 function sanitizeBlocks(blocks: any[]): any[] {
-  return blocks
-    .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
-    .map((b) => ({
-      ...b,
-      content: sanitizeInlineContent(b.content),
-      children: b.children?.length ? sanitizeBlocks(b.children) : b.children,
-    }));
+  return sanitizeBlocksForLoad(blocks, sanitizeInlineContent);
 }
 
 // wiki:/skill: プレフィックス付きフルキーで doc を読む（キャッシュ優先）。
@@ -2373,20 +2370,11 @@ function NoteEditorInner({
                     continue;
                   }
                 }
-                const page = doc.pages[0];
-                const blocks = page?.blocks ?? [];
-                // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）
-                const content = blocks
-                  .map((b: any) => {
-                    const prefix = b.type === "heading" ? "#".repeat(b.props?.level ?? 2) + " " : "";
-                    const c = b.content;
-                    if (!c) return "";
-                    if (typeof c === "string") return prefix + c;
-                    if (Array.isArray(c)) return prefix + c.map((x: any) => x.text ?? "").join("");
-                    return "";
-                  })
-                  .filter(Boolean)
-                  .join("\n");
+                // プレーンテキスト抽出（ブロック構造から確実にテキストを取得）。
+                // children も再帰する共通ヘルパーに委ねる — トップレベルの
+                // content だけ見ると、本文が step・カラムの中にあるノートが
+                // 空扱いになり context から丸ごと落ちる。
+                const content = blocksToPlainText(doc);
                 if (content.trim()) {
                   noteContents.push(`## ${attached.title}\n${content.trim()}`);
                 }
@@ -4235,7 +4223,7 @@ function NoteEditorInner({
               blocks={customBlockEntries}
               initialContent={initialContent}
               sideMenu={NoteSideMenu}
-              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems]}
+              extraSlashMenuItems={[newNoteSlashItem, indexTableSlashItem, templateSlashItem, ...mediaSlashItems, bookmarkSlashItem, calloutSlashItem, stepSlashItem, columnsSlashItem, mathSlashItem, inlineMathSlashItem, memoSlashItem, ...citeSlashItems]}
               excludeDefaultSlashTitles={DEFAULT_MEDIA_SLASH_TITLES}
               formattingToolbar={NoteFormattingToolbar}
               onEditorReady={handleEditorReady}
@@ -5660,13 +5648,9 @@ export function NoteApp() {
                 .filter((d): d is NonNullable<typeof d> => d !== null);
 
               if (allExistingDetails.length > 0) {
-                const noteContent = job.doc.pages[0]?.blocks
-                  ?.map((b: any) => {
-                    if (Array.isArray(b.content)) return b.content.map((c: any) => c.text ?? "").join("");
-                    return "";
-                  })
-                  .filter(Boolean)
-                  .join("\n") ?? "";
+                // children も再帰する共通ヘルパーで抽出（トップレベルの content
+                // だけ見ると、本文が step・カラムの中にあるノートが空扱いになる）
+                const noteContent = blocksToPlainText(job.doc);
 
                 // クエリ embedding は、直前に作った Wiki の代表ベクトルを使う
                 // （embed が非同期で間に合っていない可能性あり → null フォールバック）
