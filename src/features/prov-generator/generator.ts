@@ -613,6 +613,24 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   type EntityLabelContext = { coreLabel: CoreLabel };
 
   let currentEntityLabel: EntityLabelContext | null = null;
+  // 文脈が設定された時点の所属カラム id（カラム外は null）。
+  // flat 走査ではカラムを「抜けた」ことを示すブロックが並ばない
+  // （最終カラムの末尾の直後にトップレベルのブロックが来る）ため、
+  // 所属カラムの変化で脱出を検出してリセットする。
+  let currentEntityLabelOwner: string | null = null;
+  // blockId → 最寄りの祖先 column の id（カラム外は null）
+  const columnOwnerOf = new Map<string, string | null>();
+  {
+    const walkOwners = (bs: any[], owner: string | null) => {
+      for (const b of bs ?? []) {
+        columnOwnerOf.set(b.id, owner);
+        if (b.children?.length) {
+          walkOwners(b.children, b.type === "column" ? b.id : owner);
+        }
+      }
+    };
+    walkOwners(blocks, null);
+  }
   // URL → デデュプ情報（同一メディアを 1 Entity にまとめる）
   const mediaEntityMap = new Map<string, {
     entityId: string;
@@ -621,6 +639,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   }>();
 
   for (const block of flatBlocks) {
+    // カラム境界の脱出検出: 文脈を設定したカラムと所属が変わったらリセット
+    // （カラム 3 の [材料] がカラム直後のトップレベル画像に漏れないように）
+    if (
+      currentEntityLabel &&
+      (columnOwnerOf.get(block.id) ?? null) !== currentEntityLabelOwner
+    ) {
+      currentEntityLabel = null;
+    }
+
     // ラベルコンテキストの更新
     const rawLabel = labels.get(block.id);
     if (rawLabel) {
@@ -630,6 +657,7 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       // 無関係な画像まで material/output として取り込まれてしまう（誤検出）。
       if (ENTITY_LABEL_SET.includes(normalized as CoreLabel) && block.type !== "table") {
         currentEntityLabel = { coreLabel: normalized as CoreLabel };
+        currentEntityLabelOwner = columnOwnerOf.get(block.id) ?? null;
       } else {
         // procedure / attribute / 構造テーブル などはメディアのコンテキストをリセット
         currentEntityLabel = null;

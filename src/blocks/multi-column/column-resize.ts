@@ -6,7 +6,10 @@
 //    メニュー（ドラッグハンドル。body ポータルで描画）が重なることがあり、
 //    その場合イベントの target がエディタ DOM 外になって PM の
 //    handleDOMEvents には届かない。そこで document への capture リスナー +
-//    座標ヒットテストで境界を判定する。
+//    座標ヒットテストで境界を判定する。ただし座標だけだと前面のモーダル /
+//    オーバーレイ越しに背後のカラムを掴んでしまうため、elementFromPoint の
+//    最前面要素が「自エディタ内 or BlockNote サイドメニュー」の場合だけ
+//    ヒットを有効にする（遮蔽判定）。
 //
 // 2. DOM 要素の参照を保持できない — ProseMirror は編集のたびに toDOM ベースの
 //    ノード DOM を差し替えることがあり（実測でドラッグ中にも起きる）、掴んだ
@@ -15,9 +18,15 @@
 //    確定時も data-id で現在の DOM を引き直して PM 位置を解決する。
 //
 // 確定は ProseMirror トランザクション 1 回（setNodeMarkup ×2）。undo も 1 回。
+// 変化ゼロ（単クリック）は dispatch しない（no-op undo と dirty 化を避ける）。
 // タッチは対象外（モバイル・狭幅では CSS の flex-wrap で縦積みになる）。
-// メイン / SidePeek はそれぞれ独立にこのプラグインを持つ。ヒットテストは
-// 自分の view.dom 配下の columnList に限定するので相互干渉しない。
+//
+// メイン / SidePeek / Storybook はそれぞれ独立にこのプラグインを持つ。
+// ヒットテストは自分の view.dom 配下の columnList に限定するが、body の
+// カーソルクラスは全インスタンス共有の資源なので、モジュールスコープの
+// 集合（hoverClaims）の論理和で付け外しする（last-write-wins の toggle だと
+// 後着インスタンスが他方のホバー表示を打ち消す）。ドラッグはモジュール
+// スコープのロック（activeDrag）で同時 1 件に限定する。
 
 import { Extension as TiptapExtension } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
@@ -35,6 +44,19 @@ const BODY_CURSOR_CLASS = "gph-col-resize-cursor";
 // body に付けるドラッグ中クラス（テキスト選択の抑止。app.css とペア）
 const BODY_DRAGGING_CLASS = "gph-col-resizing";
 
+// ── モジュールスコープの共有状態（複数エディタ間の調停） ──
+// ホバー中インスタンスの集合。body クラスは集合の空/非空で決める
+const hoverClaims = new Set<symbol>();
+// ドラッグ中インスタンス（同時に 1 件だけ）
+let activeDrag: symbol | null = null;
+
+function syncBodyCursor() {
+  document.body.classList.toggle(
+    BODY_CURSOR_CLASS,
+    hoverClaims.size > 0 || activeDrag !== null,
+  );
+}
+
 type Hit = {
   leftId: string;
   rightId: string;
@@ -42,8 +64,30 @@ type Hit = {
   rightPx: number;
 };
 
+/** 最前面要素が自エディタ内 or BlockNote サイドメニューなら true（遮蔽判定） */
+function isPointReachable(view: EditorView, x: number, y: number): boolean {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return false;
+  if (view.dom.contains(el)) return true;
+  // gap に被る BlockNote UI（サイドメニュー / ドラッグハンドル）は許容する。
+  // それ以外（設定モーダル・overlay SidePeek 等の前面層）越しのヒットは弾く
+  return !!el.closest(".bn-side-menu, .bn-drag-handle-menu");
+}
+
 /** clientX/Y がこの view 内のカラム境界（gap 帯）にあるか座標で判定する */
 function hitTestBoundary(view: EditorView, x: number, y: number): Hit | null {
+  // 粗い事前判定: エディタ矩形の外なら querySelectorAll を走らせない
+  // （document mousemove ごとに呼ばれるため）
+  const viewRect = view.dom.getBoundingClientRect();
+  if (
+    x < viewRect.left - HIT_RADIUS ||
+    x > viewRect.right + HIT_RADIUS ||
+    y < viewRect.top ||
+    y > viewRect.bottom
+  ) {
+    return null;
+  }
+
   const lists = view.dom.querySelectorAll<HTMLElement>('[data-node-type="columnList"]');
   for (const list of lists) {
     const listRect = list.getBoundingClientRect();
@@ -60,6 +104,7 @@ function hitTestBoundary(view: EditorView, x: number, y: number): Hit | null {
       // 同じ行にあるか（縦積みの折返し行をまたがない）
       if (y < leftRect.top || y > leftRect.bottom) continue;
       if (x >= leftRect.right - HIT_RADIUS && x <= rightRect.left + HIT_RADIUS) {
+        if (!isPointReachable(view, x, y)) return null;
         const leftId = columns[i].getAttribute("data-id");
         const rightId = columns[i + 1].getAttribute("data-id");
         if (!leftId || !rightId) return null;
@@ -105,24 +150,27 @@ const tiptapExt = TiptapExtension.create({
       new Plugin({
         key: pluginKey,
         view(view) {
+          // このインスタンスの識別子（hoverClaims / activeDrag の調停用）
+          const self = Symbol("columnResize");
           let dragging: {
             hit: Hit;
             startX: number;
             leftStart: number; // flex-grow 開始値
             rightStart: number;
             current: { left: number; right: number };
+            moved: boolean;
           } | null = null;
           // ライブプレビュー用の <style>。DOM 差し替えに耐えるよう、要素の
           // style 属性ではなく data-id セレクタの CSS ルールで幅を当てる
           let previewStyle: HTMLStyleElement | null = null;
 
           const setPreview = (left: number, right: number) => {
+            if (!dragging) return;
             if (!previewStyle) {
               previewStyle = document.createElement("style");
               previewStyle.setAttribute("data-gph-column-resize", "");
               document.head.appendChild(previewStyle);
             }
-            if (!dragging) return;
             previewStyle.textContent =
               `[data-node-type="column"][data-id="${CSS.escape(dragging.hit.leftId)}"]{flex-grow:${left} !important;}` +
               `[data-node-type="column"][data-id="${CSS.escape(dragging.hit.rightId)}"]{flex-grow:${right} !important;}`;
@@ -133,14 +181,27 @@ const tiptapExt = TiptapExtension.create({
             previewStyle = null;
           };
 
+          const setHoverClaim = (hit: boolean) => {
+            const had = hoverClaims.has(self);
+            if (hit === had) return; // 状態が変わった時だけ触る（綱引き防止）
+            if (hit) hoverClaims.add(self);
+            else hoverClaims.delete(self);
+            syncBodyCursor();
+          };
+
           const onHoverMove = (e: MouseEvent) => {
-            if (dragging) return;
+            if (dragging || activeDrag) return; // 誰かがドラッグ中は触らない
             const hit = view.editable ? hitTestBoundary(view, e.clientX, e.clientY) : null;
-            document.body.classList.toggle(BODY_CURSOR_CLASS, !!hit);
+            setHoverClaim(!!hit);
           };
 
           const onDragMove = (e: MouseEvent) => {
             if (!dragging) return;
+            // mouseup を取り逃した（ウィンドウ外で離した等）場合の固着防止
+            if (e.buttons === 0) {
+              onDragUp();
+              return;
+            }
             const dx = e.clientX - dragging.startX;
             // ピクセル幅の増減を flex-grow 比率に換算する。
             // 2 カラム合計の grow / 合計 px = 単位 px あたりの grow
@@ -159,20 +220,41 @@ const tiptapExt = TiptapExtension.create({
               newRight = MIN_WIDTH;
             }
             dragging.current = { left: newLeft, right: newRight };
+            dragging.moved = true;
             setPreview(newLeft, newRight);
           };
 
-          const onDragUp = () => {
+          const teardownDrag = () => {
             document.removeEventListener("mousemove", onDragMove, true);
             document.removeEventListener("mouseup", onDragUp, true);
+            window.removeEventListener("blur", onWindowBlur);
             document.body.classList.remove(BODY_DRAGGING_CLASS);
-            document.body.classList.remove(BODY_CURSOR_CLASS);
+            if (activeDrag === self) activeDrag = null;
+            syncBodyCursor();
+          };
+
+          // ウィンドウがフォーカスを失ったらドラッグを取り消す（確定しない）
+          const onWindowBlur = () => {
+            teardownDrag();
+            dragging = null;
+            clearPreview();
+          };
+
+          const onDragUp = () => {
+            teardownDrag();
             if (!dragging) {
               clearPreview();
               return;
             }
-            const { hit, current } = dragging;
+            const { hit, current, leftStart, rightStart, moved } = dragging;
             dragging = null;
+
+            // 変化なし（単クリック / 元の位置に戻した）なら dispatch しない
+            // （no-op の undo ステップと dirty/自動保存を発生させない）
+            if (!moved || (current.left === leftStart && current.right === rightStart)) {
+              clearPreview();
+              return;
+            }
 
             // data-id で現在の DOM から PM 位置を引き直す（掴んだ要素は
             // ドラッグ中に差し替えられている可能性がある）
@@ -200,13 +282,13 @@ const tiptapExt = TiptapExtension.create({
           };
 
           const onMouseDown = (e: MouseEvent) => {
-            if (!view.editable || e.button !== 0 || dragging) return;
+            if (!view.editable || e.button !== 0 || dragging || activeDrag) return;
             const hit = hitTestBoundary(view, e.clientX, e.clientY);
             if (!hit) return;
 
-            // サイドメニューのクリック・PM の選択開始より先に境界ドラッグを取る
+            // サイドメニューのクリック・PM の選択開始・他インスタンスより先に取る
             e.preventDefault();
-            e.stopPropagation();
+            e.stopImmediatePropagation();
 
             // 開始値は PM ノードの width から読む（DOM の style は差し替えで
             // 消えている可能性があるため信用しない）
@@ -216,18 +298,22 @@ const tiptapExt = TiptapExtension.create({
             const leftStart = readWidthByPos(view, leftPos);
             const rightStart = readWidthByPos(view, rightPos);
 
+            activeDrag = self;
+            setHoverClaim(false);
             dragging = {
               hit,
               startX: e.clientX,
               leftStart,
               rightStart,
               current: { left: leftStart, right: rightStart },
+              moved: false,
             };
             document.body.classList.add(BODY_DRAGGING_CLASS);
-            document.body.classList.add(BODY_CURSOR_CLASS);
+            syncBodyCursor();
             // capture: 途中の要素が mousemove を stopPropagation しても追従する
             document.addEventListener("mousemove", onDragMove, true);
             document.addEventListener("mouseup", onDragUp, true);
+            window.addEventListener("blur", onWindowBlur);
           };
 
           // capture: サイドメニュー（body ポータル）が gap に被っていても先に取る
@@ -238,10 +324,8 @@ const tiptapExt = TiptapExtension.create({
             destroy() {
               document.removeEventListener("mousemove", onHoverMove, true);
               document.removeEventListener("mousedown", onMouseDown, true);
-              document.removeEventListener("mousemove", onDragMove, true);
-              document.removeEventListener("mouseup", onDragUp, true);
-              document.body.classList.remove(BODY_CURSOR_CLASS);
-              document.body.classList.remove(BODY_DRAGGING_CLASS);
+              teardownDrag();
+              setHoverClaim(false);
               clearPreview();
               dragging = null;
             },

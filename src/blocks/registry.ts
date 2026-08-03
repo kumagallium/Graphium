@@ -47,6 +47,63 @@ export const KNOWN_BLOCK_TYPES: ReadonlySet<string> = new Set([
   ...CUSTOM_BLOCK_TYPES,
 ]);
 
+// 保存済みノートを読み込むときのブロックサニタイズ（note-app / SidePeek 共用）。
+//
+// 未知ブロック型の除去に加えて、カラム（columnList / column）の構造修復を行う。
+// 修復が必要な理由: columnList は「column 2 本以上」、column は「子 1 個以上」が
+// ProseMirror の content 制約で、これを破る JSON を initialContent に渡すと
+// BlockNoteEditor.create が throw してノートが開けなくなる（メインエディタには
+// エラーバウンダリが無いので画面全損）。型 filter だけだと「カラムの唯一の子が
+// 未知型」のような version skew でこの不正構造が生まれ得る。
+//
+// - 未知型: ブロック自体は落とすが、children は持ち上げて温存する
+//   （コンテナ型の中身まで道連れにしない。旧来は children ごと消していた）
+// - 空になった column: drop
+// - column が 1 本以下になった columnList: 解消して中身を持ち上げる
+// - columnList 直下の column 以外の子: 外に持ち上げる
+export function sanitizeBlocksForLoad(
+  blocks: any[],
+  mapContent?: (content: any) => any,
+): any[] {
+  const out: any[] = [];
+  for (const b of blocks ?? []) {
+    if (!b || typeof b.type !== "string" || !KNOWN_BLOCK_TYPES.has(b.type)) {
+      // 未知型: 子だけ持ち上げて温存
+      if (b?.children?.length) out.push(...sanitizeBlocksForLoad(b.children, mapContent));
+      continue;
+    }
+    const children = b.children?.length
+      ? sanitizeBlocksForLoad(b.children, mapContent)
+      : b.children;
+
+    if (b.type === "column") {
+      // 空カラムは PM content 制約（blockContainer+）違反 → drop
+      if (!children || children.length === 0) continue;
+      out.push({ ...b, children });
+      continue;
+    }
+    if (b.type === "columnList") {
+      const cols = (children ?? []).filter((c: any) => c.type === "column");
+      const strays = (children ?? []).filter((c: any) => c.type !== "column");
+      if (cols.length >= 2) {
+        out.push({ ...b, children: cols });
+      } else if (cols.length === 1) {
+        // 単一カラムは columnList ごと解消して中身を持ち上げる
+        out.push(...(cols[0].children ?? []));
+      }
+      // column 以外の子（不正構造）は外に持ち上げて温存
+      out.push(...strays);
+      continue;
+    }
+    out.push({
+      ...b,
+      content: mapContent ? mapContent(b.content) : b.content,
+      children,
+    });
+  }
+  return out;
+}
+
 // カスタムインラインコンテンツ（本文の途中に埋まる独自要素）の型。
 // ブロックと同じ理由でここに集約する: note-app.tsx の sanitizeInlineContent が
 // この集合に無い inline を除去して自動保存するため、登録漏れは即データ損失になる

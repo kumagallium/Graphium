@@ -72,7 +72,17 @@ export function extractSkillPrompt(doc: GraphiumDocument): string {
   const lines: string[] = [];
   let afterDivider = false;
 
-  for (const block of page.blocks) {
+  // マルチカラム（columnList / column）はレイアウト用ラッパーなので透過して
+  // 文書順の flat 列として走査する（カラム化した Skill 文書の本文が
+  // プロンプトから落ちないように）
+  const flattenColumns = (blocks: any[]): any[] =>
+    (blocks ?? []).flatMap((block: any) =>
+      block?.type === "columnList" || block?.type === "column"
+        ? flattenColumns(block.children)
+        : [block],
+    );
+
+  for (const block of flattenColumns(page.blocks)) {
     // 1 つめの見出しブロック（"Prompt Template" の区切り）はスキップ
     if (!afterDivider && block.type === "heading") {
       afterDivider = true;

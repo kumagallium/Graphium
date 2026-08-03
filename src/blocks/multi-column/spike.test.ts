@@ -11,9 +11,20 @@
 //   - Markdown 書き出し（外部 HTML 経由）でカラム中身が失われない
 // 視覚・リサイズドラッグは実機（Playwright / dev）で別途確認する。
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
-import { columnListBlock, columnBlock } from "./index";
+
+// registry（sanitizeBlocksForLoad）は pdf-viewer 経由で react-pdf を読むため、
+// 描画まわりだけモックする（registry.test.ts と同じ理由）
+vi.mock("react-pdf", () => ({
+  Document: () => null,
+  Page: () => null,
+  pdfjs: { GlobalWorkerOptions: {} },
+}));
+vi.mock("../../lib/pdfjs-config", () => ({}));
+
+import { columnListBlock, columnBlock, columnsSlashItem } from "./index";
+import { sanitizeBlocksForLoad } from "../registry";
 
 function makeEditor(initialContent?: any[]) {
   const schema = BlockNoteSchema.create({
@@ -103,6 +114,50 @@ describe("multi-column — model round-trip", () => {
     expect(typeof list.id).toBe("string");
     expect(list.id.length).toBeGreaterThan(0);
     expect(typeof list.children[0].id).toBe("string");
+  });
+
+  it("sanitize の構造修復を通した不正構造で BlockNoteEditor.create が throw しない", () => {
+    // 「カラムの唯一の子が未知型」という version skew で生まれる JSON。
+    // 修復なしだと column が空になり PM の content 制約（blockContainer+）
+    // 違反で create が throw → メインエディタにはエラーバウンダリが無く画面全損
+    const pathological = [
+      {
+        id: "cl",
+        type: "columnList",
+        children: [
+          { id: "c1", type: "column", children: [{ id: "u", type: "futureBlock", children: [] }] },
+          { id: "c2", type: "column", children: [para("生き残る本文")] },
+        ],
+      },
+    ];
+    const repaired = sanitizeBlocksForLoad(pathological);
+    // 修復済み構造でエディタが作れること（throw しない）が本題
+    const ed = makeEditor(repaired);
+    const texts = JSON.stringify(ed.document);
+    expect(texts).toContain("生き残る本文");
+    // 単一カラム化した columnList は解消されている
+    expect((ed.document as any[]).some((b) => b.type === "columnList")).toBe(false);
+  });
+
+  it("カラム内から /カラム を実行すると最外の columnList の後ろに挿入される", () => {
+    // column の content は blockContainer+ で columnList を受け入れないため、
+    // ガード無しだとカラム内ブロック reference の挿入は TransformError になる
+    const ed = makeEditor([twoColumns, para("後続")]);
+    const list = (ed.document as any[]).find((b) => b.type === "columnList");
+    const innerPara = list.children[0].children[0];
+    ed.setTextCursorPosition(innerPara, "start");
+
+    expect(() => columnsSlashItem.onItemClick(ed)).not.toThrow();
+
+    const doc = ed.document as any[];
+    const lists = doc.filter((b) => b.type === "columnList");
+    // 2 つ目の columnList がトップレベル（元の columnList の直後）に入る
+    expect(lists).toHaveLength(2);
+    expect(doc.findIndex((b) => b.id === lists[1].id)).toBe(
+      doc.findIndex((b) => b.id === lists[0].id) + 1,
+    );
+    // 元のカラムの中身は無傷
+    expect(JSON.stringify(lists[0])).toContain("左カラムの本文");
   });
 
   it("Markdown 書き出し（外部 HTML 経由）でカラム中身が失われない", async () => {

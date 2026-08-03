@@ -124,6 +124,10 @@ Your last-used mode is remembered on this device. Formulas are stored as LaTeX a
 
 Columns are layout only: search, the outline, AI chat, and Markdown export all read the content inside them just as if it were written top to bottom.
 
+::: warning Update all your devices first
+Opening a note that uses columns in an **older version of Graphium** silently removes the columns *and everything inside them* on the next save — older versions do not know the block type. If you use Graphium on several devices, update all of them before you start using columns.
+:::
+
 ## Callout, bookmark, and PDF
 
 - **Callout** is a note box with an icon; pick a variant: **Note**, **Info**, **Success**, **Warning**, or **Danger**.

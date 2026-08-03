@@ -15,7 +15,7 @@ import { inlineMathSlashItem } from "./features/inline-math/spec";
 import { parseMarkdownToBlocksWithMath } from "./features/math/markdown-math";
 import { stepSlashItem } from "./blocks/step";
 import { columnsSlashItem } from "./blocks/multi-column";
-import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES } from "./blocks/registry";
+import { customBlockEntries, KNOWN_BLOCK_TYPES, KNOWN_INLINE_TYPES, sanitizeBlocksForLoad } from "./blocks/registry";
 import {
   LabelStoreProvider,
   ProvLabelsEnabledProvider,
@@ -861,14 +861,10 @@ function sanitizeInlineContent(content: any): any {
   return content;
 }
 
+// 未知ブロックの除去 + カラム構造の修復は registry の sanitizeBlocksForLoad に
+// 集約（SidePeek と共用）。メインエディタは inline content の検査も併せて行う。
 function sanitizeBlocks(blocks: any[]): any[] {
-  return blocks
-    .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
-    .map((b) => ({
-      ...b,
-      content: sanitizeInlineContent(b.content),
-      children: b.children?.length ? sanitizeBlocks(b.children) : b.children,
-    }));
+  return sanitizeBlocksForLoad(blocks, sanitizeInlineContent);
 }
 
 // wiki:/skill: プレフィックス付きフルキーで doc を読む（キャッシュ優先）。
@@ -5652,13 +5648,9 @@ export function NoteApp() {
                 .filter((d): d is NonNullable<typeof d> => d !== null);
 
               if (allExistingDetails.length > 0) {
-                const noteContent = job.doc.pages[0]?.blocks
-                  ?.map((b: any) => {
-                    if (Array.isArray(b.content)) return b.content.map((c: any) => c.text ?? "").join("");
-                    return "";
-                  })
-                  .filter(Boolean)
-                  .join("\n") ?? "";
+                // children も再帰する共通ヘルパーで抽出（トップレベルの content
+                // だけ見ると、本文が step・カラムの中にあるノートが空扱いになる）
+                const noteContent = blocksToPlainText(job.doc);
 
                 // クエリ embedding は、直前に作った Wiki の代表ベクトルを使う
                 // （embed が非同期で間に合っていない可能性あり → null フォールバック）

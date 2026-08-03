@@ -41,6 +41,18 @@ export const columnsSlashItem = {
   group: t("slash.advancedGroup"),
   onItemClick: (editor: any) => {
     const currentBlock = editor.getTextCursorPosition().block;
+
+    // カラム内から実行された場合は、最外の columnList の後ろに挿入する。
+    // column の content は "blockContainer+" で columnList を受け入れないため、
+    // カラム内ブロックを reference に "after" 挿入すると TransformError で
+    // 何も起きない（カラムのネストはスキーマ上そもそも不可能）。
+    let insertRef = currentBlock;
+    for (let b = currentBlock; b; ) {
+      const parent = editor.getParentBlock(b);
+      if (parent?.type === "columnList") insertRef = parent;
+      b = parent;
+    }
+
     const inserted = editor.insertBlocks(
       [
         {
@@ -51,11 +63,13 @@ export const columnsSlashItem = {
           ],
         },
       ],
-      currentBlock,
+      insertRef,
       "after",
     );
 
-    // 現在のブロックが空（スラッシュだけ）なら削除して置き換える
+    // 現在のブロックが空（スラッシュだけ）なら削除して置き換える。
+    // ただしカラムの唯一の子は削除しない（column の content は blockContainer+
+    // で空を許さないため、削除すると TransformError になる）
     const content = currentBlock.content;
     const isEmpty =
       Array.isArray(content) &&
@@ -63,7 +77,10 @@ export const columnsSlashItem = {
       (!content[0] ||
         (content[0].type === "text" &&
           content[0].text.replace("/", "").trim() === ""));
-    if (isEmpty) {
+    const parent = editor.getParentBlock(currentBlock);
+    const isOnlyChildOfColumn =
+      parent?.type === "column" && (parent.children?.length ?? 0) <= 1;
+    if (isEmpty && !isOnlyChildOfColumn) {
       editor.removeBlocks([currentBlock]);
     }
 

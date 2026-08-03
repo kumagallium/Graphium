@@ -33,7 +33,7 @@ import {
   removeNoteContext,
   normalizeNoteContexts,
 } from "../note-context/context-tags";
-import { customBlockEntries, KNOWN_BLOCK_TYPES } from "../../blocks/registry";
+import { customBlockEntries, KNOWN_BLOCK_TYPES, sanitizeBlocksForLoad } from "../../blocks/registry";
 import { bookmarkSlashItem, setBookmarkPickerCallback } from "../../blocks/bookmark";
 import { calloutSlashItem } from "../../blocks/callout";
 import { mathSlashItem } from "../../blocks/math";
@@ -234,18 +234,13 @@ function SidePeekSideMenu() {
   );
 }
 
-// 既知のブロック型（未登録ブロック除去用）は src/blocks/registry.ts の
-// KNOWN_BLOCK_TYPES に集約している（メインエディタと同じ集合を必ず使う）。
+// 未知ブロックの除去 + カラム構造の修復は src/blocks/registry.ts の
+// sanitizeBlocksForLoad に集約している（メインエディタと同じ実装を必ず使う）。
 // 取りこぼすと、Peek を開いた瞬間に保存済みカスタムブロックが除去された
-// まま auto-save されてデータが壊れる。children を持つブロック（step）では
-// 親が落ちると子孫ごと消えるため、損失はさらに大きい。
+// まま auto-save されてデータが壊れる。children を持つブロック（step / カラム）
+// では親が落ちると子孫ごと消えるため、損失はさらに大きい。
 function sanitizeBlocks(blocks: any[]): any[] {
-  return blocks
-    .filter((b) => KNOWN_BLOCK_TYPES.has(b.type))
-    .map((b) => ({
-      ...b,
-      children: b.children?.length ? sanitizeBlocks(b.children) : b.children,
-    }));
+  return sanitizeBlocksForLoad(blocks);
 }
 
 function SidePeekInner({

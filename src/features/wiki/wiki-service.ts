@@ -374,11 +374,14 @@ export async function rewriteAndMerge(
     // 再構成されたセクションをブロックに変換（[[...]] → @リンク）
     const converted = convertSectionsToBlocks(data.sections, noteIndex, existingDoc.title);
 
-    // References セクションは既存のものを保持
-    const refIndex = page.blocks.findIndex(
+    // References セクションは既存のものを保持。
+    // カラム透過した flat 列で探す（References がカラム内に移されていても
+    // 拾える。rewrite 経路は元々フラットな再構成なのでレイアウトは失われる）
+    const flatPageBlocks = flattenColumns(page.blocks);
+    const refIndex = flatPageBlocks.findIndex(
       (b: any) => b.type === "heading" && extractInlineText(b.content).toLowerCase().includes("reference"),
     );
-    const refBlocks = refIndex >= 0 ? page.blocks.slice(refIndex) : [];
+    const refBlocks = refIndex >= 0 ? flatPageBlocks.slice(refIndex) : [];
 
     const finalBlocks = [...converted.blocks, ...refBlocks];
 
@@ -456,7 +459,10 @@ function extractSectionsFromBlocks(
   let currentHeading = "";
   let currentContent: string[] = [];
 
-  for (const block of blocks) {
+  // カラム透過: 手編集でカラム化された wiki の本文を見失うと、
+  // rewriteAndMerge がページ全体を再構成するときにカラム内の本文が
+  // 保存されず消える（サイレントデータ損失）
+  for (const block of flattenColumns(blocks)) {
     if (block.type === "heading" && block.props?.level === 2) {
       // 前のセクションを保存
       if (currentHeading) {
@@ -481,6 +487,20 @@ function extractSectionsFromBlocks(
   }
 
   return sections;
+}
+
+/**
+ * マルチカラム（columnList / column）をレイアウト用ラッパーとして透過し、
+ * 文書順の flat なブロック列にする。wiki 文書はパイプライン生成時はフラット
+ * だがユーザーが手編集でカラム化できるため、本文走査系（セクション抽出・
+ * preview・embedding・merge 再構成）は必ずこれを通してから走査する。
+ */
+function flattenColumns(blocks: any[]): any[] {
+  return (blocks ?? []).flatMap((block) =>
+    block?.type === "columnList" || block?.type === "column"
+      ? flattenColumns(block.children)
+      : [block],
+  );
 }
 
 /**
@@ -861,7 +881,7 @@ export function markEditedSections(doc: GraphiumDocument): GraphiumDocument {
   const page = doc.pages[0];
   if (!page) return doc;
 
-  const h2BlockIds = page.blocks
+  const h2BlockIds = flattenColumns(page.blocks)
     .filter((b: any) => b.type === "heading" && b.props?.level === 2)
     .map((b: any) => b.id);
 
@@ -972,16 +992,8 @@ function extractSectionsForEmbedding(
     currentContent = [];
   };
 
-  // マルチカラム（columnList / column）はレイアウト用ラッパーなので透過して
-  // 文書順の flat 列として走査する。透過しないとカラム内の本文が embedding から
+  // カラム透過（flattenColumns）: しないとカラム内の本文が embedding から
   // 漏れ、Retriever・重複判定に不可視になる。
-  const flattenColumns = (blocks: any[]): any[] =>
-    (blocks ?? []).flatMap((block) =>
-      block.type === "columnList" || block.type === "column"
-        ? flattenColumns(block.children)
-        : [block],
-    );
-
   for (const block of flattenColumns(page.blocks)) {
     if (block.type === "heading" && block.props?.level === 2) {
       flushSection();
@@ -1565,7 +1577,7 @@ export function extractWikiDetail(
     currentContent = [];
   };
 
-  for (const block of page.blocks) {
+  for (const block of flattenColumns(page.blocks)) {
     if (block.type === "heading" && block.props?.level === 2) {
       flushSection();
       currentHeading = extractInlineText(block.content);
@@ -2170,23 +2182,14 @@ export function extractBodyPreview(doc: GraphiumDocument, maxLen: number): strin
   const page = doc.pages[0];
   if (!page) return "";
   const lines: string[] = [];
-  // マルチカラム（columnList / column）はレイアウト用ラッパーなので透過する。
-  // 透過しないと、手編集でカラム化した wiki の本文が preview から消え、
-  // Linter / Synthesizer / 一覧が「本文なし」として扱ってしまう。
-  const visit = (blocks: any[]): boolean => {
-    for (const block of blocks ?? []) {
-      if (block.type === "columnList" || block.type === "column") {
-        if (block.children?.length && !visit(block.children)) return false;
-        continue;
-      }
-      if (block.type === "heading") continue; // H1/H2/H3 はスキップ — タイトルや節見出しは preview に入れない
-      const t = extractInlineText(block.content);
-      if (t) lines.push(t);
-      if (lines.join(" ").length >= maxLen) return false;
-    }
-    return true;
-  };
-  visit(page.blocks);
+  // カラム透過（flattenColumns）: しないと手編集でカラム化した wiki の本文が
+  // preview から消え、Linter / Synthesizer / 一覧が「本文なし」として扱う。
+  for (const block of flattenColumns(page.blocks)) {
+    if (block.type === "heading") continue; // H1/H2/H3 はスキップ — タイトルや節見出しは preview に入れない
+    const t = extractInlineText(block.content);
+    if (t) lines.push(t);
+    if (lines.join(" ").length >= maxLen) break;
+  }
   return lines.join(" ").slice(0, maxLen);
 }
 

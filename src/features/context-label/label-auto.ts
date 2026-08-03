@@ -60,19 +60,34 @@ export function setupLabelAutoAssign(
    * 増やさず透過する。木の depth をそのまま使うと「ブロックをカラムに移動」が
    * +2 のインデント増加に見え、下の「インデント変更 → [属性] 変換」が誤発火して
    * [材料/ツール/結果] ラベルが勝手に [属性] に化けてしまう。
+   *
+   * ただし透過すると flat 列の上ではカラム 1 の末尾とカラム 2 の先頭が
+   * 「同じ depth の隣接ブロック」に見えてしまうため、所属カラムの id を
+   * columnId として持たせ、ラベル継承（findPrevSiblingAt）が列の境界を
+   * 越えないようにする。
    */
-  function flattenBlocks(blocks: any[], depth = 0): { block: any; depth: number }[] {
-    const result: { block: any; depth: number }[] = [];
+  function flattenBlocks(
+    blocks: any[],
+    depth = 0,
+    columnId: string | null = null,
+  ): { block: any; depth: number; columnId: string | null }[] {
+    const result: { block: any; depth: number; columnId: string | null }[] = [];
     for (const block of blocks) {
       if (block.type === "columnList" || block.type === "column") {
         if (block.children?.length) {
-          result.push(...flattenBlocks(block.children, depth));
+          result.push(
+            ...flattenBlocks(
+              block.children,
+              depth,
+              block.type === "column" ? block.id : columnId,
+            ),
+          );
         }
         continue;
       }
-      result.push({ block, depth });
+      result.push({ block, depth, columnId });
       if (block.children?.length) {
-        result.push(...flattenBlocks(block.children, depth + 1));
+        result.push(...flattenBlocks(block.children, depth + 1, columnId));
       }
     }
     return result;
@@ -100,9 +115,14 @@ export function setupLabelAutoAssign(
         prevContents.get(block.id) &&
         !blockHasContent(block)
       ) {
-        // 直後の新ブロックを探す
+        // 直後の新ブロックを探す（カラム境界を越えての転送はしない）
         const next = allBlocks[i + 1];
-        if (next && !prevBlockIds.has(next.block.id) && blockHasContent(next.block)) {
+        if (
+          next &&
+          next.columnId === allBlocks[i].columnId &&
+          !prevBlockIds.has(next.block.id) &&
+          blockHasContent(next.block)
+        ) {
           const label = labelStore.labels.get(block.id)!;
           const attrs = labelStore.attributes.get(block.id);
           labelStore.setLabel(block.id, null);
@@ -199,13 +219,19 @@ function blockHasContent(block: any): boolean {
 
 /**
  * allBlocks 配列で index の手前にある同じ depth のブロックを探す
+ *
+ * カラム境界（columnId の変化）は壁として扱う: カラムを透過した flat 列では
+ * カラム 1 の末尾とカラム 2 の先頭が隣接して見えるが、ラベルの継承が列を
+ * 越えて伝播するのは直感に反するため、columnId が違えば兄弟なしとする。
  */
 function findPrevSiblingAt(
-  allBlocks: { block: any; depth: number }[],
+  allBlocks: { block: any; depth: number; columnId: string | null }[],
   index: number,
   depth: number
-): { block: any; depth: number } | null {
+): { block: any; depth: number; columnId: string | null } | null {
+  const columnId = allBlocks[index]?.columnId ?? null;
   for (let i = index - 1; i >= 0; i--) {
+    if (allBlocks[i].columnId !== columnId) return null; // カラム境界 → 兄弟なし
     if (allBlocks[i].depth === depth) return allBlocks[i];
     if (allBlocks[i].depth < depth) return null; // 親に到達 → 兄弟なし
   }
