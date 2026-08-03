@@ -118,8 +118,9 @@ Your last-used mode is remembered on this device. Formulas are stored as LaTeX a
 
 **Columns** places blocks side by side — observations next to their discussion, a table next to the photo it describes. Insert one from the slash menu (`/columns`) and you get two columns, each holding any blocks you like: paragraphs, headings, tables, images, even steps.
 
+- **Create by dragging** — grab a block by its handle (⠿) and drop it on the **left or right edge** of another block: a vertical drop cursor appears and the two become columns. Dropping on the edge of an existing column (or in the gap between columns) adds a new column there instead.
 - **Resize** — drag the gap between two columns to change their widths.
-- **Move blocks in and out** — drag a block by its handle (⠿) into a column, or use Backspace / Delete at a column edge to merge content across the boundary.
+- **Move blocks in and out** — drag a block by its handle (⠿) into a column, or use Backspace / Delete at a column edge to merge content across the boundary. Dragging the last block out of a column dissolves the column.
 - **Narrow layouts stack** — when the note is too narrow to fit the columns side by side (the side peek, a phone), they stack vertically on their own. Nothing is hidden.
 
 Columns are layout only: search, the outline, AI chat, and Markdown export all read the content inside them just as if it were written top to bottom.

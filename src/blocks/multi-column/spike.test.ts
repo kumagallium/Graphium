@@ -24,6 +24,7 @@ vi.mock("react-pdf", () => ({
 vi.mock("../../lib/pdfjs-config", () => ({}));
 
 import { columnListBlock, columnBlock, columnsSlashItem } from "./index";
+import { applyColumnDrop } from "./drop-to-columns";
 import { sanitizeBlocksForLoad } from "../registry";
 
 function makeEditor(initialContent?: any[]) {
@@ -158,6 +159,27 @@ describe("multi-column — model round-trip", () => {
     );
     // 元のカラムの中身は無傷
     expect(JSON.stringify(lists[0])).toContain("左カラムの本文");
+  });
+
+  it("DnD 相当の全置換のあと、キャレットをドラッグしたブロックへ戻せる", () => {
+    // handleDrop は applyColumnDrop → replaceBlocks → setTextCursorPosition の
+    // 順で動く。全置換は選択の位置マッピングを壊してキャレットがノート末尾へ
+    // 落ちるため、復元まで含めてワンセットであることをここで固定する
+    const mk = (id: string, text: string) => ({
+      id,
+      type: "paragraph",
+      content: [{ type: "text", text, styles: {} }],
+    });
+    const ed = makeEditor([mk("n1", "one"), mk("n2", "two"), mk("n3", "three"), mk("n4", "four")]);
+    const next = applyColumnDrop(ed.document as any[], ["n2"], {
+      kind: "wrap",
+      targetId: "n3",
+      side: "right",
+    })!;
+    expect(next).toBeTruthy();
+    ed.replaceBlocks(ed.document as any, next as any);
+    ed.setTextCursorPosition("n2", "start");
+    expect((ed.getTextCursorPosition().block as any).id).toBe("n2");
   });
 
   it("Markdown 書き出し（外部 HTML 経由）でカラム中身が失われない", async () => {

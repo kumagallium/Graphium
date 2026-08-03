@@ -191,3 +191,31 @@ export const SlashInsert: StoryObj = {
     </Safe>
   ),
 };
+
+export const DragToColumns: StoryObj = {
+  name: "ドラッグ&ドロップでカラム生成",
+  render: () => (
+    <Safe>
+      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+        ブロックをハンドル（⠿）で掴んで別ブロックの<b>左右端</b>に落とすと
+        2 カラムになる（縦のドロップカーソルが出る）。既存カラムの左右端や
+        カラム間の隙間に落とすと、そこに新しいカラムが増える。
+      </div>
+      <ColumnsDemo
+        width={680}
+        content={[
+          p("このブロックを下のブロックの右端にドラッグしてみる。"),
+          p("ドロップ先のブロック。右端 20% が「カラム化ゾーン」。"),
+          p("こちらは既存カラムの端に落とす実験用:"),
+          {
+            type: "columnList",
+            children: [
+              { type: "column", children: [p("左カラム")] },
+              { type: "column", children: [p("右カラム")] },
+            ],
+          },
+        ]}
+      />
+    </Safe>
+  ),
+};
