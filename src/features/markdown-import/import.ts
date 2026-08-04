@@ -43,7 +43,17 @@ function parseWikiLinkInner(inner: string): WikiLinkRef {
     if (display === undefined) display = target;
     target = target.slice(0, hash);
   }
-  return { target: target.trim(), display: (display ?? target).trim() };
+  // NFC 正規化: NFD 混じりのソース（macOS で編集されたファイル等）を吸収する
+  return { target: target.trim().normalize("NFC"), display: (display ?? target).trim().normalize("NFC") };
+}
+
+/**
+ * 照合キーの正規化。macOS のファイルシステムはファイル名を NFD（濁点・半濁点の
+ * 分解形）で返すため、本文中の `[[リンク]]`（通常 NFC）と素の文字列比較をすると
+ * 濁点入りの日本語タイトルが全て不一致になる。必ず NFC に揃えてから比較する。
+ */
+function normalizeKey(s: string): string {
+  return s.trim().normalize("NFC").toLowerCase();
 }
 
 /**
@@ -54,7 +64,9 @@ export async function importMarkdownToGraphiumDoc(
   file: File,
   options: MarkdownImportOptions = {},
 ): Promise<{ doc: GraphiumDocument; wikilinks: WikiLinkRef[] }> {
-  const baseTitle = file.name.replace(/\.(md|markdown)$/i, "") || "Untitled";
+  // NFC 正規化: macOS の File.name は NFD で来るため、そのままタイトルにすると
+  // アプリ内の照合（[[リンク]] 解決・メンションのタイトル一致）が全て狂う
+  const baseTitle = file.name.replace(/\.(md|markdown)$/i, "").normalize("NFC") || "Untitled";
   const raw = await file.text();
 
   const { frontmatter, body } = splitFrontmatter(raw);
@@ -162,16 +174,22 @@ export function buildWikiLinkResolver(
   importedByBaseName: ReadonlyMap<string, string>,
   existingNotes: ReadonlyArray<ExistingNoteEntry>,
 ): (target: string) => string | null {
+  // 両側のキーを normalizeKey（NFC + lowercase）に揃える。呼び出し側のキー形式に
+  // 依存しない（macOS の NFD ファイル名 vs NFC 本文の不一致をここで吸収する）
+  const imported = new Map<string, string>();
+  for (const [baseName, noteId] of importedByBaseName) {
+    imported.set(normalizeKey(baseName), noteId);
+  }
   const byTitle = new Map<string, ExistingNoteEntry>();
   for (const note of existingNotes) {
-    const key = note.title.trim().toLowerCase();
+    const key = normalizeKey(note.title);
     if (!key) continue;
     const prev = byTitle.get(key);
     if (!prev || (note.modifiedAt ?? "") > (prev.modifiedAt ?? "")) byTitle.set(key, note);
   }
   return (target: string) => {
-    const key = target.trim().toLowerCase();
-    return importedByBaseName.get(key) ?? byTitle.get(key)?.noteId ?? null;
+    const key = normalizeKey(target);
+    return imported.get(key) ?? byTitle.get(key)?.noteId ?? null;
   };
 }
 

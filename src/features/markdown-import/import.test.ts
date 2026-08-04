@@ -81,6 +81,35 @@ describe("buildWikiLinkResolver", () => {
     const resolver = buildWikiLinkResolver(new Map(), [{ noteId: "n", title: "Other" }]);
     expect(resolver("Nowhere")).toBeNull();
   });
+
+  it("macOS の NFD ファイル名（濁点分解）と NFC の [[リンク]] を照合できる", () => {
+    // macOS の File.name は「が」を「か + ゙」に分解した NFD で返す
+    const nfdBaseName = "論理が正しくても、間違えている可能性を受け入れる姿勢が必要である".normalize("NFD");
+    const resolver = buildWikiLinkResolver(
+      new Map([[nfdBaseName.toLowerCase(), "imported-1"]]),
+      [],
+    );
+    const nfcTarget = "論理が正しくても、間違えている可能性を受け入れる姿勢が必要である".normalize("NFC");
+    expect(nfdBaseName).not.toBe(nfcTarget); // 前提: 素の比較では不一致
+    expect(resolver(nfcTarget)).toBe("imported-1");
+  });
+
+  it("既存ノートの NFD タイトルにも NFC の [[リンク]] が一致する", () => {
+    const resolver = buildWikiLinkResolver(new Map(), [
+      { noteId: "n1", title: "人に届けるには論理と情理が必要である".normalize("NFD") },
+    ]);
+    expect(resolver("人に届けるには論理と情理が必要である".normalize("NFC"))).toBe("n1");
+  });
+});
+
+describe("importMarkdownToGraphiumDoc のタイトル正規化", () => {
+  it("NFD のファイル名から作るタイトルは NFC に正規化される", async () => {
+    const nfdName = "時間の向きがない".normalize("NFD");
+    const file = new File(["# heading\n\nbody"], `${nfdName}.md`, { type: "text/markdown" });
+    const { doc } = await importMarkdownToGraphiumDoc(file);
+    expect(doc.title).toBe("時間の向きがない".normalize("NFC"));
+    expect(doc.title).not.toBe(nfdName);
+  });
 });
 
 describe("applyWikiLinkResolution", () => {
