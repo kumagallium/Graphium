@@ -779,6 +779,11 @@ export const en: Record<string, string> = {
   "provPanel.viewFlow": "Steps (only)",
   "activityGraph.dragHint": "Drag the blue dot under a step onto another step to connect them",
   "activityGraph.deleteStep": "Delete link",
+  "activityGraph.addStep": "Add step",
+  "activityGraph.deleteNode": "Delete step",
+  "activityGraph.deleteNodeConfirm": "Delete with {n} blocks inside",
+  "activityGraph.jumpToText": "Go to text",
+  "activityGraph.stepName": "Step name",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

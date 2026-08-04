@@ -115,7 +115,14 @@ talks to LLM and embedding backends.
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
   header carries a predecessor control that sets `informed_by` links between
   steps — ordering is a first-class property of a procedure, so it lives on
-  the card rather than in a side panel.
+  the card rather than in a side panel. The right-panel flow view offers the
+  same editing from the graph side: steps can be added, renamed, deleted and
+  connected directly on the graph
+  (`src/features/network-graph/activity-graph-editor.tsx`). Each graph
+  operation is translated into the corresponding block / link mutation and
+  the graph re-derives from the document — it is never edited as a data
+  structure of its own, so the "graph is a pure projection of blocks +
+  links" invariant holds in both directions.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, and blocks outside that set are stripped on load and

@@ -7,15 +7,20 @@
 //   このビューは手順ノードと手順依存（wasInformedBy）だけを描く。output entity は関係図側。
 //
 //   編集:
-//   - 追加: cytoscape-edgehandles のドラッグ接続 → informed_by を書き込む
-//   - 削除: 手順依存エッジをクリック（informed_by リンクが裏にあるものだけ削除可能）
+//   - 接続: cytoscape-edgehandles のドラッグ接続 → informed_by を書き込む
+//   - 接続削除: 手順依存エッジをクリック（informed_by リンクが裏にあるものだけ削除可能）
+//   - ノード操作: 手順ノードをクリック → ポップオーバー（リネーム / 本文へ / 削除）。
+//     ツールバーの「+ 手順」で新しい手順を追加。
+//     いずれもコールバックで親（ActivityGraphEditor）に委ね、このコンポーネント自身は
+//     ドキュメントを知らない（グラフは blocks+links からの投影、という一方向を保つ）。
 // ──────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import cytoscape from "cytoscape";
 import edgehandles from "cytoscape-edgehandles";
-import { Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 import { cyStyles, applyElkLayout } from "../prov-generator/cy-graph";
+import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t } from "../../i18n";
 
 // edgehandles の登録（重複防止）
@@ -41,13 +46,26 @@ export type StepEdge = {
   deletable?: boolean;
 };
 
+/** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
+export type ConnectResult = { error: string | null };
+
 export type ActivityGraphProps = {
   activities: ActivityNode[];
   steps: StepEdge[];
-  /** 手順 A（産）→ 手順 B（使）のドラッグ接続 */
-  onConnectSteps?: (producer: string, consumer: string) => void;
+  /** 手順 A（産）→ 手順 B（使）のドラッグ接続。拒否理由を返すと画面に表示する */
+  onConnectSteps?: (producer: string, consumer: string) => ConnectResult | void;
   /** 手順エッジ削除（deletable なものだけ呼ばれる） */
   onRemoveStep?: (stepId: string) => void;
+  /** ツールバーの「+ 手順」。省略時はボタンを出さない */
+  onAddActivity?: () => void;
+  /** ノードポップオーバーでのリネーム確定 */
+  onRenameActivity?: (blockId: string, title: string) => void;
+  /** ノードポップオーバーからの削除（step の中身ごと消える） */
+  onDeleteActivity?: (blockId: string) => void;
+  /** ノードポップオーバーの「本文へ」（エディタの該当 step へスクロール） */
+  onJumpToBlock?: (blockId: string) => void;
+  /** 削除確認に出す「中身のブロック数」。省略時は 0 扱い（確認なしで削除） */
+  getStepContentCount?: (blockId: string) => number;
 };
 
 // edgehandles / 接続ハンドル / 削除ホバーのスタイル（cyStyles に追記）
@@ -105,15 +123,50 @@ export function ActivityGraph({
   steps,
   onConnectSteps,
   onRemoveStep,
+  onAddActivity,
+  onRenameActivity,
+  onDeleteActivity,
+  onJumpToBlock,
+  getStepContentCount,
 }: ActivityGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   // 最新のコールバックを ref 経由で参照（cy 再初期化を避ける）
-  const cbRef = useRef({ onConnectSteps, onRemoveStep });
-  cbRef.current = { onConnectSteps, onRemoveStep };
+  const cbRef = useRef({
+    onConnectSteps,
+    onRemoveStep,
+    onRenameActivity,
+    onDeleteActivity,
+    onJumpToBlock,
+    getStepContentCount,
+  });
+  cbRef.current = {
+    onConnectSteps,
+    onRemoveStep,
+    onRenameActivity,
+    onDeleteActivity,
+    onJumpToBlock,
+    getStepContentCount,
+  };
 
   // 削除メニュー（エッジクリックで開く小ポップオーバー）
   const [delMenu, setDelMenu] = useState<{ stepId: string; x: number; y: number } | null>(null);
+  // ノードメニュー（手順クリックで開く。リネーム / 本文へ / 削除）
+  const [nodeMenu, setNodeMenu] = useState<{
+    blockId: string;
+    title: string;
+    contentCount: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  // 循環でドラッグ接続を拒否したときの警告（黙って消えると壊れて見えるため）。0 = 非表示
+  const [cycleWarnAt, setCycleWarnAt] = useState(0);
+
+  useEffect(() => {
+    if (!cycleWarnAt) return;
+    const id = setTimeout(() => setCycleWarnAt(0), 3000);
+    return () => clearTimeout(id);
+  }, [cycleWarnAt]);
 
   // ── 初期化（マウント時のみ）──
   useEffect(() => {
@@ -170,7 +223,34 @@ export function ActivityGraph({
       added.remove();
       const src = resolveActivity(source).id();
       const tgt = resolveActivity(target).id();
-      if (src && tgt && src !== tgt) cbRef.current.onConnectSteps?.(src, tgt);
+      if (src && tgt && src !== tgt) {
+        const res = cbRef.current.onConnectSteps?.(src, tgt);
+        // store が循環（DAG 違反）で拒否したときは理由をその場に出す
+        if (res && res.error === "cycle_detected") setCycleWarnAt(Date.now());
+      }
+    });
+
+    // 手順ノードをクリック → ノードメニュー（リネーム / 本文へ / 削除）。
+    // porthandle は type を持たないのでこのセレクタには当たらない。
+    cy.on("tap", 'node[type = "prov:Activity"]', (evt) => {
+      const cbs = cbRef.current;
+      if (!cbs.onRenameActivity && !cbs.onDeleteActivity && !cbs.onJumpToBlock) return;
+      const node = evt.target;
+      const p = node.renderedPosition();
+      const h = node.renderedOuterHeight() || 60;
+      setDelMenu(null);
+      // パネル端で見切れないよう、メニューの概算サイズでコンテナ内に収める
+      const MENU_W = 200;
+      const MENU_H = 92;
+      const cw = containerRef.current?.clientWidth ?? Number.MAX_SAFE_INTEGER;
+      const ch = containerRef.current?.clientHeight ?? Number.MAX_SAFE_INTEGER;
+      setNodeMenu({
+        blockId: node.id(),
+        title: node.data("label") ?? "",
+        contentCount: cbs.getStepContentCount?.(node.id()) ?? 0,
+        x: Math.min(Math.max(p.x, MENU_W / 2 + 4), Math.max(MENU_W / 2 + 4, cw - MENU_W / 2 - 4)),
+        y: Math.min(p.y + h / 2 + 6, Math.max(4, ch - MENU_H)),
+      });
     });
 
     // 削除可能なエッジ: クリックで削除メニューを開く（即削除はしない）、ホバーで赤表示
@@ -178,6 +258,7 @@ export function ActivityGraph({
       const edge = evt.target;
       if (!edge.data("deletable")) return;
       const p = edge.renderedMidpoint();
+      setNodeMenu(null);
       setDelMenu({ stepId: edge.id(), x: p.x, y: p.y });
     });
     cy.on("mouseover", "edge", (evt) => {
@@ -193,9 +274,15 @@ export function ActivityGraph({
     });
     // 背景タップ / パン / ズームでメニューを閉じる
     cy.on("tap", (evt) => {
-      if (evt.target === cy) setDelMenu(null);
+      if (evt.target === cy) {
+        setDelMenu(null);
+        setNodeMenu(null);
+      }
     });
-    cy.on("pan zoom", () => setDelMenu(null));
+    cy.on("pan zoom", () => {
+      setDelMenu(null);
+      setNodeMenu(null);
+    });
 
     return () => {
       eh.destroy();
@@ -209,6 +296,7 @@ export function ActivityGraph({
     const cy = cyRef.current;
     if (!cy) return;
     setDelMenu(null); // グラフが変わったら位置がずれるのでメニューを閉じる
+    setNodeMenu(null);
     cy.batch(() => {
       cy.elements().remove();
       cy.add(
@@ -254,6 +342,75 @@ export function ActivityGraph({
         ref={containerRef}
         style={{ width: "100%", height: "100%", background: "#fafdf7", borderRadius: 8 }}
       />
+
+      {/* ツールバー: 新しい手順の追加（文書側に step ブロックが増える） */}
+      {onAddActivity && (
+        <button
+          onClick={onAddActivity}
+          title={t("activityGraph.addStep")}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 20,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#5b8fb9",
+            background: "#ffffff",
+            border: "1px solid #d5e0d7",
+            borderRadius: 6,
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f5ef")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
+        >
+          <Plus size={13} /> {t("activityGraph.addStep")}
+        </button>
+      )}
+
+      {/* 循環でドラッグ接続を拒否したときの警告 */}
+      {cycleWarnAt !== 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 25,
+            background: "#fef2f2",
+            color: "#c26356",
+            border: "1px solid #c26356",
+            borderRadius: 6,
+            padding: "4px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {t("step.cycleBlocked")}
+        </div>
+      )}
+
+      {/* ノードメニュー（手順クリックで開く。リネーム / 本文へ / 削除） */}
+      {nodeMenu && (
+        <StepNodeMenu
+          key={nodeMenu.blockId}
+          blockId={nodeMenu.blockId}
+          initialTitle={nodeMenu.title}
+          contentCount={nodeMenu.contentCount}
+          x={nodeMenu.x}
+          y={nodeMenu.y}
+          onRename={onRenameActivity}
+          onDelete={onDeleteActivity}
+          onJump={onJumpToBlock}
+          onClose={() => setNodeMenu(null)}
+        />
+      )}
 
       {/* 削除メニュー（エッジクリックで開く。即削除しないことで誤操作を防ぐ） */}
       {delMenu && (
@@ -316,6 +473,157 @@ export function ActivityGraph({
           {t("activityGraph.dragHint")}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── ノードメニュー ──
+//
+// リネームは Enter で確定・Escape / 外側クリックで破棄（blur 確定はしない —
+// パン操作などでフォーカスが外れただけで書き換わる事故を防ぐ）。
+// グラフのラベルは連番プレフィックス除去済みなので、値が変わったときだけ
+// 書き戻す（開いて Enter しただけで本文のタイトルが変わらないように）。
+
+const nodeMenuBtnStyle = (danger: boolean): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  padding: "5px 10px",
+  fontSize: 12,
+  fontWeight: 600,
+  color: danger ? "#c26356" : "#5b8fb9",
+  background: "transparent",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+});
+
+function StepNodeMenu({
+  blockId,
+  initialTitle,
+  contentCount,
+  x,
+  y,
+  onRename,
+  onDelete,
+  onJump,
+  onClose,
+}: {
+  blockId: string;
+  initialTitle: string;
+  contentCount: number;
+  x: number;
+  y: number;
+  onRename?: (blockId: string, title: string) => void;
+  onDelete?: (blockId: string) => void;
+  onJump?: (blockId: string) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(initialTitle);
+  const [confirming, setConfirming] = useState(false);
+  const { compositionHandlers, isImeKey } = useImeEnterGuard();
+
+  const commitRename = () => {
+    const v = draft.trim();
+    if (v && v !== initialTitle) onRename?.(blockId, v);
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        transform: "translateX(-50%)",
+        zIndex: 30,
+        background: "#ffffff",
+        border: "1px solid #d5e0d7",
+        borderRadius: 8,
+        boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+        padding: 6,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        minWidth: 180,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {onRename ? (
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          autoFocus
+          onFocus={(e) => e.target.select()}
+          aria-label={t("activityGraph.stepName")}
+          {...compositionHandlers}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !isImeKey(e)) {
+              commitRename();
+              onClose();
+            } else if (e.key === "Escape") {
+              // 拡大モーダル等の Escape ハンドラ（document）まで届かせない
+              e.stopPropagation();
+              onClose();
+            }
+          }}
+          style={{
+            padding: "5px 8px",
+            fontSize: 12,
+            fontWeight: 600,
+            border: "1px solid #d5e0d7",
+            borderRadius: 6,
+            outline: "none",
+            minWidth: 170,
+          }}
+        />
+      ) : (
+        <div style={{ padding: "5px 8px", fontSize: 12, fontWeight: 600 }}>{initialTitle}</div>
+      )}
+      <div style={{ display: "flex", gap: 2 }}>
+        {onJump && (
+          <button
+            onClick={() => {
+              onJump(blockId);
+              onClose();
+            }}
+            style={nodeMenuBtnStyle(false)}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f5ef")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <FileText size={13} /> {t("activityGraph.jumpToText")}
+          </button>
+        )}
+        {onDelete &&
+          (confirming ? (
+            <button
+              onClick={() => {
+                onDelete(blockId);
+                onClose();
+              }}
+              style={{ ...nodeMenuBtnStyle(true), background: "#fef2f2" }}
+            >
+              <Trash2 size={13} /> {t("activityGraph.deleteNodeConfirm", { n: String(contentCount) })}
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                // 中身がある step は 1 クリックで消さない（グラフからは中身が見えないため）
+                if (contentCount > 0) {
+                  setConfirming(true);
+                } else {
+                  onDelete(blockId);
+                  onClose();
+                }
+              }}
+              style={{ ...nodeMenuBtnStyle(true), marginLeft: "auto" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <Trash2 size={13} /> {t("activityGraph.deleteNode")}
+            </button>
+          ))}
+      </div>
     </div>
   );
 }

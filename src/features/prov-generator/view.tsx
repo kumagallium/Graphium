@@ -419,7 +419,14 @@ function CytoscapeGraph({
 /**
  * PROVドキュメントの可視化パネル
  */
-export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
+export function ProvGraphPanel({
+  doc,
+  editorRef,
+}: {
+  doc: ProvJsonLd | null;
+  /** メインエディタへの参照。フロービューのノード操作（追加・リネーム・削除）に使う */
+  editorRef?: { current: any };
+}) {
   const [expanded, setExpanded] = useState(false);
   // PROV グラフ（静的・全体）と Activity 編集グラフ（手順のつなぎ替え）の切替
   const [view, setView] = useState<"prov" | "edit">("prov");
@@ -508,7 +515,7 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
           </>
         ) : (
           <div style={{ height: 440 }}>
-            <ActivityGraphEditor doc={doc} />
+            <ActivityGraphEditor doc={doc} editorRef={editorRef} />
           </div>
         )}
       </div>

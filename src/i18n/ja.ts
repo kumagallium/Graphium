@@ -780,6 +780,11 @@ export const ja: Record<string, string> = {
   "provPanel.viewFlow": "手順（ステップのみ）",
   "activityGraph.dragHint": "手順の下の青い丸を別の手順へドラッグしてつなげます",
   "activityGraph.deleteStep": "つながりを削除",
+  "activityGraph.addStep": "手順を追加",
+  "activityGraph.deleteNode": "手順を削除",
+  "activityGraph.deleteNodeConfirm": "中の {n} ブロックごと削除",
+  "activityGraph.jumpToText": "本文へ",
+  "activityGraph.stepName": "手順の名前",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",
