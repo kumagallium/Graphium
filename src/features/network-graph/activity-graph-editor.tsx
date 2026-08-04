@@ -7,10 +7,14 @@
 // - ノード操作: 追加・リネーム・削除はエディタの step ブロック操作へ翻訳する。
 //   グラフは常に blocks+links からの投影であり、ここで書くのはドキュメント側だけ
 //   （デバウンス後の PROV 再生成でグラフに反映される）。
+//
+// コールバックはすべて ref 経由 + useCallback で参照安定にしてある —
+// StepFlowView は data 変化でノードを作り直すため、不安定な関数を渡すと
+// 毎レンダーでグラフ全体が再構築されてしまう。
 // ──────────────────────────────────────────────
 
-import { useMemo } from "react";
-import { ActivityGraph } from "./activity-graph";
+import { useCallback, useMemo, useRef } from "react";
+import { StepFlowView } from "./step-flow-view";
 import { provDocToStepGraph } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
 import { buildDefaultStepTitle, selectStepTitle } from "../../blocks/step/view";
@@ -89,6 +93,10 @@ export function ActivityGraphEditor({
   editorRef?: { current: any };
 }) {
   const linkStore = useLinkStore();
+  // コールバックを安定参照にするため、最新の store は ref 経由で読む
+  const linkStoreRef = useRef(linkStore);
+  linkStoreRef.current = linkStore;
+
   const { activities, steps } = useMemo(() => provDocToStepGraph(doc), [doc]);
 
   // 裏に informed_by リンク（source=consumer / target=producer）があるものだけ削除可能。
@@ -104,117 +112,131 @@ export function ActivityGraphEditor({
     [steps, linkStore.links],
   );
 
-  const getEditor = () => editorRef?.current ?? null;
+  const getEditor = useCallback(() => editorRef?.current ?? null, [editorRef]);
 
-  // ノード操作（エディタ参照があるときだけ渡す。無ければ従来どおり接続専用のグラフになる）
-  const nodeEditing = editorRef
-    ? {
-        onAddActivity: () => {
-          const editor = getEditor();
-          if (!editor) return;
-          const blocks: any[] = editor.document ?? [];
-          // 最後の手順の直後（兄弟）に足す。手順がまだ無ければ文書末尾に足す。
-          const reference = findLastStepId(blocks) ?? blocks[blocks.length - 1]?.id;
-          if (!reference) return;
-          // stepSlashItem と同じ形: タイトルは実テキスト（空だとグラフにノードが立たない）
-          const inserted = editor.insertBlocks(
-            [
-              {
-                type: "step",
-                content: [
-                  { type: "text", text: buildDefaultStepTitle(blocks), styles: {} },
-                ],
-                children: [{ type: "paragraph" }],
-              },
-            ],
-            reference,
-            "after",
-          );
-          const newId = inserted?.[0]?.id;
-          if (newId) selectStepTitle(editor, newId);
+  const onConnectSteps = useCallback(
+    (producer: string, consumer: string) =>
+      // 「A が産み B が使う」= B wasInformedBy A → addLink(source=B, target=A)
+      // 循環は store が拒否する（{ error: "cycle_detected" }）。表示はグラフ側が行う。
+      linkStoreRef.current.addLink({
+        sourceBlockId: consumer,
+        targetBlockId: producer,
+        type: "informed_by",
+        createdBy: "human",
+      }),
+    [],
+  );
+
+  const onRemoveStep = useCallback((stepId: string) => {
+    // stepId は `step-<producer>-><consumer>` の合成 ID（adapter 参照）
+    const m = /^step-(.+)->(.+)$/.exec(stepId);
+    if (!m) return;
+    const link = linkStoreRef.current.links.find(
+      (l) => l.type === "informed_by" && l.sourceBlockId === m[2] && l.targetBlockId === m[1],
+    );
+    if (link) linkStoreRef.current.removeLink(link.id);
+  }, []);
+
+  const onAddActivity = useCallback(() => {
+    const editor = getEditor();
+    if (!editor) return;
+    const blocks: any[] = editor.document ?? [];
+    // 最後の手順の直後（兄弟）に足す。手順がまだ無ければ文書末尾に足す。
+    const reference = findLastStepId(blocks) ?? blocks[blocks.length - 1]?.id;
+    if (!reference) return;
+    // stepSlashItem と同じ形: タイトルは実テキスト（空だとグラフにノードが立たない）
+    const inserted = editor.insertBlocks(
+      [
+        {
+          type: "step",
+          content: [{ type: "text", text: buildDefaultStepTitle(blocks), styles: {} }],
+          children: [{ type: "paragraph" }],
         },
-        onRenameActivity: (blockId: string, title: string) => {
-          const editor = getEditor();
-          if (!editor) return;
-          try {
-            // step のタイトルは content（inline）。タイトル行はインラインラベルの
-            // 付与対象外なのでプレーンテキストで置き換えてよい。
-            editor.updateBlock(blockId, {
-              content: [{ type: "text", text: title, styles: {} }],
-            });
-          } catch {
-            // 既に消えたブロックなどは無視（次の再生成でノードも消える）
-          }
-        },
-        onDeleteActivity: (blockId: string) => {
-          const editor = getEditor();
-          if (!editor) return;
-          // 掃除対象のリンクを削除前に確定する（ネスト step のリンクも道連れになるため）
-          const step = findBlockById(editor.document ?? [], blockId);
-          const stepIds = step ? collectStepIds(step) : [blockId];
-          try {
-            editor.removeBlocks([blockId]);
-          } catch {
-            return;
-          }
-          for (const l of linkStore.links) {
-            if (
-              l.type === "informed_by" &&
-              (stepIds.includes(l.sourceBlockId) || stepIds.includes(l.targetBlockId))
-            ) {
-              linkStore.removeLink(l.id);
-            }
-          }
-        },
-        onJumpToBlock: (blockId: string) => {
-          const el = document.querySelector(
-            `[data-id="${blockId}"][data-node-type="blockOuter"]`,
-          );
-          if (!el) return;
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          // ハイライトは要素の style ではなく <style> の data-id セレクタで当てる。
-          // メニューを閉じたフォーカス移動で step ブロックの DOM が再マウントされ、
-          // 要素に直接付けた outline は数百 ms で消えてしまう（実測）ため。
-          const styleEl = document.createElement("style");
-          styleEl.textContent = `[data-id="${blockId}"][data-node-type="blockOuter"] { outline: 2px solid #5b8fb9; border-radius: 4px; }`;
-          document.head.appendChild(styleEl);
-          setTimeout(() => styleEl.remove(), 1500);
-        },
-        getStepContentCount: (blockId: string): number => {
-          const step = findBlockById(getEditor()?.document ?? [], blockId);
-          return step ? stepContentCount(step) : 0;
-        },
+      ],
+      reference,
+      "after",
+    );
+    const newId = inserted?.[0]?.id;
+    if (newId) selectStepTitle(editor, newId);
+  }, [getEditor]);
+
+  const onRenameActivity = useCallback(
+    (blockId: string, title: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      try {
+        // step のタイトルは content（inline）。タイトル行はインラインラベルの
+        // 付与対象外なのでプレーンテキストで置き換えてよい。
+        editor.updateBlock(blockId, {
+          content: [{ type: "text", text: title, styles: {} }],
+        });
+      } catch {
+        // 既に消えたブロックなどは無視（次の再生成でノードも消える）
       }
-    : {};
+    },
+    [getEditor],
+  );
+
+  const onDeleteActivity = useCallback(
+    (blockId: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      // 掃除対象のリンクを削除前に確定する（ネスト step のリンクも道連れになるため）
+      const step = findBlockById(editor.document ?? [], blockId);
+      const stepIds = step ? collectStepIds(step) : [blockId];
+      try {
+        editor.removeBlocks([blockId]);
+      } catch {
+        return;
+      }
+      for (const l of linkStoreRef.current.links) {
+        if (
+          l.type === "informed_by" &&
+          (stepIds.includes(l.sourceBlockId) || stepIds.includes(l.targetBlockId))
+        ) {
+          linkStoreRef.current.removeLink(l.id);
+        }
+      }
+    },
+    [getEditor],
+  );
+
+  const onJumpToBlock = useCallback((blockId: string) => {
+    const el = document.querySelector(
+      `[data-id="${blockId}"][data-node-type="blockOuter"]`,
+    );
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    // ハイライトは要素の style ではなく <style> の data-id セレクタで当てる。
+    // フォーカス移動で step ブロックの DOM が再マウントされ、要素に直接
+    // 付けた outline は数百 ms で消えてしまう（実測）ため。
+    const styleEl = document.createElement("style");
+    styleEl.textContent = `[data-id="${blockId}"][data-node-type="blockOuter"] { outline: 2px solid #5b8fb9; border-radius: 4px; }`;
+    document.head.appendChild(styleEl);
+    setTimeout(() => styleEl.remove(), 1500);
+  }, []);
+
+  const getStepContentCount = useCallback(
+    (blockId: string): number => {
+      const step = findBlockById(getEditor()?.document ?? [], blockId);
+      return step ? stepContentCount(step) : 0;
+    },
+    [getEditor],
+  );
+
+  const hasEditor = !!editorRef;
 
   return (
-    <ActivityGraph
+    <StepFlowView
       activities={activities}
       steps={editableSteps}
-      onConnectSteps={(producer, consumer) =>
-        // 「A が産み B が使う」= B wasInformedBy A → addLink(source=B, target=A)
-        // 循環は store が拒否する（{ error: "cycle_detected" }）。表示はグラフ側が行う。
-        linkStore.addLink({
-          sourceBlockId: consumer,
-          targetBlockId: producer,
-          type: "informed_by",
-          createdBy: "human",
-        })
-      }
-      onRemoveStep={(stepId) => {
-        const step = steps.find((s) => s.id === stepId);
-        if (!step) return;
-        // 対応する informed_by リンク（source=consumer / target=producer）を削除する
-        //（best-effort: ラベル一致などリンクを伴わない手順依存は対応リンクが無いので何もしない）
-        const link = linkStore.links.find(
-          (l) =>
-            l.type === "informed_by" &&
-            l.sourceBlockId === step.to &&
-            l.targetBlockId === step.from,
-        );
-        if (link) linkStore.removeLink(link.id);
-      }}
-      {...nodeEditing}
+      onConnectSteps={onConnectSteps}
+      onRemoveStep={onRemoveStep}
+      onAddActivity={hasEditor ? onAddActivity : undefined}
+      onRenameActivity={hasEditor ? onRenameActivity : undefined}
+      onDeleteActivity={hasEditor ? onDeleteActivity : undefined}
+      onJumpToBlock={hasEditor ? onJumpToBlock : undefined}
+      getStepContentCount={hasEditor ? getStepContentCount : undefined}
     />
   );
 }

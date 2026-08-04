@@ -785,6 +785,8 @@ export const ja: Record<string, string> = {
   "activityGraph.deleteNodeConfirm": "中の {n} ブロックごと削除",
   "activityGraph.jumpToText": "本文へ",
   "activityGraph.stepName": "手順の名前",
+  "activityGraph.emptyTitle": "手順はまだありません",
+  "activityGraph.emptyHint": "『手順を追加』から、ここで手順を組み立てられます",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",

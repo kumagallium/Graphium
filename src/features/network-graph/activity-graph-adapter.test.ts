@@ -27,29 +27,81 @@ describe("provDocToStepGraph", () => {
     ]);
 
     const { activities, steps } = provDocToStepGraph(doc);
-    expect(activities).toEqual([
-      { id: "blkA", name: "切る" },
-      { id: "blkB", name: "炒める" },
-    ]);
+    expect(activities).toHaveLength(2);
+    expect(activities[0]).toMatchObject({ id: "blkA", name: "切る" });
+    expect(activities[1]).toMatchObject({ id: "blkB", name: "炒める" });
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ from: "blkA", to: "blkB" });
+    // 他手順の output はエッジで表現され、B の inputs チップには載せない
+    expect(activities[1].inputs).toEqual([]);
+    // A の明示 output はカードに載る
+    expect(activities[0].outputs).toEqual([{ label: "切ったもの", kind: "output" }]);
   });
 
-  it("生成されていない入力 entity（材料/ツール）は手順依存にしない", () => {
+  it("生成されていない入力 entity（材料/ツール）は手順依存にせず inputs に載せる", () => {
     const doc = makeDoc([
       {
         "@id": "activity_A",
         "@type": "prov:Activity",
         "rdfs:label": "炒める",
         "graphium:blockId": "blkA",
-        "prov:used": [{ "@id": "mat_onion" }],
+        "prov:used": [{ "@id": "mat_onion" }, { "@id": "tool_pan" }],
       },
       { "@id": "mat_onion", "@type": "prov:Entity", "rdfs:label": "玉ねぎ" },
+      { "@id": "tool_pan", "@type": "prov:Entity", "rdfs:label": "フライパン", "graphium:entityType": "tool" },
     ]);
 
     const { activities, steps } = provDocToStepGraph(doc);
     expect(activities).toHaveLength(1);
     expect(steps).toHaveLength(0);
+    expect(activities[0].inputs).toEqual([
+      { label: "玉ねぎ", kind: "material" },
+      { label: "フライパン", kind: "tool" },
+    ]);
+  });
+
+  it("informed_by desugar の合成プレースホルダは inputs にも outputs にも載せない", () => {
+    const doc = makeDoc([
+      { "@id": "activity_A", "@type": "prov:Activity", "rdfs:label": "A", "graphium:blockId": "blkA" },
+      {
+        "@id": "activity_B",
+        "@type": "prov:Activity",
+        "rdfs:label": "B",
+        "graphium:blockId": "blkB",
+        "prov:used": [{ "@id": "result_synthetic_blkA" }],
+      },
+      {
+        "@id": "result_synthetic_blkA",
+        "@type": "prov:Entity",
+        "rdfs:label": "A の結果",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+    ]);
+
+    const { activities, steps } = provDocToStepGraph(doc);
+    // 手順エッジには畳む
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({ from: "blkA", to: "blkB" });
+    // カードには出さない
+    expect(activities[0].outputs).toEqual([]);
+    expect(activities[1].inputs).toEqual([]);
+  });
+
+  it("Activity 直属の graphium:* とattributes をパラメータ行として抽出する", () => {
+    const doc = makeDoc([
+      {
+        "@id": "activity_A",
+        "@type": "prov:Activity",
+        "rdfs:label": "焼成",
+        "graphium:blockId": "blkA",
+        "graphium:temperature": "900C",
+        "graphium:phase": "result", // 予約キーは除外
+        "graphium:attributes": [{ "rdfs:label": "2h" }],
+      },
+    ]);
+
+    const { activities } = provDocToStepGraph(doc);
+    expect(activities[0].params).toEqual(["temperature: 900C", "2h"]);
   });
 
   it("1 つの output が複数手順に使われると手順依存が fan-out する", () => {

@@ -440,19 +440,16 @@ export function ProvGraphPanel({
     return () => document.removeEventListener("keydown", handleKey);
   }, [expanded]);
 
-  if (!doc) {
-    return (
-      <div style={panelStyle}>
-        <div style={{ padding: 16, color: "var(--color-text-tertiary)", fontSize: 13 }}>
-          {t("provPanel.noLabelsMessage")}
-        </div>
-      </div>
-    );
-  }
+  // まだ手順もラベルも無いノートでもフロービューは出す —
+  // 「+ 手順を追加」がグラフ側から手順を作り始める入口になるため。
+  // PROV フルビューだけはノードが無いと意味が無いので edit に固定する。
+  //（空ノートの doc は null ではなく「@graph が空」で来ることに注意）
+  const hasProvNodes = (doc?.["@graph"]?.length ?? 0) > 0;
+  const effectiveView = hasProvNodes ? view : "edit";
 
   // 統計情報の計算
-  const relations = extractRelations(doc);
-  const attrCount = doc["@graph"].reduce((sum, n) => {
+  const relations = doc ? extractRelations(doc) : [];
+  const attrCount = (doc?.["@graph"] ?? []).reduce((sum, n) => {
     let count = 0;
     if (n["graphium:attributes"]) count += (n["graphium:attributes"] as ProvAttribute[]).length;
     const STATS_EXCLUDED = ["graphium:blockId", "graphium:attributes", "graphium:warnings", "graphium:entityType", "graphium:mediaType", "graphium:mediaUrl", "graphium:phase"];
@@ -472,7 +469,7 @@ export function ProvGraphPanel({
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "var(--color-text-tertiary)" }}>
-          {t("provPanel.graphStats", { nodes: String(doc["@graph"].length + attrCount), relations: String(relations.length + attrCount) })}
+          {t("provPanel.graphStats", { nodes: String((doc?.["@graph"]?.length ?? 0) + attrCount), relations: String(relations.length + attrCount) })}
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
@@ -489,14 +486,15 @@ export function ProvGraphPanel({
     <div style={{ display: "flex", gap: 4, padding: "6px 12px 0" }}>
       <button
         onClick={() => setView("prov")}
-        style={viewToggleBtnStyle(view === "prov")}
+        disabled={!hasProvNodes}
+        style={{ ...viewToggleBtnStyle(effectiveView === "prov"), ...(hasProvNodes ? {} : { opacity: 0.45, cursor: "default" }) }}
         title={t("provPanel.viewProv")}
       >
         <Network size={13} /> {t("provPanel.viewProv")}
       </button>
       <button
         onClick={() => setView("edit")}
-        style={viewToggleBtnStyle(view === "edit")}
+        style={viewToggleBtnStyle(effectiveView === "edit")}
         title={t("provPanel.viewFlow")}
       >
         <Workflow size={13} /> {t("provPanel.viewFlow")}
@@ -508,7 +506,7 @@ export function ProvGraphPanel({
     <>
       <div style={panelStyle}>
         {viewToggle}
-        {view === "prov" ? (
+        {effectiveView === "prov" && doc && hasProvNodes ? (
           <>
             {legendBar}
             <CytoscapeGraph doc={doc} />
@@ -521,7 +519,7 @@ export function ProvGraphPanel({
       </div>
 
       {/* 拡大モーダル */}
-      {expanded && createPortal(
+      {expanded && doc && createPortal(
         <div style={modalOverlayStyle} onClick={() => setExpanded(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             {legendBar}

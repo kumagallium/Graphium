@@ -122,7 +122,11 @@ talks to LLM and embedding backends.
   operation is translated into the corresponding block / link mutation and
   the graph re-derives from the document — it is never edited as a data
   structure of its own, so the "graph is a pure projection of blocks +
-  links" invariant holds in both directions.
+  links" invariant holds in both directions. The flow view is built on
+  React Flow (`@xyflow/react`) with card-style DOM nodes showing the
+  step's inputs / outputs / parameters; the read-only, exploration-oriented
+  graphs (full PROV view, note graph, global graph, asset graph) stay on
+  cytoscape (canvas), which scales better for large force-directed views.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, and blocks outside that set are stripped on load and

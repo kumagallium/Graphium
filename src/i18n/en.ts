@@ -784,6 +784,8 @@ export const en: Record<string, string> = {
   "activityGraph.deleteNodeConfirm": "Delete with {n} blocks inside",
   "activityGraph.jumpToText": "Go to text",
   "activityGraph.stepName": "Step name",
+  "activityGraph.emptyTitle": "No steps yet",
+  "activityGraph.emptyHint": "Click \"+ Add step\" to start building the procedure here",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",
