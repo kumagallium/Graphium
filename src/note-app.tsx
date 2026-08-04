@@ -7735,9 +7735,9 @@ export function NoteApp() {
             onImportMarkdown={async (files, onProgress) => {
               const {
                 importMarkdownToGraphiumDoc,
-                resolveWikiLinks,
+                buildWikiLinkResolver,
+                applyWikiLinkResolution,
                 isMarkdownFile,
-                buildVaultMap,
               } = await import("./features/markdown-import/import");
 
               const mdFiles = files.filter(isMarkdownFile);
@@ -7776,7 +7776,6 @@ export function NoteApp() {
                 : undefined;
 
               // pass 1: 各 MD を doc に変換 → ノート作成
-              const vaultMap = buildVaultMap(mdFiles);
               const baseNameToNoteId = new Map<string, string>();
               const docsByNoteId = new Map<
                 string,
@@ -7805,31 +7804,26 @@ export function NoteApp() {
                 onProgress({ done: i + 1, total: mdFiles.length, failed: [...failed] });
               }
 
-              // pass 2: wikilinks を解決して保存
-              if (vaultMap.size > 0) {
-                let resolvedCount = 0;
-                let unresolvedCount = 0;
-                for (const [noteId, { doc, wikilinks }] of docsByNoteId) {
-                  if (wikilinks.length === 0) continue;
-                  const resolver = (target: string): string | null => {
-                    const id = baseNameToNoteId.get(target.toLowerCase());
-                    if (id) {
-                      resolvedCount++;
-                      return id;
-                    }
-                    unresolvedCount++;
-                    return null;
-                  };
-                  const updated = resolveWikiLinks(doc, wikilinks, resolver);
-                  if (updated.pages[0].knowledgeLinks.length > 0) {
-                    try {
-                      await fm.handleSaveImportedDoc(noteId, updated);
-                    } catch (err) {
-                      console.warn("Markdown リンク解決の保存失敗:", noteId, err);
-                    }
+              // pass 2: wikilinks を解決して保存。
+              // 解決先は「今回のインポートで作成したノート」→「既存ノート（タイトル一致）」。
+              // 全件未解決のノートも必ず保存し直す: pass 1 で保存した本文には
+              // プレースホルダ（{{GWLINK_n}}）が残っており、[[リンク]] テキストへ
+              // 復元した姿で上書きする必要がある。
+              let unresolvedLinkCount = 0;
+              if (docsByNoteId.size > 0) {
+                // 既存ノートの解決先は noteIndex（タイトルを持ち、アーカイブ除外済み。
+                // wiki も含むので、エクスポートした wiki への @リンクも復元できる）
+                const resolver = buildWikiLinkResolver(baseNameToNoteId, fm.noteIndex?.notes ?? []);
+                const resolution = applyWikiLinkResolution(docsByNoteId, resolver);
+                unresolvedLinkCount = resolution.unresolvedCount;
+                for (const [noteId, updated] of resolution.updates) {
+                  try {
+                    await fm.handleSaveImportedDoc(noteId, updated);
+                  } catch (err) {
+                    console.warn("Markdown リンク解決の保存失敗:", noteId, err);
                   }
                 }
-                console.info(`[markdown-import] リンク解決: ${resolvedCount} / ${resolvedCount + unresolvedCount}`);
+                console.info(`[markdown-import] リンク解決: ${resolution.resolvedCount} / ${resolution.resolvedCount + resolution.unresolvedCount}`);
               }
 
               await fm.refreshFiles();
@@ -7837,7 +7831,7 @@ export function NoteApp() {
               const successCount = mdFiles.length - failed.length;
               if (successCount > 0) {
                 const msg = [tStatic("import.importedCount", { count: String(successCount) })];
-                if (vaultMap.size > 0) {
+                if (unresolvedLinkCount > 0) {
                   msg.push("", tStatic("import.unresolvedLinksNote"));
                 }
                 window.alert(msg.join("\n"));

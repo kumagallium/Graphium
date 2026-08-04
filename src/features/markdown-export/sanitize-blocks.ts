@@ -36,6 +36,22 @@ function sanitizeStyles(styles: Record<string, unknown> | undefined, knownStyles
   return out;
 }
 
+/**
+ * 内部リンク（青文字の `@タイトル` テキスト）を Obsidian 互換の `[[タイトル]]` に変換する。
+ * ノート ID は本文に埋まっておらず「表示テキスト＝タイトル」が規約なので、表示テキスト
+ * ベースで判定する（wiki-service の extractInlineTextWithCitations と同じ判定）。
+ * Wiki メンションの `🤖 ` プレフィックスは剥がす。メンションでなければ null を返す。
+ */
+export function mentionToWikiLinkText(item: InlineItem): string | null {
+  if (item?.type !== "text" || typeof item.text !== "string") return null;
+  if (item.styles?.textColor !== "blue" || !item.text.startsWith("@")) return null;
+  let title = item.text.slice(1);
+  if (title.startsWith("🤖 ")) title = title.slice(3);
+  title = title.trim();
+  if (!title) return null;
+  return `[[${title}]]`;
+}
+
 /** inline content 配列をサニタイズする（未知 inline type はプレーンテキスト化） */
 function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): InlineItem[] {
   if (!Array.isArray(content)) return [];
@@ -43,6 +59,12 @@ function sanitizeInlines(content: unknown, knownStyles: ReadonlySet<string>): In
   for (const item of content) {
     if (!item || typeof item !== "object") continue;
     if (item.type === "text") {
+      // 内部リンクは Markdown では [[タイトル]] として書き出す（インポートと対称）
+      const wikiLink = mentionToWikiLinkText(item);
+      if (wikiLink) {
+        out.push({ type: "text", text: wikiLink, styles: {} });
+        continue;
+      }
       out.push({
         type: "text",
         text: typeof item.text === "string" ? item.text : "",
@@ -206,4 +228,65 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
     out.push(next);
   }
   return out;
+}
+
+// ──────────────────────────────────────────────
+// 単一ノートエクスポート用のメンション変換
+// （一括エクスポートは sanitizeInlines 内の同じ変換を通る）
+// ──────────────────────────────────────────────
+
+/**
+ * ライブエディタの document（フルスキーマ）のメンション text だけを
+ * `[[タイトル]]` テキストに差し替えた新しいブロック配列を返す（元は変更しない）。
+ * 単一ノートの Markdown エクスポートが blocksToMarkdownLossy に渡す前処理。
+ */
+export function convertMentionsToWikiLinks(blocks: unknown): AnyBlock[] {
+  if (!Array.isArray(blocks)) return [];
+  return blocks.map(convertBlockMentions);
+}
+
+function convertBlockMentions(block: AnyBlock): AnyBlock {
+  if (!block || typeof block !== "object") return block;
+  const next: AnyBlock = { ...block };
+  if (block.type === "table") {
+    next.content = convertTableContentMentions(block.content);
+  } else if (Array.isArray(block.content)) {
+    next.content = convertInlineMentions(block.content);
+  }
+  if (Array.isArray(block.children) && block.children.length > 0) {
+    next.children = block.children.map(convertBlockMentions);
+  }
+  return next;
+}
+
+function convertInlineMentions(content: any[]): InlineItem[] {
+  return content.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const wikiLink = mentionToWikiLinkText(item);
+    if (wikiLink) return { type: "text", text: wikiLink, styles: {} };
+    if (item.type === "link" && Array.isArray(item.content)) {
+      return { ...item, content: convertInlineMentions(item.content) };
+    }
+    return item;
+  });
+}
+
+function convertTableContentMentions(content: any): any {
+  if (!content || typeof content !== "object" || !Array.isArray(content.rows)) return content;
+  return {
+    ...content,
+    rows: content.rows.map((row: any) => ({
+      ...row,
+      cells: Array.isArray(row?.cells)
+        ? row.cells.map((cell: any) => {
+            // セルは inline 配列 or { type: "tableCell", content: [...] } の 2 形式
+            if (Array.isArray(cell)) return convertInlineMentions(cell);
+            if (cell && typeof cell === "object" && Array.isArray(cell.content)) {
+              return { ...cell, content: convertInlineMentions(cell.content) };
+            }
+            return cell;
+          })
+        : row?.cells,
+    })),
+  };
 }

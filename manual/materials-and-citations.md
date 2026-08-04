@@ -32,7 +32,7 @@ There are several routes, all ending in the same library:
 | Paste a URL | Pasting a URL into a note opens a small menu: **Link** ("Paste as inline text") or **Bookmark** ("Display as a card with preview"). Either way the URL is registered in the **URLs** gallery |
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
 | Gallery buttons | **Upload**, **Add URL**, **Add PDF**, **Add Word** — add materials without touching any note |
-| Markdown import | In the note list, the **Import files** button offers **Import Markdown (.md)** and **Import Obsidian Vault folder**. `[[wikilinks]]` are resolved to note links where possible |
+| Markdown import | In the note list, the **Import files** button offers **Import Markdown (.md)** and **Import Obsidian Vault folder**. `[[wikilinks]]` are resolved to note links — first against files in the same import, then against your existing notes and knowledge entries by title. Unresolved links stay as plain `[[...]]` text. Markdown export writes note links back as `[[wikilinks]]`, so exported notes re-import with their links intact |
 | Mobile capture | Photos and memos captured on your phone land in an inbox — see [Mobile](/mobile) |
 
 Word files get extra care: the built-in preview converts formats browsers cannot show (EMF and TIFF, common in documents with pasted Excel charts), and the material menu's **Extract embedded images** pulls the embedded images out of a PDF or Word file and registers them as image materials of their own.

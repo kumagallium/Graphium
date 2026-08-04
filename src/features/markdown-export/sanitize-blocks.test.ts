@@ -1,7 +1,13 @@
 // sanitize-blocks.ts（一括 Markdown 変換前のブロックサニタイズ）のユニットテスト
 
 import { describe, it, expect } from "vitest";
-import { sanitizeBlocksForMarkdown, extractInlineText, type SanitizeSchemaInfo } from "./sanitize-blocks";
+import {
+  sanitizeBlocksForMarkdown,
+  extractInlineText,
+  mentionToWikiLinkText,
+  convertMentionsToWikiLinks,
+  type SanitizeSchemaInfo,
+} from "./sanitize-blocks";
 
 // default スキーマ相当のテスト用 schema 情報
 // （実物は doc-to-markdown.ts が defaultBlockSpecs / defaultStyleSpecs から導出する）
@@ -233,5 +239,97 @@ describe("extractInlineText", () => {
   it("配列以外は空文字を返す", () => {
     expect(extractInlineText(undefined)).toBe("");
     expect(extractInlineText({})).toBe("");
+  });
+});
+
+describe("mentionToWikiLinkText", () => {
+  it("青文字の @タイトル を [[タイトル]] にする", () => {
+    expect(mentionToWikiLinkText(text("@Other Note", { textColor: "blue" }))).toBe("[[Other Note]]");
+  });
+
+  it("Wiki メンションの 🤖 プレフィックスは剥がす", () => {
+    expect(mentionToWikiLinkText(text("@🤖 Perovskite", { textColor: "blue" }))).toBe("[[Perovskite]]");
+  });
+
+  it("青くない @ テキストは変換しない", () => {
+    expect(mentionToWikiLinkText(text("@twitter_handle"))).toBeNull();
+  });
+
+  it("@ で始まらない青文字は変換しない", () => {
+    expect(mentionToWikiLinkText(text("blue text", { textColor: "blue" }))).toBeNull();
+  });
+
+  it("@ のみ（タイトル空）は変換しない", () => {
+    expect(mentionToWikiLinkText(text("@", { textColor: "blue" }))).toBeNull();
+  });
+});
+
+describe("sanitizeBlocksForMarkdown のメンション変換", () => {
+  it("paragraph 内のメンションを [[タイトル]] テキストにする", () => {
+    const result = sanitizeBlocksForMarkdown(
+      [{
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [text("see "), text("@Other Note", { textColor: "blue" })],
+        children: [],
+      }],
+      SCHEMA,
+    );
+    expect(result[0].content).toEqual([text("see "), text("[[Other Note]]")]);
+  });
+});
+
+describe("convertMentionsToWikiLinks", () => {
+  it("children とテーブルセルのメンションも変換する", () => {
+    const blocks = [
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [text("@Parent", { textColor: "blue" })],
+        children: [
+          { id: "b2", type: "paragraph", props: {}, content: [text("@Child", { textColor: "blue" })], children: [] },
+        ],
+      },
+      {
+        id: "b3",
+        type: "table",
+        props: {},
+        content: {
+          type: "tableContent",
+          rows: [{ cells: [[text("@Cell", { textColor: "blue" })]] }],
+        },
+        children: [],
+      },
+    ];
+    const result = convertMentionsToWikiLinks(blocks);
+    expect(result[0].content).toEqual([text("[[Parent]]")]);
+    expect(result[0].children[0].content).toEqual([text("[[Child]]")]);
+    expect(result[1].content.rows[0].cells[0]).toEqual([text("[[Cell]]")]);
+  });
+
+  it("元のブロック配列は変更しない（非破壊）", () => {
+    const blocks = [{
+      id: "b1",
+      type: "paragraph",
+      props: {},
+      content: [text("@Note", { textColor: "blue" })],
+      children: [],
+    }];
+    convertMentionsToWikiLinks(blocks);
+    expect(blocks[0].content[0].text).toBe("@Note");
+  });
+
+  it("メンション以外の inline はそのまま維持する", () => {
+    const blocks = [{
+      id: "b1",
+      type: "paragraph",
+      props: {},
+      content: [text("plain"), { type: "inlineMath", props: { latex: "x^2" } }],
+      children: [],
+    }];
+    const result = convertMentionsToWikiLinks(blocks);
+    expect(result[0].content).toEqual(blocks[0].content);
   });
 });
