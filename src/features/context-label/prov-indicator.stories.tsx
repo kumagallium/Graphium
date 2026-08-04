@@ -160,6 +160,61 @@ export const NoteWithIndicators: StoryObj = {
   ),
 };
 
+// テーブルラベルチップ（テーブル左上角にまたがる表示）
+// ブロックラベルはインライン移行済みで、テーブルだけが現役の block-level ラベル。
+// 右端マージンに浮かせず、テーブル本体の左上角に寄せて「このテーブルに付くラベル」を示す。
+export const TableLabelChip: StoryObj = {
+  name: "テーブルラベルチップ（左上角）",
+  render: () => {
+    const color = getLabelColor("material");
+    const chip = (
+      <span style={{
+        position: "absolute", top: 0, left: 8, transform: "translateY(-50%)",
+        display: "inline-block", padding: "0px 6px", borderRadius: 9999,
+        fontSize: 11, fontWeight: 600,
+        background: `linear-gradient(${color}18, ${color}18), #fff`,
+        color, border: `1px solid ${color}38`,
+        cursor: "pointer", userSelect: "none", lineHeight: 1.6, whiteSpace: "nowrap",
+        fontFamily: tokens.font,
+      }}>
+        [インプット]
+      </span>
+    );
+    return (
+      <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
+        <p style={{ fontSize: 13, color: tokens.mutedFg, marginBottom: 20 }}>
+          ステップ内のインデックステーブルに [インプット] を付けた状態。
+          チップはテーブル上辺をまたぎ、クリックで統合パネル（変更・解除）が開く。
+        </p>
+        <div style={{ position: "relative", display: "inline-block", marginTop: 10 }}>
+          {chip}
+          <table style={{ borderCollapse: "collapse", background: "#fff", border: `1px solid ${tokens.border}` }}>
+            <thead>
+              <tr>
+                <th style={th}>名前</th>
+                <th style={th}>条件1</th>
+                <th style={th}>条件2</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={td}>S-01</td>
+                <td style={td}>600℃</td>
+                <td style={td}>2h</td>
+              </tr>
+              <tr>
+                <td style={td}>S-02</td>
+                <td style={td}>650℃</td>
+                <td style={td}>2h</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  },
+};
+
 // 統合パネル（ラベルあり + リンクあり）
 export const PanelWithLabelAndLinks: StoryObj = {
   name: "統合パネル（ラベル + リンク）",

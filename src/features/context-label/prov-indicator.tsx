@@ -1,8 +1,9 @@
 // ──────────────────────────────────────────────
 // ProvIndicatorLayer
 //
-// エディタ右側に position:fixed オーバーレイで
-// 各ブロックの PROV ラベルを表示する。
+// position:fixed オーバーレイで各ブロックの PROV ラベルを表示する。
+// - 見出し等（レガシー）: エディタ右端マージンのバッジ
+// - テーブル: テーブル左上角にまたがるチップ（右端に浮かせず本体に寄せる）
 // クリックで統合パネル（ラベル変更 + リンク一覧 + リンク追加）を開く。
 // ──────────────────────────────────────────────
 
@@ -83,6 +84,14 @@ type IndicatorInfo = {
   label: string | undefined;
   /** ブロック型（step コンテナはラベル無しでも工程として扱うため必要） */
   blockType: string | undefined;
+  /**
+   * バッジの置き方。
+   * - margin: エディタ右端マージンに右揃え（レガシー見出しラベル用）
+   * - table: テーブル左上角に左揃えで上辺をまたぐチップ
+   *   （ブロックラベル UI はインライン移行済みで、テーブルだけが現役。
+   *    右余白に浮かせず本体に寄せて「このテーブルに付くラベル」を示す）
+   */
+  placement: "margin" | "table";
   outgoing: BlockLink[];
   incoming: BlockLink[];
 };
@@ -190,12 +199,21 @@ export function ProvIndicatorLayer({
         return;
       }
 
+      // テーブルはチップをテーブル実体（<table>）の左上角に合わせる。
+      // content 要素はブロック全幅のため、内容依存幅のテーブル自身を測る。
+      const isTable = blockType === "table";
+      const tableEl = isTable
+        ? (content?.querySelector("table") as HTMLElement | null)
+        : null;
+      const anchorRect = tableEl ? tableEl.getBoundingClientRect() : rect;
+
       next.push({
         blockId,
-        top: rect.top + rect.height / 2,
-        left: indicatorLeft,
+        top: isTable ? anchorRect.top : rect.top + rect.height / 2,
+        left: isTable ? anchorRect.left + 8 : indicatorLeft,
         label,
         blockType,
+        placement: isTable ? "table" : "margin",
         outgoing,
         incoming,
       });
@@ -250,7 +268,7 @@ export function ProvIndicatorLayer({
 
   return createPortal(
     <>
-      {indicators.map(({ blockId, top, left, label, blockType, outgoing, incoming }) => {
+      {indicators.map(({ blockId, top, left, label, blockType, placement, outgoing, incoming }) => {
         const isActive = activeBlockId === blockId;
         const color = label ? getLabelColor(label) : undefined;
 
@@ -260,9 +278,11 @@ export function ProvIndicatorLayer({
         // エディタラッパーの表示範囲外はスキップ（ヘッダーに重ならないよう）
         if (top < clipBounds.top || top > clipBounds.bottom) return null;
 
+        const isTableChip = placement === "table";
+
         return (
           <div key={blockId}>
-            {/* ラベルバッジ（右揃え: transform で右端に合わせる） */}
+            {/* ラベルバッジ（margin: 右端に右揃え / table: テーブル左上角にまたがるチップ） */}
             <button
               onClick={() =>
                 setActiveBlockId(isActive ? null : blockId)
@@ -272,10 +292,18 @@ export function ProvIndicatorLayer({
               className="fixed z-[9997] inline-block rounded-full text-xs font-semibold cursor-pointer select-none whitespace-nowrap pointer-events-auto"
               style={{
                 top,
-                right: window.innerWidth - left,
+                ...(isTableChip
+                  ? { left }
+                  : { right: window.innerWidth - left }),
                 transform: "translateY(-50%)",
                 padding: "0px 6px",
-                backgroundColor: color + "18",
+                // チップはテーブル枠線をまたぐため、下地（surface）を敷いて
+                // 罫線が透けないようにする。margin バッジは余白上なので従来どおり。
+                ...(isTableChip
+                  ? {
+                      background: `linear-gradient(${color}18, ${color}18), var(--color-surface, #fff)`,
+                    }
+                  : { backgroundColor: color + "18" }),
                 color: color,
                 border: `1px solid ${color}38`,
                 lineHeight: 1.6,
