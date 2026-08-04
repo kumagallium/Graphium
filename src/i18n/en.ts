@@ -786,6 +786,9 @@ export const en: Record<string, string> = {
   "activityGraph.stepName": "Step name",
   "activityGraph.emptyTitle": "No steps yet",
   "activityGraph.emptyHint": "Click \"+ Add step\" to start building the procedure here",
+  "activityGraph.addChip": "Add",
+  "activityGraph.editChip": "Edit",
+  "activityGraph.removeChip": "Remove label from text",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

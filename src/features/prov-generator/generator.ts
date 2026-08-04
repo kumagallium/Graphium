@@ -22,6 +22,8 @@ export type ProvAttribute = {
   "graphium:blockId"?: string;
   "graphium:mediaUrl"?: string;
   "graphium:mediaType"?: string;
+  /** インライン attribute 由来の場合の entityId（グラフ側からの編集・削除で span を特定する） */
+  "graphium:entityId"?: string;
 };
 
 export type ProvJsonLdNode = {
@@ -64,7 +66,7 @@ type InternalNode = {
   label: string;
   blockId: string;
   params?: Record<string, string>;
-  attributes?: { label: string; blockId: string; mediaUrl?: string; mediaType?: string }[];
+  attributes?: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string }[];
   /** Entity サブタイプ（material / tool） */
   entitySubtype?: import("../context-label/labels").EntitySubtype;
   /** メディアブロックの種類（image / video / audio / pdf / file） */
@@ -1051,9 +1053,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     // メディアブロックを [パラメータ] 化した場合も、Entity 経路（mediaUrl/mediaType を
     // ノードへ付与）と同様にメディア情報を attribute へ引き継ぐ。これがないと graph view が
     // サムネイルを描けず、ファイル名テキストにフォールバックしてしまう。
-    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string } = {
+    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string } = {
       label: agg.text || agg.entityId,
       blockId: agg.blockId,
+      // インライン attribute はグラフ側から編集・削除できるよう entityId を残す
+      entityId: agg.entityId,
     };
     if (agg.mediaUrl) attrEntry.mediaUrl = agg.mediaUrl;
     if (agg.mediaType) attrEntry.mediaType = agg.mediaType;
@@ -1237,6 +1241,9 @@ function buildProvJsonLd(
         }
         if (a.mediaType) {
           attr["graphium:mediaType"] = a.mediaType;
+        }
+        if (a.entityId) {
+          attr["graphium:entityId"] = a.entityId;
         }
         return attr;
       });

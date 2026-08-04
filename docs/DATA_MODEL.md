@@ -255,6 +255,18 @@ type MediaInlineLabel = {
 same referent share an `entityId` so the PROV generator emits one
 *Entity* node.
 
+`entityId` is also the handle for **graph-side editing**: the flow view's
+node cards let the user add / rename / remove inputs, outputs and
+parameters, and each of those operations rewrites the underlying inline
+span (`src/features/inline-label/entity-edit.ts`) rather than any graph
+state. To make parameters addressable this way, the generator carries the
+originating `entityId` into the emitted attribute entries as
+`graphium:entityId` (attributes that come from tables or `graphium:*`
+key-values have no `entityId` and stay read-only on the card). Removal is
+conservative: a span that is the sole content of its paragraph (the shape
+graph-side "add" creates) is deleted with the paragraph, while a span
+inside prose only loses its mark — the text is never destroyed.
+
 The generator (`src/features/prov-generator/`) consumes both label
 sources and the block structure to produce the PROV-DM graph. Activity
 containment is inferred, never stated by the user:

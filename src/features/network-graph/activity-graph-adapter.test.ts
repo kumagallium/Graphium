@@ -96,12 +96,48 @@ describe("provDocToStepGraph", () => {
         "graphium:blockId": "blkA",
         "graphium:temperature": "900C",
         "graphium:phase": "result", // 予約キーは除外
-        "graphium:attributes": [{ "rdfs:label": "2h" }],
+        "graphium:attributes": [
+          { "rdfs:label": "2h", "graphium:entityId": "ent_attribute_time" },
+          { "rdfs:label": "Ar 雰囲気" }, // entityId 無し（テーブル由来など）は表示のみ
+        ],
       },
     ]);
 
     const { activities } = provDocToStepGraph(doc);
-    expect(activities[0].params).toEqual(["temperature: 900C", "2h"]);
+    expect(activities[0].params).toEqual([
+      { label: "temperature: 900C" },
+      { label: "2h", entityId: "ent_attribute_time" },
+      { label: "Ar 雰囲気" },
+    ]);
+  });
+
+  it("インライン span 由来の Entity は entityId を復元し、それ以外は undefined", () => {
+    const doc = makeDoc([
+      {
+        "@id": "activity_A",
+        "@type": "prov:Activity",
+        "rdfs:label": "混合",
+        "graphium:blockId": "blkA",
+        "prov:used": [{ "@id": "inline_material_ent_material_cu" }, { "@id": "row_table_1" }],
+      },
+      { "@id": "inline_material_ent_material_cu", "@type": "prov:Entity", "rdfs:label": "Cu粉末" },
+      { "@id": "row_table_1", "@type": "prov:Entity", "rdfs:label": "表の行" },
+      {
+        "@id": "inline_output_ent_output_mix",
+        "@type": "prov:Entity",
+        "rdfs:label": "混合粉",
+        "prov:wasGeneratedBy": [{ "@id": "activity_A" }],
+      },
+    ]);
+
+    const { activities } = provDocToStepGraph(doc);
+    expect(activities[0].inputs).toEqual([
+      { label: "Cu粉末", kind: "material", entityId: "ent_material_cu" },
+      { label: "表の行", kind: "material" },
+    ]);
+    expect(activities[0].outputs).toEqual([
+      { label: "混合粉", kind: "output", entityId: "ent_output_mix" },
+    ]);
   });
 
   it("1 つの output が複数手順に使われると手順依存が fan-out する", () => {

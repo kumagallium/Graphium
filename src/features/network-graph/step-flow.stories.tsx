@@ -33,28 +33,38 @@ const RICH_ACTIVITIES: ActivityNode[] = [
     id: "s-mix",
     name: "混合",
     inputs: [
-      { label: "Cu粉末", kind: "material" },
-      { label: "Zn粉末", kind: "material" },
-      { label: "乳鉢", kind: "tool" },
+      { label: "Cu粉末", kind: "material", entityId: "ent_material_cu" },
+      { label: "Zn粉末", kind: "material", entityId: "ent_material_zn" },
+      { label: "乳鉢", kind: "tool", entityId: "ent_tool_mortar" },
     ],
-    outputs: [{ label: "混合粉", kind: "output" }],
-    params: ["比率: 7:3"],
+    outputs: [{ label: "混合粉", kind: "output", entityId: "ent_output_mix" }],
+    params: [{ label: "比率: 7:3", entityId: "ent_attribute_ratio" }],
   },
   {
     id: "s-press",
     name: "成形",
-    inputs: [{ label: "プレス機", kind: "tool" }],
+    inputs: [{ label: "プレス機", kind: "tool", entityId: "ent_tool_press" }],
     outputs: [],
-    params: ["圧力: 20MPa"],
+    params: [{ label: "圧力: 20MPa", entityId: "ent_attribute_pressure" }],
   },
   {
     id: "s-fire",
     name: "焼成",
     inputs: [],
-    outputs: [{ label: "焼結体", kind: "output" }],
-    params: ["温度: 900C", "時間: 2h", "雰囲気: Ar"],
+    outputs: [{ label: "焼結体", kind: "output", entityId: "ent_output_sintered" }],
+    params: [
+      { label: "温度: 900C", entityId: "ent_attribute_temp" },
+      { label: "時間: 2h", entityId: "ent_attribute_time" },
+      { label: "雰囲気: Ar" }, // entityId 無し = 表示のみ（テーブル由来などの想定）
+    ],
   },
-  { id: "s-eval", name: "評価", inputs: [{ label: "XRD", kind: "tool" }], outputs: [], params: [] },
+  {
+    id: "s-eval",
+    name: "評価",
+    inputs: [{ label: "XRD", kind: "tool", entityId: "ent_tool_xrd" }],
+    outputs: [],
+    params: [],
+  },
 ];
 
 const RICH_STEPS: StepEdge[] = [
@@ -84,6 +94,9 @@ export const CardFull: Story = {
       onDeleteActivity={() => {}}
       onJumpToBlock={() => {}}
       getStepContentCount={() => 3}
+      onAddEntity={(id, kind, text) => console.log("add", id, kind, text)}
+      onRenameEntity={(entityId, text) => console.log("rename entity", entityId, text)}
+      onRemoveEntity={(entityId) => console.log("remove entity", entityId)}
     />
   ),
 };
@@ -142,6 +155,41 @@ function Playground() {
       }}
       onJumpToBlock={(blockId) => console.log("jump to", blockId)}
       getStepContentCount={(blockId) => (blockId === "s-mix" ? 2 : 0)}
+      onAddEntity={(blockId, kind, text) => {
+        const entityId = `ent_${kind}_${Math.random().toString(36).slice(2, 8)}`;
+        setActivities((prev) =>
+          prev.map((a) => {
+            if (a.id !== blockId) return a;
+            if (kind === "attribute") {
+              return { ...a, params: [...a.params, { label: text, entityId }] };
+            }
+            const io = { label: text, kind: kind as "material" | "tool" | "output", entityId };
+            return kind === "output"
+              ? { ...a, outputs: [...a.outputs, io] }
+              : { ...a, inputs: [...a.inputs, io] };
+          }),
+        );
+      }}
+      onRenameEntity={(entityId, text) =>
+        setActivities((prev) =>
+          prev.map((a) => ({
+            ...a,
+            inputs: a.inputs.map((io) => (io.entityId === entityId ? { ...io, label: text } : io)),
+            outputs: a.outputs.map((io) => (io.entityId === entityId ? { ...io, label: text } : io)),
+            params: a.params.map((p) => (p.entityId === entityId ? { ...p, label: text } : p)),
+          })),
+        )
+      }
+      onRemoveEntity={(entityId) =>
+        setActivities((prev) =>
+          prev.map((a) => ({
+            ...a,
+            inputs: a.inputs.filter((io) => io.entityId !== entityId),
+            outputs: a.outputs.filter((io) => io.entityId !== entityId),
+            params: a.params.filter((p) => p.entityId !== entityId),
+          })),
+        )
+      }
     />
   );
 }

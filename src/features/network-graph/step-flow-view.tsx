@@ -39,6 +39,9 @@ const DANGER = "#c26356";
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
 export type ConnectResult = { error: string | null };
 
+/** カードから追加できる要素の種類（本文への写像はエディタ側 STYLE_KEY を参照） */
+export type EntityKind = "material" | "tool" | "output" | "attribute";
+
 export type StepFlowViewProps = {
   activities: ActivityNode[];
   steps: StepEdge[];
@@ -56,6 +59,12 @@ export type StepFlowViewProps = {
   onJumpToBlock?: (blockId: string) => void;
   /** 削除確認に出す「中身のブロック数」。省略時は 0 扱い（確認なしで削除） */
   getStepContentCount?: (blockId: string) => number;
+  /** カードからの入出力・パラメータ追加（本文に span 付き行を合成） */
+  onAddEntity?: (blockId: string, kind: EntityKind, text: string) => void;
+  /** チップのリネーム（本文 span のテキスト置換。entityId は維持） */
+  onRenameEntity?: (entityId: string, text: string) => void;
+  /** チップの削除（専用行なら行削除、文中なら mark 解除） */
+  onRemoveEntity?: (entityId: string) => void;
 };
 
 const nodeTypes = { step: StepNodeCard };
@@ -72,6 +81,9 @@ function StepFlowCanvas({
   onDeleteActivity,
   onJumpToBlock,
   getStepContentCount,
+  onAddEntity,
+  onRenameEntity,
+  onRemoveEntity,
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<StepFlowNode>([]);
@@ -105,6 +117,9 @@ function StepFlowCanvas({
           onDelete: onDeleteActivity,
           onJump: onJumpToBlock,
           getContentCount: getStepContentCount,
+          onAddEntity,
+          onRenameEntity,
+          onRemoveEntity,
         },
         draggable: false,
       }));
@@ -127,6 +142,9 @@ function StepFlowCanvas({
     onDeleteActivity,
     onJumpToBlock,
     getStepContentCount,
+    onAddEntity,
+    onRenameEntity,
+    onRemoveEntity,
     setNodes,
     setEdges,
   ]);

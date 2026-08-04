@@ -127,6 +127,11 @@ talks to LLM and embedding backends.
   step's inputs / outputs / parameters; the read-only, exploration-oriented
   graphs (full PROV view, note graph, global graph, asset graph) stay on
   cytoscape (canvas), which scales better for large force-directed views.
+  The cards also edit those chips: adding one synthesizes a dedicated
+  paragraph carrying the inline mark inside the step, renaming rewrites
+  the span text (keeping its `entityId`), and removing either deletes the
+  dedicated row or just strips the mark when the span sits inside prose
+  (DATA_MODEL §2.3).
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, and blocks outside that set are stripped on load and

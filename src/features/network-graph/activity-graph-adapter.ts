@@ -17,7 +17,18 @@ import { extractRelations, type ProvJsonLd, type ProvAttribute } from "../prov-g
 import { t } from "../../i18n";
 
 export type ActivityIoKind = "material" | "tool" | "output";
-export type ActivityIo = { label: string; kind: ActivityIoKind };
+export type ActivityIo = {
+  label: string;
+  kind: ActivityIoKind;
+  /** インライン span 由来のときの entityId。無いもの（テーブル行 / メディア / plan）は
+   *  グラフ側から編集・削除できない（表示のみ） */
+  entityId?: string;
+};
+export type ActivityParam = {
+  label: string;
+  /** インライン attribute 由来のときの entityId（同上） */
+  entityId?: string;
+};
 
 export type ActivityNode = {
   id: string; // blockId
@@ -26,8 +37,8 @@ export type ActivityNode = {
   inputs: ActivityIo[];
   /** 明示 output（informed_by desugar の合成プレースホルダは含まない） */
   outputs: ActivityIo[];
-  /** パラメータ表示行（"key: value" 形式 / 属性ラベル） */
-  params: string[];
+  /** パラメータ（"key: value" 形式のテキスト / 属性ラベル） */
+  params: ActivityParam[];
 };
 
 /** 手順間の依存（A が産み B が使う＝ B wasInformedBy A）。from=A / to=B で下向きに流す。 */
@@ -58,6 +69,21 @@ const RESERVED_KEYS = new Set([
 /** informed_by desugar が立てる合成 output（「〜の結果」プレースホルダ）か */
 const isSyntheticResult = (id: string) => id.startsWith("result_synthetic_");
 
+/**
+ * Entity ノードの @id（`inline_<label>_<entityId>`）から entityId を復元する。
+ * インライン span 以外（テーブル行 / result_* / メディア / plan phase）は null —
+ * それらは本文 span の書き換えでは編集できないため。
+ */
+function inlineEntityIdOf(node: { "@id": string; [k: `graphium:${string}`]: any }): string | undefined {
+  const id = node["@id"];
+  if (id.endsWith("_plan")) return undefined;
+  if (node["graphium:mediaUrl"]) return undefined; // メディアはサイドストア由来
+  for (const prefix of ["inline_material_", "inline_tool_", "inline_output_"]) {
+    if (id.startsWith(prefix)) return id.slice(prefix.length);
+  }
+  return undefined;
+}
+
 export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
   if (!doc) return { activities: [], steps: [] };
   const graph = doc["@graph"];
@@ -73,18 +99,18 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
     activityBlockId.set(n["@id"], blockId);
 
     // パラメータ: graphium:* の文字列値 + graphium:attributes 配列
-    const params: string[] = [];
+    const params: ActivityParam[] = [];
     for (const key of Object.keys(n)) {
       if (
         key.startsWith("graphium:") &&
         !RESERVED_KEYS.has(key) &&
         typeof n[key as `graphium:${string}`] === "string"
       ) {
-        params.push(`${key.replace("graphium:", "")}: ${n[key as `graphium:${string}`]}`);
+        params.push({ label: `${key.replace("graphium:", "")}: ${n[key as `graphium:${string}`]}` });
       }
     }
     for (const attr of (n["graphium:attributes"] ?? []) as ProvAttribute[]) {
-      params.push(attr["rdfs:label"]);
+      params.push({ label: attr["rdfs:label"], entityId: attr["graphium:entityId"] });
     }
 
     const node: ActivityNode = {
@@ -111,7 +137,11 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
     const entity = nodeById.get(r.from);
     const owner = activityByBlockId.get(ownerBlockId);
     if (entity && owner && !owner.outputs.some((o) => o.label === entity["rdfs:label"])) {
-      owner.outputs.push({ label: entity["rdfs:label"], kind: "output" });
+      owner.outputs.push({
+        label: entity["rdfs:label"],
+        kind: "output",
+        entityId: inlineEntityIdOf(entity),
+      });
     }
   }
 
@@ -139,7 +169,11 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
     if (!entity || !target) continue;
     const kind: ActivityIoKind = entity["graphium:entityType"] === "tool" ? "tool" : "material";
     if (!target.inputs.some((i) => i.label === entity["rdfs:label"] && i.kind === kind)) {
-      target.inputs.push({ label: entity["rdfs:label"], kind });
+      target.inputs.push({
+        label: entity["rdfs:label"],
+        kind,
+        entityId: inlineEntityIdOf(entity),
+      });
     }
   }
 

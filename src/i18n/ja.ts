@@ -787,6 +787,9 @@ export const ja: Record<string, string> = {
   "activityGraph.stepName": "手順の名前",
   "activityGraph.emptyTitle": "手順はまだありません",
   "activityGraph.emptyHint": "『手順を追加』から、ここで手順を組み立てられます",
+  "activityGraph.addChip": "追加",
+  "activityGraph.editChip": "編集",
+  "activityGraph.removeChip": "本文のラベルを外す",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",

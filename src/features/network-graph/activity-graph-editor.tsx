@@ -14,10 +14,13 @@
 // ──────────────────────────────────────────────
 
 import { useCallback, useMemo, useRef } from "react";
-import { StepFlowView } from "./step-flow-view";
+import { StepFlowView, type EntityKind } from "./step-flow-view";
 import { provDocToStepGraph } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
 import { buildDefaultStepTitle, selectStepTitle } from "../../blocks/step/view";
+import { makeEntityId } from "../../features/inline-label/shortcuts";
+import { renameInlineEntity, removeInlineEntity } from "../../features/inline-label/entity-edit";
+import { PARENT_ACTIVITY_MARKER } from "../../features/inline-label/attribute-binding";
 import type { ProvJsonLd } from "../prov-generator/generator";
 
 /** 文書順で最後の step ブロック id（ネスト含む）。新しい手順の挿入位置に使う */
@@ -224,6 +227,69 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
+  // ── Entity / パラメータの CRUD（本文 span への翻訳） ──
+
+  const STYLE_KEY: Record<EntityKind, string> = {
+    material: "inlineMaterial",
+    tool: "inlineTool",
+    output: "inlineOutput",
+    attribute: "inlineAttribute",
+  };
+
+  const onAddEntity = useCallback(
+    (stepBlockId: string, kind: EntityKind, text: string) => {
+      const editor = getEditor();
+      const trimmed = text.trim();
+      if (!editor || !trimmed) return;
+      const step = findBlockById(editor.document ?? [], stepBlockId);
+      if (!step || step.type !== "step") return;
+      const entityId = makeEntityId(kind);
+      // パラメータは Activity 直結（最寄り Entity 推論をスキップ）で束縛する
+      const styleValue =
+        kind === "attribute" ? `${entityId}@${PARENT_ACTIVITY_MARKER}` : entityId;
+      const content = [{ type: "text", text: trimmed, styles: { [STYLE_KEY[kind]]: styleValue } }];
+      const children: any[] = step.children ?? [];
+      const last = children[children.length - 1];
+      const lastIsEmptyPara =
+        children.length === 1 &&
+        last?.type === "paragraph" &&
+        !(last.content ?? []).some(
+          (c: any) => typeof c?.text === "string" && c.text.trim() !== "",
+        );
+      try {
+        if (lastIsEmptyPara) {
+          // 空の初期行があればそこへ書く（空行を残さない）
+          editor.updateBlock(last.id, { content });
+        } else if (last) {
+          editor.insertBlocks([{ type: "paragraph", content }], last.id, "after");
+        } else {
+          editor.updateBlock(stepBlockId, { children: [{ type: "paragraph", content }] });
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [getEditor],
+  );
+
+  const onRenameEntity = useCallback(
+    (entityId: string, newText: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      renameInlineEntity(editor, entityId, newText);
+    },
+    [getEditor],
+  );
+
+  const onRemoveEntity = useCallback(
+    (entityId: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      removeInlineEntity(editor, entityId);
+    },
+    [getEditor],
+  );
+
   const hasEditor = !!editorRef;
 
   return (
@@ -237,6 +303,9 @@ export function ActivityGraphEditor({
       onDeleteActivity={hasEditor ? onDeleteActivity : undefined}
       onJumpToBlock={hasEditor ? onJumpToBlock : undefined}
       getStepContentCount={hasEditor ? getStepContentCount : undefined}
+      onAddEntity={hasEditor ? onAddEntity : undefined}
+      onRenameEntity={hasEditor ? onRenameEntity : undefined}
+      onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
     />
   );
 }
