@@ -1,8 +1,8 @@
 // Markdown import (single file / Obsidian Vault folder).
 // 設計: importMarkdownToGraphiumDoc で 1 ノートに変換する。
 // Obsidian の `[[Note]]` は 2 パスで解決する。1 パス目は本文中にプレースホルダで埋め込み、
-// 2 パス目で baseName→noteId マップを使って実リンクへ復元する。
-// 解決できなかった `[[X]]` はテキストとして残す（B-1）。
+// 2 パス目で「今回のインポート（baseName→noteId）→ 既存ノート（タイトル→noteId）」の
+// 順に解決して実リンクへ復元する。解決できなかった `[[X]]` はテキストとして残す（B-1）。
 
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from "@blocknote/core";
 import type { GraphiumDocument } from "../../lib/document-types";
@@ -22,7 +22,7 @@ const SENTINEL_OPEN = "{{GWLINK_";
 const SENTINEL_CLOSE = "}}";
 const SENTINEL_REGEX = /\{\{GWLINK_(\d+)\}\}/g;
 
-type WikiLinkRef = {
+export type WikiLinkRef = {
   /** リンク先のノート名 */
   target: string;
   /** 表示用エイリアス */
@@ -145,19 +145,71 @@ export function resolveWikiLinks(
   };
 }
 
-export function isMarkdownFile(file: File): boolean {
-  return /\.(md|markdown)$/i.test(file.name);
+/** 既存ノートをリンク解決の対象にするための最小情報（NoteIndexEntry 互換） */
+export type ExistingNoteEntry = {
+  noteId: string;
+  title: string;
+  modifiedAt?: string;
+};
+
+/**
+ * `[[target]]` → noteId の解決関数を組み立てる。
+ * 優先順: 今回のインポートで作成したノート（ファイル baseName 一致）→
+ * 既存ノート（タイトル一致）。照合はどちらも大文字小文字・前後空白を無視する。
+ * 既存ノートに同名が複数ある場合は modifiedAt が最新のものを選ぶ（決定的にするため）。
+ */
+export function buildWikiLinkResolver(
+  importedByBaseName: ReadonlyMap<string, string>,
+  existingNotes: ReadonlyArray<ExistingNoteEntry>,
+): (target: string) => string | null {
+  const byTitle = new Map<string, ExistingNoteEntry>();
+  for (const note of existingNotes) {
+    const key = note.title.trim().toLowerCase();
+    if (!key) continue;
+    const prev = byTitle.get(key);
+    if (!prev || (note.modifiedAt ?? "") > (prev.modifiedAt ?? "")) byTitle.set(key, note);
+  }
+  return (target: string) => {
+    const key = target.trim().toLowerCase();
+    return importedByBaseName.get(key) ?? byTitle.get(key)?.noteId ?? null;
+  };
 }
 
-export function buildVaultMap(files: File[]): Map<string, File> {
-  const map = new Map<string, File>();
-  for (const f of files) {
-    if (!isMarkdownFile(f)) continue;
-    const baseName = f.name.replace(/\.(md|markdown)$/i, "");
-    const key = baseName.toLowerCase();
-    if (!map.has(key)) map.set(key, f);
+export type WikiLinkResolutionResult = {
+  /** noteId → 解決適用後の doc。wikilinks を含むノートは未解決でも必ず含まれる */
+  updates: Map<string, GraphiumDocument>;
+  resolvedCount: number;
+  unresolvedCount: number;
+};
+
+/**
+ * Pass 2 をインポート済みノート全件に適用する。
+ * wikilinks を 1 つでも含むノートは、解決の成否によらず必ず updates に含める。
+ * Pass 1 で保存された本文にはプレースホルダ（{{GWLINK_n}}）が残っており、
+ * 全件未解決でも `[[リンク]]` テキストへ復元した姿で上書き保存する必要があるため。
+ */
+export function applyWikiLinkResolution(
+  docs: ReadonlyMap<string, { doc: GraphiumDocument; wikilinks: WikiLinkRef[] }>,
+  resolver: (target: string) => string | null,
+): WikiLinkResolutionResult {
+  const updates = new Map<string, GraphiumDocument>();
+  let resolvedCount = 0;
+  let unresolvedCount = 0;
+  const countingResolver = (target: string): string | null => {
+    const id = resolver(target);
+    if (id) resolvedCount++;
+    else unresolvedCount++;
+    return id;
+  };
+  for (const [noteId, { doc, wikilinks }] of docs) {
+    if (wikilinks.length === 0) continue;
+    updates.set(noteId, resolveWikiLinks(doc, wikilinks, countingResolver));
   }
-  return map;
+  return { updates, resolvedCount, unresolvedCount };
+}
+
+export function isMarkdownFile(file: File): boolean {
+  return /\.(md|markdown)$/i.test(file.name);
 }
 
 // ──────────────────────────────────────────────
