@@ -160,34 +160,35 @@ export const NoteWithIndicators: StoryObj = {
   ),
 };
 
-// テーブルラベルチップ（テーブル左上角にまたがる表示）
+// テーブルラベルチップ
 // ブロックラベルはインライン移行済みで、テーブルだけが現役の block-level ラベル。
-// 右端マージンに浮かせず、テーブル本体の左上角に寄せて「このテーブルに付くラベル」を示す。
+// 右端マージンに浮かせず、ヘッダー上のメタデータ領域（ラベル付きのときだけ
+// padding-top で実確保）にチップを右寄せで置く。
+// 位置は 2026-08 に比較検討して決定: 左上またぎはヘッダーと干渉、
+// ラベル列・縦帯は「1 列目 = 行の名前」規約や行頭アイコンと衝突するため不採用。
 export const TableLabelChip: StoryObj = {
-  name: "テーブルラベルチップ（左上角）",
+  name: "テーブルラベルチップ",
   render: () => {
     const color = getLabelColor("material");
-    const chip = (
-      <span style={{
-        position: "absolute", top: 0, left: 8, transform: "translateY(-50%)",
-        display: "inline-block", padding: "0px 6px", borderRadius: 9999,
-        fontSize: 11, fontWeight: 600,
-        background: `linear-gradient(${color}18, ${color}18), #fff`,
-        color, border: `1px solid ${color}38`,
-        cursor: "pointer", userSelect: "none", lineHeight: 1.6, whiteSpace: "nowrap",
-        fontFamily: tokens.font,
-      }}>
-        [インプット]
-      </span>
-    );
     return (
       <div style={{ maxWidth: 900, fontFamily: tokens.font, color: tokens.fg, background: tokens.bg, padding: 24, borderRadius: 12 }}>
-        <p style={{ fontSize: 13, color: tokens.mutedFg, marginBottom: 20 }}>
+        <p style={{ fontSize: 13, color: tokens.mutedFg, marginBottom: 24 }}>
           ステップ内のインデックステーブルに [インプット] を付けた状態。
-          チップはテーブル上辺をまたぎ、クリックで統合パネル（変更・解除）が開く。
+          ヘッダー上のメタデータ領域に右寄せで表示し、クリックで統合パネル（変更・解除）が開く。
         </p>
-        <div style={{ position: "relative", display: "inline-block", marginTop: 10 }}>
-          {chip}
+        <div style={{ display: "inline-block" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+            <span style={{
+              display: "inline-block", padding: "0px 6px", borderRadius: 9999,
+              fontSize: 11, fontWeight: 600,
+              backgroundColor: color + "18",
+              color, border: `1px solid ${color}38`,
+              cursor: "pointer", userSelect: "none", lineHeight: 1.6, whiteSpace: "nowrap",
+              fontFamily: tokens.font,
+            }}>
+              [インプット]
+            </span>
+          </div>
           <table style={{ borderCollapse: "collapse", background: "#fff", border: `1px solid ${tokens.border}` }}>
             <thead>
               <tr>

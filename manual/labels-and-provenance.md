@@ -49,7 +49,7 @@ Images, videos, audio, files, and PDFs can carry a label as a whole block — "t
 
 The drag handle (⠿) menu offers a **Label** submenu for tables and media blocks — the same four labels, applied at block level:
 
-- On a **table**, the hint reads **Each row → one Entity**: every row becomes its own entity, which is why per-cell inline labels are unnecessary. The label shows as a small chip on the table's top-left corner — click it to change or remove it.
+- On a **table**, the hint reads **Each row → one Entity**: every row becomes its own entity, which is why per-cell inline labels are unnecessary. The label shows as a small chip just above the table, aligned to its right edge — click it to change or remove it.
 - On a **media block**, the hint reads **Whole block = one Entity** — equivalent to labeling it from the toolbar.
 
 ![The Label submenu in the drag-handle menu](/screenshots/label-dropdown.png)
