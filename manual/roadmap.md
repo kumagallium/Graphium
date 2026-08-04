@@ -53,6 +53,8 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.23.1** | 2026-07-29 | [Capture on your phone, receive on your desktop](/mobile#sending-captures-to-your-desktop) through your own cloud storage. |
 | **v0.24.0** | 2026-07-30 | [Write formulas without knowing LaTeX](/notes-and-editor#math) — a visual editor with a symbol palette. [Mobile capture](/mobile) graduates from experiment to a standard feature, and [image OCR](/materials-and-citations#reading-text-from-images-ocr) runs on upload and in bulk. |
 | **v0.25.0** | 2026-07-30 | This manual goes live at `/Graphium/manual/`, in English and Japanese. |
+| **v0.26.0** | 2026-07-30 | [Voice memos](/mobile) record inside Graphium on your phone — tap to record, play it back, then capture — instead of bouncing through the OS recorder. |
+| **v0.27.0** | 2026-08-03 | [Columns](/notes-and-editor#columns) — place blocks side by side. Insert from the slash menu, create by dropping a block on another's edge, resize by dragging the gap; narrow layouts stack on their own. |
 
 ## Requests welcome
 
