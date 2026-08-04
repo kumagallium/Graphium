@@ -1,8 +1,11 @@
 // ──────────────────────────────────────────────
 // ProvIndicatorLayer
 //
-// エディタ右側に position:fixed オーバーレイで
-// 各ブロックの PROV ラベルを表示する。
+// position:fixed オーバーレイで各ブロックの PROV ラベルを表示する。
+// - 見出し等（レガシー）: エディタ右端マージンのバッジ
+// - テーブル: ヘッダー上のメタデータ領域に右寄せのチップ
+//   （領域は data-block-label-space 属性 + CSS の padding-top で実確保する。
+//    ラベル付きのときだけ現れ、前のブロックと重ならない）
 // クリックで統合パネル（ラベル変更 + リンク一覧 + リンク追加）を開く。
 // ──────────────────────────────────────────────
 
@@ -79,13 +82,25 @@ export function setOnPrevStepLinkSelected(
 type IndicatorInfo = {
   blockId: string;
   top: number;
+  /** バッジ右端の x 座標（margin: エディタ右端 / table: テーブル右端） */
   left: number;
   label: string | undefined;
   /** ブロック型（step コンテナはラベル無しでも工程として扱うため必要） */
   blockType: string | undefined;
+  /**
+   * バッジの置き方。
+   * - margin: エディタ右端マージンに右揃え（レガシー見出しラベル用）
+   * - table: テーブルヘッダー上のメタデータ領域に右寄せのチップ
+   *   （ブロックラベル UI はインライン移行済みで、テーブルだけが現役。
+   *    右余白に浮かせず本体に寄せて「このテーブルに付くラベル」を示す）
+   */
+  placement: "margin" | "table";
   outgoing: BlockLink[];
   incoming: BlockLink[];
 };
+
+// テーブルチップとテーブル上辺の間隔
+const TABLE_CHIP_GAP = 4;
 
 // エディタラッパーの表示範囲（ラベルをクリップするため）
 type ClipBounds = { top: number; bottom: number };
@@ -110,6 +125,9 @@ export function ProvIndicatorLayer({
   const [indicators, setIndicators] = useState<IndicatorInfo[]>([]);
   const [clipBounds, setClipBounds] = useState<ClipBounds>({ top: 0, bottom: 9999 });
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  // メタデータ領域（padding-top）を予約したテーブルの blockId。
+  // ラベルが外れたら compute が予約を解除する。
+  const spacedTablesRef = useRef<Set<string>>(new Set());
   const t = useT();
 
   // ラベルまたはリンクを持つブロックの位置を計算
@@ -166,6 +184,7 @@ export function ProvIndicatorLayer({
     setClipBounds({ top: wrapperRect.top, bottom: clipBottom });
 
     const next: IndicatorInfo[] = [];
+    const spacedTables = new Set<string>();
     blockIds.forEach((blockId) => {
       const outer = queryRoot.querySelector(
         `[data-id="${blockId}"][data-node-type="blockOuter"]`
@@ -190,16 +209,49 @@ export function ProvIndicatorLayer({
         return;
       }
 
+      // テーブルはヘッダー上のメタデータ領域（padding-top で実確保）に
+      // チップを右寄せで置く。content 要素はブロック全幅のため、
+      // 内容依存幅のテーブル実体（<table>）を測って右端に合わせる。
+      const isTable = blockType === "table";
+      if (isTable && content) {
+        if (label) {
+          content.setAttribute("data-block-label-space", "");
+          spacedTables.add(blockId);
+        } else {
+          content.removeAttribute("data-block-label-space");
+        }
+      }
+      const tableEl = isTable
+        ? (content?.querySelector("table") as HTMLElement | null)
+        : null;
+      const anchorRect = tableEl ? tableEl.getBoundingClientRect() : rect;
+      // 横スクロール中のテーブルは右端が content の外へ出るためクランプする
+      const tableRight = content
+        ? Math.min(anchorRect.right, content.getBoundingClientRect().right)
+        : anchorRect.right;
+
       next.push({
         blockId,
-        top: rect.top + rect.height / 2,
-        left: indicatorLeft,
+        top: isTable ? anchorRect.top - TABLE_CHIP_GAP : rect.top + rect.height / 2,
+        left: isTable ? tableRight : indicatorLeft,
         label,
         blockType,
+        placement: isTable ? "table" : "margin",
         outgoing,
         incoming,
       });
     });
+
+    // ラベルが外れた（または走査対象から消えた）テーブルの領域予約を解除する
+    spacedTablesRef.current.forEach((blockId) => {
+      if (spacedTables.has(blockId)) return;
+      const el = queryRoot.querySelector(
+        `[data-id="${blockId}"] .bn-block-content[data-content-type="table"]`
+      );
+      el?.removeAttribute("data-block-label-space");
+    });
+    spacedTablesRef.current = spacedTables;
+
     setIndicators(next);
   }, [labels, links, getLabel, getOutgoing, getIncoming, wrapperEl, bottomInset]);
 
@@ -250,7 +302,7 @@ export function ProvIndicatorLayer({
 
   return createPortal(
     <>
-      {indicators.map(({ blockId, top, left, label, blockType, outgoing, incoming }) => {
+      {indicators.map(({ blockId, top, left, label, blockType, placement, outgoing, incoming }) => {
         const isActive = activeBlockId === blockId;
         const color = label ? getLabelColor(label) : undefined;
 
@@ -260,9 +312,12 @@ export function ProvIndicatorLayer({
         // エディタラッパーの表示範囲外はスキップ（ヘッダーに重ならないよう）
         if (top < clipBounds.top || top > clipBounds.bottom) return null;
 
+        const isTableChip = placement === "table";
+
         return (
           <div key={blockId}>
-            {/* ラベルバッジ（右揃え: transform で右端に合わせる） */}
+            {/* ラベルバッジ（右揃え。margin はブロック中央の高さ、
+                table はメタデータ領域内 = テーブル上辺の上に置く） */}
             <button
               onClick={() =>
                 setActiveBlockId(isActive ? null : blockId)
@@ -273,7 +328,7 @@ export function ProvIndicatorLayer({
               style={{
                 top,
                 right: window.innerWidth - left,
-                transform: "translateY(-50%)",
+                transform: isTableChip ? "translateY(-100%)" : "translateY(-50%)",
                 padding: "0px 6px",
                 backgroundColor: color + "18",
                 color: color,

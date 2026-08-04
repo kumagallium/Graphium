@@ -648,3 +648,12 @@ body.gph-col-resizing * {
   outline: color-mix(in oklab, var(--color-primary) 55%, transparent) solid 3px;
   border-radius: 4px;
 }
+
+/* ラベル付きテーブルのメタデータ領域。
+   ProvIndicatorLayer がラベル付きテーブルの content に
+   data-block-label-space を付け、ここで実スペースを確保する
+   （チップ約 21px + 余白）。チップ自体は fixed オーバーレイで
+   この領域内（テーブル右端揃え）に描かれる。 */
+.bn-block-content[data-content-type="table"][data-block-label-space] {
+  padding-top: 26px;
+}
