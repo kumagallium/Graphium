@@ -11,7 +11,7 @@
 import { Hono } from "hono";
 import { createModel } from "../services/llm.js";
 import { resolveModelConfig } from "../services/header-model.js";
-import { runAgentLoop } from "../services/agent-loop.js";
+import { runAgentLoop, type AgentRunResult } from "../services/agent-loop.js";
 import {
   buildProvIngesterSystemPrompt,
   buildProvIngesterUserMessage,
@@ -19,9 +19,46 @@ import {
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
-import { noModelRegisteredBody, errorBody } from "../../lib/ai-error-codes.js";
+import {
+  noModelRegisteredBody,
+  provStructureFailedBody,
+  errorBody,
+} from "../../lib/ai-error-codes.js";
+import type { ModelConfig } from "../config/models.js";
 
 const app = new Hono();
+
+// LLM 生成 + パースをまとめて実行し、blocks が空なら 1 回だけ生成し直す。
+// 空になるのは (a) 出力 JSON が壊れて jsonrepair でも直らない、(b) LLM が手順を
+// 全 drop した、のどちらかで、いずれもサンプリング起因のため引き直しで成功する
+// ことが多い（gpt-oss-120b × 4 ページ論文 PDF の実測で初回失敗はおよそ 1/4）。
+async function generateProvBlocksWithRetry(opts: {
+  modelConfig: ModelConfig;
+  systemPrompt: string;
+  userMessage: string;
+  feature: "prov.from-url" | "prov.from-pdf";
+}): Promise<{ parsed: ProvIngesterOutput; result: AgentRunResult }> {
+  const model = await createModel(opts.modelConfig);
+  const runOnce = () =>
+    runAgentLoop({
+      model,
+      modelId: opts.modelConfig.modelId,
+      systemPrompt: opts.systemPrompt,
+      messages: [{ role: "user" as const, content: opts.userMessage }],
+      maxSteps: 1,
+      feature: opts.feature,
+      modelConfig: opts.modelConfig,
+    });
+
+  let result = await runOnce();
+  let parsed = parseProvIngesterOutput(result.message);
+  if (parsed.blocks.length === 0) {
+    console.warn(`[${opts.feature}] PROV blocks が空 (JSON 破損 or 全 drop)、1 回だけ再生成する`);
+    result = await runOnce();
+    parsed = parseProvIngesterOutput(result.message);
+  }
+  return { parsed, result };
+}
 
 // URL から PROV 構造化ブロックを生成
 app.post("/ingest-url", async (c) => {
@@ -73,24 +110,15 @@ app.post("/ingest-url", async (c) => {
   });
 
   try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "prov.from-url",
+    const { parsed, result } = await generateProvBlocksWithRetry({
       modelConfig,
+      systemPrompt,
+      userMessage,
+      feature: "prov.from-url",
     });
 
-    const parsed: ProvIngesterOutput = parseProvIngesterOutput(result.message);
-
     if (parsed.blocks.length === 0) {
-      return c.json(
-        { error: "The LLM could not generate a valid PROV structure." },
-        502,
-      );
+      return c.json(provStructureFailedBody(), 502);
     }
 
     return c.json({
@@ -149,24 +177,15 @@ app.post("/ingest-pdf", async (c) => {
   const systemPrompt = buildProvIngesterSystemPrompt(language);
 
   try {
-    const model = await createModel(modelConfig);
-    const result = await runAgentLoop({
-      model,
-      modelId: modelConfig.modelId,
-      systemPrompt,
-      messages: [{ role: "user" as const, content: userMessage }],
-      maxSteps: 1,
-      feature: "prov.from-pdf",
+    const { parsed, result } = await generateProvBlocksWithRetry({
       modelConfig,
+      systemPrompt,
+      userMessage,
+      feature: "prov.from-pdf",
     });
 
-    const parsed: ProvIngesterOutput = parseProvIngesterOutput(result.message);
-
     if (parsed.blocks.length === 0) {
-      return c.json(
-        { error: "The LLM could not generate a valid PROV structure." },
-        502,
-      );
+      return c.json(provStructureFailedBody(), 502);
     }
 
     return c.json({

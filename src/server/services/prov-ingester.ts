@@ -14,6 +14,8 @@
 // NOTE (Phase A): 旧 role "result" は内部キー再編で "output"（Output Entity 意味）に変更。
 //   後方互換のため、ingester は LLM 出力の "result" も受け入れて "output" に正規化する。
 
+import { jsonrepair } from "jsonrepair";
+
 export type ProvRole = "material" | "procedure" | "tool" | "attribute" | "output";
 
 export type ProvBlockType = "paragraph" | "heading" | "bulletListItem" | "numberedListItem";
@@ -649,8 +651,19 @@ export function parseProvIngesterOutput(raw: string): ProvIngesterOutput {
   try {
     parsed = JSON.parse(jsonText);
   } catch (err) {
-    console.error("PROV Ingester 出力のパース失敗:", err);
-    return { title: "", blocks: [] };
+    // gpt-oss 等のローカル系モデルは、論文 PDF のように出力が数千トークン級に
+    // 伸びるとクォート漏れ・カンマ余りなど軽微な構文エラーを確率的に混ぜる。
+    // 捨てる前に jsonrepair で機械修復を試み、それでもダメなら空を返す
+    // （呼び出し側ルートが 1 回だけ生成をやり直す）。
+    try {
+      parsed = JSON.parse(jsonrepair(jsonText));
+      console.warn(
+        "PROV Ingester: LLM 出力の JSON を jsonrepair で修復してパースした",
+      );
+    } catch {
+      console.error("PROV Ingester 出力のパース失敗:", err);
+      return { title: "", blocks: [] };
+    }
   }
 
   const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
