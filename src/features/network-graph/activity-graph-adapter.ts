@@ -13,7 +13,7 @@
 //   ダイヤモンドノードと同じ抽出規則）
 // ──────────────────────────────────────────────
 
-import { extractRelations, type ProvJsonLd, type ProvAttribute } from "../prov-generator/generator";
+import { extractRelations, type ProvJsonLd, type ProvJsonLdNode, type ProvAttribute } from "../prov-generator/generator";
 import { t } from "../../i18n";
 
 export type ActivityIoKind = "material" | "tool" | "output";
@@ -69,6 +69,24 @@ const RESERVED_KEYS = new Set([
 /** informed_by desugar が立てる合成 output（「〜の結果」プレースホルダ）か */
 const isSyntheticResult = (id: string) => id.startsWith("result_synthetic_");
 
+/** ノード直属の属性を表示行に展開する（graphium:* key-value + graphium:attributes） */
+function extractAttrs(n: ProvJsonLdNode): ActivityParam[] {
+  const out: ActivityParam[] = [];
+  for (const key of Object.keys(n)) {
+    if (
+      key.startsWith("graphium:") &&
+      !RESERVED_KEYS.has(key) &&
+      typeof n[key as `graphium:${string}`] === "string"
+    ) {
+      out.push({ label: `${key.replace("graphium:", "")}: ${n[key as `graphium:${string}`]}` });
+    }
+  }
+  for (const attr of (n["graphium:attributes"] ?? []) as ProvAttribute[]) {
+    out.push({ label: attr["rdfs:label"], entityId: attr["graphium:entityId"] });
+  }
+  return out;
+}
+
 /**
  * Entity ノードの @id（`inline_<label>_<entityId>`）から entityId を復元する。
  * インライン span 以外（テーブル行 / result_* / メディア / plan phase）は null —
@@ -99,19 +117,7 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
     activityBlockId.set(n["@id"], blockId);
 
     // パラメータ: graphium:* の文字列値 + graphium:attributes 配列
-    const params: ActivityParam[] = [];
-    for (const key of Object.keys(n)) {
-      if (
-        key.startsWith("graphium:") &&
-        !RESERVED_KEYS.has(key) &&
-        typeof n[key as `graphium:${string}`] === "string"
-      ) {
-        params.push({ label: `${key.replace("graphium:", "")}: ${n[key as `graphium:${string}`]}` });
-      }
-    }
-    for (const attr of (n["graphium:attributes"] ?? []) as ProvAttribute[]) {
-      params.push({ label: attr["rdfs:label"], entityId: attr["graphium:entityId"] });
-    }
+    const params = extractAttrs(n);
 
     const node: ActivityNode = {
       id: blockId,
@@ -178,4 +184,144 @@ export function provDocToStepGraph(doc: ProvJsonLd | null): StepGraphData {
   }
 
   return { activities, steps };
+}
+
+// ──────────────────────────────────────────────
+// F 案フロービュー用の導出: Entity を独立ノードとして emit する。
+//
+// - material / tool / output の Entity がそれぞれノードになる（synthetic
+//   「〜の結果」は出さない — それは orderOnly エッジに畳む）
+// - パラメータはノードにしない: step / Entity 各ノードの attrs（表示行）に載せる
+// - エッジ 3 種:
+//     used      entity → step（フロー順。次の手順が材料・道具として使う）
+//     generates step → entity（この手順が生成した）
+//     orderOnly step → step（informed_by のうち物質を特定しないもの。点線描画）
+// ──────────────────────────────────────────────
+
+export type FlowStep = {
+  id: string; // blockId
+  name: string;
+  params: ActivityParam[];
+};
+
+export type FlowEntity = {
+  id: string; // provDoc の @id（そのままノード id に使う）
+  label: string;
+  kind: ActivityIoKind;
+  /** インライン span 由来なら本文編集（リネーム・削除・属性追加）が可能 */
+  entityId?: string;
+  /** 属性行。インラインの従属 attribute は entityId 付き（編集可）、テーブル列由来は表示のみ */
+  attrs: ActivityParam[];
+  mediaUrl?: string;
+  mediaType?: string;
+};
+
+export type FlowEdgeKind = "used" | "generates" | "orderOnly";
+
+export type FlowEdge = {
+  id: string;
+  kind: FlowEdgeKind;
+  /** React Flow のフロー順方向（used: entity→step / generates: step→entity / orderOnly: step→step） */
+  source: string;
+  target: string;
+  /** orderOnly のみ: 裏に informed_by リンクがあり削除できるか（editor 側で判定して付与） */
+  deletable?: boolean;
+};
+
+export type FlowGraphData = {
+  steps: FlowStep[];
+  entities: FlowEntity[];
+  edges: FlowEdge[];
+};
+
+export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
+  if (!doc) return { steps: [], entities: [], edges: [] };
+  const graph = doc["@graph"];
+  const nodeById = new Map(graph.map((n) => [n["@id"], n]));
+
+  // Activity → FlowStep（@id → blockId 正規化）
+  const activityBlockId = new Map<string, string>();
+  const steps: FlowStep[] = [];
+  for (const n of graph) {
+    if (n["@type"] !== "prov:Activity") continue;
+    const blockId = n["graphium:blockId"] ?? n["@id"];
+    activityBlockId.set(n["@id"], blockId);
+    steps.push({ id: blockId, name: n["rdfs:label"] || t("nav.untitled"), params: extractAttrs(n) });
+  }
+
+  const relations = extractRelations(doc);
+
+  // synthetic の生成元（orderOnly 畳み込み用）と、通常 Entity の生成有無（kind 判定用）
+  const syntheticProducer = new Map<string, string>(); // synthetic @id → producer blockId
+  const generatedIds = new Set<string>();
+  for (const r of relations) {
+    if (r["@type"] !== "prov:wasGeneratedBy") continue;
+    const producer = activityBlockId.get(r.to);
+    if (!producer) continue;
+    if (isSyntheticResult(r.from)) {
+      if (!syntheticProducer.has(r.from)) syntheticProducer.set(r.from, producer);
+    } else {
+      generatedIds.add(r.from);
+    }
+  }
+
+  const entities = new Map<string, FlowEntity>();
+  const collectEntity = (id: string): FlowEntity | null => {
+    const existing = entities.get(id);
+    if (existing) return existing;
+    const n = nodeById.get(id);
+    if (!n || n["@type"] !== "prov:Entity") return null;
+    const kind: ActivityIoKind = generatedIds.has(id)
+      ? "output"
+      : n["graphium:entityType"] === "tool"
+        ? "tool"
+        : "material";
+    const entity: FlowEntity = {
+      id,
+      label: n["rdfs:label"] || id,
+      kind,
+      entityId: inlineEntityIdOf(n),
+      attrs: extractAttrs(n),
+      mediaUrl: n["graphium:mediaUrl"],
+      mediaType: n["graphium:mediaType"],
+    };
+    entities.set(id, entity);
+    return entity;
+  };
+
+  const edges: FlowEdge[] = [];
+  const seen = new Set<string>();
+  const pushEdge = (e: FlowEdge) => {
+    const key = `${e.kind}:${e.source}->${e.target}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(e);
+  };
+
+  for (const r of relations) {
+    if (r["@type"] === "prov:used") {
+      const stepId = activityBlockId.get(r.from);
+      if (!stepId) continue;
+      if (isSyntheticResult(r.to)) {
+        // 物質を特定しない informed_by → step 間の orderOnly に畳む
+        const producer = syntheticProducer.get(r.to);
+        if (producer && producer !== stepId) {
+          pushEdge({ id: `order-${producer}->${stepId}`, kind: "orderOnly", source: producer, target: stepId });
+        }
+        continue;
+      }
+      if (collectEntity(r.to)) {
+        pushEdge({ id: `used-${r.to}->${stepId}`, kind: "used", source: r.to, target: stepId });
+      }
+    } else if (r["@type"] === "prov:wasGeneratedBy") {
+      if (isSyntheticResult(r.from)) continue;
+      const stepId = activityBlockId.get(r.to);
+      if (!stepId) continue;
+      if (collectEntity(r.from)) {
+        pushEdge({ id: `gen-${stepId}->${r.from}`, kind: "generates", source: stepId, target: r.from });
+      }
+    }
+  }
+
+  return { steps, entities: Array.from(entities.values()), edges };
 }
