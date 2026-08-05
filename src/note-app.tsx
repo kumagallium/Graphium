@@ -2307,9 +2307,11 @@ function NoteEditorInner({
         if (effectiveQuotedMarkdown) {
           // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
           // 継続会話では下記 history 側で idx=0 に quotedMarkdown を再注入して維持する。
+          // タイトルはエディタ本文（BlockNote document）の外にあるメタデータなので、
+          // 明示的に前置きへ含めないと AI からノートのタイトルが参照できない。
           if (isFirstMessage) {
             userMessage = [
-              "以下の内容について質問があります。",
+              `ノート「${title}」内の以下の内容について質問があります。`,
               "",
               "---",
               effectiveQuotedMarkdown,
@@ -2328,10 +2330,12 @@ function NoteEditorInner({
           if (pageMarkdown.trim()) {
             userMessage = [
               isFirstMessage
-                ? "以下のドキュメント全体について質問があります。"
-                : "以下は現在のドキュメント全体の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。",
+                ? `以下のノート「${title}」の内容全体について質問があります。`
+                : `以下はノート「${title}」の現在の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。`,
               "",
               "---",
+              `ノートタイトル: ${title}`,
+              "",
               pageMarkdown,
               "---",
               "",
@@ -2480,7 +2484,7 @@ function NoteEditorInner({
             return {
               role: m.role,
               content: [
-                "以下の内容について質問があります。",
+                `ノート「${title}」内の以下の内容について質問があります。`,
                 "",
                 "---",
                 effectiveQuotedMarkdown,
@@ -2592,7 +2596,7 @@ function NoteEditorInner({
         aiAssistant.setError(localizeAiError(err));
       }
     },
-    [chatStorageId, aiAssistant, noteIndex, captureIndexProp, mediaIndex],
+    [chatStorageId, aiAssistant, noteIndex, captureIndexProp, mediaIndex, title],
   );
 
   // チャットフォーク: 現在のチャットを一覧に退避し、指定メッセージまでの
