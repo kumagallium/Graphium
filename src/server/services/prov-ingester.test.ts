@@ -3,6 +3,7 @@ import {
   parseProvIngesterOutput,
   buildProvIngesterSystemPrompt,
   buildProvIngesterUserMessage,
+  hasHeadingLanguageMismatch,
 } from "./prov-ingester";
 
 describe("parseProvIngesterOutput", () => {
@@ -408,5 +409,49 @@ describe("buildProvIngesterUserMessage", () => {
     expect(msg).toContain("https://example.com/recipe");
     expect(msg).toContain("Example");
     expect(msg).toContain("body text");
+  });
+});
+
+describe("hasHeadingLanguageMismatch", () => {
+  const h = (text: string) => ({ text, blockType: "heading" as const, level: 2 as const });
+  const p = (text: string) => ({ blockType: "paragraph" as const, content: [{ text }] });
+
+  it("ja 指定で見出しが英語ばかりなら true（gpt-oss の実挙動パターン）", () => {
+    const blocks = [
+      h("Weighing"),
+      p("Ru を秤量する"),
+      h("Arc melting"),
+      p("Ar 雰囲気下でアーク溶解する"),
+      h("Melt spinning"),
+    ];
+    expect(hasHeadingLanguageMismatch("ja", blocks)).toBe(true);
+  });
+
+  it("ja 指定で見出しが日本語なら false", () => {
+    const blocks = [h("秤量"), p("Ru を秤量する"), h("アーク溶解"), h("X線回折測定")];
+    expect(hasHeadingLanguageMismatch("ja", blocks)).toBe(false);
+  });
+
+  it("日本語が過半の混在（実測 0.78 相当）は false", () => {
+    const blocks = [h("概要"), h("秤量"), h("アーク溶解"), h("Melt-Spinning")];
+    expect(hasHeadingLanguageMismatch("ja", blocks)).toBe(false);
+  });
+
+  it("見出しが 1 個以下なら判定材料不足として false", () => {
+    expect(hasHeadingLanguageMismatch("ja", [h("Overview"), p("本文")])).toBe(false);
+    expect(hasHeadingLanguageMismatch("ja", [p("本文だけ")])).toBe(false);
+  });
+
+  it("ja 以外の言語指定では常に false", () => {
+    const blocks = [h("Weighing"), h("Arc melting"), h("Melt spinning")];
+    expect(hasHeadingLanguageMismatch("en", blocks)).toBe(false);
+  });
+
+  it("children 内の見出しも判定対象に含める", () => {
+    const blocks = [
+      { ...h("Weighing"), children: [h("Sub step"), h("Another sub")] },
+      p("本文"),
+    ];
+    expect(hasHeadingLanguageMismatch("ja", blocks)).toBe(true);
   });
 });

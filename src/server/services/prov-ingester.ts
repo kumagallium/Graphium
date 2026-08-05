@@ -590,7 +590,7 @@ The same approach (mirror the source's structure, anchor the graph with H2 proce
 9. Place \`role: "output"\` spans inside the **terminal H2 step's paragraph** (or, if the source has an explicit results / outcome / finished-product H1, inside that section's terminal step). Do NOT scatter output spans across middle steps unless the source explicitly describes multiple terminal outputs.
 10. Prefer post-transformation names for derived materials ("sliced garlic", "dried MnO2 powder") so the text reads naturally and the \`derivedFrom\` link is self-consistent.
 11. Span text MUST be the literal phrase as it appears in the surrounding prose (so concatenating all span \`text\` reproduces the paragraph). Plain narrative segments are spans without a role.
-12. Language of \`text\`: ${isJa ? "Japanese" : "match the source language, or English if ambiguous"}.
+12. Language of ALL human-readable text — the document title, every heading (including H2 step headings), and every span \`text\`: ${isJa ? 'Japanese. Do NOT reuse the English stepId as the heading text — headings are Japanese prose (e.g. stepId "arc-melting" → heading "アーク溶解"). Only stepId / derivedFrom / dependsOn stay in lowercase English kebab-case' : "match the source language, or English if ambiguous"}.
 13. Do NOT use numbering prefixes ("1. ", "2. ") in step heading text. If sequencing inside a step matters, use a numberedListItem block (with \`content\` spans) — but prefer flowing prose.
 14. Step-wide attributes (heat level, total duration) appear as inline attribute spans inside the step's paragraph, not as separate blocks.
 15. Never fabricate dependencies that aren't implied by the source text.
@@ -672,6 +672,46 @@ export function parseProvIngesterOutput(raw: string): ProvIngesterOutput {
 
   return { title, blocks: sanitizeBlocks(blocksInput, 0) };
 }
+
+/**
+ * 出力言語の遵守チェック（現状 ja のみ対応）。
+ *
+ * gpt-oss 系ローカルモデルは、stepId（英語 kebab-case 必須）に引きずられて
+ * H2 見出しだけを英語で書くことがある（本文 span は日本語で書けている。
+ * 2026-08 の論文 PDF 実測で約 6 割）。見出し単位の判定は二峰性がきれいに出る
+ * （英語時 0.00-0.14 / 日本語時 0.78-1.00）ため、閾値 0.5 で誤判定なく分離できる。
+ * 見出しが 1 個以下のときは判定材料不足として不一致にしない。
+ */
+export function hasHeadingLanguageMismatch(
+  language: string,
+  blocks: ProvIngesterBlock[],
+): boolean {
+  if (language !== "ja") return false;
+  const headings: string[] = [];
+  const walk = (list: ProvIngesterBlock[]) => {
+    for (const b of list) {
+      if (b.blockType === "heading") {
+        const text = (b.text ?? (b.content ?? []).map((s) => s.text).join("")).trim();
+        if (text) headings.push(text);
+      }
+      if (b.children?.length) walk(b.children);
+    }
+  };
+  walk(blocks);
+  if (headings.length < 2) return false;
+  const ja = headings.filter((t) => /[぀-ヿ一-鿿]/.test(t)).length;
+  return ja / headings.length < 0.5;
+}
+
+/**
+ * 言語不一致時の追い打ちメッセージ。1 回目の出力を assistant メッセージとして
+ * 見せた上でこれを user として送ると、gpt-oss-120b でも見出しが日本語化する
+ * （2026-08 実測 3/3）。stepId まで日本語化して参照が壊れないよう据え置きを明示する。
+ */
+export const PROV_LANGUAGE_RETRY_NUDGE =
+  "Your previous output ignored the language instruction: step headings were written in English. " +
+  "Regenerate the SAME structure, but write ALL headings, titles, and body text in Japanese (日本語). " +
+  "Keep stepId values in lowercase English kebab-case as required. Output only the JSON.";
 
 function sanitizeBlocks(input: any[], depth: number): ProvIngesterBlock[] {
   if (depth >= MAX_DEPTH) return [];
