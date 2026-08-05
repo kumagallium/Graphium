@@ -5,7 +5,7 @@
 // i18n 非依存: 表示文字列は labels prop で受け取り、Storybook / テストで provider 不要にする。
 
 import { useState } from "react";
-import { Pin, Eye, GitBranch, Pencil, Trash2 } from "lucide-react";
+import { Pin, Eye, GitBranch, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 
 /** 日時を YYYY-MM-DD HH:MM で表示（design.md の日付キャプション形式に揃える） */
@@ -19,6 +19,7 @@ export type SnapshotRowLabels = {
   unnamed: string;
   open: string;
   derive: string;
+  restore: string;
   rename: string;
   delete: string;
 };
@@ -31,6 +32,8 @@ type Props = {
   selected?: boolean;
   onOpen?: () => void;
   onDerive?: () => void;
+  /** この版の内容で現在のドキュメントを上書きする（スキル等、復元が自然な文書向け） */
+  onRestore?: () => void;
   /** 新しいラベルを確定したときに呼ぶ（空文字は「未命名に戻す」） */
   onRename?: (newLabel: string) => void;
   onDelete?: () => void;
@@ -44,6 +47,7 @@ export function SnapshotRow({
   selected,
   onOpen,
   onDerive,
+  onRestore,
   onRename,
   onDelete,
   labels,
@@ -111,6 +115,7 @@ export function SnapshotRow({
       <div className="mt-1.5 flex items-center gap-0.5">
         <RowAction icon={<Eye size={14} />} title={labels.open} onClick={onOpen} />
         <RowAction icon={<GitBranch size={14} />} title={labels.derive} onClick={onDerive} />
+        <RowAction icon={<RotateCcw size={14} />} title={labels.restore} onClick={onRestore} />
         <RowAction
           icon={<Pencil size={14} />}
           title={labels.rename}

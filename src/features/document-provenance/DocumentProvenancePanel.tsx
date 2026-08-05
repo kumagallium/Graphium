@@ -36,6 +36,8 @@ type Props = {
   onOpenSnapshot?: (snapshotId: string) => void;
   /** 版を下敷きに新ノートを派生する */
   onDeriveSnapshot?: (snapshotId: string) => void;
+  /** 版の内容で現在のドキュメントを上書きする（渡された文書種別でのみボタンが出る） */
+  onRestoreSnapshot?: (snapshotId: string) => void;
   /** 版のラベルを変更する（空文字は「未命名に戻す」） */
   onRenameSnapshot?: (snapshotId: string, label: string) => void;
   /** 版を削除する */
@@ -234,6 +236,7 @@ export function DocumentProvenancePanel({
   onOpenSource,
   onOpenSnapshot,
   onDeriveSnapshot,
+  onRestoreSnapshot,
   onRenameSnapshot,
   onDeleteSnapshot,
 }: Props) {
@@ -293,6 +296,7 @@ export function DocumentProvenancePanel({
     unnamed: t("version.unnamed"),
     open: t("version.open"),
     derive: t("version.derive"),
+    restore: t("version.restore"),
     rename: t("version.rename"),
     delete: t("version.delete"),
   };
@@ -327,6 +331,7 @@ export function DocumentProvenancePanel({
               labels={rowLabels}
               onOpen={onOpenSnapshot ? () => onOpenSnapshot(item.snap.id) : undefined}
               onDerive={onDeriveSnapshot ? () => onDeriveSnapshot(item.snap.id) : undefined}
+              onRestore={onRestoreSnapshot ? () => onRestoreSnapshot(item.snap.id) : undefined}
               onRename={onRenameSnapshot ? (label: string) => onRenameSnapshot(item.snap.id, label) : undefined}
               onDelete={onDeleteSnapshot ? () => onDeleteSnapshot(item.snap.id) : undefined}
             />

@@ -119,7 +119,7 @@ import { DEFAULT_GROUNDING_SCOPE, includesCrossSearch } from "./lib/grounding-sc
 import { SettingsModal, isAgentConfigured, setAiModelsAvailable, getLLMModels, getSelectedModel, getDisabledTools, getChatSynthesisLLMModel, getChatSynthesisModelName, loadSettings, isAtomLayerEnabled, isSynthesisEnabled, type ExperimentalSettings } from "./features/settings";
 import { useStorage } from "./lib/storage/use-storage";
 import { getActiveProvider } from "./lib/storage/registry";
-import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot } from "./features/version-snapshots/snapshot-store";
+import { takeSnapshot, listSnapshots, deleteSnapshot, renameSnapshot, loadSnapshot, buildRestoredDocument } from "./features/version-snapshots/snapshot-store";
 import type { SnapshotMeta } from "./features/version-snapshots/types";
 import type { GraphiumDocument, NoteLink } from "./lib/document-types";
 import { LATEST_DOCUMENT_VERSION } from "./lib/document-migration";
@@ -718,6 +718,8 @@ type NoteEditorProps = {
   onDeriveWholeNote?: () => void;
   /** 手動で残した版を下敷きに新ノートを派生する（履歴パネルの版行から呼ばれる） */
   onDeriveSnapshot?: (snapshotId: string) => void;
+  /** 版の内容で現在のドキュメントを上書きする（スキルの履歴パネルから呼ばれる） */
+  onRestoreSnapshot?: (snapshotId: string) => void;
   /** 派生処理中（ボタンを無効化） */
   derivingDisabled?: boolean;
   /** ノート削除（ゴミ箱送り）コールバック。ヘッダーメニューから呼ばれる */
@@ -975,6 +977,7 @@ function NoteEditorInner({
   onIngestFromUrl,
   onDeriveWholeNote,
   onDeriveSnapshot,
+  onRestoreSnapshot,
   derivingDisabled,
   onDeleteNote,
   onArchiveNote,
@@ -3729,14 +3732,19 @@ function NoteEditorInner({
   // prevPageRef 更新の副作用を正規の保存経路にだけ起こさせる。
   const handleTakeSnapshot = useCallback(async () => {
     // ボタンは条件レンダで守られるが、⌘⇧S ショートカットからも直接呼ばれるため
-    // wiki / skill ノートのガードをここにも置く（loadFile が wiki id を解決できない）。
+    // wiki ノートのガードをここにも置く（loadFile が wiki id を解決できない）。
+    // スキルは loadSkillFile で読み直して同じ版機構に乗せる（プロンプトの試行錯誤用）。
     if (!fileId || snapshotBusy || isWikiDoc) return;
-    if (initialDoc?.source === "ai" || initialDoc?.source === "skill") return;
+    if (initialDoc?.source === "ai") return;
+    const isSkill = initialDoc?.source === "skill";
+    const provider = getActiveProvider();
+    if (isSkill && !provider.loadSkillFile) return;
     setSnapshotBusy(true);
     try {
       await handleSave();
-      const provider = getActiveProvider();
-      const doc = await provider.loadFile(fileId);
+      const doc = isSkill
+        ? await provider.loadSkillFile!(fileId)
+        : await provider.loadFile(fileId);
       const res = await takeSnapshot(provider, fileId, doc);
       setSnapshots(await listSnapshots(provider, fileId));
       showVersionToast(
@@ -4604,7 +4612,7 @@ function NoteEditorInner({
                   : rightTab === "memos" ? t("panel.memos")
                   : t("panel.source")}
               </span>
-              {rightTab === "history" && fileId && initialDoc?.source !== "ai" && initialDoc?.source !== "skill" && (
+              {rightTab === "history" && fileId && initialDoc?.source !== "ai" && (
                 <button
                   onClick={handleTakeSnapshot}
                   disabled={snapshotBusy}
@@ -4667,6 +4675,7 @@ function NoteEditorInner({
                     setSidePeekNoteId(`snapshot:${snapshotId}`);
                   }}
                   onDeriveSnapshot={onDeriveSnapshot}
+                  onRestoreSnapshot={onRestoreSnapshot}
                   onRenameSnapshot={handleRenameSnapshot}
                   onDeleteSnapshot={handleDeleteSnapshot}
                   onHighlightBlocks={setHighlightBlockIds}
@@ -8286,7 +8295,29 @@ export function NoteApp() {
             onDeriveNote={fm.handleDeriveNote}
             onCreateLinkedNote={fm.handleCreateLinkedNote}
             onDeriveWholeNote={fm.handleDeriveWholeNote}
-            onDeriveSnapshot={fm.handleDeriveFromSnapshot}
+            // スキルでは「版から派生」は不自然（新ノートができてしまう）ので出さず、
+            // 代わりに「この版に戻す」を出す。ノートは従来どおり派生のみ。
+            onDeriveSnapshot={fm.activeDoc?.source === "skill" ? undefined : fm.handleDeriveFromSnapshot}
+            onRestoreSnapshot={fm.activeDoc?.source === "skill" ? async (snapshotId: string) => {
+              const skillId = fm.activeFileId?.replace("skill:", "");
+              const current = fm.activeDoc;
+              if (!skillId || !current) return;
+              if (!window.confirm(t("version.restoreConfirm"))) return;
+              try {
+                const provider = getActiveProvider();
+                const snapDoc = await loadSnapshot(provider, snapshotId);
+                if (!snapDoc) return;
+                let restored = buildRestoredDocument(current, snapDoc);
+                const email = await provider.getUserEmail() ?? undefined;
+                const author = loadAuthorIdentity() ?? undefined;
+                restored = await recordRevision(restored, current.pages[0] ?? null, "snapshot_restore", { force: true, email, author });
+                await fm.handleSaveSkillFile(skillId, restored);
+                // cache は保存で更新済みなので、開き直しでエディタを新内容で再マウントする
+                fm.handleOpenSkillFile(skillId);
+              } catch (e) {
+                console.error("版の復元に失敗:", e);
+              }
+            } : undefined}
             derivingDisabled={fm.deriving}
             onDeleteNote={fm.activeFileId && fm.activeDoc?.source !== "ai" ? () => {
               const id = fm.activeFileId!;
