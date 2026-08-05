@@ -18,6 +18,7 @@ vi.mock("react-pdf", () => ({
 }));
 vi.mock("../lib/pdfjs-config", () => ({}));
 
+import { defaultBlockSpecs } from "@blocknote/core";
 import {
   customBlockEntries,
   CUSTOM_BLOCK_TYPES,
@@ -69,6 +70,21 @@ describe("block registry", () => {
     for (const type of ["paragraph", "heading", "table", "image", "codeBlock"]) {
       expect(KNOWN_BLOCK_TYPES.has(type)).toBe(true);
     }
+  });
+
+  it("BlockNote の全デフォルトブロック型が KNOWN_BLOCK_TYPES に入る（除去されない）", () => {
+    // エディタのスキーマ（base/editor.tsx）は defaultBlockSpecs を丸ごと使う。
+    // つまりスキーマで作成・保存できる型は、読み込み時も全て既知でなければ
+    // ならない。実際に divider / toggleListItem が手書きリストから漏れて、
+    // /div で挿入した区切り線が「保存→再オープン」で消える事故が起きた。
+    for (const type of Object.keys(defaultBlockSpecs)) {
+      expect(KNOWN_BLOCK_TYPES.has(type), `default block "${type}" が未登録`).toBe(true);
+    }
+  });
+
+  it("divider / toggleListItem が登録されている（読込消失の回帰ガード）", () => {
+    expect(KNOWN_BLOCK_TYPES.has("divider")).toBe(true);
+    expect(KNOWN_BLOCK_TYPES.has("toggleListItem")).toBe(true);
   });
 
   it("未知のブロック型は含まない（除去対象のまま）", () => {
@@ -146,6 +162,31 @@ describe("sanitize 相当の挙動（step のデータ保護）", () => {
         ],
       },
     ]);
+    expect(out[0].children.map((c: any) => c.type)).toEqual(["paragraph"]);
+  });
+
+  it("divider が保存→読込サニタイズで温存される", () => {
+    // divider は content も children も持たないため、未知型扱いされると
+    // 「子の持ち上げ」でも何も残らず跡形なく消える（実際に起きた症状）
+    const out = sanitizeLike([
+      { id: "p1", type: "paragraph", content: [], children: [] },
+      { id: "d1", type: "divider", props: {}, children: [] },
+      { id: "p2", type: "paragraph", content: [], children: [] },
+    ]);
+    expect(out.map((b: any) => b.type)).toEqual(["paragraph", "divider", "paragraph"]);
+  });
+
+  it("toggleListItem が children ごと温存される", () => {
+    const out = sanitizeLike([
+      {
+        id: "t1",
+        type: "toggleListItem",
+        content: [{ type: "text", text: "トグル", styles: {} }],
+        children: [{ id: "p1", type: "paragraph", content: [], children: [] }],
+      },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].type).toBe("toggleListItem");
     expect(out[0].children.map((c: any) => c.type)).toEqual(["paragraph"]);
   });
 
