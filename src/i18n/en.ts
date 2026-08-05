@@ -1215,6 +1215,8 @@ export const en: Record<string, string> = {
   "asset.urlRegister": "Register",
   "asset.urlRegistering": "Registering…",
   "asset.urlAdd": "Add URL",
+  "asset.registerFromPeek": "Add to materials",
+  "asset.registerFromPeekHint": "Register this URL as a material so it appears in the gallery and graphs",
   "asset.upload": "Upload",
   "asset.uploadFailed": "Upload failed",
   "asset.uploadDocx": "Add Word",

@@ -110,6 +110,11 @@ export type MaterialSidePeekProps = {
   onIngest?: (entry: MediaIndexEntry) => void;
   /** PROV ラベル付きノート生成（URL / PDF 限定） */
   onCreateProvNote?: (entry: MediaIndexEntry) => void;
+  /**
+   * 未登録 URL（transient エントリ）を素材として登録する。
+   * 呼び出し側が「未登録の URL エントリのとき」だけ渡す（登録済みでは undefined）。
+   */
+  onRegisterAsset?: (entry: MediaIndexEntry) => void;
   /** PDF を原文構成のまま UI 言語へ全文翻訳して 1 ノート化（PDF 限定） */
   onTranslatePdf?: (entry: MediaIndexEntry) => void;
   /** PDF 各ページを画像として抽出 */
@@ -165,6 +170,7 @@ export function MaterialSidePeek({
   onRename,
   onIngest,
   onCreateProvNote,
+  onRegisterAsset,
   onTranslatePdf,
   onOpenNoteInSidePeek,
   onExtractPdfPages,
@@ -246,6 +252,7 @@ export function MaterialSidePeek({
         onRename={isMemoEntry ? undefined : onRename}
         onIngest={isMemoEntry ? undefined : onIngest}
         onCreateProvNote={isMemoEntry ? undefined : onCreateProvNote}
+        onRegisterAsset={isMemoEntry ? undefined : onRegisterAsset}
         onTranslatePdf={isMemoEntry ? undefined : onTranslatePdf}
         onExtractPdfPages={isMemoEntry ? undefined : onExtractPdfPages}
         onExtractDocxImages={isMemoEntry ? undefined : onExtractDocxImages}

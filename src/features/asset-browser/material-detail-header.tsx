@@ -29,6 +29,8 @@ import {
   Link as LinkIcon,
   Bot,
   StickyNote,
+  Plus,
+  Loader2,
 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
@@ -92,6 +94,11 @@ export type MaterialDetailHeaderProps = {
   fullMode?: boolean;
   /** 削除 */
   onDelete?: (entry: MediaIndexEntry) => void;
+  /**
+   * 未登録 URL（transient エントリ）を素材として登録する。
+   * 渡された場合のみ「素材に登録」ボタンを表示する（呼び出し側が未登録判定を行う）。
+   */
+  onRegisterAsset?: (entry: MediaIndexEntry) => void;
   variant?: "sidePeek" | "titleBar";
 };
 
@@ -110,10 +117,20 @@ export function MaterialDetailHeader({
   onToggleFull,
   fullMode = false,
   onDelete,
+  onRegisterAsset,
   variant = "sidePeek",
 }: MaterialDetailHeaderProps) {
   const t = useT();
   const titleBarMode = variant === "titleBar";
+
+  // ── 素材登録（未登録 URL の transient エントリ用） ──
+  // 登録はメタデータ取得（最大 5 秒）を挟むため、完了までスピナー表示にする。
+  // 完了は「呼び出し側が entry を実エントリへ差し替える / onRegisterAsset が
+  // undefined になる」ことで現れるため、ここでは完了通知を受け取らない。
+  const [registering, setRegistering] = useState(false);
+  useEffect(() => {
+    setRegistering(false);
+  }, [entry.fileId]);
 
   // ── 名前編集 ──
   const [editing, setEditing] = useState(false);
@@ -206,6 +223,25 @@ export function MaterialDetailHeader({
       </button>
     ) : null;
 
+  // 「素材に登録」ボタン（未登録 URL の transient エントリのみ）。
+  // 未登録状態では 3-dot メニューがほぼ空になるため、隠さずヘッダーに直接出す。
+  const renderRegisterButton = () =>
+    onRegisterAsset ? (
+      <button
+        onClick={() => {
+          if (registering) return;
+          setRegistering(true);
+          onRegisterAsset(entry);
+        }}
+        disabled={registering}
+        className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium inline-flex items-center gap-1.5 shrink-0 disabled:opacity-60"
+        title={t("asset.registerFromPeekHint")}
+      >
+        {registering ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+        {registering ? t("asset.urlRegistering") : t("asset.registerFromPeek")}
+      </button>
+    ) : null;
+
   const actionsMenu = (
     <MaterialActionsMenu
       entry={entry}
@@ -239,6 +275,7 @@ export function MaterialDetailHeader({
           <TypeIcon type={entry.type} size={12} />
         </span>
         {renderNameBlock()}
+        {renderRegisterButton()}
         {renderKnowledgeBadge()}
         {onToggleFull && (
           <button
@@ -317,6 +354,8 @@ export function MaterialDetailHeader({
       </span>
 
       {renderNameBlock()}
+
+      {renderRegisterButton()}
 
       {renderKnowledgeBadge()}
 
