@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.28.0](https://github.com/kumagallium/Graphium/compare/v0.27.1...v0.28.0) - 2026-08-04
+
+- [fix] Make Markdown import/export wikilink handling symmetric by @kumagallium in https://github.com/kumagallium/Graphium/pull/650
+- Show table block labels as a chip on the table corner by @kumagallium in https://github.com/kumagallium/Graphium/pull/646
+
 ## [v0.27.1](https://github.com/kumagallium/Graphium/compare/v0.27.0...v0.27.1) - 2026-08-03
 
 - Bench delta bot: stop posting pnpm errors, restore the baseline by @kumagallium in https://github.com/kumagallium/Graphium/pull/644
