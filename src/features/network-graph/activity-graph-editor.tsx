@@ -24,6 +24,7 @@ import {
   removeInlineEntity,
   addDependentAttribute,
 } from "../../features/inline-label/entity-edit";
+import { renameTableRow, setTableCell, removeTableRow } from "./table-row-edit";
 import { PARENT_ACTIVITY_MARKER } from "../../features/inline-label/attribute-binding";
 import type { ProvJsonLd } from "../prov-generator/generator";
 
@@ -249,6 +250,35 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
+  // ── テーブル行 Entity（構造化テーブルの行）の編集: ノート側のセルを書き換える ──
+
+  const onRenameTableRow = useCallback(
+    (blockId: string, rowName: string, newName: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      renameTableRow(editor, blockId, rowName, newName);
+    },
+    [getEditor],
+  );
+
+  const onSetTableCell = useCallback(
+    (blockId: string, rowName: string, columnKey: string, value: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      setTableCell(editor, blockId, rowName, columnKey, value);
+    },
+    [getEditor],
+  );
+
+  const onRemoveTableRow = useCallback(
+    (blockId: string, rowName: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      removeTableRow(editor, blockId, rowName);
+    },
+    [getEditor],
+  );
+
   // ── Entity / パラメータの CRUD（本文 span への翻訳） ──
 
   const STYLE_KEY: Record<EntityKind, string> = {
@@ -355,6 +385,9 @@ export function ActivityGraphEditor({
       onRenameEntity={hasEditor ? onRenameEntity : undefined}
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
       onAddAttrToEntity={hasEditor ? onAddAttrToEntity : undefined}
+      onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
+      onSetTableCell={hasEditor ? onSetTableCell : undefined}
+      onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
     />
   );
 }

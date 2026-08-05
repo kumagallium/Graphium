@@ -210,7 +210,9 @@ export type FlowEntity = {
   kind: ActivityIoKind;
   /** インライン span 由来なら本文編集（リネーム・削除・属性追加）が可能 */
   entityId?: string;
-  /** 属性行。インラインの従属 attribute は entityId 付き（編集可）、テーブル列由来は表示のみ */
+  /** 構造化テーブルの行由来なら、ノート側テーブルのセル編集が可能 */
+  tableRef?: { blockId: string; rowName: string };
+  /** 属性行。インラインの従属 attribute は entityId 付き、テーブル列は tableRef 経由で編集 */
   attrs: ActivityParam[];
   mediaUrl?: string;
   mediaType?: string;
@@ -281,6 +283,12 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
       label: n["rdfs:label"] || id,
       kind,
       entityId: inlineEntityIdOf(n),
+      // 構造化テーブルの行（@id = entity_<tableBlockId>_<rowName>）は、
+      // blockId + 行名でノート側テーブルのセルを編集できる
+      tableRef:
+        id.startsWith("entity_") && n["graphium:blockId"]
+          ? { blockId: n["graphium:blockId"], rowName: n["rdfs:label"] }
+          : undefined,
       attrs: extractAttrs(n),
       mediaUrl: n["graphium:mediaUrl"],
       mediaType: n["graphium:mediaType"],
@@ -324,4 +332,12 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
   }
 
   return { steps, entities: Array.from(entities.values()), edges };
+}
+
+/** 「key: value」形式の属性ラベルを 2 列表示用に分解する（全角コロン対応）。
+ *  コロンが無い / key が長すぎる（文中コロンの誤爆）場合は value のみ扱い。 */
+export function splitAttrLabel(label: string): { key: string | null; value: string } {
+  const m = label.match(/^([^:：]{1,24})[:：]\s*(.+)$/);
+  if (m) return { key: m[1].trim(), value: m[2].trim() };
+  return { key: null, value: label };
 }

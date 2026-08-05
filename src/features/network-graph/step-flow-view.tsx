@@ -80,6 +80,12 @@ export type StepFlowViewProps = {
   onRemoveEntity?: (entityId: string) => void;
   /** Entity ノードへの従属属性の追加 */
   onAddAttrToEntity?: (parentEntityId: string, text: string) => void;
+  /** テーブル行 Entity: 行の名前（1 列目）の書き換え */
+  onRenameTableRow?: (blockId: string, rowName: string, newName: string) => void;
+  /** テーブル行 Entity: 属性セルの書き換え */
+  onSetTableCell?: (blockId: string, rowName: string, columnKey: string, value: string) => void;
+  /** テーブル行 Entity: 行の削除 */
+  onRemoveTableRow?: (blockId: string, rowName: string) => void;
 };
 
 const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
@@ -115,6 +121,9 @@ function StepFlowCanvas({
   onRenameEntity,
   onRemoveEntity,
   onAddAttrToEntity,
+  onRenameTableRow,
+  onSetTableCell,
+  onRemoveTableRow,
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -169,6 +178,9 @@ function StepFlowCanvas({
           onRenameEntity,
           onRemoveEntity,
           onAddAttr: onAddAttrToEntity,
+          onRenameTableRow,
+          onSetTableCell,
+          onRemoveTableRow,
         },
         draggable: false,
       }));
@@ -205,6 +217,9 @@ function StepFlowCanvas({
     onRenameEntity,
     onRemoveEntity,
     onAddAttrToEntity,
+    onRenameTableRow,
+    onSetTableCell,
+    onRemoveTableRow,
     setNodes,
     setEdges,
   ]);
