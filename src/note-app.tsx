@@ -103,6 +103,7 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
+import { buildQuotedChatMessage, buildQuotedRetrievalQuery } from "./features/ai-assistant/quoted-context";
 import {
   chatRunManager,
   buildRunScopeChat,
@@ -2336,21 +2337,23 @@ function NoteEditorInner({
         const isFirstMessage = baseMessages.length === 0;
         let userMessage = question;
         if (effectiveQuotedMarkdown) {
-          // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
-          // 継続会話では下記 history 側で idx=0 に quotedMarkdown を再注入して維持する。
+          // 引用チャット: 引用（初回のスナップショット）を議論の主題として渡し、
+          // ノート本文は「背景」として毎ターン最新を添える。本文を渡さないと、
+          // 指示語・略語・前提条件が引用の外にある場合に AI が推測で埋めるしかなく、
+          // 一部を引用したほうがページ全体チャットより文脈が薄くなってしまう。
+          // 引用そのものは下記 history 側でも idx=0 に再注入して維持する。
           // タイトルはエディタ本文（BlockNote document）の外にあるメタデータなので、
           // 明示的に前置きへ含めないと AI からノートのタイトルが参照できない。
-          if (isFirstMessage) {
-            userMessage = [
-              `ノート「${title}」内の以下の内容について質問があります。`,
-              "",
-              "---",
-              effectiveQuotedMarkdown,
-              "---",
-              "",
-              question,
-            ].join("\n");
-          }
+          const pageMarkdown = editorRef.current
+            ? await editorRef.current.blocksToMarkdownLossy(editorRef.current.document)
+            : "";
+          userMessage = buildQuotedChatMessage({
+            title,
+            quotedMarkdown: effectiveQuotedMarkdown,
+            pageMarkdown,
+            question,
+            isFirstMessage,
+          });
         } else if (effectiveSourceBlockIds.length === 0 && editorRef.current) {
           // ページ全体チャット: 毎ターン、現在のドキュメント本文（最新）を再同梱する。
           // スナップショット方式だと「修正しました、見てください」と続けたときに
@@ -2500,7 +2503,13 @@ function NoteEditorInner({
             }
             for (const id of citedAssetIds) excludeIds.add(id);
             const { retrieveWikiContext } = await import("./features/wiki/retriever");
-            wikiContext = (await retrieveWikiContext(userMessage, excludeIds)) ?? undefined;
+            // 引用チャットでは背景として同梱したノート全文をクエリから外し、主題
+            // （引用＋質問）だけで検索する。全文を混ぜると embedding が希釈されて
+            // 引用と無関係な Wiki を拾ってしまう。
+            const retrievalQuery = effectiveQuotedMarkdown
+              ? buildQuotedRetrievalQuery(effectiveQuotedMarkdown, question)
+              : userMessage;
+            wikiContext = (await retrieveWikiContext(retrievalQuery, excludeIds)) ?? undefined;
           } catch {
             // Retriever 失敗は無視（embedding が無い場合など）
           }
@@ -2510,6 +2519,8 @@ function NoteEditorInner({
         // 初回 user message は store に表示用の素の質問しか入っていないので、
         // backend 履歴では quotedMarkdown を改めて挟んで context を維持する
         // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
+        // 背景のノート本文はここには積まない。毎ターン最新を userMessage 側に載せる
+        // ので、履歴にも積むと会話が伸びるほど古い本文のコピーが累積してしまう。
         const history: AgentChatMessage[] = baseMessages.map((m, idx) => {
           if (idx === 0 && m.role === "user" && effectiveQuotedMarkdown) {
             return {
