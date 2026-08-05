@@ -16,6 +16,8 @@ import {
   buildProvIngesterSystemPrompt,
   buildProvIngesterUserMessage,
   parseProvIngesterOutput,
+  hasHeadingLanguageMismatch,
+  PROV_LANGUAGE_RETRY_NUDGE,
   type ProvIngesterOutput,
 } from "../services/prov-ingester.js";
 import { fetchPageAsText, type FetchPageError } from "../services/url-fetcher.js";
@@ -28,34 +30,55 @@ import type { ModelConfig } from "../config/models.js";
 
 const app = new Hono();
 
-// LLM 生成 + パースをまとめて実行し、blocks が空なら 1 回だけ生成し直す。
-// 空になるのは (a) 出力 JSON が壊れて jsonrepair でも直らない、(b) LLM が手順を
-// 全 drop した、のどちらかで、いずれもサンプリング起因のため引き直しで成功する
-// ことが多い（gpt-oss-120b × 4 ページ論文 PDF の実測で初回失敗はおよそ 1/4）。
+// LLM 生成 + パースをまとめて実行し、必要なら 1 回だけ生成し直す。追加呼び出しは
+// 最大 1 回（計 2 回）に抑える。リトライ条件は 2 系統:
+//   (a) blocks が空 — 出力 JSON が jsonrepair でも直らない、または LLM が手順を
+//       全 drop したケース。サンプリング起因なので同一プロンプトで引き直す
+//       （gpt-oss-120b × 4 ページ論文 PDF の実測で初回失敗はおよそ 1/4）。
+//   (b) 見出しが出力言語と不一致 — gpt-oss 系が stepId に引きずられて H2 見出し
+//       だけ英語で書くケース（同実測で約 6 割）。同一プロンプトの引き直しでは
+//       また英語になりやすいため、前回出力を assistant として見せて書き直させる
+//       （実測 3/3 で日本語化）。書き直しが壊れたら 1 回目の結果を維持する。
 async function generateProvBlocksWithRetry(opts: {
   modelConfig: ModelConfig;
   systemPrompt: string;
   userMessage: string;
+  language: string;
   feature: "prov.from-url" | "prov.from-pdf";
 }): Promise<{ parsed: ProvIngesterOutput; result: AgentRunResult }> {
   const model = await createModel(opts.modelConfig);
-  const runOnce = () =>
+  const baseMessages = [{ role: "user" as const, content: opts.userMessage }];
+  const run = (
+    messages: { role: "user" | "assistant"; content: string }[],
+  ) =>
     runAgentLoop({
       model,
       modelId: opts.modelConfig.modelId,
       systemPrompt: opts.systemPrompt,
-      messages: [{ role: "user" as const, content: opts.userMessage }],
+      messages,
       maxSteps: 1,
       feature: opts.feature,
       modelConfig: opts.modelConfig,
     });
 
-  let result = await runOnce();
+  let result = await run(baseMessages);
   let parsed = parseProvIngesterOutput(result.message);
   if (parsed.blocks.length === 0) {
     console.warn(`[${opts.feature}] PROV blocks が空 (JSON 破損 or 全 drop)、1 回だけ再生成する`);
-    result = await runOnce();
+    result = await run(baseMessages);
     parsed = parseProvIngesterOutput(result.message);
+  } else if (hasHeadingLanguageMismatch(opts.language, parsed.blocks)) {
+    console.warn(`[${opts.feature}] 見出しが出力言語と不一致、前回出力を見せて 1 回だけ書き直させる`);
+    const retryResult = await run([
+      ...baseMessages,
+      { role: "assistant" as const, content: result.message },
+      { role: "user" as const, content: PROV_LANGUAGE_RETRY_NUDGE },
+    ]);
+    const reparsed = parseProvIngesterOutput(retryResult.message);
+    if (reparsed.blocks.length > 0) {
+      result = retryResult;
+      parsed = reparsed;
+    }
   }
   return { parsed, result };
 }
@@ -114,6 +137,7 @@ app.post("/ingest-url", async (c) => {
       modelConfig,
       systemPrompt,
       userMessage,
+      language,
       feature: "prov.from-url",
     });
 
@@ -181,6 +205,7 @@ app.post("/ingest-pdf", async (c) => {
       modelConfig,
       systemPrompt,
       userMessage,
+      language,
       feature: "prov.from-pdf",
     });
 
