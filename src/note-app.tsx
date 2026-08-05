@@ -214,6 +214,7 @@ import {
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
+import { schedulePastedImageCapture } from "./features/asset-browser/paste-image-capture";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
@@ -1815,6 +1816,8 @@ function NoteEditorInner({
       // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
       // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
       // 詳細: features/inline-label/regen-on-paste.ts
+      // beforeIdsForRegen はペースト画像の素材取り込み（下の schedulePastedImageCapture）
+      // とも共有する paste 直前スナップショット。
       const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
       const scheduleEntityRegen = () => {
         setTimeout(() => {
@@ -1845,11 +1848,15 @@ function NoteEditorInner({
           });
         }, 0);
         scheduleEntityRegen();
+        schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFile, e);
         return;
       }
 
       // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
       scheduleEntityRegen();
+      // ウェブページ等の HTML ペーストで入った外部 URL / data URL 画像を素材へ取り込む
+      // （BlockNote の text/html 経路は uploadFile を通らず、素材に残らないため）
+      schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFile, e);
 
       // Graphium ノートのリンク（…#note/<id>）を単体で貼った場合は、生 URL では
       // なく @タイトル のメンションに変換する（`@` で参照するのと同じ扱い）。
@@ -1890,7 +1897,7 @@ function NoteEditorInner({
       domEl.addEventListener("copy", copyListener, false);
     };
     attachClipboardListeners();
-  }, [labelStore, linkStore]);
+  }, [labelStore, linkStore, uploadFile]);
 
   // ── 保存ロジック ──
   const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {

@@ -27,7 +27,7 @@ There are several routes, all ending in the same library:
 
 | Route | How |
 |---|---|
-| Drag & drop or paste | Drop a file into a note (or paste an image from the clipboard). It is uploaded to your library and inserted as a block |
+| Drag & drop or paste | Drop a file into a note (or paste an image from the clipboard). It is uploaded to your library and inserted as a block. Images that arrive as part of copied web-page content are also captured into the library, so they keep working even if the original page goes away |
 | Slash menu | Type `/` and pick **Image**, **Video**, **Audio**, or **Document** ("Upload new or insert existing PDF / Word"). The picker offers **Upload from file** and an **Insert as** choice: **Embed** (content expands inline) or **Link** (an @-link; content stays collapsed) |
 | Paste a URL | Pasting a URL into a note opens a small menu: **Link** ("Paste as inline text") or **Bookmark** ("Display as a card with preview"). Either way the URL is registered in the **URLs** gallery |
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
