@@ -73,6 +73,40 @@ describe("parseProvIngesterOutput", () => {
     expect(out.blocks).toHaveLength(1);
   });
 
+  it("クォート無しキーの壊れた JSON を jsonrepair で修復してパースする", () => {
+    // gpt-oss-120b が長い出力で実際に起こすパターン
+    // （"Expected double-quoted property name" で JSON.parse が落ちる）
+    const raw = `{
+      "title": "RuAl2 試料の作製",
+      "blocks": [
+        { "text": "秤量", "blockType": "heading", "level": 2, "role": "procedure", "stepId": "weighing" },
+        { blockType: "paragraph", content: [ { text: "Ru を秤量する", role: "material" } ] }
+      ]
+    }`;
+    const out = parseProvIngesterOutput(raw);
+    expect(out.title).toBe("RuAl2 試料の作製");
+    expect(out.blocks).toHaveLength(2);
+    expect(out.blocks[1].content?.[0]).toMatchObject({
+      text: "Ru を秤量する",
+      role: "material",
+    });
+  });
+
+  it("トレーリングカンマ入りの壊れた JSON も修復してパースする", () => {
+    const raw = '{"title":"T","blocks":[{"text":"x","blockType":"paragraph"},],}';
+    const out = parseProvIngesterOutput(raw);
+    expect(out.title).toBe("T");
+    expect(out.blocks).toHaveLength(1);
+  });
+
+  it("修復不能な非 JSON 出力は空 blocks を返す", () => {
+    const out = parseProvIngesterOutput(
+      "Sorry, I could not build a structure for this document.",
+    );
+    expect(out.title).toBe("");
+    expect(out.blocks).toHaveLength(0);
+  });
+
   it("role が未定義の値なら落とす（undefined 扱い）", () => {
     const raw = JSON.stringify({
       title: "T",

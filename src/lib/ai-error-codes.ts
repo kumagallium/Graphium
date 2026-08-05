@@ -16,6 +16,8 @@ export const AI_ERROR_CODES = {
   API_KEY_FORBIDDEN: "API_KEY_FORBIDDEN",
   /** Embedding が OpenAI / OpenAI 互換以外のプロバイダーで要求された */
   EMBEDDING_MODEL_UNSUPPORTED: "EMBEDDING_MODEL_UNSUPPORTED",
+  /** PROV ingester の LLM 出力が再試行しても構造化ブロックにならなかった（502） */
+  PROV_STRUCTURE_FAILED: "PROV_STRUCTURE_FAILED",
 } as const;
 
 export type AiErrorCode = keyof typeof AI_ERROR_CODES;
@@ -49,6 +51,15 @@ export function noModelRegisteredBody(): { error: string; code: AiErrorCode } {
   return {
     error: "No AI model is registered. Add a model in Settings → AI.",
     code: "NO_MODEL_REGISTERED",
+  };
+}
+
+/** PROV 構造生成失敗（502）用の共通レスポンスボディ */
+export function provStructureFailedBody(): { error: string; code: AiErrorCode } {
+  return {
+    error:
+      "The AI output could not be turned into a structured note. Try again, or switch the model in Settings → AI (Claude models are the most reliable for this).",
+    code: "PROV_STRUCTURE_FAILED",
   };
 }
 
