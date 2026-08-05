@@ -1215,6 +1215,8 @@ export const ja: Record<string, string> = {
   "asset.urlRegister": "登録",
   "asset.urlRegistering": "登録中…",
   "asset.urlAdd": "URL を追加",
+  "asset.registerFromPeek": "素材に登録",
+  "asset.registerFromPeekHint": "この URL を素材として登録し、ギャラリーやグラフに表示します",
   "asset.upload": "アップロード",
   "asset.uploadFailed": "アップロードに失敗しました",
   "asset.uploadDocx": "Word を追加",

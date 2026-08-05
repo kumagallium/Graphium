@@ -30,6 +30,7 @@ There are several routes, all ending in the same library:
 | Drag & drop or paste | Drop a file into a note (or paste an image from the clipboard). It is uploaded to your library and inserted as a block |
 | Slash menu | Type `/` and pick **Image**, **Video**, **Audio**, or **Document** ("Upload new or insert existing PDF / Word"). The picker offers **Upload from file** and an **Insert as** choice: **Embed** (content expands inline) or **Link** (an @-link; content stays collapsed) |
 | Paste a URL | Pasting a URL into a note opens a small menu: **Link** ("Paste as inline text") or **Bookmark** ("Display as a card with preview"). Either way the URL is registered in the **URLs** gallery |
+| Links already in a note | Clicking a link that is not registered yet — for example one written into the note by an AI chat answer — opens the side peek with an **Add to materials** button in the header. Review the page first, then register it: the URL joins the **URLs** gallery and appears in graphs. Nothing is registered automatically |
 | Slash menu **Bookmark** / **PDF** | Insert a URL card or an embedded PDF viewer directly as a block |
 | Gallery buttons | **Upload**, **Add URL**, **Add PDF**, **Add Word** — add materials without touching any note |
 | Markdown import | In the note list, the **Import files** button offers **Import Markdown (.md)** and **Import Obsidian Vault folder**. `[[wikilinks]]` are resolved to note links — first against files in the same import, then against your existing notes and knowledge entries by title. Unresolved links stay as plain `[[...]]` text. Markdown export writes note links back as `[[wikilinks]]`, so exported notes re-import with their links intact |
@@ -42,7 +43,7 @@ Word files get extra care: the built-in preview converts formats browsers cannot
 Clicking a material opens it in a side peek next to your note, so you can read without leaving what you are writing. Use **Open in full view** for a full-screen reading layout.
 
 - **PDFs** render with a selectable text layer, zoom controls, and page navigation.
-- **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**.
+- **URLs** open in Reader Mode — a cleaned-up article view fetched from the page. Reader images can be saved into your library with **Save image**. If the URL is not in your library yet, the header shows **Add to materials**, so you can check a page before deciding to keep it.
 - **Word files** (.docx) get an inline preview.
 
 Select text in a PDF, Word preview, or URL reader and a small pill appears: **Save as memo**. The selection becomes a quote memo with its source attached — collect quotes while reading, then insert them into notes later via the `/` menu's **Memo** item ("Insert from saved memos"). When inserting, Graphium asks whether to **Insert and keep memo** or **Insert and delete memo**. Quote memos with a source are inserted as quote blocks with a "— source" attribution line.

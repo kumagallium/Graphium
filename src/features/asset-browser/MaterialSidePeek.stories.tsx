@@ -236,6 +236,82 @@ export const ListWithSidePeek: Story = {
   },
 };
 
+// ── 未登録 URL（transient エントリ）→「素材に登録」動線 ──
+// AI チャットの挿入や手打ちで本文に入ったリンクをクリックすると、
+// buildUrlPeekEntry のアドホックエントリ（fileId: "url:<URL>", usedIn 空）で
+// ピークが開く。ここから後追いで素材登録するヘッダーボタンの確認用ストーリー。
+const TRANSIENT_URL: MediaIndexEntry = {
+  fileId: "url:https://www.nature.com/articles/s41467-sintering-review",
+  name: "nature.com",
+  type: "url",
+  mimeType: "text/x-uri",
+  url: "https://www.nature.com/articles/s41467-sintering-review",
+  thumbnailUrl: "",
+  uploadedAt: hoursAgo(1),
+  usedIn: [],
+  urlMeta: { domain: "nature.com" },
+};
+
+export const UnregisteredUrl: Story = {
+  name: "url 未登録（素材に登録ボタン）",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "未登録 URL の transient ピーク。ヘッダーに「素材に登録」を表示し、押すと登録中→登録済み（ボタン消滅・Full 昇格解禁）に切り替わるデモ。",
+      },
+    },
+  },
+  render: () => {
+    const Demo = () => {
+      const [entry, setEntry] = useState(TRANSIENT_URL);
+      const registered = entry.fileId !== TRANSIENT_URL.fileId;
+      return (
+        <div style={{ display: "flex", height: "100vh" }}>
+          <div style={{ flex: 1, padding: 24, background: "var(--color-background)" }}>
+            <h2 className="text-base font-semibold text-foreground mb-2">
+              本文リンクをクリックした状態（背景）
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              AI チャット由来などの未登録リンク。ピークで精査 → ヘッダーの「素材に登録」で
+              その場で素材化する流れ。登録すると実エントリに差し替わる。
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              状態: {registered ? "登録済み（ボタン消滅・Maximize 表示）" : "未登録（登録ボタン表示・Maximize 非表示）"}
+            </p>
+          </div>
+          <MaterialSidePeek
+            entry={entry}
+            inline
+            onClose={() => console.log("close")}
+            onToggleFull={registered ? () => console.log("toggleFull") : undefined}
+            onNavigateNote={(id) => console.log("navigateNote", id)}
+            onRegisterAsset={
+              registered
+                ? undefined
+                : () => {
+                    // 実アプリ: registerUrlAsset → OGP 取得 → mediaIndex 追加 → entry 差し替え。
+                    // ここではメタデータ取得の待ち時間を模して 1.2 秒後に差し替える。
+                    setTimeout(() => {
+                      setEntry({
+                        ...TRANSIENT_URL,
+                        fileId: "url_demo_registered",
+                        name: "Sintering mechanisms of Cu nanoparticles — Nature Communications",
+                        usedIn: [
+                          { noteId: "note-1", noteTitle: "Cu粉末の焼結実験（第1回）", blockId: "b1" },
+                        ],
+                      });
+                    }, 1200);
+                  }
+            }
+          />
+        </div>
+      );
+    };
+    return <Demo />;
+  },
+};
+
 // ── オーバーレイモード（portal、fixed 配置） ──
 export const OverlayMode: Story = {
   name: "Overlay（portal モード）",

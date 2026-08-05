@@ -1617,6 +1617,30 @@ function NoteEditorInner({
     registerUrlAsset(url, [], onAddUrlBookmark, () => markDirtyRef.current());
   }, [onAddUrlBookmark]);
 
+  // 素材ピーク（未登録 URL の transient エントリ）からの「素材に登録」。
+  // AI チャットの挿入や手打ちで本文に入ったリンクを、精査後に後追いで素材化する動線。
+  // 貼付メニューと同じ流儀で usedIn は空 + 保存予約し、syncUsedIn に埋めさせる。
+  // 登録完了時にピークが同じエントリのまま開いていれば実エントリへ差し替える
+  // （登録ボタンが消え、Full view 昇格が解禁される）。
+  const handleRegisterUrlFromPeek = useCallback((peekEntry: MediaIndexEntry) => {
+    const url = peekEntry.url;
+    if (peekEntry.type !== "url" || !url) return;
+    registerUrlAsset(url, [], (newEntry) => {
+      onAddUrlBookmark?.(newEntry);
+      setMaterialSidePeekEntry((cur) => (cur && cur.fileId === peekEntry.fileId ? newEntry : cur));
+    }, () => markDirtyRef.current());
+  }, [onAddUrlBookmark]);
+
+  // 素材ピークが「未登録 URL の transient エントリ」か（登録ボタンの表示判定）。
+  // fileId でなく URL の一致で判定する: ピークを開いたまま裏で同じ URL が登録された
+  // 場合（貼付メニュー等との競合）もボタンが正しく消えるようにするため。
+  const materialPeekUrlUnregistered =
+    materialSidePeekEntry?.type === "url" &&
+    !!materialSidePeekEntry.url &&
+    !mediaIndex?.media.some(
+      (m) => m.type === "url" && m.url === materialSidePeekEntry.url,
+    );
+
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
   const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
@@ -4493,6 +4517,7 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
+            onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
               // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
               onOpenMedia && mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId)
@@ -4514,6 +4539,7 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
+            onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
               onOpenMedia && mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId)
                 ? () => {
@@ -4999,6 +5025,25 @@ export function NoteApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
+
+  // 一覧・全体グラフの素材ピーク（未登録 URL の transient エントリ）からの「素材に登録」。
+  // エディタが開いていないため保存予約（syncUsedIn）は無し — usedIn は該当ノートの
+  // 次回保存時に埋まる。登録完了時にピークが開いたままなら実エントリへ差し替える。
+  const handleRegisterUrlFromListPeek = useCallback((peekEntry: MediaIndexEntry) => {
+    const url = peekEntry.url;
+    if (peekEntry.type !== "url" || !url) return;
+    registerUrlAsset(url, [], (newEntry) => {
+      fm.handleAddUrlBookmark(newEntry);
+      setListMaterialPeekEntry((cur) => (cur && cur.fileId === peekEntry.fileId ? newEntry : cur));
+    });
+  }, [fm.handleAddUrlBookmark]);
+  // 未登録 URL の transient ピークか（登録ボタンの表示判定。URL 一致で判定）
+  const listPeekUrlUnregistered =
+    listMaterialPeekEntry?.type === "url" &&
+    !!listMaterialPeekEntry.url &&
+    !fm.mediaIndex?.media.some(
+      (m) => m.type === "url" && m.url === listMaterialPeekEntry.url,
+    );
   const capture = useCapture(authenticated);
   // 一覧 / アセットピークの保存後フック: キャッシュ / インデックス更新に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
@@ -8533,6 +8578,7 @@ export function NoteApp() {
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}
+          onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
             fm.mediaIndex?.media.some((m) => m.fileId === listMaterialPeekEntry.fileId)
