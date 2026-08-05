@@ -6,6 +6,7 @@
 // Peek を開いた瞬間にカスタムブロックが除去されたまま自動保存されて
 // データが壊れる不具合が起きたため、登録漏れを構造的に防ぐ目的で集約する。
 
+import { defaultBlockSpecs } from "@blocknote/core";
 import type { CustomBlockEntry } from "../base/schema";
 import { pdfViewerBlock } from "./pdf-viewer";
 import { bookmarkBlock } from "./bookmark";
@@ -30,12 +31,14 @@ export const CUSTOM_BLOCK_TYPES: ReadonlySet<string> = new Set(
   customBlockEntries.map((b) => b.type),
 );
 
-// BlockNote 標準ブロック型（このアプリのスキーマで使うもの）
-const DEFAULT_BLOCK_TYPES = [
-  "paragraph", "heading", "bulletListItem", "numberedListItem",
-  "checkListItem", "table", "image", "video", "audio", "file",
-  "codeBlock", "quote",
-] as const;
+// BlockNote 標準ブロック型。エディタのスキーマ（base/editor.tsx）は
+// defaultBlockSpecs を丸ごと注ぎ込むため、ここも同じソースから導出する。
+// 手書きの列挙は BlockNote のアップグレードでデフォルト型が増えた時に
+// 取りこぼす（実際に divider / toggleListItem が漏れて、/div で入れた
+// 区切り線が読込サニタイズで除去→自動保存で恒久消失した）。
+const DEFAULT_BLOCK_TYPES: ReadonlySet<string> = new Set(
+  Object.keys(defaultBlockSpecs),
+);
 
 // 保存済みノートを読み込むときに「知っているブロック型」の集合。
 // note-app.tsx / side-peek.tsx の sanitizeBlocks が、これに無いブロックを
