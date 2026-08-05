@@ -4,6 +4,20 @@ import type { GraphiumDocument, SkillMeta } from "../../lib/document-types";
 import type { SystemSkillDefinition } from "./system-skills";
 
 /**
+ * skillMetas Map のエントリ型。
+ * use-file-manager の state / SkillListView / pickActiveSkills で共用する。
+ */
+export type SkillMetaSummary = {
+  title: string;
+  description: string;
+  availableForIngest: boolean;
+  systemSkillId?: string;
+  language?: "ja" | "en";
+  /** システムスキルの同梱デフォルトがユーザー側より新しい（編集済みのため自動更新できない） */
+  hasNewerDefault?: boolean;
+};
+
+/**
  * 新しい Skill ドキュメントを構築する
  */
 export function buildSkillDocument(
@@ -11,7 +25,12 @@ export function buildSkillDocument(
   description: string,
   promptContent: string,
   availableForIngest: boolean = true,
-  options?: { systemSkillId?: string; language?: "ja" | "en" },
+  options?: {
+    systemSkillId?: string;
+    language?: "ja" | "en";
+    systemSkillVersion?: number;
+    defaultPromptHash?: string;
+  },
 ): GraphiumDocument {
   const now = new Date().toISOString();
 
@@ -21,6 +40,8 @@ export function buildSkillDocument(
     createdAt: now,
     ...(options?.systemSkillId ? { systemSkillId: options.systemSkillId } : {}),
     ...(options?.language ? { language: options.language } : {}),
+    ...(options?.systemSkillVersion != null ? { systemSkillVersion: options.systemSkillVersion } : {}),
+    ...(options?.defaultPromptHash ? { defaultPromptHash: options.defaultPromptHash } : {}),
   };
 
   // プロンプトテンプレートの内容を BlockNote ブロックに変換
@@ -123,7 +144,7 @@ export function buildSkillPromptSection(
  * docCacheRef を読み出すための関数を渡す形にすることで、UI 層と疎結合にする。
  */
 export function pickActiveSkills(
-  skillMetas: Map<string, { title: string; description: string; availableForIngest: boolean; systemSkillId?: string; language?: "ja" | "en" }>,
+  skillMetas: Map<string, SkillMetaSummary>,
   getDoc: (skillId: string) => GraphiumDocument | undefined,
   generationLanguage: "ja" | "en",
 ): { title: string; prompt: string }[] {
@@ -140,16 +161,94 @@ export function pickActiveSkills(
 
 /**
  * システム同梱スキルから Skill ドキュメントを生成する。
- * 初回ブートストラップ時およびリセット時に使用する。
+ * 初回ブートストラップ時・リセット時・自動更新時に使用する。
+ * skillMeta に版（systemSkillVersion）とデフォルトハッシュを埋め込む。
  */
-export function buildSystemSkillDocument(def: SystemSkillDefinition): GraphiumDocument {
+export async function buildSystemSkillDocument(def: SystemSkillDefinition): Promise<GraphiumDocument> {
   return buildSkillDocument(
     def.title,
     def.description,
     def.prompt,
     def.availableForIngest,
-    { systemSkillId: def.id, language: def.language },
+    {
+      systemSkillId: def.id,
+      language: def.language,
+      systemSkillVersion: def.version,
+      defaultPromptHash: await computeSystemSkillDefaultHash(def),
+    },
   );
+}
+
+// ----------------------------------------------------------------
+// システムスキルのデフォルト版同期
+// ----------------------------------------------------------------
+
+/**
+ * プロンプト文字列を比較用に正規化する。
+ * 行頭行末の空白と空行を無視することで、markdown ↔ BlockNote の往復や
+ * エディタで開いて無変更保存したときの構造ゆらぎ（末尾空 paragraph 等）を吸収する。
+ */
+export function normalizeSkillPrompt(prompt: string): string {
+  return prompt
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+}
+
+/** 正規化したプロンプトの SHA-256 ハッシュ（hex） */
+export async function hashSkillPrompt(prompt: string): Promise<string> {
+  const data = new TextEncoder().encode(normalizeSkillPrompt(prompt));
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * 同梱デフォルト prompt のハッシュを計算する。
+ * ユーザー文書側は blocks → markdown（extractSkillPrompt）経由でしか prompt を
+ * 取り出せないため、デフォルト側も同じ変換（blocks 化 → 抽出）を一往復させた
+ * 正規形でハッシュする。これで両辺が常に同じパイプラインを通る。
+ */
+export async function computeSystemSkillDefaultHash(def: SystemSkillDefinition): Promise<string> {
+  const roundtripped = buildSkillDocument(def.title, def.description, def.prompt, def.availableForIngest);
+  return hashSkillPrompt(extractSkillPrompt(roundtripped));
+}
+
+/** 起動時の版同期でシステムスキルごとに下す判定 */
+export type SkillSyncDecision =
+  /** 版が最新。何もしない */
+  | "up_to_date"
+  /** 旧文書（版情報なし）。現行版の version / hash を skillMeta に書き込むだけ（内容は触らない） */
+  | "migrate_meta"
+  /** デフォルトが新しく、ユーザー未編集。プロンプトを新デフォルトへ自動更新する */
+  | "auto_update"
+  /** デフォルトが新しいが、ユーザー編集済み。上書きせずバッジで知らせる */
+  | "notify_newer";
+
+/**
+ * システムスキルの版同期判定（純関数）。
+ * @param currentPromptHash ユーザー文書の現在の prompt のハッシュ（hashSkillPrompt で計算）
+ */
+export function decideSkillSync(
+  def: SystemSkillDefinition,
+  meta: Pick<SkillMeta, "systemSkillVersion" | "defaultPromptHash"> | undefined,
+  currentPromptHash: string,
+): SkillSyncDecision {
+  // 版管理導入前の文書: どのデフォルト版から派生したか不明なので、
+  // 内容には触らず「現行版は提示済み」として版情報だけ記録する。
+  // （編集済みでも初回リリースでバッジが出ない = サイレント移行）
+  if (meta?.systemSkillVersion == null) return "migrate_meta";
+
+  if (meta.systemSkillVersion >= def.version) return "up_to_date";
+
+  // デフォルトが新しい。記録済みのデフォルトハッシュと現在の prompt が一致すれば
+  // ユーザーは一度も編集していないので、安全に自動更新できる。
+  if (meta.defaultPromptHash && meta.defaultPromptHash === currentPromptHash) {
+    return "auto_update";
+  }
+  return "notify_newer";
 }
 
 function extractInlineText(content: any): string {

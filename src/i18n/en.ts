@@ -240,6 +240,7 @@ export const en: Record<string, string> = {
   "history.type.wikiRegenerate": "Regenerate",
   "history.type.wikiAtomize": "Insight discovery",
   "history.type.wikiReinforce": "Reinforced",
+  "history.type.skillDefaultUpdate": "Default sync",
   "history.sources": "Sources",
   "version.take": "Save version",
   "version.unnamed": "(unnamed)",
@@ -1655,6 +1656,8 @@ export const en: Record<string, string> = {
   "skill.descriptionLabel": "Description",
   "skill.descriptionPlaceholder": "What does this skill do? (one line)",
   "skill.systemBadge": "System",
+  "skill.newerDefaultBadge": "Update available",
+  "skill.newerDefaultTooltip": "A newer default for this skill shipped with the app. \"Reset to default\" replaces your edited content with the new version.",
   "skill.noMatching": "No matching skills found",
   "skill.empty": "No skills yet. Create one and it gets handed to the AI on ingest.",
 

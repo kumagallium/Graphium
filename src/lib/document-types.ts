@@ -367,6 +367,17 @@ export type SkillMeta = {
    * 未指定の場合は全言語に適用（既存スキルとの後方互換）。
    */
   language?: "ja" | "en";
+  /**
+   * 最後に同期したシステムスキルデフォルトの版（SYSTEM_SKILLS の version）。
+   * 同梱定義の版がこれより新しいとき、未編集なら自動更新・編集済みならバッジ表示する。
+   * 未設定（旧文書）は起動時に現行版へサイレント移行する。
+   */
+  systemSkillVersion?: number;
+  /**
+   * systemSkillVersion 時点のデフォルトプロンプトの正規化ハッシュ（未編集判定用）。
+   * 現在のプロンプトのハッシュと一致すれば「ユーザー未編集」とみなせる。
+   */
+  defaultPromptHash?: string;
 };
 
 // AI Wiki ドキュメントのメタデータ

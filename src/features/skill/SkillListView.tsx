@@ -2,8 +2,9 @@
 // プロンプトテンプレートの一覧表示・新規作成・削除
 
 import { useMemo, useState } from "react";
-import { Wrench, Search, Trash2, Plus, Zap, Lock, RotateCcw, Pencil } from "lucide-react";
+import { Wrench, Search, Trash2, Plus, Zap, Lock, RotateCcw, Pencil, Sparkles } from "lucide-react";
 import type { GraphiumFile, SkillMeta } from "../../lib/document-types";
+import type { SkillMetaSummary } from "./skill-service";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { useT } from "../../i18n";
 
@@ -22,11 +23,12 @@ type SkillEntry = {
   modifiedAt: string;
   systemSkillId?: string;
   language?: "ja" | "en";
+  hasNewerDefault?: boolean;
 };
 
 type Props = {
   skillFiles: GraphiumFile[];
-  skillMetas: Map<string, { title: string; description: string; availableForIngest: boolean; systemSkillId?: string; language?: "ja" | "en" }>;
+  skillMetas: Map<string, SkillMetaSummary>;
   /** クリック時（サイドピーク or 編集表示） */
   onOpenSkill: (skillId: string) => void;
   /** ダブ���クリック or フルで開く */
@@ -68,6 +70,7 @@ export function SkillListView({
           modifiedAt: f.modifiedTime,
           systemSkillId: meta.systemSkillId,
           language: meta.language,
+          hasNewerDefault: meta.hasNewerDefault,
         };
       })
       .sort((a, b) => {
@@ -182,6 +185,12 @@ export function SkillListView({
                       {entry.language && (
                         <span title={t("skill.languageTooltip", { language: entry.language === "ja" ? t("skill.langJa") : t("skill.langEn") })} className="px-1.5 py-0.5 rounded text-[9px] bg-muted text-muted-foreground uppercase">
                           {entry.language}
+                        </span>
+                      )}
+                      {entry.hasNewerDefault && (
+                        <span title={t("skill.newerDefaultTooltip")} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
+                          <Sparkles size={9} />
+                          <span>{t("skill.newerDefaultBadge")}</span>
                         </span>
                       )}
                       {entry.availableForIngest && (

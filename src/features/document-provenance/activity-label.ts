@@ -18,6 +18,7 @@ export function activityTypeLabelKey(type: string): string | null {
     case "wiki_regenerate": return "history.type.wikiRegenerate";
     case "wiki_atomize": return "history.type.wikiAtomize";
     case "wiki_reinforce": return "history.type.wikiReinforce";
+    case "skill_default_update": return "history.type.skillDefaultUpdate";
     default: return null;
   }
 }

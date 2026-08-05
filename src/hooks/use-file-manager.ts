@@ -7,6 +7,7 @@ import { getActiveProvider } from "../lib/storage/registry";
 import { PROV_TEMPLATE } from "../lib/prov-template";
 import { recordRevision } from "../features/document-provenance/tracker";
 import type { EditActivityType } from "../features/document-provenance/types";
+import type { SkillMetaSummary } from "../features/skill/skill-service";
 import { promoteClaimStatusIfCorroborated } from "../features/wiki/wiki-service";
 
 /** Wiki 保存・新規作成時のリビジョン記録オプション */
@@ -219,7 +220,7 @@ export function useFileManager(authenticated: boolean) {
   const [wikiMetas, setWikiMetas] = useState<Map<string, WikiMetaSummary>>(new Map());
   // Skill 関連の状態
   const [skillFiles, setSkillFiles] = useState<GraphiumFile[]>([]);
-  const [skillMetas, setSkillMetas] = useState<Map<string, { title: string; description: string; availableForIngest: boolean; systemSkillId?: string; language?: "ja" | "en" }>>(new Map());
+  const [skillMetas, setSkillMetas] = useState<Map<string, SkillMetaSummary>>(new Map());
 
   // ファイル一覧を取得（ノートと Wiki と Skill を並列取得）
   // allSettled を使うことで、古いビルドで一部のコマンド（例: list_skill_files）が
@@ -262,7 +263,7 @@ export function useFileManager(authenticated: boolean) {
           return { id: f.id, doc };
         })
       ).then(async (results) => {
-        const metas = new Map<string, { title: string; description: string; availableForIngest: boolean; systemSkillId?: string; language?: "ja" | "en" }>();
+        const metas = new Map<string, SkillMetaSummary>();
         // systemSkillId ごとに、対応するファイル ID の配列（重複検出用）
         const systemSkillFiles = new Map<string, { id: string; modifiedAt: string }[]>();
         for (const r of results) {
@@ -311,25 +312,75 @@ export function useFileManager(authenticated: boolean) {
 
         const existingSystemIds = new Set<string>(systemSkillFiles.keys());
 
-        // システムスキルが未作成なら同梱定義から生成する（ストレージプロバイダーが対応している場合のみ）
+        // システムスキルが未作成なら同梱定義から生成する（ストレージプロバイダーが対応している場合のみ）。
+        // 既にあるスキルは同梱デフォルトの版（SystemSkillDefinition.version）と同期する:
+        // 未編集なら新デフォルトへ自動更新、編集済みならバッジで知らせる。
         try {
           const { SYSTEM_SKILLS } = await import("../features/skill/system-skills");
-          const { buildSystemSkillDocument } = await import("../features/skill/skill-service");
+          const { buildSystemSkillDocument, decideSkillSync, hashSkillPrompt, extractSkillPrompt, computeSystemSkillDefaultHash } = await import("../features/skill/skill-service");
           if (provider.saveSkillFile) {
             for (const def of SYSTEM_SKILLS) {
-              if (existingSystemIds.has(def.id)) continue;
-              const newId = crypto.randomUUID();
-              const doc = buildSystemSkillDocument(def);
-              await provider.saveSkillFile(newId, doc);
-              metas.set(newId, {
-                title: doc.title,
-                description: doc.skillMeta?.description ?? "",
-                availableForIngest: doc.skillMeta?.availableForIngest ?? true,
-                systemSkillId: doc.skillMeta?.systemSkillId,
-                language: doc.skillMeta?.language,
-              });
-              docCacheRef.current.set(`skill:${newId}`, doc);
-              setSkillFiles((prev) => [...prev, { id: newId, name: doc.title, modifiedTime: doc.modifiedAt, createdTime: doc.createdAt }]);
+              if (!existingSystemIds.has(def.id)) {
+                const newId = crypto.randomUUID();
+                const doc = await buildSystemSkillDocument(def);
+                await provider.saveSkillFile(newId, doc);
+                metas.set(newId, {
+                  title: doc.title,
+                  description: doc.skillMeta?.description ?? "",
+                  availableForIngest: doc.skillMeta?.availableForIngest ?? true,
+                  systemSkillId: doc.skillMeta?.systemSkillId,
+                  language: doc.skillMeta?.language,
+                });
+                docCacheRef.current.set(`skill:${newId}`, doc);
+                setSkillFiles((prev) => [...prev, { id: newId, name: doc.title, modifiedTime: doc.modifiedAt, createdTime: doc.createdAt }]);
+                continue;
+              }
+
+              // 既存スキルの版同期（重複除去後に生き残った先頭ファイルが対象）
+              const survivor = (systemSkillFiles.get(def.id) ?? [])[0];
+              const doc = survivor ? docCacheRef.current.get(`skill:${survivor.id}`) : undefined;
+              if (!survivor || !doc) continue;
+              const fileId = survivor.id;
+              const currentHash = await hashSkillPrompt(extractSkillPrompt(doc));
+              const decision = decideSkillSync(def, doc.skillMeta, currentHash);
+              if (decision === "up_to_date") continue;
+
+              if (decision === "migrate_meta") {
+                // 版管理導入前の文書: 内容は触らず版情報だけ記録する
+                const migrated: GraphiumDocument = {
+                  ...doc,
+                  skillMeta: {
+                    ...doc.skillMeta!,
+                    systemSkillVersion: def.version,
+                    defaultPromptHash: await computeSystemSkillDefaultHash(def),
+                  },
+                };
+                await provider.saveSkillFile(fileId, migrated);
+                docCacheRef.current.set(`skill:${fileId}`, migrated);
+              } else if (decision === "auto_update") {
+                // 未編集なので新デフォルトの本文へ差し替える。title / description /
+                // Ingest 設定・createdAt・documentProvenance はユーザーの状態を維持する
+                const fresh = await buildSystemSkillDocument(def);
+                let updated: GraphiumDocument = {
+                  ...doc,
+                  pages: [{ ...fresh.pages[0], id: doc.pages[0]?.id ?? fresh.pages[0].id, title: doc.title }],
+                  skillMeta: {
+                    ...doc.skillMeta!,
+                    systemSkillVersion: def.version,
+                    defaultPromptHash: fresh.skillMeta?.defaultPromptHash,
+                  },
+                  modifiedAt: new Date().toISOString(),
+                };
+                updated = await recordRevision(updated, doc.pages[0] ?? null, "skill_default_update", { agentLabel: "system-default", force: true });
+                await provider.saveSkillFile(fileId, updated);
+                docCacheRef.current.set(`skill:${fileId}`, updated);
+                setSkillFiles((prev) => prev.map((f) => f.id === fileId ? { ...f, modifiedTime: updated.modifiedAt } : f));
+                console.info(`[bootstrap] システムスキル ${def.id} をデフォルト v${def.version} に自動更新しました`);
+              } else if (decision === "notify_newer") {
+                // 編集済みなので上書きせず、リストにバッジを出して Reset を促す
+                const m = metas.get(fileId);
+                if (m) metas.set(fileId, { ...m, hasNewerDefault: true });
+              }
             }
           }
         } catch (err) {
@@ -2271,6 +2322,8 @@ export function useFileManager(authenticated: boolean) {
             availableForIngest: doc.skillMeta?.availableForIngest ?? true,
             systemSkillId: doc.skillMeta?.systemSkillId,
             language: doc.skillMeta?.language,
+            // 編集保存では新デフォルト通知は解消しない（Reset するまで残す）
+            hasNewerDefault: prev.get(skillId)?.hasNewerDefault,
           });
           return next;
         });
@@ -2317,11 +2370,24 @@ export function useFileManager(authenticated: boolean) {
         const { buildSystemSkillDocument } = await import("../features/skill/skill-service");
         const def = getSystemSkillById(meta.systemSkillId as any);
         if (!def) return;
-        const doc = buildSystemSkillDocument(def);
+        const prevDoc = docCacheRef.current.get(`skill:${skillId}`) ?? await loadSkillFile(skillId).catch(() => undefined);
+        let doc = await buildSystemSkillDocument(def);
+        // 内容はデフォルトへ完全に戻すが、documentProvenance と作成日時は引き継いで
+        // 編集履歴のチェーンを切らない（リセットも来歴上の 1 操作として記録する）
+        if (prevDoc) {
+          doc = {
+            ...doc,
+            createdAt: prevDoc.createdAt,
+            documentProvenance: prevDoc.documentProvenance,
+            skillMeta: { ...doc.skillMeta!, createdAt: prevDoc.skillMeta?.createdAt ?? doc.skillMeta!.createdAt },
+          };
+        }
+        doc = await recordRevision(doc, prevDoc?.pages[0] ?? null, "skill_default_update", { agentLabel: "system-default", force: true });
         await saveSkillFile(skillId, doc);
         docCacheRef.current.set(`skill:${skillId}`, doc);
         setSkillMetas((prev) => {
           const next = new Map(prev);
+          // Reset で最新デフォルトになるので hasNewerDefault は付けない（解消）
           next.set(skillId, {
             title: doc.title,
             description: doc.skillMeta?.description ?? "",
