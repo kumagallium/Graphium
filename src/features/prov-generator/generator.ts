@@ -1099,9 +1099,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   //       「〜の結果」 placeholder は作らない。代わりに inline_output を proxy として
   //       used edge を張る。explicit output も B 側 material も無いときだけ
   //       fallback として synthetic を作る（grafh connectivity 維持のため）。
+  // 出力は inline_output_（span）に加えて result_（output ラベル付き段落 /
+  // テーブル行）も対象にする — テーブルの出力行を次工程が同名入力で受けた
+  // ときも unification が効くように。synthetic placeholder は除く。
   const findOutputEntitiesForActivity = (actId: string) =>
     nodes.filter(
-      (n) => n["@id"].startsWith("inline_output_") && blockToActivityId.get(n.blockId) === actId,
+      (n) =>
+        (n["@id"].startsWith("inline_output_") ||
+          (n["@id"].startsWith("result_") && !n["@id"].startsWith("result_synthetic_"))) &&
+        blockToActivityId.get(n.blockId) === actId,
     );
   const findMatToolEntitiesForActivity = (actId: string) =>
     nodes.filter(

@@ -21,7 +21,9 @@ import { TextSelection } from "prosemirror-state";
 import { useEffect, useRef, useState } from "react";
 import { Check, Link2, ListChecks, Plus } from "lucide-react";
 import { useLinkStore } from "../../features/block-link/store";
+import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
+import { appendEntitySpanToStep, collectStepOutputs, stepHasInputText } from "./step-io";
 import { t } from "../../i18n";
 
 /** inline content からプレーンテキストを取り出す */
@@ -228,6 +230,7 @@ export const StepBlock = createReactBlockSpec(
   {
     render: (props) => {
       const linkStore = useLinkStore();
+      const labelStore = useLabelStore();
       const [pickerOpen, setPickerOpen] = useState(false);
       // 後続（次ステップ）側のピッカー
       const [nextOpen, setNextOpen] = useState(false);
@@ -284,6 +287,25 @@ export const StepBlock = createReactBlockSpec(
       const chipText = linked
         ? `← ${titleOf(prevLinks[0].targetBlockId)}${prevLinks.length > 1 ? ` +${prevLinks.length - 1}` : ""}`
         : t("step.prevLink");
+
+      // 出力を選んで受ける: 自分の本文に同名の材料 span を合成し（テキスト
+      // 一致の unification が出力と 1 Entity に merge する）、手順順序
+      // （informed_by）も張る。「どのバッチから」を本文側から特定する導線。
+      const pickOutput = (prevBlockId: string, outputLabel: string) => {
+        const editor = props.editor as any;
+        appendEntitySpanToStep(editor, props.block.id, "material", outputLabel);
+        if (!prevLinks.some((l) => l.targetBlockId === prevBlockId)) {
+          const result = linkStore.addLink({
+            sourceBlockId: props.block.id,
+            targetBlockId: prevBlockId,
+            type: "informed_by",
+            createdBy: "human",
+          });
+          setCycleWarn(result.error === "cycle_detected");
+          if (result.error === "cycle_detected") return;
+        }
+        setPickerOpen(false);
+      };
 
       // 後続側の候補: 前手順候補と同じ除外規則（自分・祖先・子孫を除く）に、
       // 既にリンク済みだが候補外の後続（旧 UI で張られた等）を足して外せるようにする
@@ -441,26 +463,75 @@ export const StepBlock = createReactBlockSpec(
                 )}
                 {candidates.map((c) => {
                   const active = prevLinks.some((l) => l.targetBlockId === c.blockId);
+                  const outputs = collectStepOutputs(doc, labelStore.labels, c.blockId);
+                  // 出力がある step は 2 階層: 「どの出力を受けるか」を選べる。
+                  // 「出力を特定しない」は従来どおり informed_by のみ（点線の順序依存）。
                   return (
-                    <button
-                      key={c.blockId}
-                      type="button"
-                      role="menuitemcheckbox"
-                      aria-checked={active}
-                      onClick={() => toggleCandidate(c.blockId)}
-                      style={{
-                        ...pickerStyles.item,
-                        background: active
-                          ? "var(--color-label-activity-bg)"
-                          : "transparent",
-                        color: active
-                          ? "var(--color-label-activity)"
-                          : "var(--color-foreground)",
-                      }}
-                    >
-                      <span style={pickerStyles.itemLabel}>{c.title}</span>
-                      {active && <Check size={13} strokeWidth={2.4} />}
-                    </button>
+                    <div key={c.blockId}>
+                      {outputs.length > 0 && (
+                        <div
+                          style={{
+                            padding: "5px 10px 1px",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: "var(--color-text-tertiary)",
+                          }}
+                        >
+                          {c.title}
+                        </div>
+                      )}
+                      {outputs.map((o) => {
+                        const received = stepHasInputText(doc, props.block.id, o);
+                        return (
+                          <button
+                            key={`${c.blockId}:${o}`}
+                            type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={received}
+                            onClick={() => !received && pickOutput(c.blockId, o)}
+                            style={{
+                              ...pickerStyles.item,
+                              cursor: received ? "default" : "pointer",
+                              color: "var(--color-foreground)",
+                            }}
+                          >
+                            <span
+                              style={{
+                                flex: "0 0 auto",
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                background: "var(--color-label-result, #c26356)",
+                              }}
+                            />
+                            <span style={pickerStyles.itemLabel}>{o}</span>
+                            {received && <Check size={13} strokeWidth={2.4} />}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        role="menuitemcheckbox"
+                        aria-checked={active}
+                        onClick={() => toggleCandidate(c.blockId)}
+                        style={{
+                          ...pickerStyles.item,
+                          background: active
+                            ? "var(--color-label-activity-bg)"
+                            : "transparent",
+                          color: active
+                            ? "var(--color-label-activity)"
+                            : outputs.length > 0
+                              ? "var(--color-text-tertiary)"
+                              : "var(--color-foreground)",
+                        }}
+                      >
+                        <span style={pickerStyles.itemLabel}>
+                          {outputs.length > 0 ? t("step.unspecifiedOutput") : c.title}
+                        </span>
+                        {active && <Check size={13} strokeWidth={2.4} />}
+                      </button>
+                    </div>
                   );
                 })}
               </div>

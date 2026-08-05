@@ -791,6 +791,7 @@ export const en: Record<string, string> = {
   "activityGraph.removeChip": "Remove label from text",
   "activityGraph.orderOnly": "order only",
   "activityGraph.addAttr": "Parameter",
+  "step.unspecifiedOutput": "Without a specific output",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

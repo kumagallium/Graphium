@@ -792,6 +792,7 @@ export const ja: Record<string, string> = {
   "activityGraph.removeChip": "本文のラベルを外す",
   "activityGraph.orderOnly": "順序のみ",
   "activityGraph.addAttr": "パラメータ",
+  "step.unspecifiedOutput": "出力を特定しない",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",

@@ -2355,6 +2355,63 @@ describe("informed_by + inline_output（synthetic placeholder の抑制）", () 
     expect(usedIds).toContain("result_synthetic_h-prev");
   });
 
+  it("output テーブルの行も unification の対象になる（同名の inline 入力と merge）", () => {
+    const blocks: any[] = [
+      { id: "h-prev", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+      {
+        id: "tbl-out",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "名前", styles: {} }], [{ type: "text", text: "質量", styles: {} }]] },
+            { cells: [[{ type: "text", text: "batch A", styles: {} }], [{ type: "text", text: "5g", styles: {} }]] },
+            { cells: [[{ type: "text", text: "batch B", styles: {} }], [{ type: "text", text: "5g", styles: {} }]] },
+          ],
+        },
+        children: [],
+      },
+      { id: "h-curr", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step B" }], children: [] },
+      {
+        id: "p-curr",
+        type: "paragraph",
+        content: [styled("batch A", { inlineMaterial: "ent_curr_mat" })],
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h-prev", "procedure"],
+      ["tbl-out", "output"],
+      ["h-curr", "procedure"],
+    ]);
+    const links = [
+      {
+        id: "link-1",
+        sourceBlockId: "h-curr",
+        targetBlockId: "h-prev",
+        type: "informed_by" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    const doc = generateProvDocument({ blocks, labels, links });
+    // batch A はテーブル行 Entity（result_）1 つに merge され、inline 側は消える
+    const batchA = doc["@graph"].filter(
+      (n) => n["@type"] === "prov:Entity" && n["rdfs:label"] === "batch A",
+    );
+    expect(batchA).toHaveLength(1);
+    expect(batchA[0]["@id"]).toBe("result_tbl-out_batch A");
+    // 行の属性（質量列）はテーブル行側に保持される
+    expect((batchA[0] as any)["graphium:質量"]).toBe("5g");
+    // synthetic は作られない
+    expect(doc["@graph"].filter((n) => n["@id"].startsWith("result_synthetic_"))).toHaveLength(0);
+    // curr は batch A（テーブル行）を used、batch B は繋がらない
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).toContain("result_tbl-out_batch A");
+    expect(usedIds).not.toContain("result_tbl-out_batch B");
+  });
+
   it("prev の出力が複数でも、同名の入力があれば unification でその出力だけが正確に繋がる", () => {
     const doc = buildMultiOutputDoc(true);
     // batch A は 1 Entity に merge され、synthetic は作られない

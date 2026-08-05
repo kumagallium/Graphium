@@ -285,7 +285,10 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         maxWidth: 240,
         borderRadius: 8,
         background: "#ffffff",
-        border: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
+        // border と borderLeft の shorthand 混在は React が再レンダー時に警告する
+        borderTop: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
+        borderRight: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
+        borderBottom: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
         borderLeft: `3px solid ${ACTIVITY_BLUE}`,
         boxShadow: selected
           ? "0 2px 8px rgba(30, 20, 10, 0.14)"

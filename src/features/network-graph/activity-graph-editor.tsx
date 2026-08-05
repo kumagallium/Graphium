@@ -18,6 +18,7 @@ import { StepFlowView, type EntityKind } from "./step-flow-view";
 import { provDocToFlowGraph, type ActivityIoKind } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
 import { buildDefaultStepTitle, selectStepTitle } from "../../blocks/step/view";
+import { appendEntitySpanToStep } from "../../blocks/step/step-io";
 import { makeEntityId } from "../../features/inline-label/shortcuts";
 import {
   renameInlineEntity,
@@ -281,45 +282,11 @@ export function ActivityGraphEditor({
 
   // ── Entity / パラメータの CRUD（本文 span への翻訳） ──
 
-  const STYLE_KEY: Record<EntityKind, string> = {
-    material: "inlineMaterial",
-    tool: "inlineTool",
-    output: "inlineOutput",
-    attribute: "inlineAttribute",
-  };
-
   const onAddEntity = useCallback(
     (stepBlockId: string, kind: EntityKind, text: string) => {
       const editor = getEditor();
-      const trimmed = text.trim();
-      if (!editor || !trimmed) return;
-      const step = findBlockById(editor.document ?? [], stepBlockId);
-      if (!step || step.type !== "step") return;
-      const entityId = makeEntityId(kind);
-      // パラメータは Activity 直結（最寄り Entity 推論をスキップ）で束縛する
-      const styleValue =
-        kind === "attribute" ? `${entityId}@${PARENT_ACTIVITY_MARKER}` : entityId;
-      const content = [{ type: "text", text: trimmed, styles: { [STYLE_KEY[kind]]: styleValue } }];
-      const children: any[] = step.children ?? [];
-      const last = children[children.length - 1];
-      const lastIsEmptyPara =
-        children.length === 1 &&
-        last?.type === "paragraph" &&
-        !(last.content ?? []).some(
-          (c: any) => typeof c?.text === "string" && c.text.trim() !== "",
-        );
-      try {
-        if (lastIsEmptyPara) {
-          // 空の初期行があればそこへ書く（空行を残さない）
-          editor.updateBlock(last.id, { content });
-        } else if (last) {
-          editor.insertBlocks([{ type: "paragraph", content }], last.id, "after");
-        } else {
-          editor.updateBlock(stepBlockId, { children: [{ type: "paragraph", content }] });
-        }
-      } catch {
-        /* ignore */
-      }
+      if (!editor) return;
+      appendEntitySpanToStep(editor, stepBlockId, kind, text);
     },
     [getEditor],
   );
