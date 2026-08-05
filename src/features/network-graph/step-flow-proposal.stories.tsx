@@ -30,7 +30,6 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { StepFlowView } from "./step-flow-view";
 import { StepNodeCard } from "./step-node-card";
 import type { ActivityNode } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
@@ -302,45 +301,6 @@ export const OutputDrivenAuthoring: Story = {
     <ReactFlowProvider>
       <ProposalPlayground />
     </ReactFlowProvider>
-  ),
-};
-
-// ── C. 現行ビュー比較（破綻の確認） ──
-//
-// 同じ「2 バッチへの分岐」を現行「ステップのみ」で見ると、
-// 区別のつかない 2 本のエッジになる（どの出力がどちらへ行ったか消える）。
-
-export const CurrentViewComparison: Story = {
-  name: "C. 現行ビューだと（比較用）",
-  render: () => (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 8 }}>
-      <div style={{ fontSize: 12, color: "#4a6350" }}>
-        現行の「ステップのみ」で同じ分岐を見た場合 — バッチA / バッチB はカード内チップに
-        埋まり、<b>2 本のエッジはどちらの出力経由か区別できません</b>。
-      </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <StepFlowView
-          activities={[
-            act("s-mix", "混合・分割", {
-              inputs: [
-                { label: "Cu粉末", kind: "material", entityId: "e1" },
-                { label: "Zn粉末", kind: "material", entityId: "e2" },
-              ],
-              outputs: [
-                { label: "バッチA", kind: "output", entityId: "o1" },
-                { label: "バッチB", kind: "output", entityId: "o2" },
-              ],
-            }),
-            act("s-fire", "焼成", { inputs: [{ label: "バッチA", kind: "material", entityId: "e4" }] }),
-            act("s-keep", "対照として保存", { inputs: [{ label: "バッチB", kind: "material", entityId: "e6" }] }),
-          ]}
-          steps={[
-            { id: "step-s-mix->s-fire", from: "s-mix", to: "s-fire" },
-            { id: "step-s-mix->s-keep", from: "s-mix", to: "s-keep" },
-          ]}
-        />
-      </div>
-    </div>
   ),
 };
 

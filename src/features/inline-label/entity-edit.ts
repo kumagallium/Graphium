@@ -190,3 +190,54 @@ export function removeInlineEntity(
   }
   return { removedBlocks: toRemove.length, unstyled: toUnstyle.length };
 }
+
+/**
+ * 親 Entity（parentEntityId の span）に従属する attribute を本文に合成する。
+ * 親 span を持つ最初のブロックの直後に、明示 binding（`<newId>@<parent>`）付きの
+ * 専用行を挿入する — 最寄り推論に頼らないので置き場所の自由度が高く、
+ * グラフ側（Entity ノードの「+ 属性」）からの追加に使う。
+ * @returns 追加した attribute の entityId（親が見つからなければ null）
+ */
+export function addDependentAttribute(
+  editor: any,
+  parentEntityId: string,
+  text: string,
+  makeId: () => string,
+): string | null {
+  const trimmed = text.trim();
+  if (!editor || !parentEntityId || !trimmed) return null;
+
+  // 親 entityId の span を持つ最初のブロックを探す
+  let hostId: string | null = null;
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
+      if (hostId) return;
+      if (b?.id && Array.isArray(b.content) && contentHasEntity(b.content, parentEntityId)) {
+        hostId = b.id;
+        return;
+      }
+      if (Array.isArray(b?.children)) visit(b.children);
+    }
+  };
+  visit(editor.document ?? []);
+  if (!hostId) return null;
+
+  const attrId = makeId();
+  try {
+    editor.insertBlocks(
+      [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: trimmed, styles: { inlineAttribute: `${attrId}@${parentEntityId}` } },
+          ],
+        },
+      ],
+      hostId,
+      "after",
+    );
+  } catch {
+    return null;
+  }
+  return attrId;
+}

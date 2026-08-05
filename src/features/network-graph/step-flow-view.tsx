@@ -1,15 +1,23 @@
 // ──────────────────────────────────────────────
-// 手順フロービュー（React Flow 版ノードエディタ）
+// 手順フロービュー（React Flow 版ノードエディタ、F 案）
 //
+// step カードに加えて material / tool / output の Entity が独立ノードに
+// なり、パラメータは各ノード内の属性行に載る（Storybook Proposal F で合意）。
 // 表示・探索系のグラフ（PROV フルビュー / ノート関係 / 全体 / アセット）は
-// cytoscape（canvas）のままにし、「編集するグラフ」であるこのビューだけ
-// React Flow を使う。ノードが DOM（React コンポーネント）になるので、
-// カード UI・カード上の操作・Storybook での単体開発がそのまま効く。
+// cytoscape（canvas）のまま。
 //
-// 役割は旧 activity-graph.tsx と同じ:
-// - 手順ノードと手順依存（wasInformedBy）だけを描く
-// - すべての操作はコールバックで親（ActivityGraphEditor）へ委ね、
-//   ドキュメントを知らない（グラフは blocks+links の投影、を保つ）
+// エッジ 3 種:
+//   used      entity → step   緑実線（次の手順が材料・道具として使う）
+//   generates step → entity   テラコッタ実線（この手順が生成した）
+//   orderOnly step → step     青点線（物質を特定しない informed_by）
+//
+// 接続ドラッグの意味論:
+//   entity(下ポート) → step   その Entity を対象手順の入力にする（本文に同名 span 合成）
+//   step(下ポート) → step     順序のみの依存（informed_by リンク）
+//   → entity への接続は不可（生成関係はドキュメント側で書く）
+//
+// すべての操作はコールバックで親（ActivityGraphEditor）へ委ね、
+// ドキュメントを知らない（グラフは blocks+links の投影、を保つ）。
 // ──────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,20 +28,24 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
-  useNodesInitialized,
   useNodesState,
   useReactFlow,
   type Edge,
   type IsValidConnection,
+  type Node,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Plus, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
-import type { ActivityNode, StepEdge } from "./activity-graph-adapter";
+import type { ActivityIoKind, FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard, type StepFlowNode } from "./step-node-card";
+import { EntityFlowNode, type EntityFlowNodeType } from "./entity-flow-node";
 
 const ACTIVITY_BLUE = "#5b8fb9";
+const MATERIAL_GREEN = "#4B7A52";
+const OUTPUT_TERRACOTTA = "#c26356";
 const DANGER = "#c26356";
 
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
@@ -43,39 +55,57 @@ export type ConnectResult = { error: string | null };
 export type EntityKind = "material" | "tool" | "output" | "attribute";
 
 export type StepFlowViewProps = {
-  activities: ActivityNode[];
-  steps: StepEdge[];
-  /** 手順 A（産）→ 手順 B（使）のドラッグ接続。拒否理由を返すと画面に表示する */
+  graph: FlowGraphData;
+  /** step → step の順序のみ依存（informed_by）。拒否理由を返すと画面に表示する */
   onConnectSteps?: (producer: string, consumer: string) => ConnectResult | void;
-  /** 手順エッジ削除（deletable なものだけ呼ばれる） */
-  onRemoveStep?: (stepId: string) => void;
+  /** orderOnly エッジの削除（deletable なものだけ呼ばれる） */
+  onRemoveOrderEdge?: (producer: string, consumer: string) => void;
+  /** entity → step 接続: その Entity を対象手順の入力にする（entityNodeId は provDoc の @id） */
+  onConnectEntityToStep?: (entityNodeId: string, stepBlockId: string) => void;
   /** ツールバーの「+ 手順」。省略時はボタンを出さない */
   onAddActivity?: () => void;
-  /** ノードカードでのリネーム確定 */
+  /** step カードのリネーム確定 */
   onRenameActivity?: (blockId: string, title: string) => void;
-  /** ノードカードからの削除（step の中身ごと消える） */
+  /** step カードからの削除（step の中身ごと消える） */
   onDeleteActivity?: (blockId: string) => void;
-  /** ノードカードの「本文へ」（エディタの該当 step へスクロール） */
+  /** step カードの「本文へ」 */
   onJumpToBlock?: (blockId: string) => void;
-  /** 削除確認に出す「中身のブロック数」。省略時は 0 扱い（確認なしで削除） */
+  /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
-  /** カードからの入出力・パラメータ追加（本文に span 付き行を合成） */
+  /** step カードからの入出力・パラメータ追加（本文に span 付き行を合成） */
   onAddEntity?: (blockId: string, kind: EntityKind, text: string) => void;
-  /** チップのリネーム（本文 span のテキスト置換。entityId は維持） */
+  /** entityId 指定のリネーム（Entity 名・属性行・step パラメータ行の共通機構） */
   onRenameEntity?: (entityId: string, text: string) => void;
-  /** チップの削除（専用行なら行削除、文中なら mark 解除） */
+  /** entityId 指定の削除（同上） */
   onRemoveEntity?: (entityId: string) => void;
+  /** Entity ノードへの従属属性の追加 */
+  onAddAttrToEntity?: (parentEntityId: string, text: string) => void;
 };
 
-const nodeTypes = { step: StepNodeCard };
+const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
 
-type StepFlowEdge = Edge<{ deletable: boolean }>;
+type FlowRfEdge = Edge<{ kind: string; deletable: boolean }>;
+
+const EDGE_STYLES: Record<string, Partial<Edge>> = {
+  used: {
+    style: { stroke: MATERIAL_GREEN, strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: MATERIAL_GREEN, width: 16, height: 16 },
+  },
+  generates: {
+    style: { stroke: OUTPUT_TERRACOTTA, strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: OUTPUT_TERRACOTTA, width: 16, height: 16 },
+  },
+  orderOnly: {
+    style: { stroke: ACTIVITY_BLUE, strokeWidth: 1.5, strokeDasharray: "6 4" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: ACTIVITY_BLUE, width: 16, height: 16 },
+  },
+};
 
 function StepFlowCanvas({
-  activities,
-  steps,
+  graph,
   onConnectSteps,
-  onRemoveStep,
+  onRemoveOrderEdge,
+  onConnectEntityToStep,
   onAddActivity,
   onRenameActivity,
   onDeleteActivity,
@@ -84,17 +114,24 @@ function StepFlowCanvas({
   onAddEntity,
   onRenameEntity,
   onRemoveEntity,
+  onAddAttrToEntity,
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<StepFlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<StepFlowEdge>([]);
-  const [needsLayout, setNeedsLayout] = useState(false);
-  // エッジ削除メニュー（クリックで開く。即削除しないことで誤操作を防ぐ）
-  const [edgeMenu, setEdgeMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowRfEdge>([]);
+  // グラフが変わったら次に全ノードの実測サイズが揃った時点で ELK を流す。
+  // useNodesInitialized は「後からノードを流し込む」経路で true にならない
+  // ことがある（実測）ため、dimensions change 駆動 + 即時チェックの二段構えにする。
+  const needsLayoutRef = useRef(false);
+  // orderOnly エッジの削除メニュー（クリックで開く。即削除しないことで誤操作を防ぐ）
+  const [edgeMenu, setEdgeMenu] = useState<{ source: string; target: string; x: number; y: number } | null>(null);
   // 循環でドラッグ接続を拒否したときの警告。0 = 非表示
   const [cycleWarnAt, setCycleWarnAt] = useState(0);
-  const nodesInitialized = useNodesInitialized();
   const { fitView, getNodes } = useReactFlow();
+  // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
+  // コールバック安定化のため）
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
 
   useEffect(() => {
     if (!cycleWarnAt) return;
@@ -102,17 +139,17 @@ function StepFlowCanvas({
     return () => clearTimeout(id);
   }, [cycleWarnAt]);
 
-  // ── activities / steps → React Flow の nodes / edges 同期 ──
+  // ── FlowGraphData → React Flow の nodes / edges 同期 ──
   useEffect(() => {
     setEdgeMenu(null);
-    setNodes((prev: StepFlowNode[]) => {
-      const prevPos = new Map(prev.map((n: StepFlowNode) => [n.id, n.position]));
-      return activities.map((a) => ({
-        id: a.id,
+    setNodes((prev: Node[]) => {
+      const prevPos = new Map(prev.map((n) => [n.id, n.position]));
+      const stepNodes: Node[] = graph.steps.map((s) => ({
+        id: s.id,
         type: "step" as const,
-        position: prevPos.get(a.id) ?? { x: 0, y: 0 },
+        position: prevPos.get(s.id) ?? { x: 0, y: 0 },
         data: {
-          activity: a,
+          activity: s,
           onRename: onRenameActivity,
           onDelete: onDeleteActivity,
           onJump: onJumpToBlock,
@@ -123,21 +160,43 @@ function StepFlowCanvas({
         },
         draggable: false,
       }));
+      const entityNodes: Node[] = graph.entities.map((e) => ({
+        id: e.id,
+        type: "entity" as const,
+        position: prevPos.get(e.id) ?? { x: 0, y: 0 },
+        data: {
+          entity: e,
+          onRenameEntity,
+          onRemoveEntity,
+          onAddAttr: onAddAttrToEntity,
+        },
+        draggable: false,
+      }));
+      return [...stepNodes, ...entityNodes];
     });
     setEdges(
-      steps.map((s) => ({
-        id: s.id,
-        source: s.from,
-        target: s.to,
-        style: { stroke: ACTIVITY_BLUE, strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: ACTIVITY_BLUE, width: 18, height: 18 },
-        data: { deletable: s.deletable ?? false },
+      graph.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        ...EDGE_STYLES[e.kind],
+        ...(e.kind === "orderOnly"
+          ? {
+              label: t("activityGraph.orderOnly"),
+              labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
+              labelBgStyle: { fill: "#fafdf7", fillOpacity: 0.9 },
+            }
+          : {}),
+        data: { kind: e.kind, deletable: e.deletable ?? false },
       })),
     );
-    setNeedsLayout(true);
+    needsLayoutRef.current = true;
+    // 既存ノードの position 更新だけで dimensions change が来ないケースに備えて、
+    // 次フレームで「全ノード実測済みなら即レイアウト」も試す
+    requestAnimationFrame(() => tryLayout());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    activities,
-    steps,
+    graph,
     onRenameActivity,
     onDeleteActivity,
     onJumpToBlock,
@@ -145,55 +204,76 @@ function StepFlowCanvas({
     onAddEntity,
     onRenameEntity,
     onRemoveEntity,
+    onAddAttrToEntity,
     setNodes,
     setEdges,
   ]);
 
-  // ── ノードの実測サイズが揃ったら ELK でレイアウト ──
-  useEffect(() => {
-    if (!nodesInitialized || !needsLayout) return;
-    let cancelled = false;
+  // ── 全ノードの実測サイズが揃った時点で ELK レイアウト ──
+  const tryLayout = useCallback(() => {
+    if (!needsLayoutRef.current) return;
     const current = getNodes();
+    if (current.length === 0 || !current.every((n) => n.measured?.width)) return;
+    needsLayoutRef.current = false;
     const sized = current.map((n) => ({
       id: n.id,
-      width: n.measured?.width ?? 200,
-      height: n.measured?.height ?? 56,
+      width: n.measured?.width ?? 180,
+      height: n.measured?.height ?? 48,
     }));
     void layoutStepFlow(
       sized,
-      steps.map((s) => ({ id: s.id, source: s.from, target: s.to })),
+      graphRef.current.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     ).then((positions) => {
-      if (cancelled) return;
-      setNodes((nds: StepFlowNode[]) =>
-        nds.map((n: StepFlowNode) => ({ ...n, position: positions.get(n.id) ?? n.position })),
+      setNodes((nds: Node[]) =>
+        nds.map((n: Node) => ({ ...n, position: positions.get(n.id) ?? n.position })),
       );
-      setNeedsLayout(false);
       requestAnimationFrame(() => {
         void fitView({ padding: 0.15, duration: 200, maxZoom: 1 });
       });
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [nodesInitialized, needsLayout, steps, getNodes, setNodes, fitView]);
+  }, [getNodes, setNodes, fitView]);
 
-  // ── 接続（source=産む側の下ポート → target=使う側の上ポート） ──
+  // ノードが measure された（dimensions change が流れた）タイミングでレイアウトを試す
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<Node>[]) => {
+      onNodesChange(changes);
+      if (needsLayoutRef.current && changes.some((c) => c.type === "dimensions")) {
+        requestAnimationFrame(() => tryLayout());
+      }
+    },
+    [onNodesChange, tryLayout],
+  );
+
+  // ── 接続（意味論はソース種別で分岐） ──
   const handleConnect = useCallback(
     (conn: { source: string | null; target: string | null }) => {
       if (!conn.source || !conn.target || conn.source === conn.target) return;
-      const res = onConnectSteps?.(conn.source, conn.target);
-      // store が循環（DAG 違反）で拒否したときは理由をその場に出す
-      if (res && res.error === "cycle_detected") setCycleWarnAt(Date.now());
+      const g = graphRef.current;
+      const sourceEntity = g.entities.find((e) => e.id === conn.source);
+      const targetIsStep = g.steps.some((s) => s.id === conn.target);
+      if (!targetIsStep) return;
+      if (sourceEntity) {
+        // Entity → step: その Entity を対象手順の入力にする（本文に同名 span 合成）
+        onConnectEntityToStep?.(sourceEntity.id, conn.target);
+        return;
+      }
+      if (g.steps.some((s) => s.id === conn.source)) {
+        // step → step: 順序のみの依存（informed_by）
+        const res = onConnectSteps?.(conn.source, conn.target);
+        if (res && res.error === "cycle_detected") setCycleWarnAt(Date.now());
+      }
     },
-    [onConnectSteps],
+    [onConnectSteps, onConnectEntityToStep],
   );
 
-  const isValidConnection: IsValidConnection<StepFlowEdge> = useCallback(
-    (conn) =>
-      !!conn.source &&
-      !!conn.target &&
-      conn.source !== conn.target &&
-      !edges.some((e) => e.source === conn.source && e.target === conn.target),
+  const isValidConnection: IsValidConnection<FlowRfEdge> = useCallback(
+    (conn) => {
+      if (!conn.source || !conn.target || conn.source === conn.target) return false;
+      const g = graphRef.current;
+      // 受け側は step のみ（entity への接続 = 生成関係はドキュメント側で書く）
+      if (!g.steps.some((s) => s.id === conn.target)) return false;
+      return !edges.some((e) => e.source === conn.source && e.target === conn.target);
+    },
     [edges],
   );
 
@@ -203,15 +283,20 @@ function StepFlowCanvas({
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         isValidConnection={isValidConnection}
-        onEdgeClick={(e: React.MouseEvent, edge: StepFlowEdge) => {
-          if (!edge.data?.deletable || !onRemoveStep) return;
+        onEdgeClick={(e: React.MouseEvent, edge: FlowRfEdge) => {
+          if (edge.data?.kind !== "orderOnly" || !edge.data?.deletable || !onRemoveOrderEdge) return;
           const rect = wrapperRef.current?.getBoundingClientRect();
           if (!rect) return;
-          setEdgeMenu({ edgeId: edge.id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+          setEdgeMenu({
+            source: edge.source,
+            target: edge.target,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
         }}
         onPaneClick={() => setEdgeMenu(null)}
         onMove={() => setEdgeMenu(null)}
@@ -272,7 +357,7 @@ function StepFlowCanvas({
         )}
       </ReactFlow>
 
-      {/* エッジ削除メニュー */}
+      {/* orderOnly エッジ削除メニュー */}
       {edgeMenu && (
         <div
           style={{
@@ -291,7 +376,7 @@ function StepFlowCanvas({
         >
           <button
             onClick={() => {
-              onRemoveStep?.(edgeMenu.edgeId);
+              onRemoveOrderEdge?.(edgeMenu.source, edgeMenu.target);
               setEdgeMenu(null);
             }}
             style={{
@@ -317,7 +402,7 @@ function StepFlowCanvas({
       )}
 
       {/* 空状態: まだ手順が無いノートの入口 */}
-      {activities.length === 0 && (
+      {graph.steps.length === 0 && (
         <div
           style={{
             position: "absolute",
@@ -339,8 +424,8 @@ function StepFlowCanvas({
         </div>
       )}
 
-      {/* 使い方ヒント（つなぎが 1 本でもあれば隠す） */}
-      {activities.length > 0 && steps.length === 0 && (
+      {/* 使い方ヒント（エッジが 1 本でもあれば隠す） */}
+      {graph.steps.length > 0 && graph.edges.length === 0 && (
         <div
           style={{
             position: "absolute",

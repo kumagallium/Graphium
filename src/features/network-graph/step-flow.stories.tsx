@@ -1,12 +1,13 @@
-// 手順フロービュー（React Flow 版ノードエディタ）のストーリー
+// 手順フロービュー（React Flow 版ノードエディタ、F 案）のストーリー
 //
-// デザイン合意はカード単体（Card* ストーリー）で行い、操作の確認は
-// Playground で行う（接続・追加・リネーム・削除・循環拒否まで動く）。
+// Entity（材料・道具・出力）が独立ノードになり、パラメータは各ノード内の
+// 属性行で編集する。Playground は実 API（graph + コールバック）をモック
+// state で駆動する使用例を兼ねる。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRef, useState } from "react";
 import { StepFlowView } from "./step-flow-view";
-import type { ActivityNode, StepEdge } from "./activity-graph-adapter";
+import type { FlowGraphData } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
 
 const meta: Meta = {
@@ -26,92 +27,82 @@ export default meta;
 
 type Story = StoryObj;
 
-// ── モックデータ（材料合成の手順）──
+// ── モックデータ（材料を 2 バッチに分けて別々の手順へ + 順序のみ依存）──
 
-const RICH_ACTIVITIES: ActivityNode[] = [
-  {
-    id: "s-mix",
-    name: "混合",
-    inputs: [
-      { label: "Cu粉末", kind: "material", entityId: "ent_material_cu" },
-      { label: "Zn粉末", kind: "material", entityId: "ent_material_zn" },
-      { label: "乳鉢", kind: "tool", entityId: "ent_tool_mortar" },
-    ],
-    outputs: [{ label: "混合粉", kind: "output", entityId: "ent_output_mix" }],
-    params: [{ label: "比率: 7:3", entityId: "ent_attribute_ratio" }],
-  },
-  {
-    id: "s-press",
-    name: "成形",
-    inputs: [{ label: "プレス機", kind: "tool", entityId: "ent_tool_press" }],
-    outputs: [],
-    params: [{ label: "圧力: 20MPa", entityId: "ent_attribute_pressure" }],
-  },
-  {
-    id: "s-fire",
-    name: "焼成",
-    inputs: [],
-    outputs: [{ label: "焼結体", kind: "output", entityId: "ent_output_sintered" }],
-    params: [
-      { label: "温度: 900C", entityId: "ent_attribute_temp" },
-      { label: "時間: 2h", entityId: "ent_attribute_time" },
-      { label: "雰囲気: Ar" }, // entityId 無し = 表示のみ（テーブル由来などの想定）
-    ],
-  },
-  {
-    id: "s-eval",
-    name: "評価",
-    inputs: [{ label: "XRD", kind: "tool", entityId: "ent_tool_xrd" }],
-    outputs: [],
-    params: [],
-  },
-];
+const RICH_GRAPH: FlowGraphData = {
+  steps: [
+    { id: "s-mix", name: "混合・分割", params: [{ label: "比率: 7:3", entityId: "ent_attribute_ratio" }] },
+    { id: "s-fire", name: "焼成", params: [{ label: "温度: 900C", entityId: "ent_attribute_temp" }, { label: "時間: 2h" }] },
+    { id: "s-keep", name: "対照として保存", params: [] },
+    { id: "s-dry", name: "乾燥", params: [] },
+    { id: "s-weigh", name: "計量", params: [] },
+  ],
+  entities: [
+    {
+      id: "inline_material_ent_cu",
+      label: "Cu粉末",
+      kind: "material",
+      entityId: "ent_cu",
+      attrs: [
+        { label: "純度: 99.9%", entityId: "ent_attr_purity" },
+        { label: "質量: 7g", entityId: "ent_attr_mass" },
+      ],
+    },
+    { id: "inline_material_ent_zn", label: "Zn粉末", kind: "material", entityId: "ent_zn", attrs: [] },
+    { id: "inline_tool_ent_mortar", label: "乳鉢", kind: "tool", entityId: "ent_mortar", attrs: [] },
+    {
+      id: "inline_output_ent_a",
+      label: "バッチA",
+      kind: "output",
+      entityId: "ent_a",
+      attrs: [{ label: "質量: 5g", entityId: "ent_attr_ma" }],
+    },
+    {
+      id: "inline_output_ent_b",
+      label: "バッチB",
+      kind: "output",
+      entityId: "ent_b",
+      attrs: [{ label: "用途: 対照" }], // entityId 無し = 表示のみ（テーブル列由来の想定）
+    },
+  ],
+  edges: [
+    { id: "u1", kind: "used", source: "inline_material_ent_cu", target: "s-mix" },
+    { id: "u2", kind: "used", source: "inline_material_ent_zn", target: "s-mix" },
+    { id: "u3", kind: "used", source: "inline_tool_ent_mortar", target: "s-mix" },
+    { id: "g1", kind: "generates", source: "s-mix", target: "inline_output_ent_a" },
+    { id: "g2", kind: "generates", source: "s-mix", target: "inline_output_ent_b" },
+    { id: "u4", kind: "used", source: "inline_output_ent_a", target: "s-fire" },
+    { id: "u5", kind: "used", source: "inline_output_ent_b", target: "s-keep" },
+    { id: "ord1", kind: "orderOnly", source: "s-dry", target: "s-weigh", deletable: true },
+  ],
+};
 
-const RICH_STEPS: StepEdge[] = [
-  { id: "step-s-mix->s-press", from: "s-mix", to: "s-press", deletable: true },
-  { id: "step-s-press->s-fire", from: "s-press", to: "s-fire", deletable: true },
-];
+// ── 表示のみ（デザイン確認用） ──
 
-// ── カード単体（デザイン確認用）──
+export const BranchingGraph: Story = {
+  name: "分岐グラフ（表示）",
+  render: () => <StepFlowView graph={RICH_GRAPH} />,
+};
 
-export const CardMinimal: Story = {
-  name: "Card / 空の手順",
+export const EmptyState: Story = {
+  name: "空状態（手順ゼロの入口）",
   render: () => (
-    <StepFlowView
-      activities={[{ id: "c1", name: "焼成", inputs: [], outputs: [], params: [] }]}
-      steps={[]}
-    />
+    <StepFlowView graph={{ steps: [], entities: [], edges: [] }} onAddActivity={() => console.log("add")} />
   ),
 };
 
-export const CardFull: Story = {
-  name: "Card / 入出力・パラメータ入り",
-  render: () => (
-    <StepFlowView
-      activities={[RICH_ACTIVITIES[0]]}
-      steps={[]}
-      onRenameActivity={() => {}}
-      onDeleteActivity={() => {}}
-      onJumpToBlock={() => {}}
-      getStepContentCount={() => 3}
-      onAddEntity={(id, kind, text) => console.log("add", id, kind, text)}
-      onRenameEntity={(entityId, text) => console.log("rename entity", entityId, text)}
-      onRemoveEntity={(entityId) => console.log("remove entity", entityId)}
-    />
-  ),
-};
-
-// ── フル操作デモ ──
+// ── フル操作デモ（実 API の使用例をモック state で） ──
 
 function Playground() {
-  const [activities, setActivities] = useState<ActivityNode[]>(RICH_ACTIVITIES);
-  const [steps, setSteps] = useState<StepEdge[]>(RICH_STEPS);
+  const [graph, setGraph] = useState<FlowGraphData>(RICH_GRAPH);
   const counter = useRef(0);
 
-  // 簡易循環判定（producer → consumer を足すと consumer から producer へ辿れるか）
   const wouldCycle = (producer: string, consumer: string): boolean => {
     const adj = new Map<string, string[]>();
-    for (const s of steps) adj.set(s.from, [...(adj.get(s.from) ?? []), s.to]);
+    for (const e of graph.edges) {
+      if (e.kind !== "orderOnly") continue;
+      adj.set(e.source, [...(adj.get(e.source) ?? []), e.target]);
+    }
     const stack = [consumer];
     const visited = new Set<string>();
     while (stack.length) {
@@ -126,69 +117,121 @@ function Playground() {
 
   return (
     <StepFlowView
-      activities={activities}
-      steps={steps}
+      graph={graph}
       onConnectSteps={(producer, consumer) => {
         if (wouldCycle(producer, consumer)) return { error: "cycle_detected" };
-        setSteps((prev) =>
-          prev.some((s) => s.from === producer && s.to === consumer)
-            ? prev
-            : [...prev, { id: `step-${producer}->${consumer}`, from: producer, to: consumer, deletable: true }],
-        );
+        setGraph((g) => ({
+          ...g,
+          edges: [
+            ...g.edges,
+            { id: `ord-${counter.current++}`, kind: "orderOnly", source: producer, target: consumer, deletable: true },
+          ],
+        }));
         return { error: null };
       }}
-      onRemoveStep={(id) => setSteps((prev) => prev.filter((s) => s.id !== id))}
+      onRemoveOrderEdge={(producer, consumer) =>
+        setGraph((g) => ({
+          ...g,
+          edges: g.edges.filter(
+            (e) => !(e.kind === "orderOnly" && e.source === producer && e.target === consumer),
+          ),
+        }))
+      }
+      onConnectEntityToStep={(entityNodeId, stepBlockId) =>
+        setGraph((g) => ({
+          ...g,
+          edges: [
+            ...g.edges,
+            { id: `used-${counter.current++}`, kind: "used", source: entityNodeId, target: stepBlockId },
+          ],
+        }))
+      }
       onAddActivity={() => {
-        counter.current += 1;
-        const id = `new-${counter.current}`;
-        setActivities((prev) => [
-          ...prev,
-          { id, name: `ステップ ${prev.length + 1}`, inputs: [], outputs: [], params: [] },
-        ]);
+        const id = `new-step-${counter.current++}`;
+        setGraph((g) => ({
+          ...g,
+          steps: [...g.steps, { id, name: `ステップ ${g.steps.length + 1}`, params: [] }],
+        }));
       }}
       onRenameActivity={(blockId, title) =>
-        setActivities((prev) => prev.map((a) => (a.id === blockId ? { ...a, name: title } : a)))
+        setGraph((g) => ({
+          ...g,
+          steps: g.steps.map((s) => (s.id === blockId ? { ...s, name: title } : s)),
+        }))
       }
-      onDeleteActivity={(blockId) => {
-        setActivities((prev) => prev.filter((a) => a.id !== blockId));
-        setSteps((prev) => prev.filter((s) => s.from !== blockId && s.to !== blockId));
-      }}
+      onDeleteActivity={(blockId) =>
+        setGraph((g) => ({
+          ...g,
+          steps: g.steps.filter((s) => s.id !== blockId),
+          edges: g.edges.filter((e) => e.source !== blockId && e.target !== blockId),
+        }))
+      }
       onJumpToBlock={(blockId) => console.log("jump to", blockId)}
       getStepContentCount={(blockId) => (blockId === "s-mix" ? 2 : 0)}
       onAddEntity={(blockId, kind, text) => {
-        const entityId = `ent_${kind}_${Math.random().toString(36).slice(2, 8)}`;
-        setActivities((prev) =>
-          prev.map((a) => {
-            if (a.id !== blockId) return a;
-            if (kind === "attribute") {
-              return { ...a, params: [...a.params, { label: text, entityId }] };
-            }
-            const io = { label: text, kind: kind as "material" | "tool" | "output", entityId };
-            return kind === "output"
-              ? { ...a, outputs: [...a.outputs, io] }
-              : { ...a, inputs: [...a.inputs, io] };
-          }),
-        );
+        if (kind === "attribute") {
+          setGraph((g) => ({
+            ...g,
+            steps: g.steps.map((s) =>
+              s.id === blockId
+                ? { ...s, params: [...s.params, { label: text, entityId: `ent-${counter.current++}` }] }
+                : s,
+            ),
+          }));
+          return;
+        }
+        const entityId = `ent-${counter.current++}`;
+        const id = `inline_${kind}_${entityId}`;
+        setGraph((g) => ({
+          ...g,
+          entities: [...g.entities, { id, label: text, kind, entityId, attrs: [] }],
+          edges: [
+            ...g.edges,
+            kind === "output"
+              ? { id: `g-${counter.current++}`, kind: "generates", source: blockId, target: id }
+              : { id: `u-${counter.current++}`, kind: "used", source: id, target: blockId },
+          ],
+        }));
       }}
       onRenameEntity={(entityId, text) =>
-        setActivities((prev) =>
-          prev.map((a) => ({
-            ...a,
-            inputs: a.inputs.map((io) => (io.entityId === entityId ? { ...io, label: text } : io)),
-            outputs: a.outputs.map((io) => (io.entityId === entityId ? { ...io, label: text } : io)),
-            params: a.params.map((p) => (p.entityId === entityId ? { ...p, label: text } : p)),
+        setGraph((g) => ({
+          ...g,
+          steps: g.steps.map((s) => ({
+            ...s,
+            params: s.params.map((p) => (p.entityId === entityId ? { ...p, label: text } : p)),
           })),
-        )
+          entities: g.entities.map((e) => ({
+            ...e,
+            label: e.entityId === entityId ? text : e.label,
+            attrs: e.attrs.map((a) => (a.entityId === entityId ? { ...a, label: text } : a)),
+          })),
+        }))
       }
       onRemoveEntity={(entityId) =>
-        setActivities((prev) =>
-          prev.map((a) => ({
-            ...a,
-            inputs: a.inputs.filter((io) => io.entityId !== entityId),
-            outputs: a.outputs.filter((io) => io.entityId !== entityId),
-            params: a.params.filter((p) => p.entityId !== entityId),
-          })),
-        )
+        setGraph((g) => {
+          const target = g.entities.find((e) => e.entityId === entityId);
+          return {
+            ...g,
+            steps: g.steps.map((s) => ({
+              ...s,
+              params: s.params.filter((p) => p.entityId !== entityId),
+            })),
+            entities: g.entities
+              .filter((e) => e.entityId !== entityId)
+              .map((e) => ({ ...e, attrs: e.attrs.filter((a) => a.entityId !== entityId) })),
+            edges: target ? g.edges.filter((e) => e.source !== target.id && e.target !== target.id) : g.edges,
+          };
+        })
+      }
+      onAddAttrToEntity={(parentEntityId, text) =>
+        setGraph((g) => ({
+          ...g,
+          entities: g.entities.map((e) =>
+            e.entityId === parentEntityId
+              ? { ...e, attrs: [...e.attrs, { label: text, entityId: `ent-${counter.current++}` }] }
+              : e,
+          ),
+        }))
       }
     />
   );
@@ -197,11 +240,4 @@ function Playground() {
 export const InteractivePlayground: Story = {
   name: "Playground / 全操作",
   render: () => <Playground />,
-};
-
-export const EmptyState: Story = {
-  name: "空状態（手順ゼロの入口）",
-  render: () => (
-    <StepFlowView activities={[]} steps={[]} onAddActivity={() => console.log("add")} />
-  ),
 };

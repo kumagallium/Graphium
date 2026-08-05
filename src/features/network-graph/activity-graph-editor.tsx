@@ -15,11 +15,15 @@
 
 import { useCallback, useMemo, useRef } from "react";
 import { StepFlowView, type EntityKind } from "./step-flow-view";
-import { provDocToStepGraph } from "./activity-graph-adapter";
+import { provDocToFlowGraph, type ActivityIoKind } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
 import { buildDefaultStepTitle, selectStepTitle } from "../../blocks/step/view";
 import { makeEntityId } from "../../features/inline-label/shortcuts";
-import { renameInlineEntity, removeInlineEntity } from "../../features/inline-label/entity-edit";
+import {
+  renameInlineEntity,
+  removeInlineEntity,
+  addDependentAttribute,
+} from "../../features/inline-label/entity-edit";
 import { PARENT_ACTIVITY_MARKER } from "../../features/inline-label/attribute-binding";
 import type { ProvJsonLd } from "../prov-generator/generator";
 
@@ -100,19 +104,31 @@ export function ActivityGraphEditor({
   const linkStoreRef = useRef(linkStore);
   linkStoreRef.current = linkStore;
 
-  const { activities, steps } = useMemo(() => provDocToStepGraph(doc), [doc]);
+  const flowGraph = useMemo(() => provDocToFlowGraph(doc), [doc]);
+  // コールバックを安定参照に保つため、最新のグラフは ref 経由でも読めるようにする
+  const flowGraphRef = useRef(flowGraph);
+  flowGraphRef.current = flowGraph;
 
-  // 裏に informed_by リンク（source=consumer / target=producer）があるものだけ削除可能。
+  // orderOnly エッジのうち、裏に informed_by リンクがあるものだけ削除可能。
   // 本文のラベル由来の手順依存は対応リンクが無いので削除対象外にする。
-  const editableSteps = useMemo(
-    () =>
-      steps.map((s) => ({
-        ...s,
-        deletable: linkStore.links.some(
-          (l) => l.type === "informed_by" && l.sourceBlockId === s.to && l.targetBlockId === s.from,
-        ),
-      })),
-    [steps, linkStore.links],
+  const graph = useMemo(
+    () => ({
+      ...flowGraph,
+      edges: flowGraph.edges.map((e) =>
+        e.kind === "orderOnly"
+          ? {
+              ...e,
+              deletable: linkStore.links.some(
+                (l) =>
+                  l.type === "informed_by" &&
+                  l.sourceBlockId === e.target &&
+                  l.targetBlockId === e.source,
+              ),
+            }
+          : e,
+      ),
+    }),
+    [flowGraph, linkStore.links],
   );
 
   const getEditor = useCallback(() => editorRef?.current ?? null, [editorRef]);
@@ -130,12 +146,9 @@ export function ActivityGraphEditor({
     [],
   );
 
-  const onRemoveStep = useCallback((stepId: string) => {
-    // stepId は `step-<producer>-><consumer>` の合成 ID（adapter 参照）
-    const m = /^step-(.+)->(.+)$/.exec(stepId);
-    if (!m) return;
+  const onRemoveOrderEdge = useCallback((producer: string, consumer: string) => {
     const link = linkStoreRef.current.links.find(
-      (l) => l.type === "informed_by" && l.sourceBlockId === m[2] && l.targetBlockId === m[1],
+      (l) => l.type === "informed_by" && l.sourceBlockId === consumer && l.targetBlockId === producer,
     );
     if (link) linkStoreRef.current.removeLink(link.id);
   }, []);
@@ -227,6 +240,15 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
+  const onAddAttrToEntity = useCallback(
+    (parentEntityId: string, text: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      addDependentAttribute(editor, parentEntityId, text, () => makeEntityId("attribute"));
+    },
+    [getEditor],
+  );
+
   // ── Entity / パラメータの CRUD（本文 span への翻訳） ──
 
   const STYLE_KEY: Record<EntityKind, string> = {
@@ -272,6 +294,32 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
+  // Entity ノード → step の接続: その Entity と同名の入力 span を対象 step に合成する。
+  // 出力を繋いだ場合は「次の手順の材料になる」ので material として書き、さらに
+  // 生成元 step との informed_by も張る — これが generator の Entity unification を
+  // 発火させ、出力ノードと入力 span が 1 つの Entity に merge されて受け渡しの
+  // 実線になる（informed_by が無いと同名でも別 Entity のまま分裂する）。
+  const onConnectEntityToStep = useCallback(
+    (entityNodeId: string, stepBlockId: string) => {
+      const g = flowGraphRef.current;
+      const entity = g.entities.find((e) => e.id === entityNodeId);
+      if (!entity) return;
+      const kind: ActivityIoKind = entity.kind === "output" ? "material" : entity.kind;
+      onAddEntity(stepBlockId, kind, entity.label);
+      const gen = g.edges.find((e) => e.kind === "generates" && e.target === entityNodeId);
+      if (gen && gen.source !== stepBlockId) {
+        // 循環は store が拒否する（結果は次の再生成で見える）
+        linkStoreRef.current.addLink({
+          sourceBlockId: stepBlockId,
+          targetBlockId: gen.source,
+          type: "informed_by",
+          createdBy: "human",
+        });
+      }
+    },
+    [onAddEntity],
+  );
+
   const onRenameEntity = useCallback(
     (entityId: string, newText: string) => {
       const editor = getEditor();
@@ -294,10 +342,10 @@ export function ActivityGraphEditor({
 
   return (
     <StepFlowView
-      activities={activities}
-      steps={editableSteps}
+      graph={graph}
       onConnectSteps={onConnectSteps}
-      onRemoveStep={onRemoveStep}
+      onRemoveOrderEdge={onRemoveOrderEdge}
+      onConnectEntityToStep={hasEditor ? onConnectEntityToStep : undefined}
       onAddActivity={hasEditor ? onAddActivity : undefined}
       onRenameActivity={hasEditor ? onRenameActivity : undefined}
       onDeleteActivity={hasEditor ? onDeleteActivity : undefined}
@@ -306,6 +354,7 @@ export function ActivityGraphEditor({
       onAddEntity={hasEditor ? onAddEntity : undefined}
       onRenameEntity={hasEditor ? onRenameEntity : undefined}
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
+      onAddAttrToEntity={hasEditor ? onAddAttrToEntity : undefined}
     />
   );
 }

@@ -790,6 +790,8 @@ export const ja: Record<string, string> = {
   "activityGraph.addChip": "追加",
   "activityGraph.editChip": "編集",
   "activityGraph.removeChip": "本文のラベルを外す",
+  "activityGraph.orderOnly": "順序のみ",
+  "activityGraph.addAttr": "パラメータ",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",

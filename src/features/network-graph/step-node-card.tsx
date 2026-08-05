@@ -19,7 +19,10 @@ import type { ActivityIoKind, ActivityNode } from "./activity-graph-adapter";
 import type { EntityKind } from "./step-flow-view";
 
 export type StepNodeData = {
-  activity: ActivityNode;
+  /** F 案では FlowStep（id/name/params）を渡す。旧 ActivityNode も型互換
+   *  （inputs/outputs はもう表示しない — Entity は独立ノードになった） */
+  activity: Pick<ActivityNode, "id" | "name" | "params"> &
+    Partial<Pick<ActivityNode, "inputs" | "outputs">>;
   onRename?: (blockId: string, title: string) => void;
   onDelete?: (blockId: string) => void;
   onJump?: (blockId: string) => void;
@@ -272,8 +275,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
     onRemove: entityId && onRemoveEntity ? () => onRemoveEntity(entityId) : undefined,
   });
 
-  const hasBody =
-    activity.inputs.length > 0 || activity.outputs.length > 0 || activity.params.length > 0;
+  const hasBody = activity.params.length > 0;
   const showAddControl = selected && !!onAddEntity;
 
   return (
@@ -429,20 +431,6 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
             padding: "0 10px 7px 10px",
           }}
         >
-          {activity.inputs.map((io, i) => (
-            <ChipRow
-              key={io.entityId ?? `in-${i}`}
-              icon={<KindDot kind={io.kind} />}
-              {...chipRowProps(io.label, io.entityId)}
-            />
-          ))}
-          {activity.outputs.map((io, i) => (
-            <ChipRow
-              key={io.entityId ?? `out-${i}`}
-              icon={<KindDot kind={io.kind} />}
-              {...chipRowProps(io.label, io.entityId)}
-            />
-          ))}
           {activity.params.map((p, i) => (
             <ChipRow
               key={p.entityId ?? `param-${i}`}
