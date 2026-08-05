@@ -1143,36 +1143,38 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
 
     // (c) merge 不成立。informed_by → used を張るための proxy を決める
-    let proxyId: string;
-    if (prevOutputs.length > 0) {
-      // explicit output があれば、その先頭を proxy として使う（synthetic を作らない）
+    let proxyId: string | null = null;
+    if (prevOutputs.length === 1) {
+      // 出力が 1 つだけなら「それを使った」と推定するのは合理的
       proxyId = prevOutputs[0]["@id"];
-    } else {
+    } else if (prevOutputs.length === 0) {
       // 旧形式の result_* ノード（後方互換）も拾う
       const legacyResult = nodes.find(
         (n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === prevActId,
       );
-      if (legacyResult) {
-        proxyId = legacyResult["@id"];
-      } else {
-        // 何も無いので synthetic placeholder を作る（graph connectivity の最終 fallback）
-        const syntheticId = `result_synthetic_${link.targetBlockId}`;
-        if (!nodes.find((n) => n["@id"] === syntheticId)) {
-          const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? t("prov.prevStepFallback");
-          nodes.push({
-            "@id": syntheticId,
-            "@type": "prov:Entity",
-            label: t("prov.resultOf", { label: prevActLabel }),
-            blockId: link.targetBlockId,
-          });
-          relations.push({
-            "@type": "prov:wasGeneratedBy",
-            from: syntheticId,
-            to: prevActId,
-          });
-        }
-        proxyId = syntheticId;
+      if (legacyResult) proxyId = legacyResult["@id"];
+    }
+    // 出力が複数ある（どれを使ったか特定できない）／何も無い場合は
+    // 「〜の結果」placeholder に落とす。勝手に 1 つを選ぶと、知らないことを
+    // 知っているかのように描いてしまう。特定したいときは次工程の入力に
+    // 同名を書けば (a)(b) の unification が正確に繋ぐ。
+    if (!proxyId) {
+      const syntheticId = `result_synthetic_${link.targetBlockId}`;
+      if (!nodes.find((n) => n["@id"] === syntheticId)) {
+        const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? t("prov.prevStepFallback");
+        nodes.push({
+          "@id": syntheticId,
+          "@type": "prov:Entity",
+          label: t("prov.resultOf", { label: prevActLabel }),
+          blockId: link.targetBlockId,
+        });
+        relations.push({
+          "@type": "prov:wasGeneratedBy",
+          from: syntheticId,
+          to: prevActId,
+        });
       }
+      proxyId = syntheticId;
     }
 
     relations.push({ "@type": "prov:used", from: currentActId, to: proxyId, linkId: link.id });

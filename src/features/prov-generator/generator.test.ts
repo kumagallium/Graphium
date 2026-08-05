@@ -2301,6 +2301,73 @@ describe("informed_by + inline_output（synthetic placeholder の抑制）", () 
     expect(merged).toHaveLength(1);
     expect(merged[0]["@id"]).toBe("inline_output_ent_prev_out");
   });
+
+  // ── 出力が複数あるとき: どれを使ったかは特定できない ──
+  // 「先頭の出力を勝手に proxy にする」旧挙動は、分岐（出力ごとに別の後続）
+  // で誤った受け渡しを描くため撤去した。特定は unification（同名入力）で行う。
+
+  const buildMultiOutputDoc = (withCurrMaterial: boolean) => {
+    const blocks: any[] = [
+      { id: "h-prev", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+      {
+        id: "p-prev",
+        type: "paragraph",
+        content: [
+          styled("batch A", { inlineOutput: "ent_out_a" }),
+          styled(" and ", {}),
+          styled("batch B", { inlineOutput: "ent_out_b" }),
+        ],
+        children: [],
+      },
+      { id: "h-curr", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step B" }], children: [] },
+    ];
+    if (withCurrMaterial) {
+      blocks.push({
+        id: "p-curr",
+        type: "paragraph",
+        content: [styled("batch A", { inlineMaterial: "ent_curr_mat" })],
+        children: [],
+      });
+    }
+    const labels = new Map([
+      ["h-prev", "procedure"],
+      ["h-curr", "procedure"],
+    ]);
+    const links = [
+      {
+        id: "link-1",
+        sourceBlockId: "h-curr",
+        targetBlockId: "h-prev",
+        type: "informed_by" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    return generateProvDocument({ blocks, labels, links });
+  };
+
+  it("prev の出力が複数で一致が無ければ、勝手に選ばず synthetic 'の結果' に落とす", () => {
+    const doc = buildMultiOutputDoc(false);
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).not.toContain("inline_output_ent_out_a");
+    expect(usedIds).not.toContain("inline_output_ent_out_b");
+    expect(usedIds).toContain("result_synthetic_h-prev");
+  });
+
+  it("prev の出力が複数でも、同名の入力があれば unification でその出力だけが正確に繋がる", () => {
+    const doc = buildMultiOutputDoc(true);
+    // batch A は 1 Entity に merge され、synthetic は作られない
+    const merged = doc["@graph"].filter(
+      (n) => n["@type"] === "prov:Entity" && n["rdfs:label"] === "batch A",
+    );
+    expect(merged).toHaveLength(1);
+    expect(doc["@graph"].filter((n) => n["@id"].startsWith("result_synthetic_"))).toHaveLength(0);
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).toContain("inline_output_ent_out_a");
+    expect(usedIds).not.toContain("inline_output_ent_out_b");
+  });
 });
 
 // ──────────────────────────────────
