@@ -1,17 +1,16 @@
 // フロービュー（F 案）の Entity ノード。
 //
-// material / tool / output の Entity が独立ノードとして表示され、
-// パラメータ（従属 attribute / テーブル列）は「key | value」の 2 列表で
-// ノード内に載る。編集は出自で分かれる:
-// - インライン span 由来（entityId あり）: 名前・属性行のリネーム / 削除 /
-//   「+ パラメータ」→ 本文 span の書き換え・合成（entity-edit 経由）
-// - 構造化テーブルの行由来（tableRef あり）: 名前 = 1 列目セル、属性 =
-//   該当列セルの書き換え。行削除も可能（table-row-edit 経由）
-// - どちらでもない（メディア / key-value 由来など）: 表示のみ
+// material / tool / output の Entity が独立ノードになる。ノードが持つのは
+// 名前・画像サムネイル・属性の件数だけで、属性の閲覧と編集は
+// flow-attribute-table 側に集約する（ノードに表を詰めるとグラフが読めなくなる）。
+//
+// ノード上でできるのは名前のリネームと削除。書き込み先は出自で分かれ、
+// インライン span 由来は entity-edit、構造化テーブルの行由来は
+// table-row-edit を通る。
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { FileText, Film, Image as ImageIcon, Music, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileText, Film, Image as ImageIcon, Music, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t } from "../../i18n";
@@ -23,12 +22,8 @@ export type EntityFlowNodeData = {
   onRenameEntity?: (entityId: string, text: string) => void;
   /** entityId 指定の削除（同上） */
   onRemoveEntity?: (entityId: string) => void;
-  /** この Entity に従属する属性を追加（インライン Entity のみ） */
-  onAddAttr?: (parentEntityId: string, text: string) => void;
   /** テーブル行の名前（1 列目）を書き換える */
   onRenameTableRow?: (blockId: string, rowName: string, newName: string) => void;
-  /** テーブル行の属性セル（columnKey 列）を書き換える */
-  onSetTableCell?: (blockId: string, rowName: string, columnKey: string, value: string) => void;
   /** テーブル行を削除する */
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
 };
@@ -122,9 +117,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
     entity,
     onRenameEntity,
     onRemoveEntity,
-    onAddAttr,
     onRenameTableRow,
-    onSetTableCell,
     onRemoveTableRow,
   } = data;
   const c = KIND_COLORS[entity.kind];
@@ -133,14 +126,10 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
   // 編集中の対象（合成キー）とドラフト:
   //   "name" | `inline:<entityId>` | `cell:<columnKey>`
   const [edit, setEdit] = useState<{ key: string; draft: string } | null>(null);
-  const [adding, setAdding] = useState<string | null>(null); // 属性追加中のドラフト
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   useEffect(() => {
-    if (!selected) {
-      setEdit(null);
-      setAdding(null);
-    }
+    if (!selected) setEdit(null);
   }, [selected]);
 
   const commitEdit = () => {
@@ -151,27 +140,10 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
           if (inlineEditable) onRenameEntity?.(entity.entityId!, v);
           else if (tableEditable)
             onRenameTableRow?.(entity.tableRef!.blockId, entity.tableRef!.rowName, v);
-        } else if (edit.key.startsWith("inline:")) {
-          onRenameEntity?.(edit.key.slice("inline:".length), v);
-        } else if (edit.key.startsWith("cell:")) {
-          onSetTableCell?.(
-            entity.tableRef!.blockId,
-            entity.tableRef!.rowName,
-            edit.key.slice("cell:".length),
-            v,
-          );
         }
       }
     }
     setEdit(null);
-  };
-
-  const commitAdd = () => {
-    if (adding !== null && entity.entityId) {
-      const v = adding.trim();
-      if (v) onAddAttr?.(entity.entityId, v);
-    }
-    setAdding(null);
   };
 
   const removeSelf = () => {
@@ -209,83 +181,6 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
       style={attrInputStyle}
     />
   );
-
-  /** 属性 1 行。kv 分解して 2 列（key はグレー・右寄せ）で描く */
-  const attrRow = (
-    rowKey: string,
-    label: string,
-    editKey: string | null, // null = 表示のみ
-    onStartEdit: (() => void) | null,
-    onRemove: (() => void) | null,
-    editDraftValueOnly: boolean, // cell 編集は value のみ input に出す
-  ): ReactNode => {
-    const { key, value } = splitAttrLabel(label);
-    const editingThis = editKey !== null && edit?.key === editKey;
-    return (
-      <div key={rowKey} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {key !== null && (
-          <span
-            style={{
-              fontSize: 10,
-              color: "#8fa394",
-              width: 52,
-              flexShrink: 0,
-              textAlign: "right",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={key}
-          >
-            {key}
-          </span>
-        )}
-        {editingThis ? (
-          editField(
-            edit!.draft,
-            (v) => setEdit((prev) => (prev ? { ...prev, draft: v } : prev)),
-            commitEdit,
-            () => setEdit(null),
-          )
-        ) : (
-          <span
-            title={label}
-            onDoubleClick={onStartEdit ?? undefined}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              fontSize: 11,
-              lineHeight: "16px",
-              color: "#1a2e1d",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {editDraftValueOnly || key !== null ? value : label}
-          </span>
-        )}
-        {selected && !editingThis && (onStartEdit || onRemove) && (
-          <span className="nodrag" style={{ display: "inline-flex", gap: 0, flexShrink: 0 }}>
-            {onStartEdit && (
-              <button onClick={onStartEdit} title={t("activityGraph.editChip")} style={miniBtnStyle}>
-                <Pencil size={10} />
-              </button>
-            )}
-            {onRemove && (
-              <button
-                onClick={onRemove}
-                title={t("activityGraph.removeChip")}
-                style={{ ...miniBtnStyle, color: "#c26356" }}
-              >
-                <Trash2 size={10} />
-              </button>
-            )}
-          </span>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div
@@ -374,69 +269,20 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
         <EntityThumbnail url={entity.mediaUrl} alt={entity.label} />
       )}
 
-      {/* 属性表（key | value の 2 列） */}
-      {(entity.attrs.length > 0 || (selected && inlineEditable && onAddAttr)) && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 8px 6px" }}>
-          {entity.attrs.map((a, i) => {
-            if (a.entityId) {
-              // インライン従属 attribute: 行全体テキストの編集・span 削除
-              const editKey = `inline:${a.entityId}`;
-              return attrRow(
-                a.entityId,
-                a.label,
-                editKey,
-                onRenameEntity ? () => setEdit({ key: editKey, draft: a.label }) : null,
-                onRemoveEntity ? () => onRemoveEntity(a.entityId!) : null,
-                false,
-              );
-            }
-            const { key } = splitAttrLabel(a.label);
-            if (tableEditable && key !== null) {
-              // テーブル列: value セルだけ書き換え（列自体の削除はテーブル UI で）
-              const editKey = `cell:${key}`;
-              return attrRow(
-                `cell-${i}`,
-                a.label,
-                editKey,
-                onSetTableCell
-                  ? () => setEdit({ key: editKey, draft: splitAttrLabel(a.label).value })
-                  : null,
-                null,
-                true,
-              );
-            }
-            return attrRow(`ro-${i}`, a.label, null, null, null, false);
-          })}
-
-          {/* + パラメータ（インライン Entity のみ — 明示 binding の親が必要） */}
-          {selected && inlineEditable && onAddAttr && (
-            adding !== null ? (
-              <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                {editField(adding, setAdding, commitAdd, () => setAdding(null))}
-              </div>
-            ) : (
-              <button
-                className="nodrag"
-                onClick={() => setAdding("")}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                  alignSelf: "flex-start",
-                  padding: "1px 5px 1px 2px",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: "#8fa394",
-                  background: "transparent",
-                  border: "none",
-                  borderRadius: 5,
-                  cursor: "pointer",
-                }}
-              >
-                <Plus size={10} /> {t("activityGraph.addAttr")}
-              </button>
-            )
-          )}
+      {/* 属性はテーブルパネル側で編集する。ここは「ある」ことだけ示す */}
+      {entity.attrs.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            padding: "2px 10px 5px",
+            fontSize: 10,
+            color: "#8fa394",
+          }}
+        >
+          <SlidersHorizontal size={10} />
+          {entity.attrs.length}
         </div>
       )}
 

@@ -99,10 +99,13 @@ function stepContentCount(step: any): number {
 export function ActivityGraphEditor({
   doc,
   editorRef,
+  tableLayout,
 }: {
   doc: ProvJsonLd | null;
   /** メインエディタ（BlockNote）への参照。無ければノード操作は出さない（接続のみ） */
   editorRef?: { current: any };
+  /** 属性テーブルの置き場所（全画面では右横） */
+  tableLayout?: "below" | "side";
 }) {
   const linkStore = useLinkStore();
   const labelStore = useLabelStore();
@@ -435,6 +438,7 @@ export function ActivityGraphEditor({
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
       onSetTableCell={hasEditor ? onSetTableCell : undefined}
       onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
+      tableLayout={tableLayout}
     />
   );
 }

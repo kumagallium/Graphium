@@ -38,10 +38,11 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Plus, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
-import type { ActivityIoKind, FlowGraphData } from "./activity-graph-adapter";
+import type { FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
-import { StepNodeCard, type StepFlowNode } from "./step-node-card";
-import { EntityFlowNode, type EntityFlowNodeType } from "./entity-flow-node";
+import { StepNodeCard } from "./step-node-card";
+import { EntityFlowNode } from "./entity-flow-node";
+import { FlowAttributeTable, type FlowSelection } from "./flow-attribute-table";
 
 const ACTIVITY_BLUE = "#5b8fb9";
 const MATERIAL_GREEN = "#4B7A52";
@@ -88,6 +89,8 @@ export type StepFlowViewProps = {
   onSetTableCell?: (blockId: string, rowName: string, columnKey: string, value: string) => void;
   /** テーブル行 Entity: 行の削除 */
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
+  /** 属性テーブルの置き場所。below = グラフの下（右パネル）、side = 右横（全画面） */
+  tableLayout?: "below" | "side";
 };
 
 const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
@@ -127,6 +130,7 @@ function StepFlowCanvas({
   onRenameTableRow,
   onSetTableCell,
   onRemoveTableRow,
+  tableLayout = "below",
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -139,6 +143,11 @@ function StepFlowCanvas({
   const [edgeMenu, setEdgeMenu] = useState<{ source: string; target: string; x: number; y: number } | null>(null);
   // 循環でドラッグ接続を拒否したときの警告。0 = 非表示
   const [cycleWarnAt, setCycleWarnAt] = useState(0);
+  // 属性テーブルに出す選択中ノード。グラフ再生成でノードが作り直されても
+  // 選択は保つ（属性を足した直後にテーブルが空へ戻らないように）
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
   const { fitView, getNodes } = useReactFlow();
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
   // コールバック安定化のため）
@@ -171,6 +180,7 @@ function StepFlowCanvas({
           onRemoveEntity,
         },
         draggable: false,
+        selected: s.id === selectedIdRef.current,
       }));
       const entityNodes: Node[] = graph.entities.map((e) => ({
         id: e.id,
@@ -180,12 +190,11 @@ function StepFlowCanvas({
           entity: e,
           onRenameEntity,
           onRemoveEntity,
-          onAddAttr: onAddAttrToEntity,
           onRenameTableRow,
-          onSetTableCell,
           onRemoveTableRow,
         },
         draggable: false,
+        selected: e.id === selectedIdRef.current,
       }));
       return [...stepNodes, ...entityNodes];
     });
@@ -308,8 +317,41 @@ function StepFlowCanvas({
     [edges],
   );
 
+  // 選択中ノードを属性テーブルへ渡す（step / entity のどちらか）
+  const selection: FlowSelection = selectedId
+    ? (() => {
+        const step = graph.steps.find((s) => s.id === selectedId);
+        if (step) return { kind: "step" as const, step };
+        const entity = graph.entities.find((e) => e.id === selectedId);
+        return entity ? { kind: "entity" as const, entity } : null;
+      })()
+    : null;
+
+  const attributeTable = (
+    <FlowAttributeTable
+      selection={selection}
+      onRenameEntity={onRenameEntity}
+      onRemoveEntity={onRemoveEntity}
+      onAddAttrToEntity={onAddAttrToEntity}
+      onAddStepParam={
+        onAddEntity ? (stepBlockId, text) => onAddEntity(stepBlockId, "attribute", text) : undefined
+      }
+      onSetTableCell={onSetTableCell}
+    />
+  );
+
   return (
-    <div ref={wrapperRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: tableLayout === "side" ? "row" : "column",
+        gap: 8,
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+    <div ref={wrapperRef} style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0 }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -329,6 +371,21 @@ function StepFlowCanvas({
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
           });
+        }}
+        onSelectionChange={({ nodes: sel }) => {
+          // 再生成の谷間で一瞬 [] が来ることがある。まだグラフに残っている
+          // 選択は維持し、ユーザーが本当に外したときだけ null にする
+          const next = sel[0]?.id ?? null;
+          if (next) {
+            setSelectedId(next);
+            return;
+          }
+          const prev = selectedIdRef.current;
+          const stillThere =
+            prev &&
+            (graphRef.current.steps.some((x) => x.id === prev) ||
+              graphRef.current.entities.some((x) => x.id === prev));
+          if (!stillThere) setSelectedId(null);
         }}
         onPaneClick={() => setEdgeMenu(null)}
         onMove={() => setEdgeMenu(null)}
@@ -473,6 +530,18 @@ function StepFlowCanvas({
           {t("activityGraph.dragHint")}
         </div>
       )}
+    </div>
+
+      {/* 属性テーブル（下 or 右）。ノードは名前だけに保ち、中身はここで編集する */}
+      <div
+        style={
+          tableLayout === "side"
+            ? { width: 300, flexShrink: 0, minHeight: 0 }
+            : { height: 176, flexShrink: 0 }
+        }
+      >
+        {attributeTable}
+      </div>
     </div>
   );
 }

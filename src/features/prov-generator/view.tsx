@@ -261,7 +261,7 @@ export function ProvGraphPanel({
         {legendBar}
         {/* 拡大中はモーダル側だけを描く（React Flow を二重に走らせない） */}
         {!expanded && (
-          <div style={{ height: 440 }}>
+          <div style={{ height: 620 }}>
             <ActivityGraphEditor doc={doc} editorRef={editorRef} />
           </div>
         )}
@@ -273,7 +273,7 @@ export function ProvGraphPanel({
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             {legendBar}
             <div style={{ height: window.innerHeight - 120 }}>
-              <ActivityGraphEditor doc={doc} editorRef={editorRef} />
+              <ActivityGraphEditor doc={doc} editorRef={editorRef} tableLayout="side" />
             </div>
           </div>
         </div>,

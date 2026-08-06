@@ -793,6 +793,9 @@ export const en: Record<string, string> = {
   "activityGraph.addAttr": "Parameter",
   "step.unspecifiedOutput": "Without a specific output",
   "graphTable.nameColumn": "Name",
+  "flowTable.noSelection": "Select a node to edit its parameters here",
+  "flowTable.noAttrs": "No parameters yet",
+  "flowTable.attrCount": "{n}",
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
 
