@@ -317,6 +317,55 @@ export function ActivityGraphEditor({
     [onAddEntity],
   );
 
+  // Entity の下ポートを空白へドロップ → その Entity を受け取る新しい手順を作る。
+  // 生成元 step の直後に置き、入力 span + informed_by まで張って
+  // 「引き出したら次の工程が生まれる」を 1 操作で完結させる。
+  const onCreateStepFromEntity = useCallback(
+    (entityNodeId: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      const g = flowGraphRef.current;
+      const entity = g.entities.find((e) => e.id === entityNodeId);
+      if (!entity) return;
+      const blocks: any[] = editor.document ?? [];
+      const producer = g.edges.find((e) => e.kind === "generates" && e.target === entityNodeId)?.source;
+      const reference =
+        (producer && findBlockById(blocks, producer) ? producer : null) ??
+        findLastStepId(blocks) ??
+        blocks[blocks.length - 1]?.id;
+      if (!reference) return;
+      const inserted = editor.insertBlocks(
+        [
+          {
+            type: "step",
+            content: [{ type: "text", text: buildDefaultStepTitle(blocks), styles: {} }],
+            children: [{ type: "paragraph" }],
+          },
+        ],
+        reference,
+        "after",
+      );
+      const newId = inserted?.[0]?.id;
+      if (!newId) return;
+      appendEntitySpanToStep(
+        editor,
+        newId,
+        entity.kind === "output" ? "material" : entity.kind,
+        entity.label,
+      );
+      if (producer) {
+        linkStoreRef.current.addLink({
+          sourceBlockId: newId,
+          targetBlockId: producer,
+          type: "informed_by",
+          createdBy: "human",
+        });
+      }
+      selectStepTitle(editor, newId);
+    },
+    [getEditor],
+  );
+
   const onRenameEntity = useCallback(
     (entityId: string, newText: string) => {
       const editor = getEditor();
@@ -343,6 +392,7 @@ export function ActivityGraphEditor({
       onConnectSteps={onConnectSteps}
       onRemoveOrderEdge={onRemoveOrderEdge}
       onConnectEntityToStep={hasEditor ? onConnectEntityToStep : undefined}
+      onCreateStepFromEntity={hasEditor ? onCreateStepFromEntity : undefined}
       onAddActivity={hasEditor ? onAddActivity : undefined}
       onRenameActivity={hasEditor ? onRenameActivity : undefined}
       onDeleteActivity={hasEditor ? onDeleteActivity : undefined}

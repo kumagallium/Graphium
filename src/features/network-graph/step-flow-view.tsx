@@ -62,6 +62,8 @@ export type StepFlowViewProps = {
   onRemoveOrderEdge?: (producer: string, consumer: string) => void;
   /** entity → step 接続: その Entity を対象手順の入力にする（entityNodeId は provDoc の @id） */
   onConnectEntityToStep?: (entityNodeId: string, stepBlockId: string) => void;
+  /** entity の下ポートを空白へドロップ: その Entity を受け取る新しい手順を作る */
+  onCreateStepFromEntity?: (entityNodeId: string) => void;
   /** ツールバーの「+ 手順」。省略時はボタンを出さない */
   onAddActivity?: () => void;
   /** step カードのリネーム確定 */
@@ -112,6 +114,7 @@ function StepFlowCanvas({
   onConnectSteps,
   onRemoveOrderEdge,
   onConnectEntityToStep,
+  onCreateStepFromEntity,
   onAddActivity,
   onRenameActivity,
   onDeleteActivity,
@@ -281,6 +284,19 @@ function StepFlowCanvas({
     [onConnectSteps, onConnectEntityToStep],
   );
 
+  // Entity の下ポートを空白へドロップ → その Entity を入力に持つ新しい手順を作る。
+  // n8n 的な「線を引き出して次を生やす」操作で、+ 手順を追加より発見しやすい。
+  const handleConnectEnd = useCallback(
+    (_event: MouseEvent | TouchEvent, connectionState: { isValid: boolean | null; fromNode?: { id: string } | null }) => {
+      if (connectionState.isValid) return; // 既存ノードへの接続は onConnect が処理済み
+      const fromId = connectionState.fromNode?.id;
+      if (!fromId) return;
+      if (!graphRef.current.entities.some((e) => e.id === fromId)) return;
+      onCreateStepFromEntity?.(fromId);
+    },
+    [onCreateStepFromEntity],
+  );
+
   const isValidConnection: IsValidConnection<FlowRfEdge> = useCallback(
     (conn) => {
       if (!conn.source || !conn.target || conn.source === conn.target) return false;
@@ -301,6 +317,7 @@ function StepFlowCanvas({
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
+        onConnectEnd={onCreateStepFromEntity ? (handleConnectEnd as any) : undefined}
         isValidConnection={isValidConnection}
         onEdgeClick={(e: React.MouseEvent, edge: FlowRfEdge) => {
           if (edge.data?.kind !== "orderOnly" || !edge.data?.deletable || !onRemoveOrderEdge) return;

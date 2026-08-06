@@ -777,7 +777,7 @@ export const en: Record<string, string> = {
   "provPanel.expandView": "Expand view",
   "provPanel.viewProv": "Steps (all)",
   "provPanel.viewFlow": "Steps (only)",
-  "activityGraph.dragHint": "Drag the blue dot under a step onto another step to connect them",
+  "activityGraph.dragHint": "Drag the dot under a node to connect. Drop it on empty space to create a step that receives it",
   "activityGraph.deleteStep": "Delete link",
   "activityGraph.addStep": "Add step",
   "activityGraph.deleteNode": "Delete step",

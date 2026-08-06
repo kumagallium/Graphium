@@ -778,7 +778,7 @@ export const ja: Record<string, string> = {
   "provPanel.expandView": "拡大表示",
   "provPanel.viewProv": "手順（全体）",
   "provPanel.viewFlow": "手順（ステップのみ）",
-  "activityGraph.dragHint": "手順の下の青い丸を別の手順へドラッグしてつなげます",
+  "activityGraph.dragHint": "ノードの下の丸をドラッグしてつなげます。何もない場所に落とすと、その材料を受け取る手順ができます",
   "activityGraph.deleteStep": "つながりを削除",
   "activityGraph.addStep": "手順を追加",
   "activityGraph.deleteNode": "手順を削除",
