@@ -793,6 +793,8 @@ export const ja: Record<string, string> = {
   "activityGraph.orderOnly": "順序のみ",
   "activityGraph.addAttr": "パラメータ",
   "step.unspecifiedOutput": "出力を特定しない",
+  "step.pickerStepsHeader": "ステップ一覧",
+  "step.pickerOutputsHeader": "アウトプット一覧",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} 件",

@@ -792,6 +792,8 @@ export const en: Record<string, string> = {
   "activityGraph.orderOnly": "order only",
   "activityGraph.addAttr": "Parameter",
   "step.unspecifiedOutput": "Without a specific output",
+  "step.pickerStepsHeader": "Steps",
+  "step.pickerOutputsHeader": "Outputs",
 
   // ── ナビゲーション追加 ──
   "nav.noteCount": "{filtered} / {total} notes",

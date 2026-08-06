@@ -19,7 +19,7 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { defaultProps } from "@blocknote/core";
 import { TextSelection } from "prosemirror-state";
 import { useEffect, useRef, useState } from "react";
-import { Check, Link2, ListChecks, Plus } from "lucide-react";
+import { Check, ChevronRight, Link2, ListChecks, Plus } from "lucide-react";
 import { useLinkStore } from "../../features/block-link/store";
 import { useLabelStore } from "../../features/context-label/store";
 import { deriveActivityName } from "../../features/context-label/activity-name";
@@ -232,6 +232,8 @@ export const StepBlock = createReactBlockSpec(
       const linkStore = useLinkStore();
       const labelStore = useLabelStore();
       const [pickerOpen, setPickerOpen] = useState(false);
+      // 前手順ピッカーで出力サブメニューを開いているステップ（blockId）
+      const [openOutputsFor, setOpenOutputsFor] = useState<string | null>(null);
       // 後続（次ステップ）側のピッカー
       const [nextOpen, setNextOpen] = useState(false);
       // 循環でリンクを拒否されたとき、無反応に見えないよう理由を出す
@@ -245,6 +247,7 @@ export const StepBlock = createReactBlockSpec(
           if (!rootRef.current?.contains(e.target as Node)) {
             setPickerOpen(false);
             setNextOpen(false);
+            setOpenOutputsFor(null);
           }
         };
         document.addEventListener("mousedown", onDown);
@@ -420,6 +423,7 @@ export const StepBlock = createReactBlockSpec(
                 setPickerOpen((v) => !v);
                 setNextOpen(false);
                 setCycleWarn(false);
+                setOpenOutputsFor(null);
               }}
               title={t("labelUi.prevStepLink")}
               aria-expanded={pickerOpen}
@@ -452,7 +456,7 @@ export const StepBlock = createReactBlockSpec(
             </button>
             {pickerOpen && (
               <div role="menu" style={pickerStyles.menu}>
-                <div style={pickerStyles.header}>{t("labelUi.prevStepLink")}</div>
+                <div style={pickerStyles.header}>{t("step.pickerStepsHeader")}</div>
                 {candidates.length === 0 && (
                   <div style={pickerStyles.empty}>{t("step.noOtherSteps")}</div>
                 )}
@@ -464,73 +468,113 @@ export const StepBlock = createReactBlockSpec(
                 {candidates.map((c) => {
                   const active = prevLinks.some((l) => l.targetBlockId === c.blockId);
                   const outputs = collectStepOutputs(doc, labelStore.labels, c.blockId);
-                  // 出力がある step は 2 階層: 「どの出力を受けるか」を選べる。
-                  // 「出力を特定しない」は従来どおり informed_by のみ（点線の順序依存）。
+                  // 第 1 階層はステップだけ。出力を持つステップはホバー（クリックでも）で
+                  // サブメニューを開き、そこで「どの出力を受けるか」を選ぶ。
+                  // 出力を持たないステップは従来どおりクリックで順序リンクの付け外し。
+                  const submenuOpen = outputs.length > 0 && openOutputsFor === c.blockId;
                   return (
-                    <div key={c.blockId}>
-                      {outputs.length > 0 && (
-                        <div
-                          style={{
-                            padding: "5px 10px 1px",
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: "var(--color-text-tertiary)",
-                          }}
-                        >
-                          {c.title}
-                        </div>
-                      )}
-                      {outputs.map((o) => {
-                        const received = stepHasInputText(doc, props.block.id, o);
-                        return (
-                          <button
-                            key={`${c.blockId}:${o}`}
-                            type="button"
-                            role="menuitemcheckbox"
-                            aria-checked={received}
-                            onClick={() => !received && pickOutput(c.blockId, o)}
-                            style={{
-                              ...pickerStyles.item,
-                              cursor: received ? "default" : "pointer",
-                              color: "var(--color-foreground)",
-                            }}
-                          >
-                            <span
-                              style={{
-                                flex: "0 0 auto",
-                                width: 7,
-                                height: 7,
-                                borderRadius: "50%",
-                                background: "var(--color-label-result, #c26356)",
-                              }}
-                            />
-                            <span style={pickerStyles.itemLabel}>{o}</span>
-                            {received && <Check size={13} strokeWidth={2.4} />}
-                          </button>
-                        );
-                      })}
+                    <div
+                      key={c.blockId}
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => outputs.length > 0 && setOpenOutputsFor(c.blockId)}
+                      onMouseLeave={() =>
+                        setOpenOutputsFor((prev) => (prev === c.blockId ? null : prev))
+                      }
+                    >
                       <button
                         type="button"
-                        role="menuitemcheckbox"
-                        aria-checked={active}
-                        onClick={() => toggleCandidate(c.blockId)}
+                        role={outputs.length > 0 ? "menuitem" : "menuitemcheckbox"}
+                        aria-checked={outputs.length > 0 ? undefined : active}
+                        aria-haspopup={outputs.length > 0 || undefined}
+                        aria-expanded={outputs.length > 0 ? submenuOpen : undefined}
+                        onClick={() =>
+                          outputs.length > 0
+                            ? setOpenOutputsFor(submenuOpen ? null : c.blockId)
+                            : toggleCandidate(c.blockId)
+                        }
                         style={{
                           ...pickerStyles.item,
-                          background: active
-                            ? "var(--color-label-activity-bg)"
-                            : "transparent",
+                          width: "100%",
+                          background:
+                            active || submenuOpen
+                              ? "var(--color-label-activity-bg)"
+                              : "transparent",
                           color: active
                             ? "var(--color-label-activity)"
-                            : outputs.length > 0
-                              ? "var(--color-text-tertiary)"
-                              : "var(--color-foreground)",
+                            : "var(--color-foreground)",
                         }}
                       >
-                        <span style={pickerStyles.itemLabel}>
-                          {outputs.length > 0 ? t("step.unspecifiedOutput") : c.title}
+                        <span style={pickerStyles.itemLabel}>{c.title}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flex: "0 0 auto" }}>
+                          {active && <Check size={13} strokeWidth={2.4} />}
+                          {outputs.length > 0 && (
+                            <ChevronRight
+                              size={13}
+                              strokeWidth={2.2}
+                              style={{ color: "var(--color-text-tertiary)" }}
+                            />
+                          )}
                         </span>
-                        {active && <Check size={13} strokeWidth={2.4} />}
                       </button>
+                      {submenuOpen && (
+                        <div role="menu" style={pickerStyles.submenu}>
+                          <div style={pickerStyles.header}>{t("step.pickerOutputsHeader")}</div>
+                          {outputs.map((o) => {
+                            const received = stepHasInputText(doc, props.block.id, o);
+                            return (
+                              <button
+                                key={`${c.blockId}:${o}`}
+                                type="button"
+                                role="menuitemcheckbox"
+                                aria-checked={received}
+                                onClick={() => !received && pickOutput(c.blockId, o)}
+                                style={{
+                                  ...pickerStyles.item,
+                                  width: "100%",
+                                  cursor: received ? "default" : "pointer",
+                                  color: "var(--color-foreground)",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    flex: "0 0 auto",
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: "50%",
+                                    background: "var(--color-label-result, #c26356)",
+                                  }}
+                                />
+                                {/* 丸印の隣に寄せる（item は space-between なので flex:1 が要る） */}
+                                <span style={{ ...pickerStyles.itemLabel, flex: 1, textAlign: "left" }}>
+                                  {o}
+                                </span>
+                                {received && <Check size={13} strokeWidth={2.4} />}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={active}
+                            onClick={() => toggleCandidate(c.blockId)}
+                            style={{
+                              ...pickerStyles.item,
+                              width: "100%",
+                              background: active
+                                ? "var(--color-label-activity-bg)"
+                                : "transparent",
+                              color: active
+                                ? "var(--color-label-activity)"
+                                : "var(--color-text-tertiary)",
+                            }}
+                          >
+                            <span style={pickerStyles.itemLabel}>
+                              {t("step.unspecifiedOutput")}
+                            </span>
+                            {active && <Check size={13} strokeWidth={2.4} />}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -674,6 +718,25 @@ const pickerStyles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     letterSpacing: "0.03em",
     color: "var(--color-text-tertiary)",
+  },
+  // 出力サブメニュー。シェブロン（›）の向きに合わせて右へ開く。
+  // 左開きにするとエディタ列の左端で切れる（実測）。
+  submenu: {
+    position: "absolute",
+    top: -6,
+    left: "100%",
+    marginLeft: 4,
+    zIndex: 21,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: 6,
+    minWidth: 160,
+    maxWidth: 240,
+    borderRadius: 8,
+    background: "var(--color-card)",
+    border: "1px solid var(--color-border)",
+    boxShadow: "var(--shadow-2)",
   },
   empty: {
     padding: "4px 8px 6px",
