@@ -1,16 +1,19 @@
-// 選択中ノードの属性テーブル（フロービューの下 / 全画面では右）。
+// 選択中ノードの裏にあるノート側テーブルを、そのままグリッドとして編集する панель。
 //
-// ノードの中に表を詰めるとグラフが読みにくくなるため、ノードは名前だけにして
-// 属性の閲覧・編集はここに集約する。編集の書き込み先はノードの出自で分かれる:
-// - インライン span 由来: 行テキストの書き換え / span の削除（entity-edit 経由）
-// - 構造化テーブルの行由来: ノート側テーブルのセル（table-row-edit 経由）
-// - step のパラメータ: Activity 直結のインライン attribute
+// 「グラフから足したものがノートに文字として散らばる」のを避けるため、
+// 入出力もパラメータもノート側では表（インデックステーブルと同じ標準 table +
+// ラベル）に入る。このパネルはその表の編集 UI で、ヘッダ（キー）もセル（値）も
+// ここで作れる。表の実体はノートにあるので、ノート側で直接編集しても同じ。
+//
+// 表の裏付けが無い属性（本文のインライン span 由来の旧データ）は、下に
+// 「本文に書かれたもの」として別枠で並べ、テキストの編集・解除だけできる。
 
 import { useEffect, useState, type CSSProperties } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t } from "../../i18n";
 import { splitAttrLabel, type FlowEntity, type FlowStep } from "./activity-graph-adapter";
+import type { TableData } from "./table-row-edit";
 
 export type FlowSelection =
   | { kind: "step"; step: FlowStep }
@@ -19,59 +22,82 @@ export type FlowSelection =
 
 export type FlowAttributeTableProps = {
   selection: FlowSelection;
-  /** entityId 指定のリネーム（Entity 名・属性行の共通機構） */
+  /** 選択の裏にあるノート側テーブル（step ならパラメータ表、entity ならその行の表） */
+  table: TableData | null;
+  /** グリッド内でハイライトする行（entity 選択時のその行） */
+  highlightRow?: number;
+  // ── テーブル編集 ──
+  onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
+  onRenameColumn?: (blockId: string, colIndex: number, name: string) => void;
+  onAddColumn?: (blockId: string, name: string) => void;
+  onRemoveColumn?: (blockId: string, colIndex: number) => void;
+  onAddRow?: (blockId: string, name: string) => void;
+  /** 表がまだ無い step にパラメータ表を作って最初の列を足す */
+  onCreateParamColumn?: (stepBlockId: string, key: string) => void;
+  // ── 本文 span 由来（旧データ）の編集 ──
   onRenameEntity?: (entityId: string, text: string) => void;
-  /** entityId 指定の削除 */
   onRemoveEntity?: (entityId: string) => void;
-  /** Entity への従属属性の追加 */
-  onAddAttrToEntity?: (parentEntityId: string, text: string) => void;
-  /** step へのパラメータ追加 */
-  onAddStepParam?: (stepBlockId: string, text: string) => void;
-  /** テーブル行 Entity: セルの書き換え */
-  onSetTableCell?: (blockId: string, rowName: string, columnKey: string, value: string) => void;
 };
 
-const cellStyle: CSSProperties = {
+const th: CSSProperties = {
   padding: "4px 8px",
+  fontSize: 11,
+  fontWeight: 700,
+  textAlign: "left",
+  whiteSpace: "nowrap",
+  background: "var(--color-surface, #f5f8f5)",
+  borderBottom: "1px solid var(--color-border, #d5e0d7)",
+  borderRight: "1px solid var(--color-border-subtle, #dce5dd)",
+};
+
+const td: CSSProperties = {
+  padding: "3px 8px",
   fontSize: 12,
   borderBottom: "1px solid var(--color-border-subtle, #dce5dd)",
-  verticalAlign: "middle",
+  borderRight: "1px solid var(--color-border-subtle, #dce5dd)",
+  cursor: "text",
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  padding: "2px 6px",
+  padding: "1px 4px",
   fontSize: 12,
   border: "1px solid var(--color-primary, #4B7A52)",
-  borderRadius: 4,
+  borderRadius: 3,
   outline: "none",
 };
 
-const iconBtn: CSSProperties = {
+const addBtnStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
-  width: 20,
-  height: 20,
-  padding: 0,
-  border: "none",
-  borderRadius: 4,
+  gap: 3,
+  padding: "2px 7px 2px 4px",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--color-primary, #4B7A52)",
   background: "transparent",
-  color: "var(--color-text-tertiary, #8fa394)",
+  border: "none",
+  borderRadius: 5,
   cursor: "pointer",
 };
 
 export function FlowAttributeTable({
   selection,
+  table,
+  highlightRow,
+  onSetCell,
+  onRenameColumn,
+  onAddColumn,
+  onRemoveColumn,
+  onAddRow,
+  onCreateParamColumn,
   onRenameEntity,
   onRemoveEntity,
-  onAddAttrToEntity,
-  onAddStepParam,
-  onSetTableCell,
 }: FlowAttributeTableProps) {
-  // 編集中の行キー（`inline:<entityId>` / `cell:<columnKey>`）とドラフト
+  // 編集対象: `h:<col>`（ヘッダ） / `c:<row>:<col>`（セル） / `inline:<entityId>`
   const [edit, setEdit] = useState<{ key: string; draft: string } | null>(null);
-  const [adding, setAdding] = useState<string | null>(null);
+  // 追加中: 列 or 行
+  const [adding, setAdding] = useState<{ what: "column" | "row"; draft: string } | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   const selectionId =
@@ -81,7 +107,6 @@ export function FlowAttributeTable({
         ? selection.entity.id
         : null;
 
-  // 選択が変わったら編集状態を捨てる（別ノードに書き込まないため）
   useEffect(() => {
     setEdit(null);
     setAdding(null);
@@ -95,41 +120,43 @@ export function FlowAttributeTable({
     );
   }
 
-  const attrs = selection.kind === "step" ? selection.step.params : selection.entity.attrs;
   const title = selection.kind === "step" ? selection.step.name : selection.entity.label;
-  const tableRef = selection.kind === "entity" ? selection.entity.tableRef : undefined;
-  const parentEntityId = selection.kind === "entity" ? selection.entity.entityId : undefined;
-  const canAdd =
-    selection.kind === "step"
-      ? !!onAddStepParam
-      : !!parentEntityId && !!onAddAttrToEntity;
+  // 本文 span 由来（表の裏付けが無い）属性だけを別枠で扱う
+  const inlineAttrs = (selection.kind === "step" ? selection.step.params : selection.entity.attrs).filter(
+    (a) => !!a.entityId,
+  );
+  const blockId = table?.blockId ?? null;
 
   const commitEdit = () => {
-    if (edit) {
+    if (edit && blockId) {
       const v = edit.draft.trim();
-      if (v) {
-        if (edit.key.startsWith("inline:")) {
-          onRenameEntity?.(edit.key.slice("inline:".length), v);
-        } else if (edit.key.startsWith("cell:") && tableRef) {
-          onSetTableCell?.(tableRef.blockId, tableRef.rowName, edit.key.slice("cell:".length), v);
-        }
-      }
+      const [kind, a, b] = edit.key.split(":");
+      if (kind === "h" && v) onRenameColumn?.(blockId, Number(a), v);
+      else if (kind === "c") onSetCell?.(blockId, Number(a), Number(b), edit.draft);
+    }
+    if (edit?.key.startsWith("inline:")) {
+      const v = edit.draft.trim();
+      if (v) onRenameEntity?.(edit.key.slice("inline:".length), v);
     }
     setEdit(null);
   };
 
   const commitAdd = () => {
-    if (adding !== null) {
-      const v = adding.trim();
+    if (adding) {
+      const v = adding.draft.trim();
       if (v) {
-        if (selection.kind === "step") onAddStepParam?.(selection.step.id, v);
-        else if (parentEntityId) onAddAttrToEntity?.(parentEntityId, v);
+        if (adding.what === "column") {
+          if (blockId) onAddColumn?.(blockId, v);
+          else if (selection.kind === "step") onCreateParamColumn?.(selection.step.id, v);
+        } else if (blockId) {
+          onAddRow?.(blockId, v);
+        }
       }
     }
     setAdding(null);
   };
 
-  const editField = (value: string, onChange: (v: string) => void, onCommit: () => void, onCancel: () => void) => (
+  const field = (value: string, onChange: (v: string) => void, onCommit: () => void) => (
     <input
       value={value}
       autoFocus
@@ -140,107 +167,183 @@ export function FlowAttributeTable({
         if (e.key === "Enter" && !isImeKey(e)) onCommit();
         else if (e.key === "Escape") {
           e.stopPropagation();
-          onCancel();
+          setEdit(null);
+          setAdding(null);
         }
       }}
-      onBlur={onCancel}
+      onBlur={() => {
+        setEdit(null);
+        setAdding(null);
+      }}
       style={inputStyle}
     />
   );
+
+  const editing = (key: string) => edit?.key === key;
 
   return (
     <div style={wrapStyle}>
       <div style={headerStyle}>
         <span style={{ fontWeight: 700, color: "var(--color-foreground)" }}>{title}</span>
-        <span style={{ color: "var(--color-text-tertiary, #8fa394)" }}>
-          {t("flowTable.attrCount", { n: String(attrs.length) })}
-        </span>
+        {table && (
+          <span style={{ color: "var(--color-text-tertiary, #8fa394)" }}>
+            {t("flowTable.tableHint")}
+          </span>
+        )}
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <tbody>
-            {attrs.map((a, i) => {
-              const { key, value } = splitAttrLabel(a.label);
-              const inlineEditable = !!a.entityId && !!onRenameEntity;
-              const cellEditable = !a.entityId && !!tableRef && key !== null && !!onSetTableCell;
-              const editKey = a.entityId ? `inline:${a.entityId}` : key ? `cell:${key}` : null;
-              const editing = editKey !== null && edit?.key === editKey;
-              const startEdit = () =>
-                editKey &&
-                setEdit({ key: editKey, draft: a.entityId ? a.label : value });
-              return (
-                <tr key={a.entityId ?? `row-${i}`}>
-                  <td style={{ ...cellStyle, width: "38%", color: "var(--color-text-tertiary, #8fa394)" }}>
-                    {key ?? "—"}
-                  </td>
-                  <td style={cellStyle}>
-                    {editing
-                      ? editField(
-                          edit!.draft,
-                          (v) => setEdit((prev) => (prev ? { ...prev, draft: v } : prev)),
-                          commitEdit,
-                          () => setEdit(null),
-                        )
-                      : value}
-                  </td>
-                  <td style={{ ...cellStyle, width: 52, textAlign: "right", whiteSpace: "nowrap" }}>
-                    {!editing && (inlineEditable || cellEditable) && (
-                      <button onClick={startEdit} title={t("activityGraph.editChip")} style={iconBtn}>
-                        <Pencil size={12} />
+        {table ? (
+          <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+            <thead>
+              <tr>
+                {table.headers.map((h, col) => (
+                  <th key={col} style={th}>
+                    {editing(`h:${col}`) ? (
+                      field(edit!.draft, (v) => setEdit({ key: `h:${col}`, draft: v }), commitEdit)
+                    ) : (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span
+                          onClick={() => onRenameColumn && setEdit({ key: `h:${col}`, draft: h })}
+                          style={{ cursor: onRenameColumn ? "text" : "default" }}
+                        >
+                          {h || "—"}
+                        </span>
+                        {col > 0 && onRemoveColumn && (
+                          <button
+                            onClick={() => onRemoveColumn(table.blockId, col)}
+                            title={t("flowTable.removeColumn")}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color: "#c26356",
+                              cursor: "pointer",
+                              padding: 0,
+                              lineHeight: 1,
+                            }}
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </th>
+                ))}
+                {onAddColumn && (
+                  <th style={{ ...th, borderRight: "none" }}>
+                    {adding?.what === "column" ? (
+                      field(adding.draft, (v) => setAdding({ what: "column", draft: v }), commitAdd)
+                    ) : (
+                      <button onClick={() => setAdding({ what: "column", draft: "" })} style={addBtnStyle}>
+                        <Plus size={11} /> {t("flowTable.addColumn")}
                       </button>
                     )}
-                    {!editing && a.entityId && onRemoveEntity && (
-                      <button
-                        onClick={() => onRemoveEntity(a.entityId!)}
-                        title={t("activityGraph.removeChip")}
-                        style={{ ...iconBtn, color: "#c26356" }}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, r) => (
+                <tr
+                  key={r}
+                  style={
+                    highlightRow === r
+                      ? { background: "var(--color-accent, #e8f0e8)" }
+                      : undefined
+                  }
+                >
+                  {table.headers.map((_, col) => (
+                    <td
+                      key={col}
+                      style={td}
+                      onClick={() =>
+                        onSetCell && !editing(`c:${r}:${col}`) &&
+                        setEdit({ key: `c:${r}:${col}`, draft: row[col] ?? "" })
+                      }
+                    >
+                      {editing(`c:${r}:${col}`)
+                        ? field(edit!.draft, (v) => setEdit({ key: `c:${r}:${col}`, draft: v }), commitEdit)
+                        : (row[col] ?? "")}
+                    </td>
+                  ))}
+                  {onAddColumn && <td style={{ ...td, borderRight: "none" }} />}
+                </tr>
+              ))}
+              {adding?.what === "row" && (
+                <tr>
+                  <td style={td} colSpan={table.headers.length + (onAddColumn ? 1 : 0)}>
+                    {field(adding.draft, (v) => setAdding({ what: "row", draft: v }), commitAdd)}
                   </td>
                 </tr>
+              )}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary, #8fa394)" }}>
+            <div>{t("flowTable.noTable")}</div>
+            {selection.kind === "step" && onCreateParamColumn && (
+              adding?.what === "column" ? (
+                <div style={{ marginTop: 6, maxWidth: 200 }}>
+                  {field(adding.draft, (v) => setAdding({ what: "column", draft: v }), commitAdd)}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAdding({ what: "column", draft: "" })}
+                  style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}
+                >
+                  <Plus size={12} /> {t("flowTable.addColumn")}
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        {/* 本文 span 由来（表になっていない旧データ） */}
+        {inlineAttrs.length > 0 && (
+          <div style={{ padding: "6px 8px 2px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary, #8fa394)", paddingBottom: 2 }}>
+              {t("flowTable.inlineSection")}
+            </div>
+            {inlineAttrs.map((a) => {
+              const { key, value } = splitAttrLabel(a.label);
+              const k = `inline:${a.entityId}`;
+              return (
+                <div key={a.entityId} style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
+                  {editing(k) ? (
+                    field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 11, color: "var(--color-text-tertiary, #8fa394)", width: 72, flexShrink: 0 }}>
+                        {key ?? "—"}
+                      </span>
+                      <span
+                        style={{ flex: 1, minWidth: 0, fontSize: 12, cursor: onRenameEntity ? "text" : "default" }}
+                        onClick={() => onRenameEntity && setEdit({ key: k, draft: a.label })}
+                      >
+                        {value}
+                      </span>
+                      {onRemoveEntity && (
+                        <button
+                          onClick={() => onRemoveEntity(a.entityId!)}
+                          title={t("activityGraph.removeChip")}
+                          style={{ border: "none", background: "transparent", color: "#c26356", cursor: "pointer", padding: 2 }}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               );
             })}
-
-            {adding !== null && (
-              <tr>
-                <td colSpan={3} style={cellStyle}>
-                  {editField(adding, setAdding, commitAdd, () => setAdding(null))}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-
-        {attrs.length === 0 && adding === null && (
-          <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary, #8fa394)" }}>
-            {t("flowTable.noAttrs")}
           </div>
         )}
       </div>
 
-      {canAdd && adding === null && (
-        <button
-          onClick={() => setAdding("")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            alignSelf: "flex-start",
-            margin: "4px 6px 6px",
-            padding: "3px 8px 3px 4px",
-            fontSize: 11,
-            fontWeight: 600,
-            color: "var(--color-primary, #4B7A52)",
-            background: "transparent",
-            border: "none",
-            borderRadius: 5,
-            cursor: "pointer",
-          }}
-        >
-          <Plus size={12} /> {t("activityGraph.addAttr")}
+      {/* 行の追加は「1 行 = 1 Entity」の表のときだけ（パラメータ表は 1 行しか使わない） */}
+      {table && onAddRow && selection.kind === "entity" && adding === null && (
+        <button onClick={() => setAdding({ what: "row", draft: "" })} style={{ ...addBtnStyle, margin: "4px 6px 6px" }}>
+          <Plus size={12} /> {t("flowTable.addRow")}
         </button>
       )}
     </div>

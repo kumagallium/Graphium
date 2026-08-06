@@ -28,7 +28,17 @@ import {
   removeInlineEntity,
   addDependentAttribute,
 } from "../../features/inline-label/entity-edit";
-import { renameTableRow, setTableCell, removeTableRow } from "./table-row-edit";
+import {
+  renameTableRow,
+  removeTableRow,
+  readTable,
+  renameTableColumn,
+  setTableCellAt,
+  addTableColumn,
+  removeTableColumn,
+  addTableRow,
+  ensureParameterTable,
+} from "./table-row-edit";
 import { PARENT_ACTIVITY_MARKER } from "../../features/inline-label/attribute-binding";
 import type { ProvJsonLd } from "../prov-generator/generator";
 
@@ -271,11 +281,77 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
-  const onSetTableCell = useCallback(
-    (blockId: string, rowName: string, columnKey: string, value: string) => {
+  // ── 右パネルのグリッド編集: ノート側テーブルを直接読み書きする ──
+
+  const getTableFor = useCallback(
+    (selection: any) => {
+      const editor = getEditor();
+      if (!editor || !selection) return { table: null };
+      const labels = labelStoreRef.current.labels;
+      if (selection.kind === "entity") {
+        const ref = selection.entity.tableRef;
+        if (!ref) return { table: null };
+        const table = readTable(editor, ref.blockId);
+        const highlightRow = table?.rows.findIndex((r) => r[0] === ref.rowName);
+        return { table, highlightRow: highlightRow != null && highlightRow >= 0 ? highlightRow : undefined };
+      }
+      // step: パラメータ表（attribute ラベル付きテーブル）
+      const id = findLabeledTableInStep(editor.document ?? [], labels, selection.step.id, "attribute" as any);
+      return { table: id ? readTable(editor, id) : null };
+    },
+    [getEditor],
+  );
+
+  const onSetCell = useCallback(
+    (blockId: string, rowIndex: number, colIndex: number, value: string) => {
+      const editor = getEditor();
+      if (editor) setTableCellAt(editor, blockId, rowIndex, colIndex, value);
+    },
+    [getEditor],
+  );
+
+  const onRenameColumn = useCallback(
+    (blockId: string, colIndex: number, name: string) => {
+      const editor = getEditor();
+      if (editor) renameTableColumn(editor, blockId, colIndex, name);
+    },
+    [getEditor],
+  );
+
+  const onAddColumn = useCallback(
+    (blockId: string, name: string) => {
+      const editor = getEditor();
+      if (editor) addTableColumn(editor, blockId, name);
+    },
+    [getEditor],
+  );
+
+  const onRemoveColumn = useCallback(
+    (blockId: string, colIndex: number) => {
+      const editor = getEditor();
+      if (editor) removeTableColumn(editor, blockId, colIndex);
+    },
+    [getEditor],
+  );
+
+  const onAddRow = useCallback(
+    (blockId: string, name: string) => {
+      const editor = getEditor();
+      if (editor) addTableRow(editor, blockId, name);
+    },
+    [getEditor],
+  );
+
+  // step にパラメータ表がまだ無いとき: 作ってラベルを付け、最初の列をキーにする
+  const onCreateParamColumn = useCallback(
+    (stepBlockId: string, key: string) => {
       const editor = getEditor();
       if (!editor) return;
-      setTableCell(editor, blockId, rowName, columnKey, value);
+      const labels = labelStoreRef.current;
+      const result = ensureParameterTable(editor, stepBlockId, key, (id) =>
+        findLabeledTableInStep(editor.document ?? [], labels.labels, id, "attribute" as any),
+      );
+      if (result?.created) labels.setLabel(result.tableBlockId, "attribute");
     },
     [getEditor],
   );
@@ -436,9 +512,15 @@ export function ActivityGraphEditor({
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
       onAddAttrToEntity={hasEditor ? onAddAttrToEntity : undefined}
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
-      onSetTableCell={hasEditor ? onSetTableCell : undefined}
       onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
       tableLayout={tableLayout}
+      getTableFor={hasEditor ? getTableFor : undefined}
+      onSetCell={hasEditor ? onSetCell : undefined}
+      onRenameColumn={hasEditor ? onRenameColumn : undefined}
+      onAddColumn={hasEditor ? onAddColumn : undefined}
+      onRemoveColumn={hasEditor ? onRemoveColumn : undefined}
+      onAddRow={hasEditor ? onAddRow : undefined}
+      onCreateParamColumn={hasEditor ? onCreateParamColumn : undefined}
     />
   );
 }

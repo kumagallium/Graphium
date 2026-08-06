@@ -43,6 +43,7 @@ import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
 import { FlowAttributeTable, type FlowSelection } from "./flow-attribute-table";
+import type { TableData } from "./table-row-edit";
 
 const ACTIVITY_BLUE = "#5b8fb9";
 const MATERIAL_GREEN = "#4B7A52";
@@ -91,6 +92,14 @@ export type StepFlowViewProps = {
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
   /** 属性テーブルの置き場所。below = グラフの下（右パネル）、side = 右横（全画面） */
   tableLayout?: "below" | "side";
+  /** 選択の裏にあるノート側テーブルを読む（step ならパラメータ表 / entity ならその行の表） */
+  getTableFor?: (selection: FlowSelection) => { table: TableData | null; highlightRow?: number };
+  onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
+  onRenameColumn?: (blockId: string, colIndex: number, name: string) => void;
+  onAddColumn?: (blockId: string, name: string) => void;
+  onRemoveColumn?: (blockId: string, colIndex: number) => void;
+  onAddRow?: (blockId: string, name: string) => void;
+  onCreateParamColumn?: (stepBlockId: string, key: string) => void;
 };
 
 const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
@@ -131,6 +140,13 @@ function StepFlowCanvas({
   onSetTableCell,
   onRemoveTableRow,
   tableLayout = "below",
+  getTableFor,
+  onSetCell,
+  onRenameColumn,
+  onAddColumn,
+  onRemoveColumn,
+  onAddRow,
+  onCreateParamColumn,
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -327,16 +343,20 @@ function StepFlowCanvas({
       })()
     : null;
 
+  const backing = getTableFor?.(selection) ?? { table: null };
   const attributeTable = (
     <FlowAttributeTable
       selection={selection}
+      table={backing.table}
+      highlightRow={backing.highlightRow}
+      onSetCell={onSetCell}
+      onRenameColumn={onRenameColumn}
+      onAddColumn={onAddColumn}
+      onRemoveColumn={onRemoveColumn}
+      onAddRow={onAddRow}
+      onCreateParamColumn={onCreateParamColumn}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}
-      onAddAttrToEntity={onAddAttrToEntity}
-      onAddStepParam={
-        onAddEntity ? (stepBlockId, text) => onAddEntity(stepBlockId, "attribute", text) : undefined
-      }
-      onSetTableCell={onSetTableCell}
     />
   );
 

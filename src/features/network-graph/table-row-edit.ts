@@ -221,3 +221,183 @@ export function appendEntityRowToTable(
     return null;
   }
 }
+
+// ── グリッド編集（右パネルのテーブル UI が使う） ──
+
+export type TableData = {
+  blockId: string;
+  headers: string[];
+  /** データ行（ヘッダ行を除く）。セルは文字列 */
+  rows: string[][];
+};
+
+function findTableBlock(editor: any, tableBlockId: string): any | null {
+  let block: any = null;
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
+      if (block) return;
+      if (b?.id === tableBlockId) {
+        block = b;
+        return;
+      }
+      if (Array.isArray(b?.children)) visit(b.children);
+    }
+  };
+  visit(editor?.document ?? []);
+  return block?.type === "table" ? block : null;
+}
+
+/** テーブルの中身をグリッドとして読む */
+export function readTable(editor: any, tableBlockId: string): TableData | null {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return null;
+  const rows: any[] = block.content?.rows ?? [];
+  if (rows.length === 0) return null;
+  return {
+    blockId: tableBlockId,
+    headers: (rows[0].cells ?? []).map(cellText),
+    rows: rows.slice(1).map((r) => (r.cells ?? []).map(cellText)),
+  };
+}
+
+/** ヘッダ（列名）を書き換える */
+export function renameTableColumn(
+  editor: any,
+  tableBlockId: string,
+  colIndex: number,
+  newName: string,
+): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  const trimmed = newName.trim();
+  if (!block || !trimmed) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  if (colIndex < 0 || colIndex >= (rows[0]?.cells?.length ?? 0)) return false;
+  const next = rows.map((row, i) =>
+    i === 0
+      ? { ...row, cells: row.cells.map((c: any, j: number) => (j === colIndex ? withCellText(c, trimmed) : c)) }
+      : row,
+  );
+  return writeRows(editor, block, next);
+}
+
+/** 行 index（データ行 0 始まり）と列 index でセルを書き換える */
+export function setTableCellAt(
+  editor: any,
+  tableBlockId: string,
+  rowIndex: number,
+  colIndex: number,
+  value: string,
+): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  const target = rowIndex + 1; // ヘッダ行の分
+  if (target < 1 || target >= rows.length) return false;
+  const next = rows.map((row, i) =>
+    i === target
+      ? { ...row, cells: row.cells.map((c: any, j: number) => (j === colIndex ? withCellText(c, value) : c)) }
+      : row,
+  );
+  return writeRows(editor, block, next);
+}
+
+/** 列を足す（ヘッダに名前、各データ行には空セル） */
+export function addTableColumn(editor: any, tableBlockId: string, name: string): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  const trimmed = name.trim();
+  if (!block || !trimmed) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  if (rows.length === 0) return false;
+  const template = rows[0].cells?.[0];
+  const next = rows.map((row, i) => ({
+    ...row,
+    cells: [...row.cells, withCellText(template, i === 0 ? trimmed : "")],
+  }));
+  return writeRows(editor, block, next);
+}
+
+/** 列を消す（ヘッダとすべてのデータ行から） */
+export function removeTableColumn(editor: any, tableBlockId: string, colIndex: number): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  if (colIndex < 0 || (rows[0]?.cells?.length ?? 0) <= 1) return false; // 最後の 1 列は残す
+  const next = rows.map((row) => ({ ...row, cells: row.cells.filter((_: any, j: number) => j !== colIndex) }));
+  return writeRows(editor, block, next);
+}
+
+/** 空のデータ行を足す（1 列目に name を入れる） */
+export function addTableRow(editor: any, tableBlockId: string, name: string): boolean {
+  const block = findTableBlock(editor, tableBlockId);
+  if (!block) return false;
+  const rows: any[] = block.content?.rows ?? [];
+  if (rows.length === 0) return false;
+  const colCount = rows[0].cells.length;
+  const template = rows[1]?.cells?.[0] ?? rows[0].cells[0];
+  const cells = Array.from({ length: colCount }, (_, j) => withCellText(template, j === 0 ? name.trim() : ""));
+  return writeRows(editor, block, [...rows, { ...(rows[1] ?? rows[0]), cells }]);
+}
+
+/**
+ * step のパラメータ表（attribute ラベル付きテーブル）を用意する。
+ * 無ければ「キー 1 列 + 空の値行」で作る（呼び出し側でラベル付与が必要）。
+ */
+export function ensureParameterTable(
+  editor: any,
+  stepBlockId: string,
+  firstKey: string,
+  findLabeledTableId: (stepBlockId: string) => string | null,
+): { tableBlockId: string; created: boolean } | null {
+  const existing = findLabeledTableId(stepBlockId);
+  if (existing) return { tableBlockId: existing, created: false };
+
+  let step: any = null;
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
+      if (step) return;
+      if (b?.id === stepBlockId) {
+        step = b;
+        return;
+      }
+      if (Array.isArray(b?.children)) visit(b.children);
+    }
+  };
+  visit(editor?.document ?? []);
+  if (!step || step.type !== "step") return null;
+
+  const cell = (text: string) => [{ type: "text", text, styles: {} }];
+  const children: any[] = step.children ?? [];
+  const last = children[children.length - 1];
+  if (!last) return null;
+  const lastIsEmptyPara =
+    children.length === 1 &&
+    last.type === "paragraph" &&
+    !(last.content ?? []).some((c: any) => typeof c?.text === "string" && c.text.trim() !== "");
+  try {
+    const inserted = editor.insertBlocks(
+      [
+        {
+          type: "table",
+          content: {
+            type: "tableContent",
+            rows: [{ cells: [cell(firstKey.trim())] }, { cells: [cell("")] }],
+          },
+        },
+      ],
+      last.id,
+      "after",
+    );
+    const id = inserted?.[0]?.id;
+    if (!id) return null;
+    if (lastIsEmptyPara) {
+      try {
+        editor.removeBlocks([last.id]);
+      } catch {
+        /* ignore */
+      }
+    }
+    return { tableBlockId: id, created: true };
+  } catch {
+    return null;
+  }
+}
