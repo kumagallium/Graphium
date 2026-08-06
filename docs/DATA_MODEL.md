@@ -255,17 +255,39 @@ type MediaInlineLabel = {
 same referent share an `entityId` so the PROV generator emits one
 *Entity* node.
 
-`entityId` is also the handle for **graph-side editing**: the flow view's
-node cards let the user add / rename / remove inputs, outputs and
-parameters, and each of those operations rewrites the underlying inline
-span (`src/features/inline-label/entity-edit.ts`) rather than any graph
-state. To make parameters addressable this way, the generator carries the
+`entityId` is also the handle for **graph-side editing**: the flow view
+lets the user add / rename / remove inputs, outputs and parameters, and
+each of those operations rewrites the underlying inline span
+(`src/features/inline-label/entity-edit.ts`) rather than any graph state.
+To make parameters addressable this way, the generator carries the
 originating `entityId` into the emitted attribute entries as
-`graphium:entityId` (attributes that come from tables or `graphium:*`
-key-values have no `entityId` and stay read-only on the card). Removal is
-conservative: a span that is the sole content of its paragraph (the shape
-graph-side "add" creates) is deleted with the paragraph, while a span
+`graphium:entityId`. Removal is conservative: a span that is the sole
+content of its paragraph is deleted with the paragraph, while a span
 inside prose only loses its mark — the text is never destroyed.
+
+Entities born from a **structured table** are edited through the table
+instead: their node id is `entity_<tableBlockId>_<rowName>` (outputs use
+the historical `result_` prefix), which is enough to write back the row's
+first cell (its name), an attribute cell matched by header column, or to
+delete the row (`src/features/network-graph/table-row-edit.ts`). Adding an
+input or output from the graph appends a row to that step's labelled
+table — creating and labelling one if the step has none — so the note
+accumulates a sample table rather than one-word paragraphs. Duplicate row
+names resolve to the first matching row, and a column that is not in the
+header is a no-op.
+
+**Handoffs between steps.** `informed_by` is desugared into
+`used`/`wasGeneratedBy` through an output entity (§2.3). When the previous
+step has exactly one explicit output it is used as that entity; with
+several outputs and no name match the generator does **not** pick one —
+it falls back to the "result of X" placeholder, since choosing would
+assert a handoff the note never stated (branching procedures make that
+guess visibly wrong). To pin a specific output, name it among the next
+step's inputs: text-equal unification then merges the two into a single
+Entity, which is what the flow view draws as a solid edge. Both inline
+output spans and `result_*` outputs (output-labelled paragraphs and table
+rows) take part in that unification, and the output side always survives
+the merge so table-row attributes are preserved.
 
 The generator (`src/features/prov-generator/`) consumes both label
 sources and the block structure to produce the PROV-DM graph. Activity

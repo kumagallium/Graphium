@@ -115,23 +115,42 @@ talks to LLM and embedding backends.
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
   header carries a predecessor control that sets `informed_by` links between
   steps — ordering is a first-class property of a procedure, so it lives on
-  the card rather than in a side panel. The right-panel flow view offers the
-  same editing from the graph side: steps can be added, renamed, deleted and
-  connected directly on the graph
-  (`src/features/network-graph/activity-graph-editor.tsx`). Each graph
-  operation is translated into the corresponding block / link mutation and
-  the graph re-derives from the document — it is never edited as a data
-  structure of its own, so the "graph is a pure projection of blocks +
-  links" invariant holds in both directions. The flow view is built on
-  React Flow (`@xyflow/react`) with card-style DOM nodes showing the
-  step's inputs / outputs / parameters; the read-only, exploration-oriented
-  graphs (full PROV view, note graph, global graph, asset graph) stay on
-  cytoscape (canvas), which scales better for large force-directed views.
-  The cards also edit those chips: adding one synthesizes a dedicated
-  paragraph carrying the inline mark inside the step, renaming rewrites
-  the span text (keeping its `entityId`), and removing either deletes the
-  dedicated row or just strips the mark when the span sits inside prose
-  (DATA_MODEL §2.3).
+  the card rather than in a side panel. Its predecessor picker is two
+  levels: steps first, then — for a step that has outputs — that step's
+  individual outputs, so the writer states *which* output is being
+  received rather than only that one step followed another.
+- **The flow view is a node editor over the same document.** It is built on
+  React Flow (`@xyflow/react`); step cards and material / tool / output
+  entities are all nodes, and parameters are `key | value` rows inside
+  each node rather than nodes of their own (MatPROV-style parameter nodes
+  explode the graph). Edges come in three kinds: `used` (entity → step),
+  `generates` (step → entity), and order-only `informed_by` drawn dashed —
+  the last one is what a handoff degrades to when the note does not say
+  which output was used. The read-only, exploration-oriented graphs (note
+  graph, global graph, asset graph) stay on cytoscape (canvas), which
+  scales better for large force-directed views;
+  `provToCytoscapeElements` also still feeds the PDF export.
+- **Every graph edit is a document edit.** Steps can be added, renamed and
+  deleted; entities renamed, removed and given parameters; dragging an
+  entity onto a step makes it that step's input (and links `informed_by`,
+  which fires the generator's entity unification so the output and the new
+  input become one node), and dropping an entity's port on empty canvas
+  grows the next step already wired. Each operation is translated into the
+  corresponding block / link mutation
+  (`src/features/network-graph/activity-graph-editor.tsx`) and the graph
+  re-derives from the document — it is never edited as a data structure of
+  its own, so the "graph is a pure projection of blocks + links" invariant
+  holds in both directions.
+- **Graph-side adds grow a table, not loose words.** Adding an input or
+  output from the graph appends a row to that step's labelled table,
+  creating and labelling one if the step has none
+  (`network-graph/table-row-edit.ts`); such rows stay editable from their
+  node (row name, attribute cells by header, row deletion). Parameters
+  remain inline spans bound to the activity, because a table row means
+  "one entity". Inline-span entities keep span-based editing: renaming
+  rewrites the span text (keeping its `entityId`), and removing either
+  deletes a dedicated row or strips the mark when the span sits inside
+  prose (DATA_MODEL §2.3).
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, and blocks outside that set are stripped on load and

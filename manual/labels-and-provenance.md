@@ -13,7 +13,7 @@ A step block is the editor's only container: it holds the text, tables, and imag
 
 ![A step block with a Prev step chip in the header and a Next step chip at the bottom](/screenshots/step-block.png)
 
-- The **Prev step** chip in the header links this step to the one it follows. Loops are refused ("Blocked: this would create a cycle").
+- The **Prev step** chip in the header links this step to the one it follows. It lists **Steps** first; a step that has outputs opens its **Outputs** behind a chevron. Picking an output also records the handoff in the text (the same-named input is added to this step, and the graph draws a solid edge). Choose **Without a specific output** when you only mean "this came after that". Loops are refused ("Blocked: this would create a cycle").
 - The **Next step** chip at the bottom jumps ahead: with no successor it creates one (**Create new**) pre-linked to the current step; with successors it opens a picker to link, unlink, or add.
 
 Chaining steps gives you the run order for free — that order becomes the arrows in the graph. Because a label needs a step to attach to, the labeling UI below only appears while your cursor is inside one. Outside of steps, Graphium stays a plain, quiet editor.
@@ -74,18 +74,25 @@ What you're looking at:
 
 | Element | Meaning |
 |---|---|
-| Circle node | A step (a PROV *Activity*) |
-| Square / diamond nodes | Entities — **Input**, **Output**, **Parameter** (squares) and **Tool** (diamond), colored to match their highlights |
+| Card with a blue left edge | A step (a PROV *Activity*). Its parameters sit inside the card as a name / value table |
+| Colored node | An entity — **Input** (green), **Tool** (amber), **Output** (terracotta). These carry parameter tables too |
 | Green edge (`used`) | The step consumed this entity |
-| Red edge (`wasGeneratedBy`) | This entity was produced by the step |
-| Blue edge (`wasInformedBy`) | This step followed another step |
+| Terracotta edge (`wasGeneratedBy`) | This entity was produced by the step |
+| Dashed blue edge (`wasInformedBy`) | Order only: B came after A, but the note doesn't say which output was handed over |
 
-**Repeated referents collapse into one node.** If step B's **Input** text matches step A's **Output** text (and B is linked to A as its next step), Graphium unifies them: "the powder A produced" and "the powder B used" become a single entity, and the chain reads continuously across steps.
+The expand button (**Expand view**) opens the graph full-screen, still editable.
 
-The panel has two views, and an expand button (**Expand view**) for a full-screen look:
+**Repeated referents collapse into one node.** If step B's **Input** text matches step A's **Output** text (and B is linked to A as its next step), Graphium unifies them: "the powder A produced" and "the powder B used" become a single entity, and the chain reads continuously across steps. This is also what keeps branches straight when a step has several outputs going to different steps.
 
-- **Steps (all)** — the complete graph: steps plus every labeled entity.
-- **Steps (only)** — just the steps and their order. This view is also an editor: as the hint says, **Drag the blue dot under a step onto another step to connect them**. Connections you draw here are the same prior-step links you can set in a step's header (**Prev step** / **Next step**), and **Delete link** removes ones you added. Cycles are blocked.
+### Editing from the graph {#editing-from-the-graph}
+
+The panel is a place to write, not just a picture to read. Everything you do here is written into the note — the graph holds no data of its own.
+
+- **Add step** — the button in the top-right adds a step block to the note.
+- **Select a step card** to rename it, jump to its text (**Go to text**), or delete it. A step with content asks for confirmation, telling you how many blocks go with it.
+- **Add** on a card offers **Input / Tool / Output / Parameter**. Inputs and outputs become rows in that step's table (one is created if the step has none); a parameter becomes a row in the card's own table.
+- **Select an entity node** to rename it, edit or add parameters, or remove it. For entities that came from a table row, these edits are written back into the note's table cells.
+- **Connect** by dragging the dot under a node onto a step — the entity becomes that step's input. Drop it on empty canvas instead and a new step is created to receive it. Connecting two steps records order only (the dashed edge). Cycles are blocked.
 
 ## Exporting PROV-JSON-LD
 

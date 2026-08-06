@@ -62,7 +62,18 @@ const RICH_GRAPH: FlowGraphData = {
       label: "バッチB",
       kind: "output",
       entityId: "ent_b",
-      attrs: [{ label: "用途: 対照" }], // entityId 無し = 表示のみ（テーブル列由来の想定）
+      attrs: [{ label: "用途: 対照" }], // entityId 無し = 表示のみ
+    },
+    {
+      // 構造化テーブルの行由来: セル編集はノート側テーブルに書き戻る（tableRef）
+      id: "entity_tbl-1_試料C",
+      label: "試料C",
+      kind: "material",
+      tableRef: { blockId: "tbl-1", rowName: "試料C" },
+      attrs: [
+        { label: "純度: 99%" },
+        { label: "質量: 2g" },
+      ],
     },
   ],
   edges: [
@@ -71,6 +82,7 @@ const RICH_GRAPH: FlowGraphData = {
     { id: "u3", kind: "used", source: "inline_tool_ent_mortar", target: "s-mix" },
     { id: "g1", kind: "generates", source: "s-mix", target: "inline_output_ent_a" },
     { id: "g2", kind: "generates", source: "s-mix", target: "inline_output_ent_b" },
+    { id: "u6", kind: "used", source: "entity_tbl-1_試料C", target: "s-mix" },
     { id: "u4", kind: "used", source: "inline_output_ent_a", target: "s-fire" },
     { id: "u5", kind: "used", source: "inline_output_ent_b", target: "s-keep" },
     { id: "ord1", kind: "orderOnly", source: "s-dry", target: "s-weigh", deletable: true },
@@ -232,6 +244,55 @@ function Playground() {
               : e,
           ),
         }))
+      }
+      onCreateStepFromEntity={(entityNodeId) => {
+        const id = `new-step-${counter.current++}`;
+        setGraph((g) => {
+          const entity = g.entities.find((e) => e.id === entityNodeId);
+          if (!entity) return g;
+          return {
+            ...g,
+            steps: [...g.steps, { id, name: `ステップ ${g.steps.length + 1}`, params: [] }],
+            edges: [...g.edges, { id: `u-${counter.current++}`, kind: "used", source: entityNodeId, target: id }],
+          };
+        });
+      }}
+      onRenameTableRow={(blockId, rowName, newName) =>
+        setGraph((g) => ({
+          ...g,
+          entities: g.entities.map((e) =>
+            e.tableRef?.blockId === blockId && e.tableRef.rowName === rowName
+              ? { ...e, label: newName, tableRef: { blockId, rowName: newName } }
+              : e,
+          ),
+        }))
+      }
+      onSetTableCell={(blockId, rowName, columnKey, value) =>
+        setGraph((g) => ({
+          ...g,
+          entities: g.entities.map((e) =>
+            e.tableRef?.blockId === blockId && e.tableRef.rowName === rowName
+              ? {
+                  ...e,
+                  attrs: e.attrs.map((a) =>
+                    a.label.startsWith(`${columnKey}:`) ? { ...a, label: `${columnKey}: ${value}` } : a,
+                  ),
+                }
+              : e,
+          ),
+        }))
+      }
+      onRemoveTableRow={(blockId, rowName) =>
+        setGraph((g) => {
+          const target = g.entities.find(
+            (e) => e.tableRef?.blockId === blockId && e.tableRef.rowName === rowName,
+          );
+          return {
+            ...g,
+            entities: g.entities.filter((e) => e !== target),
+            edges: target ? g.edges.filter((e) => e.source !== target.id && e.target !== target.id) : g.edges,
+          };
+        })
       }
     />
   );
