@@ -13,6 +13,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { FileText, Film, Image as ImageIcon, Music, Pencil, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
+import { getActiveProvider } from "../../lib/storage/registry";
 import { t } from "../../i18n";
 import { splitAttrLabel, type ActivityIoKind, type FlowEntity } from "./activity-graph-adapter";
 
@@ -72,6 +73,49 @@ const attrInputStyle: CSSProperties = {
   outline: "none",
   color: "#1a2e1d",
 };
+
+/** 画像 Entity のサムネイル。local-media:// は Blob URL に変換する（AssetGalleryView と同じ流儀） */
+function EntityThumbnail({ url, alt }: { url: string; alt: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const provider = getActiveProvider();
+    const fileId = provider.extractFileId(url);
+    if (!fileId) {
+      setSrc(url); // Google Drive 等はそのまま
+      return;
+    }
+    provider
+      .getMediaBlobUrl(fileId)
+      .then((blobUrl) => {
+        if (!cancelled) setSrc(blobUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (!src) return null;
+  return (
+    <div style={{ padding: "4px 8px 0" }}>
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        style={{
+          display: "block",
+          width: "100%",
+          height: 72,
+          objectFit: "cover",
+          borderRadius: 4,
+          background: "#f0f5ef",
+        }}
+      />
+    </div>
+  );
+}
 
 export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>) {
   const {
@@ -324,6 +368,11 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
           </span>
         )}
       </div>
+
+      {/* 画像 Entity はサムネイルを出す（動画・音声・PDF はヘッダのアイコンで示す） */}
+      {entity.mediaUrl && entity.mediaType === "image" && (
+        <EntityThumbnail url={entity.mediaUrl} alt={entity.label} />
+      )}
 
       {/* 属性表（key | value の 2 列） */}
       {(entity.attrs.length > 0 || (selected && inlineEditable && onAddAttr)) && (
