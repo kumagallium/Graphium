@@ -184,6 +184,15 @@ export function FlowAttributeTable({
 
   const editing = (key: string) => edit?.key === key;
 
+  // 表がまだ無いときの「表を作成」。step はキー（列）を聞いてから作り、
+  // entity は所属 step の表を作ってこの行を入れる（種類は Entity 自身が持つ）。
+  const canCreateTable =
+    selection.kind === "step" ? !!onCreateParamColumn : !!onMoveEntityToTable;
+  const startCreateTable = () => {
+    if (selection.kind === "step") setAdding({ what: "column", draft: "" });
+    else onMoveEntityToTable?.(selection.entity.id);
+  };
+
   return (
     <div style={wrapStyle}>
       <div style={headerStyle}>
@@ -283,28 +292,15 @@ export function FlowAttributeTable({
           </table>
         ) : (
           <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary, #8fa394)" }}>
-            <div>
-              {selection.kind === "step" ? t("flowTable.noTable") : t("flowTable.entityNotInTable")}
-            </div>
-            {selection.kind === "entity" && onMoveEntityToTable && !selection.entity.tableRef && (
-              <button
-                onClick={() => onMoveEntityToTable(selection.entity.id)}
-                style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}
-              >
-                <Plus size={12} /> {t("flowTable.moveToTable")}
-              </button>
-            )}
-            {selection.kind === "step" && onCreateParamColumn && (
-              adding?.what === "column" ? (
-                <div style={{ marginTop: 6, maxWidth: 200 }}>
-                  {field(adding.draft, (v) => setAdding({ what: "column", draft: v }), commitAdd)}
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAdding({ what: "column", draft: "" })}
-                  style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}
-                >
-                  <Plus size={12} /> {t("flowTable.addColumn")}
+            <div>{t("flowTable.noTableYet")}</div>
+            {adding?.what === "column" ? (
+              <div style={{ marginTop: 6, maxWidth: 220 }}>
+                {field(adding.draft, (v) => setAdding({ what: "column", draft: v }), commitAdd)}
+              </div>
+            ) : (
+              canCreateTable && (
+                <button onClick={startCreateTable} style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}>
+                  <Plus size={12} /> {t("flowTable.createTable")}
                 </button>
               )
             )}
@@ -359,7 +355,7 @@ export function FlowAttributeTable({
           onClick={() => onMoveEntityToTable(selection.entity.id)}
           style={{ ...addBtnStyle, margin: "4px 6px 0" }}
         >
-          <Plus size={12} /> {t("flowTable.moveToTable")}
+          <Plus size={12} /> {t("flowTable.addToTable")}
         </button>
       )}
 

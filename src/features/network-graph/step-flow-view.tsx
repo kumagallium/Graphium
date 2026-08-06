@@ -166,6 +166,9 @@ function StepFlowCanvas({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
+  // 前回のノード id 一覧。選択中のノードが消えたとき、入れ替わりで現れた
+  // ノードへ選択を引き継ぐために使う（表に移す・行のリネームで id が変わる）
+  const prevNodeIdsRef = useRef<Set<string>>(new Set());
   const { fitView, getNodes } = useReactFlow();
   // 接続判定用に最新の graph を ref でも持つ（cy 初期化不要の React Flow でも
   // コールバック安定化のため）
@@ -181,6 +184,21 @@ function StepFlowCanvas({
   // ── FlowGraphData → React Flow の nodes / edges 同期 ──
   useEffect(() => {
     setEdgeMenu(null);
+    // 選択中ノードが消えた場合、同じ更新で新しく現れたノードが 1 つだけなら
+    // それが「同じもの」の付け替え（表に移した・行名を変えた）なので選択を移す
+    const currentIds = new Set<string>([
+      ...graph.steps.map((s) => s.id),
+      ...graph.entities.map((e) => e.id),
+    ]);
+    const prevIds = prevNodeIdsRef.current;
+    const sel = selectedIdRef.current;
+    if (sel && prevIds.size > 0 && !currentIds.has(sel)) {
+      const appeared = [...currentIds].filter((id) => !prevIds.has(id));
+      const next = appeared.length === 1 ? appeared[0] : null;
+      selectedIdRef.current = next;
+      setSelectedId(next);
+    }
+    prevNodeIdsRef.current = currentIds;
     setNodes((prev: Node[]) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       const stepNodes: Node[] = graph.steps.map((s) => ({
