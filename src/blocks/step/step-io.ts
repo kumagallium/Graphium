@@ -161,3 +161,31 @@ export function stepHasInputText(doc: any[], stepBlockId: string, text: string):
   }
   return found;
 }
+
+/**
+ * step 配下から、指定ラベル（material / tool / output）の付いたテーブルを探す。
+ * グラフからの追加を「表に行を足す」形にするときの受け皿を見つけるのに使う。
+ */
+export function findLabeledTableInStep(
+  doc: any[],
+  labels: Map<string, string> | undefined,
+  stepBlockId: string,
+  label: "material" | "tool" | "output",
+): string | null {
+  const step = findBlockById(doc, stepBlockId);
+  if (!step || !labels) return null;
+  let found: string | null = null;
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
+      if (found) return;
+      if (b?.type === "table" && b.id && labels.get(b.id) === label) {
+        found = b.id;
+        return;
+      }
+      // 入れ子 step の中のテーブルは、その step のものなので降りない
+      if (Array.isArray(b?.children) && b.type !== "step") visit(b.children);
+    }
+  };
+  visit(step.children ?? []);
+  return found;
+}

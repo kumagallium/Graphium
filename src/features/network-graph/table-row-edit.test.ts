@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { renameTableRow, setTableCell, removeTableRow } from "./table-row-edit";
+import {
+  renameTableRow,
+  setTableCell,
+  removeTableRow,
+  appendEntityRowToTable,
+} from "./table-row-edit";
 
 const cell = (text: string) => ({ type: "tableCell", content: [{ type: "text", text, styles: {} }] });
 
@@ -66,5 +71,58 @@ describe("table-row-edit", () => {
     expect(renameTableRow(ed, "tbl-1", "バッチC", "X")).toBe(false);
     expect(removeTableRow(ed, "no-such-table", "バッチA")).toBe(false);
     expect(ed.updates).toHaveLength(0);
+  });
+});
+
+describe("appendEntityRowToTable", () => {
+  it("既存テーブルがあれば末尾に行を足す（他の列は空）", () => {
+    const ed = makeEditor();
+    const r = appendEntityRowToTable(ed, "step-1", "バッチC", () => "tbl-1", "名前");
+    expect(r).toEqual({ tableBlockId: "tbl-1", created: false });
+    expect(rowTexts(ed.updates[0].content)).toEqual([
+      ["名前", "質量", "メモ"],
+      ["バッチA", "5g", "焼成用"],
+      ["バッチB", "5g", "対照"],
+      ["バッチC", "", ""],
+    ]);
+  });
+
+  it("空行があればそこへ書く（行を増やさない）", () => {
+    const ed = makeEditor();
+    (ed.document[0].children[0] as any).content.rows.push({
+      cells: [cell(""), cell(""), cell("")],
+    });
+    const r = appendEntityRowToTable(ed, "step-1", "バッチC", () => "tbl-1", "名前");
+    expect(r?.created).toBe(false);
+    const rows = rowTexts(ed.updates[0].content);
+    expect(rows).toHaveLength(4);
+    expect(rows[3]).toEqual(["バッチC", "", ""]);
+  });
+
+  it("テーブルが無ければ作って 1 行目に書く（created=true）", () => {
+    const inserted: any[] = [];
+    const ed: any = {
+      document: [
+        { id: "step-1", type: "step", content: [], children: [{ id: "p1", type: "paragraph", content: [] }] },
+      ],
+      insertBlocks(blocks: any[], _ref: string, _pos: string) {
+        inserted.push(blocks[0]);
+        return [{ id: "new-tbl" }];
+      },
+      removeBlocks() {},
+      updateBlock() {},
+    };
+    const r = appendEntityRowToTable(ed, "step-1", "バッチA", () => null, "名前");
+    expect(r).toEqual({ tableBlockId: "new-tbl", created: true });
+    expect(inserted[0].type).toBe("table");
+    expect(inserted[0].content.rows.map((row: any) => row.cells.map((c: any) => c[0].text))).toEqual([
+      ["名前"],
+      ["バッチA"],
+    ]);
+  });
+
+  it("step が見つからなければ null", () => {
+    const ed = makeEditor();
+    expect(appendEntityRowToTable(ed, "no-step", "X", () => null, "名前")).toBeNull();
   });
 });

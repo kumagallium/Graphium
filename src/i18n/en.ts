@@ -792,6 +792,7 @@ export const en: Record<string, string> = {
   "activityGraph.orderOnly": "order only",
   "activityGraph.addAttr": "Parameter",
   "step.unspecifiedOutput": "Without a specific output",
+  "graphTable.nameColumn": "Name",
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
 

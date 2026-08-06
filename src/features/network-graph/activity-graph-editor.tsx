@@ -18,7 +18,10 @@ import { StepFlowView, type EntityKind } from "./step-flow-view";
 import { provDocToFlowGraph, type ActivityIoKind } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
 import { buildDefaultStepTitle, selectStepTitle } from "../../blocks/step/view";
-import { appendEntitySpanToStep } from "../../blocks/step/step-io";
+import { appendEntitySpanToStep, findLabeledTableInStep } from "../../blocks/step/step-io";
+import { useLabelStore } from "../context-label/store";
+import { appendEntityRowToTable } from "./table-row-edit";
+import { t } from "../../i18n";
 import { makeEntityId } from "../../features/inline-label/shortcuts";
 import {
   renameInlineEntity,
@@ -102,9 +105,12 @@ export function ActivityGraphEditor({
   editorRef?: { current: any };
 }) {
   const linkStore = useLinkStore();
+  const labelStore = useLabelStore();
   // コールバックを安定参照にするため、最新の store は ref 経由で読む
   const linkStoreRef = useRef(linkStore);
   linkStoreRef.current = linkStore;
+  const labelStoreRef = useRef(labelStore);
+  labelStoreRef.current = labelStore;
 
   const flowGraph = useMemo(() => provDocToFlowGraph(doc), [doc]);
   // コールバックを安定参照に保つため、最新のグラフは ref 経由でも読めるようにする
@@ -282,11 +288,35 @@ export function ActivityGraphEditor({
 
   // ── Entity / パラメータの CRUD（本文 span への翻訳） ──
 
+  // グラフからの入出力の追加は、まず step 内の該当ラベル付きテーブルに行を足す
+  // （F 案: ノート側には単語の羅列ではなく試料表が育つ）。テーブルが無ければ
+  // 作って 1 行目に書き、ラベルを付ける。パラメータだけは Activity 直結の
+  // インライン span のまま（表にすると 1 行 1 Entity の意味とズレる）。
   const onAddEntity = useCallback(
     (stepBlockId: string, kind: EntityKind, text: string) => {
       const editor = getEditor();
       if (!editor) return;
-      appendEntitySpanToStep(editor, stepBlockId, kind, text);
+      if (kind === "attribute") {
+        appendEntitySpanToStep(editor, stepBlockId, kind, text);
+        return;
+      }
+      const labels = labelStoreRef.current;
+      const result = appendEntityRowToTable(
+        editor,
+        stepBlockId,
+        text,
+        (id) => findLabeledTableInStep(editor.document ?? [], labels.labels, id, kind),
+        t("graphTable.nameColumn"),
+      );
+      if (!result) {
+        // 表を作れない状況（step が見つからない等）は従来どおり span で書く
+        appendEntitySpanToStep(editor, stepBlockId, kind, text);
+        return;
+      }
+      if (result.created) {
+        // 新規テーブルは generator に Entity として読ませるためラベルが要る
+        labels.setLabel(result.tableBlockId, kind);
+      }
     },
     [getEditor],
   );
