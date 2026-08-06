@@ -283,6 +283,45 @@ export function ActivityGraphEditor({
 
   // ── 右パネルのグリッド編集: ノート側テーブルを直接読み書きする ──
 
+  /** Entity がどの step のものか（生成元を優先、無ければ使用側） */
+  const owningStepOf = useCallback((entityNodeId: string): string | null => {
+    const g = flowGraphRef.current;
+    const gen = g.edges.find((e) => e.kind === "generates" && e.target === entityNodeId);
+    if (gen) return gen.source;
+    const used = g.edges.find((e) => e.kind === "used" && e.source === entityNodeId);
+    return used?.target ?? null;
+  }, []);
+
+  /**
+   * 本文 span 由来の Entity を、所属 step の表へ移す。
+   * 表が無ければ作ってラベルを付け、行を足したあと元の span のラベルを外す
+   * （同じ名前の Entity が 2 つに割れないように）。
+   */
+  const onMoveEntityToTable = useCallback(
+    (entityNodeId: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      const g = flowGraphRef.current;
+      const entity = g.entities.find((e) => e.id === entityNodeId);
+      if (!entity || entity.tableRef) return;
+      const stepId = owningStepOf(entityNodeId);
+      if (!stepId) return;
+      const labels = labelStoreRef.current;
+      const result = appendEntityRowToTable(
+        editor,
+        stepId,
+        entity.label,
+        (id) => findLabeledTableInStep(editor.document ?? [], labels.labels, id, entity.kind),
+        t("graphTable.nameColumn"),
+      );
+      if (!result) return;
+      if (result.created) labels.setLabel(result.tableBlockId, entity.kind);
+      // 元の span は外す（テキストは残る）
+      if (entity.entityId) removeInlineEntity(editor, entity.entityId);
+    },
+    [getEditor, owningStepOf],
+  );
+
   const getTableFor = useCallback(
     (selection: any) => {
       const editor = getEditor();
@@ -290,10 +329,17 @@ export function ActivityGraphEditor({
       const labels = labelStoreRef.current.labels;
       if (selection.kind === "entity") {
         const ref = selection.entity.tableRef;
-        if (!ref) return { table: null };
-        const table = readTable(editor, ref.blockId);
-        const highlightRow = table?.rows.findIndex((r) => r[0] === ref.rowName);
-        return { table, highlightRow: highlightRow != null && highlightRow >= 0 ? highlightRow : undefined };
+        if (ref) {
+          const table = readTable(editor, ref.blockId);
+          const highlightRow = table?.rows.findIndex((r) => r[0] === ref.rowName);
+          return { table, highlightRow: highlightRow != null && highlightRow >= 0 ? highlightRow : undefined };
+        }
+        // 本文 span 由来の Entity: 所属 step に同じ種類の表があればそれを出す
+        // （まだ表に入っていないので、行のハイライトは無い）
+        const stepId = owningStepOf(selection.entity.id);
+        if (!stepId) return { table: null };
+        const id = findLabeledTableInStep(editor.document ?? [], labels, stepId, selection.entity.kind);
+        return { table: id ? readTable(editor, id) : null };
       }
       // step: パラメータ表（attribute ラベル付きテーブル）
       const id = findLabeledTableInStep(editor.document ?? [], labels, selection.step.id, "attribute" as any);
@@ -521,6 +567,7 @@ export function ActivityGraphEditor({
       onRemoveColumn={hasEditor ? onRemoveColumn : undefined}
       onAddRow={hasEditor ? onAddRow : undefined}
       onCreateParamColumn={hasEditor ? onCreateParamColumn : undefined}
+      onMoveEntityToTable={hasEditor ? onMoveEntityToTable : undefined}
     />
   );
 }

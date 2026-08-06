@@ -798,6 +798,8 @@ export const ja: Record<string, string> = {
   "flowTable.noAttrs": "パラメータはまだありません",
   "flowTable.tableHint": "ノートの表と同じ内容です",
   "flowTable.noTable": "この手順にはまだパラメータ表がありません",
+  "flowTable.entityNotInTable": "これはまだ表に入っていません（本文に直接書かれています）",
+  "flowTable.moveToTable": "表に移す",
   "flowTable.inlineSection": "本文に書かれたもの",
   "flowTable.addColumn": "列",
   "flowTable.removeColumn": "列を削除",

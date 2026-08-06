@@ -797,6 +797,8 @@ export const en: Record<string, string> = {
   "flowTable.noAttrs": "No parameters yet",
   "flowTable.tableHint": "Same content as the table in the note",
   "flowTable.noTable": "This step has no parameter table yet",
+  "flowTable.entityNotInTable": "Not in a table yet (written directly in the prose)",
+  "flowTable.moveToTable": "Move into the table",
   "flowTable.inlineSection": "Written in the prose",
   "flowTable.addColumn": "Column",
   "flowTable.removeColumn": "Remove column",

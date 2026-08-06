@@ -34,6 +34,8 @@ export type FlowAttributeTableProps = {
   onAddRow?: (blockId: string, name: string) => void;
   /** 表がまだ無い step にパラメータ表を作って最初の列を足す */
   onCreateParamColumn?: (stepBlockId: string, key: string) => void;
+  /** まだ表に入っていない Entity（本文 span 由来）を所属 step の表へ移す */
+  onMoveEntityToTable?: (entityNodeId: string) => void;
   // ── 本文 span 由来（旧データ）の編集 ──
   onRenameEntity?: (entityId: string, text: string) => void;
   onRemoveEntity?: (entityId: string) => void;
@@ -91,6 +93,7 @@ export function FlowAttributeTable({
   onRemoveColumn,
   onAddRow,
   onCreateParamColumn,
+  onMoveEntityToTable,
   onRenameEntity,
   onRemoveEntity,
 }: FlowAttributeTableProps) {
@@ -280,7 +283,17 @@ export function FlowAttributeTable({
           </table>
         ) : (
           <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary, #8fa394)" }}>
-            <div>{t("flowTable.noTable")}</div>
+            <div>
+              {selection.kind === "step" ? t("flowTable.noTable") : t("flowTable.entityNotInTable")}
+            </div>
+            {selection.kind === "entity" && onMoveEntityToTable && !selection.entity.tableRef && (
+              <button
+                onClick={() => onMoveEntityToTable(selection.entity.id)}
+                style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}
+              >
+                <Plus size={12} /> {t("flowTable.moveToTable")}
+              </button>
+            )}
             {selection.kind === "step" && onCreateParamColumn && (
               adding?.what === "column" ? (
                 <div style={{ marginTop: 6, maxWidth: 200 }}>
@@ -340,8 +353,18 @@ export function FlowAttributeTable({
         )}
       </div>
 
+      {/* この Entity がまだ表の行になっていないとき（表だけ先にある場合） */}
+      {table && selection.kind === "entity" && !selection.entity.tableRef && onMoveEntityToTable && (
+        <button
+          onClick={() => onMoveEntityToTable(selection.entity.id)}
+          style={{ ...addBtnStyle, margin: "4px 6px 0" }}
+        >
+          <Plus size={12} /> {t("flowTable.moveToTable")}
+        </button>
+      )}
+
       {/* 行の追加は「1 行 = 1 Entity」の表のときだけ（パラメータ表は 1 行しか使わない） */}
-      {table && onAddRow && selection.kind === "entity" && adding === null && (
+      {table && onAddRow && selection.kind === "entity" && selection.entity.tableRef && adding === null && (
         <button onClick={() => setAdding({ what: "row", draft: "" })} style={{ ...addBtnStyle, margin: "4px 6px 6px" }}>
           <Plus size={12} /> {t("flowTable.addRow")}
         </button>

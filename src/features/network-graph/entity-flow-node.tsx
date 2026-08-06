@@ -133,26 +133,21 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
   }, [selected]);
 
   const commitEdit = () => {
-    if (edit) {
-      const v = edit.draft.trim();
-      if (v) {
-        if (edit.key === "name") {
-          if (inlineEditable) onRenameEntity?.(entity.entityId!, v);
-          else if (tableEditable)
-            onRenameTableRow?.(entity.tableRef!.blockId, entity.tableRef!.rowName, v);
-        }
-      }
+    const v = edit?.draft.trim();
+    if (edit?.key === "name" && v && tableEditable) {
+      onRenameTableRow?.(entity.tableRef!.blockId, entity.tableRef!.rowName, v);
     }
     setEdit(null);
   };
 
   const removeSelf = () => {
-    if (inlineEditable) onRemoveEntity?.(entity.entityId!);
-    else if (tableEditable) onRemoveTableRow?.(entity.tableRef!.blockId, entity.tableRef!.rowName);
+    if (tableEditable) onRemoveTableRow?.(entity.tableRef!.blockId, entity.tableRef!.rowName);
   };
 
-  const canRenameSelf = (inlineEditable && !!onRenameEntity) || (tableEditable && !!onRenameTableRow);
-  const canRemoveSelf = (inlineEditable && !!onRemoveEntity) || (tableEditable && !!onRemoveTableRow);
+  // グラフ側の編集は表経由のみ。本文 span 由来の Entity は、右パネルで
+  // 表に移してから編集する（ノートに単語が散らばるのを防ぐ）。
+  const canRenameSelf = tableEditable && !!onRenameTableRow;
+  const canRemoveSelf = tableEditable && !!onRemoveTableRow;
 
   const MediaIcon = entity.mediaType ? (MEDIA_ICONS[entity.mediaType] ?? FileText) : null;
   const editingName = edit?.key === "name";
