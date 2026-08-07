@@ -388,13 +388,15 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
-  // step にパラメータ表がまだ無いとき: 作ってラベルを付け、最初の列をキーにする
-  const onCreateParamColumn = useCallback(
-    (stepBlockId: string, key: string) => {
+  // step にパラメータ表がまだ無いとき: 既定のキー列 1 つで作ってラベルを付ける。
+  // Entity 側の「表を作成」と同じく 1 クリックで表ができ、キーの命名は
+  // できた表のヘッダ編集（パネル側でそのまま編集状態になる）でやる。
+  const onCreateParamTable = useCallback(
+    (stepBlockId: string) => {
       const editor = getEditor();
       if (!editor) return;
       const labels = labelStoreRef.current;
-      const result = ensureParameterTable(editor, stepBlockId, key, (id) =>
+      const result = ensureParameterTable(editor, stepBlockId, t("graphTable.paramColumn"), (id) =>
         findLabeledTableInStep(editor.document ?? [], labels.labels, id, "attribute" as any),
       );
       if (result?.created) labels.setLabel(result.tableBlockId, "attribute");
@@ -566,7 +568,7 @@ export function ActivityGraphEditor({
       onAddColumn={hasEditor ? onAddColumn : undefined}
       onRemoveColumn={hasEditor ? onRemoveColumn : undefined}
       onAddRow={hasEditor ? onAddRow : undefined}
-      onCreateParamColumn={hasEditor ? onCreateParamColumn : undefined}
+      onCreateParamTable={hasEditor ? onCreateParamTable : undefined}
       onMoveEntityToTable={hasEditor ? onMoveEntityToTable : undefined}
     />
   );

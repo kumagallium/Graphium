@@ -99,7 +99,7 @@ export type StepFlowViewProps = {
   onAddColumn?: (blockId: string, name: string) => void;
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
   onAddRow?: (blockId: string, name: string) => void;
-  onCreateParamColumn?: (stepBlockId: string, key: string) => void;
+  onCreateParamTable?: (stepBlockId: string) => void;
   onMoveEntityToTable?: (entityNodeId: string) => void;
 };
 
@@ -147,7 +147,7 @@ function StepFlowCanvas({
   onAddColumn,
   onRemoveColumn,
   onAddRow,
-  onCreateParamColumn,
+  onCreateParamTable,
   onMoveEntityToTable,
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -374,7 +374,7 @@ function StepFlowCanvas({
       onAddColumn={onAddColumn}
       onRemoveColumn={onRemoveColumn}
       onAddRow={onAddRow}
-      onCreateParamColumn={onCreateParamColumn}
+      onCreateParamTable={onCreateParamTable}
       onMoveEntityToTable={onMoveEntityToTable}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}

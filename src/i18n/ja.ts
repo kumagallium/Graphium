@@ -795,6 +795,7 @@ export const ja: Record<string, string> = {
   "activityGraph.addAttr": "パラメータ",
   "step.unspecifiedOutput": "出力を特定しない",
   "graphTable.nameColumn": "名前",
+  "graphTable.paramColumn": "項目",
   "flowTable.noSelection": "ノードを選ぶと、その表をここで編集できます",
   "flowTable.noAttrs": "パラメータはまだありません",
   "flowTable.tableHint": "ノートの表と同じ内容です",

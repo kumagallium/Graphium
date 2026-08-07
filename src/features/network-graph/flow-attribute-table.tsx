@@ -32,8 +32,8 @@ export type FlowAttributeTableProps = {
   onAddColumn?: (blockId: string, name: string) => void;
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
   onAddRow?: (blockId: string, name: string) => void;
-  /** 表がまだ無い step にパラメータ表を作って最初の列を足す */
-  onCreateParamColumn?: (stepBlockId: string, key: string) => void;
+  /** 表がまだ無い step にパラメータ表を作る（最初のキー列は既定名で入る） */
+  onCreateParamTable?: (stepBlockId: string) => void;
   /** まだ表に入っていない Entity（本文 span 由来）を所属 step の表へ移す */
   onMoveEntityToTable?: (entityNodeId: string) => void;
   // ── 本文 span 由来（旧データ）の編集 ──
@@ -92,7 +92,7 @@ export function FlowAttributeTable({
   onAddColumn,
   onRemoveColumn,
   onAddRow,
-  onCreateParamColumn,
+  onCreateParamTable,
   onMoveEntityToTable,
   onRenameEntity,
   onRemoveEntity,
@@ -101,6 +101,8 @@ export function FlowAttributeTable({
   const [edit, setEdit] = useState<{ key: string; draft: string } | null>(null);
   // 追加中: 列 or 行
   const [adding, setAdding] = useState<{ what: "column" | "row"; draft: string } | null>(null);
+  // 「表を作成」直後、できた表のキー列を編集状態にするための予約
+  const [focusFirstKey, setFocusFirstKey] = useState(false);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
 
   const selectionId =
@@ -113,7 +115,17 @@ export function FlowAttributeTable({
   useEffect(() => {
     setEdit(null);
     setAdding(null);
+    setFocusFirstKey(false);
   }, [selectionId]);
+
+  // 表ができたら、そのキー列をそのまま編集状態にする。「ボタンを押す →
+  // 表が出る → キーを打つ」を 1 つの流れにするため（entity 側は名前が
+  // 既にあるので、ボタンだけで完結する）。
+  useEffect(() => {
+    if (!focusFirstKey || !table) return;
+    setEdit({ key: "h:0", draft: table.headers[0] ?? "" });
+    setFocusFirstKey(false);
+  }, [focusFirstKey, table]);
 
   if (!selection) {
     return (
@@ -147,13 +159,9 @@ export function FlowAttributeTable({
   const commitAdd = () => {
     if (adding) {
       const v = adding.draft.trim();
-      if (v) {
-        if (adding.what === "column") {
-          if (blockId) onAddColumn?.(blockId, v);
-          else if (selection.kind === "step") onCreateParamColumn?.(selection.step.id, v);
-        } else if (blockId) {
-          onAddRow?.(blockId, v);
-        }
+      if (v && blockId) {
+        if (adding.what === "column") onAddColumn?.(blockId, v);
+        else onAddRow?.(blockId, v);
       }
     }
     setAdding(null);
@@ -184,13 +192,18 @@ export function FlowAttributeTable({
 
   const editing = (key: string) => edit?.key === key;
 
-  // 表がまだ無いときの「表を作成」。step はキー（列）を聞いてから作り、
-  // entity は所属 step の表を作ってこの行を入れる（種類は Entity 自身が持つ）。
+  // 表がまだ無いときの「表を作成」。step も entity も 1 クリックで表ができる。
+  // step はパラメータ表を作ってキー列を編集状態にし、entity は所属 step の
+  // 表を作ってこの行を入れる（種類は Entity 自身が持つ）。
   const canCreateTable =
-    selection.kind === "step" ? !!onCreateParamColumn : !!onMoveEntityToTable;
+    selection.kind === "step" ? !!onCreateParamTable : !!onMoveEntityToTable;
   const startCreateTable = () => {
-    if (selection.kind === "step") setAdding({ what: "column", draft: "" });
-    else onMoveEntityToTable?.(selection.entity.id);
+    if (selection.kind === "step") {
+      onCreateParamTable?.(selection.step.id);
+      setFocusFirstKey(true);
+    } else {
+      onMoveEntityToTable?.(selection.entity.id);
+    }
   };
 
   return (
@@ -293,16 +306,10 @@ export function FlowAttributeTable({
         ) : (
           <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary, #8fa394)" }}>
             <div>{t("flowTable.noTableYet")}</div>
-            {adding?.what === "column" ? (
-              <div style={{ marginTop: 6, maxWidth: 220 }}>
-                {field(adding.draft, (v) => setAdding({ what: "column", draft: v }), commitAdd)}
-              </div>
-            ) : (
-              canCreateTable && (
-                <button onClick={startCreateTable} style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}>
-                  <Plus size={12} /> {t("flowTable.createTable")}
-                </button>
-              )
+            {canCreateTable && (
+              <button onClick={startCreateTable} style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}>
+                <Plus size={12} /> {t("flowTable.createTable")}
+              </button>
             )}
           </div>
         )}
