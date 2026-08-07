@@ -7,11 +7,12 @@
 // output テラコッタ）に従う。書き込みは data のコールバック経由。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, Position, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
 import { FileText, Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t, getDisplayLabelName } from "../../i18n";
 import type { ActivityIoKind, ActivityNode } from "./activity-graph-adapter";
+import { KIND_PALETTE, selectionRing } from "./flow-palette";
 import type { EntityKind } from "./step-flow-view";
 
 export type StepNodeData = {
@@ -29,16 +30,10 @@ export type StepNodeData = {
 
 export type StepFlowNode = Node<StepNodeData, "step">;
 
-const IO_COLORS: Record<ActivityIoKind, string> = {
-  material: "#4B7A52", // 材料（ブランドグリーン）
-  tool: "#c08b3e", // 道具（アンバー）
-  output: "#c26356", // output（テラコッタ）
-};
 
 const PARAM_COLOR = "var(--color-text-tertiary)";
-const ACTIVITY_BLUE = "#5b8fb9";
-// 帯（薄い青）の上に載る文字色。ラベル色の暗い変種で、Entity ノードの text と同じ役割
-const ACTIVITY_TEXT = "#3f6c92";
+const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
+const ACTIVITY_TEXT = KIND_PALETTE.activity.text;
 
 const iconBtnStyle: CSSProperties = {
   display: "inline-flex",
@@ -79,7 +74,7 @@ function KindDot({ kind }: { kind: ActivityIoKind }) {
         height: 7,
         borderRadius: kind === "tool" ? 1 : "50%",
         transform: kind === "tool" ? "rotate(45deg)" : undefined,
-        background: IO_COLORS[kind],
+        background: KIND_PALETTE[kind].main,
       }}
     />
   );
@@ -107,7 +102,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [adding, setAdding] = useState<{ kind: ActivityIoKind; draft: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
+  const { getViewport, setViewport } = useReactFlow();
 
   // 選択が外れたら編集・削除確認・追加フローをリセットする
   useEffect(() => {
@@ -118,6 +115,22 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
       setAdding(null);
     }
   }, [selected]);
+
+  // 開いた中身がキャンバスの外にはみ出したら、その分だけ寄せる。
+  // 種類の選択肢は下へ伸びるので、端の手順だと切れて見えなくなる
+  useEffect(() => {
+    if (!selected) return;
+    const id = requestAnimationFrame(() => {
+      const el = cardRef.current;
+      const pane = el?.closest(".react-flow");
+      if (!el || !pane) return;
+      const overflow = el.getBoundingClientRect().bottom - (pane.getBoundingClientRect().bottom - 8);
+      if (overflow <= 0) return;
+      const vp = getViewport();
+      setViewport({ ...vp, y: vp.y - overflow }, { duration: 150 });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selected, addMenuOpen, adding?.kind, confirmCount, getViewport, setViewport]);
 
   const startEditing = () => {
     if (!onRename) return;
@@ -146,6 +159,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
 
   return (
     <div
+      ref={cardRef}
       style={{
         minWidth: 180,
         maxWidth: 240,
@@ -154,7 +168,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         border: `1.5px solid ${ACTIVITY_BLUE}`,
         // 選択は枠を太くせずリングで示す。太さを変えるとノードの実寸が変わり、
         // React Flow が測り直してレイアウトが動く
-        boxShadow: selected ? `0 0 0 3px ${ACTIVITY_BLUE}33, var(--shadow-2)` : "var(--shadow-1)",
+        boxShadow: selected ? selectionRing(ACTIVITY_BLUE) : "var(--shadow-1)",
         overflow: "hidden",
         fontFamily: "inherit",
       }}
@@ -166,7 +180,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
           alignItems: "center",
           gap: 6,
           padding: "5px 8px 5px 10px",
-          background: "var(--color-label-activity-bg)",
+          background: KIND_PALETTE.activity.bg,
         }}
       >
         <span
@@ -297,18 +311,41 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         </div>
       )}
 
-      {/* パラメータはテーブルパネルで編集する。ここは件数と追加導線だけ */}
+      {/* パラメータはテーブルパネルで編集する。ここは件数と追加導線だけ。
+          件数（この手順が何を持っているか）と追加（操作）は別の行に置く —
+          同じ行に混ぜると、種類を選ぶときに件数の横で折り返して読めなくなる */}
       {(activity.params.length > 0 || showAddControl) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px" }}>
+        <div style={{ padding: "4px 10px 6px" }}>
           {activity.params.length > 0 && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, color: PARAM_COLOR }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                fontSize: 10,
+                color: PARAM_COLOR,
+                paddingBottom: showAddControl ? 4 : 0,
+              }}
+            >
               <SlidersHorizontal size={10} />
               {activity.params.length}
-            </span>
+            </div>
           )}
           {showAddControl &&
             (adding ? (
-              <span className="nodrag" style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+              // 名前を打つ間も、これから生まれるノードの色のままにする
+              <div
+                className="nodrag"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  background: KIND_PALETTE[adding.kind].bg,
+                  border: `1px solid ${KIND_PALETTE[adding.kind].main}`,
+                }}
+              >
                 <KindDot kind={adding.kind} />
                 <input
                   value={adding.draft}
@@ -326,55 +363,65 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                   onBlur={() => setAdding(null)}
                   style={chipInputStyle}
                 />
-              </span>
+              </div>
             ) : addMenuOpen ? (
-              <span className="nodrag" style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                {ADD_KINDS.map(({ kind, labelKey }) => (
-                  <button
-                    key={kind}
-                    onClick={() => {
-                      setAddMenuOpen(false);
-                      setAdding({ kind, draft: "" });
-                    }}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "2px 7px",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: "var(--color-accent-foreground)",
-                      background: "var(--color-surface)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 9,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <KindDot kind={kind} />
-                    {getDisplayLabelName(labelKey)}
-                  </button>
-                ))}
-              </span>
+              // 選択肢を「これから作られるノードの見た目」そのものにする。
+              // 縦積みなのは、ラベル名がユーザー変更可で折り返しを読めないため
+              <div className="nodrag" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {ADD_KINDS.map(({ kind, labelKey }) => {
+                  const c = KIND_PALETTE[kind];
+                  return (
+                    <button
+                      key={kind}
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setAdding({ kind, draft: "" });
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "100%",
+                        padding: "3px 8px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textAlign: "left",
+                        color: c.text,
+                        background: c.bg,
+                        border: `1px solid ${c.main}`,
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <KindDot kind={kind} />
+                      {getDisplayLabelName(labelKey)}
+                    </button>
+                  );
+                })}
+              </div>
             ) : (
               <button
                 className="nodrag"
                 onClick={() => setAddMenuOpen(true)}
                 style={{
-                  display: "inline-flex",
+                  display: "flex",
                   alignItems: "center",
-                  gap: 3,
-                  padding: "1px 6px 1px 2px",
-                  fontSize: 10,
+                  gap: 4,
+                  width: "100%",
+                  padding: "3px 8px 3px 6px",
+                  fontSize: 11,
                   fontWeight: 600,
+                  textAlign: "left",
                   color: "var(--color-text-tertiary)",
                   background: "transparent",
-                  border: "none",
-                  borderRadius: 5,
+                  border: "1px dashed var(--color-border)",
+                  borderRadius: 6,
                   cursor: "pointer",
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
-                <Plus size={11} /> {t("activityGraph.addChip")}
+                <Plus size={12} /> {t("activityGraph.addNode")}
               </button>
             ))}
         </div>

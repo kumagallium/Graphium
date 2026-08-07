@@ -2,9 +2,9 @@
 // 手順フロービュー（React Flow 版ノードエディタ、F 案）
 //
 // step カードに加えて material / tool / output の Entity が独立ノードに
-// なり、パラメータは各ノード内の属性行に載る（Storybook Proposal F で合意）。
-// 表示・探索系のグラフ（PROV フルビュー / ノート関係 / 全体 / アセット）は
-// cytoscape（canvas）のまま。
+// なる（Storybook Proposal F で合意）。ノードが載せるのは名前と件数だけで、
+// 属性とパラメータは下のテーブルパネル（= ノート側の表そのもの）で編集する。
+// 表示・探索系のグラフ（ノート関係 / 全体 / アセット）は cytoscape のまま。
 //
 // エッジ 3 種:
 //   used      entity → step   緑実線（次の手順が材料・道具として使う）
@@ -44,10 +44,11 @@ import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
 import { FlowAttributeTable, type FlowSelection } from "./flow-attribute-table";
 import type { TableData } from "./table-row-edit";
+import { KIND_PALETTE } from "./flow-palette";
 
-const ACTIVITY_BLUE = "#5b8fb9";
-const MATERIAL_GREEN = "#4B7A52";
-const OUTPUT_TERRACOTTA = "#c26356";
+const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
+const MATERIAL_GREEN = KIND_PALETTE.material.main;
+const OUTPUT_TERRACOTTA = KIND_PALETTE.output.main;
 const DANGER = "var(--color-destructive)";
 
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */

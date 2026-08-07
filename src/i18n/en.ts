@@ -787,7 +787,7 @@ export const en: Record<string, string> = {
   "activityGraph.stepName": "Step name",
   "activityGraph.emptyTitle": "No steps yet",
   "activityGraph.emptyHint": "Click \"+ Add step\" to start building the procedure here",
-  "activityGraph.addChip": "Add",
+  "activityGraph.addNode": "Add node",
   "activityGraph.editChip": "Edit",
   "activityGraph.removeChip": "Remove label from text",
   "activityGraph.orderOnly": "order only",

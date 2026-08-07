@@ -14,7 +14,8 @@ import { FileText, Film, Image as ImageIcon, Music, Pencil, SlidersHorizontal, T
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { getActiveProvider } from "../../lib/storage/registry";
 import { t } from "../../i18n";
-import { splitAttrLabel, type ActivityIoKind, type FlowEntity } from "./activity-graph-adapter";
+import { splitAttrLabel, type FlowEntity } from "./activity-graph-adapter";
+import { KIND_PALETTE, selectionRing } from "./flow-palette";
 
 export type EntityFlowNodeData = {
   entity: FlowEntity;
@@ -30,11 +31,6 @@ export type EntityFlowNodeData = {
 
 export type EntityFlowNodeType = Node<EntityFlowNodeData, "entity">;
 
-const KIND_COLORS: Record<ActivityIoKind, { main: string; bg: string; text: string }> = {
-  material: { main: "#4B7A52", bg: "var(--color-label-entity-bg)", text: "#2d4a32" },
-  tool: { main: "#c08b3e", bg: "var(--color-label-parameter-bg)", text: "#7a5a22" },
-  output: { main: "#c26356", bg: "var(--color-label-result-bg)", text: "#a8513f" },
-};
 
 const MEDIA_ICONS: Record<string, typeof ImageIcon> = {
   image: ImageIcon,
@@ -120,7 +116,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
     onRenameTableRow,
     onRemoveTableRow,
   } = data;
-  const c = KIND_COLORS[entity.kind];
+  const c = KIND_PALETTE[entity.kind];
   const inlineEditable = !!entity.entityId;
   const tableEditable = !!entity.tableRef;
   // 編集中の対象（合成キー）とドラフト:
@@ -187,7 +183,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
         border: `1.5px solid ${c.main}`,
         // 選択は枠を太くせずリングで示す。太さを変えるとノードの実寸が変わり、
         // React Flow が測り直してレイアウトが動く
-        boxShadow: selected ? `0 0 0 3px ${c.main}33, var(--shadow-2)` : "var(--shadow-1)",
+        boxShadow: selected ? selectionRing(c.main) : "var(--shadow-1)",
         overflow: "hidden",
       }}
     >
