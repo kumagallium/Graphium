@@ -1,4 +1,4 @@
-// 選択中ノードの裏にあるノート側テーブルを、そのままグリッドとして編集する панель。
+// 選択中ノードの裏にあるノート側テーブルを、そのままグリッドとして編集するパネル。
 //
 // 「グラフから足したものがノートに文字として散らばる」のを避けるため、
 // 入出力もパラメータもノート側では表（インデックステーブルと同じ標準 table +
@@ -47,9 +47,9 @@ const th: CSSProperties = {
   fontWeight: 700,
   textAlign: "left",
   whiteSpace: "nowrap",
-  background: "var(--color-surface, #f5f8f5)",
-  borderBottom: "1px solid var(--color-border, #d5e0d7)",
-  borderRight: "1px solid var(--color-border-subtle, #dce5dd)",
+  background: "var(--color-surface)",
+  borderBottom: "1px solid var(--color-border)",
+  borderRight: "1px solid var(--color-border-subtle)",
 };
 
 const td: CSSProperties = {
@@ -58,8 +58,8 @@ const td: CSSProperties = {
   // 空セルでも行が潰れないように高さを持たせる（クリック対象が線になるのを防ぐ）
   height: 26,
   lineHeight: "20px",
-  borderBottom: "1px solid var(--color-border-subtle, #dce5dd)",
-  borderRight: "1px solid var(--color-border-subtle, #dce5dd)",
+  borderBottom: "1px solid var(--color-border-subtle)",
+  borderRight: "1px solid var(--color-border-subtle)",
   cursor: "text",
 };
 
@@ -67,7 +67,7 @@ const inputStyle: CSSProperties = {
   width: "100%",
   padding: "1px 4px",
   fontSize: 12,
-  border: "1px solid var(--color-primary, #4B7A52)",
+  border: "1px solid var(--color-primary)",
   borderRadius: 3,
   outline: "none",
 };
@@ -79,7 +79,7 @@ const addBtnStyle: CSSProperties = {
   padding: "2px 7px 2px 4px",
   fontSize: 11,
   fontWeight: 600,
-  color: "var(--color-primary, #4B7A52)",
+  color: "var(--color-primary)",
   background: "transparent",
   border: "none",
   borderRadius: 5,
@@ -214,7 +214,7 @@ export function FlowAttributeTable({
       <div style={headerStyle}>
         <span style={{ fontWeight: 700, color: "var(--color-foreground)" }}>{title}</span>
         {table && (
-          <span style={{ color: "var(--color-text-tertiary, #8fa394)" }}>
+          <span style={{ color: "var(--color-text-tertiary)" }}>
             {t("flowTable.tableHint")}
           </span>
         )}
@@ -244,7 +244,7 @@ export function FlowAttributeTable({
                             style={{
                               border: "none",
                               background: "transparent",
-                              color: "#c26356",
+                              color: "var(--color-destructive)",
                               cursor: "pointer",
                               padding: 0,
                               lineHeight: 1,
@@ -276,7 +276,7 @@ export function FlowAttributeTable({
                   key={r}
                   style={
                     highlightRow === r
-                      ? { background: "var(--color-accent, #e8f0e8)" }
+                      ? { background: "var(--color-accent)" }
                       : undefined
                   }
                 >
@@ -307,7 +307,7 @@ export function FlowAttributeTable({
             </tbody>
           </table>
         ) : (
-          <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary, #8fa394)" }}>
+          <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--color-text-tertiary)" }}>
             <div>{t("flowTable.noTableYet")}</div>
             {canCreateTable && (
               <button onClick={startCreateTable} style={{ ...addBtnStyle, marginTop: 4, marginLeft: -4 }}>
@@ -320,7 +320,7 @@ export function FlowAttributeTable({
         {/* 本文 span 由来（表になっていない旧データ） */}
         {inlineAttrs.length > 0 && (
           <div style={{ padding: "6px 8px 2px" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary, #8fa394)", paddingBottom: 2 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary)", paddingBottom: 2 }}>
               {t("flowTable.inlineSection")}
             </div>
             {inlineAttrs.map((a) => {
@@ -332,7 +332,7 @@ export function FlowAttributeTable({
                     field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
                   ) : (
                     <>
-                      <span style={{ fontSize: 11, color: "var(--color-text-tertiary, #8fa394)", width: 72, flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: "var(--color-text-tertiary)", width: 72, flexShrink: 0 }}>
                         {key ?? "—"}
                       </span>
                       <span
@@ -345,7 +345,7 @@ export function FlowAttributeTable({
                         <button
                           onClick={() => onRemoveEntity(a.entityId!)}
                           title={t("activityGraph.removeChip")}
-                          style={{ border: "none", background: "transparent", color: "#c26356", cursor: "pointer", padding: 2 }}
+                          style={{ border: "none", background: "transparent", color: "var(--color-destructive)", cursor: "pointer", padding: 2 }}
                         >
                           <Trash2 size={11} />
                         </button>
@@ -384,9 +384,9 @@ const wrapStyle: CSSProperties = {
   flexDirection: "column",
   height: "100%",
   minHeight: 0,
-  background: "var(--color-card, #ffffff)",
+  background: "var(--color-card)",
   borderRadius: 8,
-  border: "1px solid var(--color-border, #d5e0d7)",
+  border: "1px solid var(--color-border)",
   overflow: "hidden",
 };
 
@@ -397,8 +397,8 @@ const headerStyle: CSSProperties = {
   gap: 8,
   padding: "6px 10px",
   fontSize: 12,
-  borderBottom: "1px solid var(--color-border, #d5e0d7)",
-  background: "var(--color-surface, #f5f8f5)",
+  borderBottom: "1px solid var(--color-border)",
+  background: "var(--color-surface)",
 };
 
 const emptyStyle: CSSProperties = {
@@ -406,7 +406,7 @@ const emptyStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   fontSize: 12,
-  color: "var(--color-text-tertiary, #8fa394)",
+  color: "var(--color-text-tertiary)",
   textAlign: "center",
   padding: 12,
 };

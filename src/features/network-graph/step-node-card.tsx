@@ -35,7 +35,7 @@ const IO_COLORS: Record<ActivityIoKind, string> = {
   output: "#c26356", // output（テラコッタ）
 };
 
-const PARAM_COLOR = "#8fa394";
+const PARAM_COLOR = "var(--color-text-tertiary)";
 const ACTIVITY_BLUE = "#5b8fb9";
 
 const iconBtnStyle: CSSProperties = {
@@ -48,7 +48,7 @@ const iconBtnStyle: CSSProperties = {
   border: "none",
   borderRadius: 5,
   background: "transparent",
-  color: "#6b7f6e",
+  color: "var(--color-text-tertiary)",
   cursor: "pointer",
 };
 
@@ -148,11 +148,11 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         minWidth: 180,
         maxWidth: 240,
         borderRadius: 8,
-        background: "#ffffff",
+        background: "var(--color-card)",
         // border と borderLeft の shorthand 混在は React が再レンダー時に警告する
-        borderTop: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
-        borderRight: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
-        borderBottom: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid #d5e0d7",
+        borderTop: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid var(--color-border)",
+        borderRight: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid var(--color-border)",
+        borderBottom: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid var(--color-border)",
         borderLeft: `3px solid ${ACTIVITY_BLUE}`,
         boxShadow: selected
           ? "0 2px 8px rgba(30, 20, 10, 0.14)"
@@ -193,7 +193,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               padding: "1px 5px",
               fontSize: 13,
               fontWeight: 700,
-              color: "#1a2e1d",
+              color: "var(--color-foreground)",
               border: `1px solid ${ACTIVITY_BLUE}`,
               borderRadius: 5,
               outline: "none",
@@ -208,7 +208,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               minWidth: 0,
               fontSize: 13,
               fontWeight: 700,
-              color: "#1a2e1d",
+              color: "var(--color-foreground)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -226,7 +226,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                 onClick={startEditing}
                 title={t("activityGraph.stepName")}
                 style={iconBtnStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f5ef")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <Pencil size={12} />
@@ -237,7 +237,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                 onClick={() => onJump(id)}
                 title={t("activityGraph.jumpToText")}
                 style={iconBtnStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f5ef")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <FileText size={12} />
@@ -251,8 +251,8 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                   else onDelete(id);
                 }}
                 title={t("activityGraph.deleteNode")}
-                style={{ ...iconBtnStyle, color: "#c26356" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+                style={{ ...iconBtnStyle, color: "var(--color-destructive)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-error-bg)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <Trash2 size={12} />
@@ -275,9 +275,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               padding: "4px 8px",
               fontSize: 11,
               fontWeight: 600,
-              color: "#c26356",
-              background: "#fef2f2",
-              border: "1px solid #c26356",
+              color: "var(--color-destructive)",
+              background: "var(--color-error-bg)",
+              border: "1px solid var(--color-destructive)",
               borderRadius: 6,
               cursor: "pointer",
               whiteSpace: "nowrap",
@@ -334,9 +334,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                       padding: "2px 7px",
                       fontSize: 10,
                       fontWeight: 600,
-                      color: "#2d4a32",
-                      background: "#f0f5ef",
-                      border: "1px solid #d5e0d7",
+                      color: "var(--color-accent-foreground)",
+                      background: "var(--color-surface)",
+                      border: "1px solid var(--color-border)",
                       borderRadius: 9,
                       cursor: "pointer",
                       whiteSpace: "nowrap",
@@ -358,7 +358,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
                   padding: "1px 6px 1px 2px",
                   fontSize: 10,
                   fontWeight: 600,
-                  color: "#8fa394",
+                  color: "var(--color-text-tertiary)",
                   background: "transparent",
                   border: "none",
                   borderRadius: 5,
@@ -378,7 +378,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         style={{
           width: 9,
           height: 9,
-          background: "#ffffff",
+          background: "var(--color-card)",
           border: `2px solid ${ACTIVITY_BLUE}`,
         }}
       />

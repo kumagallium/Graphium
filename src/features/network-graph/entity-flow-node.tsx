@@ -31,9 +31,9 @@ export type EntityFlowNodeData = {
 export type EntityFlowNodeType = Node<EntityFlowNodeData, "entity">;
 
 const KIND_COLORS: Record<ActivityIoKind, { main: string; bg: string; text: string }> = {
-  material: { main: "#4B7A52", bg: "#f0f5ef", text: "#2d4a32" },
-  tool: { main: "#c08b3e", bg: "#faf3e8", text: "#7a5a22" },
-  output: { main: "#c26356", bg: "#fdf3f1", text: "#a8513f" },
+  material: { main: "#4B7A52", bg: "var(--color-label-entity-bg)", text: "#2d4a32" },
+  tool: { main: "#c08b3e", bg: "var(--color-label-parameter-bg)", text: "#7a5a22" },
+  output: { main: "#c26356", bg: "var(--color-label-result-bg)", text: "#a8513f" },
 };
 
 const MEDIA_ICONS: Record<string, typeof ImageIcon> = {
@@ -54,7 +54,7 @@ const miniBtnStyle: CSSProperties = {
   border: "none",
   borderRadius: 5,
   background: "transparent",
-  color: "#6b7f6e",
+  color: "var(--color-text-tertiary)",
   cursor: "pointer",
 };
 
@@ -63,10 +63,10 @@ const attrInputStyle: CSSProperties = {
   minWidth: 0,
   padding: "1px 6px",
   fontSize: 11,
-  border: "1px solid #d5e0d7",
+  border: "1px solid var(--color-border)",
   borderRadius: 4,
   outline: "none",
-  color: "#1a2e1d",
+  color: "var(--color-foreground)",
 };
 
 /** 画像 Entity のサムネイル。local-media:// は Blob URL に変換する（AssetGalleryView と同じ流儀） */
@@ -105,7 +105,7 @@ function EntityThumbnail({ url, alt }: { url: string; alt: string }) {
           height: 72,
           objectFit: "cover",
           borderRadius: 4,
-          background: "#f0f5ef",
+          background: "var(--color-surface)",
         }}
       />
     </div>
@@ -183,7 +183,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
         minWidth: 140,
         maxWidth: 220,
         borderRadius: 8,
-        background: "#ffffff",
+        background: "var(--color-card)",
         border: selected ? `2px solid ${c.main}` : `1.5px solid ${c.main}`,
         boxShadow: selected ? "0 2px 8px rgba(30,20,10,0.14)" : "0 1px 3px rgba(30,20,10,0.08)",
         overflow: "hidden",
@@ -250,7 +250,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
               <button
                 onClick={removeSelf}
                 title={t("activityGraph.removeChip")}
-                style={{ ...miniBtnStyle, color: "#c26356" }}
+                style={{ ...miniBtnStyle, color: "var(--color-destructive)" }}
               >
                 <Trash2 size={11} />
               </button>
@@ -273,7 +273,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
             gap: 3,
             padding: "2px 10px 5px",
             fontSize: 10,
-            color: "#8fa394",
+            color: "var(--color-text-tertiary)",
           }}
         >
           <SlidersHorizontal size={10} />
@@ -284,7 +284,7 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
       <Handle
         type="target"
         position={Position.Top}
-        style={{ width: 8, height: 8, background: "#ffffff", border: `2px solid ${c.main}` }}
+        style={{ width: 8, height: 8, background: "var(--color-card)", border: `2px solid ${c.main}` }}
       />
       <Handle
         type="source"

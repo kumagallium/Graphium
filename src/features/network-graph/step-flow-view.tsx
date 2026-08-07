@@ -48,7 +48,7 @@ import type { TableData } from "./table-row-edit";
 const ACTIVITY_BLUE = "#5b8fb9";
 const MATERIAL_GREEN = "#4B7A52";
 const OUTPUT_TERRACOTTA = "#c26356";
-const DANGER = "#c26356";
+const DANGER = "var(--color-destructive)";
 
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
 export type ConnectResult = { error: string | null };
@@ -239,7 +239,7 @@ function StepFlowCanvas({
           ? {
               label: t("activityGraph.orderOnly"),
               labelStyle: { fontSize: 9, fill: ACTIVITY_BLUE, fontWeight: 700 },
-              labelBgStyle: { fill: "#fafdf7", fillOpacity: 0.9 },
+              labelBgStyle: { fill: "var(--color-background)", fillOpacity: 0.9 },
             }
           : {}),
         data: { kind: e.kind, deletable: e.deletable ?? false },
@@ -429,9 +429,9 @@ function StepFlowCanvas({
         maxZoom={4}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
-        style={{ background: "#fafdf7", borderRadius: 8 }}
+        style={{ background: "var(--color-background)", borderRadius: 8 }}
       >
-        <Background color="#d5e0d7" gap={22} size={1.5} />
+        <Background color="var(--color-border)" gap={22} size={1.5} />
 
         {onAddActivity && (
           <Panel position="top-right">
@@ -446,14 +446,14 @@ function StepFlowCanvas({
                 fontSize: 12,
                 fontWeight: 600,
                 color: ACTIVITY_BLUE,
-                background: "#ffffff",
-                border: "1px solid #d5e0d7",
+                background: "var(--color-card)",
+                border: "1px solid var(--color-border)",
                 borderRadius: 6,
                 cursor: "pointer",
                 boxShadow: "0 1px 3px rgba(30, 20, 10, 0.08)",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f5ef")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}
             >
               <Plus size={13} /> {t("activityGraph.addStep")}
             </button>
@@ -464,7 +464,7 @@ function StepFlowCanvas({
           <Panel position="top-center">
             <div
               style={{
-                background: "#fef2f2",
+                background: "var(--color-error-bg)",
                 color: DANGER,
                 border: `1px solid ${DANGER}`,
                 borderRadius: 6,
@@ -489,8 +489,8 @@ function StepFlowCanvas({
             top: edgeMenu.y,
             transform: "translate(-50%, -50%)",
             zIndex: 30,
-            background: "#ffffff",
-            border: "1px solid #d5e0d7",
+            background: "var(--color-card)",
+            border: "1px solid var(--color-border)",
             borderRadius: 8,
             boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
             padding: 4,
@@ -516,7 +516,7 @@ function StepFlowCanvas({
               cursor: "pointer",
               whiteSpace: "nowrap",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-error-bg)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
             <Trash2 size={14} /> {t("activityGraph.deleteStep")}
@@ -540,10 +540,10 @@ function StepFlowCanvas({
             padding: 16,
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#4a6350" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-foreground)" }}>
             {t("activityGraph.emptyTitle")}
           </div>
-          <div style={{ fontSize: 12, color: "#8fa394" }}>{t("activityGraph.emptyHint")}</div>
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{t("activityGraph.emptyHint")}</div>
         </div>
       )}
 
@@ -557,7 +557,7 @@ function StepFlowCanvas({
             right: 0,
             textAlign: "center",
             fontSize: 12,
-            color: "#8fa394",
+            color: "var(--color-text-tertiary)",
             pointerEvents: "none",
           }}
         >
