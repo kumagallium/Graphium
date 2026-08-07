@@ -55,6 +55,9 @@ const th: CSSProperties = {
 const td: CSSProperties = {
   padding: "3px 8px",
   fontSize: 12,
+  // 空セルでも行が潰れないように高さを持たせる（クリック対象が線になるのを防ぐ）
+  height: 26,
+  lineHeight: "20px",
   borderBottom: "1px solid var(--color-border-subtle, #dce5dd)",
   borderRight: "1px solid var(--color-border-subtle, #dce5dd)",
   cursor: "text",
