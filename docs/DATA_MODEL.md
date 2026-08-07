@@ -255,26 +255,40 @@ type MediaInlineLabel = {
 same referent share an `entityId` so the PROV generator emits one
 *Entity* node.
 
-`entityId` is also the handle for **graph-side editing**: the flow view
-lets the user add / rename / remove inputs, outputs and parameters, and
-each of those operations rewrites the underlying inline span
-(`src/features/inline-label/entity-edit.ts`) rather than any graph state.
-To make parameters addressable this way, the generator carries the
-originating `entityId` into the emitted attribute entries as
+`entityId` is also the handle for editing an entity that lives in prose:
+renaming and removing from the flow view rewrite the underlying inline
+span (`src/features/inline-label/entity-edit.ts`) rather than any graph
+state. To make parameters addressable the same way, the generator carries
+the originating `entityId` into the emitted attribute entries as
 `graphium:entityId`. Removal is conservative: a span that is the sole
 content of its paragraph is deleted with the paragraph, while a span
 inside prose only loses its mark — the text is never destroyed.
 
-Entities born from a **structured table** are edited through the table
-instead: their node id is `entity_<tableBlockId>_<rowName>` (outputs use
-the historical `result_` prefix), which is enough to write back the row's
-first cell (its name), an attribute cell matched by header column, or to
-delete the row (`src/features/network-graph/table-row-edit.ts`). Adding an
-input or output from the graph appends a row to that step's labelled
-table — creating and labelling one if the step has none — so the note
-accumulates a sample table rather than one-word paragraphs. Duplicate row
-names resolve to the first matching row, and a column that is not in the
-header is a no-op.
+**Tables are the bridge for graph-side editing.** Entities born from a
+**structured table** carry the node id `entity_<tableBlockId>_<rowName>`
+(outputs use the historical `result_` prefix), which is enough to write
+back the row's first cell (its name), any cell matched by header column,
+or to delete the row (`src/features/network-graph/table-row-edit.ts`).
+Adding an input, tool or output from the graph appends a row to that
+step's labelled table — creating and labelling one if the step has none —
+so the note accumulates a sample table rather than one-word paragraphs.
+Duplicate row names resolve to the first matching row, and a column that
+is not in the header is a no-op.
+
+A step's **parameters** are a table too: the columns of a table labelled
+`attribute` inside the step, where the header row holds the keys and the
+first data row the values (`ensureParameterTable`). Only the first data
+row is read, which is why the flow view offers new columns rather than
+new rows there. The label is what makes the generator read the table at
+all, so it is applied automatically whenever the table is created from
+the graph.
+
+An entity that only exists as a prose highlight can be **moved into the
+table** in one step: the row is appended and the span loses its mark, so
+the sentence survives while the entity gains a place to hold attributes.
+Its node id changes from `inline_<label>_<entityId>` to the table form as
+a result — consumers that track a selection across regenerations must
+tolerate that.
 
 **Handoffs between steps.** `informed_by` is desugared into
 `used`/`wasGeneratedBy` through an output entity (§2.3). When the previous

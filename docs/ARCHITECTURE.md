@@ -121,9 +121,12 @@ talks to LLM and embedding backends.
   received rather than only that one step followed another.
 - **The flow view is a node editor over the same document.** It is built on
   React Flow (`@xyflow/react`); step cards and material / tool / output
-  entities are all nodes, and parameters are `key | value` rows inside
-  each node rather than nodes of their own (MatPROV-style parameter nodes
-  explode the graph). Edges come in three kinds: `used` (entity → step),
+  entities are all nodes. A node shows only its name — plus a media
+  thumbnail and a count of what it carries — while attributes and
+  parameters live in a table panel under the graph, or beside it in full
+  screen. Packing them into the nodes makes the graph unreadable, and
+  MatPROV-style parameter nodes explode it. Edges come in three kinds:
+  `used` (entity → step),
   `generates` (step → entity), and order-only `informed_by` drawn dashed —
   the last one is what a handoff degrades to when the note does not say
   which output was used. The read-only, exploration-oriented graphs (note
@@ -131,7 +134,7 @@ talks to LLM and embedding backends.
   scales better for large force-directed views;
   `provToCytoscapeElements` also still feeds the PDF export.
 - **Every graph edit is a document edit.** Steps can be added, renamed and
-  deleted; entities renamed, removed and given parameters; dragging an
+  deleted; entities renamed, removed and given attributes; dragging an
   entity onto a step makes it that step's input (and links `informed_by`,
   which fires the generator's entity unification so the output and the new
   input become one node), and dropping an entity's port on empty canvas
@@ -141,16 +144,23 @@ talks to LLM and embedding backends.
   re-derives from the document — it is never edited as a data structure of
   its own, so the "graph is a pure projection of blocks + links" invariant
   holds in both directions.
-- **Graph-side adds grow a table, not loose words.** Adding an input or
-  output from the graph appends a row to that step's labelled table,
-  creating and labelling one if the step has none
-  (`network-graph/table-row-edit.ts`); such rows stay editable from their
-  node (row name, attribute cells by header, row deletion). Parameters
-  remain inline spans bound to the activity, because a table row means
-  "one entity". Inline-span entities keep span-based editing: renaming
-  rewrites the span text (keeping its `entityId`), and removing either
-  deletes a dedicated row or strips the mark when the span sits inside
-  prose (DATA_MODEL §2.3).
+- **The table is the only bridge from the graph.** Everything a node
+  carries is a row or a column of an ordinary table in the note, and the
+  panel next to the graph *is* that table's grid editor
+  (`network-graph/flow-attribute-table.tsx`): header cells are the keys,
+  body cells the values, and every edit writes back into the note's table
+  block (`network-graph/table-row-edit.ts`). Inputs, tools and outputs are
+  rows of a table labelled with their kind — one row is one entity — and a
+  step's parameters are the columns of a table labelled `attribute`
+  (header row = keys, first data row = values). A node with no table yet
+  offers "Create table", which builds and labels one in a single click:
+  for a step that means a parameter table whose key column opens for
+  naming, for an entity it also moves that entity in as a row and drops
+  its prose highlight. Entities highlighted in prose remain readable and
+  keep span-based editing — renaming rewrites the span text (keeping its
+  `entityId`), removing deletes a dedicated row or strips the mark inside
+  prose (DATA_MODEL §2.3) — but the panel lists them apart, to be edited
+  in place or moved into the table with one click.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from
