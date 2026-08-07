@@ -79,6 +79,35 @@ export async function takeSnapshot(
   return { status: "created", meta };
 }
 
+/**
+ * 版の全文で「現在のドキュメント」を上書きするための復元ドキュメントを組む。
+ * 内容（title / pages / 内容系メタ）は版から取り、管理系メタ（作成日時・
+ * 編集履歴チェーン・共有参照・スキルの版同期情報）は現在の文書から引き継ぐ。
+ * 復元後の recordRevision（snapshot_restore）は呼び出し側で行う。
+ */
+export function buildRestoredDocument(
+  current: GraphiumDocument,
+  snapshot: GraphiumDocument,
+): GraphiumDocument {
+  return {
+    ...snapshot,
+    createdAt: current.createdAt,
+    documentProvenance: current.documentProvenance,
+    sharedRef: current.sharedRef,
+    modifiedAt: new Date().toISOString(),
+    skillMeta: current.skillMeta && snapshot.skillMeta
+      ? {
+          ...snapshot.skillMeta,
+          createdAt: current.skillMeta.createdAt,
+          // 版同期の管理情報は現在を維持する。復元した内容が同梱デフォルトと
+          // 違えば、通常の編集と同じく起動時のハッシュ比較で「編集済み」になる。
+          systemSkillVersion: current.skillMeta.systemSkillVersion,
+          defaultPromptHash: current.skillMeta.defaultPromptHash,
+        }
+      : (snapshot.skillMeta ?? current.skillMeta),
+  };
+}
+
 /** 版のラベルを変更（未指定・空文字なら未命名に戻す） */
 export async function renameSnapshot(
   provider: StorageProvider,

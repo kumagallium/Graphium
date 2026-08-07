@@ -81,7 +81,9 @@ export type EditActivityType =
    *  derivedFromClaims に取り込む（本文は変えない。Atom の成長経路）。 */
   | "wiki_reinforce"
   /** システムスキルのデフォルト内容への同期（未編集スキルの自動更新 / Reset to default） */
-  | "skill_default_update";
+  | "skill_default_update"
+  /** 手動で残した版（スナップショット）への復元。ユーザー操作なので human agent に紐づく */
+  | "snapshot_restore";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {

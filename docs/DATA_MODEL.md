@@ -339,12 +339,12 @@ preferred mitigations are content-hash deduplication or
 user-controlled pruning, not silent truncation.
 
 Separately from the automatic edit log, a user can pin a **manual
-version snapshot** of a note ("Save version"). Unlike revisions, which
-store only diff metadata, a snapshot is a full `GraphiumDocument` copy,
-so an old version can be reopened in its entirety. Snapshots live in the
-provider's app-data channel and never enter `listFiles()`, so they do
-not appear in the note list, search, or graphs, and no index schema
-change is involved:
+version snapshot** of a note or a Skill document ("Save version").
+Unlike revisions, which store only diff metadata, a snapshot is a full
+`GraphiumDocument` copy, so an old version can be reopened in its
+entirety. Snapshots live in the provider's app-data channel and never
+enter `listFiles()`, so they do not appear in the note list, search, or
+graphs, and no index schema change is involved:
 
 ```ts
 type SnapshotMeta = {
@@ -361,6 +361,15 @@ Versions are immutable once taken; taking a snapshot whose content hash
 equals the latest one is a no-op instead of a duplicate. The history
 panel interleaves snapshots with the automatic revision log into a
 single timeline ordered by timestamp.
+
+Restoring differs by document kind. Notes offer **Fork from here** (a
+new note derived from the version). Skill documents instead offer
+**Restore this version**: the current content is overwritten with the
+snapshot, management metadata (`createdAt`, the provenance chain, and
+the built-in default sync fields of `SkillMeta`) is carried over from
+the current document, and the operation is appended to the provenance
+log as a `snapshot_restore` activity — so a restore is itself part of
+the history rather than a rewrite of it.
 
 ### 2.5 Conversational layer
 

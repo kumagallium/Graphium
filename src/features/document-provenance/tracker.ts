@@ -117,7 +117,7 @@ export async function recordRevision(
 
   // エージェント登録
   const agentType =
-    activityType === "human_edit" || activityType === "human_derivation" || activityType === "derive_source"
+    activityType === "human_edit" || activityType === "human_derivation" || activityType === "derive_source" || activityType === "snapshot_restore"
       ? "human" : "ai";
   const label = agentLabel ?? (agentType === "human" ? "user" : "ai");
   // author は人間エージェントにのみ付与（AI には self-asserted identity を持たせない）

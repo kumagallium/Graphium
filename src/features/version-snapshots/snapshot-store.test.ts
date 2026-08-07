@@ -7,6 +7,7 @@ import {
   takeSnapshot,
   renameSnapshot,
   deleteSnapshot,
+  buildRestoredDocument,
 } from "./snapshot-store";
 
 /** readAppData / writeAppData だけを in-memory で実装した最小プロバイダ */
@@ -104,5 +105,41 @@ describe("snapshot-store", () => {
     const provider = makeProvider();
     const res = await takeSnapshot(provider, "note-1", makeDoc("初期案"), "たたき台");
     expect(res.meta.label).toBe("たたき台");
+  });
+});
+
+describe("buildRestoredDocument", () => {
+  it("内容は版から、作成日時と編集履歴チェーンは現在から引き継ぐ", () => {
+    const snapshot = { ...makeDoc("初期案"), title: "旧タイトル" };
+    const current: GraphiumDocument = {
+      ...makeDoc("編集後の内容"),
+      title: "新タイトル",
+      createdAt: "2026-02-02T00:00:00Z",
+      documentProvenance: { revisions: [], activities: [], agents: [{ id: "agent_human", type: "human", label: "user" }] },
+    };
+    const restored = buildRestoredDocument(current, snapshot);
+    expect(restored.pages[0].blocks[0].content[0].text).toBe("初期案");
+    expect(restored.title).toBe("旧タイトル");
+    expect(restored.createdAt).toBe("2026-02-02T00:00:00Z");
+    expect(restored.documentProvenance).toBe(current.documentProvenance);
+    expect(new Date(restored.modifiedAt).getTime()).toBeGreaterThan(new Date(snapshot.modifiedAt).getTime());
+  });
+
+  it("スキルの版同期情報（version / defaultPromptHash）は現在を維持し、説明は版に戻す", () => {
+    const snapshot: GraphiumDocument = {
+      ...makeDoc("旧プロンプト"),
+      source: "skill",
+      skillMeta: { description: "旧説明", availableForIngest: true, createdAt: "2026-01-01T00:00:00Z", systemSkillId: "default-voice-ja", systemSkillVersion: 1, defaultPromptHash: "old-hash" },
+    };
+    const current: GraphiumDocument = {
+      ...makeDoc("現プロンプト"),
+      source: "skill",
+      skillMeta: { description: "現説明", availableForIngest: false, createdAt: "2026-01-05T00:00:00Z", systemSkillId: "default-voice-ja", systemSkillVersion: 3, defaultPromptHash: "new-hash" },
+    };
+    const restored = buildRestoredDocument(current, snapshot);
+    expect(restored.skillMeta?.description).toBe("旧説明");
+    expect(restored.skillMeta?.createdAt).toBe("2026-01-05T00:00:00Z");
+    expect(restored.skillMeta?.systemSkillVersion).toBe(3);
+    expect(restored.skillMeta?.defaultPromptHash).toBe("new-hash");
   });
 });
