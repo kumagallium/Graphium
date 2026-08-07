@@ -114,7 +114,7 @@ Your last-used mode is remembered on this device. Formulas are stored as LaTeX a
 
 ![The formula editor in visual mode, with a toggle to LaTeX](/screenshots/math-editor.png)
 
-## Columns
+## Columns <Badge type="tip" text="Added in v0.27.0 (2026-08-03)" />
 
 **Columns** places blocks side by side — observations next to their discussion, a table next to the photo it describes. Insert one from the slash menu (`/columns`) and you get two columns, each holding any blocks you like: paragraphs, headings, tables, images, even steps.
 

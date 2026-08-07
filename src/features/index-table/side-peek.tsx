@@ -55,6 +55,7 @@ import {
   blockContainsUrlLink,
   registerUrlAsset,
   buildUrlPeekEntry,
+  schedulePastedImageCapture,
 } from "@features/asset-browser";
 import type { MediaIndex, MediaIndexEntry, MediaType, AssetDisplayMode } from "@features/asset-browser";
 import { parseExternalSource } from "@features/network-graph/external-source";
@@ -264,6 +265,9 @@ function SidePeekInner({
   labelStoreRef.current = labelStore;
   const linkStoreRef = useRef(linkStore);
   linkStoreRef.current = linkStore;
+  // paste リスナー（effect closure）から最新の uploadFile を参照するための ref
+  const uploadFileRef = useRef(uploadFile);
+  uploadFileRef.current = uploadFile;
   const blockAlignmentStore = useBlockAlignmentStore();
   const blockAlignmentStoreRef = useRef(blockAlignmentStore);
   blockAlignmentStoreRef.current = blockAlignmentStore;
@@ -585,6 +589,7 @@ function SidePeekInner({
       // 全コピペ共通: 挿入後にインライン entityId を再発番する後処理（メインと同じ Phase E）。
       // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
       // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
+      // beforeIdsForRegen はペースト画像の素材取り込み（schedulePastedImageCapture）とも共有。
       const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
       const scheduleEntityRegen = () => {
         setTimeout(() => {
@@ -614,11 +619,16 @@ function SidePeekInner({
           });
         }, 0);
         scheduleEntityRegen();
+        schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFileRef.current, e);
         return;
       }
 
       // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
       scheduleEntityRegen();
+      // ウェブページ等の HTML ペーストで入った外部 URL / data URL 画像を素材へ取り込む
+      // （メインエディタの pasteListener と同じ後処理。BlockNote の text/html 経路は
+      //   uploadFile を通らず、素材に残らないため）
+      schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFileRef.current, e);
 
       // 3) ノートリンク（…#note/<id>）単体 → @タイトルのメンションに変換
       const pastedText = e.clipboardData?.getData("text/plain")?.trim();

@@ -103,6 +103,7 @@ import {
 import type { AttachedNote } from "./features/ai-assistant/panel";
 import type { AgentChatMessage, AgentRunRequest } from "./features/ai-assistant";
 import { buildAttachmentSuffix } from "./features/ai-assistant/attachment-suffix";
+import { buildQuotedChatMessage, buildQuotedRetrievalQuery } from "./features/ai-assistant/quoted-context";
 import {
   chatRunManager,
   buildRunScopeChat,
@@ -214,6 +215,7 @@ import {
 } from "./features/asset-browser";
 import { extractEmbeddedPdfImages, embeddedImageToFile } from "./features/asset-browser/pdf-image-extractor";
 import { fetchRemoteImageAsFile } from "./features/asset-browser/remote-image";
+import { schedulePastedImageCapture } from "./features/asset-browser/paste-image-capture";
 import { MaterialSidePeek } from "./features/asset-browser/MaterialSidePeek";
 import { useT, t as tStatic, getLocale } from "./i18n";
 import { ensureAgentConfigured, localizeAiError, AI_NOT_CONFIGURED_EVENT } from "./lib/ai-error";
@@ -1617,6 +1619,30 @@ function NoteEditorInner({
     registerUrlAsset(url, [], onAddUrlBookmark, () => markDirtyRef.current());
   }, [onAddUrlBookmark]);
 
+  // 素材ピーク（未登録 URL の transient エントリ）からの「素材に登録」。
+  // AI チャットの挿入や手打ちで本文に入ったリンクを、精査後に後追いで素材化する動線。
+  // 貼付メニューと同じ流儀で usedIn は空 + 保存予約し、syncUsedIn に埋めさせる。
+  // 登録完了時にピークが同じエントリのまま開いていれば実エントリへ差し替える
+  // （登録ボタンが消え、Full view 昇格が解禁される）。
+  const handleRegisterUrlFromPeek = useCallback((peekEntry: MediaIndexEntry) => {
+    const url = peekEntry.url;
+    if (peekEntry.type !== "url" || !url) return;
+    registerUrlAsset(url, [], (newEntry) => {
+      onAddUrlBookmark?.(newEntry);
+      setMaterialSidePeekEntry((cur) => (cur && cur.fileId === peekEntry.fileId ? newEntry : cur));
+    }, () => markDirtyRef.current());
+  }, [onAddUrlBookmark]);
+
+  // 素材ピークが「未登録 URL の transient エントリ」か（登録ボタンの表示判定）。
+  // fileId でなく URL の一致で判定する: ピークを開いたまま裏で同じ URL が登録された
+  // 場合（貼付メニュー等との競合）もボタンが正しく消えるようにするため。
+  const materialPeekUrlUnregistered =
+    materialSidePeekEntry?.type === "url" &&
+    !!materialSidePeekEntry.url &&
+    !mediaIndex?.media.some(
+      (m) => m.type === "url" && m.url === materialSidePeekEntry.url,
+    );
+
   // スラッシュメニューのピッカーから選択 → bookmark ブロック挿入
   // ピッカーを開いたエディタ（main / SidePeek）に挿入する。
   const handleUrlSlashPickerSelect = useCallback((entry: MediaIndexEntry, displayMode: AssetDisplayMode) => {
@@ -1815,6 +1841,8 @@ function NoteEditorInner({
       // 同 entityId 共有は意図しない場合が多いので、コピー範囲内では一貫した
       // 新 ID に置き換える（旧 ID 同一なら新 ID も同一になる remap）。
       // 詳細: features/inline-label/regen-on-paste.ts
+      // beforeIdsForRegen はペースト画像の素材取り込み（下の schedulePastedImageCapture）
+      // とも共有する paste 直前スナップショット。
       const beforeIdsForRegen = new Set(flattenBlockIds(editor.document));
       const scheduleEntityRegen = () => {
         setTimeout(() => {
@@ -1845,11 +1873,15 @@ function NoteEditorInner({
           });
         }, 0);
         scheduleEntityRegen();
+        schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFile, e);
         return;
       }
 
       // Graphium ペイロード以外でも entity 再発番は走らせる（プレーン Markdown / HTML 等）
       scheduleEntityRegen();
+      // ウェブページ等の HTML ペーストで入った外部 URL / data URL 画像を素材へ取り込む
+      // （BlockNote の text/html 経路は uploadFile を通らず、素材に残らないため）
+      schedulePastedImageCapture(editor, beforeIdsForRegen, uploadFile, e);
 
       // Graphium ノートのリンク（…#note/<id>）を単体で貼った場合は、生 URL では
       // なく @タイトル のメンションに変換する（`@` で参照するのと同じ扱い）。
@@ -1890,7 +1922,7 @@ function NoteEditorInner({
       domEl.addEventListener("copy", copyListener, false);
     };
     attachClipboardListeners();
-  }, [labelStore, linkStore]);
+  }, [labelStore, linkStore, uploadFile]);
 
   // ── 保存ロジック ──
   const buildDocument = useCallback(async (): Promise<GraphiumDocument> => {
@@ -2305,19 +2337,23 @@ function NoteEditorInner({
         const isFirstMessage = baseMessages.length === 0;
         let userMessage = question;
         if (effectiveQuotedMarkdown) {
-          // ブロック選択チャット: 選択ブロックのスナップショットを初回のみ付加する。
-          // 継続会話では下記 history 側で idx=0 に quotedMarkdown を再注入して維持する。
-          if (isFirstMessage) {
-            userMessage = [
-              "以下の内容について質問があります。",
-              "",
-              "---",
-              effectiveQuotedMarkdown,
-              "---",
-              "",
-              question,
-            ].join("\n");
-          }
+          // 引用チャット: 引用（初回のスナップショット）を議論の主題として渡し、
+          // ノート本文は「背景」として毎ターン最新を添える。本文を渡さないと、
+          // 指示語・略語・前提条件が引用の外にある場合に AI が推測で埋めるしかなく、
+          // 一部を引用したほうがページ全体チャットより文脈が薄くなってしまう。
+          // 引用そのものは下記 history 側でも idx=0 に再注入して維持する。
+          // タイトルはエディタ本文（BlockNote document）の外にあるメタデータなので、
+          // 明示的に前置きへ含めないと AI からノートのタイトルが参照できない。
+          const pageMarkdown = editorRef.current
+            ? await editorRef.current.blocksToMarkdownLossy(editorRef.current.document)
+            : "";
+          userMessage = buildQuotedChatMessage({
+            title,
+            quotedMarkdown: effectiveQuotedMarkdown,
+            pageMarkdown,
+            question,
+            isFirstMessage,
+          });
         } else if (effectiveSourceBlockIds.length === 0 && editorRef.current) {
           // ページ全体チャット: 毎ターン、現在のドキュメント本文（最新）を再同梱する。
           // スナップショット方式だと「修正しました、見てください」と続けたときに
@@ -2328,10 +2364,12 @@ function NoteEditorInner({
           if (pageMarkdown.trim()) {
             userMessage = [
               isFirstMessage
-                ? "以下のドキュメント全体について質問があります。"
-                : "以下は現在のドキュメント全体の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。",
+                ? `以下のノート「${title}」の内容全体について質問があります。`
+                : `以下はノート「${title}」の現在の最新の内容です（あなたが前に見たものから編集されている場合があります）。これを踏まえて回答してください。`,
               "",
               "---",
+              `ノートタイトル: ${title}`,
+              "",
               pageMarkdown,
               "---",
               "",
@@ -2465,7 +2503,13 @@ function NoteEditorInner({
             }
             for (const id of citedAssetIds) excludeIds.add(id);
             const { retrieveWikiContext } = await import("./features/wiki/retriever");
-            wikiContext = (await retrieveWikiContext(userMessage, excludeIds)) ?? undefined;
+            // 引用チャットでは背景として同梱したノート全文をクエリから外し、主題
+            // （引用＋質問）だけで検索する。全文を混ぜると embedding が希釈されて
+            // 引用と無関係な Wiki を拾ってしまう。
+            const retrievalQuery = effectiveQuotedMarkdown
+              ? buildQuotedRetrievalQuery(effectiveQuotedMarkdown, question)
+              : userMessage;
+            wikiContext = (await retrieveWikiContext(retrievalQuery, excludeIds)) ?? undefined;
           } catch {
             // Retriever 失敗は無視（embedding が無い場合など）
           }
@@ -2475,12 +2519,14 @@ function NoteEditorInner({
         // 初回 user message は store に表示用の素の質問しか入っていないので、
         // backend 履歴では quotedMarkdown を改めて挟んで context を維持する
         // （継続会話で「その単語について」と聞いたときに context が抜けるのを防ぐ）。
+        // 背景のノート本文はここには積まない。毎ターン最新を userMessage 側に載せる
+        // ので、履歴にも積むと会話が伸びるほど古い本文のコピーが累積してしまう。
         const history: AgentChatMessage[] = baseMessages.map((m, idx) => {
           if (idx === 0 && m.role === "user" && effectiveQuotedMarkdown) {
             return {
               role: m.role,
               content: [
-                "以下の内容について質問があります。",
+                `ノート「${title}」内の以下の内容について質問があります。`,
                 "",
                 "---",
                 effectiveQuotedMarkdown,
@@ -2592,7 +2638,7 @@ function NoteEditorInner({
         aiAssistant.setError(localizeAiError(err));
       }
     },
-    [chatStorageId, aiAssistant, noteIndex, captureIndexProp, mediaIndex],
+    [chatStorageId, aiAssistant, noteIndex, captureIndexProp, mediaIndex, title],
   );
 
   // チャットフォーク: 現在のチャットを一覧に退避し、指定メッセージまでの
@@ -4493,6 +4539,7 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
+            onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
               // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
               onOpenMedia && mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId)
@@ -4514,6 +4561,7 @@ function NoteEditorInner({
             entry={materialSidePeekEntry}
             onClose={() => setMaterialSidePeekEntry(null)}
             mediaIndex={mediaIndex ?? null}
+            onRegisterAsset={materialPeekUrlUnregistered ? handleRegisterUrlFromPeek : undefined}
             onToggleFull={
               onOpenMedia && mediaIndex?.media.some((m) => m.fileId === materialSidePeekEntry.fileId)
                 ? () => {
@@ -5001,6 +5049,25 @@ export function NoteApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop]);
   const fm = useFileManager(authenticated);
+
+  // 一覧・全体グラフの素材ピーク（未登録 URL の transient エントリ）からの「素材に登録」。
+  // エディタが開いていないため保存予約（syncUsedIn）は無し — usedIn は該当ノートの
+  // 次回保存時に埋まる。登録完了時にピークが開いたままなら実エントリへ差し替える。
+  const handleRegisterUrlFromListPeek = useCallback((peekEntry: MediaIndexEntry) => {
+    const url = peekEntry.url;
+    if (peekEntry.type !== "url" || !url) return;
+    registerUrlAsset(url, [], (newEntry) => {
+      fm.handleAddUrlBookmark(newEntry);
+      setListMaterialPeekEntry((cur) => (cur && cur.fileId === peekEntry.fileId ? newEntry : cur));
+    });
+  }, [fm.handleAddUrlBookmark]);
+  // 未登録 URL の transient ピークか（登録ボタンの表示判定。URL 一致で判定）
+  const listPeekUrlUnregistered =
+    listMaterialPeekEntry?.type === "url" &&
+    !!listMaterialPeekEntry.url &&
+    !fm.mediaIndex?.media.some(
+      (m) => m.type === "url" && m.url === listMaterialPeekEntry.url,
+    );
   const capture = useCapture(authenticated);
   // 一覧 / アセットピークの保存後フック: キャッシュ / インデックス更新に加え、
   // タイトルが変わっていたら @メンションのラベルを参照元ノートへ伝播する。
@@ -7737,9 +7804,9 @@ export function NoteApp() {
             onImportMarkdown={async (files, onProgress) => {
               const {
                 importMarkdownToGraphiumDoc,
-                resolveWikiLinks,
+                buildWikiLinkResolver,
+                applyWikiLinkResolution,
                 isMarkdownFile,
-                buildVaultMap,
               } = await import("./features/markdown-import/import");
 
               const mdFiles = files.filter(isMarkdownFile);
@@ -7778,7 +7845,6 @@ export function NoteApp() {
                 : undefined;
 
               // pass 1: 各 MD を doc に変換 → ノート作成
-              const vaultMap = buildVaultMap(mdFiles);
               const baseNameToNoteId = new Map<string, string>();
               const docsByNoteId = new Map<
                 string,
@@ -7807,31 +7873,26 @@ export function NoteApp() {
                 onProgress({ done: i + 1, total: mdFiles.length, failed: [...failed] });
               }
 
-              // pass 2: wikilinks を解決して保存
-              if (vaultMap.size > 0) {
-                let resolvedCount = 0;
-                let unresolvedCount = 0;
-                for (const [noteId, { doc, wikilinks }] of docsByNoteId) {
-                  if (wikilinks.length === 0) continue;
-                  const resolver = (target: string): string | null => {
-                    const id = baseNameToNoteId.get(target.toLowerCase());
-                    if (id) {
-                      resolvedCount++;
-                      return id;
-                    }
-                    unresolvedCount++;
-                    return null;
-                  };
-                  const updated = resolveWikiLinks(doc, wikilinks, resolver);
-                  if (updated.pages[0].knowledgeLinks.length > 0) {
-                    try {
-                      await fm.handleSaveImportedDoc(noteId, updated);
-                    } catch (err) {
-                      console.warn("Markdown リンク解決の保存失敗:", noteId, err);
-                    }
+              // pass 2: wikilinks を解決して保存。
+              // 解決先は「今回のインポートで作成したノート」→「既存ノート（タイトル一致）」。
+              // 全件未解決のノートも必ず保存し直す: pass 1 で保存した本文には
+              // プレースホルダ（{{GWLINK_n}}）が残っており、[[リンク]] テキストへ
+              // 復元した姿で上書きする必要がある。
+              let unresolvedLinkCount = 0;
+              if (docsByNoteId.size > 0) {
+                // 既存ノートの解決先は noteIndex（タイトルを持ち、アーカイブ除外済み。
+                // wiki も含むので、エクスポートした wiki への @リンクも復元できる）
+                const resolver = buildWikiLinkResolver(baseNameToNoteId, fm.noteIndex?.notes ?? []);
+                const resolution = applyWikiLinkResolution(docsByNoteId, resolver);
+                unresolvedLinkCount = resolution.unresolvedCount;
+                for (const [noteId, updated] of resolution.updates) {
+                  try {
+                    await fm.handleSaveImportedDoc(noteId, updated);
+                  } catch (err) {
+                    console.warn("Markdown リンク解決の保存失敗:", noteId, err);
                   }
                 }
-                console.info(`[markdown-import] リンク解決: ${resolvedCount} / ${resolvedCount + unresolvedCount}`);
+                console.info(`[markdown-import] リンク解決: ${resolution.resolvedCount} / ${resolution.resolvedCount + resolution.unresolvedCount}`);
               }
 
               await fm.refreshFiles();
@@ -7839,7 +7900,7 @@ export function NoteApp() {
               const successCount = mdFiles.length - failed.length;
               if (successCount > 0) {
                 const msg = [tStatic("import.importedCount", { count: String(successCount) })];
-                if (vaultMap.size > 0) {
+                if (unresolvedLinkCount > 0) {
                   msg.push("", tStatic("import.unresolvedLinksNote"));
                 }
                 window.alert(msg.join("\n"));
@@ -8541,6 +8602,7 @@ export function NoteApp() {
           entry={listMaterialPeekEntry}
           onClose={() => setListMaterialPeekEntry(null)}
           mediaIndex={fm.mediaIndex ?? null}
+          onRegisterAsset={listPeekUrlUnregistered ? handleRegisterUrlFromListPeek : undefined}
           onToggleFull={
             // 登録済み素材のみ Full view へ昇格できる（アドホック URL entry は gallery に実体が無い）
             fm.mediaIndex?.media.some((m) => m.fileId === listMaterialPeekEntry.fileId)

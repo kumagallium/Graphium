@@ -153,9 +153,11 @@ talks to LLM and embedding backends.
   prose (DATA_MODEL §2.3).
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
-  `KNOWN_BLOCK_TYPES`, and blocks outside that set are stripped on load and
-  then auto-saved — an unregistered block is data loss, and a container takes
-  its children with it.
+  `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from
+  `defaultBlockSpecs` at runtime so the set cannot drift from the schema when
+  a BlockNote upgrade adds new built-ins. Blocks outside that set are
+  stripped on load and then auto-saved — an unregistered block is data loss,
+  and a container takes its children with it.
 - Features that annotate a *standard* block do not add a block type. They
   keep a side store keyed by block id (`mediaInlineLabels`, `blockAlignments`,
   `mediaOcr`), because extending BlockNote's own image / file blocks is

@@ -14,12 +14,14 @@ Open the **Chat** tab in the right-side panel of a note (the robot icon). The ta
 
 By default the chat can see the note you have open. To focus it on a specific part of the note instead, start the chat from the editor:
 
-| Starting point | What the AI sees |
+| Starting point | What the conversation is about |
 |---|---|
 | **Chat** tab | The whole current note |
 | Drag handle (⠿) → **🤖 AI Assistant** | That block — for a heading or a step block, everything under it is included as one unit |
 | Select multiple blocks → **Ask AI about selection** | Exactly the blocks you selected |
 | Select text → **Ask AI about selection** in the floating toolbar | The selected text |
+
+Whichever starting point you use, the note you have open is passed as background as well. A quoted sentence that leans on the lines before it — a pronoun, an abbreviation, "at this temperature" — is still understood. The answer stays on the quoted part; the rest of the note is there only for context. It is re-read on every message, so edits you make mid-conversation are picked up.
 
 When a chat starts from blocks or a selection, the passed content stays visible at the top of the panel under **Quote**, so you always know what the conversation is about.
 

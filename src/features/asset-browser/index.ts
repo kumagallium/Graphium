@@ -69,5 +69,7 @@ export {
   registerUrlAsset,
 } from "./url-paste";
 
+export { schedulePastedImageCapture } from "./paste-image-capture";
+
 export { NoteMemosSection, filterMemosByNote } from "./NoteMemosSection";
 export type { NoteMemosSectionProps } from "./NoteMemosSection";

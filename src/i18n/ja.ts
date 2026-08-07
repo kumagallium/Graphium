@@ -299,6 +299,7 @@ export const ja: Record<string, string> = {
   "aiError.invalidApiKey": "モデルの API キーが無効か期限切れです。設定 → AI でキーを確認してください。",
   "aiError.apiKeyForbidden": "API キーにこの操作の権限がありません。",
   "aiError.embeddingModelUnsupported": "Embedding は OpenAI 互換モデルのみ対応です。設定 → AI で OpenAI 互換モデルを追加してください。",
+  "aiError.provStructureFailed": "AI の出力をノート構造に変換できませんでした。もう一度実行するか、設定 → AI でモデルを切り替えると成功しやすくなります（Claude 系モデルが安定しています）。",
 
   // ── AI チャット ──
   "aiChat.title": "AI チャット",
@@ -1240,6 +1241,8 @@ export const ja: Record<string, string> = {
   "asset.urlRegister": "登録",
   "asset.urlRegistering": "登録中…",
   "asset.urlAdd": "URL を追加",
+  "asset.registerFromPeek": "素材に登録",
+  "asset.registerFromPeekHint": "この URL を素材として登録し、ギャラリーやグラフに表示します",
   "asset.upload": "アップロード",
   "asset.uploadFailed": "アップロードに失敗しました",
   "asset.uploadDocx": "Word を追加",

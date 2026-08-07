@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.29.0](https://github.com/kumagallium/Graphium/compare/v0.28.0...v0.29.0) - 2026-08-05
+
+- [fix] Repair and retry malformed LLM output in PROV ingester by @kumagallium in https://github.com/kumagallium/Graphium/pull/649
+- fix: stop divider/toggle blocks vanishing on note reload by @kumagallium in https://github.com/kumagallium/Graphium/pull/652
+- fix: capture pasted web-page images into the media library by @kumagallium in https://github.com/kumagallium/Graphium/pull/653
+- [fix] Keep PROV step headings in the requested language by @kumagallium in https://github.com/kumagallium/Graphium/pull/655
+- Add an "Add to materials" button to the unregistered URL side peek by @kumagallium in https://github.com/kumagallium/Graphium/pull/654
+- Give quoted chats the surrounding note as background by @kumagallium in https://github.com/kumagallium/Graphium/pull/657
+
+## [v0.28.0](https://github.com/kumagallium/Graphium/compare/v0.27.1...v0.28.0) - 2026-08-04
+
+- [fix] Make Markdown import/export wikilink handling symmetric by @kumagallium in https://github.com/kumagallium/Graphium/pull/650
+- Show table block labels as a chip on the table corner by @kumagallium in https://github.com/kumagallium/Graphium/pull/646
+
+## [v0.27.1](https://github.com/kumagallium/Graphium/compare/v0.27.0...v0.27.1) - 2026-08-03
+
+- Bench delta bot: stop posting pnpm errors, restore the baseline by @kumagallium in https://github.com/kumagallium/Graphium/pull/644
+
 ## [v0.27.0](https://github.com/kumagallium/Graphium/compare/v0.26.1...v0.27.0) - 2026-08-03
 
 - Multi-column layouts: place blocks side by side by @kumagallium in https://github.com/kumagallium/Graphium/pull/640

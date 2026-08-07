@@ -6,6 +6,7 @@
 import { downloadBlob } from "../../lib/download-file";
 import { sanitizeFilename } from "./filenames";
 import { buildMarkdownFileContent } from "./doc-to-markdown";
+import { convertMentionsToWikiLinks } from "./sanitize-blocks";
 
 /** エディタに要求する最小インターフェース（BlockNoteEditor 互換） */
 export type MarkdownCapableEditor = {
@@ -16,13 +17,15 @@ export type MarkdownCapableEditor = {
 /**
  * 現在開いているノートを Markdown ファイルとしてエクスポートする。
  * タイトルは H1 としてファイル先頭に付ける（タイトルはブロック外に保存されているため）。
+ * 内部リンク（@メンション）は Obsidian 互換の [[タイトル]] に変換して書き出す
+ * （markdown-import が同じ表記を解決するので、エクスポート→再インポートで対称）。
  */
 export async function exportNoteToMarkdown(options: {
   title: string;
   editor: MarkdownCapableEditor;
 }): Promise<void> {
   const { title, editor } = options;
-  const markdown = await editor.blocksToMarkdownLossy(editor.document);
+  const markdown = await editor.blocksToMarkdownLossy(convertMentionsToWikiLinks(editor.document));
   const content = buildMarkdownFileContent(title, markdown);
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
   await downloadBlob(blob, `${sanitizeFilename(title)}.md`);
