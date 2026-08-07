@@ -22,11 +22,9 @@ import { appendEntitySpanToStep, findLabeledTableInStep } from "../../blocks/ste
 import { useLabelStore } from "../context-label/store";
 import { appendEntityRowToTable } from "./table-row-edit";
 import { t } from "../../i18n";
-import { makeEntityId } from "../../features/inline-label/shortcuts";
 import {
   renameInlineEntity,
   removeInlineEntity,
-  addDependentAttribute,
 } from "../../features/inline-label/entity-edit";
 import {
   renameTableRow,
@@ -39,7 +37,6 @@ import {
   addTableRow,
   ensureParameterTable,
 } from "./table-row-edit";
-import { PARENT_ACTIVITY_MARKER } from "../../features/inline-label/attribute-binding";
 import type { ProvJsonLd } from "../prov-generator/generator";
 
 /** 文書順で最後の step ブロック id（ネスト含む）。新しい手順の挿入位置に使う */
@@ -261,15 +258,6 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
-  const onAddAttrToEntity = useCallback(
-    (parentEntityId: string, text: string) => {
-      const editor = getEditor();
-      if (!editor) return;
-      addDependentAttribute(editor, parentEntityId, text, () => makeEntityId("attribute"));
-    },
-    [getEditor],
-  );
-
   // ── テーブル行 Entity（構造化テーブルの行）の編集: ノート側のセルを書き換える ──
 
   const onRenameTableRow = useCallback(
@@ -417,16 +405,12 @@ export function ActivityGraphEditor({
 
   // グラフからの入出力の追加は、まず step 内の該当ラベル付きテーブルに行を足す
   // （F 案: ノート側には単語の羅列ではなく試料表が育つ）。テーブルが無ければ
-  // 作って 1 行目に書き、ラベルを付ける。パラメータだけは Activity 直結の
-  // インライン span のまま（表にすると 1 行 1 Entity の意味とズレる）。
+  // 作って 1 行目に書き、ラベルを付ける。パラメータはここを通らない —
+  // step のパラメータ表（attribute ラベル）の列として足す。
   const onAddEntity = useCallback(
     (stepBlockId: string, kind: EntityKind, text: string) => {
       const editor = getEditor();
       if (!editor) return;
-      if (kind === "attribute") {
-        appendEntitySpanToStep(editor, stepBlockId, kind, text);
-        return;
-      }
       const labels = labelStoreRef.current;
       const result = appendEntityRowToTable(
         editor,
@@ -558,7 +542,6 @@ export function ActivityGraphEditor({
       onAddEntity={hasEditor ? onAddEntity : undefined}
       onRenameEntity={hasEditor ? onRenameEntity : undefined}
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
-      onAddAttrToEntity={hasEditor ? onAddAttrToEntity : undefined}
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
       onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
       tableLayout={tableLayout}

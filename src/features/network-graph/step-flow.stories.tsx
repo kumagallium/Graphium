@@ -1,12 +1,15 @@
 // 手順フロービュー（React Flow 版ノードエディタ、F 案）のストーリー
 //
-// Entity（材料・道具・出力）が独立ノードになり、パラメータは各ノード内の
-// 属性行で編集する。Playground は実 API（graph + コールバック）をモック
-// state で駆動する使用例を兼ねる。
+// Entity（材料・道具・出力）が独立ノードになり、ノードは名前だけを見せる。
+// 属性とパラメータはグラフ下（全画面では右横）のテーブルパネルで編集する
+// ＝ ノート側の表そのもの。Playground は実 API（graph + テーブル + コール
+// バック）をモック state で駆動する使用例を兼ねる。
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRef, useState } from "react";
 import { StepFlowView } from "./step-flow-view";
+import type { FlowSelection } from "./flow-attribute-table";
+import type { TableData } from "./table-row-edit";
 import type { FlowGraphData } from "./activity-graph-adapter";
 import { LocaleProvider } from "../../i18n";
 
@@ -105,9 +108,29 @@ export const EmptyState: Story = {
 
 // ── フル操作デモ（実 API の使用例をモック state で） ──
 
+/** ノート側の表のモック。パネルの編集はここに書き戻る（実アプリでは BlockNote の table ブロック） */
+const INITIAL_TABLES: Record<string, TableData> = {
+  "tbl-1": {
+    blockId: "tbl-1",
+    headers: ["名前", "純度", "質量"],
+    rows: [["試料C", "99%", "2g"]],
+  },
+};
+
 function Playground() {
   const [graph, setGraph] = useState<FlowGraphData>(RICH_GRAPH);
+  const [tables, setTables] = useState<Record<string, TableData>>(INITIAL_TABLES);
   const counter = useRef(0);
+
+  const patchTable = (blockId: string, fn: (t: TableData) => TableData) =>
+    setTables((all) => (all[blockId] ? { ...all, [blockId]: fn(all[blockId]) } : all));
+
+  /** Entity が属する step（出力なら generates の元、入力なら used の先） */
+  const owningStepOf = (entityNodeId: string): string | null => {
+    const gen = graph.edges.find((e) => e.kind === "generates" && e.target === entityNodeId);
+    if (gen) return gen.source;
+    return graph.edges.find((e) => e.kind === "used" && e.source === entityNodeId)?.target ?? null;
+  };
 
   const wouldCycle = (producer: string, consumer: string): boolean => {
     const adj = new Map<string, string[]>();
@@ -181,17 +204,6 @@ function Playground() {
       onJumpToBlock={(blockId) => console.log("jump to", blockId)}
       getStepContentCount={(blockId) => (blockId === "s-mix" ? 2 : 0)}
       onAddEntity={(blockId, kind, text) => {
-        if (kind === "attribute") {
-          setGraph((g) => ({
-            ...g,
-            steps: g.steps.map((s) =>
-              s.id === blockId
-                ? { ...s, params: [...s.params, { label: text, entityId: `ent-${counter.current++}` }] }
-                : s,
-            ),
-          }));
-          return;
-        }
         const entityId = `ent-${counter.current++}`;
         const id = `inline_${kind}_${entityId}`;
         setGraph((g) => ({
@@ -235,16 +247,6 @@ function Playground() {
           };
         })
       }
-      onAddAttrToEntity={(parentEntityId, text) =>
-        setGraph((g) => ({
-          ...g,
-          entities: g.entities.map((e) =>
-            e.entityId === parentEntityId
-              ? { ...e, attrs: [...e.attrs, { label: text, entityId: `ent-${counter.current++}` }] }
-              : e,
-          ),
-        }))
-      }
       onCreateStepFromEntity={(entityNodeId) => {
         const id = `new-step-${counter.current++}`;
         setGraph((g) => {
@@ -257,7 +259,11 @@ function Playground() {
           };
         });
       }}
-      onRenameTableRow={(blockId, rowName, newName) =>
+      onRenameTableRow={(blockId, rowName, newName) => {
+        patchTable(blockId, (t) => ({
+          ...t,
+          rows: t.rows.map((r) => (r[0] === rowName ? [newName, ...r.slice(1)] : r)),
+        }));
         setGraph((g) => ({
           ...g,
           entities: g.entities.map((e) =>
@@ -265,24 +271,10 @@ function Playground() {
               ? { ...e, label: newName, tableRef: { blockId, rowName: newName } }
               : e,
           ),
-        }))
-      }
-      onSetTableCell={(blockId, rowName, columnKey, value) =>
-        setGraph((g) => ({
-          ...g,
-          entities: g.entities.map((e) =>
-            e.tableRef?.blockId === blockId && e.tableRef.rowName === rowName
-              ? {
-                  ...e,
-                  attrs: e.attrs.map((a) =>
-                    a.label.startsWith(`${columnKey}:`) ? { ...a, label: `${columnKey}: ${value}` } : a,
-                  ),
-                }
-              : e,
-          ),
-        }))
-      }
-      onRemoveTableRow={(blockId, rowName) =>
+        }));
+      }}
+      onRemoveTableRow={(blockId, rowName) => {
+        patchTable(blockId, (t) => ({ ...t, rows: t.rows.filter((r) => r[0] !== rowName) }));
         setGraph((g) => {
           const target = g.entities.find(
             (e) => e.tableRef?.blockId === blockId && e.tableRef.rowName === rowName,
@@ -292,8 +284,104 @@ function Playground() {
             entities: g.entities.filter((e) => e !== target),
             edges: target ? g.edges.filter((e) => e.source !== target.id && e.target !== target.id) : g.edges,
           };
-        })
+        });
+      }}
+      // ── テーブルパネル（選択ノードの裏にあるノート側の表） ──
+      getTableFor={(selection: FlowSelection) => {
+        if (!selection) return { table: null };
+        if (selection.kind === "step") return { table: tables[`param-${selection.step.id}`] ?? null };
+        const ref = selection.entity.tableRef;
+        if (!ref) return { table: null };
+        const table = tables[ref.blockId] ?? null;
+        const row = table?.rows.findIndex((r) => r[0] === ref.rowName) ?? -1;
+        return { table, highlightRow: row >= 0 ? row : undefined };
+      }}
+      onSetCell={(blockId, rowIndex, colIndex, value) =>
+        patchTable(blockId, (t) => ({
+          ...t,
+          rows: t.rows.map((r, i) =>
+            i === rowIndex ? r.map((c, j) => (j === colIndex ? value : c)) : r,
+          ),
+        }))
       }
+      onRenameColumn={(blockId, colIndex, name) =>
+        patchTable(blockId, (t) => ({
+          ...t,
+          headers: t.headers.map((h, i) => (i === colIndex ? name : h)),
+        }))
+      }
+      onAddColumn={(blockId, name) =>
+        patchTable(blockId, (t) => ({
+          ...t,
+          headers: [...t.headers, name],
+          rows: t.rows.map((r) => [...r, ""]),
+        }))
+      }
+      onRemoveColumn={(blockId, colIndex) =>
+        patchTable(blockId, (t) => ({
+          ...t,
+          headers: t.headers.filter((_, i) => i !== colIndex),
+          rows: t.rows.map((r) => r.filter((_, i) => i !== colIndex)),
+        }))
+      }
+      onAddRow={(blockId, name) => {
+        patchTable(blockId, (t) => ({
+          ...t,
+          rows: [...t.rows, [name, ...t.headers.slice(1).map(() => "")]],
+        }));
+        // 表の 1 行 = 1 Entity なので、行を足すとノードも増える
+        const owner = graph.entities.find((e) => e.tableRef?.blockId === blockId);
+        if (!owner) return;
+        const step = owningStepOf(owner.id);
+        const id = `entity_${blockId}_${name}`;
+        setGraph((g) => ({
+          ...g,
+          entities: [
+            ...g.entities,
+            { id, label: name, kind: owner.kind, tableRef: { blockId, rowName: name }, attrs: [] },
+          ],
+          edges: step
+            ? [...g.edges, { id: `u-${counter.current++}`, kind: "used", source: id, target: step }]
+            : g.edges,
+        }));
+      }}
+      onCreateParamTable={(stepBlockId) => {
+        const blockId = `param-${stepBlockId}`;
+        setTables((all) => ({ ...all, [blockId]: { blockId, headers: ["項目"], rows: [[""]] } }));
+      }}
+      onMoveEntityToTable={(entityNodeId) => {
+        const entity = graph.entities.find((e) => e.id === entityNodeId);
+        const step = owningStepOf(entityNodeId);
+        if (!entity || entity.tableRef || !step) return;
+        const blockId = `${entity.kind}-${step}`;
+        setTables((all) => {
+          const existing = all[blockId] ?? { blockId, headers: ["名前"], rows: [] };
+          return {
+            ...all,
+            [blockId]: {
+              ...existing,
+              rows: [...existing.rows, [entity.label, ...existing.headers.slice(1).map(() => "")]],
+            },
+          };
+        });
+        // 本文 span は外れ、行由来の Entity になる（id も変わる）
+        setGraph((g) => {
+          const id = `entity_${blockId}_${entity.label}`;
+          return {
+            ...g,
+            entities: g.entities.map((e) =>
+              e.id === entityNodeId
+                ? { ...e, id, entityId: undefined, tableRef: { blockId, rowName: e.label } }
+                : e,
+            ),
+            edges: g.edges.map((e) => ({
+              ...e,
+              source: e.source === entityNodeId ? id : e.source,
+              target: e.target === entityNodeId ? id : e.target,
+            })),
+          };
+        });
+      }}
     />
   );
 }

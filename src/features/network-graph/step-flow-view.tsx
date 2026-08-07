@@ -53,8 +53,11 @@ const DANGER = "#c26356";
 /** onConnectSteps の戻り値。error が "cycle_detected" なら循環で拒否されたことを表示する */
 export type ConnectResult = { error: string | null };
 
-/** カードから追加できる要素の種類（本文への写像はエディタ側 STYLE_KEY を参照） */
-export type EntityKind = "material" | "tool" | "output" | "attribute";
+/**
+ * カードから追加できる要素の種類（本文への写像はエディタ側 STYLE_KEY を参照）。
+ * パラメータは含まない — step のパラメータはテーブルパネルの列として足す。
+ */
+export type EntityKind = "material" | "tool" | "output";
 
 export type StepFlowViewProps = {
   graph: FlowGraphData;
@@ -82,12 +85,8 @@ export type StepFlowViewProps = {
   onRenameEntity?: (entityId: string, text: string) => void;
   /** entityId 指定の削除（同上） */
   onRemoveEntity?: (entityId: string) => void;
-  /** Entity ノードへの従属属性の追加 */
-  onAddAttrToEntity?: (parentEntityId: string, text: string) => void;
   /** テーブル行 Entity: 行の名前（1 列目）の書き換え */
   onRenameTableRow?: (blockId: string, rowName: string, newName: string) => void;
-  /** テーブル行 Entity: 属性セルの書き換え */
-  onSetTableCell?: (blockId: string, rowName: string, columnKey: string, value: string) => void;
   /** テーブル行 Entity: 行の削除 */
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
   /** 属性テーブルの置き場所。below = グラフの下（右パネル）、side = 右横（全画面） */
@@ -136,9 +135,7 @@ function StepFlowCanvas({
   onAddEntity,
   onRenameEntity,
   onRemoveEntity,
-  onAddAttrToEntity,
   onRenameTableRow,
-  onSetTableCell,
   onRemoveTableRow,
   tableLayout = "below",
   getTableFor,
@@ -212,8 +209,6 @@ function StepFlowCanvas({
           onJump: onJumpToBlock,
           getContentCount: getStepContentCount,
           onAddEntity,
-          onRenameEntity,
-          onRemoveEntity,
         },
         draggable: false,
         selected: s.id === selectedIdRef.current,
@@ -264,9 +259,7 @@ function StepFlowCanvas({
     onAddEntity,
     onRenameEntity,
     onRemoveEntity,
-    onAddAttrToEntity,
     onRenameTableRow,
-    onSetTableCell,
     onRemoveTableRow,
     setNodes,
     setEdges,

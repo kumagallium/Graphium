@@ -25,8 +25,6 @@ export type StepNodeData = {
   /** 削除確認に出す「中身のブロック数」。押した瞬間に評価する（stale 回避） */
   getContentCount?: (blockId: string) => number;
   onAddEntity?: (blockId: string, kind: EntityKind, text: string) => void;
-  onRenameEntity?: (entityId: string, text: string) => void;
-  onRemoveEntity?: (entityId: string) => void;
 };
 
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -99,8 +97,6 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
     onJump,
     getContentCount,
     onAddEntity,
-    onRenameEntity,
-    onRemoveEntity,
   } = data;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(activity.name);
