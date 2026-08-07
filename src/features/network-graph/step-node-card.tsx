@@ -37,13 +37,15 @@ const IO_COLORS: Record<ActivityIoKind, string> = {
 
 const PARAM_COLOR = "var(--color-text-tertiary)";
 const ACTIVITY_BLUE = "#5b8fb9";
+// 帯（薄い青）の上に載る文字色。ラベル色の暗い変種で、Entity ノードの text と同じ役割
+const ACTIVITY_TEXT = "#3f6c92";
 
 const iconBtnStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: 22,
-  height: 22,
+  width: 20,
+  height: 20,
   padding: 0,
   border: "none",
   borderRadius: 5,
@@ -149,26 +151,33 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
         maxWidth: 240,
         borderRadius: 8,
         background: "var(--color-card)",
-        // border と borderLeft の shorthand 混在は React が再レンダー時に警告する
-        borderTop: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid var(--color-border)",
-        borderRight: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid var(--color-border)",
-        borderBottom: selected ? `1.5px solid ${ACTIVITY_BLUE}` : "1px solid var(--color-border)",
-        borderLeft: `3px solid ${ACTIVITY_BLUE}`,
-        boxShadow: selected
-          ? "0 2px 8px rgba(30, 20, 10, 0.14)"
-          : "0 1px 3px rgba(30, 20, 10, 0.08)",
+        border: `1.5px solid ${ACTIVITY_BLUE}`,
+        // 選択は枠を太くせずリングで示す。太さを変えるとノードの実寸が変わり、
+        // React Flow が測り直してレイアウトが動く
+        boxShadow: selected ? `0 0 0 3px ${ACTIVITY_BLUE}33, var(--shadow-2)` : "var(--shadow-1)",
+        overflow: "hidden",
         fontFamily: "inherit",
       }}
     >
-      {/* タイトル行 */}
+      {/* タイトル帯（Entity ノードと同じ作り: 種類の色 + 点 + 名前） */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          padding: hasBody || showAddControl ? "7px 8px 5px 10px" : "7px 8px 7px 10px",
+          gap: 6,
+          padding: "5px 8px 5px 10px",
+          background: "var(--color-label-activity-bg)",
         }}
       >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            flexShrink: 0,
+            borderRadius: "50%",
+            background: ACTIVITY_BLUE,
+          }}
+        />
         {editing ? (
           <input
             ref={inputRef}
@@ -191,7 +200,7 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               flex: 1,
               minWidth: 0,
               padding: "1px 5px",
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 700,
               color: "var(--color-foreground)",
               border: `1px solid ${ACTIVITY_BLUE}`,
@@ -206,9 +215,9 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
             style={{
               flex: 1,
               minWidth: 0,
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 700,
-              color: "var(--color-foreground)",
+              color: ACTIVITY_TEXT,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -225,8 +234,8 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               <button
                 onClick={startEditing}
                 title={t("activityGraph.stepName")}
-                style={iconBtnStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+                style={{ ...iconBtnStyle, color: ACTIVITY_TEXT }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.7)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <Pencil size={12} />
@@ -236,8 +245,8 @@ export function StepNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
               <button
                 onClick={() => onJump(id)}
                 title={t("activityGraph.jumpToText")}
-                style={iconBtnStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+                style={{ ...iconBtnStyle, color: ACTIVITY_TEXT }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.7)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <FileText size={12} />

@@ -184,8 +184,10 @@ export function EntityFlowNode({ data, selected }: NodeProps<EntityFlowNodeType>
         maxWidth: 220,
         borderRadius: 8,
         background: "var(--color-card)",
-        border: selected ? `2px solid ${c.main}` : `1.5px solid ${c.main}`,
-        boxShadow: selected ? "0 2px 8px rgba(30,20,10,0.14)" : "0 1px 3px rgba(30,20,10,0.08)",
+        border: `1.5px solid ${c.main}`,
+        // 選択は枠を太くせずリングで示す。太さを変えるとノードの実寸が変わり、
+        // React Flow が測り直してレイアウトが動く
+        boxShadow: selected ? `0 0 0 3px ${c.main}33, var(--shadow-2)` : "var(--shadow-1)",
         overflow: "hidden",
       }}
     >
