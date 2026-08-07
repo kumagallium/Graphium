@@ -10,6 +10,12 @@ export type SystemSkillId = "default-voice-ja" | "default-voice-en";
 
 export type SystemSkillDefinition = {
   id: SystemSkillId;
+  /**
+   * デフォルト内容の版。prompt（または title / description）を変更したら必ず +1 する。
+   * 起動時にユーザー側の skillMeta.systemSkillVersion と比較し、
+   * 未編集スキルは自動更新・編集済みスキルは「新しいデフォルトあり」バッジを出す。
+   */
+  version: number;
   title: string;
   description: string;
   language: "ja" | "en";
@@ -88,6 +94,7 @@ Write so a future reader wants to keep reading. Aim for the tone of a short note
 export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
   {
     id: "default-voice-ja",
+    version: 1,
     title: "Default Writing Voice (日本語)",
     description: "ノート生成と AI チャットの日本語文体ガイド（敬体・em dash 不使用・リズム）",
     language: "ja",
@@ -96,6 +103,7 @@ export const SYSTEM_SKILLS: SystemSkillDefinition[] = [
   },
   {
     id: "default-voice-en",
+    version: 1,
     title: "Default Writing Voice (English)",
     description: "Style guide for English note generation and chat (specific verbs, hedged interpretation, rhythm)",
     language: "en",

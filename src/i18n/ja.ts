@@ -240,6 +240,7 @@ export const ja: Record<string, string> = {
   "history.type.wikiRegenerate": "再生成",
   "history.type.wikiAtomize": "洞察抽出",
   "history.type.wikiReinforce": "支持追加",
+  "history.type.skillDefaultUpdate": "デフォルト同期",
   "history.sources": "取り込み元",
   "version.take": "版を残す",
   "version.unnamed": "（未命名）",
@@ -1653,6 +1654,8 @@ export const ja: Record<string, string> = {
   "skill.descriptionLabel": "説明",
   "skill.descriptionPlaceholder": "このスキルは何をしますか？（1 行）",
   "skill.systemBadge": "システム",
+  "skill.newerDefaultBadge": "新しい内容あり",
+  "skill.newerDefaultTooltip": "アプリ同梱のデフォルト内容が新しくなっています。「デフォルトに戻す」を押すと、編集中の内容を新しいデフォルトに置き換えます。",
   "skill.noMatching": "一致するスキルがありません",
   "skill.empty": "スキルはまだありません。作成すると、ナレッジ化のときに AI へ渡せます。",
 

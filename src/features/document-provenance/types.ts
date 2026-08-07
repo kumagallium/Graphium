@@ -79,7 +79,9 @@ export type EditActivityType =
   | "wiki_atomize"
   /** 既存 Atom への支持追加 — discovery の重複候補が依拠していた新しい Claim を
    *  derivedFromClaims に取り込む（本文は変えない。Atom の成長経路）。 */
-  | "wiki_reinforce";
+  | "wiki_reinforce"
+  /** システムスキルのデフォルト内容への同期（未編集スキルの自動更新 / Reset to default） */
+  | "skill_default_update";
 
 /** prov:Activity — 編集操作 */
 export type EditActivity = {

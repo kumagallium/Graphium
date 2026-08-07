@@ -41,6 +41,8 @@ Other routes into knowledge:
 
 ::: tip
 Ingestion is always something you trigger — Graphium never turns notes into knowledge behind your back. Skills marked **Auto-apply on Ingest** let you inject your own standing instructions (terminology, style) into every run.
+
+Two built-in skills define the default writing voice (Japanese / English). When an app update ships an improved default, skills you never edited pick it up automatically. If you have edited one, an **Update available** badge appears in the skill list instead, and **Reset to default** replaces your version with the new content.
 :::
 
 ## Browsing knowledge

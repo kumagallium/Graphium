@@ -980,11 +980,32 @@ type SkillMeta = {
   createdAt: string;
   systemSkillId?: string;         // identifier for built-in skills (cannot be deleted)
   language?: "ja" | "en";         // restrict to a generation language
+  systemSkillVersion?: number;    // last synced built-in default version
+  defaultPromptHash?: string;     // normalized hash of that default prompt (edit detection)
 };
 ```
 
 Skills inherit storage / index treatment from notes; the `source` field
 discriminates them downstream.
+
+### 4.1 Built-in default versioning
+
+Each built-in skill definition (`SystemSkillDefinition`) carries a
+`version` number that is bumped whenever its shipped prompt changes. On
+startup the app compares it with `skillMeta.systemSkillVersion`:
+
+| Condition | Action |
+|---|---|
+| document has no version info (pre-versioning) | write current version + hash into `skillMeta`, leave content untouched |
+| stored version ≥ shipped version | nothing |
+| shipped version newer, prompt hash matches `defaultPromptHash` (never edited) | auto-update the prompt body to the new default |
+| shipped version newer, hash differs (user edited) | show an "update available" badge; content is only replaced when the user hits *Reset to default* |
+
+Edit detection hashes a normalized prompt (whitespace / blank lines
+ignored) extracted through the same markdown ⇄ block pipeline on both
+sides, so editor round-trips do not produce false "edited" states.
+Auto-update and *Reset to default* both append a `skill_default_update`
+activity to the document provenance chain instead of discarding it.
 
 ## 5. The navigation index: `GraphiumIndex`
 
