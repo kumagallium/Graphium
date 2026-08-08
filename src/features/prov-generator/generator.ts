@@ -1192,8 +1192,8 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   // canonical は表の行由来（entity_*）を優先 — グラフからの編集が表に落ちる。
   //
   // ただし「情報を失う統合」はしない:
-  //   - output は対象外（同名でも別の生成物でありうる。手順間の受け渡しは
-  //     informed_by ゲート付きの unification（上）が担当）
+  //   - output は手順をまたいでは統合しない（同名でも別の生成物でありうる。
+  //     手順間の受け渡しは informed_by ゲート付きの unification（上）が担当）
   //   - 同じブロック由来の同名同士は別のまま（同じ表に 2 行書いたのは意図。M6）
   //   - plan / result の位相が違えば別のまま（wasDerivedFrom の関係で繋がる）
   //   - params の値が食い違えば別のまま（別バッチの「量: 1g / 2g」を潰さない）
@@ -1207,11 +1207,27 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
       }
       return false;
     };
+    const isOutputNode = (n: InternalNode) =>
+      n["@id"].startsWith("inline_output_") ||
+      (n["@id"].startsWith("result_") && !n["@id"].startsWith("result_synthetic_"));
+    /** 同じモノとみなす束ね方。null なら統合対象外 */
+    const groupKeyOf = (n: InternalNode): string | null => {
+      if (n["@type"] !== "prov:Entity") return null;
+      if (n.entitySubtype === "material" || n.entitySubtype === "tool") {
+        // 材料・道具は手順をまたいで同じモノ（同じ乳鉢を使い回す）
+        return `${n.entitySubtype} ${phaseOf(n)} ${labelForMatch(n.label)}`;
+      }
+      if (!isOutputNode(n)) return null;
+      // 出力は手順をまたいでは統合しない（同名でも別の生成物でありうる）。
+      // 同じ手順の中だけ、本文の印と表の行は同じものを指すとみなす —
+      // これが無いと「表に追加」で本文の印を残したときに 2 ノードへ割れる
+      const actId = blockToActivityId.get(n.blockId);
+      return actId ? `output ${actId} ${phaseOf(n)} ${labelForMatch(n.label)}` : null;
+    };
     const groups = new Map<string, InternalNode[]>();
     for (const n of nodes) {
-      if (n["@type"] !== "prov:Entity") continue;
-      if (n.entitySubtype !== "material" && n.entitySubtype !== "tool") continue;
-      const key = `${n.entitySubtype} ${phaseOf(n)} ${labelForMatch(n.label)}`;
+      const key = groupKeyOf(n);
+      if (!key) continue;
       const g = groups.get(key);
       if (g) g.push(n);
       else groups.set(key, [n]);
@@ -1219,7 +1235,8 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     const dropIds = new Set<string>();
     for (const group of groups.values()) {
       if (group.length < 2) continue;
-      const canonical = group.find((n) => n["@id"].startsWith("entity_")) ?? group[0];
+      // 表の行を残す（本文の印は消えても、表の行は編集の起点になる）
+      const canonical = group.find((n) => !n["@id"].startsWith("inline_")) ?? group[0];
       for (const dup of group) {
         if (dup === canonical) continue;
         if (dup.blockId === canonical.blockId) continue;

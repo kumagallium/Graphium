@@ -312,8 +312,12 @@ table. The merge refuses to destroy information: same-named rows of the
 same table stay separate (writing two rows was deliberate), plan/result
 phases stay separate (they are related by `wasDerivedFrom` instead), and
 entities whose parameter values conflict ("量: 1g" vs "2g") stay
-separate. Outputs never merge this way — the informed_by-gated handoff
-unification above is the only mechanism that merges an output.
+separate. Outputs merge only **within one step**, where a prose highlight
+and a table row of the same name are the same thing — this is what lets
+"add to the table" leave the highlight in place without splitting the
+entity in two. Across steps, outputs never merge this way; the
+informed_by-gated handoff unification above is the only mechanism for
+that.
 
 The generator (`src/features/prov-generator/`) consumes both label
 sources and the block structure to produce the PROV-DM graph. Activity

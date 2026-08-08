@@ -2520,3 +2520,66 @@ describe("同名の材料・道具は 1 Entity に統合される", () => {
     expect(outputs).toHaveLength(2);
   });
 });
+
+// ── 本文の印を残したまま表へ移したときの統合 ──
+
+describe("同じ手順の中では、本文の印と表の行が 1 Entity になる", () => {
+  const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
+    type: "text",
+    text,
+    styles,
+  });
+  const tableBlock = (id: string, rows: string[][]) => ({
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: rows.map((cells) => ({ cells: cells.map((c) => [styled(c)]) })),
+    },
+    children: [],
+  });
+
+  /** 同じ手順に「本文の印」と「同名の表の行」が並んでいる状態 */
+  const docWith = (styleKey: "inlineOutput" | "inlineMaterial", label: "output" | "material") =>
+    generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [styled("Step A")], children: [] },
+        tableBlock("tbl-1", [["名前"], ["バッチA"]]),
+        { id: "p-a", type: "paragraph", content: [styled("結果は "), styled("バッチA", { [styleKey]: "e1" }), styled(" だった")], children: [] },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["tbl-1", label],
+      ]),
+      links: [],
+    });
+
+  it("output: 表の行が残り、本文の印はそこへ統合される", () => {
+    const doc = docWith("inlineOutput", "output");
+    const batchA = doc["@graph"].filter((n) => n["rdfs:label"] === "バッチA");
+    expect(batchA).toHaveLength(1);
+    expect(batchA[0]["@id"].startsWith("inline_")).toBe(false); // 表の行が canonical
+  });
+
+  it("material も同じく 1 つになる", () => {
+    const doc = docWith("inlineMaterial", "material");
+    expect(doc["@graph"].filter((n) => n["rdfs:label"] === "バッチA")).toHaveLength(1);
+  });
+
+  it("別の手順の同名 output は統合しない（別の生成物でありうる）", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [styled("Step A")], children: [] },
+        { id: "p-a", type: "paragraph", content: [styled("粉", { inlineOutput: "o1" })], children: [] },
+        { id: "h-b", type: "heading", props: { level: 2 }, content: [styled("Step B")], children: [] },
+        { id: "p-b", type: "paragraph", content: [styled("粉", { inlineOutput: "o2" })], children: [] },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["h-b", "procedure"],
+      ]),
+      links: [],
+    });
+    expect(doc["@graph"].filter((n) => n["rdfs:label"] === "粉")).toHaveLength(2);
+  });
+});

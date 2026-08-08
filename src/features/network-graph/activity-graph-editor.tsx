@@ -327,9 +327,10 @@ export function ActivityGraphEditor({
       if (!result) return;
       rememberTable(stepId, entity.kind, result.tableBlockId);
       if (result.created) labels.setLabel(result.tableBlockId, entity.kind);
-      // ハイライトで紐付いていた属性も、列として一緒に連れて行く
-      // （置き去りにすると親 span を失って迷子になる）。キーが同名の列が
-      // あればそこへ、無ければ列を足して書き、属性 span も外す
+      // ハイライトで紐付いていた属性は、列として一緒に連れて行く。
+      // Entity 名の印（下で残す）と違い、属性は「値」そのものなので、
+      // 列に書いたうえで印を残すと同じ事実が 2 回数えられてしまう。
+      // キーが同名の列があればそこへ、無ければ列を足して書き、印は外す
       const attrs = entity.attrs.filter((a) => !!a.entityId);
       if (attrs.length > 0) {
         let table = readTable(editor, result.tableBlockId);
@@ -349,8 +350,10 @@ export function ActivityGraphEditor({
           }
         }
       }
-      // 元の span は外す（テキストは残る）
-      if (entity.entityId) removeInlineEntity(editor, entity.entityId);
+      // 本文の印はそのまま残す。「表に追加」は足すだけで、頼まれていない
+      // 本文の書き換えはしない（読むときの色分けは本文側の情報）。
+      // 表の行と本文の印は同名なので generator が 1 Entity に統合し、
+      // パネルの薄い行はそれで消える。
     },
     [getEditor, owningStepOf],
   );
