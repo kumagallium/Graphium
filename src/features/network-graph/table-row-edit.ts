@@ -195,17 +195,20 @@ export function appendEntityRowToTable(
     },
   };
   const children: any[] = step.children ?? [];
-  const last = children[children.length - 1];
-  const lastIsEmptyPara =
+  let last = children[children.length - 1];
+  let lastIsEmptyPara =
     children.length === 1 &&
     last?.type === "paragraph" &&
     !(last.content ?? []).some((c: any) => typeof c?.text === "string" && c.text.trim() !== "");
+  if (!last) {
+    // 中身が空の step: 挿入の基準になる子が無いので空段落を仕立てる
+    // （放置すると無言で失敗する。作った段落は挿入後に消す）
+    last = ensureLastChild(editor, stepBlockId);
+    if (!last) return null;
+    lastIsEmptyPara = true;
+  }
   try {
-    const inserted = lastIsEmptyPara
-      ? editor.insertBlocks([tableBlock], last.id, "after")
-      : last
-        ? editor.insertBlocks([tableBlock], last.id, "after")
-        : null;
+    const inserted = editor.insertBlocks([tableBlock], last.id, "after");
     const id = inserted?.[0]?.id;
     if (!id) return null;
     // 空の初期段落は残さない
@@ -220,6 +223,33 @@ export function appendEntityRowToTable(
   } catch {
     return null;
   }
+}
+
+/**
+ * step の最後の子ブロックを返す。子が 1 つも無ければ空段落を作って返す。
+ * BlockNote の insertBlocks は参照ブロックを要求するので、中身が空の step に
+ * 表を挿すときの足場に使う（呼び出し側が挿入後に消す）。
+ */
+function ensureLastChild(editor: any, stepBlockId: string): any | null {
+  try {
+    editor.updateBlock(stepBlockId, { children: [{ type: "paragraph" }] });
+  } catch {
+    return null;
+  }
+  let found: any = null;
+  const visit = (blocks: any[]) => {
+    for (const b of blocks ?? []) {
+      if (found) return;
+      if (b?.id === stepBlockId) {
+        found = b;
+        return;
+      }
+      if (Array.isArray(b?.children)) visit(b.children);
+    }
+  };
+  visit(editor.document ?? []);
+  const children: any[] = found?.children ?? [];
+  return children[children.length - 1] ?? null;
 }
 
 // ── グリッド編集（右パネルのテーブル UI が使う） ──
@@ -367,12 +397,17 @@ export function ensureParameterTable(
 
   const cell = (text: string) => [{ type: "text", text, styles: {} }];
   const children: any[] = step.children ?? [];
-  const last = children[children.length - 1];
-  if (!last) return null;
-  const lastIsEmptyPara =
+  let last = children[children.length - 1];
+  let lastIsEmptyPara =
     children.length === 1 &&
-    last.type === "paragraph" &&
+    last?.type === "paragraph" &&
     !(last.content ?? []).some((c: any) => typeof c?.text === "string" && c.text.trim() !== "");
+  if (!last) {
+    // 中身が空の step でも無言で失敗しない（appendEntityRowToTable と同じ足場）
+    last = ensureLastChild(editor, stepBlockId);
+    if (!last) return null;
+    lastIsEmptyPara = true;
+  }
   try {
     const inserted = editor.insertBlocks(
       [

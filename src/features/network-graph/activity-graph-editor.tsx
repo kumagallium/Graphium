@@ -449,18 +449,20 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
-  // step にパラメータ表がまだ無いとき: 既定のキー列 1 つで作ってラベルを付ける。
-  // Entity 側の「表を作成」と同じく 1 クリックで表ができ、キーの命名は
-  // できた表のヘッダ編集（パネル側でそのまま編集状態になる）でやる。
-  const onCreateParamTable = useCallback(
-    (stepBlockId: string) => {
+  // セクションに表がまだ無いとき: 空の表（ヘッダ 1 列 + 空行）をラベル付きで作る。
+  // 「表を追加」の 1 クリックで全種類同じ動きにし、中身の入力はできた表の
+  // セル編集でやる（パネル側が最初のセルをそのまま編集状態にする）
+  const onCreateSectionTable = useCallback(
+    (stepBlockId: string, kind: "attribute" | ActivityIoKind) => {
       const editor = getEditor();
       if (!editor) return;
       const labels = labelStoreRef.current;
-      const result = ensureParameterTable(editor, stepBlockId, t("graphTable.paramColumn"), (id) =>
-        findLabeledTableInStep(editor.document ?? [], labels.labels, id, "attribute" as any),
+      const header =
+        kind === "attribute" ? t("graphTable.paramColumn") : t("graphTable.nameColumn");
+      const result = ensureParameterTable(editor, stepBlockId, header, (id) =>
+        findLabeledTableInStep(editor.document ?? [], labels.labels, id, kind as any),
       );
-      if (result?.created) labels.setLabel(result.tableBlockId, "attribute");
+      if (result?.created) labels.setLabel(result.tableBlockId, kind);
     },
     [getEditor],
   );
@@ -612,7 +614,6 @@ export function ActivityGraphEditor({
       onDeleteActivity={hasEditor ? onDeleteActivity : undefined}
       onJumpToBlock={hasEditor ? onJumpToBlock : undefined}
       getStepContentCount={hasEditor ? getStepContentCount : undefined}
-      onAddEntity={hasEditor ? onAddEntity : undefined}
       onRenameEntity={hasEditor ? onRenameEntity : undefined}
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
@@ -624,7 +625,7 @@ export function ActivityGraphEditor({
       onAddColumn={hasEditor ? onAddColumn : undefined}
       onRemoveColumn={hasEditor ? onRemoveColumn : undefined}
       onAddRow={hasEditor ? onAddRow : undefined}
-      onCreateParamTable={hasEditor ? onCreateParamTable : undefined}
+      onCreateSectionTable={hasEditor ? onCreateSectionTable : undefined}
       onMoveEntityToTable={hasEditor ? onMoveEntityToTable : undefined}
       onMoveParamToTable={hasEditor ? onMoveParamToTable : undefined}
     />

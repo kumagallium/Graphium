@@ -100,7 +100,7 @@ The panel is a place to write, not just a picture to read. Everything you do her
 | **Parameter** | one column per key, one row of values | **Column** adds a key |
 | **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add row** adds an entity |
 
-A kind the step doesn't have yet shows as a dashed card; its **Add row** (or **Column**, for parameters) creates the table on the spot, labeled and ready.
+A kind the step doesn't have yet shows as a dashed card with **Add table**: one click creates the labeled table with its first cell ready to type — the key for a parameter table, the name for the others.
 
 **Entities you highlighted in a sentence** keep working as they are, and appear right inside their kind's table as grayed rows — highlighted parameters as grayed columns. Renaming one edits the text in place. **Add to the table** (or clicking its grayed cells) takes it in for real: the row or column is added and the highlight comes off, while the sentence stays exactly as written. Highlighting and tables are the same data seen two ways, so you can move over at your own pace.
 

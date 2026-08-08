@@ -804,6 +804,7 @@ export const ja: Record<string, string> = {
   "flowTable.addRow": "行を追加",
   "flowTable.resizeHandle": "ドラッグでサイズを変更 / ダブルクリックで既定に戻す",
   "flowTable.ghostHint": "本文のハイライトです。クリックで表に移ります",
+  "flowTable.addTable": "表を追加",
   "step.pickerStepsHeader": "ステップ一覧",
   "step.pickerOutputsHeader": "アウトプット一覧",
 

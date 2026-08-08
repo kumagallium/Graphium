@@ -153,10 +153,12 @@ talks to LLM and embedding backends.
   into the note's table block (`network-graph/table-row-edit.ts`).
   Selecting an entity shows the same panel with its row highlighted and
   its section scrolled into view, so there is exactly one place where
-  things are added: an "add row" in the kind's section (which creates and
-  labels the table when the section is still empty — drawn as a dashed
-  card), or "add column" on the parameter table, whose header row holds
-  the keys and single data row the values. Entities highlighted in prose
+  things are added: "add row" / "add column" on the section's table, and
+  "add table" on a kind that has none yet (drawn as a dashed card) —
+  which creates the labeled table with an empty first cell already open
+  for typing, even when the step has no content blocks at all. The
+  parameter table's header row holds the keys and its single data row the
+  values. Entities highlighted in prose
   remain readable and keep span-based editing — renaming rewrites the
   span text (keeping its `entityId`), removing deletes a dedicated row or
   strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists

@@ -82,8 +82,6 @@ export type StepFlowViewProps = {
   onJumpToBlock?: (blockId: string) => void;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
-  /** パネルの空セクションからの追加: その step の kind 表に行を書く（表ごと作る） */
-  onAddEntity?: (blockId: string, kind: EntityKind, text: string) => void;
   /** entityId 指定のリネーム（Entity 名・属性行・step パラメータ行の共通機構） */
   onRenameEntity?: (entityId: string, text: string) => void;
   /** entityId 指定の削除（同上） */
@@ -101,7 +99,8 @@ export type StepFlowViewProps = {
   onAddColumn?: (blockId: string, name: string) => void;
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
   onAddRow?: (blockId: string, name: string) => void;
-  onCreateParamTable?: (stepBlockId: string) => void;
+  /** 空セクションの「表を追加」: 空の表をラベル付きで作る */
+  onCreateSectionTable?: (stepBlockId: string, kind: "attribute" | EntityKind) => void;
   onMoveEntityToTable?: (entityNodeId: string) => void;
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
 };
@@ -136,7 +135,6 @@ function StepFlowCanvas({
   onDeleteActivity,
   onJumpToBlock,
   getStepContentCount,
-  onAddEntity,
   onRenameEntity,
   onRemoveEntity,
   onRenameTableRow,
@@ -148,7 +146,7 @@ function StepFlowCanvas({
   onAddColumn,
   onRemoveColumn,
   onAddRow,
-  onCreateParamTable,
+  onCreateSectionTable,
   onMoveEntityToTable,
   onMoveParamToTable,
 }: StepFlowViewProps) {
@@ -383,8 +381,7 @@ function StepFlowCanvas({
       onAddColumn={onAddColumn}
       onRemoveColumn={onRemoveColumn}
       onAddRow={onAddRow}
-      onAddEntityRow={onAddEntity}
-      onCreateParamTable={onCreateParamTable}
+      onCreateSectionTable={onCreateSectionTable}
       onMoveEntityToTable={onMoveEntityToTable}
       onMoveParamToTable={onMoveParamToTable}
       onRenameEntity={onRenameEntity}

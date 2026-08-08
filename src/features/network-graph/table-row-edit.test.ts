@@ -121,6 +121,32 @@ describe("appendEntityRowToTable", () => {
     ]);
   });
 
+  it("中身が空の step でも空段落を足場にして表を作る", () => {
+    // 実バグ: 子ブロックが 1 つも無い step では挿入基準が無く、無言で失敗していた
+    const inserted: any[] = [];
+    const removed: string[] = [];
+    const step: any = { id: "step-1", type: "step", content: [], children: [] };
+    const ed: any = {
+      document: [step],
+      insertBlocks(blocks: any[]) {
+        inserted.push(blocks[0]);
+        return [{ id: "new-tbl" }];
+      },
+      removeBlocks(ids: string[]) {
+        removed.push(...ids);
+      },
+      updateBlock(id: string, patch: any) {
+        if (id === "step-1" && patch.children) {
+          step.children = patch.children.map((c: any, i: number) => ({ id: `scaffold-${i}`, content: [], ...c }));
+        }
+      },
+    };
+    const r = appendEntityRowToTable(ed, "step-1", "バッチA", () => null, "名前");
+    expect(r).toEqual({ tableBlockId: "new-tbl", created: true });
+    expect(inserted[0].type).toBe("table");
+    expect(removed).toEqual(["scaffold-0"]); // 足場の空段落は残さない
+  });
+
   it("step が見つからなければ null", () => {
     const ed = makeEditor();
     expect(appendEntityRowToTable(ed, "no-step", "X", () => null, "名前")).toBeNull();

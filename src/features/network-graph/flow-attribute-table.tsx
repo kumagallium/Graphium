@@ -63,10 +63,8 @@ export type FlowStepPanelProps = {
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
   onAddRow?: (blockId: string, name: string) => void;
   // ── 表がまだ無いセクション ──
-  /** 入出力・ツール: 表ごと作って 1 行目に name を書く（ラベルも付く） */
-  onAddEntityRow?: (stepBlockId: string, kind: ActivityIoKind, name: string) => void;
-  /** パラメータ: 既定のキー列 1 つで表を作る（できたらキーを編集状態にする） */
-  onCreateParamTable?: (stepBlockId: string) => void;
+  /** 「表を追加」: 空の表（ヘッダ 1 列 + 空行）をラベル付きで作る */
+  onCreateSectionTable?: (stepBlockId: string, kind: SectionKind) => void;
   // ── 本文ハイライト由来の編集・移行 ──
   onRenameEntity?: (entityId: string, text: string) => void;
   onRemoveEntity?: (entityId: string) => void;
@@ -179,8 +177,7 @@ export function FlowStepPanel({
   onAddColumn,
   onRemoveColumn,
   onAddRow,
-  onAddEntityRow,
-  onCreateParamTable,
+  onCreateSectionTable,
   onRenameEntity,
   onRemoveEntity,
   onMoveEntityToTable,
@@ -189,14 +186,10 @@ export function FlowStepPanel({
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
   const [edit, setEdit] = useState<{ key: string; draft: string } | null>(null);
-  // 追加入力中: 既存表への行・列、または空セクションの最初の行
-  const [adding, setAdding] = useState<
-    | { what: "column" | "row"; blockId: string; draft: string }
-    | { what: "newRow"; kind: ActivityIoKind; draft: string }
-    | null
-  >(null);
-  // パラメータ表を作った直後、キー列を編集状態にする予約
-  const [focusParamKey, setFocusParamKey] = useState(false);
+  // 追加入力中: 既存表への行・列
+  const [adding, setAdding] = useState<{ what: "column" | "row"; blockId: string; draft: string } | null>(null);
+  // 「表を追加」直後、できた表の最初のセルを編集状態にする予約
+  const [pendingFocus, setPendingFocus] = useState<SectionKind | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
   const sectionRefs = useRef<Partial<Record<SectionKind, HTMLDivElement | null>>>({});
 
@@ -204,16 +197,21 @@ export function FlowStepPanel({
   useEffect(() => {
     setEdit(null);
     setAdding(null);
-    setFocusParamKey(false);
+    setPendingFocus(null);
   }, [stepId]);
 
-  // 「＋列（表を作成）」の後、できたパラメータ表のキーをそのまま編集状態にする
-  const paramTable = data?.tables.attribute ?? null;
+  // 「表を追加」の後、できた表の最初のセルをそのまま編集状態にする。
+  // パラメータはキー（ヘッダ）、入出力・ツールは 1 行目の名前セル
+  const pendingTable = pendingFocus ? (data?.tables[pendingFocus] ?? null) : null;
   useEffect(() => {
-    if (!focusParamKey || !paramTable) return;
-    setEdit({ key: `h:${paramTable.blockId}:0`, draft: paramTable.headers[0] ?? "" });
-    setFocusParamKey(false);
-  }, [focusParamKey, paramTable]);
+    if (!pendingFocus || !pendingTable) return;
+    if (pendingFocus === "attribute") {
+      setEdit({ key: `h:${pendingTable.blockId}:0`, draft: pendingTable.headers[0] ?? "" });
+    } else {
+      setEdit({ key: `c:${pendingTable.blockId}:0:0`, draft: pendingTable.rows[0]?.[0] ?? "" });
+    }
+    setPendingFocus(null);
+  }, [pendingFocus, pendingTable]);
 
   // Entity 選択が変わったら、その行のあるセクションを視界に入れる
   const highlightBlockId = data?.highlight?.blockId ?? null;
@@ -266,8 +264,7 @@ export function FlowStepPanel({
     if (adding) {
       const v = adding.draft.trim();
       if (v) {
-        if (adding.what === "newRow") onAddEntityRow?.(data.stepId, adding.kind, v);
-        else if (adding.what === "column") onAddColumn?.(adding.blockId, v);
+        if (adding.what === "column") onAddColumn?.(adding.blockId, v);
         else onAddRow?.(adding.blockId, v);
       }
     }
@@ -575,7 +572,7 @@ export function FlowStepPanel({
     const table = data.tables[kind];
     const ghosts = data.prose.filter((p) => p.kind === kind);
     const hasBody = !!table || ghosts.length > 0;
-    const canStart = kind === "attribute" ? !!onCreateParamTable : !!onAddEntityRow;
+    const canStart = !!onCreateSectionTable;
     return (
       <div
         key={kind}
@@ -602,28 +599,19 @@ export function FlowStepPanel({
           }}
         >
           <SectionChip kind={kind} />
-          {/* 表が無いセクションは見出しに追加を畳み込む。押した瞬間に表ごと生まれる */}
-          {!table &&
-            canStart &&
-            (adding?.what === "newRow" && adding.kind === kind ? (
-              <div style={{ flex: 1, maxWidth: 200 }}>
-                {field(adding.draft, (v) => setAdding({ what: "newRow", kind: kind as ActivityIoKind, draft: v }), commitAdd)}
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  if (kind === "attribute") {
-                    onCreateParamTable?.(data.stepId);
-                    setFocusParamKey(true);
-                  } else {
-                    setAdding({ what: "newRow", kind: kind as ActivityIoKind, draft: "" });
-                  }
-                }}
-                style={addBtnStyle}
-              >
-                <Plus size={11} /> {kind === "attribute" ? t("flowTable.addColumn") : t("flowTable.addRow")}
-              </button>
-            ))}
+          {/* 表が無いセクションは「表を追加」。押した瞬間に空の表がラベル付きで
+              生まれ、最初のセル（パラメータはキー、他は名前）が入力待ちになる */}
+          {!table && canStart && (
+            <button
+              onClick={() => {
+                onCreateSectionTable?.(data.stepId, kind);
+                setPendingFocus(kind);
+              }}
+              style={addBtnStyle}
+            >
+              <Plus size={11} /> {t("flowTable.addTable")}
+            </button>
+          )}
         </div>
         {hasBody &&
           (kind === "attribute"

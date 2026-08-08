@@ -203,30 +203,17 @@ function Playground() {
       }
       onJumpToBlock={(blockId) => console.log("jump to", blockId)}
       getStepContentCount={(blockId) => (blockId === "s-mix" ? 2 : 0)}
-      onAddEntity={(stepId, kind, text) => {
-        // 実アプリ同様、追加は表の行になる（表が無ければ作られる）
-        const blockId = `${kind}-${stepId}`;
-        setTables((all) => {
-          const existing = all[blockId] ?? { blockId, headers: ["名前"], rows: [] };
-          return {
-            ...all,
-            [blockId]: {
-              ...existing,
-              rows: [...existing.rows, [text, ...existing.headers.slice(1).map(() => "")]],
-            },
-          };
-        });
-        const id = `entity_${blockId}_${text}`;
-        setGraph((g) => ({
-          ...g,
-          entities: [...g.entities, { id, label: text, kind, tableRef: { blockId, rowName: text }, attrs: [] }],
-          edges: [
-            ...g.edges,
-            kind === "output"
-              ? { id: `g-${counter.current++}`, kind: "generates", source: stepId, target: id }
-              : { id: `u-${counter.current++}`, kind: "used", source: id, target: stepId },
-          ],
-        }));
+      onCreateSectionTable={(stepId: string, kind: "attribute" | "material" | "tool" | "output") => {
+        // 空の表（ヘッダ 1 列 + 空行）をラベル付きで作る。中身はセル編集で入れる
+        const blockId = kind === "attribute" ? `param-${stepId}` : `${kind}-${stepId}`;
+        setTables((all) =>
+          all[blockId]
+            ? all
+            : {
+                ...all,
+                [blockId]: { blockId, headers: [kind === "attribute" ? "項目" : "名前"], rows: [[""]] },
+              },
+        );
       }}
       onRenameEntity={(entityId, text) =>
         setGraph((g) => ({
@@ -379,10 +366,6 @@ function Playground() {
               : { id: `u-${counter.current++}`, kind: "used", source: id, target: step },
           ],
         }));
-      }}
-      onCreateParamTable={(stepBlockId) => {
-        const blockId = `param-${stepBlockId}`;
-        setTables((all) => ({ ...all, [blockId]: { blockId, headers: ["項目"], rows: [[""]] } }));
       }}
       onMoveEntityToTable={(entityNodeId) => {
         const entity = graph.entities.find((e) => e.id === entityNodeId);
