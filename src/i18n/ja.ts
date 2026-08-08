@@ -806,6 +806,7 @@ export const ja: Record<string, string> = {
   "flowTable.ghostHint": "本文のハイライトです。クリックで表に移ります",
   "flowTable.shared": "共有",
   "flowTable.sharedHint": "同じものを別のステップでも使っています。実体はそちらの表にあります",
+  "flowTable.sharedFrom": "{step} の表",
   "flowTable.addTable": "表を追加",
   "activityGraph.relayout": "整列",
   "step.pickerStepsHeader": "ステップ一覧",

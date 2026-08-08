@@ -151,6 +151,28 @@ export function ActivityGraphEditor({
 
   const getEditor = useCallback(() => editorRef?.current ?? null, [editorRef]);
 
+  // 直前に作ったラベル付きテーブル（`${stepId}:${kind}` → blockId）。
+  // labelStore の反映は次のレンダーまで届かないので、連続で呼ばれると
+  // 「まだ表が無い」と誤判定して表を作り直してしまう（実バグ: 連打で表が増えた）。
+  // ラベル検索が空振りしたときの控えとして使う。
+  const recentTablesRef = useRef<Map<string, string>>(new Map());
+  /** step 内の kind ラベル付きテーブルを探す（直近作成分も込み） */
+  const findSectionTable = useCallback(
+    (editor: any, stepId: string, kind: string): string | null => {
+      const labels = labelStoreRef.current.labels;
+      const byLabel = findLabeledTableInStep(editor.document ?? [], labels, stepId, kind as any);
+      if (byLabel) return byLabel;
+      const recent = recentTablesRef.current.get(`${stepId}:${kind}`);
+      // 消された表を掴み続けないよう、実在するときだけ返す
+      if (recent && findBlockById(editor.document ?? [], recent)) return recent;
+      return null;
+    },
+    [],
+  );
+  const rememberTable = useCallback((stepId: string, kind: string, blockId: string) => {
+    recentTablesRef.current.set(`${stepId}:${kind}`, blockId);
+  }, []);
+
   const onConnectSteps = useCallback(
     (producer: string, consumer: string) =>
       // 「A が産み B が使う」= B wasInformedBy A → addLink(source=B, target=A)
@@ -299,10 +321,11 @@ export function ActivityGraphEditor({
         editor,
         stepId,
         entity.label,
-        (id) => findLabeledTableInStep(editor.document ?? [], labels.labels, id, entity.kind),
+        (id) => findSectionTable(editor, id, entity.kind),
         t("graphTable.nameColumn"),
       );
       if (!result) return;
+      rememberTable(stepId, entity.kind, result.tableBlockId);
       if (result.created) labels.setLabel(result.tableBlockId, entity.kind);
       // ハイライトで紐付いていた属性も、列として一緒に連れて行く
       // （置き去りにすると親 span を失って迷子になる）。キーが同名の列が
@@ -371,6 +394,17 @@ export function ActivityGraphEditor({
           .filter((t): t is NonNullable<typeof t> => !!t)
           .map((t) => t.blockId),
       );
+      // 共有行の実体がどの step の表にあるか（「◯◯ にあります」+ ジャンプ用）
+      const homeStepOf = (tableBlockId: string): { id: string; name: string } | null => {
+        for (const s of g.steps) {
+          for (const kind of ["attribute", "material", "tool", "output"] as const) {
+            if (findLabeledTableInStep(doc, labels, s.id, kind as any) === tableBlockId) {
+              return { id: s.id, name: s.name };
+            }
+          }
+        }
+        return null;
+      };
 
       // この step の表に載っていない Entity は、種類のセクションに薄い行として出す。
       // 本文ハイライト由来は表へ移せる。他 step の表にある行（共有）は移せないので
@@ -381,15 +415,20 @@ export function ActivityGraphEditor({
           .map((p) => ({ entityId: p.entityId!, kind: "attribute" as const, label: p.label })),
         ...g.entities
           .filter((e) => connectedIds.has(e.id) && !ownTableIds.has(e.tableRef?.blockId ?? ""))
-          .map((e) => ({
-            entityId: e.entityId ?? e.id,
-            // 移行できるのは本文ハイライト由来だけ（表の行はもう表にある）
-            nodeId: e.tableRef ? undefined : e.id,
-            external: !!e.tableRef,
-            kind: e.kind,
-            label: e.label,
-            attrs: e.attrs,
-          })),
+          .map((e) => {
+            const home = e.tableRef ? homeStepOf(e.tableRef.blockId) : null;
+            return {
+              entityId: e.entityId ?? e.id,
+              // 移行できるのは本文ハイライト由来だけ（表の行はもう表にある）
+              nodeId: e.tableRef ? undefined : e.id,
+              external: !!e.tableRef,
+              homeBlockId: e.tableRef?.blockId,
+              homeStepName: home?.name,
+              kind: e.kind,
+              label: e.label,
+              attrs: e.attrs,
+            };
+          }),
       ];
 
       const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;
@@ -456,12 +495,12 @@ export function ActivityGraphEditor({
       const editor = getEditor();
       if (!editor) return;
       const labels = labelStoreRef.current;
-      const find = (id: string) =>
-        findLabeledTableInStep(editor.document ?? [], labels.labels, id, "attribute" as any);
+      const find = (id: string) => findSectionTable(editor, id, "attribute");
       const existing = find(stepBlockId);
       const colIndex = existing ? (readTable(editor, existing)?.headers.length ?? 0) : 0;
       const result = ensureParameterTable(editor, stepBlockId, key, find);
       if (!result) return;
+      rememberTable(stepBlockId, "attribute", result.tableBlockId);
       if (result.created) {
         labels.setLabel(result.tableBlockId, "attribute");
       } else {
@@ -484,9 +523,11 @@ export function ActivityGraphEditor({
       const header =
         kind === "attribute" ? t("graphTable.paramColumn") : t("graphTable.nameColumn");
       const result = ensureParameterTable(editor, stepBlockId, header, (id) =>
-        findLabeledTableInStep(editor.document ?? [], labels.labels, id, kind as any),
+        findSectionTable(editor, id, kind),
       );
-      if (result?.created) labels.setLabel(result.tableBlockId, kind);
+      if (!result) return;
+      rememberTable(stepBlockId, kind, result.tableBlockId);
+      if (result.created) labels.setLabel(result.tableBlockId, kind);
     },
     [getEditor],
   );

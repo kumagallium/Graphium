@@ -27,6 +27,8 @@ function makeEditor() {
     updates,
     updateBlock(id: string, patch: { content: any }) {
       updates.push({ id, content: patch.content });
+      // 実エディタと同じく document へ反映する（連打の冪等性はこれが前提）
+      if (id === table.id && patch.content) table.content = patch.content;
     },
   };
 }
@@ -150,5 +152,26 @@ describe("appendEntityRowToTable", () => {
   it("step が見つからなければ null", () => {
     const ed = makeEditor();
     expect(appendEntityRowToTable(ed, "no-step", "X", () => null, "名前")).toBeNull();
+  });
+});
+
+describe("appendEntityRowToTable の冪等性", () => {
+  it("同名の行が既にあれば増やさない（再生成のデバウンス中の連打対策）", () => {
+    const ed = makeEditor();
+    const first = appendEntityRowToTable(ed, "step-1", "バッチC", () => "tbl-1", "名前");
+    expect(first).toEqual({ tableBlockId: "tbl-1", created: false });
+    expect(rowTexts(ed.updates[0].content)).toHaveLength(4);
+
+    // 2 回目・3 回目は何も書かない（updates が増えない）
+    const before = ed.updates.length;
+    expect(appendEntityRowToTable(ed, "step-1", "バッチC", () => "tbl-1", "名前")).toEqual({
+      tableBlockId: "tbl-1",
+      created: false,
+    });
+    expect(appendEntityRowToTable(ed, "step-1", "バッチC", () => "tbl-1", "名前")).toEqual({
+      tableBlockId: "tbl-1",
+      created: false,
+    });
+    expect(ed.updates).toHaveLength(before);
   });
 });

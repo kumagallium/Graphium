@@ -409,6 +409,7 @@ function StepFlowCanvas({
       onCreateSectionTable={onCreateSectionTable}
       onMoveEntityToTable={onMoveEntityToTable}
       onMoveParamToTable={onMoveParamToTable}
+      onJumpToBlock={onJumpToBlock}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}
     />

@@ -153,6 +153,12 @@ export function appendEntityRowToTable(
     visit(editor.document ?? []);
     if (block?.type === "table") {
       const rows: any[] = block.content?.rows ?? [];
+      // 同名の行が既にあれば何もしない。この関数は「本文の Entity を表へ移す」
+      // 冪等な操作で、PROV 再生成のデバウンス中にボタンを連打すると、まだ
+      // 薄い行が見えたまま何度も呼ばれる（実バグ: 同じ行が増え続けた）。
+      // 意図的に同名の 2 行目を作りたいときはパネルの「行を追加」を使う。
+      const existingRow = rows.findIndex((r, i) => i > 0 && cellText(r.cells?.[0]) === trimmed);
+      if (existingRow >= 0) return { tableBlockId: existingId, created: false };
       const colCount = rows[0]?.cells?.length ?? 1;
       // 既存の空行（1 列目が空）があればそこへ書く。無ければ末尾に足す。
       const emptyIndex = rows.findIndex((r, i) => i > 0 && cellText(r.cells?.[0]) === "");

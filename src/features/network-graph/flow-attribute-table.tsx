@@ -16,7 +16,7 @@
 // チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link2, Plus, Trash2 } from "lucide-react";
+import { FileText, Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t, getDisplayLabel } from "../../i18n";
 import { splitAttrLabel, type ActivityIoKind, type FlowEntity, type FlowStep } from "./activity-graph-adapter";
@@ -39,8 +39,12 @@ export type ProseItem = {
   label: string;
   /** この Entity にハイライトで紐付いた属性（表への移行時に列として付いて行く） */
   attrs?: { label: string }[];
-  /** 他のステップの表にある行（共有）。移行はできないので由来だけ示す */
+  /** 他のステップの表にある行（共有）。移行はできないので実体の場所を示す */
   external?: boolean;
+  /** 共有行の実体がある表のブロック id（「本文へ」で飛ぶ先） */
+  homeBlockId?: string;
+  /** 共有行の実体がある step の名前 */
+  homeStepName?: string;
 };
 
 /** 選択の裏にある step の中身（getPanelFor が組み立てる） */
@@ -74,6 +78,8 @@ export type FlowStepPanelProps = {
   onMoveEntityToTable?: (entityNodeId: string) => void;
   /** 本文ハイライト由来のパラメータをパラメータ表の列へ移す */
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
+  /** 共有行の「本文へ」: 実体のある表までスクロールする */
+  onJumpToBlock?: (blockId: string) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -184,6 +190,7 @@ export function FlowStepPanel({
   onRemoveEntity,
   onMoveEntityToTable,
   onMoveParamToTable,
+  onJumpToBlock,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
@@ -424,8 +431,24 @@ export function FlowStepPanel({
                 })}
                 <td style={{ ...td, borderRight: "none", whiteSpace: "nowrap", width: "1%" }}>
                   {item.external ? (
-                    <span style={{ ...ghostText, fontSize: 10 }} title={t("flowTable.sharedHint")}>
-                      <Link2 size={11} style={{ verticalAlign: "-2px" }} /> {t("flowTable.shared")}
+                    // 「共有」だけだと手詰まりに見えるので、どこにあるかと
+                    // そこへ行く手段（本文へ）を出す
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ ...ghostText, fontSize: 10 }} title={t("flowTable.sharedHint")}>
+                        <Link2 size={11} style={{ verticalAlign: "-2px" }} />{" "}
+                        {item.homeStepName
+                          ? t("flowTable.sharedFrom", { step: item.homeStepName })
+                          : t("flowTable.shared")}
+                      </span>
+                      {item.homeBlockId && onJumpToBlock && (
+                        <button
+                          onClick={() => onJumpToBlock(item.homeBlockId!)}
+                          title={t("activityGraph.jumpToText")}
+                          style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}
+                        >
+                          <FileText size={10} /> {t("activityGraph.jumpToText")}
+                        </button>
+                      )}
                     </span>
                   ) : (
                     <>
