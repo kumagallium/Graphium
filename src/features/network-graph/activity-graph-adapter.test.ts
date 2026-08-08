@@ -318,3 +318,56 @@ describe("provDocToFlowGraph（F 案: Entity 独立ノード）", () => {
     expect(provDocToFlowGraph(null)).toEqual({ steps: [], entities: [], edges: [] });
   });
 });
+
+describe("テーブル行の tableRef", () => {
+  const doc = (nodes: any[]) => ({ "@context": {}, "@graph": nodes }) as any;
+
+  it("output ラベルの表の行（result_<blockId>_<行名>）も編集可能な行として扱う", () => {
+    const g = provDocToFlowGraph(
+      doc([
+        { "@id": "activity_s1", "@type": "prov:Activity", "rdfs:label": "焼成", "graphium:blockId": "s1" },
+        {
+          "@id": "result_tbl-1_バッチA",
+          "@type": "prov:Entity",
+          "rdfs:label": "バッチA",
+          "graphium:blockId": "tbl-1",
+          "prov:wasGeneratedBy": [{ "@id": "activity_s1" }],
+        },
+      ]),
+    );
+    const row = g.entities.find((e) => e.label === "バッチA");
+    expect(row?.tableRef).toEqual({ blockId: "tbl-1", rowName: "バッチA" });
+  });
+
+  it("output ラベルの段落（result_<blockId>）は表の行ではないので tableRef を持たない", () => {
+    const g = provDocToFlowGraph(
+      doc([
+        { "@id": "activity_s1", "@type": "prov:Activity", "rdfs:label": "焼成", "graphium:blockId": "s1" },
+        {
+          "@id": "result_p1",
+          "@type": "prov:Entity",
+          "rdfs:label": "焼結体",
+          "graphium:blockId": "p1",
+          "prov:wasGeneratedBy": [{ "@id": "activity_s1" }],
+        },
+      ]),
+    );
+    expect(g.entities.find((e) => e.label === "焼結体")?.tableRef).toBeUndefined();
+  });
+
+  it("「〜の結果」placeholder は tableRef を持たない", () => {
+    const g = provDocToFlowGraph(
+      doc([
+        { "@id": "activity_s1", "@type": "prov:Activity", "rdfs:label": "焼成", "graphium:blockId": "s1" },
+        {
+          "@id": "result_synthetic_s1",
+          "@type": "prov:Entity",
+          "rdfs:label": "焼成 の結果",
+          "graphium:blockId": "s1",
+          "prov:wasGeneratedBy": [{ "@id": "activity_s1" }],
+        },
+      ]),
+    );
+    expect(g.entities.find((e) => e.label.includes("の結果"))?.tableRef).toBeUndefined();
+  });
+});

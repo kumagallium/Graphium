@@ -679,6 +679,7 @@ export function ActivityGraphEditor({
       onDeleteActivity={hasEditor ? onDeleteActivity : undefined}
       onJumpToBlock={hasEditor ? onJumpToBlock : undefined}
       getStepContentCount={hasEditor ? getStepContentCount : undefined}
+      onAddEntity={hasEditor ? onAddEntity : undefined}
       onRenameEntity={hasEditor ? onRenameEntity : undefined}
       onRemoveEntity={hasEditor ? onRemoveEntity : undefined}
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}

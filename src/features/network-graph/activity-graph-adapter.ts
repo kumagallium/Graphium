@@ -69,6 +69,28 @@ const RESERVED_KEYS = new Set([
 /** informed_by desugar が立てる合成 output（「〜の結果」プレースホルダ）か */
 const isSyntheticResult = (id: string) => id.startsWith("result_synthetic_");
 
+/**
+ * @id が「構造化テーブルの 1 行」を指すなら、その行を編集するための参照を返す。
+ * material / tool は `entity_<blockId>_<行名>`、output は `result_<blockId>_<行名>`。
+ * ラベル付き段落の output（`result_<blockId>`）や synthetic は表の行ではない。
+ */
+function tableRefOf(
+  id: string,
+  blockId: string | undefined,
+  label: string,
+): { blockId: string; rowName: string } | undefined {
+  if (!blockId || isSyntheticResult(id)) return undefined;
+  for (const prefix of ["entity_", "result_"]) {
+    if (!id.startsWith(prefix)) continue;
+    // 同名行の連番（`..._2`）も同じ行名として扱う（最初の一致行を指す既存仕様）
+    const head = `${prefix}${blockId}_`;
+    if (id === `${head}${label}` || id.startsWith(`${head}${label}_`)) {
+      return { blockId, rowName: label };
+    }
+  }
+  return undefined;
+}
+
 /** ノード直属の属性を表示行に展開する（graphium:* key-value + graphium:attributes） */
 function extractAttrs(n: ProvJsonLdNode): ActivityParam[] {
   const out: ActivityParam[] = [];
@@ -283,12 +305,13 @@ export function provDocToFlowGraph(doc: ProvJsonLd | null): FlowGraphData {
       label: n["rdfs:label"] || id,
       kind,
       entityId: inlineEntityIdOf(n),
-      // 構造化テーブルの行（@id = entity_<tableBlockId>_<rowName>）は、
-      // blockId + 行名でノート側テーブルのセルを編集できる
-      tableRef:
-        id.startsWith("entity_") && n["graphium:blockId"]
-          ? { blockId: n["graphium:blockId"], rowName: n["rdfs:label"] }
-          : undefined,
+      // 構造化テーブルの行は blockId + 行名でノート側テーブルのセルを編集できる。
+      // @id は material/tool が `entity_<tableBlockId>_<行名>`、output は歴史的に
+      // `result_<tableBlockId>_<行名>`。result_ を外すと出力表の行が「表に無い」
+      // 扱いになり、リネームも削除も「表に追加」も効かない行として出てしまう
+      // （実バグ）。ラベル付き段落の output は `result_<blockId>`（行名の節が
+      // 無い）なので、行名の節まで一致するものだけを表の行とみなす。
+      tableRef: tableRefOf(id, n["graphium:blockId"], n["rdfs:label"]),
       attrs: extractAttrs(n),
       mediaUrl: n["graphium:mediaUrl"],
       mediaType: n["graphium:mediaType"],

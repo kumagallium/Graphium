@@ -166,8 +166,8 @@ talks to LLM and embedding backends.
   the kind's table with one click. The panel lists what the step is
   actually wired to, not only what its own blocks contain: an entity
   shared with another step (same-named tools merge into one Entity)
-  appears in its section as a "Shared" row, read-only here because its
-  row lives in the other step's table.
+  appears in its section as a grayed row naming where it lives, whose
+  "add to the table" gives this step its own row for the same entity.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from

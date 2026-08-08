@@ -16,7 +16,7 @@
 // チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { FileText, Link2, Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t, getDisplayLabel } from "../../i18n";
 import { splitAttrLabel, type ActivityIoKind, type FlowEntity, type FlowStep } from "./activity-graph-adapter";
@@ -78,8 +78,8 @@ export type FlowStepPanelProps = {
   onMoveEntityToTable?: (entityNodeId: string) => void;
   /** 本文ハイライト由来のパラメータをパラメータ表の列へ移す */
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
-  /** 共有行の「本文へ」: 実体のある表までスクロールする */
-  onJumpToBlock?: (blockId: string) => void;
+  /** 共有行を、このステップの表にも 1 行として置く（同じモノなのでグラフでは 1 ノードのまま） */
+  onAddSharedRow?: (stepBlockId: string, kind: ActivityIoKind, name: string) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -190,7 +190,7 @@ export function FlowStepPanel({
   onRemoveEntity,
   onMoveEntityToTable,
   onMoveParamToTable,
-  onJumpToBlock,
+  onAddSharedRow,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
@@ -316,6 +316,7 @@ export function FlowStepPanel({
         </span>
       );
     }
+
     return editing(k) ? (
       field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
     ) : (
@@ -409,8 +410,11 @@ export function FlowStepPanel({
           {ghosts.map((item) => {
             const highlighted = proseHighlight === item.entityId;
             const migrate = () => {
-              if (item.external || !item.nodeId) return;
-              onMoveEntityToTable?.(item.nodeId);
+              if (item.external) {
+                onAddSharedRow?.(data.stepId, kind, item.label);
+                return;
+              }
+              if (item.nodeId) onMoveEntityToTable?.(item.nodeId);
             };
             return (
               <tr key={item.entityId} style={highlighted ? highlightBg : undefined}>
@@ -431,8 +435,8 @@ export function FlowStepPanel({
                 })}
                 <td style={{ ...td, borderRight: "none", whiteSpace: "nowrap", width: "1%" }}>
                   {item.external ? (
-                    // 「共有」だけだと手詰まりに見えるので、どこにあるかと
-                    // そこへ行く手段（本文へ）を出す
+                    // 共有でも「このステップの表にも書く」は選べる。同名は
+                    // 1 つの Entity に統合されるので、行が増えてもノードは増えない
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <span style={{ ...ghostText, fontSize: 10 }} title={t("flowTable.sharedHint")}>
                         <Link2 size={11} style={{ verticalAlign: "-2px" }} />{" "}
@@ -440,13 +444,9 @@ export function FlowStepPanel({
                           ? t("flowTable.sharedFrom", { step: item.homeStepName })
                           : t("flowTable.shared")}
                       </span>
-                      {item.homeBlockId && onJumpToBlock && (
-                        <button
-                          onClick={() => onJumpToBlock(item.homeBlockId!)}
-                          title={t("activityGraph.jumpToText")}
-                          style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}
-                        >
-                          <FileText size={10} /> {t("activityGraph.jumpToText")}
+                      {onAddSharedRow && (
+                        <button onClick={migrate} style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}>
+                          <Plus size={10} /> {t("flowTable.addToTable")}
                         </button>
                       )}
                     </span>

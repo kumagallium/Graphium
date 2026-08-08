@@ -82,6 +82,8 @@ export type StepFlowViewProps = {
   onJumpToBlock?: (blockId: string) => void;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
+  /** 共有行の「表に追加」: その step の kind 表に行を書く（表が無ければ作る） */
+  onAddEntity?: (blockId: string, kind: EntityKind, text: string) => void;
   /** entityId 指定のリネーム（Entity 名・属性行・step パラメータ行の共通機構） */
   onRenameEntity?: (entityId: string, text: string) => void;
   /** entityId 指定の削除（同上） */
@@ -150,6 +152,7 @@ function StepFlowCanvas({
   onDeleteActivity,
   onJumpToBlock,
   getStepContentCount,
+  onAddEntity,
   onRenameEntity,
   onRemoveEntity,
   onRenameTableRow,
@@ -409,7 +412,7 @@ function StepFlowCanvas({
       onCreateSectionTable={onCreateSectionTable}
       onMoveEntityToTable={onMoveEntityToTable}
       onMoveParamToTable={onMoveParamToTable}
-      onJumpToBlock={onJumpToBlock}
+      onAddSharedRow={onAddEntity}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}
     />
