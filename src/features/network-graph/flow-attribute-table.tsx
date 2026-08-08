@@ -1,14 +1,19 @@
 // 選択中ノードの裏にある step の中身（全テーブル）を編集するパネル。
 //
 // パネルは「ステップの中身ぜんぶ」— パラメータ / インプット / ツール /
-// アウトプットの 4 セクション + 本文 span 由来の一覧。step を選んでも、
-// その中の Entity を選んでも同じパネルで、Entity 選択は該当行のハイライト +
-// そこへのスクロールになるだけ。グラフからの追加はすべてここ（行を追加 /
-// 列を追加）に一本化されている（step カードの追加ボタンは持たない）。
+// アウトプットの 4 セクション。step を選んでも、その中の Entity を選んでも
+// 同じパネルで、Entity 選択は該当行のハイライト + そこへのスクロールになる
+// だけ。グラフからの追加はすべてここ（行を追加 / 列を追加）に一本化されている。
+// ヘッダはステップノードと同じ青帯 — パネル＝選択中ステップの中身、を色で言う。
+//
+// 本文のハイライト由来（インライン span）の Entity・パラメータは、別枠に
+// 隔離せず**その種類のセクションの中に薄い行 / 薄い列**として混ぜて見せる。
+// 名前の編集はその場で span を書き換え、それ以外のセル・「表に追加」を
+// 押した瞬間に表の行 / 列へ移る（ハイライト利用者がそのまま表に移行できる）。
 //
 // 1 セクション = 1 カード。ノート側で 1 つのラベル付き表が 1 ブロックなのと
-// 同じ区切りで、見出しにはグラフのノードと同じ種類色の帯 + ノートの表と
-// 同じラベルチップを置く。表がまだ無いセクションは破線カード。
+// 同じ区切りで、見出しにはノードと同じ種類色の帯 + ノートの表と同じラベル
+// チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Plus, Trash2 } from "lucide-react";
@@ -25,7 +30,7 @@ export type FlowSelection =
 
 export type SectionKind = "attribute" | ActivityIoKind;
 
-/** 本文 span 由来（表になっていないもの） */
+/** 本文ハイライト（インライン span）由来で、まだ表に入っていないもの */
 export type ProseItem = {
   entityId: string;
   /** グラフのノード id（Entity のみ。表へ移すときに使う） */
@@ -42,7 +47,7 @@ export type StepPanelData = {
   /** テーブル行 Entity を選択中: その行をハイライト */
   highlight?: { blockId: string; rowName: string };
   prose: ProseItem[];
-  /** 本文 span 由来の項目を選択中: その entityId */
+  /** 本文ハイライト由来の項目を選択中: その entityId */
   proseHighlight?: string;
 };
 
@@ -60,11 +65,13 @@ export type FlowStepPanelProps = {
   onAddEntityRow?: (stepBlockId: string, kind: ActivityIoKind, name: string) => void;
   /** パラメータ: 既定のキー列 1 つで表を作る（できたらキーを編集状態にする） */
   onCreateParamTable?: (stepBlockId: string) => void;
-  // ── 本文 span 由来の編集 ──
+  // ── 本文ハイライト由来の編集・移行 ──
   onRenameEntity?: (entityId: string, text: string) => void;
   onRemoveEntity?: (entityId: string) => void;
-  /** 本文 span 由来の Entity を所属 step の表へ移す（nodeId 指定） */
+  /** 本文ハイライト由来の Entity を所属 step の表へ移す（nodeId 指定） */
   onMoveEntityToTable?: (entityNodeId: string) => void;
+  /** 本文ハイライト由来のパラメータをパラメータ表の列へ移す */
+  onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
 };
 
 const SECTION_ORDER: SectionKind[] = ["attribute", "material", "tool", "output"];
@@ -99,6 +106,12 @@ const td: CSSProperties = {
   cursor: "text",
 };
 
+// 本文ハイライト由来の薄い行・列。表の行と同じ場所に置き、
+// 「まだ表には入っていない」ことだけ色で伝える
+const ghostText: CSSProperties = {
+  color: "var(--color-text-tertiary)",
+};
+
 const inputStyle: CSSProperties = {
   width: "100%",
   padding: "1px 4px",
@@ -120,6 +133,16 @@ const addBtnStyle: CSSProperties = {
   border: "none",
   borderRadius: 5,
   cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const ghostIconBtn: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: "var(--color-destructive)",
+  cursor: "pointer",
+  padding: 2,
+  lineHeight: 1,
 };
 
 /** ノート側の表ラベルチップ（#646）と同じ見た目のセクション見出しチップ */
@@ -146,22 +169,6 @@ function SectionChip({ kind }: { kind: SectionKind }) {
   );
 }
 
-function KindDot({ kind }: { kind: ActivityIoKind }) {
-  const color = SECTION_COLOR[kind];
-  return (
-    <span
-      style={{
-        flexShrink: 0,
-        width: 7,
-        height: 7,
-        borderRadius: kind === "tool" ? 1 : "50%",
-        transform: kind === "tool" ? "rotate(45deg)" : undefined,
-        background: color,
-      }}
-    />
-  );
-}
-
 export function FlowStepPanel({
   selection,
   data,
@@ -175,9 +182,10 @@ export function FlowStepPanel({
   onRenameEntity,
   onRemoveEntity,
   onMoveEntityToTable,
+  onMoveParamToTable,
 }: FlowStepPanelProps) {
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
-  //           / `inline:<entityId>`（本文 span）
+  //           / `inline:<entityId>`（本文ハイライトの名前）
   const [edit, setEdit] = useState<{ key: string; draft: string } | null>(null);
   // 追加入力中: 既存表への行・列、または空セクションの最初の行
   const [adding, setAdding] = useState<
@@ -188,7 +196,7 @@ export function FlowStepPanel({
   // パラメータ表を作った直後、キー列を編集状態にする予約
   const [focusParamKey, setFocusParamKey] = useState(false);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
-  const sectionRefs = useRef<Partial<Record<SectionKind | "prose", HTMLDivElement | null>>>({});
+  const sectionRefs = useRef<Partial<Record<SectionKind, HTMLDivElement | null>>>({});
 
   const stepId = data?.stepId ?? null;
   useEffect(() => {
@@ -211,9 +219,10 @@ export function FlowStepPanel({
   const proseHighlight = data?.proseHighlight ?? null;
   useEffect(() => {
     if (!data) return;
-    let key: SectionKind | "prose" | null = null;
-    if (proseHighlight) key = "prose";
-    else if (highlightBlockId) {
+    let key: SectionKind | null = null;
+    if (proseHighlight) {
+      key = data.prose.find((p) => p.entityId === proseHighlight)?.kind ?? null;
+    } else if (highlightBlockId) {
       key = SECTION_ORDER.find((k) => data.tables[k]?.blockId === highlightBlockId) ?? null;
     }
     if (!key) return;
@@ -287,114 +296,280 @@ export function FlowStepPanel({
   );
 
   const editing = (key: string) => edit?.key === key;
+  const highlightBg = { background: "var(--color-accent)" } as const;
 
-  const grid = (table: TableData, highlightRow: number | undefined, kind: SectionKind) => (
-    <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
-      <thead>
-        <tr>
-          {table.headers.map((h, col) => {
-            const key = `h:${table.blockId}:${col}`;
-            return (
-              <th key={col} style={th}>
-                {editing(key) ? (
-                  field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit)
-                ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <span
-                      onClick={() => onRenameColumn && setEdit({ key, draft: h })}
-                      style={{ cursor: onRenameColumn ? "text" : "default" }}
-                    >
-                      {h || "—"}
-                    </span>
-                    {col > 0 && onRemoveColumn && (
-                      <button
-                        onClick={() => onRemoveColumn(table.blockId, col)}
-                        title={t("flowTable.removeColumn")}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--color-destructive)",
-                          cursor: "pointer",
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                      >
-                        <Trash2 size={10} />
-                      </button>
-                    )}
-                  </span>
-                )}
-              </th>
-            );
-          })}
-          {onAddColumn && (
-            <th style={{ ...th, borderRight: "none" }}>
-              {adding?.what === "column" && adding.blockId === table.blockId ? (
-                field(adding.draft, (v) => setAdding({ what: "column", blockId: table.blockId, draft: v }), commitAdd)
-              ) : (
-                <button
-                  onClick={() => setAdding({ what: "column", blockId: table.blockId, draft: "" })}
-                  style={addBtnStyle}
-                >
-                  <Plus size={11} /> {t("flowTable.addColumn")}
-                </button>
-              )}
-            </th>
-          )}
-        </tr>
-      </thead>
-      <tbody>
-        {table.rows.map((row, r) => (
-          <tr key={r} style={highlightRow === r ? { background: "var(--color-accent)" } : undefined}>
-            {table.headers.map((_, col) => {
-              const key = `c:${table.blockId}:${r}:${col}`;
-              return (
-                <td
-                  key={col}
-                  style={td}
-                  onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
-                >
-                  {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
-                </td>
-              );
-            })}
-            {onAddColumn && <td style={{ ...td, borderRight: "none" }} />}
-          </tr>
-        ))}
-      </tbody>
-      {/* パラメータ表は「1 行 = 値」なので行は増やさない（項目はぜんぶ列） */}
-      {kind !== "attribute" && onAddRow && (
-        <tfoot>
-          <tr>
-            <td colSpan={table.headers.length + (onAddColumn ? 1 : 0)} style={{ border: "none", padding: 0 }}>
-              {adding?.what === "row" && adding.blockId === table.blockId ? (
-                <div style={{ padding: "3px 6px", maxWidth: 220 }}>
-                  {field(adding.draft, (v) => setAdding({ what: "row", blockId: table.blockId, draft: v }), commitAdd)}
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAdding({ what: "row", blockId: table.blockId, draft: "" })}
-                  style={{ ...addBtnStyle, margin: "2px 4px 4px" }}
-                >
-                  <Plus size={11} /> {t("flowTable.addRow")}
-                </button>
-              )}
-            </td>
-          </tr>
-        </tfoot>
-      )}
-    </table>
-  );
+  /** 本文ハイライトの名前セル（クリックでその場リネーム = span 書き換え） */
+  const ghostNameCell = (item: ProseItem, extraStyle?: CSSProperties) => {
+    const k = `inline:${item.entityId}`;
+    return editing(k) ? (
+      field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
+    ) : (
+      <span
+        style={{ ...ghostText, cursor: onRenameEntity ? "text" : "default", ...extraStyle }}
+        onClick={() => onRenameEntity && setEdit({ key: k, draft: item.label })}
+      >
+        {item.label}
+      </span>
+    );
+  };
 
-  const section = (kind: SectionKind) => {
-    const color = SECTION_COLOR[kind];
-    const table = data.tables[kind];
+  /** 入出力・ツールのセクション表。ghosts は本文ハイライト由来の薄い行 */
+  const entityGrid = (table: TableData | null, kind: ActivityIoKind, ghosts: ProseItem[]) => {
+    const headers = table?.headers ?? [t("graphTable.nameColumn")];
+    const blockId = table?.blockId ?? null;
     const highlightRow =
       table && highlightBlockId === table.blockId && highlightRowName != null
         ? table.rows.findIndex((r) => r[0] === highlightRowName)
         : -1;
-    const canStart =
-      kind === "attribute" ? !!onCreateParamTable : !!onAddEntityRow;
+    const trailing = !!onAddColumn && !!table;
+    return (
+      <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+        <thead>
+          <tr>
+            {headers.map((h, col) => {
+              const key = blockId ? `h:${blockId}:${col}` : `nohead:${col}`;
+              return (
+                <th key={col} style={th}>
+                  {blockId && editing(key) ? (
+                    field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit)
+                  ) : (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span
+                        onClick={() => blockId && onRenameColumn && setEdit({ key, draft: h })}
+                        style={{ cursor: blockId && onRenameColumn ? "text" : "default" }}
+                      >
+                        {h || "—"}
+                      </span>
+                      {blockId && col > 0 && onRemoveColumn && (
+                        <button
+                          onClick={() => onRemoveColumn(blockId, col)}
+                          title={t("flowTable.removeColumn")}
+                          style={ghostIconBtn}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </th>
+              );
+            })}
+            {trailing && (
+              <th style={{ ...th, borderRight: "none" }}>
+                {adding?.what === "column" && adding.blockId === blockId ? (
+                  field(adding.draft, (v) => setAdding({ what: "column", blockId: blockId!, draft: v }), commitAdd)
+                ) : (
+                  <button
+                    onClick={() => setAdding({ what: "column", blockId: blockId!, draft: "" })}
+                    style={addBtnStyle}
+                  >
+                    <Plus size={11} /> {t("flowTable.addColumn")}
+                  </button>
+                )}
+              </th>
+            )}
+            {!table && <th style={{ ...th, borderRight: "none", width: "1%" }} />}
+          </tr>
+        </thead>
+        <tbody>
+          {(table?.rows ?? []).map((row, r) => (
+            <tr key={r} style={highlightRow === r ? highlightBg : undefined}>
+              {headers.map((_, col) => {
+                const key = `c:${blockId}:${r}:${col}`;
+                return (
+                  <td
+                    key={col}
+                    style={td}
+                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                  >
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
+                  </td>
+                );
+              })}
+              {trailing && <td style={{ ...td, borderRight: "none" }} />}
+            </tr>
+          ))}
+          {/* 本文ハイライト由来: 同じ表の中に薄い行として見せる。名前はその場で
+              編集でき、他のセル・「表に追加」で行として取り込む（span は外れる） */}
+          {ghosts.map((item) => {
+            const highlighted = proseHighlight === item.entityId;
+            const migrate = () => item.nodeId && onMoveEntityToTable?.(item.nodeId);
+            return (
+              <tr key={item.entityId} style={highlighted ? highlightBg : undefined}>
+                <td style={td}>{ghostNameCell(item)}</td>
+                {headers.slice(1).map((_, i) => (
+                  <td
+                    key={i}
+                    style={{ ...td, ...ghostText, cursor: "pointer" }}
+                    title={t("flowTable.ghostHint")}
+                    onClick={migrate}
+                  >
+                    –
+                  </td>
+                ))}
+                <td style={{ ...td, borderRight: "none", whiteSpace: "nowrap", width: "1%" }}>
+                  {item.nodeId && onMoveEntityToTable && (
+                    <button onClick={migrate} style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}>
+                      <Plus size={10} /> {t("flowTable.addToTable")}
+                    </button>
+                  )}
+                  {onRemoveEntity && (
+                    <button
+                      onClick={() => onRemoveEntity(item.entityId)}
+                      title={t("activityGraph.removeChip")}
+                      style={ghostIconBtn}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          {table && onAddRow && (
+            <tr>
+              <td colSpan={headers.length + (trailing ? 1 : 0)} style={{ border: "none", padding: 0 }}>
+                {adding?.what === "row" && adding.blockId === table.blockId ? (
+                  <div style={{ padding: "3px 6px", maxWidth: 220 }}>
+                    {field(adding.draft, (v) => setAdding({ what: "row", blockId: table.blockId, draft: v }), commitAdd)}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAdding({ what: "row", blockId: table.blockId, draft: "" })}
+                    style={{ ...addBtnStyle, margin: "2px 4px 4px" }}
+                  >
+                    <Plus size={11} /> {t("flowTable.addRow")}
+                  </button>
+                )}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    );
+  };
+
+  /** パラメータ表（ヘッダ=キー / 1 行目=値）。ghosts は本文ハイライト由来の薄い列 */
+  const paramGrid = (table: TableData | null, ghosts: ProseItem[]) => {
+    const blockId = table?.blockId ?? null;
+    const headers = table?.headers ?? [];
+    const rows = table?.rows ?? (ghosts.length > 0 ? [[]] : []);
+    const ghostCols = ghosts.map((g) => ({ item: g, ...splitAttrLabel(g.label) }));
+    const trailing = !!onAddColumn && !!table;
+    return (
+      <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
+        <thead>
+          <tr>
+            {headers.map((h, col) => {
+              const key = `h:${blockId}:${col}`;
+              return (
+                <th key={col} style={th}>
+                  {editing(key) ? (
+                    field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit)
+                  ) : (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span
+                        onClick={() => onRenameColumn && setEdit({ key, draft: h })}
+                        style={{ cursor: onRenameColumn ? "text" : "default" }}
+                      >
+                        {h || "—"}
+                      </span>
+                      {col > 0 && onRemoveColumn && blockId && (
+                        <button
+                          onClick={() => onRemoveColumn(blockId, col)}
+                          title={t("flowTable.removeColumn")}
+                          style={ghostIconBtn}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </th>
+              );
+            })}
+            {ghostCols.map(({ item, key }) => (
+              <th key={item.entityId} style={{ ...th, ...(proseHighlight === item.entityId ? highlightBg : {}) }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={ghostText}>{key ?? "—"}</span>
+                  {onRemoveEntity && (
+                    <button
+                      onClick={() => onRemoveEntity(item.entityId)}
+                      title={t("activityGraph.removeChip")}
+                      style={ghostIconBtn}
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  )}
+                </span>
+              </th>
+            ))}
+            {trailing && (
+              <th style={{ ...th, borderRight: "none" }}>
+                {adding?.what === "column" && adding.blockId === blockId ? (
+                  field(adding.draft, (v) => setAdding({ what: "column", blockId: blockId!, draft: v }), commitAdd)
+                ) : (
+                  <button
+                    onClick={() => setAdding({ what: "column", blockId: blockId!, draft: "" })}
+                    style={addBtnStyle}
+                  >
+                    <Plus size={11} /> {t("flowTable.addColumn")}
+                  </button>
+                )}
+              </th>
+            )}
+            {!table && <th style={{ ...th, borderRight: "none", width: "1%" }} />}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r}>
+              {headers.map((_, col) => {
+                const key = `c:${blockId}:${r}:${col}`;
+                return (
+                  <td
+                    key={col}
+                    style={td}
+                    onClick={() => onSetCell && !editing(key) && setEdit({ key, draft: row[col] ?? "" })}
+                  >
+                    {editing(key) ? field(edit!.draft, (v) => setEdit({ key, draft: v }), commitEdit) : (row[col] ?? "")}
+                  </td>
+                );
+              })}
+              {/* 値の行（1 行目）にだけ本文由来の値を出す。クリックで列として取り込む */}
+              {ghostCols.map(({ item, value }) => (
+                <td
+                  key={item.entityId}
+                  style={{
+                    ...td,
+                    ...ghostText,
+                    cursor: onMoveParamToTable ? "pointer" : "default",
+                    ...(proseHighlight === item.entityId ? highlightBg : {}),
+                  }}
+                  title={t("flowTable.ghostHint")}
+                  onClick={() => {
+                    if (r !== 0 || !onMoveParamToTable) return;
+                    const split = splitAttrLabel(item.label);
+                    onMoveParamToTable(data.stepId, item.entityId, split.key ?? item.label, split.value);
+                  }}
+                >
+                  {r === 0 ? value : ""}
+                </td>
+              ))}
+              {trailing && <td style={{ ...td, borderRight: "none" }} />}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
+  const section = (kind: SectionKind) => {
+    const color = SECTION_COLOR[kind];
+    const table = data.tables[kind];
+    const ghosts = data.prose.filter((p) => p.kind === kind);
+    const hasBody = !!table || ghosts.length > 0;
+    const canStart = kind === "attribute" ? !!onCreateParamTable : !!onAddEntityRow;
     return (
       <div
         key={kind}
@@ -403,7 +578,7 @@ export function FlowStepPanel({
         }}
         style={{
           borderRadius: 6,
-          // 空でも種類色は保つ（破線が「まだ無い」を言う）。帯は全色 15% —
+          // 空でも種類色は保つ（破線が「表はまだ無い」を言う）。帯は全色 15% —
           // 一律 8% だと赤系だけ目立ち、緑・アンバーが灰色に沈む
           border: table ? `1px solid ${color}66` : `1px dashed ${color}88`,
           background: "var(--color-card)",
@@ -421,12 +596,12 @@ export function FlowStepPanel({
           }}
         >
           <SectionChip kind={kind} />
-          {/* 空セクションは見出し行に追加を畳み込む。押した瞬間に表ごと生まれる */}
+          {/* 表が無いセクションは見出しに追加を畳み込む。押した瞬間に表ごと生まれる */}
           {!table &&
             canStart &&
             (adding?.what === "newRow" && adding.kind === kind ? (
               <div style={{ flex: 1, maxWidth: 200 }}>
-                {field(adding.draft, (v) => setAdding({ what: "newRow", kind, draft: v }), commitAdd)}
+                {field(adding.draft, (v) => setAdding({ what: "newRow", kind: kind as ActivityIoKind, draft: v }), commitAdd)}
               </div>
             ) : (
               <button
@@ -435,7 +610,7 @@ export function FlowStepPanel({
                     onCreateParamTable?.(data.stepId);
                     setFocusParamKey(true);
                   } else {
-                    setAdding({ what: "newRow", kind, draft: "" });
+                    setAdding({ what: "newRow", kind: kind as ActivityIoKind, draft: "" });
                   }
                 }}
                 style={addBtnStyle}
@@ -444,16 +619,43 @@ export function FlowStepPanel({
               </button>
             ))}
         </div>
-        {table && grid(table, highlightRow >= 0 ? highlightRow : undefined, kind)}
+        {hasBody &&
+          (kind === "attribute"
+            ? paramGrid(table, ghosts)
+            : entityGrid(table, kind as ActivityIoKind, ghosts))}
       </div>
     );
   };
 
   return (
     <div style={wrapStyle}>
+      {/* パネル＝選択中ステップの中身。ステップノードと同じ青帯で言う */}
       <div style={headerStyle}>
-        <span style={{ fontWeight: 700, color: "var(--color-foreground)" }}>{data.stepName}</span>
-        <span style={{ color: "var(--color-text-tertiary)" }}>{t("flowTable.tableHint")}</span>
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            flexShrink: 0,
+            borderRadius: "50%",
+            background: KIND_PALETTE.activity.main,
+          }}
+        />
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontWeight: 700,
+            color: KIND_PALETTE.activity.text,
+          }}
+        >
+          {data.stepName}
+        </span>
+        <span style={{ color: KIND_PALETTE.activity.text, opacity: 0.65, flexShrink: 0 }}>
+          {t("flowTable.tableHint")}
+        </span>
       </div>
 
       <div
@@ -470,81 +672,6 @@ export function FlowStepPanel({
         }}
       >
         {SECTION_ORDER.map(section)}
-
-        {/* 本文 span 由来（表になっていないもの）。表ではないのでカードにしない */}
-        {data.prose.length > 0 && (
-          <div
-            ref={(el) => {
-              sectionRefs.current.prose = el;
-            }}
-            style={{ padding: "2px 2px 4px" }}
-          >
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text-tertiary)", paddingBottom: 2 }}>
-              {t("flowTable.inlineSection")}
-            </div>
-            {data.prose.map((item) => {
-              const k = `inline:${item.entityId}`;
-              const { key, value } = item.kind === "attribute" ? splitAttrLabel(item.label) : { key: null, value: item.label };
-              const highlighted = proseHighlight === item.entityId;
-              return (
-                <div
-                  key={item.entityId}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "2px 4px",
-                    borderRadius: 4,
-                    background: highlighted ? "var(--color-accent)" : "transparent",
-                  }}
-                >
-                  {editing(k) ? (
-                    field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
-                  ) : (
-                    <>
-                      {item.kind === "attribute" ? (
-                        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)", width: 72, flexShrink: 0 }}>
-                          {key ?? "—"}
-                        </span>
-                      ) : (
-                        <KindDot kind={item.kind} />
-                      )}
-                      <span
-                        style={{ flex: 1, minWidth: 0, fontSize: 12, cursor: onRenameEntity ? "text" : "default" }}
-                        onClick={() => onRenameEntity && setEdit({ key: k, draft: item.label })}
-                      >
-                        {value}
-                      </span>
-                      {item.nodeId && onMoveEntityToTable && (
-                        <button
-                          onClick={() => onMoveEntityToTable(item.nodeId!)}
-                          style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}
-                        >
-                          <Plus size={10} /> {t("flowTable.addToTable")}
-                        </button>
-                      )}
-                      {onRemoveEntity && (
-                        <button
-                          onClick={() => onRemoveEntity(item.entityId)}
-                          title={t("activityGraph.removeChip")}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            color: "var(--color-destructive)",
-                            cursor: "pointer",
-                            padding: 2,
-                          }}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -564,12 +691,11 @@ const wrapStyle: CSSProperties = {
 const headerStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
+  gap: 6,
   padding: "6px 10px",
   fontSize: 12,
   borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
+  background: KIND_PALETTE.activity.bg,
   flexShrink: 0,
 };
 

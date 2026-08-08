@@ -102,7 +102,7 @@ The panel is a place to write, not just a picture to read. Everything you do her
 
 A kind the step doesn't have yet shows as a dashed card; its **Add row** (or **Column**, for parameters) creates the table on the spot, labeled and ready.
 
-**Entities you highlighted in a sentence** keep working as they are, and appear in the panel under *Written in the prose*, where you can edit or remove them. **Add to the table** moves one into its kind's table when you want to give it attributes: the row is added and the highlight comes off, while the sentence stays exactly as written.
+**Entities you highlighted in a sentence** keep working as they are, and appear right inside their kind's table as grayed rows — highlighted parameters as grayed columns. Renaming one edits the text in place. **Add to the table** (or clicking its grayed cells) takes it in for real: the row or column is added and the highlight comes off, while the sentence stays exactly as written. Highlighting and tables are the same data seen two ways, so you can move over at your own pace.
 
 ## Exporting PROV-JSON-LD
 

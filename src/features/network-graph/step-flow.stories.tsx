@@ -417,6 +417,27 @@ function Playground() {
           };
         });
       }}
+      onMoveParamToTable={(stepId, entityId, key, value) => {
+        const blockId = `param-${stepId}`;
+        setTables((all) => {
+          const existing = all[blockId] ?? { blockId, headers: [], rows: [[]] };
+          return {
+            ...all,
+            [blockId]: {
+              ...existing,
+              headers: [...existing.headers, key],
+              rows: existing.rows.map((r, i) => (i === 0 ? [...r, value] : [...r, ""])),
+            },
+          };
+        });
+        // span は外れる = step.params から消える
+        setGraph((g) => ({
+          ...g,
+          steps: g.steps.map((s) =>
+            s.id === stepId ? { ...s, params: s.params.filter((p) => p.entityId !== entityId) } : s,
+          ),
+        }));
+      }}
     />
   );
 }

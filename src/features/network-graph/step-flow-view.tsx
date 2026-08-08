@@ -103,6 +103,7 @@ export type StepFlowViewProps = {
   onAddRow?: (blockId: string, name: string) => void;
   onCreateParamTable?: (stepBlockId: string) => void;
   onMoveEntityToTable?: (entityNodeId: string) => void;
+  onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
 };
 
 const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
@@ -149,6 +150,7 @@ function StepFlowCanvas({
   onAddRow,
   onCreateParamTable,
   onMoveEntityToTable,
+  onMoveParamToTable,
 }: StepFlowViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -384,6 +386,7 @@ function StepFlowCanvas({
       onAddEntityRow={onAddEntity}
       onCreateParamTable={onCreateParamTable}
       onMoveEntityToTable={onMoveEntityToTable}
+      onMoveParamToTable={onMoveParamToTable}
       onRenameEntity={onRenameEntity}
       onRemoveEntity={onRemoveEntity}
     />

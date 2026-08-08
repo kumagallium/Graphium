@@ -798,11 +798,11 @@ export const en: Record<string, string> = {
   "flowTable.tableHint": "Same content as the table in the note",
   "flowTable.noTableYet": "No table yet",
   "flowTable.addToTable": "Add to the table",
-  "flowTable.inlineSection": "Written in the prose",
   "flowTable.addColumn": "Column",
   "flowTable.removeColumn": "Remove column",
   "flowTable.addRow": "Add row",
   "flowTable.resizeHandle": "Drag to resize / double-click to reset",
+  "flowTable.ghostHint": "Highlighted in the prose — click to move it into the table",
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
 

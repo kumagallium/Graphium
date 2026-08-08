@@ -799,11 +799,11 @@ export const ja: Record<string, string> = {
   "flowTable.tableHint": "ノートの表と同じ内容です",
   "flowTable.noTableYet": "まだ表がありません",
   "flowTable.addToTable": "表に追加",
-  "flowTable.inlineSection": "本文に書かれたもの",
   "flowTable.addColumn": "列",
   "flowTable.removeColumn": "列を削除",
   "flowTable.addRow": "行を追加",
   "flowTable.resizeHandle": "ドラッグでサイズを変更 / ダブルクリックで既定に戻す",
+  "flowTable.ghostHint": "本文のハイライトです。クリックで表に移ります",
   "step.pickerStepsHeader": "ステップ一覧",
   "step.pickerOutputsHeader": "アウトプット一覧",
 

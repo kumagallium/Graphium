@@ -400,6 +400,33 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
+  /**
+   * 本文ハイライト由来のパラメータ（attribute span）をパラメータ表の列へ移す。
+   * 表が無ければ key を最初の列として作り、あれば列を足して 1 行目に値を書く。
+   * 取り込んだら元の span のラベルを外す（Entity の表移行と同じ流儀）。
+   */
+  const onMoveParamToTable = useCallback(
+    (stepBlockId: string, entityId: string, key: string, value: string) => {
+      const editor = getEditor();
+      if (!editor) return;
+      const labels = labelStoreRef.current;
+      const find = (id: string) =>
+        findLabeledTableInStep(editor.document ?? [], labels.labels, id, "attribute" as any);
+      const existing = find(stepBlockId);
+      const colIndex = existing ? (readTable(editor, existing)?.headers.length ?? 0) : 0;
+      const result = ensureParameterTable(editor, stepBlockId, key, find);
+      if (!result) return;
+      if (result.created) {
+        labels.setLabel(result.tableBlockId, "attribute");
+      } else {
+        addTableColumn(editor, result.tableBlockId, key);
+      }
+      setTableCellAt(editor, result.tableBlockId, 0, colIndex, value);
+      removeInlineEntity(editor, entityId);
+    },
+    [getEditor],
+  );
+
   // step にパラメータ表がまだ無いとき: 既定のキー列 1 つで作ってラベルを付ける。
   // Entity 側の「表を作成」と同じく 1 クリックで表ができ、キーの命名は
   // できた表のヘッダ編集（パネル側でそのまま編集状態になる）でやる。
@@ -577,6 +604,7 @@ export function ActivityGraphEditor({
       onAddRow={hasEditor ? onAddRow : undefined}
       onCreateParamTable={hasEditor ? onCreateParamTable : undefined}
       onMoveEntityToTable={hasEditor ? onMoveEntityToTable : undefined}
+      onMoveParamToTable={hasEditor ? onMoveParamToTable : undefined}
     />
   );
 }
