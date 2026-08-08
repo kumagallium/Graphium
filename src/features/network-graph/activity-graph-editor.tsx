@@ -310,30 +310,54 @@ export function ActivityGraphEditor({
     [getEditor, owningStepOf],
   );
 
-  const getTableFor = useCallback(
+  // パネルは「選択の裏にある step の中身ぜんぶ」。step 選択でもその中の
+  // Entity 選択でも同じデータを返し、Entity 側はハイライト情報だけ変わる
+  const getPanelFor = useCallback(
     (selection: any) => {
       const editor = getEditor();
-      if (!editor || !selection) return { table: null };
+      if (!editor || !selection) return null;
+      const g = flowGraphRef.current;
+      const stepId =
+        selection.kind === "step" ? selection.step.id : owningStepOf(selection.entity.id);
+      if (!stepId) return null;
+      const step = g.steps.find((s) => s.id === stepId);
+      if (!step) return null;
+
       const labels = labelStoreRef.current.labels;
-      if (selection.kind === "entity") {
-        const ref = selection.entity.tableRef;
-        if (ref) {
-          const table = readTable(editor, ref.blockId);
-          const highlightRow = table?.rows.findIndex((r) => r[0] === ref.rowName);
-          return { table, highlightRow: highlightRow != null && highlightRow >= 0 ? highlightRow : undefined };
-        }
-        // 本文 span 由来の Entity: 所属 step に同じ種類の表があればそれを出す
-        // （まだ表に入っていないので、行のハイライトは無い）
-        const stepId = owningStepOf(selection.entity.id);
-        if (!stepId) return { table: null };
-        const id = findLabeledTableInStep(editor.document ?? [], labels, stepId, selection.entity.kind);
-        return { table: id ? readTable(editor, id) : null };
-      }
-      // step: パラメータ表（attribute ラベル付きテーブル）
-      const id = findLabeledTableInStep(editor.document ?? [], labels, selection.step.id, "attribute" as any);
-      return { table: id ? readTable(editor, id) : null };
+      const doc = editor.document ?? [];
+      const tableOf = (kind: string) => {
+        const id = findLabeledTableInStep(doc, labels, stepId, kind as any);
+        return id ? readTable(editor, id) : null;
+      };
+      const tables = {
+        attribute: tableOf("attribute"),
+        material: tableOf("material"),
+        tool: tableOf("tool"),
+        output: tableOf("output"),
+      };
+
+      // 本文 span 由来: step のパラメータ + この step に属す表未所属の Entity
+      const prose = [
+        ...step.params
+          .filter((p) => !!p.entityId)
+          .map((p) => ({ entityId: p.entityId!, kind: "attribute" as const, label: p.label })),
+        ...g.entities
+          .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
+          .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label })),
+      ];
+
+      const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;
+      return {
+        stepId,
+        stepName: step.name,
+        tables,
+        highlight: ref ? { blockId: ref.blockId, rowName: ref.rowName } : undefined,
+        proseHighlight:
+          selection.kind === "entity" && !ref ? (selection.entity.entityId ?? undefined) : undefined,
+        prose,
+      };
     },
-    [getEditor],
+    [getEditor, owningStepOf],
   );
 
   const onSetCell = useCallback(
@@ -545,7 +569,7 @@ export function ActivityGraphEditor({
       onRenameTableRow={hasEditor ? onRenameTableRow : undefined}
       onRemoveTableRow={hasEditor ? onRemoveTableRow : undefined}
       tableLayout={tableLayout}
-      getTableFor={hasEditor ? getTableFor : undefined}
+      getPanelFor={hasEditor ? getPanelFor : undefined}
       onSetCell={hasEditor ? onSetCell : undefined}
       onRenameColumn={hasEditor ? onRenameColumn : undefined}
       onAddColumn={hasEditor ? onAddColumn : undefined}

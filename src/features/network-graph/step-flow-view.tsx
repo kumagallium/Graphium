@@ -42,8 +42,7 @@ import type { FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
 import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
-import { FlowAttributeTable, type FlowSelection } from "./flow-attribute-table";
-import type { TableData } from "./table-row-edit";
+import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
 
 const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
@@ -80,7 +79,7 @@ export type StepFlowViewProps = {
   onJumpToBlock?: (blockId: string) => void;
   /** 削除確認に出す「中身のブロック数」 */
   getStepContentCount?: (blockId: string) => number;
-  /** step カードからの入出力・パラメータ追加（本文に span 付き行を合成） */
+  /** パネルの空セクションからの追加: その step の kind 表に行を書く（表ごと作る） */
   onAddEntity?: (blockId: string, kind: EntityKind, text: string) => void;
   /** entityId 指定のリネーム（Entity 名・属性行・step パラメータ行の共通機構） */
   onRenameEntity?: (entityId: string, text: string) => void;
@@ -92,8 +91,8 @@ export type StepFlowViewProps = {
   onRemoveTableRow?: (blockId: string, rowName: string) => void;
   /** 属性テーブルの置き場所。below = グラフの下（右パネル）、side = 右横（全画面） */
   tableLayout?: "below" | "side";
-  /** 選択の裏にあるノート側テーブルを読む（step ならパラメータ表 / entity ならその行の表） */
-  getTableFor?: (selection: FlowSelection) => { table: TableData | null; highlightRow?: number };
+  /** 選択の裏にある step の中身（全テーブル + 本文 span 由来）を読む */
+  getPanelFor?: (selection: FlowSelection) => StepPanelData | null;
   onSetCell?: (blockId: string, rowIndex: number, colIndex: number, value: string) => void;
   onRenameColumn?: (blockId: string, colIndex: number, name: string) => void;
   onAddColumn?: (blockId: string, name: string) => void;
@@ -139,7 +138,7 @@ function StepFlowCanvas({
   onRenameTableRow,
   onRemoveTableRow,
   tableLayout = "below",
-  getTableFor,
+  getPanelFor,
   onSetCell,
   onRenameColumn,
   onAddColumn,
@@ -209,7 +208,6 @@ function StepFlowCanvas({
           onDelete: onDeleteActivity,
           onJump: onJumpToBlock,
           getContentCount: getStepContentCount,
-          onAddEntity,
         },
         draggable: false,
         selected: s.id === selectedIdRef.current,
@@ -257,7 +255,6 @@ function StepFlowCanvas({
     onDeleteActivity,
     onJumpToBlock,
     getStepContentCount,
-    onAddEntity,
     onRenameEntity,
     onRemoveEntity,
     onRenameTableRow,
@@ -357,17 +354,16 @@ function StepFlowCanvas({
       })()
     : null;
 
-  const backing = getTableFor?.(selection) ?? { table: null };
   const attributeTable = (
-    <FlowAttributeTable
+    <FlowStepPanel
       selection={selection}
-      table={backing.table}
-      highlightRow={backing.highlightRow}
+      data={getPanelFor?.(selection) ?? null}
       onSetCell={onSetCell}
       onRenameColumn={onRenameColumn}
       onAddColumn={onAddColumn}
       onRemoveColumn={onRemoveColumn}
       onAddRow={onAddRow}
+      onAddEntityRow={onAddEntity}
       onCreateParamTable={onCreateParamTable}
       onMoveEntityToTable={onMoveEntityToTable}
       onRenameEntity={onRenameEntity}

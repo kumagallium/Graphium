@@ -69,10 +69,10 @@ const RICH_GRAPH: FlowGraphData = {
     },
     {
       // 構造化テーブルの行由来: セル編集はノート側テーブルに書き戻る（tableRef）
-      id: "entity_tbl-1_試料C",
+      id: "entity_material-s-mix_試料C",
       label: "試料C",
       kind: "material",
-      tableRef: { blockId: "tbl-1", rowName: "試料C" },
+      tableRef: { blockId: "material-s-mix", rowName: "試料C" },
       attrs: [
         { label: "純度: 99%" },
         { label: "質量: 2g" },
@@ -85,7 +85,7 @@ const RICH_GRAPH: FlowGraphData = {
     { id: "u3", kind: "used", source: "inline_tool_ent_mortar", target: "s-mix" },
     { id: "g1", kind: "generates", source: "s-mix", target: "inline_output_ent_a" },
     { id: "g2", kind: "generates", source: "s-mix", target: "inline_output_ent_b" },
-    { id: "u6", kind: "used", source: "entity_tbl-1_試料C", target: "s-mix" },
+    { id: "u6", kind: "used", source: "entity_material-s-mix_試料C", target: "s-mix" },
     { id: "u4", kind: "used", source: "inline_output_ent_a", target: "s-fire" },
     { id: "u5", kind: "used", source: "inline_output_ent_b", target: "s-keep" },
     { id: "ord1", kind: "orderOnly", source: "s-dry", target: "s-weigh", deletable: true },
@@ -110,8 +110,8 @@ export const EmptyState: Story = {
 
 /** ノート側の表のモック。パネルの編集はここに書き戻る（実アプリでは BlockNote の table ブロック） */
 const INITIAL_TABLES: Record<string, TableData> = {
-  "tbl-1": {
-    blockId: "tbl-1",
+  "material-s-mix": {
+    blockId: "material-s-mix",
     headers: ["名前", "純度", "質量"],
     rows: [["試料C", "99%", "2g"]],
   },
@@ -203,17 +203,28 @@ function Playground() {
       }
       onJumpToBlock={(blockId) => console.log("jump to", blockId)}
       getStepContentCount={(blockId) => (blockId === "s-mix" ? 2 : 0)}
-      onAddEntity={(blockId, kind, text) => {
-        const entityId = `ent-${counter.current++}`;
-        const id = `inline_${kind}_${entityId}`;
+      onAddEntity={(stepId, kind, text) => {
+        // 実アプリ同様、追加は表の行になる（表が無ければ作られる）
+        const blockId = `${kind}-${stepId}`;
+        setTables((all) => {
+          const existing = all[blockId] ?? { blockId, headers: ["名前"], rows: [] };
+          return {
+            ...all,
+            [blockId]: {
+              ...existing,
+              rows: [...existing.rows, [text, ...existing.headers.slice(1).map(() => "")]],
+            },
+          };
+        });
+        const id = `entity_${blockId}_${text}`;
         setGraph((g) => ({
           ...g,
-          entities: [...g.entities, { id, label: text, kind, entityId, attrs: [] }],
+          entities: [...g.entities, { id, label: text, kind, tableRef: { blockId, rowName: text }, attrs: [] }],
           edges: [
             ...g.edges,
             kind === "output"
-              ? { id: `g-${counter.current++}`, kind: "generates", source: blockId, target: id }
-              : { id: `u-${counter.current++}`, kind: "used", source: id, target: blockId },
+              ? { id: `g-${counter.current++}`, kind: "generates", source: stepId, target: id }
+              : { id: `u-${counter.current++}`, kind: "used", source: id, target: stepId },
           ],
         }));
       }}
@@ -286,15 +297,35 @@ function Playground() {
           };
         });
       }}
-      // ── テーブルパネル（選択ノードの裏にあるノート側の表） ──
-      getTableFor={(selection: FlowSelection) => {
-        if (!selection) return { table: null };
-        if (selection.kind === "step") return { table: tables[`param-${selection.step.id}`] ?? null };
-        const ref = selection.entity.tableRef;
-        if (!ref) return { table: null };
-        const table = tables[ref.blockId] ?? null;
-        const row = table?.rows.findIndex((r) => r[0] === ref.rowName) ?? -1;
-        return { table, highlightRow: row >= 0 ? row : undefined };
+      // ── パネル（選択の裏にある step の中身ぜんぶ） ──
+      getPanelFor={(selection: FlowSelection) => {
+        if (!selection) return null;
+        const stepId =
+          selection.kind === "step" ? selection.step.id : owningStepOf(selection.entity.id);
+        const step = graph.steps.find((st) => st.id === stepId);
+        if (!stepId || !step) return null;
+        const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;
+        return {
+          stepId,
+          stepName: step.name,
+          tables: {
+            attribute: tables[`param-${stepId}`] ?? null,
+            material: tables[`material-${stepId}`] ?? null,
+            tool: tables[`tool-${stepId}`] ?? null,
+            output: tables[`output-${stepId}`] ?? null,
+          },
+          highlight: ref ? { blockId: ref.blockId, rowName: ref.rowName } : undefined,
+          proseHighlight:
+            selection.kind === "entity" && !ref ? (selection.entity.entityId ?? undefined) : undefined,
+          prose: [
+            ...step.params
+              .filter((pp) => !!pp.entityId)
+              .map((pp) => ({ entityId: pp.entityId!, kind: "attribute" as const, label: pp.label })),
+            ...graph.entities
+              .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
+              .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label })),
+          ],
+        };
       }}
       onSetCell={(blockId, rowIndex, colIndex, value) =>
         patchTable(blockId, (t) => ({
@@ -330,19 +361,23 @@ function Playground() {
           rows: [...t.rows, [name, ...t.headers.slice(1).map(() => "")]],
         }));
         // 表の 1 行 = 1 Entity なので、行を足すとノードも増える
-        const owner = graph.entities.find((e) => e.tableRef?.blockId === blockId);
-        if (!owner) return;
-        const step = owningStepOf(owner.id);
+        // （blockId は `<kind>-<stepId>` 規約 — パネルのモック用）
+        const m = blockId.match(/^(material|tool|output)-(.+)$/);
+        if (!m) return;
+        const [, kind, step] = m as [string, "material" | "tool" | "output", string];
         const id = `entity_${blockId}_${name}`;
         setGraph((g) => ({
           ...g,
           entities: [
             ...g.entities,
-            { id, label: name, kind: owner.kind, tableRef: { blockId, rowName: name }, attrs: [] },
+            { id, label: name, kind, tableRef: { blockId, rowName: name }, attrs: [] },
           ],
-          edges: step
-            ? [...g.edges, { id: `u-${counter.current++}`, kind: "used", source: id, target: step }]
-            : g.edges,
+          edges: [
+            ...g.edges,
+            kind === "output"
+              ? { id: `g-${counter.current++}`, kind: "generates", source: step, target: id }
+              : { id: `u-${counter.current++}`, kind: "used", source: id, target: step },
+          ],
         }));
       }}
       onCreateParamTable={(stepBlockId) => {
