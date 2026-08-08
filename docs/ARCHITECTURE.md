@@ -144,23 +144,24 @@ talks to LLM and embedding backends.
   re-derives from the document — it is never edited as a data structure of
   its own, so the "graph is a pure projection of blocks + links" invariant
   holds in both directions.
-- **The table is the only bridge from the graph.** Everything a node
-  carries is a row or a column of an ordinary table in the note, and the
-  panel next to the graph *is* that table's grid editor
-  (`network-graph/flow-attribute-table.tsx`): header cells are the keys,
-  body cells the values, and every edit writes back into the note's table
-  block (`network-graph/table-row-edit.ts`). Inputs, tools and outputs are
-  rows of a table labelled with their kind — one row is one entity — and a
-  step's parameters are the columns of a table labelled `attribute`
-  (header row = keys, first data row = values). A node with no table yet
-  offers "Create table", which builds and labels one in a single click:
-  for a step that means a parameter table whose key column opens for
-  naming, for an entity it also moves that entity in as a row and drops
-  its prose highlight. Entities highlighted in prose remain readable and
-  keep span-based editing — renaming rewrites the span text (keeping its
-  `entityId`), removing deletes a dedicated row or strips the mark inside
-  prose (DATA_MODEL §2.3) — but the panel lists them apart, to be edited
-  in place or moved into the table with one click.
+- **The table is the only bridge from the graph, and the panel is the
+  step's whole contents.** Everything a node carries is a row or a column
+  of an ordinary table in the note. The panel next to the graph
+  (`network-graph/flow-attribute-table.tsx`) stacks *all* of the selected
+  step's tables — parameters, inputs, tools, outputs — one card per
+  table, each headed by the note's label chip, and every edit writes back
+  into the note's table block (`network-graph/table-row-edit.ts`).
+  Selecting an entity shows the same panel with its row highlighted and
+  its section scrolled into view, so there is exactly one place where
+  things are added: an "add row" in the kind's section (which creates and
+  labels the table when the section is still empty — drawn as a dashed
+  card), or "add column" on the parameter table, whose header row holds
+  the keys and single data row the values. Entities highlighted in prose
+  remain readable and keep span-based editing — renaming rewrites the
+  span text (keeping its `entityId`), removing deletes a dedicated row or
+  strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists
+  them under "written in the prose", to be edited in place or moved into
+  the kind's table with one click.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from

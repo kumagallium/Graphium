@@ -74,9 +74,9 @@ What you're looking at:
 
 | Element | Meaning |
 |---|---|
-| Card with a blue left edge | A step (a PROV *Activity*). The card shows its name and how many parameters it has |
+| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has |
 | Colored node | An entity — **Input** (green), **Tool** (amber), **Output** (terracotta) |
-| Panel below the graph | The table behind whichever node is selected — its parameters or attributes, editable here |
+| Panel below the graph | The selected step's tables — parameters, inputs, tools, outputs — editable here |
 | Green edge (`used`) | The step consumed this entity |
 | Terracotta edge (`wasGeneratedBy`) | This entity was produced by the step |
 | Dashed blue edge (`wasInformedBy`) | Order only: B came after A, but the note doesn't say which output was handed over |
@@ -91,21 +91,18 @@ The panel is a place to write, not just a picture to read. Everything you do her
 
 - **Add step** — the button in the top-right adds a step block to the note.
 - **Select a step card** to rename it, jump to its text (**Go to text**), or delete it. A step with content asks for confirmation, telling you how many blocks go with it.
-- **Add** on a card offers **Input / Tool / Output**. Each becomes a row in that step's table for that kind, and the table is created and labeled if the step has none.
 - **Connect** by dragging the dot under a node onto a step — the entity becomes that step's input. Drop it on empty canvas instead and a new step is created to receive it. Connecting two steps records order only (the dashed edge). Cycles are blocked.
 
-**Values are edited in the table, not on the node.** Selecting a node opens its table in the panel below the graph — to the right when the graph is full-screen. That panel *is* the table in your note: the header cells are the keys, the cells below hold the values, and **Column** adds a key. Editing there and editing the table in the note are the same act.
+**The panel is the step's contents.** Selecting a node — the step or any of its entities — opens the same panel below the graph (to the right when full-screen): the step's tables, one card per table, in the note's label colors. Selecting an entity just highlights its row. Each card *is* the table in your note — editing here and editing the table in the note are the same act.
 
-Which table it is depends on what you selected:
-
-| Selection | Table | Shape |
+| Section | Shape | To add |
 |---|---|---|
-| A step | Its **Parameter** table | One column per key, one row of values |
-| An **Input** / **Tool** / **Output** node | That step's table for the kind | One row per entity, one column per attribute |
+| **Parameter** | one column per key, one row of values | **Column** adds a key |
+| **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add row** adds an entity |
 
-If a node has no table yet, the panel offers **Create table** and builds one in a single click — for a step, with a key column ready to be named; for an entity, with that entity already in as a row.
+A kind the step doesn't have yet shows as a dashed card; its **Add row** (or **Column**, for parameters) creates the table on the spot, labeled and ready.
 
-**Entities you highlighted in a sentence** keep working as they are, and appear in the panel under *Written in the prose*, where you can edit or remove them. **Add to the table** moves one into the table when you want to give it attributes: the row is added and the highlight comes off, while the sentence stays exactly as written.
+**Entities you highlighted in a sentence** keep working as they are, and appear in the panel under *Written in the prose*, where you can edit or remove them. **Add to the table** moves one into its kind's table when you want to give it attributes: the row is added and the highlight comes off, while the sentence stays exactly as written.
 
 ## Exporting PROV-JSON-LD
 
