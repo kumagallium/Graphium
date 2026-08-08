@@ -803,6 +803,8 @@ export const en: Record<string, string> = {
   "flowTable.addRow": "Add row",
   "flowTable.resizeHandle": "Drag to resize / double-click to reset",
   "flowTable.ghostHint": "Highlighted in the prose — click to move it into the table",
+  "flowTable.shared": "Shared",
+  "flowTable.sharedHint": "The same thing is used by another step — its row lives in that step's table",
   "flowTable.addTable": "Add table",
   "activityGraph.relayout": "Tidy up",
   "step.pickerStepsHeader": "Steps",

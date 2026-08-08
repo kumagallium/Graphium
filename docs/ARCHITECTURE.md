@@ -163,7 +163,11 @@ talks to LLM and embedding backends.
   span text (keeping its `entityId`), removing deletes a dedicated row or
   strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists
   them under "written in the prose", to be edited in place or moved into
-  the kind's table with one click.
+  the kind's table with one click. The panel lists what the step is
+  actually wired to, not only what its own blocks contain: an entity
+  shared with another step (same-named tools merge into one Entity)
+  appears in its section as a "Shared" row, read-only here because its
+  row lives in the other step's table.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from

@@ -358,14 +358,38 @@ export function ActivityGraphEditor({
         output: tableOf("output"),
       };
 
-      // 本文 span 由来: step のパラメータ + この step に属す表未所属の Entity
+      // この step が実際につないでいる Entity（使う / 生む の両方向）。
+      // 同名統合や共有で 1 つの Entity を複数 step が使うので、「所属」ではなく
+      // 「つながっているか」で拾う — でないと片方の step からしか見えなくなる
+      const connectedIds = new Set<string>();
+      for (const e of g.edges) {
+        if (e.kind === "used" && e.target === stepId) connectedIds.add(e.source);
+        if (e.kind === "generates" && e.source === stepId) connectedIds.add(e.target);
+      }
+      const ownTableIds = new Set(
+        Object.values(tables)
+          .filter((t): t is NonNullable<typeof t> => !!t)
+          .map((t) => t.blockId),
+      );
+
+      // この step の表に載っていない Entity は、種類のセクションに薄い行として出す。
+      // 本文ハイライト由来は表へ移せる。他 step の表にある行（共有）は移せないので
+      // 「よそにある」ことだけ示す（勝手に複製すると同じものが 2 行になる）
       const prose = [
         ...step.params
           .filter((p) => !!p.entityId)
           .map((p) => ({ entityId: p.entityId!, kind: "attribute" as const, label: p.label })),
         ...g.entities
-          .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
-          .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label, attrs: e.attrs })),
+          .filter((e) => connectedIds.has(e.id) && !ownTableIds.has(e.tableRef?.blockId ?? ""))
+          .map((e) => ({
+            entityId: e.entityId ?? e.id,
+            // 移行できるのは本文ハイライト由来だけ（表の行はもう表にある）
+            nodeId: e.tableRef ? undefined : e.id,
+            external: !!e.tableRef,
+            kind: e.kind,
+            label: e.label,
+            attrs: e.attrs,
+          })),
       ];
 
       const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;

@@ -16,7 +16,7 @@
 // チップを置く。表がまだ無いセクションは破線カード。
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Trash2 } from "lucide-react";
 import { useImeEnterGuard } from "../../hooks/use-ime-enter-guard";
 import { t, getDisplayLabel } from "../../i18n";
 import { splitAttrLabel, type ActivityIoKind, type FlowEntity, type FlowStep } from "./activity-graph-adapter";
@@ -39,6 +39,8 @@ export type ProseItem = {
   label: string;
   /** この Entity にハイライトで紐付いた属性（表への移行時に列として付いて行く） */
   attrs?: { label: string }[];
+  /** 他のステップの表にある行（共有）。移行はできないので由来だけ示す */
+  external?: boolean;
 };
 
 /** 選択の裏にある step の中身（getPanelFor が組み立てる） */
@@ -300,6 +302,13 @@ export function FlowStepPanel({
   /** 本文ハイライトの名前セル（クリックでその場リネーム = span 書き換え） */
   const ghostNameCell = (item: ProseItem, extraStyle?: CSSProperties) => {
     const k = `inline:${item.entityId}`;
+    if (item.external) {
+      return (
+        <span style={{ ...ghostText, ...extraStyle }} title={t("flowTable.sharedHint")}>
+          {item.label}
+        </span>
+      );
+    }
     return editing(k) ? (
       field(edit!.draft, (v) => setEdit({ key: k, draft: v }), commitEdit)
     ) : (
@@ -392,7 +401,10 @@ export function FlowStepPanel({
               編集でき、他のセル・「表に追加」で行として取り込む（span は外れる） */}
           {ghosts.map((item) => {
             const highlighted = proseHighlight === item.entityId;
-            const migrate = () => item.nodeId && onMoveEntityToTable?.(item.nodeId);
+            const migrate = () => {
+              if (item.external || !item.nodeId) return;
+              onMoveEntityToTable?.(item.nodeId);
+            };
             return (
               <tr key={item.entityId} style={highlighted ? highlightBg : undefined}>
                 <td style={td}>{ghostNameCell(item)}</td>
@@ -411,19 +423,27 @@ export function FlowStepPanel({
                   );
                 })}
                 <td style={{ ...td, borderRight: "none", whiteSpace: "nowrap", width: "1%" }}>
-                  {item.nodeId && onMoveEntityToTable && (
-                    <button onClick={migrate} style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}>
-                      <Plus size={10} /> {t("flowTable.addToTable")}
-                    </button>
-                  )}
-                  {onRemoveEntity && (
-                    <button
-                      onClick={() => onRemoveEntity(item.entityId)}
-                      title={t("activityGraph.removeChip")}
-                      style={ghostIconBtn}
-                    >
-                      <Trash2 size={11} />
-                    </button>
+                  {item.external ? (
+                    <span style={{ ...ghostText, fontSize: 10 }} title={t("flowTable.sharedHint")}>
+                      <Link2 size={11} style={{ verticalAlign: "-2px" }} /> {t("flowTable.shared")}
+                    </span>
+                  ) : (
+                    <>
+                      {item.nodeId && onMoveEntityToTable && (
+                        <button onClick={migrate} style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}>
+                          <Plus size={10} /> {t("flowTable.addToTable")}
+                        </button>
+                      )}
+                      {onRemoveEntity && (
+                        <button
+                          onClick={() => onRemoveEntity(item.entityId)}
+                          title={t("activityGraph.removeChip")}
+                          style={ghostIconBtn}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </>
                   )}
                 </td>
               </tr>
@@ -600,8 +620,10 @@ export function FlowStepPanel({
         >
           <SectionChip kind={kind} />
           {/* 表が無いセクションは「表を追加」。押した瞬間に空の表がラベル付きで
-              生まれ、最初のセル（パラメータはキー、他は名前）が入力待ちになる */}
-          {!table && canStart && (
+              生まれ、最初のセル（パラメータはキー、他は名前）が入力待ちになる。
+              薄い行（本文ハイライト / 共有）が出ているときは、その行の操作が
+              先にあるので見出しにボタンを重ねない */}
+          {!table && ghosts.length === 0 && canStart && (
             <button
               onClick={() => {
                 onCreateSectionTable?.(data.stepId, kind);

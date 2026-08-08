@@ -104,6 +104,8 @@ A kind the step doesn't have yet shows as a dashed card with **Add table**: one 
 
 **Entities you highlighted in a sentence** keep working as they are, and appear right inside their kind's table as grayed rows — highlighted parameters as grayed columns. Renaming one edits the text in place. **Add to the table** (or clicking its grayed cells) takes it in for real: the row or column is added and the highlight comes off, while the sentence stays exactly as written. Highlighting and tables are the same data seen two ways, so you can move over at your own pace.
 
+**The same tool used in several steps is one entity.** Write "mortar" as a tool in two steps and the graph draws one node with an edge to each — no duplicates. In the step whose table doesn't hold its row, it shows in the section marked **Shared**: visible because the step really uses it, read-only because its row lives in the other step's table.
+
 ## Exporting PROV-JSON-LD
 
 The note menu (the **⋯** button at the top right of the editor) includes **PROV-JSON-LD**. It downloads the current note's provenance graph as a `.jsonld` file following the W3C PROV-JSON-LD serialization — readable by standard provenance tools outside Graphium.
