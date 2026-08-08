@@ -36,7 +36,7 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Trash2 } from "lucide-react";
+import { LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { t } from "../../i18n";
 import type { FlowGraphData } from "./activity-graph-adapter";
 import { layoutStepFlow } from "./elk-flow-layout";
@@ -106,6 +106,21 @@ export type StepFlowViewProps = {
 };
 
 const nodeTypes = { step: StepNodeCard, entity: EntityFlowNode };
+
+const toolbarBtnStyle = (color: string): React.CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "4px 10px",
+  fontSize: 12,
+  fontWeight: 600,
+  color,
+  background: "var(--color-card)",
+  border: "1px solid var(--color-border)",
+  borderRadius: 6,
+  cursor: "pointer",
+  boxShadow: "0 1px 3px rgba(30, 20, 10, 0.08)",
+});
 
 type FlowRfEdge = Edge<{ kind: string; deletable: boolean }>;
 
@@ -270,7 +285,17 @@ function StepFlowCanvas({
   const tryLayout = useCallback(() => {
     if (!needsLayoutRef.current) return;
     const current = getNodes();
-    if (current.length === 0 || !current.every((n) => n.measured?.width)) return;
+    // store が最新の graph をまだ反映していない間は消費しない。
+    // ここで走らせると「古い一覧は全部測定済み」で ELK が確定してしまい、
+    // 直後にマウントされる新ノードが (0,0) に置き去りになる（実バグ）
+    const g = graphRef.current;
+    const expected = new Set<string>([...g.steps.map((s) => s.id), ...g.entities.map((e) => e.id)]);
+    if (
+      current.length === 0 ||
+      current.length !== expected.size ||
+      !current.every((n) => expected.has(n.id) && n.measured?.width)
+    )
+      return;
     needsLayoutRef.current = false;
     const sized = current.map((n) => ({
       id: n.id,
@@ -448,32 +473,34 @@ function StepFlowCanvas({
       >
         <Background color="var(--color-border)" gap={22} size={1.5} />
 
-        {onAddActivity && (
-          <Panel position="top-right">
+        <Panel position="top-right">
+          <div style={{ display: "flex", gap: 6 }}>
+            {/* レイアウトの手動やり直し。自動レイアウトが原則だが、崩れたときの逃げ道 */}
             <button
-              onClick={onAddActivity}
-              title={t("activityGraph.addStep")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "4px 10px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: ACTIVITY_BLUE,
-                background: "var(--color-card)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 6,
-                cursor: "pointer",
-                boxShadow: "0 1px 3px rgba(30, 20, 10, 0.08)",
+              onClick={() => {
+                needsLayoutRef.current = true;
+                requestAnimationFrame(() => tryLayout());
               }}
+              title={t("activityGraph.relayout")}
+              style={toolbarBtnStyle("var(--color-text-tertiary)")}
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}
             >
-              <Plus size={13} /> {t("activityGraph.addStep")}
+              <LayoutGrid size={13} /> {t("activityGraph.relayout")}
             </button>
-          </Panel>
-        )}
+            {onAddActivity && (
+              <button
+                onClick={onAddActivity}
+                title={t("activityGraph.addStep")}
+                style={toolbarBtnStyle(ACTIVITY_BLUE)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-card)")}
+              >
+                <Plus size={13} /> {t("activityGraph.addStep")}
+              </button>
+            )}
+          </div>
+        </Panel>
 
         {cycleWarnAt !== 0 && (
           <Panel position="top-center">

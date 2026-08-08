@@ -804,6 +804,7 @@ export const en: Record<string, string> = {
   "flowTable.resizeHandle": "Drag to resize / double-click to reset",
   "flowTable.ghostHint": "Highlighted in the prose — click to move it into the table",
   "flowTable.addTable": "Add table",
+  "activityGraph.relayout": "Tidy up",
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
 

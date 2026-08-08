@@ -2471,3 +2471,52 @@ describe("画像ブロックと PROV グラフ", () => {
     ).toBe(false);
   });
 });
+
+// ── 同名の材料・道具の統合 ──
+
+describe("同名の材料・道具は 1 Entity に統合される", () => {
+  const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
+    type: "text",
+    text,
+    styles,
+  });
+
+  const twoStepsWith = (styleKey: "inlineTool" | "inlineMaterial" | "inlineOutput", label: string) =>
+    generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [styled("Step A")], children: [] },
+        { id: "p-a", type: "paragraph", content: [styled(label, { [styleKey]: "ent_x1" })], children: [] },
+        { id: "h-b", type: "heading", props: { level: 2 }, content: [styled("Step B")], children: [] },
+        { id: "p-b", type: "paragraph", content: [styled(label, { [styleKey]: "ent_x2" })], children: [] },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["h-b", "procedure"],
+      ]),
+      links: [],
+    });
+
+  it("別の手順に同名ツールを書いても 1 ノードになり、両方から used が張られる", () => {
+    const doc = twoStepsWith("inlineTool", "乳鉢");
+    const tools = doc["@graph"].filter((n: any) => n["graphium:entityType"] === "tool");
+    expect(tools).toHaveLength(1);
+    const usedOf = (actId: string) =>
+      ((doc["@graph"].find((n) => n["@id"] === actId) as any)?.["prov:used"] ?? []).map(
+        (u: any) => u["@id"],
+      );
+    expect(usedOf("activity_h-a")).toContain(tools[0]["@id"]);
+    expect(usedOf("activity_h-b")).toContain(tools[0]["@id"]);
+  });
+
+  it("材料も同様に統合される", () => {
+    const doc = twoStepsWith("inlineMaterial", "Ni粉末");
+    const materials = doc["@graph"].filter((n: any) => n["graphium:entityType"] === "material");
+    expect(materials).toHaveLength(1);
+  });
+
+  it("output は同名でも統合しない（別の生成物でありうる）", () => {
+    const doc = twoStepsWith("inlineOutput", "粉");
+    const outputs = doc["@graph"].filter((n) => n["@id"].startsWith("inline_output_"));
+    expect(outputs).toHaveLength(2);
+  });
+});

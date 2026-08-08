@@ -303,6 +303,18 @@ output spans and `result_*` outputs (output-labelled paragraphs and table
 rows) take part in that unification, and the output side always survives
 the merge so table-row attributes are preserved.
 
+**Same-named materials and tools merge.** Within a note, material or tool
+entities whose labels match (case- and whitespace-insensitive) collapse
+into one Entity used by every step that mentions them — "乳鉢" written in
+two steps yields one mortar with two `used` edges, with the table-row
+occurrence preferred as the surviving node so graph-side edits land in a
+table. The merge refuses to destroy information: same-named rows of the
+same table stay separate (writing two rows was deliberate), plan/result
+phases stay separate (they are related by `wasDerivedFrom` instead), and
+entities whose parameter values conflict ("量: 1g" vs "2g") stay
+separate. Outputs never merge this way — the informed_by-gated handoff
+unification above is the only mechanism that merges an output.
+
 The generator (`src/features/prov-generator/`) consumes both label
 sources and the block structure to produce the PROV-DM graph. Activity
 containment is inferred, never stated by the user:

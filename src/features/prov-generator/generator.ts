@@ -1186,6 +1186,84 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     relations.push({ "@type": "prov:used", from: currentActId, to: proxyId, linkId: link.id });
   }
 
+  // ── 同名の材料・道具は 1 つの Entity に統合する ──
+  // 「同じ乳鉢を別の手順でも使う」と書いたとき、手順ごとに別ノードへ
+  // 割れないように、種類（material / tool）とラベルのテキスト一致で束ねる。
+  // canonical は表の行由来（entity_*）を優先 — グラフからの編集が表に落ちる。
+  //
+  // ただし「情報を失う統合」はしない:
+  //   - output は対象外（同名でも別の生成物でありうる。手順間の受け渡しは
+  //     informed_by ゲート付きの unification（上）が担当）
+  //   - 同じブロック由来の同名同士は別のまま（同じ表に 2 行書いたのは意図。M6）
+  //   - plan / result の位相が違えば別のまま（wasDerivedFrom の関係で繋がる）
+  //   - params の値が食い違えば別のまま（別バッチの「量: 1g / 2g」を潰さない）
+  {
+    const phaseOf = (n: InternalNode) => ((n as any)["graphium:phase"] as string) ?? "execution";
+    const paramsConflict = (a?: Record<string, string>, b?: Record<string, string>) => {
+      if (!a || !b) return false;
+      for (const [k, v] of Object.entries(b)) {
+        const av = a[k];
+        if (av != null && av !== "" && v !== "" && av !== v) return true;
+      }
+      return false;
+    };
+    const groups = new Map<string, InternalNode[]>();
+    for (const n of nodes) {
+      if (n["@type"] !== "prov:Entity") continue;
+      if (n.entitySubtype !== "material" && n.entitySubtype !== "tool") continue;
+      const key = `${n.entitySubtype} ${phaseOf(n)} ${labelForMatch(n.label)}`;
+      const g = groups.get(key);
+      if (g) g.push(n);
+      else groups.set(key, [n]);
+    }
+    const dropIds = new Set<string>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const canonical = group.find((n) => n["@id"].startsWith("entity_")) ?? group[0];
+      for (const dup of group) {
+        if (dup === canonical) continue;
+        if (dup.blockId === canonical.blockId) continue;
+        if (paramsConflict(canonical.params, dup.params)) continue;
+        for (const rel of relations) {
+          if (rel.from === dup["@id"]) rel.from = canonical["@id"];
+          if (rel.to === dup["@id"]) rel.to = canonical["@id"];
+        }
+        // 属性は取りこぼさない（表の列 = params / ハイライト由来 = attributes）
+        if (dup.params) {
+          const merged = { ...(canonical.params ?? {}) };
+          for (const [k, v] of Object.entries(dup.params)) {
+            if (merged[k] == null || merged[k] === "") merged[k] = v;
+          }
+          canonical.params = merged;
+        }
+        if (dup.attributes?.length) {
+          canonical.attributes = [...(canonical.attributes ?? []), ...dup.attributes];
+        }
+        if (!canonical.mediaUrl && dup.mediaUrl) {
+          canonical.mediaUrl = dup.mediaUrl;
+          canonical.mediaType = dup.mediaType;
+        }
+        dropIds.add(dup["@id"]);
+      }
+    }
+    if (dropIds.size > 0) {
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        if (dropIds.has(nodes[i]["@id"])) nodes.splice(i, 1);
+      }
+      // 統合で同一ペアに重なったリレーションは 1 本にする（最初の出現を残す）
+      const seen = new Set<string>();
+      const deduped: InternalRelation[] = [];
+      for (const r of relations) {
+        const k = `${r["@type"]} ${r.from} ${r.to}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        deduped.push(r);
+      }
+      relations.length = 0;
+      relations.push(...deduped);
+    }
+  }
+
   if (import.meta.env.DEV) {
     console.log("生成ノード:", nodes.map((n) => `${n["@type"]} "${n.label}" (${n["@id"]})`));
     console.log("生成リレーション:", relations.map((r) => `${r["@type"]} ${r.from} → ${r.to}`));
