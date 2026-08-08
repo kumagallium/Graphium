@@ -37,6 +37,8 @@ export type ProseItem = {
   nodeId?: string;
   kind: SectionKind;
   label: string;
+  /** この Entity にハイライトで紐付いた属性（表への移行時に列として付いて行く） */
+  attrs?: { label: string }[];
 };
 
 /** 選択の裏にある step の中身（getPanelFor が組み立てる） */
@@ -397,16 +399,20 @@ export function FlowStepPanel({
             return (
               <tr key={item.entityId} style={highlighted ? highlightBg : undefined}>
                 <td style={td}>{ghostNameCell(item)}</td>
-                {headers.slice(1).map((_, i) => (
-                  <td
-                    key={i}
-                    style={{ ...td, ...ghostText, cursor: "pointer" }}
-                    title={t("flowTable.ghostHint")}
-                    onClick={migrate}
-                  >
-                    –
-                  </td>
-                ))}
+                {/* キーが列名と一致する属性は値をプレビュー（移行後の姿を先に見せる） */}
+                {headers.slice(1).map((h, i) => {
+                  const match = item.attrs?.find((a) => splitAttrLabel(a.label).key === h);
+                  return (
+                    <td
+                      key={i}
+                      style={{ ...td, ...ghostText, cursor: "pointer" }}
+                      title={t("flowTable.ghostHint")}
+                      onClick={migrate}
+                    >
+                      {match ? splitAttrLabel(match.label).value : "–"}
+                    </td>
+                  );
+                })}
                 <td style={{ ...td, borderRight: "none", whiteSpace: "nowrap", width: "1%" }}>
                   {item.nodeId && onMoveEntityToTable && (
                     <button onClick={migrate} style={{ ...addBtnStyle, padding: "1px 5px 1px 3px", fontSize: 10 }}>

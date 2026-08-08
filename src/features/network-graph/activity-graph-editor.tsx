@@ -15,7 +15,7 @@
 
 import { useCallback, useMemo, useRef } from "react";
 import { StepFlowView, type EntityKind } from "./step-flow-view";
-import { provDocToFlowGraph, type ActivityIoKind } from "./activity-graph-adapter";
+import { provDocToFlowGraph, splitAttrLabel, type ActivityIoKind } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
 import { buildDefaultStepTitle, selectStepTitle } from "../../blocks/step/view";
 import { appendEntitySpanToStep, findLabeledTableInStep } from "../../blocks/step/step-io";
@@ -304,6 +304,28 @@ export function ActivityGraphEditor({
       );
       if (!result) return;
       if (result.created) labels.setLabel(result.tableBlockId, entity.kind);
+      // ハイライトで紐付いていた属性も、列として一緒に連れて行く
+      // （置き去りにすると親 span を失って迷子になる）。キーが同名の列が
+      // あればそこへ、無ければ列を足して書き、属性 span も外す
+      const attrs = entity.attrs.filter((a) => !!a.entityId);
+      if (attrs.length > 0) {
+        let table = readTable(editor, result.tableBlockId);
+        const rowIdx = table ? table.rows.findIndex((r) => r[0] === entity.label) : -1;
+        if (table && rowIdx >= 0) {
+          for (const a of attrs) {
+            const { key, value } = splitAttrLabel(a.label);
+            const colKey = key ?? a.label;
+            let colIdx = table.headers.indexOf(colKey);
+            if (colIdx < 0) {
+              addTableColumn(editor, result.tableBlockId, colKey);
+              colIdx = table.headers.length; // 追加後の index（旧ヘッダ数）
+              table = readTable(editor, result.tableBlockId) ?? table;
+            }
+            setTableCellAt(editor, result.tableBlockId, rowIdx, colIdx, value);
+            removeInlineEntity(editor, a.entityId!);
+          }
+        }
+      }
       // 元の span は外す（テキストは残る）
       if (entity.entityId) removeInlineEntity(editor, entity.entityId);
     },
@@ -343,7 +365,7 @@ export function ActivityGraphEditor({
           .map((p) => ({ entityId: p.entityId!, kind: "attribute" as const, label: p.label })),
         ...g.entities
           .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
-          .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label })),
+          .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label, attrs: e.attrs })),
       ];
 
       const ref = selection.kind === "entity" ? selection.entity.tableRef : undefined;

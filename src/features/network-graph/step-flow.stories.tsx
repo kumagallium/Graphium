@@ -323,7 +323,7 @@ function Playground() {
               .map((pp) => ({ entityId: pp.entityId!, kind: "attribute" as const, label: pp.label })),
             ...graph.entities
               .filter((e) => !e.tableRef && !!e.entityId && owningStepOf(e.id) === stepId)
-              .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label })),
+              .map((e) => ({ entityId: e.entityId!, nodeId: e.id, kind: e.kind, label: e.label, attrs: e.attrs })),
           ],
         };
       }}
@@ -391,13 +391,20 @@ function Playground() {
         const blockId = `${entity.kind}-${step}`;
         setTables((all) => {
           const existing = all[blockId] ?? { blockId, headers: ["名前"], rows: [] };
-          return {
-            ...all,
-            [blockId]: {
-              ...existing,
-              rows: [...existing.rows, [entity.label, ...existing.headers.slice(1).map(() => "")]],
-            },
-          };
+          // ハイライトで紐付いた属性（key: value）は列として一緒に運ぶ（実アプリと同じ）
+          const attrPairs = (entity.attrs ?? [])
+            .filter((a) => a.entityId && a.label.includes(":"))
+            .map((a) => {
+              const i = a.label.indexOf(":");
+              return [a.label.slice(0, i).trim(), a.label.slice(i + 1).trim()] as [string, string];
+            });
+          const headers = [...existing.headers];
+          for (const [k] of attrPairs) if (!headers.includes(k)) headers.push(k);
+          const paddedRows = existing.rows.map((r) => [...r, ...headers.slice(r.length).map(() => "")]);
+          const newRow = headers.map((h, i) =>
+            i === 0 ? entity.label : (attrPairs.find(([k]) => k === h)?.[1] ?? ""),
+          );
+          return { ...all, [blockId]: { ...existing, headers, rows: [...paddedRows, newRow] } };
         });
         // 本文 span は外れ、行由来の Entity になる（id も変わる）
         setGraph((g) => {
