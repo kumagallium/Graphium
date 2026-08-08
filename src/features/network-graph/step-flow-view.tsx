@@ -44,6 +44,9 @@ import { StepNodeCard } from "./step-node-card";
 import { EntityFlowNode } from "./entity-flow-node";
 import { FlowStepPanel, type FlowSelection, type StepPanelData } from "./flow-attribute-table";
 import { KIND_PALETTE } from "./flow-palette";
+import { ResizeHandle } from "../../components/ResizeHandle";
+import { useResizableWidth } from "../../hooks/use-resizable-width";
+import { useResizableHeight } from "../../hooks/use-resizable-height";
 
 const ACTIVITY_BLUE = KIND_PALETTE.activity.main;
 const MATERIAL_GREEN = KIND_PALETTE.material.main;
@@ -354,6 +357,21 @@ function StepFlowCanvas({
       })()
     : null;
 
+  // 仕切りのドラッグ。下配置は高さ、全画面（右横）は幅。位置は記憶し、
+  // ダブルクリックで既定（高さ 45% / 幅 300px）に戻る
+  const panelHeight = useResizableHeight({
+    storageKey: "graphium-flowpanel-height",
+    min: 140,
+    max: 900,
+    containerReserve: 180, // グラフ側に最低限残す高さ
+  });
+  const panelWidth = useResizableWidth({
+    storageKey: "graphium-flowpanel-width",
+    min: 240,
+    max: 640,
+    containerReserve: 420, // グラフ側に最低限残す幅
+  });
+
   const attributeTable = (
     <FlowStepPanel
       selection={selection}
@@ -563,16 +581,59 @@ function StepFlowCanvas({
       )}
     </div>
 
-      {/* 属性テーブル（下 or 右）。ノードは名前だけに保ち、中身はここで編集する */}
-      <div
-        style={
-          tableLayout === "side"
-            ? { width: 300, flexShrink: 0, minHeight: 0 }
-            : { height: 176, flexShrink: 0 }
-        }
-      >
-        {attributeTable}
-      </div>
+      {/* 属性テーブル（下 or 右）。ノードは名前だけに保ち、中身はここで編集する。
+          仕切りはドラッグで動かせる（位置は記憶・ダブルクリックで既定）。
+          下配置は未選択時にヒント 1 行へ畳み、グラフに全高を渡す */}
+      {tableLayout === "side" ? (
+        <div
+          style={{
+            position: "relative",
+            width: panelWidth.widthStyle ?? 300,
+            flexShrink: 0,
+            minHeight: 0,
+          }}
+        >
+          <ResizeHandle
+            handleProps={panelWidth.handleProps}
+            isResizing={panelWidth.isResizing}
+            label={t("flowTable.resizeHandle")}
+            edge="left"
+          />
+          {attributeTable}
+        </div>
+      ) : selection ? (
+        <div
+          style={{
+            position: "relative",
+            height: panelHeight.heightStyle ?? "45%",
+            minHeight: 140,
+            flexShrink: 0,
+          }}
+        >
+          <ResizeHandle
+            handleProps={panelHeight.handleProps}
+            isResizing={panelHeight.isResizing}
+            label={t("flowTable.resizeHandle")}
+            edge="top"
+          />
+          {attributeTable}
+        </div>
+      ) : (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "7px 10px",
+            fontSize: 12,
+            textAlign: "center",
+            color: "var(--color-text-tertiary)",
+            background: "var(--color-card)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 8,
+          }}
+        >
+          {t("flowTable.noSelection")}
+        </div>
+      )}
     </div>
   );
 }

@@ -802,6 +802,7 @@ export const en: Record<string, string> = {
   "flowTable.addColumn": "Column",
   "flowTable.removeColumn": "Remove column",
   "flowTable.addRow": "Add row",
+  "flowTable.resizeHandle": "Drag to resize / double-click to reset",
   "step.pickerStepsHeader": "Steps",
   "step.pickerOutputsHeader": "Outputs",
 

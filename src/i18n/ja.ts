@@ -803,6 +803,7 @@ export const ja: Record<string, string> = {
   "flowTable.addColumn": "列",
   "flowTable.removeColumn": "列を削除",
   "flowTable.addRow": "行を追加",
+  "flowTable.resizeHandle": "ドラッグでサイズを変更 / ダブルクリックで既定に戻す",
   "step.pickerStepsHeader": "ステップ一覧",
   "step.pickerOutputsHeader": "アウトプット一覧",
 

@@ -93,7 +93,7 @@ The panel is a place to write, not just a picture to read. Everything you do her
 - **Select a step card** to rename it, jump to its text (**Go to text**), or delete it. A step with content asks for confirmation, telling you how many blocks go with it.
 - **Connect** by dragging the dot under a node onto a step — the entity becomes that step's input. Drop it on empty canvas instead and a new step is created to receive it. Connecting two steps records order only (the dashed edge). Cycles are blocked.
 
-**The panel is the step's contents.** Selecting a node — the step or any of its entities — opens the same panel below the graph (to the right when full-screen): the step's tables, one card per table, in the note's label colors. Selecting an entity just highlights its row. Each card *is* the table in your note — editing here and editing the table in the note are the same act.
+**The panel is the step's contents.** Selecting a node — the step or any of its entities — opens the same panel below the graph (to the right when full-screen): the step's tables, one card per table, in the note's label colors. Selecting an entity just highlights its row. Each card *is* the table in your note — editing here and editing the table in the note are the same act. While nothing is selected the panel folds away to give the graph the room; the divider between them can be dragged to taste (double-click resets it).
 
 | Section | Shape | To add |
 |---|---|---|

@@ -259,9 +259,11 @@ export function ProvGraphPanel({
     <>
       <div style={panelStyle}>
         {legendBar}
-        {/* 拡大中はモーダル側だけを描く（React Flow を二重に走らせない） */}
+        {/* 拡大中はモーダル側だけを描く（React Flow を二重に走らせない）。
+            高さは画面いっぱい — 見るだけのプレビューだった頃は 620px で
+            蓋をしていたが、書く場所になった今は余白を残す理由がない */}
         {!expanded && (
-          <div style={{ height: "min(620px, calc(100vh - 190px))", minHeight: 380 }}>
+          <div style={{ height: "calc(100vh - 122px)", minHeight: 380 }}>
             <ActivityGraphEditor doc={doc} editorRef={editorRef} />
           </div>
         )}
