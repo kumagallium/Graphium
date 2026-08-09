@@ -85,3 +85,11 @@ export const LABEL_TO_STYLE: Record<InlineLabel, keyof typeof inlineLabelStyleSp
   attribute: "inlineAttribute",
   output: "inlineOutput",
 };
+
+export type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
+
+/** ランダムな entityId を生成（テキスト inline 用） */
+export function makeEntityId(label: InlineLabelKey): string {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `ent_${label}_${rand}`;
+}

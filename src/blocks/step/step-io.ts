@@ -5,7 +5,7 @@
 // 同名の入力 span を合成し、テキスト一致の unification が PROV 上で
 // 出力と入力を 1 つの Entity に merge する。
 
-import { makeEntityId } from "../../features/inline-label/shortcuts";
+import { makeEntityId } from "../../features/inline-label/styles";
 import { PARENT_ACTIVITY_MARKER } from "../../features/inline-label/attribute-binding";
 import { parseStructuredTable } from "../../features/prov-generator/generator";
 

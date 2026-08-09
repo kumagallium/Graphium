@@ -5,10 +5,12 @@
 // タイプ置換（選択→文字入力で上書き）と衝突してデータを壊すため採用せず、
 // ⌘⇧ 付きにする。T はブラウザ予約（タブ復元）で奪えないので ツール は E(quipment)。
 
-import { LABEL_TO_STYLE } from "./styles";
+import { LABEL_TO_STYLE, makeEntityId, type InlineLabelKey } from "./styles";
 import { isSelectionInsideStep, isSelectionInStepTitle } from "../../blocks/step/view";
 
-export type InlineLabelKey = keyof typeof LABEL_TO_STYLE;
+// 互換 re-export（定義は styles.ts へ移動 — UI に依存しないモジュールからも使えるように）
+export { makeEntityId };
+export type { InlineLabelKey };
 
 // BlockNote のテーブル構造を構成する ProseMirror ノード名。
 // セル内の選択ではこれらが祖先チェーンに必ず現れる。
@@ -39,12 +41,6 @@ export function isSelectionInTableCell(editor: any): boolean {
     if (name && TABLE_NODE_NAMES.has(name)) return true;
   }
   return false;
-}
-
-/** ランダムな entityId を生成（テキスト inline 用） */
-export function makeEntityId(label: InlineLabelKey): string {
-  const rand = Math.random().toString(36).slice(2, 10);
-  return `ent_${label}_${rand}`;
 }
 
 /**
