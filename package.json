@@ -70,6 +70,7 @@
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/jpn": "^1.0.0",
     "@tiptap/core": "3.20.4",
+    "@xyflow/react": "^12.11.2",
     "ai": "^6.0.154",
     "ai-sdk-provider-claude-code": "^3.5.0",
     "class-variance-authority": "^0.7.1",

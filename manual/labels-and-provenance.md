@@ -13,7 +13,7 @@ A step block is the editor's only container: it holds the text, tables, and imag
 
 ![A step block with a Prev step chip in the header and a Next step chip at the bottom](/screenshots/step-block.png)
 
-- The **Prev step** chip in the header links this step to the one it follows. Loops are refused ("Blocked: this would create a cycle").
+- The **Prev step** chip in the header links this step to the one it follows. It lists **Steps** first; a step that has outputs opens its **Outputs** behind a chevron. Picking an output also records the handoff in the text (the same-named input is added to this step, and the graph draws a solid edge). Choose **Without a specific output** when you only mean "this came after that". Loops are refused ("Blocked: this would create a cycle").
 - The **Next step** chip at the bottom jumps ahead: with no successor it creates one (**Create new**) pre-linked to the current step; with successors it opens a picker to link, unlink, or add.
 
 Chaining steps gives you the run order for free — that order becomes the arrows in the graph. Because a label needs a step to attach to, the labeling UI below only appears while your cursor is inside one. Outside of steps, Graphium stays a plain, quiet editor.
@@ -74,18 +74,37 @@ What you're looking at:
 
 | Element | Meaning |
 |---|---|
-| Circle node | A step (a PROV *Activity*) |
-| Square / diamond nodes | Entities — **Input**, **Output**, **Parameter** (squares) and **Tool** (diamond), colored to match their highlights |
+| Card with a blue band | A step (a PROV *Activity*). The card shows its name and how many parameters it has |
+| Colored node | An entity — **Input** (green), **Tool** (amber), **Output** (terracotta) |
+| Panel below the graph | The selected step's tables — parameters, inputs, tools, outputs — editable here |
 | Green edge (`used`) | The step consumed this entity |
-| Red edge (`wasGeneratedBy`) | This entity was produced by the step |
-| Blue edge (`wasInformedBy`) | This step followed another step |
+| Terracotta edge (`wasGeneratedBy`) | This entity was produced by the step |
+| Dashed blue edge (`wasInformedBy`) | Order only: B came after A, but the note doesn't say which output was handed over |
 
-**Repeated referents collapse into one node.** If step B's **Input** text matches step A's **Output** text (and B is linked to A as its next step), Graphium unifies them: "the powder A produced" and "the powder B used" become a single entity, and the chain reads continuously across steps.
+The expand button (**Expand view**) opens the graph full-screen, still editable.
 
-The panel has two views, and an expand button (**Expand view**) for a full-screen look:
+**Repeated referents collapse into one node.** If step B's **Input** text matches step A's **Output** text (and B is linked to A as its next step), Graphium unifies them: "the powder A produced" and "the powder B used" become a single entity, and the chain reads continuously across steps. This is also what keeps branches straight when a step has several outputs going to different steps.
 
-- **Steps (all)** — the complete graph: steps plus every labeled entity.
-- **Steps (only)** — just the steps and their order. This view is also an editor: as the hint says, **Drag the blue dot under a step onto another step to connect them**. Connections you draw here are the same prior-step links you can set in a step's header (**Prev step** / **Next step**), and **Delete link** removes ones you added. Cycles are blocked.
+### Editing from the graph {#editing-from-the-graph}
+
+The panel is a place to write, not just a picture to read. Everything you do here is written into the note — the graph holds no data of its own.
+
+- **Add step** — the button in the top-right adds a step block to the note.
+- **Select a step card** to rename it, jump to its text (**Go to text**), or delete it. A step with content asks for confirmation, telling you how many blocks go with it.
+- **Connect** by dragging the dot under a node onto a step — the entity becomes that step's input. Drop it on empty canvas instead and a new step is created to receive it. Connecting two steps records order only (the dashed edge). Cycles are blocked.
+
+**The panel is the step's contents.** Selecting a node — the step or any of its entities — opens the same panel below the graph (to the right when full-screen): the step's tables, one card per table, in the note's label colors. Selecting an entity just highlights its row. Each card *is* the table in your note — editing here and editing the table in the note are the same act. While nothing is selected the panel folds away to give the graph the room; the divider between them can be dragged to taste (double-click resets it).
+
+| Section | Shape | To add |
+|---|---|---|
+| **Parameter** | one column per key, one row of values | **Column** adds a key |
+| **Input** / **Tool** / **Output** | one row per entity, one column per attribute | **Add row** adds an entity |
+
+A kind the step doesn't have yet still shows as a table — a dashed card with one empty row. Type into that first cell and the labeled table appears in the note with what you typed already in it (the key for a parameter table, the name for the others). Leave it alone and nothing is written, so a step never fills up with empty tables you didn't ask for.
+
+**Entities you highlighted in a sentence** keep working as they are, and appear right inside their kind's table as grayed rows — highlighted parameters as grayed columns. Renaming one edits the text in place. **Add to the table** (or clicking its grayed cells) takes it in for real. The sentence is left exactly as it was, highlight and all — adding only adds. Its bound attributes come along as columns (they are values, and keeping them in both places would count the same fact twice), and the grayed row disappears because the highlight and the new row are the same entity. Highlighting and tables are the same data seen two ways, so you can move over at your own pace.
+
+**The same tool used in several steps is one entity.** Write "mortar" as a tool in two steps and the graph draws one node with an edge to each — no duplicates. In the step whose table doesn't hold its row it shows grayed, labeled with where it lives (**In &lt;step&gt;**), and **Add to the table** gives this step its own row for it — still one entity in the graph, because same-named materials and tools merge.
 
 ## Exporting PROV-JSON-LD
 

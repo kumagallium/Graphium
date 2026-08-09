@@ -22,6 +22,8 @@ export type ProvAttribute = {
   "graphium:blockId"?: string;
   "graphium:mediaUrl"?: string;
   "graphium:mediaType"?: string;
+  /** インライン attribute 由来の場合の entityId（グラフ側からの編集・削除で span を特定する） */
+  "graphium:entityId"?: string;
 };
 
 export type ProvJsonLdNode = {
@@ -64,7 +66,7 @@ type InternalNode = {
   label: string;
   blockId: string;
   params?: Record<string, string>;
-  attributes?: { label: string; blockId: string; mediaUrl?: string; mediaType?: string }[];
+  attributes?: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string }[];
   /** Entity サブタイプ（material / tool） */
   entitySubtype?: import("../context-label/labels").EntitySubtype;
   /** メディアブロックの種類（image / video / audio / pdf / file） */
@@ -401,8 +403,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               relations.push({ "@type": "prov:used", from: actId, to: entityId });
             }
           }
-        } else {
-          // パース失敗時はフォールバック（テーブル全体を1 Entity）
+        } else if (!parsed) {
+          // テーブルとして読めない（ヘッダしか無い等）ときだけ、
+          // テーブル全体を 1 Entity として拾うフォールバック
           const entityId = `entity_${lb.block.id}`;
           nodes.push({
             "@id": entityId,
@@ -415,6 +418,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
             relations.push({ "@type": "prov:used", from: actId, to: entityId });
           }
         }
+        // parsed かつ行ゼロ = 名前がまだ空の行しかない表。名前の無いものは
+        // まだ「モノ」ではないのでノードにしない（表を作った直後の状態）。
+        // ここを拾うと、id を名前にしたノードがグラフに現れる（実バグ）
       } else {
         // 段落・メディア: ヘルパーでラベルとメディア属性を取得
         const entityId = `entity_${lb.block.id}`;
@@ -462,7 +468,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
             }
           }
-        } else {
+        } else if (!parsed) {
+          // 入力側と同じ: 表として読めないときだけ全体を 1 Entity にする。
+          // 名前がまだ空の行しかない表（作った直後）はノードにしない
           const entityId = `result_${lb.block.id}`;
           const { label: entityLabel, mediaType, mediaUrl } = getEntityLabelAndMedia(lb.block);
           nodes.push({
@@ -1051,9 +1059,11 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     // メディアブロックを [パラメータ] 化した場合も、Entity 経路（mediaUrl/mediaType を
     // ノードへ付与）と同様にメディア情報を attribute へ引き継ぐ。これがないと graph view が
     // サムネイルを描けず、ファイル名テキストにフォールバックしてしまう。
-    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string } = {
+    const attrEntry: { label: string; blockId: string; mediaUrl?: string; mediaType?: string; entityId?: string } = {
       label: agg.text || agg.entityId,
       blockId: agg.blockId,
+      // インライン attribute はグラフ側から編集・削除できるよう entityId を残す
+      entityId: agg.entityId,
     };
     if (agg.mediaUrl) attrEntry.mediaUrl = agg.mediaUrl;
     if (agg.mediaType) attrEntry.mediaType = agg.mediaType;
@@ -1095,9 +1105,15 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
   //       「〜の結果」 placeholder は作らない。代わりに inline_output を proxy として
   //       used edge を張る。explicit output も B 側 material も無いときだけ
   //       fallback として synthetic を作る（grafh connectivity 維持のため）。
+  // 出力は inline_output_（span）に加えて result_（output ラベル付き段落 /
+  // テーブル行）も対象にする — テーブルの出力行を次工程が同名入力で受けた
+  // ときも unification が効くように。synthetic placeholder は除く。
   const findOutputEntitiesForActivity = (actId: string) =>
     nodes.filter(
-      (n) => n["@id"].startsWith("inline_output_") && blockToActivityId.get(n.blockId) === actId,
+      (n) =>
+        (n["@id"].startsWith("inline_output_") ||
+          (n["@id"].startsWith("result_") && !n["@id"].startsWith("result_synthetic_"))) &&
+        blockToActivityId.get(n.blockId) === actId,
     );
   const findMatToolEntitiesForActivity = (actId: string) =>
     nodes.filter(
@@ -1139,39 +1155,136 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
     }
 
     // (c) merge 不成立。informed_by → used を張るための proxy を決める
-    let proxyId: string;
-    if (prevOutputs.length > 0) {
-      // explicit output があれば、その先頭を proxy として使う（synthetic を作らない）
+    let proxyId: string | null = null;
+    if (prevOutputs.length === 1) {
+      // 出力が 1 つだけなら「それを使った」と推定するのは合理的
       proxyId = prevOutputs[0]["@id"];
-    } else {
+    } else if (prevOutputs.length === 0) {
       // 旧形式の result_* ノード（後方互換）も拾う
       const legacyResult = nodes.find(
         (n) => n["@id"].startsWith("result_") && blockToActivityId.get(n.blockId) === prevActId,
       );
-      if (legacyResult) {
-        proxyId = legacyResult["@id"];
-      } else {
-        // 何も無いので synthetic placeholder を作る（graph connectivity の最終 fallback）
-        const syntheticId = `result_synthetic_${link.targetBlockId}`;
-        if (!nodes.find((n) => n["@id"] === syntheticId)) {
-          const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? t("prov.prevStepFallback");
-          nodes.push({
-            "@id": syntheticId,
-            "@type": "prov:Entity",
-            label: t("prov.resultOf", { label: prevActLabel }),
-            blockId: link.targetBlockId,
-          });
-          relations.push({
-            "@type": "prov:wasGeneratedBy",
-            from: syntheticId,
-            to: prevActId,
-          });
-        }
-        proxyId = syntheticId;
+      if (legacyResult) proxyId = legacyResult["@id"];
+    }
+    // 出力が複数ある（どれを使ったか特定できない）／何も無い場合は
+    // 「〜の結果」placeholder に落とす。勝手に 1 つを選ぶと、知らないことを
+    // 知っているかのように描いてしまう。特定したいときは次工程の入力に
+    // 同名を書けば (a)(b) の unification が正確に繋ぐ。
+    if (!proxyId) {
+      const syntheticId = `result_synthetic_${link.targetBlockId}`;
+      if (!nodes.find((n) => n["@id"] === syntheticId)) {
+        const prevActLabel = nodes.find((n) => n["@id"] === prevActId)?.label ?? t("prov.prevStepFallback");
+        nodes.push({
+          "@id": syntheticId,
+          "@type": "prov:Entity",
+          label: t("prov.resultOf", { label: prevActLabel }),
+          blockId: link.targetBlockId,
+        });
+        relations.push({
+          "@type": "prov:wasGeneratedBy",
+          from: syntheticId,
+          to: prevActId,
+        });
       }
+      proxyId = syntheticId;
     }
 
     relations.push({ "@type": "prov:used", from: currentActId, to: proxyId, linkId: link.id });
+  }
+
+  // ── 同名の材料・道具は 1 つの Entity に統合する ──
+  // 「同じ乳鉢を別の手順でも使う」と書いたとき、手順ごとに別ノードへ
+  // 割れないように、種類（material / tool）とラベルのテキスト一致で束ねる。
+  // canonical は表の行由来（entity_*）を優先 — グラフからの編集が表に落ちる。
+  //
+  // ただし「情報を失う統合」はしない:
+  //   - output は手順をまたいでは統合しない（同名でも別の生成物でありうる。
+  //     手順間の受け渡しは informed_by ゲート付きの unification（上）が担当）
+  //   - 同じブロック由来の同名同士は別のまま（同じ表に 2 行書いたのは意図。M6）
+  //   - plan / result の位相が違えば別のまま（wasDerivedFrom の関係で繋がる）
+  //   - params の値が食い違えば別のまま（別バッチの「量: 1g / 2g」を潰さない）
+  {
+    const phaseOf = (n: InternalNode) => ((n as any)["graphium:phase"] as string) ?? "execution";
+    const paramsConflict = (a?: Record<string, string>, b?: Record<string, string>) => {
+      if (!a || !b) return false;
+      for (const [k, v] of Object.entries(b)) {
+        const av = a[k];
+        if (av != null && av !== "" && v !== "" && av !== v) return true;
+      }
+      return false;
+    };
+    const isOutputNode = (n: InternalNode) =>
+      n["@id"].startsWith("inline_output_") ||
+      (n["@id"].startsWith("result_") && !n["@id"].startsWith("result_synthetic_"));
+    /** 同じモノとみなす束ね方。null なら統合対象外 */
+    const groupKeyOf = (n: InternalNode): string | null => {
+      if (n["@type"] !== "prov:Entity") return null;
+      if (n.entitySubtype === "material" || n.entitySubtype === "tool") {
+        // 材料・道具は手順をまたいで同じモノ（同じ乳鉢を使い回す）
+        return `${n.entitySubtype} ${phaseOf(n)} ${labelForMatch(n.label)}`;
+      }
+      if (!isOutputNode(n)) return null;
+      // 出力は手順をまたいでは統合しない（同名でも別の生成物でありうる）。
+      // 同じ手順の中だけ、本文の印と表の行は同じものを指すとみなす —
+      // これが無いと「表に追加」で本文の印を残したときに 2 ノードへ割れる
+      const actId = blockToActivityId.get(n.blockId);
+      return actId ? `output ${actId} ${phaseOf(n)} ${labelForMatch(n.label)}` : null;
+    };
+    const groups = new Map<string, InternalNode[]>();
+    for (const n of nodes) {
+      const key = groupKeyOf(n);
+      if (!key) continue;
+      const g = groups.get(key);
+      if (g) g.push(n);
+      else groups.set(key, [n]);
+    }
+    const dropIds = new Set<string>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      // 表の行を残す（本文の印は消えても、表の行は編集の起点になる）
+      const canonical = group.find((n) => !n["@id"].startsWith("inline_")) ?? group[0];
+      for (const dup of group) {
+        if (dup === canonical) continue;
+        if (dup.blockId === canonical.blockId) continue;
+        if (paramsConflict(canonical.params, dup.params)) continue;
+        for (const rel of relations) {
+          if (rel.from === dup["@id"]) rel.from = canonical["@id"];
+          if (rel.to === dup["@id"]) rel.to = canonical["@id"];
+        }
+        // 属性は取りこぼさない（表の列 = params / ハイライト由来 = attributes）
+        if (dup.params) {
+          const merged = { ...(canonical.params ?? {}) };
+          for (const [k, v] of Object.entries(dup.params)) {
+            if (merged[k] == null || merged[k] === "") merged[k] = v;
+          }
+          canonical.params = merged;
+        }
+        if (dup.attributes?.length) {
+          canonical.attributes = [...(canonical.attributes ?? []), ...dup.attributes];
+        }
+        if (!canonical.mediaUrl && dup.mediaUrl) {
+          canonical.mediaUrl = dup.mediaUrl;
+          canonical.mediaType = dup.mediaType;
+        }
+        dropIds.add(dup["@id"]);
+      }
+    }
+    if (dropIds.size > 0) {
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        if (dropIds.has(nodes[i]["@id"])) nodes.splice(i, 1);
+      }
+      // 統合で同一ペアに重なったリレーションは 1 本にする（最初の出現を残す）
+      const seen = new Set<string>();
+      const deduped: InternalRelation[] = [];
+      for (const r of relations) {
+        const k = `${r["@type"]} ${r.from} ${r.to}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        deduped.push(r);
+      }
+      relations.length = 0;
+      relations.push(...deduped);
+    }
   }
 
   if (import.meta.env.DEV) {
@@ -1237,6 +1350,9 @@ function buildProvJsonLd(
         }
         if (a.mediaType) {
           attr["graphium:mediaType"] = a.mediaType;
+        }
+        if (a.entityId) {
+          attr["graphium:entityId"] = a.entityId;
         }
         return attr;
       });

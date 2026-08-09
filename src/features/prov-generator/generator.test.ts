@@ -2301,6 +2301,130 @@ describe("informed_by + inline_output（synthetic placeholder の抑制）", () 
     expect(merged).toHaveLength(1);
     expect(merged[0]["@id"]).toBe("inline_output_ent_prev_out");
   });
+
+  // ── 出力が複数あるとき: どれを使ったかは特定できない ──
+  // 「先頭の出力を勝手に proxy にする」旧挙動は、分岐（出力ごとに別の後続）
+  // で誤った受け渡しを描くため撤去した。特定は unification（同名入力）で行う。
+
+  const buildMultiOutputDoc = (withCurrMaterial: boolean) => {
+    const blocks: any[] = [
+      { id: "h-prev", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+      {
+        id: "p-prev",
+        type: "paragraph",
+        content: [
+          styled("batch A", { inlineOutput: "ent_out_a" }),
+          styled(" and ", {}),
+          styled("batch B", { inlineOutput: "ent_out_b" }),
+        ],
+        children: [],
+      },
+      { id: "h-curr", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step B" }], children: [] },
+    ];
+    if (withCurrMaterial) {
+      blocks.push({
+        id: "p-curr",
+        type: "paragraph",
+        content: [styled("batch A", { inlineMaterial: "ent_curr_mat" })],
+        children: [],
+      });
+    }
+    const labels = new Map([
+      ["h-prev", "procedure"],
+      ["h-curr", "procedure"],
+    ]);
+    const links = [
+      {
+        id: "link-1",
+        sourceBlockId: "h-curr",
+        targetBlockId: "h-prev",
+        type: "informed_by" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    return generateProvDocument({ blocks, labels, links });
+  };
+
+  it("prev の出力が複数で一致が無ければ、勝手に選ばず synthetic 'の結果' に落とす", () => {
+    const doc = buildMultiOutputDoc(false);
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).not.toContain("inline_output_ent_out_a");
+    expect(usedIds).not.toContain("inline_output_ent_out_b");
+    expect(usedIds).toContain("result_synthetic_h-prev");
+  });
+
+  it("output テーブルの行も unification の対象になる（同名の inline 入力と merge）", () => {
+    const blocks: any[] = [
+      { id: "h-prev", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+      {
+        id: "tbl-out",
+        type: "table",
+        content: {
+          type: "tableContent",
+          rows: [
+            { cells: [[{ type: "text", text: "名前", styles: {} }], [{ type: "text", text: "質量", styles: {} }]] },
+            { cells: [[{ type: "text", text: "batch A", styles: {} }], [{ type: "text", text: "5g", styles: {} }]] },
+            { cells: [[{ type: "text", text: "batch B", styles: {} }], [{ type: "text", text: "5g", styles: {} }]] },
+          ],
+        },
+        children: [],
+      },
+      { id: "h-curr", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step B" }], children: [] },
+      {
+        id: "p-curr",
+        type: "paragraph",
+        content: [styled("batch A", { inlineMaterial: "ent_curr_mat" })],
+        children: [],
+      },
+    ];
+    const labels = new Map([
+      ["h-prev", "procedure"],
+      ["tbl-out", "output"],
+      ["h-curr", "procedure"],
+    ]);
+    const links = [
+      {
+        id: "link-1",
+        sourceBlockId: "h-curr",
+        targetBlockId: "h-prev",
+        type: "informed_by" as const,
+        layer: "prov" as const,
+        createdBy: "human" as const,
+      },
+    ];
+    const doc = generateProvDocument({ blocks, labels, links });
+    // batch A はテーブル行 Entity（result_）1 つに merge され、inline 側は消える
+    const batchA = doc["@graph"].filter(
+      (n) => n["@type"] === "prov:Entity" && n["rdfs:label"] === "batch A",
+    );
+    expect(batchA).toHaveLength(1);
+    expect(batchA[0]["@id"]).toBe("result_tbl-out_batch A");
+    // 行の属性（質量列）はテーブル行側に保持される
+    expect((batchA[0] as any)["graphium:質量"]).toBe("5g");
+    // synthetic は作られない
+    expect(doc["@graph"].filter((n) => n["@id"].startsWith("result_synthetic_"))).toHaveLength(0);
+    // curr は batch A（テーブル行）を used、batch B は繋がらない
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).toContain("result_tbl-out_batch A");
+    expect(usedIds).not.toContain("result_tbl-out_batch B");
+  });
+
+  it("prev の出力が複数でも、同名の入力があれば unification でその出力だけが正確に繋がる", () => {
+    const doc = buildMultiOutputDoc(true);
+    // batch A は 1 Entity に merge され、synthetic は作られない
+    const merged = doc["@graph"].filter(
+      (n) => n["@type"] === "prov:Entity" && n["rdfs:label"] === "batch A",
+    );
+    expect(merged).toHaveLength(1);
+    expect(doc["@graph"].filter((n) => n["@id"].startsWith("result_synthetic_"))).toHaveLength(0);
+    const currAct = doc["@graph"].find((n) => n["@id"] === "activity_h-curr") as any;
+    const usedIds = (currAct?.["prov:used"] ?? []).map((u: any) => u["@id"]);
+    expect(usedIds).toContain("inline_output_ent_out_a");
+    expect(usedIds).not.toContain("inline_output_ent_out_b");
+  });
 });
 
 // ──────────────────────────────────
@@ -2345,5 +2469,174 @@ describe("画像ブロックと PROV グラフ", () => {
           n["@id"].startsWith("result_ocr_"),
       ),
     ).toBe(false);
+  });
+});
+
+// ── 同名の材料・道具の統合 ──
+
+describe("同名の材料・道具は 1 Entity に統合される", () => {
+  const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
+    type: "text",
+    text,
+    styles,
+  });
+
+  const twoStepsWith = (styleKey: "inlineTool" | "inlineMaterial" | "inlineOutput", label: string) =>
+    generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [styled("Step A")], children: [] },
+        { id: "p-a", type: "paragraph", content: [styled(label, { [styleKey]: "ent_x1" })], children: [] },
+        { id: "h-b", type: "heading", props: { level: 2 }, content: [styled("Step B")], children: [] },
+        { id: "p-b", type: "paragraph", content: [styled(label, { [styleKey]: "ent_x2" })], children: [] },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["h-b", "procedure"],
+      ]),
+      links: [],
+    });
+
+  it("別の手順に同名ツールを書いても 1 ノードになり、両方から used が張られる", () => {
+    const doc = twoStepsWith("inlineTool", "乳鉢");
+    const tools = doc["@graph"].filter((n: any) => n["graphium:entityType"] === "tool");
+    expect(tools).toHaveLength(1);
+    const usedOf = (actId: string) =>
+      ((doc["@graph"].find((n) => n["@id"] === actId) as any)?.["prov:used"] ?? []).map(
+        (u: any) => u["@id"],
+      );
+    expect(usedOf("activity_h-a")).toContain(tools[0]["@id"]);
+    expect(usedOf("activity_h-b")).toContain(tools[0]["@id"]);
+  });
+
+  it("材料も同様に統合される", () => {
+    const doc = twoStepsWith("inlineMaterial", "Ni粉末");
+    const materials = doc["@graph"].filter((n: any) => n["graphium:entityType"] === "material");
+    expect(materials).toHaveLength(1);
+  });
+
+  it("output は同名でも統合しない（別の生成物でありうる）", () => {
+    const doc = twoStepsWith("inlineOutput", "粉");
+    const outputs = doc["@graph"].filter((n) => n["@id"].startsWith("inline_output_"));
+    expect(outputs).toHaveLength(2);
+  });
+});
+
+// ── 本文の印を残したまま表へ移したときの統合 ──
+
+describe("同じ手順の中では、本文の印と表の行が 1 Entity になる", () => {
+  const styled = (text: string, styles: Record<string, string | boolean> = {}) => ({
+    type: "text",
+    text,
+    styles,
+  });
+  const tableBlock = (id: string, rows: string[][]) => ({
+    id,
+    type: "table",
+    content: {
+      type: "tableContent",
+      rows: rows.map((cells) => ({ cells: cells.map((c) => [styled(c)]) })),
+    },
+    children: [],
+  });
+
+  /** 同じ手順に「本文の印」と「同名の表の行」が並んでいる状態 */
+  const docWith = (styleKey: "inlineOutput" | "inlineMaterial", label: "output" | "material") =>
+    generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [styled("Step A")], children: [] },
+        tableBlock("tbl-1", [["名前"], ["バッチA"]]),
+        { id: "p-a", type: "paragraph", content: [styled("結果は "), styled("バッチA", { [styleKey]: "e1" }), styled(" だった")], children: [] },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["tbl-1", label],
+      ]),
+      links: [],
+    });
+
+  it("output: 表の行が残り、本文の印はそこへ統合される", () => {
+    const doc = docWith("inlineOutput", "output");
+    const batchA = doc["@graph"].filter((n) => n["rdfs:label"] === "バッチA");
+    expect(batchA).toHaveLength(1);
+    expect(batchA[0]["@id"].startsWith("inline_")).toBe(false); // 表の行が canonical
+  });
+
+  it("material も同じく 1 つになる", () => {
+    const doc = docWith("inlineMaterial", "material");
+    expect(doc["@graph"].filter((n) => n["rdfs:label"] === "バッチA")).toHaveLength(1);
+  });
+
+  it("別の手順の同名 output は統合しない（別の生成物でありうる）", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [styled("Step A")], children: [] },
+        { id: "p-a", type: "paragraph", content: [styled("粉", { inlineOutput: "o1" })], children: [] },
+        { id: "h-b", type: "heading", props: { level: 2 }, content: [styled("Step B")], children: [] },
+        { id: "p-b", type: "paragraph", content: [styled("粉", { inlineOutput: "o2" })], children: [] },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["h-b", "procedure"],
+      ]),
+      links: [],
+    });
+    expect(doc["@graph"].filter((n) => n["rdfs:label"] === "粉")).toHaveLength(2);
+  });
+});
+
+describe("名前がまだ空の表はノードを作らない", () => {
+  const cellsOf = (texts: string[]) => ({
+    cells: texts.map((t) => [{ type: "text", text: t, styles: {} }]),
+  });
+  const emptyTable = (id: string) => ({
+    id,
+    type: "table",
+    content: { type: "tableContent", rows: [cellsOf(["名前"]), cellsOf([""])] },
+    children: [],
+  });
+
+  const build = (label: "material" | "tool" | "output") =>
+    generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+        emptyTable("tbl-1"),
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["tbl-1", label],
+      ]),
+      links: [],
+    });
+
+  it("入力の表を作った直後（空行だけ）は Entity が立たない", () => {
+    const doc = build("material");
+    expect(doc["@graph"].filter((n) => n["@type"] === "prov:Entity")).toHaveLength(0);
+  });
+
+  it("出力の表でも同じ", () => {
+    const doc = build("output");
+    expect(doc["@graph"].filter((n) => n["@type"] === "prov:Entity")).toHaveLength(0);
+  });
+
+  it("行に名前を入れれば、その行が Entity になる", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+        {
+          id: "tbl-1",
+          type: "table",
+          content: { type: "tableContent", rows: [cellsOf(["名前"]), cellsOf(["Ni粉末"])] },
+          children: [],
+        },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["tbl-1", "material"],
+      ]),
+      links: [],
+    });
+    const entities = doc["@graph"].filter((n) => n["@type"] === "prov:Entity");
+    expect(entities).toHaveLength(1);
+    expect(entities[0]["rdfs:label"]).toBe("Ni粉末");
   });
 });

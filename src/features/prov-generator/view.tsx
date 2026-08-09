@@ -1,84 +1,23 @@
 // ──────────────────────────────────────────────
-// PROVグラフ可視化（Cytoscape.js + ELK レイアウト）
+// 手順グラフのパネル。
 //
-// Phase 3: ProvJsonLd 埋め込み形式からノード・エッジを抽出
+// 表示は React Flow のフロービュー 1 本（step カード + Entity ノード）。
+// かつては cytoscape の「手順（全体）」と 2 タブだったが、フロービューが
+// Entity もパラメータも描くようになり「ステップのみ」ではなくなったため統合した。
 //
-// design.md ラベル色パレット準拠:
-//   Activity  = 楕円・落ち着いた青 (#5b8fb9)
-//   Entity    = 丸四角・ブランドグリーン (#4B7A52)
-//   Result    = 丸四角・テラコッタ (#c26356)
-//   Parameter = ダイヤ・落ち着いたアンバー (#c08b3e)
+// provToCytoscapeElements は PDF 書き出し（features/pdf-export）が使うので残す。
 // ──────────────────────────────────────────────
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
 import type { ProvJsonLd, ProvJsonLdNode, ProvAttribute } from "./generator";
-import { extractRelations, type FlatRelation } from "./generator";
-import { Network, Workflow } from "lucide-react";
+import { extractRelations } from "./generator";
 import { ActivityGraphEditor } from "../network-graph/activity-graph-editor";
+import { provDocToFlowGraph } from "../network-graph/activity-graph-adapter";
 import { t, getDisplayLabelName } from "../../i18n";
-import { getActiveProvider } from "../../lib/storage/registry";
-import { applyElkLayout, cyStyles, THEME } from "./cy-graph";
+import { THEME } from "./cy-graph";
 
-/**
- * 動画 URL から最初の数百ミリ秒のフレームを canvas に書き出して
- * data URL で返す。Cytoscape の background-image は静止画しか扱えないため、
- * 動画ノードのサムネイルは事前にラスタ化する必要がある。
- */
-async function captureVideoFrame(videoUrl: string, seekSeconds = 0.1): Promise<string | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.crossOrigin = "anonymous";
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    video.src = videoUrl;
-
-    const cleanup = () => {
-      video.src = "";
-      video.removeAttribute("src");
-      video.load();
-    };
-
-    const onError = () => {
-      cleanup();
-      resolve(null);
-    };
-
-    video.addEventListener("loadedmetadata", () => {
-      try {
-        video.currentTime = Math.min(seekSeconds, Math.max(0, (video.duration || 0) - 0.05));
-      } catch {
-        onError();
-      }
-    });
-
-    video.addEventListener("seeked", () => {
-      try {
-        const w = video.videoWidth || 160;
-        const h = video.videoHeight || 90;
-        const canvas = document.createElement("canvas");
-        // サムネイルなのでロングサイドを 200 程度に縮小
-        const scale = Math.min(1, 200 / Math.max(w, h));
-        canvas.width = Math.max(1, Math.round(w * scale));
-        canvas.height = Math.max(1, Math.round(h * scale));
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { onError(); return; }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-        cleanup();
-        resolve(dataUrl);
-      } catch {
-        onError();
-      }
-    });
-
-    video.addEventListener("error", onError);
-    // タイムアウト（メタデータが取れない壊れた URL に備える）
-    setTimeout(() => onError(), 5000);
-  });
-}
 
 // 後方互換
 type ProvDocument = ProvJsonLd;
@@ -265,164 +204,18 @@ export function provToCytoscapeElements(doc: ProvJsonLd): cytoscape.ElementDefin
 }
 
 
-// ── ホバーイベント設定 ──
-
-function setupHoverEffects(cy: cytoscape.Core) {
-  cy.on("mouseover", "node", (evt) => {
-    const node = evt.target;
-    const neighborhood = node.neighborhood();
-
-    cy.elements().addClass("faded");
-
-    node.removeClass("faded").addClass("hover");
-    neighborhood.removeClass("faded");
-    neighborhood.nodes().addClass("hover-neighbor");
-    neighborhood.edges().addClass("hover-connected");
-  });
-
-  cy.on("mouseout", "node", () => {
-    cy.elements().removeClass("faded hover hover-neighbor hover-connected");
-  });
-}
-
-// ── グラフコンポーネント ──
-
-function CytoscapeGraph({
-  doc,
-  height = 450,
-}: {
-  doc: ProvJsonLd;
-  height?: number;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<cytoscape.Core | null>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const elements = provToCytoscapeElements(doc);
-    if (elements.length === 0) return;
-
-    const cy = cytoscape({
-      container: containerRef.current,
-      elements,
-      style: cyStyles,
-      layout: { name: "preset" },
-      userZoomingEnabled: true,
-      userPanningEnabled: true,
-      boxSelectionEnabled: false,
-      wheelSensitivity: 0.3,
-      minZoom: 0.2,
-      maxZoom: 4,
-    });
-
-    cyRef.current = cy;
-
-    setupHoverEffects(cy);
-
-    let cancelled = false;
-
-    // サムネイル URL を Blob URL / 動画フレームに変換して Cytoscape に反映
-    // - local-media:// や Drive URL はアクティブなストレージプロバイダ経由で blob URL に変換
-    // - 純粋な http(s) URL は fetch でフォールバック
-    // - 動画は最初のフレームを canvas でキャプチャして data URL にする
-    const thumbnailNodes = cy.nodes("[thumbnailUrl]");
-    const blobUrls: string[] = [];
-    if (thumbnailNodes.length > 0) {
-      // 順次取得（429 レート制限を回避）
-      (async () => {
-        const provider = getActiveProvider();
-        for (const node of thumbnailNodes.toArray()) {
-          if (cancelled) break;
-          const url = node.data("thumbnailUrl") as string;
-          if (!url) continue;
-          if (url.startsWith("data:")) continue;
-          const mediaType = node.data("thumbnailMediaType") as string | undefined;
-
-          // 1) 元 URL → ブラウザが直接読める URL（blob: もしくは元の http(s)）
-          let resolvedUrl: string | null = null;
-          if (url.startsWith("blob:")) {
-            resolvedUrl = url;
-          } else {
-            try {
-              const fileId = provider.extractFileId(url);
-              if (fileId) {
-                resolvedUrl = await provider.getMediaBlobUrl(fileId);
-              }
-            } catch {
-              // プロバイダ解決失敗 → fetch フォールバックに進む
-            }
-            if (!resolvedUrl) {
-              try {
-                const res = await fetch(url);
-                if (!res.ok) continue;
-                const blob = await res.blob();
-                resolvedUrl = URL.createObjectURL(blob);
-                blobUrls.push(resolvedUrl);
-              } catch {
-                continue;
-              }
-            }
-          }
-
-          // 2) 動画は最初のフレームを canvas で抜く（背景画像は静止画である必要がある）
-          let finalUrl: string | null = resolvedUrl;
-          if (mediaType === "video") {
-            try {
-              finalUrl = await captureVideoFrame(resolvedUrl);
-            } catch {
-              finalUrl = null;
-            }
-          }
-
-          if (!cancelled && finalUrl) {
-            cy.batch(() => { node.data("thumbnailUrl", finalUrl); });
-          }
-        }
-        if (!cancelled) {
-          cy.style().update();
-        }
-      })();
-    }
-
-    cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.5 } as any).run();
-    cy.fit(undefined, 20);
-    applyElkLayout(cy).then(() => {
-      if (!cancelled) cy.fit(undefined, 20);
-    }).catch((err) => {
-      console.warn("[PROV] ELK レイアウト失敗（breadthfirst を維持）:", err);
-    });
-
-    return () => {
-      cancelled = true;
-      // Blob URL を解放
-      for (const url of blobUrls) {
-        URL.revokeObjectURL(url);
-      }
-      cy.destroy();
-      cyRef.current = null;
-    };
-  }, [doc]);
-
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100%",
-        height,
-        background: THEME.background,
-      }}
-    />
-  );
-}
-
 /**
  * PROVドキュメントの可視化パネル
  */
-export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
+export function ProvGraphPanel({
+  doc,
+  editorRef,
+}: {
+  doc: ProvJsonLd | null;
+  /** メインエディタへの参照。フロービューのノード操作（追加・リネーム・削除）に使う */
+  editorRef?: { current: any };
+}) {
   const [expanded, setExpanded] = useState(false);
-  // PROV グラフ（静的・全体）と Activity 編集グラフ（手順のつなぎ替え）の切替
-  const [view, setView] = useState<"prov" | "edit">("prov");
 
   useEffect(() => {
     if (!expanded) return;
@@ -433,27 +226,9 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
     return () => document.removeEventListener("keydown", handleKey);
   }, [expanded]);
 
-  if (!doc) {
-    return (
-      <div style={panelStyle}>
-        <div style={{ padding: 16, color: "var(--color-text-tertiary)", fontSize: 13 }}>
-          {t("provPanel.noLabelsMessage")}
-        </div>
-      </div>
-    );
-  }
-
-  // 統計情報の計算
-  const relations = extractRelations(doc);
-  const attrCount = doc["@graph"].reduce((sum, n) => {
-    let count = 0;
-    if (n["graphium:attributes"]) count += (n["graphium:attributes"] as ProvAttribute[]).length;
-    const STATS_EXCLUDED = ["graphium:blockId", "graphium:attributes", "graphium:warnings", "graphium:entityType", "graphium:mediaType", "graphium:mediaUrl", "graphium:phase"];
-    for (const key of Object.keys(n)) {
-      if (key.startsWith("graphium:") && !STATS_EXCLUDED.includes(key) && typeof n[key as `graphium:${string}`] === "string") count++;
-    }
-    return sum + count;
-  }, 0);
+  // 統計はフロービューが実際に描くもの（step / Entity / エッジ）で数える。
+  // パラメータはノードではなく各ノードの属性行なので数に含めない。
+  const flow = useMemo(() => provDocToFlowGraph(doc), [doc]);
 
   const legendBar = (
     <div style={legendBarStyle}>
@@ -461,11 +236,13 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
       <LegendDot color={THEME.entity.bg} shape="square" label={getDisplayLabelName("material")} />
       <LegendDot color={THEME.tool.bg} shape="diamond" label={getDisplayLabelName("tool")} />
       <LegendDot color={THEME.result.bg} shape="square" label={getDisplayLabelName("output")} />
-      <LegendDot color={THEME.parameter.bg} shape="square" label={getDisplayLabelName("attribute")} />
 
       <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
         <span style={{ color: "var(--color-text-tertiary)" }}>
-          {t("provPanel.graphStats", { nodes: String(doc["@graph"].length + attrCount), relations: String(relations.length + attrCount) })}
+          {t("provPanel.graphStats", {
+            nodes: String(flow.steps.length + flow.entities.length),
+            relations: String(flow.edges.length),
+          })}
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
@@ -478,37 +255,16 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
     </div>
   );
 
-  const viewToggle = (
-    <div style={{ display: "flex", gap: 4, padding: "6px 12px 0" }}>
-      <button
-        onClick={() => setView("prov")}
-        style={viewToggleBtnStyle(view === "prov")}
-        title={t("provPanel.viewProv")}
-      >
-        <Network size={13} /> {t("provPanel.viewProv")}
-      </button>
-      <button
-        onClick={() => setView("edit")}
-        style={viewToggleBtnStyle(view === "edit")}
-        title={t("provPanel.viewFlow")}
-      >
-        <Workflow size={13} /> {t("provPanel.viewFlow")}
-      </button>
-    </div>
-  );
-
   return (
     <>
       <div style={panelStyle}>
-        {viewToggle}
-        {view === "prov" ? (
-          <>
-            {legendBar}
-            <CytoscapeGraph doc={doc} />
-          </>
-        ) : (
-          <div style={{ height: 440 }}>
-            <ActivityGraphEditor doc={doc} />
+        {legendBar}
+        {/* 拡大中はモーダル側だけを描く（React Flow を二重に走らせない）。
+            高さは画面いっぱい — 見るだけのプレビューだった頃は 620px で
+            蓋をしていたが、書く場所になった今は余白を残す理由がない */}
+        {!expanded && (
+          <div style={{ height: "calc(100vh - 122px)", minHeight: 380 }}>
+            <ActivityGraphEditor doc={doc} editorRef={editorRef} />
           </div>
         )}
       </div>
@@ -518,7 +274,9 @@ export function ProvGraphPanel({ doc }: { doc: ProvJsonLd | null }) {
         <div style={modalOverlayStyle} onClick={() => setExpanded(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             {legendBar}
-            <CytoscapeGraph doc={doc} height={window.innerHeight - 120} />
+            <div style={{ height: window.innerHeight - 120 }}>
+              <ActivityGraphEditor doc={doc} editorRef={editorRef} tableLayout="side" />
+            </div>
           </div>
         </div>,
         document.body,
@@ -580,21 +338,6 @@ const expandBtnStyle: React.CSSProperties = {
   color: THEME.mutedFg,
 };
 
-function viewToggleBtnStyle(active: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    padding: "3px 10px",
-    fontSize: 12,
-    fontWeight: 600,
-    background: active ? THEME.activity.bg : THEME.muted,
-    color: active ? "#ffffff" : THEME.mutedFg,
-    border: `1px solid ${active ? THEME.activity.bg : THEME.border}`,
-    borderRadius: 6,
-    cursor: "pointer",
-  };
-}
 
 const modalOverlayStyle: React.CSSProperties = {
   position: "fixed",

@@ -255,6 +255,70 @@ type MediaInlineLabel = {
 same referent share an `entityId` so the PROV generator emits one
 *Entity* node.
 
+`entityId` is also the handle for editing an entity that lives in prose:
+renaming and removing from the flow view rewrite the underlying inline
+span (`src/features/inline-label/entity-edit.ts`) rather than any graph
+state. To make parameters addressable the same way, the generator carries
+the originating `entityId` into the emitted attribute entries as
+`graphium:entityId`. Removal is conservative: a span that is the sole
+content of its paragraph is deleted with the paragraph, while a span
+inside prose only loses its mark — the text is never destroyed.
+
+**Tables are the bridge for graph-side editing.** Entities born from a
+**structured table** carry the node id `entity_<tableBlockId>_<rowName>`
+(outputs use the historical `result_` prefix), which is enough to write
+back the row's first cell (its name), any cell matched by header column,
+or to delete the row (`src/features/network-graph/table-row-edit.ts`).
+Adding an input, tool or output from the graph appends a row to that
+step's labelled table — creating and labelling one if the step has none —
+so the note accumulates a sample table rather than one-word paragraphs.
+Duplicate row names resolve to the first matching row, and a column that
+is not in the header is a no-op.
+
+A step's **parameters** are a table too: the columns of a table labelled
+`attribute` inside the step, where the header row holds the keys and the
+first data row the values (`ensureParameterTable`). Only the first data
+row is read, which is why the flow view offers new columns rather than
+new rows there. The label is what makes the generator read the table at
+all, so it is applied automatically whenever the table is created from
+the graph.
+
+An entity that only exists as a prose highlight can be **moved into the
+table** in one step: the row is appended and the span loses its mark, so
+the sentence survives while the entity gains a place to hold attributes.
+Its node id changes from `inline_<label>_<entityId>` to the table form as
+a result — consumers that track a selection across regenerations must
+tolerate that.
+
+**Handoffs between steps.** `informed_by` is desugared into
+`used`/`wasGeneratedBy` through an output entity (§2.3). When the previous
+step has exactly one explicit output it is used as that entity; with
+several outputs and no name match the generator does **not** pick one —
+it falls back to the "result of X" placeholder, since choosing would
+assert a handoff the note never stated (branching procedures make that
+guess visibly wrong). To pin a specific output, name it among the next
+step's inputs: text-equal unification then merges the two into a single
+Entity, which is what the flow view draws as a solid edge. Both inline
+output spans and `result_*` outputs (output-labelled paragraphs and table
+rows) take part in that unification, and the output side always survives
+the merge so table-row attributes are preserved.
+
+**Same-named materials and tools merge.** Within a note, material or tool
+entities whose labels match (case- and whitespace-insensitive) collapse
+into one Entity used by every step that mentions them — "乳鉢" written in
+two steps yields one mortar with two `used` edges, with the table-row
+occurrence preferred as the surviving node so graph-side edits land in a
+table. The merge refuses to destroy information: same-named rows of the
+same table stay separate (writing two rows was deliberate), plan/result
+phases stay separate (they are related by `wasDerivedFrom` instead), and
+entities whose parameter values conflict ("量: 1g" vs "2g") stay
+separate. Outputs merge only **within one step**, where a prose highlight
+and a table row of the same name are the same thing — this is what lets
+"add to the table" leave the highlight in place without splitting the
+entity in two. Across steps, outputs never merge this way; the
+informed_by-gated handoff unification above is the only mechanism for
+that.
+
 The generator (`src/features/prov-generator/`) consumes both label
 sources and the block structure to produce the PROV-DM graph. Activity
 containment is inferred, never stated by the user:

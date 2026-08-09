@@ -37,6 +37,9 @@ const LABEL_COLORS: Record<string, string> = {
   material: "#4B7A52",
   tool: "#c08b3e",
   attribute: "#8fa394",
+  // Output Entity は v3→v4 で "result" から "output" に改名された。
+  // 新しいキーが無いとフォールバックのグレーになり、ラベルだけ色を失う（実バグ）
+  output: "#c26356",
   result: "#c26356",
 };
 

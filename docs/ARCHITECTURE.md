@@ -115,7 +115,60 @@ talks to LLM and embedding backends.
   heading. Nesting and reordering use BlockNote's own drag handle. The card's
   header carries a predecessor control that sets `informed_by` links between
   steps — ordering is a first-class property of a procedure, so it lives on
-  the card rather than in a side panel.
+  the card rather than in a side panel. Its predecessor picker is two
+  levels: steps first, then — for a step that has outputs — that step's
+  individual outputs, so the writer states *which* output is being
+  received rather than only that one step followed another.
+- **The flow view is a node editor over the same document.** It is built on
+  React Flow (`@xyflow/react`); step cards and material / tool / output
+  entities are all nodes. A node shows only its name — plus a media
+  thumbnail and a count of what it carries — while attributes and
+  parameters live in a table panel under the graph, or beside it in full
+  screen. Packing them into the nodes makes the graph unreadable, and
+  MatPROV-style parameter nodes explode it. Edges come in three kinds:
+  `used` (entity → step),
+  `generates` (step → entity), and order-only `informed_by` drawn dashed —
+  the last one is what a handoff degrades to when the note does not say
+  which output was used. The read-only, exploration-oriented graphs (note
+  graph, global graph, asset graph) stay on cytoscape (canvas), which
+  scales better for large force-directed views;
+  `provToCytoscapeElements` also still feeds the PDF export.
+- **Every graph edit is a document edit.** Steps can be added, renamed and
+  deleted; entities renamed, removed and given attributes; dragging an
+  entity onto a step makes it that step's input (and links `informed_by`,
+  which fires the generator's entity unification so the output and the new
+  input become one node), and dropping an entity's port on empty canvas
+  grows the next step already wired. Each operation is translated into the
+  corresponding block / link mutation
+  (`src/features/network-graph/activity-graph-editor.tsx`) and the graph
+  re-derives from the document — it is never edited as a data structure of
+  its own, so the "graph is a pure projection of blocks + links" invariant
+  holds in both directions.
+- **The table is the only bridge from the graph, and the panel is the
+  step's whole contents.** Everything a node carries is a row or a column
+  of an ordinary table in the note. The panel next to the graph
+  (`network-graph/flow-attribute-table.tsx`) stacks *all* of the selected
+  step's tables — parameters, inputs, tools, outputs — one card per
+  table, each headed by the note's label chip, and every edit writes back
+  into the note's table block (`network-graph/table-row-edit.ts`).
+  Selecting an entity shows the same panel with its row highlighted and
+  its section scrolled into view, so there is exactly one place where
+  things are added: "add row" / "add column" on the section's table, and
+  the empty first cell of a kind that has no table yet — sections always
+  render as a table (dashed while it is only a placeholder), and typing
+  into that cell creates the labeled table in the note carrying what was
+  typed, so nothing is written until there is something to write. The
+  parameter table's header row holds the keys and its single data row the
+  values. Entities highlighted in prose
+  remain readable and keep span-based editing — renaming rewrites the
+  span text (keeping its `entityId`), removing deletes a dedicated row or
+  strips the mark inside prose (DATA_MODEL §2.3) — and the panel lists
+  them under "written in the prose", to be edited in place or moved into
+  the kind's table with one click. The panel lists what the step is
+  actually wired to, not only what its own blocks contain: an entity
+  shared with another step (same-named tools merge into one Entity)
+  appears in its section as a grayed row naming where it lives, whose
+  "add to the table" gives this step its own row for the same entity.
 - Every custom block must be registered in `src/blocks/registry.ts` so both
   the main editor and the SidePeek pick it up. The registry derives
   `KNOWN_BLOCK_TYPES`, taking BlockNote's own block types from

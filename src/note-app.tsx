@@ -4642,7 +4642,7 @@ function NoteEditorInner({
                 />
               )}
               {rightTab === "prov" && provLabelsEnabled && (
-                <ProvGraphPanel doc={provDoc} />
+                <ProvGraphPanel doc={provDoc} editorRef={editorRef} />
               )}
               {rightTab === "chat" && (
                 <AiAssistantPanel
@@ -4730,7 +4730,9 @@ function NoteEditorInner({
             { tab: "graph" as const, icon: <Network size={18} />, label: t("panel.graph"), show: noteGraphData.nodes.length > 1 || (lineageTree?.parents.length ?? 0) > 0 },
             // 旧: labels.size でゲートしていたが、v6 以降の工程は step ブロックで
             // block ラベルを持たないため、グラフに中身がある限り出す（auto-open と同じシグナル）
-            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled && (provDoc?.["@graph"]?.length ?? 0) > 0 },
+            // 手順ゼロでもタブは出す — フロービューの「+ 手順を追加」が
+            // グラフ側から手順を作り始める入口になる（空状態はビュー側が案内する）
+            { tab: "prov" as const, icon: <GitBranch size={18} />, label: t("panel.prov"), show: provLabelsEnabled },
             { tab: "history" as const, icon: <History size={18} />, label: t("panel.history"), show: true },
             // Memos: ノートが開いている時は常に表示。空でも「ここに書ける」ことを発見してもらうため。
             { tab: "memos" as const, icon: <StickyNote size={18} />, label: t("panel.memos"), show: !!fileId },
