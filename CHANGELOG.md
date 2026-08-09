@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.30.0](https://github.com/kumagallium/Graphium/compare/v0.29.0...v0.30.0) - 2026-08-09
+
+- Version built-in system skills and sync defaults on startup by @kumagallium in https://github.com/kumagallium/Graphium/pull/656
+- Let skills save manual versions and restore them in place by @kumagallium in https://github.com/kumagallium/Graphium/pull/658
+- [feat] Graph node editor: build procedures from the flow view by @kumagallium in https://github.com/kumagallium/Graphium/pull/648
+
 ## [v0.29.0](https://github.com/kumagallium/Graphium/compare/v0.28.0...v0.29.0) - 2026-08-05
 
 - [fix] Repair and retry malformed LLM output in PROV ingester by @kumagallium in https://github.com/kumagallium/Graphium/pull/649
