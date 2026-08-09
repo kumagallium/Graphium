@@ -397,6 +397,13 @@ export function ActivityGraphEditor({
           .filter((t): t is NonNullable<typeof t> => !!t)
           .map((t) => t.blockId),
       );
+      // この step の表に既にある行の名前（種類ごと）。同名統合で実体が
+      // 他 step の表の行になっても、こちらの表にも同じ名前の行があるなら
+      // それはもう「表にある」— 薄い行として二重に出さない
+      const ownRowNames: Record<string, Set<string>> = {};
+      for (const [kind, table] of Object.entries(tables)) {
+        ownRowNames[kind] = new Set((table?.rows ?? []).map((r) => (r[0] ?? "").trim()));
+      }
       // 共有行の実体がどの step の表にあるか（「◯◯ にあります」+ ジャンプ用）
       const homeStepOf = (tableBlockId: string): { id: string; name: string } | null => {
         for (const s of g.steps) {
@@ -417,7 +424,12 @@ export function ActivityGraphEditor({
           .filter((p) => !!p.entityId)
           .map((p) => ({ entityId: p.entityId!, kind: "attribute" as const, label: p.label })),
         ...g.entities
-          .filter((e) => connectedIds.has(e.id) && !ownTableIds.has(e.tableRef?.blockId ?? ""))
+          .filter(
+            (e) =>
+              connectedIds.has(e.id) &&
+              !ownTableIds.has(e.tableRef?.blockId ?? "") &&
+              !ownRowNames[e.kind]?.has(e.label.trim()),
+          )
           .map((e) => {
             const home = e.tableRef ? homeStepOf(e.tableRef.blockId) : null;
             return {
