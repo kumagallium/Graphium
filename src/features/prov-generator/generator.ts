@@ -403,8 +403,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               relations.push({ "@type": "prov:used", from: actId, to: entityId });
             }
           }
-        } else {
-          // パース失敗時はフォールバック（テーブル全体を1 Entity）
+        } else if (!parsed) {
+          // テーブルとして読めない（ヘッダしか無い等）ときだけ、
+          // テーブル全体を 1 Entity として拾うフォールバック
           const entityId = `entity_${lb.block.id}`;
           nodes.push({
             "@id": entityId,
@@ -417,6 +418,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
             relations.push({ "@type": "prov:used", from: actId, to: entityId });
           }
         }
+        // parsed かつ行ゼロ = 名前がまだ空の行しかない表。名前の無いものは
+        // まだ「モノ」ではないのでノードにしない（表を作った直後の状態）。
+        // ここを拾うと、id を名前にしたノードがグラフに現れる（実バグ）
       } else {
         // 段落・メディア: ヘルパーでラベルとメディア属性を取得
         const entityId = `entity_${lb.block.id}`;
@@ -464,7 +468,9 @@ export function generateProvDocument(input: GeneratorInput): ProvJsonLd {
               relations.push({ "@type": "prov:wasGeneratedBy", from: entityId, to: actId });
             }
           }
-        } else {
+        } else if (!parsed) {
+          // 入力側と同じ: 表として読めないときだけ全体を 1 Entity にする。
+          // 名前がまだ空の行しかない表（作った直後）はノードにしない
           const entityId = `result_${lb.block.id}`;
           const { label: entityLabel, mediaType, mediaUrl } = getEntityLabelAndMedia(lb.block);
           nodes.push({

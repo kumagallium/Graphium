@@ -2583,3 +2583,60 @@ describe("同じ手順の中では、本文の印と表の行が 1 Entity にな
     expect(doc["@graph"].filter((n) => n["rdfs:label"] === "粉")).toHaveLength(2);
   });
 });
+
+describe("名前がまだ空の表はノードを作らない", () => {
+  const cellsOf = (texts: string[]) => ({
+    cells: texts.map((t) => [{ type: "text", text: t, styles: {} }]),
+  });
+  const emptyTable = (id: string) => ({
+    id,
+    type: "table",
+    content: { type: "tableContent", rows: [cellsOf(["名前"]), cellsOf([""])] },
+    children: [],
+  });
+
+  const build = (label: "material" | "tool" | "output") =>
+    generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+        emptyTable("tbl-1"),
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["tbl-1", label],
+      ]),
+      links: [],
+    });
+
+  it("入力の表を作った直後（空行だけ）は Entity が立たない", () => {
+    const doc = build("material");
+    expect(doc["@graph"].filter((n) => n["@type"] === "prov:Entity")).toHaveLength(0);
+  });
+
+  it("出力の表でも同じ", () => {
+    const doc = build("output");
+    expect(doc["@graph"].filter((n) => n["@type"] === "prov:Entity")).toHaveLength(0);
+  });
+
+  it("行に名前を入れれば、その行が Entity になる", () => {
+    const doc = generateProvDocument({
+      blocks: [
+        { id: "h-a", type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Step A" }], children: [] },
+        {
+          id: "tbl-1",
+          type: "table",
+          content: { type: "tableContent", rows: [cellsOf(["名前"]), cellsOf(["Ni粉末"])] },
+          children: [],
+        },
+      ],
+      labels: new Map([
+        ["h-a", "procedure"],
+        ["tbl-1", "material"],
+      ]),
+      links: [],
+    });
+    const entities = doc["@graph"].filter((n) => n["@type"] === "prov:Entity");
+    expect(entities).toHaveLength(1);
+    expect(entities[0]["rdfs:label"]).toBe("Ni粉末");
+  });
+});

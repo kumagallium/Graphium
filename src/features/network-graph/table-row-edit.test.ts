@@ -101,52 +101,87 @@ describe("appendEntityRowToTable", () => {
     expect(rows[3]).toEqual(["バッチC", "", ""]);
   });
 
-  it("テーブルが無ければ作って 1 行目に書く（created=true）", () => {
-    const inserted: any[] = [];
+  it("空段落だけの step では、その段落を置き換えて表にする（1 トランザクション）", () => {
+    // 実バグ: 「後ろへ挿入 → 元の段落を削除」の 2 手だと、2 手目が挿入前の
+    // 位置で動いて入れたばかりの表ごと消していた（表がどこにも残らない）
+    const calls: string[] = [];
+    const replaced: any[] = [];
     const ed: any = {
       document: [
         { id: "step-1", type: "step", content: [], children: [{ id: "p1", type: "paragraph", content: [] }] },
       ],
-      insertBlocks(blocks: any[], _ref: string, _pos: string) {
-        inserted.push(blocks[0]);
+      insertBlocks() {
+        calls.push("insertBlocks");
+        return [{ id: "x" }];
+      },
+      removeBlocks() {
+        calls.push("removeBlocks");
+      },
+      replaceBlocks(remove: string[], insert: any[]) {
+        calls.push("replaceBlocks");
+        replaced.push({ remove, insert });
+        return { insertedBlocks: [{ id: "new-tbl" }] };
+      },
+      updateBlock() {
+        calls.push("updateBlock");
+      },
+    };
+    const r = appendEntityRowToTable(ed, "step-1", "バッチA", () => null, "名前");
+    expect(r).toEqual({ tableBlockId: "new-tbl", created: true });
+    expect(calls).toEqual(["replaceBlocks"]); // 挿入と削除を分けない
+    expect(replaced[0].remove).toEqual(["p1"]);
+    expect(replaced[0].insert[0].content.rows.map((row: any) => row.cells.map((c: any) => c[0].text))).toEqual([
+      ["名前"],
+      ["バッチA"],
+    ]);
+  });
+
+  it("中身のある step では末尾の後ろに足す", () => {
+    const inserted: any[] = [];
+    const ed: any = {
+      document: [
+        {
+          id: "step-1",
+          type: "step",
+          content: [],
+          children: [{ id: "p1", type: "paragraph", content: [{ type: "text", text: "本文" }] }],
+        },
+      ],
+      insertBlocks(blocks: any[], ref: string, pos: string) {
+        inserted.push({ block: blocks[0], ref, pos });
         return [{ id: "new-tbl" }];
+      },
+      replaceBlocks() {
+        throw new Error("空段落でないときは置き換えない");
       },
       removeBlocks() {},
       updateBlock() {},
     };
     const r = appendEntityRowToTable(ed, "step-1", "バッチA", () => null, "名前");
     expect(r).toEqual({ tableBlockId: "new-tbl", created: true });
-    expect(inserted[0].type).toBe("table");
-    expect(inserted[0].content.rows.map((row: any) => row.cells.map((c: any) => c[0].text))).toEqual([
-      ["名前"],
-      ["バッチA"],
-    ]);
+    expect(inserted[0]).toMatchObject({ ref: "p1", pos: "after" });
   });
 
-  it("中身が空の step でも空段落を足場にして表を作る", () => {
-    // 実バグ: 子ブロックが 1 つも無い step では挿入基準が無く、無言で失敗していた
-    const inserted: any[] = [];
-    const removed: string[] = [];
+  it("中身が空の step は children ごと差し替える", () => {
     const step: any = { id: "step-1", type: "step", content: [], children: [] };
     const ed: any = {
       document: [step],
-      insertBlocks(blocks: any[]) {
-        inserted.push(blocks[0]);
-        return [{ id: "new-tbl" }];
+      insertBlocks() {
+        throw new Error("基準になる子が無いので挿入は使わない");
       },
-      removeBlocks(ids: string[]) {
-        removed.push(...ids);
+      removeBlocks() {},
+      replaceBlocks() {
+        throw new Error("消す対象が無い");
       },
       updateBlock(id: string, patch: any) {
         if (id === "step-1" && patch.children) {
-          step.children = patch.children.map((c: any, i: number) => ({ id: `scaffold-${i}`, content: [], ...c }));
+          step.children = patch.children.map((c: any) => ({ id: "new-tbl", ...c }));
         }
       },
     };
     const r = appendEntityRowToTable(ed, "step-1", "バッチA", () => null, "名前");
     expect(r).toEqual({ tableBlockId: "new-tbl", created: true });
-    expect(inserted[0].type).toBe("table");
-    expect(removed).toEqual(["scaffold-0"]); // 足場の空段落は残さない
+    expect(step.children[0].type).toBe("table");
   });
 
   it("step が見つからなければ null", () => {
