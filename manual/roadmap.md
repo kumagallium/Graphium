@@ -55,6 +55,7 @@ Feature pages carry a badge like <Badge type="tip" text="Added in v0.18.0 (2026-
 | **v0.25.0** | 2026-07-30 | This manual goes live at `/Graphium/manual/`, in English and Japanese. |
 | **v0.26.0** | 2026-07-30 | [Voice memos](/mobile) record inside Graphium on your phone — tap to record, play it back, then capture — instead of bouncing through the OS recorder. |
 | **v0.27.0** | 2026-08-03 | [Columns](/notes-and-editor#columns) — place blocks side by side. Insert from the slash menu, create by dropping a block on another's edge, resize by dragging the gap; narrow layouts stack on their own. |
+| **v0.30.0** | 2026-08-09 | [Build procedures from the graph](/labels-and-provenance#editing-from-the-graph) — the flow view becomes a node editor. Add and rename steps, fill each step's inputs, tools, outputs, and parameters in a side panel, and every edit lands in the note's own tables. |
 
 ## Requests welcome
 
