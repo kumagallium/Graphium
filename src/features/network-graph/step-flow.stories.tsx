@@ -203,17 +203,37 @@ function Playground() {
       }
       onJumpToBlock={(blockId) => console.log("jump to", blockId)}
       getStepContentCount={(blockId) => (blockId === "s-mix" ? 2 : 0)}
-      onCreateSectionTable={(stepId: string, kind: "attribute" | "material" | "tool" | "output") => {
-        // 空の表（ヘッダ 1 列 + 空行）をラベル付きで作る。中身はセル編集で入れる
+      onCreateSectionTable={(
+        stepId: string,
+        kind: "attribute" | "material" | "tool" | "output",
+        name: string,
+      ) => {
+        // 空の 1 マスに打ち込まれた内容で表を作る。パラメータは name がキー、
+        // 入出力・ツールは name が 1 行目の名前になる
         const blockId = kind === "attribute" ? `param-${stepId}` : `${kind}-${stepId}`;
         setTables((all) =>
           all[blockId]
             ? all
             : {
                 ...all,
-                [blockId]: { blockId, headers: [kind === "attribute" ? "項目" : "名前"], rows: [[""]] },
+                [blockId]:
+                  kind === "attribute"
+                    ? { blockId, headers: [name], rows: [[""]] }
+                    : { blockId, headers: ["名前"], rows: [[name]] },
               },
         );
+        if (kind === "attribute") return;
+        const id = `entity_${blockId}_${name}`;
+        setGraph((g) => ({
+          ...g,
+          entities: [...g.entities, { id, label: name, kind, tableRef: { blockId, rowName: name }, attrs: [] }],
+          edges: [
+            ...g.edges,
+            kind === "output"
+              ? { id: `g-${counter.current++}`, kind: "generates", source: stepId, target: id }
+              : { id: `u-${counter.current++}`, kind: "used", source: id, target: stepId },
+          ],
+        }));
       }}
       onRenameEntity={(entityId, text) =>
         setGraph((g) => ({

@@ -102,7 +102,7 @@ export type StepFlowViewProps = {
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
   onAddRow?: (blockId: string, name: string) => void;
   /** 空セクションの「表を追加」: 空の表をラベル付きで作る */
-  onCreateSectionTable?: (stepBlockId: string, kind: "attribute" | EntityKind) => void;
+  onCreateSectionTable?: (stepBlockId: string, kind: "attribute" | EntityKind, name: string) => void;
   onMoveEntityToTable?: (entityNodeId: string) => void;
   onMoveParamToTable?: (stepBlockId: string, entityId: string, key: string, value: string) => void;
 };

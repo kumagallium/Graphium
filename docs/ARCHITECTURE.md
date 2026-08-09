@@ -154,9 +154,10 @@ talks to LLM and embedding backends.
   Selecting an entity shows the same panel with its row highlighted and
   its section scrolled into view, so there is exactly one place where
   things are added: "add row" / "add column" on the section's table, and
-  "add table" on a kind that has none yet (drawn as a dashed card) —
-  which creates the labeled table with an empty first cell already open
-  for typing, even when the step has no content blocks at all. The
+  the empty first cell of a kind that has no table yet — sections always
+  render as a table (dashed while it is only a placeholder), and typing
+  into that cell creates the labeled table in the note carrying what was
+  typed, so nothing is written until there is something to write. The
   parameter table's header row holds the keys and its single data row the
   values. Entities highlighted in prose
   remain readable and keep span-based editing — renaming rewrites the

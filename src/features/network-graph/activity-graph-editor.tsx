@@ -527,24 +527,27 @@ export function ActivityGraphEditor({
     [getEditor],
   );
 
-  // セクションに表がまだ無いとき: 空の表（ヘッダ 1 列 + 空行）をラベル付きで作る。
-  // 「表を追加」の 1 クリックで全種類同じ動きにし、中身の入力はできた表の
-  // セル編集でやる（パネル側が最初のセルをそのまま編集状態にする）
+  // セクションの空の 1 マスに打ち込まれたら、その内容で表を作ってラベルを付ける。
+  // 「表を追加」という前段は置かない — 打たなければノートには何も書かれず、
+  // 打った瞬間に中身のある表ができる（空の表だけが残る状態を作らない）。
   const onCreateSectionTable = useCallback(
-    (stepBlockId: string, kind: "attribute" | ActivityIoKind) => {
+    (stepBlockId: string, kind: "attribute" | ActivityIoKind, name: string) => {
       const editor = getEditor();
       if (!editor) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
       const labels = labelStoreRef.current;
-      const header =
-        kind === "attribute" ? t("graphTable.paramColumn") : t("graphTable.nameColumn");
-      const result = ensureParameterTable(editor, stepBlockId, header, (id) =>
-        findSectionTable(editor, id, kind),
-      );
+      const find = (id: string) => findSectionTable(editor, id, kind);
+      // パラメータは打った内容が「キー（列名）」、入出力・ツールは「行の名前」
+      const result =
+        kind === "attribute"
+          ? ensureParameterTable(editor, stepBlockId, trimmed, find)
+          : appendEntityRowToTable(editor, stepBlockId, trimmed, find, t("graphTable.nameColumn"));
       if (!result) return;
       rememberTable(stepBlockId, kind, result.tableBlockId);
       if (result.created) labels.setLabel(result.tableBlockId, kind);
     },
-    [getEditor],
+    [getEditor, findSectionTable, rememberTable],
   );
 
   const onRemoveTableRow = useCallback(

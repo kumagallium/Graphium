@@ -17,6 +17,8 @@ const LABEL_HEX: Record<string, string> = {
   material: "#4B7A52",
   tool: "#c08b3e",
   attribute: "#c08b3e",
+  // Output Entity は v3→v4 で "result" から改名。新キーが無いと色を失う
+  output: "#c26356",
   result: "#c26356",
 };
 

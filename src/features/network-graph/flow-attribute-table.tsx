@@ -69,8 +69,11 @@ export type FlowStepPanelProps = {
   onRemoveColumn?: (blockId: string, colIndex: number) => void;
   onAddRow?: (blockId: string, name: string) => void;
   // ── 表がまだ無いセクション ──
-  /** 「表を追加」: 空の表（ヘッダ 1 列 + 空行）をラベル付きで作る */
-  onCreateSectionTable?: (stepBlockId: string, kind: SectionKind) => void;
+  /**
+   * まだ表が無いセクションで最初の 1 マスが入力されたとき、その内容で表を作る。
+   * 入出力・ツールは name を 1 行目の名前に、パラメータは name を最初のキーにする。
+   */
+  onCreateSectionTable?: (stepBlockId: string, kind: SectionKind, name: string) => void;
   // ── 本文ハイライト由来の編集・移行 ──
   onRenameEntity?: (entityId: string, text: string) => void;
   onRemoveEntity?: (entityId: string) => void;
@@ -90,6 +93,19 @@ const SECTION_COLOR: Record<SectionKind, string> = {
   material: KIND_PALETTE.material.main,
   tool: KIND_PALETTE.tool.main,
   output: KIND_PALETTE.output.main,
+};
+
+/**
+ * 見出し帯の濃さ（色ごとの alpha）。
+ * 一律の濃度にすると、彩度の低いブランドグリーンだけが灰色に沈んで
+ * パラメータ（グレー）と見分けが付かなくなる。見た目の強さを揃えるため、
+ * 緑だけ濃く敷く。
+ */
+const SECTION_BAND_ALPHA: Record<SectionKind, string> = {
+  attribute: "26",
+  material: "45",
+  tool: "26",
+  output: "26",
 };
 
 const th: CSSProperties = {
@@ -195,8 +211,12 @@ export function FlowStepPanel({
   // 編集対象: `h:<blockId>:<col>`（ヘッダ） / `c:<blockId>:<row>:<col>`（セル）
   //           / `inline:<entityId>`（本文ハイライトの名前）
   const [edit, setEdit] = useState<{ key: string; draft: string } | null>(null);
-  // 追加入力中: 既存表への行・列
-  const [adding, setAdding] = useState<{ what: "column" | "row"; blockId: string; draft: string } | null>(null);
+  // 追加入力中: 既存表への行・列、またはまだ無いセクションの最初の 1 マス
+  const [adding, setAdding] = useState<
+    | { what: "column" | "row"; blockId: string; draft: string }
+    | { what: "firstCell"; kind: SectionKind; draft: string }
+    | null
+  >(null);
   // 「表を追加」直後、できた表の最初のセルを編集状態にする予約
   const [pendingFocus, setPendingFocus] = useState<SectionKind | null>(null);
   const { compositionHandlers, isImeKey } = useImeEnterGuard();
@@ -273,7 +293,11 @@ export function FlowStepPanel({
     if (adding) {
       const v = adding.draft.trim();
       if (v) {
-        if (adding.what === "column") onAddColumn?.(adding.blockId, v);
+        if (adding.what === "firstCell") {
+          onCreateSectionTable?.(data.stepId, adding.kind, v);
+          // パラメータはキーを名付けたので、続けて値を打てるようにする
+          if (adding.kind === "attribute") setPendingFocus("attribute");
+        } else if (adding.what === "column") onAddColumn?.(adding.blockId, v);
         else onAddRow?.(adding.blockId, v);
       }
     }
@@ -472,6 +496,19 @@ export function FlowStepPanel({
               </tr>
             );
           })}
+          {/* まだ表が無いセクションの空 1 行。ここに名前を打つと表ができる */}
+          {!table && onCreateSectionTable && (
+            <tr>
+              <td style={td} onClick={() => !editing("first") && setAdding({ what: "firstCell", kind, draft: "" })}>
+                {adding?.what === "firstCell" && adding.kind === kind ? (
+                  field(adding.draft, (v) => setAdding({ what: "firstCell", kind, draft: v }), commitAdd)
+                ) : (
+                  <span style={ghostText}>{getDisplayLabel(kind).replace(/^\[|\]$/g, "")}</span>
+                )}
+              </td>
+              <td style={{ ...td, borderRight: "none" }} />
+            </tr>
+          )}
           {table && onAddRow && (
             <tr>
               <td colSpan={headers.length + (trailing ? 1 : 0)} style={{ border: "none", padding: 0 }}>
@@ -500,6 +537,7 @@ export function FlowStepPanel({
     const blockId = table?.blockId ?? null;
     const headers = table?.headers ?? [];
     const rows = table?.rows ?? (ghosts.length > 0 ? [[]] : []);
+
     const ghostCols = ghosts.map((g) => ({ item: g, ...splitAttrLabel(g.label) }));
     const trailing = !!onAddColumn && !!table;
     return (
@@ -564,10 +602,26 @@ export function FlowStepPanel({
                 )}
               </th>
             )}
+            {/* まだ表が無いパラメータ: 最初のキーをここで名付ける */}
+            {!table && onCreateSectionTable && (
+              <th style={th} onClick={() => setAdding({ what: "firstCell", kind: "attribute", draft: "" })}>
+                {adding?.what === "firstCell" && adding.kind === "attribute" ? (
+                  field(adding.draft, (v) => setAdding({ what: "firstCell", kind: "attribute", draft: v }), commitAdd)
+                ) : (
+                  <span style={ghostText}>{t("graphTable.paramColumn")}</span>
+                )}
+              </th>
+            )}
             {!table && <th style={{ ...th, borderRight: "none", width: "1%" }} />}
           </tr>
         </thead>
         <tbody>
+          {!table && (
+            <tr>
+              <td style={{ ...td, ...ghostText }} />
+              <td style={{ ...td, borderRight: "none" }} />
+            </tr>
+          )}
           {rows.map((row, r) => (
             <tr key={r}>
               {headers.map((_, col) => {
@@ -614,8 +668,6 @@ export function FlowStepPanel({
     const color = SECTION_COLOR[kind];
     const table = data.tables[kind];
     const ghosts = data.prose.filter((p) => p.kind === kind);
-    const hasBody = !!table || ghosts.length > 0;
-    const canStart = !!onCreateSectionTable;
     return (
       <div
         key={kind}
@@ -638,30 +690,18 @@ export function FlowStepPanel({
             alignItems: "center",
             gap: 6,
             padding: "4px 6px",
-            background: `${color}26`,
+            background: `${color}${SECTION_BAND_ALPHA[kind]}`,
           }}
         >
           <SectionChip kind={kind} />
-          {/* 表が無いセクションは「表を追加」。押した瞬間に空の表がラベル付きで
-              生まれ、最初のセル（パラメータはキー、他は名前）が入力待ちになる。
-              薄い行（本文ハイライト / 共有）が出ているときは、その行の操作が
-              先にあるので見出しにボタンを重ねない */}
-          {!table && ghosts.length === 0 && canStart && (
-            <button
-              onClick={() => {
-                onCreateSectionTable?.(data.stepId, kind);
-                setPendingFocus(kind);
-              }}
-              style={addBtnStyle}
-            >
-              <Plus size={11} /> {t("flowTable.addTable")}
-            </button>
-          )}
         </div>
-        {hasBody &&
-          (kind === "attribute"
-            ? paramGrid(table, ghosts)
-            : entityGrid(table, kind as ActivityIoKind, ghosts))}
+        {/* 表がまだ無くても、空の 1 行がある表として描く。ここに打ち込んだ
+            瞬間にノート側の表が生まれる（「表を追加」という前段は置かない）。
+            打たなければノートには何も書かれない — ステップを作っただけで
+            空の表が 4 つ並ぶのは、ノートとして読めなくなるので避ける */}
+        {kind === "attribute"
+          ? paramGrid(table, ghosts)
+          : entityGrid(table, kind as ActivityIoKind, ghosts)}
       </div>
     );
   };
