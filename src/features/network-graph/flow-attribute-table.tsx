@@ -229,16 +229,13 @@ export function FlowStepPanel({
     setPendingFocus(null);
   }, [stepId]);
 
-  // 「表を追加」の後、できた表の最初のセルをそのまま編集状態にする。
-  // パラメータはキー（ヘッダ）、入出力・ツールは 1 行目の名前セル
+  // パラメータのキーを名付けて表ができたら、続けて値を打てるようにする。
+  // 送る先はヘッダ（キー）ではなく 1 行目の値セル — ヘッダに戻すと、
+  // いま名付けたキーを打ち直す形になり上書きされる（実バグ）
   const pendingTable = pendingFocus ? (data?.tables[pendingFocus] ?? null) : null;
   useEffect(() => {
     if (!pendingFocus || !pendingTable) return;
-    if (pendingFocus === "attribute") {
-      setEdit({ key: `h:${pendingTable.blockId}:0`, draft: pendingTable.headers[0] ?? "" });
-    } else {
-      setEdit({ key: `c:${pendingTable.blockId}:0:0`, draft: pendingTable.rows[0]?.[0] ?? "" });
-    }
+    setEdit({ key: `c:${pendingTable.blockId}:0:0`, draft: pendingTable.rows[0]?.[0] ?? "" });
     setPendingFocus(null);
   }, [pendingFocus, pendingTable]);
 
