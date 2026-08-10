@@ -1037,9 +1037,25 @@ fn migrate_media_extensions() {
     migrate_media_extensions_in(&dir);
 }
 
-/// メディアファイルを保存（Base64 エンコードされたデータを受け取る）
+/// メディアファイルを保存（Base64 エンコードされたデータを受け取る）。
+/// 数 MB になりうるデコード・書き込みを同期 command でメインスレッドに載せると、
+/// 並行する他の invoke やイベント配送を待たせる（kill_pid と同じ理由）。
+/// `spawn_blocking` で専用スレッドへ逃がす。
 #[tauri::command]
-fn save_media_file(
+async fn save_media_file(
+    file_id: String,
+    name: String,
+    mime_type: String,
+    data: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        save_media_file_sync(file_id, name, mime_type, data)
+    })
+    .await
+    .map_err(|e| format!("メディア保存タスク失敗: {e}"))?
+}
+
+fn save_media_file_sync(
     file_id: String,
     name: String,
     mime_type: String,
@@ -1081,15 +1097,20 @@ fn save_media_file(
     fs::write(&data_path, bytes).map_err(|e| format!("メディア書き込み失敗: {e}"))
 }
 
-/// メディアファイルを読み込み（Base64 エンコードして返す）
+/// メディアファイルを読み込み（Base64 エンコードして返す）。
+/// 数 MB の読み込み + エンコードをメインスレッドから逃がす（save_media_file と同旨）。
 #[tauri::command]
-fn read_media_file(file_id: String) -> Result<String, String> {
-    use base64::Engine;
-    let dir = media_dir()?;
-    let path = find_media_data_file(&dir, &file_id)
-        .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
-    let bytes = fs::read(&path).map_err(|e| format!("メディア読み取り失敗: {e}"))?;
-    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+async fn read_media_file(file_id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
+        let dir = media_dir()?;
+        let path = find_media_data_file(&dir, &file_id)
+            .ok_or_else(|| format!("メディアが見つかりません: {file_id}"))?;
+        let bytes = fs::read(&path).map_err(|e| format!("メディア読み取り失敗: {e}"))?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+    })
+    .await
+    .map_err(|e| format!("メディア読み取りタスク失敗: {e}"))?
 }
 
 /// URL の Reader 原文などのプレーンテキストを保存（B-persist）。
@@ -1112,9 +1133,16 @@ fn read_media_text(file_id: String) -> Result<Option<String>, String> {
         .map_err(|e| format!("原文テキスト読み取り失敗: {e}"))
 }
 
-/// メディアファイル一覧を取得
+/// メディアファイル一覧を取得。
+/// 素材数に比例して .meta.json を読むため、メインスレッドから逃がす。
 #[tauri::command]
-fn list_media_files_cmd() -> Result<Vec<MediaFileInfo>, String> {
+async fn list_media_files_cmd() -> Result<Vec<MediaFileInfo>, String> {
+    tauri::async_runtime::spawn_blocking(list_media_files_sync)
+        .await
+        .map_err(|e| format!("メディア一覧タスク失敗: {e}"))?
+}
+
+fn list_media_files_sync() -> Result<Vec<MediaFileInfo>, String> {
     let dir = media_dir()?;
     let mut files = Vec::new();
 

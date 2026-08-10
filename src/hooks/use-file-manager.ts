@@ -27,6 +27,7 @@ import {
 } from "../features/derivation/clone-document";
 import { loadSnapshot } from "../features/version-snapshots/snapshot-store";
 import { findSnapshotsReferencingAsset } from "../features/version-snapshots/snapshot-refs";
+import { registerPendingOcrFile } from "../features/media-ocr";
 import {
   buildNoteGraph,
   buildLineageTree,
@@ -1672,6 +1673,8 @@ export function useFileManager(authenticated: boolean) {
       mediaIndexRef.current = updated;
       setMediaIndex(updated);
       saveMediaIndex(updated).catch((err) => console.warn("メディアインデックス保存失敗:", err));
+      // 貼付直後の自動 OCR がプロバイダから読み戻さずに済むよう File 実体を預ける
+      registerPendingOcrFile(result.url, file);
       return { url: result.url, fileId: result.fileId, entry };
     },
     [],
