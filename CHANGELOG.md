@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.30.1](https://github.com/kumagallium/Graphium/compare/v0.30.0...v0.30.1) - 2026-08-10
+
+- [fix] Add a re-check button to the update banner by @kumagallium in https://github.com/kumagallium/Graphium/pull/660
+
 ## [v0.30.0](https://github.com/kumagallium/Graphium/compare/v0.29.0...v0.30.0) - 2026-08-09
 
 - Version built-in system skills and sync defaults on startup by @kumagallium in https://github.com/kumagallium/Graphium/pull/656
