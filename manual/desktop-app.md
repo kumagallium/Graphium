@@ -59,7 +59,7 @@ You can move the data folder anywhere — even into a Dropbox, Google Drive, or 
 
 ## Updating
 
-Graphium checks for updates automatically on launch and every 24 hours. When a new version is available, a banner appears at the top of the window — "Graphium x.x.x is available" — with a **Restart to update** button. Clicking it downloads the update, installs it, and relaunches the app automatically.
+Graphium checks for updates automatically on launch and every 24 hours. When a new version is available, a banner appears at the top of the window — "Graphium x.x.x is available" — with a **Restart to update** button. Clicking it downloads the update, installs it, and relaunches the app automatically. The banner keeps showing the version it found at check time, so if an even newer release has come out since, click the banner's **Check for updates** button to refresh it to the latest version before installing.
 
 You can also check manually: open Settings → **About** and click **Check for updates**. If you're current, it reports "You're on the latest version"; the browser version shows that update checks are only available in the desktop app.
 
