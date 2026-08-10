@@ -254,11 +254,17 @@ graphs contain no `graphium:phase` metadata. See DATA_MODEL §2.3 for the
 historical semantics that pre-v6 exports may still contain.
 
 Beyond labelled blocks, images can have their text **read on-device**, with
-no label required. The user triggers this from the image block's
-drag-handle menu ("Read text from image"); Tesseract.js runs entirely in
-the browser (only the wasm and language data come from a CDN — the image
-itself is never uploaded) and the result is stored in
-`page.mediaOcr[blockId]`. OCR results are deliberately **not** projected
+no label required. Newly pasted images are read automatically (progress is
+shown in a corner toast; images that were already in the note when it was
+opened are left alone), and the user can also trigger a read from the image
+block's drag-handle menu ("Read text from image"). Tesseract.js runs
+entirely in the browser — the wasm core and language data are bundled with
+the app, and the image itself never leaves the device. For a just-pasted
+image the original `File` is handed straight to the recognizer instead of
+being read back from the storage provider, and recognition jobs wait for
+any in-progress drag gesture to finish before starting (on desktop, a large
+IPC transfer racing a WebView drag session can wedge the window). The
+result is stored in `page.mediaOcr[blockId]`. OCR results are deliberately **not** projected
 into the procedure graph: the graph describes the procedure the user
 wrote, and an automatic OCR pass is tooling provenance, not a step of that
 procedure (an earlier release projected image → OCR → extracted-text

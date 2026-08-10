@@ -11,6 +11,7 @@ export {
   type MediaOcrStore,
 } from "./store";
 export { runOcrForImage, resolveMediaUrl } from "./run-ocr";
+export { registerPendingOcrFile } from "./pending-files";
 export { collectOcrText, OCR_CAPABLE_BLOCK_TYPES } from "./collect";
 export { ImageOcrToolbarButton } from "./ImageOcrToolbarButton";
 export { OcrToast, type OcrToastState } from "./OcrToast";

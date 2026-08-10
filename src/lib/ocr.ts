@@ -121,6 +121,25 @@ export function recognizeImage(
   return result;
 }
 
+/**
+ * 詰まった認識パイプラインを作り直す。
+ *
+ * ワーカーの起動や認識が宙吊りになると、ジョブ直列化チェーンごと後続が
+ * 永久に待たされる。呼び出し側がタイムアウトを検知したらこれを呼ぶと、
+ * 次のジョブは新しいワーカー・新しいチェーンで再開できる。
+ * 宙吊りワーカーの terminate は投げっぱなしにする（それ自体が応答しない
+ * 可能性があるため待たない）。
+ */
+export function resetOcrPipeline(): void {
+  const p = workerPromise;
+  workerPromise = null;
+  workerLangs = "";
+  queue = Promise.resolve();
+  if (p) {
+    p.then((w) => w.terminate()).catch(() => {});
+  }
+}
+
 /** ワーカーを破棄してメモリを解放する。サインアウト時などに任意で呼ぶ。 */
 export async function terminateOcr(): Promise<void> {
   const p = workerPromise;
