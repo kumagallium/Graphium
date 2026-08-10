@@ -13,7 +13,7 @@
 // 毎レンダーでグラフ全体が再構築されてしまう。
 // ──────────────────────────────────────────────
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useReducer, useRef } from "react";
 import { StepFlowView, type EntityKind } from "./step-flow-view";
 import { provDocToFlowGraph, splitAttrLabel, type ActivityIoKind } from "./activity-graph-adapter";
 import { useLinkStore } from "../block-link/store";
@@ -150,6 +150,12 @@ export function ActivityGraphEditor({
   );
 
   const getEditor = useCallback(() => editorRef?.current ?? null, [editorRef]);
+
+  // パネル経由の書き込み（表の作成・セル編集など）は PROV 出力を変えない
+  // ことがある（例: 値が空のパラメータ表）。その場合 doc は変わらず再レンダー
+  // が起きないので、パネルが古い表データ（ファントム）を映したまま固まる。
+  // 書き込み系コールバックの最後に呼んで、getPanelFor を確実に再計算させる
+  const [, bumpPanel] = useReducer((x: number) => x + 1, 0);
 
   // 直前に作ったラベル付きテーブル（`${stepId}:${kind}` → blockId）。
   // labelStore の反映は次のレンダーまで届かないので、連続で呼ばれると
@@ -354,8 +360,9 @@ export function ActivityGraphEditor({
       // 本文の書き換えはしない（読むときの色分けは本文側の情報）。
       // 表の行と本文の印は同名なので generator が 1 Entity に統合し、
       // パネルの薄い行はそれで消える。
+      bumpPanel();
     },
-    [getEditor, owningStepOf],
+    [getEditor, owningStepOf, bumpPanel],
   );
 
   // パネルは「選択の裏にある step の中身ぜんぶ」。step 選択でもその中の
@@ -373,8 +380,11 @@ export function ActivityGraphEditor({
 
       const labels = labelStoreRef.current.labels;
       const doc = editor.document ?? [];
+      // findSectionTable = ラベル検索 + 直近作成分のフォールバック。
+      // 作成直後は labelStore の反映が次レンダーまで届かないことがあり、
+      // ラベル検索だけだと「まだ無い」と誤判定してファントムに戻ってしまう
       const tableOf = (kind: string) => {
-        const id = findLabeledTableInStep(doc, labels, stepId, kind as any);
+        const id = findSectionTable(editor, stepId, kind);
         return id ? readTable(editor, id) : null;
       };
       const tables = {
@@ -457,47 +467,57 @@ export function ActivityGraphEditor({
         prose,
       };
     },
-    [getEditor, owningStepOf],
+    [getEditor, owningStepOf, findSectionTable],
   );
 
   const onSetCell = useCallback(
     (blockId: string, rowIndex: number, colIndex: number, value: string) => {
       const editor = getEditor();
-      if (editor) setTableCellAt(editor, blockId, rowIndex, colIndex, value);
+      if (!editor) return;
+      setTableCellAt(editor, blockId, rowIndex, colIndex, value);
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   const onRenameColumn = useCallback(
     (blockId: string, colIndex: number, name: string) => {
       const editor = getEditor();
-      if (editor) renameTableColumn(editor, blockId, colIndex, name);
+      if (!editor) return;
+      renameTableColumn(editor, blockId, colIndex, name);
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   const onAddColumn = useCallback(
     (blockId: string, name: string) => {
       const editor = getEditor();
-      if (editor) addTableColumn(editor, blockId, name);
+      if (!editor) return;
+      addTableColumn(editor, blockId, name);
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   const onRemoveColumn = useCallback(
     (blockId: string, colIndex: number) => {
       const editor = getEditor();
-      if (editor) removeTableColumn(editor, blockId, colIndex);
+      if (!editor) return;
+      removeTableColumn(editor, blockId, colIndex);
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   const onAddRow = useCallback(
     (blockId: string, name: string) => {
       const editor = getEditor();
-      if (editor) addTableRow(editor, blockId, name);
+      if (!editor) return;
+      addTableRow(editor, blockId, name);
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   /**
@@ -523,8 +543,9 @@ export function ActivityGraphEditor({
       }
       setTableCellAt(editor, result.tableBlockId, 0, colIndex, value);
       removeInlineEntity(editor, entityId);
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   // セクションの空の 1 マスに打ち込まれたら、その内容で表を作ってラベルを付ける。
@@ -546,8 +567,9 @@ export function ActivityGraphEditor({
       if (!result) return;
       rememberTable(stepBlockId, kind, result.tableBlockId);
       if (result.created) labels.setLabel(result.tableBlockId, kind);
+      bumpPanel();
     },
-    [getEditor, findSectionTable, rememberTable],
+    [getEditor, findSectionTable, rememberTable, bumpPanel],
   );
 
   const onRemoveTableRow = useCallback(
@@ -586,8 +608,9 @@ export function ActivityGraphEditor({
         // 新規テーブルは generator に Entity として読ませるためラベルが要る
         labels.setLabel(result.tableBlockId, kind);
       }
+      bumpPanel();
     },
-    [getEditor],
+    [getEditor, bumpPanel],
   );
 
   // Entity ノード → step の接続: その Entity と同名の入力 span を対象 step に合成する。
