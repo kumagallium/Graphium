@@ -87,6 +87,19 @@ The shared copy is a snapshot. To update it, edit your local note and choose **U
 
 Once a shared folder is configured, a **Library** section with a **Shared** entry appears in the sidebar. It lists shared notes, references, and data files from everyone on the team. Entries from others are read-only — press **Fork** to copy a note into your own storage, where you can edit it freely. Any media the note carries is materialized into your local library automatically, and the fork records where it came from.
 
+### Cite a shared entry in your notes
+
+Type `/` in any note and choose **Cite shared entry** to insert a citation card pointing at a shared note, reference, or data file. The card shows the entry's title, author, date, and a verification badge. It stays in your note as a *reference* — the content itself lives in the shared folder, and your note keeps only a lightweight snapshot for display, so the card still renders when the shared folder is unreachable.
+
+The badge tells you the state of the shared side:
+
+- **Verified** — the shared content matches its recorded fingerprint (hash).
+- **Content differs** — the shared files no longer match the fingerprint; something modified them outside Graphium.
+- **Cached copy** — the shared folder is unreachable (for example, the NAS is not mounted), so the card renders from its snapshot.
+- **Not found** — the entry was removed or unshared.
+
+When the author updates the entry in place, your card follows automatically. When they publish a major revision, the card keeps pointing at the version you cited and shows **A newer version is available** instead — your past analysis never changes underneath you. Click the arrow on the card to open the entry in the shared library. Citations are also recorded in the note's provenance, so an exported evidence bundle shows which shared entries your note used.
+
 ## Exports
 
 Everything can leave Graphium in open formats, per note or in bulk.

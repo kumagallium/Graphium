@@ -166,9 +166,9 @@ export function SharedCitationCard({
           <StatusBadge status={status} />
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-          <span className="truncate">{authorName}</span>
-          <span className="opacity-50">·</span>
-          <span>{formatDate(updatedAt)}</span>
+          {authorName && <span className="truncate">{authorName}</span>}
+          {authorName && updatedAt && <span className="opacity-50">·</span>}
+          {updatedAt && <span>{formatDate(updatedAt)}</span>}
           {version != null && version > 1 && (
             <>
               <span className="opacity-50">·</span>

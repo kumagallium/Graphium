@@ -164,6 +164,31 @@ export function sanitizeBlocksForMarkdown(blocks: unknown, schemaInfo: SanitizeS
       out.push({ ...paragraphWithLink(label, props.url || undefined), children });
       continue;
     }
+    if (b.type === "sharedCitation") {
+      // shared:// 引用カード → 出所が読めるテキスト 1 行に落とす。
+      // shared:// URI はローカルアプリ外では解決できないため、リンクにはせず
+      // タイトル・種別・作者と ID を書誌情報風に残す。
+      const props = b.props ?? {};
+      const title = String(props.cachedTitle || "(untitled)");
+      const meta = [props.entryType, props.cachedAuthor]
+        .map((v) => String(v ?? "").trim())
+        .filter(Boolean)
+        .join(", ");
+      const idPart = props.sharedId ? ` — shared://${String(props.sharedId)}` : "";
+      out.push({
+        type: "paragraph",
+        props: {},
+        content: [
+          {
+            type: "text",
+            text: `📎 ${title}${meta ? ` (${meta})` : ""}${idPart}`,
+            styles: {},
+          },
+        ],
+        children,
+      });
+      continue;
+    }
     if (b.type === "callout") {
       // callout → 本文テキストを維持した paragraph（枠・アイコンは捨てる）
       out.push({

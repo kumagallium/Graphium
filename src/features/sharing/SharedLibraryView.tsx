@@ -45,6 +45,9 @@ type Props = {
   /** 自分作ノートの Unshare（成功時はリストを再読み込み） */
   onUnshare: (entry: SharedEntry) => Promise<void>;
   onBack: () => void;
+  /** 引用カードの「開く」から特定エントリを選択表示で開く（consume 後に onFocusConsumed） */
+  focusEntryId?: string | null;
+  onFocusConsumed?: () => void;
 };
 
 // 共有導線（Share ボタン）が実装されている type のみ tab に出す。
@@ -70,6 +73,8 @@ export function SharedLibraryView({
   onForkNote,
   onUnshare,
   onBack,
+  focusEntryId,
+  onFocusConsumed,
 }: Props) {
   const [activeType, setActiveType] = useState<SharedEntryType>("note");
   const [loading, setLoading] = useState(false);
@@ -105,6 +110,25 @@ export function SharedLibraryView({
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // 引用カードの「開く」→ ロード済みエントリから該当 id を探して選択表示する。
+  // ロード完了前は entriesByType が空なので、entries が入ってから発火する。
+  useEffect(() => {
+    if (!focusEntryId) return;
+    for (const [type, list] of Object.entries(entriesByType)) {
+      const hit = list.find((e) => e.id === focusEntryId);
+      if (hit) {
+        setActiveType(type as SharedEntryType);
+        setSelected(hit);
+        onFocusConsumed?.();
+        return;
+      }
+    }
+    // 全 type ロード後も見つからなければ consume だけする（削除済み等）
+    if (!loading && Object.values(entriesByType).some((l) => l.length > 0)) {
+      onFocusConsumed?.();
+    }
+  }, [focusEntryId, entriesByType, loading, onFocusConsumed]);
 
   const counts = useMemo(() => {
     const out: Record<SharedEntryType, number> = {
