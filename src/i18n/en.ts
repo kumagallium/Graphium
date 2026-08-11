@@ -1727,7 +1727,7 @@ export const en: Record<string, string> = {
   "share.unshareConfirmBody": "Other members may have already viewed, cached, or forked it. It cannot be fully erased.",
   "share.updateHint": "To update it, edit locally and share again.",
   "share.readOnlyOthers": "Shared entries from others are read-only.",
-  "share.forkToView": "Fork it to open locally and view the full content.",
+  "share.preview.loading": "Loading preview...",
   "share.noBlobRootPreview": "Preview unavailable because no blob root is configured.",
 
   // スラッシュメニュー: 新規ノート

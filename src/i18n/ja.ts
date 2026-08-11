@@ -1725,7 +1725,7 @@ export const ja: Record<string, string> = {
   "share.unshareConfirmBody": "他のメンバーがすでに見た / キャッシュした / fork した可能性があります。完全な抹消はできません。",
   "share.updateHint": "更新するにはローカルで編集して再 Share してください。",
   "share.readOnlyOthers": "他人の共有エントリは読み取り専用です。",
-  "share.forkToView": "Fork してローカルで開くとフル内容を確認できます。",
+  "share.preview.loading": "プレビューを読み込み中...",
   "share.noBlobRootPreview": "Blob root が未設定のためプレビューできません。",
 
   // スラッシュメニュー: 新規ノート

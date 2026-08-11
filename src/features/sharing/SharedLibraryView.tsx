@@ -32,8 +32,24 @@ import {
 } from "../../lib/storage/shared";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { loadAllSharedEntries } from "./shared-library-loader";
+import {
+  collectSharedBlobHashes,
+  rewriteSharedBlobUrls,
+} from "./materialize-blobs";
 import { formatDate } from "../../lib/format-datetime";
 import { t } from "../../i18n";
+import { SandboxEditor } from "../../base/editor";
+import { customBlockEntries, sanitizeBlocksForLoad } from "../../blocks/registry";
+import {
+  LabelStoreProvider,
+  ProvLabelsEnabledProvider,
+} from "../context-label/store";
+import { LinkStoreProvider } from "../block-link/store";
+import { IndexTableStoreProvider } from "../index-table/store";
+import { MediaInlineLabelProvider } from "../inline-label/media-store";
+import { BlockAlignmentProvider } from "../block-alignment/store";
+import { AiAssistantProvider } from "../ai-assistant/store";
+import type { GraphiumDocument } from "../../lib/document-types";
 
 type Props = {
   /** Settings の shared root path */
@@ -637,37 +653,8 @@ function SharedEntryBody({
   }
 
   if (entry.type === "note") {
-    // body は GraphiumDocument JSON。簡易プレビュー（タイトル + ページ blocks 概要）
-    try {
-      const doc = JSON.parse(body) as {
-        title?: string;
-        pages?: { blocks?: unknown[] }[];
-      };
-      const blockCount =
-        doc.pages?.reduce(
-          (sum, p) => sum + (Array.isArray(p.blocks) ? p.blocks.length : 0),
-          0,
-        ) ?? 0;
-      return (
-        <div className="space-y-2 text-sm">
-          <p className="text-foreground/90">
-            <span className="font-medium">{doc.title ?? "(untitled)"}</span>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {doc.pages?.length ?? 0} page · {blockCount} block
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t("share.forkToView")}
-          </p>
-        </div>
-      );
-    } catch {
-      return (
-        <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/30 p-2 rounded">
-          {body.slice(0, 4000)}
-        </pre>
-      );
-    }
+    // body は GraphiumDocument JSON。読み取り専用エディタでフル内容を表示する
+    return <SharedNotePreview body={body} />;
   }
 
   // template / concept / report はテキスト系として中身をそのまま表示
@@ -675,6 +662,120 @@ function SharedEntryBody({
     <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 p-3 rounded">
       {body.slice(0, 8000)}
     </pre>
+  );
+}
+
+// ── note の read-only preview ──
+//
+// shared 側の body（GraphiumDocument JSON）を読み取り専用エディタで描画する。
+// ノート内メディアは Share 時に `shared-blob:sha256:<hex>` へ置換されている
+// （auto-blob）ため、表示前に blob root から Blob URL を作って差し戻す。
+// 解決できない blob はそのまま残す（該当メディアだけ壊れ表示、本文は読める）。
+
+type NotePreviewState =
+  | { phase: "loading" }
+  | { phase: "ready"; blocks: unknown[] }
+  | { phase: "error" };
+
+export function SharedNotePreview({ body }: { body: string }) {
+  const [state, setState] = useState<NotePreviewState>({ phase: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    const createdUrls: string[] = [];
+    (async () => {
+      let doc: GraphiumDocument;
+      try {
+        doc = JSON.parse(body) as GraphiumDocument;
+        if (!Array.isArray(doc.pages)) throw new Error("not a GraphiumDocument");
+      } catch {
+        if (!cancelled) setState({ phase: "error" });
+        return;
+      }
+      // ノート内メディア（shared-blob:）→ Blob URL
+      const blobRoot = getBlobRoot();
+      const hashes = collectSharedBlobHashes(doc);
+      const mapping = new Map<string, string>();
+      if (blobRoot && hashes.length > 0) {
+        const provider = new LocalFolderBlobProvider(blobRoot);
+        for (const hash of hashes) {
+          try {
+            // get() は hash のみ参照するため、他フィールドはプレースホルダで足りる
+            const u = await provider.url({ provider: "local-folder", uri: "", hash, size: 0 });
+            mapping.set(hash, u);
+            createdUrls.push(u);
+          } catch {
+            // 未解決 blob は shared-blob: のまま残す
+          }
+        }
+      }
+      if (cancelled) return;
+      const resolved = rewriteSharedBlobUrls(doc, mapping);
+      // 全ページを「ページタイトル見出し + 本文」で連結（2 ページ目以降のみ見出しを挟む）
+      const blocks: unknown[] = [];
+      resolved.pages.forEach((page, i) => {
+        if (i > 0) {
+          blocks.push({
+            type: "heading",
+            props: { level: 2 },
+            content: [{ type: "text", text: page.title || `Page ${i + 1}`, styles: {} }],
+            children: [],
+          });
+        }
+        blocks.push(...sanitizeBlocksForLoad(page.blocks ?? []));
+      });
+      setState({ phase: "ready", blocks });
+    })();
+    return () => {
+      cancelled = true;
+      for (const u of createdUrls) {
+        if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+      }
+    };
+  }, [body]);
+
+  if (state.phase === "loading") {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
+        <RefreshCw size={12} className="animate-spin" />
+        {t("share.preview.loading")}
+      </div>
+    );
+  }
+  if (state.phase === "error") {
+    // GraphiumDocument として読めない body は raw 表示にフォールバック
+    return (
+      <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-muted/30 p-2 rounded">
+        {body.slice(0, 4000)}
+      </pre>
+    );
+  }
+  return (
+    <div className="shared-note-preview -mx-2 text-sm">
+      {/* SandboxEditor は SelectionToolbar / InlineAnchorController が常時
+          mount するため note-app と同じ Context 群を要求する（step ストーリーと
+          同じスタック）。Library パネルは Provider ツリーの外なのでここで
+          完結させる — ラベル・AI は無効の読み取り表示 */}
+      <ProvLabelsEnabledProvider enabled={false}>
+        <LabelStoreProvider>
+          <LinkStoreProvider>
+            <IndexTableStoreProvider>
+              <MediaInlineLabelProvider>
+                <BlockAlignmentProvider>
+                  <AiAssistantProvider aiAvailable={false}>
+                    <SandboxEditor
+                      blocks={customBlockEntries}
+                      initialContent={state.blocks as any[]}
+                      editable={false}
+                    />
+                  </AiAssistantProvider>
+                </BlockAlignmentProvider>
+              </MediaInlineLabelProvider>
+            </IndexTableStoreProvider>
+          </LinkStoreProvider>
+        </LabelStoreProvider>
+      </ProvLabelsEnabledProvider>
+    </div>
   );
 }
 
