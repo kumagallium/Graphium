@@ -361,6 +361,10 @@ export const ja: Record<string, string> = {
   "slash.advancedGroup": "高度なブロック",
   "slash.indexTable": "インデックステーブル",
   "slash.indexTableSub": "データ管理用のテーブルを挿入",
+  "slash.logTable": "記録テーブル",
+  "slash.logTableSub": "行を追加すると日時が自動で入る表",
+  "slash.chart": "チャート",
+  "slash.chartSub": "ノート内のテーブルをグラフ表示",
   "slash.bookmark": "ブックマーク",
   "slash.bookmarkSub": "URL をカード形式で表示",
   "slash.pdf": "PDF",
@@ -1795,6 +1799,30 @@ export const ja: Record<string, string> = {
   "indexTable.colCond1": "条件1",
   "indexTable.colCond2": "条件2",
   "indexTable.duplicateNoteConfirm": "「{title}」という名前のノートが既に存在します。新しいノートを作成しますか？",
+
+  // 記録テーブル
+  "logTable.colDateTime": "日時",
+  "logTable.colValue": "値",
+  "logTable.colNote": "メモ",
+  "logTable.addRecord": "記録",
+  "logTable.addRecordHint": "現在日時が入った行を追加",
+
+  // チャートブロック
+  "chart.selectSource": "グラフにするテーブルをこのノートから選択",
+  "chart.sourceGone": "参照先のテーブルがこのノートに見つかりません",
+  "chart.noTables": "このノートにはまだテーブルがありません。先に記録テーブルを挿入してください",
+  "chart.noData": "描画できるデータ行がありません",
+  "chart.noNumericSeries": "数値の列を系列として 1 つ以上選択してください",
+  "chart.settings": "チャート設定",
+  "chart.table": "テーブル",
+  "chart.chartType": "種類",
+  "chart.xAxis": "X 軸",
+  "chart.series": "系列",
+  "chart.typeLine": "折れ線",
+  "chart.typeBar": "棒",
+  "chart.typeScatter": "散布図",
+  "chart.typeHistogram": "分布",
+  "chart.loading": "チャートを読み込み中…",
 
   // リリースノート
   "releaseNotes.empty": "リリースノートがありません",

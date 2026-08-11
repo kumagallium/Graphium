@@ -361,6 +361,10 @@ export const en: Record<string, string> = {
   "slash.advancedGroup": "Advanced",
   "slash.indexTable": "Index Table",
   "slash.indexTableSub": "Insert a table for data management",
+  "slash.logTable": "Log Table",
+  "slash.logTableSub": "A table that timestamps each new record",
+  "slash.chart": "Chart",
+  "slash.chartSub": "Visualize a table in this note",
   "slash.bookmark": "Bookmark",
   "slash.bookmarkSub": "Display URL as a card",
   "slash.pdf": "PDF",
@@ -1797,6 +1801,30 @@ export const en: Record<string, string> = {
   "indexTable.colCond1": "Condition 1",
   "indexTable.colCond2": "Condition 2",
   "indexTable.duplicateNoteConfirm": "A note named \"{title}\" already exists. Create another one?",
+
+  // 記録テーブル
+  "logTable.colDateTime": "Date/Time",
+  "logTable.colValue": "Value",
+  "logTable.colNote": "Note",
+  "logTable.addRecord": "Record",
+  "logTable.addRecordHint": "Add a row stamped with the current date and time",
+
+  // チャートブロック
+  "chart.selectSource": "Select a table in this note to visualize",
+  "chart.sourceGone": "The referenced table was not found in this note",
+  "chart.noTables": "No tables in this note yet — insert a Log Table first",
+  "chart.noData": "No data rows to plot",
+  "chart.noNumericSeries": "Select at least one numeric column as a series",
+  "chart.settings": "Chart settings",
+  "chart.table": "Table",
+  "chart.chartType": "Type",
+  "chart.xAxis": "X axis",
+  "chart.series": "Series",
+  "chart.typeLine": "Line",
+  "chart.typeBar": "Bar",
+  "chart.typeScatter": "Scatter",
+  "chart.typeHistogram": "Histogram",
+  "chart.loading": "Loading chart…",
 
   // リリースノート
   "releaseNotes.empty": "No release notes",

@@ -69,6 +69,8 @@ Typing `/` shows the standard blocks plus four Graphium-specific groups:
 | Item | Description |
 |---|---|
 | **Index Table** | "Insert a table for data management" |
+| **Log Table** | "A table that timestamps each new record" — see [The log table and charts](#the-log-table-and-charts) |
+| **Chart** | "Visualize a table in this note" — see [The log table and charts](#the-log-table-and-charts) |
 | **Template** | "Insert a plan or experiment template" |
 | **Callout** | "Insert a note box with an icon" |
 | **Step** | "A step that holds text, tables and images inside" — the container behind the provenance graph; see [Labels & provenance](/labels-and-provenance#step-blocks) |
@@ -161,6 +163,20 @@ The modal is searchable and lists each template's **Source** (**Official** or **
 - Linked rows offer **Open note** and **Side peek** — the side peek opens the row's note next to the current one, so you can update a run without leaving the plan.
 
 ![An index table with Name and condition columns](/screenshots/index-table.png)
+
+## The log table and charts
+
+**Log Table** inserts a table for recurring, time-stamped observations — a headache diary, a growth log, repeated measurements on the same setup. It starts with **Date/Time**, **Value**, and **Note** columns you can rename and extend, and shows a **Record** button under the table: clicking it appends a row with the current date and time already filled in the first column.
+
+The timestamp is ordinary cell text. You can edit it afterwards (recording last night's episode the next morning is fine), and because the whole thing is a standard table, it exports to Markdown and PDF unchanged.
+
+**Chart** turns any table in the note into a graph. Insert it, pick a table, and choose:
+
+- **Type** — **Line**, **Bar**, **Scatter**, or **Histogram** (the distribution of one numeric column).
+- **X axis** — the column for the horizontal axis. Date/time columns are detected automatically and plotted as a time axis.
+- **Series** — one or more numeric columns to plot.
+
+The table stays the source of truth: edit a cell or add a record and the chart follows. If the referenced table is deleted, the block shows "The referenced table was not found in this note" and lets you pick another one.
 
 ## Linking notes with @
 
