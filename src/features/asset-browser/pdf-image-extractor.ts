@@ -270,15 +270,35 @@ export async function extractEmbeddedPdfImages(
   return results;
 }
 
-/** pdfjs の `page.objs.get` を Promise でラップ */
-function getImageObject(page: any, name: string): Promise<PdfImageObject | null> {
+// 画像オブジェクト取得の保険タイムアウト。`objs.get(name, cb)` は対象が
+// 永久に resolve されないと cb を一度も呼ばない設計なので、想定外の名前を
+// 引いた場合でも抽出全体が宙吊りにならないよう一定時間で諦める。
+const IMAGE_OBJECT_TIMEOUT_MS = 5_000;
+
+/**
+ * pdfjs の `objs.get` を Promise でラップ。
+ *
+ * 複数ページで共有される画像は `g_` プレフィックス付きの名前で
+ * ドキュメント全体の `commonObjs` に格納される（pdfjs 本体の描画コードも
+ * この prefix でストアを振り分けている）。`page.objs` だけを見ると
+ * `g_` 名のコールバックが永遠に呼ばれず、抽出処理全体がハングする。
+ */
+export function getImageObject(
+  page: any,
+  name: string,
+  timeoutMs = IMAGE_OBJECT_TIMEOUT_MS,
+): Promise<PdfImageObject | null> {
   return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
     try {
+      const store = name.startsWith("g_") ? page.commonObjs : page.objs;
       // callback バージョンを優先（v5 では同期/非同期どちらでも動く）
-      page.objs.get(name, (obj: PdfImageObject | null) => {
+      store.get(name, (obj: PdfImageObject | null) => {
+        clearTimeout(timer);
         resolve(obj ?? null);
       });
     } catch {
+      clearTimeout(timer);
       resolve(null);
     }
   });
