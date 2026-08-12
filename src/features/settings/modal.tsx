@@ -2263,10 +2263,18 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                             const g = providerGroups.find((g) => g.representativeId === id);
                             setSourceModelId(id || null);
                             if (g) setAddProvider(g.provider);
-                            setAvailableModels([]);
-                            setSelectedModelId("");
                             setCustomModelId("");
                             setAddError("");
+                            if (g?.provider === "claude-subscription") {
+                              // サブスクは API キーを持たずモデル一覧 API も無いので、
+                              // 新規プロバイダーモードと同じく静的候補を即提示する
+                              setAvailableModels([...CLAUDE_SUBSCRIPTION_MODELS]);
+                              setSelectedModelId(CLAUDE_SUBSCRIPTION_MODELS[0]);
+                              setModelDisplayName("Claude Sonnet (subscription)");
+                            } else {
+                              setAvailableModels([]);
+                              setSelectedModelId("");
+                            }
                           }}
                           className="w-full appearance-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-sm text-foreground focus:border-primary focus:outline-none"
                         >
@@ -2281,18 +2289,21 @@ export function SettingsModal({ isOpen, onClose, initialTab, wikiSummaries, onRe
                       </div>
                     </div>
 
-                    <Button
-                      size="sm"
-                      onClick={handleFetchAvailable}
-                      disabled={fetchingAvailable || !sourceModelId}
-                      className="w-full"
-                    >
-                      {fetchingAvailable ? (
-                        <><Loader2 size={14} className="animate-spin mr-1" /> {t("settings.addModel.fetching")}</>
-                      ) : (
-                        t("settings.addModel.fetchModels")
-                      )}
-                    </Button>
+                    {/* サブスクは一覧取得 API が無い（静的候補を提示済み）ためボタンを出さない */}
+                    {providerGroups.find((g) => g.representativeId === sourceModelId)?.provider !== "claude-subscription" && (
+                      <Button
+                        size="sm"
+                        onClick={handleFetchAvailable}
+                        disabled={fetchingAvailable || !sourceModelId}
+                        className="w-full"
+                      >
+                        {fetchingAvailable ? (
+                          <><Loader2 size={14} className="animate-spin mr-1" /> {t("settings.addModel.fetching")}</>
+                        ) : (
+                          t("settings.addModel.fetchModels")
+                        )}
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <>
